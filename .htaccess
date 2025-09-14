@@ -1,0 +1,81 @@
+
+Options -MultiViews +FollowSymlinks -Indexes
+RewriteEngine On
+
+<Files .htaccess>
+	order allow,deny
+	deny from all
+</Files>
+
+
+ErrorDocument 400 /ts_error.php?errorid=400
+ErrorDocument 401 /ts_error.php?errorid=401
+ErrorDocument 403 /ts_error.php?errorid=403
+ErrorDocument 404 /ts_error.php?errorid=404
+ErrorDocument 500 /ts_error.php?errorid=500
+
+# //seo_mod_start
+# Uncomment the following and add your tracker path if rewrites arent working properly
+#RewriteBase /
+RewriteRule ^index.html$ index.php [L,NE]
+RewriteRule ^(.*)-b-([0-9]+).ts(.*)$ browse.php?cat=$2 [QSA,L]
+RewriteRule ^(.*)-c-([0-9]+).ts(.*)$ browse.php?category=$2 [QSA,L]
+RewriteRule ^(.*)-d-([0-9]+).ts(.*)$ download.php?id=$2 [QSA,L]
+RewriteRule ^(.*)-s-([0-9]+).ts(.*)$ details.php?id=$2 [QSA,L]
+RewriteRule ^(.*)-a-(.*).ts(.*)$ announce.php?passkey=$2 [QSA,L]
+RewriteRule ^(.*)-u?([0-9]+).ts(.*)$ userdetails.php?id=$2$3 [QSA,L]
+RewriteRule ^(.*)-f([0-9]+).tsf(.*)$ index2.php?fid=$2$3 [QSA,L]
+RewriteRule ^(.*)-fd([0-9]+).tsf(.*)$ forumdisplay.php?fid=$2$3 [QSA,L]
+RewriteRule ^(.*)-t([0-9]+).tsf(.*)$ showthread.php?tid=$2$3 [QSA,L]
+
+
+
+RewriteRule ^user-([0-9]+)\.html$ member.php?action=profile&id=$1 [L,QSA]
+RewriteRule ^user-([0-9]+)-page-([0-9]+)\.html$ userdetails.php?id=$1&page=$2 [L,QSA]
+
+
+
+RewriteRule ^forum-([0-9]+)\.html$ forumdisplay.php?fid=$1 [L,QSA]
+RewriteRule ^forum-([0-9]+)-page-([0-9]+)\.html$ forumdisplay.php?fid=$1&page=$2 [L,QSA]
+	
+RewriteRule ^thread-([0-9]+)\.html$ showthread.php?tid=$1 [L,QSA]
+RewriteRule ^thread-([0-9]+)-page-([0-9]+)\.html$ showthread.php?tid=$1&page=$2 [L,QSA]
+RewriteRule ^thread-([0-9]+)-lastpost\.html$ showthread.php?tid=$1&action=lastpost [L,QSA]
+RewriteRule ^thread-([0-9]+)-nextnewest\.html$ showthread.php?tid=$1&action=nextnewest [L,QSA]
+RewriteRule ^thread-([0-9]+)-nextoldest\.html$ showthread.php?tid=$1&action=nextoldest [L,QSA]
+RewriteRule ^thread-([0-9]+)-newpost\.html$ showthread.php?tid=$1&action=newpost [L,QSA]
+RewriteRule ^thread-([0-9]+)-post-([0-9]+)\.html$ showthread.php?tid=$1&pid=$2 [L,QSA]
+RewriteRule ^post-([0-9]+)\.html$ showthread.php?pid=$1 [L,QSA]
+
+RewriteRule ^torrent-([0-9]+)-comment-([0-9]+)\.html$ details.php?id=$1&pid=$2 [L,QSA]
+RewriteRule ^comment-([0-9]+)\.html$ details.php?pid=$1 [L,QSA]
+
+
+RewriteRule ^torrent-([0-9]+)\.html$ details.php?id=$1 [L,QSA]
+RewriteRule ^torrent-([0-9]+)-page-([0-9]+)\.html$ details.php?id=$1&page=$2 [L,QSA]
+
+
+
+RewriteRule ^download-([0-9]+)\.html$ download.php?id=$1 [L,QSA]
+
+
+RewriteRule ^announcement-([0-9]+)\.html$ announcements.php?aid=$1 [L,QSA]
+
+
+
+# //seo_mod_end
+
+<IfModule mod_expires>
+	<FilesMatch "\.(gif|jpg|jpeg|png|swf|css|js|html?)$">
+		ExpiresActive On
+		ExpiresDefault "access plus 10 years"
+	</FilesMatch>
+</IfModule>
+
+<IfModule mod_headers>
+  Header unset Last-Modified
+</IfModule>
+
+FileETag none
+php_flag short_open_tag on
+php_flag register_globals on

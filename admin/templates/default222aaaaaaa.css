@@ -1,0 +1,129 @@
+
+.smallfont, dfn, fieldset, fieldset td, .copyright
+{
+	font: 10px verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif;
+}
+.tcat, .thead, .tfoot, .optiontitle, .navbody, .navbody td, legend, .darkbg, .tfoot td, .logincontrols td
+{
+	font: 11px tahoma, verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif;
+}
+input, select, textarea, option, optgroup
+{
+	font: 11px verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif;
+}
+optgroup
+{
+	font-size: 11px;
+	font-style: italic;
+	font-weight: bold;
+}
+textarea, .bginput, input.col-c, input.col-i, input.col-g
+{
+	font: bold 11px tahoma, verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif;
+	color: #DEE0E2;
+	background: #10375D;
+	border: solid 1px #DEE0E2;
+	scrollbar-base-color: #086693;
+	scrollbar-arrow-color: #EEF0F2;
+	scrollbar-track-color: #10375D;
+}
+option, optgroup
+{
+	font-weight: bold;
+	font-size: 11px;
+	font-family: tahoma, verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif;
+	color: #DEE0E2;
+	background: #10375D;
+}
+input.bginput, input.col-c, input.col-i, input.col-g
+{
+	padding: 4px;
+}
+.tfoot input, .logincontrols input
+{
+	font: bold 11px tahoma, verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif;
+}
+.button, .hoptobutton
+{
+	font-weight: bold;
+	border: 1px solid #026CB1;
+	color: #000000;
+	background-color: #efefef;
+	vertical-align: middle;
+}
+.bluediv
+{
+	border: 1px solid rgb(131, 168, 204);
+	margin: 10px 0pt 0pt;
+	padding: 5px 5px 5px 5px;
+	display: block;
+	color: #DEE0E2;
+	background-color: #10375D;
+}
+a.bluediv:link, a.bluediv:visited, a.bluediv:active
+{
+	color: #FFFFFF;
+	background: #20478D;
+}
+html
+{
+	scrollbar-base-color: #086693;
+	scrollbar-arrow-color: #EEF0F2;
+	scrollbar-track-color: #10375D;
+}
+body
+{
+	color: #DEE0E2;
+	background: #10375D;
+}
+a:link, a:visited, a:active
+{
+	color: #EEFAFF;
+	background: transparent;
+}
+a:.tcat a:hover, .thead a:hover, .tfoot a:hover
+{
+	color: #FFFFFF;
+	background: #20478D;
+}
+a.copyright:link, a.copyright:visited, a.copyright:active
+{
+	text-decoration: none;
+	color: #5087AD;
+	border-top: dashed 1px #5087AD;
+	padding: 1px;
+}
+hr
+{
+	border-top: solid 1px #DEE0E2;
+	height: 0px;
+}
+.thead
+{
+	background: #026CB1 url(./thead_bg.gif) top left repeat-x;
+	color: #ffffff;
+}
+.subheader
+{
+	color: #000000;
+	background-color: #ADCBE7;
+}
+.tdclass1
+{
+	font: 11px verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif;
+	color: #FFFFFF;
+	background: #0098CC;
+}
+.tdclass2
+{
+	font: 10px verdana, geneva, lucida, 'lucida grande', arial, helvetica, sans-serif;
+	color: #FFFFFF;
+	background: #00A6DA;
+}
+.inlineimg
+{
+	vertical-align: middle;
+}
+.tsinput{background:#fff; color:#000; border:1px solid #026CB1; padding:1px; outline:none; font-family:Verdana; font-size:10px; font-weight:bold; line-height:1; width:9px;}
+.tsselect{background:#fff; color:#000; border:1px solid #026CB1; padding:1px; outline:none; font-family:Verdana; font-size:10px; font-weight:bold; line-height:1; width:55px;}
+.tsinput1{background:#fff; color:#000; border:1px solid #026CB1; padding:1px; outline:none; font-family:Verdana; font-size:10px; font-weight:bold; line-height:1;}

@@ -1,0 +1,7 @@
+<Files *.torrent>
+Order allow,deny
+Deny From All
+</Files>
+<FilesMatch "\.(php|asp|php4|php5|cgi|perl)$">
+ForceType text/plain
+</FilesMatch>

@@ -126,14 +126,7 @@ class SmtpMail extends MailHandler
 		global $mybb, $secure_smtp, $smtp_host, $smtp_pass, $smtp_port, $smtp_user;
 
 		
-		//$secure_smtp = "2";
-        //$smtp_host = "smtp.gmail.com";
-        //$smtp_pass = "asoh exvd exqi obzj";
-        //$smtp_port = "587";
-        //$smtp_user = "artcoregangstas@gmail.com";
-		
-		
-		
+	
 		
 		
 		$protocol = '';

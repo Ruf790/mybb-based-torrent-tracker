@@ -1,0 +1,48 @@
+    :root {
+      --danger-gradient: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+	  --success-gradient: linear-gradient(135deg, #28a745 0%, #218838 100%);
+    }
+	
+	
+	
+	.error-card {
+   
+      width: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(220, 53, 69, 0.2);
+      animation: pulse 2s infinite;
+      background-color: #fff;
+    }
+
+    .card-header22 {
+      background: var(--danger-gradient);
+      color: white;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+	
+	
+	.card-header22.success {
+         background: var(--success-gradient);
+         color: white;
+    }
+	
+
+    .error-icon {
+      font-size: 2.5rem;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+      100% { transform: scale(1); }
+    }

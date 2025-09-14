@@ -1,0 +1,319 @@
+/* Стили для поля названия */
+#formName {
+    border-left: none !important;
+    padding-left: 0.5rem;
+}
+
+#formName:focus {
+    box-shadow: none;
+    border-color: #86b7fe;
+}
+
+.input-group:focus-within {
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    border-radius: 0.375rem;
+}
+
+.input-group-text {
+    transition: all 0.2s ease;
+}
+
+.input-group:focus-within .input-group-text {
+    border-color: #86b7fe;
+    background-color: #e8f4ff;
+}
+
+/* Счетчик символов */
+#formNameCharCount {
+    font-weight: 600;
+    color: #6c757d;
+}
+
+#formNameCharCount.warning {
+    color: #fd7e14;
+}
+
+#formNameCharCount.danger {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.form-check-input:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-switch .form-check-input {
+    width: 3em;
+    height: 1.5em;
+}
+
+.form-switch .form-check-input:checked {
+    background-position: right center;
+}
+
+
+ .preview-img {
+      max-width: 100px;
+      max-height: 100px;
+      margin: 0.25rem;
+      object-fit: cover;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+    }
+    /* Set Quill editor height */
+    #descriptionEditor {
+      height: 300px;
+    }
+ 
+
+
+
+  /* Styling invalid inputs */
+  .is-invalid {
+    border-color: #dc3545 !important;
+  }
+
+  /* For Quill editor invalid state */
+  #descriptionEditor.is-invalid {
+    border: 1px solid #dc3545 !important;
+    border-radius: 0.375rem; /* match bootstrap form-control */
+  }
+
+
+
+
+/* Upload Modal Styles */
+#uploadModal .modal-content {
+    border-radius: 20px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+}
+
+#uploadModal .bg-gradient-primary {
+    background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%) !important;
+}
+
+#uploadModal .modal-header {
+    padding: 1.5rem 2rem;
+}
+
+#uploadModal .modal-body {
+    padding: 2.5rem 2rem;
+}
+
+#uploadModal .modal-footer {
+    padding: 1rem 2rem;
+}
+
+/* Timer display */
+.timer-display {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Progress container */
+.progress-container {
+    position: relative;
+}
+
+.progress-text {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Animated spinner */
+.upload-spinner {
+    position: relative;
+    display: inline-block;
+}
+
+.spinner-glow {
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    right: -10px;
+    bottom: -10px;
+    background: rgba(13, 110, 253, 0.1);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.8); opacity: 0.7; }
+    50% { transform: scale(1.1); opacity: 0.3; }
+    100% { transform: scale(0.8); opacity: 0.7; }
+}
+
+/* Loading dots */
+.loading-dots {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #0d6efd;
+    animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.dot:nth-child(1) { animation-delay: -0.32s; }
+.dot:nth-child(2) { animation-delay: -0.16s; }
+.dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* Upload Complete Modal Styles */
+#uploadCompleteModal .modal-content {
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+#uploadCompleteModal .modal-header {
+    padding: 1.5rem;
+}
+
+#uploadCompleteModal .modal-body {
+    padding: 2rem;
+}
+
+#uploadCompleteModal .success-animation {
+    animation: scaleIn 0.5s ease-out;
+}
+
+@keyframes scaleIn {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+#uploadCompleteModal .btn {
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+#uploadCompleteModal .btn-success {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    border: none;
+}
+
+#uploadCompleteModal .btn-success:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+}
+
+#uploadCompleteModal .btn-outline-secondary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(108, 117, 125, 0.2);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Стили для файлового input */
+#torrentFile {
+    cursor: pointer;
+}
+
+
+
+
+
+#torrentFile::-webkit-file-upload-button {
+    visibility: hidden;
+}
+
+
+#torrentFile::before {
+    content: 'Choose .torrent file';
+    display: inline-block;
+    background: #f8f9fa; /* Такой же как bg-light */
+    color: #6c757d; /* Такой же как text-muted */
+    border: 1px solid #dee2e6;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    margin-right: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+#torrentFile:hover::before {
+    background: #e9ecef; /* Немного темнее при наведении */
+    color: #495057;
+    border-color: #ced4da;
+    transform: translateY(-1px);
+}
+
+#torrentFile:active::before {
+    transform: scale(0.98);
+    background: #dee2e6;
+}
+
+
+
+
+
+
+
+
+/* File info */
+.file-info {
+    font-weight: 500;
+}
+
+.file-info.text-success {
+    color: #198754 !important;
+}
+
+.file-info.text-danger {
+    color: #dc3545 !important;
+}
+
+/* Input group focus */
+.input-group:focus-within {
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    border-radius: 0.375rem;
+    transition: box-shadow 0.15s ease-in-out;
+}
+
+
+
+
+
+

@@ -1,0 +1,12 @@
+.transition-scale {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.transition-scale:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(0,0,0,0.3);
+}
+
+.screenshot-wrapper:hover img {
+  opacity: 0.9;
+}

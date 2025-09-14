@@ -1,0 +1,115 @@
+<?php
+/**
+ * MyBB 1.8 English Language Pack
+ * Copyright 2014 MyBB Group, All Rights Reserved
+ *
+ */
+
+if(!defined('IN_TRACKER'))
+  die('Hacking attempt!');
+
+// forumdisplay.php
+$language['forumdisplay'] = array 
+(
+
+
+'error_invalidforum' => "Invalid forum",
+
+'by'=> "by",
+
+'post_thread'=> "Post Thread",
+'moderated_by'=> "Moderated By:",
+'nothreads'=> "Sorry, but there are currently no threads in this forum with the specified date and time limiting options.",
+'nopermission'=> "Sorry, but you do not have permission to view threads in this forum.",
+'search_forum'=> "Search this Forum:",
+'thread'=> "Thread",
+'author'=> "Author",
+'replies'=> "Replies",
+'views'=> "Views",
+'lastpost'=> "Last Post",
+'rating'=> "Rating",
+'prefix'=> "Prefix:",
+'prefix_all'=> "Prefix: Any/No Prefix",
+'prefix_any'=> "Prefix: Any Prefix",
+'prefix_none'=> "Prefix: No Prefix",
+'markforum_read'=> "Mark this forum read",
+'subscribe_forum'=> "Subscribe to this forum",
+'unsubscribe_forum'=> "Unsubscribe from this forum",
+'clear_stored_password'=> "Clear stored forum password",
+'sort_by_subject'=> "Sort by: Subject",
+'sort_by_lastpost'=> "Sort by: Last Post",
+'sort_by_starter'=> "Sort by: Author",
+'sort_by_started'=> "Sort by: Creation Time",
+'sort_by_rating'=> "Sort by: Rating",
+'sort_by_replies'=> "Sort by: Replies",
+'sort_by_views'=> "Sort by: Views",
+'sort_order_asc'=> "Order: Ascending",
+'sort_order_desc'=> "Order: Descending",
+'datelimit_1day'=> "From: Today",
+'datelimit_5days'=> "From: 5 Days Ago",
+'datelimit_10days'=> "From: 10 Days Ago",
+'datelimit_20days'=> "From: 20 Days Ago",
+'datelimit_50days'=> "From: 50 Days Ago",
+'datelimit_75days'=> "From: 75 Days Ago",
+'datelimit_100days'=> "From: 100 Days Ago",
+'datelimit_lastyear'=> "From: The Last Year",
+'datelimit_beginning'=> "From: The Beginning",
+'new_thread'=> "New Posts",
+'new_hot_thread'=> "Hot Thread (New)",
+'posts_by_you'=> "Contains Posts by You",
+'no_new_thread'=> "No New Posts",
+'hot_thread'=> "Hot Thread (No New)",
+'closed_thread'=> "Closed Thread",
+'goto_first_unread'=> "Go to first unread post",
+'pages'=> "Pages:",
+'pages_last'=> "last",
+'users_browsing_forum'=> "Users browsing this forum:",
+'users_browsing_forum_guests'=> "{1} Guest(s)",
+'users_browsing_forum_invis'=> "{1} Invisible User(s)",
+'delayed_moderation'=> "Delayed Moderation",
+'inline_thread_moderation'=> "Inline Thread Moderation:",
+'close_threads'=> "Close Threads",
+'open_threads'=> "Open Threads",
+'stick_threads'=> "Stick Threads",
+'unstick_threads'=> "Unstick Threads",
+'soft_delete_threads'=> "Soft Delete Threads",
+'restore_threads'=> "Restore Threads",
+'delete_threads'=> "Delete Threads Permanently",
+'move_threads'=> "Move / Copy Threads",
+'approve_threads'=> "Approve Threads",
+'unapprove_threads'=> "Unapprove Threads",
+'inline_go'=> "Go",
+'clear'=> "Clear",
+'sub_forums_in' => "Forums in '{1}'",
+'forum_rules'=> "{1} - Rules",
+'subforums'=> "Sub Forums:",
+'asc'=> "asc",
+'desc'=> "desc",
+'forum_announcements'=> "Forum Announcements",
+'sticky_threads'=> "Important Threads",
+'normal_threads'=> "Normal Threads",
+'icon_dot'=> "Contains posts by you. ", // The spaces for the icon labels are strategically placed so that there should be no extra space at the beginning or end of the resulting label and that spaces separate each 'status' ,)
+'icon_no_new'=> "No new posts.",
+'icon_new'=> "New posts.",
+'icon_hot'=> " Hot thread.",
+'icon_close'=> " Closed thread.",
+'attachment_count'=> "This thread contains 1 attachment.",
+'attachment_count_multiple'=> "This thread contains {1} attachments.",
+'rss_discovery_forum'=> "Latest Threads in {1}",
+'forum_unapproved_posts_count'=> "There are currently {1} unapproved posts in this forum.",
+'forum_unapproved_post_count'=> "There is currently 1 unapproved post in this forum.",
+'forum_unapproved_threads_count'=> "There are currently {1} unapproved threads in this forum.",
+'forum_unapproved_thread_count'=> "There is currently 1 unapproved thread in this forum.",
+'thread_unapproved_posts_count'=> "There are currently {1} unapproved posts in this thread.",
+'thread_unapproved_post_count'=> "There is currently 1 unapproved post in this thread.",
+'page_selected'=> "All <strong>{1}</strong> threads on this page are selected.",
+'all_selected'=> "All <strong>{1}</strong> threads in this forum are selected.",
+'select_all'=> "Select all <strong>{1}</strong> threads in this forum.",
+'clear_selection'=> "Clear Selection.",
+'deleted_thread'=> "Deleted Thread",
+
+'error_containsnoforums'=> "Sorry, but the forum you are currently viewing does not contain any child forums.",
+
+'inline_edit_description'=> '(Click and hold to edit)',
+
+);

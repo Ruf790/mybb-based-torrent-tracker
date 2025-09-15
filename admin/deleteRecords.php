@@ -8,6 +8,7 @@ define ('STAFF_PANEL_TSSEv56', true);
 define ('SKIP_CRON_JOBS', true);
 define ('SKIP_LOCATION_SAVE', true);
 define("IN_MYBB", 1);
+define("IN_ADMINCP", 1);
 
 
 require_once $rootpath . 'global.php';
@@ -60,3 +61,4 @@ if($_REQUEST['empid'])
 	}
 }
 ?>
+

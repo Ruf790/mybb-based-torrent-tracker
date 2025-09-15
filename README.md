@@ -42,15 +42,13 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 Upload the SQL file from:
 admin/backup
 
-pgsql
-Copy code
+
 and import it into your MySQL/MariaDB database.
 
 ### 2. Install Dependencies
 composer require arokettu/torrent-file
 
-bash
-Copy code
+
 
 ### 3. Configure Database
 Edit `include/config.php`:
@@ -62,8 +60,7 @@ $config['database']['password'] = 'password';
 4. Configure Announce
 Edit include/config_announce.php:
 
-php
-Copy code
+
 $mysql_host = '';
 $mysql_user = '';
 $mysql_pass = '';
@@ -74,15 +71,13 @@ $SITENAME = 'Tracker Name';
 5. Configure Site Settings
 Edit include/settings.php:
 
-php
-Copy code
+
 $SITENAME = "Tracker Name";
 $BASEURL = "https://localhost";
 $cookiedomain = ".localhost";
 $announce_urls[] = "https://localhost/announce.php";
 6. Default Admin User
-makefile
-Copy code
+
 Username: Admin
 Password: 123456
 ✅ Ready to Go

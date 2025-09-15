@@ -12,9 +12,7 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 
 ---
 
-## 📸 Screenshots
-
-👉 Save your screenshots in the folder: `docs/`  
+## 📸 Screenshots 
 
 ### 🔹 Main Page
 ![Main Page](docs/3.png)

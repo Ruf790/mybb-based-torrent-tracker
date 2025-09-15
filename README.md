@@ -23,7 +23,7 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 ![Torrent Details](docs/screenshot-details.png)
 
 ### 🔹 Admin Panel
-![Admin Panel](docs/screenshot-admin.png)
+![Admin Panel](docs/1.jpeg)
 
 ---
 

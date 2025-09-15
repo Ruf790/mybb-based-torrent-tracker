@@ -17,7 +17,7 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 👉 Save your screenshots in the folder: `docs/`  
 
 ### 🔹 Main Page
-![Main Page](docs/screenshot-main.png)
+![Main Page](docs/3.png)
 
 ### 🔹 Torrent Details
 ![Torrent Details](docs/2.png)

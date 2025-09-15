@@ -20,7 +20,7 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 ![Main Page](docs/screenshot-main.png)
 
 ### 🔹 Torrent Details
-![Torrent Details](docs/screenshot-details.png)
+![Torrent Details](docs/2.png)
 
 ### 🔹 Admin Panel
 ![Admin Panel](docs/1.jpeg)

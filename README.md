@@ -36,7 +36,7 @@ $config['database']['username'] = 'user';      // Database user
 $config['database']['password'] = 'password';  // Database password
 
 
-Configure Announce
+4. Configure Announce
 
 Edit include/config_announce.php:
 

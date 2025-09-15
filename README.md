@@ -18,6 +18,7 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 
 ### 🔹 Main Page
 ![Main Page](docs/3.png)
+![Main Page](docs/4.png)
 
 ### 🔹 Torrent Details
 ![Torrent Details](docs/2.png)

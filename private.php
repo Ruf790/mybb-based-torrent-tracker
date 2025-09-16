@@ -473,7 +473,7 @@ if($mybb->input['action'] == "results")
 			$tofromuid = $message['fromid'];
 			if($tofromuid == 0)
 			{
-				$tofromusername = 'Ruff Tracker Engine';
+				$tofromusername = 'Tracker Engine';
 			}
 		}
 
@@ -1145,7 +1145,7 @@ if($mybb->input['action'] == "read")
 
 	if($pm['fromid'] == 0)
 	{
-		$pm['username'] = 'Ruff Tracker Engine';
+		$pm['username'] = 'Tracker Engine';
 	}
 
 	if(!$pm['username'])
@@ -2073,14 +2073,14 @@ if($mybb->input['action'] == "do_export" && $mybb->request_method == "post")
 
 			if($tofromuid == 0)
 			{
-				$tofromusername = 'Ruff Tracker Engine';
+				$tofromusername = 'Tracker Engine';
 			}
 			$tofrom = $lang->from;
 		}
 
 		if($tofromuid == 0)
 		{
-			$message['fromusername'] = 'Ruff Tracker Engine';
+			$message['fromusername'] = 'Tracker Engine';
 		}
 
 		if(!$message['toid'] && $message['folder'] == 3)
@@ -2508,7 +2508,7 @@ if(!$mybb->input['action'])
 				$tofromuid = $message['fromid'];
 				if($tofromuid == 0)
 				{
-					$tofromusername = 'Ruff Tracker Engine';
+					$tofromusername = 'Tracker Engine';
 				}
 
 				if(!$tofromusername)

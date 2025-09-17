@@ -15,10 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $errors = [];
     if (empty($_POST['name'])) {
-        $errors[] = 'Название не может быть пустым';
+        $errors[] = 'The name cannot be empty';
     }
     if (empty($_POST['descr'])) {
-        $errors[] = 'Описание не может быть пустым';
+        $errors[] = 'The name cannot be empty';
     }
 
     
@@ -726,4 +726,5 @@ $caats = ts_category_list('category', (isset($category) ? $category : ''));
       </div>
     </div>
   </div>
+
 </div>

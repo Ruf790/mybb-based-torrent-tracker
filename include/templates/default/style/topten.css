@@ -1,0 +1,107 @@
+       .glass-card {
+            background: #ffffff;
+            border: 1px solid #e9ecef;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .nav-tabs {
+            background: #f8f9fa;
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .nav-tabs .nav-link {
+            color: #6c757d;
+            font-weight: 500;
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            transition: all 0.3s ease;
+        }
+        .nav-tabs .nav-link:hover {
+            color: #0d6efd;
+            background: rgba(13, 110, 253, 0.1);
+        }
+        .nav-tabs .nav-link.active {
+            color: #fff;
+            background: #0d6efd;
+        }
+        .card-header {
+            background: #0d6efd;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 0.5rem 0.5rem 0 0 !important;
+            padding: 1rem 1.5rem;
+            border: none;
+        }
+        .table {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            margin: 0;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        .table th {
+            background: #e9ecef;
+            font-weight: 600;
+            color: #495057;
+            padding: 1rem;
+            border: none;
+            position: sticky;
+            top: 0;
+        }
+        .table td {
+            padding: 1rem;
+            border-color: #f1f3f5;
+            transition: all 0.3s ease;
+            vertical-align: middle;
+        }
+        .table-hover tbody tr:hover {
+            background: rgba(13, 110, 253, 0.05);
+        }
+        .stats-badge {
+            background: #6c757d;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .ratio-badge {
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            min-width: 60px;
+            display: inline-block;
+            text-align: center;
+        }
+        .user-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 0.75rem;
+            border: 2px solid #e9ecef;
+        }
+        .flag-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 3px;
+            margin-right: 0.75rem;
+            border: 1px solid #dee2e6;
+        }
+        .report-btn {
+            transition: all 0.3s ease;
+        }
+        .report-btn:hover {
+            transform: scale(1.1);
+        }
+        .text-success { color: #198754 !important; }
+        .text-danger { color: #dc3545 !important; }
+        .text-info { color: #0dcaf0 !important; }
+        .text-warning { color: #ffc107 !important; }
+        .hover-shadow {
+            transition: all 0.3s ease;
+        }

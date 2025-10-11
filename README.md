@@ -88,7 +88,7 @@ After completing these steps, your tracker should be up and running.
 Please don’t kill me hahah 😅
 
 📌 Requirements
-PHP 7.4+
+PHP 8.4
 
 MySQL 5.7+ / MariaDB
 

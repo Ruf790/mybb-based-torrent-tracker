@@ -1355,10 +1355,13 @@ function getLeecherPercentage(mixed $seeders, mixed $leechers): int
 
 
 
+$screenTab = '';
+$screenContent = '';
+
 
 if (!empty($screenshots)) 
 {
-    // Кнопка таба
+    
     $screenTab = '
 <li class="nav-item" role="presentation">
     <button class="nav-link fw-semibold" id="screen-tab" data-bs-toggle="tab" data-bs-target="#screen" type="button" role="tab" aria-controls="screen" aria-selected="false">
@@ -1367,7 +1370,6 @@ if (!empty($screenshots))
 </li>';
 
 
-    // Контент вкладки
     $screenContent = '
     <div class="tab-pane fade" id="screen" role="tabpanel" aria-labelledby="screen-tab">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1377,7 +1379,7 @@ if (!empty($screenshots))
 }
 
 
-// Теперь основная часть HTML
+
 
 
 $details = '

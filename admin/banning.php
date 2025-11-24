@@ -1,625 +1,1083 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
 
 
+declare(strict_types=1);
 
+// Security constants
 define("IN_MYBB", 1);
 define("IN_ADMINCP", 1);
-define ('TSF_FORUMS_TSSEv56', true);
-define ('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define ('TSF_VERSION', 'v1.5 by xam');
-
+define('TSF_FORUMS_TSSEv56', true);
+define('TSF_FORUMS_GLOBAL_TSSEv56', true);
+define('TSF_VERSION', 'v1.5 by xam');
 
 // Disallow direct access to this file for security reasons
-if(!defined("IN_MYBB"))
-{
-	die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
+if (!defined("IN_MYBB")) {
+    http_response_code(403);
+    die("
+        <div class='alert alert-danger text-center' style='max-width: 500px; margin: 100px auto;'>
+            <i class='fa-solid fa-shield-exclamation fa-3x mb-3 text-warning'></i>
+            <h4>Access Denied</h4>
+            <p>Direct initialization of this file is not allowed.</p>
+            <small>Please make sure IN_MYBB is defined.</small>
+        </div>
+    ");
 }
 
-
-
-
-//$page->add_breadcrumb_item('Banning', "index.php?act=banning");
-
-$plugins->run_hooks("admin_config_banning_begin");
-
-$mybb->input['filter'] = $mybb->get_input('filter');
-
-if($mybb->input['action'] == "add" && $mybb->request_method == "post")
+/**
+ * Advanced Ban Management System
+ */
+class BanManager
 {
-	$plugins->run_hooks("admin_config_banning_add");
+    private const BAN_TYPES = [
+        'ips' => 1,
+        'usernames' => 2,
+        'emails' => 3
+    ];
 
-	if(!trim($mybb->input['filter']))
-	{
-		$errors[] = 'You did not enter a value to ban';
-	}
+    private const TYPE_CONFIGS = [
+        1 => [
+            'title' => 'Banned IP Addresses', 
+            'redirect' => '',
+            'icon' => 'fa-network-wired',
+            'color' => 'danger',
+            'tab_icon' => 'fa-solid fa-network-wired'
+        ],
+        2 => [
+            'title' => 'Disallowed Usernames', 
+            'redirect' => 'usernames',
+            'icon' => 'fa-user-slash',
+            'color' => 'warning',
+            'tab_icon' => 'fa-solid fa-user-slash'
+        ],
+        3 => [
+            'title' => 'Disallowed Email Addresses', 
+            'redirect' => 'emails',
+            'icon' => 'fa-envelope-circle-exclamation',
+            'color' => 'info',
+            'tab_icon' => 'fa-solid fa-envelope-circle-exclamation'
+        ]
+    ];
 
-	$query = $db->simple_select("banfilters", "fid", "filter = '".$db->escape_string($mybb->input['filter'])."' AND type = '".$mybb->get_input('type', MyBB::INPUT_INT)."'");
-	if($db->num_rows($query))
-	{
-		$errors[] = 'The filter you entered is already banned';
-	}
+    private const FORM_CONFIGS = [
+        1 => [
+            'title' => 'Ban IP Address',
+            'label' => 'IP Address',
+            'description' => 'To ban a range of IP addresses use * (Ex: 127.0.0.*) or CIDR notation (Ex: 127.0.0.0/8)',
+            'button' => 'Ban IP Address',
+            'icon' => 'fa-ban',
+            'placeholder' => 'Enter IP address or range...'
+        ],
+        2 => [
+            'title' => 'Disallow Username',
+            'label' => 'Username', 
+            'description' => 'To indicate a wild card match, use * (Ex: admin*, *bot, *moderator*)',
+            'button' => 'Disallow Username',
+            'icon' => 'fa-user-lock',
+            'placeholder' => 'Enter username pattern...'
+        ],
+        3 => [
+            'title' => 'Disallow Email Address',
+            'label' => 'Email Address',
+            'description' => 'To indicate a wild card match, use * (Ex: *@spam.com, user@*.domain)',
+            'button' => 'Disallow Email Address', 
+            'icon' => 'fa-envelope',
+            'placeholder' => 'Enter email pattern...'
+        ]
+    ];
 
-	if(!$errors)
-	{
-		$new_filter = array(
-			"filter" => $db->escape_string($mybb->input['filter']),
-			"type" => $mybb->get_input('type', MyBB::INPUT_INT),
-			"dateline" => TIMENOW
-		);
-		$fid = $db->insert_query("banfilters", $new_filter);
+    public function __construct(
+        private $mybb,
+        private $db, 
+        private $cache,
+        private $plugins
+    ) {}
 
-		$plugins->run_hooks("admin_config_banning_add_commit");
+    /**
+     * Main request router
+     */
+    public function handleRequest(): void
+    {
+        $action = $this->mybb->get_input('action');
+        
+        match ($action) {
+            'add' => $this->handleAdd(),
+            'delete' => $this->handleDelete(),
+            default => $this->displayInterface()
+        };
+    }
 
-		if($mybb->input['type'] == 1)
-		{
-			$cache->update_bannedips();
-		}
-		else if($mybb->input['type'] == 3)
-		{
-			$cache->update_bannedemails();
-		}
+    /**
+     * Handle ban addition with validation
+     */
+    private function handleAdd(): void
+    {
+        $this->plugins->run_hooks("admin_config_banning_add");
 
-		// Log admin action
-		//log_admin_action($fid, $mybb->input['filter'], (int)$mybb->input['type']);
+        $filter = $this->mybb->get_input('filter');
+        $type = $this->mybb->get_input('type', MyBB::INPUT_INT);
 
-		if($mybb->input['type'] == 1)
-		{
-			flash_message('success_ip_banned', 'success');
-			admin_redirect("index.php?act=banning");
-		}
-		else if($mybb->input['type'] == 2)
-		{
-			flash_message('success_username_disallowed', 'success');
-			admin_redirect("index.php?act=banning&type=usernames");
-		}
-		else if($mybb->input['type'] == 3)
-		{
-			flash_message('success_email_disallowed', 'success');
-			admin_redirect("index.php?act=banning&type=emails");
-		}
-	}
-	else
-	{
-		if($mybb->input['type'] == 1)
-		{
-			$mybb->input['type'] = "ips";
-		}
-		else if($mybb->input['type'] == 2)
-		{
-			$mybb->input['type'] = "usernames";
-		}
-		else if($mybb->input['type'] == 3)
-		{
-			$mybb->input['type'] = "emails";
-		}
-		$mybb->input['action'] = '';
-	}
-}
+        if ($this->mybb->request_method !== "post") {
+            flash_message('Invalid request method', 'error');
+            $this->redirectToBanning();
+        }
 
-if($mybb->input['action'] == "delete")
-{
-	$query = $db->simple_select("banfilters", "*", "fid='".$mybb->get_input('fid', MyBB::INPUT_INT)."'");
-	$filter = $db->fetch_array($query);
+        $errors = $this->validateAdd($filter, $type);
 
-	// Does the filter not exist?
-	if(!$filter)
-	{
-		flash_message($lang->error_invalid_filter, 'error');
-		admin_redirect("index.php?act=banning");
-	}
+        if (empty($errors)) {
+            $this->addBanFilter($filter, $type);
+            $this->redirectAfterAdd($type);
+        }
 
-	$plugins->run_hooks("admin_config_banning_delete");
+        $this->handleErrors($errors, $type);
+    }
 
-	if($filter['type'] == 3)
-	{
-		$type = "emails";
-	}
-	else if($filter['type'] == 2)
-	{
-		$type = "usernames";
-	}
-	else
-	{
-		$type = "ips";
-	}
+    /**
+     * Handle ban deletion with confirmation
+     */
+    private function handleDelete(): void
+    {
+        $fid = $this->mybb->get_input('fid', MyBB::INPUT_INT);
+        $filter = $this->getFilterById($fid);
 
-	// User clicked no
-	if($mybb->get_input('no'))
-	{
-		admin_redirect("index.php?act=banning&type={$type}");
-	}
+        if (!$filter) {
+            $this->flashError('The specified filter does not exist');
+            $this->redirectToBanning();
+        }
 
-	if($mybb->request_method == "post")
-	{
-		// Delete the ban filter
-		$db->delete_query("banfilters", "fid='{$filter['fid']}'");
+        $this->plugins->run_hooks("admin_config_banning_delete");
 
-		$plugins->run_hooks("admin_config_banning_delete_commit");
+        if ($this->mybb->get_input('no')) {
+            $typeName = $this->getTypeName((int)$filter['type']);
+            admin_redirect("index.php?act=banning&type={$typeName}");
+        }
 
-		// Log admin action
-		//log_admin_action($filter['fid'], $filter['filter'], (int)$filter['type']);
+        if ($this->mybb->request_method === "post") {
+            $this->deleteBanFilter($filter);
+        } else {
+            $this->showDeleteConfirmation($filter);
+        }
+    }
 
-		// Banned IP? Rebuild banned IP cache
-		if($filter['type'] == 1)
-		{
-			$cache->update_bannedips();
-		}
-		else if($filter['type'] == 3)
-		{
-			$cache->update_bannedemails();
-		}
+    /**
+     * Display main management interface
+     */
+    private function displayInterface(): void
+    {
+        $this->plugins->run_hooks("admin_config_banning_start");
 
-		flash_message('success_ban_deleted', 'success');
-		admin_redirect("index.php?act=banning&type={$type}");
-	}
-	else
-	{
-		$page->output_confirm_action("index.php?act=banning&amp;action=delete&amp;fid={$filter['fid']}", $lang->confirm_ban_deletion);
-	}
-}
+        $typeConfig = $this->getCurrentTypeConfig();
+        $this->renderInterface($typeConfig);
+    }
 
-if(!$mybb->input['action'])
-{
-	$plugins->run_hooks("admin_config_banning_start");
+    /**
+     * Validate ban addition data
+     */
+    private function validateAdd(string $filter, int $type): array
+    {
+        $errors = [];
 
-	switch($mybb->get_input('type'))
-	{
-		case "emails":
-			$type = "3";
-			$title = 'Disallowed Email Addresses';
-			break;
-		case "usernames":
-			$type = "2";
-			$title = 'Disallowed Usernames';
-			break;
-		default:
-			$type = "1";
-			$title = 'Banned IP Addresses';
-			$mybb->input['type'] = "ips";
-	}
+        if (empty(trim($filter))) {
+            $errors[] = 'Please enter a value to ban';
+        }
 
-	//$page->output_header($title);
-	
-	stdhead($title);
-	
-	
-	echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
+        if ($this->isDuplicateFilter($filter, $type)) {
+            $errors[] = 'This filter is already banned';
+        }
 
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
+        // Additional validation based on type
+        if ($type === 1 && !$this->isValidIPFilter($filter)) {
+            $errors[] = 'Please enter a valid IP address or range';
+        }
 
-	// Stop JS elements showing while page is loading (JS supported browsers only)
-	echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-	
+        if ($type === 3 && !$this->isValidEmailFilter($filter)) {
+            $errors[] = 'Please enter a valid email pattern';
+        }
 
-	
+        return $errors;
+    }
 
-	$sub_tabs['ips'] = array(
-		'title' => 'Banned IPs',
-		'link' => "index.php?act=banning",
-		'description' => 'Here you can manage IP addresses which are banned from accessing your board'
-	);
+    private function isValidIPFilter(string $filter): bool
+    {
+        // Basic IP/CIDR/wildcard validation
+        if (str_contains($filter, '/')) {
+            return $this->isValidCIDR($filter);
+        }
+        
+        return (bool)preg_match('/^[0-9.*]+$/', $filter);
+    }
 
-	$sub_tabs['users'] = array(
-		'title' => 'Banned Accounts',
-		'link' => "index.php?act=banning2"
-	);
+    private function isValidCIDR(string $cidr): bool
+    {
+        $parts = explode('/', $cidr);
+        if (count($parts) !== 2) return false;
+        
+        return filter_var($parts[0], FILTER_VALIDATE_IP) && 
+               $parts[1] >= 0 && $parts[1] <= 128;
+    }
 
-	$sub_tabs['usernames'] = array(
-		'title' => 'Disallowed Usernames',
-		'link' => "index.php?act=banning&amp;type=usernames",
-		'description' => 'Here you manage a list of usernames which cannot be registered or used by users. This feature is also particularly useful for reserving usernames'
-	);
+    private function isValidEmailFilter(string $filter): bool
+    {
+        // Allow wildcards in email validation
+        $pattern = '/^[a-zA-Z0-9.*_%+-]+@[a-zA-Z0-9.*-]+\.[a-zA-Z]{2,}$/';
+        return (bool)preg_match($pattern, str_replace('*', 'wildcard', $filter));
+    }
 
-	$sub_tabs['emails'] = array(
-		'title' => 'Disallowed Email Addresses',
-		'link' => "index.php?act=banning&amp;type=emails",
-		'description' => 'Here you manage a list of email addresses which cannot be registered or used by users'
-	);
+    private function isDuplicateFilter(string $filter, int $type): bool
+    {
+        $query = $this->db->simple_select(
+            "banfilters", 
+            "fid", 
+            "filter = '" . $this->db->escape_string($filter) . "' AND type = '{$type}'"
+        );
+        return $this->db->num_rows($query) > 0;
+    }
 
-	output_nav_tabs($sub_tabs, $mybb->input['type']);
+    private function addBanFilter(string $filter, int $type): void
+    {
+        $new_filter = [
+            "filter" => $this->db->escape_string(trim($filter)),
+            "type" => $type,
+            "dateline" => TIMENOW,
+            "lastuse" => 0
+        ];
+        
+        $fid = $this->db->insert_query("banfilters", $new_filter);
+        $this->plugins->run_hooks("admin_config_banning_add_commit");
 
-	if($errors)
-	{
-		output_inline_error($errors);
-	}
+        $this->updateCaches($type);
+        $this->logAdminAction((int)$fid, $filter, $type);
+    }
 
-	$query = $db->simple_select("banfilters", "COUNT(fid) AS filter", "type='{$type}'");
-	$total_rows = $db->fetch_field($query, "filter");
+    private function updateCaches(int $type): void
+    {
+        match ($type) {
+            1 => $this->cache->update_bannedips(),
+            3 => $this->cache->update_bannedemails(),
+            default => null
+        };
+    }
 
-	$pagenum = $mybb->get_input('page', MyBB::INPUT_INT);
-	if($pagenum)
-	{
-		$start = ($pagenum - 1) * 20;
-		$pages = ceil($total_rows / 20);
-		if($pagenum > $pages)
-		{
-			$start = 0;
-			$pagenum = 1;
-		}
-	}
-	else
-	{
-		$start = 0;
-		$pagenum = 1;
-	}
+    private function redirectAfterAdd(int $type): void
+    {
+        $config = self::TYPE_CONFIGS[$type];
+        $message = match ($type) {
+            1 => '🎯 IP address has been banned successfully',
+            2 => '👤 Username has been disallowed successfully', 
+            3 => '📧 Email address has been disallowed successfully'
+        };
 
-	//$form = new Form("index.php?act=banning&amp;action=add", "post", "add");
-	
-	
-	echo '
-	<form action="index.php?act=banning&amp;action=add" method="post" id="add">
-    <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />';
+        $this->flashSuccess($message);
+        admin_redirect("index.php?act=banning" . ($config['redirect'] ? "&type={$config['redirect']}" : ''));
+    }
 
-	if($mybb->input['type'] == "usernames")
-	{
-		//$form_container = new FormContainer();
-		//$form_container->output_row('Username'." <em>*</em>", 'Note: To indicate a wild card match, use *', $form->generate_text_box('filter', $mybb->input['filter'], array('id' => 'filter')), 'filter');
-		//$buttons[] = $form->generate_submit_button('Disallow Username');
-		
-		
-		
-		
-		echo '
-	          
-	      <div class="container mt-3">
-		  
-		  <div class="card">
-            <div class="card-header rounded-bottom text-19 fw-bold">Add a Disallowed Username</div>
-          <div class="card-body">';
-		
-		
-		echo '
-		
-		<tr class="first">
-			<td class="first"><label for="filter">Username <em>*</em></label>
-<div class="description">Note: To indicate a wild card match, use *</div>
-<div class="form_row"><input type="text" name="filter" value="" class="form-control" id="filter"></div>
-</td>
-		</tr>
-		
-		';
-		
-		echo '
-	</div>
-	</div>
-	
-	';
-	
-	
-	
-	
-	echo'
-	</br>
-	
-	
-    <div class="card-footer text-center">
-	<tr>
-	<td colspan=3 align=center>
-	
-	<input type="submit" class="btn btn-primary" value="Disallow Username"> 
-	
-	</td>
-	</tr>
-	</div>
-	</div>
-	
-	';
+    private function getFilterById(int $fid): ?array
+    {
+        $query = $this->db->simple_select("banfilters", "*", "fid='{$fid}'");
+        $result = $this->db->fetch_array($query);
+        
+        if ($result) {
+            // Ensure proper data types
+            $result['fid'] = (int)$result['fid'];
+            $result['type'] = (int)$result['type'];
+            $result['dateline'] = (int)$result['dateline'];
+            $result['lastuse'] = (int)$result['lastuse'];
+        }
+        
+        return $result ?: null;
+    }
 
-		
-		
-	}
-	else if($mybb->input['type'] == "emails")
-	{
-		//$form_container = new FormContainer();
-		//$form_container->output_row('Email Address'." <em>*</em>", 'Note: To indicate a wild card match, use *', $form->generate_text_box('filter', $mybb->input['filter'], array('id' => 'filter')), 'filter');
-		//$buttons[] = $form->generate_submit_button('Disallow Email Address');
-		
-		
-		
-		echo '
-	          
-	      
-		  <div class="container mt-3">
-		  
-		  <div class="card">
-            <div class="card-header rounded-bottom text-19 fw-bold">Add a Disallowed Email Address</div>
-          <div class="card-body">';
-		
-		
-		echo '
-		
-		<tr class="first">
-			<td class="first"><label for="filter">Email Address <em>*</em></label>
-<div class="description">Note: To indicate a wild card match, use *</div>
-<div class="form_row"><input type="text" name="filter" value="" class="form-control" id="filter"></div>
-</td>
-		</tr>';
-		
-		
-		echo '
-	</div>
-	</div>';
-	
-	
-	
-	echo'
-	</br>
-    <div class="card-footer text-center">
-	<tr>
-	<td colspan=3 align=center>
-	
-	<input type="submit" class="btn btn-primary" value="Disallow Email Address"> 
-	
-	</td>
-	</tr>
-	</div>';
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-	}
-	else
-	{
-		//$form_container = new FormContainer();
-		//$form_container->output_row('ip_address'." <em>*</em>", 'ip_address_desc', $form->generate_text_box('filter', $mybb->input['filter'], array('id' => 'filter')), 'filter');
-		//$buttons[] = $form->generate_submit_button('ban_ip_address');
-		
-		
-		
-		
-		echo '
-	          
-	      <div class="container mt-3">
-		  
-		  <div class="card">
-            <div class="card-header rounded-bottom text-19 fw-bold">Ban an IP Address</div>
-          <div class="card-body">';
-		  
-		  
-		echo '
-		
-		<tr class="first">
-			<td class="first"><label for="filter">IP Address <em>*</em></label>
-<div class="description">Note: To ban a range of IP addresses use * (Ex: 127.0.0.*) or CIDR notation (Ex: 127.0.0.0/8)</div>
-<div class="form_row">
+    private function deleteBanFilter(array $filter): void
+    {
+        $this->db->delete_query("banfilters", "fid='{$filter['fid']}'");
+        $this->plugins->run_hooks("admin_config_banning_delete_commit");
 
-<input type="text" name="filter" value="" class="form-control" id="filter">
+        $this->logAdminAction((int)$filter['fid'], $filter['filter'], (int)$filter['type']);
+        $this->updateCaches((int)$filter['type']);
 
-</div>
-</td>
-		</tr>
-		
-		';  
-		
-		
-		echo '
-	</div>
-	</div>';
-		
-		
+        $typeName = $this->getTypeName((int)$filter['type']);
+        $this->flashSuccess('🗑️ Ban has been deleted successfully');
+        admin_redirect("index.php?act=banning&type={$typeName}");
+    }
 
-		
-		
-		echo'
-	</br>
-    <div class="card-footer text-center">
-	<tr>
-	<td colspan=3 align=center>
-	
-	<input type="submit" class="btn btn-primary" value="Ban IP Address"> 
-	
-	</td>
-	</tr>
-	</div>';
-		
-		
+    private function getTypeName(int $type): string
+    {
+        return array_flip(self::BAN_TYPES)[$type] ?? 'ips';
+    }
+
+    private function showDeleteConfirmation(array $filter): void
+    {
+        // Use the global page object if available, otherwise create custom confirmation
+        global $page;
+        
+        $filterText = htmlspecialchars_uni($filter['filter']);
+        $typeName = $this->getTypeName((int)$filter['type']);
+        $typeConfig = self::TYPE_CONFIGS[$filter['type']];
+        
+        $message = "
+            <div class='text-center'>
+                <i class='fa-solid fa-triangle-exclamation fa-3x text-warning mb-3'></i>
+                <h4>Confirm Deletion</h4>
+                <p>Are you sure you want to delete this ban?</p>
+                <div class='alert alert-light border'>
+                    <strong>{$filterText}</strong><br>
+                    <small class='text-muted'>
+                        <i class='fa-solid fa-{$typeConfig['icon']} text-{$typeConfig['color']}'></i>
+                        {$typeConfig['title']}
+                    </small>
+                </div>
+            </div>
+        ";
+
+        
+        $this->outputCustomConfirmation($filter, $message);
+        
+    }
+
   
-		
-		
-		
-		
-	}
 
-	//$form_container->end();
-	//echo generate_hidden_field("type", $type);
-	
-	echo '<input type="hidden" name="type" value="'.$type.'" />';
-	
-	//$form->output_submit_wrapper($buttons);
-	//$form->end();
-	echo "</form>";
 
-	echo '<br />';
-
-	//$table = new Table;
-	if($mybb->input['type'] == "usernames")
-	{
-		//$table->construct_header('Username');
-		//$table->construct_header('Date Disallowed', array("class" => "align_center", "width" => 200));
-		//$table->construct_header('Last Attempted Use', array("class" => "align_center", "width" => 200));
-		
-		
-		
-		
-		echo '
-		
-		
-		<div class="container mt-3">
-		
-       <div class="card border-0 mb-4">
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		  Disallowed Usernames
-	      </div>
-	   </div>
-	
-<div class="card">
+/**
+ * Custom confirmation dialog fallback with modal
+ */
+private function outputCustomConfirmation(array $filter, string $message): void
+{
+    $deleteUrl = "index.php?act=banning&action=delete&fid={$filter['fid']}&my_post_key={$this->mybb->post_code}";
+    $cancelUrl = "index.php?act=banning&type=" . $this->getTypeName((int)$filter['type']);
+    
+    stdhead();
+    echo "
+    <style>
+        body {
+            background: #f8f9fa;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            z-index: 1040;
+            opacity: 0;
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+        
+        .confirmation-modal {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+            max-width: 500px;
+            width: 100%;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            z-index: 1050;
+            opacity: 0;
+            animation: modalSlideIn 0.4s ease-out 0.1s forwards;
+            border: none;
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+            border: none;
+            padding: 1.5rem 2rem;
+        }
+        
+        .modal-body {
+            padding: 2rem;
+        }
+        
+        .modal-footer {
+            border: none;
+            padding: 1.5rem 2rem;
+            background: #f8f9fa;
+            gap: 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            border: none;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            color: white;
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(220, 53, 69, 0.4);
+            color: white;
+        }
+        
+        .btn-outline-secondary {
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: 2px solid #6c757d;
+            color: #6c757d;
+            background: transparent;
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-outline-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(108, 117, 125, 0.2);
+            background: #6c757d;
+            color: white;
+        }
+        
+        .ban-details {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .ban-value {
+            font-family: 'Courier New', monospace;
+            background: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            font-weight: 600;
+            color: #dc3545;
+            word-break: break-all;
+        }
+        
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+        
+        @keyframes modalSlideIn {
+            to {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
+            }
+        }
+        
+        .warning-icon {
+            font-size: 4rem;
+            background: linear-gradient(135deg, #ffc107, #fd7e14);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+        
+        .type-badge {
+            background: linear-gradient(135deg, #6c757d, #495057);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
+            }
+            70% {
+                box-shadow: 0 0 0 15px rgba(220, 53, 69, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+            }
+        }
+        
+        /* Responsive design */
+        @media (max-width: 576px) {
+            .confirmation-modal {
+                margin: 1rem;
+                max-width: calc(100% - 2rem);
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) scale(0.9);
+            }
             
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>Username</th>
-        <th>Date Disallowed</th>
-        <th>Last Attempted Use</th>
-        <th>Controls</th>
-
-      </tr>
-    </thead>';
-		
-		
-		
-		
-		
-		
-		
-		
-	}
-	else if($mybb->input['type'] == "emails")
-	{
-		//$table->construct_header('Email Address');
-		//$table->construct_header('Date Disallowed', array("class" => "align_center", "width" => 200));
-		//$table->construct_header('Last Attempted Use', array("class" => "align_center", "width" => 200));
-		
-		
-		
-		
-		echo '
-       <div class="card border-0 mb-4">
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		  Disallowed Email Addresses
-	      </div>
-	   </div>
-		
-   <div class="card">
+            .modal-body {
+                padding: 1.5rem;
+            }
             
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>Email Address</th>
-        <th>Date Disallowed</th>
-        <th>Last Attempted Use</th>
-        <th>Controls</th>
-
-      </tr>
-    </thead>';
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-	}
-	else
-	{
-
-		echo '<div class="card">
+            .modal-footer {
+                flex-direction: column;
+            }
             
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>IP Address</th>
-        <th>Ban Date</th>
-        <th>Last Access</th>
-        <th>Controls</th>
+            .btn {
+                width: 100%;
+                margin: 0.25rem 0;
+                text-align: center;
+            }
+        }
+    </style>
 
-      </tr>
-    </thead>';
-		
-		
-		
-	}
-	//$table->construct_header('Controls', array("width" => 1));
+    <!-- Backdrop -->
+    <div class='modal-backdrop'></div>
+    
+    <!-- Modal -->
+    <div class='confirmation-modal'>
+        <div class='modal-header text-center'>
+            <h4 class='modal-title w-100 mb-0'>
+                <i class='fas fa-exclamation-triangle me-2'></i>
+                Confirm Deletion
+            </h4>
+        </div>
+        
+        <div class='modal-body text-center'>
+            <div class='warning-icon'>
+                <i class='fas fa-trash-alt'></i>
+            </div>
+            
+            <h5 class='text-dark mb-3'>Are you sure you want to delete this ban?</h5>
+            <p class='text-muted mb-4'>This action cannot be undone and will permanently remove the ban filter.</p>
+            
+            <div class='ban-details text-start'>
+                <div class='d-flex justify-content-between align-items-center mb-2'>
+                    <span class='text-muted'>Ban Type:</span>
+                    <span class='type-badge'>
+                        <i class='fas fa-".self::TYPE_CONFIGS[$filter['type']]['icon']." me-1'></i>
+                        ".self::TYPE_CONFIGS[$filter['type']]['title']."
+                    </span>
+                </div>
+                <div class='mb-2'>
+                    <span class='text-muted'>Filter Value:</span>
+                    <div class='ban-value mt-1'>".htmlspecialchars_uni($filter['filter'])."</div>
+                </div>
+                <div class='small text-muted'>
+                    <i class='fas fa-calendar me-1'></i>
+                    Created: ".($filter['dateline'] > 0 ? my_datee('relative', $filter['dateline']) : 'N/A')."
+                </div>
+            </div>
+        </div>
+        
+        <div class='modal-footer justify-content-center'>
+            <form action='{$deleteUrl}' method='post' class='d-inline'>
+                <button type='submit' class='btn btn-danger btn-lg pulse'>
+                    <i class='fas fa-trash-can me-2'></i>
+                    Yes, Delete Permanently
+                </button>
+            </form>
+            <a href='{$cancelUrl}' class='btn btn-outline-secondary btn-lg'>
+                <i class='fas fa-times me-2'></i>
+                Cancel
+            </a>
+        </div>
+    </div>
 
-	$query = $db->simple_select("banfilters", "*", "type='{$type}'", array('limit_start' => $start, 'limit' => 20, "order_by" => "filter", "order_dir" => "asc"));
-	while($filter = $db->fetch_array($query))
-	{
-		$filter['filter'] = htmlspecialchars_uni($filter['filter']);
+    <script>
+        // Close modal on backdrop click
+        document.querySelector('.modal-backdrop').addEventListener('click', function() {
+            window.location.href = '{$cancelUrl}';
+        });
+        
+        // Escape key to close
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                window.location.href = '{$cancelUrl}';
+            }
+        });
+        
+        // Smooth focus management
+        setTimeout(() => {
+            document.querySelector('.btn-danger').focus();
+        }, 100);
+        
+        // Add some interactive effects
+        const buttons = document.querySelectorAll('.btn');
+        buttons.forEach(btn => {
+            btn.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-2px)';
+            });
+            btn.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0)';
+            });
+        });
+        
+        // Prevent form submission animation issues
+        const form = document.querySelector('form');
+        form.addEventListener('submit', function(e) {
+            const btn = this.querySelector('button');
+            btn.innerHTML = '<i class=\"fas fa-spinner fa-spin me-2\"></i>Deleting...';
+            btn.disabled = true;
+        });
+    </script>
+    ";
+    stdfoot();
+    exit;
+}
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 
-		if($filter['lastuse'] > 0)
-		{
-			$last_use = my_datee('relative', $filter['lastuse']);
-		}
-		else
-		{
-			$last_use = 'Never';
-		}
+    private function getCurrentTypeConfig(): array
+    {
+        $inputType = $this->mybb->get_input('type');
+        
+        return match ($inputType) {
+            'emails' => self::TYPE_CONFIGS[3] + ['type' => 3, 'name' => 'emails'],
+            'usernames' => self::TYPE_CONFIGS[2] + ['type' => 2, 'name' => 'usernames'],
+            default => self::TYPE_CONFIGS[1] + ['type' => 1, 'name' => 'ips']
+        };
+    }
 
-		if($filter['dateline'] > 0)
-		{
-			$date = my_datee('relative', $filter['dateline']);
-		}
-		else
-		{
-			$date = 'na';
-		}
+    private function renderInterface(array $typeConfig): void
+    {
+        $this->outputHeader($typeConfig);
+        $this->outputNavigation($typeConfig['name']);
+        $this->outputAddForm($typeConfig);
+        $this->outputBanList($typeConfig);
+        $this->outputFooter();
+    }
 
-		//$table->construct_cell($filter['filter']);
-		//$table->construct_cell($date, array("class" => "align_center"));
-		//$table->construct_cell($last_use, array("class" => "align_center"));
-		//$table->construct_cell("<a href=\"index.php?module=config-banning&amp;action=delete&amp;fid={$filter['fid']}&amp;my_post_key={$mybb->post_code}\" onclick=\"return AdminCP.deleteConfirmation(this, '{$lang->confirm_ban_deletion}');\"><img src=\"styles/{$page->style}/images/icons/delete.png\" title=\"{$lang->delete}\" alt=\"{$lang->delete}\" /></a>", array("class" => "align_center"));
-		//$table->construct_row();
-		
-		
-		
-		$za = "<a href=\"index.php?act=banning&amp;action=delete&amp;fid={$filter['fid']}&amp;my_post_key={$mybb->post_code}\" onclick=\"return AdminCP.deleteConfirmation(this, '{confirm_ban_deletion}');\">
-		<i class=\"fa-solid fa-trash-can fa-lg\" style=\"color: #eb0f0f;\" alt=\"Delete\" title=\"Delete\"></i></a>";
-		
-		
-		 echo '<tr class=rowhead><td>' . $filter['filter'] . '<td>
-		<span style="float: right;"></span>
-		' . $date . '</td><td>' . $last_use . '</td><td align=\'center\'>
-		'.$za.'
-		
-		
-		</td></tr>';
-		
-		
-		
-	}
-	
-	echo '</table></div>';
+    private function outputHeader(array $typeConfig): void
+    {
+        stdhead($typeConfig['title']);
+        $this->outputAssets($typeConfig);
+    }
 
-	if($db->num_rows($query) == 0)
-	{
-		echo 'There are no bans currently set at this time';
-		//$table->construct_row();
-	}
+    private function outputAssets(array $typeConfig): void
+    {
+        $version = '1813';
+        
+        echo "
+        <!-- Ban Manager Assets -->
+       
+        
+        <style>
+            .ban-manager-card {
+                border: none;
+                box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            .ban-manager-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+            }
+            .ban-type-icon {
+                font-size: 1.5em;
+                margin-right: 10px;
+            }
+            .ban-row {
+                transition: background-color 0.2s ease;
+            }
+            .ban-row:hover {
+                background-color: #f8f9fa !important;
+            }
+            .empty-state {
+                padding: 3rem 1rem;
+                text-align: center;
+                color: #6c757d;
+            }
+            .empty-state i {
+                font-size: 4rem;
+                margin-bottom: 1rem;
+                opacity: 0.5;
+            }
+        </style>
+        {$this->getPopupScript()}
+        ";
+    }
 
-	//$table->output($title);
+    private function getPopupScript(): string
+    {
+        return "
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Enhanced ban management interactions
+            const banRows = document.querySelectorAll('.ban-row');
+            banRows.forEach(row => {
+                row.addEventListener('click', function(e) {
+                    if (!e.target.closest('a')) {
+                        this.style.backgroundColor = '#f8f9fa';
+                        setTimeout(() => {
+                            this.style.backgroundColor = '';
+                        }, 200);
+                    }
+                });
+            });
+            
+            // Auto-focus on filter input
+            const filterInput = document.getElementById('filter');
+            if (filterInput) {
+                setTimeout(() => filterInput.focus(), 100);
+            }
+        });
+        </script>
+        ";
+    }
 
-	//echo "<br />".draw_admin_pagination($pagenum, "20", $total_rows, "index.php?module=config-banning&amp;type={$mybb->get_input('type')}&amp;page={page}");
+    private function outputNavigation(string $currentType): void
+    {
+        $sub_tabs = [
+            'ips' => [
+                'title' => 'Banned IPs',
+                'link' => "index.php?act=banning",
+                'description' => 'Manage IP addresses banned from accessing your board. You can ban specific IPs, ranges using wildcards (*), or CIDR notation.',
+                'icon' => 'fa-solid fa-network-wired'
+            ],
+            'users' => [
+                'title' => 'Banned Accounts',
+                'link' => "index.php?act=banning2",
+                'description' => 'Manage user accounts that are currently banned from the forum.',
+                'icon' => 'fa-solid fa-user-lock'
+            ],
+            'usernames' => [
+                'title' => 'Disallowed Usernames',
+                'link' => "index.php?act=banning&type=usernames",
+                'description' => 'Manage usernames that cannot be registered or used. Useful for reserving names and preventing inappropriate usernames.',
+                'icon' => 'fa-solid fa-user-slash'
+            ],
+            'emails' => [
+                'title' => 'Disallowed Emails',
+                'link' => "index.php?act=banning&type=emails",
+                'description' => 'Manage email addresses and domains that cannot be used for registration. Use wildcards to block entire domains.',
+                'icon' => 'fa-solid fa-mail-bulk'
+            ]
+        ];
 
-	//$page->output_footer();
-	
-	stdfoot();
+        output_nav_tabs($sub_tabs, $currentType);
+    }
+
+    private function outputAddForm(array $typeConfig): void
+    {
+        $config = self::FORM_CONFIGS[$typeConfig['type']];
+        $icon = $typeConfig['icon'];
+        $color = $typeConfig['color'];
+
+        echo "
+        <div class='container mt-4'>
+            <form action='index.php?act=banning&action=add' method='post' id='add' class='ban-manager-card'>
+                <input type='hidden' name='my_post_key' value='{$this->mybb->post_code}' />
+                <input type='hidden' name='type' value='{$typeConfig['type']}' />
+                
+                <div class='card border-0 shadow-sm'>
+                    <div class='card-header bg-{$color} text-white rounded-top'>
+                        <h5 class='mb-0'>
+                            <i class='fa-solid {$icon} me-2'></i>
+                            {$config['title']}
+                        </h5>
+                    </div>
+                    <div class='card-body'>
+                        <div class='mb-3'>
+                            <label for='filter' class='form-label fw-semibold'>
+                                {$config['label']} <span class='text-danger'>*</span>
+                            </label>
+                            <div class='form-text text-muted'>
+                                <i class='fa-solid fa-circle-info me-1'></i>
+                                {$config['description']}
+                            </div>
+                            <input type='text' 
+                                   name='filter' 
+                                   value='' 
+                                   class='form-control form-control-lg mt-2' 
+                                   id='filter' 
+                                   placeholder='{$config['placeholder']}'
+                                   required
+                                   autofocus>
+                        </div>
+                    </div>
+                    <div class='card-footer bg-light text-center py-3'>
+                        <button type='submit' class='btn btn-{$color} btn-lg px-4'>
+                            <i class='fa-solid {$config['icon']} me-2'></i>
+                            {$config['button']}
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <br />
+        ";
+    }
+
+    private function outputBanList(array $typeConfig): void
+    {
+        $totalRows = $this->getTotalRows($typeConfig['type']);
+        $filters = $this->getFilters($typeConfig['type']);
+        
+        echo "
+        <div class='container mt-4'>
+            <div class='card border-0 shadow-sm ban-manager-card'>
+                <div class='card-header bg-light rounded-top py-3'>
+                    <div class='d-flex justify-content-between align-items-center'>
+                        <h5 class='mb-0'>
+                            <i class='fa-solid {$typeConfig['icon']} text-{$typeConfig['color']} me-2'></i>
+                            {$typeConfig['title']}
+                            <span class='badge bg-{$typeConfig['color']} ms-2'>{$totalRows}</span>
+                        </h5>
+                        <div class='text-muted small'>
+                            <i class='fa-solid fa-clock me-1'></i>
+                            Last updated: " . my_datee('relative', TIMENOW) . "
+                        </div>
+                    </div>
+                </div>
+                <div class='card-body p-0'>
+        ";
+
+        $this->outputFilterTable($filters, $typeConfig);
+        
+        echo "
+                </div>
+            </div>
+        </div>
+        ";
+
+        $this->outputPagination($totalRows, $typeConfig['name']);
+    }
+
+    private function outputFilterTable(array $filters, array $typeConfig): void
+    {
+        $headers = $this->getTableHeaders($typeConfig['type']);
+        
+        echo "
+        <div class='table-responsive'>
+            <table class='table table-hover mb-0'>
+                <thead class='table-light'>
+                    <tr>
+                        {$headers}
+                        <th width='100' class='text-center'>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        ";
+
+        if (empty($filters)) {
+            $this->outputEmptyState($typeConfig);
+        } else {
+            $this->outputFilterRows($filters);
+        }
+        
+        echo "
+                </tbody>
+            </table>
+        </div>
+        ";
+    }
+
+    private function outputEmptyState(array $typeConfig): void
+    {
+        $icons = [
+            1 => 'fa-network-wired',
+            2 => 'fa-user-slash', 
+            3 => 'fa-envelope-circle-exclamation'
+        ];
+        
+        echo "
+        <tr>
+            <td colspan='4' class='empty-state'>
+                <i class='fa-solid {$icons[$typeConfig['type']]} text-muted'></i>
+                <h5 class='text-muted'>No bans found</h5>
+                <p class='text-muted mb-0'>There are no {$typeConfig['title']} at this time</p>
+            </td>
+        </tr>
+        ";
+    }
+
+    private function getTableHeaders(int $type): string
+    {
+        return match ($type) {
+            1 => '<th>IP Address</th><th width="200">Ban Date</th><th width="200">Last Access</th>',
+            2 => '<th>Username</th><th width="200">Date Disallowed</th><th width="200">Last Attempt</th>',
+            3 => '<th>Email Address</th><th width="200">Date Disallowed</th><th width="200">Last Attempt</th>'
+        };
+    }
+
+    private function getTotalRows(int $type): int
+    {
+        $query = $this->db->simple_select("banfilters", "COUNT(fid) AS filter_count", "type='{$type}'");
+        return (int)$this->db->fetch_field($query, "filter_count");
+    }
+
+    private function getFilters(int $type): array
+    {
+        $start = $this->getStartPosition();
+        $query = $this->db->simple_select(
+            "banfilters", 
+            "*", 
+            "type='{$type}'", 
+            [
+                'limit_start' => $start, 
+                'limit' => 20, 
+                "order_by" => "dateline", 
+                "order_dir" => "desc"
+            ]
+        );
+        
+        $filters = [];
+        while ($filter = $this->db->fetch_array($query)) {
+            // Convert string IDs to integers
+            $filter['fid'] = (int)$filter['fid'];
+            $filter['type'] = (int)$filter['type'];
+            $filter['dateline'] = (int)$filter['dateline'];
+            $filter['lastuse'] = (int)$filter['lastuse'];
+            $filters[] = $filter;
+        }
+        
+        return $filters;
+    }
+
+    private function getStartPosition(): int
+    {
+        $pagenum = $this->mybb->get_input('page', MyBB::INPUT_INT) ?: 1;
+        return ($pagenum - 1) * 20;
+    }
+
+    private function outputFilterRows(array $filters): void
+    {
+        foreach ($filters as $filter) {
+            $filterText = htmlspecialchars_uni($filter['filter']);
+            $date = $filter['dateline'] > 0 ? my_datee('relative', $filter['dateline']) : 'N/A';
+            $lastUse = $filter['lastuse'] > 0 ? my_datee('relative', $filter['lastuse']) : 'Never';
+            $isRecent = (TIMENOW - $filter['dateline']) < 86400; // 24 hours
+            
+            $dateBadge = $isRecent ? "<span class='badge bg-success ms-1'>New</span>" : "";
+            
+            $deleteUrl = "index.php?act=banning&action=delete&fid={$filter['fid']}&my_post_key={$this->mybb->post_code}";
+            $deleteButton = "
+                <a href='{$deleteUrl}' 
+                   onclick='return AdminCP.deleteConfirmation(this, \"Are you sure you wish to delete this ban?\");'
+                   class='btn btn-sm btn-outline-danger'
+                   title='Delete Ban'>
+                    <i class='fa-solid fa-trash-can'></i>
+                </a>
+            ";
+
+            echo "
+            <tr class='ban-row align-middle'>
+                <td>
+                    <div class='d-flex align-items-center'>
+                        <code class='filter-code'>{$filterText}</code>
+                        {$dateBadge}
+                    </div>
+                </td>
+                <td>
+                    <span class='text-muted small'>{$date}</span>
+                </td>
+                <td>
+                    <span class='text-muted small'>{$lastUse}</span>
+                </td>
+                <td class='text-center'>{$deleteButton}</td>
+            </tr>
+            ";
+        }
+    }
+
+    private function outputPagination(int $totalRows, string $typeName): void
+    {
+        if ($totalRows > 20) {
+            $pagenum = $this->mybb->get_input('page', MyBB::INPUT_INT) ?: 1;
+            echo "
+            <div class='container mt-3'>
+                <div class='d-flex justify-content-center'>
+                    " . draw_admin_pagination(
+                        $pagenum, 
+                        20, 
+                        $totalRows, 
+                        "index.php?module=config-banning&type={$typeName}&page={page}"
+                    ) . "
+                </div>
+            </div>
+            ";
+        }
+    }
+
+    private function outputFooter(): void
+    {
+        echo "
+        <script>
+        // Enhanced UI interactions
+        document.addEventListener('DOMContentLoaded', function() {
+            // Smooth animations for cards
+            const cards = document.querySelectorAll('.ban-manager-card');
+            cards.forEach(card => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(20px)';
+                
+                setTimeout(() => {
+                    card.style.transition = 'all 0.4s ease';
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, 100);
+            });
+        });
+        </script>
+        ";
+        
+        stdfoot();
+    }
+
+    /**
+     * Log admin action with proper type casting
+     */
+    private function logAdminAction(int $fid, string $filter, int $type): void
+    {
+        log_admin_action($fid, $filter, $type);
+    }
+
+    private function handleErrors(array $errors, int $type): void
+    {
+        if ($errors) {
+            output_inline_error($errors);
+        }
+    }
+
+    private function flashSuccess(string $message): void
+    {
+        flash_message($message, 'success');
+    }
+
+    private function flashError(string $message): void
+    {
+        flash_message($message, 'error');
+    }
+
+    private function redirectToBanning(): void
+    {
+        admin_redirect("index.php?act=banning");
+    }
 }
 
+// Initialize and execute the ban manager
+try {
+    $banManager = new BanManager($mybb, $db, $cache, $plugins);
+    $banManager->handleRequest();
+} catch (Exception $e) {
+    error_log("Ban Manager Error: " . $e->getMessage());
+    flash_message('An error occurred while processing your request', 'error');
+    admin_redirect("index.php?act=banning");
+}

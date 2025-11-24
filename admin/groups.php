@@ -49,7 +49,7 @@ $usergroup_permissions = array(
 	//"canbypasseventmod" => 0,
 	//"canmoderateevents" => 0,
 	//"canviewonline" => 1,
-	//"canviewwolinvis" => 0,
+	"canviewwolinvis" => 0,
 	//"canviewonlineips" => 0,
 	"cansettingspanel" => 0,
 	"issupermod" => 0,
@@ -121,8 +121,6 @@ require_once $thispath . 'include/class_table.php';
 
 
 
-
-
 // Include the layout generation class overrides for this style
 if(file_exists('jqueryui/style.php'))
 {
@@ -174,564 +172,6 @@ if($mybb->input['action'] == "add" || !$mybb->input['action'])
 }
 
 $plugins->run_hooks("admin_user_groups_begin");
-
-if($mybb->input['action'] == "approve_join_request")
-{
-	$query = $db->simple_select("joinrequests", "*", "rid='".$mybb->input['rid']."'");
-	$request = $db->fetch_array($query);
-
-	if(!$request)
-	{
-		flash_message('error_invalid_join_request', 'error');
-		admin_redirect("index.php?act=groups");
-	}
-
-	if(!verify_post_check($mybb->get_input('my_post_key')))
-	{
-		flash_message($lang->invalid_post_verify_key2, 'error');
-		admin_redirect("index.php?module=user-groups&action=join_requests&gid={$request['gid']}");
-	}
-
-	$plugins->run_hooks("admin_user_groups_approve_join_request");
-
-	// Add the user to the group
-	join_usergroup($request['uid'], $request['gid']);
-
-	// Delete the join request
-	$db->delete_query("joinrequests", "rid='{$request['rid']}'");
-
-	$plugins->run_hooks("admin_user_groups_approve_join_request_commit");
-
-	flash_message($lang->success_join_request_approved, "success");
-	admin_redirect("index.php?module=user-groups&action=join_requests&gid={$request['gid']}");
-}
-
-if($mybb->input['action'] == "deny_join_request")
-{
-	$query = $db->simple_select("joinrequests", "*", "rid='".$mybb->input['rid']."'");
-	$request = $db->fetch_array($query);
-
-	if(!$request)
-	{
-		flash_message($lang->error_invalid_join_request, 'error');
-		admin_redirect("index.php?act=groups");
-	}
-
-	if(!verify_post_check($mybb->get_input('my_post_key')))
-	{
-		flash_message($lang->invalid_post_verify_key2, 'error');
-		admin_redirect("index.php?module=user-groups&action=join_requests&gid={$request['gid']}");
-	}
-
-	$plugins->run_hooks("admin_user_groups_deny_join_request");
-
-	// Delete the join request
-	$db->delete_query("joinrequests", "rid='{$request['rid']}'");
-
-	$plugins->run_hooks("admin_user_groups_deny_join_request_commit");
-
-	flash_message($lang->success_join_request_denied, "success");
-	admin_redirect("index.php?module=user-groups&action=join_requests&gid={$request['gid']}");
-}
-
-if($mybb->input['action'] == "join_requests")
-{
-	$query = $db->simple_select("usergroups", "*", "gid='".$mybb->get_input('gid', MyBB::INPUT_INT)."'");
-	$group = $db->fetch_array($query);
-
-	if(!$group || $group['type'] != 4)
-	{
-		flash_message('error_invalid_user_group', 'error');
-		admin_redirect("index.php?module=user-groups");
-	}
-
-	$plugins->run_hooks("admin_user_groups_join_requests_start");
-
-	if($mybb->request_method == "post" && is_array($mybb->input['users']))
-	{
-		$uid_in = implode(",", array_map('intval', $mybb->input['users']));
-
-		if(isset($mybb->input['approve']))
-		{
-			foreach($mybb->input['users'] as $uid)
-			{
-				$uid = (int)$uid;
-				join_usergroup($uid, $group['gid']);
-			}
-			// Log admin action
-			log_admin_action("approve", $group['title'], $group['gid']);
-			$message = $lang->success_selected_requests_approved;
-		}
-		else
-		{
-			// Log admin action
-			log_admin_action("deny", $group['title'], $group['gid']);
-			$message = $lang->success_selected_requests_denied;
-		}
-
-		$plugins->run_hooks("admin_user_groups_join_requests_commit");
-
-		// Go through and delete the join requests from the database
-		$db->delete_query("joinrequests", "uid IN ({$uid_in}) AND gid='{$group['gid']}'");
-
-		$plugins->run_hooks("admin_user_groups_join_requests_commit_end");
-
-		flash_message($message, 'success');
-		admin_redirect("index.php?module=user-groups&action=join_requests&gid={$group['gid']}");
-	}
-
-	$page->add_breadcrumb_item($lang->join_requests_for.' '.htmlspecialchars_uni($group['title']));
-	$page->output_header($lang->join_requests_for.' '.htmlspecialchars_uni($group['title']));
-
-	$sub_tabs = array();
-	$sub_tabs['join_requests'] = array(
-		'title' => 'Group Join Requests',
-		'link' => "index.php?module=user-groups&action=join_requests&gid={$group['gid']}",
-		'description' => $lang->group_join_requests_desc
-	);
-
-	output_nav_tabs($sub_tabs, 'join_requests');
-
-	$query = $db->simple_select("joinrequests", "COUNT(*) AS num_requests", "gid='{$group['gid']}'");
-	$num_requests = $db->fetch_field($query, "num_requests");
-
-	$per_page = 20;
-	$pagenum = $mybb->get_input('page', MyBB::INPUT_INT);
-	if($pagenum)
-	{
-		$start = ($pagenum - 1) * $per_page;
-		$pages = ceil($num_requests / $per_page);
-		if($pagenum > $pages)
-		{
-			$start = 0;
-			$pagenum = 1;
-		}
-	}
-	else
-	{
-		$start = 0;
-		$pagenum = 1;
-	}
-
-	// Do we need to construct the pagination?
-	$pagination = '';
-	if($num_requests > $per_page)
-	{
-		$pagination = draw_admin_pagination($pagenum, $per_page, $num_requests, "index.php?module=user-groups&amp;action=join_requests&gid={$group['gid']}");
-		echo $pagination;
-	}
-
-	$form = new Form("index.php?module=user-groups&amp;action=join_requests&gid={$group['gid']}", "post");
-	$table = new Table;
-	$table->construct_header($form->generate_check_box("allbox", 1, "", array('class' => 'checkall')), array('width' => 1));
-	$table->construct_header('users');
-	$table->construct_header('reason');
-	$table->construct_header('date_requested', array("class" => 'align_center', "width" => 200));
-	$table->construct_header('controls', array("class" => "align_center", "width" => 200));
-
-	$query = $db->sql_query("
-		SELECT j.*, u.username
-		FROM joinrequests j
-		INNER JOIN users u ON (u.id=j.uid)
-		WHERE j.gid='{$group['gid']}'
-		ORDER BY dateline ASC
-		LIMIT {$start}, {$per_page}
-	");
-
-	while($request = $db->fetch_array($query))
-	{
-		$table->construct_cell($form->generate_check_box("users[]", $request['uid'], ""));
-		$table->construct_cell("<strong>".build_profile_link(htmlspecialchars_uni($request['username']), $request['uid'], "_blank")."</strong>");
-		$table->construct_cell(htmlspecialchars_uni($request['reason']));
-		$table->construct_cell(my_date('relative', $request['dateline']), array('class' => 'align_center'));
-
-		$popup = new PopupMenu("join_{$request['rid']}", $lang->options);
-		$popup->add_item($lang->approve, "index.php?module=user-groups&action=approve_join_request&amp;rid={$request['rid']}&amp;my_post_key={$mybb->post_code}");
-		$popup->add_item($lang->deny, "index.php?module=user-groups&action=deny_join_request&amp;rid={$request['rid']}&amp;my_post_key={$mybb->post_code}");
-
-		$table->construct_cell($popup->fetch(), array('class' => "align_center"));
-		$table->construct_row();
-	}
-
-	if($table->num_rows() == 0)
-	{
-		$table->construct_cell($lang->no_join_requests, array("colspan" => 6));
-		$table->construct_row();
-	}
-
-	$table->output($lang->join_requests_for.' '.htmlspecialchars_uni($group['title']));
-	echo $pagination;
-
-	$buttons[] = $form->generate_submit_button($lang->approve_selected_requests, array('name' => 'approve'));
-	$buttons[] = $form->generate_submit_button($lang->deny_selected_requests, array('name' => 'deny'));
-	$form->output_submit_wrapper($buttons);
-	$form->end();
-
-	$page->output_footer();
-}
-if($mybb->input['action'] == "add_leader" && $mybb->request_method == "post")
-{
-	$query = $db->simple_select("usergroups", "*", "gid='".$mybb->get_input('gid', MyBB::INPUT_INT)."'");
-	$group = $db->fetch_array($query);
-
-	if(!$group)
-	{
-		flash_message($lang->error_invalid_user_group, 'error');
-		admin_redirect("index.php?module=user-group");
-	}
-
-	$plugins->run_hooks("admin_user_groups_add_leader");
-
-	$user = get_user_by_username($mybb->input['username'], array('fields' => 'username'));
-	if(!$user)
-	{
-		$errors[] = 'error_invalid_username';
-	}
-	else
-	{
-		// Is this user already a leader of this group?
-		$query = $db->simple_select("groupleaders", "uid", "uid='{$user['uid']}' AND gid='{$group['gid']}'");
-		$existing_leader = $db->fetch_field($query, "uid");
-		if($existing_leader)
-		{
-			$errors[] = 'error_already_leader';
-		}
-	}
-
-	// No errors, insert
-	if(!$errors)
-	{
-		$new_leader = array(
-			"gid" => $group['gid'],
-			"uid" => $user['uid'],
-			"canmanagemembers" => $mybb->get_input('canmanagemembers', MyBB::INPUT_INT),
-			"canmanagerequests" => $mybb->get_input('canmanagerequests', MyBB::INPUT_INT),
-			"caninvitemembers" => $mybb->get_input('caninvitemembers', MyBB::INPUT_INT)
-		);
-
-		$makeleadermember = $mybb->get_input('makeleadermember', MyBB::INPUT_INT);
-		if($makeleadermember == 1)
-		{
-			join_usergroup($user['uid'], $group['gid']);
-		}
-
-		$plugins->run_hooks("admin_user_groups_add_leader_commit");
-
-		$db->insert_query("groupleaders", $new_leader);
-
-		$cache->update_groupleaders();
-
-		// Log admin action
-		log_admin_action($user['uid'], $user['username'], $group['gid'], $group['title']);
-
-		$username = htmlspecialchars_uni($user['username']);
-		flash_message("{$username} ".$lang->success_user_made_leader, 'success');
-		admin_redirect("index.php?module=user-groups&action=leaders&gid={$group['gid']}");
-	}
-	else
-	{
-		// Errors, show leaders page
-		$mybb->input['action'] = "leaders";
-	}
-}
-
-// Show a listing of group leaders
-if($mybb->input['action'] == "leaders")
-{
-	$query = $db->simple_select("usergroups", "*", "gid='".$mybb->get_input('gid', MyBB::INPUT_INT)."'");
-	$group = $db->fetch_array($query);
-
-	if(!$group)
-	{
-		flash_message($lang->error_invalid_user_group, 'error');
-		admin_redirect("index.php?module=user-groups");
-	}
-
-	$plugins->run_hooks("admin_user_groups_leaders");
-
-	$page->add_breadcrumb_item($lang->group_leaders_for.' '.htmlspecialchars_uni($group['title']));
-	$page->output_header($lang->group_leaders_for.' '.htmlspecialchars_uni($group['title']));
-
-	$sub_tabs = array();
-	$sub_tabs['group_leaders'] = array(
-		'title' => $lang->manage_group_leaders,
-		'link' => "index.php?module=user-groups&action=leaders&gid={$group['gid']}",
-		'description' => $lang->manage_group_leaders_desc
-	);
-
-	output_nav_tabs($sub_tabs, 'group_leaders');
-
-	$table = new Table;
-	$table->construct_header($lang->user);
-	$table->construct_header($lang->can_manage_members, array("class" => 'align_center', "width" => 200));
-	$table->construct_header($lang->can_manage_join_requests, array("class" => 'align_center', "width" => 200));
-	$table->construct_header($lang->can_invite_members, array("class" => 'align_center', "width" => 200));
-	$table->construct_header($lang->controls, array("class" => "align_center", "colspan" => 2, "width" => 200));
-
-	$query = $db->sql_query("
-		SELECT g.*, u.username
-		FROM groupleaders g
-		INNER JOIN users u ON (u.id=g.uid)
-		WHERE g.gid='{$group['gid']}'
-		ORDER BY u.username ASC
-	");
-	while($leader = $db->fetch_array($query))
-	{
-		$leader['username'] = htmlspecialchars_uni($leader['username']);
-		if($leader['canmanagemembers'])
-		{
-			$canmanagemembers = $lang->yes;
-		}
-		else
-		{
-			$canmanagemembers = $lang->no;
-		}
-
-		if($leader['canmanagerequests'])
-		{
-			$canmanagerequests = $lang->yes;
-		}
-		else
-		{
-			$canmanagerequests = $lang->no;
-		}
-
-		if($leader['caninvitemembers'])
-		{
-			$caninvitemembers = $lang->yes;
-		}
-		else
-		{
-			$caninvitemembers = $lang->no;
-		}
-
-		$table->construct_cell("<strong>".build_profile_link($leader['username'], $leader['uid'], "_blank")."</strong>");
-		$table->construct_cell($canmanagemembers, array("class" => "align_center"));
-		$table->construct_cell($canmanagerequests, array("class" => "align_center"));
-		$table->construct_cell($caninvitemembers, array("class" => "align_center"));
-		$table->construct_cell("<a href=\"index.php?module=user-groups&amp;action=edit_leader&lid={$leader['lid']}\">{$lang->edit}</a>", array("width" => 100, "class" => "align_center"));
-		$table->construct_cell("<a href=\"index.php?module=user-groups&amp;action=delete_leader&amp;lid={$leader['lid']}&amp;my_post_key={$mybb->post_code}\" onclick=\"return AdminCP.deleteConfirmation(this, '{$lang->confirm_group_leader_deletion}')\">{$lang->delete}</a>", array("width" => 100, "class" => "align_center"));
-		$table->construct_row();
-	}
-
-	if($table->num_rows() == 0)
-	{
-		$table->construct_cell($lang->no_assigned_leaders, array("colspan" => 5));
-		$table->construct_row();
-	}
-
-	$table->output($lang->group_leaders_for.' '.htmlspecialchars_uni($group['title']));
-
-	$form = new Form("index.php?module=user-groups&amp;action=add_leader&amp;gid={$group['gid']}", "post");
-
-	if($errors)
-	{
-		$page->output_inline_error($errors);
-	}
-	else
-	{
-		$mybb->input = array_merge($mybb->input, array(
-				"canmanagemembers" => 1,
-				"canmanagerequests" => 1,
-				"caninvitemembers" => 1,
-				"makeleadermember" => 0
-			)
-		);
-	}
-
-	$form_container = new FormContainer($lang->add_group_leader.' '.htmlspecialchars_uni($group['title']));
-	$form_container->output_row($lang->username." <em>*</em>", "", $form->generate_text_box('username', htmlspecialchars_uni($mybb->get_input('username')), array('id' => 'username')), 'username');
-	$form_container->output_row($lang->can_manage_group_members, $lang->can_manage_group_members_desc, $form->generate_yes_no_radio('canmanagemembers', $mybb->input['canmanagemembers']));
-	$form_container->output_row($lang->can_manage_group_join_requests, $lang->can_manage_group_join_requests_desc, $form->generate_yes_no_radio('canmanagerequests', $mybb->input['canmanagerequests']));
-	$form_container->output_row($lang->can_invite_group_members, $lang->can_invite_group_members_desc, $form->generate_yes_no_radio('caninvitemembers', $mybb->input['caninvitemembers']));
-	$form_container->output_row($lang->make_user_member, $lang->make_user_member_desc, $form->generate_yes_no_radio('makeleadermember', $mybb->input['makeleadermember']));
-	$form_container->end();
-
-	// Autocompletion for usernames
-	echo '
-	<link rel="stylesheet" href="../jscripts/select2/select2.css">
-	<script type="text/javascript" src="../jscripts/select2/select2.min.js?ver=1804"></script>
-	<script type="text/javascript">
-	<!--
-	$("#username").select2({
-		placeholder: "'.$lang->search_for_a_user.'",
-		minimumInputLength: 2,
-		multiple: false,
-		ajax: { // instead of writing the function to execute the request we use Select2\'s convenient helper
-			url: "../xmlhttp.php?action=get_users",
-			dataType: \'json\',
-			data: function (term, page) {
-				return {
-					query: term // search term
-				};
-			},
-			results: function (data, page) { // parse the results into the format expected by Select2.
-				// since we are using custom formatting functions we do not need to alter remote JSON data
-				return {results: data};
-			}
-		},
-		initSelection: function(element, callback) {
-			var query = $(element).val();
-			if (query !== "") {
-				$.ajax("../xmlhttp.php?action=get_users&getone=1", {
-					data: {
-						query: query
-					},
-					dataType: "json"
-				}).done(function(data) { callback(data); });
-			}
-		}
-	});
-	// -->
-	</script>';
-
-	$buttons[] = $form->generate_submit_button($lang->save_group_leader);
-	$form->output_submit_wrapper($buttons);
-	$form->end();
-
-	$page->output_footer();
-}
-
-if($mybb->input['action'] == "delete_leader")
-{
-	$query = $db->sql_query("
-		SELECT l.*, u.username
-		FROM groupleaders l
-		INNER JOIN users u ON (u.id=l.uid)
-		WHERE l.lid='".$mybb->get_input('lid', MyBB::INPUT_INT)."'");
-	$leader = $db->fetch_array($query);
-
-	if(!$leader)
-	{
-		flash_message('error_invalid_group_leader', 'error');
-		admin_redirect("index.php?module=user-groups");
-	}
-
-	$query = $db->simple_select("usergroups", "*", "gid='{$leader['gid']}'");
-	$group = $db->fetch_array($query);
-
-	// User clicked no
-	if($mybb->get_input('no'))
-	{
-		admin_redirect("index.php?module=user-groups");
-	}
-
-	$plugins->run_hooks("admin_user_groups_delete_leader");
-
-	if($mybb->request_method == "post")
-	{
-		$plugins->run_hooks("admin_user_groups_delete_leader_commit");
-
-		// Delete the leader
-		$db->delete_query("groupleaders", "lid='{$leader['lid']}'");
-
-		$plugins->run_hooks("admin_user_groups_delete_leader_commit_end");
-
-		$cache->update_groupleaders();
-
-		// Log admin action
-		//log_admin_action($leader['uid'], $leader['username'], $group['gid'], $group['title']);
-
-		flash_message($lang->success_group_leader_deleted, 'success');
-		admin_redirect("index.php?module=user-groups&action=leaders&gid={$group['gid']}");
-	}
-	else
-	{
-		$page->output_confirm_action("index.php?module=user-groups&amp;action=delete_leader&amp;lid={$leader['lid']}", $lang->confirm_group_leader_deletion);
-	}
-}
-
-if($mybb->input['action'] == "edit_leader")
-{
-	$query = $db->query("
-		SELECT l.*, u.username
-		FROM ".TABLE_PREFIX."groupleaders l
-		INNER JOIN ".TABLE_PREFIX."users u ON (u.uid=l.uid)
-		WHERE l.lid='".$mybb->get_input('lid', MyBB::INPUT_INT)."'
-	");
-	$leader = $db->fetch_array($query);
-
-	if(!$leader)
-	{
-		flash_message($lang->error_invalid_group_leader, 'error');
-		admin_redirect("index.php?module=user-groups");
-	}
-
-	$query = $db->simple_select("usergroups", "*", "gid='{$leader['gid']}'");
-	$group = $db->fetch_array($query);
-
-	$plugins->run_hooks("admin_user_groups_edit_leader");
-
-	if($mybb->request_method == "post")
-	{
-		$updated_leader = array(
-			"canmanagemembers" => $mybb->get_input('canmanagemembers', MyBB::INPUT_INT),
-			"canmanagerequests" => $mybb->get_input('canmanagerequests', MyBB::INPUT_INT),
-			"caninvitemembers" => $mybb->get_input('caninvitemembers', MyBB::INPUT_INT)
-		);
-
-		$plugins->run_hooks("admin_user_groups_edit_leader_commit");
-
-		$db->update_query("groupleaders", $updated_leader, "lid={$leader['lid']}");
-
-		$cache->update_groupleaders();
-
-		// Log admin action
-		//log_admin_action($leader['uid'], $leader['username'], $group['gid'], $group['title']);
-
-		flash_message($lang->success_group_leader_updated, 'success');
-		admin_redirect("index.php?module=user-groups&action=leaders&gid={$group['gid']}");
-	}
-
-	if(!$errors)
-	{
-		$mybb->input = array_merge($mybb->input, $leader);
-	}
-
-	$page->add_breadcrumb_item($lang->group_leaders_for.' '.htmlspecialchars_uni($group['title']), "index.php?module=user-groups&action=leaders&gid={$group['gid']}");
-	$leader['username'] = htmlspecialchars_uni($leader['username']);
-	$page->add_breadcrumb_item($lang->edit_leader." {$leader['username']}");
-
-	$page->output_header($lang->edit_group_leader);
-
-	$sub_tabs = array();
-	$sub_tabs['group_leaders'] = array(
-		'title' => $lang->edit_group_leader,
-		'link' => "index.php?module=user-groups&action=edit_leader&lid={$leader['lid']}",
-		'description' => $lang->edit_group_leader_desc
-	);
-
-	output_nav_tabs($sub_tabs, 'group_leaders');
-
-	$form = new Form("index.php?module=user-groups&amp;action=edit_leader&amp;lid={$leader['lid']}", "post");
-
-	$form_container = new FormContainer($lang->edit_group_leader);
-	$form_container->output_row($lang->username." <em>*</em>", "", $leader['username']);
-
-	$form_container->output_row($lang->can_manage_group_members, $lang->can_manage_group_members_desc, $form->generate_yes_no_radio('canmanagemembers', $mybb->input['canmanagemembers']));
-	$form_container->output_row($lang->can_manage_group_join_requests, $lang->can_manage_group_join_requests_desc, $form->generate_yes_no_radio('canmanagerequests', $mybb->input['canmanagerequests']));
-	$form_container->output_row($lang->can_invite_group_members, $lang->can_invite_group_members_desc, $form->generate_yes_no_radio('caninvitemembers', $mybb->input['caninvitemembers']));
-	$buttons[] = $form->generate_submit_button($lang->save_group_leader);
-
-	$form_container->end();
-	$form->output_submit_wrapper($buttons);
-	$form->end();
-
-	$page->output_footer();
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1051,14 +491,14 @@ if($mybb->input['action'] == "edit")
 
     if(!$usergroup)
     {
-        flash_message($lang->error_invalid_user_group, 'error');
+        flash_message('You have selected an invalid user group', 'error');
         admin_redirect("index.php?module=user-group");
     }
     else
     {
         if(preg_match("#<((m[^a])|(b[^diloru>])|(s[^aemptu >]))(\s*[^>]*)>#si", $mybb->get_input('namestyle')))
         {
-            $errors[] = 'error_disallowed_namestyle_username';
+            $errors[] = 'You cant use script, meta or base tags in the username style';
             $mybb->input['namestyle'] = $usergroup['namestyle'];
         }
     }
@@ -1152,6 +592,7 @@ if($mybb->input['action'] == "edit")
                 "cansendemail" => $mybb->get_input('cansendemail', MyBB::INPUT_INT),
                 "cansendemailoverride" => $mybb->get_input('cansendemailoverride', MyBB::INPUT_INT),
                 "cansettingspanel" => $mybb->get_input('cansettingspanel', MyBB::INPUT_INT),
+				"canviewwolinvis" => $mybb->get_input('canviewwolinvis', MyBB::INPUT_INT),
                 "issupermod" => $mybb->get_input('issupermod', MyBB::INPUT_INT),
                 "canuserdetails" => $mybb->get_input('canuserdetails', MyBB::INPUT_INT),
                 "cansearch" => $mybb->get_input('cansearch', MyBB::INPUT_INT),
@@ -1165,11 +606,31 @@ if($mybb->input['action'] == "edit")
             $plugins->run_hooks("admin_user_groups_edit_commit");
             $db->update_query("usergroups", $updated_group, "gid='{$usergroup['gid']}'");
 
-            $cache->update_usergroups();
-            $cache->update_forumpermissions();
+            
+			
+			// Update the caches
+			$cache->update_usergroups();
+			$cache->update_forumpermissions();
 
-            flash_message($message, 'success');
-            admin_redirect("index.php?act=groups");
+			// Log admin action
+			log_admin_action($usergroup['gid'], $mybb->input['title']);
+
+			$groups = $cache->read('usergroups');
+			$grouptitles = array_column($groups, 'title');
+
+			$message = 'The selected user group has been updated successfully';
+			if(in_array($mybb->input['title'], $grouptitles) && count(array_keys($grouptitles, $mybb->input['title'])) > 1)
+			{
+				$message = sprintf('The selected user group has been updated successfully. Please note that there are multiple user groups named '.htmlspecialchars_uni($mybb->input['title']).'');
+			}
+			
+			flash_message($message, 'success');
+			admin_redirect("index.php?act=groups");
+			
+			
+			
+			
+			
         }
     }
     else
@@ -1299,30 +760,7 @@ if($mybb->input['action'] == "edit")
     echo '</div>';
 
     // Public Joinable Options
-    if($usergroup['type'] != 1)
-    {
-        echo '<div class="row mt-4">';
-        echo '<div class="col-12">';
-        echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-users me-2"></i>Public Joinable Options</h6>';
-        
-        $public_options = array(
-            $form->generate_check_box("joinable", 1, 'Users can freely join and leave this group',
-                array("checked" => $mybb->input['joinable'], 'class' => 'form-check-input')),
-            $form->generate_check_box("moderate", 1, 'New join requests need moderation',
-                array("checked" => $mybb->input['moderate'], 'class' => 'form-check-input')),
-            $form->generate_check_box("invite", 1, 'Invite only',
-                array("checked" => $mybb->input['invite'], 'class' => 'form-check-input'))
-        );
-
-        foreach($public_options as $option)
-        {
-            echo '<div class="form-check form-switch mb-2">';
-            echo $option;
-            echo '</div>';
-        }
-        echo '</div>';
-        echo '</div>';
-    }
+    
 
     // General Options
     echo '<div class="row mt-4">';
@@ -1527,7 +965,8 @@ if($mybb->input['action'] == "edit")
     
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-info-circle me-2"></i>Information Options</h6>';
     $misc_options = array(
-        $form->generate_check_box("canviewdeletionnotice", 1, 'Can view deletion notice?', array("checked" => $mybb->input['canviewdeletionnotice'], 'class' => 'form-check-input'))
+        $form->generate_check_box("canviewwolinvis", 1, 'Can view invisible users?', array("checked" => $mybb->get_input('canviewwolinvis', MyBB::INPUT_INT))),
+		$form->generate_check_box("canviewdeletionnotice", 1, 'Can view deletion notice?', array("checked" => $mybb->input['canviewdeletionnotice'], 'class' => 'form-check-input'))
     );
     foreach($misc_options as $option)
     {
@@ -1625,12 +1064,12 @@ if($mybb->input['action'] == "delete")
 
 	if(!$usergroup)
 	{
-		flash_message('error_invalid_user_group', 'error');
+		flash_message('You have selected an invalid user group', 'error');
 		admin_redirect("index.php?act=groups");
 	}
 	if($usergroup['type'] == 1)
 	{
-		flash_message('error_default_group_delete', 'error');
+		flash_message('Default groups cannot be deleted', 'error');
 		admin_redirect("index.php?act=groups");
 	}
 
@@ -1681,14 +1120,13 @@ if($mybb->input['action'] == "delete")
 		$db->update_query("banned", array("olddisplaygroup" => "oldgroup"), "olddisplaygroup='{$usergroup['gid']}'", "", true); // No quotes = displaygroup=usergroup
 
 		$db->delete_query("forumpermissions", "gid='{$usergroup['gid']}'");
-		//$db->delete_query("joinrequests", "gid='{$usergroup['gid']}'");
+		
 		$db->delete_query("moderators", "id='{$usergroup['gid']}' AND isgroup='1'");
-		$db->delete_query("groupleaders", "gid='{$usergroup['gid']}'");
 		$db->delete_query("usergroups", "gid='{$usergroup['gid']}'");
 
 		$plugins->run_hooks("admin_user_groups_delete_commit_end");
 
-		//$cache->update_groupleaders();
+		
 		$cache->update_moderators();
 		$cache->update_usergroups();
 		$cache->update_forumpermissions();
@@ -1696,7 +1134,7 @@ if($mybb->input['action'] == "delete")
 		// Log admin action
 		log_admin_action($usergroup['gid'], $usergroup['title']);
 
-		flash_message('success_group_deleted', 'success');
+		flash_message('The selected user group has been deleted successfully', 'success');
 		//admin_redirect("index.php?act=groups");
 		echo "The selected Group has been deleted successfully";
 		
@@ -1729,7 +1167,7 @@ if($mybb->input['action'] == "disporder" && $mybb->request_method == "post")
 
 	$plugins->run_hooks("admin_user_groups_disporder_commit");
 
-	flash_message('success_group_disporders_updated', 'success');
+	flash_message('The user group display orders have been updated successfully', 'success');
 	admin_redirect("index.php?act=groups");
 }
 
@@ -1776,7 +1214,7 @@ if(!$mybb->input['action'])
 	
 
 	
-	echo "	<script type=\"text/javascript\" src=\"scripts/bootbox.min.js\"></script>\n";
+	//echo "	<script type=\"text/javascript\" src=\"scripts/bootbox.min.js\"></script>\n";
     echo "	<script type=\"text/javascript\" src=\"scripts/deleteGroup.js\"></script>\n";
 	
     
@@ -1834,31 +1272,9 @@ if(!$mybb->input['action'])
         $secondaryusers[$groupcount['gid']] = $groupcount['users'];
     }
 
-    $query = $db->sql_query("
-        SELECT g.gid, COUNT(r.uid) AS users
-        FROM joinrequests r
-        LEFT JOIN usergroups g ON (g.gid=r.gid)
-        GROUP BY g.gid
-    ");
+   
 
-    $joinrequests = array();
-    while($joinrequest = $db->fetch_array($query))
-    {
-        $joinrequests[$joinrequest['gid']] = $joinrequest['users'];
-    }
 
-    // Fetch group leaders
-    $leaders = array();
-    $query = $db->sql_query("
-        SELECT u.username, u.id, l.gid
-        FROM groupleaders l
-        INNER JOIN users u ON (u.id=l.uid)
-        ORDER BY u.username ASC
-    ");
-    while($leader = $db->fetch_array($query))
-    {
-        $leaders[$leader['gid']][] = build_profile_link(htmlspecialchars_uni($leader['username']), $leader['uid'], "_blank");
-    }
 
     // Таблица групп
     echo '<div class="card border-0 shadow-sm">';
@@ -1890,18 +1306,9 @@ if(!$mybb->input['action'])
             ? '<span class="badge bg-secondary ms-2">Custom</span>' 
             : '<span class="badge bg-primary ms-2">Default</span>';
 
-        $leaders_list = '';
-        if(isset($leaders[$usergroup['gid']]))
-        {
-            $leaders_list = '<div class="mt-1"><small class="text-muted"><i class="fas fa-crown me-1"></i>Leaders: ' . implode(', ', $leaders[$usergroup['gid']]) . '</small></div>';
-        }
+       
 
-        $join_requests = '';
-        if(isset($joinrequests[$usergroup['gid']]) && $joinrequests[$usergroup['gid']] > 0 && $usergroup['type'] == 4)
-        {
-            $requests_text = ($joinrequests[$usergroup['gid']] == 1) ? '1 request' : "{$joinrequests[$usergroup['gid']]} requests";
-            $join_requests = '<span class="badge bg-danger ms-2"><i class="fas fa-clock me-1"></i>' . $requests_text . '</span>';
-        }
+       
 
         // Подсчет пользователей
         if(!isset($primaryusers[$usergroup['gid']])) $primaryusers[$usergroup['gid']] = 0;
@@ -1930,13 +1337,13 @@ if(!$mybb->input['action'])
         echo format_name(htmlspecialchars_uni($usergroup['title']), $usergroup['gid']);
         echo '</a>';
         echo $group_type_badge;
-        echo $join_requests;
+        //echo $join_requests;
         echo '</h6>';
         if(!empty($usergroup['description']))
         {
             echo '<p class="text-muted mb-0 small">' . htmlspecialchars_uni($usergroup['description']) . '</p>';
         }
-        echo $leaders_list;
+       
         echo '</div>';
         echo '</div>';
         echo '</td>';
@@ -1971,9 +1378,6 @@ if(!$mybb->input['action'])
         echo '</a>';
         echo '<a class="dropdown-item" href="index.php?act=groups&action=search&amp;results=1&amp;conditions[usergroup]=' . $usergroup['gid'] . '">';
         echo '<i class="fas fa-users me-2 text-info"></i>List Users';
-        echo '</a>';
-        echo '<a class="dropdown-item" href="index.php?act=groups&action=leaders&amp;gid=' . $usergroup['gid'] . '">';
-        echo '<i class="fas fa-crown me-2 text-warning"></i>Group Leaders';
         echo '</a>';
 		
 		

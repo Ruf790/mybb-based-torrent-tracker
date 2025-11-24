@@ -1916,10 +1916,28 @@ if ($act == 'securitycheck')
   $peers = get_count ('totalpeers', 'peers');
   $Seeders = get_count ('seeders', 'peers', 'WHERE seeder = \'yes\'');
   $Leechers = get_count ('seeders', 'peers', 'WHERE seeder = \'no\'');
-  $result = $db->sql_query ('SELECT SUM(downloaded) AS totaldl, SUM(uploaded) AS totalul, COUNT(id) AS totaluser FROM users');
-  $row = $db->fetch_array ($result);
-  $totaldownloaded = mksize ($row['totaldl']);
-  $totaluploaded = mksize ($row['totalul']);
+  //$result = $db->sql_query ('SELECT SUM(downloaded) AS totaldl, SUM(uploaded) AS totalul, COUNT(id) AS totaluser FROM users');
+  //$row = $db->fetch_array ($result);
+  //$totaldownloaded = mksize ($row['totaldl']);
+  //$totaluploaded = mksize ($row['totalul']);
+  
+  
+  
+  $result = $db->sql_query('SELECT SUM(downloaded) AS totaldl, SUM(uploaded) AS totalul, COUNT(id) AS totaluser FROM users');
+$row = $db->fetch_array($result);
+
+// Сохраняем числовые значения для расчетов
+$totaldownloaded_bytes = (float)$row['totaldl'];
+$totaluploaded_bytes = (float)$row['totalul'];
+
+// Форматируем только для отображения
+$totaldownloaded_display = mksize($row['totaldl']);
+$totaluploaded_display = mksize($row['totalul']);
+  
+  
+  
+  
+  
   
   
   $query = $db->sql_query('SELECT COUNT(id) as totaltorrents FROM torrents');
@@ -2118,21 +2136,21 @@ echo '
                             <div class="stat-card">
                                 <i class="fas fa-upload text-success fs-1"></i>
                                 <h6 class="text-muted mb-1">Uploaded</h6>
-                                <h4 class="text-success fw-bold">' . $totaluploaded . '</h4>
+                                <h4 class="text-success fw-bold">' . $totaluploaded_display . '</h4>
                             </div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <div class="stat-card">
                                 <i class="fas fa-download text-danger fs-1"></i>
                                 <h6 class="text-muted mb-1">Downloaded</h6>
-                                <h4 class="text-danger fw-bold">' . $totaldownloaded . '</h4>
+                                <h4 class="text-danger fw-bold">' . $totaldownloaded_display . '</h4>
                             </div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <div class="stat-card">
                                 <i class="fas fa-balance-scale text-warning fs-1"></i>
                                 <h6 class="text-muted mb-1">Ratio</h6>
-                                <h4 class="text-warning fw-bold">' . ($totaldownloaded > 0 ? round($totaluploaded / $totaldownloaded, 2) : '∞') . '</h4>
+                                <h4 class="text-warning fw-bold">' . ($totaldownloaded_bytes > 0 ? round($totaluploaded_bytes / $totaldownloaded_bytes, 2) : '∞') . '</h4>
                             </div>
                         </div>
                     </div>

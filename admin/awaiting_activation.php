@@ -75,7 +75,7 @@ if($mybb->input['action'] == "activate" && $mybb->request_method == "post")
 
 	if(empty($user_ids))
 	{
-		flash_message('no_users_selected', 'error');
+		flash_message($lang->user_awaiting_activation['no_users_selected'], 'error');
 		admin_redirect($_this_script_);
 	}
 
@@ -104,9 +104,9 @@ if($mybb->input['action'] == "activate" && $mybb->request_method == "post")
 		$plugins->run_hooks("admin_user_awaiting_activation_activate_delete_commit");
 
 		// Log admin action
-		//log_admin_action('deleted', $num_deleted);
+		log_admin_action('deleted', $num_deleted);
 
-		flash_message('success_users_deleted', 'success');
+		flash_message($lang->user_awaiting_activation['success_users_deleted'], 'success');
 		admin_redirect($_this_script_);
 	}
 	else // Activate selected user(s)
@@ -142,9 +142,9 @@ if($mybb->input['action'] == "activate" && $mybb->request_method == "post")
 		$plugins->run_hooks("admin_user_awaiting_activation_activate_commit");
 
 		// Log admin action
-		//log_admin_action('activated', $num_activated);
+		log_admin_action('activated', $num_activated);
 
-		flash_message('success_users_activated', 'success');
+		flash_message($lang->user_awaiting_activation['success_users_activated'], 'success');
 		admin_redirect($_this_script_);
 	}
 }
@@ -273,11 +273,11 @@ if(!$mybb->input['action'])
 		}
 		elseif($user['coppauser'] == 1)
 		{
-			$user['type'] = 'Awaiting Administrator Activation (COPPA)';
+			$user['type'] = $lang->user_awaiting_activation['admin_activation_coppa'];
 		}
 		else
 		{
-			$user['type'] = 'Awaiting Administrator Activation';
+			$user['type'] = $lang->user_awaiting_activation['administrator_activation'];
 		}
 
 		if(empty($user['regip']))

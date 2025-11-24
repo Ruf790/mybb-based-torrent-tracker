@@ -1,7 +1,7 @@
 <?php
 
 
-
+require_once INC_PATH . '/functions_multipage.php';
 
 $action = $_GET['action'] ?? '';
 
@@ -141,10 +141,7 @@ function show_list()
 {
     global $db, $_this_script_, $mybb;
     
-    // Pagination
-    $per_page = 28;
-    $page = max(1, (int)($_GET['page'] ?? 1));
-    $start = ($page - 1) * $per_page;
+   
     
     // Get search parameters
     $search = $_GET['search'] ?? '';
@@ -160,12 +157,57 @@ function show_list()
     }
     $where_clause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
     
-    // Get total count
-    $total = $db->fetch_array($db->sql_query("SELECT COUNT(*) AS count FROM screenshots $where_clause"))['count'];
-    $total_pages = ceil($total / $per_page);
+    
+	
+	
+$res = $db->sql_query("SELECT COUNT(*) AS count FROM screenshots $where_clause");
+$row = mysqli_fetch_row($res);
+$count = $row[0];
+
+$torrentsperpage = ($CURUSER['torrentsperpage'] <> 0 ? intval($CURUSER['torrentsperpage']) : $ts_perpage);
+
+if(!$torrentsperpage || (int)$torrentsperpage < 1) {
+    $torrentsperpage = 20;
+}
+
+$perpage = $torrentsperpage;
+
+// Рассчитываем общее количество страниц ДО условия
+$pages = ceil($count / $perpage);
+
+if($mybb->input['page'] > 0) 
+{
+    $page = $mybb->input['page'];
+    $start = ($page-1) * $perpage;
+    
+    // Убираем повторный расчет $pages здесь
+    // $pages = ceil($count / $perpage); // УДАЛИТЕ ЭТУ СТРОЧКУ
+    
+    if($page > $pages || $page <= 0) 
+	{
+        $start = 0;
+        $page = 1;
+    }
+} 
+else 
+{
+    $start = 0;
+    $page = 1;
+}
+
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
     
     // Get data
-    $query = "SELECT * FROM screenshots $where_clause ORDER BY uploaded_at DESC LIMIT $start, $per_page";
+    $query = "SELECT * FROM screenshots $where_clause ORDER BY uploaded_at DESC LIMIT $start, $perpage";
     $result = $db->sql_query($query);
     
     stdhead('Screenshot Management');
@@ -219,6 +261,32 @@ function show_list()
     echo '</form>';
     echo '</div>';
     echo '</div>';
+	
+	
+	// Pagination
+	if ($pages > 1) 
+    {
+      $page_url = $_this_script_;
+
+   
+      if (!empty($search)) 
+	  {
+        $page_url .= '&search=' . urlencode($search);
+      }
+      if (!empty($torrent_id)) 
+	  {
+        $page_url .= '&torrent_id=' . (int)$torrent_id;
+      }
+
+      $page_url .= '&page={page}';
+    
+      $multipage = multipage($count, $perpage, $page, $page_url);
+      echo $multipage;
+    } 
+	
+	
+	
+	
     
     // Screenshot gallery
     if ($db->num_rows($result) == 0) {
@@ -264,8 +332,7 @@ function show_list()
             echo '<li><a class="dropdown-item" href="'.$_this_script_.'&action=edit&id='.$row['id'].'"><i class="fas fa-edit me-2"></i>Edit</a></li>';
             
 			
-			//echo '<li><a class="dropdown-item text-danger" href="'.$_this_script_.'&action=delete&id='.$row['id'].'" onclick="return confirm(\'Delete this screenshot?\')"><i class="fas fa-trash me-2"></i>Delete</a></li>';
-            
+ 
 			
 			echo '<li><a class="dropdown-item text-danger single-delete-btn" href="#" 
       data-id="'.$row['id'].'" 
@@ -290,51 +357,32 @@ function show_list()
         echo '</div>';
         echo '</form>';
         
-        // Pagination
-        if ($total_pages > 1) {
-            $base_url = $_this_script_;
-            if (!empty($search)) {
-                $base_url .= '&search=' . urlencode($search);
-            }
-            if (!empty($torrent_id)) {
-                $base_url .= '&torrent_id=' . (int)$torrent_id;
-            }
+  
+    echo '<br>';
+    // Pagination
+	if ($pages > 1) 
+    {
+      $page_url = $_this_script_;
 
-            echo '<nav aria-label="Page navigation" class="mt-4">';
-            echo '<ul class="pagination justify-content-center">';
-            
-            // Previous button
-            if ($page > 1) {
-                echo '<li class="page-item"><a class="page-link" href="'.$base_url.'&page='.($page-1).'"><i class="fas fa-angle-left"></i></a></li>';
-            }
-            
-            // Page numbers
-            $start_page = max(1, $page - 2);
-            $end_page = min($total_pages, $page + 2);
-            
-            if ($start_page > 1) {
-                echo '<li class="page-item"><a class="page-link" href="'.$base_url.'&page=1">1</a></li>';
-                if ($start_page > 2) echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
-            }
-            
-            for ($i = $start_page; $i <= $end_page; $i++) {
-                $active = $i == $page ? ' active' : '';
-                echo '<li class="page-item'.$active.'"><a class="page-link" href="'.$base_url.'&page='.$i.'">'.$i.'</a></li>';
-            }
-            
-            if ($end_page < $total_pages) {
-                if ($end_page < $total_pages - 1) echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
-                echo '<li class="page-item"><a class="page-link" href="'.$base_url.'&page='.$total_pages.'">'.$total_pages.'</a></li>';
-            }
-            
-            // Next button
-            if ($page < $total_pages) {
-                echo '<li class="page-item"><a class="page-link" href="'.$base_url.'&page='.($page+1).'"><i class="fas fa-angle-right"></i></a></li>';
-            }
-            
-            echo '</ul>';
-            echo '</nav>';
-        }
+   
+      if (!empty($search)) 
+	  {
+        $page_url .= '&search=' . urlencode($search);
+      }
+      if (!empty($torrent_id)) 
+	  {
+        $page_url .= '&torrent_id=' . (int)$torrent_id;
+      }
+
+      $page_url .= '&page={page}';
+    
+      $multipage = multipage($count, $perpage, $page, $page_url);
+      echo $multipage;
+    } 
+
+
+  
+  
         
         // Modals
 		

@@ -7,6 +7,7 @@
  * License: http://www.mybb.com/about/license
  *
  */
+ 
 
 define("IN_MYBB", 1);
 define("IN_ADMINCP", 1);
@@ -31,11 +32,20 @@ require_once $thispath . 'include/class_table.php';
 
 
 
+
+
+
+
+
+
+
+
 // Include the layout generation class overrides for this style
-if(file_exists($thispath . 'include/style.php'))
+if(file_exists('jqueryui/style.php'))
 {
-	require_once $thispath . 'include/style.php';
+	require_once 'jqueryui/style.php';
 }
+
 
 // Check if any of the layout generation classes we can override exist in the style file
 $classes = array(
@@ -62,13 +72,14 @@ $page = new Page;
 
 
 
-foreach(array('action', 'do', 'module') as $input)
-{
-	if(!isset($mybb->input[$input]))
-	{
-		$mybb->input[$input] = '';
-	}
-}
+//foreach(array('action', 'do', 'module') as $input)
+//{
+	//if(!isset($mybb->input[$input]))
+	//{
+		//$mybb->input[$input] = '';
+	//}
+//}
+
 
 
 
@@ -89,25 +100,25 @@ if($mybb->input['action'] == "add" || $mybb->input['action'] == "edit" || $mybb-
 		
 		$sub_tabs['view_forum'] = array(
 			'title' =>'View Forum',
-			'link' => "index.php?act=management&amp;fid=".$mybb->input['fid'],
+			'link' => "index.php?act=management&fid=".$mybb->input['fid'],
 			'description' => 'Here you can view sub forums, quickly edit permissions and add moderators to your forum'
 		);
 
 		$sub_tabs['add_child_forum'] = array(
 			'title' => 'Add Child Forum',
-			'link' => "index.php?act=management&amp;action=add&amp;pid=".$mybb->input['fid'],
+			'link' => "index.php?act=management&action=add&pid=".$mybb->input['fid'],
 			'description' => 'Here you can view sub forums, quickly edit permissions and add moderators to your forum'
 		);
 
 		$sub_tabs['edit_forum_settings'] = array(
 			'title' => 'Edit Forum Settings',
-			'link' => "index.php?act=management&action=edit&amp;fid=".$mybb->input['fid'],
+			'link' => "index.php?act=management&action=edit&fid=".$mybb->input['fid'],
 			'description' => 'Here you can edit an existing forums settings and its permissions'
 		);
 
 		$sub_tabs['copy_forum'] = array(
 			'title' => 'Copy Forum',
-			'link' => "index.php?act=management&action=copy&amp;fid=".$mybb->input['fid'],
+			'link' => "index.php?act=management&action=copy&fid=".$mybb->input['fid'],
 			'description' => 'Here you can copy forum settings or permissions from an existing forum to another or to a new forum'
 		);
 	}
@@ -270,10 +281,10 @@ if($mybb->input['action'] == "copy")
 	    echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
 		echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
 
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-		echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
+		//echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
 
 		// Stop JS elements showing while page is loading (JS supported browsers only)
 		echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
@@ -500,7 +511,7 @@ if($mybb->input['action'] == "editmod")
 
 	$sub_tabs['edit_mod'] = array(
 		'title' => $lang->forum_management['edit_mod'],
-		'link' => "index.php?act=management&action=editmod&amp;mid=".$mybb->input['mid'],
+		'link' => "index.php?act=management&action=editmod&mid=".$mybb->input['mid'],
 		'description' => $lang->forum_management['edit_mod_desc']
 	);
 
@@ -808,7 +819,16 @@ if($mybb->input['action'] == "permissions")
 
 		if($mybb->input['ajax'] == 1)
 		{
-			echo json_encode("<script type=\"text/javascript\">$('#row_{$gid}').html('".str_replace(array("'", "\t", "\n"), array("\\'", "", ""), retrieve_single_permissions_row($gid, $fid))."'); QuickPermEditor.init({$gid});</script>");
+			
+			echo json_encode("<script type=\"text/javascript\">
+    document.getElementById('row_{$gid}').innerHTML = '" . str_replace(array("'", "\t", "\n"), array("\\'", "", ""), retrieve_single_permissions_row($gid, $fid)) . "';
+    if (typeof QuickPermEditor !== 'undefined') {
+        QuickPermEditor.init({$gid});
+    }
+</script>");
+			
+			
+			
 			die;
 		}
 		else
@@ -826,11 +846,11 @@ if($mybb->input['action'] == "permissions")
 		{
 			$sub_tabs['edit_permissions'] = array(
 				'title' => 'forum_permissions2',
-				'link' => "index.php?act=management&action=permissions&amp;fid=".$mybb->input['fid']."&amp;gid=".$mybb->input['gid'],
+				'link' => "index.php?act=management&action=permissions&fid=".$mybb->input['fid']."&amp;gid=".$mybb->input['gid'],
 				'description' => 'forum_permissions_desc'
 			);
 
-			$page->add_breadcrumb_item('forum_permissions2', "index.php?act=management&amp;fid=".$mybb->input['fid']."#tab_permissions");
+			$page->add_breadcrumb_item('forum_permissions2', "index.php?act=management&fid=".$mybb->input['fid']."#tab_permissions");
 		}
 		else
 		{
@@ -839,11 +859,11 @@ if($mybb->input['action'] == "permissions")
 
 			$sub_tabs['edit_permissions'] = array(
 				'title' => 'forum_permissions33',
-				'link' => "index.php?act=management&action=permissions&amp;pid=".$mybb->get_input('pid', MyBB::INPUT_INT),
+				'link' => "index.php?act=management&action=permissions&pid=".$mybb->get_input('pid', MyBB::INPUT_INT),
 				'description' => 'forum_permissions_desc'
 			);
 
-			$page->add_breadcrumb_item('forum_permissions2', "index.php?act=management&amp;fid=".$mybb->input['fid']."#tab_permissions");
+			$page->add_breadcrumb_item('forum_permissions2', "index.php?act=management&fid=".$mybb->input['fid']."#tab_permissions");
 		}
 
 		$page->add_breadcrumb_item('forum_permissions444');
@@ -861,10 +881,10 @@ if($mybb->input['action'] == "permissions")
 	    echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
 		echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
 
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-		echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
+		//echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
 
 		// Stop JS elements showing while page is loading (JS supported browsers only)
 		echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
@@ -891,52 +911,70 @@ if($mybb->input['action'] == "permissions")
 	   
 	   
 	    echo '
-                    <script src="scripts/popup.js" type="text/javascript"></script>
-					<script src="scripts/tabs.js" type="text/javascript"></script>
-                    <script type="text/javascript">
-                    $(function() {
-                        // Save permissions handler
-                        $("#modal_form").on("click", "#savePermissions", function(e) {
-                            e.preventDefault();
-                            var submitBtn = $(this);
-                            var originalText = submitBtn.html();
-                            
-                            // Show loading state
-                            submitBtn.prop("disabled", true).html(\'<i class="fas fa-spinner fa-spin me-2"></i>Saving...\');
+<script src="scripts/popup.js" type="text/javascript"></script>
+<script src="scripts/tabs.js" type="text/javascript"></script>
+<script type="text/javascript">
+document.addEventListener("DOMContentLoaded", function() {
+    // Save permissions handler
+    document.getElementById("modal_form")?.addEventListener("click", function(e) {
+        if (e.target.id === "savePermissions" || e.target.closest("#savePermissions")) {
+            e.preventDefault();
+            const submitBtn = e.target.id === "savePermissions" ? e.target : e.target.closest("#savePermissions");
+            const originalHTML = submitBtn.innerHTML;
+            
+            // Show loading state
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = \'<i class="fas fa-spinner fa-spin me-2"></i>Saving...\';
 
-                            var datastring = $("#modal_form").serialize();
-                            $.ajax({
-                                type: "POST",
-                                url: $("#modal_form").attr("action"),
-                                data: datastring,
-                                dataType: "json",
-                                success: function(data) {
-                                    // Execute any scripts returned in the response
-                                    $(data).filter("script").each(function() {
-                                        try {
-                                            eval($(this).text());
-                                        } catch (e) {
-                                            console.error("Error executing script: ", e);
-                                        }
-                                    });
-                                    const modal = bootstrap.Modal.getInstance(document.getElementById("dynamicModal")); 
-                                    if (modal) modal.hide();
-                                    submitBtn.prop("disabled", false).html(originalText);
-                                },
-                                error: function(xhr, status, error) {
-                                    alert("Failed to save permissions. Please try again.");
-                                    submitBtn.prop("disabled", false).html(originalText);
-                                }
-                            });
+            const form = document.getElementById("modal_form");
+            const formData = new FormData(form);
+            
+            fetch(form.action, {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Execute any scripts returned in the response
+                if (typeof data === "string" && data.includes("<script>")) {
+                    const scripts = data.match(/<script[^>]*>([\\s\\S]*?)<\\/script>/g);
+                    if (scripts) {
+                        scripts.forEach(scriptText => {
+                            const code = scriptText.replace(/<script[^>]*>([\\s\\S]*?)<\\/script>/, "$1");
+                            try {
+                                new Function(code)();
+                            } catch (e) {
+                                console.error("Error executing script: ", e);
+                            }
                         });
-                        
-                        // Initialize Bootstrap tabs
-                        $("#permissionTabs button").on("click", function(e) {
-                            e.preventDefault();
-                            $(this).tab("show");
-                        });
-                    });
-                    </script>';
+                    }
+                }
+                
+                const modal = bootstrap.Modal.getInstance(document.getElementById("dynamicModal")); 
+                if (modal) modal.hide();
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                alert("Failed to save permissions. Please try again.");
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            });
+        }
+    });
+    
+    // Initialize Bootstrap tabs
+    const tabButtons = document.querySelectorAll("#permissionTabs button[data-bs-toggle=\"tab\"]");
+    tabButtons.forEach(button => {
+        button.addEventListener("click", function(e) {
+            e.preventDefault();
+            const tab = new bootstrap.Tab(this);
+            tab.show();
+        });
+    });
+});
+</script>';
 	   
 	   
 	   
@@ -1437,10 +1475,10 @@ if($mybb->input['action'] == "add")
 		echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
 		echo "	<script type=\"text/javascript\" src=\"scripts/popup.js\"></script>\n";
 
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-		echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
+		//echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
 
 		// Stop JS elements showing while page is loading (JS supported browsers only)
 		echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
@@ -2017,12 +2055,14 @@ document.write('".str_replace("/", "\/", $field_select)."');
 	$form->end();
 
 	// Write in our JS based field selector
-	echo "<script type=\"text/javascript\">\n<!--\n";
-	foreach($ids as $id)
-	{
-		echo "$(function() { QuickPermEditor.init(".$id.") });\n";
-	}
-	echo "// -->\n</script>\n";
+echo "<script type=\"text/javascript\">\n<!--\n";
+echo "document.addEventListener('DOMContentLoaded', function() {\n";
+foreach($ids as $id)
+{
+    echo "  if(typeof QuickPermEditor !== 'undefined') { QuickPermEditor.init(".$id."); }\n";
+}
+echo "});\n";
+echo "// -->\n</script>\n";
 
 	stdfoot();
 }
@@ -2255,10 +2295,10 @@ if($mybb->input['action'] == "edit")
 		echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
 		echo "	<script type=\"text/javascript\" src=\"scripts/popup.js\"></script>\n";
 
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-		echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
+		//echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
 
 		// Stop JS elements showing while page is loading (JS supported browsers only)
 		echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
@@ -2883,12 +2923,14 @@ document.write('".str_replace("/", "\/", $field_select)."');
 	echo "</form>";
 
 	// Write in our JS based field selector
-	echo "<script type=\"text/javascript\">\n<!--\n";
-	foreach($ids as $id)
-	{
-		echo "$(function() { QuickPermEditor.init(".$id."); });\n";
-	}
-	echo "// -->\n</script>\n";
+echo "<script type=\"text/javascript\">\n<!--\n";
+echo "document.addEventListener('DOMContentLoaded', function() {\n";
+foreach($ids as $id)
+{
+    echo "    if(typeof QuickPermEditor !== 'undefined') QuickPermEditor.init(".$id.");\n";
+}
+echo "});\n";
+echo "// -->\n</script>\n";
 
 	stdfoot();
 }
@@ -3034,10 +3076,10 @@ if($mybb->input['action'] == "delete")
 	    echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
 		echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
 
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-		echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
+		//echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
 
 		// Stop JS elements showing while page is loading (JS supported browsers only)
 		echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
@@ -3098,9 +3140,12 @@ if($mybb->input['action'] == "delete")
 		// Log admin action
 		log_admin_action($forum_info['fid'], $forum_info['name']);
 
-		flash_message($lang->forum_management['success_forum_deleted'], 'success');
-	    admin_redirect("management.php");
-		echo "The selected forum has been deleted successfully";
+		//flash_message($lang->forum_management['success_forum_deleted'], 'success');
+	    //admin_redirect("index.php?act=management");
+		//echo "The selected forum has been deleted successfully";
+		// Возвращаем успешный ответ для AJAX
+        echo "Forum deleted successfully";
+        exit;
 		
 	}
 	else
@@ -3391,10 +3436,10 @@ if(!$mybb->input['action'])
 		echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
 		echo "	<script type=\"text/javascript\" src=\"scripts/popup.js\"></script>\n";
 
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-		echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-		echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
+		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
+		//echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
 
 		// Stop JS elements showing while page is loading (JS supported browsers only)
 		echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
@@ -3890,14 +3935,16 @@ document.write('".str_replace("/", "\/", $field_select)."');
 		
 
 		// Write in our JS based field selector
-		echo "<script type=\"text/javascript\">\n<!--\n";
-		foreach($ids as $id)
-		{
-			echo "$(function() { QuickPermEditor.init(".$id.") });\n";
-		}
-		echo "// -->\n</script>\n";
+echo "<script type=\"text/javascript\">\n<!--\n";
+echo "document.addEventListener('DOMContentLoaded', function() {\n";
+foreach($ids as $id)
+{
+    echo "    if(typeof QuickPermEditor !== 'undefined') QuickPermEditor.init(".$id.");\n";
+}
+echo "});\n";
+echo "// -->\n</script>\n";
 
-		echo "</div>\n";
+echo "</div>\n";
 		$form->end();
 		
 		
@@ -3919,7 +3966,7 @@ $form_container = new FormContainer('');
 $form_container->output_row_header($lang->forum_management['name'], array('class' => 'px-3 py-2 bg-light', 'width' => '75%'));
 $form_container->output_row_header($lang->forum_management['controls'], array("class" => "text-center px-3 py-2 bg-light", 'style' => 'width: 200px', 'colspan' => 2));
 
-$query = $db->query("
+$query = $db->sql_query("
     SELECT m.mid, m.id, m.isgroup, u.username, g.title
     FROM moderators m
     LEFT JOIN users u ON (m.isgroup='0' AND m.id=u.id)
@@ -4038,48 +4085,77 @@ echo '<div class="row">';
 		
 		
 		
-		// Autocompletion for usernames
-		echo '
-		<link rel="stylesheet" href="../scripts/select2/select2.css">
-		<script type="text/javascript" src="../scripts/select2/select2.min.js?ver=1804"></script>
-		<script type="text/javascript">
-		<!--
-		$("#username").select2({
-			placeholder: "'.'search_for_a_user'.'",
-			minimumInputLength: 2,
-			multiple: false,
-			ajax: { // instead of writing the function to execute the request we use Select2\'s convenient helper
-				url: "../xmlhttp.php?action=get_users",
-				dataType: \'json\',
-				data: function (term, page) {
-					return {
-						query: term, // search term
-					};
-				},
-				results: function (data, page) { // parse the results into the format expected by Select2.
-					// since we are using custom formatting functions we do not need to alter remote JSON data
-					return {results: data};
-				}
-			},
-			initSelection: function(element, callback) {
-				var query = $(element).val();
-				if (query !== "") {
-					$.ajax("../xmlhttp.php?action=get_users&getone=1", {
-						data: {
-							query: query
-						},
-						dataType: "json"
-					}).done(function(data) { callback(data); });
-				}
-			},
-		});
+		
+		// Autocompletion for usernames - Native HTML5 solution
+echo '
+<script type="text/javascript">
+document.addEventListener("DOMContentLoaded", function() {
+    const usernameInput = document.getElementById("username");
+    const usernameLabel = document.querySelector("label[for=\'username\']");
+    
+    if (!usernameInput) return;
 
-		$(\'[for=username]\').on(\'click\', function(){
-			$("#username").select2(\'open\');
-			return false;
-		});
-		// -->
-		</script>';
+    // Создаем datalist для автодополнения
+    const datalist = document.createElement("datalist");
+    datalist.id = "username-suggestions";
+    usernameInput.setAttribute("list", "username-suggestions");
+    document.body.appendChild(datalist);
+
+    let searchTimeout;
+
+    // Обработчик ввода
+    usernameInput.addEventListener("input", function() {
+        const query = this.value.trim();
+        
+        if (query.length < 2) {
+            datalist.innerHTML = "";
+            return;
+        }
+
+        // Дебаунс запросов
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            fetchUsers(query);
+        }, 300);
+    });
+
+    // Фокус по клику на label
+    if (usernameLabel) {
+        usernameLabel.addEventListener("click", function(e) {
+            e.preventDefault();
+            usernameInput.focus();
+        });
+    }
+
+    function fetchUsers(query) {
+        fetch(`../xmlhttp.php?action=get_users&query=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(users => {
+                datalist.innerHTML = "";
+                users.forEach(user => {
+                    const option = document.createElement("option");
+                    option.value = user.text || user.name || user.username;
+                    if (user.id) option.setAttribute("data-id", user.id);
+                    datalist.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error("Error fetching users:", error);
+            });
+    }
+
+    // Загружаем текущее значение если есть
+    if (usernameInput.value) {
+        fetch(`../xmlhttp.php?action=get_users&getone=1&query=${encodeURIComponent(usernameInput.value)}`)
+            .then(response => response.json())
+            .then(user => {
+                if (user && user.text) {
+                    // Можно обновить отображение если нужно
+                }
+            });
+    }
+});
+</script>';
 		
 		
 		
@@ -4122,7 +4198,7 @@ echo "</div></div>"; // закрываем tab_moderators и container
 
 
 
-echo "	<script type=\"text/javascript\" src=\"scripts/bootbox.min.js\"></script>\n";
+//echo "	<script type=\"text/javascript\" src=\"scripts/bootbox.min.js\"></script>\n";
 echo "	<script type=\"text/javascript\" src=\"scripts/deleteForum.js\"></script>\n";
 
 

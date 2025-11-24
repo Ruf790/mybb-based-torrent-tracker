@@ -250,7 +250,7 @@ stdhead('Inactive Users more than ' . $maxdays . ' days! (Total ' . $threadcount
     <thead>
         <tr>
             <th>
-                <div class="form-check">
+                <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="checkAll">
                     <label class="form-check-label" for="checkAll"></label>
                 </div>

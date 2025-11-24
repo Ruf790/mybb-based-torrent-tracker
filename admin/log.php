@@ -1,35 +1,19 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-ini_set('log_errors', 1);
 
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/***********************************************/
-// Проверяем INC_PATH
-if (!defined('INC_PATH')) {
-    define('INC_PATH', './inc'); // Укажи правильный путь, если отличается
-}
-// Проверяем зависимости
-if (!file_exists(INC_PATH . '/class_parser.php')) {
-    die('Error: class_parser.php not found in ' . INC_PATH);
-}
+declare(strict_types=1);
+
+
 require_once(INC_PATH . '/class_parser.php');
-if (!file_exists(INC_PATH . '/functions_multipage.php')) {
-    die('Error: functions_multipage.php not found in ' . INC_PATH);
-}
 require_once(INC_PATH . '/functions_multipage.php');
-// Проверяем MyBB окружение
-if (!isset($mybb) || !isset($db)) {
-    die('Error: MyBB environment ($mybb or $db) is not initialized. Ensure this script runs within MyBB admin panel.');
-}
-// Проверяем STAFF_PANEL_TSSEv56
-if (!defined('STAFF_PANEL_TSSEv56')) {
+
+
+
+if (!defined('STAFF_PANEL_TSSEv56')) 
+{
     define('STAFF_PANEL_TSSEv56', true);
     echo '<div class="alert alert-warning">Warning: STAFF_PANEL_TSSEv56 was not defined. Defined for testing.</div>';
 }
-// Инициализация парсера
+
 $parser = new postParser;
 $parser_options = [
     "allow_html" => 1,
@@ -39,13 +23,13 @@ $parser_options = [
     "allow_videocode" => 1,
     "filter_badwords" => 1
 ];
-// Получаем параметры фильтрации
+
 $searchstr = isset($_GET['query']) ? trim($db->escape_string($_GET['query'])) : '';
 $event_filter = isset($_GET['event_filter']) ? trim($db->escape_string($_GET['event_filter'])) : 'all';
 $date_filter = isset($_GET['date_filter']) ? trim($db->escape_string($_GET['date_filter'])) : '';
 $log_type = isset($_GET['log_type']) ? trim($db->escape_string($_GET['log_type'])) : 'both';
 $page = isset($_GET['page']) ? max(1, filter_var($_GET['page'], FILTER_VALIDATE_INT)) : 1;
-// Параметры для URL
+
 $filter_params = [
     'query' => $searchstr,
     'event_filter' => $event_filter,
@@ -53,24 +37,73 @@ $filter_params = [
     'log_type' => $log_type,
     'page' => $page
 ];
-// Формируем условия WHERE
+
 $where_conditions_sitelog = [];
 $where_conditions_modlog = [];
-if ($searchstr !== '') {
+if ($searchstr !== '') 
+{
     $search_esc = "%" . $db->escape_string($searchstr) . "%";
     $where_conditions_sitelog[] = "s.txt LIKE '$search_esc'";
     $where_conditions_modlog[] = "(m.action LIKE '$search_esc' OR m.data LIKE '$search_esc')";
 }
-if ($event_filter !== 'all') {
-    if ($event_filter === 'Screenshot') {
+
+
+
+
+
+
+
+
+if ($event_filter !== 'all') 
+{
+    if ($event_filter === 'Screenshot') 
+	{
         $where_conditions_sitelog[] = "(s.txt LIKE '%Screenshot uploaded:%' OR s.txt LIKE '%Screenshot deleted:%' OR s.txt LIKE '%Screenshot updated:%' OR s.txt LIKE '%Screenshot error%')";
         $where_conditions_modlog[] = "(m.action LIKE '%Screenshot%' OR m.data LIKE '%Screenshot%')";
-    } else {
+    } 
+	
+	elseif ($event_filter === 'Delete Comment') 
+    {
+        $where_conditions_sitelog[] = "(
+        s.txt LIKE '%Comment Delete%' 
+        OR s.txt LIKE '%Mass Comment Delete%' 
+        OR s.txt LIKE '%deleted a comment%' 
+        OR s.txt LIKE '%deleted comments%' 
+        OR s.txt LIKE '%User % deleted a comment (CID%' 
+        )";
+    
+        $where_conditions_modlog[] = "(
+        m.action LIKE '%Comment Delete%' 
+        OR m.action LIKE '%Mass Comment Delete%' 
+        OR m.action LIKE '%deleted a comment%' 
+        OR m.action LIKE '%deleted comments%' 
+        OR m.action LIKE '%User % deleted a comment (CID%' 
+        )";
+    }
+	
+	elseif ($event_filter === 'Torrent Upload') 
+	{
+        $where_conditions_sitelog[] = "(s.txt LIKE '%has been uploaded%' OR s.txt LIKE '%torrent uploaded%')";
+        $where_conditions_modlog[] = "(m.action LIKE '%has been uploaded%' OR m.action LIKE '%torrent uploaded%')";
+    } 
+	else 
+	{
         $event_esc = "%" . $db->escape_string($event_filter) . "%";
         $where_conditions_sitelog[] = "s.txt LIKE '$event_esc'";
         $where_conditions_modlog[] = "m.action LIKE '$event_esc'";
     }
 }
+
+
+
+
+
+
+
+
+
+
+
 if ($date_filter !== '') {
     $date_esc = $db->escape_string($date_filter);
     $where_conditions_sitelog[] = "DATE(FROM_UNIXTIME(s.added)) = '$date_esc'";
@@ -244,7 +277,7 @@ echo '<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Combined Log System - TS Special Edition v.5.6</title>
+    <title>Combined Log System</title>
    
    
         <style>
@@ -430,7 +463,7 @@ if (function_exists('stdhead')) {
         </div>
     </nav>';
 }
-// Обработка очистки и удаления
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['clear']) && $_POST['clear'] === 'yes' && isset($usergroups['cansettingspanel']) && $usergroups['cansettingspanel'] == '1') {
         $result = $db->sql_query('TRUNCATE TABLE sitelog');
@@ -454,7 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-// Форма фильтров
+
 echo '
 <div class="container">
     <div class="sticky-header">
@@ -504,13 +537,31 @@ echo '
                         <option value="Moved Thread" ' . ($event_filter == 'Moved Thread' ? 'selected' : '') . '>Moved Thread</option>
                         <option value="Closed Thread" ' . ($event_filter == 'Closed Thread' ? 'selected' : '') . '>Closed Thread</option>
                         <option value="Screenshot" ' . ($event_filter == 'Screenshot' ? 'selected' : '') . '>Screenshots</option>
+						
+						<option value="Delete Comment" ' . ($event_filter == 'Delete Comment' ? 'selected' : '') . '>Delete Comment</option>
+						<option value="Torrent Upload" ' . ($event_filter == 'Torrent Upload' ? 'selected' : '') . '>Torrent Upload</option>
+						
                     </select>
                 </div>
-                <div class="filter-group">
-                    <label for="date-filter"><i class="fas fa-calendar me-1"></i>Date</label>
-                    <input type="date" class="form-control" id="date-filter" name="date_filter"
-                           value="' . htmlspecialchars($date_filter) . '">
-                </div>
+                
+				<div class="filter-group">
+    <label for="date-filter"><i class="fas fa-calendar me-1"></i>Date</label>
+    <input type="text" class="form-control" id="date-filter" name="date_filter"
+           value="'.htmlspecialchars($date_filter).'" placeholder="Select a date">
+</div>
+
+
+<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/flatpickr.min.css">
+<script src="'.$BASEURL.'/admin/scripts/flatpickr.js"></script>
+<script>
+    flatpickr("#date-filter", {
+		dateFormat: "Y-m-d",
+        allowInput: true,
+        defaultDate: "'.htmlspecialchars($date_filter).'"
+    });
+</script>
+				
+				
                 <div class="filter-group">
                     <label>&nbsp;</label>
                     <button type="submit" class="btn btn-success w-100">
@@ -520,7 +571,7 @@ echo '
             </div>
         </form>
     </div>';
-// Активные фильтры
+
 $active_filters = [];
 if ($searchstr !== '') $active_filters[] = 'Search: "' . htmlspecialchars($searchstr) . '"';
 if ($event_filter !== 'all') $active_filters[] = 'Event: ' . htmlspecialchars($event_filter);
@@ -541,8 +592,9 @@ if (!empty($active_filters)) {
         </div>';
 }
 echo '<div id="log-container"><div class="container mt-3">';
-// Пагинация
-if ($total_count > $perpage) {
+
+if ($total_count > $perpage) 
+{
     echo '<div class="pagination">' . $multipage . '</div>';
 }
 
@@ -554,15 +606,6 @@ if ($total_count > $perpage) {
 
 
 
-
-
-
-
-
-
-
-
-// ТЕПЕРЬ ВЫВОДИМ ТАБЛИЦУ
 if (count($logs) == 0) 
 {
     echo '<div class="alert alert-warning text-center">No logs found matching your criteria.</div>';
@@ -600,7 +643,7 @@ else
     foreach ($logs as $arr) {
         $log_type = $arr['log_type'];
         $id = $arr['id'];
-        $timestamp = $arr['timestamp'];
+        $timestamp = isset($arr['timestamp']) ? (int)$arr['timestamp'] : time();
         $date = function_exists('my_date') ? my_date('Y-m-d', $timestamp) : date('Y-m-d', $timestamp);
         $time = function_exists('my_date') && isset($timeformat) ? my_date($timeformat, $timestamp) : date('H:i:s', $timestamp);
         $is_new = (time() - $timestamp <= 120);
@@ -693,6 +736,13 @@ else
             'site settings updated by' => ['danger', 'Settings', 'fa-cog'],
             'has been edited by' => ['primary', 'Edit', 'fa-edit'],
             'has been saved' => ['primary', 'Saved', 'fa-save'],
+		    
+			'copied' => ['primary', 'Comment Copy', 'fa-copy'],
+			'moved' => ['warning', 'Comment Move', 'fa-arrows-alt'],
+           	'send mail queue' => ['info', 'Mail Queue', 'fa-paper-plane'],
+            'Mass Comment Delete' => ['danger', 'Mass Comment Delete', 'fa-comment'],
+			
+			
             'settings updated' => ['primary', 'Settings', 'fa-cogs'],
             '[SQL ERROR]' => ['danger', 'SQL Error', 'fa-exclamation-triangle'],
             'Screenshot uploaded:' => ['success', 'Screen Upload', 'fa-image'],

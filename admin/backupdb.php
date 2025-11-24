@@ -142,7 +142,7 @@ if($mybb->input['action'] == "dlbackup")
         $plugins->run_hooks("admin_tools_backupdb_dlbackup_commit");
 
         // Log admin action
-        //log_admin_action($file);
+        log_admin_action($file);
 
         header('Content-disposition: attachment; filename='.$file);
         header("Content-type: ".$ext);
@@ -191,7 +191,7 @@ if($mybb->input['action'] == "delete")
             $plugins->run_hooks("admin_tools_backupdb_delete_commit");
 
             // Log admin action
-            //log_admin_action($file);
+            log_admin_action($file);
 
             flash_message('The backup has been deleted successfully', 'success');
             admin_redirect($_this_script_);
@@ -307,7 +307,7 @@ if($mybb->input['action'] == "backup")
         $db->set_table_prefix('');
 
         $time = date('dS F Y \a\t H:i', TIMENOW);
-        $header = "-- Ruff Tracker Database Backup\n-- Generated: {$time}\n-- -------------------------------------\n\n";
+        $header = "-- Database Backup\n-- Generated: {$time}\n-- -------------------------------------\n\n";
         $contents = $header;
         
         foreach($mybb->input['tables'] as $table)
@@ -432,8 +432,35 @@ if($mybb->input['action'] == "backup")
             // Log admin action
             log_admin_action("disk", $file.$ext);
 
-            $file_from_admindir = '' . $_this_script_ . '&action=dlbackup&amp;file='.basename($file).$ext;
-            flash_message("<span><em>The backup has been created successfully</em></span><p>The backup was saved to:<br />{$file}{$ext} (<a href=\"{$file_from_admindir}\">Download</a>)</p>", 'success');
+            
+			
+			
+$file_from_admindir = $_this_script_ . '&action=dlbackup&amp;file=' . basename($file) . $ext;
+
+flash_message('
+<div class="d-flex align-items-start">
+    <div class="me-3 mt-1 text-success">
+        <i class="fas fa-check-circle fa-2x"></i>
+    </div>
+    <div>
+        <h6 class="mb-1 fw-semibold text-success">Backup created successfully</h6>
+        <p class="mb-2 small text-muted">The backup file has been saved to:</p>
+        <code class="d-block mb-2 text-break">' . htmlspecialchars($file . $ext) . '</code>
+        <a href="' . $file_from_admindir . '" class="btn btn-sm btn-success">
+            <i class="fas fa-download me-1"></i> Download
+        </a>
+    </div>
+</div>
+', 'success', true);
+
+
+
+			
+			
+
+
+			
+			
 			
 			
 			
@@ -446,7 +473,7 @@ if($mybb->input['action'] == "backup")
             $plugins->run_hooks("admin_tools_backupdb_backup_download_commit");
 
             // Log admin action
-            //log_admin_action("download");
+            log_admin_action("download");
 
             if($mybb->input['filetype'] == 'gzip')
             {

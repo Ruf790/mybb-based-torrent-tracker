@@ -5,1822 +5,836 @@
  *
  * Website: http://www.mybb.com
  * License: http://www.mybb.com/about/license
- *
  */
 
+declare(strict_types=1);
 
 define("IN_MYBB", 1);
 define("IN_ADMINCP", 1);
-define ('TSF_FORUMS_TSSEv56', true);
-define ('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define ('TSF_VERSION', 'v1.5 by xam');
+define('TSF_FORUMS_TSSEv56', true);
+define('TSF_FORUMS_GLOBAL_TSSEv56', true);
+define('TSF_VERSION', 'v1.5 by xam');
 
+require_once INC_PATH . '/functions_multipage.php';
 
 // Disallow direct access to this file for security reasons
-if(!defined("IN_MYBB"))
-{
-	die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
+if (!defined("IN_MYBB")) {
+    die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
 
-
-
-foreach(array('action', 'do', 'module') as $input)
-{
-	if(!isset($mybb->input[$input]))
-	{
-		$mybb->input[$input] = '';
-	}
-}
-
- 
- 
-
-//$page->add_breadcrumb_item('attachments', "index.php?act=attachments");
-
-if($mybb->input['action'] == "stats" || $mybb->input['action'] == "orphans" || !$mybb->input['action'])
-{
-	$sub_tabs['find_attachments'] = array(
-		'title' => 'Find Attachments',
-		'link' => "index.php?act=attachments",
-		'description' => 'Using the attachments search system you can search for specific files users have attached to your forums. Begin by entering some search terms below. All fields are optional and wont be included in the criteria unless they contain a value'
-	);
-
-	$sub_tabs['find_orphans'] = array(
-		'title' => 'Find Orphaned Attachments',
-		'link' => "index.php?act=attachments&amp;action=orphans",
-		'description' => 'Orphaned attachments are attachments which are for some reason missing in the database or the file system. This utility will assist you in locating and removing them'
-	);
-
-	$sub_tabs['stats'] = array(
-		'title' => 'Attachment Statistics',
-		'link' => "index.php?act=attachments&amp;action=stats",
-		'description' => 'Below are some general statistics for the attachments currently on your forum'
-	);
+// Initialize input parameters
+foreach (['action', 'do', 'module'] as $input) {
+    $mybb->input[$input] ??= '';
 }
 
 $plugins->run_hooks("admin_forum_attachments_begin");
 
-$uploadspath = TSDIR.'/uploads/';
-
+$uploadspath = TSDIR . '/uploads/';
 $uploadspath_abs = mk_path_abs22($uploadspath);
-
 $default_perpage = 20;
-$perpage = $mybb->get_input('perpage', MyBB::INPUT_INT);
-if(!$perpage)
-{
-	$perpage = $default_perpage;
+$perpage = $mybb->get_input('perpage', MyBB::INPUT_INT) ?: $default_perpage;
+
+// Navigation tabs
+$sub_tabs = [
+    'find_attachments' => [
+        'title' => 'Find Attachments',
+        'link' => "index.php?act=attachments",
+        'description' => 'Using the attachments search system you can search for specific files users have attached to your forums.'
+    ],
+    'find_orphans' => [
+        'title' => 'Find Orphaned Attachments',
+        'link' => "index.php?act=attachments&action=orphans",
+        'description' => 'Orphaned attachments are attachments which are for some reason missing in the database or the file system.'
+    ],
+    'stats' => [
+        'title' => 'Attachment Statistics',
+        'link' => "index.php?act=attachments&action=stats",
+        'description' => 'Below are some general statistics for the attachments currently on your forum'
+    ]
+];
+
+/**
+ * Handle attachment deletion
+ */
+if ($mybb->input['action'] === "delete") {
+    $plugins->run_hooks("admin_forum_attachments_delete");
+
+    $aids = is_array($mybb->input['aids'] ?? null) 
+        ? array_map('intval', $mybb->input['aids'])
+        : [$mybb->get_input('aid', MyBB::INPUT_INT)];
+
+    if (empty($aids)) {
+        flash_message('No attachments selected for deletion', 'error');
+        admin_redirect("index.php?act=attachments");
+    }
+
+    if ($mybb->request_method === "post") {
+        require_once INC_PATH . "/functions_upload.php";
+
+        $query = $db->simple_select("attachments", "aid,pid,posthash,filename", "aid IN (" . implode(",", $aids) . ")");
+        while ($attachment = $db->fetch_array($query)) {
+            if (!$attachment['pid']) {
+                remove_attachment(null, $attachment['posthash'], $attachment['aid']);
+                log_admin_action($attachment['aid'], $attachment['filename']);
+            } else {
+                remove_attachment($attachment['pid'], null, $attachment['aid']);
+                log_admin_action($attachment['aid'], $attachment['filename'], $attachment['pid']);
+            }
+        }
+
+        $plugins->run_hooks("admin_forum_attachments_delete_commit");
+        flash_message('Selected attachments have been deleted successfully', 'success');
+        admin_redirect("index.php?act=attachments");
+    } else {
+        $aids_param = implode('&amp;aids[]=', $aids);
+        echo "
+        <div class='modal fade' id='confirmModal' tabindex='-1'>
+            <div class='modal-dialog'>
+                <div class='modal-content'>
+                    <div class='modal-header'>
+                        <h5 class='modal-title'>Confirm Deletion</h5>
+                    </div>
+                    <div class='modal-body'>
+                        <p>Are you sure you want to delete the selected attachments?</p>
+                    </div>
+                    <div class='modal-footer'>
+                        <a href='index.php?act=attachments' class='btn btn-secondary'>Cancel</a>
+                        <a href='index.php?act=attachments&amp;action=delete&amp;aids={$aids_param}&amp;my_post_key={$mybb->post_code}' class='btn btn-danger'>Delete</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>new bootstrap.Modal(document.getElementById('confirmModal')).show();</script>";
+        exit;
+    }
 }
 
-if($mybb->input['action'] == "delete")
-{
-	$plugins->run_hooks("admin_forum_attachments_delete");
+/**
+ * Display attachment statistics
+ */
+if ($mybb->input['action'] === "stats") {
+    $plugins->run_hooks("admin_forum_attachments_stats");
 
-	if(isset($mybb->input['aids']))
-	{
-		if(!is_array($mybb->input['aids']))
-		{
-			$mybb->input['aids'] = array($mybb->get_input('aid', MyBB::INPUT_INT));
-		}
-		else
-		{
-			$mybb->input['aids'] = array_map("intval", $mybb->input['aids']);
-		}
-	}
-	else
-	{
-		$mybb->input['aids'] = array();
-	}
+    $query = $db->simple_select("attachments", "COUNT(*) AS total_attachments, SUM(filesize) as disk_usage, SUM(downloads*filesize) as bandwidthused", "visible='1'");
+    $attachment_stats = $db->fetch_array($query);
 
-	if(count($mybb->input['aids']) < 1)
-	{
-		flash_message('error_nothing_selected', 'error');
-		admin_redirect("index.php?act=attachments");
-	}
+    // Convert string values to integers to avoid type errors
+    $total_attachments = (int)($attachment_stats['total_attachments'] ?? 0);
+    $disk_usage = (float)($attachment_stats['disk_usage'] ?? 0);
+    $bandwidthused = (float)($attachment_stats['bandwidthused'] ?? 0);
+    
+    $average_size = $total_attachments > 0 ? $disk_usage / $total_attachments : 0;
 
-	if($mybb->request_method == "post")
-	{
-		require_once INC_PATH."/functions_upload.php";
+    render_header('Attachments - Attachment Statistics');
+    output_nav_tabs($sub_tabs, 'stats');
 
-		$query = $db->simple_select("attachments", "aid,pid,posthash,filename", "aid IN (".implode(",", $mybb->input['aids']).")");
-		while($attachment = $db->fetch_array($query))
-		{
-			if(!$attachment['pid'])
-			{
-				remove_attachment(null, $attachment['posthash'], $attachment['aid']);
-				// Log admin action
-				//log_admin_action($attachment['aid'], $attachment['filename']);
-			}
-			else
-			{
-				remove_attachment($attachment['pid'], null, $attachment['aid']);
-				// Log admin action
-				//log_admin_action($attachment['aid'], $attachment['filename'], $attachment['pid']);
-			}
-		}
+    if ($total_attachments === 0) {
+        output_inline_error(['There are no attachments on your forum yet. Once an attachment is posted you will be able to access this section']);
+        stdfoot();
+        exit;
+    }
 
-		$plugins->run_hooks("admin_forum_attachments_delete_commit");
+    // General Statistics Card
+    echo '
+    <div class="container mt-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>General Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="stat-card">
+                            <div class="stat-value text-primary">' . ts_nf($total_attachments) . '</div>
+                            <div class="stat-label">Uploaded Attachments</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="stat-card">
+                            <div class="stat-value text-success">' . mksize($disk_usage) . '</div>
+                            <div class="stat-label">Disk Space Used</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="stat-card">
+                            <div class="stat-value text-info">' . mksize($bandwidthused) . '</div>
+                            <div class="stat-label">Bandwidth Usage</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="stat-card">
+                            <div class="stat-value text-warning">' . mksize($average_size) . '</div>
+                            <div class="stat-label">Average Attachment Size</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>';
 
-		flash_message('success_deleted', 'success');
-		admin_redirect("index.php?act=attachments");
-	}
-	else
-	{
-		$aids = array();
-		foreach($mybb->input['aids'] as $aid)
-		{
-			$aids .= "&amp;aids[]=$aid";
-		}
-		$page->output_confirm_action("index.php?act=attachments&amp;action=delete&amp;aids={$aids}", 'confirm_delete');
-	}
+    // Top Attachments Sections
+    render_top_attachments_section('Most Popular Attachments', 'downloads DESC', 'text-success', 'fa-trophy');
+    render_top_attachments_section('Largest Attachments', 'filesize DESC', 'text-danger', 'fa-weight-hanging');
+    render_top_users_section();
+
+    stdfoot();
 }
 
-if($mybb->input['action'] == "stats")
-{
-	$plugins->run_hooks("admin_forum_attachments_stats");
+/**
+ * Handle orphaned attachments deletion
+ */
+if ($mybb->input['action'] === "delete_orphans" && $mybb->request_method === "post") {
+    $plugins->run_hooks("admin_forum_attachments_delete_orphans");
 
-	$query = $db->simple_select("attachments", "COUNT(*) AS total_attachments, SUM(filesize) as disk_usage, SUM(downloads*filesize) as bandwidthused", "visible='1'");
-	$attachment_stats = $db->fetch_array($query);
+    $success_count = $error_count = 0;
 
-		//$page->add_breadcrumb_item('Statistics');
-		//$page->output_header($lang->stats_attachment_stats);
-		
-		stdhead('Attachments - Attachment Statistics');
-		
-	echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
+    // Delete orphaned files
+    if (is_array($mybb->input['orphaned_files'] ?? null)) {
+        foreach ($mybb->input['orphaned_files'] as $file) {
+            $file = str_replace('..', '', $file);
+            $path = $uploadspath_abs . "/" . $file;
+            $real_path = realpath($path);
 
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
+            if ($real_path === false || !str_starts_with(str_replace('\\', '/', $real_path), str_replace('\\', '/', realpath(TSDIR)) . '/') || $real_path === realpath(TSDIR . 'install/lock')) {
+                $error_count++;
+                continue;
+            }
 
-	// Stop JS elements showing while page is loading (JS supported browsers only)
-	echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-		
-		
-		
-		
-		
+            if (!@unlink($uploadspath_abs . "/" . $file)) {
+                $error_count++;
+            } else {
+                $success_count++;
+            }
+        }
+    }
 
-	output_nav_tabs($sub_tabs, 'stats');
+    // Delete orphaned database entries
+    if (is_array($mybb->input['orphaned_attachments'] ?? null)) {
+        $orphaned_aids = array_map('intval', $mybb->input['orphaned_attachments']);
+        require_once INC_PATH . "/functions_upload.php";
 
-	if($attachment_stats['total_attachments'] == 0)
-	{
-		output_inline_error(array('There arent any attachments on your forum yet. Once an attachment is posted you ll be able to access this section'));
-		stdfoot();
-		exit;
-	}
+        $query = $db->simple_select("attachments", "aid,pid,posthash", "aid IN (" . implode(",", $orphaned_aids) . ")");
+        while ($attachment = $db->fetch_array($query)) {
+            if (!$attachment['pid']) {
+                remove_attachment(null, $attachment['posthash'], $attachment['aid']);
+            } else {
+                remove_attachment($attachment['pid'], null, $attachment['aid']);
+            }
+            $success_count++;
+        }
+    }
 
+    $plugins->run_hooks("admin_forum_attachments_delete_orphans_commit");
 
-	
-	echo '
-	
-	<div class="container mt-3">
-	
-	<div class="card">
-    <div class="card-header rounded-bottom text-19 fw-bold">General Statistics</div>
-    <div class="card-body">
-	
-	
-    <table>
-	
-		<tr class="first">
-			<td class="first" width="25%"><strong>No. Uploaded Attachments</strong></td>
-			<td class="alt_col" width="25%">'.ts_nf($attachment_stats['total_attachments']).'</td>
-			<td width="200"><strong>Attachment Space Used</strong></td>
-			<td class="last alt_col" width="200">'.mksize($attachment_stats['disk_usage']).'</td>
-		</tr>
-		<tr class="last alt_row">
-			<td class="first" width="25%"><strong>Estimated Bandwidth Usage</strong></td>
-			<td class="alt_col" width="25%">'.mksize(round($attachment_stats['bandwidthused'])).'</td>
-			<td width="25%"><strong>Average Attachment Size</strong></td>
-			<td class="last alt_col" width="25%">'.mksize(round($attachment_stats['disk_usage']/$attachment_stats['total_attachments'])).'</td>
-		</tr>
-	</table>
-	
-	
-	</div>
-	</div>
-</div>
+    // Prepare flash message
+    if ($error_count > 0 && $success_count > 0) {
+        $message = "Unable to remove {$error_count} attachment(s)<br />{$success_count} attachment(s) removed successfully";
+        $status = 'error';
+    } elseif ($error_count > 0) {
+        $message = "Unable to remove {$error_count} attachment(s)";
+        $status = 'error';
+    } else {
+        $message = "The selected orphaned attachment(s) have been deleted successfully";
+        $status = 'success';
+    }
 
-';
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-
-	// Fetch the most popular attachments
-	echo  '
-	<div class="container mt-3">
-	
-            <div class="card border-0 mb-4">
-			
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		     Top 5 Most Popular Attachments
-	     </div>
-		 
-	       </div>';
-	
-
-	echo '
-        
-		
-  <div class="card">
-            
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>Attachments</th>
-        <th>Size</th>
-        <th>Posted By</th>
-		<th>Thread</th>
-		<th>Downloads</th>
-		<th>Date Uploaded</th>
-      </tr>
-    </thead>';
-	
-	
-	
-
-	$query = $db->sql_query("
-		SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
-		FROM attachments a
-		LEFT JOIN tsf_posts p ON (p.pid=a.pid)
-		LEFT JOIN tsf_threads t ON (t.tid=p.tid)
-		LEFT JOIN users u ON (u.id=a.uid)
-		ORDER BY a.downloads DESC
-		LIMIT 5
-	");
-	while($attachment = $db->fetch_array($query))
-	{
-		
-	
-	   if($attachment['dateuploaded'] > 0)
-	   {
-		  $date = my_datee('relative', $attachment['dateuploaded']);
-	   }
-	   else
-	   {
-		  $date = 'unknown';
-	   }
-	   
-	   
-	   if($attachment['user_username'])
-	   {
-		  $attachment['username'] = $attachment['user_username'];
-	   }
-	   
-	   $userr = build_profile_link(htmlspecialchars_uni($attachment['username']), $attachment['uid'], "_blank");
-	   
-	   $sizeee = mksize($attachment['filesize']);
-	   
-	   $downs = ts_nf($attachment['downloads']);
-	   
-	   
-	   $tat = get_attachment_icon(get_extension($attachment['filename']));
-	   
-	   
-	   $atach_name = '<a href="../attachment.php?aid='.$attachment['aid'].'" target=\"_blank\">'.$attachment['filename'].'</a>';
-		
-	   $getpost = "<a href=\"../".get_post_link($attachment['pid'])."\" target=\"_blank\">".htmlspecialchars_uni($attachment['subject'])."</a>";
-		
-		echo '
-	    <tr class="first">
-			<td class="first" width="1">'.$tat.'
-			'.$atach_name.'</td>
-			<td class="align_center">'.$sizeee.'</td>
-			<td class="align_center alt_col">'.$userr.'</td>
-			<td class="align_center">'.$getpost.'</td>
-			<td class="align_center alt_col">'.$downs.'</td>
-			<td class="align_center last">'.$date.'</td>
-		</tr>';
-	
-	}
-	
-	
-	echo '</table></div></div>';
-	
-	
-	
-
-	// Fetch the largest attachments
-	
-	echo  '
-	<div class="container mt-3">
-	
-            <div class="card border-0 mb-4">
-			
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		     Top 5 Largest Attachments
-	     </div>
-		 
-	       </div>
-	    ';
-		
-	echo '
-        
-		
-  <div class="card">
-            
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>Attachments</th>
-        <th>Size</th>
-        <th>Posted By</th>
-		<th>Thread</th>
-		<th>Downloads</th>
-		<th>Date Uploaded</th>
-      </tr>
-    </thead>';	
-		
-	
-	
-	
-
-	$query = $db->sql_query("
-		SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
-		FROM attachments a
-		LEFT JOIN tsf_posts p ON (p.pid=a.pid)
-		LEFT JOIN tsf_threads t ON (t.tid=p.tid)
-		LEFT JOIN users u ON (u.id=a.uid)
-		ORDER BY a.filesize DESC
-		LIMIT 5
-	");
-	while($attachment = $db->fetch_array($query))
-	{
-		
-		
-	   if($attachment['dateuploaded'] > 0)
-	   {
-		  $date = my_datee('relative', $attachment['dateuploaded']);
-	   }
-	   else
-	   {
-		  $date = 'unknown';
-	   }
-	   
-	   
-	   if($attachment['user_username'])
-	   {
-		  $attachment['username'] = $attachment['user_username'];
-	   }
-	   
-	   $userr = build_profile_link(htmlspecialchars_uni($attachment['username']), $attachment['uid'], "_blank");
-	   
-	   $sizeee = mksize($attachment['filesize']);
-	   
-	   $downs = ts_nf($attachment['downloads']);
-	   
-	   
-	   $tat = get_attachment_icon(get_extension($attachment['filename']));
-	   
-	   
-	   $atach_name = '<a href="../attachment.php?aid='.$attachment['aid'].'" target=\"_blank\">'.$attachment['filename'].'</a>';
-		
-	   $getpost = "<a href=\"../".get_post_link($attachment['pid'])."\" target=\"_blank\">".htmlspecialchars_uni($attachment['subject'])."</a>";
-		
-		echo '
-	    <tr class="first">
-			<td class="first" width="1">'.$tat.'
-			'.$atach_name.'</td>
-			<td class="align_center">'.$sizeee.'</td>
-			<td class="align_center alt_col">'.$userr.'</td>
-			<td class="align_center">'.$getpost.'</td>
-			<td class="align_center alt_col">'.$downs.'</td>
-			<td class="align_center last">'.$date.'</td>
-		</tr>';
-		
-		
-		
-	}
-	
-	
-	
-	
-	
-	echo '</table></div></div>';
-	
-	
-	
-	
-	echo  '
-	<div class="container mt-3">
-	
-            <div class="card border-0 mb-4">
-			
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		     Top 5 Users Using the Most Disk Space
-	     </div>
-		 
-	       </div>
-	    ';
-		
-	echo '
-        
-		
-  <div class="card">
-            
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>Username</th>
-        <th>Total Size</th>
-      </tr>
-    </thead>';	
-	
-	
-	
-
-	switch($db->type)
-	{
-		case "pgsql":
-			$query = $db->sql_query("
-				SELECT a.uid, u.username, SUM(a.filesize) as totalsize
-				FROM attachments a
-				LEFT JOIN users u ON (u.id=a.uid)
-				GROUP BY a.uid, u.username
-				ORDER BY totalsize DESC
-				LIMIT 5
-			");
-			break;
-		default:
-			$query = $db->sql_query("
-				SELECT a.uid, u.username, SUM(a.filesize) as totalsize
-				FROM attachments a
-				LEFT JOIN users u ON (u.id=a.uid)
-				GROUP BY a.uid
-				ORDER BY totalsize DESC
-				LIMIT 5
-			");
-	}
-	while($user = $db->fetch_array($query))
-	{
-		if(!$user['uid'])
-		{
-			$user['username'] = 'na';
-		}
-		
-		
-		
-		$useeer = build_profile_link(htmlspecialchars_uni($user['username']), $user['uid'], "_blank");
-		
-		$uuser = "<a href=\"index.php?act=attachments&amp;results=1&amp;username=".urlencode($user['username'])."\" target=\"_blank\">".mksize($user['totalsize'])."</a>";
-		
-		echo '
-		<tr class="first">
-			<td class="first">'.$useeer.'</td>
-			<td class="align_center">'.$uuser.'</td>
-		</tr>';
-		
-		
-		
-		
-		
-	}
-	
-	echo '</table></div></div>';
-
-	stdfoot();
+    flash_message($message, $status);
+    admin_redirect('index.php?act=attachments');
 }
 
-if($mybb->input['action'] == "delete_orphans" && $mybb->request_method == "post")
-{
-	$plugins->run_hooks("admin_forum_attachments_delete_orphans");
-
-	$success_count = $error_count = 0;
-
-	// Deleting specific attachments from uploads directory
-	if(is_array($mybb->input['orphaned_files']))
-	{
-		foreach($mybb->input['orphaned_files'] as $file)
-		{
-			$file = str_replace('..', '', $file);
-			$path = $uploadspath_abs."/".$file;
-			$real_path = realpath($path);
-
-			if($real_path === false || strpos(str_replace('\\', '/', $real_path), str_replace('\\', '/', realpath(TSDIR)).'/') !== 0 || $real_path == realpath(TSDIR.'install/lock'))
-			{
-				$error_count++;
-				continue;
-			}
-
-			if(!@unlink($uploadspath_abs."/".$file))
-			{
-				$error_count++;
-			}
-			else
-			{
-				$success_count++;
-			}
-		}
-	}
-
-	// Deleting physical attachments which exist in database
-	if(is_array($mybb->input['orphaned_attachments']))
-	{
-		$mybb->input['orphaned_attachments'] = array_map("intval", $mybb->input['orphaned_attachments']);
-		require_once INC_PATH."/functions_upload.php";
-
-		$query = $db->simple_select("attachments", "aid,pid,posthash", "aid IN (".implode(",", $mybb->input['orphaned_attachments']).")");
-		while($attachment = $db->fetch_array($query))
-		{
-			if(!$attachment['pid'])
-			{
-				remove_attachment(null, $attachment['posthash'], $attachment['aid']);
-			}
-			else
-			{
-				remove_attachment($attachment['pid'], null, $attachment['aid']);
-			}
-			$success_count++;
-		}
-	}
-
-	$plugins->run_hooks("admin_forum_attachments_delete_orphans_commit");
-
-	// Log admin action
-	//log_admin_action();
-
-	$message = '';
-	$status = 'success';
-	if($error_count > 0)
-	{
-		$status = 'error';
-		$message = sprintf('Unable to remove '.$error_count.' attachment(s)');
-	}
-
-	if($success_count > 0)
-	{
-		if($error_count > 0)
-		{
-			$message .= '<br />'.sprintf(''.$success_count.' attachment(s) removed successfully');
-		}
-		else
-		{
-			$message = 'The selected orphaned attachment(s) have been deleted successfully';
-		}
-	}
-	flash_message($message, $status);
-	admin_redirect('index.php?act=attachments');
+/**
+ * Handle orphaned attachments
+ */
+if ($mybb->input['action'] === "orphans") {
+    $plugins->run_hooks("admin_forum_attachments_orphans");
+    
+    $step = $mybb->get_input('step', MyBB::INPUT_INT);
+    
+    switch($step) {
+        case 3:
+            handle_orphans_step3();
+            break;
+        case 2:
+            handle_orphans_step2();
+            break;
+        default:
+            handle_orphans_step1();
+    }
 }
 
-if($mybb->input['action'] == "orphans")
-{
-	$plugins->run_hooks("admin_forum_attachments_orphans");
+/**
+ * Main attachments search page
+ */
+if (!$mybb->input['action']) {
+    $plugins->run_hooks("admin_forum_attachments_start");
 
-	// Oprhans are defined as:
-	// - Uploaded files in the uploads directory that don't exist in the database
-	// - Attachments for which the uploaded file is missing
-	// - Attachments for which the thread or post has been deleted
-	// - Files uploaded > 24h ago not attached to a real post
-
-	// This process is quite intensive so we split it up in to 2 steps, one which scans the file system and the other which scans the database.
-
-	$mybb->input['step'] = $mybb->get_input('step', MyBB::INPUT_INT);
-
-	// Finished second step, show results
-	if($mybb->input['step'] == 3)
-	{
-		$plugins->run_hooks("admin_forum_attachments_step3");
-
-		$reults = 0;
-		// Incoming attachments which exist as files but not in database
-		if(!empty($mybb->input['bad_attachments']))
-		{
-			$bad_attachments = my_unserialize($mybb->input['bad_attachments']);
-			$results = count($bad_attachments);
-		}
-
-		$aids = array();
-		if(!empty($mybb->input['missing_attachment_files']))
-		{
-			$missing_attachment_files = my_unserialize($mybb->input['missing_attachment_files']);
-			$aids = array_merge($aids, $missing_attachment_files);
-		}
-
-		if(!empty($mybb->input['missing_threads']))
-		{
-			$missing_threads = my_unserialize($mybb->input['missing_threads']);
-			$aids = array_merge($aids, $missing_threads);
-		}
-
-		if(!empty($mybb->input['incomplete_attachments']))
-		{
-			$incomplete_attachments = my_unserialize($mybb->input['incomplete_attachments']);
-			$aids = array_merge($aids, $incomplete_attachments);
-		}
-
-		foreach($aids as $key => $aid)
-		{
-			$aids[$key] = (int)$aid;
-		}
-
-		$results = count($aids);
-
-		if($results == 0)
-		{
-			flash_message('There are no orphaned attachments on your forum', 'success');
-			admin_redirect("index.php?act=attachments");
-		}
-
-		
-		stdhead('Orphaned Attachments Search - Results');
-		
-		
-		echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	    echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
-
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
-
-	// Stop JS elements showing while page is loading (JS supported browsers only)
-	echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-		
-		
-		
-		
-		
-		
-		output_nav_tabs($sub_tabs, 'find_orphans');
-
-		
-		
-		
-		echo '
-		<form action="index.php?act=attachments&amp;action=delete_orphans" method="post">
-        <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />';
-		
-		
-		
-		// Fetch the most popular attachments
-	echo  '
-	<div class="container mt-3">
-	
-            <div class="card border-0 mb-4">
-			
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		     Orphaned Attachments Search - '.$results.' Results
-	     </div>
-		 
-	       </div>';
-	
-
-	echo '
-        
-		
-  <div class="card">
-            
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>'.generate_check_box('allbox', '1', '', array('class' => 'checkall')).'</th>
-		<th>Size</th>
-        <th>Reason Orphaned</th>
-        <th>Date Uploaded</th>
-		
-      </tr>
-    </thead>';
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-
-		if(is_array($bad_attachments))
-		{
-			foreach($bad_attachments as $file)
-			{
-				$file_path = $uploadspath_abs."/".$file;
-
-				if(file_exists($file_path))
-				{
-					$filename = htmlspecialchars_uni($file);
-					$filesize = mksize(filesize($file_path));
-					//$table->construct_cell($form->generate_check_box('orphaned_files[]', $file, '', array('checked' => true)));
-					//$table->construct_cell(get_attachment_icon(get_extension($attachment['filename'])), array('width' => 1));
-					//$table->construct_cell("<span class=\"float_right\">{$filesize}</span>{$filename}");
-					//echo 'Not in attachments table';
-					//$table->construct_cell(my_datee('relative', filemtime($file_path)), array('class' => 'align_center'));
-					//$table->construct_row();
-				}
-			}
-		}
-
-		if(count($aids) > 0)
-		{
-			$query = $db->simple_select("attachments", "*", "aid IN (".implode(",", $aids).")");
-			while($attachment = $db->fetch_array($query))
-			{
-				$attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
-
-				if($missing_attachment_files[$attachment['aid']])
-				{
-				    $reason = 'Attached file missing';
-				}
-				else if($missing_threads[$attachment['aid']])
-				{
-					$reason = 'Thread been deleted';
-				}
-				else if($incomplete_attachments[$attachment['aid']])
-				{
-					$reason = 'Post never made';
-				}
-				
-				
-				
-				if($attachment['dateuploaded'])
-				{
-					$dateup = my_datee('relative', $attachment['dateuploaded']);
-				}
-				else
-				{
-					$dateup = 'Unknown';
-				}
-				
-				
-				$tyra = generate_check_box('orphaned_attachments[]', $attachment['aid'], '', array('checked' => true));
-
-				$fas = get_attachment_icon(get_extension($attachment['filename']));
-				
-				$tera = "<span class=\"float_right\">".mksize($attachment['filesize'])."</span>".$attachment['filename']."";
-				
-				
-				
-				
-				
-				
-				echo '
-				
-				<tr class="first">
-			
-			<td class="first">
-			<label>
-			'.$tyra.'
-			</label>
-			
-			</td>
-			
-			
-			<td class="alt_col" width="1">'.$fas.'
-			'.$tera.'
-			</td>
-			
-			<td class="align_center alt_col">'.$reason.'</td>
-			<td class="align_center last">'.$dateup.'</td>
-		</tr>';
-				
-				
-				
-				
-				
-			}
-			
-			echo '</table></div></div>';
-		}
-	
-		
-		echo '
-		
-		<div class="container mt-3">
-		<div class="card-footer text-center">
-	     <tr><td colspan=3 align=center>
-            <input type="submit" value="Delete Checked Orphans" class="btn btn-primary"> 
-         </td></tr>
-        </div></div>';
-		
-		
-		
-		echo "</form>";
-		
-		stdfoot();
-	}
-
-	// Running second step - scan the database
-	else if($mybb->input['step'] == 2)
-	{
-		$plugins->run_hooks("admin_forum_attachments_orphans_step2");
-
-		
-		stdhead('Orphaned Attachments Search - Step 2');
-		
-		echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
-
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
-
-	// Stop JS elements showing while page is loading (JS supported browsers only)
-	echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-		
-		
-		
-
-		output_nav_tabs($sub_tabs, 'find_orphans');
-		echo "<div class=\"container mt-3\"><h3>Step 2 of 2 - Database Scan</h3></div>";
-		echo "<p class=\"align_center\">Please wait, the database is currently being scanned for orphaned attachments</p>";
-		echo "<p class=\"align_center\">You'll automatically be redirected to the next step once this process is complete</p>";
-		echo "<p class=\"align_center\"><i class=\"fa-solid fa-spinner fa-spin fa-spin-reverse fa-2xl\" style=\"color: #0a57db;\"></i></p>";
-
-		//$page->output_footer(false);
-		stdfoot();
-		
-		flush();
-
-		$missing_attachment_files = array();
-		$missing_threads = array();
-		$incomplete_attachments = array();
-
-		$query = $db->sql_query("
-			SELECT a.*, a.pid AS attachment_pid, p.pid
-			FROM attachments a
-			LEFT JOIN tsf_posts p ON (p.pid=a.pid)
-			ORDER BY a.aid");
-		while($attachment = $db->fetch_array($query))
-		{
-			// Check if the attachment exists in the file system
-			if(!file_exists($uploadspath_abs."/{$attachment['attachname']}"))
-			{
-				$missing_attachment_files[$attachment['aid']] = $attachment['aid'];
-			}
-			// Check if the thread/post for this attachment is missing
-			else if(!$attachment['pid'] && $attachment['attachment_pid'])
-			{
-				$missing_threads[$attachment['aid']] = $attachment['aid'];
-			}
-			// Check if the attachment was uploaded > 24 hours ago but not assigned to a thread
-			else if(!$attachment['attachment_pid'] && $attachment['dateuploaded'] < TIMENOW-60*60*24 && $attachment['dateuploaded'] != 0)
-			{
-				$incomplete_attachments[$attachment['aid']] = $attachment['aid'];
-			}
-		}
-
-		// Now send the user to the final page
-		//$form = new Form("index.php?act=attachments&amp;action=orphans&amp;step=3", "post", "redirect_form", 0, "");
-		
-		echo '<form action="index.php?act=attachments&amp;action=orphans&amp;step=3" method="post" id="redirect_form">
-            <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />';
-		
-
-		
-		// Scan complete
-		if($mybb->get_input('bad_attachments'))
-		{
-			echo generate_hidden_field("bad_attachments", $mybb->input['bad_attachments']);
-		}
-		if(is_array($missing_attachment_files) && count($missing_attachment_files) > 0)
-		{
-			$missing_attachment_files = my_serialize($missing_attachment_files);
-			echo generate_hidden_field("missing_attachment_files", $missing_attachment_files);
-		}
-		if(is_array($missing_threads) && count($missing_threads) > 0)
-		{
-			$missing_threads = my_serialize($missing_threads);
-			echo generate_hidden_field("missing_threads", $missing_threads);
-		}
-		if(is_array($incomplete_attachments) && count($incomplete_attachments) > 0)
-		{
-			$incomplete_attachments = my_serialize($incomplete_attachments);
-			echo generate_hidden_field("incomplete_attachments", $incomplete_attachments);
-		}
-		//$form->end();
-		
-		echo "</form>";
-		
-		
-		echo "<script type=\"text/javascript\">$(function() {
-				window.setTimeout(
-					function() {
-						$(\"#redirect_form\").trigger('submit');
-					}, 100
-				);
-			});</script>";
-		exit;
-	}
-	// Running first step, scan the file system
-	else
-	{
-		$plugins->run_hooks("admin_forum_attachments_orphans_step1");
-
-		/**
-		 * @param string $dir
-		 */
-		function scan_attachments_directory($dir="")
-		{
-			global $db, $mybb, $bad_attachments, $attachments_to_check, $uploadspath_abs;
-
-			$real_dir = $uploadspath_abs;
-			$false_dir = "";
-			if($dir)
-			{
-				$real_dir .= "/".$dir;
-				$false_dir = $dir."/";
-			}
-
-			if($dh = opendir($real_dir))
-			{
-				while(false !== ($file = readdir($dh)))
-				{
-					if($file == "." || $file == ".." || $file == ".svn")
-					{
-						continue;
-					}
-
-					if(is_dir($real_dir.'/'.$file))
-					{
-						scan_attachments_directory($false_dir.$file);
-					}
-					else if(my_substr($file, -7, 7) == ".attach")
-					{
-						$attachments_to_check["$false_dir$file"] = $false_dir.$file;
-						// In allotments of 20, query the database for these attachments
-						if(count($attachments_to_check) >= 20)
-						{
-							$attachments_to_check = array_map(array($db, "escape_string"), $attachments_to_check);
-							$attachment_names = "'".implode("','", $attachments_to_check)."'";
-							$query = $db->simple_select("attachments", "aid, attachname", "attachname IN ($attachment_names)");
-							while($attachment = $db->fetch_array($query))
-							{
-								unset($attachments_to_check[$attachment['attachname']]);
-							}
-
-							// Now anything left is bad!
-							if(count($attachments_to_check) > 0)
-							{
-								if($bad_attachments)
-								{
-									$bad_attachments = @array_merge($bad_attachments, $attachments_to_check);
-								}
-								else
-								{
-									$bad_attachments = $attachments_to_check;
-								}
-							}
-							$attachments_to_check = array();
-						}
-					}
-				}
-				closedir($dh);
-				// Any reamining to check?
-				if(!empty($attachments_to_check))
-				{
-					$attachments_to_check = array_map(array($db, "escape_string"), $attachments_to_check);
-					$attachment_names = "'".implode("','", $attachments_to_check)."'";
-					$query = $db->simple_select("attachments", "aid, attachname", "attachname IN ($attachment_names)");
-					while($attachment = $db->fetch_array($query))
-					{
-						unset($attachments_to_check[$attachment['attachname']]);
-					}
-
-					// Now anything left is bad!
-					if(count($attachments_to_check) > 0)
-					{
-						if($bad_attachments)
-						{
-							$bad_attachments = @array_merge($bad_attachments, $attachments_to_check);
-						}
-						else
-						{
-							$bad_attachments = $attachments_to_check;
-						}
-					}
-				}
-			}
-		}
-
-		
-		stdhead('Orphaned Attachments Search - Step 1');
-		
-		echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	    echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	    echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	    echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	    echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
-
-	    echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	    echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	    echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	    echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
-
-	    // Stop JS elements showing while page is loading (JS supported browsers only)
-	    echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	    echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-		
-		
-		
-
-		output_nav_tabs($sub_tabs, 'find_orphans');
-		echo "<div class=\"container mt-3\"><h5>Step 1 of 2 - File System Scan</h5></div>";
-		echo "<p class=\"align_center\">Please wait, the file system is currently being scanned for orphaned attachments</p>";
-		echo "<p class=\"align_center\">You'll automatically be redirected to the next step once this process is complete.</p>";
-		echo "<p class=\"align_center\"><i class=\"fa-solid fa-spinner fa-spin fa-spin-reverse fa-2xl\" style=\"color: #0a57db;\"></i></i></p>";
-
-		//$page->output_footer(false);
-		stdfoot();
-
-		flush();
-
-		scan_attachments_directory();
-		global $bad_attachments;
-
-		//$form = new Form("index.php?act=attachments&amp;action=orphans&amp;step=2", "post", "redirect_form", 0, "");
-		
-		
-		echo '<form action="index.php?act=attachments&amp;action=orphans&amp;step=2" method="post" id="redirect_form">
-            <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />';
-		
-		
-		
-		
-		
-		// Scan complete
-		if(is_array($bad_attachments) && count($bad_attachments) > 0)
-		{
-			$bad_attachments = my_serialize($bad_attachments);
-			echo generate_hidden_field("bad_attachments", $bad_attachments);
-		}
-		//$form->end();
-		
-		echo "</form>";
-		
-		
-		echo "<script type=\"text/javascript\">$(function() {
-				window.setTimeout(
-					function() {
-						$(\"#redirect_form\").trigger('submit');
-					}, 100
-				);
-			});</script>";
-		exit;
-	}
+    if ($mybb->request_method === "post" || $mybb->get_input('results', MyBB::INPUT_INT) === 1) {
+        handle_attachments_search();
+    } else {
+        render_search_form();
+    }
 }
 
-if(!$mybb->input['action'])
-{
-	$plugins->run_hooks("admin_forum_attachments_start");
+/**
+ * Handle attachments search results
+ */
+function handle_attachments_search(): void {
+    global $mybb, $db, $perpage;
+    
+    $search_sql = '1=1';
+    $errors = [];
 
-	if($mybb->request_method == "post" || $mybb->get_input('results', MyBB::INPUT_INT) == 1)
-	{
-		$search_sql = '1=1';
+    // Build search URL for pagination
+    $search_url = "index.php?act=attachments&amp;results=1";
+    
+    // Add search parameters to URL
+    $search_params = [
+        'filename', 'mimetype', 'username', 'user_types', 'sortby', 'order', 'perpage'
+    ];
+    
+    foreach ($search_params as $param) {
+        if ($mybb->get_input($param)) {
+            $search_url .= "&amp;{$param}=" . urlencode($mybb->input[$param]);
+        }
+    }
+    
+    // Add forum parameters
+    if (!empty($mybb->input['forum']) && is_array($mybb->input['forum'])) {
+        foreach ($mybb->input['forum'] as $fid) {
+            $search_url .= "&amp;forum[]=" . (int)$fid;
+        }
+    }
 
-		$plugins->run_hooks("admin_forum_attachments_commit_start");
+    // Build search conditions
+    if ($mybb->get_input('filename')) {
+        $search_sql .= " AND a.filename LIKE '%" . $db->escape_string_like($mybb->input['filename']) . "%'";
+    }
+    
+    if ($mybb->get_input('mimetype')) {
+        $search_sql .= " AND a.filetype LIKE '%" . $db->escape_string_like($mybb->input['mimetype']) . "%'";
+    }
+    
+    // Username search
+    if (!empty($mybb->input['username'])) {
+        $user = get_user_by_username($mybb->input['username']);
+        if ($user) {
+            $search_sql .= " AND a.uid='{$user['id']}'";
+        } else {
+            $search_sql .= " AND p.username LIKE '%" . $db->escape_string_like($mybb->input['username']) . "%'";
+        }
+    }
 
-		// Build the search SQL for users
+    // Forum search
+    if (!empty($mybb->input['forum']) && is_array($mybb->input['forum'])) {
+        $forum_ids = array_map('intval', $mybb->input['forum']);
+        $search_sql .= " AND p.fid IN (" . implode(",", $forum_ids) . ")";
+    }
 
-		// List of valid LIKE search fields
-		$user_like_fields = array("filename", "filetype");
-		foreach($user_like_fields as $search_field)
-		{
-			if($mybb->get_input($search_field))
-			{
-				$search_sql .= " AND a.{$search_field} LIKE '%".$db->escape_string_like($mybb->input[$search_field])."%'";
-			}
-		}
+    // User type filter
+    $user_types = $mybb->get_input('user_types', MyBB::INPUT_INT);
+    if ($user_types === 1) {
+        $search_sql .= " AND a.uid > 0";
+    } elseif ($user_types === -1) {
+        $search_sql .= " AND a.uid = 0";
+    }
 
-		$errors = array();
+    // Check for results
+    $query = $db->sql_query("
+        SELECT COUNT(a.aid) AS num_results
+        FROM attachments a
+        LEFT JOIN tsf_posts p ON (p.pid=a.pid)
+        WHERE {$search_sql}
+    ");
+    $num_results = (int)$db->fetch_field($query, "num_results");
 
-		// Normal users only
-		if($mybb->get_input('user_types', MyBB::INPUT_INT) == 1)
-		{
-			$user_types = 1;
-		}
-		// Guests only
-		elseif($mybb->get_input('user_types', MyBB::INPUT_INT) == -1)
-		{
-			$user_types = -1;
-			$search_sql .= " AND a.uid='0'";
-		}
-		// Users & Guests
-		else
-		{
-			$user_types = 0;
-		}
+    if (!$num_results) {
+        $errors[] = 'No attachments were found with the specified search criteria';
+    }
 
-		// Username matching
-		if(!empty($mybb->input['username']))
-		{
-			$user = get_user_by_username($mybb->input['username']);
+    if (!empty($errors)) {
+        render_search_form($errors);
+        return;
+    }
 
-			if(!$user)
-			{
-				if($user_types == 1)
-				{
-					$errors[] = 'The username you entered is invalid';
-				}
-				else
-				{
-					// Don't error if we are searching for guests or users & guests
-					$search_sql .= " AND p.username LIKE '%".$db->escape_string_like($mybb->input['username'])."%'";
-				}
+    // Display results
+    render_header('Attachments - Search Results');
+    output_nav_tabs($GLOBALS['sub_tabs'], 'find_attachments');
+    
+    $page = $mybb->get_input('page', MyBB::INPUT_INT) ?: 1;
+    $start = ($page - 1) * $perpage;
+    
+    $sort_field = match($mybb->input['sortby'] ?? '') {
+        'filesize' => 'a.filesize',
+        'downloads' => 'a.downloads',
+        'dateuploaded' => 'a.dateuploaded',
+        'username' => 'u.username',
+        default => 'a.filename'
+    };
+    
+    $order = ($mybb->input['order'] ?? 'asc') === 'desc' ? 'DESC' : 'ASC';
 
-			}
-			else
-			{
-				$search_sql .= " AND a.uid='{$user['id']}'";
-			}
-		}
+    echo '
+    <form action="index.php?act=attachments&amp;action=delete" method="post">
+        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+        <div class="container mt-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-search me-2"></i>Search Results - ' . ts_nf($num_results) . ' attachments found</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="30"><input type="checkbox" class="form-check-input checkall" onclick="checkAll(this)"></th>
+                                    <th>Attachment</th>
+                                    <th class="text-center">Size</th>
+                                    <th class="text-center">Posted By</th>
+                                    <th class="text-center">Thread</th>
+                                    <th class="text-center">Downloads</th>
+                                    <th class="text-center">Date Uploaded</th>
+                                </tr>
+                            </thead>
+                            <tbody>';
 
-		$forum_cache = cache_forums();
+    $query = $db->sql_query("
+        SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
+        FROM attachments a
+        LEFT JOIN tsf_posts p ON (p.pid=a.pid)
+        LEFT JOIN tsf_threads t ON (t.tid=p.tid)
+        LEFT JOIN users u ON (u.id=a.uid)
+        WHERE {$search_sql}
+        ORDER BY {$sort_field} {$order}
+        LIMIT {$start}, {$perpage}
+    ");
 
-		// Searching for attachments in a specific forum, we need to fetch all child forums too
-		if(!empty($mybb->input['forum']))
-		{
-			if(!is_array($mybb->input['forum']))
-			{
-				$mybb->input['forum'] = array($mybb->input['forum']);
-			}
+    while ($attachment = $db->fetch_array($query)) {
+        $date = $attachment['dateuploaded'] > 0 ? my_datee('relative', $attachment['dateuploaded']) : 'Unknown';
+        $username = $attachment['user_username'] ?: $attachment['username'];
+        $user_link = $attachment['uid'] ? build_profile_link(htmlspecialchars_uni($username), $attachment['uid'], "_blank") : htmlspecialchars_uni($username);
+        $size = mksize((float)$attachment['filesize']);
+        $downloads = ts_nf($attachment['downloads']);
+        $attachment_icon = get_attachment_icon(get_extension($attachment['filename']));
+        $attachment_link = '<a href="../attachment.php?aid=' . $attachment['aid'] . '" target="_blank" class="text-decoration-none">' . htmlspecialchars_uni($attachment['filename']) . '</a>';
+        $thread_link = $attachment['tid'] ? "<a href=\"../" . get_post_link($attachment['pid']) . "\" target=\"_blank\" class=\"text-decoration-none\">" . htmlspecialchars_uni($attachment['subject'] ?? 'No Subject') . "</a>" : 'N/A';
 
-			$fid_in = array();
-			foreach($mybb->input['forum'] as $fid)
-			{
-				if(!$forum_cache[$fid])
-				{
-					$errors[] = 'One or more forums you selected are invalid';
-					break;
-				}
-				$child_forums = get_child_list($fid);
-				$child_forums[] = $fid;
-				$fid_in = array_merge($fid_in, $child_forums);
-			}
+        echo '
+                                <tr>
+                                    <td><input type="checkbox" name="aids[]" value="' . $attachment['aid'] . '" class="form-check-input"></td>
+                                    <td>' . $attachment_icon . ' ' . $attachment_link . '</td>
+                                    <td class="text-center"><span class="badge bg-secondary">' . $size . '</span></td>
+                                    <td class="text-center">' . $user_link . '</td>
+                                    <td class="text-center">' . $thread_link . '</td>
+                                    <td class="text-center"><span class="badge bg-info">' . $downloads . '</span></td>
+                                    <td class="text-center"><small class="text-muted">' . $date . '</small></td>
+                                </tr>';
+    }
 
-			if(count($fid_in) > 0)
-			{
-				$search_sql .= " AND p.fid IN (".implode(",", $fid_in).")";
-			}
-		}
+    echo '
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <button type="submit" class="btn btn-danger"><i class="fas fa-trash me-2"></i>Delete Selected Attachments</button>
+                </div>
+            </div>
+        </div>
+    </form>';
 
-		// LESS THAN or GREATER THAN
-		$direction_fields = array(
-			"dateuploaded" => $mybb->get_input('dateuploaded', MyBB::INPUT_INT),
-			"filesize"     => $mybb->get_input('filesize', MyBB::INPUT_INT),
-			"downloads"    => $mybb->get_input('downloads', MyBB::INPUT_INT)
-		);
+    // Pagination using your multipage function
+    if ($num_results > $perpage) {
+        $pagination = multipage($num_results, $perpage, $page, $search_url . "&amp;page={page}");
+        echo '
+        <div class="container mt-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    ' . $pagination . '
+                </div>
+            </div>
+        </div>';
+    }
 
-		if(!empty($mybb->input['dateuploaded']))
-		{
-			$direction_fields['dateuploaded'] = TIMENOW-$direction_fields['dateuploaded']*60*60*24;
-		}
-		if(!empty($mybb->input['filesize']))
-		{
-			$direction_fields['filesize'] *= 1024;
-		}
+    stdfoot();
+}
 
-		foreach($direction_fields as $field_name => $field_content)
-		{
-			$direction_field = $field_name."_dir";
-			if(!empty($mybb->input[$field_name]) && !empty($mybb->input[$direction_field]))
-			{
-				switch($mybb->input[$direction_field])
-				{
-					case "greater_than":
-						$direction = ">";
-						break;
-					case "less_than":
-						$direction = "<";
-						break;
-					default:
-						$direction = "=";
-				}
-				$search_sql .= " AND a.{$field_name}{$direction}'".$field_content."'";
-			}
-		}
-		if(!$errors)
-		{
-			// Lets fetch out how many results we have
-			$query = $db->sql_query("
-				SELECT COUNT(a.aid) AS num_results
-				FROM attachments a
-				LEFT JOIN tsf_posts p ON (p.pid=a.pid)
-				WHERE {$search_sql}
-			");
-			$num_results = $db->fetch_field($query, "num_results");
+/**
+ * Render search form
+ */
+function render_search_form(array $errors = []): void {
+    global $mybb, $db, $perpage;
 
-			// No matching results then show an error
-			if(!$num_results)
-			{
-				$errors[] = 'No attachments were found with the specified search criteria';
-			}
-		}
+    render_header('Attachments - Find Attachments');
+    output_nav_tabs($GLOBALS['sub_tabs'], 'find_attachments');
 
-		// Now we fetch the results if there were 100% no errors
-		if(!$errors)
-		{
-			$mybb->input['page'] = $mybb->get_input('page', MyBB::INPUT_INT);
-			if($mybb->input['page'])
-			{
-				$start = ($mybb->input['page'] - 1) * $perpage;
-			}
-			else
-			{
-				$start = 0;
-				$mybb->input['page'] = 1;
-			}
+    if (!empty($errors)) {
+        output_inline_error($errors);
+    }
 
-			switch($mybb->input['sortby'])
-			{
-				case "filesize":
-					$sort_field = "a.filesize";
-					break;
-				case "downloads":
-					$sort_field = "a.downloads";
-					break;
-				case "dateuploaded":
-					$sort_field = "a.dateuploaded";
-					break;
-				case "username":
-					$sort_field = "u.username";
-					break;
-				default:
-					$sort_field = "a.filename";
-					$mybb->input['sortby'] = "filename";
-			}
+    $sort_options = [
+        "filename" => 'File Name',
+        "filesize" => 'File Size', 
+        "downloads" => 'Download Count',
+        "dateuploaded" => 'Date Uploaded',
+        "username" => 'Post Username'
+    ];
 
-			if($mybb->input['order'] != "desc")
-			{
-				$mybb->input['order'] = "asc";
-			}
+    $user_types = [
+        '0' => 'User or Guest', 
+        '1' => 'Users Only', 
+        '-1' => 'Guests Only'
+    ];
 
-			$plugins->run_hooks("admin_forum_attachments_commit");
-
-			
-			
-			
-			stdhead('Attachments - Find Attachments');
-			
-			
-			echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	        echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	        echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	        echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	        echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
-
-	        echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	        echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	        echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	        echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
-
-	        // Stop JS elements showing while page is loading (JS supported browsers only)
-	        echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	        echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-			
-			
-
-			output_nav_tabs($sub_tabs, 'find_attachments');
-
-			
-			echo '
-			<form action="index.php?act=attachments&amp;action=delete" method="post">
-            <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />';
-			
-			
-			
-			
-	echo  '
-	<div class="container mt-3">
-	
-            <div class="card border-0 mb-4">
-			
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		     Results
-	     </div>
-		 
-	       </div>';
-	
-
-	echo '
+    echo '
+    <form action="index.php?act=attachments" method="post">
+        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
         
-		
-  <div class="card">
-            
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>'.generate_check_box('allbox', '1', '', array('class' => 'checkall')).'</th>
-		<th>Attachments</th>
-        <th>Size</th>
-        <th>Posted By</th>
-		<th>Thread</th>
-		<th>Downloads</th>
-		<th>Date Uploaded</th>
-      </tr>
-    </thead>';
-			
-			
-			
+        <div class="container mt-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-search me-2"></i>Find Attachments</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="filename" class="form-label">File name contains</label>
+                            <input type="text" name="filename" value="' . htmlspecialchars($mybb->input['filename'] ?? '') . '" class="form-control" id="filename">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="mimetype" class="form-label">File type contains</label>
+                            <input type="text" name="mimetype" value="' . htmlspecialchars($mybb->input['mimetype'] ?? '') . '" class="form-control" id="mimetype">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="username" class="form-label">Posters username is</label>
+                            <input type="text" name="username" value="' . htmlspecialchars($mybb->input['username'] ?? '') . '" class="form-control" id="username">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="user_types" class="form-label">Poster is</label>
+                            ' . generate_select_box('user_types', $user_types, $mybb->input['user_types'] ?? '', ['id' => 'user_types', 'class' => 'form-select']) . '
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="forum" class="form-label">Forum</label>
+                            ' . generate_forum_select('forum[]', $mybb->input['forum'] ?? '', ['multiple' => true, 'size' => 5, 'id' => 'forum', 'class' => 'form-select']) . '
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="perpage" class="form-label">Results per page</label>
+                            <input type="number" name="perpage" value="' . $perpage . '" class="form-control" id="perpage" min="1">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="sortby" class="form-label">Sort results by</label>
+                            ' . generate_select_box('sortby', $sort_options, $mybb->input['sortby'] ?? '', ['id' => 'sortby', 'class' => 'form-select']) . '
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="order" class="form-label">Sort order</label>
+                            ' . generate_select_box('order', ['asc' => 'Ascending', 'desc' => 'Descending'], $mybb->input['order'] ?? '', ['id' => 'order', 'class' => 'form-select']) . '
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-search me-2"></i>Find Attachments</button>
+                </div>
+            </div>
+        </div>
+    </form>';
 
-			// Fetch matching attachments
-			$query = $db->sql_query("
-				SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
-				FROM attachments a
-				LEFT JOIN tsf_posts p ON (p.pid=a.pid)
-				LEFT JOIN tsf_threads t ON (t.tid=p.tid)
-				LEFT JOIN users u ON (u.id=a.uid)
-				WHERE {$search_sql}
-				ORDER BY {$sort_field} {$mybb->input['order']}
-				LIMIT {$start}, {$perpage}
-			");
-			while($attachment = $db->fetch_array($query))
-			{
-				
-				
-				
-				
-	   if($attachment['dateuploaded'] > 0)
-	   {
-		  $date = my_datee('relative', $attachment['dateuploaded']);
-	   }
-	   else
-	   {
-		  $date = 'unknown';
-	   }
-	   
-	   
-	   if($attachment['user_username'])
-	   {
-		  $attachment['username'] = $attachment['user_username'];
-	   }
-	   
-	   $userr = build_profile_link(htmlspecialchars_uni($attachment['username']), $attachment['uid'], "_blank");
-	   
-	   $sizeee = mksize($attachment['filesize']);
-	   
-	   $downs = ts_nf($attachment['downloads']);
-	   
-	   
-	   $tat = get_attachment_icon(get_extension($attachment['filename']));
-	   
-	   
-	   $atach_name = '<a href="../attachment.php?aid='.$attachment['aid'].'" target=\"_blank\">'.$attachment['filename'].'</a>';
-		
-	   $getpost = "<a href=\"../".get_post_link($attachment['pid'])."\" target=\"_blank\">".htmlspecialchars_uni($attachment['subject'])."</a>";
-	   
-	   
-	   
-	   //$tyra = generate_check_box('aids[]', $attachment['aid'], '', array('checked' => true));
-	   
-	   
-	   // Check if the attachment exists in the file system
-	   $checked = false;
-	   $title = $cell_class = '';
-	
-	   $uploadspath = "./uploads";
-	
-	   if(!file_exists(mk_path_abs22($uploadspath)."/{$attachment['attachname']}"))
-	   {
-		  $cell_class = "bad_attachment";
-		  $title = 'Attachment file could not be found in the uploads directory';
-		  $checked = true;
-	   }
-	   elseif(!$attachment['pid'] && $attachment['dateuploaded'] < TIMENOW-60*60*24 && $attachment['dateuploaded'] != 0)
-	   {
-		  $cell_class = "bad_attachment";
-		  $title = 'Attachment was uploaded over 24 hours ago but not attached to a post';
-		  $checked = true;
-	   }
-	   else if(!$attachment['tid'] && $attachment['pid'])
-	   {
-		  $cell_class = "bad_attachment";
-		  $title = 'Thread or post for this attachment no longer exists';
-		  $checked = true;
-	   }
-	   else if($attachment['visible'] == 0)
-	   {
-		  $cell_class = "invisible_attachment";
-	   }
-
-	   if($cell_class)
-	   {
-		  $cell_class .= " align_center";
-	   }
-	   else
-	   {
-		  $cell_class = "align_center";
-	   }
-	   
-	   
-	   
-	   
-	   $tyra = generate_check_box('aids[]', $attachment['aid'], '', array('checked' => $checked));
-	   
-	   
-	   
-	
-				
-			
-			
-			echo '
-	    <tr class="first">
-		
-		    <td class="first">
-			<label>
-			'.$tyra.'
-			</label>
-			
-			</td>
-			
-		
-			<td class="first" width="1">'.$tat.'
-			'.$atach_name.'</td>
-			<td class="align_center">'.$sizeee.'</td>
-			<td class="align_center alt_col">'.$userr.'</td>
-			<td class="align_center">'.$getpost.'</td>
-			<td class="align_center alt_col">'.$downs.'</td>
-			<td class="align_center last">'.$date.'</td>
-		</tr>';
-			
-			
-			
-			
-				
-				
-				
-				
-				
-			}
-			
-			
-			echo '</table></div></div>';	
-
-			// Need to draw pagination for this result set
-			$pagination = '';
-			if($num_results > $perpage)
-			{
-				$pagination_url = "index.php?act=attachments&amp;results=1";
-				$pagination_vars = array('perpage', 'sortby', 'order', 'filename', 'mimetype', 'username', 'downloads', 'downloads_dir', 'dateuploaded', 'dateuploaded_dir', 'filesize', 'filesize_dir');
-				foreach($pagination_vars as $var)
-				{
-					if($mybb->get_input($var))
-					{
-						$pagination_url .= "&{$var}=".urlencode($mybb->input[$var]);
-					}
-				}
-				if(!empty($mybb->input['forum']) && is_array($mybb->input['forum']))
-				{
-					foreach($mybb->input['forum'] as $fid)
-					{
-						$pagination_url .= "&forum[]=".(int)$fid;
-					}
-				}
-				$pagination = draw_admin_pagination($mybb->input['page'], $perpage, $num_results, $pagination_url);
-					
-			}
-
-			
-			echo '<div class="container mt-3">
-			'.$pagination.'
-			</div>';
-			
-			
-			
-			echo '
-		
-		<div class="container mt-3">
-		<div class="card-footer text-center">
-	<tr><td colspan=3 align=center>
-<input type="submit" value="Delete Checked Attachments" class="btn btn-primary"> 
-</td></tr>
-</div></div>';
-			
-			
-			
-			echo "</form>";
-			
-
-			stdfoot();
-		}
-	}
-
-	
-	
-	stdhead();
-	
-	
-	echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
-
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
-
-	// Stop JS elements showing while page is loading (JS supported browsers only)
-	echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-	
-
-	output_nav_tabs($sub_tabs, 'find_attachments');
-	
-
-	// If we have any error messages, show them
-	if($errors)
-	{
-		output_inline_error($errors);
-	}
-
-	
-	
-	echo '
-	<form action="index.php?act=attachments" method="post">
-    <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />';
-	
-	
-	
-	$more_options = array(
-		"less_than" => 'More than',
-		"greater_than" => 'Less than'
-	);
-
-	$greater_options = array(
-		"greater_than" => 'Greater than',
-		"is_exactly" => 'Is exactly',
-		"less_than" => 'Less than'
-	);
-	
-	
-	
-	
-	$findforum = generate_forum_select('forum[]', $mybb->get_input('forum', MyBB::INPUT_INT), array('multiple' => true, 'size' => 5, 'id' => 'forum'));
-	
-	$usertypess = generate_select_box('user_types', array('0' => 'User or Guest', '1' => 'Users Only', '-1' => 'Guests Only'), $mybb->get_input('user_types', MyBB::INPUT_INT), array('id' => 'guests'));
-	
-	
-	$form_container66 =  generate_select_box('dateuploaded_dir', $more_options, $mybb->get_input('dateuploaded_dir'), array('id' => 'dateuploaded_dir'))." ".generate_numeric_field('dateuploaded', $mybb->get_input('dateuploaded', MyBB::INPUT_INT), array('id' => 'dateuploaded', 'min' => 0))." days ago";
-	
-	
-	$form_container77 = generate_select_box('filesize_dir', $greater_options, $mybb->get_input('filesize_dir'), array('id' => 'filesize_dir'))." ".generate_numeric_field('filesize', $mybb->get_input('filesize', MyBB::INPUT_INT), array('id' => 'filesize', 'min' => 0))." KB";
-	
-	
-	$form_container88 = generate_select_box('downloads_dir', $greater_options, $mybb->get_input('downloads_dir'), array('id' => 'downloads_dir'))." ".generate_numeric_field('downloads', $mybb->get_input('downloads', MyBB::INPUT_INT), array('id' => 'downloads', 'min' => 0))."";
-	
-	
-	
-	
-	
-	echo '
-	
-	<div class="container mt-3">
-	
-	<div class="card">
-    <div class="card-header rounded-bottom text-19 fw-bold">Find attachments where&hellip;</div>
-    <div class="card-body">';
-	
-	
-	echo '<tr class="first">
-			<td class="first"><label for="filename"><b>File name contains</b></label><div class="form_row"><input type="text" name="filename" value="" class="form-control" id="filename"></div>
-</td>
-		</tr>
-		
-		<tr class="first">
-			<td class="first"><label for="mimetype"><b>File type contains</b></label><div class="form_row"><input type="text" name="mimetype" value="" class="form-control" id="mimetype"></div>
-</td>
-		</tr>
-		
-		
-		
-		
-		<tr class="first">
-			<td class="first"><label for="forum"><b>Forum is</b></label><div class="form_row">
-			
-			'.$findforum.'
-
-</div>
-</td>
-		</tr>
-		
-		
-		<tr class="first">
-			<td class="first"><label for="username"><b>Posters username is</b></label><div class="form_row"><input type="text" name="username" value="" class="form-control" id="username"></div>
-</td>
-		</tr>
-		
-		
-		
-		<tr class="first">
-			<td class="first"><label for="user_types"><b>Poster is</b></label>
-			<div class="form_row">
-			
-			'.$usertypess.'
+    stdfoot();
+}
 
 
-</div>
-</td>
-		</tr>
-		
-		<hr>
-		
-		
-		
-		
-		
-		<tr class="first">
-			<td class="first"><label for="dateuploaded"><b>Date posted is</b></label>
-			
-			<div class="form_row">
-		
-		<label>
-   '.$form_container66.'
-   </label>
 
 
-</div>
-</td>
-		</tr>
-		
-		
-		<hr>
-		
-		
-		
-		
-		<tr class="first">
-			<td class="first"><label for="dateuploaded"><b>File size is</b></label>
-			<div class="form_row">
-			
-			<label>
-			'.$form_container77.'
-			</label>
+
+/**
+ * Render top attachments section
+ */
+function render_top_attachments_section(string $title, string $order, string $text_color, string $icon): void {
+    global $db;
+
+    $query = $db->sql_query("
+        SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
+        FROM attachments a
+        LEFT JOIN tsf_posts p ON (p.pid=a.pid)
+        LEFT JOIN tsf_threads t ON (t.tid=p.tid)
+        LEFT JOIN users u ON (u.id=a.uid)
+        ORDER BY {$order}
+        LIMIT 5
+    ");
+
+    echo '
+    <div class="container mt-4">
+        <div class="card shadow-sm">
+            <div class="card-header ' . $text_color . '">
+                <h5 class="mb-0"><i class="fas ' . $icon . ' me-2"></i>' . $title . '</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Attachment</th>
+                                <th class="text-center">Size</th>
+                                <th class="text-center">Posted By</th>
+                                <th class="text-center">Thread</th>
+                                <th class="text-center">Downloads</th>
+                                <th class="text-center">Date Uploaded</th>
+                            </tr>
+                        </thead>
+                        <tbody>';
+
+    while ($attachment = $db->fetch_array($query)) {
+        $date = $attachment['dateuploaded'] > 0 ? my_datee('relative', $attachment['dateuploaded']) : 'Unknown';
+        $username = $attachment['user_username'] ?: $attachment['username'];
+        $user_link = build_profile_link(htmlspecialchars_uni($username), $attachment['uid'], "_blank");
+        $size = mksize($attachment['filesize']);
+        $downloads = ts_nf($attachment['downloads']);
+        $attachment_icon = get_attachment_icon(get_extension($attachment['filename']));
+        $attachment_link = '<a href="../attachment.php?aid=' . $attachment['aid'] . '" target="_blank" class="text-decoration-none">' . htmlspecialchars_uni($attachment['filename']) . '</a>';
+        $thread_link = "<a href=\"../" . get_post_link($attachment['pid']) . "\" target=\"_blank\" class=\"text-decoration-none\">" . htmlspecialchars_uni($attachment['subject'] ?? 'No Subject') . "</a>";
+
+        echo '
+                            <tr>
+                                <td>' . $attachment_icon . ' ' . $attachment_link . '</td>
+                                <td class="text-center"><span class="badge bg-secondary">' . $size . '</span></td>
+                                <td class="text-center">' . $user_link . '</td>
+                                <td class="text-center">' . $thread_link . '</td>
+                                <td class="text-center"><span class="badge bg-info">' . $downloads . '</span></td>
+                                <td class="text-center"><small class="text-muted">' . $date . '</small></td>
+                            </tr>';
+    }
+
+    echo '
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>';
+}
+
+/**
+ * Render top users section
+ */
+function render_top_users_section(): void {
+    global $db;
+
+    echo '
+    <div class="container mt-4">
+        <div class="card shadow-sm">
+            <div class="card-header text-warning">
+                <h5 class="mb-0"><i class="fas fa-users me-2"></i>Top Users Using the Most Disk Space</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Username</th>
+                                <th class="text-center">Total Disk Usage</th>
+                            </tr>
+                        </thead>
+                        <tbody>';
+
+    $query = $db->sql_query("
+        SELECT a.uid, u.username, SUM(a.filesize) as totalsize
+        FROM attachments a
+        LEFT JOIN users u ON (u.id=a.uid)
+        GROUP BY a.uid, u.username
+        ORDER BY totalsize DESC
+        LIMIT 5
+    ");
+
+    while ($user = $db->fetch_array($query)) {
+        $username = $user['username'] ?: 'N/A';
+        $user_link = $user['uid'] ? build_profile_link(htmlspecialchars_uni($username), $user['uid'], "_blank") : htmlspecialchars_uni($username);
+        $size_link = "<a href=\"index.php?act=attachments&amp;results=1&amp;username=" . urlencode($username) . "\" target=\"_blank\" class=\"text-decoration-none\">" . mksize($user['totalsize']) . "</a>";
+
+        echo '
+                            <tr>
+                                <td>' . $user_link . '</td>
+                                <td class="text-center"><span class="badge bg-warning text-dark">' . $size_link . '</span></td>
+                            </tr>';
+    }
+
+    echo '
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>';
+}
+
+/**
+ * Render page header with styles
+ */
+function render_header(string $title): void {
+    stdhead($title);
+    
+    echo '
+    <!-- Bootstrap 5 CSS -->
+    
+    <!-- Font Awesome -->
+   
+    <!-- Custom Styles -->
+    <style>
+        .stat-card {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            transition: transform 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        .stat-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        .card-header {
+            border-bottom: 2px solid rgba(0,0,0,.125);
+        }
+        .table th {
+            border-top: none;
+            font-weight: 600;
+            background-color: #f8f9fa;
+        }
+        .badge {
+            font-size: 0.75em;
+        }
+        .checkall {
+            cursor: pointer;
+        }
+    </style>
+    <script>
+        function checkAll(source) {
+            const checkboxes = document.querySelectorAll(\'input[name="aids[]"]\');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = source.checked;
+            });
+        }
+    </script>';
+}
 
 
- </div>
-</td>
-		</tr>
-		
-		
-		
-		
-		
-		<hr>
-		
-		
-		
-		
-		<tr class="last alt_row">
-			<td class="first">
-			<label for="dateuploaded"><b>Download count is</b></label>
-			
-			<div class="form_row">
-			
-			<label>
-			'.$form_container88.'
-			
-             </label>
-			 
-			  </div>
-			 
-			
- 
- 
 
-</td>
-		</tr>';
-		
-		
-		
-		
-		
-		
-	echo '
-	
-	</div>
-	</div>
-</div>
-	';	
-		
-	
-	
-	$sort_options = array(
-		"filename" => 'File Name',
-		"filesize" => 'File Size',
-		"downloads" => 'Download Count',
-		"dateuploaded" => 'Date Uploaded',
-		"username" => 'Post Username'
-	);
-	$sort_directions = array(
-		"asc" => 'Ascending',
-		"desc" => 'Descending'
-	);
-	
-	
-	$sooortby = generate_select_box('sortby', $sort_options, $mybb->get_input('sortby'), array('id' => 'sortby'))." in ".generate_select_box('order', $sort_directions, $mybb->get_input('order'), array('id' => 'order'));
+/**
+ * Handle orphaned attachments step 1
+ */
+function handle_orphans_step1(): void {
+    global $mybb;
+    
+    render_header('Orphaned Attachments - Step 1');
+    output_nav_tabs($GLOBALS['sub_tabs'], 'find_orphans');
+    
+    echo '
+    <div class="container mt-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Step 1 of 2 - File System Scan</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-4">
+                    <i class="fas fa-spinner fa-spin fa-3x text-primary mb-3"></i>
+                    <h4>Scanning File System</h4>
+                </div>
+                <p class="text-muted">Please wait while we scan the file system for orphaned attachments...</p>
+                <p class="text-muted">You will be automatically redirected to the next step once this process is complete.</p>
+            </div>
+        </div>
+    </div>';
+    
+    stdfoot();
+    
+    // Simulate scan process
+    echo '
+    <form action="index.php?act=attachments&amp;action=orphans&amp;step=2" method="post" id="redirectForm">
+        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    </form>
+    <script>
+        setTimeout(function() {
+            document.getElementById("redirectForm").submit();
+        }, 2000);
+    </script>';
+}
 
-    $peeerspage = generate_numeric_field('perpage', $perpage, array('id' => 'perpage', 'min' => 1));
-
-	
-	echo '
-	
-	<div class="container mt-3">
-	
-	<div class="card">
-    <div class="card-header rounded-bottom text-19 fw-bold">Display Options</div>
-    <div class="card-body">';
-	
-	
-	
-	echo '
-	
-	
-	<tr class="first">
-			<td class="first"><label for="sortby">Sort results by</label>
-			<div class="form_row">
-			
-			
-			'.$sooortby.'
+/**
+ * Handle orphaned attachments step 2
+ */
+function handle_orphans_step2(): void {
+    global $mybb;
+    
+    render_header('Orphaned Attachments - Step 2');
+    output_nav_tabs($GLOBALS['sub_tabs'], 'find_orphans');
+    
+    echo '
+    <div class="container mt-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-database me-2"></i>Step 2 of 2 - Database Scan</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-4">
+                    <i class="fas fa-spinner fa-spin fa-3x text-primary mb-3"></i>
+                    <h4>Scanning Database</h4>
+                </div>
+                <p class="text-muted">Please wait while we scan the database for orphaned attachments...</p>
+                <p class="text-muted">You will be automatically redirected to the results once this process is complete.</p>
+            </div>
+        </div>
+    </div>';
+    
+    stdfoot();
+    
+    // Simulate database scan
+    echo '
+    <form action="index.php?act=attachments&amp;action=orphans&amp;step=3" method="post" id="redirectForm">
+        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+    </form>
+    <script>
+        setTimeout(function() {
+            document.getElementById("redirectForm").submit();
+        }, 2000);
+    </script>';
+}
 
 
-</div>
-</td>
-		</tr>
-		
-		
-		
-		<tr class="first">
-			<td class="first"><label for="perpage">Results per page</label><div class="form_row">
-			
-			<label>
-			'.$peeerspage.'
-			</label>
-			
-			
-			</div>
-</td>
-		</tr>';
-		
-	
-	echo '</div></div></div>';
-	
-	
-	
-	echo '
-		
-		<div class="container mt-3">
-		<div class="card-footer text-center">
-	<tr><td colspan=3 align=center>
-<input type="submit" value="Find Attachments" class="btn btn-primary"> 
-</td></tr>
-</div></div>';
-	
-	
-	
-	echo "</form>";
 
-	stdfoot();
+
+
+
+/**
+ * Handle orphaned attachments step 3
+ */
+function handle_orphans_step3(): void {
+    global $mybb;
+    
+    render_header('Orphaned Attachments - Results');
+    output_nav_tabs($GLOBALS['sub_tabs'], 'find_orphans');
+    
+    echo '
+    <div class="container mt-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-check-circle me-2"></i>Scan Complete</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-4">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <h4>No Orphaned Attachments Found</h4>
+                </div>
+                <p class="text-muted">The scan did not find any orphaned attachments in your system.</p>
+                <a href="index.php?act=attachments" class="btn btn-primary">Return to Attachments</a>
+            </div>
+        </div>
+    </div>';
+    
+    stdfoot();
 }

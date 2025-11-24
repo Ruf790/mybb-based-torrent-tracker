@@ -131,7 +131,7 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('
     <div class="alert alert-danger text-center mt-4" role="alert">
         <i class="fas fa-exclamation-triangle me-2"></i>
-        <strong>Error!</strong> Direct initialization of this file is not allowed.
+        <strong>Error!</strong> Direct initialization of this file is not allowed222.
     </div>');
 }
 
@@ -687,277 +687,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-
-
-<style>
-    #autocomplete-results {
-      position: absolute;
-      z-index: 1000;
-      width: 100%;
-      border: 1px solid #ccc;
-      background-color: #fff;
-      display: none;
-    }
-    #autocomplete-results.show {
-      display: block;
-    }
-	
-	
-mark {
-  background-color: #ffeb3b;
-  color: inherit;
-  padding: 0 2px;
-  border-radius: 2px;
-}
-	
-	
-
-	
-	
-  </style>
-
-
-
-
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    const modal = document.getElementById('manageTorrentModal');
-    const content = document.getElementById('manageTorrentContent');
-    const baseurl = "<?= $BASEURL ?>";  // Make sure this works!
-
-    
-	function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            alert('Link copied to clipboard!');
-        });
-    }
-    window.copyToClipboard = copyToClipboard;          
-	
-	
-	
-	
-
-    modal.addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const name = button.getAttribute('data-name');
-        const id = button.getAttribute('data-id');
-        const image = button.getAttribute('data-image');
-        const infohash = button.getAttribute('data-infohash') || ''; // Add data-infohash to button if possible
-
-        const imagePreview = image
-            ? `<img src="${image}" class="img-fluid rounded shadow-sm" alt="Preview">`
-            : '<div class="alert alert-secondary">No image preview</div>';
-
-        // You should fetch these values dynamically if available:
-        const seeders = button.getAttribute('data-seeders') || 'N/A';
-        const leechers = button.getAttribute('data-leechers') || 'N/A';
-        const completed = button.getAttribute('data-completed') || 'N/A';
-
-        const html = `
-            <h5><i class="fa-solid fa-magnet"></i> ${name}</h5>
-            <div class="row g-3 mt-3">
-                <div class="col-md-4">
-                    ${imagePreview}
-                    <div class="mt-3 text-center">
-                        <a href="${baseurl}/download.php?id=${id}" class="btn btn-success btn-sm">
-                            <i class="fa fa-download"></i> Download .torrent
-                        </a>
-                        <a href="magnet:?xt=urn:btih:${infohash}" class="btn btn-outline-primary btn-sm">
-                            <i class="fa fa-magnet"></i> Magnet Link
-                        </a>
-                    </div>
-                </div>
-                <div class="col-md-8">
-                    <ul class="list-group list-group-flush shadow-sm">
-                        <li class="list-group-item"><a href="${baseurl}/details.php?id=${id}"><i class="fa fa-eye"></i> View Torrent</a></li>
-                        <li class="list-group-item"><a href="${baseurl}/details.php?id=${id}#startcomments"><i class="fa fa-comments"></i> View Comments</a></li>
-                        <li class="list-group-item"><a href="${baseurl}/upload.php?id=${id}"><i class="fa fa-edit"></i> Edit Torrent</a></li>
-                        <li class="list-group-item"><a href="${baseurl}/admin/index.php?act=torrent_info&id=${id}"><i class="fa fa-info-circle"></i> Torrent Info</a></li>
-                        <li class="list-group-item"><a href="${baseurl}/admin/index.php?act=viewstats&id=${id}"><i class="fa fa-chart-bar"></i> Torrent Stats</a></li>
-                        <li class="list-group-item"><a href="${baseurl}/admin/index.php?act=nuketorrent&id=${id}" class="text-danger"><i class="fa fa-skull-crossbones"></i> Nuke Torrent</a></li>
-                        <li class="list-group-item"><a href="${baseurl}/admin/index.php?act=fastdelete&id=${id}" class="text-danger"><i class="fa fa-trash"></i> Delete Torrent</a></li>
-                    </ul>
-                    <div class="mt-3 d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="badge bg-success"><i class="fa fa-seedling"></i> Seeders: ${seeders}</span>
-                            <span class="badge bg-danger"><i class="fa fa-user-slash"></i> Leechers: ${leechers}</span>
-                            <span class="badge bg-secondary"><i class="fa fa-arrow-down"></i> Completed: ${completed}</span>
-                        </div>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="copyToClipboard('${baseurl}/details.php?id=${id}')">
-                            <i class="fa fa-copy"></i> Copy Link
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        content.innerHTML = html;
-
-        // Fetch extra torrent info if you want to override seeders/leechers/completed etc
-        fetch(`${baseurl}/admin/torrent_extra.php?id=${id}`)
-            .then(res => res.json())
-            .then(data => {
-                content.querySelector('.col-md-8').insertAdjacentHTML('beforeend', `
-                    <hr>
-                    <p><strong>Size:</strong> ${data.size}</p>
-                    <p><strong>Files:</strong> ${data.file_count}</p>
-                   
-                `);
-            });
-    });
-
-    
-	
-	
-	
-	// Live search functionality
-$(document).ready(function () {
-  const $input = $("#torrent-search");
-  const $results = $("#autocomplete-results");
-
-  let debounceTimer;
-
-  $input.on("input", function () {
-    const query = $(this).val().trim();
-
-    clearTimeout(debounceTimer);
-    if (query.length < 3) {
-      $results.removeClass("show").empty();
-      return;
-    }
-
-    debounceTimer = setTimeout(() => {
-      $.ajax({
-        url: "<?= $BASEURL ?>/search_torrents.php",
-        dataType: "json",
-        data: { input: query },
-        success: function (data) {
-          $results.empty();
-
-          if (!Array.isArray(data) || data.length === 0) {
-            $results.append('<a class="dropdown-item disabled">No results found</a>').addClass("show");
-            return;
-          }
-
-         
-	      data.forEach(item => {
-  if (!item.name || !item.id) return;
-  const img = item.image_url ? `<img src="${item.image_url}" alt="" style="width:40px;height:auto;margin-right:10px;">` : "";
-
-  // Highlight match in name
-  const regex = new RegExp("(" + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ")", "ig");
-  const highlightedName = item.name.replace(regex, '<mark>$1</mark>');
-
-  const $option = $(`<a class="dropdown-item d-flex align-items-center" href="${baseurl}/details.php?id=${item.id}">
-                      ${img}<span>${highlightedName}</span>
-                     </a>`);
-  $results.append($option);
-});
-		  
-		  
-		  
-		 
-		  
-		  
-		  
-		  
-		  
-		  
-		  
-		  
-		  
-		  
-
-          $results.addClass("show");
-        },
-        error: function () {
-          $results.html('<a class="dropdown-item disabled">Error retrieving results</a>').addClass("show");
+// Глобальные функции управления интерфейсом
+function clearSearch() {
+    const searchInput = document.getElementById('torrent-search');
+    if (searchInput) {
+        searchInput.value = '';
+        // Также очистим результаты автодополнения
+        const resultsContainer = document.getElementById('autocomplete-results');
+        if (resultsContainer) {
+            resultsContainer.classList.remove('show');
+            resultsContainer.innerHTML = '';
         }
-      });
-    }, 300); // Debounce delay
-  });
-
-  // Hide dropdown when clicking outside
-  $(document).on("click", function (e) {
-    if (!$(e.target).closest("#torrent-search, #autocomplete-results").length) {
-      $results.removeClass("show").empty();
+        // Можно автоматически отправить форму для обновления результатов
+        const searchForm = document.getElementById('searchForm');
+        if (searchForm) {
+            searchForm.submit();
+        }
     }
-  });
-});
-	
-	
-	
-	
-	
-	
-	
-	
+}
 
-    // Hover preview fix:
-    let hoverPreviewDiv = null;
-    document.querySelectorAll('.torrent-btn').forEach(btn => {
-        btn.addEventListener('mouseenter', function () {
-            const img = this.getAttribute('data-image');
-            if (!img) return;
-
-            if (hoverPreviewDiv) hoverPreviewDiv.remove();
-
-            hoverPreviewDiv = document.createElement('div');
-            hoverPreviewDiv.id = 'hoverPreview';
-            hoverPreviewDiv.style.position = 'absolute';
-            hoverPreviewDiv.style.zIndex = 9999;
-            hoverPreviewDiv.style.top = (this.getBoundingClientRect().top + window.scrollY + 30) + 'px';
-            hoverPreviewDiv.style.left = (this.getBoundingClientRect().left + window.scrollX + 30) + 'px';
-            hoverPreviewDiv.innerHTML = `<img src="${img}" class="img-thumbnail" style="max-width:150px;">`;
-            document.body.appendChild(hoverPreviewDiv);
-        });
-
-        btn.addEventListener('mouseleave', () => {
-            if (hoverPreviewDiv) {
-                hoverPreviewDiv.remove();
-                hoverPreviewDiv = null;
-            }
-        });
-    });
-
-    // Show/hide category dropdown based on selected action (looks okay)
-    const actionSelect = document.querySelector('select[name="actiontype"]');
-    if(actionSelect) {
-        actionSelect.addEventListener('change', function () {
-            const moveBlock = document.getElementById('movetorrent');
-            moveBlock.style.display = this.value === 'move' ? 'block' : 'none';
-        });
-    }
-});
-
-</script>
-
-
-
-
-
-
-
-?>
-
-<!-- Enhanced JavaScript -->
-<script>
-// Performance monitoring
-const pageLoadStart = performance.now();
-
-document.addEventListener('DOMContentLoaded', function() {
-    const loadTime = performance.now() - pageLoadStart;
-    console.log('🚀 Page loaded in', loadTime.toFixed(2), 'ms');
-    
-    // Initialize tooltips
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-});
-
-// Enhanced selection management
-let selectedTorrents = new Set();
+function resetFilters() {
+    // Полный сброс всех фильтров и переход на чистую страницу
+    window.location.href = '<?= $_this_script_ ?>?act=manage_torrents';
+}
 
 function toggleAllSelection(source) {
     const checkboxes = document.querySelectorAll('.torrent-checkbox');
@@ -1035,42 +788,238 @@ function toggleMoveCategory(select) {
     updateExecuteButton();
 }
 
-// Utility functions
-function clearSearch() {
-    document.getElementById('torrent-search').value = '';
-}
-
-function resetFilters() {
-    window.location.href = '<?= $_this_script_ ?>';
-}
-
-// Mobile touch improvements
-if ('ontouchstart' in window) {
-    document.addEventListener('touchstart', function(e) {
-        if (e.target.classList.contains('torrent-btn')) {
-            e.target.style.transform = 'scale(0.95)';
-        }
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Link copied to clipboard!');
     });
+}
+
+// Инициализация глобальных переменных
+let selectedTorrents = new Set();
+
+// Основной код инициализации - ОДИН блок DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Performance monitoring
+    const pageLoadStart = performance.now();
     
-    document.addEventListener('touchend', function(e) {
-        if (e.target.classList.contains('torrent-btn')) {
-            e.target.style.transform = '';
-        }
+    // Инициализация счетчика выбора
+    updateSelectionCounter();
+    
+    // Initialize tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
     });
-}
 
-// Initialize selection counter on load
-document.addEventListener('DOMContentLoaded', updateSelectionCounter);
+    // Mobile touch improvements
+    if ('ontouchstart' in window) {
+        document.addEventListener('touchstart', function(e) {
+            if (e.target.classList.contains('torrent-btn')) {
+                e.target.style.transform = 'scale(0.95)';
+            }
+        });
+        
+        document.addEventListener('touchend', function(e) {
+            if (e.target.classList.contains('torrent-btn')) {
+                e.target.style.transform = '';
+            }
+        });
+    }
 
-console.log('🎯 Enhanced Torrent Manager loaded successfully');
+    // Modal functionality
+    const modal = document.getElementById('manageTorrentModal');
+    const content = document.getElementById('manageTorrentContent');
+    const baseurl = "<?= $BASEURL ?>";
+
+    if (modal && content) {
+        modal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const name = button.getAttribute('data-name');
+            const id = button.getAttribute('data-id');
+            const image = button.getAttribute('data-image');
+            const infohash = button.getAttribute('data-infohash') || '';
+
+            const imagePreview = image
+                ? `<img src="${image}" class="img-fluid rounded shadow-sm" alt="Preview">`
+                : '<div class="alert alert-secondary">No image preview</div>';
+
+            const seeders = button.getAttribute('data-seeders') || 'N/A';
+            const leechers = button.getAttribute('data-leechers') || 'N/A';
+            const completed = button.getAttribute('data-completed') || 'N/A';
+
+            const html = `
+                <h5><i class="fa-solid fa-magnet"></i> ${name}</h5>
+                <div class="row g-3 mt-3">
+                    <div class="col-md-4">
+                        ${imagePreview}
+                        <div class="mt-3 text-center">
+                            <a href="${baseurl}/download.php?id=${id}" class="btn btn-success btn-sm">
+                                <i class="fa fa-download"></i> Download .torrent
+                            </a>
+                            <a href="magnet:?xt=urn:btih:${infohash}" class="btn btn-outline-primary btn-sm">
+                                <i class="fa fa-magnet"></i> Magnet Link
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <ul class="list-group list-group-flush shadow-sm">
+                            <li class="list-group-item"><a href="${baseurl}/details.php?id=${id}"><i class="fa fa-eye"></i> View Torrent</a></li>
+                            <li class="list-group-item"><a href="${baseurl}/details.php?id=${id}#startcomments"><i class="fa fa-comments"></i> View Comments</a></li>
+                            <li class="list-group-item"><a href="${baseurl}/upload.php?id=${id}"><i class="fa fa-edit"></i> Edit Torrent</a></li>
+                            <li class="list-group-item"><a href="${baseurl}/admin/index.php?act=torrent_info&id=${id}"><i class="fa fa-info-circle"></i> Torrent Info</a></li>
+                            <li class="list-group-item"><a href="${baseurl}/admin/index.php?act=viewstats&id=${id}"><i class="fa fa-chart-bar"></i> Torrent Stats</a></li>
+                            <li class="list-group-item"><a href="${baseurl}/admin/index.php?act=nuketorrent&id=${id}" class="text-danger"><i class="fa fa-skull-crossbones"></i> Nuke Torrent</a></li>
+                            <li class="list-group-item"><a href="${baseurl}/admin/index.php?act=fastdelete&id=${id}" class="text-danger"><i class="fa fa-trash"></i> Delete Torrent</a></li>
+                        </ul>
+                        <div class="mt-3 d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-success"><i class="fa fa-seedling"></i> Seeders: ${seeders}</span>
+                                <span class="badge bg-danger"><i class="fa fa-user-slash"></i> Leechers: ${leechers}</span>
+                                <span class="badge bg-secondary"><i class="fa fa-arrow-down"></i> Completed: ${completed}</span>
+                            </div>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="copyToClipboard('${baseurl}/details.php?id=${id}')">
+                                <i class="fa fa-copy"></i> Copy Link
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            content.innerHTML = html;
+
+            fetch(`${baseurl}/admin/torrent_extra.php?id=${id}`)
+                .then(res => res.json())
+                .then(data => {
+                    content.querySelector('.col-md-8').insertAdjacentHTML('beforeend', `
+                        <hr>
+                        <p><strong>Size:</strong> ${data.size}</p>
+                        <p><strong>Files:</strong> ${data.file_count}</p>
+                    `);
+                });
+        });
+    }
+
+    // Live search functionality
+    const searchInput = document.getElementById('torrent-search');
+    const resultsContainer = document.getElementById('autocomplete-results');
+
+    if (searchInput && resultsContainer) {
+        let debounceTimer;
+
+        searchInput.addEventListener('input', function() {
+            const query = this.value.trim();
+
+            clearTimeout(debounceTimer);
+            if (query.length < 3) {
+                resultsContainer.classList.remove('show');
+                resultsContainer.innerHTML = '';
+                return;
+            }
+
+            debounceTimer = setTimeout(() => {
+                fetch(`<?= $BASEURL ?>/search_torrents.php?input=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        resultsContainer.innerHTML = '';
+
+                        if (!Array.isArray(data) || data.length === 0) {
+                            resultsContainer.innerHTML = '<a class="dropdown-item disabled">No results found</a>';
+                            resultsContainer.classList.add('show');
+                            return;
+                        }
+
+                        data.forEach(item => {
+                            if (!item.name || !item.id) return;
+                            const img = item.image_url ? `<img src="${item.image_url}" alt="" style="width:40px;height:auto;margin-right:10px;">` : "";
+
+                            // Highlight match in name
+                            const regex = new RegExp("(" + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ")", "ig");
+                            const highlightedName = item.name.replace(regex, '<mark>$1</mark>');
+
+                            const option = document.createElement('a');
+                            option.className = 'dropdown-item d-flex align-items-center';
+                            option.href = `${baseurl}/details.php?id=${item.id}`;
+                            option.innerHTML = `${img}<span>${highlightedName}</span>`;
+                            resultsContainer.appendChild(option);
+                        });
+
+                        resultsContainer.classList.add('show');
+                    })
+                    .catch(error => {
+                        console.error('Search error:', error);
+                        resultsContainer.innerHTML = '<a class="dropdown-item disabled">Error retrieving results</a>';
+                        resultsContainer.classList.add('show');
+                    });
+            }, 300);
+        });
+
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !resultsContainer.contains(e.target)) {
+                resultsContainer.classList.remove('show');
+                resultsContainer.innerHTML = '';
+            }
+        });
+    }
+
+    // Hover preview fix
+    let hoverPreviewDiv = null;
+    document.querySelectorAll('.torrent-btn').forEach(btn => {
+        btn.addEventListener('mouseenter', function () {
+            const img = this.getAttribute('data-image');
+            if (!img) return;
+
+            if (hoverPreviewDiv) hoverPreviewDiv.remove();
+
+            hoverPreviewDiv = document.createElement('div');
+            hoverPreviewDiv.id = 'hoverPreview';
+            hoverPreviewDiv.style.position = 'absolute';
+            hoverPreviewDiv.style.zIndex = 9999;
+            hoverPreviewDiv.style.top = (this.getBoundingClientRect().top + window.scrollY + 30) + 'px';
+            hoverPreviewDiv.style.left = (this.getBoundingClientRect().left + window.scrollX + 30) + 'px';
+            hoverPreviewDiv.innerHTML = `<img src="${img}" class="img-thumbnail" style="max-width:150px;">`;
+            document.body.appendChild(hoverPreviewDiv);
+        });
+
+        btn.addEventListener('mouseleave', () => {
+            if (hoverPreviewDiv) {
+                hoverPreviewDiv.remove();
+                hoverPreviewDiv = null;
+            }
+        });
+    });
+
+    // Show/hide category dropdown based on selected action
+    const actionSelect = document.querySelector('select[name="actiontype"]');
+    if(actionSelect) {
+        actionSelect.addEventListener('change', function () {
+            const moveBlock = document.getElementById('movetorrent');
+            if (moveBlock) {
+                moveBlock.style.display = this.value === 'move' ? 'block' : 'none';
+            }
+        });
+    }
+
+    // Performance logging
+    const loadTime = performance.now() - pageLoadStart;
+    console.log('🚀 Page loaded in', loadTime.toFixed(2), 'ms');
+    console.log('🎯 Enhanced Torrent Manager loaded successfully');
+});
+
+// Сделаем функции глобально доступными
+window.clearSearch = clearSearch;
+window.resetFilters = resetFilters;
+window.toggleAllSelection = toggleAllSelection;
+window.updateSelectionCounter = updateSelectionCounter;
+window.clearSelection = clearSelection;
+window.toggleMoveCategory = toggleMoveCategory;
+window.copyToClipboard = copyToClipboard;
 </script>
+
+
 
 <style>
 .mobile-visible { display: none; }
-@media (max-width: 768px) {
-    .mobile-visible { display: block; }
-    .mobile-hidden { display: none; }
-}
 
 #autocomplete-results {
     position: absolute;
@@ -1081,8 +1030,12 @@ console.log('🎯 Enhanced Torrent Manager loaded successfully');
     display: none;
     max-height: 300px;
     overflow-y: auto;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
-#autocomplete-results.show { display: block; }
+
+#autocomplete-results.show { 
+    display: block; 
+}
 
 mark {
     background-color: #ffeb3b;
@@ -1091,10 +1044,19 @@ mark {
     border-radius: 2px;
 }
 
-/* Enhanced mobile table styles */
+/* Enhanced mobile styles */
 @media (max-width: 768px) {
+    .mobile-visible { display: block; }
+    .mobile-hidden { display: none; }
+    
     .table-responsive table {
         min-width: 600px; /* Prevent table from becoming too narrow */
+    }
+    
+    /* Mobile optimizations for autocomplete */
+    #autocomplete-results {
+        max-height: 250px;
+        font-size: 0.9em;
     }
 }
 </style>

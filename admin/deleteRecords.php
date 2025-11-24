@@ -1,6 +1,4 @@
 <?php
-
-
 $rootpath = './../';
 $thispath = './';
 define ('IN_ADMIN_PANEL', true);
@@ -12,53 +10,70 @@ define("IN_ADMINCP", 1);
 
 
 require_once $rootpath . 'global.php';
-
-// Include our base data handler class
 require_once $rootpath . '/include/datahandler.php';
-
-
 require_once $thispath . 'include/adminfunctions.php';
 
+// Set header for JSON response
+header('Content-Type: application/json');
 
-if($_REQUEST['empid']) 
+// Check if it's a POST request and empid is set
+if($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['empid'])) 
 {
-	
-	
-	
-	
-	$user = get_user($_REQUEST['empid']);
+    try {
+        $empid = (int)$_POST['empid'];
+        
+        if($empid <= 0) {
+            throw new Exception('Invalid employee ID');
+        }
+        
+        $user = get_user($empid);
 
-	// Does the user not exist?
-	if(!$user)
-	{
-		stderr('You have selected an invalid user');
-		redirect($_this_script_);
-	}
+        // Does the user not exist?
+        if(!$user)
+        {
+            throw new Exception('User does not exist');
+        }
 
-	// Set up user handler.
-	require_once INC_PATH."/datahandlers/user.php";
-	$userhandler = new UserDataHandler('delete');
+        // Set up user handler.
+        require_once INC_PATH."/datahandlers/user.php";
+        $userhandler = new UserDataHandler('delete');
 
-	// Delete the user
-	if(!$userhandler->delete_user($user['id']))
-	{
-		stderr('This user cannot be deleted');
-		redirect($_this_script_);
-	}
-	
+        // Delete the user
+        $delete_result = $userhandler->delete_user([$user['id']]);
+        
+        if(!$delete_result)
+        {
+            throw new Exception('This user cannot be deleted');
+        }
 
-	require INC_PATH . '/function_log_user_deletion.php';
-    log_user_deletion ('Following user has been deleted by ' . $CURUSER['username'] . ' (latest_users tool - Staff Panel): Userid: ' . $_REQUEST['empid']);
-    //redirect ($_this_script_, 'Account has been deleted!');
-	
-	
-	
-    //$sql = "DELETE FROM employee WHERE id='".$_REQUEST['empid']."'";
-	//$resultset = mysqli_query($conn, $sql) or die("database error:". mysqli_error($conn));	
-	if($userhandler) 
-	{
-		echo "Record Deleted";
-	}
+        // Log the deletion
+        require_once INC_PATH . '/function_log_user_deletion.php';
+        log_user_deletion('Following user has been deleted by ' . $CURUSER['username'] . ' (latest_users tool - Staff Panel): Userid: ' . $empid);
+        
+        // Return success response
+        echo json_encode([
+            'success' => true,
+            'message' => 'Record deleted successfully'
+        ]);
+        
+    } catch (Exception $e) {
+        // Return error response
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'message' => $e->getMessage()
+        ]);
+    }
+} 
+else 
+{
+    // Invalid request
+    http_response_code(400);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Invalid request method or missing employee ID'
+    ]);
 }
-?>
 
+exit(); // Always exit after sending response
+?>

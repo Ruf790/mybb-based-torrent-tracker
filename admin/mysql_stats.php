@@ -1,397 +1,396 @@
-<?
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+<?php
+declare(strict_types=1);
 
 
-  function formatbytedown ($value, $limes = 6, $comma = 0)
-  {
-    $dh = pow (10, $comma);
-    $li = pow (10, $limes);
-    $return_value = $value;
-    $unit = $GLOBALS['byteUnits'][0];
-    $d = 6;
-    $ex = 15;
-    while (1 <= $d)
-    {
-      if ((isset ($GLOBALS['byteUnits'][$d]) AND $li * pow (10, $ex) <= $value))
-      {
-        $value = round ($value / (pow (1024, $d) / $dh)) / $dh;
-        $unit = $GLOBALS['byteUnits'][$d];
-        break;
-      }
 
-      --$d;
-      $ex -= 3;
+enum ByteUnit: string {
+    case BYTES = 'Bytes';
+    case KB = 'KB';
+    case MB = 'MB';
+    case GB = 'GB';
+    case TB = 'TB';
+    case PB = 'PB';
+    case EB = 'EB';
+}
+
+class SystemStats {
+    private const BYTE_UNITS = [ByteUnit::BYTES, ByteUnit::KB, ByteUnit::MB, ByteUnit::GB, ByteUnit::TB, ByteUnit::PB, ByteUnit::EB];
+    
+    public static function formatByteDown(float $value, int $precision = 2): array {
+        $base = 1024;
+        $value = max($value, 0);
+        
+        foreach (array_reverse(self::BYTE_UNITS, true) as $exponent => $unit) {
+            $threshold = $base ** $exponent;
+            if ($value >= $threshold) {
+                $formatted = $exponent > 0 
+                    ? number_format($value / $threshold, $precision, '.', ',')
+                    : number_format($value, 0, '.', ',');
+                return [$formatted, $unit->value];
+            }
+        }
+        
+        return [number_format($value, 0, '.', ','), ByteUnit::BYTES->value];
     }
-
-    if ($unit != $GLOBALS['byteUnits'][0])
-    {
-      $return_value = number_format ($value, $comma, '.', ',');
+    
+    public static function formatTimeSpan(int $seconds): string {
+        $components = [];
+        
+        $intervals = [
+            'day' => 86400,
+            'hour' => 3600,
+            'minute' => 60,
+            'second' => 1
+        ];
+        
+        foreach ($intervals as $unit => $divisor) {
+            if ($seconds >= $divisor) {
+                $count = floor($seconds / $divisor);
+                $seconds %= $divisor;
+                $components[] = $count . ' ' . $unit . ($count !== 1 ? 's' : '');
+            }
+        }
+        
+        return $components ? implode(', ', $components) : '0 seconds';
     }
-    else
-    {
-      $return_value = number_format ($value, 0, '.', ',');
+    
+    public static function getLocalizedDate(int $timestamp = null, string $format = 'F j, Y \a\t g:i A'): string {
+        $timestamp ??= time();
+        return date($format, $timestamp);
     }
+}
 
-    return array ($return_value, $unit);
-  }
+if (!defined('STAFF_PANEL_TSSEv56')) {
+    http_response_code(403);
+    exit('<div class="alert alert-danger text-center"><i class="bi bi-shield-exclamation"></i> Direct initialization of this file is not allowed.</div>');
+}
 
-  function timespanformat ($seconds)
-  {
-    $return_string = '';
-    $days = floor ($seconds / 86400);
-    if (0 < $days)
-    {
-      $seconds -= $days * 86400;
+stdhead('MySQL Server Statistics');
+
+// Fetch MySQL status
+$statusResult = $db->sql_query('SHOW STATUS');
+if (!$statusResult) {
+    stderr('Database Error', 'Unable to fetch MySQL status information.');
+}
+
+$serverStatus = [];
+while ($row = $db->fetch_array($statusResult)) {
+    $serverStatus[$row['Variable_name']] = $row['Value'];
+}
+$db->free_result($statusResult);
+
+// Get server startup time
+$uptimeResult = $db->sql_query('SELECT UNIX_TIMESTAMP() - ' . (int)$serverStatus['Uptime']);
+$startupRow = $db->fetch_array($uptimeResult);
+$startupTime = $startupRow[0] ?? time();
+$db->free_result($uptimeResult);
+
+// Extract query statistics
+$queryStats = [];
+foreach ($serverStatus as $name => $value) {
+    if (str_starts_with($name, 'Com_')) {
+        $queryName = str_replace('_', ' ', substr($name, 4));
+        $queryStats[$queryName] = (int)$value;
     }
+}
+?>
 
-    $hours = floor ($seconds / 3600);
-    if ((0 < $days OR 0 < $hours))
-    {
-      $seconds -= $hours * 3600;
+<!-- Main Header -->
+<div class="container mt-3">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex align-items-center mb-4">
+                <div class="me-3">
+                    <i class="bi bi-database-fill-gear display-4 text-primary"></i>
+                </div>
+                <div>
+                    <h1 class="h3 mb-1 fw-bold text-dark">MySQL Server Statistics</h1>
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-clock-history me-1"></i>
+                        Server running for <?= SystemStats::formatTimeSpan((int)$serverStatus['Uptime']) ?>
+                    </p>
+                    <small class="text-muted">
+                        Started on <?= SystemStats::getLocalizedDate((int)$startupTime) ?>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Server Traffic Card -->
+    <div class="row mb-4">
+        <div class="col-lg-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-primary text-white d-flex align-items-center">
+                    <i class="bi bi-cloud-arrow-down-fill me-2"></i>
+                    <span class="fw-semibold">Network Traffic</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Type</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Per Hour</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ([
+                                    ['Received', 'Bytes_received'],
+                                    ['Sent', 'Bytes_sent'],
+                                    ['Total', null]
+                                ] as [$label, $key]): ?>
+                                <tr>
+                                    <td class="fw-medium"><?= $label ?></td>
+                                    <td class="text-end">
+                                        <?php if ($key): ?>
+                                            <?php [$value, $unit] = SystemStats::formatByteDown((float)$serverStatus[$key]) ?>
+                                            <span class="badge bg-light text-dark"><?= $value ?> <?= $unit ?></span>
+                                        <?php else: ?>
+                                            <?php [$value, $unit] = SystemStats::formatByteDown((float)$serverStatus['Bytes_received'] + (float)$serverStatus['Bytes_sent']) ?>
+                                            <span class="badge bg-primary text-white"><?= $value ?> <?= $unit ?></span>
+                                        <?php endif ?>
+                                    </td>
+                                    <td class="text-end">
+                                        <?php if ($key): ?>
+                                            <?php [$value, $unit] = SystemStats::formatByteDown((float)$serverStatus[$key] * 3600 / (float)$serverStatus['Uptime']) ?>
+                                            <span class="text-muted small"><?= $value ?> <?= $unit ?></span>
+                                        <?php else: ?>
+                                            <?php [$value, $unit] = SystemStats::formatByteDown(((float)$serverStatus['Bytes_received'] + (float)$serverStatus['Bytes_sent']) * 3600 / (float)$serverStatus['Uptime']) ?>
+                                            <span class="text-muted small"><?= $value ?> <?= $unit ?></span>
+                                        <?php endif ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-info text-white d-flex align-items-center">
+                    <i class="bi bi-plug-fill me-2"></i>
+                    <span class="fw-semibold">Connection Statistics</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Type</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Per Hour</th>
+                                    <th class="text-end">Percentage</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                $connections = (int)$serverStatus['Connections'];
+                                $failedAttempts = (int)$serverStatus['Aborted_connects'];
+                                $abortedClients = (int)$serverStatus['Aborted_clients'];
+                                ?>
+                                <tr>
+                                    <td class="fw-medium text-warning">Failed Attempts</td>
+                                    <td class="text-end"><?= number_format($failedAttempts) ?></td>
+                                    <td class="text-end"><?= number_format($failedAttempts * 3600 / (float)$serverStatus['Uptime'], 2) ?></td>
+                                    <td class="text-end">
+                                        <span class="badge bg-warning text-dark">
+                                            <?= $connections > 0 ? number_format($failedAttempts * 100 / $connections, 2) . '%' : '---' ?>
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-medium text-danger">Aborted Clients</td>
+                                    <td class="text-end"><?= number_format($abortedClients) ?></td>
+                                    <td class="text-end"><?= number_format($abortedClients * 3600 / (float)$serverStatus['Uptime'], 2) ?></td>
+                                    <td class="text-end">
+                                        <span class="badge bg-danger text-white">
+                                            <?= $connections > 0 ? number_format($abortedClients * 100 / $connections, 2) . '%' : '---' ?>
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr class="table-success">
+                                    <td class="fw-medium">Total Connections</td>
+                                    <td class="text-end"><?= number_format($connections) ?></td>
+                                    <td class="text-end"><?= number_format($connections * 3600 / (float)$serverStatus['Uptime'], 2) ?></td>
+                                    <td class="text-end"><span class="badge bg-success">100%</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Query Statistics -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-success text-white d-flex align-items-center justify-content-between">
+                    <div>
+                        <i class="bi bi-speedometer2 me-2"></i>
+                        <span class="fw-semibold">Query Statistics</span>
+                    </div>
+                    <span class="badge bg-light text-dark fs-6">
+                        <?= number_format((int)$serverStatus['Questions']) ?> total queries
+                    </span>
+                </div>
+                <div class="card-body">
+                    <!-- Query Rates -->
+                    <div class="row mb-4">
+                        <div class="col-md-8 mx-auto">
+                            <div class="card bg-light border-0">
+                                <div class="card-body py-3">
+                                    <div class="row text-center">
+                                        <?php 
+                                        $questions = (int)$serverStatus['Questions'];
+                                        $uptime = (float)$serverStatus['Uptime'];
+                                        ?>
+                                        <div class="col-3">
+                                            <div class="fw-bold text-primary fs-4"><?= number_format($questions) ?></div>
+                                            <small class="text-muted">Total Queries</small>
+                                        </div>
+                                        <div class="col-3">
+                                            <div class="fw-bold text-success fs-4"><?= number_format($questions * 3600 / $uptime, 1) ?></div>
+                                            <small class="text-muted">Per Hour</small>
+                                        </div>
+                                        <div class="col-3">
+                                            <div class="fw-bold text-warning fs-4"><?= number_format($questions * 60 / $uptime, 1) ?></div>
+                                            <small class="text-muted">Per Minute</small>
+                                        </div>
+                                        <div class="col-3">
+                                            <div class="fw-bold text-danger fs-4"><?= number_format($questions / $uptime, 2) ?></div>
+                                            <small class="text-muted">Per Second</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Query Types -->
+                    <div class="row">
+                        <?php 
+                        // ИСПРАВЛЕННАЯ СТРОКА - приведение к integer
+                        $queryChunks = array_chunk($queryStats, (int)ceil(count($queryStats) / 2), true);
+                        foreach ($queryChunks as $chunk): 
+                        ?>
+                        <div class="col-md-6 mb-3">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Query Type</th>
+                                            <th class="text-end">Count</th>
+                                            <th class="text-end">Per Hour</th>
+                                            <th class="text-end">%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($chunk as $name => $value): ?>
+                                        <tr>
+                                            <td class="small"><?= htmlspecialchars($name) ?></td>
+                                            <td class="text-end fw-medium"><?= number_format($value) ?></td>
+                                            <td class="text-end text-muted small"><?= number_format($value * 3600 / $uptime, 2) ?></td>
+                                            <td class="text-end">
+                                                <span class="badge bg-secondary">
+                                                    <?= number_format($value * 100 / ($questions - $connections), 2) ?>%
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        <?php endforeach ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <?php endforeach ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Status Variables -->
+    <?php
+    // Remove already displayed variables
+    $displayedVars = ['Aborted_clients', 'Aborted_connects', 'Bytes_received', 'Bytes_sent', 'Connections', 'Questions', 'Uptime'];
+    foreach ($displayedVars as $var) {
+        unset($serverStatus[$var]);
     }
+    
+    if (!empty($serverStatus)):
+    ?>
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-dark text-white d-flex align-items-center">
+                    <i class="bi bi-gear-fill me-2"></i>
+                    <span class="fw-semibold">Additional Status Variables</span>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <?php 
+                        // ИСПРАВЛЕННАЯ СТРОКА - приведение к integer
+                        $statusChunks = array_chunk($serverStatus, (int)ceil(count($serverStatus) / 3), true);
+                        foreach ($statusChunks as $chunk): 
+                        ?>
+                        <div class="col-md-4 mb-3">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-borderless">
+                                    <tbody>
+                                        <?php foreach ($chunk as $name => $value): ?>
+                                        <tr class="border-bottom">
+                                            <td class="small text-muted"><?= htmlspecialchars(str_replace('_', ' ', $name)) ?></td>
+                                            <td class="text-end fw-medium">
+                                                <span class="badge bg-light text-dark"><?= htmlspecialchars($value) ?></span>
+                                            </td>
+                                        </tr>
+                                        <?php endforeach ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <?php endforeach ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif ?>
+</div>
 
-    $minutes = floor ($seconds / 60);
-    if (((0 < $days OR 0 < $hours) OR 0 < $minutes))
-    {
-      $seconds -= $minutes * 60;
-    }
+<style>
+.card {
+    border-radius: 12px;
+    transition: transform 0.2s ease-in-out;
+}
 
-    return (string)$days . ' Days ' . (string)$hours . ' Hours ' . (string)$minutes . ' Minutes ' . (string)$seconds . ' Seconds ';
-  }
+.card:hover {
+    transform: translateY(-2px);
+}
 
-  function localiseddate ($timestamp = -1, $format = '')
-  {
-    global $datefmt;
-    global $month;
-    global $day_of_week;
-    if ($format == '')
-    {
-      $format = $datefmt;
-    }
+.table th {
+    border-top: none;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
 
-    if ($timestamp == 0 - 1)
-    {
-      $timestamp = time ();
-    }
+.badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
 
-    $date = preg_replace ('@%[aA]@', $day_of_week[(int)strftime ('%w', $timestamp)], $format);
-    $date = preg_replace ('@%[bB]@', $month[(int)strftime ('%m', $timestamp) - 1], $date);
-    return strftime ($date, $timestamp);
-  }
+.card-header {
+    border-radius: 12px 12px 0 0 !important;
+    font-size: 0.95rem;
+}
+</style>
 
-  if (!defined ('STAFF_PANEL_TSSEv56'))
-  {
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-  }
-
-  $GLOBALS['byteUnits'] = array ('Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB');
-  $day_of_week = array ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
-  $month = array ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
-  $datefmt = '%B %d, %Y at %I:%M %p';
-  $timespanfmt = '%s days, %s hours, %s minutes and %s seconds';
-  stdhead ('Stats');
-  echo '<h2>' . '
-' . '    Mysql Server Status' . '
-' . '</h2>' . '
-';
-  if (!($res = $db->sql_query ('SHOW STATUS')))
-  {
-    exit (mysqli_error ());
-    ;
-  }
-
-  while ($row = mysqli_fetch_row ($res))
-  {
-    $serverStatus[$row[0]] = $row[1];
-  }
-
-  @mysqli_free_result ($res);
-  unset ($res);
-  unset ($row);
-  $res = $db->sql_query ('SELECT UNIX_TIMESTAMP() - ' . $serverStatus['Uptime']);
-  $row = mysqli_fetch_row ($res);
-  echo '
-	<table id="torrenttable" border="1"><tr><td>
-
-';
-  print 'This MySQL server has been running for ' . timespanformat ($serverStatus['Uptime']) . '. It started up on ' . localiseddate ($row[0]) . '
-';
-  echo '
-	</td></tr></table>
-
-';
-  @mysqli_free_result ($res);
-  unset ($res);
-  unset ($row);
-  $queryStats = array ();
-  $tmp_array = $serverStatus;
-  foreach ($tmp_array as $name => $value)
-  {
-    if (substr ($name, 0, 4) == 'Com_')
-    {
-      $queryStats[str_replace ('_', ' ', substr ($name, 4))] = $value;
-      unset ($serverStatus[$name]);
-      continue;
-    }
-  }
-
-  unset ($tmp_array);
-  echo '
-<ul>
-    <li>
-        <!-- Server Traffic -->
-        <b>Server traffic:</b> These tables show the network traffic statistics of this MySQL server since its startup
-        <br />
-        <table border="0">
-            <tr>
-                <td valign="top">
-                    <table id="torrenttable" border="0">
-                        <tr>
-                            <th colspan="2" bgcolor="lig';
-  echo 'htgrey">&nbsp;Traffic&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp;&nbsp;Per Hour&nbsp;</th>
-                        </tr>
-                        <tr>
-                            <td bgcolor="#EFF3FF">&nbsp;Received&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo join (' ', formatbytedown ($serverStatus['Bytes_received']));
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo join (' ', formatbytedown ($serverStatus['Bytes_received'] * 3600 / $serverStatus['Uptime']));
-  echo '&nbsp;</td>
-                        </tr>
-                        <tr>
-                            <td bgcolor="#EFF3FF">&nbsp;Sent&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo join (' ', formatbytedown ($serverStatus['Bytes_sent']));
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo join (' ', formatbytedown ($serverStatus['Bytes_sent'] * 3600 / $serverStatus['Uptime']));
-  echo '&nbsp;</td>
-                        </tr>
-                        <tr>
-                            <td bgcolor="lightgrey">&nbsp;Total&nbsp;</td>
-                            <td bgcolor="lightgrey" align="right">&nbsp;';
-  echo join (' ', formatbytedown ($serverStatus['Bytes_received'] + $serverStatus['Bytes_sent']));
-  echo '&nbsp;</td>
-                            <td bgcolor="lightgrey" align="right">&nbsp;';
-  echo join (' ', formatbytedown (($serverStatus['Bytes_received'] + $serverStatus['Bytes_sent']) * 3600 / $serverStatus['Uptime']));
-  echo '&nbsp;</td>
-                        </tr>
-                    </table>
-                </td>
-                <td valign="top">
-                    <table id="torrenttable" border="0">
-                        <tr>
-                            <th colspan="2" bgcolor="lightgrey">&nbsp;Connections&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp;&oslash;&nbsp;Per Hour&nbsp;</th>
-    ';
-  echo '                        <th bgcolor="lightgrey">&nbsp;%&nbsp;</th>
-                        </tr>
-                        <tr>
-                            <td bgcolor="#EFF3FF">&nbsp;Failed Attempts&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo number_format ($serverStatus['Aborted_connects'], 0, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo number_format ($serverStatus['Aborted_connects'] * 3600 / $serverStatus['Uptime'], 2, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo (0 < $serverStatus['Connections'] ? number_format ($serverStatus['Aborted_connects'] * 100 / $serverStatus['Connections'], 2, '.', ',') . '&nbsp;%' : '---');
-  echo '&nbsp;</td>
-                        </tr>
-                        <tr>
-                            <td bgcolor="#EFF3FF">&nbsp;Aborted Clients&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo number_format ($serverStatus['Aborted_clients'], 0, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo number_format ($serverStatus['Aborted_clients'] * 3600 / $serverStatus['Uptime'], 2, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo (0 < $serverStatus['Connections'] ? number_format ($serverStatus['Aborted_clients'] * 100 / $serverStatus['Connections'], 2, '.', ',') . '&nbsp;%' : '---');
-  echo '&nbsp;</td>
-                        </tr>
-                        <tr>
-                            <td bgcolor="lightgrey">&nbsp;Total&nbsp;</td>
-                            <td bgcolor="lightgrey" align="right">&nbsp;';
-  echo number_format ($serverStatus['Connections'], 0, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="lightgrey" align="right">&nbsp;';
-  echo number_format ($serverStatus['Connections'] * 3600 / $serverStatus['Uptime'], 2, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="lightgrey" align="right">&nbsp;';
-  echo number_format (100, 2, '.', ',');
-  echo '&nbsp;%&nbsp;</td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
-    </li>
-    <br />
-    <li>
-        <!-- Queries -->
-        ';
-  print '<b>Query Statistics:</b> Since it\'s start up, ' . number_format ($serverStatus['Questions'], 0, '.', ',') . ' queries have been sent to the server.
-';
-  echo '        <table border="0">
-            <tr>
-                <td colspan="2">
-                    <br />
-                    <table id="torrenttable" border="0" align="right">
-                        <tr>
-                            <th bgcolor="lightgrey">&nbsp;Total&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp;&oslash;&nbsp;Per&nbsp;Hour&nbsp;</th>
-                          ';
-  echo '  <th bgcolor="lightgrey">&nbsp;&oslash;&nbsp;Per&nbsp;Minute&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp;&oslash;&nbsp;Per&nbsp;Second&nbsp;</th>
-                        </tr>
-                        <tr>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo number_format ($serverStatus['Questions'], 0, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo number_format ($serverStatus['Questions'] * 3600 / $serverStatus['Uptime'], 2, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo number_format ($serverStatus['Questions'] * 60 / $serverStatus['Uptime'], 2, '.', ',');
-  echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-  echo number_format ($serverStatus['Questions'] / $serverStatus['Uptime'], 2, '.', ',');
-  echo '&nbsp;</td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-            <tr>
-                <td valign="top">
-                    <table id="torrenttable" border="0">
-                        <tr>
-                            <th colspan="2" bgcolor="lightgrey">&nbsp;Query&nbsp;Type&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp';
-  echo ';&oslash;&nbsp;Per&nbsp;Hour&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp;%&nbsp;</th>
-                        </tr>
-';
-  $useBgcolorOne = TRUE;
-  $countRows = 0;
-  foreach ($queryStats as $name => $value)
-  {
-    echo '                        <tr>
-                            <td bgcolor="#EFF3FF">&nbsp;';
-    echo htmlspecialchars ($name);
-    echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-    echo number_format ($value, 0, '.', ',');
-    echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-    echo number_format ($value * 3600 / $serverStatus['Uptime'], 2, '.', ',');
-    echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-    echo number_format ($value * 100 / ($serverStatus['Questions'] - $serverStatus['Connections']), 2, '.', ',');
-    echo '&nbsp;%&nbsp;</td>
-                        </tr>
-';
-    $useBgcolorOne = !$useBgcolorOne;
-    if (++$countRows == ceil (count ($queryStats) / 2))
-    {
-      $useBgcolorOne = TRUE;
-      echo '                    </table>
-                </td>
-                <td valign="top">
-                    <table id="torrenttable" border="0">
-                        <tr>
-                            <th colspan="2" bgcolor="lightgrey">&nbsp;Query&nbsp;Type&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp;&oslash;&nbsp;Per&nbsp;Hour&nbsp;</th>
-                            <th bgcolo';
-      echo 'r="lightgrey">&nbsp;%&nbsp;</th>
-                        </tr>
-';
-      continue;
-    }
-  }
-
-  unset ($countRows);
-  unset ($useBgcolorOne);
-  echo '                    </table>
-                </td>
-            </tr>
-        </table>
-    </li>
-';
-  unset ($serverStatus[Aborted_clients]);
-  unset ($serverStatus[Aborted_connects]);
-  unset ($serverStatus[Bytes_received]);
-  unset ($serverStatus[Bytes_sent]);
-  unset ($serverStatus[Connections]);
-  unset ($serverStatus[Questions]);
-  unset ($serverStatus[Uptime]);
-  if (!empty ($serverStatus))
-  {
-    echo '    <br />
-    <li>
-        <!-- Other status variables -->
-        <b>More status variables</b><br />
-        <table border="0">
-            <tr>
-                <td valign="top">
-                    <table id="torrenttable" border="0">
-                        <tr>
-                            <th bgcolor="lightgrey">&nbsp;Variable&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp;V';
-    echo 'alue&nbsp;</th>
-                        </tr>
-';
-    $useBgcolorOne = TRUE;
-    $countRows = 0;
-    foreach ($serverStatus as $name => $value)
-    {
-      echo '                        <tr>
-                            <td bgcolor="#EFF3FF">&nbsp;';
-      echo htmlspecialchars (str_replace ('_', ' ', $name));
-      echo '&nbsp;</td>
-                            <td bgcolor="#EFF3FF" align="right">&nbsp;';
-      echo htmlspecialchars ($value);
-      echo '&nbsp;</td>
-                        </tr>
-';
-      $useBgcolorOne = !$useBgcolorOne;
-      if ((++$countRows == ceil (count ($serverStatus) / 3) OR $countRows == ceil (count ($serverStatus) * 2 / 3)))
-      {
-        $useBgcolorOne = TRUE;
-        echo '                    </table>
-                </td>
-                <td valign="top">
-                    <table id="torrenttable" border="0">
-                        <tr>
-                            <th bgcolor="lightgrey">&nbsp;Variable&nbsp;</th>
-                            <th bgcolor="lightgrey">&nbsp;Value&nbsp;</th>
-                        </tr>
-';
-        continue;
-      }
-    }
-
-    unset ($useBgcolorOne);
-    echo '                    </table>
-                </td>
-            </tr>
-        </table>
-    </li>
-';
-  }
-
-  echo '</ul>
-
-
-';
-  stdfoot ();
+<?php
+stdfoot();
 ?>

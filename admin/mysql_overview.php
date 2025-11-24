@@ -1,5 +1,8 @@
 <?php
+
+
 declare(strict_types=1);
+
 
 /**
  * Formats byte size into human readable format

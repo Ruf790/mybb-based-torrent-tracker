@@ -5,6 +5,8 @@
 $rootpath = './../';
 require_once $rootpath . 'global.php';
 
+require_once INC_PATH . '/functions_multipage.php';
+
 
 
 

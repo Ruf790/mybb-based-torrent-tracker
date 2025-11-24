@@ -38,8 +38,8 @@
   //check_pincode ();
   require_once $thispath . 'include/settingpanelfunctions.php';
   admin_cp_header ('
-<script src="' . $BASEURL . '/scripts/collapse.js?v=' . O_SCRIPT_VERSION . '" type="text/javascript"></script>');
-  echo '<script src="' . $BASEURL . '/admin/templates/wz_tooltip.js?v=' . O_SCRIPT_VERSION . '" type="text/javascript"></script>';
+<script src="' . $BASEURL . '/scripts/collapse.js" type="text/javascript"></script>');
+  echo '<script src="' . $BASEURL . '/admin/templates/wz_tooltip.js" type="text/javascript"></script>';
   
   
   //if (((strtoupper ($_SERVER['REQUEST_METHOD']) == 'POST' AND (0 < count ($_POST['configoption']) OR strtoupper ($_POST['configname']) == 'STAFFTEAM')) AND !empty ($do)))

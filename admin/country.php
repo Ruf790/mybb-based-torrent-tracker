@@ -12,7 +12,7 @@
   function get_country_data ()
   {
     global $id, $db;
-    unset ($GLOBALS[country]);
+    unset($GLOBALS['country']);
     $query = $db->sql_query ('SELECT * FROM countries WHERE id = ' . $db->sqlesc ($id));
     if ($db->num_rows ($query) == 0)
     {

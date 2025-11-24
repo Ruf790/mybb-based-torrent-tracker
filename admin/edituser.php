@@ -229,24 +229,22 @@ function permission_check(): void
 {
     global $userdata, $usergroups, $CURUSER;
     
-    if (
+    if 
+	(
         (($userdata['cansettingspanel'] == '1' && $usergroups['cansettingspanel'] != '1') ||
         ($userdata['issupermod'] == '1' && $usergroups['issupermod'] != '1') ||
         ($userdata['canstaffpanel'] == '1' && $usergroups['canstaffpanel'] != '1')) ||
         $CURUSER['id'] == $userdata['id']
-    ) {
-        echo '
-        <div class="permission-denied-overlay">
-            <div class="permission-denied-modal">
-                <i class="fas fa-shield-alt fa-4x text-danger mb-3"></i>
-                <h4 class="text-danger">Permission Denied</h4>
-                <p>Protected usergroup! You cannot modify this user.</p>
-                <button onclick="history.back()" class="btn btn-primary">Go Back</button>
-            </div>
-        </div>';
-        exit;
+    ) 
+	{
+        print_no_permission (false, true, 'Permission Denied: Protected usergroup!');
     }
 }
+
+
+
+
+
 
 
 
@@ -347,58 +345,6 @@ function selectbox(string $title, string $name, string $type, string $class = 'f
 /**
  * Enhanced yes/no radio buttons
  */
-function yesno222222222(string $title, string $name, string $value = 'yes'): string
-{
-    // Для moderateposts используем числовые значения
-    if ($name === 'moderateposts') {
-        $yesChecked = $value === '1' || $value === 'yes' ? 'checked' : '';
-        $noChecked = $value === '0' || $value === 'no' ? 'checked' : '';
-        $yesValue = '1';
-        $noValue = '0';
-    } else {
-        $yesChecked = $value === 'yes' ? 'checked' : '';
-        $noChecked = $value === 'no' ? 'checked' : '';
-        $yesValue = 'yes';
-        $noValue = 'no';
-    }
-    
-    $fieldId = uniqid('field_');
-    
-    $icon = match($name) {
-        'donor' => 'fa-heart',
-        'warned' => 'fa-exclamation-triangle',
-        'enabled' => 'fa-user-check',
-        'cancomment' => 'fa-comment',
-        'canupload' => 'fa-upload',
-        'candownload' => 'fa-download',
-        'moderateposts' => 'fa-user-cog',
-        default => 'fa-toggle-on'
-    };
-    
-    return "
-    <div class='mb-4'>
-        <label class='form-label fw-semibold mb-3'>
-            <i class='fas {$icon} me-2 text-primary'></i>{$title}
-        </label>
-        <div class='btn-group w-100' role='group'>
-            <input type='radio' class='btn-check' name='{$name}' id='{$fieldId}_yes' value='{$yesValue}' {$yesChecked}>
-            <label class='btn btn-outline-success' for='{$fieldId}_yes'>
-                <i class='fas fa-check me-2'></i>Yes
-            </label>
-            
-            <input type='radio' class='btn-check' name='{$name}' id='{$fieldId}_no' value='{$noValue}' {$noChecked}>
-            <label class='btn btn-outline-danger' for='{$fieldId}_no'>
-                <i class='fas fa-times me-2'></i>No
-            </label>
-        </div>
-    </div>";
-}
-
-
-
-
-
-
 
 
 function yesno(string $title, string $name, string $value = '1'): string
@@ -572,21 +518,19 @@ include $rootpath . '/global.php';
 define("IN_MYBB", 1);
 define("IN_ADMINCP", 1);
 
+
+
 // Include required files
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/readconfig.php'; 
 require_once INC_PATH . '/functions_upload.php';
 
-if (!defined('IN_SCRIPT_TSSEv56')) 
-{
-    exit('<div class="alert alert-danger">Error! Direct initialization of this file is not allowed.</div>');
-}
+
 
 gzip();
 maxsysop();
 
-define('VERSION', 'Edit User Mod v.1.8.3 by xam');
 
 
 
@@ -595,10 +539,9 @@ define('VERSION', 'Edit User Mod v.1.8.3 by xam');
 // ---- avatar upload action ----
 if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') 
 {
-    
-	
-	
-	// JSON helper
+    global $CURUSER, $userdata, $db, $mybb, $rootpath;
+
+    // JSON helper
     $is_ajax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
     $json = function($arr, $code = 200){
         http_response_code($code);
@@ -608,124 +551,97 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     };
 
     // Авторизация
-    if (!$CURUSER) 
-    {
+    $user_uid = (int)($CURUSER['id'] ?? 0);
+    if ($user_uid <= 0) {
         $is_ajax ? $json(['success'=>false,'error'=>'Not authorized'], 401) : exit('Error: Not authorized.');
     }
 
-    $user_uid = (int)$CURUSER['id'];
-    if ($user_uid <= 0)
-    {
-        $is_ajax ? $json(['success'=>false,'error'=>'Not authorized'], 401) : exit('Error: Not authorized.');
-    }
-
-    // Используем $userdata['id'] из контекста edituser.php
-   
-	$uid = (int)($_POST['id'] ?? $_GET['id'] ?? ($userdata['id'] ?? 0));
-	
-	
+    // Целевой профиль
+    $uid = (int)($_POST['id'] ?? $_GET['id'] ?? ($userdata['id'] ?? 0));
     if ($uid <= 0) {
         $is_ajax ? $json(['success'=>false,'error'=>'Profile ID not found'], 400) : exit('Error: Profile ID not found.');
     }
 
-    // Права: владелец ИЛИ модератор
+    // Права: владелец или модератор
     $is_own_profile = ($user_uid === $uid);
-    $is_mod = is_mod($usergroups);
-    
-    if (!$is_own_profile && !$is_mod) 
-    {
-        $is_ajax ? $json(['success'=>false,'error'=>'No permission to change this avatar'], 403)
-                 : exit('Error: No permission to change this avatar.');
+    $is_mod = is_mod($usergroups ?? []);
+    if (!$is_own_profile && !$is_mod) {
+        $is_ajax ? $json(['success'=>false,'error'=>'No permission'], 403) : exit('Error: No permission to change this avatar.');
     }
 
-    // CSRF protection
+    // CSRF
     if (empty($_POST['my_post_key']) || $_POST['my_post_key'] !== $mybb->post_code) {
         $is_ajax ? $json(['success'=>false,'error'=>'CSRF check failed'], 403) : exit('Error: CSRF check failed.');
     }
 
     // Файл
-    if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) 
-    {
+    if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) {
         $is_ajax ? $json(['success'=>false,'error'=>'File not uploaded'], 400) : exit('Error: File not uploaded.');
     }
-
-    // ЛИМИТ: 22 MB
-    $max_size    = 22 * 1024 * 1024;
-    $allowed_ext = ['jpg','jpeg','png','gif','webp'];
 
     $file_name = $_FILES['avatar']['name'];
     $file_tmp  = $_FILES['avatar']['tmp_name'];
     $file_size = $_FILES['avatar']['size'];
     $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
 
-    if (!in_array($file_ext, $allowed_ext, true)) 
-    {
+    // Разрешённые форматы и лимит
+    $allowed_ext = ['jpg','jpeg','png','gif','webp'];
+    $max_size = 22 * 1024 * 1024;
+    if (!in_array($file_ext, $allowed_ext, true)) {
         $is_ajax ? $json(['success'=>false,'error'=>'Allowed formats: JPG, JPEG, PNG, GIF, WebP'], 415) : exit('Error: Allowed formats: JPG, JPEG, PNG, GIF, WebP.');
     }
-    
-    if ($file_size > $max_size) 
-    {
-        $is_ajax ? $json(['success'=>false,'error'=>'File is too big (max. 22 MB)'], 413) : exit('Error: File is too big (max. 22 MB).');
+    if ($file_size > $max_size) {
+        $is_ajax ? $json(['success'=>false,'error'=>'File too big (max 22 MB)'], 413) : exit('Error: File too big.');
     }
 
     // MIME check
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mime  = finfo_file($finfo, $file_tmp);
     finfo_close($finfo);
-    
     if (!in_array($mime, ['image/jpeg','image/png','image/gif','image/webp'], true)) {
         $is_ajax ? $json(['success'=>false,'error'=>'File is not a valid image'], 415) : exit('Error: File is not a valid image.');
     }
 
-    // Путь и имя
+    // Папка и имя
     $upload_dir = $rootpath . '/uploads/avatars/';
-    
-    if (!is_dir($upload_dir)) { 
-        @mkdir($upload_dir, 0777, true); 
-    }
+    if (!is_dir($upload_dir)) @mkdir($upload_dir, 0777, true);
 
     $new_name  = "avatar_{$uid}." . $file_ext;
     $dest_path = $upload_dir . $new_name;
 
-    // Удалить старые файлы аватара
-    foreach (['jpg','jpeg','png','gif','webp'] as $e) 
-    {
-        if ($e !== $file_ext) 
-        {
-            $p = $upload_dir . "avatar_{$uid}." . $e;
-            if (is_file($p)) { @unlink($p); }
-        }
+    // Удаляем старые аватары
+    foreach ($allowed_ext as $e) {
+        $p = $upload_dir . "avatar_{$uid}." . $e;
+        if ($e !== $file_ext && is_file($p)) @unlink($p);
     }
 
-    if (!move_uploaded_file($file_tmp, $dest_path)) 
-    {
+    if (!move_uploaded_file($file_tmp, $dest_path)) {
         $is_ajax ? $json(['success'=>false,'error'=>'Could not save file'], 500) : exit('Error: Could not save file.');
     }
 
+    // Получаем размеры
     $size = @getimagesize($dest_path);
     if (!$size) {
         @unlink($dest_path);
-        $is_ajax ? $json(['success'=>false,'error'=>'File is corrupted or not an image'], 415) : exit('Error: File is corrupted or not an image.');
+        $is_ajax ? $json(['success'=>false,'error'=>'File corrupted or not an image'], 415) : exit('Error: File corrupted or not an image.');
     }
-    
     [$width, $height] = $size;
-    $avatar_dimensions = $width . '|' . $height;
+    $avatar_dimensions = "{$width}|{$height}";
 
     // Относительный путь для вывода
     $avatar_url = "/uploads/avatars/" . $new_name;
 
-    // Обновить БД
+    // Обновляем базу
     $updated_avatar = [
         "avatar"           => $avatar_url,
         "avatardimensions" => $avatar_dimensions,
         "avatartype"       => "upload",
     ];
-    
-    $db->update_query("users", $updated_avatar, "id = '{$uid}'");
+    $db->update_query("users", $updated_avatar, "id='{$uid}'");
 
-    // Добавить запись в modcomment
-    $modcomment = gmdate('Y-m-d') . ' - Avatar updated by ' . $CURUSER['username'] . "\n" . ($userdata['modcomment'] ?? '');
-    $db->update_query("users", ["modcomment" => $modcomment], "id = '{$uid}'");
+    // Модкоммент
+    $modcomment = gmdate('Y-m-d') . " - Avatar updated by {$CURUSER['username']}\n" . ($userdata['modcomment'] ?? '');
+    $db->update_query("users", ["modcomment" => $modcomment], "id='{$uid}'");
 
     if ($is_ajax) {
         $json([
@@ -733,14 +649,24 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
             'url' => $avatar_url,
             'width' => $width,
             'height' => $height,
-            'message' => 'Avatar updated successfully'
+            'message' => 'Avatar successfully updated'
         ]);
+    } else {
+        header("Location: edituser.php?action=edituser&userid={$uid}");
+        exit;
     }
-
-    // Redirect back to edit user page
-    header("Location: edituser.php?action=edituser&userid={$uid}");
-    exit;
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -758,190 +684,171 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
 
 
 /**
- * Process avatar URL (based on MyBB logic)
+ * Проверяет, является ли URL корректным изображением
  */
-function processAvatarUrl(string $avatar_url, int $user_id): string
+function is_valid_avatar_url(string $url): bool
 {
-    global $db, $rootpath;
-	
-	
-	 require_once INC_PATH . '/functions_ts_remote_connect.php';
-    
-    // Дополнительная проверка user_id
-    if ($user_id <= 0) 
-	{
-        error_log("processAvatarUrl: Invalid user_id: " . $user_id);
-        return "Неверный ID пользователя";
+    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        return false;
     }
-    
-    error_log("processAvatarUrl: Processing avatar for user_id: " . $user_id);
-    
-    // Clean the URL
-    $avatar_url = preg_replace("#script:#i", "", $avatar_url);
-    $ext = get_extension($avatar_url);
 
-    // Copy the avatar to the local server (work around remote URL access disabled for getimagesize)
-    $file = TS_Fetch_Data($avatar_url);
-    if(!$file)
-    {
-        error_log("processAvatarUrl: Failed to fetch remote file: " . $avatar_url);
-        return "Не удалось загрузить изображение по URL";
+    $ext = get_extension($url);
+    $allowed_extensions = ['gif','jpg','jpeg','png','bmp','webp','svg','avif'];
+
+    if (in_array(strtolower($ext), $allowed_extensions, true)) {
+        return true;
     }
-    else
-    {
-        $upload_dir = $rootpath . '/uploads/avatars/';
-        if (!is_dir($upload_dir)) { 
-            @mkdir($upload_dir, 0777, true); 
+
+    $image_indicators = [
+        '/avatar', '/avatars/', '/image/', '/images/', '/img/', '/imgs/',
+        '/profile/', '/user/', '/users/', '/photo/', '/picture/', '/pic/',
+        'gravatar.com/avatar/', 'i.imgur.com/'
+    ];
+
+    foreach ($image_indicators as $ind) {
+        if (stripos($url, $ind) !== false) return true;
+    }
+
+    return false;
+}
+
+/**
+ * Обновление аватара по URL
+ */
+function process_avatar_url(string $avatar_url, int $user_id): string
+{
+    global $db, $userdata;
+
+    if ($user_id <= 0) return "Invalid user ID";
+
+    // Сравниваем с текущим аватаром
+    $old_avatar = trim(strtolower($userdata['avatar'] ?? ''));
+    $new_avatar = trim(strtolower($avatar_url));
+    $old_clean = preg_replace('/\?dateline=\d+$/', '', $old_avatar);
+    $new_clean = preg_replace('/\?dateline=\d+$/', '', $new_avatar);
+
+    if ($old_clean === $new_clean) return "Avatar unchanged";
+
+    // Проверяем URL
+    if (!is_valid_avatar_url($avatar_url)) return "URL does not point to a valid image file";
+    if (strlen($avatar_url) > 200) return "Avatar URL too long";
+
+    // Удаляем старые аватары
+    remove_avatars($user_id);
+
+    // Получаем размеры удалённого аватара
+    $dimensions = '';
+    $temp_file = tempnam(sys_get_temp_dir(), 'avatar_');
+    require_once INC_PATH . '/functions_ts_remote_connect.php';
+
+    try {
+        $file_content = TS_Fetch_Data($avatar_url);
+        if ($file_content) {
+            file_put_contents($temp_file, $file_content);
+            $img_info = getimagesize($temp_file);
+            if ($img_info !== false) $dimensions = $img_info[0] . '|' . $img_info[1];
         }
-        
-        $tmp_name = $upload_dir . "remote_" . md5(random_str());
-        $fp = @fopen($tmp_name, "wb");
-        if(!$fp)
-        {
-            error_log("processAvatarUrl: Failed to create temp file: " . $tmp_name);
-            return "Не удалось создать временный файл";
+    } catch (Exception $e) {
+        // Игнорируем ошибки скачивания
+    }
+    @unlink($temp_file);
+
+    // Обновляем базу
+    $updated = [
+        "avatar" => $db->escape_string($avatar_url),
+        "avatardimensions" => $dimensions,
+        "avatartype" => "remote"
+    ];
+    $db->update_query("users", $updated, "id='{$user_id}'");
+
+    // Обновляем локально userdata
+    $userdata['avatar'] = $avatar_url;
+
+    return ""; // успех
+}
+
+/**
+ * Проверка локального аватара
+ */
+function is_valid_local_avatar(string $avatar): bool
+{
+    $avatar = trim($avatar);
+    if ($avatar === '') return false;
+    if (str_starts_with($avatar, '/uploads/avatars/')) {
+        return (bool)preg_match('#\.(gif|jpg|jpeg|png|bmp|webp|avif)$#i', $avatar);
+    }
+    return false;
+}
+
+
+/**
+ * Главная обработка аватара
+ */
+function handle_avatar_update(): void
+{
+    global $userdata, $db;
+
+    if (!isset($_POST['avatar'])) return;
+
+    $new_avatar = trim($_POST['avatar'] ?? '');
+    $current_user_id = (int)($userdata['id'] ?? $_POST['userid'] ?? 0);
+    if ($current_user_id <= 0) {
+        flash_message("Error: User ID not found", "error");
+        return;
+    }
+
+    $old_avatar = trim($userdata['avatar'] ?? '');
+    $new_clean = preg_replace('/\?dateline=\d+$/', '', strtolower($new_avatar));
+    $old_clean = preg_replace('/\?dateline=\d+$/', '', strtolower($old_avatar));
+
+    // Проверяем, изменился ли аватар
+    if ($new_clean === $old_clean) return;
+
+    // Флеши и модкомменты
+    $modcomment = '';
+
+    // Удаление аватара
+    if ($new_avatar === '') {
+        remove_avatars($current_user_id);
+        $update_array = [
+            'avatar' => '',
+            'avatardimensions' => '',
+            'avatartype' => ''
+        ];
+        $db->update_query("users", $update_array, "id='{$current_user_id}'");
+        $userdata['avatar'] = '';
+        $modcomment = modcomment("Avatar removed");
+        flash_message("Avatar successfully removed!", "success");
+        return;
+    }
+
+    // URL-аватар
+    if (filter_var($new_avatar, FILTER_VALIDATE_URL)) 
+	{
+        $error = process_avatar_url($new_avatar, $current_user_id);
+        if ($error === "") {
+            $modcomment = modcomment("Avatar updated via URL");
+            flash_message("Avatar successfully updated!", "success");
+        } elseif ($error !== "Avatar unchanged") {
+            $modcomment = modcomment("Avatar update error: $error");
+            flash_message("Error: $error", "error");
         }
-        else
-        {
-            fwrite($fp, $file);
-            fclose($fp);
-            list($width, $height, $type) = @getimagesize($tmp_name);
-            @unlink($tmp_name);
-            if(!$type)
-            {
-                error_log("processAvatarUrl: Invalid image type");
-                return "Файл не является валидным изображением";
-            }
-        }
+        return;
     }
 
    
-
-    // Check URL length
-    if(strlen($avatar_url) > 200)
-    {
-        error_log("processAvatarUrl: URL too long: " . strlen($avatar_url));
-        return "URL аватара слишком длинный";
-    }
-
-    // Prepare avatar data
-    if($width > 0 && $height > 0)
-    {
-        $avatar_dimensions = (int)$width . "|" . (int)$height;
-    } 
-	else 
+    // Локальный аватар
+    if (is_valid_local_avatar($new_avatar)) 
 	{
-        $avatar_dimensions = "";
-    }
+        flash_message("Avatar successfully updated!", "success");
+        return;
+    }   
+   
 
-    // Remove old avatars
-    remove_avatars($user_id);
-
-    // Update database
-    $updated_avatar = array(
-        "avatar" => $avatar_url,
-        "avatardimensions" => $avatar_dimensions,
-        "avatartype" => "remote"
-    );
-    
-    error_log("processAvatarUrl: Updating database for user_id: " . $user_id);
-    $db->update_query("users", $updated_avatar, "id = '{$user_id}'");
-    
-    return ""; // No error
+    // Невалидный формат
+    $modcomment = modcomment("Attempt to update avatar: invalid format");
+    flash_message("Invalid avatar format", "error");
 }
-
-
-
-
-
-
-
-
-if (isset($_POST['avatar'])) 
-{
-    $new_avatar = trim($_POST['avatar']);
-    
-    // Получаем ID пользователя надежным способом
-    $current_user_id = (int)($userdata['id'] ?? $userid ?? $_POST['userid'] ?? 0);
-    
-    if ($current_user_id <= 0) 
-	{
-        error_log("ERROR: No valid user ID found");
-        flash_message("Ошибка: не найден ID пользователя", "error");
-    } 
-	else 
-	{
-        error_log("Using user ID: " . $current_user_id);
-    }
-    
-    if ($new_avatar != ($userdata['avatar'] ?? '')) 
-    {
-        if (empty($new_avatar)) 
-        {
-            // Удаление аватара
-            if ($current_user_id > 0) 
-			{
-                
-				remove_avatars($current_user_id);
-                $update_array['avatar'] = '';
-                $update_array['avatardimensions'] = '';
-                $update_array['avatartype'] = '';
-                $modcomment = modcomment("Аватар удалён");
-            }
-        }
-        elseif (filter_var($new_avatar, FILTER_VALIDATE_URL)) 
-        {
-            if ($current_user_id > 0) 
-			{
-                // Используем логику из MyBB для обработки URL аватара
-                $avatar_error = processAvatarUrl($new_avatar, $current_user_id);
-                
-                if (empty($avatar_error)) 
-				{
-                    // Успешно обработали URL аватара
-                    $modcomment = modcomment("Аватар обновлён по URL");
-                    flash_message("Аватар успешно обновлён!", "success");
-                } 
-				else 
-				{
-                    $modcomment = modcomment("Ошибка обновления аватара: " . $avatar_error);
-                    flash_message("Ошибка: " . $avatar_error, "error");
-                }
-            }
-        }
-        else 
-        {
-            $modcomment = modcomment("Попытка обновить аватар: неверный URL");
-            flash_message("Неверный формат URL аватара", "error");
-        }
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -979,7 +886,7 @@ require_once INC_PATH . '/functions_mkprettytime.php';
 
 
 
-
+handle_avatar_update();
 
 
 
@@ -991,48 +898,6 @@ match ($action) {
     'resetpasskey' => handleResetPasskey(),
     default => print_no_permission(true)
 };
-
-/**
- * Get enhanced avatar with fallback
- */
-function get_enhanced_avatar2(array $userdata): string
-{
-    $useravatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
-    
-    if (strpos($useravatar['image'], '<') === 0) {
-        return '
-        <div class="avatar-placeholder text-center">
-            <i class="fas fa-user fa-3x text-muted mb-2"></i>
-            <div class="small text-muted">No Avatar</div>
-        </div>';
-    } else {
-        return '<img src="' . $useravatar['image'] . '" alt="Avatar" ' . $useravatar['width_height'] . ' class="rounded-circle">';
-    }
-}
-
-
-
-function get_enhanced_avatar(array $userdata): string
-{
-    $useravatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
-
-   // Если аватар — это HTML-заглушка (начинается с '<'), выводим её как есть
-   if (strpos($useravatar['image'], '<') === 0) 
-   {
-       return $useravatar['image']; // <div class="avatar-ring2">No Avatar</div>
-   } 
-   // Иначе выводим как <img> (стандартный аватар)
-   else 
-   {
-       return '<img class="rounded img-fluid" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . ' />';
-   }
-}
-
-
-
-
-
-
 
 
 
@@ -1124,6 +989,10 @@ function get_user_stats(array $userdata): string
     ", $stats));
 }
 
+
+
+
+
 /**
  * Render basic info tab
  */
@@ -1131,15 +1000,8 @@ function renderBasicInfoTab(): string
 {
     global $userdata;
     
-   // $useravatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
-    //$avatarHtml = strpos($useravatar['image'], '<') === 0 
-     //   ? '<div class="avatar-placeholder text-center p-4"><i class="fas fa-user fa-4x text-muted"></i></div>'
-    ///   : '<img src="' . $useravatar['image'] . '" alt="Avatar" ' . $useravatar['width_height'] . ' class="rounded img-fluid">';
-		
-		
-		
-		
-	$useravatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
+	
+   $useravatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
 
    // Если аватар — это HTML-заглушка (начинается с '<'), выводим её как есть
    if (strpos($useravatar['image'], '<') === 0) 
@@ -1187,25 +1049,21 @@ function renderBasicInfoTab(): string
         
 				
 				
-			<div class="col-lg-4">
+<div class="col-lg-4">
             <div class="text-center">	
 				
 			<div class="col-auto">
   <div class="avatar-ring position-relative hov-soft"
        id="avatar-container"
-       data-uid="'.$userdata['id'].'"
-       data-can-change="'.$can_change_avatar.'"
        title="Avatar">
     <div>
       ' . $avatarHtml . '
-      
-      <span class="avatar-overlay">Change</span>
     </div>
 
-    <div id="avatar-progress"><div id="avatar-progress-bar"></div></div>
   </div>
 </div>
-<input type="file" id="avatar-input" accept="image/*" style="display:none;">
+
+
 				
 				
 				
@@ -1329,7 +1187,7 @@ function renderPermissionsTab(): string
  */
 function renderWarningsTab(): string
 {
-    global $userdata, $db, $BASEURL, $ban_user_limit;
+    global $userdata, $db, $BASEURL, $ban_user_limit, $dateformat;
     
     $warned = $userdata['warned'] === 'yes';
     $leechwarn = $userdata['leechwarn'] === 'yes';
@@ -1438,7 +1296,7 @@ function renderWarningsTab(): string
  */
 function get_last_warning_info(): string
 {
-    global $userdata, $db, $BASEURL;
+    global $userdata, $db, $BASEURL, $dateformat;
     
     if ($userdata['timeswarned'] == 0 || empty($userdata['warnedby'])) {
         return '
@@ -1666,11 +1524,13 @@ function renderAccountSettingsTab(): string
  */
 function handleEditUser(): void
 {
-    global $userdata, $BASEURL, $usergroups;
+    global $userdata, $BASEURL, $CURUSER, $usergroups;
     
     get_user_data();
     permission_check();
     stdhead('Edit User: ' . $userdata['username'] . ' (UID: ' . $userdata['id'] . ')');
+	
+	$user_avatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
 	
 	
 	
@@ -1691,7 +1551,11 @@ function handleEditUser(): void
         --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
         --danger-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
         --dark-gradient: linear-gradient(135deg, #434343 0%, #000000 100%);
+		--ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
+		
     }
+	
+	
     
    
     
@@ -2114,7 +1978,7 @@ function handleEditUser(): void
        data-can-change="'.$can_change_avatar.'"
        title="Avatar">
     <div>
-     ' . get_enhanced_avatar($userdata) . '
+     ' . $user_avatar['html'] . '
       <span class="avatar-overlay">Change</span>
     </div>
 
@@ -2430,15 +2294,29 @@ echo '
 /**
  * Handle user update
  */
+/**
+ * Handle user update
+ */
 function handleUpdateUser(): void
 {
-    global $userdata, $db, $CURUSER, $lang;
+    global $userdata, $db, $CURUSER, $lang, $update_array;
     
     get_user_data();
     permission_check();
 
-    // Process form data
+    // Initialize update array
+    $updateData = [];
+    
+    // Process avatar separately with validation
+    processAvatarUpdate();
+    
+    // Process other form data
     $updateData = processUserUpdateData();
+    
+    // Merge avatar updates if any (from local avatars)
+    if (!empty($update_array)) {
+        $updateData = array_merge($updateData, $update_array);
+    }
     
     if (!empty($updateData)) {
         $db->update_query("users", $updateData, "id = " . (int)$userdata['id']);
@@ -2453,6 +2331,28 @@ function handleUpdateUser(): void
 }
 
 /**
+ * Process avatar update with validation
+ */
+function processAvatarUpdate(): void
+{
+    global $userdata, $update_array, $mybb;
+    
+    // Process remove avatar
+    if($mybb->get_input('remove_avatar'))
+    {
+        $update_array['avatar'] = "";
+        $update_array['avatardimensions'] = "";
+        $update_array['avatartype'] = "";
+        remove_avatars($userdata['id']);
+        $modcomment = modcomment("Avatar removed");
+        return;
+    }
+    
+    // Avatar processing is already handled in the main avatar block above
+    // This function just ensures remove_avatar works correctly
+}
+
+/**
  * Process user update data from form
  */
 function processUserUpdateData(): array
@@ -2464,15 +2364,7 @@ function processUserUpdateData(): array
 	
 	
 	
-	// Process remove avatar
-    if($mybb->get_input('remove_avatar'))
-    {
-        $updateData['avatar'] = "";
-        $updateData['avatardimensions'] = "";
-        $updateData['avatartype'] = "";
-        remove_avatars($userdata['id']);
-        $modcomment = modcomment("Avatar removed");
-    }
+	
 	
 	
 	
@@ -2482,7 +2374,7 @@ function processUserUpdateData(): array
 
     // Process basic fields
 	$fields = [
-    'username', 'email', 'usergroup', 'usertitle', 'avatar', 'signature', 
+    'username', 'email', 'usergroup', 'usertitle', 'signature', 
     'donor', 'moderateposts', 'enabled', 'seedbonus', 'invites', 
     'uploaded', 'downloaded', 'allownotices', 'hideemail', 'receivepms', 
     'receivefrombuddy', 'pmnotice', 'pmnotify', 'buddyrequestspm', 
@@ -2620,18 +2512,19 @@ function handleDeleteAccount(): void
     }
 
     // Get user data
-    $user = get_user($userdata['id']);
+    $user = get_user((int)$userdata['id']);
 
     require_once INC_PATH . "/datahandlers/user.php";
     $userhandler = new UserDataHandler('delete');
 
-    if (!$userhandler->delete_user($user['id'])) {
-        stderr('Error', 'Cannot delete user!');
-        redirect($_SERVER['SCRIPT_NAME']);
+    if (!$userhandler->delete_user([$user['id']])) 
+    {
+       stderr('Error', 'Cannot delete user!');
+       redirect($_SERVER['SCRIPT_NAME']);
     }
 
     write_log('Account: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been deleted by ' . $CURUSER['username']);
-    stderr('Success', 'The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted', false);
+    stderr('Success, The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted');
 }
 
 /**
@@ -2639,7 +2532,7 @@ function handleDeleteAccount(): void
  */
 function handleResetPasskey(): void
 {
-    global $userdata, $db, $CURUSER, $lang, $userid;
+    global $userdata, $db, $CURUSER, $lang, $userid, $mybb;
     
     get_user_data();
     permission_check();

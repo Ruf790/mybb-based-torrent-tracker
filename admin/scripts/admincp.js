@@ -1,23 +1,26 @@
-var AdminCP = {
-	init: function()
-	{
-	},
+const AdminCP = {
+    init: function() {
+        // Инициализация при необходимости
+    },
 
-	deleteConfirmation: function(element, message)
-	{
-		if(!element) return false;
-		confirmReturn = confirm(message);
-		if(confirmReturn == true)
-		{
-			form = $("<form />", { method: "post", action: element.href, style: "display: none;" });
-			$("body").append(form);
-			form.trigger('submit');
-		}
-		return false;
-	}
+    deleteConfirmation: function(element, message) {
+        if(!element) return false;
+        
+        const confirmReturn = confirm(message);
+        if(confirmReturn === true) {
+            const form = document.createElement("form");
+            form.method = "post";
+            form.action = element.href;
+            form.style.display = "none";
+            
+            document.body.appendChild(form);
+            form.submit();
+        }
+        return false;
+    }
 };
 
-$(function()
-{
-	AdminCP.init();
+// Замена $(function()) на DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+    AdminCP.init();
 });

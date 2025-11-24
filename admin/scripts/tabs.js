@@ -1,43 +1,63 @@
-$(function()
-{
-	$('ul.tabs').each(function()
-	{
-		if($(this).data('rendered'))
-		{
-			return;
-		}
-
-		$(this).data('rendered', 'yes');
-
-		var activeTab, activeContent, links = $(this).find('a');
-
-		activeTab = $(links.filter('[href="'+location.hash+'"]')[0] || links[0]);
-		activeTab.addClass('active');
-		activeContent = $(activeTab.attr('href'));
-
-		// Hide the remaining content
-		links.not(activeTab).each(function()
-		{
-			$($(this).attr('href')).hide();
-		});
-
-		// Tab functionality
-		$(this).on('click', 'a', function(e)
-		{
-			activeTab.removeClass('active');
-			activeContent.hide();
-
-			activeTab = $(this);
-			activeContent = $($(this).attr('href'));
-
-			// update address bar
-			window.location.hash = $(this).attr('href');
-
-			activeTab.addClass('active');
-			activeContent.show();
-
-			e.preventDefault();
-		});
-	});
-
+document.addEventListener('DOMContentLoaded', function() {
+    const tabContainers = document.querySelectorAll('ul.tabs');
+    
+    tabContainers.forEach(function(tabContainer) {
+        // Проверяем, были ли табы уже обработаны
+        if (tabContainer.dataset.rendered) {
+            return;
+        }
+        
+        tabContainer.dataset.rendered = 'yes';
+        
+        const links = tabContainer.querySelectorAll('a');
+        let activeTab, activeContent;
+        
+        // Находим активную вкладку (из hash или первую)
+        const hashTab = Array.from(links).find(link => link.getAttribute('href') === location.hash);
+        activeTab = hashTab || links[0];
+        activeContent = document.querySelector(activeTab.getAttribute('href'));
+        
+        // Активируем выбранную вкладку
+        activeTab.classList.add('active');
+        if (activeContent) {
+            activeContent.style.display = 'block';
+        }
+        
+        // Скрываем остальной контент
+        links.forEach(function(link) {
+            if (link !== activeTab) {
+                const content = document.querySelector(link.getAttribute('href'));
+                if (content) {
+                    content.style.display = 'none';
+                }
+            }
+        });
+        
+        // Обработчик кликов по табам
+        tabContainer.addEventListener('click', function(e) {
+            if (e.target.tagName === 'A') {
+                e.preventDefault();
+                
+                // Деактивируем текущую вкладку
+                activeTab.classList.remove('active');
+                if (activeContent) {
+                    activeContent.style.display = 'none';
+                }
+                
+                // Активируем новую вкладку
+                activeTab = e.target;
+                activeContent = document.querySelector(activeTab.getAttribute('href'));
+                
+                // Обновляем hash в адресной строке
+                if (activeTab.getAttribute('href')) {
+                    window.location.hash = activeTab.getAttribute('href');
+                }
+                
+                activeTab.classList.add('active');
+                if (activeContent) {
+                    activeContent.style.display = 'block';
+                }
+            }
+        });
+    });
 });

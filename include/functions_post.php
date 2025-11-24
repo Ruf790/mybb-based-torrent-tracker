@@ -23,7 +23,7 @@
  
 function build_postbit($post, $post_type=0)
 {
-	global $db, $altbg, $theme, $mybb, $postcounter, $profile_fields, $regdateformat, $wolcutoffmins, $usergroups, $CURUSER, $f_postsperpage, $moderator, $forummoderator, $thread, $permissions, $forum_threads;
+	global $db, $altbg, $theme, $mybb, $postcounter, $profile_fields, $regdateformat, $wolcutoffmins, $usergroups, $enableattachments, $CURUSER, $f_postsperpage, $moderator, $forummoderator, $thread, $permissions, $forum_threads;
 	global $titlescache, $page, $templates, $forumpermissions, $attachcache;
 	global $lang, $ismod, $inlinecookie, $inlinecount, $groupscache, $fid;
 	global $plugins, $parser, $cache, $ignored_users, $hascustomtitle;
@@ -196,7 +196,7 @@ function build_postbit($post, $post_type=0)
 	}
 
 	// Fetch display group data.
-	$displaygroupfields = array("title", "description", "namestyle", "title");
+	$displaygroupfields = array("title", "description", "usertitle", "namestyle", "title");
 	
 
 	if(empty($post['displaygroup']))
@@ -238,25 +238,7 @@ function build_postbit($post, $post_type=0)
 		unset($title, $cached_titles);
 	}
 
-	// Work out the usergroup/title stuff
-	//$post['groupimage'] = '';
-	//if(!empty($usergroup['image']))
-	//{
-	//	$language = $mybb->settings['bblanguage'];
-	//	if(!empty($mybb->user['language']))
-	//	{
-	//		$language = $mybb->user['language'];
-	//	}
-
-	//	$usergroup['image'] = str_replace("{lang}", $language, $usergroup['image']);
-	//	$usergroup['image'] = str_replace("{theme}", $theme['imgdir'], $usergroup['image']);
-	//	eval("\$post['groupimage'] = \"".$templates->get("postbit_groupimage")."\";");
-
-	//	if($mybb->settings['postlayout'] == "classic")
-	//	{
-	//		$post['groupimage'] .= "<br />";
-	//	}
-	//}
+	
 
 	if($post['userusername'])
 	{
@@ -275,49 +257,11 @@ function build_postbit($post, $post_type=0)
 		{
 			$post['usertitle'] = $usergroup['usertitle'];
 		}
-		//elseif(is_array($titlescache) && !$usergroup['title'])
-		//{
-		//	reset($titlescache);
-		//	foreach($titlescache as $key => $titleinfo)
-		//	{
-		//		if($post['postnum'] >= $key)
-		//		{
-		//			if(!$hascustomtitle)
-		//			{
-		//				$post['title'] = $titleinfo['title'];
-		//			}
-		//			$post['stars'] = $titleinfo['stars'];
-		//			$post['starimage'] = $titleinfo['starimage'];
-		//			break;
-		//		}
-		//	}
-		//}
+		
 
 		$post['usertitle'] = htmlspecialchars_uni($post['usertitle']);
 
-		//if($usergroup['stars'])
-		//{
-		//	$post['stars'] = $usergroup['stars'];
-		//}
-
-		//if(empty($post['starimage']))
-		//{
-		//	$post['starimage'] = $usergroup['starimage'];
-		//}
-
-		//$post['userstars'] = '';
-		//if($post['starimage'] && isset($post['stars']))
-		//{
-			// Only display stars if we have an image to use...
-		//	$post['starimage'] = str_replace("{theme}", $theme['imgdir'], $post['starimage']);
-
-		//	for($i = 0; $i < $post['stars']; ++$i)
-		//	{
-		//		eval("\$post['userstars'] .= \"".$templates->get("postbit_userstar", 1, 0)."\";");
-		//	}
-
-		//	$post['userstars'] .= "<br />";
-		//}
+		
 
 		$postnum = $post['postnum'];
 		$post['postnum'] = ts_nf($post['postnum']);
@@ -327,23 +271,15 @@ function build_postbit($post, $post_type=0)
         $moderator = is_mod($usergroups);
 
 		$timecut = TIMENOW - $wolcutoffmins;
-		if($post['lastactive'] > $timecut && ($post['invisible'] != 1 || $moderator) && $post['lastvisit'] != $post['lastactive'])
+		//if($post['lastactive'] > $timecut && ($post['invisible'] != 1 || $moderator) && $post['lastvisit'] != $post['lastactive'])
+		if($post['lastactive'] > $timecut && ($post['invisible'] != 1 || $usergroups['canviewwolinvis'] == 1) && $post['lastvisit'] != $post['lastactive'])
 		{
-			$post['onlinestatus'] = '<a href="online.php" title="'.$lang->global['postbit_status_online'].'"><i class="fa-solid fa-circle-dot smaller" style="vertical-align: 0.115em; padding-left: 4px; color: #68c000"></i></a>';
+			eval("\$post['onlinestatus'] = \"".$templates->get("postbit_online")."\";");
 		}
 		else
 		{
-			//$allowaway = "1";
+			eval("\$post['onlinestatus'] = \"".$templates->get("postbit_offline")."\";");
 			
-			//if($post['away'] == 1 && $allowaway != 0)
-			//{
-				//$post['onlinestatus'] = '<a href="'.$post['profilelink_plain'].'" title="{$lang->postbit_status_away}">
-				//<img src="{$theme[imgdir]}/buddy_away.png" border="0" alt="{$lang->postbit_status_away}" class="buddy_status" /></a>';
-			//}
-			//else
-			//{
-				$post['onlinestatus'] = '<i class="fa-solid fa-circle-dot smaller" title="'.$lang->global['postbit_status_offline'].'" style="vertical-align: 0.115em; padding-left: 4px; color: #ccc"></i>';
-			//}
 		}
 
 		$post['useravatar'] = '';
@@ -354,89 +290,13 @@ function build_postbit($post, $post_type=0)
 			
 		}
 
-		//$post['button_find'] = '';
-		//if($mybb->usergroup['cansearch'] == 1)
-		//{
-			//eval("\$post['button_find'] = \"".$templates->get("postbit_find")."\";");
-		//}
-
-		//if($mybb->settings['enablepms'] == 1 && $post['uid'] != $mybb->user['uid'] && (($post['receivepms'] != 0 && $usergroup['canusepms'] != 0 && $mybb->usergroup['cansendpms'] == 1 && my_strpos(",".$post['ignorelist'].",", ",".$mybb->user['uid'].",") === false) || $mybb->usergroup['canoverridepm'] == 1))
-		//{
-			$post['button_pm'] = '<a href="private.php?action=send&amp;uid='.$post['uid'].'" title="{$lang->postbit_pm}" class="btn btn-secondary btn-sm" style="font-size: 12px!important; font-weight: 500!important"><i class="fa-solid fa-envelope"></i> &nbsp;{$lang->postbit_button_pm}</a>';
-		//}
-
-		///$post['button_rep'] = '';
-		//if($post_type != 3 && $mybb->settings['enablereputation'] == 1 && $mybb->settings['postrep'] == 1 && $mybb->usergroup['cangivereputations'] == 1 && $usergroup['usereputationsystem'] == 1 && ($mybb->settings['posrep'] || $mybb->settings['neurep'] || $mybb->settings['negrep']) && $post['uid'] != $mybb->user['uid'] && (!isset($post['visible']) || $post['visible'] == 1) && (!isset($thread['visible']) || $thread['visible'] == 1))
-		//{
-		//	if(empty($post['pid']))
-		//	{
-		//		$post['pid'] = 0;
-		//	}
-
-			//eval("\$post['button_rep'] = \"".$templates->get("postbit_rep_button")."\";");
-		//}
-
-		//if($post['website'] != "" && !is_member($mybb->settings['hidewebsite']) && $usergroup['canchangewebsite'] == 1)
-		//{
-		//	$post['website'] = htmlspecialchars_uni($post['website']);
-			//eval("\$post['button_www'] = \"".$templates->get("postbit_www")."\";");
-		//}
-		//else
-		//{
-		//	$post['button_www'] = "";
-		//}
-
-		//if($post['hideemail'] != 1 && $post['uid'] != $mybb->user['uid'] && $mybb->usergroup['cansendemail'] == 1)
-		//{
-			//eval("\$post['button_email'] = \"".$templates->get("postbit_email")."\";");
-		//}
-		//else
-		//{
-			//$post['button_email'] = "";
-		//}
+			
+		$post['button_pm'] = '<a href="private.php?action=send&amp;uid='.$post['uid'].'" title="{$lang->postbit_pm}" class="btn btn-secondary btn-sm" style="font-size: 12px!important; font-weight: 500!important"><i class="fa-solid fa-envelope"></i> &nbsp;{$lang->postbit_button_pm}</a>';
+		
 
 		$post['userregdate'] = my_datee($regdateformat, $post['added']);
 
-		// Work out the reputation this user has (only show if not announcement)
-		//if($post_type != 3 && $usergroup['usereputationsystem'] != 0 && $mybb->settings['enablereputation'] == 1)
-		//{
-		//	$post['userreputation'] = get_reputation($post['reputation'], $post['uid']);
-		//	eval("\$post['replink'] = \"".$templates->get("postbit_reputation")."\";");
-		//}
-
-		// Showing the warning level? (only show if not announcement)
-		//if($post_type != 3 && $mybb->settings['enablewarningsystem'] != 0 && $usergroup['canreceivewarnings'] != 0 && ($mybb->usergroup['canwarnusers'] != 0 || ($mybb->user['uid'] == $post['uid'] && $mybb->settings['canviewownwarning'] != 0)))
-		//{
-		//	if($mybb->settings['maxwarningpoints'] < 1)
-		//	{
-		//		$mybb->settings['maxwarningpoints'] = 10;
-		//	}
-
-		//	$warning_level = round($post['warningpoints']/$mybb->settings['maxwarningpoints']*100);
-		//	if($warning_level > 100)
-		//	{
-		//		$warning_level = 100;
-		//	}
-		//	$warning_level = get_colored_warning_level($warning_level);
-
-			// If we can warn them, it's not the same person, and we're in a PM or a post.
-		//	if($mybb->usergroup['canwarnusers'] != 0 && $post['uid'] != $mybb->user['uid'] && ($post_type == 0 || $post_type == 2))
-		//	{
-		//		eval("\$post['button_warn'] = \"".$templates->get("postbit_warn")."\";");
-		//		$warning_link = "warnings.php?uid={$post['uid']}";
-		//	}
-		//	else
-		//	{
-		//		$post['button_warn'] = '';
-		//		$warning_link = "usercp.php";
-		//	}
-		//	eval("\$post['warninglevel'] = \"".$templates->get("postbit_warninglevel")."\";");
-		//}
-
-		//if($post_type != 3 && $post_type != 1 && purgespammer_show($post['postnum'], $post['usergroup'], $post['uid']))
-		//{
-			//eval("\$post['button_purgespammer'] = \"".$templates->get('postbit_purgespammer')."\";");
-		//}
+		
 
 		if(!isset($profile_fields))
 		{
@@ -621,80 +481,23 @@ function build_postbit($post, $post_type=0)
 		
 		$is_mod = is_mod($usergroups);
 		
+		
+		$modals = '';
+        $modaldelete = '';
+		
 		if($is_mod || ($forumpermissions['caneditposts'] == 1 && $CURUSER['id'] == $post['uid'] && $thread['closed'] != 1 && $CURUSER['id'] != 0))
         {
-		    eval("\$post['input_editreason'] = \"".$templates->get("postbit_editreason")."\";");
+		    
 			eval("\$post['button_edit'] = \"".$templates->get("postbit_edit")."\";");
-		}
-
-		// Quick Delete button
-		$can_delete_thread = $can_delete_post = 0;
-		if($CURUSER['id'] == $post['uid'] && $thread['closed'] == 0)
-		{
-			if($forumpermissions['candeletethreads'] == 1 && $postcounter == 1)
-			{
-				$can_delete_thread = 1;
-			}
-			else if($forumpermissions['candeleteposts'] == 1 && $postcounter != 1)
-			{
-				$can_delete_post = 1;
-			}
-		}
-
-		$postbit_qdelete = $postbit_qrestore = '';
-		if($CURUSER['id'] != 0)
-		{
 			
-			if(($is_mod  || $can_delete_post == 1) && $postcounter != 1)
-			{
-				$postbit_qdelete = 'postbit_qdelete_post';
-				$display = '';
-				if($post['visible'] == -1)
-				{
-					$display = "none";
-				}
-				
-	
-				eval("\$post['button_quickdelete'] = \"".$templates->get("postbit_quickdelete")."\";");
-				
-				
-				
-			}
-			else if(($is_mod || $can_delete_thread == 1) && $postcounter == 1)
-			{
-				$postbit_qdelete = 'postbit_qdelete_thread';
-				$display = '';
-				if($post['visible'] == -1)
-				{
-					$display = "none";
-				}
-				eval("\$post['button_quickdelete'] = \"".$templates->get("postbit_quickdelete")."\";");
-			}
-
-			// Restore Post
-			//if(is_moderator($fid, "canrestoreposts") && $postcounter != 1)
-			//{
-			//	$display = "none";
-			//	if($post['visible'] == -1)
-			//	{
-			//		$display = '';
-			//	}
-			///	$postbit_qrestore = $lang->postbit_qrestore_post;
-			//	eval("\$post['button_quickrestore'] = \"".$templates->get("postbit_quickrestore")."\";");
-			//}
-
-			// Restore Thread
-			//else if(is_moderator($fid, "canrestorethreads") && $postcounter == 1)
-			//{
-			//	$display = "none";
-			//	if($post['visible'] == -1)
-			//	{
-			//		$display = "";
-			//	}
-			//	$postbit_qrestore = $lang->postbit_qrestore_thread;
-			//	eval("\$post['button_quickrestore'] = \"".$templates->get("postbit_quickrestore")."\";");
-			//}
+			eval("\$modals = \"".$templates->get("modal_edit")."\";");
+			
+			eval("\$modaldelete = \"".$templates->get("modal_delete")."\";");
+			
+			
 		}
+
+	
 
 		//if(!isset($ismod))
 		//{
@@ -705,7 +508,6 @@ function build_postbit($post, $post_type=0)
 		if ($is_mod)
 		{
 			if(isset($mybb->cookies[$inlinecookie]) && my_strpos($mybb->cookies[$inlinecookie], "|".$post['pid']."|") !== false)
-			//if(strstr($_COOKIE[$inlinecookie], "|".$post['pid']."|"))
 			{
 				$inlinecheck = "checked=\"checked\"";
 				$inlinecount++;
@@ -776,11 +578,7 @@ function build_postbit($post, $post_type=0)
 			$skip_report = array(0);
 		}
 
-		//$reportable = user_permissions($post['uid']);
-		//if(!in_array($mybb->user['uid'], $skip_report) && !empty($reportable['canbereported']))
-		//{
-		//	eval("\$post['button_report'] = \"".$templates->get("postbit_report")."\";");
-		//}
+		
 	}
 	elseif($post_type == 3) // announcement
 	{
@@ -835,32 +633,30 @@ function build_postbit($post, $post_type=0)
 		}
 	}
 
+	
+	
 	$post['poststatus'] = '';
 	if(!$post_type && $post['visible'] != 1)
 	{
 		$status_type = '';
-		//if(is_moderator($fid, "canviewdeleted") && $postcounter != 1 && $post['visible'] == -1)
-		//{
-			//$status_type = $lang->postbit_post_deleted;
-		//}
-		//else if(is_moderator($fid, "canviewunapprove") && $postcounter != 1 && $post['visible'] == 0)
 		
-		if($postcounter != 1 && $post['visible'] == 0)
+		if($is_mod && $postcounter != 1 && $post['visible'] == 0)
 		{
 			$status_type = $lang->global['postbit_post_unapproved'];
 		}
-		//else if(is_moderator($fid, "canviewdeleted") && $postcounter == 1 && $post['visible'] == -1)
-		//{
-			//$status_type = $lang->postbit_thread_deleted;
-		//}
-		//else if(is_moderator($fid, "canviewunapprove") && $postcounter == 1 && $post['visible'] == 0)
-		if($postcounter == 1 && $post['visible'] == 0)
+		else if($is_mod && $postcounter == 1 && $post['visible'] == 0)
 		{
 			$status_type = $lang->global['postbit_thread_unapproved'];
 		}
 
 		eval("\$post['poststatus'] = \"".$templates->get("postbit_status")."\";");
 	}
+	
+	
+	
+	
+	
+	
 
 	
 
@@ -885,7 +681,7 @@ function build_postbit($post, $post_type=0)
 
 	$post['attachments'] = '';
 	
-	$enableattachments = "1";
+
 	if($enableattachments != 0)
 	{
 		get_post_attachments($id, $post);
@@ -909,15 +705,7 @@ function build_postbit($post, $post_type=0)
 			"filter_badwords" => 1
 		);
 
-		//if($usergroup['signofollow'])
-		//{
-			//$sig_parser['nofollow_on'] = 1;
-		//}
-
-		//if($mybb->user['uid'] != 0 && $mybb->user['showimages'] != 1 || $mybb->settings['guestimages'] != 1 && $mybb->user['uid'] == 0)
-		//{
-		//	$sig_parser['allow_imgcode'] = 0;
-		//}
+		
 
 		$post['signature'] = $parser->parse_message($post['signature'], $sig_parser);
 		
@@ -938,23 +726,7 @@ function build_postbit($post, $post_type=0)
 		$post['signature'] = "";
 	}
 
-	//$icon_cache = $cache->read("posticons");
-
-	//if(isset($post['icon']) && $post['icon'] > 0 && $icon_cache[$post['icon']])
-	//{
-	//	$icon = $icon_cache[$post['icon']];
-
-	//	$icon['path'] = htmlspecialchars_uni($icon['path']);
-	//	$icon['path'] = str_replace("{theme}", $theme['imgdir'], $icon['path']);
-	//	$icon['name'] = htmlspecialchars_uni($icon['name']);
-		
-		
-	//	$post['icon'] = '<img src="'.$icon['path'].'" alt="'.$icon['name'].'" title="'.$icon['name'].'" style="vertical-align: middle;" />&nbsp;';
-	//}
-	//else
-	//{
-	//	$post['icon'] = "";
-	//}
+	
 
 	$post_visibility = $ignore_bit = $deleted_bit = '';
 	switch($post_type)
@@ -1064,7 +836,7 @@ function build_postbit($post, $post_type=0)
  */
 function get_post_attachments($id, &$post)
 {
-	global $attachcache, $mybb, $theme, $templates, $forumpermissions, $lang;
+	global $attachcache, $mybb, $theme, $templates, $forumpermissions, $attachthumbnails, $lang;
 
 	$validationcount = 0;
 	$tcount = 0;
@@ -1106,7 +878,7 @@ function get_post_attachments($id, &$post)
 					// Show as full size image IF setting=='fullsize' || (image is small && permissions allow)
 					// Show as download for all other cases
 					
-					$attachthumbnails = "yes";
+					
 					
 					if($attachment['thumbnail'] != "SMALL" && $attachment['thumbnail'] != "" && $attachthumbnails == "yes")
 					{
@@ -1174,7 +946,7 @@ function get_post_attachments($id, &$post)
 					// Show as full size image IF setting=='fullsize' || (image is small && permissions allow)
 					// Show as download for all other cases
 					
-					$attachthumbnails = "yes";
+					
 					
 					if($attachment['thumbnail'] != "SMALL" && $attachment['thumbnail'] != "" && $attachthumbnails == "yes")
 					{

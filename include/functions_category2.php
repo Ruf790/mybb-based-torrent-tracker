@@ -43,7 +43,7 @@ function ts_category_list2($type = 1, $formname = "usercp")
     $showcategories = '
     <div class="container my-3">
         <div class="card">
-			<div class="card-header fw-bold text-primary">RSS Feeds Categories to retrieve:</div>
+			<div class="card-header bg-primary text-white fw-bold">RSS Feeds Categories to retrieve:</div>
             <div class="card-body">
                 <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">';
 

@@ -1,467 +1,187 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
 
-/**
- * @property string title The title of the database access layer.
- * @property string short_title The short title of the database access layer.
- * @property string type The type of db software being used.
- * @property int query_count A count of the number of queries.
- * @property array querylist A list of the performed queries.
- * @property float query_time The time spent performing queries.
- * @property string engine The engine used to run the SQL database.
- * @property bool can_search Whether or not this engine can use the search functionality.
- */
+declare(strict_types=1);
+
+
 interface DB_Base
 {
-	/**
-	 * Connect to the database server.
-	 *
-	 * @param array $config Array of DBMS connection details.
-	 * @return resource|PDOStatement|mysqli_result The DB connection resource. Returns false on fail or -1 on a db connect failure.
-	 */
-	function connect($config);
+    
+    public function connect(array $config): mysqli|false;
 
-	/**
-	 * Query the database.
-	 *
-	 * @param string $string The query SQL.
-	 * @param integer|bool $hide_errors 1 if hide errors, 0 if not.
-	 * @param integer 1 $write_query if executes on master database, 0 if not.
-	 * @return resource|PDOStatement|mysqli_result The query data.
-	 */
-	//function query($string, $hide_errors=0, $write_query=0);
+    public function write_query(string $query, int $hide_errors = 0): mysqli_result|bool;
 
-	/**
-	 * Execute a write query on the master database
-	 *
-	 * @param string $query The query SQL.
-	 * @param boolean|int $hide_errors 1 if hide errors, 0 if not.
-	 * @return resource|PDOStatement|mysqli_result The query data.
-	 */
-	function write_query($query, $hide_errors=0);
+   
+    public function fetch_array(object $query, int $resulttype = MYSQLI_ASSOC): ?array;
 
-	/**
-	 * Explain a query on the database.
-	 *
-	 * @param string $string The query SQL.
-	 * @param string $qtime The time it took to perform the query.
-	 */
-	//function explain_query($string, $qtime);
+   
+    public function fetch_field(object $query, string $field, int|bool $row = false): mixed;
 
-	/**
-	 * Return a result array for a query.
-	 *
-	 * @param resource|PDOStatement|mysqli_result $query The query ID.
-	 * @param int $resulttype The type of array to return. Specified with the different constants for the type using
-	 *
-	 * @return array The array of results.
-	 */
-	function fetch_array($query, $resulttype=1);
+   
+    public function data_seek(object $query, int $row): bool;
 
-	/**
-	 * Return a specific field from a query.
-	 *
-	 * @param resource|PDOStatement|mysqli_result $query The query ID.
-	 * @param string $field The name of the field to return.
-	 * @param int|boolean $row The number of the row to fetch it from.
-	 */
-	function fetch_field($query, $field, $row=false);
+   
+    public function num_rows(object $query): int;
 
-	/**
-	 * Moves internal row pointer to the next row
-	 *
-	 * @param resource|PDOStatement|mysqli_result $query The query ID.
-	 * @param int $row The pointer to move the row to.
-	 */
-	function data_seek($query, $row);
+    
+    public function insert_id(): int;
 
-	/**
-	 * Return the number of rows resulting from a query.
-	 *
-	 * @param resource|PDOStatement|mysqli_result $query The query ID.
-	 * @return int The number of rows in the result.
-	 */
-	function num_rows($query);
+   
+    public function close(): void;
 
-	/**
-	 * Return the last id number of inserted data.
-	 *
-	 * @return int The id number.
-	 */
-	function insert_id();
+    
+    public function error_number(): int;
 
-	/**
-	 * Close the connection with the DBMS.
-	 *
-	 */
-	function close();
+    public function error_string(): string;
 
-	/**
-	 * Return an error number.
-	 *
-	 * @return int The error number of the current error.
-	 */
-	function error_number();
+   
+    public function error(string $string = ""): bool;
 
-	/**
-	 * Return an error string.
-	 *
-	 * @return string The explanation for the current error.
-	 */
-	function error_string();
+    
+    public function affected_rows(): int;
 
-	/**
-	 * Output a database error.
-	 *
-	 * @param string $string The string to present as an error.
-	 */
-	function error($string="");
+   
+    public function num_fields(mysqli_result $query): int;
 
-	/**
-	 * Returns the number of affected rows in a query.
-	 *
-	 * @return int The number of affected rows.
-	 */
-	function affected_rows();
+    
+    public function list_tables(string $database, string $prefix = ''): array;
 
-	/**
-	 * Return the number of fields.
-	 *
-	 * @param resource|PDOStatement|mysqli_result $query The query ID.
-	 * @return int The number of fields.
-	 */
-	function num_fields($query);
+    
+    public function table_exists(string $table): bool;
 
-	/**
-	 * Lists all functions in the database.
-	 *
-	 * @param string $database The database name.
-	 * @param string $prefix Prefix of the table (optional)
-	 * @return array The table list.
-	 */
-	function list_tables($database, $prefix='');
+    
+    public function field_exists(string $field, string $table): bool;
 
-	/**
-	 * Check if a table exists in a database.
-	 *
-	 * @param string $table The table name.
-	 * @return boolean True when exists, false if not.
-	 */
-	function table_exists($table);
+    
+    public function shutdown_query(string|mysqli_result $query, string $name = ''): void;
 
-	/**
-	 * Check if a field exists in a database.
-	 *
-	 * @param string $field The field name.
-	 * @param string $table The table name.
-	 * @return boolean True when exists, false if not.
-	 */
-	function field_exists($field, $table);
+   
+    public function simple_select(
+        string $table, 
+        string $fields = "*", 
+        string $conditions = "", 
+        array $options = []
+    ): mysqli_result|bool;
 
-	/**
-	 * Add a shutdown query.
-	 *
-	 * @param resource|PDOStatement|mysqli_result $query The query data.
-	 * @param string $name An optional name for the query.
-	 */
-	function shutdown_query($query, $name='');
+    
+    public function insert_query(string $table, array $array): int|false;
 
-	/**
-	 * Performs a simple select query.
-	 *
-	 * @param string $table The table name to be queried.
-	 * @param string $fields Comma delimited list of fields to be selected.
-	 * @param string $conditions SQL formatted list of conditions to be matched.
-	 * @param array $options List of options: group by, order by, order direction, limit, limit start.
-	 * @return resource|PDOStatement|mysqli_result The query data.
-	 */
-	function simple_select($table, $fields="*", $conditions="", $options=array());
+    
+    public function insert_query_multiple(string $table, array $array): void;
 
-	/**
-	 * Build an insert query from an array.
-	 *
-	 * @param string $table The table name to perform the query on.
-	 * @param array $array An array of fields and their values.
-	 * @return int The insert ID if available
-	 */
-	function insert_query($table, $array);
+    
+    public function update_query(
+        string $table, 
+        array $array, 
+        string $where = "", 
+        string $limit = "", 
+        bool $no_quote = false
+    ): mysqli_result|bool;
 
-	/**
-	 * Build one query for multiple inserts from a multidimensional array.
-	 *
-	 * @param string $table The table name to perform the query on.
-	 * @param array $array An array of inserts.
-	 * @return void
-	 */
-	function insert_query_multiple($table, $array);
+    
+    public function delete_query(string $table, string $where = "", string $limit = ""): mysqli_result|bool;
 
-	/**
-	 * Build an update query from an array.
-	 *
-	 * @param string $table The table name to perform the query on.
-	 * @param array $array An array of fields and their values.
-	 * @param string $where An optional where clause for the query.
-	 * @param string $limit An optional limit clause for the query.
-	 * @param boolean $no_quote An option to quote incoming values of the array.
-	 * @return resource|PDOStatement|mysqli_result The query data.
-	 */
-	function update_query($table, $array, $where="", $limit="", $no_quote=false);
+    
+    public function escape_string(mixed $string): string;
 
-	/**
-	 * Build a delete query.
-	 *
-	 * @param string $table The table name to perform the query on.
-	 * @param string $where An optional where clause for the query.
-	 * @param string $limit An optional limit clause for the query.
-	 * @return resource|PDOStatement|mysqli_result The query data.
-	 */
-	function delete_query($table, $where="", $limit="");
+    
+    public function free_result(object $query): bool;
 
-	/**
-	 * Escape a string according to the MySQL escape format.
-	 *
-	 * @param string $string The string to be escaped.
-	 * @return string The escaped string.
-	 */
-	function escape_string($string);
+   
+    public function escape_string_like(string $string): string;
 
-	/**
-	 * Frees the resources of a query.
-	 *
-	 * @param resource|PDOStatement|mysqli_result $query The query to destroy.
-	 * @return boolean Returns true on success, false on faliure
-	 */
-	function free_result($query);
+    
+    public function get_version(): string;
 
-	/**
-	 * Escape a string used within a like command.
-	 *
-	 * @param string $string The string to be escaped.
-	 * @return string The escaped string.
-	 */
-	function escape_string_like($string);
+  
+    public function optimize_table(string $table): mysqli_result|bool;
 
-	/**
-	 * Gets the current version of MySQL.
-	 *
-	 * @return string Version of MySQL.
-	 */
-	function get_version();
+   
+    public function analyze_table(string $table): mysqli_result|bool;
 
-	/**
-	 * Optimizes a specific table.
-	 *
-	 * @param string $table The name of the table to be optimized.
-	 */
-	function optimize_table($table);
+    
+    public function show_create_table(string $table): string;
 
-	/**
-	 * Analyzes a specific table.
-	 *
-	 * @param string $table The name of the table to be analyzed.
-	 */
-	function analyze_table($table);
+   
+    public function show_fields_from(string $table): array;
 
-	/**
-	 * Show the "create table" command for a specific table.
-	 *
-	 * @param string $table The name of the table.
-	 * @return string The SQL command to create the specified table.
-	 */
-	function show_create_table($table);
+   
+    public function is_fulltext(string $table, string $index = ""): bool;
 
-	/**
-	 * Show the "show fields from" command for a specific table.
-	 *
-	 * @param string $table The name of the table.
-	 * @return array Field info for that table
-	 */
-	function show_fields_from($table);
+   
+    public function supports_fulltext(string $table): bool;
 
-	/**
-	 * Returns whether or not the table contains a fulltext index.
-	 *
-	 * @param string $table The name of the table.
-	 * @param string $index Optionally specify the name of the index.
-	 * @return boolean True or false if the table has a fulltext index or not.
-	 */
-	function is_fulltext($table, $index="");
+   
+    public function index_exists(string $table, string $index): bool;
 
-	/**
-	 * Returns whether or not this database engine supports fulltext indexing.
-	 *
-	 * @param string $table The table to be checked.
-	 * @return boolean True or false if supported or not.
-	 */
-	function supports_fulltext($table);
+   
+    public function supports_fulltext_boolean(string $table): bool;
 
-	/**
-	 * Checks to see if an index exists on a specified table
-	 *
-	 * @param string $table The name of the table.
-	 * @param string $index The name of the index.
-	 */
-	function index_exists($table, $index);
+    
+    public function create_fulltext_index(string $table, string $column, string $name = ""): mysqli_result|bool;
 
-	/**
-	 * Returns whether or not this database engine supports boolean fulltext matching.
-	 *
-	 * @param string $table The table to be checked.
-	 * @return boolean True or false if supported or not.
-	 */
-	function supports_fulltext_boolean($table);
+    
+    public function drop_index(string $table, string $name): mysqli_result|bool;
 
-	/**
-	 * Creates a fulltext index on the specified column in the specified table with optional index name.
-	 *
-	 * @param string $table The name of the table.
-	 * @param string $column Name of the column to be indexed.
-	 * @param string $name The index name, optional.
-	 */
-	function create_fulltext_index($table, $column, $name="");
+   
+    public function drop_table(string $table, bool $hard = false, bool $table_prefix = true): mysqli_result|bool;
 
-	/**
-	 * Drop an index with the specified name from the specified table
-	 *
-	 * @param string $table The name of the table.
-	 * @param string $name The name of the index.
-	 */
-	function drop_index($table, $name);
+   
+    public function rename_table(string $old_table, string $new_table, bool $table_prefix = true): mysqli_result|bool;
 
-	/**
-	 * Drop an table with the specified table
-	 *
-	 * @param string $table The name of the table.
-	 * @param boolean $hard Hard drop - no checking
-	 * @param boolean $table_prefix Use table prefix?
-	 */
-	function drop_table($table, $hard=false, $table_prefix=true);
+   
+    public function replace_query(
+        string $table, 
+        array $replacements = [], 
+        string|array $default_field = "", 
+        bool $insert_id = true
+    ): mysqli_result|bool;
 
-	/**
-	 * Renames a table
-	 *
-	 * @param string $old_table The old table name
-	 * @param string $new_table the new table name
-	 * @param boolean $table_prefix Use table prefix?
-	 */
-	function rename_table($old_table, $new_table, $table_prefix=true);
+    
+    public function drop_column(string $table, string $column): mysqli_result|bool;
 
-	/**
-	 * Replace contents of table with values
-	 *
-	 * @param string $table The table
-	 * @param array $replacements The replacements
-	 * @param string|array $default_field The default field(s)
-	 * @param boolean $insert_id Whether or not to return an insert id. True by default
-	 */
-	function replace_query($table, $replacements=array(), $default_field="", $insert_id=true);
+    
+    public function add_column(string $table, string $column, string $definition): mysqli_result|bool;
 
-	/**
-	 * Drops a column
-	 *
-	 * @param string $table The table
-	 * @param string $column The column name
-	 */
-	function drop_column($table, $column);
+    
+    public function modify_column(
+        string $table, 
+        string $column, 
+        string $new_definition, 
+        bool|string $new_not_null = false, 
+        bool|string $new_default_value = false
+    ): bool;
 
-	/**
-	 * Adds a column
-	 *
-	 * @param string $table The table
-	 * @param string $column The column name
-	 * @param string $definition The new column definition
-	 */
-	function add_column($table, $column, $definition);
+   
+    public function rename_column(
+        string $table, 
+        string $old_column, 
+        string $new_column, 
+        string $new_definition, 
+        bool|string $new_not_null = false, 
+        bool|string $new_default_value = false
+    ): bool;
 
-	/**
-	 * Modifies a column
-	 *
-	 * @param string $table The table
-	 * @param string $column The column name
-	 * @param string $new_definition the new column definition
-	 * @param boolean|string $new_not_null Whether to "drop" or "set" the NOT NULL attribute (no change if false)
-	 * @param boolean|string $new_default_value The new default value, or false to drop the attribute
-	 * @return bool Returns true if all queries are executed successfully or false if one of them failed
-	 */
-	function modify_column($table, $column, $new_definition, $new_not_null=false, $new_default_value=false);
+   
+    public function set_table_prefix(string $prefix): void;
 
-	/**
-	 * Renames a column
-	 *
-	 * @param string $table The table
-	 * @param string $old_column The old column name
-	 * @param string $new_column the new column name
-	 * @param string $new_definition the new column definition
-	 * @param boolean|string $new_not_null Whether to "drop" or "set" the NOT NULL attribute (no change if false)
-	 * @param boolean|string $new_default_value The new default value, or false to drop the attribute
-	 * @return bool Returns true if all queries are executed successfully
-	 */
-	function rename_column($table, $old_column, $new_column, $new_definition, $new_not_null=false, $new_default_value=false);
+   
+    public function fetch_size(string $table = ''): int;
 
-	/**
-	 * Sets the table prefix used by the simple select, insert, update and delete functions
-	 *
-	 * @param string $prefix The new table prefix
-	 */
-	function set_table_prefix($prefix);
+    
+    public function fetch_db_charsets(): array|false;
 
-	/**
-	 * Fetched the total size of all mysql tables or a specific table
-	 *
-	 * @param string $table The table (optional)
-	 * @return integer the total size of all mysql tables or a specific table
-	 */
-	function fetch_size($table='');
+    
+    public function fetch_charset_collation(string $charset): string|false;
 
-	/**
-	 * Fetch a list of database character sets this DBMS supports
-	 *
-	 * @return array|bool Array of supported character sets with array key being the name, array value being display name. False if unsupported
-	 */
-	function fetch_db_charsets();
+    
+    public function build_create_table_collation(): string;
 
-	/**
-	 * Fetch a database collation for a particular database character set
-	 *
-	 * @param string $charset The database character set
-	 * @return string|bool The matching database collation, false if unsupported
-	 */
-	function fetch_charset_collation($charset);
+   
+    public function get_execution_time(): ?float;
 
-	/**
-	 * Fetch a character set/collation string for use with CREATE TABLE statements. Uses current DB encoding
-	 *
-	 * @return string The built string, empty if unsupported
-	 */
-	function build_create_table_collation();
+    
+    public function escape_binary(string $string): string;
 
-	/**
-	 * Time how long it takes for a particular piece of code to run. Place calls above & below the block of code.
-	 *
-	 * @deprecated
-	 */
-	function get_execution_time();
-
-	/**
-	 * Binary database fields require special attention.
-	 *
-	 * @param string $string Binary value
-	 * @return string Encoded binary value
-	 */
-	function escape_binary($string);
-
-	/**
-	 * Unescape binary data.
-	 *
-	 * @param string $string Binary value
-	 * @return string Encoded binary value
-	 */
-	function unescape_binary($string);
+    
+    public function unescape_binary(string $string): string;
 }

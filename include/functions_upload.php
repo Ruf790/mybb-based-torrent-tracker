@@ -184,7 +184,7 @@ function upload_avatar($avatar=array(), $uid=0)
 
 	if(!is_uploaded_file($avatar['tmp_name']))
 	{
-		$ret['error'] = 'error_uploadfailedZZ';
+		$ret['error'] = 'The file upload failed. Please choose a valid file and try again.';
 		return $ret;
 	}
 
@@ -205,14 +205,14 @@ function upload_avatar($avatar=array(), $uid=0)
 	if(!empty($file['error']))
 	{
 		delete_uploaded_file($avatarpath."/".$filename);
-		$ret['error'] = 'error_uploadfailed1';
+		$ret['error'] = 'The file upload failed. Please choose a valid file and try again';
 		return $ret;
 	}
 
 	// Lets just double check that it exists
 	if(!file_exists($avatarpath."/".$filename))
 	{
-		$ret['error'] = 'error_uploadfailed2';
+		$ret['error'] = 'The file upload failed. Please choose a valid file and try again';
 		delete_uploaded_file($avatarpath."/".$filename);
 		return $ret;
 	}
@@ -222,7 +222,7 @@ function upload_avatar($avatar=array(), $uid=0)
 	if(!is_array($img_dimensions))
 	{
 		delete_uploaded_file($avatarpath."/".$filename);
-		$ret['error'] = 'error_uploadfailed9';
+		$ret['error'] = 'The file upload failed. Please choose a valid file and try again';
 		return $ret;
 	}
 
@@ -270,7 +270,7 @@ function upload_avatar($avatar=array(), $uid=0)
 	// Check if the uploaded file type matches the correct image type (returned by getimagesize)
 	if(empty($allowed_mime_types[$avatar['type']]) || $img_dimensions[2] != $img_type || $img_type == 0)
 	{
-		$ret['error'] = 'error_uploadfailed3';
+		$ret['error'] = 'The file upload failed. Please choose a valid file and try again';
 		delete_uploaded_file($avatarpath."/".$filename);
 		return $ret;
 	}
@@ -280,7 +280,7 @@ function upload_avatar($avatar=array(), $uid=0)
 	if(($avatarsize > 0 && $avatar['size'] > ($avatarsize*1024)) || $avatar['size'] > ($allowed_mime_types[$avatar['type']]*1024))
 	{
 		delete_uploaded_file($avatarpath."/".$filename);
-		$ret['error'] = 'error_uploadsize';
+		$ret['error'] = 'The size of the uploaded file is too large';
 		return $ret;
 	}
 
@@ -417,7 +417,7 @@ function upload_attachment($attachment, $update_attachment=false)
     // Check if we have a valid extension
     if(!isset($attachtypes[$ext]))
     {
-    	$ret['error'] = 'error_attachtype';
+    	$ret['error'] = 'The type of file that you attached is not allowed. Please remove the attachment or choose a different type';
 		return $ret;
 	}
 	else
@@ -429,14 +429,14 @@ function upload_attachment($attachment, $update_attachment=false)
 	$maxFileNameLength = 255;
 	if(my_strlen($attachment['name']) > $maxFileNameLength)
 	{
-		$ret['error'] = sprintf('error_attach_filename_length', htmlspecialchars_uni($attachment['name']), $maxFileNameLength);
+		$ret['error'] = sprintf('The file name '.htmlspecialchars_uni($attachment['name']).' exceeds the maximum file name length '.$maxFileNameLength.'. Please upload a file with a shorter file name.');
 		return $ret;
 	}
 
 	// Check the size
 	if($attachment['size'] > $attachtype['maxsize']*1024 && $attachtype['maxsize'] != "")
 	{
-		$ret['error'] = sprintf('error_attachsize', htmlspecialchars_uni($attachment['name']), $attachtype['maxsize']);
+		$ret['error'] = sprintf('The file '.htmlspecialchars_uni($attachment['name']).' is too large. The maximum size for that type of file is '.$attachtype['maxsize'].' kilobytes');
 		return $ret;
 	}
 
@@ -449,7 +449,7 @@ function upload_attachment($attachment, $update_attachment=false)
 		if($usage > ($usergroups['attachquota']*1024))
 		{
 			$friendlyquota = mksize($usergroups['attachquota']*1024);
-			$ret['error'] = sprintf('error_reachedattachquota', $friendlyquota);
+			$ret['error'] = sprintf('Sorry, but you cannot attach this file because you have reached your attachment quota of '.$friendlyquota.'');
 			return $ret;
 		}
 	}
@@ -490,7 +490,7 @@ function upload_attachment($attachment, $update_attachment=false)
 		$attachcount = $db->fetch_field($query, "numattachs");
 		if($attachcount >= $maxattachments)
 		{
-			$ret['error'] = sprintf('error_maxattachpost', $maxattachments);
+			$ret['error'] = sprintf('Sorry but you cannot attach this file because you have reached the maximum number of attachments allowed per post of '.$maxattachments.'');
 			return $ret;
 		}
 	}
@@ -611,12 +611,25 @@ function upload_attachment($attachment, $update_attachment=false)
 
 		$mime = "";
 		$file_path = $uploadspath_abs."/".$filename;
-		if(function_exists("finfo_open"))
-		{
-			$file_info = finfo_open(FILEINFO_MIME);
-			list($mime, ) = explode(';', finfo_file($file_info, $file_path), 1);
-			finfo_close($file_info);
-		}
+		//if(function_exists("finfo_open"))
+		//{
+			//$file_info = finfo_open(FILEINFO_MIME);
+			//list($mime, ) = explode(';', finfo_file($file_info, $file_path), 1);
+			//finfo_close($file_info);
+		//}
+		
+		
+if(function_exists("finfo_open"))
+{
+    $file_info = finfo_open(FILEINFO_MIME);
+    list($mime, ) = explode(';', finfo_file($file_info, $file_path), 1);
+    // finfo_close($file_info); // Deprecated in PHP 8.5 - objects are freed automatically
+}
+		
+		
+		
+		
+		
 		else if(function_exists("mime_content_type"))
 		{
 			$mime = mime_content_type($file_path);

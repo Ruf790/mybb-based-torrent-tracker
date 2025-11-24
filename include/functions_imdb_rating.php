@@ -72,7 +72,7 @@
     return false;
   }
 
-  if (!defined ('IN_SCRIPT_TSSEv56'))
+  if (!defined ('APP_INITIALIZED'))
   {
     exit ('<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>');
   }

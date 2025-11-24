@@ -775,58 +775,7 @@ function get_pm_folder_name($fid, $name="")
 	}
 }
 
-/**
- * Generates a security question for registration.
- *
- * @param int $old_qid Optional ID of the old question.
- * @return string The question session id.
- */
-function generate_question($old_qid=0)
-{
-	global $db;
 
-	if($db->type == 'pgsql' || $db->type == 'sqlite')
-	{
-		$order_by = 'RANDOM()';
-	}
-	else
-	{
-		$order_by = 'RAND()';
-	}
-
-	$excl_old = '';
-	if($old_qid)
-	{
-		$excl_old = ' AND qid != '.(int)$old_qid;
-	}
-
-	$query = $db->simple_select('questions', 'qid, shown', "active=1{$excl_old}", array('limit' => 1, 'order_by' => $order_by));
-	$question = $db->fetch_array($query);
-
-	if(!$db->num_rows($query))
-	{
-		// No active questions exist
-		return false;
-	}
-	else
-	{
-		$sessionid = random_str(32);
-
-		$sql_array = array(
-			"sid" => $sessionid,
-			"qid" => $question['qid'],
-			"dateline" => TIMENOW
-		);
-		$db->insert_query("questionsessions", $sql_array);
-
-		$update_question = array(
-			"shown" => $question['shown'] + 1
-		);
-		$db->update_query("questions", $update_question, "qid = '{$question['qid']}'");
-
-		return $sessionid;
-	}
-}
 
 /**
  * Check whether we can show the Purge Spammer Feature

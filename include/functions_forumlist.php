@@ -480,10 +480,8 @@ function build_forumbits($pid=0, $depth=1)
 			}
 
 			// Descriptions aren't being shown - blank them
-			//if($mybb->settings['showdescriptions'] == 0)
-			//{
-				$forum['description'] = '';
-			//}
+		    $forum['description'] = '';
+			
 
 			// Check if this category is either expanded or collapsed and hide it as necessary.
 			$expdisplay = '';
@@ -539,7 +537,7 @@ function build_forumbits($pid=0, $depth=1)
  */
 function get_forum_lightbulb($forum, $lastpost, $locked=0)
 {
-	global $mybb, $lang, $db, $unread_forums, $CURUSER;
+	global $mybb, $lang, $db, $unread_forums, $CURUSER, $threadreadcut;
 
 	// This forum is a redirect, so override the folder icon with the "offlink" icon.
 	if(!empty($forum['linkto']))
@@ -569,7 +567,6 @@ function get_forum_lightbulb($forum, $lastpost, $locked=0)
 		{
 			$forum_read = 0;
 			
-			$threadreadcut = "7";
 			
 			$threadcut = TIMENOW - 60*60*24*$threadreadcut;
 

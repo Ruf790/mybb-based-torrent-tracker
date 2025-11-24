@@ -204,7 +204,7 @@ function parse_quoted_message(&$quoted_post, $remove_message_quotes=true)
 		'#\[attachment=([0-9]+?)\]#i'
 	), array(
 		"\\1* {$quoted_post['username']} \\2",
-		"\\1* {$quoted_post['username']} {$lang->slaps} \\2 {$lang->with_trout}",
+		"\\1* {$quoted_post['username']} {slaps} \\2 {around a bit with a large trout}",
 		"",
 	), $quoted_post['message']);
 	$quoted_post['message'] = $parser->parse_badwords($quoted_post['message']);

@@ -13,57 +13,75 @@ try {
     $imdbObj = new IMDB($t_link);
     $data = $imdbObj->parse();
 
-    // Основная информация
+    // Основная информация с проверками
     $Title      = $data['title'] ?? '';
     $Year       = $data['year'] ?? '';
     $Rated      = $data['content_rating'] ?? '';
     $Released   = $data['release_date'] ?? '';
     $RuntimeRaw = $data['runtime'] ?? '';
     $RuntimeMinutes = null;
+    
     if (preg_match('/(\d+)\s*h(?:ou)?r?s?\s*(\d+)?\s*m(?:in)?s?/i', $RuntimeRaw, $matches)) {
-        $hours = (int)$matches[1];
+        $hours = (int)($matches[1] ?? 0);
         $minutes = isset($matches[2]) ? (int)$matches[2] : 0;
         $RuntimeMinutes = $hours * 60 + $minutes;
     } elseif (preg_match('/(\d+)\s*m(?:in)?s?/i', $RuntimeRaw, $matches)) {
-        $RuntimeMinutes = (int)$matches[1];
+        $RuntimeMinutes = (int)($matches[1] ?? 0);
     }
 
-    // Классификация и теги
+    // Классификация и теги с проверками
     $Tags = !empty($data['tags']) ? implode(', ', $data['tags']) : '';
     $Genre = !empty($data['genres']) ? implode(', ', $data['genres']) : '';
 
-    // Творческая группа
+    // Творческая группа с проверками
     $Director = !empty($data['credits']['directors']) ? 
                implode(', ', array_column($data['credits']['directors'], 'name')) : '';
     $Writer = !empty($data['credits']['writers']) ? 
              implode(', ', array_column($data['credits']['writers'], 'name')) : '';
-    $Actors = !empty($data['cast']) ? 
-             implode(', ', array_column(array_slice($data['cast'], 0, 7), 'actor')) . 
-             (count($data['cast']) > 7 ? ', ...' : '') : '';
-			 
-			 
-			 
-			 
     
+    $Actors = '';
+    if (!empty($data['cast'])) {
+        $actorNames = array_column(array_slice($data['cast'], 0, 7), 'actor');
+        $Actors = implode(', ', $actorNames);
+        if (count($data['cast']) > 7) {
+            $Actors .= ', ...';
+        }
+    }
+
     // Полный список актеров с персонажами
     $FullCast = '';
     if (!empty($data['cast'])) {
         foreach (array_slice($data['cast'], 0, 10) as $actor) {
-            $FullCast .= "<strong>{$actor['actor']}</strong> as {$actor['character']}<br>";
+            $actorName = $actor['actor'] ?? 'Unknown';
+            $character = $actor['character'] ?? 'Unknown';
+            $FullCast .= "<strong>{$actorName}</strong> as {$character}<br>";
         }
         if (count($data['cast']) > 10) {
             $FullCast .= "... and " . (count($data['cast']) - 10) . " more";
         }
     }
 
-    // Дополнительная информация
+    // Дополнительная информация с проверками
     $Plot = $data['plot'] ?? '';
     $Language = !empty($data['languages']) ? implode(', ', $data['languages']) : '';
     $Country = !empty($data['countries']) ? implode(', ', $data['countries']) : '';
-    $Awards = is_array($data['awards']) ? 
-             "Won {$data['awards']['total_wins']} awards & {$data['awards']['total_nominations']} nominations" . 
-             (!empty($data['awards']['oscars']) ? "<br>Oscars: {$data['awards']['oscars']['wins']} wins, {$data['awards']['oscars']['nominations']} nominations" : '') : 
-             ($data['awards'] ?? '');
+    
+    // ИСПРАВЛЕННАЯ ЧАСТЬ - награды
+    $Awards = '';
+    if (isset($data['awards']) && is_array($data['awards'])) {
+        $total_wins = $data['awards']['total_wins'] ?? 0;
+        $total_nominations = $data['awards']['total_nominations'] ?? 0;
+        $Awards = "Won {$total_wins} awards & {$total_nominations} nominations";
+        
+        if (!empty($data['awards']['oscars'])) {
+            $oscar_wins = $data['awards']['oscars']['wins'] ?? 0;
+            $oscar_nominations = $data['awards']['oscars']['nominations'] ?? 0;
+            $Awards .= "<br>Oscars: {$oscar_wins} wins, {$oscar_nominations} nominations";
+        }
+    } else {
+        $Awards = $data['awards'] ?? '';
+    }
+    
     $Poster = $data['poster'] ?? '';
     $imdbRating = $data['rating'] ?? '';
     $imdbVotes = $data['rating_count'] ?? '';
@@ -71,29 +89,33 @@ try {
     $IMDBUrl = "https://www.imdb.com/title/{$imdbId}/";
     $Tagline = $data['tagline'] ?? '';
 
-    // Технические характеристики
-    $Color = $data['technical_specs']['Color'] ?? '';
-    $SoundMix = $data['technical_specs']['Sound Mix'] ?? $data['technical_specs']['Sound mix'] ?? '';
-    $AspectRatio = $data['technical_specs']['Aspect Ratio'] ?? $data['technical_specs']['Aspect ratio'] ?? '';
-    $NegativeFormat = $data['technical_specs']['Negative Format'] ?? '';
+    // Технические характеристики с проверками
+    $technical_specs = $data['technical_specs'] ?? [];
+    $Color = $technical_specs['Color'] ?? $technical_specs['color'] ?? '';
+    $SoundMix = $technical_specs['Sound Mix'] ?? $technical_specs['Sound mix'] ?? $technical_specs['sound_mix'] ?? '';
+    $AspectRatio = $technical_specs['Aspect Ratio'] ?? $technical_specs['Aspect ratio'] ?? $technical_specs['aspect_ratio'] ?? '';
+    $NegativeFormat = $technical_specs['Negative Format'] ?? $technical_specs['negative_format'] ?? '';
 
-    // Финансовые показатели
-    $Budget = $data['box_office']['budget'] ?? '';
-    $BoxOffice = $data['box_office']['gross_worldwide'] ?? '';
-    $OpeningWeekend = $data['box_office']['opening_weekend'] ?? '';
-    $GrossUS = $data['box_office']['gross_us'] ?? '';
+    // Финансовые показатели с проверками
+    $box_office = $data['box_office'] ?? [];
+    $Budget = $box_office['budget'] ?? '';
+    $BoxOffice = $box_office['gross_worldwide'] ?? '';
+    $OpeningWeekend = $box_office['opening_weekend'] ?? '';
+    $GrossUS = $box_office['gross_us'] ?? '';
     $Official = $data['official_site'] ?? '';
 
-    // Storyline информация
-    $Synopsis = $data['storyline']['synopsis'] ?? '';
-    $Certificate = $data['storyline']['Certificate'] ?? '';
+    // Storyline информация с проверками
+    $storyline = $data['storyline'] ?? [];
+    $Synopsis = $storyline['synopsis'] ?? '';
+    $Certificate = $storyline['Certificate'] ?? $storyline['certificate'] ?? '';
     $FilmingLocations = $data['filming_locations'] ?? '';
     $AlsoKnownAs = !empty($data['also_known_as']) ? implode('<br>', $data['also_known_as']) : '';
 
-    // Медиа информация
-    $PhotosCount = $data['media']['photos_count'] ?? '';
-    $VideosCount = $data['media']['videos_count'] ?? '';
-    $TrailerUrl = $data['media']['trailer_url'] ?? '';
+    // Медиа информация с проверками
+    $media = $data['media'] ?? [];
+    $PhotosCount = $media['photos_count'] ?? '';
+    $VideosCount = $media['videos_count'] ?? '';
+    $TrailerUrl = $media['trailer_url'] ?? '';
 
     // Обработка постера
     $Poster = preg_replace('#\._V1_.*?\.(jpg|png|jpeg)$#i', '.$1', $Poster);
@@ -101,7 +123,6 @@ try {
 
     // --- Avistaz-style block ---
     $t_link = "
-   
     <style>
         .block-titled { 
             border: 1px solid #ddd; 
@@ -166,7 +187,7 @@ try {
         }
     </style>
 
-    
+    <div class='block-titled'>
         <div class='movie-poster pull-left'>
             <a href='" . htmlspecialchars($IMDBUrl, ENT_QUOTES) . "' target='_blank' title='" . htmlspecialchars($Title, ENT_QUOTES) . "'>
                 <img src='" . htmlspecialchars($ss, ENT_QUOTES) . "' class='rounded' alt='" . htmlspecialchars($Title, ENT_QUOTES) . "' width='200'>
@@ -183,7 +204,7 @@ try {
 
         <div class='movie-details'>
             " . ($Tagline ? "<p class='movie-plot'><em>" . nl2br(htmlspecialchars($Tagline)) . "</em></p>" : "") . "
-            <p class='movie-plot'>" . nl2br(htmlspecialchars($Plot)) . "</p>
+            " . ($Plot ? "<p class='movie-plot'>" . nl2br(htmlspecialchars($Plot)) . "</p>" : "") . "
             " . ($Synopsis ? "<p class='movie-plot'><strong>Synopsis:</strong> " . nl2br(htmlspecialchars($Synopsis)) . "</p>" : "") . "
 
             <div class='movie-info'>
@@ -262,14 +283,14 @@ try {
                     <i class='fa fa-users'></i> <strong>Full Cast:</strong><br>{$FullCast}
                 </div>" : "") . "
 
-                <div class='section-title'>Awards & Recognition</div>
-
                 " . ($Awards ? "
+                <div class='section-title'>Awards & Recognition</div>
                 <div>
                     <i class='fa fa-trophy'></i> <strong>Awards:</strong> " . nl2br(htmlspecialchars($Awards)) . "
                 </div>" : "") . "
 
-                <div class='section-title'>Financial Information</div>
+                " . ($Budget || $BoxOffice ? "
+                <div class='section-title'>Financial Information</div>" : "") . "
 
                 " . ($Budget ? "
                 <div>
@@ -301,7 +322,8 @@ try {
                     <i class='fa fa-youtube-play'></i> <strong>Trailer:</strong> <a href='" . htmlspecialchars($TrailerUrl, ENT_QUOTES) . "' target='_blank'>Watch on IMDb</a>
                 </div>" : "") . "
 
-                <div class='section-title'>Technical Specifications</div>
+                " . ($Color || $SoundMix || $AspectRatio ? "
+                <div class='section-title'>Technical Specifications</div>" : "") . "
 
                 " . ($Color ? "
                 <div>
@@ -325,7 +347,7 @@ try {
             </div>
         </div>
         <div class='clearfix'></div>
-    
+    </div>
     ";
 
 } catch (Exception $e) {

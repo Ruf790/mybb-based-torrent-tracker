@@ -2,7 +2,7 @@
 
 function login_attempt_check($uid = 0, $fatal = true)
 {
-	global $mybb, $lang, $db;
+	global $mybb, $lang, $db, $failedlogincount;
 
 	$attempts = array();
 	$uid = (int)$uid;
@@ -11,7 +11,7 @@ function login_attempt_check($uid = 0, $fatal = true)
 	// Get this user's login attempts and eventual lockout, if a uid is provided
 	if($uid > 0)
 	{
-		$query = $db->simple_select("users", "loginattempts, loginlockoutexpiry", "id='{$uid}'", 1);
+		$query = $db->simple_select("users", "loginattempts, loginlockoutexpiry", "id='{$uid}'", array('limit' => 1));
 		$attempts = $db->fetch_array($query);
 
 		if($attempts['loginattempts'] <= 0)
@@ -29,13 +29,13 @@ function login_attempt_check($uid = 0, $fatal = true)
 			$minsleft = floor(($secsleft / 60) % 60);
 			$secsleft = floor($secsleft % 60);
 
-			stderr(sprintf('failed_login_wait', $hoursleft, $minsleft, $secsleft));
+			stderr(sprintf($lang->member['failed_login_wait'], $hoursleft, $minsleft, $secsleft));
 		}
 
 		return false;
 	}
 	
-	$failedlogincount = "1";
+	
 	$failedlogintime = "1";
 
 	if($failedlogincount > 0 && isset($attempts['loginattempts']) && $attempts['loginattempts'] >= $failedlogincount)

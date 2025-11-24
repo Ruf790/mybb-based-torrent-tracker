@@ -2,7 +2,7 @@
 // TSSEv56 - Enhanced Security Filter
 define('CT_VERSION', 'v0.7-enhanced');
 
-if (!defined('IN_SCRIPT_TSSEv56')) {
+if (!defined('APP_INITIALIZED')) {
     exit('<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 

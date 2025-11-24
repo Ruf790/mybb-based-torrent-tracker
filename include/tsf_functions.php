@@ -60,7 +60,7 @@ function inline_error($errors, $title="", $json_data=array())
 
 function check_forum_password($fid, $pid=0, $return=false)
 {
-	global $mybb, $header, $footer, $headerinclude, $theme, $templates, $lang, $forum_cache, $CURUSER, $BASEURL;
+	global $mybb, $header, $footer, $headerinclude, $theme, $templates, $lang, $forum_cache, $CURUSER, $SITENAME, $BASEURL;
 
 	$showform = true;
 
@@ -195,9 +195,10 @@ function forum_password_validated($forum, $ignore_empty=false, $check_parents=fa
 
 
 
+
 function forum_permissions($fid=0, $uid=0, $gid=0)
 {
-	global $db, $cache, $groupscache, $forum_cache, $fpermcache, $mybb, $cached_forum_permissions_permissions, $cached_forum_permissions, $CURUSER, $usergroups;
+	global $db, $cache, $groupscache, $forum_cache, $fpermcache, $mybb, $cached_forum_permissions_permissions, $cached_forum_permissions, $CURUSER;
 
 	if($uid == 0)
 	{
@@ -222,9 +223,13 @@ function forum_permissions($fid=0, $uid=0, $gid=0)
 				$gid .= ",".$CURUSER['additionalgroups'];
 			}
 
-			$groupperms = $usergroups;
+			$groupperms = $mybb->usergroup;
 		}
 	}
+	else 
+	{
+		$groupperms = usergroup_permissions($gid);
+	}	
 
 	if(!is_array($forum_cache))
 	{
@@ -355,6 +360,149 @@ function fetch_forum_permissions($fid, $gid, $groupperms)
 
 
 
+
+
+
+
+
+
+
+
+function build_prefixes($pid=0)
+{
+	global $cache;
+	static $prefixes_cache;
+
+	if(is_array($prefixes_cache))
+	{
+		if($pid > 0 && is_array($prefixes_cache[$pid]))
+		{
+			return $prefixes_cache[$pid];
+		}
+
+		return $prefixes_cache;
+	}
+
+	$prefix_cache = $cache->read("threadprefixes");
+
+	if(!is_array($prefix_cache))
+	{
+		// No cache
+		$prefix_cache = $cache->read("threadprefixes", true);
+
+		if(!is_array($prefix_cache))
+		{
+			return array();
+		}
+	}
+
+	$prefixes_cache = array();
+	foreach($prefix_cache as $prefix)
+	{
+		$prefixes_cache[$prefix['pid']] = $prefix;
+	}
+
+	if($pid != 0 && is_array($prefixes_cache[$pid]))
+	{
+		return $prefixes_cache[$pid];
+	}
+	else if(!empty($prefixes_cache))
+	{
+		return $prefixes_cache;
+	}
+
+	return false;
+}
+
+
+function build_forum_prefix_select($fid, $selected_pid=0)
+{
+	global $cache, $db, $lang, $mybb, $templates;
+
+	$fid = (int)$fid;
+
+	$prefix_cache = build_prefixes(0);
+	if(empty($prefix_cache))
+	{
+		// We've got no prefixes to show
+		return '';
+	}
+
+	// Go through each of our prefixes and decide which ones we can use
+	$prefixes = array();
+	foreach($prefix_cache as $prefix)
+	{
+		if($prefix['forums'] != "-1")
+		{
+			// Decide whether this prefix can be used in our forum
+			$forums = explode(",", $prefix['forums']);
+
+			if(in_array($fid, $forums))
+			{
+				// This forum can use this prefix!
+				$prefixes[$prefix['pid']] = $prefix;
+			}
+		}
+		else
+		{
+			// This prefix is for anybody to use...
+			$prefixes[$prefix['pid']] = $prefix;
+		}
+	}
+
+	if(empty($prefixes))
+	{
+		return '';
+	}
+
+	$default_selected = array('all' => '', 'none' => '', 'any' => '');
+	$selected_pid = (int)$selected_pid;
+
+	if($selected_pid == 0)
+	{
+		$default_selected['all'] = ' selected="selected"';
+	}
+	else if($selected_pid == -1)
+	{
+		$default_selected['none'] = ' selected="selected"';
+	}
+	else if($selected_pid == -2)
+	{
+		$default_selected['any'] = ' selected="selected"';
+	}
+
+	$prefixselect_prefix = '';
+	foreach($prefixes as $prefix)
+	{
+		$selected = '';
+		if($prefix['pid'] == $selected_pid)
+		{
+			$selected = ' selected="selected"';
+		}
+
+		$prefix['prefix'] = htmlspecialchars_uni($prefix['prefix']);
+		eval('$prefixselect_prefix .= "'.$templates->get("forumdisplay_threadlist_prefixes_prefix").'";');
+	}
+
+	eval('$prefixselect = "'.$templates->get("forumdisplay_threadlist_prefixes").'";');
+	return $prefixselect;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function build_highlight_array($terms)
 {
 	global $mybb;
@@ -406,7 +554,7 @@ function build_highlight_array($terms)
 					}
 					foreach($split_words as $word)
 					{
-						if(!$word || strlen($word) < $mybb->settings['minsearchword'])
+						if(!$word || strlen($word) < $minsearchword)
 						{
 							continue;
 						}
@@ -426,7 +574,7 @@ function build_highlight_array($terms)
 		{
 			foreach($split_words as $word)
 			{
-				if(!$word || strlen($word) < $mybb->settings['minsearchword'])
+				if(!$word || strlen($word) < $minsearchword)
 				{
 					continue;
 				}
@@ -884,6 +1032,9 @@ function log_moderator_action($data, $action="")
 	}
 
 	$ext = my_strtolower($ext);
+	
+	
+	$theme['imgdir'] = 'pic';
 
 	if($attachtypes[$ext]['icon'])
 	{
@@ -1940,9 +2091,9 @@ $(".forumjump").on("change", function() {
 
 
 
-  if (((!defined ('TSF_FORUMS_TSSEv56') OR !defined ('IN_SCRIPT_TSSEv56')) OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
+  if (((!defined ('FORUM_ACTIVE') OR !defined ('APP_INITIALIZED')) OR !defined ('FORUM_SECURE')))
   {
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed9999999999999999.</font>');
   }
 
 ?>

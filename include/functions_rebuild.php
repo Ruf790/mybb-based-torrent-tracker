@@ -84,7 +84,7 @@ function rebuild_thread_counters(int $tid): void
     $count['unapprovedposts'] = (int) $db->fetch_field($query, "unapprovedposts");
 
     // Attachment count
-    $query = $db->query("
+    $query = $db->sql_query("
         SELECT COUNT(aid) AS attachment_count
         FROM attachments a
         LEFT JOIN tsf_posts p ON a.pid=p.pid

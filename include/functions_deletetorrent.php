@@ -79,7 +79,7 @@
 	  
 	  
 	  // ✅ Удаляем скрины из папки /torrents/screens/ и из таблицы
-      $screenshots = $db->query("SELECT filename FROM `screenshots` WHERE torrent_id = '{$id}'");
+      $screenshots = $db->sql_query("SELECT filename FROM `screenshots` WHERE torrent_id = '{$id}'");
       while ($shot = $db->fetch_array($screenshots))
       {
             $screenshotFile = $_SERVER['DOCUMENT_ROOT'] . '/torrents/screens/' . $shot['filename'];
@@ -126,7 +126,7 @@
     print_no_permission (true);
   }
 
-  if (!defined ('IN_SCRIPT_TSSEv56'))
+  if (!defined ('APP_INITIALIZED'))
   {
     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
   }

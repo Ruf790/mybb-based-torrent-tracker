@@ -162,6 +162,7 @@ class MyBB {
 		'maillogs' => array('ipaddress' => true),
 		'moderatorlog' => array('ipaddress' => true),
 		'pollvotes' => array('ipaddress' => true),
+		'tsf_pollvotes' => array('ipaddress' => true),
 		'posts' => array('ipaddress' => true),
 		'tsf_posts' => array('ipaddress' => true),      // добавить эту строку
 		'privatemessages' => array('ipaddress' => true),

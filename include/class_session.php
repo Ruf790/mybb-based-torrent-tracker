@@ -1,726 +1,479 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
- 
 
- 
+declare(strict_types=1);
 
-class session
+class Session
 {
-	/**
-	 * @var int
-	 */
-	public $sid = 0;
-	/**
-	 * @var int
-	 */
-	public $uid = 0;
-	/**
-	 * @var string
-	 */
-	public $ipaddress = '';
-	/**
-	 * @var string
-	 */
-	public $packedip = '';
-	/**
-	 * @var string
-	 */
-	public $useragent = '';
-	/**
-	 * @var bool
-	 */
-	public $is_spider = false;
+    public string $sid = '';
+    public int $uid = 0;
+    public string $ipaddress = '';
+    public string $packedip = '';
+    public string $useragent = '';
+    public bool $is_spider = false;
 
-	/**
-	 * Request parameters that are to be ignored for location storage
-	 *
-	 * @var array
-	 */
-	public $ignore_parameters = array(
-		'my_post_key',
-		'logoutkey',
-	);
+    /**
+     * Request parameters that are to be ignored for location storage
+     */
+    public array $ignore_parameters = [
+        'my_post_key',
+        'logoutkey',
+    ];
 
-	/**
-	 * Initialize a session
-	 */
-	function init()
-	{
-		global $db, $mybb, $cache, $plugins;
+    /**
+     * Initialize a session
+     */
+    public function init(): void
+    {
+        global $db, $mybb, $cache, $plugins;
 
-		// Get our visitor's IP.
-		$this->ipaddress = get_ip();
-		$this->packedip = my_inet_pton($this->ipaddress);
+        // Get our visitor's IP
+        $this->ipaddress = get_ip();
+        $this->packedip = my_inet_pton($this->ipaddress);
+        $this->useragent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
-		// Find out the user agent.
-		if(isset($_SERVER['HTTP_USER_AGENT']))
-		{
-			$this->useragent = $_SERVER['HTTP_USER_AGENT'];
-		}
+        // Attempt to find a session id in the cookies
+        if (isset($mybb->cookies['sid']) && !defined('IN_UPGRADE')) {
+            $sid = $db->escape_string($mybb->cookies['sid']);
 
-		// Attempt to find a session id in the cookies.
-		if(isset($mybb->cookies['sid']) && !defined('IN_UPGRADE'))
-		{
-			$sid = $db->escape_string($mybb->cookies['sid']);
+            // Load the session if not using a bot sid
+            if (!str_contains($sid, '=')) {
+                $query = $db->simple_select("sessions", "*", "sid='{$sid}'");
+                $session = $db->fetch_array($query);
+                if ($session) {
+                    $this->sid = $session['sid'];
+                }
+            }
+        }
 
-			// Load the session if not using a bot sid
-			if(substr($sid, 3, 1) !== '=')
-			{
-				$query = $db->simple_select("sessions", "*", "sid='{$sid}'");
-				$session = $db->fetch_array($query);
-				if($session)
-				{
-					$this->sid = $session['sid'];
-				}
-			}
-		}
+        $plugins?->run_hooks('pre_session_load', $this);
 
-		if(isset($plugins))
-		{
-			$plugins->run_hooks('pre_session_load', $this);
-		}
+        // If we have a valid session id and user id, load that users session
+        if (!empty($mybb->cookies['mybbuser'])) {
+            $logon = explode("_", $mybb->cookies['mybbuser'], 2);
+            $this->load_user((int)$logon[0], $logon[1] ?? '');
+        }
 
-		// If we have a valid session id and user id, load that users session.
-		if(!empty($mybb->cookies['mybbuser']))
-		{
-			$logon = explode("_", $mybb->cookies['mybbuser'], 2);
-			$this->load_user($logon[0], $logon[1]);
-		}
+        // If no user still, then we have a guest
+        if (!isset($mybb->user['id'])) {
+            // Detect if this guest is a search engine spider
+            if (!$this->sid) {
+                $spiders = $cache->read("spiders");
+                if (is_array($spiders)) {
+                    foreach ($spiders as $spider) {
+                        if (str_contains(strtolower($this->useragent), strtolower($spider['useragent']))) {
+                            // ✅ ИСПРАВЛЕНО: передаем числовой ID паука
+                            $this->load_spider((int)$spider['sid']);
+                            break;
+                        }
+                    }
+                }
+            }
 
-		// If no user still, then we have a guest.
-		if(!isset($mybb->user['id']))
-		{
-			// Detect if this guest is a search engine spider. (bots don't get a cookied session ID so we first see if that's set)
-			if(!$this->sid)
-			{
-				$spiders = $cache->read("spiders");
-				if(is_array($spiders))
-				{
-					foreach($spiders as $spider)
-					{
-						if(my_strpos(my_strtolower($this->useragent), my_strtolower($spider['useragent'])) !== false)
-						{
-							$this->load_spider($spider['sid']);
-						}
-					}
-				}
-			}
+            // Still nothing? JUST A GUEST!
+            if (!$this->is_spider) {
+                $this->load_guest();
+            }
+        }
 
-			// Still nothing? JUST A GUEST!
-			if(!$this->is_spider)
-			{
-				$this->load_guest();
-			}
-		}
+        // Give the user a cookie if they aren't a spider
+        if ($this->sid && (!isset($mybb->cookies['sid']) || $mybb->cookies['sid'] !== $this->sid) && !$this->is_spider) {
+            my_setcookie("sid", $this->sid, -1, true);
+        }
 
-		// As a token of our appreciation for getting this far (and they aren't a spider), give the user a cookie
-		if($this->sid && (!isset($mybb->cookies['sid']) || $mybb->cookies['sid'] != $this->sid) && $this->is_spider != true)
-		{
-			my_setcookie("sid", $this->sid, -1, true);
-		}
+        $plugins?->run_hooks('post_session_load', $this);
+        
+        // ✅ Activate cron
+        $GLOBALS['ts_cron_image'] = !defined('SKIP_CRON_JOBS');
+    }
 
-		if(isset($plugins))
-		{
-			$plugins->run_hooks('post_session_load', $this);
-		}
-		
-		// ✅ ВСТАВЛЯЕМ ЗДЕСЬ АКТИВАЦИЮ КРОНА
-	    $GLOBALS['ts_cron_image'] = !defined('SKIP_CRON_JOBS') ? true : false;
-		
-	}
+    /**
+     * Load a search engine spider
+     */
+    public function load_spider(int $spider_id): void
+    {
+        global $mybb, $db;
 
-	/**
-	 * Load a user via the user credentials.
-	 *
-	 * @param int $uid The user id.
-	 * @param string $loginkey The user's loginkey.
-	 * @return bool
-	 */
-	function load_user($uid, $loginkey='')
-	{
-		global $mybb, $db, $time, $lang, $mybbgroups, $cache, $timeformat, $dateformat, $f_postsperpage, $f_threadsperpage, $securehash, $SITENAME, $iplog1;
+        $query = $db->simple_select("spiders", "*", "sid='{$spider_id}'");
+        $spider = $db->fetch_array($query);
 
-		$uid = (int)$uid; 
+        $this->is_spider = true;
+        $userGroup = (int)($spider['usergroup'] ?? 1); // ✅ ИСПРАВЛЕНО: приводим к int
+        
+        $mybb->user = [
+            'usergroup' => $userGroup,
+            'username' => '',
+            'id' => 0,
+            'displaygroup' => $userGroup,
+            'additionalgroups' => '',
+            'invisible' => 0
+        ];
+
+        // Gather permissions for spider
+        $mybb->usergroup = usergroup_permissions($userGroup);
+        $mydisplaygroup = usergroup_displaygroup($userGroup); // ✅ Теперь передаем число
+        if (is_array($mydisplaygroup)) {
+            $mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
+        }
+
+        // Update spider last visit
+        if (($spider['lastvisit'] ?? 0) < TIMENOW - 120) {
+            $db->update_query("spiders", ["lastvisit" => TIMENOW], "sid='{$spider_id}'");
+        }
+
+        // Update online data
+        if (!defined("NO_ONLINE") && !defined('IN_UPGRADE')) {
+            $this->sid = "bot=".$spider_id;
+            $this->create_session();
+        }
+    }
+
+    /**
+     * Load a user via the user credentials
+     */
+    public function load_user(int $uid, string $loginkey = ''): bool
+    {
+        global $mybb, $db, $lang, $mybbgroups, $cache, $timeformat, $dateformat, $f_postsperpage, $f_threadsperpage, $securehash, $SITENAME;
 
         $query = $db->sql_query_prepared("
-           SELECT u.*, f.*
-           FROM users u
-           LEFT JOIN userfields f ON (f.ufid=u.id)
-           WHERE u.id = ?
-           LIMIT 1", [$uid]);
-
+            SELECT u.*, f.*
+            FROM users u
+            LEFT JOIN userfields f ON (f.ufid=u.id)
+            WHERE u.id = ?
+            LIMIT 1", [$uid]);
 
         $mybb->user = $db->fetch_array($query->result);
 
-
-		// Check the password if we're not using a session
-		if(!$mybb->user || empty($loginkey) || $loginkey !== $mybb->user['loginkey'])
-		{
-			unset($mybb->user);
-			$this->uid = 0;
-			return false;
-		}
-		$this->uid = $mybb->user['id'];
-
-		// Set the logout key for this user
-		$mybb->user['logoutkey'] = md5($mybb->user['loginkey']);
-		
-		$enablepms = "1";
-
-		// Sort out the private message count for this user.
-		if(($mybb->user['totalpms'] == -1 || $mybb->user['unreadpms'] == -1) && $enablepms != 0) // Forced recount
-		{
-			$update = 0;
-			if($mybb->user['totalpms'] == -1)
-			{
-				$update += 1;
-			}
-			if($mybb->user['unreadpms'] == -1)
-			{
-				$update += 2;
-			}
-
-			require_once INC_PATH."/functions_user.php";
-			$pmcount = update_pm_count('', $update);
-			if(is_array($pmcount))
-			{
-				$mybb->user = array_merge($mybb->user, $pmcount);
-			}
-		}
-		$mybb->user['pms_total'] = $mybb->user['totalpms'];
-		$mybb->user['pms_unread'] = $mybb->user['unreadpms'];
-
-		if($mybb->user['lastip'] != $this->packedip && array_key_exists('lastip', $mybb->user) && !defined('IN_UPGRADE'))
-		{
-			$lastip_add = ", lastip=".$db->escape_binary($this->packedip);
-		}
-		else
-		{
-			$lastip_add = '';
-		}
-		
-		
-		//if ($iplog1 == 'yes' && $this->ipaddress != $mybb->user['regip'] && !empty($this->ipaddress)) 
-		//{
-        //     $escaped_ip = $db->escape_string($this->ipaddress);
-         //    $query = $db->simple_select("iplog", "ip", "ip='{$escaped_ip}' AND userid='{$mybb->user['id']}'");
-
-        //     if ($db->num_rows($query) == 0) 
-		//	 {
-        //           $insert_iplog = array(
-        //           "ip" => $escaped_ip,
-        //           "userid" => $mybb->user['id']
-        //           );
-        //           $db->insert_query("iplog", $insert_iplog);
-        //     }
-        //}
-		
-		
-		
-		
-		if (900 < TIMENOW - $mybb->user['last_login'])
-        {
-			$last_login = ", last_login=".intval($mybb->user['lastactive']);
+        // Check the password if we're not using a session
+        if (!$mybb->user || empty($loginkey) || $loginkey !== ($mybb->user['loginkey'] ?? '')) {
+            unset($mybb->user);
+            $this->uid = 0;
+            return false;
         }
-        else
-        {
-            $last_login = '';
-        }
-		
-		
-		
-		$passkeys = '';
+
+        $this->uid = $mybb->user['id'];
+        $mybb->user['logoutkey'] = md5($mybb->user['loginkey']);
         
-		if (strlen($mybb->user['passkey']) != 32)
-		{
-            $passkey = generate_passkey($mybb->user['username'], $mybb->user['loginkey']);
+        $enablepms = "1";
 
-            if ($passkey !== false) 
-		    {
+        // Sort out the private message count for this user
+        if (($mybb->user['totalpms'] ?? 0) == -1 || ($mybb->user['unreadpms'] ?? 0) == -1 && $enablepms != 0) {
+            $update = 0;
+            if ($mybb->user['totalpms'] == -1) $update += 1;
+            if ($mybb->user['unreadpms'] == -1) $update += 2;
+
+            require_once INC_PATH."/functions_user.php";
+            $pmcount = update_pm_count('', $update);
+            if (is_array($pmcount)) {
+                $mybb->user = array_merge($mybb->user, $pmcount);
+            }
+        }
+
+        $mybb->user['pms_total'] = $mybb->user['totalpms'] ?? 0;
+        $mybb->user['pms_unread'] = $mybb->user['unreadpms'] ?? 0;
+
+        // Update IP if changed
+        $lastip_add = '';
+        if (($mybb->user['lastip'] ?? '') != $this->packedip && array_key_exists('lastip', $mybb->user) && !defined('IN_UPGRADE')) {
+            $lastip_add = ", lastip=".$db->escape_binary($this->packedip);
+        }
+
+        // Update last login if needed
+        $last_login = '';
+        if (900 < TIMENOW - ($mybb->user['last_login'] ?? 0)) {
+            $last_login = ", last_login=".(int)($mybb->user['lastactive'] ?? 0);
+        }
+
+        // Generate passkey if needed
+        $passkeys = '';
+        if (strlen($mybb->user['passkey'] ?? '') != 32) {
+            $passkey = generate_passkey($mybb->user['username'], $mybb->user['loginkey']);
+            if ($passkey !== false) {
                 $passkeys = ", passkey='" . $db->escape_string($passkey) . "'";
             }
         }
-		
-		
-	
-	
 
-		// If the last visit was over 900 seconds (session time out) ago then update lastvisit.
-		$time = TIMENOW;
-		if($time - $mybb->user['lastactive'] > 900)
-		{
-			$db->sql_query("UPDATE users SET lastvisit='{$mybb->user['lastactive']}', lastactive='$time' WHERE id='{$mybb->user['id']}'");
-			$mybb->user['lastvisit'] = $mybb->user['lastactive'];
-			require_once INC_PATH."/functions_user.php";
-			update_pm_count('', 2);
-		}
-		else
-		{
-			$timespent = TIMENOW - $mybb->user['lastactive'];
-			$db->sql_query("UPDATE users SET lastactive='$time', timeonline=timeonline+$timespent{$last_login}{$passkeys}{$lastip_add} WHERE id='{$mybb->user['id']}'");
-		}
-		
-		
-		
-		
-		
-		
-		
-		
+        // Update user activity
+        $time = TIMENOW;
+        if ($time - ($mybb->user['lastactive'] ?? 0) > 900) {
+            $db->sql_query("UPDATE users SET lastvisit='{$mybb->user['lastactive']}', lastactive='$time' WHERE id='{$mybb->user['id']}'");
+            $mybb->user['lastvisit'] = $mybb->user['lastactive'];
+            require_once INC_PATH."/functions_user.php";
+            update_pm_count('', 2);
+        } else {
+            $timespent = TIMENOW - $mybb->user['lastactive'];
+            $db->sql_query("UPDATE users SET lastactive='$time', timeonline=timeonline+$timespent{$last_login}{$passkeys}{$lastip_add} WHERE id='{$mybb->user['id']}'");
+        }
 
-		// Sort out the language and forum preferences.
-		//if($mybb->user['language'] && $lang->language_exists($mybb->user['language']))
-		//{
-		//	$mybb->settings['bblanguage'] = $mybb->user['language'];
-		///}
-		if($mybb->user['dateformat'] != 0 && $mybb->user['dateformat'] != '')
-		{
-			global $date_formats;
-			if(!empty($date_formats[$mybb->user['dateformat']]))
-			{
-				$dateformat = $date_formats[$mybb->user['dateformat']];
-			}
-		}
+        // Set user preferences
+        if (!empty($mybb->user['dateformat'])) {
+            global $date_formats;
+            if (!empty($date_formats[$mybb->user['dateformat']])) {
+                $dateformat = $date_formats[$mybb->user['dateformat']];
+            }
+        }
 
-		// Choose time format.
-		if($mybb->user['timeformat'] != 0 && $mybb->user['timeformat'] != '')
-		{
-			global $time_formats;
-			if(!empty($time_formats[$mybb->user['timeformat']]))
-			{
-				$timeformat = $time_formats[$mybb->user['timeformat']];
-			}
-		}
+        if (!empty($mybb->user['timeformat'])) {
+            global $time_formats;
+            if (!empty($time_formats[$mybb->user['timeformat']])) {
+                $timeformat = $time_formats[$mybb->user['timeformat']];
+            }
+        }
 
-		
-		// Find out the threads per page preference.
-	     if($mybb->user['threadsperpages'])
-	     {
-		    $f_threadsperpage = $mybb->user['threadsperpages'];
-	     }
-	
-	
-	     // Find out the posts per page preference.
-	     if($mybb->user['postsperpage'])
-	     {
-		   $f_postsperpage = $mybb->user['postsperpage'];
-	     }
-		
-		
-		
-		
-		
+        // Set pagination preferences
+        if (!empty($mybb->user['threadsperpages'])) {
+            $f_threadsperpage = $mybb->user['threadsperpages'];
+        }
 
-		// Does this user prefer posts in classic mode?
-		//if($mybb->user['classicpostbit'])
-		//{
-		//	$mybb->settings['postlayout'] = 'classic';
-		//}
-		//else
-		//{
-		//	$mybb->settings['postlayout'] = 'horizontal';
-		//}
+        if (!empty($mybb->user['postsperpage'])) {
+            $f_postsperpage = $mybb->user['postsperpage'];
+        }
 
-		$usergroups = $cache->read('usergroups');
+        // Check user ban status
+        $usergroups = $cache->read('usergroups');
+        $userGroupId = (int)($mybb->user['usergroup'] ?? 0); // ✅ ИСПРАВЛЕНО: приводим к int
 
-		if(!empty($usergroups[$mybb->user['usergroup']]) && $usergroups[$mybb->user['usergroup']]['isbannedgroup'] == 1)
-		{
-			$ban = $db->fetch_array(
-				$db->simple_select('banned', '*', 'uid='.(int)$mybb->user['id'], array('limit' => 1))
-			);
+        if (!empty($usergroups[$userGroupId]) && $usergroups[$userGroupId]['isbannedgroup'] == 1) {
+            $ban = $db->fetch_array(
+                $db->simple_select('banned', '*', 'uid='.$mybb->user['id'], ['limit' => 1])
+            );
 
-			if($ban)
-			{
-				$mybb->user['banned'] = 1;
-				$mybb->user['bandate'] = $ban['dateline'];
-				$mybb->user['banlifted'] = $ban['lifted'];
-				$mybb->user['banoldgroup'] = $ban['oldgroup'];
-				$mybb->user['banolddisplaygroup'] = $ban['olddisplaygroup'];
-				$mybb->user['banoldadditionalgroups'] = $ban['oldadditionalgroups'];
-				$mybb->user['banreason'] = $ban['reason'];
-			}
-			else
-			{
-				$mybb->user['banned'] = 0;
-			}
-		}
+            if ($ban) {
+                $mybb->user['banned'] = 1;
+                $mybb->user['bandate'] = $ban['dateline'];
+                $mybb->user['banlifted'] = $ban['lifted'];
+                $mybb->user['banoldgroup'] = $ban['oldgroup'];
+                $mybb->user['banolddisplaygroup'] = $ban['olddisplaygroup'];
+                $mybb->user['banoldadditionalgroups'] = $ban['oldadditionalgroups'];
+                $mybb->user['banreason'] = $ban['reason'];
+            } else {
+                $mybb->user['banned'] = 0;
+            }
+        }
 
-				// Check if this user is currently banned and if we have to lift it.
-		if(!empty($mybb->user['bandate']) && (isset($mybb->user['banlifted']) && !empty($mybb->user['banlifted'])) && $mybb->user['banlifted'] < $time)  // hmmm...bad user... how did you get banned =/
-		{
-			// must have been good.. bans up :D
-			$db->shutdown_query("UPDATE users SET usergroup='".(int)$mybb->user['banoldgroup']."', additionalgroups='".$db->escape_string($mybb->user['banoldadditionalgroups'])."', displaygroup='".(int)$mybb->user['banolddisplaygroup']."' WHERE id='".$mybb->user['id']."'");
-			$db->shutdown_query("DELETE FROM banned WHERE uid='".$mybb->user['id']."'");
-			// we better do this..otherwise they have dodgy permissions
-			$mybb->user['usergroup'] = $mybb->user['banoldgroup'];
-			$mybb->user['displaygroup'] = $mybb->user['banolddisplaygroup'];
-			$mybb->user['additionalgroups'] = $mybb->user['banoldadditionalgroups'];
-
-			$mybbgroups = $mybb->user['usergroup'];
-			if($mybb->user['additionalgroups'])
-			{
-				$mybbgroups .= ','.$mybb->user['additionalgroups'];
-			}
-		}
-		else if(!empty($mybb->user['bandate']) && (empty($mybb->user['banlifted'])  || !empty($mybb->user['banlifted']) && $mybb->user['banlifted'] > $time))
-        {
+        // Handle ban expiration
+        if (!empty($mybb->user['bandate']) && 
+            isset($mybb->user['banlifted']) && 
+            !empty($mybb->user['banlifted']) && 
+            $mybb->user['banlifted'] < $time) {
+            
+            $db->shutdown_query("UPDATE users SET usergroup='".(int)($mybb->user['banoldgroup'] ?? 0)."', additionalgroups='".$db->escape_string($mybb->user['banoldadditionalgroups'] ?? '')."', displaygroup='".(int)($mybb->user['banolddisplaygroup'] ?? 0)."' WHERE id='".$mybb->user['id']."'");
+            $db->shutdown_query("DELETE FROM banned WHERE uid='".$mybb->user['id']."'");
+            
+            $mybb->user['usergroup'] = $mybb->user['banoldgroup'];
+            $mybb->user['displaygroup'] = $mybb->user['banolddisplaygroup'];
+            $mybb->user['additionalgroups'] = $mybb->user['banoldadditionalgroups'];
             $mybbgroups = $mybb->user['usergroup'];
+        } elseif (!empty($mybb->user['bandate']) && 
+                 (empty($mybb->user['banlifted']) || 
+                  (!empty($mybb->user['banlifted']) && $mybb->user['banlifted'] > $time))) {
+            $mybbgroups = $mybb->user['usergroup'];
+        } else {
+            $mybbgroups = $mybb->user['usergroup'];
+            if (!empty($mybb->user['additionalgroups'])) {
+                $mybbgroups .= ','.$mybb->user['additionalgroups'];
+            }
         }
-        else
-        {
-			// Gather a full permission set for this user and the groups they are in.
-			$mybbgroups = $mybb->user['usergroup'];
-			if($mybb->user['additionalgroups'])
-			{
-				$mybbgroups .= ','.$mybb->user['additionalgroups'];
-			}
+
+        $mybb->usergroup = usergroup_permissions($mybbgroups);
+        if (empty($mybb->user['displaygroup'])) {
+            $mybb->user['displaygroup'] = $mybb->user['usergroup'];
         }
 
-		$mybb->usergroup = usergroup_permissions($mybbgroups);
-		if(!$mybb->user['displaygroup'])
-		{
-			$mybb->user['displaygroup'] = $mybb->user['usergroup'];
-		}
+        $mydisplaygroup = usergroup_displaygroup((int)$mybb->user['displaygroup']); // ✅ ИСПРАВЛЕНО: приводим к int
+        if (is_array($mydisplaygroup)) {
+            $mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
+        }
 
-		$mydisplaygroup = usergroup_displaygroup($mybb->user['displaygroup']);
-		if(is_array($mydisplaygroup))
-		{
-			$mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
-		}
+        if (empty($mybb->user['usertitle'])) {
+            $mybb->user['usertitle'] = $mybb->usergroup['usertitle'] ?? '';
+        }
+        
+        $GLOBALS['CURUSER'] = $mybb->user;
 
-		if(!$mybb->user['usertitle'])
-		{
-			$mybb->user['usertitle'] = $mybb->usergroup['usertitle'];
-		}
-		
-		
-		
-		$GLOBALS['CURUSER'] = $mybb->user;
-    
-
+        // Validate user access
         $script_name = basename($_SERVER['PHP_SELF']);
-        $group_data_results = $usergroups[$mybb->user['usergroup']];
+        $group_data_results = $usergroups[$mybb->user['usergroup']] ?? [];
         $GLOBALS['usergroups'] = $group_data_results;
 
-        if (
-             $group_data_results['isbannedgroup'] == '1'
-             || $mybb->user['enabled'] == 'no'
-             || ($mybb->user['ustatus'] == 'pending' && !($mybb->input['action'] == 'activate' && $script_name == 'member.php'))
-        )
-        {
-             print_no_permission(false, true, $mybb->user['notifs']);
-             exit();
+        if (($group_data_results['isbannedgroup'] ?? 0) == '1' ||
+            ($mybb->user['enabled'] ?? '') == 'no' ||
+            (($mybb->user['ustatus'] ?? '') == 'pending' && 
+             !($mybb->input['action'] == 'activate' && $script_name == 'member.php'))) {
+            print_no_permission(false, true, $mybb->user['notifs'] ?? '');
+            exit();
         }
-		
-	
-		
 
-		// Update or create the session.
-		if(!defined("NO_ONLINE") && !defined('IN_UPGRADE'))
-		{
-			if(!empty($this->sid))
-			{
-				$this->update_session($this->sid, $mybb->user['id']);
-			}
-			else
-			{
-				$this->create_session($mybb->user['id']);
-			}
-		}
-		return true;
-	}
-	/**
-	 * Load a guest user.
-	 *
-	 */
-	function load_guest()
-	{
-		global $mybb, $time, $db, $lang;
+        // Update or create the session
+        if (!defined("NO_ONLINE") && !defined('IN_UPGRADE')) {
+            if (!empty($this->sid)) {
+                $this->update_session($this->sid, $mybb->user['id']);
+            } else {
+                $this->create_session($mybb->user['id']);
+            }
+        }
+        
+        return true;
+    }
 
-		// Set up some defaults
-		$time = TIMENOW;
-		$mybb->user['usergroup'] = 1;
-		$mybb->user['additionalgroups'] = '';
-		$mybb->user['username'] = '';
-		$mybb->user['id'] = 0;
-		$mybbgroups = 1;
-		$mybb->user['displaygroup'] = 1;
-		$mybb->user['invisible'] = 0;
-		$mybb->user['moderateposts'] = 0;
-		$mybb->user['showquickreply'] = 1;
-		$mybb->user['signature'] = '';
-		$mybb->user['sourceeditor'] = 0;
-		$mybb->user['subscriptionmethod'] = 0;
-		$mybb->user['suspendposting'] = 0;
+    /**
+     * Load a guest user
+     */
+    public function load_guest(): void
+    {
+        global $mybb, $db;
 
-		// Has this user visited before? Lastvisit need updating?
-		if(isset($mybb->cookies['mybb']['lastvisit']))
-		{
-			if(!isset($mybb->cookies['mybb']['lastactive']))
-			{
-				$mybb->user['lastactive'] = $time;
-				$mybb->cookies['mybb']['lastactive'] = $mybb->user['lastactive'];
-			}
-			else
-			{
-				$mybb->user['lastactive'] = (int)$mybb->cookies['mybb']['lastactive'];
-			}
-			if($time - (int)$mybb->cookies['mybb']['lastactive'] > 900)
-			{
-				my_setcookie("mybb[lastvisit]", $mybb->user['lastactive']);
-				$mybb->user['lastvisit'] = $mybb->user['lastactive'];
-			}
-			else
-			{
-				$mybb->user['lastvisit'] = (int)$mybb->cookies['mybb']['lastactive'];
-			}
-		}
+        // Set up defaults
+        $time = TIMENOW;
+        $mybb->user = [
+            'usergroup' => 1,
+            'additionalgroups' => '',
+            'username' => '',
+            'id' => 0,
+            'displaygroup' => 1,
+            'invisible' => 0,
+            'moderateposts' => 0,
+            'showquickreply' => 1,
+            'signature' => '',
+            'sourceeditor' => 0,
+            'subscriptionmethod' => 0,
+            'suspendposting' => 0
+        ];
 
-		// No last visit cookie, create one.
-		else
-		{
-			my_setcookie("mybb[lastvisit]", $time);
-			$mybb->user['lastvisit'] = $time;
-		}
+        $mybbgroups = 1;
 
-		// Update last active cookie.
-		my_setcookie("mybb[lastactive]", $time);
+        // Handle last visit and activity
+        if (isset($mybb->cookies['mybb']['lastvisit'])) {
+            $mybb->user['lastactive'] = (int)($mybb->cookies['mybb']['lastactive'] ?? $time);
+            
+            if ($time - $mybb->user['lastactive'] > 900) {
+                // Исправлено: преобразуем int в string для my_setcookie
+                my_setcookie("mybb[lastvisit]", (string)$mybb->user['lastactive']);
+                $mybb->user['lastvisit'] = $mybb->user['lastactive'];
+            } else {
+                $mybb->user['lastvisit'] = $mybb->user['lastactive'];
+            }
+        } else {
+            // Исправлено: преобразуем int в string для my_setcookie
+            my_setcookie("mybb[lastvisit]", (string)$time);
+            $mybb->user['lastvisit'] = $time;
+        }
 
-		// Gather a full permission set for this guest
-		$mybb->usergroup = usergroup_permissions($mybbgroups);
-		$mydisplaygroup = usergroup_displaygroup($mybb->user['displaygroup']);
-		if(is_array($mydisplaygroup))
-		{
-			$mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
-		}
+        // Исправлено: преобразуем int в string для my_setcookie
+        my_setcookie("mybb[lastactive]", (string)$time);
 
-		// Update the online data.
-		if(!defined("NO_ONLINE") && !defined('IN_UPGRADE'))
-		{
-			if(!empty($this->sid))
-			{
-				$this->update_session($this->sid);
-			}
-			else
-			{
-				$this->create_session();
-			}
-		}
-	}
+        // Gather permissions for guest
+        $mybb->usergroup = usergroup_permissions($mybbgroups);
+        $mydisplaygroup = usergroup_displaygroup(1); // ✅ ИСПРАВЛЕНО: передаем число
+        if (is_array($mydisplaygroup)) {
+            $mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
+        }
 
-	/**
-	 * Load a search engine spider.
-	 *
-	 * @param int $spider_id The ID of the search engine spider
-	 */
-	function load_spider($spider_id)
-	{
-		global $mybb, $time, $db, $lang;
+        // Update online data
+        if (!defined("NO_ONLINE") && !defined('IN_UPGRADE')) {
+            if (!empty($this->sid)) {
+                $this->update_session($this->sid);
+            } else {
+                $this->create_session();
+            }
+        }
+    }
 
-		// Fetch the spider preferences from the database
-		$query = $db->simple_select("spiders", "*", "sid='{$spider_id}'");
-		$spider = $db->fetch_array($query);
+    /**
+     * Update a user session
+     */
+    public function update_session(string $sid, int $uid = 0): void
+    {
+        global $db;
 
-		// Set up some defaults
-		$time = TIMENOW;
-		$this->is_spider = true;
-		if($spider['usergroup'])
-		{
-			$mybb->user['usergroup'] = $spider['usergroup'];
-		}
-		else
-		{
-			$mybb->user['usergroup'] = 1;
-		}
-		$mybb->user['username'] = '';
-		$mybb->user['id'] = 0;
-		$mybb->user['displaygroup'] = $mybb->user['usergroup'];
-		$mybb->user['additionalgroups'] = '';
-		$mybb->user['invisible'] = 0;
+        $speciallocs = $this->get_special_locations();
+        
+        $onlinedata = [
+            'uid' => $uid,
+            'time' => TIMENOW,
+            'location' => $db->escape_string(substr(get_current_location(false, $this->ignore_parameters), 0, 150)),
+            'useragent' => $db->escape_string(substr($this->useragent, 0, 200)),
+            'location1' => (int)($speciallocs['1'] ?? 0),
+            'location2' => (int)($speciallocs['2'] ?? 0),
+            'nopermission' => 0
+        ];
 
-		// Set spider language
-		//if($spider['language'] && $lang->language_exists($spider['language']))
-		//{
-		//	$mybb->settings['bblanguage'] = $spider['language'];
-		//}
+        $sid = $db->escape_string($sid);
+        $db->update_query("sessions", $onlinedata, "sid='{$sid}'");
+    }
 
-		// Set spider theme
-		//if($spider['theme'])
-		//{
-		//	$mybb->user['style'] = $spider['theme'];
-		//}
+    /**
+     * Create a new session
+     */
+    public function create_session(int $uid = 0): void
+    {
+        global $db;
 
-		// Gather a full permission set for this spider.
-		$mybb->usergroup = usergroup_permissions($mybb->user['usergroup']);
-		$mydisplaygroup = usergroup_displaygroup($mybb->user['displaygroup']);
-		if(is_array($mydisplaygroup))
-		{
-			$mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
-		}
+        $speciallocs = $this->get_special_locations();
 
-		// Update spider last minute (only do so on two minute intervals - decrease load for quick spiders)
-		if($spider['lastvisit'] < TIMENOW-120)
-		{
-			$updated_spider = array(
-				"lastvisit" => TIMENOW
-			);
-			$db->update_query("spiders", $updated_spider, "sid='{$spider_id}'");
-		}
+        // Delete existing sessions
+        if ($uid > 0) {
+            $db->delete_query("sessions", "uid='{$uid}'");
+        } elseif ($this->is_spider) {
+            $db->delete_query("sessions", "sid='{$this->sid}'");
+        }
 
-		// Update the online data.
-		if(!defined("NO_ONLINE") && !defined('IN_UPGRADE'))
-		{
-			$this->sid = "bot=".$spider_id;
-			$this->create_session();
-		}
+        // Generate session ID
+        if ($this->is_spider) {
+            $sid = $this->sid;
+        } else {
+            $sid = md5(random_str(50));
+        }
 
-	}
+        $onlinedata = [
+            'sid' => $sid,
+            'uid' => $uid,
+            'time' => TIMENOW,
+            'ip' => $db->escape_binary($this->packedip),
+            'location' => $db->escape_string(substr(get_current_location(false, $this->ignore_parameters), 0, 150)),
+            'useragent' => $db->escape_string(substr($this->useragent, 0, 200)),
+            'location1' => (int)($speciallocs['1'] ?? 0),
+            'location2' => (int)($speciallocs['2'] ?? 0),
+            'nopermission' => 0
+        ];
 
-	/**
-	 * Update a user session.
-	 *
-		{
-			$mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
-		}
+        $db->replace_query("sessions", $onlinedata, "sid", false);
+        $this->sid = $sid;
+        $this->uid = $uid;
+    }
 
-		//if(!$mybb->user['usertitle'])
-		///{
-		//	$mybb->user['usertitle'] = $mybb->usergroup['usertitle'];
-		//}
+    /**
+     * Find out the special locations
+     */
+    public function get_special_locations(): array
+    {
+        global $mybb, $db;
+        
+        $array = ['1' => '', '2' => ''];
+        $scriptName = $_SERVER['PHP_SELF'] ?? '';
 
-		// Update or create the session.
-		if(!defined("NO_ONLINE") && !defined('IN_UPGRADE'))
-		{
-			if(!empty($this->sid))
-			{
-	 * @param int $sid The session id.
-	 * @param int $uid The user id.
-	 */
-	function update_session($sid, $uid=0)
-	{
-		global $db;
+        if (str_contains($scriptName, 'forumdisplay.php')) {
+            $fid = $mybb->get_input('fid', MyBB::INPUT_INT);
+            if ($fid > 0 && $fid < 4294967296) {
+                $array[1] = $fid;
+            }
+        } elseif (str_contains($scriptName, 'showthread.php')) {
+            $tid = $mybb->get_input('tid', MyBB::INPUT_INT);
+            if ($tid > 0 && $tid < 4294967296) {
+                $array[2] = $tid;
+            } elseif (isset($mybb->input['pid']) && !empty($mybb->input['pid'])) {
+                $query = $db->simple_select("tsf_posts", "tid", "pid=".$mybb->get_input('pid', MyBB::INPUT_INT), ["limit" => 1]);
+                $post = $db->fetch_array($query);
+                if ($post) {
+                    $array[2] = $post['tid'];
+                }
+            }
 
-		// Find out what the special locations are.
-		$speciallocs = $this->get_special_locations();
-		if($uid)
-		{
-			$onlinedata['uid'] = $uid;
-		}
-		else
-		{
-			$onlinedata['uid'] = 0;
-		}
-		$onlinedata['time'] = TIMENOW;
-
-		$onlinedata['location'] = $db->escape_string(substr(get_current_location(false, $this->ignore_parameters), 0, 150));
-		$onlinedata['useragent'] = $db->escape_string(my_substr($this->useragent, 0, 200));
-
-		$onlinedata['location1'] = (int)$speciallocs['1'];
-		$onlinedata['location2'] = (int)$speciallocs['2'];
-		$onlinedata['nopermission'] = 0;
-		$sid = $db->escape_string($sid);
-
-		$db->update_query("sessions", $onlinedata, "sid='{$sid}'");
-	}
-
-	/**
-	 * Create a new session.
-	 *
-	 * @param int $uid The user id to bind the session to.
-	 */
-	function create_session($uid=0)
-	{
-		global $db;
-		$speciallocs = $this->get_special_locations();
-
-		// If there is a proper uid, delete by uid.
-		if($uid > 0)
-		{
-			$db->delete_query("sessions", "uid='{$uid}'");
-			$onlinedata['uid'] = $uid;
-		}
-		else
-		{
-			// Is a spider - delete all other spider references
-			if($this->is_spider == true)
-			{
-				$db->delete_query("sessions", "sid='{$this->sid}'");
-			}
-
-			$onlinedata['uid'] = 0;
-		}
-
-		// If the user is a search enginge spider, ...
-		if($this->is_spider == true)
-		{
-			$onlinedata['sid'] = $this->sid;
-		}
-		else
-		{
-			$onlinedata['sid'] = md5(random_str(50));
-		}
-		$onlinedata['time'] = TIMENOW;
-		$onlinedata['ip'] = $db->escape_binary($this->packedip);
-		
-		
-		$onlinedata['location'] = $db->escape_string(substr(get_current_location(false, $this->ignore_parameters), 0, 150));
-		$onlinedata['useragent'] = $db->escape_string(my_substr($this->useragent, 0, 200));
-
-		$onlinedata['location1'] = (int)$speciallocs['1'];
-		$onlinedata['location2'] = (int)$speciallocs['2'];
-		$onlinedata['nopermission'] = 0;
-		$db->replace_query("sessions", $onlinedata, "sid", false);
-		$this->sid = $onlinedata['sid'];
-		$this->uid = $onlinedata['uid'];
-	}
-
-	/**
-	 * Find out the special locations.
-	 *
-	 * @return array Special locations array.
-	 */
-	function get_special_locations()
-	{
-		global $mybb, $db;
-		$array = array('1' => '', '2' => '');
-		if(preg_match("#forumdisplay.php#", $_SERVER['PHP_SELF']) && $mybb->get_input('fid', MyBB::INPUT_INT) > 0 && $mybb->get_input('fid', MyBB::INPUT_INT) < 4294967296)
-		{
-			$array[1] = $mybb->get_input('fid', MyBB::INPUT_INT);
-		}
-		elseif(preg_match("#showthread.php#", $_SERVER['PHP_SELF']))
-		{
-			if($mybb->get_input('tid', MyBB::INPUT_INT) > 0 && $mybb->get_input('tid', MyBB::INPUT_INT) < 4294967296)
-			{
-				$array[2] = $mybb->get_input('tid', MyBB::INPUT_INT);
-			}
-
-			// If there is no tid but a pid, trick the system into thinking there was a tid anyway.
-			elseif(isset($mybb->input['pid']) && !empty($mybb->input['pid']))
-			{
-				$options = array(
-					"limit" => 1
-				);
-				$query = $db->simple_select("tsf_posts", "tid", "pid=".$mybb->get_input('pid', MyBB::INPUT_INT), $options);
-				$post = $db->fetch_array($query);
-				if($post)
-				{
-					$array[2] = $post['tid'];
-				}
-			}
-
-			$thread = get_thread3333($array[2]);
-			if($thread)
-			{
-				$array[1] = $thread['fid'];
-			}
-		}
-		return $array;
-	}
+            $thread = get_thread3333($array[2]);
+            if ($thread) {
+                $array[1] = $thread['fid'];
+            }
+        }
+        
+        return $array;
+    }
 }

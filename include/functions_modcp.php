@@ -16,12 +16,12 @@
  */
 function modcp_can_manage_user($uid)
 {
-	global $mybb;
+	global $mybb, $usergroups;
 
 	$user_permissions = user_permissions($uid);
 
 	// Current user is only a local moderator or use with ModCP permissions, cannot manage super mods or admins
-	if($mybb->usergroup['issupermod'] == 0 && ($user_permissions['issupermod'] == 1 || $user_permissions['cancp'] == 1))
+	if($usergroups['issupermod'] == 0 && ($user_permissions['issupermod'] == 1 || $user_permissions['cancp'] == 1))
 	{
 		return false;
 	}
@@ -41,14 +41,16 @@ function modcp_can_manage_user($uid)
  */
 function fetch_forum_announcements($pid=0, $depth=1)
 {
-	global $mybb, $db, $lang, $theme, $announcements, $templates, $announcements_forum, $moderated_forums, $unviewableforums, $parser;
+	global $mybb, $db, $lang, $theme, $announcements, $templates, $announcements_forum, $moderated_forums, $unviewableforums, $parser, $usergroups;
 	static $forums_by_parent, $forum_cache, $parent_forums;
 
 	if(!is_array($forum_cache))
 	{
 		$forum_cache = cache_forums();
 	}
-	if(!is_array($parent_forums) && $mybb->usergroup['issupermod'] != 1)
+	//if(!is_array($parent_forums) && $mybb->usergroup['issupermod'] != 1)
+	if(!is_array($parent_forums) && $usergroups['issupermod'] != '1')	
+	
 	{
 		// Get a list of parentforums to show for normal moderators
 		$parent_forums = array();
@@ -79,14 +81,23 @@ function fetch_forum_announcements($pid=0, $depth=1)
 				continue;
 			}
 
-			if($forum['active'] == 0 || !is_moderator($forum['fid'], "canmanageannouncements"))
+			if($forum['active'] == 0)
 			{
 				// Check if this forum is a parent of a moderated forum
 				if(is_array($parent_forums) && in_array($forum['fid'], $parent_forums))
 				{
 					// A child is moderated, so print out this forum's title.  RECURSE!
 					$trow = alt_trow();
-					eval("\$announcements_forum .= \"".$templates->get("modcp_announcements_forum_nomod")."\";");
+				    
+					
+					$announcements_forum .= '
+					
+					<tr>
+						<td class="'.$trow.'"><div style="padding-left: '.$padding.'px;"><strong>'.$forum['name'].'</strong></div></td>
+						<td class="'.$trow.'" colspan="2" align="center">&nbsp;</td>
+					</tr>
+					
+					';
 				}
 				else
 				{
@@ -101,7 +112,23 @@ function fetch_forum_announcements($pid=0, $depth=1)
 
 				$padding = 40*($depth-1);
 
-				eval("\$announcements_forum .= \"".$templates->get("modcp_announcements_forum")."\";");
+				$announcements_forum .= '
+				
+				
+				<div class="row py-2 border-top">
+	<div class="col align-self-center">
+		<strong>'.$forum['name'].'</strong>
+	</div>
+	<div class="col-lg-3 align-self-center text-lg-end">
+		<a href="modcp.php?action=new_announcement&amp;fid='.$forum['fid'].'"><i class="fa-solid fa-circle-plus"></i> &nbsp;Add Announcement</a>
+	</div>
+</div>
+				
+				
+				';
+				
+				
+				
 
 				if(isset($announcements[$forum['fid']]))
 				{
@@ -109,18 +136,41 @@ function fetch_forum_announcements($pid=0, $depth=1)
 					{
 						$trow = alt_trow();
 
-						if($announcement['enddate'] < TIME_NOW && $announcement['enddate'] != 0)
+						if($announcement['enddate'] < TIMENOW && $announcement['enddate'] != 0)
 						{
-							eval("\$icon = \"".$templates->get("modcp_announcements_announcement_expired")."\";");
+							
+							$icon = '
+							
+							
+							<div class="subforumicon subforum_minioff" title="Expired Announcement"></div>
+							
+							';
+							
+							
+							
 						}
 						else
 						{
-							eval("\$icon = \"".$templates->get("modcp_announcements_announcement_active")."\";");
+							$icon = '<div class="subforumicon subforum_minion" title="Active Announcement"></div>';
 						}
 
 						$subject = htmlspecialchars_uni($parser->parse_badwords($announcement['subject']));
 
-						eval("\$announcements_forum .= \"".$templates->get("modcp_announcements_announcement")."\";");
+						$announcements_forum .= '
+						
+						
+						<div class="row py-2 border-top">
+	<div class="col align-self-center">
+		<i class="fa-solid fa-circle smaller text-muted"></i> &nbsp;<a href="announcements.php?aid='.$aid.'">'.$subject.'</a>
+	</div>
+	<div class="col-lg-3 align-self-center text-lg-end">
+		<a href="modcp.php?action=edit_announcement&amp;aid='.$aid.'"><i class="fa-solid fa-pencil"></i> &nbsp;edit</a> &nbsp;&nbsp; <a href="modcp.php?action=delete_announcement&amp;aid='.$aid.'"><i class="fa-solid fa-trash"></i> &nbsp;Delete</a>
+	</div>
+</div>
+						
+						
+						
+						';
 					}
 				}
 			}

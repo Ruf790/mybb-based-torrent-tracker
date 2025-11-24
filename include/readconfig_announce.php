@@ -14,7 +14,7 @@
   $aggressivecheat = 'yes';
   $nc = 'no';
   $announce_wait = 0;
-  $announce_interval = '3600';
+  $announce_interval = '900';
   $max_rate = 2097152;
   $bannedclientdetect = 'no';
   $allowed_clients = '-UT1610-,-AZ3034-,-UT1750-';

@@ -1788,7 +1788,7 @@ class Moderation
 						'uid' => $post['uid'],
 						'username' => $db->escape_string($post['username']),
 						'dateline' => $post['dateline'],
-						'ipaddress' => $db->escape_string($post['ip']),
+						'ipaddress' => $db->escape_binary($post['ipaddress']),
 						'edituid' => $post['edituid'],
 						'edittime' => $post['edittime'],
 						'visible' => $post['visible'],

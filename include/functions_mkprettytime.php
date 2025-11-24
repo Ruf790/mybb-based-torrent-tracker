@@ -1,52 +1,60 @@
 <?php
 
+declare(strict_types=1);
 
-function mkprettytime(int $seconds, array $options = []): string
-{
-    global $lang;
-
+function mkprettytime(
+    int $seconds,
+    array $options = []
+): string {
     $units = [
-        'years'   => 365*24*60*60,
-        'months'  => 30*24*60*60,
-        'weeks'   => 7*24*60*60,
-        'days'    => 24*60*60,
-        'hours'   => 60*60,
+        'years'   => 31536000,
+        'months'  => 2592000,
+        'weeks'   => 604800,
+        'days'    => 86400,
+        'hours'   => 3600,
         'minutes' => 60,
-        'seconds' => 1
+        'seconds' => 1,
     ];
 
-    $labels_full = [
-        'years'   => ' year',   'months'  => ' month', 'weeks' => ' week',
-        'days'    => ' day',    'hours'   => ' hour',  'minutes' => ' minute', 'seconds' => ' second'
+    $labels = [
+        'full' => [
+            'years' => ' year', 'months' => ' month', 'weeks' => ' week',
+            'days'  => ' day',  'hours'  => ' hour',  'minutes' => ' minute', 'seconds' => ' second',
+        ],
+        'plural' => [
+            'years' => ' years', 'months' => ' months', 'weeks' => ' weeks',
+            'days'  => ' days',  'hours'  => ' hours',  'minutes' => ' minutes', 'seconds' => ' seconds',
+        ],
+        'short' => [
+            'years' => 'y', 'months' => 'mo', 'weeks' => 'w',
+            'days' => 'd', 'hours' => 'h', 'minutes' => 'm', 'seconds' => 's',
+        ],
     ];
 
-    $labels_plural = [
-        'years'   => ' years',   'months'  => ' months', 'weeks' => ' weeks',
-        'days'    => ' days',    'hours'   => ' hours',  'minutes' => ' minutes', 'seconds' => ' seconds'
-    ];
+    $short = (bool) ($options['short'] ?? false);
+    $maxUnits = $options['max_units'] ?? null;
 
-    $labels_short = [
-        'years' => 'y', 'months' => 'mo', 'weeks' => 'w',
-        'days' => 'd', 'hours' => 'h', 'minutes' => 'm', 'seconds' => 's'
-    ];
-
-    $result = [];
-    $short = isset($options['short']) ? $options['short'] : false; // Проверяем, задан ли ключ 'short' в options
-
-    foreach ($units as $unit => $unit_seconds) {
-        if ($seconds >= $unit_seconds) {
-            $count = intdiv($seconds, $unit_seconds);
-            $seconds %= $unit_seconds;
-
-            if ($short) {
-                $result[] = $count . ($labels_short[$unit] ?? $unit[0]);
-            } else {
-                $label = ($count === 1) ? ($labels_full[$unit] ?? $unit) : ($labels_plural[$unit] ?? $unit.'s');
-                $result[] = "$count$label";
-            }
-        }
+    if ($seconds < 1) {
+        return $short ? '0s' : '0 seconds';
     }
 
-    return !empty($result) ? implode(', ', $result) : ($short ? '0s' : '0 seconds');
+    $result = [];
+
+    foreach ($units as $unit => $unitSeconds) {
+        if ($seconds < $unitSeconds) continue;
+
+        $count = intdiv($seconds, $unitSeconds);
+        $seconds %= $unitSeconds;
+
+        $labelType = $short
+            ? 'short'
+            : ($count === 1 ? 'full' : 'plural');
+
+        $result[] = "{$count}{$labels[$labelType][$unit]}";
+
+        if ($maxUnits && count($result) >= $maxUnits) break;
+    }
+
+    return implode(', ', $result);
 }
 

@@ -30,6 +30,7 @@ class trackerlanguage
     public $finduser;
     public $formats;
     public $forumdisplay;
+	public $forum_management;
     public $getrss;
     public $global = [];
     public $header;

@@ -65,7 +65,7 @@ class diskCacheHandler implements CacheHandlerInterface
 
 		$cache_file = fopen(TSDIR."/cache/{$name}.php", "w") or $mybb->trigger_generic_error("cache_no_write");
 		flock($cache_file, LOCK_EX);
-		$cache_contents = "<?php\n\n/** Tracker NAme Generated Cache - Do Not Alter\n * Cache Name: $name\n * Generated: ".gmdate("r")."\n*/\n\n";
+		$cache_contents = "<?php\n\n/** Generated Cache - Do Not Alter\n * Cache Name: $name\n * Generated: ".gmdate("r")."\n*/\n\n";
 		$cache_contents .= "\$$name = ".var_export($contents, true).";\n\n?>";
 		fwrite($cache_file, $cache_contents);
 		flock($cache_file, LOCK_UN);

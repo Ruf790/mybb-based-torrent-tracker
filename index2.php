@@ -19,12 +19,9 @@ $templatelist .= ",forumbit_moderators_group,forumbit_moderators_user,forumbit_d
 
 
 
-define ('TSF_FORUMS_TSSEv56', true);
-require_once 'global2.php';
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
+define('IN_FORUM', true);
+require_once 'global.php';
+
 
 
 
@@ -117,6 +114,8 @@ $whosonline = '';
 	");
 
 	// Fetch spiders
+	$woldisplayspiders = "1";
+	
 	$spiders = $cache->read('spiders');
 
 	// Loop through all users and spiders.
@@ -137,8 +136,8 @@ $whosonline = '';
 					++$anoncount;
 				}
 				++$membercount;
-				//if($user['invisible'] != 1 || $user['uid'] == $CURUSER['id'])
-				if($user['invisible'] != 1 || $usergroups['issupermod'] == 'yes' || $user['uid'] == $CURUSER['id'])
+				
+				if($user['invisible'] != 1 || $usergroups['canviewwolinvis'] == 1 || $user['uid'] == $CURUSER['id'])
 				{
 					// If this usergroup can see anonymously logged-in users, mark them.
 					if($user['invisible'] == 1)
@@ -154,7 +153,7 @@ $whosonline = '';
 					$user['username'] = format_name(htmlspecialchars_uni($user['username']), $user['usergroup'], $user['displaygroup']);
 					$user['profilelink'] = build_profile_link($user['username'], $user['uid']);
 					
-					//$onlinemembers[] = ''.$user['profilelink'].''.$invisiblemark.'';
+					
 					
 					eval('$onlinemembers[] = "'.$templates->get('index_whosonline_memberbit', 1, 0).'";');
 					
@@ -163,7 +162,7 @@ $whosonline = '';
 				$doneusers[$user['uid']] = $user['time'];
 			}
 		}
-		elseif(my_strpos($user['sid'], 'bot=') !== false && $spiders[$botkey] && $mybb->settings['woldisplayspiders'] == 1)
+		elseif(my_strpos($user['sid'], 'bot=') !== false && $spiders[$botkey] && $woldisplayspiders == 1)
 		{
 			if($wolorder == 'username')
 			{
@@ -205,7 +204,7 @@ $whosonline = '';
 	$onlinemembers = array_merge($onlinebots, $onlinemembers);
 	if(!empty($onlinemembers))
 	{
-		$comma = $lang->comma." ";
+		$comma = $lang->global['comma']." ";
 		$onlinemembers = implode($comma, $onlinemembers);
 	}
 	else
@@ -529,6 +528,7 @@ eval('$index = "'.$templates->get('index').'";');
 
 
 stdhead ('' . $SITENAME . ' FORUMS');
+
 
 echo $index;
 

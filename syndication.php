@@ -16,13 +16,9 @@ define("SCRIPTNAME", "syndication.php");
 
 $templatelist = "postbit_attachments_attachment";
 
+define('IN_FORUM', true);
 
-define ('TSF_FORUMS_TSSEv56', true);
-require_once 'global2.php';
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
+require_once 'global.php';
 
 
 

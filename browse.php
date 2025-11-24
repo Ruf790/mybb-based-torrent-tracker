@@ -29,10 +29,6 @@ if (!isset($CURUSER))
 
 
 
-//if (!headers_sent())
-//{
-	//setcookie('acqu', base64_encode($CURUSER['usergroup']), TIMENOW+24*60*60);
-//}
 
 
 $lang->load('browse');
@@ -649,33 +645,34 @@ $count_sql = 'SELECT t.id, c.name, u.usergroup, g.gid
 $countquery = $db->sql_query_prepared($count_sql, $params);
 
 
-$threadcount = $db->num_rows($countquery);
+
+
+
+$threadcount = (int)$db->num_rows($countquery);
 
 // How many pages are there?
 if (!$torrentsperpage || (int)$torrentsperpage < 1) {
     $torrentsperpage = 20;
 }
 
-$perpage = $torrentsperpage;
-
-
+$perpage = (int)$torrentsperpage;
 
 if(isset($mybb->input['page']) && intval($mybb->input['page']) > 0)
 {
-	$page = $mybb->input['page'];
-	$start = ($page-1) * $perpage;
-	$pages = $threadcount/ $perpage;
-	$pages = ceil($pages);
-	if($page > $pages || $page <= 0)
-	{
-		$start = 0;
-		$page = 1;
-	}
+    $page = (int)$mybb->input['page'];
+    $start = ($page-1) * $perpage;
+    $pages = ceil($threadcount / $perpage);
+    
+    if($page > $pages || $page <= 0)
+    {
+        $start = 0;
+        $page = 1;
+    }
 }
 else
 {
-	$start = 0;
-	$page = 1;
+    $start = 0;
+    $page = 1;
 }
 
 $end = $start + $perpage;
@@ -684,16 +681,21 @@ $upper = $end;
 
 if($upper > $threadcount)
 {
-	$upper = $threadcount;
+    $upper = $threadcount;
 }
-
 
 $page_url = $_SERVER['SCRIPT_NAME'].'?'.(is_array($Links) && count($Links) > 0 ? implode('&amp;', $Links) : '').'';
 $multipage = multipage($threadcount, $perpage, $page, $page_url);
 
 
+
+
+
+
+
+
 $ListTorrents = '
-<script type="text/javascript" src="'.$BASEURL.'/scripts/ts_update.js?v='.O_SCRIPT_VERSION.'"></script>
+<script type="text/javascript" src="'.$BASEURL.'/scripts/ts_update.js"></script>
 '.($is_mod ? '
 <script type="text/javascript">
 	function check_it(wHAT)

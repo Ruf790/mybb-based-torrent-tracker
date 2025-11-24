@@ -1,4 +1,4 @@
-<?
+<?php
 /***********************************************/
 /*=========[TS Special Edition v.5.6]==========*/
 /*=============[Special Thanks To]=============*/
@@ -8,222 +8,384 @@
 /*           Fynnon - wWw.BvList.CoM           */
 /***********************************************/
 
+declare(strict_types=1);
 
-  define ('R_VERSION', 'v1.7');
-  require_once 'global.php';
-  
-  if (!isset($CURUSER) || isset($CURUSER) && $CURUSER["id"] == 0) 
-  {
+define('R_VERSION', 'v1.7');
+require_once 'global.php';
+
+if (!isset($CURUSER) || ($CURUSER["id"] ?? 0) === 0) {
     print_no_permission();
-  }
-  
-  
-  gzip ();
+}
 
-  $lang->load ('getrss');
-  $allowed_timezones = array ('-12', '-11', '-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3.5', '-3', '-2', '-1', '0', '1', '2', '3', '3.5', '4', '4.5', '5', '5.5', '6', '7', '8', '9', '9.5', '10', '11', '12');
-  $allowed_showrows = array ('5', '10', '20', '30', '40', '50');
-  if ($_SERVER['REQUEST_METHOD'] == 'POST')
-  {
-    $_queries_ = array ();
-    $link = $BASEURL . '/rss.php?secret_key=' . $CURUSER['passkey'] . '&';
-    if ($_POST['feedtype'] == 'download')
-    {
-      $_queries_[] = 'feedtype=download';
-    }
-    else
-    {
-      $_queries_[] = 'feedtype=details';
-    }
+gzip();
 
-    if ((isset ($_POST['timezone']) AND in_array ($_POST['timezone'], $allowed_timezones, 1)))
-    {
-      $_queries_[] = 'timezone=' . (int)$_POST['timezone'];
-    }
-    else
-    {
-      $_queries_[] = 'timezone=1';
-    }
+$lang->load('getrss');
 
-    if ((isset ($_POST['showrows']) AND in_array ($_POST['showrows'], $allowed_showrows, 1)))
-    {
-      $_queries_[] = 'showrows=' . (int)$_POST['showrows'];
-    }
-    else
-    {
-      $_queries_[] = 'showrows=20';
-    }
+$allowed_timezones = [
+    '-12', '-11', '-10', '-9', '-8', '-7', '-6', '-5', '-4', '-3.5', '-3', 
+    '-2', '-1', '0', '1', '2', '3', '3.5', '4', '4.5', '5', '5.5', '6', 
+    '7', '8', '9', '9.5', '10', '11', '12'
+];
 
-    if (isset ($_POST['showall']))
-    {
-      $_queries_[] = 'categories=all';
-    }
-    else
-    {
-      $sqlquery = $db->sql_query ('SELECT id FROM categories WHERE type = \'c\'');
-      while ($res = mysqli_fetch_assoc ($sqlquery))
-      {
-        if ($_POST['cat' . $res['id'] . ''] == 'yes')
-        {
-          if (!is_array ($_POST['cat']))
-          {
-            $_POST['cat'] = array ();
-          }
+$allowed_showrows = ['5', '10', '20', '30', '40', '50'];
 
-          array_push ($_POST['cat'], $res['id']);
-          continue;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $queries = [];
+    $link = $BASEURL . '/rss.php?secret_key=' . ($CURUSER['passkey'] ?? '') . '&';
+    
+    // Feed type handling
+    $feedtype = in_array($_POST['feedtype'] ?? '', ['download', 'details'], true) 
+        ? $_POST['feedtype'] 
+        : 'details';
+    $queries[] = 'feedtype=' . $feedtype;
+
+    // Timezone handling
+    $timezone = in_array($_POST['timezone'] ?? '', $allowed_timezones, true)
+        ? $_POST['timezone']
+        : '1';
+    $queries[] = 'timezone=' . $timezone;
+
+    // Show rows handling
+    $showrows = in_array($_POST['showrows'] ?? '', $allowed_showrows, true)
+        ? $_POST['showrows']
+        : '20';
+    $queries[] = 'showrows=' . $showrows;
+
+    // Categories handling
+    if (isset($_POST['showall'])) {
+        $queries[] = 'categories=all';
+    } else {
+        $selected_categories = [];
+        
+        // Get all category IDs
+        $sqlquery = $db->sql_query('SELECT id FROM categories WHERE type = \'c\'');
+        while ($res = $db->fetch_array($sqlquery)) {
+            $cat_id = (string)($res['id'] ?? '');
+            if (($_POST['cat' . $cat_id] ?? '') === 'yes') {
+                $selected_categories[] = $cat_id;
+            }
         }
-      }
 
-      if (isset ($_POST['cat']))
-      {
-        $_queries_[] = 'categories=' . implode (',', (array)$_POST['cat']);
-      }
-      else
-      {
-        $_queries_[] = 'categories=all';
-      }
+        // Also check for array-based category selection (backward compatibility)
+        $post_cats = $_POST['cat'] ?? [];
+        if (is_array($post_cats)) {
+            foreach ($post_cats as $cat_id) {
+                $cat_id = (string)$cat_id;
+                if (!in_array($cat_id, $selected_categories, true)) {
+                    $selected_categories[] = $cat_id;
+                }
+            }
+        }
+
+        if (!empty($selected_categories)) {
+            $queries[] = 'categories=' . implode(',', $selected_categories);
+        } else {
+            $queries[] = 'categories=all';
+        }
     }
 
-    $__queries = implode ('&', $_queries_);
-    if ($__queries)
-    {
-      $link .= $__queries;
+    // Build final URL
+    $final_queries = implode('&', $queries);
+    if ($final_queries) {
+        $link .= $final_queries;
     }
 
-    stdhead ($lang->getrss['title']);
+    // Output results - ПЕРЕМЕЩАЕМ JavaScript В НАЧАЛО ВЫВОДА
+    stdhead($lang->getrss['title'] ?? 'RSS Feed');
+    
     echo '
-	
-	<div class="container mt-3">
-  <div class="card">
-    <div class="card-header fw-bold">
-     '.$lang->getrss['done2'].'
-    </div>
-    <div class="card-body">
-      <div class="border p-2 bg-light" style="overflow:auto;">
-        <strong>'.htmlspecialchars($link) .'</strong>
-      </div>
-    </div>
-  </div>
-</div>
-	';
-	
-    stdfoot ();
-    exit ();
-  }
+    <script>
+    // Функция копирования RSS ссылки - ОПРЕДЕЛЯЕМ ПЕРВОЙ
+    function copyRssLink() {
+        const copyText = document.getElementById("rssLink");
+        if (!copyText) return;
+        
+        copyText.select();
+        copyText.setSelectionRange(0, 99999);
+        
+        try {
+            const successful = document.execCommand("copy");
+            const btn = event.target.closest("button");
+            if (btn) {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = \'<i class="fas fa-check me-1"></i>Copied!\';
+                btn.classList.remove("btn-outline-secondary");
+                btn.classList.add("btn-success");
+                
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.classList.remove("btn-success");
+                    btn.classList.add("btn-outline-secondary");
+                }, 2000);
+            }
+        } catch (err) {
+            console.error("Copy failed:", err);
+            alert("Failed to copy link. Please copy it manually.");
+        }
+    }
+    </script>
 
-  stdhead ($lang->getrss['title']);
-  include_once INC_PATH . '/functions_category2.php';
-  $catoptions = ts_category_list2 (2, 'rss');
-
-
-
- echo '<form method="post" action="/getrss.php" name="rss">
-    
-
-      
-      '.$catoptions.'
-
-
- <div class="container my-4">
-      <!-- Feed Type -->
-      <div class="card mb-4">
-        <div class="card-header fw-bold text-primary">Feed Type:</div>
-        <div class="card-body">
-          <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="feedtype" value="details" checked>
-            <label class="form-check-label">Web Link</label>
-          </div>
-          <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="feedtype" value="download">
-            <label class="form-check-label">Download Link</label>
-          </div>
-        </div>
-      </div>
-
-      <!-- Timezone & Rows Per Page -->
-      <div class="card mb-4">
-        <div class="card-header fw-bold text-primary">Settings</div>
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label for="timezone" class="form-label"><strong>Select Your TimeZone:</strong></label>
-              <select class="form-select" name="timezone" id="timezone">
-                <!-- timezone options (unchanged for brevity) -->
-                <option value="-12">(GMT -12:00) Eniwetok, Kwajalein</option>
-                <option value="-11">(GMT -11:00) Midway Island, Samoa</option>
-                <option value="-10">(GMT -10:00) Hawaii</option>
-                <option value="-9">(GMT -9:00) Alaska</option>
-                <option value="-8">(GMT -8:00) Pacific Time (US & Canada)</option>
-                <option value="-7">(GMT -7:00) Mountain Time (US & Canada)</option>
-                <option value="-6">(GMT -6:00) Central Time (US & Canada), Mexico City</option>
-                <option value="-5">(GMT -5:00) Eastern Time (US & Canada), Bogota, Lima</option>
-                <option value="-4">(GMT -4:00) Atlantic Time (Canada), Caracas, La Paz</option>
-                <option value="-3.5">(GMT -3:30) Newfoundland</option>
-                <option value="-3">(GMT -3:00) Brazil, Buenos Aires, Georgetown</option>
-                <option value="-2">(GMT -2:00) Mid-Atlantic</option>
-                <option value="-1">(GMT -1:00 hour) Azores, Cape Verde Islands</option>
-                <option value="0">(GMT) Western Europe Time, London, Lisbon, Casablanca</option>
-                <option value="1">(GMT +1:00 hour) Brussels, Copenhagen, Madrid, Paris</option>
-                <option value="2">(GMT +2:00) Kaliningrad, South Africa</option>
-                <option value="3">(GMT +3:00) Baghdad, Riyadh, Moscow, St. Petersburg</option>
-                <option value="3.5">(GMT +3:30) Tehran</option>
-                <option value="4">(GMT +4:00) Abu Dhabi, Muscat, Baku, Tbilisi</option>
-                <option value="4.5">(GMT +4:30) Kabul</option>
-                <option value="5">(GMT +5:00) Ekaterinburg, Islamabad, Karachi, Tashkent</option>
-                <option value="5.5">(GMT +5:30) Bombay, Calcutta, Madras, New Delhi</option>
-                <option value="6">(GMT +6:00) Almaty, Dhaka, Colombo</option>
-                <option value="7">(GMT +7:00) Bangkok, Hanoi, Jakarta</option>
-                <option value="8">(GMT +8:00) Beijing, Perth, Singapore, Hong Kong</option>
-                <option value="9">(GMT +9:00) Tokyo, Seoul, Osaka, Sapporo, Yakutsk</option>
-                <option value="9.5">(GMT +9:30) Adelaide, Darwin</option>
-                <option value="10">(GMT +10:00) Eastern Australia, Guam, Vladivostok</option>
-                <option value="11">(GMT +11:00) Magadan, Solomon Islands, New Caledonia</option>
-                <option value="12">(GMT +12:00) Auckland, Wellington, Fiji, Kamchatka</option>
-              </select>
+    <div class="container mt-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white fw-bold">
+                <i class="fas fa-rss me-2"></i>' . ($lang->getrss['done2'] ?? 'RSS Feed Generated') . '
             </div>
-            <div class="col-md-6">
-              <label for="showrows" class="form-label"><strong>Rows Per Page:</strong></label>
-              <select class="form-select" name="showrows" id="showrows">
-                <option value="5">5</option>
-                <option value="10">10</option>
-                <option value="20">20</option>
-                <option value="30">30</option>
-                <option value="40">40</option>
-                <option value="50">50</option>
-              </select>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    ' . ($lang->getrss['copy_link'] ?? 'Copy the link below to your RSS reader') . '
+                </div>
+                <div class="input-group">
+                    <input type="text" class="form-control" value="' . htmlspecialchars($link) . '" id="rssLink" readonly>
+                    <button class="btn btn-outline-secondary" type="button" onclick="copyRssLink()">
+                        <i class="fas fa-copy me-1"></i>Copy
+                    </button>
+                </div>
+                <div class="mt-3">
+                    <a href="' . htmlspecialchars($link) . '" class="btn btn-success me-2" target="_blank">
+                        <i class="fas fa-external-link-alt me-1"></i>Test RSS Feed
+                    </a>
+                    <a href="/getrss.php" class="btn btn-outline-primary">
+                        <i class="fas fa-undo me-1"></i>Generate Another
+                    </a>
+                </div>
             </div>
-          </div>
         </div>
-      </div>
+    </div>';
 
-      <!-- Submit Button -->
-      <div class="row">
-          <div class="col-sm-6"><p class="float-end">
-          
-		  <button type="submit" class="btn btn-primary">Generate RSS link</button></p>
-		  
-		  </div>
-	  </div>
-	  
-	  
-	  </div>
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	  
+    stdfoot();
+    exit;
+}
 
+// Display the form
+stdhead($lang->getrss['title'] ?? 'Get RSS Feed');
+
+// Добавляем ВСЕ JavaScript функции в начале вывода
+echo '
+<script>
+// Функции для выбора/снятия всех категорий
+function select_deselectAll(source, formName) {
+    const form = document.forms[formName] || document.querySelector(\'form[name="\' + formName + \'"]\');
+    if (!form) return;
     
-  </form>';
+    const checkboxes = form.querySelectorAll(\'input[type="checkbox"]\');
+    checkboxes.forEach(function(checkbox) {
+        if (checkbox.name !== source.name && checkbox.name !== "showall") {
+            checkbox.checked = source.checked;
+        }
+    });
+}
 
+function toggleCategorySelection(selectAll) {
+    const form = document.forms["rss"] || document.querySelector(\'form[name="rss"]\');
+    if (!form) return;
+    
+    const checkboxes = form.querySelectorAll(\'input[name^="cat"]\');
+    checkboxes.forEach(function(checkbox) {
+        checkbox.checked = selectAll;
+    });
+}
 
+function selectAllCategories() {
+    toggleCategorySelection(true);
+}
 
+function deselectAllCategories() {
+    toggleCategorySelection(false);
+}
 
-  
+// Функция для обработки "Select All" checkbox
+function handleSelectAll(source) {
+    const checkboxes = document.querySelectorAll(\'input[name^="cat"]\');
+    checkboxes.forEach(function(checkbox) {
+        checkbox.checked = source.checked;
+    });
+}
 
-  stdfoot ();
+// Функция копирования RSS ссылки
+function copyRssLink() {
+    const copyText = document.getElementById("rssLink");
+    if (!copyText) return;
+    
+    copyText.select();
+    copyText.setSelectionRange(0, 99999);
+    
+    try {
+        const successful = document.execCommand("copy");
+        const btn = event.target.closest("button");
+        if (btn) {
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = \'<i class="fas fa-check me-1"></i>Copied!\';
+            btn.classList.remove("btn-outline-secondary");
+            btn.classList.add("btn-success");
+            
+            setTimeout(() => {
+                btn.innerHTML = originalHtml;
+                btn.classList.remove("btn-success");
+                btn.classList.add("btn-outline-secondary");
+            }, 2000);
+        }
+    } catch (err) {
+        console.error("Copy failed:", err);
+        alert("Failed to copy link. Please copy it manually.");
+    }
+}
+
+// Form validation
+document.addEventListener("DOMContentLoaded", function() {
+    const forms = document.querySelectorAll(".needs-validation");
+    
+    Array.from(forms).forEach(function(form) {
+        form.addEventListener("submit", function(event) {
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            form.classList.add("was-validated");
+        }, false);
+    });
+});
+</script>';
+
+include_once INC_PATH . '/functions_category2.php';
+$catoptions = ts_category_list2(2, 'rss');
+
+// Timezone options array for cleaner code
+$timezone_options = [
+    '-12' => '(GMT -12:00) Eniwetok, Kwajalein',
+    '-11' => '(GMT -11:00) Midway Island, Samoa',
+    '-10' => '(GMT -10:00) Hawaii',
+    '-9' => '(GMT -9:00) Alaska',
+    '-8' => '(GMT -8:00) Pacific Time (US & Canada)',
+    '-7' => '(GMT -7:00) Mountain Time (US & Canada)',
+    '-6' => '(GMT -6:00) Central Time (US & Canada), Mexico City',
+    '-5' => '(GMT -5:00) Eastern Time (US & Canada), Bogota, Lima',
+    '-4' => '(GMT -4:00) Atlantic Time (Canada), Caracas, La Paz',
+    '-3.5' => '(GMT -3:30) Newfoundland',
+    '-3' => '(GMT -3:00) Brazil, Buenos Aires, Georgetown',
+    '-2' => '(GMT -2:00) Mid-Atlantic',
+    '-1' => '(GMT -1:00 hour) Azores, Cape Verde Islands',
+    '0' => '(GMT) Western Europe Time, London, Lisbon, Casablanca',
+    '1' => '(GMT +1:00 hour) Brussels, Copenhagen, Madrid, Paris',
+    '2' => '(GMT +2:00) Kaliningrad, South Africa',
+    '3' => '(GMT +3:00) Baghdad, Riyadh, Moscow, St. Petersburg',
+    '3.5' => '(GMT +3:30) Tehran',
+    '4' => '(GMT +4:00) Abu Dhabi, Muscat, Baku, Tbilisi',
+    '4.5' => '(GMT +4:30) Kabul',
+    '5' => '(GMT +5:00) Ekaterinburg, Islamabad, Karachi, Tashkent',
+    '5.5' => '(GMT +5:30) Bombay, Calcutta, Madras, New Delhi',
+    '6' => '(GMT +6:00) Almaty, Dhaka, Colombo',
+    '7' => '(GMT +7:00) Bangkok, Hanoi, Jakarta',
+    '8' => '(GMT +8:00) Beijing, Perth, Singapore, Hong Kong',
+    '9' => '(GMT +9:00) Tokyo, Seoul, Osaka, Sapporo, Yakutsk',
+    '9.5' => '(GMT +9:30) Adelaide, Darwin',
+    '10' => '(GMT +10:00) Eastern Australia, Guam, Vladivostok',
+    '11' => '(GMT +11:00) Magadan, Solomon Islands, New Caledonia',
+    '12' => '(GMT +12:00) Auckland, Wellington, Fiji, Kamchatka'
+];
+
+echo '
+<form method="post" action="/getrss.php" name="rss" class="needs-validation" novalidate>
+    ' . $catoptions . '
+
+    <div class="container my-4">
+        <!-- Quick Selection Buttons -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white fw-bold">
+                <i class="fas fa-mouse-pointer me-2"></i>Quick Selection
+            </div>
+            <div class="card-body">
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-success" onclick="selectAllCategories()">
+                        <i class="fas fa-check-square me-1"></i>Select All Categories
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" onclick="deselectAllCategories()">
+                        <i class="fas fa-times-circle me-1"></i>Deselect All Categories
+                    </button>
+                </div>
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" name="showall" id="showall" value="1" onclick="handleSelectAll(this)">
+                    <label class="form-check-label fw-semibold" for="showall">
+                        <i class="fas fa-asterisk me-1"></i>Select All Categories (Include All Future Categories)
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feed Type -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white fw-bold">
+                <i class="fas fa-link me-2"></i>Feed Type
+            </div>
+            <div class="card-body">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="feedtype" id="feedtype_details" value="details" checked>
+                    <label class="form-check-label" for="feedtype_details">
+                        <i class="fas fa-globe me-1"></i>Web Link
+                    </label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="feedtype" id="feedtype_download" value="download">
+                    <label class="form-check-label" for="feedtype_download">
+                        <i class="fas fa-download me-1"></i>Download Link
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timezone & Rows Per Page -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white fw-bold">
+                <i class="fas fa-cog me-2"></i>Settings
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="timezone" class="form-label fw-semibold">
+                            <i class="fas fa-clock me-1"></i>Select Your Timezone:
+                        </label>
+                        <select class="form-select" name="timezone" id="timezone" required>';
+                        
+foreach ($timezone_options as $value => $label) {
+    $selected = $value === '1' ? ' selected' : '';
+    echo '<option value="' . $value . '"' . $selected . '>' . $label . '</option>';
+}
+
+echo '
+                        </select>
+                        <div class="invalid-feedback">Please select a valid timezone.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="showrows" class="form-label fw-semibold">
+                            <i class="fas fa-list me-1"></i>Rows Per Page:
+                        </label>
+                        <select class="form-select" name="showrows" id="showrows" required>';
+                        
+foreach ($allowed_showrows as $rows) {
+    $selected = $rows === '20' ? ' selected' : '';
+    echo '<option value="' . $rows . '"' . $selected . '>' . $rows . '</option>';
+}
+
+echo '
+                        </select>
+                        <div class="invalid-feedback">Please select number of rows to show.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="row">
+            <div class="col-12">
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-magic me-2"></i>Generate RSS Link
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>';
+
+stdfoot();
 ?>

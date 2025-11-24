@@ -26,15 +26,11 @@ $templatelist .= ",forumdisplay_thread_attachment_count,search_threads_inlinemod
 $templatelist .= ",search_results_posts_forumlink,search_results_threads_forumlink,forumdisplay_thread_multipage_more,forumdisplay_thread_multipage_page,forumdisplay_thread_multipage,search_moderator_options";
 
 
-
+define('IN_FORUM', true);
 require_once 'global.php';
 
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
 
-require_once INC_PATH.'/tsf_functions.php';
+
 require_once INC_PATH . '/functions_multipage.php';
 
 require_once INC_PATH."/functions_post.php";
@@ -142,51 +138,7 @@ function build_prefix_select($fid, $selected_pid=0, $multiple=0, $previous_pid=0
 }
 
 
-function build_prefixes($pid=0)
-{
-	global $cache;
-	static $prefixes_cache;
 
-	if(is_array($prefixes_cache))
-	{
-		if($pid > 0 && is_array($prefixes_cache[$pid]))
-		{
-			return $prefixes_cache[$pid];
-		}
-
-		return $prefixes_cache;
-	}
-
-	$prefix_cache = $cache->read("threadprefixes");
-
-	if(!is_array($prefix_cache))
-	{
-		// No cache
-		$prefix_cache = $cache->read("threadprefixes", true);
-
-		if(!is_array($prefix_cache))
-		{
-			return array();
-		}
-	}
-
-	$prefixes_cache = array();
-	foreach($prefix_cache as $prefix)
-	{
-		$prefixes_cache[$prefix['pid']] = $prefix;
-	}
-
-	if($pid != 0 && is_array($prefixes_cache[$pid]))
-	{
-		return $prefixes_cache[$pid];
-	}
-	else if(!empty($prefixes_cache))
-	{
-		return $prefixes_cache;
-	}
-
-	return false;
-}
 
 
 
@@ -1279,7 +1231,8 @@ if($mybb->input['action'] == "results")
 
 			// Inline post moderation
 			$inline_mod_checkbox = '';
-			if($is_supermod || is_moderator($post['fid']))
+			//if($is_supermod || is_moderator($post['fid']))
+			if($is_supermod || $is_mod)
 			{
 				if(isset($mybb->cookies[$inlinecookie]) && my_strpos($mybb->cookies[$inlinecookie], "|{$post['pid']}|") !== false)
 				{
@@ -1437,7 +1390,7 @@ elseif($mybb->input['action'] == "findguest")
 		"sid" => $db->escape_string($sid),
 		"uid" => $CURUSER['id'],
 		"dateline" => TIMENOW,
-		"ipaddress" => $CURUSER['ip'],
+		"ipaddress" => $db->escape_binary($session->packedip),
 		"threads" => $db->escape_string($tids),
 		"posts" => $db->escape_string($pids),
 		"resulttype" => "posts",
@@ -1519,7 +1472,7 @@ elseif($mybb->input['action'] == "finduser")
 		"sid" => $db->escape_string($sid),
 		"uid" => $CURUSER['id'],
 		"dateline" => TIMENOW,
-		"ipaddress" => $CURUSER['ip'],
+		"ipaddress" => $db->escape_binary($session->packedip),
 		"threads" => $db->escape_string($tids),
 		"posts" => $db->escape_string($pids),
 		"resulttype" => "posts",
@@ -1580,7 +1533,7 @@ elseif($mybb->input['action'] == "finduserthreads")
 		"sid" => $db->escape_string($sid),
 		"uid" => $CURUSER['id'],
 		"dateline" => TIMENOW,
-		"ipaddress" => $CURUSER['ip'],
+		"ipaddress" => $db->escape_binary($session->packedip),
 		"threads" => $db->escape_string($tids),
 		"posts" => '',
 		"resulttype" => "threads",
@@ -1660,7 +1613,7 @@ elseif($mybb->input['action'] == "getnew")
 		"sid" => $db->escape_string($sid),
 		"uid" => $CURUSER['id'],
 		"dateline" => TIMENOW,
-		"ipaddress" => $CURUSER['ip'],
+		"ipaddress" => $db->escape_binary($session->packedip),
 		"threads" => $db->escape_string($tids),
 		"posts" => '',
 		"resulttype" => "threads",
@@ -1750,7 +1703,7 @@ elseif($mybb->input['action'] == "getdaily")
 		"sid" => $db->escape_string($sid),
 		"uid" => $CURUSER['id'],
 		"dateline" => TIMENOW,
-		"ipaddress" => $CURUSER['ip'],
+		"ipaddress" => $db->escape_binary($session->packedip),
 		"threads" => $db->escape_string($tids),
 		"posts" => '',
 		"resulttype" => "threads",
@@ -1856,7 +1809,7 @@ elseif($mybb->input['action'] == "do_search")
 		"sid" => $db->escape_string($sid),
 		"uid" => $CURUSER['id'],
 		"dateline" => $now,
-		"ipaddress" => $CURUSER['ip'],
+		"ipaddress" => $db->escape_binary($session->packedip),
 		"threads" => $search_results['threads'],
 		"posts" => $search_results['posts'],
 		"resulttype" => $resulttype,
@@ -1975,7 +1928,7 @@ else if($mybb->input['action'] == "thread")
 		"sid" => $db->escape_string($sid),
 		"uid" => $CURUSER['id'],
 		"dateline" => $now,
-		"ipaddress" => $CURUSER['ip'],
+		"ipaddress" => $db->escape_binary($session->packedip),
 		"threads" => $search_results['threads'],
 		"posts" => $search_results['posts'],
 		"resulttype" => 'posts',

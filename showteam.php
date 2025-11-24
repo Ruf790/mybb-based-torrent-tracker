@@ -19,15 +19,8 @@ define ('TSF_VERSION', 'v1.5 by xam');
 $templatelist = 'showteam,postbit_email,postbit_pm,showteam_usergroup_user,showteam_usergroup,showteam_moderators_mod,showteam_moderators,showteam_moderators_forum';
 
 
-
+define('IN_FORUM', true);
 require_once 'global.php';
-
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
-
-require_once INC_PATH.'/tsf_functions.php';
 
 
 
@@ -47,7 +40,10 @@ $timecut = TIMENOW - $wolcutoffmins;
 $is_mod = is_mod($usergroups);
 
 
-$usergroups = $moderators = $users = array();
+
+
+
+$user_groups_data = $moderators = $users = array();
 
 // Fetch the list of groups which are to be shown on the page
 $query = $db->simple_select("usergroups", "gid, title", "showforumteam=1", array('order_by' => 'disporder'));
@@ -79,7 +75,7 @@ if($usergroups[5]['gid'])
 }
 
 // Now query the users of those specific groups
-$visible_groups = array_keys($usergroups);
+$visible_groups = array_keys($user_groups_data);
 
 $groups_in = implode(",", $visible_groups);
 $users_in = implode(",", array_keys($moderators));

@@ -26,22 +26,11 @@ $templatelist .= ",usercp_nav_editsignature,posticons_icon,postbit_icon,postbit_
 
 
 
-  define ('TSF_FORUMS_TSSEv56', true);
-  define ('TSF_FORUMS_GLOBAL_TSSEv56', true);
-  define ('TSF_VERSION', 'v1.5 by xam');
-  //define ('IN_FORUMS', true );
+ 
+ define('IN_FORUM', true);
 
  require_once "global.php";
  
-
-  
-  if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-  {
-     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-  }
-
-  
-  require_once INC_PATH.'/tsf_functions.php';
 
 
 
@@ -473,7 +462,7 @@ if($mybb->input['action'] == "results")
 			$tofromuid = $message['fromid'];
 			if($tofromuid == 0)
 			{
-				$tofromusername = 'Tracker Engine';
+				$tofromusername = 'Ruff Tracker Engine';
 			}
 		}
 
@@ -1145,7 +1134,7 @@ if($mybb->input['action'] == "read")
 
 	if($pm['fromid'] == 0)
 	{
-		$pm['username'] = 'Tracker Engine';
+		$pm['username'] = 'Ruff Tracker Engine';
 	}
 
 	if(!$pm['username'])
@@ -2073,14 +2062,14 @@ if($mybb->input['action'] == "do_export" && $mybb->request_method == "post")
 
 			if($tofromuid == 0)
 			{
-				$tofromusername = 'Tracker Engine';
+				$tofromusername = 'Ruff Tracker Engine';
 			}
 			$tofrom = $lang->from;
 		}
 
 		if($tofromuid == 0)
 		{
-			$message['fromusername'] = 'Tracker Engine';
+			$message['fromusername'] = 'Ruff Tracker Engine';
 		}
 
 		if(!$message['toid'] && $message['folder'] == 3)
@@ -2508,7 +2497,7 @@ if(!$mybb->input['action'])
 				$tofromuid = $message['fromid'];
 				if($tofromuid == 0)
 				{
-					$tofromusername = 'Tracker Engine';
+					$tofromusername = 'Ruff Tracker Engine';
 				}
 
 				if(!$tofromusername)

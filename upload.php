@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 define("SCRIPTNAME", "upload.php");
 require_once 'global.php';
 require(INC_PATH . '/functions_category.php');
@@ -14,11 +16,8 @@ use Arokettu\Torrent\TorrentFile;
 
 
 
-// Подключите функцию insert_bbcode_editor
 require_once INC_PATH . '/editor.php';
 
-
-// Вызов функции
 $editor = insert_bbcode_editor($smilies, $BASEURL, 'description');
 
 
@@ -45,7 +44,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
             unlink($filePath);
         }
 
-        //$db->sql_query("DELETE FROM `screenshots` WHERE id = '{$screenshot_id}'");
 		$db->delete_query("screenshots", "id='$screenshot_id'");
 
         echo json_encode(['success' => true]);
@@ -447,11 +445,10 @@ if (!$isEdit)
 }
 
 
-if ($torrentFilename) {
+if ($torrentFilename) 
+{
     $metadata['filename'] = $db->escape_string($torrentFilename);
     $metadata['info_hash'] = $db->escape_string($info_hash);
-    //$metadata['size'] = $db->escape_string($size);
-    //$metadata['numfiles'] = $db->escape_string($numfiles);
 	$metadata['size'] = (int)$size;
     $metadata['numfiles'] = (int)$numfiles;
 }
@@ -489,7 +486,7 @@ else
         $NewTID = $EditTorrentID;
 		
 		
-		// Привязываем загруженные файлы к этому комментарию
+		
         if (!empty($_POST['file_ids'])) 
 		{
              $file_ids = array_map('intval', $_POST['file_ids']); // защита
@@ -629,7 +626,7 @@ function get_next_screenshot_number($torrent_id, $db, $step = 3)
         }
     }
 
-    // Возвращаем новый стартовый номер с шагом
+    
     return $maxNum + $step;
 }
 
@@ -637,7 +634,7 @@ function get_next_screenshot_number($torrent_id, $db, $step = 3)
 
 if (!empty($screenshotFilenames)) 
 {
-    // Получаем стартовый номер
+    
     $count = get_next_screenshot_number($NewTID, $db, 3);
 
     foreach ($screenshotFilenames as $originalFilename) 
@@ -653,9 +650,6 @@ if (!empty($screenshotFilenames))
             rename($oldFilePath, $newFilePath);
         }
 
-        //$escapedFilename = $db->escape_string($newFilename);
-        //$db->sql_query("INSERT INTO `screenshots` (`torrent_id`, `filename`) VALUES ('{$NewTID}', '{$escapedFilename}')");
-		
 		
 		
 		$insert_array = array(
@@ -1329,7 +1323,7 @@ function copyAnnounceUrl() {
     
 	
 	
-<form method="post" action="<?php echo htmlspecialchars($_SERVER['SCRIPT_NAME']) . ($EditTorrent ? '?id=' . urlencode($EditTorrentID) : ''); ?>" id="torrent-upload-form" enctype="multipart/form-data">
+<form method="post" action="<?php echo htmlspecialchars($_SERVER['SCRIPT_NAME']) . ($EditTorrent ? '?id=' . urlencode((string)$EditTorrentID) : ''); ?>" id="torrent-upload-form" enctype="multipart/form-data">
 <input type="hidden" name="my_post_key" value="<?php echo $mybb->post_code; ?>" />
   
   
@@ -1927,7 +1921,8 @@ function copyAnnounceUrl() {
   
   <?php if ($isEdit): ?>
     <input type="hidden" name="EditTorrent" value="1">
-    <input type="hidden" name="EditTorrentID" value="<?= htmlspecialchars($EditTorrentID) ?>">
+	<input type="hidden" name="EditTorrentID" value="<?= htmlspecialchars((string)$EditTorrentID) ?>">
+
   <?php endif; ?>
 
   <button type="submit" class="btn btn-primary"><?= $buttonFullText ?></button>

@@ -10,54 +10,6 @@
 
 
 
-function build_prefixes($pid=0)
-{
-	global $cache;
-	static $prefixes_cache;
-
-	if(is_array($prefixes_cache))
-	{
-		if($pid > 0 && is_array($prefixes_cache[$pid]))
-		{
-			return $prefixes_cache[$pid];
-		}
-
-		return $prefixes_cache;
-	}
-
-	$prefix_cache = $cache->read("threadprefixes");
-
-	if(!is_array($prefix_cache))
-	{
-		// No cache
-		$prefix_cache = $cache->read("threadprefixes", true);
-
-		if(!is_array($prefix_cache))
-		{
-			return array();
-		}
-	}
-
-	$prefixes_cache = array();
-	foreach($prefix_cache as $prefix)
-	{
-		$prefixes_cache[$prefix['pid']] = $prefix;
-	}
-
-	if($pid != 0 && is_array($prefixes_cache[$pid]))
-	{
-		return $prefixes_cache[$pid];
-	}
-	else if(!empty($prefixes_cache))
-	{
-		return $prefixes_cache;
-	}
-
-	return false;
-}
-
-
-
   define("IN_MYBB", 1);
   define('THIS_SCRIPT', 'usercp.php');
   define("ALLOWABLE_PAGE", "removesubscription,removesubscriptions");
@@ -88,13 +40,23 @@ $templatelist .= ",usercp_addsubscription_thread,forumdisplay_password,forumdisp
   
   
   
-  define ('TSF_FORUMS_TSSEv56', true);
-  define ('TSF_FORUMS_GLOBAL_TSSEv56', true);
-  define ('TSF_VERSION', 'v1.5 by xam');
+
   define("SCRIPTNAME", "usercp.php");
    
-   
+  
+  
   require_once 'global.php';
+  
+  define('FORUM_ACTIVE', true);
+  define('FORUM_SECURE', true);
+  require_once INC_PATH . '/tsf_functions.php';
+  
+  
+  
+  
+  
+  
+  
   
   if (!isset($CURUSER) || isset($CURUSER) && $CURUSER["id"] == 0) 
   {
@@ -102,13 +64,7 @@ $templatelist .= ",usercp_addsubscription_thread,forumdisplay_password,forumdisp
   }
   
   
-  if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-  {
-     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-  }
 
-  
-  require_once INC_PATH.'/tsf_functions.php';
   require_once INC_PATH . '/editor.php';
   require_once INC_PATH . '/functions_multipage.php';
   require_once INC_PATH . '/functions_timezone.php';
@@ -415,14 +371,14 @@ if($mybb->input['action'] == "do_options" && $mybb->request_method == "post")
 		
 	);
 
-	$usertppoptions = "10,15,20,25,30,40,50";
+	
 	
 	if($usertppoptions)
 	{
 		$user['options']['threadsperpages'] = $mybb->get_input('tpp', MyBB::INPUT_INT);
 	}
 
-	$userpppoptions = "5,10,15,20,25,30,40,50";
+	
 	
 	if($userpppoptions)
 	{
@@ -744,7 +700,7 @@ if($mybb->input['action'] == "options")
 	}
 
 	
-	$usertppoptions = "10,15,20,25,30,40,50";
+	
 	
 	$tppselect = $pppselect = '';
 	if($usertppoptions)
@@ -770,7 +726,7 @@ if($mybb->input['action'] == "options")
 		eval("\$tppselect = \"".$templates->get("usercp_options_tppselect")."\";");
 	}
 
-	$userpppoptions = "5,10,15,20,25,30,40,50";
+
 	
 	if($userpppoptions)
 	{
@@ -788,7 +744,7 @@ if($mybb->input['action'] == "options")
 				}
 
 				$ppp_option = sprintf($lang->usercp['ppp_option'], $val);
-				//$pppoptions .= '<option value="'.$val.'"'.$selected.'>'.$ppp_option.'</option>';
+				
 				
 				
 				
@@ -1094,12 +1050,16 @@ if ($mybb->input['action'] == "do_avatar" && $mybb->request_method == "post")
     // Verify incoming POST request
     verify_post_check($mybb->get_input('my_post_key'));
 
-    $allowremoteavatars = "1";
+    
     $avatar_error = "";
 
     $plugins->run_hooks("usercp_do_avatar_start");
 
     require_once INC_PATH.'/functions_upload.php';
+	
+	
+	
+	
 
     if (!empty($mybb->input['remove'])) 
 	{
@@ -1150,7 +1110,7 @@ if ($mybb->input['action'] == "do_avatar" && $mybb->request_method == "post")
 			
 			
 			$mybb->input['avatarurl'] = preg_replace("#script:#i", "", $mybb->input['avatarurl']);
-			$ext = get_extension($mybb->input['avatarurl']);
+		    $ext = !empty(trim($mybb->input['avatarurl'])) ? get_extension($mybb->input['avatarurl']) : '';
 
 			// Copy the avatar to the local server (work around remote URL access disabled for getimagesize)
 			$file = TS_Fetch_Data($mybb->input['avatarurl']);
@@ -1281,7 +1241,8 @@ if($mybb->input['action'] == "avatar")
 		$avatarurl = htmlspecialchars_uni($CURUSER['avatar']);
 	}
 	
-	
+	echo '<script src="'.$BASEURL.'/scripts/toast.js"></script>';
+    echo '<script src="'.$BASEURL.'/scripts/upload_avatar_usercp.js"></script>';
 
     $useravatar = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
 
@@ -1307,28 +1268,6 @@ else
     </div>';
 }
 
-
-
-
-
-
-
-
-
-
-echo '
-<div class="toast-container position-fixed bottom-0 end-0 p-3">
-  <div id="avatarToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="toast-header">
-      <strong class="me-auto">Avatar</strong>
-      <small>Now</small>
-      <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
-    </div>
-    <div class="toast-body" id="toastMessage">
-      Uploading...
-    </div>
-  </div>
-</div>';
 
 
 	
@@ -1404,72 +1343,7 @@ echo '
 	
 	
 	
-echo <<<JS
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    var avatarImage = document.getElementById("avatarImage");
-    var avatarInput = document.getElementById("avatarInput");
 
-    if (!avatarImage || !avatarInput) return;
-
-    avatarImage.addEventListener("click", function() {
-        avatarInput.click();
-    });
-
-    avatarInput.addEventListener("change", function() {
-        var file = this.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            avatarImage.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-
-        const formData = new FormData();
-        formData.append("avatarupload", file);
-        formData.append("action", "do_avatar");
-        formData.append("my_post_key", my_post_key);
-
-        fetch("usercp.php?action=do_avatar", {
-            method: "POST",
-            body: formData,
-            headers: {
-                "X-Requested-With": "XMLHttpRequest"
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showToast("Avatar successfully updated!", "success");
-            } else {
-                showToast("Error: " + data.error, "danger");
-            }
-        })
-        .catch(error => {
-            showToast("Upload error: " + error, "danger");
-        });
-    });
-
-    function showToast(message, type = 'success') {
-        const toastHeader = document.querySelector("#avatarToast .toast-header");
-        const toastMessage = document.getElementById("toastMessage");
-
-        toastHeader.classList.remove("bg-success", "bg-danger", "text-white");
-        toastHeader.classList.add("text-white");
-
-        if (type === 'success') {
-            toastHeader.classList.add("bg-success");
-        } else if (type === 'danger') {
-            toastHeader.classList.add("bg-danger");
-        }
-
-        toastMessage.innerHTML = message;
-        new bootstrap.Toast(document.getElementById("avatarToast")).show();
-    }
-});
-</script>
-JS;
 
 
 	
@@ -1508,14 +1382,14 @@ if($mybb->input['action'] == "do_addsubscription" && $mybb->get_input('type') !=
 	//	error($lang->error_invalidthread);
 	//}
 
-	//$forumpermissions = forum_permissions($thread['fid']);
-	//if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0 || (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $thread['uid'] != $mybb->user['uid']))
-	//{
-		//error_no_permission();
-	//}
+	$forumpermissions = forum_permissions($thread['fid']);
+	if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0 || (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $thread['uid'] != $CURUSER['id']))
+	{
+		error_no_permission();
+	}
 
 	// check if the forum requires a password to view. If so, we need to show a form to the user
-	//check_forum_password($thread['fid']);
+	check_forum_password($thread['fid']);
 
 	// Naming of the hook retained for backward compatibility while dropping usercp2.php
 	$plugins->run_hooks("usercp2_do_addsubscription");
@@ -1564,14 +1438,14 @@ if($mybb->input['action'] == "addsubscription")
 		{
 			error('error_invalidforum');
 		}
-		//$forumpermissions = forum_permissions($forum['fid']);
-		//if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0)
-		//{
-		//	error_no_permission();
-		//}
+		$forumpermissions = forum_permissions($forum['fid']);
+		if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0)
+		{
+			error_no_permission();
+		}
 
 		// check if the forum requires a password to view. If so, we need to show a form to the user
-		//check_forum_password($forum['fid']);
+		check_forum_password($forum['fid']);
 
 		// Naming of the hook retained for backward compatibility while dropping usercp2.php
 		$plugins->run_hooks("usercp2_addsubscription_forum");
@@ -1607,14 +1481,14 @@ if($mybb->input['action'] == "addsubscription")
 		add_breadcrumb('nav_subthreads', "usercp.php?action=subscriptions");
 		add_breadcrumb('nav_addsubscription');
 
-		//$forumpermissions = forum_permissions($thread['fid']);
-		//if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0 || (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $thread['uid'] != $mybb->user['uid']))
-		//{
-		//	error_no_permission();
-		//}
+		$forumpermissions = forum_permissions($thread['fid']);
+		if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0 || (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $thread['uid'] != $mybb->user['uid']))
+		{
+			error_no_permission();
+		}
 
 		// check if the forum requires a password to view. If so, we need to show a form to the user
-		//check_forum_password($thread['fid']);
+		check_forum_password($thread['fid']);
 
 		$referrer = '';
 		if($server_http_referer)
@@ -1665,28 +1539,9 @@ if($mybb->input['action'] == "do_editsig" && $mybb->request_method == "post")
 	// Verify incoming POST request
 	verify_post_check($mybb->get_input('my_post_key'));
 
-	// User currently has a suspended signature
-	//if($mybb->user['suspendsignature'] == 1 && $mybb->user['suspendsigtime'] > TIME_NOW)
-	//{
-		//error_no_permission();
-	//}
 
 	$plugins->run_hooks("usercp_do_editsig_start");
 
-	//if($mybb->get_input('updateposts') == "enable")
-	//{
-		//$update_signature = array(
-			//"includesig" => 1
-		//);
-		//$db->update_query("tsf_posts", $update_signature, "uid='".$CURUSER['id']."'");
-	//}
-	//elseif($mybb->get_input('updateposts') == "disable")
-	//{
-		//$update_signature = array(
-			//"includesig" => 0
-		//);
-	    //$db->update_query("tsf_posts", $update_signature, "uid='".$CURUSER['id']."'");
-	//}
 	
 	$new_signature = array(
 		"signature" => $db->escape_string($mybb->input['signature'])
@@ -1724,22 +1579,7 @@ if($mybb->input['action'] == "editsig")
 		$error = '';
 	}
 
-	//if($mybb->user['suspendsignature'] && ($mybb->user['suspendsigtime'] == 0 || $mybb->user['suspendsigtime'] > 0 && $mybb->user['suspendsigtime'] > TIME_NOW))
-	//{
-		// User currently has no signature and they're suspended
-		//error($lang->sig_suspended);
-	//}
-
-	//if($mybb->usergroup['canusesig'] != 1)
-	//{
-		// Usergroup has no permission to use this facility
-		//error_no_permission();
-	//}
-	//elseif($mybb->usergroup['canusesig'] == 1 && $mybb->usergroup['canusesigxposts'] > 0 && $mybb->user['postnum'] < $mybb->usergroup['canusesigxposts'])
-	//{
-		// Usergroup can use this facility, but only after x posts
-	//	error($lang->sprintf($lang->sig_suspended_posts, $mybb->usergroup['canusesigxposts']));
-	//}
+	
 
 	$signature = '';
 	if($sig && $template)
@@ -1851,6 +1691,11 @@ if($mybb->input['action'] == "editsig")
 
 
 
+
+
+
+
+
 if($mybb->input['action'] == "do_profile" && $mybb->request_method == "post")
 {
 	// Verify incoming POST request
@@ -1860,13 +1705,29 @@ if($mybb->input['action'] == "do_profile" && $mybb->request_method == "post")
 
 	$plugins->run_hooks("usercp_do_profile_start");
 
-	
-
 	$bday = array(
 		"day" => $mybb->get_input('bday1', MyBB::INPUT_INT),
 		"month" => $mybb->get_input('bday2', MyBB::INPUT_INT),
 		"year" => $mybb->get_input('bday3', MyBB::INPUT_INT)
 	);
+	
+	
+	$passhint = $mybb->get_input('passhint', MyBB::INPUT_INT);
+	$hintanswer = trim($mybb->get_input('hintanswer'));
+	
+	
+	$secret_errors = array();
+
+	
+	if ($passhint > 0 && $hintanswer === '') 
+	{
+		$secret_errors[] = "Please provide an answer for the secret question";
+	}
+	
+	elseif ($passhint == 0 && $hintanswer !== '') 
+	{
+		$secret_errors[] = "Please select a secret question";
+	}
 
 	// Set up user handler.
 	require_once INC_PATH."/datahandlers/user.php";
@@ -1885,34 +1746,103 @@ if($mybb->input['action'] == "do_profile" && $mybb->request_method == "post")
 	
 	$userhandler->set_data($user);
 
-	if(!$userhandler->validate_user())
+	
+	$userhandler_valid = $userhandler->validate_user();
+	$has_secret_errors = !empty($secret_errors);
+	
+	if(!$userhandler_valid || $has_secret_errors)
 	{
-		$errors = $userhandler->get_friendly_errors();
-		$raw_errors = $userhandler->get_errors();
-
-		// Set to stored value if invalid
-		if(array_key_exists("invalid_birthday_privacy", $raw_errors) || array_key_exists("conflicted_birthday_privacy", $raw_errors))
+		$errors = array();
+		
+		
+		if(!$userhandler_valid) 
 		{
-			$mybb->input['birthdayprivacy'] = $CURUSER['birthdayprivacy'];
-			$bday = explode("-", $CURUSER['birthday']);
-
-			if(isset($bday[2]))
+			$user_errors = $userhandler->get_friendly_errors();
+			if(is_array($user_errors)) 
 			{
-				$mybb->input['bday3'] = $bday[2];
+				$errors = array_merge($errors, $user_errors);
+			} 
+			else 
+			{
+				$errors[] = $user_errors;
+			}
+			
+			$raw_errors = $userhandler->get_errors();
+			
+			// Set to stored value if invalid
+			if(array_key_exists("invalid_birthday_privacy", $raw_errors) || array_key_exists("conflicted_birthday_privacy", $raw_errors))
+			{
+				$mybb->input['birthdayprivacy'] = $CURUSER['birthdayprivacy'];
+				$bday = explode("-", $CURUSER['birthday']);
+
+				if(isset($bday[2]))
+				{
+					$mybb->input['bday3'] = $bday[2];
+				}
 			}
 		}
-
+		
+		
+		if($has_secret_errors) 
+		{
+			$errors = array_merge($errors, $secret_errors);
+		}
+		
 		$errors = inline_error($errors);
 		$mybb->input['action'] = "profile";
+		
+		
+		$mybb->input['passhint'] = $passhint;
+		$mybb->input['hintanswer'] = $hintanswer;
 	}
 	else
 	{
 		$userhandler->update_user();
+		
+		
+		if($passhint > 0 && $hintanswer !== '') 
+		{
+			
+			$hashed_answer = md5($hintanswer);
+			
+			$query = $db->simple_select("ts_secret_questions", "userid", "userid = '{$CURUSER['id']}'");
+			if($db->num_rows($query) > 0) 
+			{
+				
+				$db->update_query("ts_secret_questions", array(
+					"passhint" => $passhint,
+					"hintanswer" => $hashed_answer
+				), "userid = '{$CURUSER['id']}'");
+			} 
+			else 
+			{
+				
+				$db->insert_query("ts_secret_questions", array(
+					"userid" => $CURUSER['id'],
+					"passhint" => $passhint,
+					"hintanswer" => $hashed_answer
+				));
+			}
+		} 
+		
+		
 
 		$plugins->run_hooks("usercp_do_profile_end");
 		redirect("usercp.php?action=profile", 'redirect_profileupdated');
 	}
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2069,7 +1999,7 @@ if($mybb->input['action'] == "subscriptions")
 		$upper = $threadcount;
 	}
 	$multipage = multipage($threadcount, $perpage, $page, "usercp.php?action=subscriptions");
-	//$fpermissions = forum_permissions();
+	$fpermissions = forum_permissions();
 	$del_subscriptions = $subscriptions = array();
 
 	// Fetch subscriptions
@@ -2473,7 +2403,7 @@ if($mybb->input['action'] == "forumsubscriptions")
 		$readforums[$forum['fid']] = $forum['lastread'];
 	}
 
-	//$fpermissions = forum_permissions();
+	$fpermissions = forum_permissions();
 	require_once INC_PATH."/functions_forumlist.php";
 
 	$user_id = (int)$CURUSER['id'];
@@ -2488,30 +2418,30 @@ if($mybb->input['action'] == "forumsubscriptions")
     ORDER BY f.name ASC", [$user_id, $user_id]);
 
 	$forums = '';
-	while($forum = $db->fetch_array($query->result))
+	while($forum = $db->fetch_array($query))
 	{
 		$forum_url = get_forum_link($forum['fid']);
 		$forumpermissions = $fpermissions[$forum['fid']];
 
-		//if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0)
-		//{
-		//	continue;
-		//}
+		if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0)
+		{
+			continue;
+		}
 
 		$lightbulb = get_forum_lightbulb(array('open' => $forum['open'], 'lastread' => $forum['lastread']), array('lastpost' => $forum['lastpost']));
 		$folder = $lightbulb['folder'];
 
-		//if(isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0)
-		//{
-		//	$posts = '-';
-		//	$threads = '-';
-		//}
+		if(isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0)
+		{
+			$posts = '-';
+			$threads = '-';
+		}
 		
-		//else
-		//{
+		else
+		{
 			$posts = ts_nf($forum['posts']);
 			$threads = ts_nf($forum['threads']);
-		//}
+		}
 
 		if($forum['lastpost'] == 0)
 		{
@@ -2520,12 +2450,12 @@ if($mybb->input['action'] == "forumsubscriptions")
 			
 		}
 		// Hide last post
-		//elseif(isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $forum['lastposteruid'] != $mybb->user['uid'])
-		//{
-		//	eval("\$lastpost = \"".$templates->get("forumbit_depth2_forum_lastpost_hidden")."\";");
-		//}
-		//else
-		//{
+		elseif(isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $forum['lastposteruid'] != $CURUSER['id'])
+		{
+			eval("\$lastpost = \"".$templates->get("forumbit_depth2_forum_lastpost_hidden")."\";");
+		}
+		else
+		{
 			$forum['lastpostsubject'] = $parser->parse_badwords($forum['lastpostsubject']);
 			$lastpost_date = my_datee('relative', $forum['lastpost']);
 			$lastposttid = $forum['lastposttid'];
@@ -2558,7 +2488,7 @@ if($mybb->input['action'] == "forumsubscriptions")
 			
 			
 			
-		//}
+		}
 
 		$showdescriptions = "1";
 		
@@ -2657,7 +2587,7 @@ $count_query = $db->sql_query_prepared("
     FROM bookmarks
     WHERE userid = ?
 ", [(int)$CURUSER['id']]);
-$total = $db->fetch_field($count_query->result, 'total');
+$total = $db->fetch_field($count_query, 'total');
 
 $perpage = 12;
 $page = $mybb->get_input('page', MyBB::INPUT_INT) ?: 1;
@@ -2692,9 +2622,9 @@ $query = $db->sql_query_prepared("
     $bookmark_cards = '';
     $counter = 0;
 
-    if($db->num_rows($query->result) > 0)
+    if($db->num_rows($query) > 0)
     {
-        while($bm = $db->fetch_array($query->result))
+        while($bm = $db->fetch_array($query))
         {
             $torrent_link = get_torrent_link($bm['torrentid']);
             //$added = my_datee('relative', $bm['added']);
@@ -3044,7 +2974,10 @@ if($mybb->input['action'] == "manage_files")
     ");
     $filecount = $db->fetch_field($query, "files_count");
     
-    if(!$f_filesperpage || (int)$f_filesperpage < 1)
+    
+	$f_filesperpage = $ts_perpage ?? 15;
+	
+	if(!$f_filesperpage || (int)$f_filesperpage < 1)
     {
         $f_filesperpage = 15; // Кратно 3 для 3 колонок
     }
@@ -3093,13 +3026,14 @@ if($mybb->input['action'] == "manage_files")
    
    
     
-    if ($db->num_rows($query->result) > 0)
+    if ($db->num_rows($query) > 0)
     {
         $filelist = '<div class="row g-4">';
         
-        while ($file = $db->fetch_array($query->result))
+        while ($file = $db->fetch_array($query))
         {
-            $uploaded = $file['uploaded_at'];
+            
+			$uploaded = $file['uploaded_at'];
             $file_size = mksize($file['file_size']);
             $file_type_icon = get_file_type_icon($file['file_type']);
 			
@@ -4589,7 +4523,7 @@ if($mybb->input['action'] == "drafts")
 
 
 
-		while($draft = $db->fetch_array($query->result))
+		while($draft = $db->fetch_array($query))
 		{
 			$detail = '';
 			$trow = alt_trow();
@@ -4643,6 +4577,10 @@ if($mybb->input['action'] == "drafts")
 	
 	echo $draftlist;
 }
+
+
+
+
 
 
 
@@ -4709,16 +4647,60 @@ if($mybb->input['action'] == "profile")
 	{
 		$ageselected = " selected=\"selected\"";
 	}
+	
+	// Массив секретных вопросов
+	$QArray = array(
+		'1' => 'What is your name of first school?',
+		'2' => 'What is your pet\'s name?',
+		'3' => 'What is your mothers maiden name?'
+	);
 
+	// Формируем опции для select
+	$secret_questions_options = '';
+	
+	
+	$current_passhint = 0;
+	$hintanswer_value = '';
+	
+	if($errors) 
+	{
+		
+		if(isset($mybb->input['passhint'])) 
+		{
+			$current_passhint = $mybb->input['passhint'];
+		}
+		if(isset($mybb->input['hintanswer'])) 
+		{
+			$hintanswer_value = htmlspecialchars_uni($mybb->input['hintanswer']);
+		}
+	}
+	
+	
+	
+    $secret_questions_options .= '<option value="0">-- Select Question --</option>';
+	
+	foreach ($QArray as $ID => $Question) 
+	{
+		$selected = ($current_passhint == $ID) ? 'selected="selected"' : '';
+		$secret_questions_options .= '<option value="' . $ID . '" ' . $selected . '>' . htmlspecialchars_uni($Question) . '</option>';
+	}
 
 	$plugins->run_hooks("usercp_profile_end");
 
-    eval("\$editprofile = \"".$templates->get("usercp_profile")."\";");
+	eval("\$editprofile = \"".$templates->get("usercp_profile")."\";");
 	
 	stdhead('title');
 
 	echo $editprofile;
 }
+
+
+
+
+
+
+
+
  
   
  
@@ -4833,7 +4815,7 @@ if($mybb->input['action'] == "attachments")
 
 
 	$bandwidth = $totaldownloads = $totalusage = $totalattachments = $processedattachments = 0;
-	while($attachment = $db->fetch_array($query->result))
+	while($attachment = $db->fetch_array($query))
 	{
 		if($attachment['dateline'] && $attachment['tid'])
 		{
@@ -4881,7 +4863,7 @@ if($mybb->input['action'] == "attachments")
 
 
 
-		$usage = $db->fetch_array($query->result);
+		$usage = $db->fetch_array($query);
 		$totalusage = $usage['ausage'];
 		$totalattachments = $usage['acount'];
 
@@ -4932,10 +4914,17 @@ if($mybb->input['action'] == "attachments")
 
 
 
+
+
+
   
 
 if(!$mybb->input['action'])
 {
+	
+	
+	
+	
 	// Get posts per day
 	$daysreg = (TIMENOW - $CURUSER['added']) / (24*3600);
 
@@ -4972,24 +4961,33 @@ if(!$mybb->input['action'])
 	
 	$com = $CURUSER['comms'];
 	
-	
-	
-	//$useravatar = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
-    //$avatar = '<img class="rounded img-fluid" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' />';
-	
+
+    echo '<script src="'.$BASEURL.'/scripts/toast.js"></script>';
+    echo '<script src="'.$BASEURL.'/scripts/upload_avatar_usercp.js"></script>';
+
 	
 	$useravatar = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
 
-
-// Если аватар — это HTML-заглушка (начинается с '<'), выводим её как есть
-if (strpos($useravatar['image'], '<') === 0) 
+// Определяем, нужно ли использовать <img> или выводить SVG напрямую
+if (strpos($useravatar['image'], '<svg') === 0) 
 {
-	 $avatar = $useravatar['image']; // <div class="avatar-ring2">No Avatar</div>
+    // Это SVG-заглушка - выводим как есть
+    $currentavatar = '
+    <div style="position: relative; display: inline-block;">
+      <div id="avatarImage" class="rounded img-fluid" style="cursor: pointer;" data-original-avatar="'.htmlspecialchars($useravatar['image']).'">
+        '.$useravatar['image'].'
+      </div>
+      <input type="file" id="avatarInput" name="avatarupload" style="display: none;" accept="image/*">
+    </div>';
 } 
-// Иначе выводим как <img> (стандартный аватар)
 else 
 {
-    $avatar = '<img class="rounded img-fluid" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' />';
+    // Это обычный аватар - используем <img>
+    $currentavatar = '
+    <div style="position: relative; display: inline-block;">
+      <img id="avatarImage" class="rounded img-fluid" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' style="cursor: pointer;" data-original-avatar="'.$useravatar['image'].'">
+      <input type="file" id="avatarInput" name="avatarupload" style="display: none;" accept="image/*">
+    </div>';
 }
 	
 	
@@ -5008,10 +5006,6 @@ else
     $usergroup = htmlspecialchars_uni($groupscache[$CURUSER['usergroup']]['title']);
    
  
-	//if($CURUSER['usergroup'] == 5 && $verification != "admin")
-	//{
-	 //  $usergroup .= '<div class="mt-3 mb-3"><a href="member.php?action=resendactivation" class="btn btn-outline-danger btn-sm"><i class="bi bi-info-circle"></i> {$lang->resend_activation}</a></div>';
-	//}
 	
 
 	// Format username

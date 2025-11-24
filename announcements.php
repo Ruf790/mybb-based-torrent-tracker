@@ -107,11 +107,8 @@ if(!$announcementarray)
 $data_key = array(
 	'title' => 'grouptitle',
 	'usertitle' => 'groupusertitle',
-	'stars' => 'groupstars',
-	'starimage' => 'groupstarimage',
 	'image' => 'groupimage',
-	'namestyle' => 'namestyle',
-	'usereputationsystem' => 'usereputationsystem'
+	'namestyle' => 'namestyle'
 );
 
 foreach($data_key as $field => $key)
@@ -128,7 +125,7 @@ $announcementarray['subject'] = $parser->parse_badwords($announcementarray['subj
 $forum_announcement = sprintf($lang->announcements['forum_announcement'], htmlspecialchars_uni($announcementarray['subject']));
 
 
-if($announcementarray['startdate'] > $CURUSER['last_access'])
+if($announcementarray['startdate'] > $CURUSER['lastvisit'])
 {
 	$setcookie = true;
 	if(isset($mybb->cookies['mybb']['announcements']) && is_scalar($mybb->cookies['mybb']['announcements']))

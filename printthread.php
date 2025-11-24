@@ -10,20 +10,16 @@
 
 define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'printthread.php');
-define ('TSF_FORUMS_TSSEv56', true);
 define("SCRIPTNAME", "printthread.php");
 
 $templatelist = "printthread,printthread_post,printthread_nav,forumdisplay_password_wrongpass,forumdisplay_password,printthread_multipage,printthread_multipage_page,printthread_multipage_page_current";
 
 
+define('IN_FORUM', true);
 
-require_once 'global2.php';
+require_once 'global.php';
 
   
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-   exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
 
 require_once INC_PATH."/functions_post.php";
 
@@ -210,7 +206,7 @@ foreach($postrow_cache as $postrow)
 	}
 	$postrow['username'] = htmlspecialchars_uni($postrow['username']);
 	$postrow['subject'] = htmlspecialchars_uni($parser->parse_badwords($postrow['subject']));
-	$postrow['date'] = my_datee($dateformat, $postrow['dateline'], null, 0);
+	$postrow['date'] = my_datee($dateformat, $postrow['dateline'], '', 0);
 	$postrow['profilelink'] = build_profile_link($postrow['username'], $postrow['uid']);
 
 	$postrow['message'] = $parser->parse_message($postrow['message'], $parser_options);

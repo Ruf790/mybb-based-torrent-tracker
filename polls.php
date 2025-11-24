@@ -13,17 +13,13 @@ define('THIS_SCRIPT', 'polls.php');
 
 $templatelist = "changeuserbox,loginbox,polls_newpoll_option,polls_newpoll,polls_editpoll_option,polls_editpoll,polls_showresults_resultbit,polls_showresults";
 
-
-define ('TSF_FORUMS_TSSEv56', true);
 define("SCRIPTNAME", "polls.php");
 
-require_once 'global2.php';
+define('IN_FORUM', true);
+require_once 'global.php';
 
   
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-   exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
+
 
 
 

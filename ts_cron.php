@@ -1,142 +1,99 @@
-<?
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+<?php
+
+declare(strict_types=1);
 
 
-  define("IN_MYBB", 1);
-  define ('TSCR_VERSION', '1.2 ');
-  define ('IN_CRON', true);
-  define ('IN_TRACKER', true);
-  define ('TS_TIMEOUT', 3600);
-  define ('TIMENOW', time ());
-  define ('THIS_PATH', dirname (__FILE__));
-  define ('CONFIG_DIR', THIS_PATH . '/config/');
-  define ('CRON_PATH', THIS_PATH . '/include/cron/');
-  define ('INC_PATH', THIS_PATH . '/include');
-  define ('TSDIR', THIS_PATH);
-  //require INC_PATH . '/init.php';
-  
-  require_once INC_PATH . '/settings.php';
-  
-  require CRON_PATH . '/cron_functions.php';
-  require_once INC_PATH . '/readconfig_cleanup.php';
-  
-  
-  // Include our base data handler class
-  require_once INC_PATH . '/datahandler.php';
-  
-  
-  require_once INC_PATH.'/class_plugins.php';
-  $plugins = new pluginSystem;
- 
- 
-  require_once INC_PATH . '/class_core.php';
-  $mybb = new MyBB;
-  
-  require_once INC_PATH . '/class_datacache.php';
-  $cache = new datacache;
+// Constants definition
+const IN_MYBB = 1;
+const TSCR_VERSION = '1.2';
+const IN_CRON = true;
+const IN_TRACKER = true;
+const TS_TIMEOUT = 3600;
+define('TIMENOW', time());
+define('THIS_PATH', __DIR__);
+define('CONFIG_DIR', THIS_PATH . '/config/');
+define('CRON_PATH', THIS_PATH . '/include/cron/');
+define('INC_PATH', THIS_PATH . '/include');
+define('TSDIR', THIS_PATH);
+const APP_INITIALIZED = true;
 
-  
-  
-  /* Do not remove this line */
-  define ('UC_GUEST', 0);
-  define ('UC_USER', 1);
-  define ('UC_POWER_USER', 2);
-  define ('UC_VIP', 3);
-  define ('UC_UPLOADER', 4);
-  define ('UC_MODERATOR', 5);
-  define ('UC_ADMINISTRATOR', 6);
-  define ('UC_SYSOP', 7);
-  define ('UC_BANNED', 9);
+// User group constants
+const UC_GUEST = 0;
+const UC_USER = 1;
+const UC_POWER_USER = 2;
+const UC_VIP = 3;
+const UC_UPLOADER = 4;
+const UC_MODERATOR = 5;
+const UC_ADMINISTRATOR = 6;
+const UC_SYSOP = 7;
+const UC_BANNED = 9;
+
+// Size and time constants
+const GB_IN_BYTES = 1024 * 1024 * 1024;
+const DAY_IN_SECONDS = 86400;
+const WEEK_IN_SECONDS = 604800;
+const HOUR_IN_SECONDS = 3600;
+
+// Required files
+require_once INC_PATH . '/init.php';
+require CRON_PATH . '/cron_functions.php';
+require_once INC_PATH . '/readconfig.php';
+require_once INC_PATH . '/datahandler.php';
 
 
 
-define('GB_IN_BYTES', 1024 * 1024 * 1024);
-define('DAY_IN_SECONDS', 86400);
-define('WEEK_IN_SECONDS', 604800);
-define('HOUR_IN_SECONDS', 3600);
- 
-  
-  // Load DB interface
-require_once INC_PATH . '/config.php';
-require_once INC_PATH . '/db_base.php';
-require_once INC_PATH . '/AbstractPdoDbDriver.php';
+// Send 1x1 transparent GIF
+$transparentGif = base64_decode('R0lGODlhAQABAIAAAMDAwAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==');
+$gifSize = strlen($transparentGif);
 
-//require_once INC_PATH."/db_mysqli.php";
-require_once INC_PATH."/db_".$config['database']['type'].".php";
+header('Content-Type: image/gif');
 
-switch($config['database']['type'])
-{
-	case "sqlite":
-		$db = new DB_SQLite;
-		break;
-	case "pgsql":
-		$db = new DB_PgSQL;
-		break;
-	case "pgsql_pdo":
-		$db = new PostgresPdoDbDriver();
-		break;
-	case "mysqli":
-		$db = new DB_MySQLi;
-		break;
-	case "mysql_pdo":
-		$db = new MysqlPdoDbDriver();
-		break;
-	default:
-		$db = new DB_MySQL;
+// Only send Content-Length if not IIS with CGI
+if (!(str_contains($_SERVER['SERVER_SOFTWARE'] ?? '', 'Microsoft-IIS') && str_contains(PHP_SAPI, 'cgi'))) {
+    header('Content-Length: ' . $gifSize);
+    header('Connection: Close');
 }
 
+echo $transparentGif;
+flush();
 
-// Connect to Database
-define("TABLE_PREFIX", $config['database']['table_prefix']);
-$db->connect($config['database']);
-$db->set_table_prefix(TABLE_PREFIX);
-$db->type = $config['database']['type'];
+// Load language and execute cron jobs
+$lang->load('cronjobs');
 
-  
-  $_FileData = base64_decode ('R0lGODlhAQABAIAAAMDAwAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==');
-  $_FileSize = strlen ($_FileData);
-  header ('Content-type: image/gif');
-  if (!(strpos ($_SERVER['SERVER_SOFTWARE'], 'Microsoft-IIS') !== false AND strpos (php_sapi_name (), 'cgi') !== false))
-  {
-    header ('Content-Length: ' . $_FileSize);
-    header ('Connection: Close');
-  }
+// Get pending cron jobs
+$cronQuery = $db->simple_select(
+    "ts_cron", 
+    "cronid, minutes, filename, loglevel", 
+    "nextrun <= '" . TIMENOW . "' AND active = '1'"
+);
 
-  echo $_FileData;
-  flush ();
-  
-
-  //readconfig (array ('CLEANUP', 'THEME'));
-  $lang = new trackerlanguage ();
-  $lang->set_path (INC_PATH . '/languages');
-  $lang->set_language (((isset ($_COOKIE['ts_language']) AND file_exists (INC_PATH . '/languages/' . $_COOKIE['ts_language'])) ? $_COOKIE['ts_language'] : $defaultlanguage));
-  $lang->load ('cronjobs');
-  $_CQuery = $db->sql_query ('SELECT cronid, minutes, filename, loglevel FROM ts_cron WHERE nextrun < \'' . TIMENOW . '\' AND active = \'1\'');
-  if (0 < $db->num_rows ($_CQuery))
-  {
-    while ($_RunCron = mysqli_fetch_assoc ($_CQuery))
-    {
-      if (file_exists (CRON_PATH . $_RunCron['filename']))
-      {
-        $CQueryCount = 0;
-        $_CStart = array_sum (explode (' ', microtime ()));
-        include CRON_PATH . $_RunCron['filename'];
-        if ($_RunCron['loglevel'] == '1')
-        {
-          logcronaction ($_RunCron['filename'], $CQueryCount, round (array_sum (explode (' ', microtime ())) - $_CStart, 4));
-        }
-
-        $db->sql_query ('UPDATE ts_cron SET nextrun = \'' . (TIMENOW + $_RunCron['minutes']) . '\' WHERE cronid = \'' . $_RunCron['cronid'] . '\'');
-        continue;
-      }
+if ($db->num_rows($cronQuery) > 0) {
+    while ($cronJob = $db->fetch_array($cronQuery)) {
+        $cronFile = CRON_PATH . $cronJob['filename'];
+        
+        if (file_exists($cronFile)) {
+            $CQueryCount = 0;
+            $startTime = microtime(true);
+            
+            // Execute cron job
+            include $cronFile;
+            
+            // Log execution if loglevel is 1
+            if ($cronJob['loglevel'] == '1') {
+                $executionTime = round(microtime(true) - $startTime, 4);
+                logcronaction($cronJob['filename'], $CQueryCount, $executionTime);
+            }
+            
+            // Calculate next run time
+            $nextRun = TIMENOW + (int)$cronJob['minutes'];
+            
+            // Update next run time
+            $db->update_query(
+                "ts_cron", 
+                ["nextrun" => $nextRun], 
+                "cronid = '" . (int)$cronJob['cronid'] . "'"
+            );
+        } 
+		
     }
-  }
-
-?>
+}

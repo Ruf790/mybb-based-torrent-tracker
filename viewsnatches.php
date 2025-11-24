@@ -925,7 +925,7 @@ if ($db->num_rows($res) > 0) {
             ? '<i class="fas fa-plug text-success" title="Connectable"></i>' 
             : '<i class="fas fa-plug text-danger" title="Not Connectable"></i>';
 
-        echo "<tr class='" . ($CURUSER['userid'] == $arr['id'] ? 'highlight-row' : '') . "'>
+        echo "<tr class='" . ($CURUSER['id'] == $arr['id'] ? 'highlight-row' : '') . "'>
                 " . ($is_mod ? "<td><input type='checkbox' class='form-check-input user-checkbox' value='{$arr['id']}' onchange='updateSelectionCounter()'></td>" : "") . "
                 <td class='ps-4'>
                     <div class='d-flex align-items-center'>

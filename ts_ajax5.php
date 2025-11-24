@@ -54,13 +54,13 @@
   
   
   
-  if ($db->num_rows ($Query->result) == 0)
+  if ($db->num_rows ($Query) == 0)
   {
     show_msg ($lang->global['notorrentid'], true);
   }
 
   
-  $Result = $db->fetch_array($Query->result);
+  $Result = $db->fetch_array($Query);
   $oldt_link = $Result["t_link"];
 
   if (!$oldt_link)

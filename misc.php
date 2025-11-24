@@ -19,12 +19,9 @@ $templatelist .= ",multipage,multipage_end,multipage_jump_page,multipage_nextpag
 $templatelist .= ",misc_smilies_popup_no_smilies,misc_smilies_no_smilies,misc_syndication,misc_help_search,misc_helpresults_noresults,misc_syndication_forumlist_forum,misc_syndication_feedurl";
 
 
-define ('TSF_FORUMS_TSSEv56', true);
-require_once 'global2.php';
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
+define('IN_FORUM', true);
+
+require_once 'global.php';
   
 require_once INC_PATH."/functions_post.php";
 
@@ -543,108 +540,17 @@ elseif($mybb->input['action'] == "help")
 		
 	}
 }
-elseif($mybb->input['action'] == "buddypopup")
-{
-	$plugins->run_hooks("misc_buddypopup_start");
 
-	if($mybb->user['uid'] == 0)
-	{
-		error_no_permission();
-	}
 
-	if(isset($mybb->input['removebuddy']) && verify_post_check($mybb->get_input('my_post_key')))
-	{
-		$buddies = $mybb->user['buddylist'];
-		$namesarray = explode(",", $buddies);
-		$mybb->input['removebuddy'] = $mybb->get_input('removebuddy', MyBB::INPUT_INT);
-		if(is_array($namesarray))
-		{
-			foreach($namesarray as $key => $buddyid)
-			{
-				if($buddyid == $mybb->input['removebuddy'])
-				{
-					unset($namesarray[$key]);
-				}
-			}
-			$buddylist = implode(',', $namesarray);
-			$db->update_query("users", array('buddylist' => $buddylist), "uid='".$mybb->user['uid']."'");
-			$mybb->user['buddylist'] = $buddylist;
-		}
-	}
 
-	// Load Buddies
-	$buddies = '';
-	if($mybb->user['buddylist'] != "")
-	{
-		$buddys = array('online' => '', 'offline' => '');
-		$timecut = TIME_NOW - $mybb->settings['wolcutoff'];
 
-		$query = $db->simple_select("users", "*", "uid IN ({$mybb->user['buddylist']})", array('order_by' => 'lastactive'));
 
-		while($buddy = $db->fetch_array($query))
-		{
-			$buddy['username'] = htmlspecialchars_uni($buddy['username']);
-			$buddy_name = format_name($buddy['username'], $buddy['usergroup'], $buddy['displaygroup']);
-			$profile_link = build_profile_link($buddy_name, $buddy['uid'], '_blank', 'if(window.opener) { window.opener.location = this.href; return false; }');
 
-			$send_pm = '';
-			if($mybb->user['receivepms'] != 0 && $buddy['receivepms'] != 0 && $groupscache[$buddy['usergroup']]['canusepms'] != 0)
-			{
-				eval("\$send_pm = \"".$templates->get("misc_buddypopup_user_sendpm")."\";");
-			}
 
-			if($buddy['lastactive'])
-			{
-				$last_active = $lang->sprintf($lang->last_active, my_date('relative', $buddy['lastactive']));
-			}
-			else
-			{
-				$last_active = $lang->sprintf($lang->last_active, $lang->never);
-			}
 
-			$buddy['avatar'] = format_avatar($buddy['avatar'], $buddy['avatardimensions'], '44x44');
 
-			if($buddy['lastactive'] > $timecut && ($buddy['invisible'] == 0 || $mybb->user['usergroup'] == 4) && $buddy['lastvisit'] != $buddy['lastactive'])
-			{
-				$bonline_alt = alt_trow();
-				eval("\$buddys['online'] .= \"".$templates->get("misc_buddypopup_user_online")."\";");
-			}
-			else
-			{
-				$boffline_alt = alt_trow();
-				eval("\$buddys['offline'] .= \"".$templates->get("misc_buddypopup_user_offline")."\";");
-			}
-		}
 
-		$colspan = ' colspan="2"';
-		if(empty($buddys['online']))
-		{
-			$error = $lang->online_none;
-			eval("\$buddys['online'] = \"".$templates->get("misc_buddypopup_user_none")."\";");
-		}
 
-		if(empty($buddys['offline']))
-		{
-			$error = $lang->offline_none;
-			eval("\$buddys['offline'] = \"".$templates->get("misc_buddypopup_user_none")."\";");
-		}
-
-		eval("\$buddies = \"".$templates->get("misc_buddypopup_user")."\";");
-	}
-	else
-	{
-		// No buddies? :(
-		$colspan = '';
-		$error = $lang->no_buddies;
-		eval("\$buddies = \"".$templates->get("misc_buddypopup_user_none")."\";");
-	}
-
-	$plugins->run_hooks("misc_buddypopup_end");
-
-	eval("\$buddylist = \"".$templates->get("misc_buddypopup", 1, 0)."\";");
-	echo $buddylist;
-	exit;
-}
 elseif($mybb->input['action'] == "whoposted")
 {
 	$numposts = 0;
@@ -801,94 +707,10 @@ elseif($mybb->input['action'] == "whoposted")
 		
 	}
 }
-elseif($mybb->input['action'] == "smilies")
-{
-	$smilies = '';
-	if(!empty($mybb->input['popup']) && !empty($mybb->input['editor']))
-	{ // make small popup list of smilies
-		$editor = preg_replace('#([^a-zA-Z0-9_-]+)#', '', $mybb->get_input('editor'));
-		$e = 1;
-		$smile_icons = '';
-		$class = alt_trow(1);
-		$smilies_cache = $cache->read("smilies");
 
-		if(is_array($smilies_cache))
-		{
-			$extra_class = ' smilie_pointer';
-			foreach($smilies_cache as $smilie)
-			{
-				$smilie['image'] = str_replace("{theme}", $theme['imgdir'], $smilie['image']);
-				$smilie['image'] = htmlspecialchars_uni($mybb->get_asset_url($smilie['image']));
-				$smilie['name'] = htmlspecialchars_uni($smilie['name']);
 
-				// Only show the first text to replace in the box
-				$temp = explode("\n", $smilie['find']); // use temporary variable for php 5.3 compatibility
-				$smilie['find'] = $temp[0];
 
-				$smilie['find'] = htmlspecialchars_uni($smilie['find']);
-				$smilie_insert = str_replace(array('\\', "'"), array('\\\\', "\'"), $smilie['find']);
 
-				$onclick = " onclick=\"MyBBEditor.insertText(' $smilie_insert ');\"";
-				eval('$smilie_image = "'.$templates->get('smilie', 1, 0).'";');
-				eval("\$smile_icons .= \"".$templates->get("misc_smilies_popup_smilie")."\";");
-				if($e == 2)
-				{
-					eval("\$smilies .= \"".$templates->get("misc_smilies_popup_row")."\";");
-					$smile_icons = '';
-					$e = 1;
-					$class = alt_trow();
-				}
-				else
-				{
-					$e = 2;
-				}
-			}
-		}
-
-		if($e == 2)
-		{
-			eval("\$smilies .= \"".$templates->get("misc_smilies_popup_empty")."\";");
-		}
-
-		if(!$smilies)
-		{
-			eval("\$smilies = \"".$templates->get("misc_smilies_popup_no_smilies")."\";");
-		}
-
-		eval("\$smiliespage = \"".$templates->get("misc_smilies_popup", 1, 0)."\";");
-		output_page($smiliespage);
-	}
-	else
-	{
-		add_breadcrumb($lang->nav_smilies);
-		$class = "trow1";
-		$smilies_cache = $cache->read("smilies");
-
-		if(is_array($smilies_cache))
-		{
-			$extra_class = $onclick = '';
-			foreach($smilies_cache as $smilie)
-			{
-				$smilie['image'] = str_replace("{theme}", $theme['imgdir'], $smilie['image']);
-				$smilie['image'] = htmlspecialchars_uni($mybb->get_asset_url($smilie['image']));
-				$smilie['name'] = htmlspecialchars_uni($smilie['name']);
-
-				$smilie['find'] = nl2br(htmlspecialchars_uni($smilie['find']));
-				eval('$smilie_image = "'.$templates->get('smilie').'";');
-				eval("\$smilies .= \"".$templates->get("misc_smilies_smilie")."\";");
-				$class = alt_trow();
-			}
-		}
-
-		if(!$smilies)
-		{
-			eval("\$smilies = \"".$templates->get("misc_smilies_no_smilies")."\";");
-		}
-
-		eval("\$smiliespage = \"".$templates->get("misc_smilies")."\";");
-		output_page($smiliespage);
-	}
-}
 
 elseif($mybb->input['action'] == "syndication")
 {
@@ -902,7 +724,7 @@ elseif($mybb->input['action'] == "syndication")
 	$syndicate = $urlquery = array();
 
 	add_breadcrumb($lang->misc['nav_syndication']);
-	//$unviewable = get_unviewable_forums();
+	$unviewable = get_unviewable_forums();
 	$inactiveforums = get_inactive_forums();
 	$unexp = explode(',', $unviewable . ',' . $inactiveforums);
 
@@ -995,6 +817,8 @@ function makesyndicateforums($pid=0, $selitem="", $addselect=true, $depth="")
 
 	$pid = (int)$pid;
 	$forumlist = '';
+	
+	$hideprivateforums = '1';
 
 	if(!is_array($forumcache))
 	{
@@ -1017,9 +841,9 @@ function makesyndicateforums($pid=0, $selitem="", $addselect=true, $depth="")
 		{
 			foreach($main as $key => $forum)
 			{
-				//$perms = $permissioncache[$forum['fid']];
-				//if($perms['canview'] == 1 || $mybb->settings['hideprivateforums'] == 0)
-				//{
+				$perms = $permissioncache[$forum['fid']];
+				if($perms['canview'] == 1 || $hideprivateforums == 0)
+				{
 					$optionselected = '';
 					if(isset($flist[$forum['fid']]))
 					{
@@ -1036,14 +860,14 @@ function makesyndicateforums($pid=0, $selitem="", $addselect=true, $depth="")
 						$newdepth = $depth."&nbsp;&nbsp;&nbsp;&nbsp;";
 						$forumlistbits .= makesyndicateforums($forum['fid'], '', 0, $newdepth);
 					}
-				//}
-				//else
-				//{
-					//if(isset($flist[$forum['fid']]))
-					//{
-						//unset($flist[$forum['fid']]);
-					//}
-				//}
+				}
+				else
+				{
+					if(isset($flist[$forum['fid']]))
+					{
+						unset($flist[$forum['fid']]);
+					}
+				}
 			}
 		}
 	}

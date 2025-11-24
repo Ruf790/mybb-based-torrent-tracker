@@ -9,8 +9,6 @@
  */
 
 
-
-define ('TSF_FORUMS_TSSEv56', true);
 define("SCRIPTNAME", "forumdisplay.php");
 
 define("IN_MYBB", 1);
@@ -29,14 +27,9 @@ $templatelist .= ",forumdisplay_thread_deleted,forumdisplay_announcements_announ
 
 
 
+define('IN_FORUM', true);
 
-require_once 'global2.php';
-
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
-
+require_once 'global.php';
 
 
 
@@ -366,8 +359,8 @@ if($browsingthisforum != 0)
 				$invisiblemark = '';
 			}
 
-			//if($user['invisible'] != 1 || $user['uid'] == $CURUSER['id'])
-			if($user['invisible'] != 1 || $usergroups['issupermod'] == 'yes' || $user['uid'] == $CURUSER['id'])
+			
+			if($user['invisible'] != 1 || $usergroups['canviewwolinvis'] == 1 || $user['uid'] == $CURUSER['id'])
 			{
 				$user['username'] = format_name(htmlspecialchars_uni($user['username']), $user['usergroup'], $user['displaygroup']);
 				$user['profilelink'] = build_profile_link($user['username'], $user['uid']);
@@ -391,8 +384,8 @@ if($browsingthisforum != 0)
 		// the user was counted as invisible user --> correct the inviscount
 		$inviscount -= 1;
 	}
-	//if($inviscount)
-	if($inviscount && $usergroups['issupermod'] == 'yes')
+	
+	if($inviscount && $usergroups['canviewwolinvis'] != 1)
 	{
 		//$invisonline = sprintf(''.$inviscount.' Invisible User(s)');
 		$invisonline = sprintf($lang->forumdisply['users_browsing_forum_invis'], $inviscount);
@@ -419,30 +412,7 @@ if($browsingthisforum != 0)
 
 // Do we have any forum rules to show for this forum?
 $forumrules = '';
-//if($foruminfo['rulestype'] != 0 && $foruminfo['rules'])
-//{
-	//if(!$foruminfo['rulestitle'])
-	//{
-	//	$foruminfo['rulestitle'] = $lang->sprintf($lang->forum_rules, $foruminfo['name']);
-	//}
 
-	//$rules_parser = array(
-	//	"allow_html" => 1,
-	//	"allow_mycode" => 1,
-	//	"allow_smilies" => 1,
-	//	"allow_imgcode" => 1
-	//);
-
-	//$foruminfo['rules'] = $parser->parse_message($foruminfo['rules'], $rules_parser);
-	//if($foruminfo['rulestype'] == 1 || $foruminfo['rulestype'] == 3)
-	//{
-	//	eval("\$rules = \"".$templates->get("forumdisplay_rules")."\";");
-	//}
-	//else if($foruminfo['rulestype'] == 2)
-	//{
-	//	eval("\$rules = \"".$templates->get("forumdisplay_rules_link")."\";");
-	//}
-//}
 
 $bgcolor = "trow1";
 
@@ -486,6 +456,8 @@ else
 
 $visible_condition = "visible IN (".implode(',', array_unique($visible_states)).")";
 $visibleonly = "AND ".$visible_condition;
+
+
 
 
 // Allow viewing own unapproved threads for logged in users
@@ -683,7 +655,6 @@ if($fpermissions['canviewthreads'] != 0)
 	{
 		$threadcount = 0;
 
-		//$query = $db->simple_select("tsf_forums", "threads", "fid=".(int)$fid);
 		
 		$query = $db->simple_select("tsf_forums", "threads, unapprovedthreads", "fid=".(int)$fid);
 		
@@ -797,6 +768,7 @@ if($mybb->input['sortby'] || $mybb->input['order'] || $mybb->input['datecut'] ||
 else
 {
 	$page_url = str_replace("{fid}", $fid, FORUM_URL_PAGED);
+	
 }
 $multipage = multipage($threadcount, $perpage, $page, $page_url);
 
@@ -991,10 +963,7 @@ if($fpermissions['canviewthreads'] != 0)
 	{
 		$threadcache[$thread['tid']] = $thread;
 
-		//if($thread['numratings'] > 0 && $ratings == false)
-		//{
-		//	$ratings = true; // Looks for ratings in the forum
-		//}
+		
 
 		// If this is a moved thread - set the tid for participation marking and thread read marking to that of the moved thread
 		if(substr($thread['closed'], 0, 5) == "moved")
@@ -1287,6 +1256,8 @@ if(!empty($threadcache) && is_array($threadcache))
 		$thread['posts'] = $thread['replies'] + 1;
 		
 		
+		
+		
 		$is_mod = is_mod($usergroups);
 		
 		//if(is_moderator($fid, "canviewdeleted") == true || is_moderator($fid, "canviewunapprove") == true)
@@ -1426,7 +1397,7 @@ if(!empty($threadcache) && is_array($threadcache))
 			
 			
 			$gotounread = '<a href="'.$thread['newpostlink'].'">
-			<img src="'.$theme['imgdir'].'/jump.png" alt="{$lang->goto_first_unread}" title="{$lang->goto_first_unread}" /></a> ';
+			<img src="pic/jump.png" alt="'.$lang->forumdisplay['goto_first_unread'].'" title="'.$lang->forumdisplay['goto_first_unread'].'" /></a> ';
 			
 			
 			
@@ -1498,12 +1469,12 @@ if(!empty($threadcache) && is_array($threadcache))
 		$thread['views'] = ts_nf($thread['views']);
 
 
-        $is_mod = is_mod($usergroups);
+        
 
 		// Threads and posts requiring moderation
 		//if($thread['unapprovedposts'] > 0 && is_moderator($fid, "canviewunapprove"))
+			if($thread['unapprovedposts'] > 0)
 		
-	    if($thread['unapprovedposts'] > 0 && $is_mod)
 		{
 			if($thread['unapprovedposts'] > 1)
 			{
@@ -1524,7 +1495,7 @@ if(!empty($threadcache) && is_array($threadcache))
 
 		// If this thread has 1 or more attachments show the papperclip
 		
-		$enableattachments = "1";
+		
 		
 		
 		if($enableattachments == 1 && $thread['attachmentcount'] > 0)
@@ -1738,7 +1709,7 @@ if($foruminfo['type'] != "c")
 		$clearstoredpass = ' | <a href="misc.php?action=clearpass&amp;fid='.$fid.'&amp;my_post_key='.$mybb->post_code.'">{$lang->clear_stored_password}</a>';
 	}
 
-	//$prefixselect = build_forum_prefix_select($fid, $tprefix);
+	$prefixselect = build_forum_prefix_select($fid, $tprefix);
 
 	
 	// Populate Forumsort
@@ -1749,7 +1720,7 @@ if($foruminfo['type'] != "c")
 
 	$plugins->run_hooks("forumdisplay_threadlist");
 
-    //$lang->rss_discovery_forum = $lang->sprintf($lang->rss_discovery_forum, htmlspecialchars_uni(strip_tags($foruminfo['name'])));
+    
     eval("\$rssdiscovery = \"".$templates->get("forumdisplay_rssdiscovery")."\";");
 	
 	eval("\$threadslist = \"".$templates->get("forumdisplay_threadlist")."\";");

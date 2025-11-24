@@ -1,27 +1,25 @@
 <?php
-
+declare(strict_types=1);
 
 require_once 'global.php';
+
 $lang->load("takewhatever");
 
-// Проверка пользователя
-if (!isset($CURUSER) || (int)$CURUSER['id'] === 0) {
+if (!isset($CURUSER) || (int)($CURUSER['id'] ?? 0) === 0) {
     stderr($lang->takewhatever["takereseednouser"]);
 }
 
-// Включаем gzip и права sysop
 gzip();
 maxsysop();
 
-define('TR_VERSION', '0.5 ');
+define('TR_VERSION', '0.5');
 define("IN_MYBB", 1);
 
-// Подключаем обработчик данных
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_pm.php';
 
 /**
- * Проверка на спам
+ * Spam check function
  */
 function spamcheck(int $reseedid = 0, int $receiver = 0, int $sender = 0): bool
 {
@@ -33,16 +31,17 @@ function spamcheck(int $reseedid = 0, int $receiver = 0, int $sender = 0): bool
         "sender = '{$sender}' AND subject = '{$db->escape_string($_GET['subject'] ?? '')}' AND receiver = '{$receiver}'"
     );
 
-    return ($db->num_rows($spamcheck) === 0);
+    return $db->num_rows($spamcheck) === 0;
 }
 
+$reseedid = (int)($_GET['reseedid'] ?? 0);
+$userid   = (int)($CURUSER['id'] ?? 0);
 
-// Получаем данные
-$reseedid = intval($_GET['reseedid'] ?? 0);
-$userid   = (int)$CURUSER['id'];
-int_check([$reseedid, $userid], true);
+// Validate integers
+if ($reseedid <= 0 || $userid <= 0) {
+    stderr($lang->takewhatever['takereseednouser']);
+}
 
-// Получаем всех завершивших закачку
 $sql = "
     SELECT s.uploaded, s.downloaded, s.userid, t.name, u.username
     FROM snatched s
@@ -53,22 +52,15 @@ $sql = "
 ";
 
 $params = [$reseedid];
-
 $res = $db->sql_query_prepared($sql, $params);
 
-
-
-
-
-if ($db->num_rows($res->result) === 0) {
+if ($db->num_rows($res) === 0) {
     stderr($lang->takewhatever['takereseednouser']);
 }
 
-// Тема сообщения
 $subject = sprintf($lang->takewhatever['reseedsubject'], $reseedid);
 
-// Отправка PM
-while ($row = $db->fetch_array($res->result)) {
+while ($row = $db->fetch_array($res)) {
     $name_torrent = $db->escape_string($row['name']);
     $reseedmsg = sprintf(
         $lang->takewhatever['reseedmsg'],
@@ -87,5 +79,4 @@ while ($row = $db->fetch_array($res->result)) {
     send_pm($pm, $CURUSER['id'], true);
 }
 
-// Редирект на страницу торрента
 redirect(get_torrent_link($reseedid));

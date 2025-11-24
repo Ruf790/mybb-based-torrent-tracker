@@ -12,15 +12,12 @@ define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'attachment.php');
 define("SCRIPTNAME", "attachment.php");
 
-define ('TSF_FORUMS_TSSEv56', true);
+define('IN_FORUM', true);
 
-require_once 'global2.php';
+require_once 'global.php';
 
   
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-   exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
+
 
 
 function mk_path_abs222222222($path, $base = TSDIR)

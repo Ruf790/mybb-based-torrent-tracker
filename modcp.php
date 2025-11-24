@@ -35,22 +35,13 @@ $templatelist .= ",modcp_banning_remaining,postmodcp_nav_announcements,modcp_nav
   
   
   
-  
-  define ('TSF_FORUMS_TSSEv56', true);
-  define ('TSF_FORUMS_GLOBAL_TSSEv56', true);
-  define ('TSF_VERSION', 'v1.5 by xam');
-  //define ('IN_FORUMS', true );
-
   require_once 'global.php';
   
-  
-  if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-  {
-     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-  }
+  define('FORUM_ACTIVE', true);
+  define('FORUM_SECURE', true);
+  require_once INC_PATH . '/tsf_functions.php';
 
-  
-  require_once INC_PATH.'/tsf_functions.php';
+
   
   
   require_once INC_PATH."/functions_modcp.php";
@@ -717,9 +708,9 @@ if($mybb->input['action'] == "banning")
 
 	// Figure out if we need to display multiple pages.
 	$perpage = $f_threadsperpage;
-	if($mybb->input['page'] != "last")
+	if($mybb->get_input('page') != "last")
 	{
-		$page = intval($mybb->input['page']);
+		$page = $mybb->get_input('page', MyBB::INPUT_INT);
 	}
 
 	$query = $db->simple_select("banned", "COUNT(uid) AS count");
@@ -729,7 +720,7 @@ if($mybb->input['action'] == "banning")
 	$pages = $postcount / $perpage;
 	$pages = ceil($pages);
 
-	if($mybb->input['page'] == "last")
+	if($mybb->get_input('page') == "last")
 	{
 		$page = $pages;
 	}
@@ -2420,11 +2411,12 @@ if($mybb->input['action'] == "finduser")
 		default:
 			$sortby = "added";
 	}
-	$sortbysel = array('last_access' => '', 'postnum' => '', 'username' => '', 'added' => '');
-	//$sortbysel[$mybb->get_input('sortby')] = " selected=\"selected\"";
-	$sortbysel[$mybb->input['sortby']] = "selected=\"selected\"";
 	
-	$order = $mybb->input['order'];
+	$sortbysel = array('lastvisit' => '', 'postnum' => '', 'username' => '', 'added' => '');
+	$sortbysel[$mybb->get_input('sortby')] = " selected=\"selected\"";
+	$order = $mybb->get_input('order');
+	
+
 	if($order != "asc")
 	{
 		$order = "desc";
@@ -2436,15 +2428,15 @@ if($mybb->input['action'] == "finduser")
 	$user_count = $db->fetch_field($query, "count");
 
 	// Figure out if we need to display multiple pages.
-	if($mybb->input['page'] != "last")
+	if($mybb->get_input('page') != "last")
 	{
-		$page = intval($mybb->input['page']);
+		$page = $mybb->get_input('page');
 	}
 
 	$pages = $user_count / $perpage;
 	$pages = ceil($pages);
 
-	if($mybb->input['page'] == "last")
+	if($mybb->get_input('page') == "last")
 	{
 		$page = $pages;
 	}

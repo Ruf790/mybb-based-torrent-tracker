@@ -23,13 +23,9 @@ $templatelist .= ",postbit_profilefield_multiselect_value,postbit_profilefield_m
 
 
 
-define ('TSF_FORUMS_TSSEv56', true);
-  
-require_once 'global2.php';
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
+
+define('IN_FORUM', true);
+require_once 'global.php';
   
   
 require_once INC_PATH."/functions_post.php";
@@ -105,31 +101,17 @@ if($forumpermissions['canview'] == 0 || $forumpermissions['canpostthreads'] == 0
 	print_no_permission();
 }
 
-//if($mybb->user['suspendposting'] == 1)
-//{
-	//$suspendedpostingtype = $lang->error_suspendedposting_permanent;
-	//if($mybb->user['suspensiontime'])
-	//{
-	//	$suspendedpostingtype = $lang->sprintf($lang->error_suspendedposting_temporal, my_date($mybb->settings['dateformat'], $mybb->user['suspensiontime']));
-	//}
-
-	//$lang->error_suspendedposting = $lang->sprintf($lang->error_suspendedposting, $suspendedpostingtype, my_date($mybb->settings['timeformat'], $mybb->user['suspensiontime']));
-
-	//error($lang->error_suspendedposting);
-//}
 
 // Check if this forum is password protected and we have a valid password
-//check_forum_password($forum['fid']);
+check_forum_password($forum['fid']);
 
 // If MyCode is on for this forum and the MyCode editor is enabled in the Admin CP, draw the code buttons and smilie inserter.
 $codebuttons = '';
 $smilieinserter = '';
-//if($mybb->settings['bbcodeinserter'] != 0 && $forum['allowmycode'] != 0 && (!$mybb->user['uid'] || $mybb->user['showcodebuttons'] != 0))
-//{
+
 
 
 	
-// Подключите функцию insert_bbcode_editor
 require_once INC_PATH . '/editor.php';
 
 
@@ -148,29 +130,20 @@ $codebuttons ='
 
     
   
-	
-	
-	
-	
 
-	//if($forum['allowsmilies'] != 0)
-	//{
-		//$smilieinserter = build_clickable_smilies();
-	//}
-//}
 
 
 
 // If we have a currently logged in user then fetch the change user box.
-//if($mybb->user['uid'] != 0)
-//{
-	//$mybb->user['username'] = htmlspecialchars_uni($mybb->user['username']);
-	//eval("\$loginbox = \"".$templates->get("changeuserbox")."\";");
-//}
+if($CURUSER['id'] != 0)
+{
+	$CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
+	eval("\$loginbox = \"".$templates->get("changeuserbox")."\";");
+}
 
 // Otherwise we have a guest, determine the "username" and get the login box.
-//else
-//{
+else
+{
 	if(!isset($mybb->input['previewpost']) && $mybb->input['action'] != "do_newthread")
 	{
 		$username = '';
@@ -179,8 +152,8 @@ $codebuttons ='
 	{
 		$username = htmlspecialchars_uni($mybb->get_input('username'));
 	}
-	//eval("\$loginbox = \"".$templates->get("loginbox")."\";");
-//}
+	eval("\$loginbox = \"".$templates->get("loginbox")."\";");
+}
 
 // If we're not performing a new thread insert and not editing a draft then we're posting a new thread.
 if($mybb->input['action'] != "do_newthread" && $mybb->input['action'] != "editdraft")
@@ -210,7 +183,7 @@ $maximageserror = $attacherror = '';
 
 // Handle attachments if we've got any.
 
-$enableattachments = "1";
+
 
 if($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_input('updateattachment') || ((($mybb->input['action'] == "do_newthread" && $mybb->get_input('submit')) || ($mybb->input['action'] == "newthread" && isset($mybb->input['previewpost'])) || isset($mybb->input['savedraft'])) && $_FILES['attachments'])))
 {
@@ -233,31 +206,11 @@ if($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_i
 		if(isset($ret['success']))
 		{
 			$attachment = array('aid'=>'{1}', 'icon'=>'{2}', 'filename'=>'{3}', 'size'=>'{4}');
-			//if($mybb->settings['bbcodeinserter'] != 0 && $forum['allowmycode'] != 0 && $mybb->user['showcodebuttons'] != 0)
-			//{
-				//$postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" onclick="$("#message").sceditor("instance").insertText("[attachment='.$attachment['aid'].']"); return false;" />';
 				
-				
-				$postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" id="insertBtn" />
-
-<script>
-  document.getElementById("insertBtn").addEventListener("click", function(event) {
-    event.preventDefault();  // Предотвращаем стандартное поведение
-    const attachmentId = ' . $attachment['aid'] . ';  // Используем ID из PHP
-    const textarea = document.getElementById("message");
-    const textToInsert = `[attachment=${attachmentId}]`;  // Формируем строку для вставки
-    textarea.value += textToInsert;  // Добавляем текст в textarea
-  });
-</script>';
-				
-				
-				
-				
-				
-				
-				
-			//}
 			
+			$postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" onclick="(function(){var a=' . $attachment['aid'] . ';var t=\'[attachment=\'+a+\']\';var e=document.getElementById(\'message\');if(e)e.value+=t;})()" />';	
+				
+
 
 			eval("\$attach_rem_options = \"".$templates->get("post_attachments_attachment_remove")."\";");
 			
@@ -296,7 +249,7 @@ detect_attachmentact();
 
 // Are we removing an attachment from the thread?
 
-$enableattachments = "1";
+
 
 if($enableattachments == 1 && $mybb->get_input('attachmentaid', MyBB::INPUT_INT) && $mybb->get_input('attachmentact') == "remove")
 {
@@ -322,7 +275,7 @@ if($enableattachments == 1 && $mybb->get_input('attachmentaid', MyBB::INPUT_INT)
 }
 
 $thread_errors = "";
-$hide_captcha = false;
+
 
 // Check the maximum posts per day for this user
 if($mybb->usergroup['maxposts'] > 0)
@@ -492,25 +445,7 @@ if($mybb->input['action'] == "do_newthread" && $mybb->request_method == "post")
 		$post_errors = $posthandler->get_friendly_errors();
 	}
 
-	// Check captcha image
-	if($mybb->settings['captchaimage'] && !$mybb->user['uid'])
-	{
-		require_once MYBB_ROOT.'inc/class_captcha.php';
-		$post_captcha = new captcha;
-
-		if($post_captcha->validate_captcha() == false)
-		{
-			// CAPTCHA validation failed
-			foreach($post_captcha->get_errors() as $error)
-			{
-				$post_errors[] = $error;
-			}
-		}
-		else
-		{
-			$hide_captcha = true;
-		}
-	}
+	
 
 	// One or more errors returned, fetch error list and throw to newthread page
 	if(count($post_errors) > 0)
@@ -525,13 +460,11 @@ if($mybb->input['action'] == "do_newthread" && $mybb->request_method == "post")
 		$tid = $thread_info['tid'];
 		$visible = $thread_info['visible'];
 
-		// Invalidate solved captcha
-		//if($mybb->settings['captchaimage'] && !$mybb->user['uid'])
-		//{
-			//$post_captcha->invalidate_captcha();
-		//}
+
 
 		$force_redirect = false;
+		
+		$redirect_newthread = ''; // Initialize the variable
 
 		// Mark thread as read
 		require_once INC_PATH."/functions_indicators.php";
@@ -639,8 +572,8 @@ if($mybb->input['action'] == "newthread" || $mybb->input['action'] == "editdraft
 		{
 			$external_quotes = 0;
 			$quoted_posts = implode(",", $quoted_posts);
-			//$unviewable_forums = get_unviewable_forums();
-			//$inactiveforums = get_inactive_forums();
+			$unviewable_forums = get_unviewable_forums();
+			$inactiveforums = get_inactive_forums();
 			if($unviewable_forums)
 			{
 				$unviewable_forums = "AND t.fid NOT IN ({$unviewable_forums})";
@@ -810,7 +743,7 @@ if($mybb->input['action'] == "newthread" || $mybb->input['action'] == "editdraft
 	if(!empty($mybb->input['previewpost']))
 	{
 		// If this isn't a logged in user, then we need to do some special validation.
-		if($mybb->user['uid'] == 0)
+		if($CURUSER['id'] == 0)
 		{
 			// If they didn't specify a username leave blank so $lang->guest can be used on output
 			if(!$mybb->get_input('username'))
@@ -966,12 +899,10 @@ if($mybb->input['action'] == "newthread" || $mybb->input['action'] == "editdraft
 
 	// Hide signature option if no permission
 	$signature = '';
-	//if($mybb->usergroup['canusesig'] == 1 && !$mybb->user['suspendsignature'])
-	//{
-	    
-		eval("\$signature = \"".$templates->get('newthread_signature')."\";");
+	
+	eval("\$signature = \"".$templates->get('newthread_signature')."\";");
 		
-	//}
+	
 
 	
 
@@ -1075,7 +1006,7 @@ if($mybb->input['action'] == "newthread" || $mybb->input['action'] == "editdraft
 	
 
 	
-	$enableattachments = "1";
+	
 	
 	if($enableattachments != 0 && $forumpermissions['canpostattachments'] != 0)
 	{ // Get a listing of the current attachments, if there are any
@@ -1096,9 +1027,9 @@ if($mybb->input['action'] == "newthread" || $mybb->input['action'] == "editdraft
 			$attachment['icon'] = get_attachment_icon(get_extension($attachment['filename']));
 			$attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
 
-			//if($mybb->settings['bbcodeinserter'] != 0 && $forum['allowmycode'] != 0 && (!$mybb->user['uid'] || $mybb->user['showcodebuttons'] != 0))
-			//{
-				//$postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" onclick="$("#message").sceditor("instance").insertText("[attachment='.$attachment['aid'].']"); return false;" />';
+			
+			
+			
 			$postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" id="insertBtn" />
 
 <script>
@@ -1111,7 +1042,7 @@ if($mybb->input['action'] == "newthread" || $mybb->input['action'] == "editdraft
   });
 </script>';
 			
-			//}
+			
 
 			
 			eval("\$attach_rem_options = \"".$templates->get("post_attachments_attachment_remove")."\";");

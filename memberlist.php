@@ -15,31 +15,22 @@ define("SCRIPTNAME", "memberlist.php");
 $templatelist = "memberlist,memberlist_search,memberlist_user,memberlist_user_groupimage,memberlist_user_avatar,memberlist_user_userstar,memberlist_search_contact_field,memberlist_referrals,memberlist_referrals_bit";
 $templatelist .= ",multipage,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start,memberlist_error,memberlist_orderarrow";
 
-define ('TSF_FORUMS_TSSEv56', true);
 
-require_once 'global2.php';
 
-  
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-   exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
+require_once 'global.php';
+
+define('FORUM_ACTIVE', true);
+define('FORUM_SECURE', true);
+require_once INC_PATH . '/tsf_functions.php';
 
 
 require_once INC_PATH . '/functions_multipage.php';
 
 
 
-
-
-
 // Load global language phrases
 $lang->load("memberlist");
 
-//if($mybb->settings['enablememberlist'] == 0)
-//{
-	//error($lang->memberlist_disabled);
-//}
 
 
 
@@ -47,10 +38,7 @@ $plugins->run_hooks("memberlist_start");
 
 add_breadcrumb($lang->memberlist['nav_memberlist'], "memberlist.php");
 
-//if($mybb->usergroup['canviewmemberlist'] == 0)
-//{
-	//error_no_permission();
-//}
+
 
 $orderarrow = $sort_selected = array(
 	'regdate' => '',
@@ -470,22 +458,6 @@ else
 			eval("\$referral_bit = \"".$templates->get("memberlist_referrals_bit")."\";");
 		}
 
-		//$usergroup['groupimage'] = '';
-		// Work out the usergroup/title stuff
-		//if(!empty($usergroup['image']))
-		//{
-		//	if(!empty($mybb->user['language']))
-		//	{
-		//		$language = $mybb->user['language'];
-		//	}
-		//	else
-		//	{
-		//		$language = $mybb->settings['bblanguage'];
-		//	}
-		//	$usergroup['image'] = str_replace("{lang}", $language, $usergroup['image']);
-		//	$usergroup['image'] = str_replace("{theme}", $theme['imgdir'], $usergroup['image']);
-		//	eval("\$usergroup['groupimage'] = \"".$templates->get("memberlist_user_groupimage")."\";");
-		//}
 
 		
 		// User has group title
@@ -498,41 +470,10 @@ else
 		
 		
 
-		//if(!empty($usergroup['stars']))
-		//{
-		//	$user['stars'] = $usergroup['stars'];
-		//}
-
-		//if(empty($user['starimage']))
-		//{
-		//	$user['starimage'] = $usergroup['starimage'];
-		//}
-
-		//$user['userstars'] = '';
-		//if(!empty($user['starimage']) && isset($user['stars']))
-		//{
-			// Only display stars if we have an image to use...
-		//	$starimage = str_replace("{theme}", $theme['imgdir'], $user['starimage']);
-
-		//	for($i = 0; $i < $user['stars']; ++$i)
-		//	{
-		//		eval("\$user['userstars'] .= \"".$templates->get("memberlist_user_userstar", 1, 0)."\";");
-		//	}
-		//}
-
-		//if($user['userstars'] && $usergroup['groupimage'])
-		//{
-		//	$user['userstars'] = "<br />".$user['userstars'];
-		//}
-
 		// Show avatar
 		
 		$memberlistmaxavatarsize = "70x70";
-		
-		//$useravatar = format_avatar($user['avatar'], $user['avatardimensions'], my_strtolower($memberlistmaxavatarsize));
-		//eval("\$user['avatar'] = \"".$templates->get("memberlist_user_avatar")."\";");
-		
-		
+				
 		$useravatar = format_avatar($user['avatar'], $user['avatardimensions'], my_strtolower($memberlistmaxavatarsize));
 
         // Определяем, нужно ли использовать <img> или выводить SVG напрямую
@@ -547,20 +488,7 @@ else
             $user['avatar'] = '<img src="'.$useravatar['image'].'" alt="" class="rounded" style="width: 70px;" />';
         }
 		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+	
 
 		$last_seen = max(array($user['lastactive'], $user['lastvisit']));
 		if(empty($last_seen))
@@ -570,7 +498,8 @@ else
 		else
 		{
 			// We have some stamp here
-			if($user['invisible'] == 1 && $usergroups['issupermod'] != '1' && $user['uid'] != $CURUSER['id'])
+	
+			if($user['invisible'] == 1 && $usergroups['canviewwolinvis'] != 1 && $user['uid'] != $CURUSER['id'])
 			{
 				$user['lastvisit'] = $lang->memberlist['lastvisit_hidden'];
 			}

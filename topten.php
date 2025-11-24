@@ -19,6 +19,48 @@ $lang->load("topten");
 $notin = "7,6,5";
 stdhead($lang->topten["head"]);
 
+
+
+
+
+function get_thread_link($tid, $page=0, $action='')
+{
+	if($page > 1)
+	{
+		if($action)
+		{
+			$link = THREAD_URL_ACTION;
+			$link = str_replace("{action}", $action, $link);
+		}
+		else
+		{
+			$link = THREAD_URL_PAGED;
+		}
+		$link = str_replace("{tid}", $tid, $link);
+		$link = str_replace("{page}", $page, $link);
+		return htmlspecialchars_uni($link);
+	}
+	else
+	{
+		if($action)
+		{
+			$link = THREAD_URL_ACTION;
+			$link = str_replace("{action}", $action, $link);
+		}
+		else
+		{
+			$link = THREAD_URL;
+		}
+		$link = str_replace("{tid}", $tid, $link);
+		return htmlspecialchars_uni($link);
+	}
+}
+
+
+
+
+
+
 echo '<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -712,7 +754,7 @@ function countriestable($res, $frame_caption, $what) {
                     </thead>
                     <tbody>';
     $num = 0;
-    while ($a = $db->fetch_array($res->result)) {
+    while ($a = $db->fetch_array($res)) {
         $num++;
         $value = ($what == "Users") ? number_format($a["num"]) : (($what == "Uploaded") ? mksize($a["ul"]) : (($what == "Average") ? mksize($a["ul_avg"]) : number_format($a["r"], 2)));
         $value_class = ($what == "Ratio") ? "fw-bold" : "";
@@ -813,7 +855,7 @@ function commenterstable($res, $frame_caption) {
                     </thead>
                     <tbody>';
     $num = 0;
-    while ($a = $db->fetch_array($res->result)) {
+    while ($a = $db->fetch_array($res)) {
         $num++;
         $avatar_url = !empty($a["avatar"]) ? $a["avatar"] : $pic_base_url . "user.png";
         
@@ -856,7 +898,7 @@ function mostcommentedtable($res, $frame_caption) {
                     </thead>
                     <tbody>';
     $num = 0;
-    while ($a = $db->fetch_array($res->result)) {
+    while ($a = $db->fetch_array($res)) {
         $num++;
         $SEOLink = get_torrent_link($a['id']);
         
@@ -906,7 +948,7 @@ function categoriestable($res, $frame_caption) {
                     </thead>
                     <tbody>';
     $num = 0;
-    while ($a = $db->fetch_array($res->result)) {
+    while ($a = $db->fetch_array($res)) {
         $num++;
         
         $category_link = "browse.php?cat=" . $a["id"];
@@ -979,7 +1021,8 @@ function categoriestable($res, $frame_caption) {
 
 
 
-function activethreadstable($res, $frame_caption) {
+function activethreadstable($res, $frame_caption) 
+{
     global $lang, $pic_base_url, $db;
     echo '
     <div class="glass-card">
@@ -1002,9 +1045,12 @@ function activethreadstable($res, $frame_caption) {
                     </thead>
                     <tbody>';
     $num = 0;
-    while ($a = $db->fetch_array($res->result)) {
+    while ($a = $db->fetch_array($res)) 
+	{
         $num++;
-        $thread_link = "forums.php?action=viewthread&tid=" . $a["tid"];
+        
+		$thread_link = get_thread_link($a['tid']);
+		
         $avatar_url = !empty($a["avatar"]) ? $a["avatar"] : $pic_base_url . "user.png";
         
         echo "<tr class='hover-shadow'>

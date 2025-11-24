@@ -9,12 +9,9 @@
  */
 
 
-define ('TSF_FORUMS_TSSEv56', true);
-require_once 'global2.php';
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
-{
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-}
+define('IN_FORUM', true);
+require_once 'global.php';
+
   
   
 require_once INC_PATH."/functions_post.php";
@@ -223,10 +220,10 @@ switch($mybb->input['action'])
 
 		add_breadcrumb($lang->delayed_moderation);
 
-		if(!is_moderator($fid, "canmanagethreads"))
-		{
-			error_no_permission();
-		}
+		//if(!is_moderator($fid, "canmanagethreads"))
+		//{
+			//error_no_permission();
+		//}
 
 		$errors = array();
 		$customthreadtools = "";
@@ -2962,7 +2959,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 	// Move posts - Inline moderation
 	case "multimoveposts":
-		add_breadcrumb($lang->nav_multi_moveposts);
+		add_breadcrumb($lang->moderation['nav_multi_moveposts']);
 
 		if($mybb->get_input('inlinetype') == 'search')
 		{
@@ -2975,7 +2972,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		if(count($posts) < 1)
 		{
-			stderr('error_inline_nopostsselected');
+			stderr($lang->moderation['error_inline_nopostsselected']);
 		}
 
 		if(!is_moderator_by_pids($posts, "canmanagethreads"))
@@ -2999,7 +2996,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		{
 			if((int)$tcheck['count'] <= 1)
 			{
-				error($lang->error_cantsplitonepost, $lang->error);
+				error($lang->moderation['error_cantsplitonepost'], $lang->error);
 			}
 			$threads[] = $pcheck[] = $tcheck['tid']; // Save tids for below
 		}
@@ -3024,7 +3021,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		if(count($pcheck2) != count($pcheck))
 		{
 			// One or more threads do not have posts after splitting
-			error($lang->error_cantmoveall, $lang->error);
+			error($lang->moderation['error_cantmoveall'], $lang->error);
 		}
 
 		$inlineids = implode("|", $posts);
@@ -3044,6 +3041,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		
 		
 		stdhead();
+		
+		build_breadcrumb();
 		
 		echo $moveposts;
 		
@@ -3225,7 +3224,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		}
 		if(count($posts) < 1)
 		{
-			error($lang->error_inline_nopostsselected, $lang->error);
+			stderr($lang->moderation['error_inline_nopostsselected'], $lang->error);
 		}
 
 		if(!is_moderator_by_pids($posts, "canapproveunapproveposts"))
@@ -3912,7 +3911,7 @@ function is_moderator_by_tids($threads, $permission='')
  * @param string $message Message
  * @param string $title Title
  */
-function moderation_redirect($url, $message="", $title="")
+function moderation_redirect22222222($url, $message="", $title="")
 {
 	global $mybb, $BASEURL;
 	if(!empty($mybb->input['url']))
@@ -3931,4 +3930,40 @@ function moderation_redirect($url, $message="", $title="")
 	}
 
 	redirect($url, $message, $title);
+}
+
+
+
+
+
+
+
+function moderation_redirect($url, $message = "", $title = "")
+{
+    global $mybb, $BASEURL;
+    
+    if(!empty($mybb->input['url']))
+    {
+        $url = htmlentities($mybb->input['url']);
+    }
+
+    if(my_strpos($url, $BASEURL.'/') !== 0)
+    {
+        if(my_strpos($url, '/') === 0)
+        {
+            $url = my_substr($url, 1);
+        }
+        $url_segments = explode('/', $url);
+        $url = $BASEURL.'/'.end($url_segments);
+    }
+
+    // Преобразуем NULL в пустую строку
+    if ($message === null) {
+        $message = "";
+    }
+    if ($title === null) {
+        $title = "";
+    }
+
+    redirect($url, $message, $title);
 }

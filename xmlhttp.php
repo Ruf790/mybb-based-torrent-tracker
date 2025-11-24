@@ -1,67 +1,36 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
+declare(strict_types=1);
+
+
 
 /**
- * The deal with this file is that it handles all of the XML HTTP Requests for MyBB.
- *
- * It contains a stripped down version of the MyBB core which does not load things
- * such as themes, who's online data, all of the language packs and more.
- *
- * This is done to make response times when using XML HTTP Requests faster and
- * less intense on the server.
+ * XML HTTP Requests handler with stripped down MyBB core for faster response times.
  */
 define("IN_MYBB", 1);
-
-define ('TSF_FORUMS_TSSEv56', true);
-define ('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define ('TSF_VERSION', 'v1.5 by xam');
+define("NO_ONLINE", 1);
 define("SCRIPTNAME", "xmlhttp.php");
-define ('IN_FORUMS', true );
 
 
-
-
-
-
-
-require_once 'global.php';
-
+define ('IN_TRACKER', true);
+define ('APP_INITIALIZED', true);
+define ('TIMENOW', time ());
   
-if ((!defined ('IN_SCRIPT_TSSEv56') OR !defined ('TSF_FORUMS_GLOBAL_TSSEv56')))
+define ('TSDIR', dirname (__FILE__));
+define ('INC_PATH', TSDIR . '/include');
+
+
+require_once INC_PATH.'/init.php';
+
+$shutdown_queries = $shutdown_functions = array();
+
+// Load some of the stock caches we'll be using.
+$groupscache = $cache->read("usergroups");
+
+if(!is_array($groupscache))
 {
-     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+	$cache->update_usergroups();
+	$groupscache = $cache->read("usergroups");
 }
-
-require_once INC_PATH.'/tsf_functions.php';
-
-
-// Include our base data handler class
-require_once INC_PATH . '/datahandler.php';
-
-
-
-
-
-
-
-
-//$shutdown_queries = $shutdown_functions = array();
-
-//// Load some of the stock caches we'll be using.
-//$groupscache = $cache->read("usergroups");
-
-//if(!is_array($groupscache))
-//{
-	//$cache->update_usergroups();
-	//$groupscache = $cache->read("usergroups");
-//}
 
 // Send no cache headers
 header("Expires: Sat, 1 Jan 2000 01:00:00 GMT");
@@ -69,826 +38,679 @@ header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
 header("Cache-Control: no-cache, must-revalidate");
 header("Pragma: no-cache");
 
-
-
 // Create the session
-//require_once MYBB_ROOT."inc/class_session.php";
-////$session = new session;
-//$session->init();
+require_once INC_PATH."/class_session.php";
+$session = new session;
+$session->init();
 
-// Load the language we'll be using
-//if(!isset($mybb->settings['bblanguage']))
-//{
-	//$mybb->settings['bblanguage'] = "english";
-//}
-//if(isset($mybb->user['language']) && $lang->language_exists($mybb->user['language']))
-//{
-	//$mybb->settings['bblanguage'] = $mybb->user['language'];
-//}
-//$lang->set_language($mybb->settings['bblanguage']);
 
-if(function_exists('mb_internal_encoding') && !empty($charset))
-{
-	@mb_internal_encoding($charset);
+global $CURUSER, $plugins, $usergroups;
+
+
+define('FORUM_ACTIVE', true);
+define('FORUM_SECURE', true);
+require_once INC_PATH . '/tsf_functions.php';
+
+
+require_once INC_PATH . '/datahandler.php';
+
+
+
+if (function_exists('mb_internal_encoding') && !empty($charset)) {
+    @mb_internal_encoding($charset);
 }
 
-
-
-
-if($charset)
-{
-	$charset = $charset;
-}
-// If not, revert to UTF-8
-else
-{
-	$charset = "UTF-8";
-}
-
-//$lang->load("global");
+$charset = $charset ?: "UTF-8";
 $lang->load("xmlhttp");
 
-$closed_bypass = array("refresh_captcha", "validate_captcha");
-
+$closed_bypass = ["refresh_captcha", "validate_captcha"];
 $mybb->input['action'] = $mybb->get_input('action');
 
 $plugins->run_hooks("xmlhttp");
 
-// If the board is closed, the user is not an administrator and they're not trying to login, show the board closed message
-//if($mybb->settings['boardclosed'] == 1 && $mybb->usergroup['canviewboardclosed'] != 1 && !in_array($mybb->input['action'], $closed_bypass))
-//{
-	// Show error
-	//if(!$mybb->settings['boardclosed_reason'])
-	//{
-	//	$mybb->settings['boardclosed_reason'] = $lang->boardclosed_reason;
-	//}
-
-	//$lang->error_boardclosed .= "<br /><em>{$mybb->settings['boardclosed_reason']}</em>";
-
-	//xmlhttp_error($lang->error_boardclosed);
-//}
+$is_mod = is_mod($usergroups);
 
 
-function show_msg ($message = '', $error = true, $color = 'red', $strong = true, $extra = '', $extra2 = '')
+
+
+
+// Main action router
+handleXmlHttpAction();
+
+
+/**
+ * Main XML HTTP action router
+ */
+function handleXmlHttpAction(): void
 {
-    global $shoutboxcharset;
-    header ('Expires: Sat, 1 Jan 2000 01:00:00 GMT');
-    header ('Last-Modified: ' . gmdate ('D, d M Y H:i:s') . 'GMT');
-    header ('Cache-Control: no-cache, must-revalidate');
-    header ('Pragma: no-cache');
-    header ('' . 'Content-type: text/html; charset=' . $shoutboxcharset);
-    if ($error)
-    {
-      exit ('<error>' . $message . '</error>');
-    }
-
-    exit ($extra . (!empty ($color) ? '<font color="' . $color . '">' : '') . ($strong ? '<strong>' : '') . $message . ($strong ? '</strong>' : '') . (!empty ($color) ? '</font>' : '') . $extra2);
+    global $mybb, $CURUSER, $usergroups, $plugins;
+    
+    match ($mybb->input['action']) {
+        'get_users' => handleGetUsers(),
+        'get_multiquoted' => handleGetMultiquoted(),
+        'edit_post' => handleEditPost(),
+        'edit_subject' => handleEditSubject(),
+        'get_buddyselect' => handleGetBuddySelect(),
+        'complex_password' => handleComplexPassword(),
+        'username_availability' => handleUsernameAvailability(),
+        'email_availability' => handleEmailAvailability(),
+        'search_torrents' => handleSearchTorrents(),
+        'quick_comment' => handleQuickComment(),
+		'edit_torrent' => handleEditTorrent(),
+        default => handleUnknownAction()
+    };
 }
 
 
 
-function allowcomments($torrentid = 0)
+function get_torrent(int $tid, bool $recache = false): array|false
+{
+    global $db;
+    static $thread_cache = [];
+
+    if (isset($thread_cache[$tid]) && !$recache) {
+        return $thread_cache[$tid];
+    }
+
+    $query = $db->simple_select("torrents", "*", "id = '{$tid}'");
+    $thread = $db->fetch_array($query);
+
+    if ($thread) {
+        $thread_cache[$tid] = $thread;
+        return $thread;
+    }
+
+    $thread_cache[$tid] = false;
+    return false;
+}
+
+
+
+
+/**
+ * Show message helper function
+ */
+function show_msg(string $message = '', bool $error = true, string $color = 'red', bool $strong = true, string $extra = '', string $extra2 = ''): void
+{
+    global $shoutboxcharset;
+    
+    header('Expires: Sat, 1 Jan 2000 01:00:00 GMT');
+    header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . 'GMT');
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Pragma: no-cache');
+    header('Content-type: text/html; charset=' . $shoutboxcharset);
+    
+    if ($error) {
+        exit('<error>' . $message . '</error>');
+    }
+
+    exit($extra . (!empty($color) ? '<font color="' . $color . '">' : '') . ($strong ? '<strong>' : '') . $message . ($strong ? '</strong>' : '') . (!empty($color) ? '</font>' : '') . $extra2);
+}
+
+/**
+ * Check if comments are allowed for torrent
+ */
+function allowcomments(int $torrentid = 0): bool
 {
     global $is_mod, $db;
 
     $sql = "SELECT allowcomments FROM torrents WHERE id = ?";
-    $params = [(int)$torrentid];
+    $params = [$torrentid];
 
-    // Выполнение подготовленного запроса
     $query = $db->sql_query_prepared($sql, $params);
 
-    // Используем $query->result для работы с результатом
-    if (!$db->num_rows($query->result)) 
-    {
+    if (!$db->num_rows($query)) {
         return false;
     }
 
-    // Извлекаем данные из результата
-    $Result = $db->fetch_array($query->result);
-    $allowcomments = $Result['allowcomments'];
+    $result = $db->fetch_array($query);
+    $allowcomments = $result['allowcomments'];
 
-    if ($allowcomments != "yes" && !$is_mod) 
-    {
-        return false;
+    return !($allowcomments != "yes" && !$is_mod);
+}
+
+/**
+ * Handle get_users action
+ */
+function handleGetUsers(): void
+{
+    global $mybb, $db, $charset, $plugins;
+    
+    $mybb->input['query'] = ltrim($mybb->get_input('query'));
+    $search_type = $mybb->get_input('search_type', MyBB::INPUT_INT);
+
+    if (my_strlen($mybb->input['query']) < 2) {
+        exit;
     }
 
-    return true;
+    $limit = $mybb->get_input('getone', MyBB::INPUT_INT) == 1 ? 1 : 15;
+    header("Content-type: application/json; charset={$charset}");
+
+    $query_options = [
+        "order_by" => "username",
+        "order_dir" => "asc",
+        "limit_start" => 0,
+        "limit" => $limit
+    ];
+
+    $plugins->run_hooks("xmlhttp_get_users_start");
+
+    $likestring = $db->escape_string_like($mybb->input['query']);
+    $likestring = match ($search_type) {
+        1 => '%'.$likestring,
+        2 => '%'.$likestring.'%',
+        default => $likestring.'%'
+    };
+
+    $query = $db->simple_select("users", "id, username", "username LIKE '{$likestring}'", $query_options);
+    
+    if ($limit == 1) {
+        $user = $db->fetch_array($query);
+        $data = ['uid' => $user['id'], 'id' => $user['username'], 'text' => $user['username']];
+    } else {
+        $data = [];
+        while ($user = $db->fetch_array($query)) {
+            $data[] = ['uid' => $user['id'], 'id' => $user['username'], 'text' => $user['username']];
+        }
+    }
+
+    $plugins->run_hooks("xmlhttp_get_users_end");
+    echo json_encode($data);
+    exit;
 }
 
-
-
-
-$is_mod = is_mod ($usergroups);
-
-
-
-
-
-// Fetch a list of usernames beginning with a certain string (used for auto completion)
-if($mybb->input['action'] == "get_users")
+/**
+ * Handle get_multiquoted action
+ */
+function handleGetMultiquoted(): void
 {
-	$mybb->input['query'] = ltrim($mybb->get_input('query'));
-	$search_type = $mybb->get_input('search_type', MyBB::INPUT_INT); // 0: starts with, 1: ends with, 2: contains
+    global $mybb, $db, $charset, $plugins;
+    
+    // ВСЕГДА устанавливаем JSON заголовок в начале
+    header("Content-type: application/json; charset={$charset}");
+    
+    // Проверяем куки multiquote
+    if (!isset($mybb->cookies['multiquote']) || empty(trim($mybb->cookies['multiquote']))) {
+        echo json_encode(["message" => ""]);
+        exit;
+    }
 
-	// If the string is less than 2 characters, quit.
-	if(my_strlen($mybb->input['query']) < 2)
-	{
-		exit;
-	}
+    $multiquoted = explode("|", $mybb->cookies['multiquote']);
+    $plugins->run_hooks("xmlhttp_get_multiquoted_start");
 
-	if($mybb->get_input('getone', MyBB::INPUT_INT) == 1)
-	{
-		$limit = 1;
-	}
-	else
-	{
-		$limit = 15;
-	}
+    // Фильтруем и валидируем ID постов
+    $quoted_posts = [];
+    foreach ($multiquoted as $post) {
+        $post = trim($post);
+        if (!empty($post) && is_numeric($post)) {
+            $post_id = (int)$post;
+            if ($post_id > 0) {
+                $quoted_posts[] = $post_id;
+            }
+        }
+    }
 
-	// Send our headers.
-	header("Content-type: application/json; charset={$charset}");
+    // Если нет валидных постов
+    if (empty($quoted_posts)) {
+        echo json_encode(["message" => ""]);
+        exit;
+    }
 
-	// Query for any matching users.
-	$query_options = array(
-		"order_by" => "username",
-		"order_dir" => "asc",
-		"limit_start" => 0,
-		"limit" => $limit
-	);
+    $quoted_posts_str = implode(",", $quoted_posts);
+    $message = '';
 
-	$plugins->run_hooks("xmlhttp_get_users_start");
+    // Строим условие WHERE
+    $from_tid = "";
+    if (empty($mybb->input['load_all'])) {
+        $current_tid = $mybb->get_input('tid', MyBB::INPUT_INT);
+        if ($current_tid > 0) {
+            $from_tid = "p.tid != '".$current_tid."' AND ";
+        }
+    }
 
-	$likestring = $db->escape_string_like($mybb->input['query']);
-	if($search_type == 1)
-	{
-		$likestring = '%'.$likestring;
-	}
-	elseif($search_type == 2)
-	{
-		$likestring = '%'.$likestring.'%';
-	}
-	else
-	{
-		$likestring .= '%';
-	}
+    require_once INC_PATH."/class_parser.php";
+    $parser = new postParser;
+    require_once INC_PATH."/functions_posting.php";
 
-	$query = $db->simple_select("users", "id, username", "username LIKE '{$likestring}'", $query_options);
-	if($limit == 1)
-	{
-		$user = $db->fetch_array($query);
-		$data = array('uid' => $user['id'], 'id' => $user['username'], 'text' => $user['username']);
-	}
-	else
-	{
-		$data = array();
-		while($user = $db->fetch_array($query))
-		{
-			$data[] = array('uid' => $user['id'], 'id' => $user['username'], 'text' => $user['username']);
-		}
-	}
+    $plugins->run_hooks("xmlhttp_get_multiquoted_intermediate");
 
-	$plugins->run_hooks("xmlhttp_get_users_end");
+    try {
+        // Выполняем запрос с обработкой ошибок
+        $query = $db->sql_query("
+            SELECT p.subject, p.message, p.pid, p.tid, p.username, p.dateline, t.fid, t.uid AS thread_uid, p.visible, u.username AS userusername
+            FROM tsf_posts p
+            LEFT JOIN tsf_threads t ON (t.tid=p.tid)
+            LEFT JOIN users u ON (u.id=p.uid)
+            WHERE {$from_tid}p.pid IN ({$quoted_posts_str}) AND p.visible = 1
+            ORDER BY p.dateline, p.pid
+        ");
+        
+        if (!$query) {
+            throw new Exception("Database query failed");
+        }
+        
+        $found_posts = 0;
+        while ($quoted_post = $db->fetch_array($query)) {
+            // Пропускаем невидимые посты
+            if ($quoted_post['visible'] != 1) {
+                continue;
+            }
+            
+            $parsed_message = parse_quoted_message($quoted_post, false);
+            if ($parsed_message) {
+                $message .= $parsed_message;
+                $found_posts++;
+            }
+        }
+        
+        // Если посты не найдены, возвращаем пустое сообщение
+        if ($found_posts === 0) {
+            echo json_encode(["message" => ""]);
+            exit;
+        }
+        
+        $maxquotedepth = "5";
+        if ($maxquotedepth != '0') {
+            $message = remove_message_quotes($message);
+        }
 
-	echo json_encode($data);
-	exit;
+        $plugins->run_hooks("xmlhttp_get_multiquoted_end");
+        echo json_encode(["message" => $message]);
+        exit;
+        
+    } catch (Exception $e) {
+        // В случае любой ошибки возвращаем пустое сообщение в JSON
+        error_log("Multiquote error: " . $e->getMessage());
+        echo json_encode(["message" => ""]);
+        exit;
+    }
 }
 
-
-// Fetch the list of multiquoted posts which are not in a specific thread
-else if($mybb->input['action'] == "get_multiquoted")
+/**
+ * Handle edit_post action
+ */
+function handleEditPost(): void
 {
-	// If the cookie does not exist, exit
-	if(!array_key_exists("multiquote", $mybb->cookies))
-	{
-		exit;
-	}
-	// Divide up the cookie using our delimeter
-	$multiquoted = explode("|", $mybb->cookies['multiquote']);
+    global $mybb, $db, $charset, $plugins, $CURUSER;
+    
+    $post = get_post($mybb->get_input('pid', MyBB::INPUT_INT));
 
-	$plugins->run_hooks("xmlhttp_get_multiquoted_start");
+    if (!$post || $post['visible'] == -1) {
+        xmlhttp_error('post_doesnt_exist');
+    }
 
-	// No values - exit
-	if(!is_array($multiquoted))
-	{
-		exit;
-	}
+    $thread = get_thread($post['tid']);
+    $forum = get_forum($thread['fid']);
 
-	// Loop through each post ID and sanitize it before querying
-	foreach($multiquoted as $post)
-	{
-		$quoted_posts[$post] = (int)$post;
-	}
+    if (!$thread || !$forum || $forum['type'] != "f") {
+        xmlhttp_error('thread_doesnt_exist');
+    }
 
-	// Join the post IDs back together
-	$quoted_posts = implode(",", $quoted_posts);
+    $plugins->run_hooks("xmlhttp_edit_post_start");
 
-	
+    if ($mybb->get_input('do') == "get_post") {
+        header("Content-type: application/json; charset={$charset}");
+        echo json_encode($post['message']);
+        exit;
+    } elseif ($mybb->get_input('do') == "update_post") {
+        $message = $mybb->get_input('value');
+        $editreason = $mybb->get_input('editreason');
+        
+        if (my_strtolower($charset) != "utf-8") {
+            if (function_exists("iconv")) {
+                $message = iconv($charset, "UTF-8//IGNORE", $message);
+                $editreason = iconv($charset, "UTF-8//IGNORE", $editreason);
+            } elseif (function_exists("mb_convert_encoding")) {
+                $message = @mb_convert_encoding($message, $charset, "UTF-8");
+                $editreason = @mb_convert_encoding($editreason, $charset, "UTF-8");
+            } elseif (my_strtolower($charset) == "iso-8859-1") {
+                $message = utf8_decode($message);
+                $editreason = utf8_decode($editreason);
+            }
+        }
 
-	// Check group permissions if we can't view threads not started by us
-	//$group_permissions = forum_permissions();
-	$onlyusfids = array();
-	foreach($group_permissions as $gpfid => $forum_permissions)
-	{
-		if(isset($forum_permissions['canonlyviewownthreads']) && $forum_permissions['canonlyviewownthreads'] == 1)
-		{
-			$onlyusfids[] = $gpfid;
-		}
-	}
+        require_once INC_PATH."/datahandlers/post.php";
+        $posthandler = new PostDataHandler("update");
+        $posthandler->action = "post";
 
-	$message = '';
+        $updatepost = [
+            "pid" => $post['pid'],
+            "message" => $message,
+            "editreason" => $editreason,
+            "edit_uid" => $CURUSER['id']
+        ];
 
-	// Are we loading all quoted posts or only those not in the current thread?
-	if(empty($mybb->input['load_all']))
-	{
-		$from_tid = "p.tid != '".$mybb->get_input('tid', MyBB::INPUT_INT)."' AND ";
-	}
-	else
-	{
-		$from_tid = '';
-	}
+        if ($post['pid'] == $thread['firstpost']) {
+            $updatepost['prefix'] = $thread['prefix'];
+        }
 
-	require_once INC_PATH."/class_parser.php";
-	$parser = new postParser;
+        $posthandler->set_data($updatepost);
 
-	require_once INC_PATH."/functions_posting.php";
+        if (!$posthandler->validate_post()) {
+            $post_errors = $posthandler->get_friendly_errors();
+            xmlhttp_error($post_errors);
+        } else {
+            $postinfo = $posthandler->update_post();
+            $visible = $postinfo['visible'];
+            
+            if ($visible == 0 && !is_moderator($post['fid'], "canviewunapprove")) {
+                if ($thread['firstpost'] == $post['pid']) {
+                    echo json_encode(["moderation_thread" => $lang->thread_moderation, 'url' => $mybb->settings['bburl'].'/'.get_forum_link($thread['fid']), "message" => $post['message']]);
+                    exit;
+                } else {
+                    echo json_encode(["moderation_post" => $lang->post_moderation, 'url' => $mybb->settings['bburl'].'/'.get_thread_link($thread['tid']), "message" => $post['message']]);
+                    exit;
+                }
+            }
+        }
 
-	$plugins->run_hooks("xmlhttp_get_multiquoted_intermediate");
+        require_once INC_PATH."/class_parser.php";
+        $parser = new postParser;
 
-	// Query for any posts in the list which are not within the specified thread
-	$query = $db->sql_query("
-		SELECT p.subject, p.message, p.pid, p.tid, p.username, p.dateline, t.fid, t.uid AS thread_uid, p.visible, u.username AS userusername
-		FROM tsf_posts p
-		LEFT JOIN tsf_threads t ON (t.tid=p.tid)
-		LEFT JOIN users u ON (u.id=p.uid)
-		WHERE {$from_tid}p.pid IN ({$quoted_posts})
-		ORDER BY p.dateline, p.pid
-	");
-	while($quoted_post = $db->fetch_array($query))
-	{
-		
+        $parser_options = [
+            "allow_html" => 1,
+            "allow_mycode" => 1,
+            "allow_smilies" => 1,
+            "allow_imgcode" => 1,
+            "allow_videocode" => 1,
+            "me_username" => $post['username'],
+            "filter_badwords" => 1
+        ];
 
-		$message .= parse_quoted_message($quoted_post, false);
-	}
-	
-	$maxquotedepth = "5";
-	if($maxquotedepth != '0')
-	{
-		$message = remove_message_quotes($message);
-	}
+        $post['username'] = htmlspecialchars_uni($post['username']);
+        $post['message'] = $parser->parse_message($message, $parser_options);
 
-	// Send our headers.
-	header("Content-type: application/json; charset={$charset}");
+        $enableattachments = "1";
+        if ($enableattachments != 0) {
+            $query = $db->simple_select("attachments", "*", "pid='{$post['pid']}'");
+            while ($attachment = $db->fetch_array($query)) {
+                $attachcache[$attachment['pid']][$attachment['aid']] = $attachment;
+            }
 
-	$plugins->run_hooks("xmlhttp_get_multiquoted_end");
+            require_once INC_PATH."/functions_post.php";
+            get_post_attachments($post['pid'], $post);
+        }
 
-	echo json_encode(array("message" => $message));
-	exit;
+        $showeditedby = "1";
+        $editedmsg = '';
+        
+        if ($showeditedby != 0) {
+            $post['editdate'] = my_datee('relative', TIMENOW);
+            $post['editnote'] = sprintf('This post was last modified: '.$post['editdate'].' by');
+            $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
+            $post['editedprofilelink'] = build_profile_link($CURUSER['username'], $CURUSER['id']);
+            $post['editreason'] = trim($editreason);
+            $editreason = "";
+            
+            if ($post['editreason'] != "") {
+                $post['editreason'] = $parser->parse_badwords($post['editreason']);
+                $post['editreason'] = htmlspecialchars_uni($post['editreason']);
+                $editreason = ' Edit Reason: '.$post['editreason'].'';
+            }
+            
+            $editedmsg = '<div class="mt-3"><span class="small">'.$post['editnote'].' '.$post['editedprofilelink'].''.$editreason.'</span></div>';
+        }
+
+        header("Content-type: application/json; charset={$charset}");
+
+        $editedmsg_response = null;
+        if (!empty($editedmsg)) {
+            $editedmsg_response = str_replace(["\r", "\n"], "", $editedmsg);
+        }
+
+        $plugins->run_hooks("xmlhttp_update_post");
+        echo json_encode(["message" => $post['message']."\n", "editedmsg" => $editedmsg_response]);
+        exit;
+    }
 }
 
-
-
-else if($mybb->input['action'] == "edit_post")
+/**
+ * Handle edit_subject action
+ */
+function handleEditSubject(): void
 {
-	// Fetch the post from the database.
-	$post = get_post($mybb->get_input('pid', MyBB::INPUT_INT));
+    global $mybb, $db, $charset, $plugins, $CURUSER;
+    
+    if ($mybb->request_method != "post") {
+        exit;
+    }
 
-	// No result, die.
-	if(!$post || $post['visible'] == -1)
-	{
-		xmlhttp_error('post_doesnt_exist');
-	}
+    if ($mybb->get_input('tid', MyBB::INPUT_INT)) {
+        $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
+        if (!$thread) {
+            xmlhttp_error('thread_doesnt_exist');
+        }
 
-	// Fetch the thread associated with this post.
-	$thread = get_thread($post['tid']);
+        $query_options = ["order_by" => "dateline, pid"];
+        $query = $db->simple_select("tsf_posts", "pid,uid,dateline", "tid='".$thread['tid']."'", $query_options);
+        $post = $db->fetch_array($query);
+    } else {
+        exit;
+    }
 
-	// Fetch the specific forum this thread/post is in.
-	$forum = get_forum($thread['fid']);
+    $forum = get_forum($thread['fid']);
+    if (!$forum || $forum['type'] != "f") {
+        xmlhttp_error('thread_doesnt_exist');
+    }
 
-	// Missing thread, invalid forum? Error.
-	if(!$thread || !$forum || $forum['type'] != "f")
-	{
-		xmlhttp_error('thread_doesnt_exist');
-	}
+    $plugins->run_hooks("xmlhttp_edit_subject_start");
 
-	// Check if this forum is password protected and we have a valid password
-	//if(check_forum_password($forum['fid'], 0, true))
-	//{
-	//	xmlhttp_error($lang->wrong_forum_password);
-	//}
+    $subject = $mybb->get_input('value');
+    if (my_strtolower($charset) != "utf-8") {
+        if (function_exists("iconv")) {
+            $subject = iconv($charset, "UTF-8//IGNORE", $subject);
+        } elseif (function_exists("mb_convert_encoding")) {
+            $subject = @mb_convert_encoding($subject, $charset, "UTF-8");
+        } elseif (my_strtolower($charset) == "iso-8859-1") {
+            $subject = utf8_decode($subject);
+        }
+    }
 
-	// Fetch forum permissions.
-	//$forumpermissions = forum_permissions($forum['fid']);
+    if ($thread['subject'] != $subject) {
+        require_once INC_PATH."/datahandlers/post.php";
+        $posthandler = new PostDataHandler("update");
+        $posthandler->action = "post";
 
-	$plugins->run_hooks("xmlhttp_edit_post_start");
+        $updatepost = [
+            "pid" => $post['pid'],
+            "tid" => $thread['tid'],
+            "fid" => $forum['fid'],
+            "prefix" => $thread['prefix'],
+            "subject" => $subject,
+            "edit_uid" => $CURUSER['id']
+        ];
+        
+        $posthandler->set_data($updatepost);
 
-	// If this user is not a moderator with "caneditposts" permissions.
-	//if(!is_moderator($forum['fid'], "caneditposts"))
-	//{
-	//	// Thread is closed - no editing allowed.
-	//	if($thread['closed'] == 1)
-	///	{
-	//		xmlhttp_error($lang->thread_closed_edit_message);
-	//	}
-	//	// Forum is not open, user doesn't have permission to edit, or author doesn't match this user - don't allow editing.
-	//	else if($forum['open'] == 0 || $forumpermissions['caneditposts'] == 0 || $mybb->user['uid'] != $post['uid'] || $mybb->user['uid'] == 0 || $mybb->user['suspendposting'] == 1)
-	//	{
-	//		xmlhttp_error($lang->no_permission_edit_post);
-	//	}
-	//	// If we're past the edit time limit - don't allow editing.
-	//	else if($mybb->usergroup['edittimelimit'] != 0 && $post['dateline'] < (TIME_NOW-($mybb->usergroup['edittimelimit']*60)))
-	//	{
-	//		$lang->edit_time_limit = $lang->sprintf($lang->edit_time_limit, $mybb->usergroup['edittimelimit']);
-	//		xmlhttp_error($lang->edit_time_limit);
-	//	}
-	//	// User can't edit unapproved post unless permitted for own
-	//	if($post['visible'] == 0 && !($mybb->settings['showownunapproved'] && $post['uid'] == $mybb->user['uid']))
-	//	{
-	//		xmlhttp_error($lang->post_moderation);
-	//	}
-	//}
+        if (!$posthandler->validate_post()) {
+            $post_errors = $posthandler->get_friendly_errors();
+            xmlhttp_error($post_errors);
+        } else {
+            $posthandler->update_post();
+            $modlogdata = [
+                "tid" => $thread['tid'],
+                "fid" => $forum['fid']
+            ];
+            log_moderator_action($modlogdata, 'Edited Post');
+        }
+    }
 
-	$plugins->run_hooks("xmlhttp_edit_post_end");
+    require_once INC_PATH."/class_parser.php";
+    $parser = new postParser;
 
-	if($mybb->get_input('do') == "get_post")
-	{
-		// Send our headers.
-		header("Content-type: application/json; charset={$charset}");
+    header("Content-type: application/json; charset={$charset}");
+    $plugins->run_hooks("xmlhttp_edit_subject_end");
 
-		// Send the contents of the post.
-		echo json_encode($post['message']);
-		exit;
-	}
-	else if($mybb->get_input('do') == "update_post")
-	{
-		// Verify POST request
-		//if(!verify_post_check($mybb->get_input('my_post_key'), true))
-		//{
-			//xmlhttp_error('invalid_post_code');
-		//}
-
-		$message = $mybb->get_input('value');
-		$editreason = $mybb->get_input('editreason');
-		if(my_strtolower($charset) != "utf-8")
-		{
-			if(function_exists("iconv"))
-			{
-				$message = iconv($charset, "UTF-8//IGNORE", $message);
-				$editreason = iconv($charset, "UTF-8//IGNORE", $editreason);
-			}
-			else if(function_exists("mb_convert_encoding"))
-			{
-				$message = @mb_convert_encoding($message, $charset, "UTF-8");
-				$editreason = @mb_convert_encoding($editreason, $charset, "UTF-8");
-			}
-			else if(my_strtolower($charset) == "iso-8859-1")
-			{
-				$message = utf8_decode($message);
-				$editreason = utf8_decode($editreason);
-			}
-		}
-
-		// Set up posthandler.
-		require_once INC_PATH."/datahandlers/post.php";
-		$posthandler = new PostDataHandler("update");
-		$posthandler->action = "post";
-
-		// Set the post data that came from the input to the $post array.
-		$updatepost = array(
-			"pid" => $post['pid'],
-			"message" => $message,
-			"editreason" => $editreason,
-			"edit_uid" => $CURUSER['id']
-		);
-
-		// If this is the first post set the prefix. If a forum requires a prefix the quick edit would throw an error otherwise
-		if($post['pid'] == $thread['firstpost'])
-		{
-			$updatepost['prefix'] = $thread['prefix'];
-		}
-
-		$posthandler->set_data($updatepost);
-
-		// Now let the post handler do all the hard work.
-		if(!$posthandler->validate_post())
-		{
-			$post_errors = $posthandler->get_friendly_errors();
-			xmlhttp_error($post_errors);
-		}
-		// No errors were found, we can call the update method.
-		else
-		{
-			$postinfo = $posthandler->update_post();
-			$visible = $postinfo['visible'];
-			if($visible == 0 && !is_moderator($post['fid'], "canviewunapprove"))
-			{
-				// Is it the first post?
-				if($thread['firstpost'] == $post['pid'])
-				{
-					echo json_encode(array("moderation_thread" => $lang->thread_moderation, 'url' => $mybb->settings['bburl'].'/'.get_forum_link($thread['fid']), "message" => $post['message']));
-					exit;
-				}
-				else
-				{
-					echo json_encode(array("moderation_post" => $lang->post_moderation, 'url' => $mybb->settings['bburl'].'/'.get_thread_link($thread['tid']), "message" => $post['message']));
-					exit;
-				}
-			}
-		}
-
-		require_once INC_PATH."/class_parser.php";
-		$parser = new postParser;
-
-		$parser_options = array(
-			"allow_html" => 1,
-			"allow_mycode" => 1,
-			"allow_smilies" => 1,
-			"allow_imgcode" => 1,
-			"allow_videocode" => 1,
-			"me_username" => $post['username'],
-			"filter_badwords" => 1
-		);
-
-		$post['username'] = htmlspecialchars_uni($post['username']);
-
-		
-
-		$post['message'] = $parser->parse_message($message, $parser_options);
-
-		// Now lets fetch all of the attachments for these posts.
-		
-		$enableattachments= "1";
-		if($enableattachments != 0)
-			
-		{
-			$query = $db->simple_select("attachments", "*", "pid='{$post['pid']}'");
-			while($attachment = $db->fetch_array($query))
-			{
-				$attachcache[$attachment['pid']][$attachment['aid']] = $attachment;
-			}
-
-			require_once INC_PATH."/functions_post.php";
-
-			get_post_attachments($post['pid'], $post);
-		}
-
-		// Figure out if we need to show an "edited by" message
-		// Only show if at least one of "showeditedby" or "showeditedbyadmin" is enabled
-		
-		$showeditedby = "1";
-		
-		if($showeditedby != 0)
-		{
-			$post['editdate'] = my_datee('relative', TIMENOW);
-			$post['editnote'] = sprintf('This post was last modified: '.$post['editdate'].' by');
-			$CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
-			$post['editedprofilelink'] = build_profile_link($CURUSER['username'], $CURUSER['id']);
-			$post['editreason'] = trim($editreason);
-			$editreason = "";
-			if($post['editreason'] != "")
-			{
-				$post['editreason'] = $parser->parse_badwords($post['editreason']);
-				$post['editreason'] = htmlspecialchars_uni($post['editreason']);
-				
-				$editreason = ' Edit Reason: '.$post['editreason'].'';
-			}
-			
-			
-			$editedmsg = '
-			
-			<div class="mt-3"><span class="small">'.$post['editnote'].' '.$post['editedprofilelink'].''.$editreason.'</span></div>
-			
-			';
-			
-			
-		}
-
-		// Send our headers.
-		header("Content-type: application/json; charset={$charset}");
-
-		$editedmsg_response = null;
-		if(!empty($editedmsg))
-		{
-			$editedmsg_response = str_replace(array("\r", "\n"), "", $editedmsg);
-		}
-
-		$plugins->run_hooks("xmlhttp_update_post");
-
-		echo json_encode(array("message" => $post['message']."\n", "editedmsg" => $editedmsg_response));
-		exit;
-	}
+    $mybb->input['value'] = $parser->parse_badwords($mybb->get_input('value'));
+    $subject = substr($mybb->input['value'], 0, 120);
+    echo json_encode(["subject" => '<a href="'.get_thread_link($thread['tid']).'">'.htmlspecialchars_uni($subject).'</a>']);
+    exit;
 }
 
-
-
-
-
-
-// This action provides editing of thread/post subjects from within their respective list pages.
-else if($mybb->input['action'] == "edit_subject" && $mybb->request_method == "post")
+/**
+ * Handle get_buddyselect action
+ */
+function handleGetBuddySelect(): void
 {
-	// Verify POST request
-	//if(!verify_post_check($mybb->get_input('my_post_key'), true))
-	//{
-	//	xmlhttp_error('invalid_post_code');
-	//}
+    global $CURUSER, $db, $charset, $plugins, $templates, $wolcutoffmins;
+    
+    header("Content-type: text/plain; charset={$charset}");
 
-	// We're editing a thread subject.
-	if($mybb->get_input('tid', MyBB::INPUT_INT))
-	{
-		// Fetch the thread.
-		$thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
-		if(!$thread)
-		{
-			xmlhttp_error('thread_doesnt_exist');
-		}
+    if ($CURUSER['buddylist'] == "") {
+        xmlhttp_error('buddylist_error');
+    }
 
-		// Fetch some of the information from the first post of this thread.
-		$query_options = array(
-			"order_by" => "dateline, pid",
-		);
-		$query = $db->simple_select("tsf_posts", "pid,uid,dateline", "tid='".$thread['tid']."'", $query_options);
-		$post = $db->fetch_array($query);
-	}
-	else
-	{
-		exit;
-	}
+    $query_options = [
+        "order_by" => "username",
+        "order_dir" => "asc"
+    ];
 
-	// Fetch the specific forum this thread/post is in.
-	$forum = get_forum($thread['fid']);
+    $plugins->run_hooks("xmlhttp_get_buddyselect_start");
 
-	// Missing thread, invalid forum? Error.
-	if(!$forum || $forum['type'] != "f")
-	{
-		xmlhttp_error('thread_doesnt_exist');
-	}
+    $timecut = TIMENOW - $wolcutoffmins;
+    $query = $db->simple_select("users", "id, username, usergroup, displaygroup, lastactive, lastvisit, invisible", "id IN ({$CURUSER['buddylist']})", $query_options);
+    
+    $online = [];
+    $offline = [];
+    
+    while ($buddy = $db->fetch_array($query)) {
+        $buddy['username'] = htmlspecialchars_uni($buddy['username']);
+        $buddy_name = format_name($buddy['username'], $buddy['usergroup'], $buddy['displaygroup']);
+        $profile_link = build_profile_link($buddy_name, $buddy['id'], '_blank');
+        
+        if ($buddy['lastactive'] > $timecut && ($buddy['invisible'] == 0 || $CURUSER['usergroup'] == 4) && $buddy['lastvisit'] != $buddy['lastactive']) {
+            eval("\$online[] = \"".$templates->get("xmlhttp_buddyselect_online")."\";");
+        } else {
+            eval("\$offline[] = \"".$templates->get("xmlhttp_buddyselect_offline")."\";");
+        }
+    }
+    
+    $online = implode("", $online);
+    $offline = implode("", $offline);
 
-	
-
-	$plugins->run_hooks("xmlhttp_edit_subject_start");
-
-	
-	
-	$subject = $mybb->get_input('value');
-	if(my_strtolower($charset) != "utf-8")
-	{
-		if(function_exists("iconv"))
-		{
-			$subject = iconv($charset, "UTF-8//IGNORE", $subject);
-		}
-		else if(function_exists("mb_convert_encoding"))
-		{
-			$subject = @mb_convert_encoding($subject, $charset, "UTF-8");
-		}
-		else if(my_strtolower($charset) == "iso-8859-1")
-		{
-			$subject = utf8_decode($subject);
-		}
-	}
-
-	// Only edit subject if subject has actually been changed
-	if($thread['subject'] != $subject)
-	{
-		// Set up posthandler.
-		require_once INC_PATH."/datahandlers/post.php";
-		$posthandler = new PostDataHandler("update");
-		$posthandler->action = "post";
-
-		// Set the post data that came from the input to the $post array.
-		$updatepost = array(
-			"pid" => $post['pid'],
-			"tid" => $thread['tid'],
-			"fid" => $forum['fid'],
-			"prefix" => $thread['prefix'],
-			"subject" => $subject,
-			"edit_uid" => $CURUSER['id']
-		);
-		$posthandler->set_data($updatepost);
-
-		// Now let the post handler do all the hard work.
-		if(!$posthandler->validate_post())
-		{
-			$post_errors = $posthandler->get_friendly_errors();
-			xmlhttp_error($post_errors);
-		}
-		// No errors were found, we can call the update method.
-		else
-		{
-			$posthandler->update_post();
-			//if($ismod == true)
-			//{
-				$modlogdata = array(
-					"tid" => $thread['tid'],
-					"fid" => $forum['fid']
-				);
-				log_moderator_action($modlogdata, 'Edited Post');
-			//}
-		}
-	}
-
-	require_once INC_PATH."/class_parser.php";
-	$parser = new postParser;
-
-	// Send our headers.
-	header("Content-type: application/json; charset={$charset}");
-
-	$plugins->run_hooks("xmlhttp_edit_subject_end");
-
-	$mybb->input['value'] = $parser->parse_badwords($mybb->get_input('value'));
-
-	// Spit the subject back to the browser.
-	$subject = substr($mybb->input['value'], 0, 120); // 120 is the varchar length for the subject column
-	echo json_encode(array("subject" => '<a href="'.get_thread_link($thread['tid']).'">'.htmlspecialchars_uni($subject).'</a>'));
-
-	// Close the connection.
-	exit;
+    $plugins->run_hooks("xmlhttp_get_buddyselect_end");
+    eval("\$buddy_select = \"".$templates->get("xmlhttp_buddyselect")."\";");
+    echo $buddy_select;
+    exit;
 }
 
-
-
-
-else if($mybb->input['action'] == "get_buddyselect")
+/**
+ * Handle complex_password action
+ */
+function handleComplexPassword(): void
 {
-	// Send our headers.
-	header("Content-type: text/plain; charset={$charset}");
+    global $charset, $plugins;
+    
+    $password = trim($mybb->get_input('password'));
+    $password = str_replace([unichr(160), unichr(173), unichr(0xCA), dec_to_utf8(8238), dec_to_utf8(8237), dec_to_utf8(8203)], [" ", "-", "", "", "", ""], $password);
 
-	if($CURUSER['buddylist'] != "")
-	{
-		$query_options = array(
-			"order_by" => "username",
-			"order_dir" => "asc"
-		);
+    $minpasswordlength = '6';
+    header("Content-type: application/json; charset={$charset}");
 
-		$plugins->run_hooks("xmlhttp_get_buddyselect_start");
+    $plugins->run_hooks("xmlhttp_complex_password");
 
-		$timecut = TIMENOW - $wolcutoffmins;
-		$query = $db->simple_select("users", "id, username, usergroup, displaygroup, lastactive, lastvisit, invisible", "id IN ({$CURUSER['buddylist']})", $query_options);
-		$online = array();
-		$offline = array();
-		while($buddy = $db->fetch_array($query))
-		{
-			$buddy['username'] = htmlspecialchars_uni($buddy['username']);
-			$buddy_name = format_name($buddy['username'], $buddy['usergroup'], $buddy['displaygroup']);
-			$profile_link = build_profile_link($buddy_name, $buddy['id'], '_blank');
-			if($buddy['lastactive'] > $timecut && ($buddy['invisible'] == 0 || $CURUSER['usergroup'] == 4) && $buddy['lastvisit'] != $buddy['lastactive'])
-			{
-				eval("\$online[] = \"".$templates->get("xmlhttp_buddyselect_online")."\";");
-			}
-			else
-			{
-				eval("\$offline[] = \"".$templates->get("xmlhttp_buddyselect_offline")."\";");
-			}
-		}
-		$online = implode("", $online);
-		$offline = implode("", $offline);
+    if (!preg_match("/^.*(?=.{".$minpasswordlength.",})(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).*$/", $password)) {
+        echo json_encode('complex_password_fails');
+    } else {
+        echo json_encode("true");
+    }
 
-		$plugins->run_hooks("xmlhttp_get_buddyselect_end");
-
-		eval("\$buddy_select = \"".$templates->get("xmlhttp_buddyselect")."\";");
-		echo $buddy_select;
-	}
-	else
-	{
-		xmlhttp_error('buddylist_error');
-	}
+    exit;
 }
 
-
-
-else if($mybb->input['action'] == "complex_password")
+/**
+ * Handle username_availability action
+ */
+function handleUsernameAvailability(): void
 {
-	$password = trim($mybb->get_input('password'));
-	$password = str_replace(array(unichr(160), unichr(173), unichr(0xCA), dec_to_utf8(8238), dec_to_utf8(8237), dec_to_utf8(8203)), array(" ", "-", "", "", "", ""), $password);
+    global $mybb, $db, $charset, $plugins, $lang;
+    
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        xmlhttp_error($lang->invalid_post_code);
+    }
 
-	$minpasswordlength = '6';
-	
-	header("Content-type: application/json; charset={$charset}");
+    require_once INC_PATH."/functions_user.php";
+    $username = $mybb->get_input('username');
+    $username = trim_blank_chrs($username);
+    $username = str_replace([unichr(160), unichr(173), unichr(0xCA), dec_to_utf8(8238), dec_to_utf8(8237), dec_to_utf8(8203)], [" ", "-", "", "", "", ""], $username);
+    $username = preg_replace("#\s{2,}#", " ", $username);
 
-	$plugins->run_hooks("xmlhttp_complex_password");
+    header("Content-type: application/json; charset={$charset}");
 
-	if(!preg_match("/^.*(?=.{".$minpasswordlength.",})(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).*$/", $password))
-	{
-		echo json_encode('complex_password_fails');
-	}
-	else
-	{
-		// Return nothing but an OK password if passes regex
-		echo json_encode("true");
-	}
+    if (empty($username)) {
+        echo json_encode('banned_characters_username');
+        exit;
+    }
 
-	exit;
+    $banned_username = is_banned_username($username, true);
+    if ($banned_username) {
+        echo json_encode('banned_username');
+        exit;
+    }
+
+    if (strpos($username, "<") !== false || strpos($username, ">") !== false || strpos($username, "&") !== false || my_strpos($username, "\\") !== false || strpos($username, ";") !== false || strpos($username, ",") !== false || !validate_utf8_string($username, false, false)) {
+        echo json_encode('banned_characters_username');
+        exit;
+    }
+
+    $user = get_user_by_username($username);
+    $plugins->run_hooks("xmlhttp_username_availability");
+
+    if ($user) {
+        $username_taken = sprintf($lang->xmlhttp['username_taken'], htmlspecialchars_uni($username));
+        echo json_encode($username_taken);
+        exit;
+    } else {
+        echo json_encode("true");
+        exit;
+    }
 }
 
-
-else if($mybb->input['action'] == "username_availability")
+/**
+ * Handle email_availability action
+ */
+function handleEmailAvailability(): void
 {
-	if(!verify_post_check($mybb->get_input('my_post_key'), true))
-	{
-		xmlhttp_error($lang->invalid_post_code);
-	}
+    global $mybb, $charset, $plugins;
+    
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        xmlhttp_error('invalid_post_code');
+    }
 
-	require_once INC_PATH."/functions_user.php";
-	$username = $mybb->get_input('username');
+    require_once INC_PATH."/datahandlers/user.php";
+    $userhandler = new UserDataHandler("insert");
 
-	// Fix bad characters
-	$username = trim_blank_chrs($username);
-	$username = str_replace(array(unichr(160), unichr(173), unichr(0xCA), dec_to_utf8(8238), dec_to_utf8(8237), dec_to_utf8(8203)), array(" ", "-", "", "", "", ""), $username);
+    $email = $mybb->get_input('email');
+    header("Content-type: application/json; charset={$charset}");
 
-	// Remove multiple spaces from the username
-	$username = preg_replace("#\s{2,}#", " ", $username);
+    $user = ['email' => $email];
+    $userhandler->set_data($user);
+    $errors = [];
 
-	header("Content-type: application/json; charset={$charset}");
+    if (!$userhandler->verify_email()) {
+        $errors = $userhandler->get_friendly_errors();
+    }
 
-	if(empty($username))
-	{
-		echo json_encode('banned_characters_username');
-		exit;
-	}
+    $plugins->run_hooks("xmlhttp_email_availability");
 
-	// Check if the username belongs to the list of banned usernames.
-	$banned_username = is_banned_username($username, true);
-	if($banned_username)
-	{
-		echo json_encode('banned_username');
-		exit;
-	}
-
-	// Check for certain characters in username (<, >, &, and slashes)
-	if(strpos($username, "<") !== false || strpos($username, ">") !== false || strpos($username, "&") !== false || my_strpos($username, "\\") !== false || strpos($username, ";") !== false || strpos($username, ",") !== false || !validate_utf8_string($username, false, false))
-	{
-		echo json_encode('banned_characters_username');
-		exit;
-	}
-
-	// Check if the username is actually already in use
-	$user = get_user_by_username($username);
-
-	$plugins->run_hooks("xmlhttp_username_availability");
-
-	if($user)
-	{
-		$username_taken = sprintf($lang->xmlhttp['username_taken'], htmlspecialchars_uni($username));
-		echo json_encode($username_taken);
-		exit;
-	}
-	else
-	{
-	$username_available = sprintf($lang->xmlhttp['username_available'], htmlspecialchars_uni($username));
-		echo json_encode("true");
-		exit;
-	}
+    if (!empty($errors)) {
+        echo json_encode($errors[0]);
+        exit;
+    } else {
+        echo json_encode("true");
+        exit;
+    }
 }
 
-
-else if($mybb->input['action'] == "email_availability")
+/**
+ * Handle search_torrents action
+ */
+function handleSearchTorrents(): void
 {
-	if(!verify_post_check($mybb->get_input('my_post_key'), true))
-	{
-		xmlhttp_error('invalid_post_code');
-	}
-
-	require_once INC_PATH."/datahandlers/user.php";
-	$userhandler = new UserDataHandler("insert");
-
-	$email = $mybb->get_input('email');
-
-	header("Content-type: application/json; charset={$charset}");
-
-	$user = array(
-		'email' => $email
-	);
-
-	$userhandler->set_data($user);
-
-	$errors = array();
-
-	if(!$userhandler->verify_email())
-	{
-		$errors = $userhandler->get_friendly_errors();
-	}
-
-	$plugins->run_hooks("xmlhttp_email_availability");
-
-	if(!empty($errors))
-	{
-		echo json_encode($errors[0]);
-		exit;
-	}
-	else
-	{
-		echo json_encode("true");
-		exit;
-	}
-}
-
-
-
-
-
-
-else if($mybb->input['action'] == "search_torrents") 
-{
-    $input = isset($_GET['input']) ? trim($_GET['input']) : '';
+    global $db, $charset, $BASEURL;
+    
+    $input = $_GET['input'] ?? '';
+    $input = trim($input);
 
     if (empty($input)) {
         header("Content-Type: application/json; charset={$charset}");
@@ -896,9 +718,7 @@ else if($mybb->input['action'] == "search_torrents")
         exit;
     }
 
-    // Добавляем символы LIKE
     $like_input = "%{$input}%";
-
     $sql = "
         SELECT id, name, descr, t_image
         FROM torrents
@@ -908,12 +728,10 @@ else if($mybb->input['action'] == "search_torrents")
     ";
 
     $params = [$like_input, $like_input];
-
     $result = $db->sql_query_prepared($sql, $params);
 
     $torrents = [];
-    while ($row = $db->fetch_array($result->result)) 
-	{
+    while ($row = $db->fetch_array($result)) {
         $image_url = !empty($row['t_image'])
             ? (strpos($row['t_image'], 'http') === 0 ? $row['t_image'] : $BASEURL . '/' . ltrim($row['t_image'], '/'))
             : $BASEURL . '/pic/nopreview.gif';
@@ -931,244 +749,560 @@ else if($mybb->input['action'] == "search_torrents")
     exit;
 }
 
-
-
-
-	if ($mybb->input['action'] == "quick_comment" && isset($_POST['ajax_quick_comment']) && isset($_POST['id']) && isset($_POST['text']) && $CURUSER)	
-	{
-       
-	  $query = $db->simple_select("ts_u_perm", "cancomment", "userid='".$CURUSER['id']."'");
-	  
-      if (0 < $db->num_rows ($query))
-      {
-        $commentperm = $db->fetch_array ($query);
-        if ($commentperm['cancomment'] == '0')
-        {
-          show_msg ('nopermission');
-        }
-      }
-
-      $torrentid = intval ($_POST['id']);
-      $lang->load ('comment');
-      if (allowcomments ($torrentid) == false)
-      {
-        show_msg ($lang->comment['closed']);
-      }
-
-      $text = urldecode ($_POST['text']);
-      $text = strval ($text);
-      if (strtolower ($shoutboxcharset) != 'utf-8')
-      {
-        if (function_exists ('iconv'))
-        {
-          $text = iconv ('UTF-8', $shoutboxcharset, $text);
-        }
-        else
-        {
-          if (function_exists ('mb_convert_encoding'))
-          {
-            $text = mb_convert_encoding ($text, $shoutboxcharset, 'UTF-8');
-          }
-          else
-          {
-            if (strtolower ($shoutboxcharset) == 'iso-8859-1')
-            {
-              $text = utf8_decode ($text);
-            }
-          }
-        }
-      }
-
-      
-	  $query = $db->simple_select("comments", "dateline", "user = '{$CURUSER['id']}'", array('order_by' => 'dateline', 'order_dir' => 'DESC', 'limit' => 1));
-	  
-      if (0 < $db->num_rows ($query))
-      {
-       
-		 $Result = $db->fetch_array($query);
-         $last_comment = $Result['dateline'];
-      }
-
-      $floodmsg = flood_check ($lang->comment['floodcomment'], $last_comment, true);
-      
-	  $res = $db->simple_select("torrents", "name, owner", "id='".$torrentid."'");
-	  
-      $arr = $db->fetch_array($res);
-      if (!empty ($floodmsg))
-      {
-        show_msg (str_replace (array ('<font color="#9f040b" size="2">', '</font>', '<b>', '</b>'), '', $floodmsg));
-      }
-      else
-      {
-        if (!$arr)
-        {
-          show_msg ($lang->global['notorrentid']);
-        }
-        else
-        {
-          if (((empty ($text) OR empty ($torrentid)) OR !is_valid_id ($torrentid)))
-          {
-            show_msg ($lang->global['dontleavefieldsblank']);
-          }
-        }
-      }
-
-      $commentposted = false;
-      if (!$is_mod)
-      {
-        
-	    $query = $db->simple_select("comments", "id, user, text", "torrent='{$torrentid}'", array('order_by' => 'dateline', 'order_dir' => 'DESC', 'limit_start' => 0, 'limit' => 1));
-		
-        if (0 < $db->num_rows ($query))
-        {
-         
-		  $last_post55 = $db->fetch_array($query);
-		  $lastcommentuserid = $last_post55['user'];
-		  
-          if ($lastcommentuserid == $CURUSER['id'])
-          {
-            $oldtext = $last_post55['text'];
-            $newid = $last_post55['id'];
-            
-
-			$newtext = $oldtext .="\n[hr]\n".$_POST['text'];
-			
-			$update_comments = array(
-			    "text" => $db->escape_string($newtext)
-		    );
-		    $update_comments['editedat'] = TIMENOW;
-		    $update_comments['editedby'] = $db->escape_string($CURUSER['id']);
-					
-		    $db->update_query("comments", $update_comments, "id='{$newid}'");
-			
-			
-            if ($db->affected_rows ())
-            {
-              $commentposted = true;
-            }
-          }
-        }
-      }
-
-      if (!$commentposted)
-      {
-       
-		// Insert the comment.
-		$comment_insert_data = array(
-			"user" => $db->escape_string($CURUSER['id']),
-			"torrent" => $db->escape_string($torrentid),
-			"dateline" => TIMENOW,
-			"text" => $db->escape_string($text)
-		
-		);
-
-		$db->insert_query("comments", $comment_insert_data);
-		
-        $cid = $db->insert_id();
-		
-		
-		
-		
-		// Привязываем загруженные файлы к этому комментарию
-                if (!empty($_POST['file_ids'])) 
-				{
-                   $file_ids = array_map('intval', $_POST['file_ids']); // защита
-                   $id_list  = implode(',', $file_ids);
-
-                   if (!empty($id_list)) 
-				   {
-                     $db->sql_query("
-                         UPDATE comment_files 
-                         SET comment_id = " . (int)$cid . "
-                         WHERE id IN ($id_list)
-                        ");
-                   }
-                }
-		
-		
-		
-		
-		
-      
-		
-		$update_array['comments'] = 'comments+1';
-		$db->update_query("torrents", $update_array, "id='{$torrentid}'", 1, true);
-		
-		$update_comms['comms'] = 'comms+1';
-		$db->update_query("users", $update_comms, "id='{$CURUSER['id']}'", 1, true);
-		
-		
-		
-		$sql = "SELECT commentpm FROM users WHERE id = ?";
-        $params = [(int)$arr['owner']]; // кастим к int для безопасности
-
-        $ras = $db->sql_query_prepared($sql, $params);
-
-        $arg = $db->fetch_array($ras->result);
-
-		
-		
-		  
-		if (($arg['commentpm'] == 1 && $CURUSER['id'] != $arr['owner']))
-        {
-            require_once INC_PATH . '/functions_pm.php';
-            $url2 = get_comment_link($cid, $torrentid)."#pid{$cid}";
-					
-			$pm = array(
-				'subject' => sprintf ($lang->comment['newcommentsub']),
-				'message' => sprintf ($lang->comment['newcommenttxt'], '[url=' . $BASEURL.'/'.$url2.']' . $arr['name'] . '[/url]'),
-				'touid' => $arr['owner']
-			);
-			
-			$pm['sender']['uid'] = -1;
-			send_pm($pm, -1, true);
-		  
-		  
-		}
-		
-      }
-
-
-	  require_once INC_PATH . '/commenttable.php';
-      
-      $subres = $db->sql_query_prepared("
-      SELECT c.id, c.torrent as torrentid, c.text, c.user, c.dateline, c.editedby, c.editedat,
-           c.totalvotes, uu.username as editedbyuname, 
-           gg.namestyle as editbynamestyle, u.postnum, u.threadnum, u.added, u.comms, u.enabled, u.warned, u.leechwarn, 
-           u.username, u.usertitle, u.usergroup, u.donor, u.uploaded, 
-           u.downloaded, u.avatar as useravatar, u.avatardimensions, u.signature, g.title as grouptitle, g.namestyle 
-           FROM comments c 
-           LEFT JOIN users uu ON (c.editedby = uu.id) 
-           LEFT JOIN usergroups gg ON (uu.usergroup = gg.gid) 
-           LEFT JOIN users u ON (c.user = u.id) 
-           LEFT JOIN usergroups g ON (u.usergroup = g.gid) 
-           WHERE c.id = ? 
-           ORDER BY c.id", [(int)$cid]);
-
-				
-      $allrows = array();
-      while ($subrow = $db->fetch_array($subres->result)) 
-	  {
-           $allrows[] = $subrow;
-      }
-      $lcid = 0;
-      if (isset($_POST["lcid"])) 
-	  {
-          $lcid = intval($_POST["lcid"]);
-      }
-      define("LCID", $lcid);
-      
-	  $showcommenttable = commenttable($allrows, "", "", false, true, true);
-      show_msg($showcommenttable, false, "", false);
-					
-      //return 1;
+/**
+ * Handle quick_comment action
+ */
+function handleQuickComment(): void
+{
+    global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins;
+    
+    if (!isset($_POST['ajax_quick_comment']) || !isset($_POST['id']) || !isset($_POST['text']) || !$CURUSER) {
+        return;
     }
 
+    $query = $db->simple_select("ts_u_perm", "cancomment", "userid='".$CURUSER['id']."'");
+    
+    if ($db->num_rows($query) > 0) {
+        $commentperm = $db->fetch_array($query);
+        if ($commentperm['cancomment'] == '0') {
+            show_msg('nopermission');
+        }
+    }
+
+    $torrentid = (int)$_POST['id'];
+    $lang->load('comment');
+    
+    if (!allowcomments($torrentid)) {
+        show_msg($lang->comment['closed']);
+    }
+
+    $text = urldecode($_POST['text']);
+    $text = (string)$text;
+    
+    if (strtolower($shoutboxcharset) != 'utf-8') {
+        if (function_exists('iconv')) {
+            $text = iconv('UTF-8', $shoutboxcharset, $text);
+        } elseif (function_exists('mb_convert_encoding')) {
+            $text = mb_convert_encoding($text, $shoutboxcharset, 'UTF-8');
+        } elseif (strtolower($shoutboxcharset) == 'iso-8859-1') {
+            $text = utf8_decode($text);
+        }
+    }
+
+    $query = $db->simple_select("comments", "dateline", "user = '{$CURUSER['id']}'", ['order_by' => 'dateline', 'order_dir' => 'DESC', 'limit' => 1]);
+    $last_comment = 0;
+    
+    if ($db->num_rows($query) > 0) {
+        $result = $db->fetch_array($query);
+        $last_comment = $result['dateline'];
+    }
+
+    $floodmsg = flood_check($lang->comment['floodcomment'], $last_comment > 0 ? (string)$last_comment : null, true);
+    $res = $db->simple_select("torrents", "name, owner", "id='".$torrentid."'");
+    $arr = $db->fetch_array($res);
+    
+    if (!empty($floodmsg)) {
+        show_msg(str_replace(['<font color="#9f040b" size="2">', '</font>', '<b>', '</b>'], '', $floodmsg));
+    } else {
+        if (!$arr) {
+            show_msg($lang->global['notorrentid']);
+        } elseif (empty($text) || empty($torrentid) || !is_valid_id($torrentid)) {
+            show_msg($lang->global['dontleavefieldsblank']);
+        }
+    }
+
+    $commentposted = false;
+    if (!$is_mod) {
+        $query = $db->simple_select("comments", "id, user, text", "torrent='{$torrentid}'", ['order_by' => 'dateline', 'order_dir' => 'DESC', 'limit_start' => 0, 'limit' => 1]);
+        
+        if ($db->num_rows($query) > 0) {
+            $last_post55 = $db->fetch_array($query);
+            $lastcommentuserid = $last_post55['user'];
+            
+            if ($lastcommentuserid == $CURUSER['id']) {
+                $oldtext = $last_post55['text'];
+                $newid = $last_post55['id'];
+                $newtext = $oldtext .="\n[hr]\n".$_POST['text'];
+                
+                $update_comments = [
+                    "text" => $db->escape_string($newtext),
+                    "editedat" => TIMENOW,
+                    "editedby" => $db->escape_string($CURUSER['id'])
+                ];
+                        
+                $db->update_query("comments", $update_comments, "id='{$newid}'");
+                
+                if ($db->affected_rows()) {
+                    $commentposted = true;
+                }
+            }
+        }
+    }
+
+    if (!$commentposted) {
+        $comment_insert_data = [
+            "user" => $db->escape_string($CURUSER['id']),
+            "torrent" => $db->escape_string($torrentid),
+            "dateline" => TIMENOW,
+            "text" => $db->escape_string($text)
+        ];
+
+        $db->insert_query("comments", $comment_insert_data);
+        $cid = $db->insert_id();
+
+        if (!empty($_POST['file_ids'])) {
+            $file_ids = array_map('intval', (array)$_POST['file_ids']);
+            $id_list = implode(',', $file_ids);
+
+            if (!empty($id_list)) {
+                $db->sql_query("UPDATE comment_files SET comment_id = " . $cid . " WHERE id IN ($id_list)");
+            }
+        }
+
+        $db->update_query("torrents", ['comments' => 'comments+1'], "id='{$torrentid}'", "1", true);
+        $db->update_query("users", ['comms' => 'comms+1'], "id='{$CURUSER['id']}'", "1", true);
+
+        $sql = "SELECT commentpm FROM users WHERE id = ?";
+        $params = [(int)$arr['owner']];
+        $ras = $db->sql_query_prepared($sql, $params);
+        $arg = $db->fetch_array($ras);
+
+        if ($arg['commentpm'] == 1 && $CURUSER['id'] != $arr['owner']) {
+            require_once INC_PATH . '/functions_pm.php';
+            $url2 = get_comment_link($cid, $torrentid)."#pid{$cid}";
+                    
+            $pm = [
+                'subject' => sprintf($lang->comment['newcommentsub']),
+                'message' => sprintf($lang->comment['newcommenttxt'], '[url=' . $BASEURL.'/'.$url2.']' . $arr['name'] . '[/url]'),
+                'touid' => $arr['owner']
+            ];
+            
+            $pm['sender']['uid'] = -1;
+            send_pm($pm, -1, true);
+        }
+    }
+
+    require_once INC_PATH . '/commenttable.php';
+    
+    $subres = $db->sql_query_prepared("
+    SELECT 
+        c.id, c.torrent AS torrentid, c.text, c.user, c.editreason, c.dateline, c.editedby, c.editedat, c.totalvotes, 
+        uu.username AS editedbyuname, gg.namestyle AS editbynamestyle, 
+        u.added AS registered, u.enabled, u.lastactive, u.lastvisit, u.invisible, u.warned, u.leechwarn, u.username, u.usertitle, 
+        u.usergroup, u.displaygroup, u.postnum, u.threadnum, u.added, u.comms, u.donor, u.uploaded, u.downloaded, 
+        u.avatar AS useravatar, u.avatardimensions, u.signature, 
+        g.title AS grouptitle, g.namestyle 
+    FROM comments c
+    LEFT JOIN users uu ON (c.editedby = uu.id)
+    LEFT JOIN usergroups gg ON (uu.usergroup = gg.gid)
+    LEFT JOIN users u ON (c.user = u.id)
+    LEFT JOIN usergroups g ON (u.usergroup = g.gid)
+    WHERE c.id = ?", [$cid]);
+
+    $allrows = [];
+    while ($subrow = $db->fetch_array($subres)) {
+        $allrows[] = $subrow;
+    }
+    
+    $lcid = (int)($_POST["lcid"] ?? 0);
+    define("LCID", $lcid);
+    
+    $showcommenttable = commenttable($allrows, "", "", false, true, true);
+    show_msg($showcommenttable, false, "", false);
+}
 
 
 
 
 
+
+
+/**
+ * Handle edit_torrent action - AJAX обработка редактирования торрента
+ */
+function handleEditTorrent(): void
+{
+    global $db, $CURUSER, $lang, $BASEURL, $torrent_dir, $cache, $is_mod;
+    
+    // Проверяем авторизацию
+    if (!isset($CURUSER)) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Not logged in']);
+        exit;
+    }
+
+    // Проверяем метод запроса
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+        exit;
+    }
+
+    $isAjax = isset($_POST['ajax']) && $_POST['ajax'] == '1';
+    
+    ob_start();
+
+    $errors = [];
+    if (empty($_POST['name'])) {
+        $errors[] = 'The name cannot be empty';
+    }
+    if (empty($_POST['descr'])) {
+        $errors[] = 'The description cannot be empty';
+    }
+
+    if (!empty($errors) && $isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => implode(', ', $errors)
+        ]);
+        ob_end_flush();
+        exit;
+    }
+
+    // Получаем ID торрента
+    $id = intval($_POST['id'] ?? 0);
+    if (!$id) {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'message' => 'No Torrent ID'
+            ]);
+            ob_end_flush();
+            exit;
+        } else {
+            die('No Torrent ID');
+        }
+    }
+
+    // Проверяем права доступа к торренту
+    $torrent = get_torrent($id);
+    if (!$torrent) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Torrent not found']);
+        exit;
+    }
+
+    // Проверяем, может ли пользователь редактировать этот торрент
+    //if ($CURUSER['id'] !== $torrent['owner'] && !$is_mod) {
+        //header('Content-Type: application/json');
+        //echo json_encode(['success' => false, 'message' => 'Access denied']);
+        //exit;
+    //}
+
+    // Basic data
+    $name = htmlspecialchars($_POST['name']);
+    $descr = htmlspecialchars($_POST['descr']);
+    $t_image_file = $_FILES['t_image_file'] ?? [];
+    $t_image_file2 = $_FILES['t_image_file2'] ?? [];
+    $t_image_url = isset($_POST['t_image_url']) ? htmlspecialchars($_POST['t_image_url']) : '';
+    $t_image_url2 = isset($_POST['t_image_url2']) ? htmlspecialchars($_POST['t_image_url2']) : '';
+    
+    $t_link = $_POST['t_link'] ?? '';
+    
+    $category = intval($_POST['category'] ?? 0);
+    $free = isset($_POST['free']) && $_POST['free'] == 'yes' ? 'yes' : 'no';
+    $silver = isset($_POST['silver']) && $_POST['silver'] == 'yes' ? 'yes' : 'no';
+    $doubleupload = isset($_POST['doubleupload']) && $_POST['doubleupload'] == 'yes' ? 'yes' : 'no';
+    $allowcomments = isset($_POST['allowcomments']) && $_POST['allowcomments'] == 'no' ? 'no' : 'yes';
+    $sticky = isset($_POST['sticky']) && $_POST['sticky'] == 'yes' ? 'yes' : 'no';
+    $isrequest = isset($_POST['isrequest']) && $_POST['isrequest'] == 'yes' ? 'yes' : 'no';
+    $isnuked = isset($_POST['isnuked']) && $_POST['isnuked'] == 'yes' ? 'yes' : 'no';
+    $WhyNuked = isset($_POST['WhyNuked']) ? htmlspecialchars($_POST['WhyNuked']) : '';
+
+    $UpdateSet = [
+        'name' => $db->escape_string($name),
+        'descr' => $db->escape_string($descr),
+        'category' => $db->escape_string($category),
+        'free' => $free,
+        'silver' => $silver,
+        'doubleupload' => $doubleupload,
+        'allowcomments' => $allowcomments,
+        'sticky' => $sticky,
+        'isrequest' => $isrequest,
+        'isnuked' => $isnuked,
+        'WhyNuked' => $isnuked == 'yes' ? $db->escape_string($WhyNuked) : ''
+    ];
+
+    
+	
+	
+	
+	// Обработка первого изображения (файл) - ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ
+if (!empty($t_image_file)) 
+{
+    if (((( 0 < $t_image_file['size'] AND $t_image_file['error'] === 0 ) AND $t_image_file['tmp_name']) AND $t_image_file['name'])) 
+    {
+        $t_image_url = fix_url($t_image_file['name']);
+        $AllowedFileTypes = array('jpeg', 'jpg', 'gif', 'png', 'webp');
+        $ImageExt = get_extension($t_image_url);
+
+        if (in_array($ImageExt, $AllowedFileTypes, true)) 
+        {
+            $AllowedMimeTypes = array('image/jpeg', 'image/gif', 'image/png', 'image/webp');
+            $ImageDetails = getimagesize($t_image_file['tmp_name']);
+
+            if (( $ImageDetails AND in_array($ImageDetails['mime'], $AllowedMimeTypes, true ))) 
+            {
+                if ($ImageContents = file_get_contents($t_image_file['tmp_name'])) 
+                {
+                    $NewImageURL = $torrent_dir . '/images/' . $id . '.' . $ImageExt;
+
+                    if (file_exists($NewImageURL)) 
+                    {
+                        @unlink($NewImageURL);
+                    }
+
+                    if (file_put_contents($NewImageURL, $ImageContents)) 
+                    {
+                        $COVERIMAGEUPDATED = true;
+                        
+                        $update_image2 = array(
+                            "t_image" => $db->escape_string($BASEURL . '/' . $NewImageURL)
+                        );
+                    
+                        $db->update_query("torrents", $update_image2, "id='{$id}'");
+                        $cache->update_torrents();
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Обработка второго изображения (файл) - ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ
+if (!empty($t_image_file2)) 
+{
+    if (((( 0 < $t_image_file2['size'] AND $t_image_file2['error'] === 0 ) AND $t_image_file2['tmp_name']) AND $t_image_file2['name'])) 
+    {
+        $t_image_url2 = fix_url($t_image_file2['name']);
+        $AllowedFileTypes = array('jpeg', 'jpg', 'gif', 'png', 'webp');
+        $ImageExt = get_extension( $t_image_url2 );
+
+        if (in_array($ImageExt, $AllowedFileTypes, true)) 
+        {
+            $AllowedMimeTypes = array('image/jpeg', 'image/gif', 'image/png', 'image/webp');
+            $ImageDetails = getimagesize($t_image_file2['tmp_name']);
+
+            if (( $ImageDetails AND in_array($ImageDetails['mime'], $AllowedMimeTypes, true))) 
+            {
+                if ($ImageContents = file_get_contents( $t_image_file2['tmp_name'] )) 
+                {
+                    $NewImageURL = $torrent_dir . '/images/' . $id . '_2.' . $ImageExt;
+
+                    if (file_exists($NewImageURL)) 
+                    {
+                        @unlink($NewImageURL);
+                    }
+
+                    if (file_put_contents($NewImageURL, $ImageContents)) 
+                    {
+                        $COVERIMAGEUPDATED = true;
+                        
+                        $update_image22 = array(
+                            "t_image2" => $db->escape_string($BASEURL . '/' . $NewImageURL)
+                        );
+                    
+                        $db->update_query("torrents", $update_image22, "id='{$id}'");
+                        $cache->update_torrents();
+                    }
+                }
+            }
+        }
+    }
+}	
+
+// Обработка первого изображения (URL) - ИСПРАВЛЕННАЯ ВЕРСИЯ
+if (!empty($t_image_url)) 
+{
+    $t_image_url = fix_url($t_image_url);
+    $AllowedFileTypes = array('jpg', 'gif', 'png', 'webp');
+    $ImageExt = get_extension($t_image_url);
+
+    if (in_array($ImageExt, $AllowedFileTypes, true)) 
+    {
+        // УБИРАЕМ getimagesize() для URL - он не работает с удаленными файлами
+        include_once(INC_PATH . '/functions_ts_remote_connect.php');
+
+        if ($ImageContents = TS_Fetch_Data($t_image_url, false)) 
+        {
+            $NewImageURL = $torrent_dir . '/images/' . $id . '.' . $ImageExt;
+
+            if (file_exists($NewImageURL)) 
+            {
+                @unlink($NewImageURL);
+            }
+
+            if (file_put_contents($NewImageURL, $ImageContents)) 
+            {
+                $COVERIMAGEUPDATED = true;
+                
+                $update_image = array(
+                    "t_image" => $db->escape_string($BASEURL . '/' . $NewImageURL)
+                );
+                
+                $db->update_query("torrents", $update_image, "id='{$id}'");
+                $cache->update_torrents();
+            }
+        }
+    }
+}
+
+// Обработка второго изображения (URL) - ИСПРАВЛЕННАЯ ВЕРСИЯ
+if (!empty($t_image_url2)) 
+{
+    $t_image_url2 = fix_url($t_image_url2);
+    $AllowedFileTypes = array('jpg', 'gif', 'png', 'webp');
+    $ImageExt = get_extension($t_image_url2);
+
+    if (in_array($ImageExt, $AllowedFileTypes, true)) 
+    {
+        // УБИРАЕМ getimagesize() для URL - он не работает с удаленными файлами
+        include_once(INC_PATH . '/functions_ts_remote_connect.php');
+
+        if ($ImageContents = TS_Fetch_Data($t_image_url2, false)) 
+        {
+            $NewImageURL = $torrent_dir . '/images/' . $id . '_2.' . $ImageExt;
+
+            if (file_exists($NewImageURL)) 
+            {
+                @unlink($NewImageURL);
+            }
+
+            if (file_put_contents($NewImageURL, $ImageContents)) 
+            {
+                $COVERIMAGEUPDATED = true;
+                
+                $update_image23 = array(
+                    "t_image2" => $db->escape_string($BASEURL . '/' . $NewImageURL)
+                );
+                
+                $db->update_query("torrents", $update_image23, "id='{$id}'");
+                $cache->update_torrents();
+            }
+        }
+    }
+}
+
+// Удаление первого изображения если URL пустой
+if (empty($t_image_url)) 
+{
+    $image_types = array ('gif', 'jpg', 'jpeg', 'png', 'webp');
+    foreach ($image_types as $image)
+    {
+        if (@file_exists (TSDIR . '/' . $torrent_dir . '/images/' . $id . '.' . $image))
+        {
+            @unlink (TSDIR . '/' . $torrent_dir . '/images/' . $id . '.' . $image);
+            continue;
+        }
+    }
+    
+    $UpdateSet['t_image'] = '';
+}
+
+// Удаление второго изображения если URL пустой  
+if (empty($t_image_url2)) 
+{
+    $image_types2 = array ('gif', 'jpg', 'jpeg', 'png', 'webp');
+    foreach ($image_types2 as $image2)
+    {
+        if (@file_exists (TSDIR . '/' . $torrent_dir . '/images/' . $id . '_2.' . $image2))
+        {
+            @unlink (TSDIR . '/' . $torrent_dir . '/images/' . $id . '_2.' . $image2);
+            continue;
+        }
+    }
+    
+    $UpdateSet['t_image2'] = '';
+}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+    // Обработка IMDB ссылки
+    if (!empty($t_link)) {
+        if (preg_match('@^https:\/\/www\.imdb\.com\/title\/(.*)\/$@isU', $t_link, $result)) {
+            if ($result[0]) {
+                $t_link = $result[0];
+                include_once(INC_PATH . '/ts_imdb.php');
+                $Update_tlink = array(
+                    "t_link" => $db->escape_string($t_link),
+                    "tags" => $db->escape_string($Genre ?? '')
+                );
+                $db->update_query("torrents", $Update_tlink, "id='{$id}'");
+                unset($result);
+            }
+        } else {
+            $Update_tlink = array(
+                "t_link" => '',
+                "tags" => ''
+            );
+            $db->update_query("torrents", $Update_tlink, "id='{$id}'");
+        }
+    } else {
+        $Update_tlink = array(
+            "t_link" => '',
+            "tags" => ''
+        );
+        $db->update_query("torrents", $Update_tlink, "id='{$id}'");
+    }
+
+    // Основное обновление торрента
+    $res = $db->update_query('torrents', $UpdateSet, "id='{$id}'");
+    if ($res) 
+	{
+        
+		
+		// Исправленная версия с проверками
+$log_message = sprintf(
+    'Torrent edited: %s by %s',
+    '[URL='.$BASEURL."/".get_torrent_link($id).']<font color=red>' . $name . '</font>[/URL]', 
+    '[URL='.$BASEURL . '/'.get_profile_link($CURUSER['id']).']' . format_name($CURUSER['username'],$CURUSER['usergroup']) . '[/URL]'
+);
+write_log($log_message);
+		
+
+	   $cache->update_torrents();
+        
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Data is Updated',
+                'updatedData' => [
+                    'name' => $name,
+                    'descr' => $descr,
+                    't_image' => $UpdateSet['t_image'] ?? ($torrent['t_image'] ?? ''),
+                    't_image2' => $UpdateSet['t_image2'] ?? ($torrent['t_image2'] ?? ''),
+                    'category' => $category
+                ]
+            ]);
+        } else {
+            header("Location: details.php?id=" . $id);
+        }
+    } else {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error Update Data'
+            ]);
+        } else {
+            die('Error Update Data');
+        }
+    }
+    ob_end_flush();
+    exit;
+}
 
 
 
@@ -1178,34 +1312,34 @@ else if($mybb->input['action'] == "search_torrents")
 
 
 /**
- * Spits an XML Http based error message back to the browser
- *
- * @param string $message The message to send back.
+ * Handle unknown action
  */
-function xmlhttp_error($message)
+function handleUnknownAction(): void
 {
-	global $charset;
-
-	// Send our headers.
-	header("Content-type: application/json; charset={$charset}");
-
-	// Do we have an array of messages?
-	if(is_array($message))
-	{
-		$response = array();
-		foreach($message as $error)
-		{
-			$response[] = $error;
-		}
-
-		// Send the error messages.
-		echo json_encode(array("errors" => array($response)));
-
-		exit;
-	}
-
-	// Just a single error? Send it along.
-	echo json_encode(array("errors" => array($message)));
-
-	exit;
+    // No action specified or unknown action
+    exit;
 }
+
+/**
+ * Spits an XML Http based error message back to the browser
+ */
+function xmlhttp_error(string|array $message): void
+{
+    global $charset;
+
+    header("Content-type: application/json; charset={$charset}");
+
+    if (is_array($message)) {
+        $response = [];
+        foreach ($message as $error) {
+            $response[] = $error;
+        }
+
+        echo json_encode(["errors" => [$response]]);
+        exit;
+    }
+
+    echo json_encode(["errors" => [$message]]);
+    exit;
+}
+?>

@@ -134,37 +134,26 @@ function get_comment($pid)
 
 
 
-
-
-function get_torrent($tid, $recache = false)
+function get_torrent(int $tid, bool $recache = false): array|false
 {
-	global $db;
-	static $thread_cache;
+    global $db;
+    static $thread_cache = [];
 
-	$tid = (int)$tid;
+    if (isset($thread_cache[$tid]) && !$recache) {
+        return $thread_cache[$tid];
+    }
 
-	if(isset($thread_cache[$tid]) && !$recache)
-	{
-		return $thread_cache[$tid];
-	}
-	else
-	{
-		$query = $db->simple_select("torrents", "*", "id = '{$tid}'");
-		$thread = $db->fetch_array($query);
+    $query = $db->simple_select("torrents", "*", "id = '{$tid}'");
+    $thread = $db->fetch_array($query);
 
-		if($thread)
-		{
-			$thread_cache[$tid] = $thread;
-			return $thread;
-		}
-		else
-		{
-			$thread_cache[$tid] = false;
-			return false;
-		}
-	}
+    if ($thread) {
+        $thread_cache[$tid] = $thread;
+        return $thread;
+    }
+
+    $thread_cache[$tid] = false;
+    return false;
 }
-
 
 
 
@@ -272,7 +261,7 @@ if ($query_result && $db->num_rows($query_result) > 0)
             $FoundSMTQ .= '
             <tr>
                 <td align="center" style="width: 40px; height: 36px;">
-                    <a href="'.$SEOLinkC.'" data-toggle="tooltip" data-placement="top" title="'.$SMTQ['catname'].'">
+                   <a href="'.$SEOLinkC.'" data-toggle="tooltip" data-placement="top" title="'.$SMTQ['catname'].'">
                         <i class="'.$SMTQ['catimage'].' fa-2x category-icon"></i>
                     </a>
                 </td>
@@ -344,6 +333,7 @@ if ($torrent2['type'] == 's')
 }
 else
 {
+
 	$seolink2 = ts_seo($torrent2['categoryid'],$torrent2['categoryname'],'c');
 	
 	$torrent2["categoryname"] = '
@@ -351,6 +341,11 @@ else
 	<i class="'.$torrent2['icon'].' fa-2x category-icon" title="'.$torrent2['categoryname'].'"></i>
 	</a>';
 }
+
+
+
+
+
 
 
 
@@ -382,12 +377,16 @@ $isdoubleupload = ($torrent['doubleupload'] == 'yes' ? '
 
 
 
-require_once 'details_edit.php';
+
+
+
+
+
+
 
 
 $HEAD = sprintf($lang->details['detailsfor'], $torrent['name']);
 stdhead($HEAD, true, 'supernote','INDETAILS', '');
-
 
 
 
@@ -405,6 +404,8 @@ echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/delete_torrent.js
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/advanced_torrent.js"></script>';
 
 
+
+require_once 'details_edit.php';
 
 
 
@@ -530,62 +531,47 @@ if (!empty($mybb->input['pid']))
 
         
   
-        $query = $db->simple_select("comments c", "COUNT(*) AS replies", "c.torrent='$id'");
-        $thread['replies'] = $db->fetch_field($query, 'replies')-1;
-			
-				
-        $postcount = intval($thread['replies'])+1;
-		$pages = $postcount / $perpage;
-		$pages = ceil($pages);
+    
 
-		if(isset($mybb->input['page']) && $mybb->input['page'] == "last")
-		{
-			$page = $pages;
-		}
+$query = $db->simple_select("comments c", "COUNT(*) AS replies", "c.torrent='$id'");
+$thread['replies'] = (int)$db->fetch_field($query, 'replies') - 1;
+    
+$postcount = $thread['replies'] + 1;
+$pages = ceil($postcount / $perpage);
 
-		if($page > $pages || $page <= 0)
-		{
-			$page = 1;
-		}
+if(isset($mybb->input['page']) && $mybb->input['page'] == "last") {
+    $page = $pages;
+}
 
-		if($page)
-		{
-			$start = ($page-1) * $perpage;
-		}
-		else
-		{
-			$start = 0;
-			$page = 1;
-		}
-		$upper = $start+$perpage;
-		
-		
-		$postcounter = "";
-		
-		if(!$postcounter)
-	    { // Used to show the # of the post
-		if($page > 1)
-		{
-			if(!$ts_perpage || (int)$ts_perpage < 1)
-			{
-				$ts_perpage = 20;
-			}
+$page = (int)$page;
+if($page > $pages || $page <= 0) {
+    $page = 1;
+}
 
-			$postcounter = $ts_perpage*($page-1);
-		}
-		else
-		{
-			$postcounter = 0;
-		}
-		
-	    }
-		
-		
-		$multipage = multipage($postcount, $perpage, $page, str_replace("{id}", $id, TORRENT_URL_PAGED));
+if($page) {
+    $start = ($page-1) * $perpage;
+} else {
+    $start = 0;
+    $page = 1;
+}
+
+$upper = $start + $perpage;
+
+$postcounter = "";
+if(!$postcounter) { 
+    if($page > 1) {
+        if(!$ts_perpage || (int)$ts_perpage < 1) {
+            $ts_perpage = 20;
+        }
+        $postcounter = $ts_perpage * ($page-1);
+    } else {
+        $postcounter = 0;
+    }
+}
 
 
-	
-	
+$multipage = multipage((int)$postcount, (int)$perpage, (int)$page, str_replace("{id}", $id, TORRENT_URL_PAGED));
+
 
 
 
@@ -1747,8 +1733,6 @@ echo '
 
 
 echo $details;
-
-
 
 
 stdfoot();

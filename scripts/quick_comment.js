@@ -1,11 +1,5 @@
-
-
-var l_ajaxerror="There was a problem with the request. Please report this to administrator.";
-
+var l_ajaxerror = "There was a problem with the request. Please report this to administrator.";
 var l_updateerror = "There was an error performing the update.\n\nError Message:";
-
-
-
 
 function intval(mixed_var, base) {
     var tmp;
@@ -26,13 +20,6 @@ function intval(mixed_var, base) {
 function urlencode(str) {
     return encodeURIComponent(str.toString()).replace(/%20/g, '+');
 }
-
-
-
-
-
-
-
 
 function showModalError(message) {
     // Load animate.css dynamically if not already loaded
@@ -67,10 +54,10 @@ function showModalError(message) {
         </div>`;
 
     // Append modal to the body
-    $('body').append(modalHTML);
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
 
     var modalElement = document.getElementById('errorModal');
-    var modalContent = $(modalElement).find('.modal-content');
+    var modalContent = modalElement.querySelector('.modal-content');
 
     // Initialize Bootstrap modal
     var modalInstance = new bootstrap.Modal(modalElement);
@@ -78,9 +65,8 @@ function showModalError(message) {
 
     // Auto close modal after 5 seconds with fadeOut animation
     setTimeout(function () {
-        modalContent
-            .removeClass('animate__zoomIn')
-            .addClass('animate__fadeOut');
+        modalContent.classList.remove('animate__zoomIn');
+        modalContent.classList.add('animate__fadeOut');
 
         // Wait for animation to finish before hiding modal
         setTimeout(function () {
@@ -89,27 +75,16 @@ function showModalError(message) {
     }, 5000);
 
     // Remove modal from DOM after hiding
-    $('#errorModal').on('hidden.bs.modal', function () {
-        $(this).remove();
+    modalElement.addEventListener('hidden.bs.modal', function () {
+        this.remove();
     });
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// ЗАМЕНА JQUERY НА ЧИСТЫЙ JAVASCRIPT
 function TSajaxquickcomment(TorrentID) {
-    var message = $('#message').val();
+    var messageElement = document.getElementById('message');
+    var message = messageElement ? messageElement.value : '';
+    
     var pars = {
         ajax_quick_comment: 1,
         id: intval(TorrentID),
@@ -122,33 +97,68 @@ function TSajaxquickcomment(TorrentID) {
         pars['file_ids[' + index + ']'] = input.value;
     });
 
-    $('#loading-layer').show();
-    $('#comment [name="quickcomment"]').prop('disabled', true);
+    // Показываем loading
+    var loadingLayer = document.getElementById('loading-layer');
+    if (loadingLayer) loadingLayer.style.display = 'block';
+    
+    // Отключаем кнопку
+    var quickCommentButtons = document.querySelectorAll('#comment [name="quickcomment"]');
+    quickCommentButtons.forEach(function(button) {
+        button.disabled = true;
+    });
 
-    $.ajax({
-        url: baseurl + "/xmlhttp.php?action=quick_comment",
-        method: "POST",
-        data: $.param(pars),
-        contentType: "application/x-www-form-urlencoded; charset=" + charset,
-        success: function (result) {
-            var match = result.match(/<error>(.*)<\/error>/);
-            if (match) {
-                var errorMessage = match[1] || l_ajaxerror;
-                showModalError(l_updateerror + errorMessage);
-            } else {
-                var newDiv = $('<div>', { id: 'PostedReply', html: result });
-                $('#ajax_comment_preview').append(newDiv);
-                $('#message').val('');
-                $('#fileIdsContainer').empty(); // Очистим загруженные file_ids
-            }
-            $('#loading-layer').hide();
-            $('#comment [name="quickcomment"]').prop('disabled', false);
-        },
-        error: function (xhr, status, error) {
-            showModalError(l_ajaxerror + "\n\n" + error);
-            $('#loading-layer').hide();
-            $('#comment [name="quickcomment"]').prop('disabled', false);
+    // Создаем FormData для отправки
+    var formData = new FormData();
+    for (var key in pars) {
+        if (pars.hasOwnProperty(key)) {
+            formData.append(key, pars[key]);
         }
+    }
+
+    // Отправляем запрос через fetch
+    fetch(baseurl + "/xmlhttp.php?action=quick_comment", {
+        method: "POST",
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.text();
+    })
+    .then(result => {
+        var match = result.match(/<error>(.*)<\/error>/);
+        if (match) {
+            var errorMessage = match[1] || l_ajaxerror;
+            showModalError(l_updateerror + errorMessage);
+        } else {
+            var ajaxCommentPreview = document.getElementById('ajax_comment_preview');
+            if (ajaxCommentPreview) {
+                var newDiv = document.createElement('div');
+                newDiv.id = 'PostedReply';
+                newDiv.innerHTML = result;
+                ajaxCommentPreview.appendChild(newDiv);
+            }
+            
+            // Очищаем поля
+            if (messageElement) messageElement.value = '';
+            
+            var fileIdsContainer = document.getElementById('fileIdsContainer');
+            if (fileIdsContainer) fileIdsContainer.innerHTML = '';
+        }
+    })
+    .catch(error => {
+        showModalError(l_ajaxerror + "\n\n" + error.message);
+    })
+    .finally(() => {
+        // Скрываем loading и включаем кнопку
+        if (loadingLayer) loadingLayer.style.display = 'none';
+        
+        quickCommentButtons.forEach(function(button) {
+            button.disabled = false;
+        });
     });
 }
-

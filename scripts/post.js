@@ -1,384 +1,458 @@
-var Post = {
-	init: function () {
-		$(function () {
-			Post.fileInput = $("input[name='attachments[]']");
-			Post.dropZone = $('#dropzone');
-			Post.dropZone.find('div').text(lang.drop_files);
-			Post.form = Post.fileInput.parents('form');
 
-			Post.form.on('submit', Post.checkAttachments);
-			Post.fileInput.on('change', Post.addAttachments);
+const removeattach_confirm = "Вы уверены, что хотите удалить это вложение?";
 
-			Post.dropZone.on('drag', function (e) {
-				e.preventDefault();
-			});
+const Post = {
+    fileInput: null,
+    dropZone: null,
+    form: null,
 
-			Post.dropZone.on('dragstart',  function (e) {
-				e.preventDefault();
-				e.originalEvent.dataTransfer.setData('text/plain', '');
-			});
+    init: function () {
+        document.addEventListener('DOMContentLoaded', () => {
+            this.fileInput = document.querySelector("input[name='attachments[]']");
+            this.dropZone = document.getElementById('dropzone');
+            
+            // Убеждаемся, что получаем элемент формы, а не input
+            this.form = this.fileInput ? this.fileInput.closest('form') : null;
 
-			Post.dropZone.on('dragover dragenter', function (e) {
-				e.preventDefault();
-				$(this).addClass('activated').find('div').text(lang.upload_initiate);
-			});
+            // Отладочная информация для проверки
+            console.log('File input:', this.fileInput);
+            console.log('Drop zone:', this.dropZone);
+            console.log('Form:', this.form);
+            console.log('Form action:', this.form ? this.form.getAttribute('action') : 'No form');
 
-			Post.dropZone.on('dragleave dragend', function (e) {
-				e.preventDefault();
-				$(this).removeClass('activated').find('div').text(lang.drop_files);
-			});
+            if (!this.fileInput || !this.dropZone || !this.form) {
+                console.error('Required elements not found');
+                return;
+            }
 
-			Post.dropZone.on('click', function () {
-				Post.fileInput.trigger('click');
-			});
+            // Set initial text
+            const dropZoneDiv = this.dropZone.querySelector('div');
+            if (dropZoneDiv) dropZoneDiv.textContent = lang.drop_files;
 
-			Post.dropZone.on('drop', function (e) {
-				e.preventDefault();
-				$(this).removeClass('activated');
-				var files = e.originalEvent.dataTransfer.files;
-				Post.fileInput.prop('files', files).trigger('change');
-			});
+            // Event listeners
+            this.form.addEventListener('submit', (e) => this.checkAttachments(e));
+            this.fileInput.addEventListener('change', () => this.addAttachments());
 
-			Post.fileInput.parents().eq(1).hide();
-			Post.dropZone.parents().eq(1).show();
+            // Drag and drop events
+            this.setupDragAndDrop();
 
-			// prevent SCEditor from inserting [img] with data URI
-			var $message = document.querySelector('#message');
+            // Hide file input, show dropzone
+            this.fileInput.parentElement.parentElement.style.display = 'none';
+            this.dropZone.parentElement.parentElement.style.display = 'block';
 
-			if ($message !== null) {
-				new MutationObserver(function () {
-					// run once #message is hidden by SCEditor, and the MyBBEditor instance becomes available
+            this.preventDataURIImages();
+        });
+    },
 
-					if (typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
-						MyBBEditor.bind('valuechanged', function () {
-							var oldValue = MyBBEditor.val();
-							var newValue = oldValue.replace(/\[img]data:[a-z/]+;base64,[A-Za-z0-9+\/]+={0,2}\[\/img]/, '');
+    setupDragAndDrop: function() {
+        const events = ['drag', 'dragstart', 'dragover', 'dragenter', 'dragleave', 'dragend', 'drop', 'click'];
+        
+        events.forEach(event => {
+            this.dropZone.addEventListener(event, (e) => {
+                e.preventDefault();
+                
+                switch(event) {
+                    case 'dragover':
+                    case 'dragenter':
+                        this.dropZone.classList.add('activated');
+                        const div = this.dropZone.querySelector('div');
+                        if (div) div.textContent = lang.upload_initiate;
+                        break;
+                        
+                    case 'dragleave':
+                    case 'dragend':
+                        this.dropZone.classList.remove('activated');
+                        const divLeave = this.dropZone.querySelector('div');
+                        if (divLeave) divLeave.textContent = lang.drop_files;
+                        break;
+                        
+                    case 'drop':
+                        this.dropZone.classList.remove('activated');
+                        const files = e.dataTransfer.files;
+                        this.fileInput.files = files;
+                        this.fileInput.dispatchEvent(new Event('change'));
+                        break;
+                        
+                    case 'click':
+                        this.fileInput.click();
+                        break;
+                }
+            });
+        });
+    },
 
-							if (oldValue !== newValue) {
-								MyBBEditor.val(newValue);
-							}
-						});
-					}
-				}).observe($message, {attributes: true});
-			}
-		});
-	},
+    preventDataURIImages: function() {
+        const message = document.querySelector('#message');
+        if (!message) return;
 
-	loadMultiQuoted: function () {
-		//if (use_xmlhttprequest == 1) {
-			tid = document.input.tid.value;
+        new MutationObserver(() => {
+            if (typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
+                MyBBEditor.bind('valuechanged', () => {
+                    const oldValue = MyBBEditor.val();
+                    const newValue = oldValue.replace(/\[img]data:[a-z/]+;base64,[A-Za-z0-9+\/]+={0,2}\[\/img]/, '');
+                    if (oldValue !== newValue) {
+                        MyBBEditor.val(newValue);
+                    }
+                });
+            }
+        }).observe(message, {attributes: true});
+    },
 
-			$.ajax({
-				url: 'xmlhttp.php?action=get_multiquoted&tid=' + tid,
-				type: 'get',
-				complete: function (request, status) {
-					Post.multiQuotedLoaded(request, status);
-				}
-			});
+    loadMultiQuoted: function() {
+        const tid = document.input.tid.value;
+        this.ajaxRequest('xmlhttp.php?action=get_multiquoted&tid=' + tid, 'GET')
+            .then(request => this.multiQuotedLoaded(request));
+        return false;
+    },
 
-			return false;
-		//} else {
-		//	return true;
-		//}
-	},
+    loadMultiQuotedAll: function() {
+        this.ajaxRequest('xmlhttp.php?action=get_multiquoted&load_all=1', 'GET')
+            .then(request => this.multiQuotedLoaded(request));
+        return false;
+    },
 
-	loadMultiQuotedAll: function () {
-		//if (use_xmlhttprequest == 1) {
-			$.ajax({
-				url: 'xmlhttp.php?action=get_multiquoted&load_all=1',
-				type: 'get',
-				complete: function (request, status) {
-					Post.multiQuotedLoaded(request, status);
-				}
-			});
+    multiQuotedLoaded: function(request) {
+        const json = JSON.parse(request.responseText);
+        if (typeof json === 'object' && json.errors) {
+            json.errors.forEach(message => {
+                showToast(lang.post_fetch_error + ' ' + message, 'error');
+            });
+            return false;
+        }
 
-			return false;
-		//} else {
-		//	return true;
-		//}
-	},
+        const id = 'message';
+        if (typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
+            MyBBEditor.insert(json.message);
+        } else {
+            const messageEl = document.getElementById(id);
+            if (messageEl.value) {
+                messageEl.value += "\n";
+            }
+            messageEl.value += json.message;
+        }
 
-	multiQuotedLoaded: function (request) {
-		var json = JSON.parse(request.responseText);
-		if (typeof response == 'object') {
-			if (json.hasOwnProperty("errors")) {
-				$.each(json.errors, function (i, message) {
-					$.jGrowl(lang.post_fetch_error + ' ' + message, { theme: 'jgrowl_error' });
-				});
-				return false;
-			}
-		}
+        const multiquoteUnloaded = document.getElementById('multiquote_unloaded');
+        if (multiquoteUnloaded) multiquoteUnloaded.style.display = 'none';
+        
+        document.input.quoted_ids.value = 'all';
+    },
 
-		var id = 'message';
-		if (typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
-			MyBBEditor.insert(json.message);
-		} else {
-			if ($('#' + id).value) {
-				$('#' + id).value += "\n";
-			}
-			$('#' + id).val($('#' + id).val() + json.message);
-		}
+    clearMultiQuoted: function() {
+        const multiquoteUnloaded = document.getElementById('multiquote_unloaded');
+        if (multiquoteUnloaded) multiquoteUnloaded.style.display = 'none';
+        this.deleteCookie('multiquote');
+    },
 
-		$('#multiquote_unloaded').hide();
-		document.input.quoted_ids.value = 'all';
-	},
+    removeAttachment: function(aid) {
+        if (confirm(removeattach_confirm)) {
+            this.attachmentAction(aid, 'remove');
 
-	clearMultiQuoted: function () {
-		$('#multiquote_unloaded').hide();
-		Cookie.unset('multiquote');
-	},
+            // Получаем URL действия формы через getAttribute
+            const formAction = this.form.getAttribute('action');
+            console.log('Removing attachment via:', formAction + '&ajax=1');
+            
+            this.ajaxRequest(formAction + '&ajax=1', 'POST', new FormData(this.form))
+                .then(data => {
+                    if (data.errors) {
+                        data.errors.forEach(message => {
+                            showToast(message, 'error');
+                        });
+                        return false;
+                    } else if (data.success) {
+                        const attachment = document.getElementById('attachment_' + aid);
+                        if (attachment) {
+                            attachment.style.transition = 'opacity 0.5s';
+                            attachment.style.opacity = '0';
+                            setTimeout(() => {
+                                const instance = this.getEditorInstance();
+                                if (instance) {
+                                    const value = instance.sourceMode() ? 
+                                        instance.getSourceEditorValue(false) : 
+                                        instance.getWysiwygEditorValue(false);
+                                    const newValue = value.split('[attachment=' + aid + ']').join('');
+                                    
+                                    if (instance.sourceMode()) {
+                                        instance.setSourceEditorValue(newValue);
+                                    } else {
+                                        instance.setWysiwygEditorValue(newValue);
+                                    }
+                                }
 
-	removeAttachment: function (aid) {
-		MyBB.prompt(removeattach_confirm, {
-			buttons: [
-				{ title: yes_confirm, value: true },
-				{ title: no_confirm, value: false }
-			],
-			submit: function (e, v, m, f) {
-				if (v == true) {
-					Post.attachmentAction(aid, 'remove');
+                                const usageEl = attachment.parentElement.querySelector('.tcat>strong');
+                                if (usageEl) usageEl.textContent = data.usage;
+                                
+                                attachment.remove();
+                                this.regenAttachbuttons();
+                            }, 500);
+                        }
+                        showToast('Attachment successfully removed', 'success');
+                    }
+                    this.attachmentAction('', '');
+                })
+                .catch(() => {
+                    showToast('Error removing attachment', 'error');
+                });
+        }
+        return false;
+    },
 
-					//if (use_xmlhttprequest != 1) {
-						Post.form.append('<input type="submit" id="rem_submit" class="hidden" />');
-						$('#rem_submit').trigger('click');
-						return false;
-					//}
+    attachmentAction: function(aid, action) {
+        document.input.attachmentaid.value = aid;
+        document.input.attachmentact.value = action;
+    },
 
-					$.ajax({
-						type: 'POST',
-						url: Post.form.attr('action') + '&ajax=1',
-						data: Post.form.serialize(),
-						success: function (data) {
-							if (data.hasOwnProperty("errors")) {
-								$.each(data.errors, function (i, message) {
-									$.jGrowl(message, { theme: 'jgrowl_error' });
-								});
-								return false;
-							} else if (data.success) {
-								$('#attachment_' + aid).hide(500, function () {
-									var instance = MyBBEditor;
-									if (typeof MyBBEditor === 'undefined') {
-										instance = $('#message').sceditor('instance');
-									}
+    getAttachments: function() {
+        const filenames = document.querySelectorAll('.attachment_filename');
+        return Array.from(filenames).map(el => el.textContent);
+    },
 
-									if (instance.sourceMode()) {
-										instance.setSourceEditorValue(instance.getSourceEditorValue(false).split('[attachment=' + aid + ']').join(''));
-									} else {
-										instance.setWysiwygEditorValue(instance.getWysiwygEditorValue(false).split('[attachment=' + aid + ']').join(''));
-									}
+    getCommonFiles: function() {
+        const files = this.fileInput.files;
+        if (files.length) {
+            const names = Array.from(files).map(file => file.name);
+            return this.getAttachments().filter(name => names.includes(name));
+        }
+        return [];
+    },
 
-									$(this).parent().find('.tcat>strong').text(data.usage);
-									$(this).remove();
-									Post.regenAttachbuttons();
-								});
-							}
-							Post.attachmentAction('', '');
-						}
-					});
-				}
-			}
-		});
+    addAttachments: function() {
+        if (!this.checkAttachments()) return false;
 
-		return false;
-	},
+        if (this.fileInput.files.length) {
+            const common = this.getCommonFiles();
+            if (common.length) {
+                const list = document.createElement('ul');
+                common.forEach(val => {
+                    const li = document.createElement('li');
+                    li.textContent = val;
+                    list.appendChild(li);
+                });
 
-	attachmentAction: function (aid, action) {
-		document.input.attachmentaid.value = aid;
-		document.input.attachmentact.value = action;
-	},
+                if (confirm(lang.update_confirm.replace("{1}", list.outerHTML))) {
+                    this.addHiddenInput('updateconfirmed', '1');
+                    this.uploadAttachments('updateattachment');
+                }
+            } else {
+                this.uploadAttachments('newattachment');
+            }
+        }
+        return false;
+    },
 
-	getAttachments: function () {
-		var attached = [];
-		$('.attachment_filename').each(function () {
-			attached.push($(this).text());
-		});
-		return attached;
-	},
+    uploadAttachments: function(type) {
+        this.addHiddenInput(type, '1');
+        const formData = new FormData(this.form);
 
-	getCommonFiles: function () {
-		var files = Post.fileInput.prop('files');
-		if (files.length) {
-			var names = $.map(files, function (val) {
-				return val.name;
-			});
-			return $.grep(Post.getAttachments(), function (i) {
-				return $.inArray(i, names) > -1;
-			});
-		} else {
-			return [];
-		}
-	},
+        // Получаем URL действия формы через getAttribute
+        const formAction = this.form.getAttribute('action');
+        console.log('Uploading to:', formAction + '&ajax=1');
+        
+        this.ajaxRequest(formAction + '&ajax=1', 'POST', formData, true)
+            .then(data => {
+                if (data.errors) {
+                    data.errors.forEach(message => {
+                        showToast(message, 'error');
+                    });
+                }
+                
+                if (data.success) {
+                    data.success.forEach(message => {
+                        const existing = document.getElementById('attachment_' + message[0]);
+                        if (existing) existing.remove();
+                        
+                        const template = data.template
+                            .replace(/\{1\}/g, message[0])
+                            .replace('{2}', message[1])
+                            .replace('{3}', message[2])
+                            .replace('{4}', message[3]);
+                        
+                        const container = this.fileInput.parentElement.parentElement.parentElement;
+                        container.insertAdjacentHTML('beforeend', template);
+                        
+                        const usageEl = container.querySelector('.tcat>strong');
+                        if (usageEl) usageEl.textContent = data.usage;
+                    });
+                    showToast('Files uploaded successfully', 'success');
+                }
 
-	addAttachments: function () {
-		Post.checkAttachments();
+                this.fileInput.value = '';
+                this.regenAttachbuttons();
+                this.removeTempInputs();
+            })
+            .catch(() => {
+                showToast('Error uploading files', 'error');
+                this.removeTempInputs();
+            });
+    },
 
-		if (Post.fileInput.prop('files').length) {
-			var common = Post.getCommonFiles();
-			if (common.length) {
-				var list = document.createElement('ul');
+    regenAttachbuttons: function() {
+        const attachButtons = document.querySelectorAll("input[name=newattachment], input[name=updateattachment]");
+        if (attachButtons.length === 0) return;
 
-				$.map(common, function (val) {
-					var e = document.createElement('li');
-					e.textContent = val;
-					list.append(e);
-				});
+        const attachButton = attachButtons[0].cloneNode(true);
+        const attachments = this.getAttachments();
 
-				MyBB.prompt(lang.update_confirm.replace("{1}", list.outerHTML), {
-					buttons: [
-						{ title: yes_confirm, value: true },
-						{ title: no_confirm, value: false }
-					],
-					submit: function (e, v, m, f) {
-						if (v == true) {
-							Post.form.append('<input type="hidden" class="temp_input" name="updateconfirmed" value="1" />');
-							Post.uploadAttachments('updateattachment');
-						}
-					}
-				});
-			} else {
-				Post.uploadAttachments('newattachment');
-			}
-		}
-		return false;
-	},
+        // Remove existing buttons
+        document.querySelectorAll('input[name=updateattachment]').forEach(btn => btn.remove());
+        document.querySelectorAll('input[name=newattachment]').forEach(btn => btn.remove());
 
-	uploadAttachments: function (type) {
-		
-			Post.form.append('<input type="hidden" class="temp_input" name="' + type + '" value="1" />');
-			var formData = new FormData($(Post.form)[0]);
+        if (attachments.length) {
+            const updateButton = attachButton.cloneNode(true);
+            updateButton.name = 'updateattachment';
+            updateButton.value = lang.update_attachment;
+            updateButton.tabIndex = 12;
+            
+            const newAttachmentBtn = document.querySelector("input[name='newattachment']");
+            if (newAttachmentBtn) {
+                newAttachmentBtn.parentNode.insertBefore(document.createTextNode(' '), newAttachmentBtn);
+                newAttachmentBtn.parentNode.insertBefore(updateButton, newAttachmentBtn);
+            }
+        }
 
-			$.ajax({
-				xhr: function () {
-					var x = $.ajaxSettings.xhr();
-					x.upload.addEventListener("progress", function (e) {
-						if (e.lengthComputable) {
-							var completed = parseFloat((e.loaded / e.total) * 100).toFixed(2);
-							$('#upload_bar').css('width', completed + '%');
-							Post.dropZone.find('div').text(completed + '%');
-							if (e.loaded === e.total) {
-								$('#upload_bar').css('width', '0%');
-								Post.dropZone.find('div').text(lang.drop_files);
-							}
-						}
-					}, false);
-					return x;
-				},
-				type: 'POST',
-				url: Post.form.attr('action') + '&ajax=1',
-				data: formData,
-				async: true,
-				cache: false,
-				contentType: false,
-				enctype: 'multipart/form-data',
-				processData: false,
-				success: function (data) {
-					if (data.hasOwnProperty("errors")) {
-						$.each(data.errors, function (i, message) {
-							$.jGrowl(message, { theme: 'jgrowl_error' });
-						});
-					}
-					// Append new attachment data
-					if (data.hasOwnProperty("success")) {
-						$.each(data.success, function (i, message) {
-							if ($('#attachment_' + message[0]).length) {
-								$('#attachment_' + message[0]).remove();
-							}
-							Post.fileInput.parents().eq(2).append(data.template
-								.replace(/\{1\}/g, message[0])
-								.replace('{2}', message[1])
-								.replace('{3}', message[2])
-								.replace('{4}', message[3]))
-								.find('.tcat>strong').text(data.usage);
-						});
-					}
+        if (attachments.length < mybb_max_file_uploads) {
+            const newButton = attachButton.cloneNode(true);
+            newButton.name = 'newattachment';
+            newButton.value = lang.add_attachment;
+            newButton.tabIndex = 13;
+            
+            const updateAttachmentBtn = document.querySelector("input[name='updateattachment']");
+            if (updateAttachmentBtn) {
+                updateAttachmentBtn.parentNode.appendChild(document.createTextNode(' '));
+                updateAttachmentBtn.parentNode.appendChild(newButton);
+            }
+        }
+    },
 
-					Post.fileInput.val('');
-					Post.regenAttachbuttons();
-				}
-			});
-			$('.temp_input').remove();
-		
-	},
+ 
+ 
+ 
+ 
+ checkAttachments: function(e) {
+    if (e) e.preventDefault();
 
-	regenAttachbuttons: function () {
-		var attachButton = $("input[name=newattachment], input[name=updateattachment]").eq(0).clone();
+    const submitter = e ? e.submitter?.name : '';
+    const file = this.fileInput;
+    if (!file) {
+        // Если нет file input, позволяем форме отправиться
+        if (e && submitter === 'post_thread') {
+            this.form.submit();
+        }
+        return true;
+    }
 
-		if (Post.getAttachments().length) {
-			if (!$('input[name=updateattachment]').length) {
-				var updateButton = attachButton.clone()
-					.prop('name', 'updateattachment')
-					.prop('value', lang.update_attachment)
-					.prop('tabindex', '12');
-				$("input[name='newattachment']").before(updateButton).before('&nbsp;');
-			}
-		} else {
-			$('input[name=updateattachment]').remove();
-		}
+    // Проверяем только если это кнопки вложений или есть файлы
+    if (submitter === 'newattachment' || submitter === 'updateattachment' || file.files.length > 0) {
+        if (!file.files.length && (submitter === 'newattachment' || submitter === 'updateattachment')) {
+            showToast(lang.attachment_missing, 'error');
+            return false;
+        }
 
-		if (Post.getAttachments().length < mybb_max_file_uploads) {
-			if (!$('input[name=newattachment]').length) {
-				var newButton = attachButton.clone()
-					.prop('name', 'newattachment')
-					.prop('value', lang.add_attachment)
-					.prop('tabindex', '13');
-				$("input[name='updateattachment']").after(newButton).after('&nbsp;');
-			}
-		} else {
-			$('input[name=newattachment]').remove();
-		}
-	},
+        if (mybb_max_file_uploads !== 0) {
+            const common = this.getCommonFiles().length;
+            const moreAllowed = (mybb_max_file_uploads - (this.getAttachments().length - common));
+            
+            if (moreAllowed < 0 || (!moreAllowed && file.files.length)) {
+                showToast(lang.error_maxattachpost.replace('{1}', mybb_max_file_uploads), 'error');
+                file.value = '';
+                return false;
+            } else if (file.files.length > moreAllowed) {
+                showToast(lang.attachment_max_allowed_files.replace('{1}', (moreAllowed - common)), 'error');
+                file.value = '';
+                return false;
+            }
+        }
 
-	checkAttachments: function (e) {
-		var submitter = ($.type(e) === 'undefined') ? '' : e.originalEvent.submitter.name;
-		var file = Post.fileInput[0];
-		if (!file) {
-			return true;
-		}
+        if (file.files.length > php_max_file_uploads && php_max_file_uploads !== 0) {
+            showToast(lang.attachment_too_many_files.replace('{1}', php_max_file_uploads), 'error');
+            file.value = '';
+            return false;
+        }
 
-		if (!file.files.length && (submitter == 'newattachment' || submitter == 'updateattachment')) {
-			$.jGrowl(lang.attachment_missing, { theme: 'jgrowl_error' });
-			return false;
-		}
+        let totalSize = 0;
+        Array.from(file.files).forEach(file => {
+            totalSize += file.size;
+        });
 
-		if (mybb_max_file_uploads != 0) {
-			var common = Post.getCommonFiles().length;
-			var moreAllowed = (mybb_max_file_uploads - (Post.getAttachments().length - common));
-			if (moreAllowed < 0 || (!moreAllowed && file.files.length)) {
-				$.jGrowl(lang.error_maxattachpost.replace('{1}', mybb_max_file_uploads), { theme: 'jgrowl_error' });
-				file.value = '';
-				return false;
-			} else if (file.files.length > moreAllowed) {
-				$.jGrowl(lang.attachment_max_allowed_files.replace('{1}', (moreAllowed - common)), { theme: 'jgrowl_error' });
-				file.value = '';
-				return false;
-			}
-		}
+        if (totalSize > php_max_upload_size && php_max_upload_size > 0) {
+            const php_max_upload_size_pretty = Math.round(php_max_upload_size / 1e4) / 1e2;
+            showToast(lang.attachment_too_big_upload.replace('{1}', php_max_upload_size_pretty), 'error');
+            file.value = '';
+            return false;
+        }
+    }
 
-		if (file.files.length > php_max_file_uploads && php_max_file_uploads != 0) {
-			$.jGrowl(lang.attachment_too_many_files.replace('{1}', php_max_file_uploads), { theme: 'jgrowl_error' });
-			file.value = '';
-			return false;
-		}
+    // Если это основная кнопка отправки и проверки прошли - отправляем форму
+    if (e && submitter === 'post_thread') {
+        // Убираем обработчик чтобы избежать рекурсии
+        this.form.removeEventListener('submit', this.checkAttachments);
+        this.form.submit();
+    }
 
-		var totalSize = 0;
-		Post.fileInput.each(function () {
-			for (var i = 0; i < this.files.length; i++) {
-				totalSize += (this.files[i].size || this.files[i].fileSize);
-			}
-		});
+    return true;
+},
+ 
+ 
+ 
 
-		if (totalSize > php_max_upload_size && php_max_upload_size > 0) {
-			var php_max_upload_size_pretty = Math.round(php_max_upload_size / 1e4) / 1e2;
-			$.jGrowl(lang.attachment_too_big_upload.replace('{1}', php_max_upload_size_pretty), { theme: 'jgrowl_error' });
-			file.value = '';
-			return false;
-		}
+    // Helper methods
+    ajaxRequest: function(url, method, data = null, isFormData = false) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open(method, url);
+            
+            if (!isFormData) {
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            }
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        resolve(JSON.parse(xhr.responseText));
+                    } catch (e) {
+                        resolve(xhr.responseText);
+                    }
+                } else {
+                    reject(new Error('Request failed'));
+                }
+            };
+            
+            xhr.onerror = () => reject(new Error('Request failed'));
+            
+            if (data && isFormData) {
+                xhr.send(data);
+            } else if (data) {
+                xhr.send(new URLSearchParams(data));
+            } else {
+                xhr.send();
+            }
+        });
+    },
 
-		return true;
-	},
-	fileInput: $(),
-	dropZone: $(),
-	form: $()
+    addHiddenInput: function(name, value) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        input.className = 'temp_input';
+        this.form.appendChild(input);
+    },
+
+    removeTempInputs: function() {
+        document.querySelectorAll('.temp_input').forEach(input => input.remove());
+    },
+
+    getEditorInstance: function() {
+        if (typeof MyBBEditor !== 'undefined') {
+            return MyBBEditor;
+        }
+        const messageEl = document.getElementById('message');
+        return messageEl ? messageEl.sceditor : null;
+    },
+
+    deleteCookie: function(name) {
+        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    }
 };
 
+// Initialize
 Post.init();

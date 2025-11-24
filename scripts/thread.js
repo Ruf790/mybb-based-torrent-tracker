@@ -1,631 +1,824 @@
 var Thread = {
-	init: function()
-	{
-		$(function(){
-			Thread.quickEdit();
-			Thread.initQuickReply();
-			Thread.initMultiQuote();
+    init: function() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                Thread.initialize();
+            });
+        } else {
+            Thread.initialize();
+        }
+    },
 
-			if(thread_deleted == "1")
-			{
-				$("#quick_reply_form, .new_reply_button, .thread_tools, .inline_rating").hide();
-				$("#moderator_options_selector option.option_mirage").attr("disabled","disabled");
-			}
+    initialize: function() {
+        Thread.initQuickReply();
+        Thread.initMultiQuote();
+        Thread.showQuoteButtons();
+        Thread.handleQuoteLinks();
 
-			visible_replies = parseInt(visible_replies, 10);
-			Thread.splitToolHandler();
-			
-			if($("#moderator_options_selector").length !== 0) {
-				$("#moderator_options_selector").on('change', function() {
-					$("#moderator_options").trigger('submit');
-				});
+        if(thread_deleted == "1") {
+            Thread.hideElements("#quick_reply_form, .new_reply_button, .thread_tools, .inline_rating");
+            var option = document.querySelector("#moderator_options_selector option.option_mirage");
+            if(option) option.disabled = true;
+        }
 
-				$("#moderator_options").on('submit', function(){
-					if($("#moderator_options_selector").val() == "") {
-						$.jGrowl(lang.select_tool, {theme:'jgrowl_error'});
-						return false;
-					}
-				});
-			}
-			
-			// Set spinner image
-			$('#quickreply_spinner img').attr('src', spinner_image);
-		});
-	},
+        visible_replies = parseInt(visible_replies, 10);
+        Thread.splitToolHandler();
+        
+        var moderatorSelector = document.getElementById("moderator_options_selector");
+        if(moderatorSelector) {
+            moderatorSelector.addEventListener('change', function() {
+                var moderatorForm = document.getElementById("moderator_options");
+                if(moderatorForm) {
+                    moderatorForm.dispatchEvent(new Event('submit'));
+                }
+            });
 
-	initMultiQuote: function()
-	{
-		var quoted = Cookie.get('multiquote');
-		if(quoted)
-		{
-			var post_ids = quoted.split("|");
+            var moderatorForm = document.getElementById("moderator_options");
+            if(moderatorForm) {
+                moderatorForm.addEventListener('submit', function(e){
+                    if(moderatorSelector.value == "") {
+                        if(typeof showToast !== 'undefined') {
+                            showToast('Select tool', 'warning');
+                        } else {
+                            console.log('Please select a tool');
+                        }
+                        e.preventDefault();
+                        return false;
+                    }
+                });
+            }
+        }
+        
+        var spinnerImg = document.querySelector('#quickreply_spinner img');
+        if(spinnerImg) spinnerImg.src = spinner_image;
+    },
 
-			$.each(post_ids, function(key, value) {
-				var mquote_a = $("#multiquote_"+value).closest('a');
-				if(mquote_a.length)
-				{
-					mquote_a.removeClass('postbit_multiquote').addClass('postbit_multiquote_on');
-				}
-			});
+    // ПОЛНОСТЬЮ ПЕРЕПИСАННАЯ ИНИЦИАЛИЗАЦИЯ БЫСТРОГО ОТВЕТА
+    initQuickReply: function() {
+        var quickReplyForm = document.getElementById('quick_reply_form');
+        if(quickReplyForm && use_xmlhttprequest == 1) {
+            console.log('Initializing quick reply form...');
+            
+            // Удаляем стандартный обработчик отправки формы
+            quickReplyForm.addEventListener('submit', function(e) {
+                console.log('Form submit intercepted');
+                e.preventDefault();
+                e.stopPropagation();
+                return Thread.quickReply(e);
+            });
 
-			var mquote_quick = $('#quickreply_multiquote');
-			if(mquote_quick.length)
-			{
-				mquote_quick.show();
-			}
-		}
-		return true;
-	},
+            // Обработчик для кнопки отправки
+            var quickReplySubmit = document.getElementById('quick_reply_submit');
+            if(quickReplySubmit) {
+                quickReplySubmit.addEventListener('click', function(e) {
+                    console.log('Submit button clicked');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return Thread.quickReply(e);
+                });
+            }
+        }
+    },
 
-	multiQuote: function(pid)
-	{
-		var new_post_ids = new Array();
-		var quoted = Cookie.get("multiquote");
-		var is_new = true;
-		var deleted = false;
-		if($("#pid" + pid).next("div.post").hasClass('deleted_post'))
-		{
-			$.jGrowl(lang.post_deleted_error, {theme:'jgrowl_error'});
-			deleted = true;
-		}
+    // ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ МЕТОД БЫСТРОГО ОТВЕТА
+    quickReply: function(e) {
+        console.log('quickReply called');
+        
+        if(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
 
-		if(quoted && !deleted)
-		{
-			var post_ids = quoted.split("|");
+        // Защита от множественных отправок
+        if(this.quick_replying) {
+            console.log('Quick reply already in progress, ignoring duplicate');
+            return false;
+        }
 
-			$.each(post_ids, function(key, post_id) {
-				if(post_id != pid && post_id != '')
-				{
-					new_post_ids[new_post_ids.length] = post_id;
-				}
-				else if(post_id == pid)
-				{
-					is_new = false;
-				}
-			});
-		}
+        this.quick_replying = true;
+        console.log('Starting quick reply process...');
 
-		var mquote_a = $("#multiquote_"+pid).closest('a')
-		if(is_new == true && !deleted)
-		{
-			new_post_ids[new_post_ids.length] = pid;
-			mquote_a.removeClass('postbit_multiquote').addClass('postbit_multiquote_on');
-		}
-		else
-		{
-			mquote_a.removeClass('postbit_multiquote_on').addClass('postbit_multiquote');
-		}
+        var quickReplyForm = document.getElementById('quick_reply_form');
+        if(!quickReplyForm) {
+            console.error('Quick reply form not found');
+            this.quick_replying = false;
+            return false;
+        }
+        
+        // Проверяем сообщение
+        var messageElement = document.getElementById('message');
+        if(!messageElement || messageElement.value.trim() === '') {
+            if(typeof showToast !== 'undefined') {
+                showToast('Please enter a message', 'warning');
+            }
+            this.quick_replying = false;
+            return false;
+        }
+        
+        // Отключаем кнопку отправки
+        var submitButton = document.getElementById('quick_reply_submit');
+        if(submitButton) {
+            submitButton.disabled = true;
+            var originalText = submitButton.value;
+            submitButton.value = 'Posting...';
+        }
 
-		var mquote_quick = $('#quickreply_multiquote');
-		if(mquote_quick.length)
-		{
-			if(new_post_ids.length)
-			{
-				mquote_quick.show();
-			}
-			else
-			{
-				mquote_quick.hide();
-			}
-		}
-		Cookie.set("multiquote", new_post_ids.join("|"));
-	},
+        // Подготавливаем данные формы
+        var formData = new FormData(quickReplyForm);
+        
+        // Добавляем AJAX параметры
+        formData.append('ajax', '1');
+        formData.append('my_post_key', my_post_key);
+        formData.append('random_seed', Math.random().toString(36).substring(2, 15));
 
-	loadMultiQuoted: function()
-	{
-		if(use_xmlhttprequest == 1)
-		{
-			// Spinner!
-			var mquote_spinner = $('#quickreply_spinner');
-			mquote_spinner.show();
+        console.log('Sending quick reply request...');
 
-			$.ajax(
-			{
-				url: 'xmlhttp.php?action=get_multiquoted&load_all=1',
-				type: 'get',
-				complete: function (request, status)
-				{
-					Thread.multiQuotedLoaded(request, status);
+        // Показываем спиннер
+        var qreply_spinner = document.getElementById('quickreply_spinner');
+        if(qreply_spinner) {
+            qreply_spinner.style.display = 'block';
+        }
 
-					// Get rid of spinner
-					mquote_spinner.hide();
-				}
-			});
-
-			return false;
-		}
-		else
-		{
-			return true;
-		}
-	},
-
-	multiQuotedLoaded: function(request)
-	{
-		var json = JSON.parse(request.responseText);
-		if(typeof json == 'object')
-		{
-			if(json.hasOwnProperty("errors"))
-			{
-				$.each(json.errors, function(i, message)
-				{
-					$.jGrowl(lang.post_fetch_error + ' ' + message, {theme:'jgrowl_error'});
-				});
-				return false;
-			}
-		}
-
-		if(typeof MyBBEditor !== 'undefined' && MyBBEditor !== null)
-		{
-			MyBBEditor.insert(json.message);
-		}
-		else
-		{
-			var id = $('#message');
-			if(id.value)
-			{
-				id.value += "\n";
-			}
-			id.val(id.val() + json.message);
-		}
-
-		Thread.clearMultiQuoted();
-		$('#quickreply_multiquote').hide();
-		$('#quoted_ids').val('all');
-
-		$('#message').trigger('focus');
-	},
-
-	clearMultiQuoted: function()
-	{
-		$('#quickreply_multiquote').hide();
-		var quoted = Cookie.get("multiquote");
-		if(quoted)
-		{
-			var post_ids = quoted.split("|");
-
-			$.each(post_ids, function(key, post_id) {
-				var mquote_a = $("#multiquote_"+post_id).closest('a');
-				if(mquote_a.length)
-				{
-					mquote_a.removeClass('postbit_multiquote_on').addClass('postbit_multiquote');
-				}
-			});
-		}
-		Cookie.unset('multiquote');
-	},
-
-	quickEdit: function(el)
-	{
-		if(typeof el === 'undefined' || !el.length) el = '.post_body';
-
-		$(el).each(function()
-		{
-			// Take pid out of the id attribute
-			id = $(this).attr('id');
-			pid = id.replace( /[^\d.]/g, '');
-
-			$('#pid_' + pid).editable("xmlhttp.php?action=edit_post&do=update_post&pid=" + pid + '&my_post_key=' + my_post_key,
-			{
-				indicator: spinner,
-				loadurl: "xmlhttp.php?action=edit_post&do=get_post&pid=" + pid,
-				type: "textarea",
-				rows: 12,
-				submit: lang.save_changes,
-				cancel: lang.cancel_edit,
-				placeholder: "",
-				event: "edit" + pid, // Triggered by the event "edit_[pid]",
-				onblur: "ignore",
-				dataType: "json",
-				submitdata: function (values, settings)
-				{
-					id = $(this).attr('id');
-					pid = id.replace( /[^\d.]/g, '');
-					$("#quickedit_" + pid + "_editreason_original").val($("#quickedit_" + pid + "_editreason").val());
-					return {
-						editreason: $("#quickedit_" + pid + "_editreason").val()
-					}
-				},
-				callback: function(values, settings)
-				{
-					id = $(this).attr('id');
-					pid = id.replace( /[^\d.]/g, '');
-
-					var json = JSON.parse(values);
-					if(typeof json == 'object')
-					{
-						if(json.hasOwnProperty("errors"))
-						{
-							$(".jGrowl").jGrowl("close");
-
-							$.each(json.errors, function(i, message)
-							{
-								$.jGrowl(lang.quick_edit_update_error + ' ' + message, {theme:'jgrowl_error'});
-							});
-							$(this).html($('#pid_' + pid + '_temp').html());
-						}
-						else if(json.hasOwnProperty("moderation_post"))
-						{
-							$(".jGrowl").jGrowl("close");
-
-							$(this).html(json.message);
-
-							// No more posts on this page? (testing for "1" as the last post would be removed here)
-							if($('.post').length == 1)
-							{
-								alert(json.moderation_post);
-								window.location = json.url;
-							}
-							else
-							{
-								$.jGrowl(json.moderation_post, {theme:'jgrowl_success'});
-								$('#post_' + pid).slideToggle();
-							}
-						}
-						else if(json.hasOwnProperty("moderation_thread"))
-						{
-							$(".jGrowl").jGrowl("close");
-
-							$(this).html(json.message);
-
-							alert(json.moderation_thread);
-
-							// Redirect user to forum
-							window.location = json.url;
-						}
-						else
-						{
-							// Change html content
-							$(this).html(json.message);
-							$('#edited_by_' + pid).html(json.editedmsg);
-						}
-					}
-					else
-					{
-						// Change html content
-						$(this).html(json.message);
-						$('#edited_by_' + pid).html(json.editedmsg);
-					}
-					$('#pid_' + pid + '_temp').remove();
-				}
-			});
+        // Отправляем запрос
+        fetch('newreply.php', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => {
+            console.log('Response received:', response.status);
+            if (!response.ok) {
+                throw new Error('Network response was not ok: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Quick reply success:', data);
+            Thread.quickReplyDone(data);
+        })
+        .catch(error => {
+            console.error('Quick reply error:', error);
+            if(typeof showToast !== 'undefined') {
+                showToast('Error sending reply: ' + error.message, 'error');
+            }
+        })
+        .finally(() => {
+            // Всегда скрываем спиннер и восстанавливаем кнопку
+            if(qreply_spinner) {
+                qreply_spinner.style.display = 'none';
+            }
+            if(submitButton) {
+                submitButton.disabled = false;
+                submitButton.value = originalText || 'Post Reply';
+            }
+            this.quick_replying = false;
         });
 
-		$('.quick_edit_button').each(function()
-		{
-			$(this).on("click", function(e)
-			{
-				e.preventDefault();
+        return false;
+    },
 
-				// Take pid out of the id attribute
-				id = $(this).attr('id');
-				pid = id.replace( /[^\d.]/g, '');
-				if($("#pid" + pid).next("div.post").hasClass('deleted_post'))
-				{
-					$.jGrowl(lang.post_deleted_error, {theme:'jgrowl_error'});
-					return false;
-				}
+    // ИСПРАВЛЕННАЯ ОБРАБОТКА ОТВЕТА
+    quickReplyDone: function(json) {
+        console.log('Processing quick reply response:', json);
 
-				// Create a copy of the post
-				if($('#pid_' + pid + '_temp').length == 0)
-				{
-					$('#pid_' + pid).clone().attr('id','pid_' + pid + '_temp').appendTo("body").hide();
-				}
+        if(typeof json == 'object' && json.hasOwnProperty("errors")) {
+            json.errors.forEach(function(message) {
+                if(typeof showToast !== 'undefined') {
+                    showToast('Quick reply error: ' + message, 'error');
+                }
+            });
+            return false;
+        }
 
-				// Trigger the edit event
-				$('#pid_' + pid).trigger("edit" + pid);
+        // Проверяем на ошибку дублирования поста
+        if(json.data && (json.data.includes('error_post_already_submitted') || json.message && json.message.includes('error_post_already_submitted'))) {
+            if(typeof showToast !== 'undefined') {
+                showToast('Post was already submitted. Please wait...', 'warning');
+            }
+            console.warn('Duplicate post detected in response');
+            return false;
+        }
 
-				// Edit Reason
-				$('#pid_' + pid + ' textarea').attr('id', 'quickedit_' + pid);
-				if(allowEditReason == 1 && $('#quickedit_' + pid + '_editreason').length == 0)
-				{
-					edit_el = $('#editreason_' + pid + '_original').clone().attr('id','editreason_' + pid);
-					edit_el.children('#quickedit_' + pid + '_editreason_original').attr('id','quickedit_' + pid + '_editreason');
-					edit_el.insertAfter('#quickedit_' + pid).show();
-				}
-			});
+        if(json.data && json.data.match(/id="post_([0-9]+)"/)) {
+            var pid = json.data.match(/id="post_([0-9]+)"/)[1];
+            console.log('New post created with ID:', pid);
+            
+            // Добавляем новый пост на страницу
+            var postsContainer = document.getElementById('posts');
+            if(postsContainer) {
+                var tempDiv = document.createElement('div');
+                tempDiv.innerHTML = json.data;
+                
+                while(tempDiv.firstChild) {
+                    postsContainer.appendChild(tempDiv.firstChild);
+                }
+                console.log('New post added to page');
+            }
+
+            // Обновляем счетчик
+            ++visible_replies;
+            Thread.splitToolHandler();
+            
+            // Инициализируем модерацию для нового поста
+            var inlineModCheck = document.getElementById("inlinemod_" + pid);
+            if (inlineModCheck && typeof inlineModeration !== 'undefined') {
+                inlineModCheck.addEventListener('change', inlineModeration.checkItem);
+            }
+
+            // Очищаем форму
+            var quickReplyForm = document.getElementById('quick_reply_form');
+            if(quickReplyForm) {
+                quickReplyForm.reset();
+                
+                var quotedIds = document.getElementById('quoted_ids');
+                if(quotedIds) quotedIds.value = '';
+                
+                console.log('Quick reply form cleared');
+            }
+            
+            // Обновляем lastpid
+            var lastpid = document.getElementById('lastpid');
+            if(lastpid) {
+                lastpid.value = pid;
+            }
+            
+            // Успешное уведомление
+            if(typeof showToast !== 'undefined') {
+                showToast('Reply posted successfully!', 'success');
+            }
+            
+            // Переинициализируем интерфейс
+            setTimeout(function() {
+                Thread.showQuoteButtons();
+                Thread.handleQuoteLinks();
+                Thread.clearMultiQuoted();
+            }, 100);
+        } else {
+            console.warn('No valid post data found in response');
+            if(typeof showToast !== 'undefined') {
+                showToast('No post data received', 'error');
+            }
+        }
+
+        // Выполняем JavaScript из ответа
+        if(json.data) {
+            var scripts = json.data.match(/<script\b[^>]*>([\s\S]*?)<\/script>/gi);
+            if(scripts) {
+                scripts.forEach(function(script) {
+                    var code = script.replace(/<script\b[^>]*>|<\/script>/gi, '');
+                    try { 
+                        eval(code); 
+                        console.log('Executed script from response');
+                    } catch(e) { 
+                        console.error('Error executing script:', e); 
+                    }
+                });
+            }
+        }
+
+        return true;
+    },
+
+    // ОБРАБОТКА ССЫЛОК ЦИТИРОВАНИЯ
+    handleQuoteLinks: function() {
+        console.log('handleQuoteLinks called');
+        
+        var quoteLinks = document.querySelectorAll('a[href*="newreply.php"][href*="quotedpid"]');
+        quoteLinks.forEach(function(link) {
+            var newLink = link.cloneNode(true);
+            link.parentNode.replaceChild(newLink, link);
+            
+            var href = newLink.getAttribute('href');
+            var pidMatch = href.match(/quotedpid=(\d+)/);
+            
+            if(pidMatch && pidMatch[1]) {
+                var pid = parseInt(pidMatch[1]);
+                
+                newLink.href = 'javascript:void(0);';
+                
+                newLink.replaceWith(newLink.cloneNode(true));
+                var finalLink = newLink.parentNode.lastChild;
+                
+                finalLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    
+                    console.log('Quote clicked for PID:', pid);
+                    Thread.handleSingleQuote(pid);
+                }, { once: true });
+            }
         });
+    },
 
-		return false;
-	},
+    // ОБРАБОТКА ОДИНОЧНОГО ЦИТИРОВАНИЯ
+    handleSingleQuote: function(pid) {
+        console.log('Quick reply quote for PID:', pid);
+        
+        // Защита от множественных вызовов
+        if (this.quoting) {
+            console.log('Quote already in progress');
+            return;
+        }
+        
+        this.quoting = true;
+        
+        // Показываем спиннер
+        var spinner = document.getElementById('quickreply_spinner');
+        if(spinner) spinner.style.display = 'block';
 
-	initQuickReply: function()
-	{
-		if($('#quick_reply_form').length && use_xmlhttprequest == 1)
-		{
-			// Bind closing event to our popup menu
-			$('#quick_reply_submit').on('click', function(e) {
-				return Thread.quickReply(e);
-			});
-		}
-	},
+        // Загружаем цитату через AJAX
+        fetch('xmlhttp.php?action=get_quoted&pid=' + pid)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                Thread.insertQuoteToQuickReply(data, pid);
+                if(spinner) spinner.style.display = 'none';
+                this.quoting = false;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                if(spinner) spinner.style.display = 'none';
+                if(typeof showToast !== 'undefined') {
+                    showToast('Error loading quote', 'error');
+                }
+                this.quoting = false;
+            });
+    },
 
-	quickReply: function(e)
-	{
-		e.stopPropagation();
+    // ВСТАВКА ЦИТАТЫ В БЫСТРЫЙ ОТВЕТ
+    insertQuoteToQuickReply: function(json, pid) {
+        if(typeof json == 'object' && json.hasOwnProperty("errors")) {
+            json.errors.forEach(function(message) {
+                if(typeof showToast !== 'undefined') {
+                    showToast('Quote error: ' + message, 'error');
+                }
+            });
+            return false;
+        }
 
-		if(this.quick_replying)
-		{
-			return false;
-		}
+        if(json && json.message) {
+            var messageElement = document.getElementById('message');
+            if(!messageElement) {
+                console.error('Message element not found');
+                return false;
+            }
 
-		this.quick_replying = 1;
-		var post_body = $('#quick_reply_form').serialize();
+            // Очищаем и нормализуем текст цитаты
+            var quoteText = json.message.trim();
+            
+            // Удаляем возможные дублирующиеся цитаты
+            quoteText = Thread.removeDuplicateQuotes(quoteText);
+            
+            console.log('Prepared quote text:', quoteText);
 
-		// Spinner!
-		var qreply_spinner = $('#quickreply_spinner');
-		qreply_spinner.show();
+            // Если уже есть текст, добавляем переносы
+            var currentText = messageElement.value;
+            if(currentText.trim() !== '') {
+                // Проверяем, не содержится ли уже такая цитата
+                if (currentText.includes(quoteText)) {
+                    if(typeof showToast !== 'undefined') {
+                        showToast('Quote already exists in message', 'info');
+                    }
+                    return false;
+                }
+                quoteText = '\n\n' + quoteText;
+            }
 
-		$.ajax(
-		{
-			url: 'newreply.php?ajax=1',
-			type: 'post',
-			data: post_body,
-			dataType: 'html',
-        	complete: function (request, status)
-        	{
-		  		Thread.quickReplyDone(request, status);
+            // Вставляем цитату
+            if(typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
+                // Если используется редактор
+                MyBBEditor.insert(quoteText);
+            } else {
+                // Простое текстовое поле
+                var startPos = messageElement.selectionStart;
+                var endPos = messageElement.selectionEnd;
+                var currentValue = messageElement.value;
+                
+                messageElement.value = currentValue.substring(0, startPos) + 
+                                      quoteText + 
+                                      currentValue.substring(endPos);
+                
+                // Устанавливаем курсор после цитаты
+                var newPos = startPos + quoteText.length;
+                messageElement.setSelectionRange(newPos, newPos);
+            }
 
-				// Get rid of spinner
-				qreply_spinner.hide();
-          	}
-		});
+            // Обновляем поле quoted_ids для правильной обработки формы
+            var quotedIds = document.getElementById('quoted_ids');
+            if(quotedIds) {
+                var currentIds = quotedIds.value ? quotedIds.value.split(',') : [];
+                if (!currentIds.includes(pid.toString())) {
+                    currentIds.push(pid.toString());
+                    quotedIds.value = currentIds.join(',');
+                }
+            }
 
-		return false;
-	},
+            // Фокусируемся на редакторе
+            messageElement.focus();
+            
+            // Прокручиваем к форме быстрого ответа
+            var quickReplyForm = document.getElementById('quick_reply_form');
+            if(quickReplyForm) {
+                quickReplyForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            
+            if(typeof showToast !== 'undefined') {
+                showToast('Quote added to quick reply', 'success');
+            }
+            
+            console.log('Quote inserted for PID:', pid);
+        }
+    },
 
-	quickReplyDone: function(request, status)
-	{
-		this.quick_replying = 0;
+    // УДАЛЕНИЕ ДУБЛИРУЮЩИХСЯ ЦИТАТ
+    removeDuplicateQuotes: function(text) {
+        // Разделяем текст на цитаты
+        var quoteRegex = /(\[quote="[^"]+" pid='\d+' dateline='\d+'\]\s*[\s\S]*?\[\/quote\])/g;
+        var quotes = text.match(quoteRegex);
+        
+        if (!quotes || quotes.length <= 1) {
+            return text; // Если только одна цитата или нет цитат, возвращаем как есть
+        }
+        
+        // Удаляем дубликаты
+        var uniqueQuotes = [];
+        var seenQuotes = new Set();
+        
+        quotes.forEach(function(quote) {
+            // Нормализуем пробелы для сравнения
+            var normalizedQuote = quote.replace(/\s+/g, ' ').trim();
+            if (!seenQuotes.has(normalizedQuote)) {
+                seenQuotes.add(normalizedQuote);
+                uniqueQuotes.push(quote);
+            }
+        });
+        
+        // Если осталась только одна уникальная цитата, возвращаем ее
+        if (uniqueQuotes.length === 1) {
+            return uniqueQuotes[0].trim();
+        }
+        
+        // Иначе объединяем уникальные цитаты
+        return uniqueQuotes.join('\n\n').trim();
+    },
 
-		var json = JSON.parse(request.responseText);
-		if(typeof json == 'object')
-		{
-			if(json.hasOwnProperty("errors"))
-			{
-				$(".jGrowl").jGrowl("close");
+    // MULTIQUOTE
+    multiQuote: function(pid) {
+        console.log('multiQuote called with:', pid);
+        
+        pid = parseInt(pid);
+        if(isNaN(pid)) {
+            console.error('Invalid pid:', pid);
+            return false;
+        }
 
-				$.each(json.errors, function(i, message)
-				{
-					$.jGrowl(lang.quick_reply_post_error + ' ' + message, {theme:'jgrowl_error'});
-				});
-				$('#quickreply_spinner').hide();
-			}
-		}
+        let new_post_ids = [];
+        const quoted = this.getCookie("multiquote");
+        let is_new = true;
+        let deleted = false;
+        
+        const postElement = document.getElementById(`pid${pid}`);
+        if(postElement) {
+            const nextPost = postElement.nextElementSibling;
+            if(nextPost && nextPost.classList.contains('deleted_post')) {
+                if(typeof showToast !== 'undefined') {
+                    showToast('This post has been deleted', 'error');
+                }
+                deleted = true;
+            }
+        }
 
-		if($('#captcha_trow').length)
-		{
-			cap = json.data.match(/^<captcha>([0-9a-zA-Z]+)(\|([0-9a-zA-Z]+)|)<\/captcha>/);
-			if(cap)
-			{
-				json.data = json.data.replace(/^<captcha>(.*)<\/captcha>/, '');
+        if(quoted && !deleted) {
+            const post_ids = quoted.split("|");
+            console.log('Existing quotes:', post_ids);
 
-				if($("#captcha_img").length)
-				{
-					if(cap[1])
-					{
-						imghash = cap[1];
-						$('#imagehash').val(imghash);
-						if(cap[3])
-						{
-							$('#imagestring').attr('type', 'hidden').val(cap[3]);
-							// hide the captcha
-							$('#captcha_trow').hide();
-						}
-						else
-						{
-							$('#captcha_img').attr('src', "captcha.php?action=regimage&imagehash="+imghash);
-							$('#imagestring').attr('type', 'text').val('');
-							$('#captcha_trow').show();
-						}
-					}
-				}
-			}
-		}
+            post_ids.forEach(post_id => {
+                const numPostId = parseInt(post_id);
+                if(!isNaN(numPostId) && numPostId !== pid && post_id !== '') {
+                    new_post_ids.push(numPostId.toString());
+                } else if(numPostId === pid) {
+                    is_new = false;
+                }
+            });
+        }
 
-		if(json.hasOwnProperty("errors"))
-			return false;
+        const mquoteLink = document.querySelector(`#multiquote_${pid}`)?.closest('a');
+        if(is_new && !deleted) {
+            new_post_ids.push(pid.toString());
+            if(mquoteLink) {
+                mquoteLink.classList.remove('postbit_multiquote');
+                mquoteLink.classList.add('postbit_multiquote_on');
+            }
+            if(typeof showToast !== 'undefined') {
+                showToast('Post added to multi-quote', 'success');
+            }
+        } else if(mquoteLink) {
+            mquoteLink.classList.remove('postbit_multiquote_on');
+            mquoteLink.classList.add('postbit_multiquote');
+            if(typeof showToast !== 'undefined') {
+                showToast('Post removed from multi-quote', 'info');
+            }
+        }
 
-		if(json.data.match(/id="post_([0-9]+)"/))
-		{
-			var pid = json.data.match(/id="post_([0-9]+)"/)[1];
-			var post = document.createElement("div");
+        const mquoteQuick = document.getElementById('quickreply_multiquote');
+        if(mquoteQuick) {
+            if(new_post_ids.length) {
+                mquoteQuick.style.display = 'block';
+                // Заменяем обработчик чтобы избежать дублирования
+                mquoteQuick.onclick = function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    Thread.loadMultiQuoted();
+                    return false;
+                };
+            } else {
+                mquoteQuick.style.display = 'none';
+            }
+        }
+        
+        this.setCookie("multiquote", new_post_ids.join("|"));
+        return false;
+    },
 
-			$('#posts').append(json.data);
+    // ЗАГРУЗКА MULTIQUOTE
+    loadMultiQuoted: function() {
+        console.log('Loading multi-quoted posts to quick reply');
+        
+        // Защита от множественных вызовов
+        if (this.loadingMultiQuote) {
+            console.log('Multi-quote already loading');
+            return false;
+        }
+        
+        this.loadingMultiQuote = true;
+        
+        var mquote_spinner = document.getElementById('quickreply_spinner');
+        if(mquote_spinner) mquote_spinner.style.display = 'block';
 
-			++visible_replies;
-			Thread.splitToolHandler();
-			
-			if (typeof inlineModeration != "undefined") // Guests don't have this object defined
-				$("#inlinemod_" + pid).on('change', inlineModeration.checkItem);
+        fetch('xmlhttp.php?action=get_multiquoted&load_all=1')
+            .then(response => response.json())
+            .then(data => {
+                Thread.insertMultiQuotedToQuickReply(data);
+                if(mquote_spinner) mquote_spinner.style.display = 'none';
+                this.loadingMultiQuote = false;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                if(mquote_spinner) mquote_spinner.style.display = 'none';
+                if(typeof showToast !== 'undefined') {
+                    showToast('Error loading multi-quote', 'error');
+                }
+                this.loadingMultiQuote = false;
+            });
 
-			Thread.quickEdit("#pid_" + pid);
+        return false;
+    },
 
-			// Eval javascript
-			$(json.data).filter("script").each(function(e) {
-				eval($(this).text());
-			});
+    // ВСТАВКА MULTIQUOTE
+    insertMultiQuotedToQuickReply: function(json) {
+        if(typeof json == 'object' && json.hasOwnProperty("errors")) {
+            json.errors.forEach(function(message) {
+                if(typeof showToast !== 'undefined') {
+                    showToast('Multi-quote error: ' + message, 'error');
+                }
+            });
+            return false;
+        }
 
-			$('#quick_reply_form')[0].reset();
+        if(json && json.message) {
+            var messageElement = document.getElementById('message');
+            if(messageElement) {
+                var quoteText = json.message.trim();
+                
+                // Удаляем дублирующиеся цитаты
+                quoteText = Thread.removeDuplicateQuotes(quoteText);
+                
+                // Проверяем, не содержится ли уже такой текст
+                if (messageElement.value.includes(quoteText)) {
+                    if(typeof showToast !== 'undefined') {
+                        showToast('Multi-quote already exists in message', 'info');
+                    }
+                    return false;
+                }
+                
+                if(messageElement.value.trim() !== '') {
+                    quoteText = '\n\n' + quoteText;
+                }
 
-			var lastpid = $('#lastpid');
-			if(lastpid.length)
-			{
-				lastpid.val(pid);
-			}
-		}
-		else
-		{
-			// Eval javascript
-			$(json.data).filter("script").each(function(e) {
-				eval($(this).text());
-			});
-		}
+                if(typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
+                    MyBBEditor.insert(quoteText);
+                } else {
+                    var startPos = messageElement.selectionStart;
+                    var endPos = messageElement.selectionEnd;
+                    var currentValue = messageElement.value;
+                    
+                    messageElement.value = currentValue.substring(0, startPos) + 
+                                          quoteText + 
+                                          currentValue.substring(endPos);
+                    
+                    var newPos = startPos + quoteText.length;
+                    messageElement.setSelectionRange(newPos, newPos);
+                }
 
-		$(".jGrowl").jGrowl("close");
-	},
+                messageElement.focus();
+                
+                var quotedIds = document.getElementById('quoted_ids');
+                if(quotedIds) quotedIds.value = 'all';
 
-	showIgnoredPost: function(pid)
-	{
-		$('#ignored_post_'+pid).slideToggle("slow");
-		$('#post_'+pid).slideToggle("slow");
-	},
+                if(typeof showToast !== 'undefined') {
+                    showToast('Multi-quote added to quick reply', 'success');
+                }
+            }
+        }
 
-	showDeletedPost: function(pid)
-	{
-		$('#deleted_post_'+pid).slideToggle("slow");
-		$('#post_'+pid).slideToggle("slow");
-	},
+        Thread.clearMultiQuoted();
+        var quickquote = document.getElementById('quickreply_multiquote');
+        if(quickquote) quickquote.style.display = 'none';
+    },
 
-	deletePost: function(pid)
-	{
-		MyBB.prompt(quickdelete_confirm, {
-			buttons:[
-					{title: yes_confirm, value: true},
-					{title: no_confirm, value: false}
-			],
-			submit: function(e,v,m,f){
-				if(v == true)
-				{
-					$.ajax(
-					{
-						url: 'editpost.php?ajax=1&action=deletepost&delete=1&my_post_key='+my_post_key+'&pid='+pid,
-						type: 'post',
-						complete: function (request, status)
-						{
-							var json = JSON.parse(request.responseText);
-							if(json.hasOwnProperty("errors"))
-							{
-								$.each(json.errors, function(i, message)
-								{
-									$.jGrowl(lang.quick_delete_error + ' ' + message, {theme:'jgrowl_error'});
-								});
-							}
-							else if(json.hasOwnProperty("data"))
-							{
-								// Soft deleted
-								if(json.data == 1)
-								{
-									// Change CSS class of div 'post_[pid]'
-									$("#post_"+pid).addClass("unapproved_post deleted_post");
-									if(json.first == 1)
-									{
-										$("#quick_reply_form, .thread_tools, .new_reply_button, .inline_rating").hide();
-										$("#moderator_options_selector option.option_mirage").attr("disabled","disabled");
-										$("#moderator_options_selector option[value='softdeletethread']").val("restorethread").text(lang.restore_thread);
-										thread_deleted = "1";
-									}
-									$.jGrowl(lang.quick_delete_success, {theme:'jgrowl_success'});
-								}
-								else if(json.data == 2)
-								{
-									// Actually deleted
-									$('#post_'+pid).slideToggle("slow");
+    // ПОКАЗ КНОПОК ЦИТИРОВАНИЯ
+    showQuoteButtons: function() {
+        console.log('showQuoteButtons called');
+        
+        setTimeout(function() {
+            var quoteSelectors = [
+                'a[href*="newreply.php"][href*="quotedpid"]',
+                'a.postbit_quote', 
+                '.postbit_quote a',
+                'a[onclick*="quote"]',
+                '.post_controls a[href*="quote"]',
+                '.postbit_buttons a[href*="quote"]'
+            ];
+            
+            var quoteButtons = [];
+            quoteSelectors.forEach(function(selector) {
+                var found = document.querySelectorAll(selector);
+                found.forEach(function(button) {
+                    quoteButtons.push(button);
+                });
+            });
+            
+            var multiQuoteSelectors = [
+                '.postbit_multiquote',
+                '.postbit_multiquote_on', 
+                'a[onclick*="multiQuote"]',
+                '.post_controls a[onclick*="multiQuote"]',
+                '.postbit_buttons a[onclick*="multiQuote"]'
+            ];
+            
+            var multiQuoteButtons = [];
+            multiQuoteSelectors.forEach(function(selector) {
+                var found = document.querySelectorAll(selector);
+                found.forEach(function(button) {
+                    multiQuoteButtons.push(button);
+                });
+            });
+            
+            // Показываем кнопки
+            quoteButtons.forEach(function(button) {
+                button.style.display = 'inline-block';
+                button.style.visibility = 'visible';
+                button.style.opacity = '1';
+                button.classList.remove('hidden');
+                button.removeAttribute('hidden');
+            });
+            
+            multiQuoteButtons.forEach(function(button) {
+                button.style.display = 'inline-block';
+                button.style.visibility = 'visible';
+                button.style.opacity = '1';
+                button.classList.remove('hidden');
+                button.removeAttribute('hidden');
+            });
+            
+            console.log('Found quote buttons:', quoteButtons.length);
+            console.log('Found multi-quote buttons:', multiQuoteButtons.length);
+            
+            // Переинициализируем обработчики
+            Thread.handleQuoteLinks();
+            
+        }, 100);
+    },
 
-									--visible_replies;
-									Thread.splitToolHandler();
-									$.jGrowl(lang.quick_delete_success, {theme:'jgrowl_success'});
-								}
-								else if(json.data == 3)
-								{
-									// deleted thread --> redirect
+    // ИНИЦИАЛИЗАЦИЯ MULTIQUOTE
+    initMultiQuote: function() {
+        var quoted = Thread.getCookie('multiquote');
+        if(quoted) {
+            var post_ids = quoted.split("|");
 
-									if(!json.hasOwnProperty("url"))
-									{
-										$.jGrowl(lang.unknown_error, {theme:'jgrowl_error'});
-									}
+            post_ids.forEach(function(value) {
+                var mquote_a = document.querySelector("#multiquote_" + value);
+                if(mquote_a) {
+                    mquote_a.classList.remove('postbit_multiquote');
+                    mquote_a.classList.add('postbit_multiquote_on');
+                }
+            });
 
-									// set timeout for redirect
-									window.setTimeout(function()
-									{
- 										window.location = json.url;
-									}, 3000);
+            var mquote_quick = document.getElementById('quickreply_multiquote');
+            if(mquote_quick) {
+                mquote_quick.style.display = 'block';
+                mquote_quick.onclick = function(e) {
+                    e.preventDefault();
+                    Thread.loadMultiQuoted();
+                    return false;
+                };
+            }
+        }
+        return true;
+    },
 
-									// print success message
-									$.jGrowl(lang.quick_delete_thread_success, {theme:'jgrowl_success'});
-								}
-							}
-							else
-							{
-								$.jGrowl(lang.unknown_error, {theme:'jgrowl_error'});
-							}
-						}
-					});
-				}
-			}
-		});
+    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
+    hideElements: function(selector) {
+        try {
+            document.querySelectorAll(selector).forEach(function(el) {
+                el.style.display = 'none';
+            });
+        } catch(e) {
+            console.log('Error hiding elements:', e);
+        }
+    },
 
-		return false;
-	},
+    clearMultiQuoted: function() {
+        var quickquote = document.getElementById('quickreply_multiquote');
+        if(quickquote) quickquote.style.display = 'none';
+        
+        var quoted = Thread.getCookie("multiquote");
+        if(quoted) {
+            var post_ids = quoted.split("|");
+            post_ids.forEach(function(post_id) {
+                var mquote_a = document.querySelector("#multiquote_" + post_id);
+                if(mquote_a) {
+                    mquote_a.classList.remove('postbit_multiquote_on');
+                    mquote_a.classList.add('postbit_multiquote');
+                }
+            });
+        }
+        Thread.deleteCookie('multiquote');
+    },
 
+    splitToolHandler: function() {
+        if(thread_deleted !== "1") {
+            var moderatorSelector = document.getElementById("moderator_options_selector");
+            if(moderatorSelector) {
+                var splitTool = moderatorSelector.querySelector("option[value=split]");
+                if(splitTool) {
+                    if(visible_replies > 0) {
+                        splitTool.disabled = false;
+                    } else {
+                        splitTool.disabled = true;
+                    }
+                }
+            }
+        }
+    },
 
-	restorePost: function(pid)
-	{
-		MyBB.prompt(quickrestore_confirm, {
-			buttons:[
-					{title: yes_confirm, value: true},
-					{title: no_confirm, value: false}
-			],
-			submit: function(e,v,m,f){
-				if(v == true)
-				{
-					$.ajax(
-					{
-						url: 'editpost.php?ajax=1&action=restorepost&restore=1&my_post_key='+my_post_key+'&pid='+pid,
-						type: 'post',
-						complete: function (request, status)
-						{
-							var json = JSON.parse(request.responseText);
-							if(json.hasOwnProperty("errors"))
-							{
-								$.each(json.errors, function(i, message)
-								{
-									$.jGrowl(lang.quick_restore_error + ' ' + message, {theme:'jgrowl_error'});
-								});
-							}
-							else if(json.hasOwnProperty("data"))
-							{
-								// Change CSS class of div 'post_[pid]'
-								$("#post_"+pid).removeClass("unapproved_post deleted_post");
-								if(json.first == 1)
-								{
-									$("#quick_reply_form, .thread_tools, .new_reply_button, .inline_rating").show();
-									$("#moderator_options_selector option.option_mirage").prop("disabled", false);
-									$("#moderator_options_selector option[value='restorethread']").val("softdeletethread").text(lang.softdelete_thread);
-									thread_deleted = "";
-								}
+    // РАБОТА С COOKIES
+    getCookie: function(name) {
+        var nameEQ = name + "=";
+        var ca = document.cookie.split(';');
+        for(var i=0;i < ca.length;i++) {
+            var c = ca[i];
+            while (c.charAt(0)==' ') c = c.substring(1,c.length);
+            if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+        }
+        return null;
+    },
 
-								$.jGrowl(lang.quick_restore_success, {theme:'jgrowl_success'});
-							}
-							else
-							{
-								$.jGrowl(lang.unknown_error, {theme:'jgrowl_error'});
-							}
-						}
-					});
-				}
-			}
-		});
+    setCookie: function(name, value, days) {
+        var expires = "";
+        if (days) {
+            var date = new Date();
+            date.setTime(date.getTime() + (days*24*60*60*1000));
+            expires = "; expires=" + date.toUTCString();
+        }
+        document.cookie = name + "=" + (value || "")  + expires + "; path=/";
+    },
 
-		return false;
-	},
+    deleteCookie: function(name) {
+        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:01 GMT; path=/';
+    },
 
-	viewNotes: function(tid)
-	{
-		MyBB.popupWindow("/moderation.php?action=viewthreadnotes&tid="+tid+"&modal=1");
-	},
-
-	splitToolHandler: function()
-	{
-		if($(thread_deleted !== "1" && "#moderator_options_selector").length !== 0){
-			var splitTool = $("#moderator_options_selector").find("option[value=split]");
-			if(visible_replies > 0) {
-				splitTool.prop("disabled", false);
-			} else {
-				splitTool.attr("disabled","disabled");
-			}
-		}
-	}
+    viewNotes: function(tid) {
+        if(typeof MyBB !== 'undefined' && MyBB.popupWindow) {
+            MyBB.popupWindow("/moderation.php?action=viewthreadnotes&tid="+tid+"&modal=1");
+        } else {
+            window.open("/moderation.php?action=viewthreadnotes&tid="+tid, "_blank", "width=600,height=400");
+        }
+    }
 };
 
-Thread.init();
+// Инициализация
+setTimeout(function() {
+    try {
+        Thread.init();
+    } catch(e) {
+        console.error('Error initializing Thread:', e);
+    }
+}, 100);

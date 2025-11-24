@@ -9,14 +9,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const deleteModalEl  = document.getElementById('deleteCommentModal');
   const editTextarea   = document.getElementById('editCommentText');
 
-  // Toast container: создадим, если нет
-  let toastContainer = document.getElementById('toastContainer');
-  if (!toastContainer) {
-    toastContainer = document.createElement('div');
-    toastContainer.id = 'toastContainer';
-    toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
-    document.body.appendChild(toastContainer);
-  }
+  
 
   const editModal = new bootstrap.Modal(editModalEl,   { backdrop: 'static', keyboard: false });
   const deleteModal = new bootstrap.Modal(deleteModalEl,{ backdrop: 'static', keyboard: false });
@@ -136,29 +129,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // === TOAST ===
-  function showToast(message, type = 'info') {
-    const toastId = 'toast-' + Date.now();
-    const toast = document.createElement('div');
-    toast.className = `toast align-items-center text-white bg-${type} border-0`;
-    toast.role = 'alert';
-    toast.ariaLive = 'assertive';
-    toast.ariaAtomic = 'true';
-    toast.id = toastId;
-    toast.setAttribute('data-bs-delay', '3000');
 
-    toast.innerHTML = `
-      <div class="d-flex">
-        <div class="toast-body">${message}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-      </div>
-    `;
-
-    toastContainer.appendChild(toast);
-    const bsToast = new bootstrap.Toast(toast);
-    bsToast.show();
-    toast.addEventListener('hidden.bs.toast', () => toast.remove());
-  }
 });
 
 
@@ -224,46 +195,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 
-
-
-
-// Функция для показа уведомлений
-function showToast2(message, type = 'info') {
-    // Создаем элемент уведомления
-    const toast = document.createElement('div');
-    toast.className = `toast show align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0`;
-    toast.style.position = 'fixed';
-    toast.style.top = '20px';
-    toast.style.right = '20px';
-    toast.style.zIndex = '9999';
-    toast.style.minWidth = '300px';
-    
-    toast.innerHTML = `
-        <div class="d-flex">
-            <div class="toast-body">
-                <i class="fa-solid ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'} me-2"></i>
-                ${message}
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-    `;
-    
-    // Добавляем на страницу
-    document.body.appendChild(toast);
-    
-    // Автоматически скрываем через 3 секунды
-    setTimeout(() => {
-        toast.remove();
-    }, 3000);
-}
-
-
-
-
-
-
-
-
 // ====== МАССОВОЕ УДАЛЕНИЕ КОММЕНТАРИЕВ ======
 // Глобальные переменные для хранения выбранных комментариев
 if (typeof window.selectedCommentIds === 'undefined') {
@@ -277,7 +208,7 @@ function massDeleteComments() {
     const selectedCheckboxes = document.querySelectorAll('.comment-checkbox:checked');
     
     if (selectedCheckboxes.length === 0) {
-        showToast2('Please select at least one comment to delete.', 'warning');
+        showToast('Please select at least one comment to delete.', 'warning');
         return;
     }
 
@@ -356,15 +287,15 @@ function executeMassDelete() {
             updateCommentCounters(window.selectedCommentIds.length);
             
             // Показываем уведомление об успехе
-            showToast2(`Successfully deleted ${data.deleted || window.selectedCommentIds.length} comments!`, 'success');
+            showToast(`Successfully deleted ${data.deleted || window.selectedCommentIds.length} comments!`, 'success');
         } else {
             // Показываем ошибку
-            showToast2('Error: ' + (data.error || 'Failed to delete comments'), 'error');
+            showToast('Error: ' + (data.error || 'Failed to delete comments'), 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        showToast2('Network error occurred. Please check console for details.', 'error');
+        showToast('Network error occurred. Please check console for details.', 'error');
     })
     .finally(() => {
         // Восстанавливаем кнопку подтверждения

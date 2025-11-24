@@ -1,485 +1,238 @@
 var MyBB = {
-	init: function()
-	{
-		$(function()
-		{
-			MyBB.pageLoaded();
-		});
+    init: function() {
+        document.addEventListener('DOMContentLoaded', function() {
+            MyBB.pageLoaded();
+        });
+        return true;
+    },
 
-		return true;
-	},
+    pageLoaded: function() {
+		
+		// Печатаем в консоль все элементы с атрибутом name="allbox"
+    console.log(document.querySelectorAll('[name="allbox"]'));
+		
+        // Create the Check All feature
+        document.querySelectorAll('[name="allbox"]').forEach(function(allbox) {
+            var checked = allbox.checked;
+            
+			
+			
+        var checkboxes = document.querySelectorAll('input[type="checkbox"][id^="inlinemod_"]');
+			
+			
+			
+			
+			
 
-	pageLoaded: function()
-	{
-		expandables.init();
+            checkboxes.forEach(function(checkbox) {
+                checkbox.addEventListener('change', function() {
+                    if(checked && !this.checked) {
+                        checked = false;
+                        allbox.dispatchEvent(new CustomEvent('change', {detail: {origin: 'item'}}));
+                    }
+                });
+            });
 
-		/* Create the Check All feature */
-		$('[name="allbox"]').each(function(key, value) {
-			var allbox = this;
-			var checked = $(this).is(':checked');
-			var checkboxes = $(this).closest('form').find(':checkbox').not('[name="allbox"]');
+            allbox.addEventListener('change', function(event) {
+                checked = this.checked;
+                var origin = event.detail ? event.detail.origin : undefined;
 
-			checkboxes.on('change', function() {
-				if(checked && !$(this).prop('checked'))
-				{
-					checked = false;
-					$(allbox).trigger('change', ['item']);
-				}
-			});
+                if(typeof origin == "undefined") {
+                    checkboxes.forEach(function(checkbox) {
+                        if(checked != checkbox.checked) {
+                            checkbox.checked = checked;
+                            checkbox.dispatchEvent(new Event('change'));
+                        }
+                    });
+                }
+            });
+        });
 
-			$(this).on('change', function(event, origin) {
-				checked = $(this).is(':checked');
+        // Initialise "initial focus" field if we have one
+        var initialfocus = document.querySelector(".initial_focus");
+        if(initialfocus) {
+            initialfocus.focus();
+        }
 
-				if(typeof(origin) == "undefined")
-				{
-					checkboxes.each(function() {
-						if(checked != $(this).is(':checked'))
-						{
-							$(this).prop('checked', checked).trigger('change');
-						}
-					});
-				}
-			});
-		});
+        if(typeof use_xmlhttprequest != "undefined" && use_xmlhttprequest == 1) {
+            var mark_read_imgs = document.querySelectorAll(".ajax_mark_read");
+            mark_read_imgs.forEach(function(element) {
+                if(element.classList.contains('forum_off') || 
+                   element.classList.contains('forum_offclose') || 
+                   element.classList.contains('forum_offlink') || 
+                   element.classList.contains('subforum_minioff') || 
+                   element.classList.contains('subforum_minioffclose') || 
+                   element.classList.contains('subforum_miniofflink') || 
+                   (element.title && element.title == lang.no_new_posts)) return;
 
-		// Initialise "initial focus" field if we have one
-		var initialfocus = $(".initial_focus");
-		if(initialfocus.length)
-		{
-			initialfocus.trigger('focus');
-		}
+                element.addEventListener('click', function() {
+                    MyBB.markForumRead(this);
+                });
 
-		if(typeof(use_xmlhttprequest) != "undefined" && use_xmlhttprequest == 1)
-		{
-			mark_read_imgs = $(".ajax_mark_read");
-			mark_read_imgs.each(function()
-			{
-				var element = $(this);
-				if(element.hasClass('forum_off') || element.hasClass('forum_offclose') || element.hasClass('forum_offlink') || element.hasClass('subforum_minioff') || element.hasClass('subforum_minioffclose') || element.hasClass('subforum_miniofflink') || (element.attr("title") && element.attr("title") == lang.no_new_posts)) return;
+                element.style.cursor = "pointer";
+                if(element.title) {
+                    element.title = element.title + " - ";
+                }
+                element.title = element.title + lang.click_mark_read;
+            });
+        }
 
-				element.on('click', function()
-				{
-					MyBB.markForumRead(this);
-				});
+        document.querySelectorAll("a.referralLink").forEach(function(link) {
+            link.addEventListener('click', MyBB.showReferrals);
+        });
 
-				element.css("cursor", "pointer");
-				if(element.attr("title"))
-				{
-					element.attr("title", element.attr("title") + " - ");
-				}
-				element.attr("title", element.attr("title") + lang.click_mark_read);
-			});
-		}
+        if(document.querySelector('.author_avatar')) {
+            document.querySelectorAll(".author_avatar img").forEach(function(img) {
+                img.addEventListener('error', function() {
+                    this.removeEventListener('error', arguments.callee);
+                    var avatar = this.closest('.author_avatar');
+                    if(avatar) avatar.remove();
+                });
+            });
+        }
+    },
 
-		if(typeof $.modal !== "undefined")
-		{
-			$(document).on($.modal.OPEN, function(event, modal) {
-				$("body").css("overflow", "hidden");
-				if(initialfocus.length > 0)
-				{
-					initialfocus.trigger('focus');
-				}
-			});
+    markForumRead: function(element) {
+        if(!element) return false;
+        
+        var fid = element.id.replace("mark_read_", "");
+        if(!fid) return false;
 
-			$(document).on($.modal.CLOSE, function(event, modal) {
-				$("body").css("overflow", "auto");
-			});
-		}
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', 'misc.php?action=markread&fid=' + fid + '&ajax=1&my_post_key=' + my_post_key, true);
+        xhr.onreadystatechange = function() {
+            if(xhr.readyState === 4 && xhr.status === 200) {
+                MyBB.forumMarkedRead(fid, xhr.responseText);
+            }
+        };
+        xhr.send();
+    },
 
-		$("a.referralLink").on('click', MyBB.showReferrals);
+    forumMarkedRead: function(fid, request) {
+        if(request == 1) {
+            var markreadfid = document.getElementById("mark_read_"+fid);
+            if(!markreadfid) return;
+            
+            if(markreadfid.classList.contains('subforum_minion')) {
+                markreadfid.classList.remove('subforum_minion');
+                markreadfid.classList.add('subforum_minioff');
+            } else {
+                markreadfid.classList.remove('forum_on');
+                markreadfid.classList.add('forum_off');
+            }
+            markreadfid.style.cursor = "default";
+            markreadfid.title = lang.no_new_posts;
+        }
+    },
 
-		if($('.author_avatar').length)
-		{
-			$(".author_avatar img").on('error', function () {
-				$(this).unbind("error").closest('.author_avatar').remove();
-			});
-		}
-	},
+    unHTMLchars: function(text) {
+        text = text.replace(/&lt;/g, "<");
+        text = text.replace(/&gt;/g, ">");
+        text = text.replace(/&nbsp;/g, " ");
+        text = text.replace(/&quot;/g, "\"");
+        text = text.replace(/&amp;/g, "&");
+        return text;
+    },
 
+    HTMLchars: function(text) {
+        text = text.replace(new RegExp("&(?!#[0-9]+;)", "g"), "&amp;");
+        text = text.replace(/</g, "&lt;");
+        text = text.replace(/>/g, "&gt;");
+        text = text.replace(/"/g, "&quot;");
+        return text;
+    },
 
+    changeLanguage: function() {
+        var form = document.getElementById("lang_select");
+        if(!form) return false;
+        form.dispatchEvent(new Event('submit'));
+    },
 
+    changeTheme: function() {
+        var form = document.getElementById("theme_select");
+        if(!form) return false;
+        form.dispatchEvent(new Event('submit'));
+    },
 
+    detectDSTChange: function(timezone_with_dst) {
+        var date = new Date();
+        var local_offset = date.getTimezoneOffset() / 60;
+        if(Math.abs(parseInt(timezone_with_dst) + local_offset) == 1) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'misc.php?action=dstswitch&ajax=1', true);
+            xhr.onerror = function() {
+                if(use_xmlhttprequest != 1) {
+                    var form = document.createElement("form");
+                    form.method = "post";
+                    form.action = "misc.php";
+                    form.style.display = "none";
 
+                    var input = document.createElement("input");
+                    input.name = "action";
+                    input.type = "hidden";
+                    input.value = "dstswitch";
+                    form.appendChild(input);
 
-	prompt: function(message, options)
-	{
-		var defaults = { fadeDuration: 250, zIndex: (typeof modal_zindex !== 'undefined' ? modal_zindex : 9999) };
-		var buttonsText = '', title = '';
-
-		for (var i in options.buttons)
-		{
-			buttonsText += templates.modal_button.replace('__title__', options.buttons[i].title);
-		}
-
-		// Support passing custom title
-		if ($.isArray(message)) {
-			title = message[0];
-			message = message[1];
-		} else {
-			title = lang.confirm_title;
-		}
-
-		var html = templates.modal.replace('__buttons__', buttonsText).replace('__message__', message).replace('__title__', title);
-		var modal = $(html);
-		modal.modal($.extend(defaults, options));
-		var buttons = modal.find('.modal_buttons > .button');
-		buttons.on('click', function(e)
-		{
-			e.preventDefault();
-			var index = $(this).index();
-			if (options.submit(e, options.buttons[index].value) == false)
-				return;
-
-			$.modal.close();
-		});
-
-		if (buttons[0])
-		{
-			modal.on($.modal.OPEN, function()
-			{
-				$(buttons[0]).trigger('focus');
-			});
-		}
-
-		return modal;
-	},
-
-
-
-
-	
-
-	whoPosted: function(tid, sortby)
-	{
-		var sort = "", url, body;
-
-		if(typeof sortby === "undefined")
-		{
-			sortby = "";
-		}
-
-		if(sortby == "username")
-		{
-			sort = "&sort=" + sortby;
-		}
-		url = "/misc.php?action=whoposted&tid="+tid+sort+"&modal=1";
-
-		// if the modal is already open just replace the contents
-		if($.modal.isActive())
-		{
-			// don't waste a query if we are already sorted correctly
-			if(sortby == MyBB.whoPostedSort)
-			{
-				return;
-			}
-
-			MyBB.whoPostedSort = sortby;
-
-			$.get(rootpath + url, function(html)
-			{
-				// just replace the inner div
-				body = $(html).children("div");
-				$("div.modal").children("div").replaceWith(body);
-			});
-			return;
-		}
-		MyBB.whoPostedSort = "";
-		MyBB.popupWindow(url);
-	},
-
-	markForumRead: function(event)
-	{
-		var element = $(event);
-		if(!element.length)
-		{
-			return false;
-		}
-		var fid = element.attr("id").replace("mark_read_", "");
-		if(!fid)
-		{
-			return false;
-		}
-
-		$.ajax(
-		{
-			url: 'misc.php?action=markread&fid=' + fid + '&ajax=1&my_post_key=' + my_post_key,
-			async: true,
-        	success: function (request)
-        	{
-		  		MyBB.forumMarkedRead(fid, request);
-          	}
-		});
-	},
-
-	forumMarkedRead: function(fid, request)
-	{
-		if(request == 1)
-		{
-			var markreadfid = $("#mark_read_"+fid);
-			if(markreadfid.hasClass('subforum_minion'))
-			{
-				markreadfid.removeClass('subforum_minion').addClass('subforum_minioff');
-			}
-			else
-			{
-				markreadfid.removeClass('forum_on').addClass('forum_off');
-			}
-			markreadfid.css("cursor", "default").attr("title", lang.no_new_posts);
-		}
-	},
-
-	unHTMLchars: function(text)
-	{
-		text = text.replace(/&lt;/g, "<");
-		text = text.replace(/&gt;/g, ">");
-		text = text.replace(/&nbsp;/g, " ");
-		text = text.replace(/&quot;/g, "\"");
-		text = text.replace(/&amp;/g, "&");
-		return text;
-	},
-
-	HTMLchars: function(text)
-	{
-		text = text.replace(new RegExp("&(?!#[0-9]+;)", "g"), "&amp;");
-		text = text.replace(/</g, "&lt;");
-		text = text.replace(/>/g, "&gt;");
-		text = text.replace(/"/g, "&quot;");
-		return text;
-	},
-
-	changeLanguage: function()
-	{
-		form = $("#lang_select");
-		if(!form.length)
-		{
-			return false;
-		}
-		form.trigger('submit');
-	},
-
-	changeTheme: function()
-	{
-		form = $("#theme_select");
-		if(!form.length)
-		{
-			return false;
-		}
-		form.trigger('submit');
-	},
-
-	detectDSTChange: function(timezone_with_dst)
-	{
-		var date = new Date();
-		var local_offset = date.getTimezoneOffset() / 60;
-		if(Math.abs(parseInt(timezone_with_dst) + local_offset) == 1)
-		{
-			$.ajax(
-			{
-				url: 'misc.php?action=dstswitch&ajax=1',
-				async: true,
-				method: 'post',
-	          	error: function (request)
-	          	{
-	          		if(use_xmlhttprequest != 1)
-	                {
-						var form = $("<form />",
-						           {
-						           		method: "post",
-						           		action: "misc.php",
-						           		style: "display: none;"
-						           });
-
-						form.append(
-						    $("<input />",
-							{
-								name: "action",
-								type: "hidden",
-								value: "dstswitch"
-							})
-						);
-
-						$("body").append(form);
-						form.trigger('submit');
-	                }
-	            }
-			});
-		}
-	},
-
-
-
-	
-	
-
-	deleteAnnouncement: function(data)
-	{
-		MyBB.prompt(announcement_quickdelete_confirm, {
-			buttons:[
-					{title: yes_confirm, value: true},
-					{title: no_confirm, value: false}
-			],
-			submit: function(e,v,m,f){
-				if(v == true)
-				{
-					window.location=data.href.replace('action=delete_announcement','action=do_delete_announcement');
-				}
-			}
-		});
-
-		return false;
-	},
-
-	
-
-	
-
+                    document.body.appendChild(form);
+                    form.dispatchEvent(new Event('submit'));
+                }
+            };
+            xhr.send();
+        }
+    }
 };
 
 var Cookie = {
-	get: function(name)
-	{
-		name = cookiePrefix + name;
-		return Cookies.get(name);
-	},
+    get: function(name) {
+        name = cookiePrefix + name;
+        return this.getCookie(name);
+    },
 
-	set: function(name, value, expires)
-	{
-		name = cookiePrefix + name;
-		if(!expires)
-		{
-			expires = 315360000; // 10*365*24*60*60 => 10 years
-		}
+    set: function(name, value, expires) {
+        name = cookiePrefix + name;
+        if(!expires) {
+            expires = 315360000; // 10*365*24*60*60 => 10 years
+        }
 
-		expire = new Date();
-		expire.setTime(expire.getTime()+(expires*1000));
+        var expire = new Date();
+        expire.setTime(expire.getTime() + (expires * 1000));
 
-		options = {
-			expires: expire,
-			path: cookiePath,
-			domain: cookieDomain,
-			secure: cookieSecureFlag == true,
-		};
+        var cookieString = name + "=" + encodeURIComponent(value) + 
+                          "; expires=" + expire.toUTCString() + 
+                          "; path=" + cookiePath;
+        
+        if(cookieDomain) {
+            cookieString += "; domain=" + cookieDomain;
+        }
+        
+        if(cookieSecureFlag) {
+            cookieString += "; secure";
+        }
 
-		return Cookies.set(name, value, options);
-	},
+        document.cookie = cookieString;
+        return true;
+    },
 
-	unset: function(name)
-	{
-		name = cookiePrefix + name;
+    unset: function(name) {
+        name = cookiePrefix + name;
+        document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=" + cookiePath + 
+                         (cookieDomain ? "; domain=" + cookieDomain : "");
+        return true;
+    },
 
-		options = {
-			path: cookiePath,
-			domain: cookieDomain
-		};
-		return Cookies.remove(name, options);
-	}
+    getCookie: function(name) {
+        var nameEQ = name + "=";
+        var ca = document.cookie.split(';');
+        for(var i = 0; i < ca.length; i++) {
+            var c = ca[i];
+            while(c.charAt(0) == ' ') c = c.substring(1, c.length);
+            if(c.indexOf(nameEQ) == 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+        }
+        return null;
+    }
 };
 
-var expandables = {
-	init: function()
-	{
-		var expanders = $(".expcolimage .expander");
-		if(expanders.length)
-		{
-			expanders.each(function()
-			{
-        		var expander = $(this);
-				if(!expander || expander.attr("id") == false)
-				{
-					return;
-				}
-
-				expander.on('click', function()
-				{
-					expandables.expandCollapse($(this));
-				});
-
-				expander.css("cursor", MyBB.browser == "ie" ? "hand" : "pointer");
-			});
-		}
-	},
-
-	expandCollapse: function(element)
-	{
-		var controls = element.attr("id").replace("_img", ""),
-			expandedItem = $("#"+controls+"_e");
-
-		if(expandedItem.length)
-		{
-			var expState = + !expandedItem.is(":hidden"),
-				expcolImg = element.attr("src"),			
-				expText = [lang.expcol_collapse, lang.expcol_expand];
-
-			expandedItem.toggle("fast", this.expCallback(controls, expState));
-			
-			element.attr({
-				"alt": expText[expState],
-				"title": expText[expState],
-				"src": expState ? expcolImg.replace('collapse.', 'collapse_collapsed.') : expcolImg.replace('collapse_collapsed.', 'collapse.')
-			})
-			.parents(':eq(1)').toggleClass(element.parents(':eq(1)').hasClass('thead') ? 'thead_collapsed' : 'tcat_collapse_collapsed');
-			this.saveCollapsed(controls, expState);
-		}
-		return true;
-	},
-
-	saveCollapsed: function(id, add)
-	{
-		var saved = [];
-		var newCollapsed = [];
-		var collapsed = Cookie.get('collapsed');
-
-		if(collapsed)
-		{
-			saved = collapsed.split("|");
-
-			$.each(saved, function(intIndex, objValue)
-			{
-				if(objValue != id && objValue != "")
-				{
-					newCollapsed[newCollapsed.length] = objValue;
-				}
-			});
-		}
-
-		if(add == 1)
-		{
-			newCollapsed[newCollapsed.length] = id;
-		}
-		Cookie.set('collapsed', newCollapsed.join("|"));
-	},
-
-	// Dummy callback function to override by theme developers
-	expCallback: function(id, state)
-	{
-		//console.log("id:"+id+" state:"+state);
-	}
-};
-
-/* Lang this! */
-var lang = {
-
-};
-
-/* add keepelement to jquery-modal plugin */
-(function($) {
-	if(typeof $.modal != 'undefined')
-	{
-		$.modal.defaults.keepelement = false;
-
-		$.modal.prototype.oldCloseFunction = $.modal.prototype.close;
-		$.modal.prototype.close = function()
-		{
-			this.oldCloseFunction();
-
-			// Deletes the element (multi-modal feature: e.g. when you click on multiple report buttons, you will want to see different content for each)
-			if(!this.options.keepelement)
-			{
-				this.$elm.remove();
-			}
-		};
-	}
-})(jQuery);
-
+// Lang this!
+var lang = {};
 
 MyBB.init();

@@ -105,7 +105,7 @@ $query = $db->sql_query_prepared($sql, $params);
   
   
   
-   $threadcount = $db->num_rows ($query);
+   $threadcount = $db->num_rows ($query->result);
   
     // How many pages are there?
 if(!$torrentsperpage || (int)$torrentsperpage < 1)
@@ -229,7 +229,7 @@ $(document).ready(function(){
 
 
 
-  while ($s = $db->fetch_array ($query))
+  while ($s = $db->fetch_array ($query->result))
   {
     $sticky = (($s['usercurrentdownload'] == 0 AND $s['free'] == 'no') ? true : false);
     $lastseen = my_datee ($dateformat, $s['lastactive']) . ' ' . my_datee ($timeformat, $s['lastactive']);

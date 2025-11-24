@@ -1,12 +1,5 @@
 <?php
-/***************************************************/
-/*=========[ TS Special Edition v.5.6 ]===========*/
-/*=============[ Special Thanks To ]==============*/
-/*          DrNet - SpecialCoders.CoM             */
-/*          Vinson - Decode4u.CoM                 */
-/*      MrDecoder - Fearless-Releases.CoM         */
-/*           Fynnon - BvList.CoM                  */
-/***************************************************/
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="alert alert-light border" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
@@ -23,7 +16,7 @@ $torrentid = ((isset($_GET['torrentid']) && is_valid_id($_GET['torrentid'])) ? i
 $type = ((isset($_GET['type']) && $_GET['type'] == 'seedtime') ? 'seedtime' : 'ratio');
 $eol = PHP_EOL;
 
-// Получаем текущую страницу из GET параметра
+
 $page = isset($_GET['page']) && $_GET['page'] > 0 ? intval($_GET['page']) : 1;
 $per_page = $config['ts_hit_and_run']['query_limit'];
 
@@ -38,7 +31,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) == 'POST') {
         if (count($userids) > 0) {
             $userids = implode(',', $userids);
             $modcomment = gmdate('Y-m-d') . ' - Banned by ' . $CURUSER['username'] . '. (TS Hit & Run Staff Tool)' . $eol;
-            $db->sql_query('UPDATE users SET enabled=\'no\', usergroup=\'' . UC_BANNED . '\', modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment) WHERE id IN(0,' . $userids . ')') or sqlerr(__FILE__, 44);
+            $db->sql_query('UPDATE users SET enabled=\'no\', usergroup=\'' . UC_BANNED . '\', modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment) WHERE id IN(0,' . $userids . ')');
         }
     } elseif (!empty($_POST['warn'])) {
         if ($_POST['do'] == 'warn') {
@@ -65,12 +58,12 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) == 'POST') {
                 $db->sql_query('UPDATE users SET timeswarned = timeswarned + 1, modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment) WHERE id = ' . intval($arrays[0]));
             }
         } elseif (count($_POST['user_torrent_ids']) > 0) {
-            stdhead('TS Hit & Run Detection Tool');
+            stdhead('Hit & Run Detection Tool');
             echo '
             <div class="container">
                 <div class="card border-light shadow-sm">
                     <div class="card-header bg-light text-dark border-bottom">
-                        <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2 text-warning"></i>TS Hit & Run Detection Tool</h5>
+                        <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Hit & Run Detection Tool</h5>
                     </div>
                     <form method="post" action="' . $_this_script_ . '" name="update">
                         <input type="hidden" name="do" value="warn">

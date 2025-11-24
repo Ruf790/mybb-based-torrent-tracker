@@ -84,33 +84,105 @@ $search_url = !empty($search_params) ? '&' . implode('&', $search_params) : '';
 ?>
 
 <script>
-$(document).ready(function(){
-    $('[data-bs-toggle="tooltip"]').tooltip();
-    
-    // Добавляем сортировку таблицы
-    $('.sortable').click(function(){
-        var table = $(this).parents('table').eq(0);
-        var rows = table.find('tr:gt(0)').toArray().sort(comparator($(this).index()));
-        this.asc = !this.asc;
-        if (!this.asc){ rows = rows.reverse(); }
-        for (var i = 0; i < rows.length; i++){ table.append(rows[i]); }
-    });
-    
-    function comparator(index) {
-        return function(a, b) {
-            var valA = getCellValue(a, index), valB = getCellValue(b, index);
-            return $.isNumeric(valA) && $.isNumeric(valB) ? valA - valB : valA.toString().localeCompare(valB);
-        }
+document.addEventListener('DOMContentLoaded', function() {
+    // Инициализация тултипов Bootstrap
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
     }
     
-    function getCellValue(row, index){ return $(row).children('td').eq(index).text(); }
+    // Сортировка таблицы
+    const sortableHeaders = document.querySelectorAll('.sortable');
+    sortableHeaders.forEach(header => {
+        header.style.cursor = 'pointer';
+        header.addEventListener('click', function() {
+            const table = this.closest('table');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.rows);
+            const columnIndex = Array.from(this.parentElement.cells).indexOf(this);
+            const isAsc = !this.classList.contains('asc');
+            
+            // Сортируем строки
+            rows.sort((a, b) => {
+                const valA = a.cells[columnIndex].textContent.trim();
+                const valB = b.cells[columnIndex].textContent.trim();
+                
+                // Проверяем, являются ли значения числовыми
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
+                
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return isAsc ? numA - numB : numB - numA;
+                } else {
+                    return isAsc ? 
+                        valA.localeCompare(valB) : 
+                        valB.localeCompare(valA);
+                }
+            });
+            
+            // Очищаем tbody и добавляем отсортированные строки
+            while (tbody.firstChild) {
+                tbody.removeChild(tbody.firstChild);
+            }
+            
+            rows.forEach(row => {
+                tbody.appendChild(row);
+            });
+            
+            // Обновляем индикаторы сортировки
+            sortableHeaders.forEach(h => {
+                h.classList.remove('asc', 'desc');
+                h.querySelector('.sort-indicator')?.remove();
+            });
+            
+            this.classList.add(isAsc ? 'asc' : 'desc');
+            
+            // Добавляем индикатор сортировки
+            const indicator = document.createElement('span');
+            indicator.className = 'sort-indicator ms-1';
+            indicator.textContent = isAsc ? '↑' : '↓';
+            this.appendChild(indicator);
+        });
+    });
     
     // Очистка поиска
-    $('#clearSearch').click(function(){
-    window.location.href = '<?php echo $_this_script_; ?>';
+    const clearSearchBtn = document.getElementById('clearSearch');
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', function() {
+            window.location.href = '<?php echo $_this_script_; ?>';
+        });
+    }
 });
-});
+
+// Вспомогательная функция для проверки числового значения
+function isNumeric(value) {
+    return !isNaN(parseFloat(value)) && isFinite(value);
+}
 </script>
+
+<style>
+.sortable {
+    position: relative;
+    user-select: none;
+}
+
+.sortable:hover {
+    background-color: #f8f9fa;
+}
+
+.sort-indicator {
+    font-weight: bold;
+    color: #0d6efd;
+}
+
+.asc .sort-indicator {
+    color: #198754;
+}
+
+.desc .sort-indicator {
+    color: #dc3545;
+}
+</style>
 
 
 <div class="container mt-3">
@@ -195,7 +267,13 @@ $(document).ready(function(){
 
             <?php
             // Pagination settings
-            $torrentsperpage = ($CURUSER['torrentsperpage'] != 0 ? intval($CURUSER['torrentsperpage']) : 20);
+            $torrentsperpage = ($CURUSER['torrentsperpage'] <> 0 ? intval($CURUSER['torrentsperpage']) : $ts_perpage);
+
+            if(!$torrentsperpage || (int)$torrentsperpage < 1) 
+			{
+                 $torrentsperpage = 20;
+            }
+
             $perpage = $torrentsperpage;
             
             if($mybb->input['page'] > 0) {
@@ -214,13 +292,11 @@ $(document).ready(function(){
             
 			
 			
-			$page_url = str_replace("{fid}", $fid, $_this_script_ . $search_url);
-			
-			
-			//$page_url = str_replace("{fid}", $fid, $_this_script_ . '?act=snatched_torrents' . $search_url);
-			
-			
+			//$page_url = str_replace($_this_script_ . $search_url);
+			$page_url = str_replace('', '', $_this_script_ . $search_url);
             $multipage = multipage($count, $perpage, $page, $page_url);
+			
+			
             
             // Display pagination
             if($count > $perpage) {
@@ -235,7 +311,7 @@ $(document).ready(function(){
             }
             
             // Main query
-            $sql = "SELECT s.*, t.name, u.username as uname, u.id as uid, u.usergroup, u.avatar, u.avatardimensions, 
+            $sql = "SELECT s.*, t.name, t.size, u.username as uname, u.id as uid, u.usergroup, u.avatar, u.avatardimensions, 
                            u.donor, u.enabled, u.warned, u.leechwarn, p.canupload, p.candownload, p.cancomment
                     FROM snatched s 
                     LEFT JOIN torrents t ON (s.torrentid=t.id) 

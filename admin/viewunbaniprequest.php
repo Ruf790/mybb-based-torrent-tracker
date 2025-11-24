@@ -43,8 +43,8 @@
     }
   }
 
-  stdhead ('View Unban Requests ' . UL_VERSION . ' - SHOWLIST');
-  _form_header_open_ ('View Unban Requests ' . UL_VERSION);
+  stdhead ('View Unban Requests - SHOWLIST');
+  _form_header_open_ ('View Unban Requests ');
   echo '<table border=0 class=tborder cellspacing=0 cellpadding=10 width=100%>';
   $page = (int)$_GET['page'];
   $perpage = $ts_perpage;
@@ -53,7 +53,23 @@
   ($res = $db->sql_query ('SELECT u.*, l.id as loginaid FROM unbanrequests u LEFT JOIN loginattempts l on (u.ip=l.ip OR u.realip=l.ip) ORDER BY u.added DESC ' . $limit));
   if ($db->num_rows ($res) == 0)
   {
-    echo '<tr><td colspan=7><b>Nothing found</b></td></tr>';
+    
+	
+echo '
+<div class="text-center py-5">
+    <div class="empty-state">
+        <div class="empty-icon">
+            <i class="fas fa-search fa-3x text-muted"></i>
+        </div>
+        <h4 class="empty-title mt-3 text-muted">No Results Found</h4>
+        <p class="empty-text text-muted">Try adjusting your search criteria or filters</p>
+    </div>
+</div>';
+	
+	
+	
+	
+	
   }
   else
   {

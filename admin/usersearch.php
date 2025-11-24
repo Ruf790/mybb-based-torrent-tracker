@@ -1,7 +1,12 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * User Search + Latest Users with AJAX Delete/Ban/Unban buttons — Final full version
  */
+ 
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<b>Error!</b> Direct initialization of this file is not allowed.');
@@ -772,7 +777,7 @@ echo '</div>';
 
 
 /* ---------- Scripts ---------- */
-echo '<script src="'.$BASEURL.'/admin/scripts/bootbox.min.js"></script>';
+//echo '<script src="'.$BASEURL.'/admin/scripts/bootbox.min.js"></script>';
 echo '<script src="'.$BASEURL.'/admin/scripts/deleteRecords.js"></script>';
 
 /* единый скрытый инпут для всей страницы (ставим ДО скрипта) */

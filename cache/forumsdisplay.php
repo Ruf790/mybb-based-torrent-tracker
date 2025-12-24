@@ -6,10 +6,7 @@
 */
 
 $forumsdisplay = array (
-  -1 => 
-  array (
-    'announcements' => 1,
-  ),
+
 );
 
 ?>

@@ -24,6 +24,9 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 ### 🔹 Upload page
 ![Upload Details](docs/5.png)
 
+### 🔹 Forum
+![Admin Panel](docs/8.jpeg)
+
 
 ### 🔹 Admin Panel
 ![Admin Panel](docs/9.jpeg)

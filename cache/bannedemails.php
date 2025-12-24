@@ -1,12 +1,11 @@
 <?php
 
-/** racker Generated Cache - Do Not Alter
+/** Ruff Tracker Generated Cache - Do Not Alter
  * Cache Name: bannedemails
- * Generated: Sun, 14 Sep 2025 07:49:17 +0000
+ * Generated: Tue, 11 Nov 2025 22:42:02 +0000
 */
 
 $bannedemails = array (
-
 );
 
 ?>

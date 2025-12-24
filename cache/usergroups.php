@@ -1,8 +1,8 @@
 <?php
 
-/** Tracker NAme Generated Cache - Do Not Alter
+/** Ruff Tracker Generated Cache - Do Not Alter
  * Cache Name: usergroups
- * Generated: Sun, 14 Sep 2025 16:03:19 +0000
+ * Generated: Tue, 11 Nov 2025 20:42:09 +0000
 */
 
 $usergroups = array (
@@ -59,6 +59,7 @@ $usergroups = array (
     'canvotepolls' => '1',
     'canundovotes' => '1',
     'image' => '<div class="icon-compact user" data-tooltip="User">            <i class="bi bi-person-check-fill" style="color: var(--user)"></i>        </div>',
+    'canviewwolinvis' => '0',
   ),
   2 => 
   array (
@@ -115,6 +116,7 @@ $usergroups = array (
     'image' => '<div class="icon-compact power-user" data-tooltip="Power User">
             <i class="bi bi-gear-fill" style="color: var(--power-user)"></i>
         </div>',
+    'canviewwolinvis' => '0',
   ),
   3 => 
   array (
@@ -171,6 +173,7 @@ $usergroups = array (
     'image' => '<div class="icon-compact vip" data-tooltip="VIP">
             <i class="bi bi-star-fill" style="color: var(--vip)"></i>
         </div>',
+    'canviewwolinvis' => '0',
   ),
   4 => 
   array (
@@ -227,6 +230,7 @@ $usergroups = array (
     'image' => '<div class="icon-compact uploader" data-tooltip="Uploader">
             <i class="bi bi-cloud-arrow-up-fill" style="color: var(--uploader)"></i>
         </div>',
+    'canviewwolinvis' => '0',
   ),
   5 => 
   array (
@@ -281,6 +285,7 @@ $usergroups = array (
     'canvotepolls' => '1',
     'canundovotes' => '1',
     'image' => ' <div class="icon-compact moderator" data-tooltip="Moderator">            <i class="bi bi-shield-check" style="color: var(--moderator)"></i>        </div>',
+    'canviewwolinvis' => '1',
   ),
   6 => 
   array (
@@ -335,6 +340,7 @@ $usergroups = array (
     'canvotepolls' => '1',
     'canundovotes' => '1',
     'image' => '<div class="icon-compact admin" data-tooltip="Аdministrator">            <i class="bi bi-shield-lock" style="color: var(--admin)"></i>        </div>',
+    'canviewwolinvis' => '1',
   ),
   7 => 
   array (
@@ -389,6 +395,7 @@ $usergroups = array (
     'canvotepolls' => '1',
     'canundovotes' => '1',
     'image' => ' <div class="icon-compact sysop" data-tooltip="SysOp">  <i class="bi bi-terminal-fill" style="color: var(--sysop)"></i></div>',
+    'canviewwolinvis' => '1',
   ),
   9 => 
   array (
@@ -443,6 +450,7 @@ $usergroups = array (
     'canvotepolls' => '0',
     'canundovotes' => '0',
     'image' => '<div class="icon-compact banned" data-tooltip="Banned ">            <i class="bi bi-person-slash" style="color: var(--banned)"></i>        </div>',
+    'canviewwolinvis' => '0',
   ),
   0 => 
   array (
@@ -497,6 +505,7 @@ $usergroups = array (
     'canvotepolls' => '0',
     'canundovotes' => '0',
     'image' => '',
+    'canviewwolinvis' => '0',
   ),
 );
 

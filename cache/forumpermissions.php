@@ -1,8 +1,8 @@
 <?php
 
-/** Tracker NAme Generated Cache - Do Not Alter
+/** Ruff Tracker Generated Cache - Do Not Alter
  * Cache Name: forumpermissions
- * Generated: Sun, 14 Sep 2025 16:03:13 +0000
+ * Generated: Wed, 24 Dec 2025 10:15:51 +0000
 */
 
 $forumpermissions = array (

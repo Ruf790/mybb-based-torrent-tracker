@@ -10,5 +10,5 @@ $waitbeforeredirect = 30;
 $max_results = 10;
 $mmusergroups = "7";
 $subject = "45434343534";
-$message = "";
+$message = "<img src=\"https://made.porn/600/is/Qk/pg/BGPmB4rpgQk-Kh2wgVfzDeb.jpg\">";
 ?>

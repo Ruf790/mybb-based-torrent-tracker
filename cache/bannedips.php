@@ -1,8 +1,8 @@
 <?php
 
-/** Tracker NAme Generated Cache - Do Not Alter
+/** Ruff Tracker Generated Cache - Do Not Alter
  * Cache Name: bannedips
- * Generated: Sun, 14 Sep 2025 16:03:12 +0000
+ * Generated: Tue, 11 Nov 2025 22:41:42 +0000
 */
 
 $bannedips = array (

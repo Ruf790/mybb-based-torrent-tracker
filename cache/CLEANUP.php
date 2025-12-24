@@ -1,12 +1,12 @@
 <?php
 
-/**Tracker Generated Cache - Do Not Alter
+/** Ruff Tracker Generated Cache - Do Not Alter
  * Cache Name: CLEANUP
- * Generated: Tue, 09 Sep 2025 10:22:07 +0000
+ * Generated: Mon, 22 Sep 2025 06:47:26 +0000
 */
 
 $CLEANUP = array (
-  'ai' => 'yes',
+  'ai' => 'no',
   'autoinvitetime' => '28',
   'max_dead_torrent_time' => '2',
   'promote_gig_limit' => '25',
@@ -18,7 +18,7 @@ $CLEANUP = array (
   'leechwarn_gig_limit' => '5',
   'leechwarn_length' => '2',
   'leechwarn_remove_ratio' => '0.8',
-  'ban_user_limit' => '5',
+  'ban_user_limit' => '15',
 );
 
 ?>

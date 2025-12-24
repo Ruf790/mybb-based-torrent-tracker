@@ -1,8 +1,8 @@
 <?php
 
-/** Tracker NAme Generated Cache - Do Not Alter
+/** Ruff Tracker Generated Cache - Do Not Alter
  * Cache Name: forums
- * Generated: Sun, 14 Sep 2025 16:06:56 +0000
+ * Generated: Wed, 24 Dec 2025 10:24:38 +0000
 */
 
 $forums = array (

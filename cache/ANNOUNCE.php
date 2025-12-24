@@ -2,7 +2,7 @@
 
 /** Ruff Tracker Generated Cache - Do Not Alter
  * Cache Name: ANNOUNCE
- * Generated: Sun, 14 Sep 2025 15:19:04 +0000
+ * Generated: Sat, 01 Nov 2025 12:29:22 +0000
 */
 
 $ANNOUNCE = array (
@@ -17,10 +17,10 @@ $ANNOUNCE = array (
   'detectbrowsercheats' => 'no',
   'checkconnectable' => 'no',
   'checkip' => 'no',
-  'mysql_host' => '',
-  'mysql_user' => '',
-  'mysql_pass' => '',
-  'mysql_db' => '',
+  'mysql_host' => 'localhost',
+  'mysql_user' => 'root',
+  'mysql_pass' => 'pass',
+  'mysql_db' => 'db',
 );
 
 ?>

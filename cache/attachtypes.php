@@ -1,8 +1,8 @@
 <?php
 
-/** Tracker NAme Generated Cache - Do Not Alter
+/** Ruff Tracker Generated Cache - Do Not Alter
  * Cache Name: attachtypes
- * Generated: Sun, 14 Sep 2025 16:03:09 +0000
+ * Generated: Sun, 09 Nov 2025 14:55:58 +0000
 */
 
 $attachtypes = array (
@@ -226,8 +226,8 @@ $attachtypes = array (
     'icon' => 'pic/attachtypes/image.png',
     'enabled' => '1',
     'forcedownload' => '0',
-    'groups' => '-1',
-    'forums' => '-1',
+    'groups' => '',
+    'forums' => '',
     'avatarfile' => '0',
   ),
   'docx' => 

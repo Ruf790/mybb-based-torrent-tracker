@@ -26,7 +26,7 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 
 
 ### 🔹 Admin Panel
-![Admin Panel](docs/1.jpeg)
+![Admin Panel](docs/9.jpeg)
 
 ---
 

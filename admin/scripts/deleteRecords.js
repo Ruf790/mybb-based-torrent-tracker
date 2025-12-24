@@ -64,8 +64,7 @@ async function deleteEmployee(empid, parentRow, modal) {
 
 		const result = await response.json();
 
-        const message = result.message || (result.success ? 'Record deleted successfully' : 'Delete failed');
-        showAlert(message);
+        showAlert(result);
 
         if (parentRow) {
             parentRow.style.transition = 'opacity 0.5s ease';

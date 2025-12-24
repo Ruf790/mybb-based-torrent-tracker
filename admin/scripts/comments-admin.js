@@ -126,6 +126,7 @@ document.addEventListener('click', function(e) {
     }
 });
 
+
 // Функция массового удаления
 function bindBulkDeleteHandler() {
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
@@ -161,11 +162,24 @@ function bindBulkDeleteHandler() {
                 btn.disabled = true;
                 btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Deleting...';
 
+                // ИСПРАВЛЕНИЕ: Отправляем ids как массив, а не JSON строку
                 const formData = new FormData();
-                formData.append('ids', JSON.stringify(commentManager.selectedComments));
+                
+                // Ключевое исправление: добавляем каждый ID отдельно
+                commentManager.selectedComments.forEach(id => {
+                    formData.append('ids[]', id); // Добавляем как массив
+                });
+                
+                // Альтернативный вариант: как строку через запятую
+                // formData.append('ids', commentManager.selectedComments.join(','));
+                
                 if (typeof my_post_key !== 'undefined') {
                     formData.append('my_post_key', my_post_key);
                 }
+
+                // Для отладки - выводим данные в консоль
+                console.log('Отправляемые IDs:', commentManager.selectedComments);
+                console.log('Количество:', commentManager.selectedComments.length);
 
                 fetch('index.php?act=latest_comments&action=bulk_delete', {
                     method: 'POST',
@@ -173,6 +187,7 @@ function bindBulkDeleteHandler() {
                 })
                 .then(response => response.json())
                 .then(response => {
+                    console.log('Ответ от сервера:', response);
                     if (response.success) {
                         showToast(`${response.deleted} comments deleted successfully`, 'success');
                         loadComments(commentManager.currentPage);

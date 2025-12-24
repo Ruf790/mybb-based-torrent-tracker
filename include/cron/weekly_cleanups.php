@@ -1,10 +1,10 @@
 <?php
 /***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
 /*=============[Optimized Hit & Run Cron]=====*/
 /***********************************************/
 
-if (!defined('IN_CRON')) {
+if (!defined('IN_CRON')) 
+{
     exit();
 }
 
@@ -37,7 +37,8 @@ function send_bulk_pm(array $users, string $subject, string $message_template)
         'sender'  => ['uid' => -1]
     ];
 
-    foreach ($users as $HR) {
+    foreach ($users as $HR) 
+	{
         $message = sprintf(
             $message_template,
             $HR['username'],
@@ -56,7 +57,8 @@ function send_bulk_pm(array $users, string $subject, string $message_template)
 }
 
 // ======= Основной код =======
-if ($Enabled && ($MinSeedTime > 0 || $MinRatio > 0)) {
+if ($Enabled && ($MinSeedTime > 0 || $MinRatio > 0)) 
+{
     $conditions = [
         "s.finished = 'yes'",
         "s.seeder = 'no'",
@@ -80,7 +82,7 @@ if ($Enabled && ($MinSeedTime > 0 || $MinRatio > 0)) {
         $conditions[] = "s.completedat > " . intval($MinFinishDate);
     }
 
-    // Получаем всех пользователей, которые нужно предупредить
+   
     $query = $db->sql_query("
         SELECT s.torrentid, s.userid, s.seedtime, t.name, u.username
         FROM snatched s
@@ -95,11 +97,12 @@ if ($Enabled && ($MinSeedTime > 0 || $MinRatio > 0)) {
         $WarnUsers[$HR['userid']] = $HR;
     }
 
-    if (!empty($WarnUsers)) {
-        // 1. Массовая отправка PM
+    if (!empty($WarnUsers)) 
+	{
+        
         send_bulk_pm(array_values($WarnUsers), $lang->cronjobs['lwarning_subject'], $lang->cronjobs['hr_warn_message']);
 
-        // 2. Обновление timeswarned одним запросом
+        
         $db->sql_query("UPDATE users SET timeswarned = timeswarned + 1 WHERE " . build_safe_in_clause(array_keys($WarnUsers)));
         $CQueryCount++;
     }

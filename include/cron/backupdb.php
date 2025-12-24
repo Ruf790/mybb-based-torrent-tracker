@@ -1,8 +1,15 @@
 <?php
+
+
+declare(strict_types=1);
+
 /**
  * MyBB / TS Special Edition Backup Script
+ * Fully compatible with PHP 8.4
  * Optimized for large databases
  */
+
+
 
 if (!defined('IN_CRON')) {
     exit();
@@ -11,12 +18,26 @@ if (!defined('IN_CRON')) {
 $BackupDirectory = THIS_PATH . '/admin/backup';
 $db->set_table_prefix('');
 
-$file = $BackupDirectory . '/backup_' . date("_Ymd_His_") . random_str(16);
 
-if (function_exists('gzopen')) {
-    $fp = gzopen($file . '.incomplete.sql.gz', 'w9');
-} else {
-    $fp = fopen($file . '.incomplete.sql', 'w');
+
+$startTime = microtime(true);
+
+
+if (!is_dir($BackupDirectory) && !mkdir($BackupDirectory, 0775, true)) {
+    savelog('Error: Unable to create backup directory.');
+    return;
+}
+
+$filenameBase = $BackupDirectory . '/backup_' . date('_Ymd_His_') . random_str(16);
+$useGzip = function_exists('gzopen');
+
+$fp = $useGzip
+    ? gzopen($filenameBase . '.incomplete.sql.gz', 'w9')
+    : fopen($filenameBase . '.incomplete.sql', 'w');
+
+if (!$fp) {
+    savelog('Error: Unable to open backup file for writing.');
+    return;
 }
 
 $tables = $db->list_tables($config['database']['database'], $config['database']['table_prefix']);
@@ -25,7 +46,8 @@ $tables = $db->list_tables($config['database']['database'], $config['database'][
 $time = date('dS F Y \a\t H:i', TIMENOW);
 $contents = "-- Ruff Tracker Database Backup\n-- Generated: {$time}\n-- -------------------------------------\n\n";
 
-if (is_object($plugins)) {
+
+if (isset($plugins) && is_object($plugins)) {
     $args = [
         'task'   => &$task,
         'tables' => &$tables,
@@ -33,81 +55,93 @@ if (is_object($plugins)) {
     $plugins->run_hooks('task_backupdb', $args);
 }
 
-// Проходим по всем таблицам
+
 foreach ($tables as $table) {
-    // Получаем структуру таблицы
+    
     $structure = $db->show_create_table($table) . ";\n";
     ++$CQueryCount;
     $contents .= $structure;
-    clear_overflow($fp, $contents);
+    clear_overflow($fp, $contents, $useGzip);
 
-    // Получаем список полей таблицы
-    $fields_array = $db->show_fields_from($table);
+    
+    $fieldsArray = $db->show_fields_from($table);
     ++$CQueryCount;
-    $field_list = array_map(fn($f) => $f['Field'], $fields_array);
-    $fields = "`" . implode("`,`", $field_list) . "`";
+    $fieldList = array_map(static fn(array $f): string => $f['Field'], $fieldsArray);
+    $fieldsSql = '`' . implode('`,`', $fieldList) . '`';
 
-    // Сбор данных таблицы
+   
     if ($db->engine === 'mysqli') {
         $query = mysqli_query($db->read_link, "SELECT * FROM {$db->table_prefix}{$table}", MYSQLI_USE_RESULT);
-        ++$CQueryCount;
     } else {
         $query = $db->simple_select($table);
-        ++$CQueryCount;
+    }
+    ++$CQueryCount;
+
+    if (!$query) {
+        savelog("Warning: Unable to read table {$table}");
+        continue;
     }
 
     while ($row = $db->fetch_array($query)) {
-        $insert = "INSERT INTO {$table} ($fields) VALUES (";
-        $comma = '';
-        foreach ($field_list as $field) {
-            if (!isset($row[$field]) || is_null($row[$field])) {
-                $insert .= $comma . "NULL";
-            } else if ($db->engine === 'mysqli') {
-                $insert .= $comma . "'" . mysqli_real_escape_string($db->read_link, $row[$field]) . "'";
-            } else {
-                $insert .= $comma . "'" . $db->escape_string($row[$field]) . "'";
-            }
-            $comma = ',';
-        }
-        $insert .= ");\n";
-        $contents .= $insert;
+        $insert = "INSERT INTO {$table} ({$fieldsSql}) VALUES (";
+        $values = [];
 
-        // Сбрасываем в файл каждые ~1 МБ
+        foreach ($fieldList as $field) {
+            $value = $row[$field] ?? null;
+            if ($value === null) {
+                $values[] = 'NULL';
+            } else {
+                $escaped = ($db->engine === 'mysqli')
+                    ? mysqli_real_escape_string($db->read_link, (string)$value)
+                    : $db->escape_string((string)$value);
+                $values[] = "'" . $escaped . "'";
+            }
+        }
+
+        $contents .= $insert . implode(',', $values) . ");\n";
+
+       
         if (strlen($contents) > 1024 * 1024) {
-            clear_overflow($fp, $contents);
+            clear_overflow($fp, $contents, $useGzip);
         }
     }
 
     $db->free_result($query);
 }
 
-// Сбрасываем остаток после всех таблиц
-if (!empty($contents)) {
-    clear_overflow($fp, $contents);
+
+if ($contents !== '') {
+    clear_overflow($fp, $contents, $useGzip);
 }
 
 $db->set_table_prefix(TABLE_PREFIX);
 
-// Завершение и переименование файла
-if (function_exists('gzopen')) {
+
+// Завершение и статистика
+$endTime = microtime(true);
+$elapsed = round($endTime - $startTime, 3);
+
+if ($useGzip) {
     gzclose($fp);
-    rename($file . '.incomplete.sql.gz', $file . '.sql.gz');
+    rename($filenameBase . '.incomplete.sql.gz', $filenameBase . '.sql.gz');
+    $finalFile = $filenameBase . '.sql.gz';
 } else {
     fclose($fp);
-    rename($file . '.incomplete.sql', $file . '.sql');
+    rename($filenameBase . '.incomplete.sql', $filenameBase . '.sql');
+    $finalFile = $filenameBase . '.sql';
 }
 
-savelog('The database backup task successfully ran.');
+$fileSize = file_exists($finalFile) ? round(filesize($finalFile) / 1024 / 1024, 2) : 0;
+savelog("Database backup completed successfully ({$elapsed}s, {$fileSize} MB, gzip: " . ($useGzip ? 'yes' : 'no') . ")");
 ++$CQueryCount;
 
-// ======= Функция для безопасной записи и сброса содержимого =======
-function clear_overflow($fp, &$contents)
+
+function clear_overflow($fp, string &$contents, bool $gzip = false): void
 {
-    if (function_exists('gzopen')) {
+    if ($gzip) {
         gzwrite($fp, $contents);
     } else {
         fwrite($fp, $contents);
     }
     $contents = '';
 }
-?>

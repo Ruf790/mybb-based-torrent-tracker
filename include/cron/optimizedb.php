@@ -1,12 +1,20 @@
 <?php
+/**
+ * TS Special Edition / MyBB Database Optimization Task
+ * Fully compatible with PHP 8.4
+ */
+
+declare(strict_types=1);
+
 if (!defined('IN_CRON')) {
     exit();
 }
 
+$startTime = microtime(true);
+$currentTime = date('Y-m-d H:i:s');
 $databaseName = $config['database']['database'];
-$currentTime = date("Y-m-d H:i:s");
 
-$dbCheck = $db->sql_query("SHOW DATABASES LIKE '" . $databaseName . "'");
+$dbCheck = $db->sql_query("SHOW DATABASES LIKE '" . $db->escape_string($databaseName) . "'");
 ++$CQueryCount;
 
 if ($dbCheck === false) {
@@ -19,7 +27,7 @@ if ($db->num_rows($dbCheck) === 0) {
     exit();
 }
 
-$query = $db->sql_query("SHOW TABLE STATUS FROM `{$databaseName}`");
+$query = $db->sql_query("SHOW TABLE STATUS FROM `" . $db->escape_string($databaseName) . "`");
 ++$CQueryCount;
 
 if ($query === false) {
@@ -28,47 +36,50 @@ if ($query === false) {
 }
 
 $optimizedTables = 0;
+$totalFreedMB = 0.0;
 
 while ($table = $db->fetch_array($query)) {
-    $tableName = $table['Name'];
-    $dataFree = $table['Data_free'];
-    $engine = $table['Engine'];
-    $tableSizeBefore = round(($table['Data_length'] + $table['Index_length']) / 1024 / 1024, 2);
-    $rowsCount = $table['Rows'];
+    $tableName = $table['Name'] ?? '';
+    $dataFree = (int)($table['Data_free'] ?? 0);
+    $engine = $table['Engine'] ?? 'Unknown';
+    $tableSizeBefore = round((($table['Data_length'] ?? 0) + ($table['Index_length'] ?? 0)) / 1024 / 1024, 2);
+    $rowsCount = (int)($table['Rows'] ?? 0);
 
-    
-
-    if ($dataFree > 0 && $engine == 'MyISAM') 
-	{
+    if ($dataFree > 0 && $engine === 'MyISAM') {
         try {
             $db->optimize_table($tableName);
             ++$CQueryCount;
 
-            $queryAfter = $db->sql_query("SHOW TABLE STATUS FROM `{$databaseName}` WHERE Name = '{$tableName}'");
+            $queryAfter = $db->sql_query("SHOW TABLE STATUS FROM `" . $db->escape_string($databaseName) . "` WHERE Name = '" . $db->escape_string($tableName) . "'");
             $tableAfter = $db->fetch_array($queryAfter);
-            $tableSizeAfter = round(($tableAfter['Data_length'] + $tableAfter['Index_length']) / 1024 / 1024, 2);
-            
-            $sizeDifference = $tableSizeBefore - $tableSizeAfter;
-            $sizeDifferenceStr = $sizeDifference != 0 ? " Freed space: {$sizeDifference} MB" : " No size change.";
 
-            savelog("SUCCESS: [{$currentTime}] Table '{$tableName}' optimized successfully. Before: {$tableSizeBefore} MB, After: {$tableSizeAfter} MB. Data_free: {$dataFree} bytes, Engine: {$engine}, Rows: {$rowsCount}.{$sizeDifferenceStr}");
-			++$CQueryCount;
-			
-            $optimizedTables++;
-        } catch (Exception $e) {
+            $tableSizeAfter = round((($tableAfter['Data_length'] ?? 0) + ($tableAfter['Index_length'] ?? 0)) / 1024 / 1024, 2);
+            $sizeDifference = max(0, $tableSizeBefore - $tableSizeAfter);
+            $totalFreedMB += $sizeDifference;
+
+            $sizeDifferenceStr = $sizeDifference > 0
+                ? " Freed space: {$sizeDifference} MB"
+                : " No size change.";
+
+            savelog("SUCCESS: [{$currentTime}] Table '{$tableName}' optimized successfully. "
+                . "Before: {$tableSizeBefore} MB, After: {$tableSizeAfter} MB. "
+                . "Data_free: {$dataFree} bytes, Engine: {$engine}, Rows: {$rowsCount}.{$sizeDifferenceStr}");
+            ++$CQueryCount;
+
+            ++$optimizedTables;
+        } catch (Throwable $e) {
             savelog("ERROR: [{$currentTime}] Failed to optimize table '{$tableName}': " . $e->getMessage());
         }
     }
 }
 
-if ($optimizedTables > 0) 
-{
-    savelog("INFO: [{$currentTime}] Optimization completed: {$optimizedTables} tables optimized.");
-	++$CQueryCount;
-} 
-else 
-{
-    savelog("INFO: [{$currentTime}] No tables required optimization in database '{$databaseName}'.");
-	++$CQueryCount;
+$elapsed = round(microtime(true) - $startTime, 3);
+
+if ($optimizedTables > 0) {
+    savelog("INFO: [{$currentTime}] Optimization completed in {$elapsed}s. "
+        . "{$optimizedTables} tables optimized, total freed: {$totalFreedMB} MB.");
+    ++$CQueryCount;
+} else {
+    savelog("INFO: [{$currentTime}] No tables required optimization in '{$databaseName}' ({$elapsed}s).");
+    ++$CQueryCount;
 }
-?>

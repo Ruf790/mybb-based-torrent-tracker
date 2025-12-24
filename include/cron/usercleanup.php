@@ -1,49 +1,67 @@
 <?php
+
+declare(strict_types=1);
+
 /**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
+ * TS Special Edition / MyBB Ban Expiration Task
+ * Fully compatible with PHP 8.4
  */
+
+
 
 if (!defined('IN_CRON')) {
     exit();
 }
 
-// Expire bans
-$query = $db->simple_select("banned", "uid, oldgroup, oldadditionalgroups, olddisplaygroup", "lifted != 0 AND lifted < " . TIMENOW);
-$CQueryCount++;
+$startTime = microtime(true);
 
-$banned_users = [];
-while($ban = $db->fetch_array($query)) {
-    $banned_users[] = $ban;
+// === Получаем истёкшие баны ===
+$query = $db->simple_select(
+    'banned',
+    'uid, oldgroup, oldadditionalgroups, olddisplaygroup',
+    'lifted != 0 AND lifted < ' . (int)TIMENOW
+);
+++$CQueryCount;
+
+$bannedUsers = [];
+while ($ban = $db->fetch_array($query)) {
+    $bannedUsers[] = $ban;
 }
 
-if (!empty($banned_users)) {
-    $user_ids = [];
-    foreach ($banned_users as $ban) {
-        $user_ids[] = (int)$ban['uid'];
-        
-        // Обновление пользователя
-        $updated_user = [
-            "usergroup" => (int)$ban['oldgroup'],
-            "additionalgroups" => $db->escape_string($ban['oldadditionalgroups']),
-            "displaygroup" => (int)$ban['olddisplaygroup'],
-            "notifs" => ''
+if ($bannedUsers) {
+    $userIds = [];
+
+    foreach ($bannedUsers as $ban) {
+        $uid = (int)$ban['uid'];
+        if ($uid <= 0) {
+            continue;
+        }
+
+        $userIds[] = $uid;
+
+        $updatedUser = [
+            'usergroup'         => (int)$ban['oldgroup'],
+            'additionalgroups'  => $db->escape_string((string)$ban['oldadditionalgroups']),
+            'displaygroup'      => (int)$ban['olddisplaygroup'],
+            'notifs'            => '', 
         ];
-        $db->update_query("users", $updated_user, "uid = '" . (int)$ban['uid'] . "'");
-        $CQueryCount++;
+
+        $db->update_query('users', $updatedUser, "id='{$uid}'");
+        ++$CQueryCount;
     }
-    
-    // Массовое удаление банов
-    $db->delete_query("banned", "uid IN (" . implode(',', $user_ids) . ")");
-    $CQueryCount++;
-    
-    savelog('Expired bans removed for users: ' . implode(', ', $user_ids));
-    $CQueryCount++;
+
+    // === Удаляем записи о банах ===
+    if ($userIds) {
+        $db->delete_query('banned', 'uid IN (' . implode(',', $userIds) . ')');
+        ++$CQueryCount;
+    }
+
+    $elapsed = round(microtime(true) - $startTime, 3);
+    savelog('Expired bans removed for users: ' . implode(', ', $userIds) . " ({$elapsed}s)");
+    ++$CQueryCount;
 } else {
-    savelog('No expired bans to remove');
-    $CQueryCount++;
+    $elapsed = round(microtime(true) - $startTime, 3);
+    savelog("No expired bans to remove ({$elapsed}s)");
+    ++$CQueryCount;
 }
+

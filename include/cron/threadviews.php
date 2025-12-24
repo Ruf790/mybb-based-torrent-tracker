@@ -1,32 +1,51 @@
 <?php
+
+declare(strict_types=1);
+
 /**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
+ * TS Special Edition / MyBB Thread Views Updater
+ * Compatible with PHP 8.4
  */
 
+if (!defined('IN_CRON')) {
+    exit();
+}
 
-	// Update thread views
-	$query = $db->simple_select("tsf_threadviews", "tid, COUNT(tid) AS views", "", array('group_by' => 'tid'));
-	++$CQueryCount;
-	
-	while($threadview = $db->fetch_array($query))
-	{
-		$db->update_query("tsf_threads", array('views' => "views+{$threadview['views']}"), "tid='{$threadview['tid']}'", 1, true);
-		++$CQueryCount;
-	}
+$query = $db->simple_select(
+    'tsf_threadviews',
+    'tid, COUNT(tid) AS views',
+    '',
+    ['group_by' => 'tid']
+);
+++$CQueryCount;
 
-	$db->write_query("TRUNCATE TABLE tsf_threadviews");
-	 ++$CQueryCount;
 
-	if(is_object($plugins))
-	{
-		$plugins->run_hooks('task_threadviews', $task);
-	}
+$updatedThreads = 0;
 
-	savelog('The thread views task successfully ran');
-	++$CQueryCount;
+while ($threadView = $db->fetch_array($query)) {
+    $tid   = (int)$threadView['tid'];
+    $views = (int)$threadView['views'];
 
+    if ($tid > 0 && $views > 0) {
+        $db->update_query(
+            'tsf_threads',
+            ['views' => "views+{$views}"],
+            "tid='{$tid}'",
+            '1',
+            true
+        );
+        ++$CQueryCount;
+        ++$updatedThreads;
+    }
+}
+
+$db->write_query('TRUNCATE TABLE tsf_threadviews');
+++$CQueryCount;
+
+if (isset($plugins) && is_object($plugins)) {
+    $plugins->run_hooks('task_threadviews', $task);
+}
+
+
+savelog("Thread views task completed. Updated {$updatedThreads} threads.");
+++$CQueryCount;

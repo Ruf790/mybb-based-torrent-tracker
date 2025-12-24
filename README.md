@@ -18,11 +18,16 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 ![Main Page](docs/3.png)
 ![Main Page](docs/4.png)
 
-### 🔹 Torrent Details
+### 🔹 Browse Torrent 
 ![Torrent Details](docs/2.png)
 
 ### 🔹 Upload page
 ![Upload Details](docs/5.png)
+
+
+### 🔹Details Page
+![Torrent Details](docs/11.jpeg)
+
 
 ### 🔹 Forum
 ![Admin Panel](docs/8.jpeg)

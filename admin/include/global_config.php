@@ -28,21 +28,6 @@ $sc_displaycharminimum = 2; // Display Min. Char. size.
 //Staff Tool Uploaders config.
 $config['uploaders']['query_limit'] = '30'; // Show max. X uploaders per page.
 
-//ts_subtitles.php
-$config['subtitles']['max_upload_size'] = 90000; // Max upload size of Subtitles.. Default 90kb.
-$config['subtitles']['allowed_file_types'] = array('rar','zip'); // Allowed file types of Subtitles. Default rar and zip.
-
-//ts_auto_torrent_submit.php (External Tracker List - 'name' => 'upload link')
-$config['ts_auto_torrent_submit'] =
-	array
-	(
-		'Mininova'			=>		'http://www.mininova.org/upload',
-		'Demonoid'			=>		'http://www.demonoid.com/torrent_upload.php5',
-		'Thepiratebay'		=>		'http://www.thepiratebay.org/upload',
-		'Meganova'			=>		'http://www.meganova.org/upload.html',
-		'Torrentvalley'		=>		'http://www.torrentvalley.com/upload.php',
-		'Torrentspy'			=>		'http://www.torrentspy.com/uploadtorrent.asp',
-	);
 
 //How many torrents that you want to fix per page. Lower this for better performance.. (default 10)
 $config['fixhash_perpage'] = 10;

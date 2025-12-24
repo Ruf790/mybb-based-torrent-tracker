@@ -719,6 +719,28 @@ function get_attachment_icon($ext)
 		return htmlspecialchars_uni($link);
 	}
  }
+ 
+ 
+ 
+ function get_user_class_name ($class = '')
+ {
+    //global $cache;
+    if ($class == 'all')
+    {
+      return 'ALL Usergroups';
+    }
+
+    require TSDIR . '/cache/usergroups.php';
+    foreach ($usergroups as $arr)
+    {
+      if ($arr['gid'] == $class)
+      {
+        return $arr['title'];
+      }
+    }
+
+    return 'ALL Usergroups';
+ }
 
 
 
@@ -866,51 +888,84 @@ function output_inline_error($errors)
 }
 
 
-
-
-function output_nav_tabs($tabs=array(), $active='')
+/**
+ * Output navigation tabs
+ */
+function output_nav_tabs(array $tabs, string $active_tab): void
 {
-		global $plugins;
-		$tabs = $plugins->run_hooks("admin_page_output_nav_tabs_start", $tabs);
-		echo "<div class=\"container mt-3\"><div class=\"nav_tabs\">";
-		echo "\t<ul>\n";
-		foreach($tabs as $id => $tab)
-		{
-			$class = '';
-			if($id == $active)
-			{
-				$class = ' active';
-			}
-			if(isset($tab['align']) == "right")
-			{
-				$class .= " right";
-			}
-			$target = '';
-			if(isset($tab['link_target']))
-			{
-				$target = " target=\"{$tab['link_target']}\"";
-			}
-			$rel = '';
-			if(isset($tab['link_rel']))
-			{
-				$rel = " rel=\"{$tab['link_rel']}\"";
-			}
-			if(!isset($tab['link']))
-			{
-				$tab['link'] = '';
-			}
-			echo "\t\t<li class=\"{$class}\"><a href=\"{$tab['link']}\"{$target}{$rel}>{$tab['title']}</a></li>\n";
-			$target = '';
-		}
-		echo "\t</ul>\n";
-		if(!empty($tabs[$active]['description']))
-		{
-			echo "\t<div class=\"tab_description\">{$tabs[$active]['description']}</div>\n";
-		}
-		echo "</div></div>";
-		$arguments = array('tabs' => $tabs, 'active' => $active);
-		$plugins->run_hooks("admin_page_output_nav_tabs_end", $arguments);
+    $has_description = !empty($tabs[$active_tab]['description'] ?? '');
+    ?>
+    <div class="container mt-3">
+        
+        <div class="d-flex justify-content-center overflow-auto hide-scrollbar pb-3 mb-4 border-bottom"
+             style="scroll-behavior: smooth;">
+            <?php foreach ($tabs as $key => $tab):
+                $is_active = ($key === $active_tab);
+                $icon = $tab['icon'] ?? match($key) {
+                    'find_attachments' => 'fas fa-magnifying-glass',
+                    'find_orphans'     => 'fas fa-broom',
+                    'stats'            => 'fas fa-chart-pie',
+                    default            => 'fas fa-cogs'
+                };
+                ?>
+                <a href="<?= $tab['link'] ?>"
+                   class="text-center text-decoration-none mx-2 <?= $is_active ? 'text-primary' : 'text-muted' ?>"
+                   style="min-width: 110px;">
+                    <div class="card tab-card border-0 shadow-sm h-100 <?= $is_active ? 'border-primary border-2' : 'border-light' ?>"
+                         style="width: 350px; transition: all 0.25s ease;">
+                        <div class="card-body p-3 d-flex flex-column justify-content-center">
+                            <i class="<?= $icon ?> fa-2x mb-2"></i>
+                            <div class="small fw-bold text-truncate" style="max-width: 100%;"><?= htmlspecialchars($tab['title']) ?></div>
+                        </div>
+                    </div>
+                </a>
+            <?php endforeach; ?>
+        </div>
+
+       
+        <?php if ($has_description): ?>
+            <div class="alert alert-info d-flex align-items-start gap-3 mx-3 mb-4 rounded-3 border-0 shadow-sm">
+                <i class="fas fa-circle-info text-primary mt-1 flex-shrink-0"></i>
+                <div class="small"><?= htmlspecialchars($tabs[$active_tab]['description']) ?></div>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <style>
+    .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Анимация ТОЛЬКО для карточек вкладок */
+    .tab-card {
+        transition: all 0.25s ease;
+    }
+    .tab-card:hover {
+        transform: translateY(-6px) scale(1.03);
+        box-shadow: 0 12px 20px rgba(0,0,0,0.15) !important;
+    }
+    .tab-card:active {
+        transform: translateY(-3px) scale(1.01);
+    }
+
+    /* Плавная прокрутка на мобильных */
+    @media (max-width: 768px) {
+        .overflow-auto {
+            -webkit-overflow-scrolling: touch;
+        }
+    }
+</style>
+    <?php
 }
+
+
+
+
+
 
 
 
@@ -3241,7 +3296,7 @@ function menu($selected = '') {
                     </li>
                     
                     <li class="menu-item">
-                        <a class="menu-link stat-card ' . ($_GET['do'] == 'newtool' ? 'active' : '') . '" href="' . $_this_script_no_act . '?act=managestafftools&do=newtool">
+                        <a class="menu-link stat-card ' . (($_GET['do'] ?? '') == 'newtool' ? 'active' : '') . '" href="' . $_this_script_no_act . '?act=managestafftools&do=newtool">
                             <div class="menu-icon">
                                 <i class="fas fa-plus-square blue-icon"></i>
                             </div>
@@ -3679,11 +3734,11 @@ function menu($selected = '') {
 
   
 
-  require_once $thispath . 'include/adminfunctions2.php';
-  if (!defined ('_AF_2'))
-  {
-    exit ('The authentication has been blocked because of invalid file detected!');
-  }
+  //require_once $thispath . 'include/adminfunctions2.php';
+  //if (!defined ('_AF_2'))
+  //{
+    //exit ('The authentication has been blocked because of invalid file detected!');
+  //}
 
   include_once INC_PATH . '/functions_icons.php';
   if (!function_exists ('file_put_contents'))

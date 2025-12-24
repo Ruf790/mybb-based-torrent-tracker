@@ -5,7 +5,6 @@
 */
 
 $onlinestats = array (
-  'most_ever' => 63,
-  'most_ever_time' => 1733494249,
+
 );
 ?>

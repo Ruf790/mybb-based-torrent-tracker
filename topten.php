@@ -816,8 +816,8 @@ $ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$us
                         </div>
                     </div>
                 </td>
-                <td class='text-end text-success fw-bold'>" . mksize($arr["uprate"]) . "/s</td>
-                <td class='text-end text-warning fw-bold'>" . mksize($arr["downrate"]) . "/s</td>
+               <td class='text-end text-success fw-bold'>" . mksize($arr["uprate"] ?? 0) . "/s</td>
+			   <td class='text-end text-warning fw-bold'>" . mksize($arr["downrate"] ?? 0) . "/s</td>
               </tr>";
         $n++;
     }

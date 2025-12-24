@@ -886,7 +886,7 @@ function handleQuickComment(): void
     
     $subres = $db->sql_query_prepared("
     SELECT 
-        c.id, c.torrent AS torrentid, c.text, c.user, c.editreason, c.dateline, c.editedby, c.editedat, c.totalvotes, 
+        c.id, c.torrent AS torrentid, c.text, c.user, c.editreason, c.dateline, c.editedby, c.editedat, 
         uu.username AS editedbyuname, gg.namestyle AS editbynamestyle, 
         u.added AS registered, u.enabled, u.lastactive, u.lastvisit, u.invisible, u.warned, u.leechwarn, u.username, u.usertitle, 
         u.usergroup, u.displaygroup, u.postnum, u.threadnum, u.added, u.comms, u.donor, u.uploaded, u.downloaded, 

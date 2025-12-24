@@ -1811,8 +1811,183 @@ document.addEventListener('DOMContentLoaded', function() {
 	
 	build_breadcrumb ();
 	
-	
+
 	echo $showthread;
+	
+	
+	
+echo '
+<div class="modal fade" id="reportForumPostModal" tabindex="-1" aria-labelledby="reportForumPostModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <!-- Заголовок с зеленым градиентом -->
+            <div class="modal-header bg-gradient bg-success text-white">
+                <h5 class="modal-title fw-semibold" id="reportForumPostModalLabel">
+                    <i class="bi bi-flag-fill me-2"></i>Report Forum Post
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <!-- Форма репорта -->
+            <form id="reportForumPostForm" action="takereport.php" method="POST">
+                <div class="modal-body">
+                    <!-- Скрытые поля -->
+                    <input type="hidden" name="type" id="forumPostReportType" value="forumpost">
+                    <input type="hidden" name="reported_id" id="forumPostReportedId" value="">
+                    <input type="hidden" name="addedby" id="forumPostAddedBy" value="'.$CURUSER['id'].'">
+                    <input type="hidden" name="reported_user_id" id="forumPostReportedUserId" value="">
+                    <input type="hidden" name="forum_id" id="forumPostForumId" value="">
+                    <input type="hidden" name="thread_id" id="forumPostThreadId" value="">
+                    
+                    <!-- Тип репорта -->
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Reporting: <strong id="reportingForumPost">Forum Post</strong>
+                    </div>
+                    
+                    <!-- Предпросмотр поста -->
+                    <div class="card border mb-4">
+                        <div class="card-header bg-light py-2">
+                            <small class="text-muted fw-medium">
+                                <i class="bi bi-chat-left-text me-1"></i>Post Preview
+                            </small>
+                        </div>
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-start">
+                                <div class="flex-shrink-0">
+                                    <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                         style="width: 40px; height: 40px;">
+                                        <i class="bi bi-person"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                        <div>
+                                            <span class="fw-medium" id="forumPostAuthorPreview">User</span>
+                                            <span class="text-muted small ms-2" id="forumPostDatePreview"></span>
+                                        </div>
+                                        <span class="badge bg-success">Forum Post</span>
+                                    </div>
+                                    <h6 class="text-primary mb-2" id="forumPostSubjectPreview">Post Subject</h6>
+                                    <div class="mb-2">
+                                        <span class="badge bg-light text-dark me-2">
+                                            <i class="bi bi-grid me-1"></i>Forum: <span id="forumPostForumPreview">General</span>
+                                        </span>
+                                        <span class="badge bg-light text-dark">
+                                            <i class="bi bi-chat-dots me-1"></i>Thread: <span id="forumPostThreadPreview">Discussion</span>
+                                        </span>
+                                    </div>
+                                    <p class="mb-0 text-muted" id="forumPostPreviewText">Post content will appear here...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Причина репорта -->
+                    <div class="mb-4">
+                        <label for="forumPostReportReason" class="form-label fw-medium">
+                            <i class="bi bi-exclamation-triangle me-1"></i>Reason for Report
+                        </label>
+                        <select class="form-select form-select-lg" id="forumPostReportReason" name="reason" required>
+                            <option value="" selected disabled>Select a reason...</option>
+                            <optgroup label="Content Violations">
+                                <option value="spam">Spam / Advertising</option>
+                                <option value="offensive">Offensive / Abusive Language</option>
+                                <option value="harassment">Harassment / Bullying</option>
+                                <option value="hate_speech">Hate Speech / Discrimination</option>
+                                <option value="explicit">Explicit / Adult Content</option>
+                                <option value="illegal">Illegal Content / Warez</option>
+                            </optgroup>
+                            <optgroup label="Forum Rules">
+                                <option value="off_topic">Off Topic / Wrong Forum</option>
+                                <option value="double_post">Double Post / Cross-Posting</option>
+                                <option value="flame">Flaming / Trolling</option>
+                                <option value="personal_attack">Personal Attack</option>
+                                <option value="spoiler">Unmarked Spoilers</option>
+                            </optgroup>
+                            <optgroup label="Other Issues">
+                                <option value="copyright">Copyright Infringement</option>
+                                <option value="personal_info">Personal Information</option>
+                                <option value="malware">Malware Link</option>
+                                <option value="scam">Scam / Fraud</option>
+                                <option value="other">Other Reason</option>
+                            </optgroup>
+                        </select>
+                        <div class="form-text">Please select the most appropriate reason</div>
+                    </div>
+                    
+                    <!-- Дополнительные детали -->
+                    <div class="mb-3">
+                        <label for="forumPostReportDetails" class="form-label fw-medium">
+                            <i class="bi bi-chat-text me-1"></i>Additional Details
+                        </label>
+                        <textarea class="form-control" id="forumPostReportDetails" name="description" 
+                                  rows="4" placeholder="Please provide more details about why this post should be reviewed..."
+                                  maxlength="2000"></textarea>
+                        <div class="form-text d-flex justify-content-between mt-1">
+                            <span>Optional but very helpful for moderators</span>
+                            <span id="forumPostCharCount">0/2000</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Ссылка на правила форума -->
+                    <div class="mb-3">
+                        <label for="forumPostRuleViolation" class="form-label fw-medium">
+                            <i class="bi bi-journal-text me-1"></i>Specific Rule Violation (Optional)
+                        </label>
+                        <select class="form-select" id="forumPostRuleViolation" name="rule_violation">
+                            <option value="" selected>Not specified</option>
+                            <option value="rule_1">Rule 1: No spamming or advertising</option>
+                            <option value="rule_2">Rule 2: No offensive language</option>
+                            <option value="rule_3">Rule 3: No harassment or bullying</option>
+                            <option value="rule_4">Rule 4: Stay on topic</option>
+                            <option value="rule_5">Rule 5: No warez or illegal content</option>
+                            <option value="rule_6">Rule 6: Respect other members</option>
+                            <option value="rule_7">Rule 7: No double posting</option>
+                            <option value="rule_8">Rule 8: Use appropriate language</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Контактная информация (опционально) -->
+                    <div class="mb-3">
+                        <label for="forumPostReportEmail" class="form-label fw-medium">
+                            <i class="bi bi-envelope me-1"></i>Contact Email (Optional)
+                        </label>
+                        <input type="email" class="form-control" id="forumPostReportEmail" 
+                               name="email" placeholder="your@email.com">
+                        <div class="form-text">Only used if we need more information about your report</div>
+                    </div>
+                    
+                    <!-- Предупреждение -->
+                    <div class="alert alert-warning small">
+                        <div class="d-flex">
+                            <i class="bi bi-exclamation-triangle me-2 fs-5"></i>
+                            <div>
+                                <strong>Important:</strong> Please only report posts that violate our 
+                                <a href="/forum/rules.php" class="alert-link">forum rules</a>. 
+                                False reports may result in penalties. Reporting is anonymous.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Футер модалки -->
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg me-1"></i>Cancel
+                    </button>
+                    <button type="submit" class="btn btn-success px-4" id="submitForumPostReport">
+                        <i class="bi bi-send me-1"></i>Submit Report
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>';	
+	
+	
+	
+	
 	
 	
 	

@@ -1,18 +1,18 @@
 <?php
 // Проверяем, определены ли необходимые переменные
-if (!isset($torrent) || !is_array($torrent)) {
+if (!isset($Torrent) || !is_array($Torrent)) {
     return; // Прекращаем выполнение если переменные не определены
 }
 
 // Подготавливаем данные для формы
-$t_link = $torrent['t_link'] ?? '';
+$t_link = $Torrent['t_link'] ?? '';
 if ($t_link && preg_match('@https:\/\/www\.imdb\.com\/title\/(.*)\/@isU', $t_link, $result)) {
     $t_link = $result[0];
 }
 
 // Получаем список категорий
 require(INC_PATH . '/functions_category.php');
-$category = intval($torrent['category'] ?? 0);
+$category = intval($Torrent['category'] ?? 0);
 $caats = ts_category_list('category', $category);
 
 // Проверяем права модератора
@@ -29,7 +29,7 @@ function submitForm(event) {
     submitBtn.value = 'Update...';
     
     const formData = new FormData(document.getElementById('insert_form'));
-    formData.append('id', '<?php echo htmlspecialchars($torrent["id"] ?? ""); ?>');
+    formData.append('id', '<?php echo htmlspecialchars($Torrent["id"] ?? ""); ?>');
     formData.append('ajax', '1');
     
     console.log('Sending edit request...');
@@ -108,9 +108,9 @@ function updatePageContent(updatedData) {
     if (updatedData.name) {
         const titleElements = document.querySelectorAll('.torrent-title, h1, [data-torrent-name]');
         titleElements.forEach(el => {
-            if (el.textContent.includes('<?php echo htmlspecialchars($torrent["name"] ?? ""); ?>')) {
+            if (el.textContent.includes('<?php echo htmlspecialchars($Torrent["name"] ?? ""); ?>')) {
                 el.textContent = el.textContent.replace(
-                    '<?php echo htmlspecialchars($torrent["name"] ?? ""); ?>', 
+                    '<?php echo htmlspecialchars($Torrent["name"] ?? ""); ?>', 
                     updatedData.name
                 );
             }
@@ -127,7 +127,7 @@ function updatePageContent(updatedData) {
     
     // Обновляем изображения если нужно
     if (updatedData.t_image) {
-        const imgElements = document.querySelectorAll('img[src*="<?php echo htmlspecialchars($torrent["t_image"] ?? ""); ?>"]');
+        const imgElements = document.querySelectorAll('img[src*="<?php echo htmlspecialchars($Torrent["t_image"] ?? ""); ?>"]');
         imgElements.forEach(img => {
             img.src = updatedData.t_image;
         });
@@ -211,12 +211,12 @@ function ShowHideField(fieldId) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    const existingImage = '<?php echo htmlspecialchars($torrent["t_image"] ?? ""); ?>';
+    const existingImage = '<?php echo htmlspecialchars($Torrent["t_image"] ?? ""); ?>';
     if (existingImage) {
         previewURLImage(existingImage);
     }
     
-    const existingImage2 = '<?php echo htmlspecialchars($torrent["t_image2"] ?? ""); ?>';
+    const existingImage2 = '<?php echo htmlspecialchars($Torrent["t_image2"] ?? ""); ?>';
     if (existingImage2) {
         previewURLImage2(existingImage2);
     }
@@ -273,7 +273,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <div class="modal-content">
       <div class="modal-headers">
         <h5 class="modal-title" id="exampleModalLabel">
-            <i class="fas fa-edit me-2"></i>Edit Torrent: <?php echo htmlspecialchars($torrent['name'] ?? ''); ?>
+            <i class="fas fa-edit me-2"></i>Edit Torrent: <?php echo htmlspecialchars($Torrent['name'] ?? ''); ?>
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
@@ -285,7 +285,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <label for="name" class="form-label">Torrent Name</label>
             <div class="input-group mb-3">
                 <span class="input-group-text"><i class="fas fa-heading"></i></span>
-                <input type="text" name="name" id="name" class="form-control" value="<?php echo htmlspecialchars($torrent['name'] ?? ''); ?>" required />
+                <input type="text" name="name" id="name" class="form-control" value="<?php echo htmlspecialchars($Torrent['name'] ?? ''); ?>" required />
             </div>
           </div>
           
@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <label for="descr" class="form-label">Description</label>
             <div class="input-group mb-3">
                 <span class="input-group-text"><i class="fas fa-align-left"></i></span>
-                <textarea style="height: 300px; resize: none" class="form-control form-control-sm border" name="descr" id="descr" required><?php echo htmlspecialchars($torrent['descr'] ?? ''); ?></textarea>
+                <textarea style="height: 300px; resize: none" class="form-control form-control-sm border" name="descr" id="descr" required><?php echo htmlspecialchars($Torrent['descr'] ?? ''); ?></textarea>
             </div>
           </div>
           
@@ -333,7 +333,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <div style="display: inline;" id="nothingtopost1">
               <div class="input-group mt-3">
                 <span class="input-group-text"><i class="fas fa-link"></i></span>
-                <input type="text" class="form-control" name="t_image_url" id="t_image_url" value="<?php echo htmlspecialchars($torrent['t_image'] ?? ''); ?>" oninput="previewURLImage(this.value)" />
+                <input type="text" class="form-control" name="t_image_url" id="t_image_url" value="<?php echo htmlspecialchars($Torrent['t_image'] ?? ''); ?>" oninput="previewURLImage(this.value)" />
               </div>
               <div class="image-area5 mt-2">
                 <img id="urlImagePreview" src="#" alt="URL Preview" style="display:none;" class="img-thumbnail">
@@ -361,7 +361,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <div style="display: none;" id="nothingtopost3">
               <div class="input-group mt-3">
                 <span class="input-group-text"><i class="fas fa-link"></i></span>
-                <input type="text" class="form-control" name="t_image_url2" id="t_image_url2" value="<?php echo htmlspecialchars($torrent['t_image2'] ?? ''); ?>" oninput="previewURLImage2(this.value)" />
+                <input type="text" class="form-control" name="t_image_url2" id="t_image_url2" value="<?php echo htmlspecialchars($Torrent['t_image2'] ?? ''); ?>" oninput="previewURLImage2(this.value)" />
               </div>
               <div class="image-area5 mt-2">
                 <img id="urlImagePreview2" src="#" alt="URL Preview" style="display:none;" class="img-thumbnail">
@@ -393,21 +393,21 @@ document.addEventListener('DOMContentLoaded', function() {
               <div class="col-md-6">
                 <div class="form-check">
                   <div class="form-check form-switch">
-                    <input type="checkbox" class="form-check-input" name="free" value="yes" id="free" <?php echo ($torrent['free'] ?? '') == 'yes' ? 'checked' : ''; ?> />
+                    <input type="checkbox" class="form-check-input" name="free" value="yes" id="free" <?php echo ($Torrent['free'] ?? '') == 'yes' ? 'checked' : ''; ?> />
                     <label class="form-check-label" for="free"><b><?php echo $lang->upload['free1'] ?? 'Free'; ?></b>: <?php echo $lang->upload['free2'] ?? 'Enable Free'; ?></label>
                   </div>
                 </div>
                 
                 <div class="form-check mt-2">
                   <div class="form-check form-switch">
-                    <input type="checkbox" class="form-check-input" name="silver" value="yes" id="silver" <?php echo ($torrent['silver'] ?? '') == 'yes' ? 'checked' : ''; ?> />
+                    <input type="checkbox" class="form-check-input" name="silver" value="yes" id="silver" <?php echo ($Torrent['silver'] ?? '') == 'yes' ? 'checked' : ''; ?> />
                     <label class="form-check-label" for="silver"><b><?php echo $lang->upload['silver1'] ?? 'Silver'; ?></b>: <?php echo $lang->upload['silver2'] ?? 'Enable Silver'; ?></label>
                   </div>
                 </div>
                 
                 <div class="form-check mt-2">
                   <div class="form-check form-switch">
-                    <input type="checkbox" class="form-check-input" name="doubleupload" value="yes" id="doubleupload" <?php echo ($torrent['doubleupload'] ?? '') == 'yes' ? 'checked' : ''; ?> />
+                    <input type="checkbox" class="form-check-input" name="doubleupload" value="yes" id="doubleupload" <?php echo ($Torrent['doubleupload'] ?? '') == 'yes' ? 'checked' : ''; ?> />
                     <label class="form-check-label" for="doubleupload"><b><?php echo $lang->upload['doubleupload1'] ?? 'Double Upload'; ?></b>: <?php echo $lang->upload['doubleupload2'] ?? 'Enable Double Upload'; ?></label>
                   </div>
                 </div>
@@ -416,28 +416,28 @@ document.addEventListener('DOMContentLoaded', function() {
               <div class="col-md-6">
                 <div class="form-check">
                   <div class="form-check form-switch">
-                    <input type="checkbox" class="form-check-input" name="allowcomments" value="no" id="allowcomments" <?php echo ($torrent['allowcomments'] ?? '') == 'no' ? 'checked' : ''; ?> />
+                    <input type="checkbox" class="form-check-input" name="allowcomments" value="no" id="allowcomments" <?php echo ($Torrent['allowcomments'] ?? '') == 'no' ? 'checked' : ''; ?> />
                     <label class="form-check-label" for="allowcomments"><b><?php echo $lang->upload['allowcomments1'] ?? 'Allow Comments'; ?></b>: <?php echo $lang->upload['allowcomments2'] ?? 'Disable Comments'; ?></label>
                   </div>
                 </div>
                 
                 <div class="form-check mt-2">
                   <div class="form-check form-switch">
-                    <input type="checkbox" class="form-check-input" name="sticky" value="yes" id="sticky" <?php echo ($torrent['sticky'] ?? '') == 'yes' ? 'checked' : ''; ?> />
+                    <input type="checkbox" class="form-check-input" name="sticky" value="yes" id="sticky" <?php echo ($Torrent['sticky'] ?? '') == 'yes' ? 'checked' : ''; ?> />
                     <label class="form-check-label" for="sticky"><b><?php echo $lang->upload['sticky1'] ?? 'Sticky'; ?></b>: <?php echo $lang->upload['sticky2'] ?? 'Make Sticky'; ?></label>
                   </div>
                 </div>
                 
                 <div class="form-check mt-2">
                   <div class="form-check form-switch">
-                    <input type="checkbox" class="form-check-input" name="isnuked" value="yes" id="isnuked" <?php echo ($torrent['isnuked'] ?? '') == 'yes' ? 'checked' : ''; ?> onchange="ShowHideField('nukereason');" />
+                    <input type="checkbox" class="form-check-input" name="isnuked" value="yes" id="isnuked" <?php echo ($Torrent['isnuked'] ?? '') == 'yes' ? 'checked' : ''; ?> onchange="ShowHideField('nukereason');" />
                     <label class="form-check-label" for="isnuked"><b><?php echo $lang->upload['nuked1'] ?? 'Nuked'; ?></b>: <?php echo $lang->upload['nuked2'] ?? 'Mark as Nuked'; ?></label>
                   </div>
                 </div>
                 
-                <div id="nukereason" style="display:<?php echo ($torrent['isnuked'] ?? '') == 'yes' ? 'block' : 'none'; ?>; margin-top: 10px;">
+                <div id="nukereason" style="display:<?php echo ($Torrent['isnuked'] ?? '') == 'yes' ? 'block' : 'none'; ?>; margin-top: 10px;">
                   <label for="WhyNuked"><b><?php echo $lang->upload['nreason'] ?? 'Reason'; ?></b></label>
-                  <input type="text" class="form-control" name="WhyNuked" id="WhyNuked" value="<?php echo htmlspecialchars($torrent['WhyNuked'] ?? ''); ?>" />
+                  <input type="text" class="form-control" name="WhyNuked" id="WhyNuked" value="<?php echo htmlspecialchars($Torrent['WhyNuked'] ?? ''); ?>" />
                 </div>
               </div>
             </div>

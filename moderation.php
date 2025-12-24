@@ -33,10 +33,11 @@ $fid = $mybb->get_input('fid', MyBB::INPUT_INT);
 $pmid = $mybb->get_input('pmid', MyBB::INPUT_INT);
 $modal = $mybb->get_input('modal', MyBB::INPUT_INT);
 
-//if($mybb->user['uid'] == 0)
-//{
-	//error_no_permission();
-//}
+if($CURUSER['id'] == 0)
+{
+	
+	print_no_permission();
+}
 
 
 if($pid)
@@ -131,24 +132,13 @@ $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
 
 
 
-$loginbox = '
-
-
-<div class="alert bg-nav p-2 mb-3">
-	
-
-<i class="fa-solid fa-user"></i> '.$CURUSER['username'].' &mdash; <a href="'.$BASEURL.'/logout.php?logouthash='.md5(USERIPADDRESS).'" class="links">change user</a>
-	
-</div>
-
-
-';
+eval("\$loginbox = \"".$templates->get("changeuserbox")."\";");
 
 $allowable_moderation_actions = array("getip", "getpmip", "cancel_delayedmoderation", "delayedmoderation", "threadnotes", "purgespammer", "viewthreadnotes");
 
 if($mybb->request_method != "post" && !in_array($mybb->input['action'], $allowable_moderation_actions))
 {
-	error_no_permission();
+	print_no_permission();
 }
 
 // Begin!
@@ -159,11 +149,11 @@ switch($mybb->input['action'])
 		// Verify incoming POST request
 		verify_post_check($mybb->get_input('my_post_key'));
 
-		add_breadcrumb($lang->delayed_moderation);
-		if(!is_moderator($fid, "canmanagethreads"))
-		{
-			error_no_permission();
-		}
+		add_breadcrumb($lang->moderation['delayed_moderation']);
+		//if(!is_moderator($fid, "canmanagethreads"))
+		//{
+			//print_no_permission();
+		//}
 
 		$plugins->run_hooks('moderation_cancel_delayedmoderation');
 
@@ -171,11 +161,11 @@ switch($mybb->input['action'])
 
 		if($tid == 0)
 		{
-			moderation_redirect(get_forum_link($fid), $lang->redirect_delayed_moderation_cancelled);
+			moderation_redirect(get_forum_link($fid), $lang->moderation['redirect_delayed_moderation_cancelled']);
 		}
 		else
 		{
-			moderation_redirect("moderation.php?action=delayedmoderation&amp;tid={$tid}&amp;my_post_key={$mybb->post_code}", $lang->redirect_delayed_moderation_cancelled);
+			moderation_redirect("moderation.php?action=delayedmoderation&amp;tid={$tid}&amp;my_post_key={$mybb->post_code}", $lang->moderation['redirect_delayed_moderation_cancelled']);
 		}
 		break;
 	case "do_delayedmoderation":
@@ -183,7 +173,7 @@ switch($mybb->input['action'])
 		// Verify incoming POST request
 		verify_post_check($mybb->get_input('my_post_key'));
 		
-		$localized_time_offset = $mybb->user['timezone']*3600 + $mybb->user['dst']*3600;
+		$localized_time_offset = $CURUSER['timezone']*3600 + $CURUSER['dst']*3600;
 
 		if(!$mybb->get_input('date_day', MyBB::INPUT_INT))
 		{
@@ -220,45 +210,23 @@ switch($mybb->input['action'])
 
 		add_breadcrumb($lang->delayed_moderation);
 
-		//if(!is_moderator($fid, "canmanagethreads"))
-		//{
-			//error_no_permission();
-		//}
+		
 
 		$errors = array();
 		$customthreadtools = "";
 
 		$allowed_types = array('move', 'merge', 'removeredirects', 'removesubscriptions');
 
-		if(is_moderator($fid, "canopenclosethreads"))
-		{
-			$allowed_types[] = "openclosethread";
-		}
-
-		if(is_moderator($fid, "cansoftdeletethreads") || is_moderator($fid, "canrestorethreads"))
-		{
-			$allowed_types[] = "softdeleterestorethread";
-		}
-
-		if(is_moderator($fid, "candeletethreads"))
-		{
-			$allowed_types[] = "deletethread";
-		}
-
-		if(is_moderator($fid, "canstickunstickthreads"))
-		{
-			$allowed_types[] = "stick";
-		}
-
-		if(is_moderator($fid, "canapproveunapprovethreads"))
-		{
-			$allowed_types[] = "approveunapprovethread";
-		}
+		
+		$allowed_types[] = "openclosethread";
+        $allowed_types[] = "deletethread";
+	    $allowed_types[] = "stick";
+		$allowed_types[] = "approveunapprovethread";
+		
 
 		$mybb->input['type'] = $mybb->get_input('type');
 
-		if(is_moderator($fid, "canusecustomtools"))
-		{
+		
 			switch($db->type)
 			{
 				case "pgsql":
@@ -285,7 +253,7 @@ switch($mybb->input['action'])
 					eval("\$customthreadtools .= \"".$templates->get("moderation_delayedmoderation_custommodtool")."\";");
 				}
 			}
-		}
+		
 
 		$mybb->input['delayedmoderation'] = $mybb->get_input('delayedmoderation', MyBB::INPUT_ARRAY);
 
@@ -309,37 +277,37 @@ switch($mybb->input['action'])
 
 				// Make sure moderator has permission to move to the new forum
 				$newperms = forum_permissions($newfid);
-				if($newperms['canview'] == 0 || !is_moderator($newfid, 'canmovetononmodforum'))
-				{
-					$errors[] = $lang->error_movetononmodforum;
-				}
+				//if($newperms['canview'] == 0 || !is_moderator($newfid, 'canmovetononmodforum'))
+				//{
+				//	$errors[] = $lang->error_movetononmodforum;
+				//}
 
 				$newforum = get_forum($newfid);
 				if(!$newforum || $newforum['type'] != "f" || $newforum['type'] == "f" && $newforum['linkto'] != '')
 				{
-					$errors[] = $lang->error_invalidforum;
+					$errors[] = 'Invalid forum';
 				}
 
 				$method = $mybb->input['delayedmoderation']['method'];
 				if($method != "copy" && $fid == $newfid)
 				{
-					$errors[] = $lang->error_movetosameforum;
+					$errors[] = $lang->moderation['error_movetosameforum'];
 				}
 			}
 
 			if($mybb->input['date_day'] > 31 || $mybb->input['date_day'] < 1)
 			{
-				$errors[] = $lang->error_delayedmoderation_invalid_date_day;
+				$errors[] = $lang->moderation['error_delayedmoderation_invalid_date_day'];
 			}
 
 			if($mybb->input['date_month'] > 12 || $mybb->input['date_month'] < 1)
 			{
-				$errors[] = $lang->error_delayedmoderation_invalid_date_month;
+				$errors[] = $lang->moderation['error_delayedmoderation_invalid_date_month'];
 			}
 
 			if($mybb->input['date_year'] < gmdate('Y', TIMENOW + $localized_time_offset))
 			{
-				$errors[] = $lang->error_delayedmoderation_invalid_date_year;
+				$errors[] = $lang->moderation['error_delayedmoderation_invalid_date_year'];
 			}
 
 			$date_time = explode(' ', $mybb->get_input('date_time'));
@@ -366,7 +334,7 @@ switch($mybb->input['action'])
 				$did = $db->insert_query("delayedmoderation", array(
 					'type' => $db->escape_string($mybb->input['type']),
 					'delaydateline' => (int)$rundate,
-					'uid' => $mybb->user['uid'],
+					'uid' => $CURUSER['id'],
 					'tids' => $db->escape_string($mybb->input['tids']),
 					'fid' => $fid,
 					'dateline' => TIMENOW,
@@ -375,22 +343,22 @@ switch($mybb->input['action'])
 
 				$plugins->run_hooks('moderation_do_delayedmoderation');
 
-				$rundate_format = my_date('relative', $rundate, '', 2);
-				$lang->redirect_delayed_moderation_thread = $lang->sprintf($lang->redirect_delayed_moderation_thread, $rundate_format);
+				$rundate_format = my_datee('relative', $rundate, '', 2);
+				$redirect_delayed_moderation_thread = sprintf($lang->moderation['redirect_delayed_moderation_thread'], $rundate_format);
 
 				if(!empty($mybb->input['tid']))
 				{
-					moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_delayed_moderation_thread);
+					moderation_redirect(get_thread_link($thread['tid']), $redirect_delayed_moderation_thread);
 				}
 				else
 				{
 					if($mybb->get_input('inlinetype') == 'search')
 					{
-						moderation_redirect(get_forum_link($fid), $lang->sprintf($lang->redirect_delayed_moderation_search, $rundate_format));
+						moderation_redirect(get_forum_link($fid), sprintf($lang->moderation['redirect_delayed_moderation_search'], $rundate_format));
 					}
 					else
 					{
-						moderation_redirect(get_forum_link($fid), $lang->sprintf($lang->redirect_delayed_moderation_forum, $rundate_format));
+						moderation_redirect(get_forum_link($fid), sprintf($lang->moderation['redirect_delayed_moderation_forum'], $rundate_format));
 					}
 				}
 			}
@@ -452,15 +420,14 @@ switch($mybb->input['action'])
 		$forum_cache = $cache->read("forums");
 
 		$actions = array(
-			'openclosethread' => 'open_close_thread',
-			'softdeleterestorethread' => $lang->softdelete_restore_thread,
-			'deletethread' => 'delete_thread',
-			'move' => 'move_copy_thread',
-			'stick' =>'stick_unstick_thread',
-			'merge' => 'merge_threads',
-			'removeredirects' => $lang->remove_redirects,
-			'removesubscriptions' => $lang->remove_subscriptions,
-			'approveunapprovethread' => $lang->approve_unapprove_thread
+			'openclosethread' => $lang->moderation['open_close_thread'],
+			'deletethread' => $lang->moderation['delete_thread'],
+			'move' => $lang->moderation['move_copy_thread'],
+			'stick' =>$lang->moderation['stick_unstick_thread'],
+			'merge' => $lang->moderation['merge_threads'],
+			'removeredirects' => $lang->moderation['remove_redirects'],
+			'removesubscriptions' => $lang->moderation['remove_subscriptions'],
+			'approveunapprovethread' => $lang->moderation['approve_unapprove_thread']
 		);
 
 		switch($db->type)
@@ -508,11 +475,11 @@ switch($mybb->input['action'])
 					}
 					$where_statement = implode(" OR ", $where_array);
 			}
-			$query = $db->query("
+			$query = $db->sql_query("
 				SELECT d.*, u.username, f.name AS fname
-				FROM ".TABLE_PREFIX."delayedmoderation d
-				LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid=d.uid)
-				LEFT JOIN ".TABLE_PREFIX."forums f ON (f.fid=d.fid)
+				FROM delayedmoderation d
+				LEFT JOIN users u ON (u.id=d.uid)
+				LEFT JOIN tsf_forums f ON (f.fid=d.fid)
 				WHERE ".$where_statement."
 				ORDER BY d.dateline DESC
 				LIMIT  0, 20
@@ -524,22 +491,22 @@ switch($mybb->input['action'])
 			{
 				case "pgsql":
 				case "sqlite":
-					$query = $db->query("
+					$query = $db->sql_query("
 						SELECT d.*, u.username, f.name AS fname
-						FROM ".TABLE_PREFIX."delayedmoderation d
-						LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid=d.uid)
-						LEFT JOIN ".TABLE_PREFIX."forums f ON (f.fid=d.fid)
+						FROM delayedmoderation d
+						LEFT JOIN users u ON (u.id=d.uid)
+						LEFT JOIN tsf_forums f ON (f.fid=d.fid)
 						WHERE ','||d.tids||',' LIKE '%,{$tid},%'
 						ORDER BY d.dateline DESC
 						LIMIT  0, 20
 					");
 					break;
 				default:
-					$query = $db->query("
+					$query = $db->sql_query("
 						SELECT d.*, u.username, f.name AS fname
-						FROM ".TABLE_PREFIX."delayedmoderation d
-						LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid=d.uid)
-						LEFT JOIN ".TABLE_PREFIX."forums f ON (f.fid=d.fid)
+						FROM delayedmoderation d
+						LEFT JOIN users u ON (u.id=d.uid)
+						LEFT JOIN tsf_forums f ON (f.fid=d.fid)
 						WHERE CONCAT(',',d.tids,',') LIKE '%,{$tid},%'
 						ORDER BY d.dateline DESC
 						LIMIT  0, 20
@@ -549,7 +516,7 @@ switch($mybb->input['action'])
 
 		while($delayedmod = $db->fetch_array($query))
 		{
-			$delayedmod['dateline'] = my_date('normal', $delayedmod['delaydateline'], "", 2);
+			$delayedmod['dateline'] = my_datee('normal', $delayedmod['delaydateline'], "", 2);
 			$delayedmod['username'] = htmlspecialchars_uni($delayedmod['username']);
 			$delayedmod['profilelink'] = build_profile_link($delayedmod['username'], $delayedmod['uid']);
 			$delayedmod['action'] = $actions[$delayedmod['type']];
@@ -633,10 +600,10 @@ switch($mybb->input['action'])
 			}
 			if(count($tids) < 1)
 			{
-				error($lang->error_inline_nothreadsselected, $lang->error);
+				stderr($lang->moderation['error_inline_nothreadsselected']);
 			}
 
-			$threads = $lang->sprintf($lang->threads_selected, count($tids));
+			$threads = sprintf($lang->moderation['threads_selected'], count($tids));
 			$moderation_delayedmoderation_merge = '';
 		}
 		$redirect_expire = $mybb->get_input('redirect_expire');
@@ -668,42 +635,45 @@ switch($mybb->input['action'])
 		eval('$datemonth = "'.$templates->get('moderation_delayedmoderation_date_month').'";');
 
 		$dateyear = gmdate('Y', TIMENOW  + $localized_time_offset);
-		$datetime = gmdate($mybb->settings['timeformat'], TIMENOW + $localized_time_offset);
+		$datetime = gmdate($timeformat, TIMENOW + $localized_time_offset);
 
 		$openclosethread = '';
-		if(is_moderator($fid, "canopenclosethreads"))
-		{
+		//if(is_moderator($fid, "canopenclosethreads"))
+		//{
 			eval('$openclosethread = "'.$templates->get('moderation_delayedmoderation_openclose').'";');
-		}
+		//}
 
-		$softdeleterestorethread = '';
-		if(is_moderator($fid, "cansoftdeletethreads") || is_moderator($fid, "canrestorethreads"))
-		{
-			eval('$softdeleterestorethread = "'.$templates->get('moderation_delayedmoderation_softdeleterestore').'";');
-		}
+	
 
 		$deletethread = '';
-		if(is_moderator($fid, "candeletethreads"))
-		{
+		//if(is_moderator($fid, "candeletethreads"))
+		//{
 			eval('$deletethread = "'.$templates->get('moderation_delayedmoderation_delete').'";');
-		}
+		//}
 
 		$stickunstickthread = '';
-		if(is_moderator($fid, "canstickunstickthreads"))
-		{
+		//if(is_moderator($fid, "canstickunstickthreads"))
+		//{
 			eval('$stickunstickthread = "'.$templates->get('moderation_delayedmoderation_stick').'";');
-		}
+		//}
 
 		$approveunapprovethread = '';
-		if(is_moderator($fid, "canapproveunapprovethreads"))
-		{
+		//if(is_moderator($fid, "canapproveunapprovethreads"))
+		//{
 			eval('$approveunapprovethread = "'.$templates->get('moderation_delayedmoderation_approve').'";');
-		} 
+		//} 
 
 		$plugins->run_hooks("moderation_delayedmoderation");
 
 		eval("\$delayedmoderation = \"".$templates->get("moderation_delayedmoderation")."\";");
-		output_page($delayedmoderation);
+		
+		stdhead('aaaaaaaa');
+		echo $delayedmoderation;
+		
+		stdfoot();
+		
+		
+		
 		break;
 	// Open or close a thread
 	case "openclosethread":
@@ -822,32 +792,228 @@ switch($mybb->input['action'])
 		
 		
 		
-		<html>
+		<!DOCTYPE html>
+<html lang="en">
 <head>
-<title>{$mybb->settings[bbname]} - {$lang->delete_thread}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?php echo htmlspecialchars($mybb->settings[bbname]); ?> - <?php echo htmlspecialchars($lang->delete_thread); ?></title>
+	
+	 <style>
+        .thread-subject {
+            max-width: 100%;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }
+        .warning-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 4px 12px rgba(229, 62, 62, 0.2);
+        }
+        .warning-icon i {
+            font-size: 36px;
+            color: white;
+        }
+        .delete-btn {
+            background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+            border: none;
+            padding: 0.75rem 2.5rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .delete-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(229, 62, 62, 0.3);
+        }
+        .delete-btn:active {
+            transform: translateY(0);
+        }
+        .btn-cancel {
+            padding: 0.75rem 2rem;
+            font-weight: 500;
+        }
+        .consequences-list {
+            list-style: none;
+            padding-left: 0;
+        }
+        .consequences-list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .consequences-list li:last-child {
+            border-bottom: none;
+        }
+        .consequences-list li i {
+            width: 24px;
+            color: #e53e3e;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+            color: white;
+            border: none;
+        }
+        .thread-preview {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #e53e3e;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+        .confirm-text {
+            color: #e53e3e;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+    </style>
+	
+	
 
 </head>
-<body>
-
+<body class="bg-gray-50">
 
 '.stdhead ('Delete Thread').'
 
-<form action="moderation.php" method="post">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-	<div class="container-md">
-<div class="card">
-<div class="card-body">
-	<div class="legend mb-4">'.$thread['subject'].' - Delete Thread Permanently</div>
+<div class="container mt-3">
+    <div class="row justify-content-center">
+        <div>
+            <div class="card">
+                <div class="card-header border-0 py-4">
+                    <h4 class="text-white mb-0 text-center">
+                        <i class="fas fa-trash-alt me-2"></i>Delete Thread
+                    </h4>
+                </div>
+                
+                <div class="card-body p-4 p-md-5">
+                    <!-- Warning Icon -->
+                    <div class="warning-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    
+                    <!-- Thread Preview -->
+                    <div class="thread-preview">
+                        <div class="d-flex align-items-start">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-file-alt text-danger fs-4 mt-1"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h5 class="mb-1 thread-subject">
+                                    '.$thread['subject'].'
+                                </h5>
+                                <div class="text-muted small">
+                                    <span class="me-3">
+                                        <i class="fas fa-hashtag me-1"></i>ID: <?php echo (int)$tid; ?>
+                                    </span>
+                                    '.$thread['username'].'
+                                    <span>
+                                        <i class="fas fa-user me-1"></i>Author: '.$thread['username'].'
+                                    </span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Login Box (if needed) -->
+                    
+                    <div class="alert alert-info mb-4">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-lock me-2 fs-5"></i>
+                            <div>'.$loginbox.'</div>
+                        </div>
+                    </div>
+                    
+                    
+                    <!-- Warning Message -->
+                    <div class="alert alert-danger border-danger">
+                        <div class="d-flex">
+                            <i class="fas fa-exclamation-circle text-danger fs-5 me-3 mt-1"></i>
+                            <div>
+                                <h5 class="alert-heading mb-2">Permanent Deletion Warning</h5>
+                                <p class="mb-2">You are about to permanently delete this thread. This action cannot be undone.</p>
+                                
+                                <ul class="consequences-list mt-3 mb-2">
+                                    <li class="d-flex align-items-center">
+                                        <i class="fas fa-comments me-2"></i>
+                                        <span>All posts in this thread will be permanently deleted</span>
+                                    </li>
+                                    <li class="d-flex align-items-center">
+                                        <i class="fas fa-paperclip me-2"></i>
+                                        <span>All attachments will be removed from the server</span>
+                                    </li>
+                                    <li class="d-flex align-items-center">
+                                        <i class="fas fa-chart-bar me-2"></i>
+                                        <span>Any poll associated with this thread will be deleted</span>
+                                    </li>
+                                    <li class="d-flex align-items-center">
+                                        <i class="fas fa-history me-2"></i>
+                                        <span>Thread statistics and activity will be lost</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Confirmation Form -->
+                    <form action="moderation.php" method="post" id="threadDeleteForm">
+                        <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'">
+                        <input type="hidden" name="action" value="do_deletethread">
+                        <input type="hidden" name="tid" value="'.$tid.'">
+                        
+                        <!-- Confirmation Check -->
+                        <div class="mb-4 p-3 bg-light rounded">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="confirmDelete" required>
+                                <label class="form-check-label confirm-text" for="confirmDelete">
+                                    <i class="fas fa-check-circle me-1"></i>
+                                    I understand this action is permanent and cannot be undone
+                                </label>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="confirmBackup" required>
+                                <label class="form-check-label text-muted" for="confirmBackup">
+                                    I have ensured all important content is backed up elsewhere
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="d-flex justify-content-between align-items-center pt-3">
+                            <a href="javascript:history.back()" class="btn btn-outline-secondary btn-cancel">
+                                <i class="fas fa-arrow-left me-1"></i>Cancel
+                            </a>
+                            <button type="submit" 
+                                    class="btn delete-btn" 
+                                    name="submit"
+                                    id="deleteThreadBtn"
+                                    disabled>
+                                <i class="fas fa-trash-alt me-2"></i>Delete Thread Permanently
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="card-footer bg-transparent border-top-0 pt-0 text-center">
+                    <small class="text-muted">
+                        <i class="fas fa-shield-alt me-1"></i>
+                        Admin Action • '.$SITENAME.'
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-	<div class="ps-3 pe-3 mb-3 text-muted">Are you sure you wish to delete the selected threads22? Once a thread has been deleted it cannot be restored and any posts, attachments or polls within that thread are also deleted</div>
 
-	<div class="ps-3 pe-3">'.$loginbox.'</div>
-
-<div class="text-end ps-3 pe-3 mt-3"><input type="submit" class="btn btn-primary" name="submit" value="Delete Thread Permanently" /></div>
-<input type="hidden" name="action" value="do_deletethread" />
-<input type="hidden" name="tid" value="'.$tid.'" />
-</form>
-		</div></div></div>
 
 </body>
 </html>
@@ -919,47 +1085,123 @@ switch($mybb->input['action'])
 			stderr('error_invalidpoll');
 		}
 
-		$deletepoll = '
-		
-		
-		<html>
+
+
+
+
+$deletepoll = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<title>{$mybb->settings[bbname]} - {$lang->delete_poll}</title>
-{$headerinclude}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{$mybb->settings['bbname']} - {$lang->moderation['delete_poll']}</title>
+    {$headerinclude}
+    
+    <style>
+   
+        .poll-card {
+            max-width: 500px;
+            margin: 0 auto;
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .poll-header {
+            background: #dc3545;
+            color: white;
+            padding: 25px;
+            border-radius: 15px 15px 0 0;
+            text-align: center;
+        }
+        .poll-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        .btn-delete {
+            background: #dc3545;
+            border: none;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-delete:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+        .security-box {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+    </style>
 </head>
 <body>
-{$header}
-<form action="moderation.php" method="post">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-	<div class="container-md">
-<div class="card">
-<div class="card-body">
-
-	<div class="mb-3 text-muted ps-3 pe-3">{$lang->delete_poll}</div>
-
-	<div class="ps-3 pe-3">{$loginbox}</div>
-
-<div class="mt-3 text-end ps-3 pe-3"><input type="submit" class="btn btn-primary" name="submit" value="{$lang->delete_poll}" /></div>
-<input type="hidden" name="action" value="do_deletepoll" />
-<input type="hidden" name="tid" value="'.$tid.'" />
-<input type="hidden" name="delete" value="1" />
-	</div>
-		</div>
-	</div>
-</form>
-{$footer}
+    <div class="container mt-3">
+        <div class="poll-card">
+            <div class="poll-header">
+                <div class="poll-icon">
+                    <i class="fas fa-chart-bar"></i>
+                </div>
+                <h4 class="mb-2">{$lang->moderation['delete_poll']}</h4>
+                <p class="mb-0 opacity-75">This action cannot be undone</p>
+            </div>
+            
+            <form action="moderation.php" method="post">
+                <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
+                <input type="hidden" name="action" value="do_deletepoll" />
+                <input type="hidden" name="tid" value="{$tid}" />
+                <input type="hidden" name="delete" value="1" />
+                
+                <div class="card-body p-4">
+                    <div class="alert alert-danger mb-4">
+                        <h5 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Warning</h5>
+                        <p class="mb-0">{$lang->moderation['delete_poll']}. Once deleted, poll cannot be restored.</p>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h6><i class="fas fa-chart-pie me-2"></i>What will be deleted:</h6>
+                        <ul class="mt-3 mb-0">
+                            <li>Poll questions and options</li>
+                            <li>All voting data</li>
+                            <li>Poll statistics</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="security-box">
+                        <h6><i class="fas fa-shield-alt me-2"></i>Security Verification</h6>
+                        <div class="mt-2">{$loginbox}</div>
+                    </div>
+                </div>
+                
+                <div class="card-footer bg-white py-3 text-end">
+                    <a href="showthread.php?tid={$tid}" class="btn btn-outline-secondary me-2">
+                        <i class="fas fa-times me-1"></i> Cancel
+                    </a>
+                    <button type="submit" class="btn btn-delete text-white" name="submit" value="{$lang->moderation['delete_poll']}">
+                        <i class="fas fa-trash-alt me-1"></i> {$lang->moderation['delete_poll']}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </body>
 </html>
+HTML;
 		
 		
 		
 		
 		
 		
-		';
 		
+		stdhead('delete poll');
 		
 		echo $deletepoll;
+		
+		stdfoot();
+		
 		break;
 
 	// Delete the actual poll here!
@@ -1058,49 +1300,9 @@ switch($mybb->input['action'])
 		moderation_redirect(get_thread_link($thread['tid']), $lang->moderation['redirect_threadunapproved']);
 		break;
 
-	// Restore a thread
-	case "restorethread":
 
-		// Verify incoming POST request
-		verify_post_check($mybb->get_input('my_post_key'));
 
-		if(!is_moderator($fid, "canrestorethreads"))
-		{
-			error_no_permission();
-		}
-		$thread = get_thread($tid);
 
-		$plugins->run_hooks("moderation_restorethread");
-
-		$lang->thread_restored = $lang->sprintf($lang->thread_restored, $thread['subject']);
-		log_moderator_action($modlogdata, $lang->thread_restored);
-
-		$moderation->restore_threads($tid);
-
-		moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_threadrestored);
-		break;
-
-	// Soft delete a thread
-	case "softdeletethread":
-
-		// Verify incoming POST request
-		verify_post_check($mybb->get_input('my_post_key'));
-
-		if(!is_moderator($fid, "cansoftdeletethreads"))
-		{
-			error_no_permission();
-		}
-		$thread = get_thread($tid);
-
-		$plugins->run_hooks("moderation_softdeletethread");
-
-		$lang->thread_soft_deleted = $lang->sprintf($lang->thread_soft_deleted, $thread['subject']);
-		log_moderator_action($modlogdata, $lang->thread_soft_deleted);
-
-		$moderation->soft_delete_threads($tid);
-
-		moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_threadsoftdeleted);
-		break;
 
 	// Move a thread
 	case "move":
@@ -1119,46 +1321,189 @@ switch($mybb->input['action'])
 
 		$forumselect = build_forum_jump("", $fid, 1, '', 0, true, '', "moveto");
 		
-		$movethread = '
 		
 		
-		<html>
+ $movethread = <<<HTML
+<html>
 <head>
-<title>{$mybb->settings[bbname]} - {$lang->move_copy_thread}</title>
-
+    <title>{$mybb->settings['bbname']} - {$lang->move_copy_thread}</title>
+    
+    <style>
+        .method-option { cursor: pointer; border: 1px solid #dee2e6; border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; transition: all .2s; }
+        .method-option:hover { background-color: #f8f9fa; }
+        .method-option.selected { border-color: #0d6efd; background-color: #e7f1ff; }
+        .radio-circle { width: 20px; height: 20px; border: 2px solid #0d6efd; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-left: 1rem; }
+        .radio-circle-inner { width: 10px; height: 10px; border-radius: 50%; background-color: #0d6efd; display: none; }
+        .method-option.selected .radio-circle-inner { display: block; }
+    </style>
 </head>
 <body>
+<div class="container mt-3">
+    <div class="card">
+        <div class="card-header text-center bg-primary bg-opacity-10">
+            <i class="fas fa-exchange-alt fa-2x text-primary"></i>
+            <h2 class="h4 mt-2">Move / Copy Thread</h2>
+            <p class="mb-0 text-muted">Transfer thread to another forum</p>
+        </div>
 
-'.stdhead ('move_copy_thread').'
+        <form action="moderation.php" method="post" id="moveCopyForm">
+            <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
+			<input type="hidden" name="action" value="do_move" />
+            <input type="hidden" name="tid" value="{$tid}" />
+			
+           
 
-<form action="moderation.php" method="post">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-<div class="container-md">
-<div class="card">
-<div class="card-body">
-	<div class="legend mb-4">Move / Copy Thread</div>
-<div class="ps-3 pe-3 mb-3">'.$loginbox.'</div>
-<div class="ps-3 pe-3">New Forum:
-'.$forumselect.'
-	<div class="mt-3"></div>
-Method<br />
+            <div class="card-body">
+                <!-- Security Verification -->
+                <div class="mb-4">
+                    <div class="card bg-light border-0">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="fas fa-shield-alt me-2 text-primary"></i>Security Verification</h5>
+                            {$loginbox}
+                        </div>
+                    </div>
+                </div>
 
-<label><input type="radio" class="form-check-input" name="method" value="move" /> Move thread</label><br />
-<label><input type="radio" class="form-check-input" name="method" value="redirect" checked="checked" /> Move thread and leave redirect in existing forum for days:</label> <input type="text" class="form-control border form-control-sm mt-2 mb-1" name="redirect_expire" size="3" /> (leave blank for infinite)<br />
-<label><input type="radio" class="form-check-input" name="method" value="copy" /> Copy thread to the new forum</label><br />
+                <!-- Thread Info -->
+                <div class="mb-4 row text-center">
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-0">
+                            <div class="card-body">
+                                <i class="fas fa-comment fa-lg mb-1"></i>
+                                <div class="fw-bold">Title</div>
+                                <div>{$thread_info['subject']}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-0">
+                            <div class="card-body">
+                                <i class="fas fa-hashtag fa-lg mb-1"></i>
+                                <div class="fw-bold">Thread ID</div>
+                                <div>#{$tid}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-0">
+                            <div class="card-body">
+                                <i class="fas fa-user fa-lg mb-1"></i>
+                                <div class="fw-bold">Author</div>
+                                <div>{$thread_info['username']}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-<div class="text-end mt-3"><input type="submit" class="btn btn-primary" name="submit" value="Move / Copy Thread" /></div>
-<input type="hidden" name="action" value="do_move" />
-<input type="hidden" name="tid" value="'.$tid.'" />
-</form>
-	</div></div>
-	</div></div>
+                <!-- Destination Forum -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold"><i class="fas fa-folder me-2 text-primary"></i>Destination Forum</label>
+                    {$forumselect}
+                    <div class="form-text">Select the forum where you want to move or copy this thread.</div>
+                </div>
+
+                <!-- Method Selection -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold"><i class="fas fa-cogs me-2 text-primary"></i>Transfer Method</label>
+
+                    <!-- Move Option -->
+                    <div class="method-option" onclick="selectMethod('move')">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-arrow-right fa-2x me-3"></i>
+                            <div class="flex-grow-1">
+                                <div class="fw-bold">Move Thread</div>
+                                <small class="text-muted">Transfer thread to new forum (original will be removed)</small>
+                            </div>
+                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
+                        </div>
+                        <input type="radio" name="method" value="move" class="d-none">
+                    </div>
+
+                    <!-- Move with Redirect Option -->
+                    <div class="method-option selected" onclick="selectMethod('redirect')">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-link fa-2x me-3"></i>
+                            <div class="flex-grow-1">
+                                <div class="fw-bold">Move with Redirect</div>
+                                <small class="text-muted">Move thread and leave redirect link in original forum</small>
+                            </div>
+                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
+                        </div>
+                        <div class="mt-2">
+                            <input type="number" name="redirect_expire" class="form-control" placeholder="Redirect days (leave blank for infinite)" min="1" max="365">
+                        </div>
+                        <input type="radio" name="method" value="redirect" checked class="d-none">
+                    </div>
+
+                    <!-- Copy Option -->
+                    <div class="method-option" onclick="selectMethod('copy')">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-copy fa-2x me-3"></i>
+                            <div class="flex-grow-1">
+                                <div class="fw-bold">Copy Thread</div>
+                                <small class="text-muted">Create a copy in new forum (original remains)</small>
+                            </div>
+                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
+                        </div>
+                        <input type="radio" name="method" value="copy" class="d-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="card-footer bg-light text-end">
+                <a href="showthread.php?tid={$tid}" class="btn btn-outline-secondary me-2">
+                    <i class="fas fa-arrow-left me-1"></i> Cancel
+                </a>
+                <button type="submit" name="submit" value="Move / Copy Thread" class="btn btn-primary">
+                    <i class="fas fa-exchange-alt me-1"></i> Process Thread
+					
+                </button>
+				
+				
+				
+				
+				
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function selectMethod(method) {
+    document.querySelectorAll('.method-option').forEach(opt => opt.classList.remove('selected'));
+    document.querySelectorAll('.method-option input[type=radio]').forEach(r => r.checked = false);
+    const selected = Array.from(document.querySelectorAll('.method-option')).find(o => o.querySelector('input').value === method);
+    if(selected){
+        selected.classList.add('selected');
+        selected.querySelector('input').checked = true;
+    }
+}
+</script>
 
 </body>
 </html>
+HTML;
+        
+
+  
+		
+
+
+
+
+
+	
+		
+
 		
 		
-		';
+		
+		
+
+		
+		
+		
 		
 		stdhead();
 		echo $movethread;
@@ -1201,11 +1546,11 @@ Method<br />
 		$newforum = get_forum($moveto);
 		if(!$newforum || $newforum['type'] != "f" || $newforum['type'] == "f" && $newforum['linkto'] != '')
 		{
-			stderr('error_invalidforum', $lang->error);
+			stderr('error_invalidforum');
 		}
 		if($method != "copy" && $thread['fid'] == $moveto)
 		{
-			stderr('error_movetosameforum', $lang->error);
+			stderr($lang->moderation['error_movetosameforum']);
 		}
 
 		$plugins->run_hooks('moderation_do_move');
@@ -1235,320 +1580,9 @@ Method<br />
 		redirect(get_thread_link($newtid), $lang->moderation['redirect_threadmoved']);
 		break;
 
-	// Viewing thread notes
-	case "viewthreadnotes":
-		if(!is_moderator($fid))
-		{
-			error_no_permission();
-		}
 
-		// Make sure we are looking at a real thread here.
-		if(!$thread)
-		{
-			error($lang->error_nomember, $lang->error);
-		}
 
-		$plugins->run_hooks('moderation_viewthreadnotes');
 
-		$lang->view_notes_for = $lang->sprintf($lang->view_notes_for, $thread['subject']);
-
-		$thread['notes'] = nl2br(htmlspecialchars_uni($thread['notes']));
-
-		eval("\$viewthreadnotes = \"".$templates->get("moderation_viewthreadnotes", 1, 0)."\";");
-		echo $viewthreadnotes;
-		break;
-
-	// Thread notes editor
-	case "threadnotes":
-		add_breadcrumb($lang->nav_threadnotes);
-		if(!is_moderator($fid, "canmanagethreads"))
-		{
-			error_no_permission();
-		}
-		$thread['notes'] = htmlspecialchars_uni($parser->parse_badwords($thread['notes']));
-		$trow = alt_trow(1);
-
-		if(is_moderator($fid, "canviewmodlog"))
-		{
-			$query = $db->query("
-				SELECT l.*, u.username, t.subject AS tsubject, f.name AS fname, p.subject AS psubject
-				FROM ".TABLE_PREFIX."moderatorlog l
-				LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid=l.uid)
-				LEFT JOIN ".TABLE_PREFIX."threads t ON (t.tid=l.tid)
-				LEFT JOIN ".TABLE_PREFIX."forums f ON (f.fid=l.fid)
-				LEFT JOIN ".TABLE_PREFIX."posts p ON (p.pid=l.pid)
-				WHERE t.tid='$tid'
-				ORDER BY l.dateline DESC
-				LIMIT  0, 20
-			");
-			$modactions = '';
-			while($modaction = $db->fetch_array($query))
-			{
-				$modaction['dateline'] = my_date('relative', $modaction['dateline']);
-				$modaction['username'] = htmlspecialchars_uni($modaction['username']);
-				$modaction['profilelink'] = build_profile_link($modaction['username'], $modaction['uid']);
-				$modaction['action'] = htmlspecialchars_uni($modaction['action']);
-				$info = '';
-				if($modaction['tsubject'])
-				{
-					$modaction['tsubject'] = htmlspecialchars_uni($parser->parse_badwords($modaction['tsubject']));
-					$modaction['threadlink'] = get_thread_link($modaction['tid']);
-					eval("\$info .= \"".$templates->get("moderation_threadnotes_modaction_thread")."\";");
-				}
-				if($modaction['fname'])
-				{
-					$modaction['fname'] = htmlspecialchars_uni($modaction['fname']);
-					$modaction['forumlink'] = get_forum_link($modaction['fid']);
-					eval("\$info .= \"".$templates->get("moderation_threadnotes_modaction_forum")."\";");
-				}
-				if($modaction['psubject'])
-				{
-
-					$modaction['psubject'] = htmlspecialchars_uni($parser->parse_badwords($modaction['psubject']));
-					$modaction['postlink'] = get_post_link($modaction['pid']);
-					eval("\$info .= \"".$templates->get("moderation_threadnotes_modaction_post")."\";");
-				}
-
-				eval("\$modactions .= \"".$templates->get("moderation_threadnotes_modaction")."\";");
-				$trow = alt_trow();
-			}
-			if(!$modactions)
-			{
-				eval("\$modactions = \"".$templates->get("moderation_threadnotes_modaction_error")."\";");
-			}
-		}
-
-		$actions = array(
-			'openclosethread' => $lang->open_close_thread,
-			'deletethread' => 'delete_thread',
-			'move' => 'move_copy_thread',
-			'stick' => 'stick_unstick_thread',
-			'merge' => 'merge_threads',
-			'removeredirects' => $lang->remove_redirects,
-			'removesubscriptions' => $lang->remove_subscriptions,
-			'approveunapprovethread' => $lang->approve_unapprove_thread
-		);
-
-		switch($db->type)
-		{
-			case "pgsql":
-			case "sqlite":
-				$query = $db->simple_select("modtools", 'tid, name', "(','||forums||',' LIKE '%,$fid,%' OR ','||forums||',' LIKE '%,-1,%' OR forums='') AND type = 't'");
-				break;
-			default:
-				$query = $db->simple_select("modtools", 'tid, name', "(CONCAT(',',forums,',') LIKE '%,$fid,%' OR CONCAT(',',forums,',') LIKE '%,-1,%' OR forums='') AND type = 't'");
-		}
-		while($tool = $db->fetch_array($query))
-		{
-			$actions['modtool_'.$tool['tid']] = htmlspecialchars_uni($tool['name']);
-		}
-
-		$forum_cache = $cache->read("forums");
-
-		$trow = alt_trow(1);
-		switch($db->type)
-		{
-			case "pgsql":
-			case "sqlite":
-				$query = $db->query("
-					SELECT d.*, u.username, f.name AS fname
-					FROM ".TABLE_PREFIX."delayedmoderation d
-					LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid=d.uid)
-					LEFT JOIN ".TABLE_PREFIX."forums f ON (f.fid=d.fid)
-					WHERE ','||d.tids||',' LIKE '%,{$tid},%'
-					ORDER BY d.dateline DESC
-					LIMIT  0, 20
-				");
-				break;
-			default:
-				$query = $db->query("
-					SELECT d.*, u.username, f.name AS fname
-					FROM ".TABLE_PREFIX."delayedmoderation d
-					LEFT JOIN ".TABLE_PREFIX."users u ON (u.uid=d.uid)
-					LEFT JOIN ".TABLE_PREFIX."forums f ON (f.fid=d.fid)
-					WHERE CONCAT(',',d.tids,',') LIKE '%,{$tid},%'
-					ORDER BY d.dateline DESC
-					LIMIT  0, 20
-				");
-		}
-		$delayedmods = '';
-		while($delayedmod = $db->fetch_array($query))
-		{
-			$delayedmod['dateline'] = my_date('normal', $delayedmod['delaydateline'], "", 2);
-			$delayedmod['username'] = htmlspecialchars_uni($delayedmod['username']);
-			$delayedmod['profilelink'] = build_profile_link($delayedmod['username'], $delayedmod['uid']);
-			$delayedmod['action'] = $actions[$delayedmod['type']];
-			$info = '';
-			if(strpos($delayedmod['tids'], ',') === false)
-			{
-				$delayed_thread['link'] = get_thread_link($delayedmod['tids']);
-				$delayed_thread['subject'] = htmlspecialchars_uni($thread['subject']);
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_thread_single")."\";");
-			}
-			else
-			{
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_thread_multiple")."\";");
-			}
-
-			if($delayedmod['fname'])
-			{
-				$delayedmod['link'] = get_forum_link($delayedmod['fid']);
-				$delayedmod['fname'] = htmlspecialchars_uni($delayedmod['fname']);
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_forum")."\";");
-			}
-			$delayedmod['inputs'] = my_unserialize($delayedmod['inputs']);
-
-			if($delayedmod['type'] == 'move')
-			{
-				$delayedmod['link'] = get_forum_link($delayedmod['inputs']['new_forum']);
-				$delayedmod['name'] = htmlspecialchars_uni($forum_cache[$delayedmod['inputs']['new_forum']]['name']);
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_new_forum")."\";");
-
-				if($delayedmod['inputs']['method'] == "redirect")
-				{
-					if((int)$delayedmod['inputs']['redirect_expire'] == 0)
-					{
-						$redirect_expire_bit = $lang->redirect_forever;
-					}
-					else
-					{
-						$redirect_expire_bit = (int)$delayedmod['inputs']['redirect_expire']." {$lang->days}";
-					}
-
-					eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_redirect")."\";");
-				}
-			}
-			elseif($delayedmod['type'] == 'merge')
-			{
-				$delayedmod['subject'] = htmlspecialchars_uni($delayedmod['inputs']['subject']);
-				$delayedmod['threadurl'] = htmlspecialchars_uni($delayedmod['inputs']['threadurl']);
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_merge")."\";");
-			}
-
-			eval("\$delayedmods .= \"".$templates->get("moderation_threadnotes_delayedmodaction")."\";");
-			$trow = alt_trow();
-		}
-		if(!$delayedmods)
-		{
-			$cols = 4;
-			eval("\$delayedmods = \"".$templates->get("moderation_delayedmodaction_error")."\";");
-		}
-
-		$plugins->run_hooks("moderation_threadnotes");
-
-		eval("\$threadnotes = \"".$templates->get("moderation_threadnotes")."\";");
-		output_page($threadnotes);
-		break;
-
-	// Update the thread notes!
-	case "do_threadnotes":
-
-		// Verify incoming POST request
-		verify_post_check($mybb->get_input('my_post_key'));
-
-		if(!is_moderator($fid, "canmanagethreads"))
-		{
-			error_no_permission();
-		}
-
-		$plugins->run_hooks("moderation_do_threadnotes");
-
-		log_moderator_action($modlogdata, $lang->thread_notes_edited);
-		$sqlarray = array(
-			"notes" => $db->escape_string($mybb->get_input('threadnotes')),
-		);
-		$db->update_query("threads", $sqlarray, "tid='$tid'");
-		moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_threadnotesupdated);
-		break;
-
-	// Let's look up the ip address of a post
-	case "getip":
-		add_breadcrumb($lang->nav_getip);
-		if(!is_moderator($fid, "canviewips"))
-		{
-			error_no_permission();
-		}
-
-		$post['ipaddress'] = my_inet_ntop($db->unescape_binary($post['ipaddress']));
-		$hostname = @gethostbyaddr($post['ipaddress']);
-		if(!$hostname || $hostname == $post['ipaddress'])
-		{
-			$hostname = $lang->resolve_fail;
-		}
-
-		$post['username'] = htmlspecialchars_uni($post['username']);
-		$username = build_profile_link($post['username'], $post['uid']);
-
-		// Moderator options
-		$modoptions = "";
-		if($mybb->usergroup['canmodcp'] == 1 && $mybb->usergroup['canuseipsearch'] == 1)
-		{
-			$ipaddress = $post['ipaddress'];
-			eval("\$modoptions = \"".$templates->get("moderation_getip_modoptions")."\";");
-		}
-
-		$plugins->run_hooks('moderation_getip');
-
-		if($modal)
-		{
-			eval("\$getip = \"".$templates->get("moderation_getip_modal", 1, 0)."\";");
-			echo $getip;
-			exit;
-		}
-		else
-		{
-			eval("\$getip = \"".$templates->get("moderation_getip")."\";");
-			output_page($getip);
-			break;
-		}
-
-	// Let's look up the ip address of a PM
-	case "getpmip":
-		if($pmid <= 0)
-		{
-			error($lang->error_invalidpm, $lang->error);
-		}
-		add_breadcrumb($lang->nav_pms, "private.php");
-		$pm['subject'] = htmlspecialchars_uni($parser->parse_badwords($pm['subject']));
-		add_breadcrumb($pm['subject'], "private.php?action=read&amp;pmid={$pmid}");
-		add_breadcrumb($lang->nav_getpmip);
-		if(!$mybb->usergroup['issupermod'])
-		{
-			error_no_permission();
-		}
-
-		$pm['ipaddress'] = my_inet_ntop($db->unescape_binary($pm['ipaddress']));
-		$hostname = @gethostbyaddr($pm['ipaddress']);
-		if(!$hostname || $hostname == $pm['ipaddress'])
-		{
-			$hostname = $lang->resolve_fail;
-		}
-
-		$name = $db->fetch_field($db->simple_select('users', 'username', "uid = {$pm['fromid']}"), 'username');
-		$username = build_profile_link($name, $pm['fromid']);
-
-		// Moderator options
-		$modoptions = "";
-		if($mybb->usergroup['canmodcp'] == 1 && $mybb->usergroup['canuseipsearch'] == 1)
-		{
-			$ipaddress = $pm['ipaddress'];
-			eval("\$modoptions = \"".$templates->get("moderation_getip_modoptions")."\";");
-		}
-
-		$plugins->run_hooks('moderation_getpmip');
-
-		if($modal)
-		{
-			eval("\$getpmip = \"".$templates->get("moderation_getpmip_modal", 1, 0)."\";");
-			echo $getpmip;
-			exit;
-		}
-		else
-		{
-			eval("\$getpmip = \"".$templates->get("moderation_getpmip")."\";");
-			output_page($getpmip);
-			break;
-		}
 
 	// Merge threads
 	case "merge":
@@ -1565,39 +1599,159 @@ Method<br />
 
 		$plugins->run_hooks("moderation_merge");
 
+		
+		
+		
+		
+		
+
+		
+		
+		
+		
+		
+		
 		$merge = '
 		
 		
-		<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<title>{$mybb->settings[bbname]} - {$lang->merge_threads}</title>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - {$lang->merge_threads}</title>
+	
+	
+	
+	
+	
+	
+    
 </head>
 <body>
 
+'.stdhead('Merge Threads').'
 
-'.stdhead ('Merge Threads').'
+<div class="container mt-3">
+    <div class="row justify-content-center">
+        <div>
+            <div class="card shadow-sm border-0">
+                
+				
+				<div class="card-header bg-primary border-0 py-3">
+    <div class="d-flex align-items-center">
+        
+            <i class="fas fa-code-branch text-white"></i>
+        
+        <div>
+            <h4 class="text-white mb-0">Merge Threads</h4>
+            <small class="text-white text-opacity-75">Combine multiple threads into one</small>
+        </div>
+    </div>
+</div>
+                
+                <div class="card-body p-4">
+                   
+                    <div class="alert alert-info mb-4">
+                        '.$loginbox.'
+                    </div>
+                   
+                    
+                    <div class="thread-preview">
+                        <small class="text-muted d-block mb-1">Current Thread</small>
+                        <strong>'.$thread['subject'].'</strong>
+                        <small class="text-muted d-block mt-1">Thread ID: '.$tid.'</small>
+                    </div>
+                    
+                    <form action="moderation.php" method="post">
+                        <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'">
+                        <input type="hidden" name="action" value="do_merge">
+                        <input type="hidden" name="tid" value="'.$tid.'">
+                        
+                        <div class="mb-4">
+                            <label class="form-label">
+                                <i class="fas fa-edit me-1"></i>New Subject
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-heading"></i>
+                                </span>
+                                <input type="text" 
+                                       class="form-control form-control-lg" 
+                                       name="subject" 
+                                       value="'.$thread['subject'].'" 
+                                       placeholder="Enter new thread subject"
+                                       required>
+                            </div>
+                            <small class="text-muted mt-1 d-block">
+                                This will be the new subject for the merged thread
+                            </small>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="form-label">
+                                <i class="fas fa-link me-1"></i>Thread URL to Merge
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-external-link-alt"></i>
+                                </span>
+                                <input type="text" 
+                                       class="form-control" 
+                                       name="threadurl" 
+                                       placeholder="https://example.com/thread-123"
+                                       required>
+                            </div>
+                            
+                            <div class="merge-instructions mt-3 p-3 bg-light rounded">
+                                <h6 class="text-primary mb-2">
+                                    <i class="fas fa-info-circle me-1"></i>Instructions:
+                                </h6>
+                                <ul class="mb-0 ps-3">
+                                    <li>Copy the full URL of the thread you want to merge into this one</li>
+                                    <li>The thread you specify will be <strong>deleted</strong></li>
+                                    <li>All posts from that thread will be merged into this one</li>
+                                    <li>This action cannot be undone</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-warning border-warning">
+                            <div class="d-flex">
+                                <i class="fas fa-exclamation-triangle text-warning me-2 mt-1"></i>
+                                <div>
+                                    <strong>Warning:</strong> This action is permanent. Once threads are merged, 
+                                    they cannot be separated. Please double-check the thread URL before proceeding.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center pt-3">
+                            <a href="javascript:history.back()" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left me-1"></i>Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary" name="submit">
+                                <i class="fas fa-code-branch me-1"></i>Merge Threads
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="card-footer bg-transparent border-top-0 pt-0 text-center">
+                    <small class="text-muted">
+                        <i class="fas fa-shield-alt me-1"></i>
+                        Moderation Action • '.$SITENAME.'
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-<form action="moderation.php" method="post">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-<div class="container-md">
-<div class="card">
-<div class="card-body">
-	<div class="legend mb-4">Merge Threads</div>
-<div class="ps-3 pe-3">'.$loginbox.'</div>
-	<div class="ps-3 pe-3 mt-3">
-New Subject:
-<input type="text" class="form-control border form-control-sm mb-3" name="subject" value="'.$thread['subject'].'" size="40" /></td>
 
-Thread to merge with:<br /><span class="text-muted">Copy the URL of the thread to be merged into this one into the textbox on the right.<br />The thread on the right will be deleted and all posts will be merged into this one</span>
-<input type="text" class="form-control border form-control-sm mb-3" name="threadurl" size="40" />
 
-<div class="text-end"><input type="submit" class="btn btn-primary" name="submit" value="Merge Threads" /></div>
-<input type="hidden" name="action" value="do_merge" />
-<input type="hidden" name="tid" value="'.$tid.'" />
-	</div></div>
-	</div></div>
-</form>
+
+
 
 </body>
 </html>
@@ -1976,38 +2130,395 @@ New Forum:
 		}
 		$return_url = htmlspecialchars_uni($mybb->get_input('url'));
 		
-		$multidelete = '
-		
-		
-		<html>
-<head>
-<title>'.$SITENAME.' - Delete Threads Permanently</title>
 
+
+
+
+$multidelete = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{$SITENAME} - Delete Threads Permanently</title>
+    
+    
+ 
+  <style>
+     
+        
+        .delete-card {
+           
+            border: none;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .delete-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .delete-header {
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .delete-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: rgba(255, 255, 255, 0.1);
+            transform: rotate(45deg);
+        }
+        
+        .delete-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .warning-icon {
+            color: #ff6b6b;
+            font-size: 48px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        .warning-box {
+            background: linear-gradient(135deg, #fff5f5 0%, #ffeaea 100%);
+            border-left: 4px solid #ff6b6b;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+        
+        .warning-list {
+            list-style: none;
+            padding: 0;
+            margin: 15px 0;
+        }
+        
+        .warning-list li {
+            padding: 8px 0;
+            border-bottom: 1px dashed #ffcccc;
+            display: flex;
+            align-items: center;
+        }
+        
+        .warning-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .warning-list i {
+            color: #ff6b6b;
+            margin-right: 10px;
+            min-width: 20px;
+        }
+        
+        .btn-delete {
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+            border: none;
+            padding: 12px 30px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-delete:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(255, 75, 43, 0.4);
+        }
+        
+        .btn-delete:active {
+            transform: translateY(0);
+        }
+        
+        .btn-delete::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 5px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.5);
+            opacity: 0;
+            border-radius: 100%;
+            transform: scale(1, 1) translate(-50%);
+            transform-origin: 50% 50%;
+        }
+        
+        .btn-delete:focus:not(:active)::after {
+            animation: ripple 1s ease-out;
+        }
+        
+        @keyframes ripple {
+            0% {
+                transform: scale(0, 0);
+                opacity: 0.5;
+            }
+            100% {
+                transform: scale(20, 20);
+                opacity: 0;
+            }
+        }
+        
+        .btn-cancel {
+            background: #6c757d;
+            border: none;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-cancel:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.3);
+        }
+        
+        .security-box {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 25px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .stats-badge {
+            display: inline-block;
+            background: #ff6b6b;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin: 5px;
+        }
+        
+        .thread-count {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #ff416c;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .form-check-input:checked {
+            background-color: #ff416c;
+            border-color: #ff416c;
+        }
+        
+        .confirmation-check {
+            margin: 20px 0;
+        }
+    </style>
+	
+	
 </head>
 <body>
+    <div class="container mt-3">
+        <div class="delete-card">
+            <!-- Header -->
+            <div class="delete-header">
+                <div class="delete-icon">
+                    <i class="fas fa-trash-alt"></i>
+                </div>
+                <h1 class="h3 mb-2">Delete Threads Permanently</h1>
+                <p class="mb-0 opacity-75">Irreversible Action - Proceed with Caution</p>
+            </div>
+            
+            <!-- Form -->
+            <form action="moderation.php" method="post" id="deleteForm">
+                <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
+                <input type="hidden" name="action" value="do_multideletethreads" />
+                <input type="hidden" name="fid" value="{$fid}" />
+                <input type="hidden" name="threads" value="{$inlineids}" />
+                <input type="hidden" name="url" value="{$return_url}" />
+                
+                <div class="card-body p-4">
+                    <!-- Warning Icon -->
+                    <div class="text-center warning-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    
+                    <!-- Thread Count -->
+                    <div class="text-center">
+                        <div class="thread-count">
+                            <i class="fas fa-hashtag"></i> 
+                            <span id="threadCount">{$thread_count}</span>
+                        </div>
+                        <p class="text-muted">Threads Selected for Deletion</p>
+                    </div>
+                    
+                    <!-- Warning Box -->
+                    <div class="warning-box">
+                        <h5 class="fw-bold mb-3"><i class="fas fa-radiation me-2"></i>Critical Warning</h5>
+                        <p class="mb-3">You are about to permanently delete selected threads. This action cannot be undone!</p>
+                        
+                        <ul class="warning-list">
+                            <li><i class="fas fa-times-circle"></i> All posts within these threads will be permanently deleted</li>
+                            <li><i class="fas fa-paperclip"></i> All attachments will be removed from the server</li>
+                            <li><i class="fas fa-chart-bar"></i> Polls and voting data will be erased</li>
+                            <li><i class="fas fa-history"></i> Thread history and statistics will be lost</li>
+                            <li><i class="fas fa-undo"></i> No recovery or restore option is available</li>
+                        </ul>
+                        
+                        <div class="alert alert-danger mt-3">
+                            <i class="fas fa-skull-crossbones me-2"></i>
+                            <strong>Data Loss Warning:</strong> This operation will permanently remove content from the database.
+                        </div>
+                    </div>
+                    
+                    <!-- Security Verification -->
+                    <div class="security-box">
+                        <h6 class="fw-bold mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>Security Verification</h6>
+                        <div class="mb-0">{$loginbox}</div>
+                    </div>
+                    
+                    <!-- Confirmation Check -->
+                    <div class="confirmation-check">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="confirmDelete" required>
+                            <label class="form-check-label" for="confirmDelete">
+                                <strong>I understand that this action is permanent and cannot be undone.</strong> 
+                                I have verified that I want to delete these threads.
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="card-footer bg-light py-4">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
+                        <div class="mb-3 mb-md-0">
+                            <a href="{$return_url}" class="btn btn-cancel text-white">
+                                <i class="fas fa-arrow-left me-2"></i>
+                                Cancel & Return
+                            </a>
+                        </div>
+                        
+                        <div>
+                            <button type="submit" class="btn btn-delete text-white" name="submit" value="Delete Threads Permanently">
+                                <i class="fas fa-trash-alt me-2"></i>
+                                Delete Threads Permanently
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Progress bar (hidden by default) -->
+                    <div class="progress mt-4" style="height: 6px; display: none;" id="progressBar">
+                        <div class="progress-bar bg-danger progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 
-<form action="moderation.php" method="post">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-	<div class="container-md">
-<div class="card">
-<div class="card-body">
-	<div class="mb-3 text-desc">Are you sure you wish to delete the selected threads22222222222? Once a thread has been deleted it cannot be restored and any posts, attachments or polls within that thread are also deleted</div>
-'.$loginbox.'
-	</div>
-<div class="card-footer text-center">
-	<button type="submit" class="btn btn-primary" name="submit" value="Delete Threads Permanently"><i class="fa-solid fa-check"></i> &nbsp;Delete Threads Permanently</button>
-<input type="hidden" name="action" value="do_multideletethreads" />
-<input type="hidden" name="fid" value="'.$fid.'" />
-<input type="hidden" name="threads" value="'.$inlineids.'" />
-<input type="hidden" name="url" value="'.$return_url.'" />
-	</div></div></div>
-</form>
-
+    <!-- JavaScript -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('deleteForm');
+        const confirmCheck = document.getElementById('confirmDelete');
+        const progressBar = document.getElementById('progressBar');
+        const deleteBtn = form.querySelector('.btn-delete');
+        
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                // Check if confirmation checkbox is checked
+                if (!confirmCheck.checked) {
+                    e.preventDefault();
+                    alert('Please confirm that you understand this action is permanent by checking the box.');
+                    confirmCheck.focus();
+                    return false;
+                }
+                
+                // Final confirmation
+                if (!confirm('⚠️ FINAL WARNING: Are you absolutely sure you want to PERMANENTLY DELETE these threads?\n\nThis action is IRREVERSIBLE!')) {
+                    e.preventDefault();
+                    return false;
+                }
+                
+                // Show progress bar
+                progressBar.style.display = 'block';
+                const progressBarInner = progressBar.querySelector('.progress-bar');
+                
+                // Animate progress bar
+                let width = 0;
+                const interval = setInterval(() => {
+                    if (width >= 100) {
+                        clearInterval(interval);
+                    } else {
+                        width += 10;
+                        progressBarInner.style.width = width + '%';
+                    }
+                }, 50);
+                
+                // Disable button and show loading
+                deleteBtn.disabled = true;
+                deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Deleting...';
+                
+                // Allow form to submit
+                return true;
+            });
+        }
+        
+        // Add danger styling when checkbox is checked
+        confirmCheck.addEventListener('change', function() {
+            if (this.checked) {
+                deleteBtn.style.background = 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)';
+            } else {
+                deleteBtn.style.background = 'linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%)';
+            }
+        });
+        
+        // Count threads from inlineids
+        const threadIds = '{$inlineids}';
+        if (threadIds) {
+            const count = threadIds.split(',').length;
+            document.getElementById('threadCount').textContent = count;
+        }
+    });
+    </script>
 </body>
 </html>
-		
-		
-		';
+HTML;
+
+
+
+
+
+
+
+
+
+
+
 		
 		stdhead();
 		echo $multidelete;
@@ -2217,91 +2728,9 @@ New Forum:
 		moderation_redirect(get_forum_link($fid), $lang->moderation['redirect_inline_threadsunapproved']);
 		break;
 
-	// Restore threads - Inline moderation
-	case "multirestorethreads":
+	
 
-		// Verify incoming POST request
-		verify_post_check($mybb->get_input('my_post_key'));
 
-		if(!empty($mybb->input['searchid']))
-		{
-			// From search page
-			$threads = getids($mybb->get_input('searchid'), 'search');
-			if(!is_moderator_by_tids($threads, 'canrestorethreads'))
-			{
-				error_no_permission();
-			}
-		}
-		else
-		{
-			$threads = getids($fid, 'forum');
-			if(!is_moderator($fid, 'canrestorethreads'))
-			{
-				error_no_permission();
-			}
-		}
-		if(count($threads) < 1)
-		{
-			error($lang->error_inline_nothreadsselected, $lang->error);
-		}
-
-		$moderation->restore_threads($threads);
-
-		log_moderator_action($modlogdata, $lang->multi_restored_threads);
-		if($mybb->get_input('inlinetype') == 'search')
-		{
-			clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
-		}
-		else
-		{
-			clearinline($fid, 'forum');
-		}
-		$cache->update_stats();
-		moderation_redirect(get_forum_link($fid), $lang->redirect_inline_threadsrestored);
-		break;
-
-	// Soft delete threads - Inline moderation
-	case "multisoftdeletethreads":
-
-		// Verify incoming POST request
-		verify_post_check($mybb->get_input('my_post_key'));
-
-		if(!empty($mybb->input['searchid']))
-		{
-			// From search page
-			$threads = getids($mybb->get_input('searchid'), 'search');
-			if(!is_moderator_by_tids($threads, 'cansoftdeletethreads'))
-			{
-				error_no_permission();
-			}
-		}
-		else
-		{
-			$threads = getids($fid, 'forum');
-			if(!is_moderator($fid, 'cansoftdeletethreads'))
-			{
-				error_no_permission();
-			}
-		}
-		if(count($threads) < 1)
-		{
-			error($lang->error_inline_nothreadsselected, $lang->error);
-		}
-
-		$moderation->soft_delete_threads($threads);
-
-		log_moderator_action($modlogdata, $lang->multi_soft_deleted_threads);
-		if($mybb->get_input('inlinetype') == 'search')
-		{
-			clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
-		}
-		else
-		{
-			clearinline($fid, 'forum');
-		}
-		$cache->update_stats();
-		moderation_redirect(get_forum_link($fid), $lang->redirect_inline_threadssoftdeleted);
-		break;
 
 	// Stick threads - Inline moderation
 	case "multistickthreads":
@@ -2411,9 +2840,13 @@ New Forum:
 
 		if(count($threads) < 1)
 		{
-			stderr('error_inline_nothreadsselected777', $lang->error);
+			stderr('error_inline_nothreadsselected777');
 		}
 		$inlineids = implode("|", $threads);
+		
+		$thread_count = count($threads);
+		
+		
 		if($mybb->get_input('inlinetype') == 'search')
 		{
 			clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
@@ -2424,12 +2857,418 @@ New Forum:
 		}
 		$forumselect = build_forum_jump("", '', 1, '', 0, true, '', "moveto");
 		$return_url = htmlspecialchars_uni($mybb->get_input('url'));
-		eval("\$movethread = \"".$templates->get("moderation_inline_movethreads")."\";");
+		
+		
+		
+		
+		$movethreads = 
+		
+		
+		
+		<<<HTML
+<html>
+<head>
+    <title>{$mybb->settings['bbname']} - {$lang->moderation['move_threads']}</title>
+    {$headerinclude}
+    
+    <style>
+        .method-option { 
+            cursor: pointer; 
+            border: 1px solid #dee2e6; 
+            border-radius: .5rem; 
+            padding: 1rem; 
+            margin-bottom: 1rem; 
+            transition: all .2s; 
+        }
+        .method-option:hover { 
+            background-color: #f8f9fa; 
+        }
+        .method-option.selected { 
+            border-color: #0d6efd; 
+            background-color: #e7f1ff; 
+        }
+        .radio-circle { 
+            width: 20px; 
+            height: 20px; 
+            border: 2px solid #0d6efd; 
+            border-radius: 50%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            margin-left: 1rem; 
+        }
+        .radio-circle-inner { 
+            width: 10px; 
+            height: 10px; 
+            border-radius: 50%; 
+            background-color: #0d6efd; 
+            display: none; 
+        }
+        .method-option.selected .radio-circle-inner { 
+            display: block; 
+        }
+        .threads-badge {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .redirect-input {
+            max-width: 120px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-3">
+    <div class="card">
+        <div class="card-header text-center bg-primary bg-opacity-10">
+            <i class="fas fa-exchange-alt fa-2x text-primary"></i>
+            <h2 class="h4 mt-2">{$lang->moderation['move_threads']}</h2>
+            <p class="mb-0 text-muted">Transfer multiple threads to another forum</p>
+            
+            <!-- Threads Count -->
+            <div class="mt-3">
+                <div class="threads-badge">
+                    <i class="fas fa-layer-group"></i>
+                    <span id="threadsCount">{$thread_count}</span>
+                </div>
+                <p class="text-muted small mb-0">Threads Selected</p>
+            </div>
+        </div>
+
+        <form action="moderation.php" method="post" id="multiMoveForm">
+            <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
+            <input type="hidden" name="action" value="do_multimovethreads" />
+            <input type="hidden" name="fid" value="{$fid}" />
+            <input type="hidden" name="threads" value="{$inlineids}" />
+            <input type="hidden" name="url" value="{$return_url}" />
+
+            <div class="card-body">
+                <!-- Security Verification -->
+                <div class="mb-4">
+                    <div class="card bg-light border-0">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="fas fa-shield-alt me-2 text-primary"></i>Security Verification</h5>
+                            {$loginbox}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Information Alert -->
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    You are performing a bulk operation on multiple threads. This action will affect <strong id="threadsCount2">{$thread_count}</strong> thread(s).
+                </div>
+
+                <!-- Destination Forum -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold"><i class="fas fa-folder me-2 text-primary"></i>{$lang->moderation['new_forum']}</label>
+                    {$forumselect}
+                    <div class="form-text">Select the forum where you want to move or copy the threads.</div>
+                </div>
+
+                <!-- Method Selection -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold"><i class="fas fa-cogs me-2 text-primary"></i>{$lang->moderation['method']}</label>
+
+                    <!-- Move Option -->
+                    <div class="method-option" onclick="selectMethod('move')">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-arrow-right fa-2x me-3 text-primary"></i>
+                            <div class="flex-grow-1">
+                                <div class="fw-bold">{$lang->moderation['method_move']}</div>
+                                <small class="text-muted">Move threads to new forum (originals will be removed)</small>
+                            </div>
+                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
+                        </div>
+                        <input type="radio" name="method" value="move" class="d-none">
+                    </div>
+
+                    <!-- Move with Redirect Option -->
+                    <div class="method-option selected" onclick="selectMethod('redirect')">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-link fa-2x me-3 text-primary"></i>
+                            <div class="flex-grow-1">
+                                <div class="fw-bold">{$lang->moderation['method_move_redirect']}</div>
+                                <small class="text-muted">Move threads and leave redirect links in original forum</small>
+                            </div>
+                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="d-flex align-items-center">
+                                <input type="number" 
+                                       name="redirect_expire" 
+                                       class="form-control redirect-input" 
+                                       placeholder="Days"
+                                       min="1"
+                                       max="365">
+                                <small class="text-muted ms-3">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    {$lang->moderation['redirect_expire_note']}
+                                </small>
+                            </div>
+                        </div>
+                        <input type="radio" name="method" value="redirect" checked class="d-none">
+                    </div>
+
+                    <!-- Copy Option -->
+                    <div class="method-option" onclick="selectMethod('copy')">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-copy fa-2x me-3 text-primary"></i>
+                            <div class="flex-grow-1">
+                                <div class="fw-bold">{$lang->moderation['method_copy']}</div>
+                                <small class="text-muted">Create copies in new forum (originals remain)</small>
+                            </div>
+                            <div class="radio-circle"><div class="radio-circle-inner"></div></div>
+                        </div>
+                        <input type="radio" name="method" value="copy" class="d-none">
+                    </div>
+                </div>
+                
+                <!-- Important Notes -->
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Important:</strong> This bulk operation will affect multiple threads. Ensure you have proper permissions for the destination forum.
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="card-footer bg-light text-end">
+                <a href="{$return_url}" class="btn btn-outline-secondary me-2">
+                    <i class="fas fa-arrow-left me-1"></i> Cancel
+                </a>
+                <button type="submit" name="submit" value="{$lang->moderation['move_threads']}" class="btn btn-primary">
+                    <i class="fas fa-exchange-alt me-1"></i> {$lang->moderation['move_threads']}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+
+<script>
+function selectMethod(method) {
+    document.querySelectorAll('.method-option').forEach(opt => opt.classList.remove('selected'));
+    document.querySelectorAll('.method-option input[type=radio]').forEach(r => r.checked = false);
+    const selected = Array.from(document.querySelectorAll('.method-option')).find(o => o.querySelector('input').value === method);
+    if(selected){
+        selected.classList.add('selected');
+        selected.querySelector('input').checked = true;
+    }
+}
+
+// Инициализация
+selectMethod('redirect');
+
+// Валидация формы с SweetAlert2
+document.getElementById('multiMoveForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const form = this;
+    const select = form.querySelector('select');
+    const count = document.getElementById('threadsCount')?.textContent || '';
+    const methodInput = form.querySelector('input[name="method"]:checked');
+    const methodValue = methodInput ? methodInput.value : '';
+    
+    // Проверка выбора форума
+    if (!select?.value) {
+        if (typeof Swal !== 'undefined') {
+            await Swal.fire({
+                icon: 'error',
+                title: 'Forum Required',
+                text: 'Please select a destination forum.',
+                confirmButtonColor: '#0d6efd'
+            });
+        } else {
+            alert('Please select a destination forum.');
+        }
+        select?.focus();
+        return false;
+    }
+    
+    // Проверка дней редиректа
+    if (methodValue === 'redirect') {
+        const redirectInput = form.querySelector('input[name="redirect_expire"]');
+        if (redirectInput?.value.trim()) {
+            const days = parseInt(redirectInput.value);
+            if (days < 1 || days > 365) {
+                if (typeof Swal !== 'undefined') {
+                    await Swal.fire({
+                        icon: 'error',
+                        title: 'Invalid Redirect Days',
+                        text: 'Redirect days must be between 1 and 365, or leave blank for infinite.',
+                        confirmButtonColor: '#0d6efd'
+                    });
+                } else {
+                    alert('Redirect days must be between 1 and 365, or leave blank for infinite.');
+                }
+                redirectInput.focus();
+                return false;
+            }
+        }
+    }
+    
+    const forumName = select.options[select.selectedIndex].text;
+    const methodNames = {
+        'move': 'move',
+        'redirect': 'move with redirect',
+        'copy': 'copy'
+    };
+    const methodText = methodNames[methodValue] || 'transfer';
+    
+    // Проверяем доступность SweetAlert
+    if (typeof Swal !== 'undefined') {
+        // Красивое подтверждение с SweetAlert2
+        const result = await Swal.fire({
+            title: '<strong>Confirm ' + (methodValue === 'copy' ? 'Copy' : 'Move') + ' Operation</strong>',
+            html: `
+                <div class="text-start">
+                    <div class="alert alert-info border-0 mb-3">
+                        <i class="fas fa-info-circle me-2"></i>
+                        You are about to <strong>` + methodText + `</strong> <strong class="text-primary">` + count + `</strong> thread(s)
+                    </div>
+                    
+                    <div class="card border-primary mb-3">
+                        <div class="card-header bg-primary bg-opacity-10 text-primary py-2">
+                            <i class="fas fa-folder-open me-2"></i>
+                            <strong>Destination Forum:</strong>
+                        </div>
+                        <div class="card-body py-3">
+                            <h6 class="mb-1">` + forumName + `</h6>
+                            <small class="text-muted">
+                                <i class="fas fa-hashtag me-1"></i>Selected threads will be transferred here
+                            </small>
+                        </div>
+                    </div>
+                    
+                    ` + (methodValue === 'redirect' ? `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-link me-2"></i>
+                        <strong>Redirect links</strong> will be created in the original forum.
+                    </div>
+                    ` : '') + `
+                    
+                    ` + (methodValue === 'copy' ? `
+                    <div class="alert alert-info">
+                        <i class="fas fa-copy me-2"></i>
+                        <strong>Copies</strong> will be created - original threads will remain.
+                    </div>
+                    ` : '') + `
+                    
+                    ` + (methodValue === 'move' ? `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Threads will be <strong>permanently moved</strong> from their current location.
+                    </div>
+                    ` : '') + `
+                    
+                    <p class="text-muted small mt-3">
+                        <i class="fas fa-clock me-1"></i>
+                        This operation may take a few moments depending on the number of threads.
+                    </p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#0d6efd',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: `
+                <i class="fas fa-exchange-alt me-2"></i>
+                ` + (methodValue === 'copy' ? 'Copy Threads' : 'Move Threads') + `
+            `,
+            cancelButtonText: `
+                <i class="fas fa-times me-2"></i>
+                Cancel
+            `,
+            reverseButtons: true,
+            width: 600,
+            customClass: {
+                popup: 'border-radius-15',
+                confirmButton: 'shadow-sm',
+                cancelButton: 'shadow-sm'
+            }
+        });
+        
+        if (!result.isConfirmed) {
+            return false;
+        }
+    } else {
+        // Fallback на стандартный confirm
+        const confirmMessage = 'Are you sure you want to ' + methodText + ' ' + count + ' thread(s) to "' + forumName + '"?';
+        if (!confirm(confirmMessage)) {
+            return false;
+        }
+    }
+    
+    // Показываем индикатор загрузки
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Processing...';
+    }
+    
+    // Отправляем форму с помощью HTMLFormElement.prototype.submit
+    setTimeout(() => {
+        HTMLFormElement.prototype.submit.call(form);
+    }, 100);
+    
+    return false;
+});
+
+// Опционально: добавить стили для SweetAlert
+if (typeof Swal !== 'undefined') {
+    const style = document.createElement('style');
+    style.textContent = `
+        .swal2-popup.border-radius-15 {
+            border-radius: 15px !important;
+        }
+        .swal2-confirm {
+            padding: 12px 24px !important;
+            font-weight: 600 !important;
+        }
+        .swal2-cancel {
+            padding: 12px 24px !important;
+            font-weight: 600 !important;
+        }
+    `;
+    document.head.appendChild(style);
+}
+</script>
+
+
+
+</body>
+</html>
+HTML;
+
+
+
+
+
+
+
+
+		
+		
+		
+		
+		
+		
+		
+		
+		
 		
 		
 		stdhead();
 		
-		echo $movethread;
+		echo $movethreads;
 		
 		stdfoot();
 		
@@ -2515,7 +3354,184 @@ New Forum:
 
 		$return_url = htmlspecialchars_uni($mybb->get_input('url'));
 
-		eval("\$multidelete = \"".$templates->get("moderation_inline_deleteposts")."\";");
+		$multidelete = '
+		
+		
+		
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{$SITENAME} - Delete Posts Permanently</title>
+    <style>
+        .confirmation-container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        .warning-icon {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1.5rem;
+        }
+        .danger-zone {
+            border-left: 4px solid #dc3545;
+            background-color: rgba(220, 53, 69, 0.05);
+        }
+        .btn-danger {
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .btn-danger:hover {
+            transform: translateY(-1px);
+          
+        }
+        .btn-outline-secondary {
+            margin-right: 1rem;
+        }
+        .post-count {
+            font-size: 0.9rem;
+            background-color: #f8f9fa;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .thread-id-display {
+            background: linear-gradient(135deg, #6c757d20, #6c757d10);
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 0.75rem 1.25rem;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="confirmation-container py-5">
+        <div class="card">
+            <div class="card-header bg-danger text-white py-4">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
+                    <div>
+                        <h1 class="h4 mb-1">Delete Posts Permanently</h1>
+                        <p class="mb-0 opacity-75">Irreversible Action Required</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-body p-5">
+                <div class="text-center mb-5">
+                    <div class="warning-icon text-danger mx-auto">
+                        <i class="fas fa-trash-alt fa-4x"></i>
+                    </div>
+                    <h2 class="h5 text-muted mb-3">Final Confirmation Required</h2>
+                </div>
+
+                <form action="moderation.php" method="post" class="needs-validation" novalidate id="deleteForm">
+                    <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+                    <input type="hidden" name="action" value="do_multideleteposts" />
+                    <input type="hidden" name="tid" value="'.$tid.'" id="threadId" />
+                    <input type="hidden" name="posts" value="'.$inlineids.'" id="postIds" />
+                    <input type="hidden" name="url" value="'.$return_url.'" />
+
+                    <!-- Отображение Thread ID для пользователя -->
+                    <div class="thread-id-display mb-4">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <span class="text-muted small">Thread ID:</span>
+                                <strong class="h5 mb-0 ms-2">'.$tid.'</strong>
+                            </div>
+                            <span class="badge bg-secondary">
+                                <i class="fas fa-link me-1"></i>
+                                '.$tid.'
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-danger danger-zone mb-4 p-4" role="alert">
+                        <div class="d-flex">
+                            <i class="fas fa-radiation-alt fa-lg me-3 mt-1"></i>
+                            <div>
+                                <h4 class="alert-heading h6 mb-2">⚠️ Permanent Deletion Warning</h4>
+                                <p class="mb-3">You are about to <strong>permanently delete</strong> selected posts from this thread. This action <strong>cannot be undone</strong>.</p>
+                                
+                                <div class="mb-3">
+                                    <span class="post-count">
+                                        <i class="fas fa-hashtag me-1"></i>
+                                        Thread ID: <strong>'.$tid.'</strong>
+                                    </span>
+                                    <span class="post-count ms-2">
+                                        <i class="fas fa-comments me-1"></i>
+                                        Posts to delete: <strong id="postCount">0</strong>
+                                    </span>
+                                </div>
+                                
+                                <hr class="my-3">
+                                
+                                <div class="text-danger mb-0">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    <strong>Important:</strong> If all posts are removed from this thread, the entire thread will also be permanently deleted.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title h6 mb-3">
+                                <i class="fas fa-shield-alt me-2"></i>
+                                Security Verification
+                            </h5>
+                            <div class="mb-0">'.$loginbox.'</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 pt-4 border-top">
+                        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
+                            <div class="mb-3 mb-md-0">
+                                <a href="'.$return_url.'" class="btn btn-outline-secondary">
+                                    <i class="fas fa-arrow-left me-2"></i>
+                                    Cancel & Return
+                                </a>
+                            </div>
+                            
+                            <div class="d-flex flex-column flex-sm-row gap-3">
+                                <button type="button" 
+                                        class="btn btn-outline-danger" 
+                                        onclick="showFinalWarning()">
+                                    <i class="fas fa-eye me-2"></i>
+                                    Review Selection
+                                </button>
+                                
+                                <button type="submit" 
+                                        name="submit" 
+                                        value="Delete Posts Permanently"
+                                        class="btn btn-danger"
+                                        id="deleteButton">
+                                    <i class="fas fa-trash-alt me-2"></i>
+                                    Permanently Delete Posts
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="card-footer bg-light py-3 text-center">
+                <small class="text-muted">
+                    <i class="fas fa-clock me-1"></i>
+                    Action logged for administrative purposes
+                </small>
+            </div>
+        </div>
+    </div>
+
+
+</body>
+</html>
+
+
+';
 		
 		stdhead('fdfds');
 		
@@ -2692,38 +3708,290 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		$multimerge = '
 		
 		
-		<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<title>{$mybb->settings[bbname]} - {$lang->merge_posts}</title>
-{$headerinclude}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{$mybb->settings[bbname]} - {$lang->merge_posts}</title>
+     <style>
+        .merge-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .merge-header {
+            background: linear-gradient(135deg, var(--bs-primary) 0%, #0d6efd 100%) !important;
+            color: white;
+            border-radius: 10px 10px 0 0;
+        }
+        .merge-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+        }
+        .option-card {
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .option-card:hover {
+            border-color: var(--bs-primary);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(13, 110, 253, 0.1);
+        }
+        .option-card.selected {
+            border-color: var(--bs-primary);
+            background-color: rgba(13, 110, 253, 0.05);
+        }
+        .option-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+        }
+        .hr-option .option-icon {
+            background: linear-gradient(135deg, var(--bs-primary) 0%, #0d6efd 100%);
+            color: white;
+        }
+        .newline-option .option-icon {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        .post-item {
+            background: #f8f9fa;
+            border-left: 4px solid var(--bs-primary);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            transition: all 0.2s ease;
+        }
+        .post-item:hover {
+            background: #f1f3ff;
+            transform: translateX(5px);
+        }
+        .post-author {
+            font-weight: 600;
+            color: var(--bs-primary);
+        }
+        .post-date {
+            color: #6c757d;
+            font-size: 0.85rem;
+        }
+        .post-content {
+            margin-top: 8px;
+            color: #495057;
+            line-height: 1.5;
+        }
+        .btn-merge {
+            background: linear-gradient(135deg, var(--bs-primary) 0%, #0d6efd 100%);
+            border: none;
+            padding: 12px 30px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+        .btn-merge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(13, 110, 253, 0.3);
+        }
+        .preview-area {
+            background: #f8f9fa;
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 100px;
+        }
+        .preview-title {
+            color: #6c757d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .separator-preview {
+            border-top: 2px solid var(--bs-primary);
+            margin: 20px 0;
+            opacity: 0.7;
+        }
+        .newline-preview {
+            background: var(--bs-primary);
+            color: white;
+            padding: 3px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            font-size: 0.8rem;
+            margin: 10px 0;
+        }
+        /* Primary color overrides */
+        :root {
+            --bs-primary: #0d6efd;
+            --bs-primary-rgb: 13, 110, 253;
+        }
+        .text-primary {
+            color: var(--bs-primary) !important;
+        }
+        .bg-primary {
+            background-color: var(--bs-primary) !important;
+        }
+        .border-primary {
+            border-color: var(--bs-primary) !important;
+        }
+        .btn-primary {
+            background-color: var(--bs-primary) !important;
+            border-color: var(--bs-primary) !important;
+        }
+        .btn-primary:hover {
+            background-color: #0b5ed7 !important;
+            border-color: #0a58ca !important;
+        }
+    </style>
 </head>
 <body>
-'.stdhead ('title').'
-<form action="moderation.php" method="post">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-	<div class="container-md">
-<div class="card">
-<div class="card-body">
-'.$loginbox.'
-	<label>Post Separator</label>
-	
-	<div class="radio-toolbar">
-<input type="radio" name="sep" id="sep" value="hr" checked="checked" /><label for="sep">Horizontal Rule</label>
-		<input type="radio" name="sep" id="sep2" value="new_line" /><label for="sep2">New Line</label>
-		</div>
+  
+    
+    <div class="container mt-3">
+        <div class="card">
+            <!-- Header -->
+            <div class="merge-header p-5">
+                <div class="text-center">
+                    <div class="merge-icon">
+                        <i class="fas fa-shuffle fa-2x"></i>
+                    </div>
+                    <h1 class="h3 mb-2">Merge Posts</h1>
+                    <p class="mb-0 opacity-75">Combine selected posts into a single message</p>
+                </div>
+            </div>
+            
+            <!-- Form -->
+            <form action="moderation.php" method="post">
+                <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+                <input type="hidden" name="action" value="do_multimergeposts" />
+                <input type="hidden" name="tid" value="'.$tid.'" />
+                <input type="hidden" name="url" value="'.$return_url.'" />
+                
+                <div class="card-body p-5">
+                    <!-- Security Verification -->
+                    <div class="mb-5">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body">
+                                <h5 class="card-title h6 mb-3">
+                                    <i class="fas fa-shield-alt me-2 text-primary"></i>
+                                    Security Verification
+                                </h5>
+                                <div class="mb-0">'.$loginbox.'</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Separator Selection -->
+                    <div class="mb-5">
+                        <h5 class="h6 mb-4">
+                            <i class="fas fa-grip-lines me-2 text-primary"></i>
+                            Select Post Separator
+                        </h5>
+                        
+                        <div class="row g-3">
+                            <!-- Horizontal Rule Option -->
+                            <div class="col-md-6">
+                              <div class="option-card hr-option p-4" onclick="selectOption(\'hr\')">
+                                    <div class="d-flex align-items-center">
+                                        <div class="option-icon">
+                                            <i class="fas fa-minus fa-lg"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-1 fw-bold">Horizontal Rule</h6>
+                                            <p class="mb-0 text-muted small">Posts separated by a visible line</p>
+                                        </div>
+                                    </div>
+                                    <input type="radio" name="sep" id="sep" value="hr" checked="checked" style="display: none;" />
+                                </div>
+                            </div>
+                            
+                            <!-- New Line Option -->
+                            <div class="col-md-6">
+                                <div class="option-card newline-option p-4" onclick="selectOption(\'new_line\')">
 
-	<div class="mt-3"></div>
-'.$postlist.'
-
-	</div>
-<div class="card-footer text-center"><button type="submit" class="btn btn-primary" name="submit" value="Merge Posts"><i class="fa-solid fa-shuffle"></i> &nbsp;Merge PostsZZZZ</button>
-	</div>
-<input type="hidden" name="action" value="do_multimergeposts" />
-<input type="hidden" name="tid" value="'.$tid.'" />
-<input type="hidden" name="url" value="'.$return_url.'" />
-	</div></div>
-</form>
-{$footer}
+                                    <div class="d-flex align-items-center">
+                                        <div class="option-icon">
+                                            <i class="fas fa-arrow-down fa-lg"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-1 fw-bold">New Line</h6>
+                                            <p class="mb-0 text-muted small">Posts separated by line breaks</p>
+                                        </div>
+                                    </div>
+                                    <input type="radio" name="sep" id="sep2" value="new_line" style="display: none;" />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Preview -->
+                        <div class="preview-area mt-4">
+                            <div class="preview-title">Preview</div>
+                            <div id="previewContent">
+                                <div class="post-preview">
+                                    <div class="post-content">First post content will appear here...</div>
+                                    <div class="separator-preview" id="hrPreview"></div>
+                                    <div class="newline-preview d-none" id="newlinePreview">[New Post]</div>
+                                    <div class="post-content">Second post content will appear here...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Posts List -->
+                    <div class="mb-5">
+                        <h5 class="h6 mb-4">
+                            <i class="fas fa-list-check me-2 text-primary"></i>
+                            Posts to Merge
+                            <span class="badge bg-primary ms-2">'.$post_count.' posts selected</span>
+                        </h5>
+                        
+                        <div class="posts-list">
+                            '.$postlist.'
+                        </div>
+                        
+                        <div class="alert alert-info mt-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Posts will be merged in chronological order. The original posts will be deleted.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="card-footer bg-light py-4">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
+                        <div class="mb-3 mb-md-0">
+                            <a href="'.$return_url.'" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>
+                                Cancel & Return
+                            </a>
+                        </div>
+                        
+                        <div>
+                            <button type="submit" class="btn btn-merge text-white" name="submit" value="Merge Posts">
+                                <i class="fas fa-shuffle me-2"></i>
+                                Merge Posts
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+ 
 </body>
 </html>
 		
@@ -2735,7 +4003,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		';
 		
 		
-		
+		stdhead('45353354334534');
 		echo $multimerge;
 		
 		break;
@@ -2784,7 +4052,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		if(count($posts) < 1)
 		{
-			error($lang->error_inline_nopostsselected, $lang->error);
+			stderr($lang->moderation['error_inline_nopostsselected']);
 		}
 
 		if(!is_moderator_by_pids($posts, "canmanagethreads"))
@@ -2796,10 +4064,10 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		// Make sure that we are not splitting a thread with one post
 		// Select number of posts in each thread that the splitted post is in
-		$query = $db->query("
+		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM ".TABLE_PREFIX."posts p
-			LEFT JOIN ".TABLE_PREFIX."posts q ON (p.tid=q.tid)
+			FROM tsf_posts p
+			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2808,17 +4076,17 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		{
 			if((int)$tcheck['count'] <= 1)
 			{
-				error($lang->error_cantsplitonepost, $lang->error);
+				stderr($lang->moderation['error_cantsplitonepost']);
 			}
 			$threads[] = $pcheck[] = $tcheck['tid']; // Save tids for below
 		}
 
 		// Make sure that we are not splitting all posts in the thread
 		// The query does not return a row when the count is 0, so find if some threads are missing (i.e. 0 posts after removal)
-		$query = $db->query("
+		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM ".TABLE_PREFIX."posts p
-			LEFT JOIN ".TABLE_PREFIX."posts q ON (p.tid=q.tid)
+			FROM tsf_posts p
+			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2833,7 +4101,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		if(count($pcheck2) != count($pcheck))
 		{
 			// One or more threads do not have posts after splitting
-			error($lang->error_cantsplitall, $lang->error);
+			stderr($lang->moderation['error_cantsplitall']);
 		}
 
 		$inlineids = implode("|", $posts);
@@ -2849,8 +4117,17 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		$return_url = htmlspecialchars_uni($mybb->get_input('url'));
 
+		
 		eval("\$splitposts = \"".$templates->get("moderation_inline_splitposts")."\";");
-		output_page($splitposts);
+		
+		
+		stdhead('ddddd');
+		
+		echo $splitposts;
+		
+		stdfoot();
+		
+		
 		break;
 
 	// Actually split the posts - Inline moderation
@@ -2876,7 +4153,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		$posts = array();
 		if(!empty($plist))
 		{
-			$query = $db->simple_select('posts', 'pid', 'pid IN ('.implode(',', $plist).')');
+			$query = $db->simple_select('tsf_posts', 'pid', 'pid IN ('.implode(',', $plist).')');
 			while($pid = $db->fetch_field($query, 'pid'))
 			{
 				$posts[] = $pid;
@@ -2892,10 +4169,10 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		// Make sure that we are not splitting a thread with one post
 		// Select number of posts in each thread that the splitted post is in
-		$query = $db->query("
+		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM ".TABLE_PREFIX."posts p
-			LEFT JOIN ".TABLE_PREFIX."posts q ON (p.tid=q.tid)
+			FROM tsf_posts p
+			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2911,10 +4188,10 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		// Make sure that we are not splitting all posts in the thread
 		// The query does not return a row when the count is 0, so find if some threads are missing (i.e. 0 posts after removal)
-		$query = $db->query("
+		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM ".TABLE_PREFIX."posts p
-			LEFT JOIN ".TABLE_PREFIX."posts q ON (p.tid=q.tid)
+			FROM tsf_posts p
+			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2951,10 +4228,10 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		$newtid = $moderation->split_posts($posts, $tid, $moveto, $newsubject);
 
 		$pid_list = implode(', ', $posts);
-		$lang->split_selective_posts = $lang->sprintf($lang->split_selective_posts, $pid_list, $newtid);
-		log_moderator_action($modlogdata, $lang->split_selective_posts);
+		$lang->split_selective_posts = sprintf($lang->moderation['split_selective_posts'], $pid_list, $newtid);
+		log_moderator_action($modlogdata, $lang->moderation['split_selective_posts']);
 
-		moderation_redirect(get_thread_link($newtid), $lang->redirect_threadsplit);
+		moderation_redirect(get_thread_link($newtid), $lang->moderation['redirect_threadsplit']);
 		break;
 
 	// Move posts - Inline moderation
@@ -3037,7 +4314,394 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		$return_url = htmlspecialchars_uni($mybb->get_input('url'));
 
-		eval("\$moveposts = \"".$templates->get("moderation_inline_moveposts")."\";");
+		$post_count = !empty($inlineids) ? count(explode('|', $inlineids)) : 0;
+		
+		$moveposts = '
+		
+		
+		
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - <?php echo $lang->move_posts; ?></title>
+    
+	
+	
+	<style>
+    .move-container {
+        max-width: 700px;
+        margin: 0 auto;
+    }
+    .move-header {
+        background: linear-gradient(135deg, var(--bs-primary) 0%, #0b5ed7 100%) !important;
+        color: white;
+        border-radius: 10px 10px 0 0;
+    }
+    .move-icon {
+        width: 80px;
+        height: 80px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+    }
+    .url-input-container {
+        position: relative;
+        margin-bottom: 25px;
+    }
+    .url-input {
+        padding-left: 45px;
+        padding-right: 45px;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        transition: all 0.3s ease;
+        font-size: 1rem;
+    }
+    .url-input:focus {
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    }
+    .url-icon {
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--bs-primary);
+        z-index: 4;
+    }
+    .url-clear {
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6c757d;
+        cursor: pointer;
+        opacity: 0.5;
+        transition: opacity 0.2s;
+        z-index: 4;
+    }
+    .url-clear:hover {
+        opacity: 1;
+        color: #dc3545;
+    }
+    .info-box {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-left: 4px solid var(--bs-primary);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 25px;
+    }
+    .info-icon {
+        width: 48px;
+        height: 48px;
+        background: rgba(13, 110, 253, 0.1);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        color: var(--bs-primary);
+    }
+    .stats-box {
+        background: white;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .stat-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .stat-item:last-child {
+        margin-bottom: 0;
+    }
+    .stat-icon {
+        width: 36px;
+        height: 36px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 12px;
+        color: var(--bs-primary);
+    }
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .stat-value {
+        font-weight: 600;
+        color: #495057;
+    }
+    .btn-move {
+        background: linear-gradient(135deg, var(--bs-primary) 0%, #0b5ed7 100%);
+        border: none;
+        padding: 12px 30px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        transition: all 0.3s ease;
+    }
+    .btn-move:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(13, 110, 253, 0.3);
+    }
+    .post-count-badge {
+        background: linear-gradient(135deg, var(--bs-primary) 0%, #0b5ed7 100%);
+        color: white;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        display: inline-block;
+        margin-left: 10px;
+    }
+    .thread-preview {
+        background: white;
+        border: 2px dashed #dee2e6;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 20px;
+        display: none;
+    }
+    .thread-preview.show {
+        display: block;
+    }
+    .preview-title {
+        color: #495057;
+        font-weight: 600;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+    }
+    .preview-title i {
+        margin-right: 10px;
+        color: var(--bs-primary);
+    }
+    .preview-content {
+        color: #6c757d;
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+    .thread-example {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-top: 5px;
+        padding: 8px 12px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid var(--bs-primary);
+    }
+    .alert-warning {
+        border-left: 4px solid #ffc107;
+    }
+    
+    /* Primary color variables */
+    :root {
+        --bs-primary: #0d6efd;
+        --bs-primary-rgb: 13, 110, 253;
+    }
+    
+    /* Bootstrap primary color overrides */
+    .bg-primary {
+        background-color: var(--bs-primary) !important;
+    }
+    .text-primary {
+        color: var(--bs-primary) !important;
+    }
+    .border-primary {
+        border-color: var(--bs-primary) !important;
+    }
+    .btn-primary {
+        background-color: var(--bs-primary) !important;
+        border-color: var(--bs-primary) !important;
+    }
+    .btn-outline-primary {
+        color: var(--bs-primary) !important;
+        border-color: var(--bs-primary) !important;
+    }
+    .btn-outline-primary:hover {
+        background-color: var(--bs-primary) !important;
+        color: white !important;
+    }
+</style>
+	
+	
+  
+</head>
+<body>
+   
+    
+    <div class="container mt-3">
+        <div class="card">
+            <!-- Header -->
+            <div class="move-header p-5">
+                <div class="text-center">
+                    <div class="move-icon">
+                        <i class="fas fa-arrow-right fa-2x"></i>
+                    </div>
+                    <h1 class="h3 mb-2">Move Posts</h1>
+                    <p class="mb-0 opacity-75">Transfer selected posts to another thread</p>
+                </div>
+            </div>
+            
+            <!-- Form -->
+            <form action="moderation.php" method="post" id="moveForm">
+                <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+                <input type="hidden" name="action" value="do_multimoveposts" />
+                <input type="hidden" name="tid" value="'.$tid.'" />
+                <input type="hidden" name="posts" value="'.$inlineids.'" />
+                <input type="hidden" name="url" value="'.$return_url.'" />
+                
+                <div class="card-body p-5">
+                    <!-- Security Verification -->
+                    <div class="mb-5">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body">
+                                <h5 class="card-title h6 mb-3">
+                                    <i class="fas fa-shield-alt me-2 text-primary"></i>
+                                    Security Verification
+                                </h5>
+                                <div class="mb-0"><?php echo $loginbox; ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Information Box -->
+                    <div class="info-box mb-4">
+                        <div class="d-flex align-items-start">
+                            <div class="info-icon">
+                                <i class="fas fa-info-circle fa-lg"></i>
+                            </div>
+                            <div>
+                                <h5 class="h6 mb-2">How to move posts</h5>
+                                <p class="mb-0 text-muted small">
+                                    Copy the full URL of the destination thread and paste it in the field below.
+                                    The posts will be moved while preserving their content, authors, and timestamps.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                   
+                    <div class="stats-box mb-4">
+                        <div class="stat-item">
+                            <div class="stat-icon">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div>
+                                <div class="stat-label">Posts to move</div>
+                                <div class="stat-value">
+                                    '.$post_count.' posts
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-icon">
+                                <i class="fas fa-hashtag"></i>
+                            </div>
+                            <div>
+                                <div class="stat-label">Current thread ID</div>
+                                <div class="stat-value">#'.$tid.'</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- URL Input -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold mb-3">
+                            <i class="fas fa-link me-2 text-primary"></i>
+                            Destination Thread URL
+                            <span class="post-count-badge">'.$post_count.' posts selected</span>
+                        </label>
+                        
+                        <div class="url-input-container">
+                            <i class="fas fa-link url-icon"></i>
+                            <input type="text" 
+                                   class="form-control url-input" 
+                                   name="threadurl" 
+                                   id="threadUrl" 
+                                   placeholder="https://yourforum.com/showthread.php?tid=123"
+                                   autocomplete="off"
+                                   required>
+                            <i class="fas fa-times url-clear" id="clearUrl"></i>
+                        </div>
+                        
+                        <div class="thread-example">
+                            <i class="fas fa-lightbulb me-2 text-warning"></i>
+                            <strong>Example:</strong> https://example.com/forum/showthread.php?tid=456
+                        </div>
+                        
+                        <!-- Thread Preview -->
+                        <div class="thread-preview" id="threadPreview">
+                            <div class="preview-title">
+                                <i class="fas fa-eye"></i>
+                                Thread Preview
+                            </div>
+                            <div class="preview-content" id="previewContent">
+                                Enter a valid thread URL to see preview...
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Warning -->
+                    <div class="alert alert-warning">
+                        <div class="d-flex">
+                            <i class="fas fa-exclamation-triangle fa-lg me-3 mt-1 text-warning"></i>
+                            <div>
+                                <h6 class="alert-heading mb-2">Important Notes</h6>
+                                <ul class="mb-0 small">
+                                    <li>Posts will be removed from the current thread and added to the destination thread</li>
+                                    <li>The operation cannot be undone automatically</li>
+                                    <li>Make sure you have permission to move posts to the destination thread</li>
+                                    <li>All post metadata will be preserved</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="card-footer bg-light py-4">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
+                        <div class="mb-3 mb-md-0">
+                            <a href="'.$return_url.'" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>
+                                Cancel & Return
+                            </a>
+                        </div>
+                        
+                        <div class="d-flex flex-column flex-sm-row gap-3">
+                            <button type="button" class="btn btn-outline-primary" id="validateBtn">
+                                <i class="fas fa-check-circle me-2"></i>
+                                Validate URL
+                            </button>
+                            <button type="submit" class="btn btn-move text-white" name="submit" value="Move Posts">
+                                <i class="fas fa-arrow-right me-2"></i>
+                                Move Posts
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+</body>
+</html>
+		
+		
+		
+		
+		
+		';
 		
 		
 		stdhead();
@@ -3119,11 +4783,12 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		$newthread = get_thread($newtid);
 		if(!$newthread)
 		{
-			error($lang->error_badmovepostsurl, $lang->error);
+			
+			stderr($lang->moderation['error_badmovepostsurl']);
 		}
 		if($newtid == $tid)
 		{ // sanity check
-			error($lang->error_movetoself, $lang->error);
+			stderr($lang->moderation['error_movetoself']);
 		}
 
 		$postlist = explode("|", $mybb->get_input('posts'));
@@ -3152,7 +4817,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		if(empty($posts))
 		{
-			error($lang->error_inline_nopostsselected, $lang->error);
+			stderr($lang->moderation['error_inline_nopostsselected']);
 		}
 
 		$pidin = implode(',', $posts);
@@ -3171,7 +4836,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		{
 			if((int)$tcheck['count'] <= 1)
 			{
-				error($lang->error_cantsplitonepost, $lang->error);
+				stderr($lang->moderation['error_cantsplitonepost']);
 			}
 			$threads[] = $pcheck[] = $tcheck['tid']; // Save tids for below
 		}
@@ -3196,7 +4861,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		if(count($pcheck2) != count($pcheck))
 		{
 			// One or more threads do not have posts after splitting
-			error($lang->error_cantmoveall, $lang->error);
+			stderr($lang->moderation['error_cantmoveall']);
 		}
 
 		$newtid = $moderation->split_posts($posts, $tid, $newthread['fid'], $db->escape_string($newthread['subject']), $newtid);
@@ -3296,92 +4961,10 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_inline_postsunapproved);
 		break;
 
-	// Restore posts - Inline moderation
-	case "multirestoreposts":
 
-		// Verify incoming POST request
-		verify_post_check($mybb->get_input('my_post_key'));
 
-		if($mybb->get_input('inlinetype') == 'search')
-		{
-			$posts = getids($mybb->get_input('searchid'), 'search');
-		}
-		else
-		{
-			$posts = getids($tid, 'thread');
-		}
-		if(count($posts) < 1)
-		{
-			error($lang->error_inline_nopostsselected, $lang->error);
-		}
 
-		if(!is_moderator_by_pids($posts, "canrestoreposts"))
-		{
-			error_no_permission();
-		}
-
-		$pids = array();
-		foreach($posts as $pid)
-		{
-			$pids[] = (int)$pid;
-		}
-
-		$moderation->restore_posts($pids);
-
-		log_moderator_action($modlogdata, $lang->multi_restore_posts);
-		if($mybb->get_input('inlinetype') == 'search')
-		{
-			clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
-		}
-		else
-		{
-			clearinline($tid, 'thread');
-		}
-		moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_inline_postsrestored);
-		break;
-
-	// Soft delete posts - Inline moderation
-	case "multisoftdeleteposts":
-		// Verify incoming POST request
-		verify_post_check($mybb->get_input('my_post_key'));
-
-		if($mybb->get_input('inlinetype') == 'search')
-		{
-			$posts = getids($mybb->get_input('searchid'), 'search');
-		}
-		else
-		{
-			$posts = getids($tid, 'thread');
-		}
-
-		if(count($posts) < 1)
-		{
-			error($lang->error_inline_nopostsselected, $lang->error);
-		}
-		$pids = array();
-
-		if(!is_moderator_by_pids($posts, "cansoftdeleteposts"))
-		{
-			error_no_permission();
-		}
-		foreach($posts as $pid)
-		{
-			$pids[] = (int)$pid;
-		}
-
-		$moderation->soft_delete_posts($pids);
-		log_moderator_action($modlogdata, $lang->multi_soft_delete_posts);
-
-		if($mybb->get_input('inlinetype') == 'search')
-		{
-			clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
-		}
-		else
-		{
-			clearinline($tid, 'thread');
-		}
-		moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_inline_postssoftdeleted);
-		break;
+		
 	case "do_purgespammer":
 	case "purgespammer":
 		require_once MYBB_ROOT."inc/functions_user.php";
@@ -3911,33 +5494,7 @@ function is_moderator_by_tids($threads, $permission='')
  * @param string $message Message
  * @param string $title Title
  */
-function moderation_redirect22222222($url, $message="", $title="")
-{
-	global $mybb, $BASEURL;
-	if(!empty($mybb->input['url']))
-	{
-		$url = htmlentities($mybb->input['url']);
-	}
-
-	if(my_strpos($url, $BASEURL.'/') !== 0)
-	{
-		if(my_strpos($url, '/') === 0)
-		{
-			$url = my_substr($url, 1);
-		}
-		$url_segments = explode('/', $url);
-		$url = $BASEURL.'/'.end($url_segments);
-	}
-
-	redirect($url, $message, $title);
-}
-
-
-
-
-
-
-
+ 
 function moderation_redirect($url, $message = "", $title = "")
 {
     global $mybb, $BASEURL;
@@ -3967,3 +5524,30 @@ function moderation_redirect($url, $message = "", $title = "")
 
     redirect($url, $message, $title);
 }
+
+?>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- SweetAlert2 for beautiful dialogs (optional) -->
+<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/sweetalert2.min.css">
+<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/sweetalert2.min.js"></script>
+<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/toast.js"></script>
+<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/moderation.js"></script>
+
+
+
+
+
+
+<?

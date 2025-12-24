@@ -2,8 +2,7 @@
 declare(strict_types=1);
 
 /***********************************************/
-/*   MYBONUS.PHP — PHP 8.4 — CLEAN BEAUTIFUL   */
-/*   Works with your $db-> (TSSEv56)           */
+/*   MYBONUS.PHP — PHP 8.4 — CLEAN BEAUTIFUL   */           
 /***********************************************/
 
 define("IN_MYBB", 1);

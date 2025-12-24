@@ -19,12 +19,12 @@ $nosession['avatar'] = 1;
 
 $templatelist = "maketable_torrents,torrents_completed,user_profile,torrent_stats,member_register,member_register_hiddencaptcha,member_register_coppa,member_register_agreement_coppa,member_register_agreement,member_register_customfield,member_register_requiredfields,member_profile_findthreads";
 $templatelist .= ",member_loggedin_notice,member_profile_away,member_register_regimage,member_register_regimage_recaptcha_invisible,member_register_regimage_nocaptcha,post_captcha_hcaptcha_invisible,post_captcha_hcaptcha,post_captcha_hidden,post_captcha,member_register_referrer";
-$templatelist .= ",member_profile_email,member_profile_offline,member_profile_reputation,member_profile_warn,member_profile_warninglevel,member_profile_warninglevel_link,member_profile_customfields_field,member_profile_customfields,member_profile_adminoptions_manageban,member_profile_adminoptions,member_profile";
-$templatelist .= ",member_profile_signature,member_profile_avatar,member_profile_groupimage,member_referrals_link,member_profile_referrals,member_profile_website,member_profile_reputation_vote,member_activate,member_lostpw,member_register_additionalfields";
-$templatelist .= ",member_profile_modoptions_manageuser,member_profile_modoptions_editprofile,member_profile_modoptions_banuser,member_profile_modoptions_viewnotes,member_profile_modoptions_editnotes,member_profile_modoptions_purgespammer";
+$templatelist .= ",member_profile_email,member_profile_offline,member_profile_warn,member_profile_warninglevel_link,member_profile_customfields_field,member_profile_customfields,member_profile_adminoptions_manageban,member_profile_adminoptions,member_profile";
+$templatelist .= ",member_profile_signature,member_profile_avatar,member_profile_groupimage,member_referrals_link,member_profile_referrals,member_activate,member_lostpw,member_register_additionalfields";
+$templatelist .= ",member_profile_modoptions_manageuser,member_profile_modoptions_editprofile,member_profile_modoptions_banuser,member_profile_modoptions_viewnotes,member_profile_modoptions_editnotes";
 $templatelist .= ",usercp_profile_profilefields_select_option,usercp_profile_profilefields_multiselect,usercp_profile_profilefields_select,usercp_profile_profilefields_textarea,usercp_profile_profilefields_radio,member_viewnotes";
-$templatelist .= ",member_register_question,member_register_question_refresh,usercp_options_timezone,usercp_options_timezone_option,usercp_options_language_option,member_profile_customfields_field_multi_item,member_profile_customfields_field_multi";
-$templatelist .= ",member_profile_contact_fields_google,member_profile_contact_fields_icq,member_profile_contact_fields_skype,member_profile_pm,member_profile_contact_details,member_profile_modoptions_manageban";
+$templatelist .= ",usercp_options_timezone,usercp_options_timezone_option,usercp_options_language_option,member_profile_customfields_field_multi_item,member_profile_customfields_field_multi";
+$templatelist .= ",member_profile_pm,member_profile_contact_details,member_profile_modoptions_manageban";
 $templatelist .= ",member_profile_banned_remaining,member_profile_addremove,member_emailuser_guest,member_register_day,usercp_options_tppselect_option,postbit_warninglevel_formatted,member_profile_userstar,member_profile_findposts";
 $templatelist .= ",usercp_options_tppselect,usercp_options_pppselect,member_resetpassword,member_login,member_profile_online,usercp_options_pppselect_option,postbit_reputation_formatted,member_emailuser,usercp_profile_profilefields_text";
 $templatelist .= ",member_profile_modoptions_ipaddress,member_profile_modoptions,member_profile_banned,member_register_language,member_resendactivation,usercp_profile_profilefields_checkbox,member_register_password,member_coppa_form,torrent_stats";
@@ -820,11 +820,11 @@ if($mybb->input['action'] == "do_register" && $mybb->request_method == "post")
 			}
 			my_mail($user_info['email'], $emailsubject, $emailmessage);
 
-			$lang->redirect_registered_activation = sprintf($lang->redirect_registered_activation, $SITENAME, htmlspecialchars_uni($user_info['username']));
+			$redirect_registered_activation = sprintf($lang->member['redirect_registered_activation'], $SITENAME, htmlspecialchars_uni($user_info['username']));
 
 			$plugins->run_hooks("member_do_register_end");
 
-			error($lang->redirect_registered_activation);
+			stderr($redirect_registered_activation);
 		}
 		else
 		{
@@ -3276,6 +3276,70 @@ echo '<script src="'.$BASEURL.'/scripts/upload_avatar.js"></script>';
 
 
 
+$report_button = '';
+
+// Проверяем, можно ли репортнуть пользователя
+if ($CURUSER['id'] != $memprofile['id'] && $CURUSER['id'] != 0) 
+{
+    $report_button = '
+    <button type="button" 
+            class="btn btn-sm btn-outline-danger" 
+            onclick="openReportUserModal('.$memprofile['id'].', \''.addslashes($memprofile['username']).'\')"
+            data-bs-toggle="tooltip" 
+            title="Report this user for violations">
+        <i class="fa-solid fa-flag me-1"></i> Report User
+    </button>';
+}
+
+
+$reasons_map = [
+        'spam' => [
+            'text' => 'Spam Account',
+            'icon' => 'fa-user-slash',
+            'description' => 'User is posting spam content'
+        ],
+        'harassment' => [
+            'text' => 'Harassment/Bullying',
+            'icon' => 'fa-ban',
+            'description' => 'User is harassing or bullying others'
+        ],
+        'fake' => [
+            'text' => 'Fake Account',
+            'icon' => 'fa-mask',
+            'description' => 'User is pretending to be someone else'
+        ],
+        'impersonation' => [
+            'text' => 'Impersonation',
+            'icon' => 'fa-id-badge',
+            'description' => 'User is impersonating another user'
+        ],
+        'inappropriate' => [
+            'text' => 'Inappropriate Profile',
+            'icon' => 'fa-eye-slash',
+            'description' => 'User has inappropriate profile content'
+        ],
+        'scam' => [
+            'text' => 'Scam/Fraud',
+            'icon' => 'fa-skull-crossbones',
+            'description' => 'User is involved in scams or fraud'
+        ],
+        'copyright' => [
+            'text' => 'Copyright Infringement',
+            'icon' => 'fa-copyright',
+            'description' => 'User is sharing copyrighted content'
+        ],
+        'malware' => [
+            'text' => 'Malware Distribution',
+            'icon' => 'fa-bug',
+            'description' => 'User is distributing malware/viruses'
+        ],
+        'other' => [
+            'text' => 'Other Reason',
+            'icon' => 'fa-ellipsis',
+            'description' => 'Select for other reasons'
+        ]
+];
+
 
 
 
@@ -3283,7 +3347,163 @@ eval("\$profile = \"".$templates->get("member_profile")."\";");
 
 
 
+
+
+
+
+
+
 echo $profile;
+
+    
+?>
+
+	
+	<div class="modal fade" id="reportUserModal" tabindex="-1" aria-labelledby="reportUserModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form id="reportUserForm" method="POST" action="<?= $BASEURL ?>/takereport.php">
+                    <input type="hidden" name="type" value="user">
+                    <input type="hidden" name="reported_id" value="<?= $memprofile['id'] ?>">
+                    <input type="hidden" name="reported_user_id" value="<?= $memprofile['id'] ?>">
+                    <input type="hidden" name="addedby" value="<?= $CURUSER['id'] ?>">
+                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                    
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title" id="reportUserModalLabel">
+                            <i class="fa-solid fa-flag me-2"></i>
+                            Report User: <?= $memprofile['username'] ?>
+						</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    
+                    <div class="modal-body">
+                        <!-- Причины репорта -->
+                        <div class="mb-4">
+                            <h6 class="mb-3">
+                                <i class="fa-solid fa-circle-exclamation me-2"></i>
+                                Select Report Reason
+                            </h6>
+                            
+                            <div class="row g-3">
+                                <?php foreach ($reasons_map as $key => $reason): ?>
+                                <div class="col-md-6">
+                                    <div class="report-reason-card">
+                                        <input type="radio" 
+                                               class="btn-check" 
+                                               name="reason" 
+                                               id="reason_<?= $key ?>" 
+                                               value="<?= $key ?>" 
+                                               autocomplete="off">
+                                        <label class="btn btn-outline-danger w-100 text-start py-3" 
+                                               for="reason_<?= $key ?>">
+                                            <div class="d-flex align-items-center">
+                                                <div class="me-3">
+                                                    <i class="fa-solid <?= $reason['icon'] ?> fa-2x"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="fw-bold"><?= $reason['text'] ?></div>
+                                                    <div class="small text-muted mt-1"><?= $reason['description'] ?></div>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        
+                        <!-- Детали репорта -->
+                        <div class="mb-4">
+                            <h6 class="mb-3">
+                                <i class="fa-solid fa-file-alt me-2"></i>
+                                Report Details
+                            </h6>
+                            
+                            <div class="mb-3">
+                                <label for="reportDescription" class="form-label fw-bold">
+                                    Detailed Description <span class="text-danger">*</span>
+                                </label>
+                                <textarea class="form-control" 
+                                          id="reportDescription" 
+                                          name="description" 
+                                          rows="5" 
+                                          placeholder="Please provide as much detail as possible about why you are reporting this user. Include links, timestamps, and any other relevant information."
+                                          required></textarea>
+                                <div class="form-text">
+                                    <i class="fa-solid fa-lightbulb me-1"></i>
+                                    The more information you provide, the easier it will be for our moderators to investigate.
+                                </div>
+                            </div>
+                            
+                            <!-- Дополнительная информация -->
+                            <div class="mb-3">
+                                <label for="additionalInfo" class="form-label">
+                                    Additional Information (Optional)
+                                </label>
+                                <textarea class="form-control" 
+                                          id="additionalInfo" 
+                                          name="additional_info" 
+                                          rows="3" 
+                                          placeholder="Any other information that might be helpful..."></textarea>
+                            </div>
+                            
+                            <!-- Ссылки на доказательства -->
+                            <div class="mb-3">
+                                <label for="evidenceLinks" class="form-label">
+                                    <i class="fa-solid fa-link me-1"></i>
+                                    Evidence Links (Optional)
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="evidenceLinks" 
+                                       name="evidence_links" 
+                                       placeholder="Paste URLs to screenshots, posts, or other evidence...">
+                            </div>
+                        </div>
+                        
+                        <!-- Конфиденциальность -->
+                        <div class="alert alert-info">
+                            <div class="d-flex">
+                                <i class="fa-solid fa-shield-alt fa-2x me-3 mt-1"></i>
+                                <div>
+                                    <h6 class="alert-heading mb-2">Privacy Notice</h6>
+                                    <p class="mb-1">
+                                        <i class="fa-solid fa-check-circle me-1 text-success"></i>
+                                        Your report will be handled confidentially
+                                    </p>
+                                    <p class="mb-1">
+                                        <i class="fa-solid fa-check-circle me-1 text-success"></i>
+                                        The reported user will not know who reported them
+                                    </p>
+                                    <p class="mb-0">
+                                        <i class="fa-solid fa-check-circle me-1 text-success"></i>
+                                        Moderators will review your report within 24 hours
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Предупреждение о ложных репортах -->
+                        <div class="alert alert-warning">
+                            <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                            <strong>Important:</strong> False or malicious reports may result in action against your account.
+                        </div>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fa-solid fa-times me-1"></i> Cancel
+                        </button>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fa-solid fa-paper-plane me-1"></i> Submit Report
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+<?
 	
 	
 	

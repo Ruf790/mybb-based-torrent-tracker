@@ -158,14 +158,14 @@ function get_torrent(int $tid, bool $recache = false): array|false
 
 
 // Get the torrent details from the database.
-$torrent = get_torrent($mybb->input['id']);
+$Torrent = get_torrent((int)$mybb->input['id']);
 
-if(!$torrent)
+if(!$Torrent)
 {
 	stderr($lang->global['notorrentid']);
 }
 
-$id = $torrent['id'];
+$id = $Torrent['id'];
 
 
 
@@ -224,7 +224,7 @@ require_once(INC_PATH.'/functions_mkprettytime.php');
 
 
 $SimilarTorrents = '';
-$torrent_name = $torrent['name'];
+$Torrent_name = $Torrent['name'];
 
 
 $query = "
@@ -243,7 +243,7 @@ $query = "
 ";
 
 // Параметры для prepared statement
-$params = [$torrent_name, $torrent_name, $id];
+$params = [$Torrent_name, $Torrent_name, $id];
 
 // Выполнение подготовленного запроса
 $query_result = $db->sql_query_prepared($query, $params);
@@ -261,9 +261,31 @@ if ($query_result && $db->num_rows($query_result) > 0)
             $FoundSMTQ .= '
             <tr>
                 <td align="center" style="width: 40px; height: 36px;">
-                   <a href="'.$SEOLinkC.'" data-toggle="tooltip" data-placement="top" title="'.$SMTQ['catname'].'">
-                        <i class="'.$SMTQ['catimage'].' fa-2x category-icon"></i>
-                    </a>
+                   
+				   
+<a href="'.$SEOLinkC.'" 
+   class="badge-popover"
+   data-bs-toggle="popover" 
+   data-bs-placement="top" 
+   data-bs-title="📁 Category Info" 
+   data-bs-content="'.htmlspecialchars('
+        <div class="category-popover-content">
+            <div class="d-flex align-items-center mb-2">
+                <i class="'.$SMTQ['catimage'].' text-primary me-2"></i>
+                <strong>'.htmlspecialchars($SMTQ['catname']).'</strong>
+            </div>
+            <div class="small text-muted">
+                Browse all torrents in this category
+            </div>
+        </div>
+   ', ENT_QUOTES).'" 
+   data-bs-html="true"
+   data-bs-trigger="hover focus">
+   <i class="'.$SMTQ['catimage'].' fa-2x category-icon" title="'.htmlspecialchars($SMTQ['catname']).'"></i>
+</a>
+
+
+
                 </td>
                 <td>
                     <a href="'.$SEOLink.'">'.htmlspecialchars_uni($SMTQ['name']).'</a>
@@ -296,13 +318,13 @@ if ($query_result && $db->num_rows($query_result) > 0)
 
 	
 
-if (empty($torrent["tags"])) 
+if (empty($Torrent["tags"])) 
 {
     $keywords = 'No Keywords Specified.';
 } 
 else 
 {
-    $tags = explode(",", $torrent['tags']);
+    $tags = explode(",", $Torrent['tags']);
     $keywords = "";
     foreach ($tags as $tag) 
 	{
@@ -352,28 +374,6 @@ else
 
 
 
-$isfree = ($torrent['free'] == 'yes' ? '<a href="#" data-toggle="tooltip" data-placement="top" title="'.$lang->browse['freedownload'].'"><span class="badge bg-success">F</span></a>' : '');
-$issilver = ($torrent['silver'] == 'yes' ? '
-
-<a href="#" data-toggle="tooltip" data-placement="top" title="'.$lang->browse['silverdownload'].'">
-<span class="badge bg-secondary">S</span></a>
-
-
-
-' : '');
-
-
-
-$isdoubleupload = ($torrent['doubleupload'] == 'yes' ? '
-
-
-<a href="#" data-toggle="tooltip" data-placement="top" title="'.$lang->browse['dupload'].'">
-<span class="badge bg-dark">x2</span></a>
-
-
-
-
-' : '');
 
 
 
@@ -384,11 +384,10 @@ $isdoubleupload = ($torrent['doubleupload'] == 'yes' ? '
 
 
 
+$HEAD = sprintf($lang->details['detailsfor'], $Torrent['name']);
+stdhead($HEAD);
 
-$HEAD = sprintf($lang->details['detailsfor'], $torrent['name']);
-stdhead($HEAD, true, 'supernote','INDETAILS', '');
-
-
+require_once INC_PATH . '/functions_bookmark.php';
 
 
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css">';
@@ -397,13 +396,17 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
 
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>';
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/details_modal.js"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_torrent.js"></script>';
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/tooltip.js"></script>';
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/popover.js"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/delete_torrent.js"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/advanced_torrent.js"></script>';
 
 
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/report.js"></script>';
+
+require_once INC_PATH . '/modals.php';
 
 require_once 'details_edit.php';
 
@@ -421,7 +424,7 @@ if ($hitrun == 'yes')
 	$ratio = ($CURUSER['downloaded'] > 0 ? $CURUSER['uploaded'] / $CURUSER['downloaded'] : 0);
 	$percentage = $ratio * 100;
 	
-	if ($torrent['free'] != 'yes' AND $usergroups['isvipgroup'] != 'yes' AND $ratio <= ($hitrun_ratio + 0.4) AND $torrent['owner'] != $CURUSER['id'] AND !$is_mod AND $CURUSER['downloaded'] <> 0)
+	if ($Torrent['free'] != 'yes' AND $usergroups['isvipgroup'] != 'yes' AND $ratio <= ($hitrun_ratio + 0.4) AND $Torrent['owner'] != $CURUSER['id'] AND !$is_mod AND $CURUSER['downloaded'] <> 0)
 	{
 		
 		$warning_message = '<div class="container mt-3">
@@ -441,8 +444,8 @@ if (isset($warning_message))
 
 
 
-$sratio = $torrent['leechers'] > 0 ? $torrent['seeders'] / $torrent['leechers'] : 1;
-$lratio = $torrent['seeders'] > 0 ? $torrent['leechers'] / $torrent['seeders'] : 1;
+$sratio = $Torrent['leechers'] > 0 ? $Torrent['seeders'] / $Torrent['leechers'] : 1;
+$lratio = $Torrent['seeders'] > 0 ? $Torrent['leechers'] / $Torrent['seeders'] : 1;
 
 
 
@@ -582,7 +585,7 @@ $allrows = [];
 
 $query = "
     SELECT 
-        c.id, c.torrent AS torrentid, c.text, c.user, c.editreason, c.dateline, c.editedby, c.editedat, c.totalvotes, 
+        c.id, c.torrent AS torrentid, c.text, c.user, c.editreason, c.dateline, c.editedby, c.editedat, 
         uu.username AS editedbyuname, gg.namestyle AS editbynamestyle, 
         u.added AS registered, u.enabled, u.lastactive, u.lastvisit, u.invisible, u.warned, u.leechwarn, u.username, u.usertitle, 
 		u.usergroup, u.displaygroup, u.postnum, u.threadnum, u.added, u.comms,u.donor, u.uploaded, u.downloaded, 
@@ -637,7 +640,7 @@ $showcommenttable .= '<div class="container mt-3">'.$multipage.'</div>'.commentt
 
 $rowspan = 9;
 $reseed = '';
-if ($torrent['seeders'] == 0 && $torrent['ts_external'] == 'no')
+if ($Torrent['seeders'] == 0 && $Torrent['ts_external'] == 'no')
 {
 	$reseed = '
 	<tr>
@@ -668,9 +671,9 @@ if (isset($_GET['cerror']))
 	}
 }
 
-if ($torrent['ts_external'] == 'yes')
+if ($Torrent['ts_external'] == 'yes')
 {
-	$peerstable = sprintf($lang->details['peers3'], ts_nf($torrent['seeders']), ts_nf($torrent['leechers']), (ts_nf($torrent['seeders'] + $torrent['leechers']))).($torrent['seeders'] == 0 && $torrent['ts_external'] == 'no' ? '<br />'.sprintf($lang->details['askreseed2'],$id) : '');
+	$peerstable = sprintf($lang->details['peers3'], ts_nf($Torrent['seeders']), ts_nf($Torrent['leechers']), (ts_nf($Torrent['seeders'] + $Torrent['leechers']))).($Torrent['seeders'] == 0 && $Torrent['ts_external'] == 'no' ? '<br />'.sprintf($lang->details['askreseed2'],$id) : '');
 }
 else
 {
@@ -748,8 +751,8 @@ if ($subres && $db->num_rows($subres) > 0)
 	usort($downloaders, "leech_sort");
 
 	// И исправьте вызовы функций:
-$peerstable = dltable($lang->details['seeders2'], $seeders, $torrent, true); // true - это сиды
-$peerstable .= dltable($lang->details['leechers2'], $downloaders, $torrent, false); // false - это личи
+$peerstable = dltable($lang->details['seeders2'], $seeders, $Torrent, true); // true - это сиды
+$peerstable .= dltable($lang->details['leechers2'], $downloaders, $Torrent, false); // false - это личи
 }
 
 
@@ -809,13 +812,13 @@ $showcommenttable .= '
 
 
 
-if($torrent['anonymous'] == 'yes' AND $torrent['owner'] != $CURUSER['id'] AND !$is_mod)
+if($Torrent['anonymous'] == 'yes' AND $Torrent['owner'] != $CURUSER['id'] AND !$is_mod)
 {
 	$username = '<i class="bi bi-eye-slash display-6 opacity-50 mb-2 d-block"></i>';                            
 }
 else
 {
-	$username = '<a href="'.get_profile_link($torrent['owner']).'">'.format_name($torrent2['username'], $torrent2['usergroup']).'</a>' . get_user_icons ($torrent2) .'';
+	$username = '<a href="'.get_profile_link($Torrent['owner']).'">'.format_name($torrent2['username'], $torrent2['usergroup']).'</a>' . get_user_icons ($torrent2) .'';
 }
 
 
@@ -827,11 +830,11 @@ else
 
 $ShowTLINK = '';
 
-if (!empty($torrent['t_link'])) 
+if (!empty($Torrent['t_link'])) 
 {
     require_once INC_PATH . '/functions_imdb_rating.php';
 
-    $html = $torrent['t_link']; // исходный HTML блока
+    $html = $Torrent['t_link']; // исходный HTML блока
     $hasHtml = (strpos($html, '<') !== false && strpos($html, '>') !== false);
 
     // 1) Пытаемся вытащить IMDb URL из блока
@@ -869,7 +872,7 @@ if (!empty($torrent['t_link']))
     }
 
     // 5) Возвращаем собранное
-    $torrent['t_link'] = $html;
+    $Torrent['t_link'] = $html;
 
     // $refresh только для модераторов (если нужно в шаблоне)
     $refresh = !empty($is_mod) ? ($lang->global['refresh'] ?? '') : '';
@@ -924,7 +927,7 @@ $show_manage .= '
            data-bs-toggle="modal" 
            data-bs-target="#deleteTorrentModal"
            data-torrent-id="'.$id.'" 
-           data-torrent-name="'.htmlspecialchars_uni($torrent['name']).'">
+           data-torrent-name="'.htmlspecialchars_uni($Torrent['name']).'">
             <i class="bi bi-trash3 me-2"></i>
             <span>Delete</span>
         </a>
@@ -952,7 +955,7 @@ $show_manage .= '
  <i class="fa-solid fa-person-running fa-xl" style="color: #161718;" alt="Hit & Run" title="Hit & Run"></i></a>
 	 
   
-  <a href="'.$BASEURL.'/comment.php?tid='.$id.'&action='.($torrent['allowcomments'] != 'yes' ? 'open' : 'close').'"  onmouseout="window.status=\'\'; return true;" onMouseOver="window.status=\''.($torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']).'\'; return true;">'.($torrent['allowcomments'] != 'yes' ? 
+  <a href="'.$BASEURL.'/comment.php?tid='.$id.'&action='.($Torrent['allowcomments'] != 'yes' ? 'open' : 'close').'"  onmouseout="window.status=\'\'; return true;" onMouseOver="window.status=\''.($Torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']).'\'; return true;">'.($Torrent['allowcomments'] != 'yes' ? 
   
   '<i class="fa-solid fa-comment-slash fa-xl" style="color: #e91b0c;" alt="'.$lang->details['open'].'" title="'.$lang->details['open'].'"></i>' : 
   
@@ -995,12 +998,12 @@ if (is_file(TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent") && ($Data = fil
 {
     
 	
-	$torrentPath = TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent";
+	$TorrentPath = TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent";
     
     // Загружаем торрент
-    $torrentObj = TorrentFile::load($torrentPath);
+    $TorrentObj = TorrentFile::load($TorrentPath);
 
-    $files = $torrentObj->v1()->getFiles();
+    $files = $TorrentObj->v1()->getFiles();
 	
 
     // Step 1: Build folder structure
@@ -1145,7 +1148,7 @@ foreach ($files as $file)
 
 
 // Descr
-$parsedDescr = $parser->parse_message($torrent['descr'], $parser_options);
+$parsedDescr = $parser->parse_message($Torrent['descr'], $parser_options);
 $descr = $parsedDescr;
 
 
@@ -1217,14 +1220,14 @@ $screensHtml .= '</div>';
 $modal_images = ''; // инициализация
 $images = [];
 
-if (!empty($torrent['t_image'])) 
+if (!empty($Torrent['t_image'])) 
 {
-    $images[] = $torrent['t_image'];
+    $images[] = $Torrent['t_image'];
 }
 
-if (!empty($torrent['t_image2'])) 
+if (!empty($Torrent['t_image2'])) 
 {
-    $images[] = $torrent['t_image2'];
+    $images[] = $Torrent['t_image2'];
 }
 
 foreach ($images as $img) 
@@ -1234,11 +1237,11 @@ foreach ($images as $img)
        data-bs-toggle="modal"
        data-bs-target="#universalImageModal"
        data-img-src="' . htmlspecialchars_uni($img) . '"
-       data-title="' . htmlspecialchars_uni($torrent['name']) . '">
+       data-title="' . htmlspecialchars_uni($Torrent['name']) . '">
         <img src="' . htmlspecialchars_uni($img) . '"
              class="rounded"
              width="400"
-             alt="' . htmlspecialchars_uni($torrent['name']) . '">
+             alt="' . htmlspecialchars_uni($Torrent['name']) . '">
     </a>
     ';
 }
@@ -1326,6 +1329,13 @@ if (!empty($screenshots))
 
 
 
+$act = "<span id=\"bookmark" . $Torrent['id'] . "\">" . 
+            get_torrent_bookmark_state($CURUSER['id'], (int)$Torrent['id']) . 
+       "</span>"; 
+			   
+
+
+
 
 
 $details = '
@@ -1347,7 +1357,7 @@ $details = '
                 </a>
             </li>
             <li class="breadcrumb-item active text-truncate" style="max-width: 300px;" aria-current="page">
-                '.htmlspecialchars_uni(mb_substr($torrent['name'], 0, 50)).'...
+                '.htmlspecialchars_uni(mb_substr($Torrent['name'], 0, 50)).'...
             </li>
         </ol>
     </nav>
@@ -1357,18 +1367,20 @@ $details = '
         <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
             <div class="flex-grow-1">
                 <h1 class="h3 mb-3 fw-bold text-dark animate__animated animate__fadeInDown">
-                    <span class="status-badges me-2">'.$isfree.$issilver.$isdoubleupload.'</span>
-                    '.htmlspecialchars_uni($torrent['name']).'
+                    <span class="status-badges me-2">'.GetTorrentTags($Torrent).'</span>
+                    '.htmlspecialchars_uni($Torrent['name']).'
                 </h1>
                 <div class="d-flex flex-wrap gap-2 align-items-center">
                     <span class="badge bg-light text-dark border shadow-sm">
                         <i class="bi bi-hash me-1"></i>ID: '.$id.'
                     </span>
-                    <span class="badge bg-'.getHealthColor($torrent['seeders'], $torrent['leechers']).' shadow-sm">
-                        <i class="bi bi-activity me-1"></i>Health: '.getHealthPercentage($torrent['seeders'], $torrent['leechers']).'%
+                    <span class="badge bg-'.getHealthColor($Torrent['seeders'], $Torrent['leechers']).' shadow-sm">
+                        <i class="bi bi-activity me-1"></i>Health: '.getHealthPercentage($Torrent['seeders'], $Torrent['leechers']).'%
                     </span>
+					 '.$act.'
                 </div>
             </div>
+			
             <div class="flex-shrink-0 ms-3">
                 
             </div>
@@ -1400,7 +1412,20 @@ $details = '
                             <li><a class="dropdown-item" href=""><i class="bi bi-magnet me-2"></i>Magnet Link</a></li>
                             <li><a class="dropdown-item" href="#"><i class="bi bi-share me-2"></i>Share</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="#reportModal" data-bs-toggle="modal"><i class="bi bi-flag me-2"></i>Report</a></li>
+                            
+							<li>
+    <a class="dropdown-item report-btn" 
+       href="#reportModal" 
+       data-bs-toggle="modal"
+       data-report-type="torrent"
+       data-report-id="'.$id.'"
+       data-report-userid="'.$Torrent['owner'].'"
+       data-report-name="'.htmlspecialchars($Torrent['name'] ?? 'Torrent').'">
+        <i class="bi bi-flag me-2"></i>Report Torrent
+    </a>
+</li>
+							
+							
                         </ul>
                     </div>
                 </div>
@@ -1419,28 +1444,28 @@ $details = '
                     <div class="col-md-4">
                         <div class="d-flex justify-content-between mb-2">
                             
-                            <span class="small fw-bold text-success">'.ts_nf($torrent['seeders']).'</span>
+                            <span class="small fw-bold text-success">'.ts_nf($Torrent['seeders']).'</span>
                         </div>
                         <div class="progress rounded-pill" style="height: 8px;">
-                            <div class="progress-bar bg-success rounded-pill" style="width: '.getSeederPercentage($torrent['seeders'], $torrent['leechers']).'%"></div>
+                            <div class="progress-bar bg-success rounded-pill" style="width: '.getSeederPercentage($Torrent['seeders'], $Torrent['leechers']).'%"></div>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="d-flex justify-content-between mb-2">
                             
-                            <span class="small fw-bold text-warning">'.ts_nf($torrent['leechers']).'</span>
+                            <span class="small fw-bold text-warning">'.ts_nf($Torrent['leechers']).'</span>
                         </div>
                         <div class="progress rounded-pill" style="height: 8px;">
-                            <div class="progress-bar bg-warning rounded-pill" style="width: '.getLeecherPercentage($torrent['seeders'], $torrent['leechers']).'%"></div>
+                            <div class="progress-bar bg-warning rounded-pill" style="width: '.getLeecherPercentage($Torrent['seeders'], $Torrent['leechers']).'%"></div>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="d-flex justify-content-between mb-2">
                             <span class="small text-muted">Snatched</span>
-                            <span class="small fw-bold text-info">'.ts_nf($torrent['times_completed']).'</span>
+                            <span class="small fw-bold text-info">'.ts_nf($Torrent['times_completed']).'</span>
                         </div>
                         <div class="progress rounded-pill" style="height: 8px;">
-                            <div class="progress-bar bg-info rounded-pill" style="width: '.min(100, $torrent['times_completed']).'%"></div>
+                            <div class="progress-bar bg-info rounded-pill" style="width: '.min(100, $Torrent['times_completed']).'%"></div>
                         </div>
                     </div>
                 </div>
@@ -1462,12 +1487,12 @@ $details = '
 				
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold" id="files-tab" data-bs-toggle="tab" data-bs-target="#files" type="button" role="tab">
-                        <i class="bi bi-folder me-2"></i>Files ('.ts_nf($torrent['numfiles']).')
+                        <i class="bi bi-folder me-2"></i>Files ('.ts_nf($Torrent['numfiles']).')
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold" id="peers-tab" data-bs-toggle="tab" data-bs-target="#peers" type="button" role="tab">
-                        <i class="bi bi-people me-2"></i>Peers ('.ts_nf($torrent['seeders'] + $torrent['leechers']).')
+                        <i class="bi bi-people me-2"></i>Peers ('.ts_nf($Torrent['seeders'] + $Torrent['leechers']).')
                     </button>
                 </li>
             </ul>
@@ -1483,8 +1508,8 @@ $details = '
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
                                     <span class="text-muted"><i class="bi bi-calendar me-1"></i>Uploaded</span>                                   
 									<span class="fw-bold">
-                                        '.my_datee($dateformat, $torrent['added']).'
-                                        <small class="text-muted ms-2">'.my_datee($timeformat, $torrent['added']).'</small>
+                                        '.my_datee($dateformat, $Torrent['added']).'
+                                        <small class="text-muted ms-2">'.my_datee($timeformat, $Torrent['added']).'</small>
                                     </span>									
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
@@ -1493,11 +1518,11 @@ $details = '
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
                                     <span class="text-muted"><i class="bi bi-hdd me-1"></i>Size</span>
-                                    <span class="fw-bold">'.mksize($torrent['size']).'</span>
+                                    <span class="fw-bold">'.mksize($Torrent['size']).'</span>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
                                     <span class="text-muted"><i class="bi bi-hash me-1"></i>Hash</span>
-                                    <span class="font-monospace small">'.($torrent['info_hash'] ?? 'N/A').'</span>
+                                    <span class="font-monospace small">'.($Torrent['info_hash'] ?? 'N/A').'</span>
                                 </div>
                             </div>
                         </div>
@@ -1507,15 +1532,15 @@ $details = '
 								 <div class="info-item d-flex justify-content-between border-bottom py-3">
                                     <span class="text-muted"><i class="bi bi-download me-1"></i>Snatched</span>
                                     <span class="badge bg-light text-dark">
-									<a href="viewsnatches.php?id='.$id.'">'.ts_nf($torrent['times_completed']).'</span></a>
+									<a href="viewsnatches.php?id='.$id.'">'.ts_nf($Torrent['times_completed']).'</span></a>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
                                     <span class="text-muted"><i class="bi bi-eye me-1"></i>Views</span>
-                                    <span class="badge bg-light text-dark">'.ts_nf($torrent['hits']).'</span>
+                                    <span class="badge bg-light text-dark">'.ts_nf($Torrent['hits']).'</span>
                                 </div>
                                 <div class="info-item d-flex justify-content-between border-bottom py-3">
                                     <span class="text-muted"><i class="bi bi-chat me-1"></i>Comments</span>
-                                    <span class="badge bg-light text-dark">'.ts_nf($torrent['comments']).'</span>
+                                    <span class="badge bg-light text-dark">'.ts_nf($Torrent['comments']).'</span>
                                 </div>
 								
 								
@@ -1604,116 +1629,52 @@ $details = '
 
 
 
-
-
 echo '
 
+<style>
+/* Анимации для модалки */
+.modal-content {
+    animation: modalSlideIn 0.3s ease-out;
+}
 
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
 
-<!-- Modal for Delete Confirmation -->
-<div class="modal fade" id="deleteTorrentModal" tabindex="-1" aria-labelledby="deleteTorrentModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <!-- Header -->
-            <div class="modal-header bg-danger text-white">
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
-                    <h5 class="modal-title fw-bold" id="deleteTorrentModalLabel">Delete Torrent</h5>
-                </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            
-            <!-- Body -->
-            <div class="modal-body py-4">
-                <div class="text-center mb-3">
-                    <div class="bg-danger bg-opacity-10 rounded-circle d-inline-flex p-3 mb-3">
-                        <i class="bi bi-trash3-fill text-danger fs-2"></i>
-                    </div>
-                    <h6 class="fw-bold text-danger mb-2">Are you sure you want to delete this torrent?</h6>
-                    <p class="text-muted mb-3" id="torrentNamePreview">Torrent name will appear here</p>
-                    
-                    <!-- Warning Box -->
-                    <div class="alert alert-warning border-0 bg-warning bg-opacity-10 small">
-                        <div class="d-flex align-items-start">
-                            <i class="bi bi-exclamation-circle me-2 mt-1 text-warning"></i>
-                            <div>
-                                <strong>Warning:</strong> This action cannot be undone. All torrent data, 
-                                including files and statistics, will be permanently removed.
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Confirmation Checkbox -->
-                    <div class="form-check text-start mt-3">
-                        <input class="form-check-input" type="checkbox" id="confirmDelete">
-                        <label class="form-check-label small text-muted" for="confirmDelete">
-                            I understand this action is permanent and cannot be reversed
-                        </label>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Footer -->
-            <div class="modal-footer border-0 pt-0">
-                <button type="button" class="btn btn-outline-secondary btn-sm px-4" data-bs-dismiss="modal">
-                    <i class="bi bi-x-circle me-1"></i>Cancel
-                </button>
-                <button type="button" class="btn btn-danger btn-sm px-4" id="confirmDeleteBtn" disabled>
-                    <i class="bi bi-trash3 me-1"></i>Delete Torrent
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+/* Стили для формы */
+.form-select, .form-control {
+    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+    transition: all 0.3s ease;
+}
 
-';
+.form-select:focus, .form-control:focus {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
+}
 
+/* Градиент для заголовка */
+.bg-gradient {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
 
+/* Анимация кнопки отправки */
+#submitReport {
+    transition: all 0.3s ease;
+}
 
-
-
-
-echo '
-
-
-
-
-<!-- Universal Image Preview Modal -->
-<div class="modal fade" id="universalImageModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title d-flex align-items-center gap-2" id="universalImageModalTitle">
-                    <i class="bi bi-image text-primary"></i> Image Preview
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center bg-light p-0">
-                <div style="position: relative; height: 70vh; overflow: hidden;">
-                    <img src="" id="universalImagePreview" class="img-fluid"
-                         style="max-height: 100%; max-width: 100%; object-fit: contain;">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <div class="d-flex justify-content-between w-100">
-                    <div class="text-start">
-                        <span class="text-muted fw-medium" id="universalImageDimensions"></span>
-                        <span class="text-muted mx-2">•</span>
-                        <span class="text-muted fw-medium" id="universalImageSize"></span>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-outline-secondary" id="universalFullscreenBtn">
-                            <i class="bi bi-arrows-angle-expand me-1"></i> Fullscreen
-                        </button>
-                        <a href="#" class="btn btn-primary" id="universalDownloadBtn" download>
-                            <i class="bi bi-download me-1"></i> Download
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+#submitReport:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+</style>
 
 
 
@@ -1725,6 +1686,7 @@ echo '
 	l_refresh = "'.$lang->global['refresh'].'";
 </script>
 <script type="text/javascript" src="'.$BASEURL.'/scripts/quick_imdb.js"></script>' : '');
+
 
 
 

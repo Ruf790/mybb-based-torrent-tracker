@@ -216,20 +216,7 @@ if($mybb->request_method == "post")
 		}
 	}
 
-	// Should we have a CAPTCHA? Perhaps yes, but only for guests like in other pages...
-	if($mybb->settings['captchaimage'] && !$CURUSER['id'])
-	{
-		$captcha = new captcha;
-
-		if($captcha->validate_captcha() == false)
-		{
-			// CAPTCHA validation failed
-			foreach($captcha->get_errors() as $error)
-			{
-				$errors[] = $error;
-			}
-		}
-	}
+	
 	
 	$stopforumspam_on_contact = "0";
 

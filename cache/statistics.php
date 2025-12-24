@@ -6,14 +6,7 @@
 */
 
 $statistics = array (
-  'time' => 1765619822,
-  'top_referrer' => 
-  array (
-  ),
-  'top_poster' => 
-  array (
-  ),
-  'posters' => '29',
+
 );
 
 ?>

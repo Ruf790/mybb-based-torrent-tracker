@@ -12,9 +12,7 @@ define("IN_MYBB", 1);
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/datahandler.php';
 
-function show_image($text, $size = 300) {
-    return 'onmouseover="ddrivetip(\'' . $text . '\', ' . $size . ')" onmouseout="hideddrivetip()"';
-}
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
@@ -90,11 +88,7 @@ $multipage = multipage($count, $perpage, $page, $page_url);
 stdhead('Announce Actions');
 ?>
 
-<script>
-$(document).ready(function(){
-    $('[data-toggle="tooltip"]').tooltip();
-});
-</script>
+
 
 <div class="container mt-3">
     <div class="row justify-content-center">
@@ -136,18 +130,51 @@ $(document).ready(function(){
                                 <tbody>
                                     <?php
                                     $res = $db->sql_query('SELECT c.*, u.id as userid, u.username, u.usergroup, u.uploaded, u.enabled, 
-                                        u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment, t.name 
+                                        u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment, t.name, t.added 
                                         FROM announce_actions c 
                                         LEFT JOIN users u ON (c.userid=u.id) 
                                         LEFT JOIN ts_u_perm p ON (u.id=p.userid) 
                                         LEFT JOIN torrents t ON (c.torrentid=t.id) 
                                         ORDER BY c.actiontime DESC LIMIT '.$start.', ' . $perpage);
                                     
-                                    while ($arr = mysqli_fetch_assoc($res)) {
+                                    while ($arr = $db->fetch_array($res)) {
                                         $mb = '';
                                         if (preg_match('#There was no Leecher on this torrent however this user uploaded (.*) bytes, which might be a cheat attempt with a cheat software such as Ratio Maker, Ratio Faker etc..#U', $arr['actionmessage'], $results)) {
                                             $mb = ' (' . mksize($results[1]) . ') ';
                                         }
+										
+                                        $username = htmlspecialchars_uni($arr['username'] ?? '');
+                                        $formatted_name = format_name($username, $arr['usergroup'] ?? 0, $arr['displaygroup'] ?? 0);
+                                        $profile_link = $BASEURL . '/' . get_profile_link($arr['userid'] ?? 0);
+    
+                                        $torrent_name = htmlspecialchars_uni($arr['name'] ?? 'Unknown Torrent');
+                                        $short_name = htmlspecialchars_uni(cutename($arr['name'] ?? 'Unknown', 5));
+                                        $torrent_link = $BASEURL . '/' . get_torrent_link($arr['torrent'] ?? 0);
+    
+                                        // Safe date for popover
+                                        $torrent_added = my_datee($timeformat, (int)$arr['added']);
+
+
+
+                                        $popover_title = htmlspecialchars('📁 ' . cutename($arr['name'] ?? 'Unknown', 20), ENT_QUOTES);
+                                        $popover_content = htmlspecialchars('
+                                            <div class="torrent-popover">
+                                               <div class="mb-2">
+                                                  <strong>📂 Full Name:</strong><br>
+                                                  <span class="text-break">' . $torrent_name . '</span>
+                                               </div>
+                                               <div class="d-flex justify-content-between align-items-center border-top pt-2 small text-muted">
+                                                 <span><i class="fas fa-user me-1"></i>' . $formatted_name . '</span>
+                                                 <span><i class="fas fa-clock me-1"></i>' . $torrent_added . '</span>
+                                               </div>
+                                            </div>', ENT_QUOTES);
+										
+										
+								
+										
+										
+										
+										
                                         ?>
                                         <tr>
                                             <td>
@@ -157,13 +184,26 @@ $(document).ready(function(){
                                                 <span class="user-icons"><?php echo get_user_icons($arr); ?></span>
                                             </td>
                                             <td>
-                                                <a href="<?php echo $BASEURL . '/' . get_torrent_link($arr['torrentid']); ?>" 
-                                                   data-toggle="tooltip" 
-                                                   data-placement="top" 
-                                                   title="<?php echo htmlspecialchars_uni($arr['name']); ?>"
-                                                   class="badge bg-info text-decoration-none">
-                                                   #<?php echo intval($arr['torrentid']); ?>
-                                                </a>
+                                                
+												
+												
+												
+												<a href="<?php echo $BASEURL . '/' . get_torrent_link($arr['torrentid']); ?>" 
+   class="text-decoration-none torrent-link" 
+   data-bs-toggle="popover" 
+   data-bs-placement="top"
+   data-bs-title="<?php echo $popover_title; ?>"
+   data-bs-content="<?php echo $popover_content; ?>"
+   data-bs-html="true">
+    <?php echo $short_name; ?>
+</a>
+												
+												
+												
+												
+												
+												
+												
                                             </td>
                                             <td><span><?php echo htmlspecialchars_uni($arr['ip']); ?></span></td>
                                             <td><span><?php echo htmlspecialchars_uni($arr['passkey']); ?></span></td>
@@ -239,6 +279,48 @@ function checkAll(type) {
     }
 }
 </script>
+
+
+
+<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/popover.js"></script>
+
+
+
+
+
+
+
+<style>
+.torrent-popover {
+    max-width: 320px;
+    font-size: 0.875rem;
+}
+.torrent-popover strong {
+    color: #495057;
+}
+.popover {
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+.popover-header {
+    background: var(--bs-primary);
+    color: white;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    font-weight: 600;
+}
+.popover-body {
+    padding: 12px 16px;
+}
+.text-break {
+    word-break: break-word;
+}
+.bs-popover-top > .popover-arrow::after {
+    border-top-color: var(--bs-primary);
+}
+</style>
+
 
 <?php
 stdfoot();

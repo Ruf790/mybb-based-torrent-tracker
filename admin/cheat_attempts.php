@@ -12,9 +12,7 @@ define("IN_MYBB", 1);
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/datahandler.php';
 
-function show_image($text, $size = 300) {
-    return 'onmouseover="ddrivetip(\'' . $text . '\', ' . $size . ')" onmouseout="hideddrivetip()"';
-}
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
@@ -118,11 +116,7 @@ stdhead('Cheat Attempts');
                         </div>
                     </div>
 
-                    <script>
-                    $(document).ready(function(){
-                        $('[data-toggle="tooltip"]').tooltip();   
-                    });
-                    </script>
+                    
 
                     <form method="post" action="">
                         <input type="hidden" name="do" value="apply">
@@ -146,7 +140,8 @@ stdhead('Cheat Attempts');
                                 </thead>
                                 <tbody>
                                     <?php
-                                    $res = $db->sql_query('SELECT c.*, u.id as userid, u.username, u.usergroup, u.uploaded, u.enabled, u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment, t.name 
+                                    $res = $db->sql_query('SELECT c.*, u.id as userid, u.username, u.usergroup, u.uploaded, u.enabled, u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, 
+									    p.cancomment, t.name, t.added 
                                         FROM cheat_attempts c 
                                         LEFT JOIN users u ON (c.uid=u.id) 
                                         LEFT JOIN ts_u_perm p ON (u.id=p.userid) 
@@ -155,8 +150,42 @@ stdhead('Cheat Attempts');
                                     
                                     require_once INC_PATH . '/functions_mkprettytime.php';
                                     
-                                    while ($arr = mysqli_fetch_assoc($res)) {
-                                        $uppd = mksize($arr['upthis']);
+                                    while ($arr = mysqli_fetch_assoc($res)) 
+									{
+                                        
+										
+										
+										
+										
+										
+										
+    $formatted_name = format_name($arr['username'], $arr['usergroup']);
+    $torrent_name = htmlspecialchars_uni($arr['name'] ?? 'Unknown Torrent');
+    // Safe date for popover
+    $torrent_added = my_datee($timeformat, (int)$arr['added']);
+	$torrent_added = my_datee($dateformat, (int)$arr['added']);
+
+
+    
+    $popover_title = htmlspecialchars('📁 ' . cutename($arr['name'] ?? 'Unknown', 20), ENT_QUOTES);
+    $popover_content = htmlspecialchars('
+        <div class="torrent-popover">
+            <div class="mb-2">
+                <strong>📂 Full Name:</strong><br>
+                <span class="text-break">' . $torrent_name . '</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center border-top pt-2 small text-muted">
+                <span><i class="fas fa-user me-1"></i>' . $formatted_name . '</span>
+                <span><i class="fas fa-clock me-1"></i>' . $torrent_added . '</span>
+            </div>
+        </div>
+    ', ENT_QUOTES);
+										
+										
+										
+										
+										
+										$uppd = mksize($arr['upthis']);
                                         echo '
                                         <tr>
                                             <td>
@@ -170,13 +199,17 @@ stdhead('Cheat Attempts');
                                                 <div class="text-muted smaller">' . my_datee($timeformat, $arr['added']) . '</div>
                                             </td>
                                             <td>
-                                                <a href="' . $BASEURL . '/' . get_torrent_link($arr['torrentid']) . '" 
-                                                   data-toggle="tooltip" 
-                                                   data-placement="top" 
-                                                   title="' . htmlspecialchars_uni($arr['name']) . '"
-                                                   class="badge bg-info text-decoration-none">
-                                                   #' . intval($arr['torrentid']) . '
-                                                </a>
+
+												<a href="' . $BASEURL . '/' . get_torrent_link($arr['torrentid']) . '"  
+                                                  data-bs-toggle="popover" 
+                                                  data-bs-placement="top"
+                                                  data-bs-title="'.$popover_title.'"
+                                                  data-bs-content="'.$popover_content.'"
+                                                  class="badge bg-info text-decoration-none"
+                                                  data-bs-html="true">
+                                                  #' . intval($arr['torrentid']) . '
+                                                </a>	
+												
                                             </td>
                                             <td><span class="font-monospace small">' . htmlspecialchars_uni($arr['agent']) . '</span></td>
                                             <td><span class="badge bg-warning text-dark">' . mksize($arr['transfer_rate']) . '/s</span></td>
@@ -248,6 +281,10 @@ stdhead('Cheat Attempts');
     </div>
 </div>
 
+<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/popover.js"></script>
+
+
+
 <script>
 function checkAll(type) {
     // Используем querySelectorAll, чтобы работать с именами с квадратными скобками
@@ -257,6 +294,38 @@ function checkAll(type) {
     });
 }
 </script>
+
+
+<style>
+.torrent-popover {
+    max-width: 320px;
+    font-size: 0.875rem;
+}
+.torrent-popover strong {
+    color: #495057;
+}
+.popover {
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+.popover-header {
+    background: var(--bs-primary);
+    color: white;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    font-weight: 600;
+}
+.popover-body {
+    padding: 12px 16px;
+}
+.text-break {
+    word-break: break-word;
+}
+.bs-popover-top > .popover-arrow::after {
+    border-top-color: var(--bs-primary);
+}
+</style>
 
 <?php
 stdfoot();

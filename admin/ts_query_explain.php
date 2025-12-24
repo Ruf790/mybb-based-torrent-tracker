@@ -1,15 +1,9 @@
 <?php
 
-
 declare(strict_types=1);
 
-
-
-
-
-
-
-function getFileIcon(string $filename): string {
+function getFileIcon(string $filename): string 
+{
     $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
     
     return match($extension) {
@@ -24,31 +18,22 @@ function getFileIcon(string $filename): string {
     };
 }
 
-
-function formatBytes(int $bytes, int $precision = 2): string {
+function formatBytes(int $bytes, int $precision = 2): string 
+{
     $units = ['B', 'KB', 'MB', 'GB', 'TB'];
     $bytes = max($bytes, 0);
     $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
     $pow = min($pow, count($units) - 1);
-    $bytes /= pow(1024, $pow);
+    $bytes /= (1024 ** $pow);
     
     return round($bytes, $precision) . ' ' . $units[$pow];
 }
 
-
-
-
-
-/**
- * Get server load information
- */
 function server_load(): string
 {
-    if (str_starts_with(strtolower(PHP_OS), 'win')) {
-        return get_windows_server_load();
-    }
-
-    return get_unix_server_load();
+    return str_starts_with(strtolower(PHP_OS), 'win') 
+        ? get_windows_server_load() 
+        : get_unix_server_load();
 }
 
 function get_windows_server_load(): string
@@ -90,9 +75,6 @@ function get_unix_server_load(): string
     return $loadValue > 0 ? (string)$loadValue : 'Unknown';
 }
 
-/**
- * Format execution time with badges
- */
 function calctime(float $time): string
 {
     $stat = round($time * 100, 3);
@@ -106,17 +88,11 @@ function calctime(float $time): string
     };
 }
 
-/**
- * Safe HTML specialchars wrapper
- */
 function hsafe(mixed $s): string
 {
     return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-/**
- * Check if SQL contains unquoted semicolons
- */
 function has_unquoted_semicolon(?string $sql): bool
 {
     if (empty($sql)) {
@@ -129,25 +105,21 @@ function has_unquoted_semicolon(?string $sql): bool
     for ($i = 0; $i < strlen($sql); $i++) {
         $ch = $sql[$i];
 
-        // Обработка экранирования в одинарных кавычках
         if ($inSingle) {
             if ($ch === "'") {
-                // Проверяем экранирование ''
                 if ($i + 1 < strlen($sql) && $sql[$i + 1] === "'") {
-                    $i++; // Пропускаем следующий символ
+                    $i++;
                     continue;
                 }
                 $inSingle = false;
             } elseif ($ch === "\\") {
-                $i++; // Пропускаем экранированный символ
+                $i++;
             }
             continue;
         }
 
-        // Обработка экранирования в двойных кавычках
         if ($inDouble) {
             if ($ch === '"') {
-                // Проверяем экранирование ""
                 if ($i + 1 < strlen($sql) && $sql[$i + 1] === '"') {
                     $i++;
                     continue;
@@ -159,7 +131,6 @@ function has_unquoted_semicolon(?string $sql): bool
             continue;
         }
 
-        // Начало строк в кавычках
         if ($ch === "'") {
             $inSingle = true;
             continue;
@@ -170,7 +141,6 @@ function has_unquoted_semicolon(?string $sql): bool
             continue;
         }
 
-        // Найден символ ; вне кавычек
         if ($ch === ';') {
             return true;
         }
@@ -179,19 +149,14 @@ function has_unquoted_semicolon(?string $sql): bool
     return false;
 }
 
-/**
- * Strip leading SQL comments
- */
 function sql_strip_leading_comments(string $sql): string
 {
     $result = ltrim($sql);
 
-    // Remove multiline comments
     while (preg_match('/^\/\*.*?\*\//s', $result, $matches)) {
         $result = ltrim(substr($result, strlen($matches[0])));
     }
 
-    // Remove single line comments
     while (preg_match('/^(?:--|#)[^\r\n]*(?:\r?\n|$)/', $result, $matches)) {
         $result = ltrim(substr($result, strlen($matches[0])));
     }
@@ -199,29 +164,17 @@ function sql_strip_leading_comments(string $sql): string
     return $result;
 }
 
-/**
- * Check if SQL is SELECT or WITH query
- */
 function sql_is_select(string $sql): bool
 {
     $lead = sql_strip_leading_comments($sql);
     return (bool) preg_match('/^\s*(SELECT|WITH)\b/i', $lead);
 }
 
-/**
- * Enhanced SQL formatting with syntax highlighting
- */
-/**
- * Clean SQL formatting without any highlighting
- */
 function format_sql_with_syntax(string $sql): string 
 {
     return hsafe($sql);
 }
 
-/**
- * Format EXPLAIN value with badges
- */
 function format_explain_value(string $column, mixed $value): string 
 {
     $value = hsafe($value);
@@ -241,9 +194,6 @@ function format_explain_value(string $column, mixed $value): string
     return $value;
 }
 
-/**
- * Get MySQL version
- */
 function get_mysql_version(): string 
 {
     global $db;
@@ -257,9 +207,6 @@ function get_mysql_version(): string
     return 'Unknown';
 }
 
-/**
- * Get PHP extensions status
- */
 function get_php_extensions_status(): string 
 {
     $importantExtensions = ['mysqli', 'pdo_mysql', 'json', 'mbstring', 'xml', 'curl'];
@@ -274,9 +221,6 @@ function get_php_extensions_status(): string
     return $extensionsHtml;
 }
 
-/**
- * Render enhanced statistics panel
- */
 function render_enhanced_stats(int $printed, int $skipped, float $queryTime, float $totalTime, string $memoryUsage, bool $deep): string 
 {
     $phpTime = $totalTime - $queryTime;
@@ -360,7 +304,7 @@ function render_enhanced_stats(int $printed, int $skipped, float $queryTime, flo
                                 </tr>
                                 <tr>
                                     <td><strong>GZip Compression:</strong></td>
-                                    <td>' . (($gzipcompress ?? '') === 'yes' ? '<span class="badge bg-success">Enabled</span>' : '<span class="badge bg-secondary">Disabled</span>') . '</td>
+                                    <td>' . (($GLOBALS['gzipcompress'] ?? '') === 'yes' ? '<span class="badge bg-success">Enabled</span>' : '<span class="badge bg-secondary">Disabled</span>') . '</td>
                                 </tr>
                             </table>
                         </div>
@@ -376,9 +320,6 @@ function render_enhanced_stats(int $printed, int $skipped, float $queryTime, flo
     </div>';
 }
 
-/**
- * Render performance summary
- */
 function render_performance_summary(array $stats): string 
 {
     $fastPercent = $stats['total_queries'] > 0 
@@ -426,9 +367,6 @@ function render_performance_summary(array $stats): string
     </div>';
 }
 
-/**
- * Render custom CSS styles
- */
 function render_custom_styles(): string 
 {
     return '
@@ -460,9 +398,6 @@ function render_custom_styles(): string
     </style>';
 }
 
-/**
- * Explain SQL query with optional deep analysis
- */
 function explain_query(string $sql, ?float $execTime = null, bool $deep = false, int $id = 1): string
 {
     global $db;
@@ -486,20 +421,16 @@ function explain_query(string $sql, ?float $execTime = null, bool $deep = false,
     $isSelect = sql_is_select($sqlClean);
     $queryType = get_query_type($sqlClean);
 
-    // Deep analysis only for SELECT queries
     if ($deep && $isSelect) {
         $deepResult = explain_deep_analysis($link, $sqlClean, $sql, $timeHtml, $id);
         if (!empty($deepResult)) {
             return $deepResult;
         }
-        // Fall through to regular EXPLAIN if deep analysis failed
     }
 
-    if ($isSelect) {
-        return explain_select_query($link, $sqlClean, $sql, $timeHtml, $id);
-    }
-
-    return explain_write_query($link, $sqlClean, $sql, $timeHtml, $id, $queryType);
+    return $isSelect 
+        ? explain_select_query($link, $sqlClean, $sql, $timeHtml, $id)
+        : explain_write_query($link, $sqlClean, $sql, $timeHtml, $id, $queryType);
 }
 
 function get_database_link(mixed $db): ?mysqli
@@ -533,7 +464,6 @@ function explain_deep_analysis(mysqli $link, string $sqlClean, string $sql, stri
 {
     @mysqli_query($link, "SET SESSION MAX_EXECUTION_TIME=3000");
     
-    // Add query hint for MySQL
     $sqlHint = preg_replace('/^\s*select\b/i', 'SELECT /*+ MAX_EXECUTION_TIME(3000) */', $sqlClean, 1);
     $result = @mysqli_query($link, "EXPLAIN ANALYZE $sqlHint");
 
@@ -634,7 +564,6 @@ function render_explain_table(int $id, string $sql, string $timeHtml, array $row
         $body .= '<tr>';
         foreach ($columns as $col) {
             $value = $row[$col] ?? '';
-            // Add special formatting for certain columns
             $formattedValue = format_explain_value($col, $value);
             $body .= '<td>' . $formattedValue . '</td>';
         }
@@ -725,9 +654,6 @@ function explain_write_query(mysqli $link, string $sqlClean, string $sql, string
         </div>';
 }
 
-/**
- * Format SQL with HTML highlighting
- */
 function splitsql(string $sql): string
 {
     $patterns = [
@@ -787,7 +713,6 @@ function process_queries(array $queries, bool $deep, float $totalTime, string $m
     $printed = 0;
     $skipped = 0;
     
-    // Collect performance data for analysis
     $performanceStats = [
         'fast' => 0,
         'medium' => 0,
@@ -802,12 +727,10 @@ function process_queries(array $queries, bool $deep, float $totalTime, string $m
             continue;
         }
 
-        // Update performance stats
         if ($execTime <= 0.01) $performanceStats['fast']++;
         elseif ($execTime <= 0.1) $performanceStats['medium']++;
         else $performanceStats['slow']++;
 
-        // Skip non-SELECT queries in deep mode
         if ($deep && !sql_is_select($query)) {
             $skipped++;
             continue;
@@ -830,10 +753,7 @@ function process_queries(array $queries, bool $deep, float $totalTime, string $m
         $printed++;
     }
 
-    // Add enhanced statistics
     $output .= render_enhanced_stats($printed, $skipped, $queryTime, $totalTime, $memoryUsage, $deep);
-    
-    // Add performance summary
     $output .= render_performance_summary($performanceStats);
 
     render_final_output($output, $printed, $skipped, $queryTime, $totalTime, $memoryUsage, $deep);
@@ -878,15 +798,7 @@ function render_final_output(string $output, int $printed, int $skipped, float $
         get_included_files()
     );
 
-  
-  
-
-
-
-
-
-
-$output .= '
+    $output .= '
 <div class="container mt-4">
     <div class="card">
         <div class="card-header bg-primary text-white py-3 position-relative">
@@ -901,11 +813,11 @@ $output .= '
         <div class="card-body p-0">
             <div class="list-group list-group-flush">';
 
-foreach ($includedFiles as $index => $file) {
-    $isCore = str_contains($file, 'core') || str_contains($file, 'config');
-    $fileType = pathinfo($file, PATHINFO_EXTENSION);
-    
-    $output .= '
+    foreach ($includedFiles as $index => $file) {
+        $isCore = str_contains($file, 'core') || str_contains($file, 'config');
+        $fileType = pathinfo($file, PATHINFO_EXTENSION);
+        
+        $output .= '
                 <div class="list-group-item d-flex align-items-center py-3 border-0 ' . ($index % 2 === 0 ? 'bg-light' : '') . '">
                     <div class="flex-shrink-0">
                         <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
@@ -927,32 +839,13 @@ foreach ($includedFiles as $index => $file) {
                         ' . (file_exists($file) ? '<small class="text-success">' . formatBytes(filesize($file)) . '</small>' : '') . '
                     </div>
                 </div>';
-}
+    }
 
-$output .= '
+    $output .= '
             </div>
         </div>
     </div>
 </div>';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	
 
     if ($deep && $skipped > 0) {
         $output .= '<div class="container mt-2"><div class="alert alert-info">Hidden non-SELECT queries: ' . $skipped . '</div></div>';

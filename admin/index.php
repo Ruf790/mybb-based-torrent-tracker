@@ -44,11 +44,8 @@
   $act = (isset ($_POST['act']) ? htmlspecialchars ($_POST['act']) : (isset ($_GET['act']) ? htmlspecialchars ($_GET['act']) : ''));
   $_this_script_ = htmlspecialchars ($_SERVER['SCRIPT_NAME']) . '?act=' . $act;
   $_this_script_no_act = htmlspecialchars ($_SERVER['SCRIPT_NAME']);
-  //check_pincode (2);
-  //define ('WYSIWYG_EDITOR', true);
-  //define ('USE_BB_CODE', true);
-  //define ('USE_SMILIES', true);
-  //require $thispath . 'wysiwyg/wysiwyg.php';
+  
+  
   if (strtoupper (substr (PHP_OS, 0, 3) == 'WIN'))
   {
     $eol = '

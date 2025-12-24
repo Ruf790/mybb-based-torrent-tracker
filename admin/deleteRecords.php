@@ -8,7 +8,6 @@ define ('SKIP_LOCATION_SAVE', true);
 define("IN_MYBB", 1);
 define("IN_ADMINCP", 1);
 
-
 require_once $rootpath . 'global.php';
 require_once $rootpath . '/include/datahandler.php';
 require_once $thispath . 'include/adminfunctions.php';

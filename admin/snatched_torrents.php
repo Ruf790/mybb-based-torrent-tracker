@@ -74,7 +74,7 @@ $count1 = number_format($count);
 $search_url = !empty($search_params) ? '&' . implode('&', $search_params) : '';
 
 
-
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/popover.js"></script>';
 
 
 
@@ -85,11 +85,7 @@ $search_url = !empty($search_params) ? '&' . implode('&', $search_params) : '';
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Инициализация тултипов Bootstrap
-    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
-        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
-    }
+    
     
     // Сортировка таблицы
     const sortableHeaders = document.querySelectorAll('.sortable');
@@ -311,7 +307,7 @@ function isNumeric(value) {
             }
             
             // Main query
-            $sql = "SELECT s.*, t.name, t.size, u.username as uname, u.id as uid, u.usergroup, u.avatar, u.avatardimensions, 
+            $sql = "SELECT s.*, t.name, t.size, t.added, u.username as uname, u.id as uid, u.usergroup, u.avatar, u.avatardimensions, 
                            u.donor, u.enabled, u.warned, u.leechwarn, p.canupload, p.candownload, p.cancomment
                     FROM snatched s 
                     LEFT JOIN torrents t ON (s.torrentid=t.id) 
@@ -375,6 +371,73 @@ function isNumeric(value) {
                                     // Получаем аватар пользователя
                                    $useravatar = format_avatar($row['avatar'], $row['avatardimensions']);
                                    $user_avatar = '<img class="nav-avatar" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' />';
+								   
+								   
+								   
+								   $torrent_name = htmlspecialchars_uni($row['name'] ?? '');
+                                   $short_name = cutename($torrent_name);
+                                   $torrent_link = $BASEURL . '/' . get_torrent_link($row['torrentid']);
+                                   $formatted_name = isset($row['uname']) ? htmlspecialchars($row['uname'], ENT_QUOTES) : 'Anonymous';
+                                   $torrent_added = isset($row['added']) ? date('Y-m-d H:i', $row['added']) : 'N/A';
+
+
+                                   $popover_title = '📁 ' . htmlspecialchars(cutename($torrent_name, 20), ENT_QUOTES);
+
+
+                                   $popover_content = htmlspecialchars('
+                                      <div class="torrent-popover">
+                                   <div class="mb-2">
+                                  <strong>📂 Full Name:</strong><br>
+                                  <span class="text-break small">' . $torrent_name . '</span>
+                                  </div>
+                                  <div class="d-flex justify-content-between align-items-center border-top pt-2 mt-2 small text-muted">
+                                  <span><i class="fas fa-user me-1"></i>' . $formatted_name . '</span>
+                                  <span><i class="fas fa-clock me-1"></i>' . $torrent_added . '</span>
+                                  </div>
+                                  </div>
+                                  ', ENT_QUOTES);
+								  
+								  
+								  
+								  
+								  $progress_title = "Download Progress";
+$progress_content = htmlspecialchars("
+    <div class='progress-popover'>
+        <strong>Current Progress:</strong><br>
+        <span class='badge " . ($progress == 100 ? 'bg-success' : 'bg-warning') . "'>$progress%</span>
+        <div class='mt-2 small text-muted'>
+            " . ($progress == 100 ? '✅ Download completed' : '🔄 Download in progress') . "
+        </div>
+    </div>
+", ENT_QUOTES);
+					
+
+
+		$completed_status = "Not completed"; // Это пример, замените на вашу переменную
+
+
+$badge_title = "Completion Status";
+$badge_content = htmlspecialchars('
+    <div class="completion-popover">
+        <div class="d-flex align-items-center mb-2">
+            <i class="fas fa-times text-danger me-2"></i>
+            <strong>Status:</strong>
+        </div>
+        <div class="small">
+            <span class="text-danger">❌ Not Completed</span>
+            <div class="mt-1 text-muted">
+                <i class="fas fa-info-circle me-1"></i>This torrent download is not finished yet.
+            </div>
+        </div>
+    </div>
+', ENT_QUOTES);			
+								  
+								  
+								  
+								  
+								  
+								  
+   
 
 
                                 ?>
@@ -397,14 +460,21 @@ function isNumeric(value) {
                                         </div>
                                     </td>
                                     <td>
-                                        <a href="<?php echo $BASEURL . '/' . get_torrent_link($row['torrentid']); ?>" 
-                                           class="text-decoration-none text-dark" 
-                                           data-bs-toggle="tooltip" 
-                                           data-bs-placement="top" 
-                                           title="<?php echo htmlspecialchars_uni($row['name']); ?>">
-                                            <i class="fas fa-magnet text-danger me-1"></i>
-                                            <?php echo cutename($row['name']); ?>
-                                        </a>
+                                        
+										
+								    <a href="<?php echo $torrent_link; ?>" 
+                                       class="text-decoration-none torrent-link" 
+                                       data-bs-toggle="popover" 
+                                       data-bs-placement="top"
+                                       data-bs-title="<?php echo $popover_title; ?>"
+                                       data-bs-content="<?php echo $popover_content; ?>"
+                                       data-bs-html="true">
+                                       <i class="fas fa-magnet text-danger me-1"></i>
+                                       <?php echo $short_name; ?>
+                                    </a>
+										
+
+										
                                         <br>
                                         <small class="text-muted">ID: <?php echo $row['torrentid']; ?></small>
                                     </td>
@@ -429,9 +499,19 @@ function isNumeric(value) {
                                             <br>
                                             <small class="text-muted"><?php echo my_datee($timeformat, $row['completedat']); ?></small>
                                         <?php } else { ?>
-                                            <span class="badge bg-light text-muted border" data-bs-toggle="tooltip" title="Not completed">
-                                                <i class="fas fa-times me-1"></i>Not completed
-                                            </span>
+                                            
+											
+											<span class="badge bg-light text-muted border completion-badge" 
+      data-bs-toggle="popover" 
+      data-bs-title="<?php echo $badge_title; ?>"
+      data-bs-content="<?php echo $badge_content; ?>"
+      data-bs-html="true"
+      data-bs-trigger="hover focus">
+    <i class="fas fa-times me-1 text-danger"></i><?php echo htmlspecialchars($completed_status, ENT_QUOTES); ?>
+</span>
+											
+											
+											
                                         <?php } ?>
                                     </td>
                                     <td class="text-center">
@@ -446,15 +526,30 @@ function isNumeric(value) {
                                         <?php } ?>
                                     </td>
                                     <td>
-                                        <div class="progress bg-light" style="height: 8px;" data-bs-toggle="tooltip" title="<?php echo $progress; ?>%">
-                                            <div class="progress-bar <?php echo $progress == 100 ? 'bg-success' : 'bg-warning'; ?>" 
-                                                 role="progressbar" 
-                                                 style="width: <?php echo $progress; ?>%" 
-                                                 aria-valuenow="<?php echo $progress; ?>" 
-                                                 aria-valuemin="0" 
-                                                 aria-valuemax="100">
-                                            </div>
-                                        </div>
+                                       
+									   
+									   
+									   <div class="progress bg-light" style="height: 8px;" 
+     data-bs-toggle="popover" 
+     data-bs-title="<?php echo $progress_title; ?>"
+     data-bs-content="<?php echo $progress_content; ?>"
+     data-bs-html="true">
+    <div class="progress-bar <?php echo $progress == 100 ? 'bg-success' : 'bg-warning'; ?>" 
+         role="progressbar" 
+         style="width: <?php echo $progress; ?>%" 
+         aria-valuenow="<?php echo $progress; ?>" 
+         aria-valuemin="0" 
+         aria-valuemax="100">
+    </div>
+</div>
+									   
+									   
+									   
+									   
+									   
+									   
+									   
+									   
                                         <small class="text-muted d-block text-center"><?php echo $progress; ?>%</small>
                                     </td>
                                 </tr>

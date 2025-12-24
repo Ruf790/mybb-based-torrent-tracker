@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require_once INC_PATH . '/functions_multipage.php';
 
+
+
 class TorrentManager 
 {
     private array $errors = [];
@@ -131,7 +133,7 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('
     <div class="alert alert-danger text-center mt-4" role="alert">
         <i class="fas fa-exclamation-triangle me-2"></i>
-        <strong>Error!</strong> Direct initialization of this file is not allowed222.
+        <strong>Error!</strong> Direct initialization of this file is not allowed.
     </div>');
 }
 
@@ -227,6 +229,9 @@ if ($do === 'update') {
 }
 
 stdhead('Manage Torrents', true, 'supernote');
+
+
+
 
 // Enhanced CSS with mobile optimizations
 echo '
@@ -504,6 +509,7 @@ while ($torrent = $db->fetch_array($query)) {
     $torrentCount++;
     $totalSize += $torrent['size'];
     $flags = $torrentManager->getTorrentFlags($torrent);
+	
     $userAvatar = format_avatar($torrent['avatar'] ?? '', $torrent['avatardimensions'] ?? '');
     
     echo '

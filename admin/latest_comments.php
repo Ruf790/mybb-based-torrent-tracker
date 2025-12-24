@@ -93,6 +93,20 @@ function generateCommentsTable($res, int $total_comments, int $page, int $limit,
                 <tbody>';
 
     while ($row = $db->fetch_array($res)) {
+		
+        if ($row['torrent_name'] === null) 
+		{
+            error_log(
+              date('Y-m-d H:i:s') . " - Комментарий ID {$row['id']} имеет NULL torrent_name. " .
+              "Torrent ID: {$row['torrent']}, " .
+              "User ID: {$row['uid']}, " .
+              "Username: {$row['username']}"
+            );
+        }
+		
+		
+		
+		
         $parsed_text = $parser->parse_message($row['text'], $parser_options);
         $parsed_text = preg_replace_callback(
             "#<img([^>]*)>#i", 
@@ -122,7 +136,7 @@ function generateCommentsTable($res, int $total_comments, int $page, int $limit,
             <td><a href="'.$seo_user.'">'.format_name($row['username'], $row['usergroup']).'</a></td>
             <td>
                 <a href="'.$SEOLink.'">
-                '.htmlspecialchars($row['torrent_name']).'
+                '.htmlspecialchars($row['torrent_name'] ?? '').'
                 </a>
             </td>
             <td class="comment-text">'.$parsed_text.'</td>
@@ -382,8 +396,7 @@ if ($action === "copy_comments" && $_SERVER['REQUEST_METHOD'] === "POST")
             'dateline'  => (int)$row['dateline'],
             'editreason'=> $db->escape_string($row['editreason']),
             'editedby'  => (int)$row['editedby'],
-            'editedat'  => (int)$row['editedat'],
-            'totalvotes'=> $db->escape_string($row['totalvotes'])
+            'editedat'  => (int)$row['editedat']
         ];
         $db->insert_query('comments', $insert);
         $copied++;

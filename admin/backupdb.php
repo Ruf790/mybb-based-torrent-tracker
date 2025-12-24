@@ -307,7 +307,7 @@ if($mybb->input['action'] == "backup")
         $db->set_table_prefix('');
 
         $time = date('dS F Y \a\t H:i', TIMENOW);
-        $header = "-- Database Backup\n-- Generated: {$time}\n-- -------------------------------------\n\n";
+        $header = "-- Ruff Tracker Database Backup\n-- Generated: {$time}\n-- -------------------------------------\n\n";
         $contents = $header;
         
         foreach($mybb->input['tables'] as $table)

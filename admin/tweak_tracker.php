@@ -132,8 +132,7 @@ delete_invalid_records('ts_hit_and_run', "userid NOT IN ({$ValidUsers}) OR torre
 delete_invalid_records('ts_inactivity', "userid NOT IN ({$ValidUsers})", 'userid');
 delete_invalid_records('ts_u_perm', "userid NOT IN ({$ValidUsers})", 'userid');
 
-// Дополнительные таблицы из вашей базы
-delete_invalid_records('ratings', "userid NOT IN ({$ValidUsers}) OR rating_id NOT IN ({$ValidTorrents})");
+
 delete_invalid_records('comment_files', "user_id NOT IN ({$ValidUsers}) OR torrent_id NOT IN ({$ValidTorrents})");
 delete_invalid_records('screenshots', "torrent_id NOT IN ({$ValidTorrents})");
 
@@ -166,7 +165,7 @@ if ($deleted > 0) {
 $tables_to_optimize = array(
     'announce_actions', 'bookmarks', 'cheat_attempts', 'comments', 'invites',
     'notconnectablepmlog', 'peers', 'reports', 'snatched', 'staffmessages',
-    'ts_hit_and_run', 'ts_inactivity', 'ts_u_perm', 'ratings', 'comment_files',
+    'ts_hit_and_run', 'ts_inactivity', 'ts_u_perm', 'comment_files',
     'screenshots', 'sessions', 'searchlog', 'loginattempts', 'iplog'
 );
 

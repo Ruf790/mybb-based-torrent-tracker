@@ -33,7 +33,7 @@ function mark_thread_read(int $tid, int $fid): void
     }
     else
     {
-        my_set_array_cookie("threadread", (string)$tid, TIMENOW, -1);
+        my_set_array_cookie("threadread", (string)$tid, TIMENOW, -1);	
     }
 
     $unread_count = fetch_unread_count($fid);

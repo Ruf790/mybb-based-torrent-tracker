@@ -2027,28 +2027,14 @@ function update_forum_counters($fid, $changes=array())
 	{
 		if($showextras == 0)
 		{
-			$template = "special";
+			$templatez = '<select name="'.$name.'" class="form-select form-select-sm border pe-5 w-auto">'.$forumjumpbits.'</select>';
 		}
 		else
 		{
-			$template = "advanced";
-
-			if(strpos(FORUM_URL, '.html') !== false)
-			{
-				$forum_link = "'".str_replace('{fid}', "'+option+'", FORUM_URL)."'";
-			}
-			else
-			{
-				$forum_link = "'".str_replace('{fid}', "'+option", FORUM_URL);
-			}
-		}
-
-		$gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;Go</button>';
-
-		$forumjump = '
-		
-		
-		<form action="forumdisplay.php" method="get">
+			$gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;Go</button>';
+			
+			$templatez = '
+		  <form action="forumdisplay.php" method="get">
 
 <select name="'.$name.'" class="form-select form-select-sm border pe-5 w-auto">
 <option value="-4">Private Messages</option>
@@ -2074,16 +2060,26 @@ $(".forumjump").on("change", function() {
 	}
 });
 </script>';
-		
-		
-		
-		
-	
-	
-	
+			
+			
+			
+
+			if(strpos(FORUM_URL, '.html') !== false)
+			{
+				$forum_link = "'".str_replace('{fid}', "'+option+'", FORUM_URL)."'";
+			}
+			else
+			{
+				$forum_link = "'".str_replace('{fid}', "'+option", FORUM_URL);
+			}
+		}
+
+		$forumjump = $templatez;
 	}
 
 	return $forumjump;
+
+
   }
   
   

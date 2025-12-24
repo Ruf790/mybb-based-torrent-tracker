@@ -5,7 +5,7 @@ declare(strict_types=1);
 function commenttable(array $rows, string $type = '', string $edit = '', bool $lc = false, bool $quote = false, bool $return = false): string
 {
     global $CURUSER, $BASEURL, $rootpath, $pic_base_url, $lang, $usergroups;
-    global $timeformat, $dateformat, $useajax, $torrent, $regdateformat;
+    global $timeformat, $dateformat, $useajax, $Torrent, $regdateformat;
     global $parser, $plugins, $db, $postcounter, $wolcutoffmins;
     global $mybb, $templates, $templatelist;
 
@@ -36,103 +36,17 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 
     ob_start();
 ?>
-<!-- Delete Comment Modal -->
-<div class="modal fade" id="deleteCommentModal" tabindex="-1" aria-labelledby="deleteCommentModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="deleteCommentModalLabel">Confirm Delete</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        Are you sure you want to delete this comment? This action cannot be undone.
-      </div>
-      <div class="modal-body" id="errorModalBody">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button id="confirmDeleteComment" type="button" class="btn btn-danger">Delete</button>
-      </div>
-    </div>
-  </div>
-</div>
 
-<!-- Edit Comment Modal -->
-<div class="modal fade" id="editCommentModal" tabindex="-1" aria-labelledby="editCommentModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title" id="editCommentModalLabel">Edit Comment</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-
-      <div class="modal-body">
-        <div class="mb-2">
-          <!-- Text Styles -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[b]', '[/b]')"><b>B</b></button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[i]', '[/i]')"><i>I</i></button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[u]', '[/u]')"><u>U</u></button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[s]', '[/s]')"><s>S</s></button>
-
-          <!-- Alignment -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[left]', '[/left]')">Left</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[center]', '[/center]')">Center</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[right]', '[/right]')">Right</button>
-
-          <!-- Color & Size -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[color=red]', '[/color]')">Red</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[size=18]', '[/size]')">Size</button>
-
-          <!-- Links & Media -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[url]', '[/url]')">URL</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[img]', '[/img]')">IMG</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[video]', '[/video]')">Video</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[youtube]', '[/youtube]')">YouTube</button>
-
-          <!-- Quote & Code -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[quote]', '[/quote]')">Quote</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[code]', '[/code]')">Code</button>
-
-          <!-- Lists -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[list]\n[*]', '\n[/list]')">List</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[list=1]\n[*]', '\n[/list]')">#List</button>
-        </div>
-
-        <textarea id="editCommentText" class="form-control mb-3" rows="6" placeholder="Edit your comment..."></textarea>
-
-        <h6>Live Preview</h6>
-        <div id="bbcodePreview" class="border p-2 bg-light rounded" style="min-height: 100px;"></div>
-      </div>
-
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button id="confirmEditComment" type="button" class="btn btn-primary">Save Changes</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Mass Delete Confirm Modal -->
-<div class="modal fade" id="massDeleteConfirmModal" tabindex="-1" aria-labelledby="massDeleteConfirmModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="massDeleteConfirmModalLabel">Confirm Mass Delete</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        Are you sure you want to delete <span id="selectedCommentsCount" class="fw-bold">0</span> comment(s)? This action cannot be undone.
-      </div>
-      <div class="modal-body">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button id="confirmMassDelete" type="button" class="btn btn-danger">Delete</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/edit_delete_comment.js"></script>
+
+
+
 <?php
     $modals_html = ob_get_clean();
     $showcommentstable = $modals_html;
+
+
 
     foreach ($rows as $row) {
         $p_commenthistory = $p_edit = $p_delete = $p_text = $p_report = $p_quote = '';
@@ -241,10 +155,33 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
             </a>';
         
         $post['button_multiquote'] = $p_quote;
+		
+		
+        $post['button_report'] = '
+        <li>
+           <a class="dropdown-item report-comment-btn" 
+           href="#reportCommentModal" 
+           data-bs-toggle="modal"
+           data-comment-id="' . $row['id'] . '"
+           data-comment-author-id="' . $row['user'] . '"
+           data-comment-text="' . htmlspecialchars($row['text'], ENT_QUOTES) . '"
+           data-comment-author="' . htmlspecialchars($row['username']) . '"
+           data-comment-date="' . date('Y-m-d H:i', $row['dateline']) . '"
+           data-parent-id="' . $row['torrentid'] . '">
+             <i class="fa-solid fa-flag"></i> &nbsp;Report
+           </a>
+       </li>';
+		
+		
+		
+		
+		
+		
+		
 
         $postcounter++;
         $post_number = ts_nf($postcounter);
-        $torrent_name = isset($torrent['name']) ? htmlspecialchars_uni($torrent['name']) : '';
+        $torrent_name = isset($Torrent['name']) ? htmlspecialchars_uni($Torrent['name']) : '';
         
         eval("\$post['posturl'] = \"" . $templates->get("comment_posturl") . "\";");
 

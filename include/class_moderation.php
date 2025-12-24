@@ -1672,7 +1672,7 @@ class Moderation
 					"fid" => $thread['fid'],
 					"subject" => $db->escape_string($thread['subject']),
 					"icon" => $thread['icon'],
-					"uidid" => $thread['uid'],
+					"uid" => $thread['uid'],
 					"username" => $db->escape_string($thread['username']),
 					"dateline" => $thread['dateline'],
 					"lastpost" => $thread['lastpost'],
@@ -1682,7 +1682,8 @@ class Moderation
 					"replies" => 0,
 					"closed" => "moved|$tid",
 					"sticky" => $thread['sticky'],
-					"visible" => (int)$thread['visible']
+					"visible" => (int)$thread['visible'],
+					"notes" => ''
 				);
 				$redirect_tid = $db->insert_query("tsf_threads", $threadarray);
 				if($redirect_expire)

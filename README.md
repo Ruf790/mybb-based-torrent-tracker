@@ -81,7 +81,7 @@ $cookiedomain = ".localhost";
 $announce_urls[] = "https://localhost/announce.php";
 6. Default Admin User
 
-Username: Admin
+Username: Admins
 Password: 123456
 ✅ Ready to Go
 After completing these steps, your tracker should be up and running.

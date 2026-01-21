@@ -53,6 +53,8 @@ while ($delayedmoderation = $db->fetch_array($query)) {
 
 savelog('The delayed moderation task successfully ran');
 
+++$CQueryCount;
+
 // ====================
 // HELPER FUNCTIONS
 // ====================
@@ -65,6 +67,8 @@ function handleOpenCloseThread(Moderation $moderation, string $threadIds, object
     $closedTids = $openTids = [];
     
     $query = $db->simple_select("tsf_threads", "tid,closed", "tid IN({$threadIds})");
+	
+
 	
 	
     while ($thread = $db->fetch_array($query)) {
@@ -167,6 +171,7 @@ function handleMergeThread(Moderation $moderation, string $threadIds, array $inp
     if (empty($subject)) {
         $query = $db->simple_select("tsf_threads", "subject", "tid='{$sourceTid}'");
 		
+		
         $subject = $db->fetch_field($query, "subject") ?? '';
         
     }
@@ -242,6 +247,8 @@ function handleApproveThread(Moderation $moderation, string $threadIds, object $
     $approvedTids = $unapprovedTids = [];
     
     $query = $db->simple_select("tsf_threads", "tid,visible", "tid IN({$threadIds})");
+	
+	
     
   
     

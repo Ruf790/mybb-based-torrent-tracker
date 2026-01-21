@@ -33,7 +33,7 @@ function logcronaction(string $filename, int $queryCount, float $executeTime): v
     global $db;
 
     $sql = sprintf(
-        "REPLACE INTO ts_cron_log (filename, querycount, executetime, runtime)
+        "REPLACE INTO cron_log (filename, querycount, executetime, runtime)
          VALUES ('%s', '%d', '%.4f', '%d')",
         $db->escape_string($filename),
         $queryCount,

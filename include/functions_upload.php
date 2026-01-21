@@ -190,7 +190,7 @@ function upload_avatar($avatar=array(), $uid=0)
 
 	// Check we have a valid extension
     	$ext = get_extension(my_strtolower($avatar['name']));
-    	if(!preg_match("#^(gif|jpg|jpeg|jpe|bmp|png)$#i", $ext))
+    	if(!preg_match("#^(gif|jpg|jpeg|jpe|bmp|png|webp)$#i", $ext))
     	{
         	$ret['error'] = 'Invalid file type. An uploaded avatar must be in GIF, JPEG, BMP or PNG format';
         	return $ret;
@@ -243,29 +243,32 @@ function upload_avatar($avatar=array(), $uid=0)
 	$avatar['type'] = my_strtolower($avatar['type']);
 
 	switch($avatar['type'])
-	{
-		case "image/gif":
-			$img_type =  1;
-			break;
-		case "image/jpeg":
-		case "image/x-jpg":
-		case "image/x-jpeg":
-		case "image/pjpeg":
-		case "image/jpg":
-			$img_type = 2;
-			break;
-		case "image/png":
-		case "image/x-png":
-			$img_type = 3;
-			break;
-		case "image/bmp":
-		case "image/x-bmp":
-		case "image/x-windows-bmp":
-			$img_type = 6;
-			break;
-		default:
-			$img_type = 0;
-	}
+    {
+    case "image/gif":
+        $img_type = 1;
+        break;
+    case "image/jpeg":
+    case "image/x-jpg":
+    case "image/x-jpeg":
+    case "image/pjpeg":
+    case "image/jpg":
+        $img_type = 2;
+        break;
+    case "image/png":
+    case "image/x-png":
+        $img_type = 3;
+        break;
+    case "image/webp":
+        $img_type = 18; // Важно: должно соответствовать IMAGETYPE_WEBP
+        break;
+    case "image/bmp":
+    case "image/x-bmp":
+    case "image/x-windows-bmp":
+        $img_type = 6;
+        break;
+    default:
+        $img_type = 0;
+    }
 
 	// Check if the uploaded file type matches the correct image type (returned by getimagesize)
 	if(empty($allowed_mime_types[$avatar['type']]) || $img_dimensions[2] != $img_type || $img_type == 0)

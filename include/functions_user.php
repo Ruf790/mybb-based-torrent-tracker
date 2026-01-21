@@ -15,7 +15,7 @@
  * @return boolean True when exists, false when not.
  */
  
- // work out which items the user has collapsed
+// work out which items the user has collapsed
 $collapse = $collapsed = $collapsedimg = $collapsedthead = array();
 
 if(!empty($mybb->cookies['collapsed']))
@@ -31,8 +31,7 @@ if(!empty($mybb->cookies['collapsed']))
 		$collapsedthead[$val] = " thead_collapsed";
 	}
 }
-
-
+ 
 
 
 function user_exists($uid)
@@ -476,21 +475,17 @@ function usercp_menu()
 		$plugins->add_hook("usercp_menu", "usercp_menu_messenger", 10);
 	}
 
-	//if($mybb->usergroup['canusercp'] == 1)
-	//{
-		$plugins->add_hook("usercp_menu", "usercp_menu_profile", 20);
-		$plugins->add_hook("usercp_menu", "usercp_menu_misc", 30);
-	//}
+	
+	$plugins->add_hook("usercp_menu", "usercp_menu_profile", 20);
+	$plugins->add_hook("usercp_menu", "usercp_menu_misc", 30);
+	
 
 	// Run the plugin hooks
 	$plugins->run_hooks("usercp_menu");
 	global $usercpmenu;
 
-	//if($mybb->usergroup['canusercp'] == 1)
-	//{
-		//$ucp_nav_home = '<a href="usercp.php" class="btn btn-menu"><i class="fa-solid fa-house me-2"></i>'.$lang->usercpnav['ucp_nav_home'].'</a>';
-		eval("\$ucp_nav_home = \"".$templates->get("usercp_nav_home")."\";");
-	//}
+	eval("\$ucp_nav_home = \"".$templates->get("usercp_nav_home")."\";");
+	
 
     eval("\$usercpnav = \"".$templates->get("usercp_nav")."\";");
 
@@ -548,7 +543,7 @@ function usercp_menu_messenger()
 		$folder_id = $folderinfo[0];
 		$folder_name = $folderinfo[1];
 
-		//$folderlinks .= '<a href="private.php?fid={$folder_id}" class="btn btn-menu-coll"><i class="fa-regular fa-folder-open ms-2"></i> &nbsp;&nbsp; {$folder_name}</a>';
+		
 		eval("\$folderlinks .= \"".$templates->get("usercp_nav_messenger_folder")."\";");
 	}
 

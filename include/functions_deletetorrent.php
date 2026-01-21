@@ -291,7 +291,8 @@ function delete_torrent_database_records(int $id): void
         "bookmarks" => "torrentid='$id'",
         "snatched" => "torrentid='$id'",
         "torrents" => "id='$id'",
-        "ts_nfo" => "id='$id'"
+        "torrents_nfo" => "id='$id'",
+		"reports" => "reported_id='$id'"
     ];
     
     foreach ($tables as $table => $condition) {

@@ -1160,8 +1160,8 @@ function perform_search_mysql($search)
 			$keywords = str_replace("\"", '', trim($keywords));
 			if(my_strlen($keywords) < $minsearchword)
 			{
-				$lang->error_minsearchlength = $lang->sprintf($lang->error_minsearchlength, $minsearchword);
-				error($lang->error_minsearchlength);
+				$error_minsearchlength = sprintf($lang->error_minsearchlength, $minsearchword);
+				stderr($lang->error_minsearchlength);
 			}
 			$subject_lookin = " AND {$tfield} LIKE '%{$keywords}%'";
 			if($search['postthread'] == 1)
@@ -1181,7 +1181,7 @@ function perform_search_mysql($search)
 			$user = get_user_by_username($search['author']);
 			if($user)
 			{
-				$userids[] = $user['uid'];
+				$userids[] = $user['id'];
 			}
 		}
 		else
@@ -1199,7 +1199,7 @@ function perform_search_mysql($search)
 			$query = $db->simple_select("users", "id", "{$field} LIKE '%".$db->escape_string_like($search['author'])."%'");
 			while($user = $db->fetch_array($query))
 			{
-				$userids[] = $user['uid'];
+				$userids[] = $user['id'];
 			}
 		}
 

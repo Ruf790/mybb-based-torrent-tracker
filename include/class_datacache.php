@@ -582,8 +582,8 @@ class datacache
 
 		$smilies = array();
 
-		//$query = $db->simple_select("ts_smilies", "*", "", array('order_by' => 'sorder', 'order_dir' => 'ASC'));
-		$query = $db->sql_query ('SELECT stext, spath FROM ts_smilies ORDER BY sorder, stitle');
+		
+		$query = $db->sql_query ('SELECT stext, spath FROM smilies ORDER BY sorder, stitle');
 		
 		while($smilie = $db->fetch_array($query))
 		{

@@ -473,7 +473,7 @@ class DB_MySQLi implements DB_Base
 
         // === ЛОГИ ДЛЯ ts_query_explain.php: ВСЕГДА пишем (без DEBUGMODE) ===
         $script = $_SERVER['SCRIPT_NAME'] ?? '';
-        if (!str_contains(strtolower($script), 'ts_query_explain.php')) 
+        if (!str_contains(strtolower($script), 'query_explain.php')) 
         {
             if (!isset($GLOBALS['queries']) || !is_array($GLOBALS['queries'])) 
             {
@@ -608,7 +608,7 @@ class DB_MySQLi implements DB_Base
 
         // === ЛОГИ ДЛЯ ts_query_explain.php: ВСЕГДА пишем (без DEBUGMODE) ===
         $script = $_SERVER['SCRIPT_NAME'] ?? '';
-        if (!str_contains(strtolower($script), 'ts_query_explain.php')) {
+        if (!str_contains(strtolower($script), 'query_explain.php')) {
             if (!isset($GLOBALS['queries']) || !is_array($GLOBALS['queries'])) {
                 $GLOBALS['queries'] = [];
             }

@@ -31,7 +31,7 @@ if (!function_exists('json_encode') || !function_exists('json_decode')) {
 require_once INC_PATH . "/class_templates.php";
 $templates = new templates();
 
-require_once INC_PATH . '/ts_functions.php';
+require_once INC_PATH . '/functions.php';
 require_once INC_PATH . '/functions_tsseo.php';
 
 require_once INC_PATH . "/class_timers.php";

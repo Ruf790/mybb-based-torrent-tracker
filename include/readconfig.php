@@ -104,4 +104,53 @@ $mysql_pass = $ann['mysql_pass'];
 $mysql_db = $ann['mysql_db'];
 
 
+
+
+
+
+
+$promo = $cache->read('promo');
+
+// 15.cleanup torrents - expire torrent promotion
+$expirehalfleech_torrent = $promo['expirehalfleech'] ?? 150;
+$expirefree_torrent = $promo['expirefree'] ?? 60;
+$expiretwoup_torrent = $promo['expiretwoup'] ?? 60;
+$expiretwoupfree_torrent = $promo['expiretwoupfree'] ?? 30;
+$expiretwouphalfleech_torrent = $promo['expiretwouphalfleech'] ?? 30;
+$expirethirtypercentleech_torrent = $promo['expirethirtypercentleech'] ?? 30;
+$expirenormal_torrent = $promo['expirenormal'] ?? 0;
+
+$halfleechbecome_torrent = $promo['halfleechbecome'] ?? 1;
+$freebecome_torrent = $promo['freebecome'] ?? 1;
+$twoupbecome_torrent = $promo['twoupbecome'] ?? 1;
+$twoupfreebecome_torrent = $promo['twoupfreebecome'] ?? 1;
+$twouphalfleechbecome_torrent = $promo['twouphalfleechbecome'] ?? 1;
+$thirtypercentleechbecome_torrent = $promo['thirtypercentleechbecome'] ?? 1;
+$normalbecome_torrent = $promo['normalbecome'] ?? 1;
+
+
+$hotseeder_torrent = $promo['hotseeder'];
+
+$uploaderdouble_torrent = $promo['uploaderdouble'];
+
+$deldeadtorrent_torrent = $promo['deldeadtorrent'];
+
+$largesize_torrent = $promo['largesize'];
+$largepro_torrent = $promo['largepro'];
+
+$prorules_torrent = $promo['prorules'];
+
+
+
+$randomhalfleech_torrent = $promo['randomhalfleech'];
+$randomfree_torrent = $promo['randomfree'];
+$randomtwoup_torrent = $promo['randomtwoup'];
+$randomtwoupfree_torrent = $promo['randomtwoupfree'];
+$randomtwouphalfdown_torrent = $promo['randomtwouphalfdown'];
+$randomthirtypercentdown_torrent = $promo['randomthirtypercentdown'];
+
+$hotdays_torrent = $promo['hotdays'];
+
+
+
 ?>

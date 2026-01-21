@@ -1,449 +1,399 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
+
+
+declare(strict_types=1);
 
 /**
  * Base mail handler class.
  */
 class MailHandler
 {
-	/**
-	 * Which email it should send to.
-	 *
-	 * @var string
-	 */
-	public $to;
+    /**
+     * Which email it should send to.
+     */
+    public string $to = '';
 
-	/**
-	 * 1/0 value weather it should show errors or not.
-	 *
-	 * @var integer
-	 */
-	public $show_errors = 1;
+    /**
+     * 1/0 value whether it should show errors or not.
+     */
+    public int $show_errors = 1;
 
-	/**
-	 * Who it is from.
-	 *
-	 * @var string
-	 */
-	public $from;
+    /**
+     * Who it is from.
+     */
+    public string $from = '';
 
-	/**
-	 * Full from string including name in format "name" <email>
-	 *
-	 * @var string
-	 */
-	public $from_named;
+    /**
+     * Full from string including name in format "name" <email>
+     */
+    public string $from_named = '';
 
-	/**
-	 * Who the email should return to.
-	 *
-	 * @var string
-	 */
-	public $return_email;
+    /**
+     * Who the email should return to.
+     */
+    public string $return_email = '';
 
-	/**
-	 * The subject of mail.
-	 *
-	 * @var string
-	 */
-	public $subject;
+    /**
+     * The subject of mail.
+     */
+    public string $subject = '';
 
-	/**
-	 * The unaltered subject of mail.
-	 *
-	 * @var string
-	 */
-	public $orig_subject;
+    /**
+     * The unaltered subject of mail.
+     */
+    public string $orig_subject = '';
 
-	/**
-	 * The message of the mail.
-	 *
-	 * @var string
-	 */
-	public $message;
+    /**
+     * The message of the mail.
+     */
+    public string $message = '';
 
-	/**
-	 * The headers of the mail.
-	 *
-	 * @var string
-	 */
-	public $headers;
+    /**
+     * The headers of the mail.
+     */
+    public string $headers = '';
 
-	/**
-	 * The charset of the mail.
-	 *
-	 * @var string
-	 * @default utf-8
-	 */
-	public $charset = "utf-8";
+    /**
+     * The charset of the mail.
+     * @default utf-8
+     */
+    public string $charset = "utf-8";
 
-	/**
-	 * The currently used delimiter new lines.
-	 *
-	 * @var string
-	 */
-	public $delimiter = "\r\n";
+    /**
+     * The currently used delimiter new lines.
+     */
+    public string $delimiter = "\r\n";
 
-	/**
-	 * How it should parse the email (HTML or plain text?)
-	 *
-	 * @var string
-	 */
-	public $parse_format = 'text';
+    /**
+     * How it should parse the email (HTML or plain text?)
+     */
+    public string $parse_format = 'text';
 
-	/**
-	 * The last received response from the SMTP server.
-	 *
-	 * @var string
-	 */
-	public $data = '';
+    /**
+     * The last received response from the SMTP server.
+     */
+    public string $data = '';
 
-	/**
-	 * The last received response code from the SMTP server.
-	 *
-	 * @var string
-	 */
-	public $code = 0;
+    /**
+     * The last received response code from the SMTP server.
+     */
+    public int $code = 0;
 
-	/**
-	 * Selects between AdminEmail and ReturnEmail, dependant on if ReturnEmail is filled.
-	 * 
-	 * @return string
-	 */
-	function get_from_email()
-	{
-		global $mybb;
-		
-		
-		$returnemail = "";
-		$adminemail = "admin@example.com";
-		
-		
-		if(trim($returnemail))
-		{
-			$email = $returnemail;
-		}
-		else
-		{
-			$email = $adminemail;
-		}
-		
-		return $email;
-	}
+    /**
+     * Database connection (injected dependency)
+     */
+    private ?object $db = null;
 
-	/**
-	 * Builds the whole mail.
-	 * To be used by the different email classes later.
-	 *
-	 * @param string $to to email.
-	 * @param string $subject subject of email.
-	 * @param string $message message of email.
-	 * @param string $from from email.
-	 * @param string $charset charset of email.
-	 * @param string $headers headers of email.
-	 * @param string $format format of the email (HTML, plain text, or both?).
-	 * @param string $message_text plain text version of the email.
-	 * @param string $return_email the return email address.
-	 */
-	function build_message($to, $subject, $message, $from="", $charset="", $headers="", $format="text", $message_text="", $return_email="")
-	{
-		global $parser, $lang, $mybb, $SITENAME;
+    /**
+     * Constructor with optional dependency injection
+     */
+    public function __construct(?object $db = null)
+    {
+        if ($db !== null) {
+            $this->db = $db;
+        }
+        
+    }
 
-		$this->message = '';
-		$this->headers = $headers;
-		
-		if($from)
-		{
-			$this->from = $from;
-			$this->from_named = $this->from;
-		}
-		else
-		{
-			$this->from = $this->get_from_email();
-			$this->from_named = '"'.$this->utf8_encode($SITENAME).'"';
-			$this->from_named .= " <".$this->from.">";
-		}
+    /**
+     * Selects between AdminEmail and ReturnEmail, dependent on if ReturnEmail is filled.
+     */
+    public function get_from_email(): string
+    {
+        global $mybb;
+        
+        $returnemail = "";
+        $adminemail = "admin@example.com";
+        
+        return trim($returnemail) ?: $adminemail;
+    }
 
-		if($return_email)
-		{
-			$this->return_email = $return_email;
-		}
-		else
-		{
-			$this->return_email = $this->get_from_email();
-		}
+    /**
+     * Builds the whole mail.
+     * To be used by the different email classes later.
+     *
+     * @param string $to to email.
+     * @param string $subject subject of email.
+     * @param string $message message of email.
+     * @param string $from from email.
+     * @param string $charset charset of email.
+     * @param string $headers headers of email.
+     * @param string $format format of the email (HTML, plain text, or both?).
+     * @param string $message_text plain text version of the email.
+     * @param string $return_email the return email address.
+     */
+    public function build_message(
+        string $to,
+        string $subject,
+        string $message,
+        string $from = "",
+        string $charset = "",
+        string $headers = "",
+        string $format = "text",
+        string $message_text = "",
+        string $return_email = ""
+    ): void {
+        global $SITENAME;
 
-		$this->set_to($to);
-		$this->set_subject($subject);
+        $this->message = '';
+        $this->headers = $headers;
+        
+        if ($from) {
+            $this->from = $from;
+            $this->from_named = $this->from;
+        } else {
+            $this->from = $this->get_from_email();
+            $this->from_named = '"' . $this->utf8_encode($SITENAME) . '"';
+            $this->from_named .= " <" . $this->from . ">";
+        }
 
-		if($charset)
-		{
-			$this->set_charset($charset);
-		}
+        if ($return_email) {
+            $this->return_email = $return_email;
+        } else {
+            $this->return_email = $this->get_from_email();
+        }
 
-		$this->parse_format = $format;
-		$this->set_common_headers();
-		$this->set_message($message, $message_text);
-	}
+        $this->set_to($to);
+        $this->set_subject($subject);
 
-	/**
-	 * Sets the charset.
-	 *
-	 * @param string $charset charset
-	 */
-	function set_charset($charset)
-	{
-		global $lang, $charset;
+        if ($charset) {
+            $this->set_charset($charset);
+        }
 
-		if(empty($charset))
-		{
-			$this->charset = $charset;
-		}
-		else
-		{
-			$this->charset = $charset;
-		}
-	}
+        $this->parse_format = $format;
+        $this->set_common_headers();
+        $this->set_message($message, $message_text);
+    }
 
-	/**
-	 * Sets and formats the email message.
-	 *
-	 * @param string $message message
-	 * @param string $message_text
-	 */
-	function set_message($message, $message_text="")
-	{
-		$message = $this->cleanup_crlf($message);
+    /**
+     * Sets the charset.
+     */
+    public function set_charset(string $charset): void
+    {
+        $this->charset = $charset;
+    }
 
-		if($message_text)
-		{
-			$message_text = $this->cleanup_crlf($message_text);
-		}
+    /**
+     * Sets and formats the email message.
+     */
+    public function set_message(string $message, string $message_text = ""): void
+    {
+        $message = $this->cleanup_crlf($message);
 
-		if($this->parse_format == "html" || $this->parse_format == "both")
-		{
-			$this->set_html_headers($message, $message_text);
-		}
-		else
-		{
-			$this->message = $message;
-			$this->set_plain_headers();
-		}
-	}
+        if ($message_text) {
+            $message_text = $this->cleanup_crlf($message_text);
+        }
 
-	/**
-	 * Sets and formats the email subject.
-	 *
-	 * @param string $subject
-	 */
-	function set_subject($subject)
-	{
-		$this->orig_subject = $this->cleanup($subject);
-		$this->subject = $this->utf8_encode($this->orig_subject);
-	}
+        if ($this->parse_format == "html" || $this->parse_format == "both") {
+            $this->set_html_headers($message, $message_text);
+        } else {
+            $this->message = $message;
+            $this->set_plain_headers();
+        }
+    }
 
-	/**
-	 * Sets and formats the recipient address.
-	 *
-	 * @param string $to
-	 */
-	function set_to($to)
-	{
-		$to = $this->cleanup($to);
+    /**
+     * Sets and formats the email subject.
+     */
+    public function set_subject(string $subject): void
+    {
+        $this->orig_subject = $this->cleanup($subject);
+        $this->subject = $this->utf8_encode($this->orig_subject);
+    }
 
-		$this->to = $this->cleanup($to);
-	}
+    /**
+     * Sets and formats the recipient address.
+     */
+    public function set_to(string $to): void
+    {
+        $this->to = $this->cleanup($to);
+    }
 
-	/**
-	 * Sets the plain headers, text/plain
-	 */
-	function set_plain_headers()
-	{
-		$this->headers .= "Content-Type: text/plain; charset={$this->charset}{$this->delimiter}";
-	}
+    /**
+     * Sets the plain headers, text/plain
+     */
+    public function set_plain_headers(): void
+    {
+        $this->headers .= "Content-Type: text/plain; charset={$this->charset}{$this->delimiter}";
+    }
 
-	/**
-	 * Sets the alternative headers, text/html and text/plain.
-	 *
-	 * @param string $message
-	 * @param string $message_text
-	 */
-	function set_html_headers($message, $message_text="")
-	{
-		if(!$message_text && $this->parse_format == 'both')
-		{
-			$message_text = strip_tags($message);
-		}
+    /**
+     * Sets the alternative headers, text/html and text/plain.
+     */
+    public function set_html_headers(string $message, string $message_text = ""): void
+    {
+        if (!$message_text && $this->parse_format == 'both') {
+            $message_text = strip_tags($message);
+        }
 
-		if($this->parse_format == 'both')
-		{
-			$mime_boundary = "=_NextPart".md5(TIMENOW);
+        if ($this->parse_format == 'both') {
+            $mime_boundary = "=_NextPart" . md5((string)TIMENOW);
 
-			$this->headers .= "Content-Type: multipart/alternative; boundary=\"{$mime_boundary}\"{$this->delimiter}";
-			$this->message = "This is a multi-part message in MIME format.{$this->delimiter}{$this->delimiter}";
+            $this->headers .= "Content-Type: multipart/alternative; boundary=\"{$mime_boundary}\"{$this->delimiter}";
+            $this->message = "This is a multi-part message in MIME format.{$this->delimiter}{$this->delimiter}";
 
-			$this->message .= "--{$mime_boundary}{$this->delimiter}";
-			$this->message .= "Content-Type: text/plain; charset=\"{$this->charset}\"{$this->delimiter}";
-			$this->message .= "Content-Transfer-Encoding: 8bit{$this->delimiter}{$this->delimiter}";
-			$this->message .= $message_text."{$this->delimiter}{$this->delimiter}";
+            $this->message .= "--{$mime_boundary}{$this->delimiter}";
+            $this->message .= "Content-Type: text/plain; charset=\"{$this->charset}\"{$this->delimiter}";
+            $this->message .= "Content-Transfer-Encoding: 8bit{$this->delimiter}{$this->delimiter}";
+            $this->message .= $message_text . "{$this->delimiter}{$this->delimiter}";
 
-			$this->message .= "--{$mime_boundary}{$this->delimiter}";
+            $this->message .= "--{$mime_boundary}{$this->delimiter}";
 
-			$this->message .= "Content-Type: text/html; charset=\"{$this->charset}\"{$this->delimiter}";
-			$this->message .= "Content-Transfer-Encoding: 8bit{$this->delimiter}{$this->delimiter}";
-			$this->message .= $message."{$this->delimiter}{$this->delimiter}";
+            $this->message .= "Content-Type: text/html; charset=\"{$this->charset}\"{$this->delimiter}";
+            $this->message .= "Content-Transfer-Encoding: 8bit{$this->delimiter}{$this->delimiter}";
+            $this->message .= $message . "{$this->delimiter}{$this->delimiter}";
 
-			$this->message .= "--{$mime_boundary}--{$this->delimiter}{$this->delimiter}";
-		}
-		else
-		{
-			$this->headers .= "Content-Type: text/html; charset=\"{$this->charset}\"{$this->delimiter}";
-			$this->headers .= "Content-Transfer-Encoding: 8bit{$this->delimiter}{$this->delimiter}";
-			$this->message = $message."{$this->delimiter}{$this->delimiter}";
-		}
-	}
+            $this->message .= "--{$mime_boundary}--{$this->delimiter}{$this->delimiter}";
+        } else {
+            $this->headers .= "Content-Type: text/html; charset=\"{$this->charset}\"{$this->delimiter}";
+            $this->headers .= "Content-Transfer-Encoding: 8bit{$this->delimiter}{$this->delimiter}";
+            $this->message = $message . "{$this->delimiter}{$this->delimiter}";
+        }
+    }
 
-	/**
-	 * Sets the common headers.
-	 */
-	function set_common_headers()
-	{
-		global $mybb;
+    /**
+     * Sets the common headers.
+     */
+    public function set_common_headers(): void
+    {
+        // Build mail headers
+        $this->headers .= "From: {$this->from_named}{$this->delimiter}";
 
-		// Build mail headers
-		$this->headers .= "From: {$this->from_named}{$this->delimiter}";
+        if ($this->return_email) {
+            $this->headers .= "Return-Path: {$this->return_email}{$this->delimiter}";
+            $this->headers .= "Reply-To: {$this->return_email}{$this->delimiter}";
+        }
 
-		if($this->return_email)
-		{
-			$this->headers .= "Return-Path: {$this->return_email}{$this->delimiter}";
-			$this->headers .= "Reply-To: {$this->return_email}{$this->delimiter}";
-		}
+        $http_host = $_SERVER['SERVER_NAME'] ?? $_SERVER['HTTP_HOST'] ?? "unknown.local";
 
-		if(isset($_SERVER['SERVER_NAME']))
-		{
-			$http_host = $_SERVER['SERVER_NAME'];
-		}
-		else if(isset($_SERVER['HTTP_HOST']))
-		{
-			$http_host = $_SERVER['HTTP_HOST'];
-		}
-		else
-		{
-			$http_host = "unknown.local";
-		}
+        $msg_id = md5(uniqid((string)TIMENOW, true)) . "@" . $http_host;
 
-		$msg_id = md5(uniqid(TIMENOW, true)) . "@" . $http_host;
+        $mail_message_id = "1";
+        
+        if ($mail_message_id) {
+            $this->headers .= "Message-ID: <{$msg_id}>{$this->delimiter}";
+        }
+        
+        $this->headers .= "Content-Transfer-Encoding: 8bit{$this->delimiter}";
+        $this->headers .= "X-Priority: 3{$this->delimiter}";
+        $this->headers .= "X-Mailer: MyBB{$this->delimiter}";
+        $this->headers .= "MIME-Version: 1.0{$this->delimiter}";
+    }
 
-		$mail_message_id = "1";
-		
-		if($mail_message_id)
-		{
-			$this->headers .= "Message-ID: <{$msg_id}>{$this->delimiter}";
-		}
-		$this->headers .= "Content-Transfer-Encoding: 8bit{$this->delimiter}";
-		$this->headers .= "X-Priority: 3{$this->delimiter}";
-		$this->headers .= "X-Mailer: MyBB{$this->delimiter}";
-		$this->headers .= "MIME-Version: 1.0{$this->delimiter}";
-	}
+    /**
+     * Log a fatal error message to the database.
+     *
+     * @throws RuntimeException if database insertion fails
+     */
+    public function fatal_error(string $error): void
+    {
+        // Попробуем получить соединение с БД если оно еще не установлено
+        if (!$this->db) {
+            global $db;
+            if (isset($db) && is_object($db)) {
+                $this->db = $db;
+            }
+        }
+        
+        if (!$this->db) {
+            // Если БД все еще недоступна, просто логируем ошибку в файл или ничего не делаем
+            error_log("Email error (DB not available): " . $error . " | Subject: " . $this->orig_subject);
+            return; // Выходим без выбрасывания исключения
+        }
 
-	/**
-	 * Log a fatal error message to the database.
-	 *
-	 * @param string $error The error message
-	 */
-	function fatal_error($error)
-	{
-		global $db;
+        $mail_error = [
+            "subject" => $this->db->escape_string($this->orig_subject),
+            "message" => $this->db->escape_string($this->message),
+            "toaddress" => $this->db->escape_string($this->to),
+            "fromaddress" => $this->db->escape_string($this->from),
+            "dateline" => TIMENOW,
+            "error" => $this->db->escape_string($error),
+            "smtperror" => $this->db->escape_string($this->data),
+            "smtpcode" => $this->code
+        ];
+        
+        $result = $this->db->insert_query("mailerrors", $mail_error);
+        
+        if (!$result) {
+            // Не выбрасываем исключение, а просто логируем
+            error_log("Failed to log email error to database");
+        }
+    }
 
-		$mail_error = array(
-			"subject" => $db->escape_string($this->orig_subject),
-			"message" => $db->escape_string($this->message),
-			"toaddress" => $db->escape_string($this->to),
-			"fromaddress" => $db->escape_string($this->from),
-			"dateline" => TIMENOW,
-			"error" => $db->escape_string($error),
-			"smtperror" => $db->escape_string($this->data),
-			"smtpcode" => (int)$this->code
-		);
-		$db->insert_query("mailerrors", $mail_error);
-		
+    /**
+     * Rids pesky characters from subjects, recipients, from addresses etc (prevents mail injection too)
+     *
+     * @return string The cleaned string
+     */
+    public function cleanup(string $string): string
+    {
+        $string = str_replace(["\r", "\n", "\r\n"], "", $string);
+        return trim($string);
+    }
 
-		// Another neat feature would be the ability to notify the site administrator via email - but wait, with email down, how do we do that? How about private message and hope the admin checks their PMs?
-	}
+    /**
+     * Converts message text to suit the correct delimiter
+     * See dev.mybb.com/issues/1735 (Jorge Oliveira)
+     *
+     * @return string The converted string
+     */
+    public function cleanup_crlf(string $text): string
+    {
+        $text = str_replace("\r\n", "\n", $text);
+        $text = str_replace("\r", "\n", $text);
+        $text = str_replace("\n", "\r\n", $text);
 
-	/**
-	 * Rids pesky characters from subjects, recipients, from addresses etc (prevents mail injection too)
-	 *
-	 * @param string $string The string being checked
-	 * @return string The cleaned string
-	 */
-	function cleanup($string)
-	{
-		$string = str_replace(array("\r", "\n", "\r\n"), "", $string);
-		$string = trim($string);
-		return $string;
-	}
+        return $text;
+    }
 
-	/**
-	 * Converts message text to suit the correct delimiter
-	 * See dev.mybb.com/issues/1735 (Jorge Oliveira)
-	 *
-	 * @param string $text The text being converted
-	 * @return string The converted string
-	 */
-	function cleanup_crlf($text)
-	{
-		$text = str_replace("\r\n", "\n", $text);
-		$text = str_replace("\r", "\n", $text);
-		$text = str_replace("\n", "\r\n", $text);
+    /**
+     * Encode a string based on the character set enabled. Used to encode subjects
+     * and recipients in email messages going out so that they show up correctly
+     * in email clients.
+     *
+     * @return string The encoded string.
+     */
+    public function utf8_encode(string $string): string
+    {
+        if (strtolower($this->charset) == 'utf-8' && preg_match('/[^\x20-\x7E]/', $string)) {
+            $chunk_size = 47; // Derived from floor((75 - strlen("=?UTF-8?B??=")) * 0.75);
+            $len = strlen($string);
+            $output = '';
+            $pos = 0;
 
-		return $text;
-	}
+            while ($pos < $len) {
+                $newpos = min($pos + $chunk_size, $len);
 
-	/**
-	 * Encode a string based on the character set enabled. Used to encode subjects
-	 * and recipients in email messages going out so that they show up correctly
-	 * in email clients.
-	 *
-	 * @param string $string The string to be encoded.
-	 * @return string The encoded string.
-	 */
-	function utf8_encode($string)
-	{
-		if(strtolower($this->charset) == 'utf-8' && preg_match('/[^\x20-\x7E]/', $string))
-		{
-			$chunk_size = 47; // Derived from floor((75 - strlen("=?UTF-8?B??=")) * 0.75);
-			$len = strlen($string);
-			$output = '';
-			$pos = 0;
+                if ($newpos != $len) {
+                    while (isset($string[$newpos]) && ord($string[$newpos]) >= 0x80 && ord($string[$newpos]) < 0xC0) {
+                        // Reduce len until it's safe to split UTF-8.
+                        $newpos--;
+                    }
+                }
 
-            while($pos < $len)
-			{
-				$newpos = min($pos + $chunk_size, $len);
+                $chunk = substr($string, $pos, $newpos - $pos);
+                $pos = $newpos;
 
-				if($newpos != $len)
-				{
-					while(ord($string[$newpos]) >= 0x80 && ord($string[$newpos]) < 0xC0)
-					{
-						// Reduce len until it's safe to split UTF-8.
-						$newpos--;
-					}
-				}
+                $output .= " =?UTF-8?B?" . base64_encode($chunk) . "?=\n";
+            }
+            return trim($output);
+        }
+        return $string;
+    }
 
-				$chunk = substr($string, $pos, $newpos - $pos);
-				$pos = $newpos;
-
-				$output .= " =?UTF-8?B?".base64_encode($chunk)."?=\n";
-			}
-			return trim($output);
-		}
-		return $string;
-	}
+    /**
+     * Getter for database connection (for testing purposes)
+     */
+    public function getDb(): ?object
+    {
+        return $this->db;
+    }
+    
+    /**
+     * Setter for database connection
+     */
+    public function setDb(object $db): void
+    {
+        $this->db = $db;
+    }
 }

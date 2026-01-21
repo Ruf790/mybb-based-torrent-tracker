@@ -874,9 +874,7 @@ class Moderation
 
 			$db->delete_query("tsf_posts", "pid IN ($pids)");
 			$db->delete_query("attachments", "pid IN ($pids)");
-			$db->delete_query("reportedcontent", "id IN ($pids) AND (type = 'post' OR type = '')");
-
-
+			
             // === Удаляем картинки, привязанные к POST ===
             $files = $db->simple_select("comment_files", "*", "post_id IN ($pids)");
             while ($file = $db->fetch_array($files)) 
@@ -901,6 +899,7 @@ class Moderation
 		{
 			$this->delete_thread($redirect_tid);
 		}
+		$db->sql_query ('DELETE FROM reports WHERE type=\'forumpost\' AND thread_id = ' . $tid);
 		$db->delete_query("tsf_threadsubscriptions", "tid='$tid'");
 		$db->delete_query("tsf_polls", "tid='$tid'");
 		$db->delete_query("tsf_pollvotes", "pid='".$thread['poll']."'");
@@ -984,6 +983,8 @@ class Moderation
 
 		// Delete the post
 		$db->delete_query("tsf_posts", "pid='$pid'");
+		
+		$db->sql_query ('DELETE FROM reports WHERE type=\'forumpost\' AND reported_id = ' . $pid);
 
 
         // === Удаляем картинки, привязанные к POST ===

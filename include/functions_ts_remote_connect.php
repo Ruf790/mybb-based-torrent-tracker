@@ -111,7 +111,19 @@ function TS_Fetch_Data($url, $post_data=array(), $max_redirects=20)
 		{
 			$ip_range = fetch_ip_range($disallowed_address);
 
-			$packed_address = my_inet_pton($destination_address);
+			// ПРОВЕРКА ПЕРЕД ВЫЗОВОМ
+if ($destination_address === null || $destination_address === false || $destination_address === '') {
+    // Не удалось получить IP адрес
+    error_log("TS_Fetch_Data Error: Cannot get IP for host - " . $url_components['host']);
+    return false;
+}
+
+$packed_address = my_inet_pton($destination_address);
+if ($packed_address === false) {
+    // Неверный IP адрес
+    error_log("TS_Fetch_Data Error: Invalid IP address - " . $destination_address);
+    return false;
+}
 
 			if(is_array($ip_range))
 			{

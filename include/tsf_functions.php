@@ -360,146 +360,10 @@ function fetch_forum_permissions($fid, $gid, $groupperms)
 
 
 
-
-
-
-
-
-
-
-
-function build_prefixes($pid=0)
+function build_highlight_array_sort($a, $b)
 {
-	global $cache;
-	static $prefixes_cache;
-
-	if(is_array($prefixes_cache))
-	{
-		if($pid > 0 && is_array($prefixes_cache[$pid]))
-		{
-			return $prefixes_cache[$pid];
-		}
-
-		return $prefixes_cache;
-	}
-
-	$prefix_cache = $cache->read("threadprefixes");
-
-	if(!is_array($prefix_cache))
-	{
-		// No cache
-		$prefix_cache = $cache->read("threadprefixes", true);
-
-		if(!is_array($prefix_cache))
-		{
-			return array();
-		}
-	}
-
-	$prefixes_cache = array();
-	foreach($prefix_cache as $prefix)
-	{
-		$prefixes_cache[$prefix['pid']] = $prefix;
-	}
-
-	if($pid != 0 && is_array($prefixes_cache[$pid]))
-	{
-		return $prefixes_cache[$pid];
-	}
-	else if(!empty($prefixes_cache))
-	{
-		return $prefixes_cache;
-	}
-
-	return false;
+	return strlen($b) - strlen($a);
 }
-
-
-function build_forum_prefix_select($fid, $selected_pid=0)
-{
-	global $cache, $db, $lang, $mybb, $templates;
-
-	$fid = (int)$fid;
-
-	$prefix_cache = build_prefixes(0);
-	if(empty($prefix_cache))
-	{
-		// We've got no prefixes to show
-		return '';
-	}
-
-	// Go through each of our prefixes and decide which ones we can use
-	$prefixes = array();
-	foreach($prefix_cache as $prefix)
-	{
-		if($prefix['forums'] != "-1")
-		{
-			// Decide whether this prefix can be used in our forum
-			$forums = explode(",", $prefix['forums']);
-
-			if(in_array($fid, $forums))
-			{
-				// This forum can use this prefix!
-				$prefixes[$prefix['pid']] = $prefix;
-			}
-		}
-		else
-		{
-			// This prefix is for anybody to use...
-			$prefixes[$prefix['pid']] = $prefix;
-		}
-	}
-
-	if(empty($prefixes))
-	{
-		return '';
-	}
-
-	$default_selected = array('all' => '', 'none' => '', 'any' => '');
-	$selected_pid = (int)$selected_pid;
-
-	if($selected_pid == 0)
-	{
-		$default_selected['all'] = ' selected="selected"';
-	}
-	else if($selected_pid == -1)
-	{
-		$default_selected['none'] = ' selected="selected"';
-	}
-	else if($selected_pid == -2)
-	{
-		$default_selected['any'] = ' selected="selected"';
-	}
-
-	$prefixselect_prefix = '';
-	foreach($prefixes as $prefix)
-	{
-		$selected = '';
-		if($prefix['pid'] == $selected_pid)
-		{
-			$selected = ' selected="selected"';
-		}
-
-		$prefix['prefix'] = htmlspecialchars_uni($prefix['prefix']);
-		eval('$prefixselect_prefix .= "'.$templates->get("forumdisplay_threadlist_prefixes_prefix").'";');
-	}
-
-	eval('$prefixselect = "'.$templates->get("forumdisplay_threadlist_prefixes").'";');
-	return $prefixselect;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -756,48 +620,6 @@ function is_member($groups, $user = false)
 
 
 
-function mark_reports($id, $type="post")
-{
-	global $db, $cache, $plugins;
-
-	switch($type)
-	{
-		case "posts":
-			if(is_array($id))
-			{
-				$rids = implode("','", $id);
-				$rids = "'0','$rids'";
-				$db->update_query("reportedcontent", array('reportstatus' => 1), "id IN($rids) AND reportstatus='0' AND (type = 'post' OR type = '')");
-			}
-			break;
-		case "post":
-			$db->update_query("reportedcontent", array('reportstatus' => 1), "id='$id' AND reportstatus='0' AND (type = 'post' OR type = '')");
-			break;
-		case "threads":
-			if(is_array($id))
-			{
-				$rids = implode("','", $id);
-				$rids = "'0','$rids'";
-				$db->update_query("reportedcontent", array('reportstatus' => 1), "id2 IN($rids) AND reportstatus='0' AND (type = 'post' OR type = '')");
-			}
-			break;
-		case "thread":
-			$db->update_query("reportedcontent", array('reportstatus' => 1), "id2='$id' AND reportstatus='0' AND (type = 'post' OR type = '')");
-			break;
-		case "forum":
-			$db->update_query("reportedcontent", array('reportstatus' => 1), "id3='$id' AND reportstatus='0' AND (type = 'post' OR type = '')");
-			break;
-		case "all":
-			$db->update_query("reportedcontent", array('reportstatus' => 1), "reportstatus='0' AND (type = 'post' OR type = '')");
-			break;
-	}
-
-	$arguments = array('id' => $id, 'type' => $type);
-	$plugins->run_hooks("mark_reports", $arguments);
-	$cache->update_reportedcontent();
-}
-
-
 
 
 function log_moderator_action($data, $action="")
@@ -1016,86 +838,70 @@ function log_moderator_action($data, $action="")
   
   
   
+ 
+  
+function get_attachment_icon($ext)
+{
+    global $cache, $attachtypes;
+
+    if(!$attachtypes)
+    {
+        $attachtypes = $cache->read("attachtypes");
+    }
+
+    $ext = my_strtolower($ext);
+
+    if(isset($attachtypes[$ext]['icon']) && $attachtypes[$ext]['icon'])
+    {
+        $icon = trim($attachtypes[$ext]['icon']);
+        $name = htmlspecialchars_uni($attachtypes[$ext]['name']);
+        
+        // Если это Font Awesome иконка (начинается с <)
+        if(my_substr($icon, 0, 1) == '<')
+        {
+            // Добавляем title если отсутствует
+            if(my_strpos($icon, 'title=') === false)
+            {
+                $pos = my_strpos($icon, '>');
+                if($pos !== false)
+                {
+                    $icon = my_substr($icon, 0, $pos) . ' title="' . $name . '"' . my_substr($icon, $pos);
+                }
+            }
+            
+            // Добавляем размер по умолчанию если отсутствует
+            if(my_strpos($icon, 'style=') === false)
+            {
+                $pos = my_strpos($icon, '>');
+                if($pos !== false)
+                {
+                    $icon = my_substr($icon, 0, $pos) . ' style="font-size: 16px;"' . my_substr($icon, $pos);
+                }
+            }
+            else if(my_strpos($icon, 'font-size:') === false)
+            {
+                // Добавляем font-size только если его еще нет в стилях
+                $icon = str_replace('style="', 'style="font-size: 16px; ', $icon);
+            }
+            
+            return $icon;
+        }
+    }
+    
+    // Иконка по умолчанию
+    $name = isset($attachtypes[$ext]['name']) 
+        ? htmlspecialchars_uni($attachtypes[$ext]['name']) 
+        : htmlspecialchars_uni($ext);
+    
+    return '<i class="fas fa-file" title="' . $name . '" style="font-size: 16px; color: #ccc;"></i>';
+}
   
   
   
   
   
   
-  function get_attachment_icon($ext)
-  {
-	global $cache, $attachtypes, $theme, $templates, $lang, $mybb;
-
-	if(!$attachtypes)
-	{
-		$attachtypes = $cache->read("attachtypes");
-	}
-
-	$ext = my_strtolower($ext);
-	
-	
-	$theme['imgdir'] = 'pic';
-
-	if($attachtypes[$ext]['icon'])
-	{
-		static $attach_icons_schemes = array();
-		if(!isset($attach_icons_schemes[$ext]))
-		{
-			$attach_icons_schemes[$ext] = parse_url($attachtypes[$ext]['icon']);
-			if(!empty($attach_icons_schemes[$ext]['scheme']))
-			{
-				$attach_icons_schemes[$ext] = $attachtypes[$ext]['icon'];
-			}
-			elseif(defined("IN_ADMINCP"))
-			{
-				$attach_icons_schemes[$ext] = str_replace("{theme}", "", $attachtypes[$ext]['icon']);
-				if(my_substr($attach_icons_schemes[$ext], 0, 1) != "/")
-				{
-					$attach_icons_schemes[$ext] = "../".$attach_icons_schemes[$ext];
-				}
-			}
-			elseif(defined("IN_PORTAL"))
-			{
-				global $change_dir;
-				$attach_icons_schemes[$ext] = $change_dir."/".str_replace("{theme}", $theme['imgdir'], $attachtypes[$ext]['icon']);
-				$attach_icons_schemes[$ext] = $mybb->get_asset_url($attach_icons_schemes[$ext]);
-			}
-			else
-			{
-				
-
-				
-				$attach_icons_schemes[$ext] = str_replace("{theme}", $theme['imgdir'], $attachtypes[$ext]['icon']);
-				$attach_icons_schemes[$ext] = $mybb->get_asset_url($attach_icons_schemes[$ext]);
-			}
-		}
-
-		$icon = $attach_icons_schemes[$ext];
-
-		$name = htmlspecialchars_uni($attachtypes[$ext]['name']);
-	}
-	else
-	{
-		if(defined("IN_ADMINCP"))
-		{
-			$theme['imgdir'] = "../images";
-		}
-		else if(defined("IN_PORTAL"))
-		{
-			global $change_dir;
-			$theme['imgdir'] = "{$change_dir}/images";
-		}
-
-		$icon = "{$theme['imgdir']}/attachtypes/unknown.png";
-
-		$name = 'unknown';
-	}
-
-	$icon = htmlspecialchars_uni($icon);
-	$attachment_icon = '<img src="'.$icon.'" title="'.$name.'" style="height: 16px; width: 16px" border="0" alt=".'.$ext.'" />';
-	
-	return $attachment_icon;
-  }
+  
   
   
   
@@ -1419,7 +1225,6 @@ function log_moderator_action($data, $action="")
 	$update_query = array();
 	$tid = (int)$tid;
 
-	//$counters = array('replies', 'attachmentcount');
 	
 	$counters = array('replies', 'unapprovedposts', 'attachmentcount');
 	

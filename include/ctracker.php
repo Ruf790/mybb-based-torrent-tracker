@@ -1,5 +1,5 @@
 <?php
-// TSSEv56 - Enhanced Security Filter
+// Enhanced Security Filter
 define('CT_VERSION', 'v0.7-enhanced');
 
 if (!defined('APP_INITIALIZED')) {

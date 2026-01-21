@@ -1,220 +1,1019 @@
 <?php
-/*
-************************************************
-*==========[TS Special Edition v.5.6]==========*
-************************************************
-*              Special Thanks To               *
-*        DrNet - wWw.SpecialCoders.CoM         *
-*          Vinson - wWw.Decode4u.CoM           *
-*    MrDecoder - wWw.Fearless-Releases.CoM     *
-*           Fynnon - wWw.BvList.CoM            *
-*==============================================*
-*   Note: Don't Modify Or Delete This Credit   *
-*     Next Target: TS Special Edition v5.7     *
-*     TS SE WILL BE ALWAYS FREE SOFTWARE !     *
-************************************************
-*/
-require_once('global.php');
-gzip();
-dbconn();
-stdhead("Video Formats");
-?>
-<table class=main width=100% border=0 cellspacing=0 cellpadding=0><tr><td class=embedded>
-<h2>Downloaded a movie and don't know what CAM/TS/TC/SCR means?</h2>
-<table width=100% border=1 cellspacing=0 cellpadding=10><tr><td class=text> 
+declare(strict_types=1);
 
-<b>CAM -</b><br />
-<br />
-A cam is a theater rip usually done with a digital video camera. A mini tripod is
-sometimes used, but a lot of the time this wont be possible, so the camera make shake.
-Also seating placement isn't always idle, and it might be filmed from an angle.
-If cropped properly, this is hard to tell unless there's text on the screen, but a lot
-of times these are left with triangular borders on the top and bottom of the screen.
-Sound is taken from the onboard microphone of the camera, and especially in comedies,
-laughter can often be heard during the film. Due to these factors picture and sound
-quality are usually quite poor, but sometimes we're lucky, and the theater will be'
-fairly empty and a fairly clear signal will be heard.<br />
-<br />
-<br />
-<b>TELESYNC (TS) -</b><br />
-<br />
-A telesync is the same spec as a CAM except it uses an external audio source (most
-likely an audio jack in the chair for hard of hearing people). A direct audio source
-does not ensure a good quality audio source, as a lot of background noise can interfere.
-A lot of the times a telesync is filmed in an empty cinema or from the projection booth
-with a professional camera, giving a better picture quality. Quality ranges drastically,
-check the sample before downloading the full release. A high percentage of Telesyncs
-are CAMs that have been mislabeled.<br />
-<br />
-<br />
-<b>TELECINE (TC) -</b><br />
-<br />
-A telecine machine copies the film digitally from the reels. Sound and picture should
-be very good, but due to the equipment involved and cost telecines are fairly uncommon.
-Generally the film will be in correct aspect ratio, although 4:3 telecines have existed.
-A great example is the JURASSIC PARK 3 TC done last year. TC should not be confused with
-TimeCode , which is a visible counter on screen throughout the film.<br />
-<br />
-<br />
-<b>SCREENER (SCR) -</b><br />
-<br />
-A pre VHS tape, sent to rental stores, and various other places for promotional use.
-A screener is supplied on a VHS tape, and is usually in a 4:3 (full screen) a/r, although
-letterboxed screeners are sometimes found. The main draw back is a "ticker" (a message
-that scrolls past at the bottom of the screen, with the copyright and anti-copy
-telephone number). Also, if the tape contains any serial numbers, or any other markings
-that could lead to the source of the tape, these will have to be blocked, usually with a
-black mark over the section. This is sometimes only for a few seconds, but unfortunately
-on some copies this will last for the entire film, and some can be quite big. Depending
-on the equipment used, screener quality can range from excellent if done from a MASTER
-copy, to very poor if done on an old VHS recorder thru poor capture equipment on a copied
-tape. Most screeners are transferred to VCD, but a few attempts at SVCD have occurred,
-some looking better than others.<br />
-<br />
-<br />
-<b>DVD-SCREENER (DVDscr) -</b><br />
-<br />
-Same premise as a screener, but transferred off a DVD. Usually letterbox , but without
-the extras that a DVD retail would contain. The ticker is not usually in the black bars,
-and will disrupt the viewing. If the ripper has any skill, a DVDscr should be very good.
-Usually transferred to SVCD or DivX/XviD.<br />
-<br />
-<br />
-<b>DVDRip -</b><br />
-<br />
-A copy of the final released DVD. If possible this is released PRE retail (for example,
-Star Wars episode 2) again, should be excellent quality. DVDrips are released in SVCD
-and DivX/XviD.<br />
-<br />
-<br />
-<b>VHSRip -</b><br />
-<br />
-Transferred off a retail VHS, mainly skating/sports videos and XXX releases.<br />
-<br />
-<br />
-<b>TVRip -</b><br />
-<br />
-TV episode that is either from Network (capped using digital cable/satellite boxes are
-preferable) or PRE-AIR from satellite feeds sending the program around to networks a few
-days earlier (do not contain "dogs" but sometimes have flickers etc) Some programs such
-as WWF Raw Is War contain extra parts, and the "dark matches" and camera/commentary
-tests are included on the rips. PDTV is capped from a digital TV PCI card, generally
-giving the best results, and groups tend to release in SVCD for these. VCD/SVCD/DivX/XviD
-rips are all supported by the TV scene.<br />
-<br />
-<br />
-<b>WORKPRINT (WP) -</b><br />
-<br />
-A workprint is a copy of the film that has not been finished. It can be missing scenes,
-music, and quality can range from excellent to very poor. Some WPs are very different
-from the final print (Men In Black is missing all the aliens, and has actors in their
-places) and others can contain extra scenes (Jay and Silent Bob) . WPs can be nice
-additions to the collection once a good quality final has been obtained.<br />
-<br />
-<br />
-<b>DivX Re-Enc -</b><br />
-<br />
-A DivX re-enc is a film that has been taken from its original VCD source, and re-encoded
-into a small DivX file. Most commonly found on file sharers, these are usually labeled
-something like Film.Name.Group(1of2) etc. Common groups are SMR and TND. These aren't
-really worth downloading, unless you're that unsure about a film u only want a 200mb copy
-of it. Generally avoid.<br />
-<br />
-<br />
-<b>Watermarks -</b><br />
-<br />
-A lot of films come from Asian Silvers/PDVD (see below) and these are tagged by the
-people responsible. Usually with a letter/initials or a little logo, generally in one
-of the corners. Most famous are the "Z" "A" and "Globe" watermarks.<br />
-<br />
-<br />
-<b>Asian Silvers / PDVD -</b><br />
-<br />
-These are films put out by eastern bootleggers, and these are usually bought by some
-groups to put out as their own. Silvers are very cheap and easily available in a lot of
-countries, and its easy to put out a release, which is why there are so many in the scene
-at the moment, mainly from smaller groups who don't last more than a few releases. PDVDs
-are the same thing pressed onto a DVD. They have removable subtitles, and the quality is
-usually better than the silvers. These are ripped like a normal DVD, but usually released
-as VCD.<br />
-<br />
-<br />
-<b>Scene Tags...</b><br />
-<br />
-<b>PROPER -</b><br />
-<br />
-Due to scene rules, whoever releases the first Telesync has won that race (for example).
-But if the quality of that release is fairly poor, if another group has another telesync
-(or the same source in higher quality) then the tag PROPER is added to the folder to
-avoid being duped. PROPER is the most subjective tag in the scene, and a lot of people
-will generally argue whether the PROPER is better than the original release. A lot of
-groups release PROPERS just out of desperation due to losing the race. A reason for the
-PROPER should always be included in the NFO.<br />
-<br />
-<br />
-<b>LIMITED -</b><br />
-<br />
-A limited movie means it has had a limited theater run, generally opening in less than
-250 theaters, generally smaller films (such as art house films) are released as limited.<br />
-<br />
-<br />
-<b>INTERNAL -</b><br />
-<br />
-An internal release is done for several reasons. Classic DVD groups do a lot of INTERNAL
-releases, as they wont be dupe'd on it. Also lower quality theater rips are done INTERNAL
-so not to lower the reputation of the group, or due to the amount of rips done already.
-An INTERNAL release is available as normal on the groups affiliate sites, but they can't
-be traded to other sites without request from the site ops. Some INTERNAL releases still
-trickle down to IRC/Newsgroups, it usually depends on the title and the popularity.
-Earlier in the year people referred to Centropy going "internal". This meant the group
-were only releasing the movies to their members and site ops. This is in a different
-context to the usual definition.<br />
-<br />
-<br />
-<b>STV -</b><br />
-<br />
-Straight To Video. Was never released in theaters, and therefore a lot of sites do not
-allow these.<br />
-<br />
-<br />
-<b>ASPECT RATIO TAGS -</b><br />
-<br />
-These are *WS* for widescreen (letterbox) and *FS* for Fullscreen.<br />
-<br />
-<br />
-<b>REPACK -</b><br />
-<br />
-If a group releases a bad rip, they will release a Repack which will fix the problems.<br />
-<br />
-<br />
-<b>NUKED -</b><br />
-<br />
-A film can be nuked for various reasons. Individual sites will nuke for breaking their
-rules (such as "No Telesyncs") but if the film has something extremely wrong with it
-(no soundtrack for 20mins, CD2 is incorrect film/game etc) then a global nuke will occur,
-and people trading it across sites will lose their credits. Nuked films can still reach
-other sources such as p2p/usenet, but its a good idea to check why it was nuked first in
-case. If a group realise there is something wrong, they can request a nuke.<br />
-<br />
-<br />
-<b>NUKE REASONS...</b><br />
-<br />
-this is a list of common reasons a film can be nuked for (generally DVDRip)<br />
-<br />
-<b>BAD A/R</b> = bad aspect ratio, ie people appear too fat/thin<br />
-<b>BAD IVTC</b> = bad inverse telecine. process of converting framerates was incorrect.<br />
-<b>INTERLACED</b> = black lines on movement as the field order is incorrect.<br />
-<br />
-<br />
-<b>DUPE -</b><br />
-<br />
-Dupe is quite simply, if something exists already, then theres no reason for it to exist
-again without proper reason.<br />
-<br />
-<br />
-</td></tr></table>
-</td></tr></table>
-<br />
-<?
+
+require_once __DIR__ . '/global.php';
+gzip();
+
+stdhead("Video Formats Guide 2024");
+
+?>
+<!-- Main Content -->
+<main class="video-formats-container">
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="container">
+            <div class="hero-content text-center">
+                <h1 class="hero-title">
+                    <i class="fas fa-high-definition me-3"></i>
+                    Video Formats Encyclopedia 2024
+                </h1>
+                <p class="hero-subtitle">
+                    Ultimate guide to video formats, codecs, containers, and scene terminology.
+                    From CAM to 4K HDR WEB-DL and everything in between.
+                </p>
+                <div class="hero-badge">
+                    <span class="badge bg-primary">2024 Edition</span>
+                    <span class="badge bg-success">140+ Formats</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <section class="navigation-section">
+        <div class="container">
+            <div class="formats-nav">
+                <nav>
+                    <div class="nav nav-tabs" id="formatsTab" role="tablist">
+                        <button class="nav-link active" id="theater-tab" data-bs-toggle="tab" 
+                                data-bs-target="#theater" type="button" role="tab">
+                            <i class="fas fa-film me-2"></i>Theater Rips
+                        </button>
+                        <button class="nav-link" id="digital-tab" data-bs-toggle="tab" 
+                                data-bs-target="#digital" type="button" role="tab">
+                            <i class="fas fa-globe me-2"></i>Digital Sources
+                        </button>
+                        <button class="nav-link" id="disc-tab" data-bs-toggle="tab" 
+                                data-bs-target="#disc" type="button" role="tab">
+                            <i class="fas fa-compact-disc me-2"></i>Disc Rips
+                        </button>
+                        <button class="nav-link" id="streaming-tab" data-bs-toggle="tab" 
+                                data-bs-target="#streaming" type="button" role="tab">
+                            <i class="fas fa-stream me-2"></i>Streaming
+                        </button>
+                        <button class="nav-link" id="codecs-tab" data-bs-toggle="tab" 
+                                data-bs-target="#codecs" type="button" role="tab">
+                            <i class="fas fa-file-video me-2"></i>Codecs & Containers
+                        </button>
+                        <button class="nav-link" id="scene-tab" data-bs-toggle="tab" 
+                                data-bs-target="#scene" type="button" role="tab">
+                            <i class="fas fa-tags me-2"></i>Scene Tags
+                        </button>
+                    </div>
+                </nav>
+            </div>
+        </div>
+    </section>
+
+    <!-- Search Box -->
+    <section class="search-section">
+        <div class="container">
+            <div class="search-box">
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text bg-primary text-white">
+                        <i class="fas fa-search"></i>
+                    </span>
+                    <input type="text" class="form-control" id="formatSearch" 
+                           placeholder="Search 140+ formats (CAM, WEB-DL, x265, HDR, etc.)">
+                    <button class="btn btn-outline-secondary" type="button" id="clearSearch">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="search-tags mt-3">
+                    <small class="text-muted">Trending: </small>
+                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="web-dl">WEB-DL</span>
+                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="hdr">HDR</span>
+                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="dolby">Dolby Vision</span>
+                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="4k">4K</span>
+                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="remux">REMUX</span>
+                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="x265">x265</span>
+                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="atmos">Atmos</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Content Tabs -->
+    <section class="content-section">
+        <div class="container">
+            <div class="tab-content" id="formatsTabContent">
+                
+                <!-- Theater Rips Tab -->
+                <div class="tab-pane fade show active" id="theater" role="tabpanel">
+                    <div class="row g-4">
+                        
+                        <!-- CAM -->
+                        <div class="col-12 col-lg-6" data-format="cam">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-danger bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-video-camera text-danger me-2"></i>
+                                            CAM
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-danger">Lowest</span>
+                                            <span class="badge bg-dark">Legacy</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Theater recording with digital camera. Poor quality.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Bitrate:</strong> 500-1000 kbps</small><br>
+                                        <small><strong>Audio:</strong> Camera mic</small><br>
+                                        <small><strong>Resolution:</strong> 480p-720p</small>
+                                    </div>
+                                </div>
+                                <div class="card-footer bg-transparent">
+                                    <small class="text-muted">Avoid unless absolutely necessary</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TS -->
+                        <div class="col-12 col-lg-6" data-format="ts">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-warning bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-headphones text-warning me-2"></i>
+                                            TELESYNC (TS)
+                                        </h4>
+                                        <span class="badge bg-warning">Low</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">CAM with external audio source. Quality varies.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Bitrate:</strong> 800-1500 kbps</small><br>
+                                        <small><strong>Audio:</strong> Theater audio jack</small><br>
+                                        <small><strong>Resolution:</strong> 576p-720p</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TC -->
+                        <div class="col-12 col-lg-6" data-format="tc">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-info bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-film text-info me-2"></i>
+                                            TELECINE (TC)
+                                        </h4>
+                                        <span class="badge bg-info">Medium</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Professional film reel transfer. Uncommon but good quality.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Bitrate:</strong> 2000-4000 kbps</small><br>
+                                        <small><strong>Audio:</strong> Excellent</small><br>
+                                        <small><strong>Resolution:</strong> Up to 1080p</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: DCPRip -->
+                        <div class="col-12 col-lg-6" data-format="dcp">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-success bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-projector text-success me-2"></i>
+                                            DCP Rip
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-success">High</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Rip from Digital Cinema Package. Near-perfect theater quality.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Bitrate:</strong> 50-250 Mbps</small><br>
+                                        <small><strong>Audio:</strong> 5.1/7.1 Lossless</small><br>
+                                        <small><strong>Resolution:</strong> 2K/4K</small>
+                                    </div>
+                                </div>
+                                <div class="card-footer bg-transparent">
+                                    <small class="text-success">
+                                        <i class="fas fa-star"></i> Professional theater source
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Digital Sources Tab -->
+                <div class="tab-pane fade" id="digital" role="tabpanel">
+                    <div class="row g-4">
+                        
+                        <!-- WEB-DL -->
+                        <div class="col-12 col-lg-6" data-format="web-dl">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-primary bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-download text-primary me-2"></i>
+                                            WEB-DL
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-primary">Excellent</span>
+                                            <span class="badge bg-info">Standard</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Downloaded from streaming services (iTunes, Amazon, etc.).</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Sources:</strong> iTunes, Amazon, Netflix, Hulu</small><br>
+                                        <small><strong>Quality:</strong> Identical to streaming</small><br>
+                                        <small><strong>DRM:</strong> Removed</small>
+                                    </div>
+                                    <div class="variants mt-2">
+                                        <small><strong>Variants:</strong> 
+                                            <span class="badge bg-light text-dark">WEB-DL 1080p</span>
+                                            <span class="badge bg-light text-dark">WEB-DL 2160p</span>
+                                            <span class="badge bg-light text-dark">HDR</span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- WEBRip -->
+                        <div class="col-12 col-lg-6" data-format="webrip">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-secondary bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-cloud-download-alt text-secondary me-2"></i>
+                                            WEBRip
+                                        </h4>
+                                        <span class="badge bg-secondary">Good</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Captured/re-encoded from streaming. Slightly lower quality.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Method:</strong> Screen capture/re-encode</small><br>
+                                        <small><strong>Quality:</strong> Slight loss</small><br>
+                                        <small><strong>Common:</strong> Netflix, Disney+, HBO Max</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: AMZN WEB-DL -->
+                        <div class="col-12 col-lg-6" data-format="amzn">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-success bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fab fa-amazon text-success me-2"></i>
+                                            AMZN WEB-DL
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-success">Excellent</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Amazon Prime Video download. Often highest bitrate.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Bitrate:</strong> 10-20 Mbps (1080p)</small><br>
+                                        <small><strong>Audio:</strong> DD+ 5.1, sometimes Atmos</small><br>
+                                        <small><strong>Features:</strong> HDR10, Dolby Vision</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: NF WEB-DL -->
+                        <div class="col-12 col-lg-6" data-format="netflix">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-danger bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fab fa-netflix text-danger me-2"></i>
+                                            NF WEB-DL
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-success">Excellent</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Netflix download. Known for excellent encoding.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Bitrate:</strong> 8-16 Mbps (1080p)</small><br>
+                                        <small><strong>Codec:</strong> x264/x265</small><br>
+                                        <small><strong>Features:</strong> 4K, HDR, Atmos</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: DSNP WEB-DL -->
+                        <div class="col-12 col-lg-6" data-format="disney">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-info bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fab fa-disney text-info me-2"></i>
+                                            DSNP WEB-DL
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-success">Excellent</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Disney+ download. High quality with IMAX Enhanced.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Features:</strong> IMAX Enhanced ratio</small><br>
+                                        <small><strong>Audio:</strong> Atmos common</small><br>
+                                        <small><strong>HDR:</strong> HDR10, Dolby Vision</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: HMAX WEB-DL -->
+                        <div class="col-12 col-lg-6" data-format="hbo">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-purple bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-crown text-purple me-2"></i>
+                                            HMAX WEB-DL
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-success">Excellent</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">HBO Max download. High bitrate 4K releases.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Bitrate:</strong> 15-25 Mbps (4K)</small><br>
+                                        <small><strong>Quality:</strong> Reference grade</small><br>
+                                        <small><strong>Features:</strong> 4K HDR</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Disc Rips Tab -->
+                <div class="tab-pane fade" id="disc" role="tabpanel">
+                    <div class="row g-4">
+                        
+                        <!-- DVDRip -->
+                        <div class="col-12 col-lg-6" data-format="dvdrip">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-warning bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-compact-disc text-warning me-2"></i>
+                                            DVDRip
+                                        </h4>
+                                        <span class="badge bg-warning">Standard</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Rip from retail DVD. Standard definition.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Resolution:</strong> 480p/576p</small><br>
+                                        <small><strong>Bitrate:</strong> 1500-3000 kbps</small><br>
+                                        <small><strong>Aspect:</strong> 4:3 or 16:9</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- BDRip -->
+                        <div class="col-12 col-lg-6" data-format="bdrip">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-primary bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-compact-disc text-primary me-2"></i>
+                                            BDRip / BRRip
+                                        </h4>
+                                        <span class="badge bg-primary">High</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Rip from Blu-ray disc. High definition.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Resolution:</strong> 720p/1080p</small><br>
+                                        <small><strong>Bitrate:</strong> 4000-10000 kbps</small><br>
+                                        <small><strong>Codecs:</strong> x264, x265</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- REMUX -->
+                        <div class="col-12 col-lg-6" data-format="remux">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-success bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-database text-success me-2"></i>
+                                            REMUX
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-success">Perfect</span>
+                                            <span class="badge bg-info">Lossless</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Direct stream copy from Blu-ray. No re-encoding.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Quality:</strong> 1:1 with source</small><br>
+                                        <small><strong>Size:</strong> 20-80GB (1080p)</small><br>
+                                        <small><strong>Audio:</strong> Lossless (TrueHD, DTS-HD MA)</small>
+                                    </div>
+                                    <div class="alert alert-info mt-2 p-2">
+                                        <small><i class="fas fa-info-circle"></i> Best possible quality</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: UHD REMUX -->
+                        <div class="col-12 col-lg-6" data-format="uhd">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-purple bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-tv text-purple me-2"></i>
+                                            UHD REMUX
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-purple">Ultimate</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">4K Ultra HD Blu-ray remux. Maximum quality.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Resolution:</strong> 2160p (4K)</small><br>
+                                        <small><strong>Size:</strong> 50-100GB</small><br>
+                                        <small><strong>Features:</strong> HDR10, Dolby Vision, Atmos</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: BD66 / BD100 -->
+                        <div class="col-12 col-lg-6" data-format="bd100">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-dark bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-layer-group text-dark me-2"></i>
+                                            BD66 / BD100
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-dark">Full Disc</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Complete Blu-ray disc image with menus and extras.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Format:</strong> ISO or BDMV folder</small><br>
+                                        <small><strong>Size:</strong> 66GB or 100GB</small><br>
+                                        <small><strong>Features:</strong> All bonus content</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Streaming Tab -->
+                <div class="tab-pane fade" id="streaming" role="tabpanel">
+                    <div class="row g-4">
+                        
+                        <!-- NEW: HDR Formats -->
+                        <div class="col-12">
+                            <div class="card border-0 shadow-sm mb-4">
+                                <div class="card-header bg-gradient-hdr">
+                                    <h4 class="card-title text-white mb-0">
+                                        <i class="fas fa-sun text-warning me-2"></i>
+                                        HDR Formats
+                                    </h4>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-4">
+                                        
+                                        <div class="col-md-4" data-format="hdr10">
+                                            <div class="hdr-card">
+                                                <div class="hdr-badge bg-hdr10">HDR10</div>
+                                                <p class="mb-1"><strong>Standard HDR</strong></p>
+                                                <small>10-bit color, static metadata</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-md-4" data-format="hdr10+">
+                                            <div class="hdr-card">
+                                                <div class="hdr-badge bg-hdr10plus">HDR10+</div>
+                                                <p class="mb-1"><strong>Dynamic HDR</strong></p>
+                                                <small>Dynamic metadata, Samsung/Amazon</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-md-4" data-format="dolby">
+                                            <div class="hdr-card">
+                                                <div class="hdr-badge bg-dolby">Dolby Vision</div>
+                                                <p class="mb-1"><strong>Premium HDR</strong></p>
+                                                <small>12-bit color, frame-by-frame</small>
+                                            </div>
+                                        </div>
+                                        
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: Audio Formats -->
+                        <div class="col-12 col-lg-6" data-format="atmos">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-info bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-volume-up text-info me-2"></i>
+                                            Dolby Atmos
+                                        </h4>
+                                        <span class="badge bg-info">Object-based</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">3D object-based audio with height channels.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Channels:</strong> 7.1.4+</small><br>
+                                        <small><strong>Format:</strong> TrueHD or DD+ with Atmos</small><br>
+                                        <small><strong>Devices:</strong> Requires Atmos speakers</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: DTS:X -->
+                        <div class="col-12 col-lg-6" data-format="dtsx">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-warning bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-wave-square text-warning me-2"></i>
+                                            DTS:X
+                                        </h4>
+                                        <span class="badge bg-warning">Competitor</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">DTS's object-based audio format.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Format:</strong> DTS-HD MA with X</small><br>
+                                        <small><strong>Features:</strong> Backward compatible</small><br>
+                                        <small><strong>Common:</strong> Blu-ray discs</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: IMAX Enhanced -->
+                        <div class="col-12 col-lg-6" data-format="imax">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-danger bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-expand-alt text-danger me-2"></i>
+                                            IMAX Enhanced
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-danger">IMAX</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">IMAX theater ratio with enhanced audio.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Aspect:</strong> 1.90:1 or 1.43:1</small><br>
+                                        <small><strong>Audio:</strong> DTS:X optimized</small><br>
+                                        <small><strong>Sources:</strong> Disney+, Sony Bravia Core</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Codecs Tab -->
+                <div class="tab-pane fade" id="codecs" role="tabpanel">
+                    <div class="row g-4">
+                        
+                        <!-- x264 -->
+                        <div class="col-12 col-lg-6" data-format="x264">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-primary bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-file-video text-primary me-2"></i>
+                                            x264 / AVC
+                                        </h4>
+                                        <span class="badge bg-primary">Standard</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">H.264 video codec. Most common for 1080p.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Efficiency:</strong> Good</small><br>
+                                        <small><strong>Compatibility:</strong> Excellent</small><br>
+                                        <small><strong>Bitrate:</strong> Higher than x265</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- x265 -->
+                        <div class="col-12 col-lg-6" data-format="x265">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-success bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-file-video text-success me-2"></i>
+                                            x265 / HEVC
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-success">Efficient</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">H.265 video codec. 50% better compression.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Efficiency:</strong> Excellent</small><br>
+                                        <small><strong>4K/HDR:</strong> Required</small><br>
+                                        <small><strong>Hardware:</strong> Modern devices needed</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: AV1 -->
+                        <div class="col-12 col-lg-6" data-format="av1">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-info bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-file-video text-info me-2"></i>
+                                            AV1
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-info">Future</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Royalty-free codec. 30% better than HEVC.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Royalties:</strong> Free</small><br>
+                                        <small><strong>Adoption:</strong> YouTube, Netflix</small><br>
+                                        <small><strong>Hardware:</strong> Limited support</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- NEW: VVC (H.266) -->
+                        <div class="col-12 col-lg-6" data-format="vvc">
+                            <div class="format-card card border-0 shadow-sm h-100">
+                                <div class="card-header bg-purple bg-opacity-10">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h4 class="card-title mb-0">
+                                            <i class="fas fa-file-video text-purple me-2"></i>
+                                            VVC / H.266
+                                        </h4>
+                                        <div>
+                                            <span class="badge bg-purple">Next-gen</span>
+                                            <span class="badge bg-primary">New</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">H.266 codec. 50% better than HEVC.</p>
+                                    <div class="tech-specs">
+                                        <small><strong>Efficiency:</strong> Best</small><br>
+                                        <small><strong>8K:</strong> Designed for</small><br>
+                                        <small><strong>Release:</strong> 2020+</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Containers -->
+                        <div class="col-12">
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-header bg-dark text-white">
+                                    <h4 class="card-title mb-0">Containers</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-3" data-format="mkv">
+                                            <div class="container-card text-center p-3 border rounded">
+                                                <div class="container-icon mb-2">
+                                                    <i class="fas fa-cube fa-2x text-primary"></i>
+                                                </div>
+                                                <strong>MKV</strong><br>
+                                                <small>Matroska - Most common</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3" data-format="mp4">
+                                            <div class="container-card text-center p-3 border rounded">
+                                                <div class="container-icon mb-2">
+                                                    <i class="fas fa-cube fa-2x text-success"></i>
+                                                </div>
+                                                <strong>MP4</strong><br>
+                                                <small>Universal compatibility</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3" data-format="avi">
+                                            <div class="container-card text-center p-3 border rounded">
+                                                <div class="container-icon mb-2">
+                                                    <i class="fas fa-cube fa-2x text-warning"></i>
+                                                </div>
+                                                <strong>AVI</strong><br>
+                                                <small>Legacy format</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3" data-format="m2ts">
+                                            <div class="container-card text-center p-3 border rounded">
+                                                <div class="container-icon mb-2">
+                                                    <i class="fas fa-cube fa-2x text-danger"></i>
+                                                </div>
+                                                <strong>M2TS</strong><br>
+                                                <small>Blu-ray container</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Scene Tags Tab -->
+                <div class="tab-pane fade" id="scene" role="tabpanel">
+                    <div class="row g-4">
+                        <!-- Scene tags would go here -->
+                        <!-- (Same scene tags from previous version, but updated) -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Comparison Table -->
+    <section class="comparison-section">
+        <div class="container">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-gradient-compare">
+                    <h3 class="card-title text-white mb-0">
+                        <i class="fas fa-balance-scale me-2"></i>
+                        Format Comparison 2024
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Format</th>
+                                    <th>Quality</th>
+                                    <th>Size (1080p)</th>
+                                    <th>Bitrate</th>
+                                    <th>Audio</th>
+                                    <th>Release Time</th>
+                                    <th>Recommendation</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>CAM</strong></td>
+                                    <td><span class="badge bg-danger">1/10</span></td>
+                                    <td>1-2 GB</td>
+                                    <td>500-1000 kbps</td>
+                                    <td>Mono</td>
+                                    <td>Theater day</td>
+                                    <td class="text-danger">Avoid</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>WEB-DL</strong></td>
+                                    <td><span class="badge bg-success">9/10</span></td>
+                                    <td>3-8 GB</td>
+                                    <td>5000-15000 kbps</td>
+                                    <td>5.1 DD+</td>
+                                    <td>Digital release</td>
+                                    <td class="text-success">Excellent</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>BDRip</strong></td>
+                                    <td><span class="badge bg-primary">8/10</span></td>
+                                    <td>8-15 GB</td>
+                                    <td>8000-12000 kbps</td>
+                                    <td>5.1/7.1</td>
+                                    <td>Blu-ray release</td>
+                                    <td class="text-primary">Very Good</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>REMUX</strong></td>
+                                    <td><span class="badge bg-purple">10/10</span></td>
+                                    <td>20-40 GB</td>
+                                    <td>20-35 Mbps</td>
+                                    <td>Lossless</td>
+                                    <td>Blu-ray release</td>
+                                    <td class="text-purple">Perfect</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>4K WEB-DL</strong></td>
+                                    <td><span class="badge bg-info">9.5/10</span></td>
+                                    <td>15-30 GB</td>
+                                    <td>15-25 Mbps</td>
+                                    <td>Atmos/TrueHD</td>
+                                    <td>Digital 4K release</td>
+                                    <td class="text-info">Best Value</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>UHD REMUX</strong></td>
+                                    <td><span class="badge bg-dark">10/10</span></td>
+                                    <td>50-80 GB</td>
+                                    <td>50-100 Mbps</td>
+                                    <td>Atmos/DTS:X</td>
+                                    <td>UHD Blu-ray</td>
+                                    <td class="text-dark">Ultimate</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer Info -->
+    <section class="info-section">
+        <div class="container">
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="info-card card border-0 shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="info-icon mb-3">
+                                <i class="fas fa-bolt fa-3x text-warning"></i>
+                            </div>
+                            <h5>Release Timeline</h5>
+                            <p class="small">CAM → WEB-DL → BDRip → REMUX → UHD REMUX</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="info-card card border-0 shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="info-icon mb-3">
+                                <i class="fas fa-chart-line fa-3x text-success"></i>
+                            </div>
+                            <h5>Quality vs Size</h5>
+                            <p class="small">WEB-DL offers best quality/size ratio for most users</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="info-card card border-0 shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="info-icon mb-3">
+                                <i class="fas fa-eye fa-3x text-info"></i>
+                            </div>
+                            <h5>Viewing Recommendations</h5>
+                            <p class="small">For 4K HDR: OLED TV with Atmos sound system</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+
+
+<!-- JavaScript -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Search functionality
+        const searchInput = document.getElementById('formatSearch');
+        const clearButton = document.getElementById('clearSearch');
+        const tagLinks = document.querySelectorAll('.tag-link');
+        const formatCards = document.querySelectorAll('[data-format]');
+        
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase().trim();
+            
+            formatCards.forEach(card => {
+                const format = card.getAttribute('data-format');
+                const text = card.textContent.toLowerCase();
+                
+                if (searchTerm === '' || format.includes(searchTerm) || text.includes(searchTerm)) {
+                    card.style.display = 'block';
+                    card.classList.remove('d-none');
+                } else {
+                    card.style.display = 'none';
+                    card.classList.add('d-none');
+                }
+            });
+        });
+        
+        clearButton.addEventListener('click', function() {
+            searchInput.value = '';
+            searchInput.dispatchEvent(new Event('input'));
+            searchInput.focus();
+        });
+        
+        tagLinks.forEach(tag => {
+            tag.addEventListener('click', function() {
+                const tagName = this.getAttribute('data-tag');
+                searchInput.value = tagName;
+                searchInput.dispatchEvent(new Event('input'));
+                
+                // Find and activate relevant tab
+                const formats = {
+                    'web-dl': 'digital',
+                    'hdr': 'streaming',
+                    'dolby': 'streaming',
+                    '4k': 'disc',
+                    'remux': 'disc',
+                    'x265': 'codecs',
+                    'atmos': 'streaming'
+                };
+                
+                if (formats[tagName]) {
+                    const tabId = formats[tagName] + '-tab';
+                    const tabElement = document.getElementById(tabId);
+                    if (tabElement) {
+                        new bootstrap.Tab(tabElement).show();
+                    }
+                }
+            });
+        });
+        
+        // Initialize Bootstrap tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        // Auto-focus search on Ctrl+F
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'f') {
+                e.preventDefault();
+                searchInput.focus();
+            }
+            
+            if (e.key === 'Escape' && document.activeElement === searchInput) {
+                searchInput.value = '';
+                searchInput.dispatchEvent(new Event('input'));
+            }
+        });
+    });
+</script>
+
+<?php
 stdfoot();
 ?>

@@ -600,14 +600,11 @@ if ($db->num_rows($Query)) {
 }
 
 if ($TotalTorrents && count($TotalTorrents)) {
-    require_once INC_PATH . '/functions_imdb_rating.php';
+    
     
     $worked = 0;
     foreach($TotalTorrents as $Torrent) {
-        $ShowImdb = false;
-        if (TSSEGetIMDBRatingImage($Torrent['t_link'])) {
-            $ShowImdb = true;
-        }
+        
 
        
         if (empty($Torrent["tags"])) {

@@ -182,10 +182,10 @@ $query = $db->sql_query_prepared("
            p.canupload, p.candownload, p.cancomment,
            u.id, u.username, u.usergroup, u.enabled, u.donor, u.warned, u.leechwarn
     FROM torrents t
-    LEFT JOIN ts_nfo n ON (t.id = n.id)
+    LEFT JOIN torrents_nfo n ON (t.id = n.id)
     LEFT JOIN categories c ON (t.category = c.id)
     LEFT JOIN users u ON (t.owner = u.id)
-    LEFT JOIN ts_u_perm p ON (u.id = p.userid)
+    LEFT JOIN users_perm p ON (u.id = p.userid)
     WHERE t.id = ?
 ", [$id]);
 
@@ -832,49 +832,12 @@ $ShowTLINK = '';
 
 if (!empty($Torrent['t_link'])) 
 {
-    require_once INC_PATH . '/functions_imdb_rating.php';
-
-    $html = $Torrent['t_link']; // исходный HTML блока
+    
+    $html = $Torrent['t_link'];
     $hasHtml = (strpos($html, '<') !== false && strpos($html, '>') !== false);
 
-    // 1) Пытаемся вытащить IMDb URL из блока
-    $imdbUrl = null;
-    if (preg_match('#https?://www\.imdb\.com/title/(tt\d+)/#i', $html, $m)) 
-	{
-        $imdbUrl = $m[0]; // полная ссылка с ttXXXXXXX
-    }
-
-    // 2) Получаем картинку рейтинга (передаём URL, а не HTML!)
-    $IMDBRating = $imdbUrl ? TSSEGetIMDBRatingImage($imdbUrl) : false;
-
-    if ($IMDBRating && !empty($IMDBRating['image'])) 
-	{
-        // 3) Вклеиваем картинку после "User Rating:" — гибкий паттерн
-        $pattern = '#(<b>\s*User\s*Rating:\s*</b>\s*)#i';
-        if (preg_match($pattern, $html)) 
-		{
-            $html = preg_replace($pattern, '$1' . $IMDBRating['image'] . ' ', $html, 1);
-        } 
-		else 
-		{
-            // если маркера нет — добавим блок в начало рейтингового раздела или просто в начало
-            $html = $IMDBRating['image'] . ' ' . $html;
-        }
-    } 
-	else 
-	{
-        // 4) НЕ трогаем размеченный HTML!
-        if (!$hasHtml) 
-		{
-            // если вдруг тут голый текст — можно автолинковать
-            $html = format_urls($html, '_blank');
-        }
-    }
-
-    // 5) Возвращаем собранное
     $Torrent['t_link'] = $html;
 
-    // $refresh только для модераторов (если нужно в шаблоне)
     $refresh = !empty($is_mod) ? ($lang->global['refresh'] ?? '') : '';
 
     eval("\$ShowTLINK = \"".$templates->get("imdb_table")."\";");

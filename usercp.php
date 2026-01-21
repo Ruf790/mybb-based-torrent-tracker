@@ -2088,7 +2088,7 @@ if($mybb->input['action'] == "subscriptions")
 		}
 
 		$icon_cache = $cache->read("posticons");
-		$threadprefixes = build_prefixes();
+		//$threadprefixes = build_prefixes();
 
 		$threads = '';
 
@@ -2240,7 +2240,27 @@ if($mybb->input['action'] == "subscriptions")
 			}
 
 			// Build last post info
-			$lastpostdate = my_datee('relative', $thread['lastpost']);
+			//$lastpostdate = my_datee('relative', $thread['lastpost']);
+			
+			
+			
+			$lastpostdate = '
+			
+			<div>
+			<span class="badge bg-light text-dark border">
+                         '.my_datee($dateformat, $thread['lastpost']).'
+                    </span><br>
+                    <span class="badge bg-light text-dark border">
+                        '.my_datee($timeformat, $thread['lastpost']).'
+                    </span>
+					</div>
+					
+					';
+			
+			
+			
+			
+			
 			$lastposteruid = $thread['lastposteruid'];
 			if(!$lastposteruid && !$thread['lastposter'])
 			{

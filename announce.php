@@ -755,13 +755,6 @@ else
 
         
 
-    
-    // Бонусные очки (users - MyISAM)
-    if (($kpsseed ?? 0) > 0 && $seeder === 'yes' && 
-        (($announce_interval ?? 1800) - 10 < ($self['announcetime'] ?? 0)) && 
-        (($bonus ?? '') === 'enable' || $bonus === 'disablesave')) {
-        $update_user[] = 'seedbonus = seedbonus + ' . min($kpsseed, 1000000);
-    }
 
     // Обновления для сидеров (torrents - MyISAM)
     if ($seeder === 'yes') {

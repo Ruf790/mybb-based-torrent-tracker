@@ -760,7 +760,7 @@ function handleQuickComment(): void
         return;
     }
 
-    $query = $db->simple_select("ts_u_perm", "cancomment", "userid='".$CURUSER['id']."'");
+    $query = $db->simple_select("users_perm", "cancomment", "userid='".$CURUSER['id']."'");
     
     if ($db->num_rows($query) > 0) {
         $commentperm = $db->fetch_array($query);

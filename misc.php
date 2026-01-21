@@ -132,7 +132,7 @@ elseif($mybb->input['action'] == "rules")
 		$forum = get_forum($fid);
 		if(!$forum || $forum['type'] != "f" || $forum['rules'] == '')
 		{
-			error($lang->error_invalidforum);
+			error('error_invalidforum');
 		}
 
 		$forumpermissions = forum_permissions($forum['fid']);
@@ -165,7 +165,8 @@ elseif($mybb->input['action'] == "rules")
 		$plugins->run_hooks("misc_rules_end");
 
 		eval("\$rules = \"".$templates->get("misc_rules_forum")."\";");
-		output_page($rules);
+		
+		echo $rules;
 	}
 
 }
@@ -522,15 +523,13 @@ elseif($mybb->input['action'] == "help")
 			}
 		}
 
-		//if($mybb->settings['helpsearch'] == 1)
-		//{
-			eval("\$search = \"".$templates->get("misc_help_search")."\";");
-		//}
-
+		
+		eval("\$search = \"".$templates->get("misc_help_search")."\";");
+		
 		$plugins->run_hooks("misc_help_section_end");
 
 		eval("\$help = \"".$templates->get("misc_help")."\";");
-		//output_page($help);
+		;
 		
 		stdhead();
 		
@@ -799,7 +798,7 @@ elseif($mybb->input['action'] == "clearcookies")
 	{
 		my_unsetcookie($name);
 	}
-	redirect("index.php", $lang->redirect_cookiescleared);
+	redirect("index.php", 'redirect_cookiescleared');
 }
 
 /**

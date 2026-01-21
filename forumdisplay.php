@@ -39,7 +39,10 @@ require_once INC_PATH . '/functions_forumlist.php';
 require_once INC_PATH . '/functions_multipage.php';
 
 
-
+if (!isset($CURUSER)) 
+{
+    print_no_permission();
+}
 
 
 
@@ -962,7 +965,6 @@ if($fpermissions['canviewthreads'] != 0)
 	while($thread = $db->fetch_array($query))
 	{
 		$threadcache[$thread['tid']] = $thread;
-
 		
 
 		// If this is a moved thread - set the tid for participation marking and thread read marking to that of the moved thread
@@ -1622,8 +1624,6 @@ if(!empty($threadcache) && is_array($threadcache))
 			<optgroup label="Standard Tools">
 '.$inlinemodopenclose.'
 '.$inlinemodstickunstick.'
-{$inlinemodsoftdelete}
-{$inlinemodrestore}
 '.$inlinemoddelete.'
 '.$inlinemodmanage.'
 '.$inlinemodapproveunapprove.'
@@ -1709,7 +1709,7 @@ if($foruminfo['type'] != "c")
 		$clearstoredpass = ' | <a href="misc.php?action=clearpass&amp;fid='.$fid.'&amp;my_post_key='.$mybb->post_code.'">{$lang->clear_stored_password}</a>';
 	}
 
-	$prefixselect = build_forum_prefix_select($fid, $tprefix);
+	//$prefixselect = build_forum_prefix_select($fid, $tprefix);
 
 	
 	// Populate Forumsort

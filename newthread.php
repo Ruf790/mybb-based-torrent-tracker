@@ -63,14 +63,14 @@ if($mybb->input['action'] == "editdraft" || ($mybb->get_input('savedraft') && $m
 
 	if(!$thread || !$post || $thread['visible'] != -2 || $thread['uid'] != $CURUSER['id'])
 	{
-		error('invalidthread');
+		stderr('invalidthread');
 	}
 
 	$pid = $post['pid'];
 	$fid = $thread['fid'];
 	$tid = $thread['tid'];
 	
-	$editdraftpid = '<input type="hidden" name="pid" value="'.$pid.'" />';
+	eval("\$editdraftpid = \"".$templates->get("newthread_draftinput")."\";");
 }
 else
 {
@@ -366,7 +366,7 @@ if($mybb->input['action'] == "do_newthread" && $mybb->request_method == "post")
 		$query = $db->simple_select("tsf_posts p", "p.pid", "$user_check AND p.fid='{$forum['fid']}' AND p.subject='".$db->escape_string($mybb->get_input('subject'))."' AND p.message='".$db->escape_string($mybb->get_input('message'))."' AND p.dateline>".(TIMENOW-600));
 		if($db->num_rows($query) > 0)
 		{
-			error('error_post_already_submitted');
+			stderr('error_post_already_submitted');
 		}
 	}
 
@@ -1142,9 +1142,6 @@ if($mybb->input['action'] == "newthread" || $mybb->input['action'] == "editdraft
 		
 		
 		<button type="submit" class="btn-thread ms-2" name="savedraft" value="Save as Draft"><i class="fa-regular fa-note-sticky"></i> &nbsp;Save as Draft</button>';
-		
-		
-		
 		
 		
 		

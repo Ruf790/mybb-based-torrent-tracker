@@ -69,7 +69,7 @@ $lang->load('upload');
 
 $is_mod = is_mod($usergroups);
 
-$query = $db->simple_select("ts_u_perm", "userid", "userid='".$db->escape_string($CURUSER['id'])."' AND canupload = '0'");
+$query = $db->simple_select("users_perm", "userid", "userid='".$db->escape_string($CURUSER['id'])."' AND canupload = '0'");
 
 if ($db->num_rows($query)) 
 {
@@ -1516,112 +1516,202 @@ function copyAnnounceUrl() {
 
 
 
- <!-- Upload IMDB -->
-<div class="mb-3">
-  <label for="imdbUrl" class="form-label">IMDB Link</label>
-  
-  
-  
-  
-  <input type="url" class="form-control" id="imdbUrl" name="imdbUrl" placeholder="Example: https://www.imdb.com/title/tt0913354/" value="<?= isset($t_link) ? htmlspecialchars($t_link) : '' ?>">
-  
-  
-</div>
+<div class="section-label">
+                        <i class="fas fa-images"></i>
+                        Media & Images
+                    </div>
+
+
+
+<!-- IMDb Link -->
+                        <div class="col-md-12 mb-4">
+                            <label class="form-label fw-semibold">
+                                <i class="fab fa-imdb text-warning me-2"></i>IMDb Link
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">
+                                    <i class="fas fa-link"></i>
+                                </span>
+                                <input type="url" 
+                                       class="form-control form-control-custom" 
+                                       id="imdbUrl" 
+                                       name="imdbUrl" 
+                                       value="<?= htmlspecialchars($t_link) ?>" 
+                                       placeholder="Example: https://www.imdb.com/title/tt1234567/">
+                            </div>
+                        </div>
+
+
+
+
+
+
+
   
 
   
   
  
- <!-- Choose Upload Method -->
-<div class="mb-3">
-  <label class="form-label">Select Image Upload Method</label>
-  <div>
-    <input type="radio" class="form-check-input me-1" name="uploadType" id="uploadByUrl" value="url" checked>
-    <label for="uploadByUrl" class="form-check-label me-3">Upload by URL</label>
+						<!-- Image Uploads -->
+<div class="row g-3">
+    <!-- Main Image -->
+    <div class="col-md-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center">
+                    <i class="fas fa-image text-primary me-2"></i>
+                    Main Image
+                </h6>
+                
+                <!-- Choose Upload Method -->
+                <div class="mb-3">
+                    <div class="btn-group btn-group-sm w-100" role="group">
+                        <input type="radio" class="btn-check" name="uploadType1" id="uploadByUrl1" value="url" checked>
+                        <label class="btn btn-outline-primary" for="uploadByUrl1">
+                            <i class="fas fa-link me-1"></i> URL
+                        </label>
+                        
+                        <input type="radio" class="btn-check" name="uploadType1" id="uploadByFile1" value="file">
+                        <label class="btn btn-outline-primary" for="uploadByFile1">
+                            <i class="fas fa-upload me-1"></i> File
+                        </label>
+                    </div>
+                </div>
 
-    <input type="radio" class="form-check-input me-1" name="uploadType" id="uploadByFile" value="file">
-    <label for="uploadByFile" class="form-check-label">Upload from Device</label>
-  </div>
+                <!-- Upload by URL -->
+                <div class="mb-3" id="uploadUrlGroup1">
+                    <label for="imageUrl" class="form-label">Image URL</label>
+                    <input type="url" 
+                           class="form-control form-control-custom" 
+                           id="imageUrl" 
+                           name="imageUrl" 
+                           value="<?= htmlspecialchars($torrent['t_image'] ?? '') ?>" 
+                           placeholder="https://example.com/image.jpg"
+                           oninput="updateImagePreviewFromUrl(this.value, 'imagePreview')">
+                    <div class="form-text mt-1">
+                        <i class="fas fa-info-circle text-muted me-1"></i>
+                        Paste direct image URL (jpg, png, gif, webp)
+                    </div>
+                </div>
+
+                <!-- Upload from Device -->
+                <div class="mb-3 d-none" id="uploadFileGroup1">
+                    <div class="upload-zone-sm" onclick="document.getElementById('imagesUpload').click()">
+                        <i class="fas fa-cloud-upload-alt fa-2x mb-2 text-muted"></i>
+                        <p class="mb-1 fw-semibold">Click to upload image</p>
+                        <p class="small text-muted mb-0">or drag & drop</p>
+                        <input type="file" 
+                               class="d-none" 
+                               id="imagesUpload" 
+                               name="imagesUpload" 
+                               accept="image/*"
+                               onchange="handleImageUpload(this, 'imagePreview')">
+                    </div>
+                    <div class="form-text mt-1">
+                        <i class="fas fa-info-circle text-muted me-1"></i>
+                        JPG, PNG, GIF, WebP (max 10MB)
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div id="imagePreview" class="preview-container mt-3">
+                    <?php if(!empty($torrent['t_image'])): ?>
+                        <div class="preview-item">
+                            <img src="<?= htmlspecialchars($torrent['t_image']) ?>" 
+                                 class="preview-img" 
+                                 alt="Main image">
+                            <button type="button" 
+                                    class="delete-btn" 
+                                    onclick="removeImagePreview('imagePreview', 'imageUrl', 'imagesUpload')"
+                                    title="Remove image">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Secondary Image -->
+    <div class="col-md-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center">
+                    <i class="fas fa-images text-primary me-2"></i>
+                    Secondary Image
+                </h6>
+                
+                <!-- Choose Upload Method -->
+                <div class="mb-3">
+                    <div class="btn-group btn-group-sm w-100" role="group">
+                        <input type="radio" class="btn-check" name="uploadType2" id="uploadByUrl2" value="url" checked>
+                        <label class="btn btn-outline-primary" for="uploadByUrl2">
+                            <i class="fas fa-link me-1"></i> URL
+                        </label>
+                        
+                        <input type="radio" class="btn-check" name="uploadType2" id="uploadByFile2" value="file">
+                        <label class="btn btn-outline-primary" for="uploadByFile2">
+                            <i class="fas fa-upload me-1"></i> File
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Upload by URL -->
+                <div class="mb-3" id="uploadUrlGroup2">
+                    <label for="imageUrl2" class="form-label">Image URL</label>
+                    <input type="url" 
+                           class="form-control form-control-custom" 
+                           id="imageUrl2" 
+                           name="imageUrl2" 
+                           value="<?= htmlspecialchars($torrent['t_image2'] ?? '') ?>" 
+                           placeholder="https://example.com/image2.jpg"
+                           oninput="updateImagePreviewFromUrl(this.value, 'imagePreview2')">
+                    <div class="form-text mt-1">
+                        <i class="fas fa-info-circle text-muted me-1"></i>
+                        Paste direct image URL (jpg, png, gif, webp)
+                    </div>
+                </div>
+
+                <!-- Upload from Device -->
+                <div class="mb-3 d-none" id="uploadFileGroup2">
+                    <div class="upload-zone-sm" onclick="document.getElementById('imagesUpload2').click()">
+                        <i class="fas fa-cloud-upload-alt fa-2x mb-2 text-muted"></i>
+                        <p class="mb-1 fw-semibold">Click to upload image</p>
+                        <p class="small text-muted mb-0">or drag & drop</p>
+                        <input type="file" 
+                               class="d-none" 
+                               id="imagesUpload2" 
+                               name="imagesUpload2" 
+                               accept="image/*"
+                               onchange="handleImageUpload(this, 'imagePreview2')">
+                    </div>
+                    <div class="form-text mt-1">
+                        <i class="fas fa-info-circle text-muted me-1"></i>
+                        JPG, PNG, GIF, WebP (max 10MB)
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div id="imagePreview2" class="preview-container mt-3">
+                    <?php if(!empty($torrent['t_image2'])): ?>
+                        <div class="preview-item">
+                            <img src="<?= htmlspecialchars($torrent['t_image2']) ?>" 
+                                 class="preview-img" 
+                                 alt="Secondary image">
+                            <button type="button" 
+                                    class="delete-btn" 
+                                    onclick="removeImagePreview('imagePreview2', 'imageUrl2', 'imagesUpload2')"
+                                    title="Remove image">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
-
-
-
-
-
-
-
-
-<!-- Upload Image by URL -->
-<div class="mb-3" id="uploadUrlGroup">
-  <label for="imageUrl" class="form-label">Upload Image by URL</label>
-  
-  
-  
-  <input type="url" class="form-control" id="imageUrl" name="imageUrl" value="<?= isset($torrent['t_image']) ? htmlspecialchars($torrent['t_image']) : '' ?>"placeholder="https://example.com/image.jpg">
-  
-  
-  
-  <div class="form-text">Paste the direct image URL (jpg, png, etc.)</div>
-  <div id="image22Preview" class="d-flex flex-wrap mt-2"></div>
-</div>
-
-
-
-
-<!-- Upload from Device -->
-<div class="mb-3 d-none" id="uploadFileGroup">
-  <label for="imagesUpload" class="form-label">Upload Images (Screenshots, Posters, etc.)</label>
-  <input class="form-control" type="file" id="imagesUpload" name="imagesUpload" accept="image/*" />
-  <div id="imagesPreview" class="d-flex flex-wrap mt-2"></div>
-</div>
-  
-  
-  
-  
-  
-
-  
-  
-
-<!-- Choose Upload Method for Image 2 -->
-<div class="mb-3">
-  <label class="form-label">Select Image 2 Upload Method</label>
-  <div>
-    <input type="radio" class="form-check-input me-1" name="uploadType2" id="uploadByUrl2" value="url" checked>
-    <label for="uploadByUrl2" class="form-check-label me-3">Upload by URL</label>
-
-    <input type="radio" class="form-check-input me-1" name="uploadType2" id="uploadByFile2" value="file">
-    <label for="uploadByFile2" class="form-check-label">Upload from Device</label>
-  </div>
-</div>
-
-<!-- Upload Image 2 by URL -->
-<div class="mb-3" id="uploadUrlGroup2">
-  <label for="imageUrl2" class="form-label">Upload Image 2 by URL</label>
-  
- 
-  
-  <input type="url" class="form-control" id="imageUrl2" name="imageUrl2" value="<?= isset($torrent['t_image2']) ? htmlspecialchars($torrent['t_image2']) : '' ?>"placeholder="https://example.com/image2.jpg">
-  
-  
-  
-  <div class="form-text">Paste the direct image URL (jpg, png, etc.)</div>
-  <div id="image22Preview2" class="d-flex flex-wrap mt-2"></div>
-</div>
-
-<!-- Upload Image 2 from Device -->
-<div class="mb-3 d-none" id="uploadFileGroup2">
-  <label for="imagesUpload2" class="form-label">Upload Images 2 (Screenshots, Posters, etc.)</label>
-  <input class="form-control" type="file" id="imagesUpload2" name="imagesUpload2" accept="image/*" />
-  <div id="imagesPreview2" class="d-flex flex-wrap mt-2"></div>
-</div>
-
-
-
-
-
-
-
 
 
 
@@ -1633,13 +1723,25 @@ function copyAnnounceUrl() {
 	  
 	  
 	  <!-- Anonymous Upload checkbox -->
+	  <br />
+	  <div class="section-label">
+                        <i class="fas fa-cog"></i>
+                        Torrent Settings
+                    </div>
 <tr>
   <td class="none">
-    <b>Anonymous Upload</b><br />
+   
+	
+	
+	
+	<br />
     
 	
 	
-	<div class="mb-3">
+	<div class="switch-container">
+	
+	
+	
     <div class="form-check form-switch">
         <input 
             class="form-check-input" 
@@ -1655,7 +1757,11 @@ function copyAnnounceUrl() {
         </label>
         <div class="form-text">Check this box if you want to upload this torrent anonymously</div>
     </div>
+
 </div>
+
+
+
 	
 	
 	
@@ -1671,7 +1777,7 @@ function copyAnnounceUrl() {
  
  
  <!-- Request Upload checkbox -->
-<div class="mb-3">
+<div class="switch-container">
     <div class="form-check form-switch">
         <input 
             class="form-check-input" 
@@ -1703,7 +1809,7 @@ function copyAnnounceUrl() {
       
 	  
 	  <!-- Free Torrent checkbox -->
-<div class="mb-3">
+<div class="switch-container">
     <div class="form-check form-switch">
         <input 
             class="form-check-input" 
@@ -1729,7 +1835,7 @@ function copyAnnounceUrl() {
       
 	  
 	  <!-- Silver Torrent checkbox -->
-<div class="mb-3">
+<div class="switch-container">
     <div class="form-check form-switch">
         <input 
             class="form-check-input" 
@@ -1757,7 +1863,7 @@ function copyAnnounceUrl() {
       
 	  
 	 <!-- Double Upload checkbox -->
-<div class="mb-3">
+<div class="switch-container">
     <div class="form-check form-switch">
         <input 
             class="form-check-input" 
@@ -1784,7 +1890,7 @@ function copyAnnounceUrl() {
       
 	  
 	 <!-- Disable Comments checkbox -->
-<div class="mb-3">
+<div class="switch-container">
     <div class="form-check form-switch">
         <input 
             class="form-check-input" 
@@ -1812,7 +1918,7 @@ function copyAnnounceUrl() {
       
 	  
 	  <!-- Sticky Torrent checkbox -->
-<div class="mb-3">
+<div class="switch-container">
     <div class="form-check form-switch">
         <input 
             class="form-check-input" 
@@ -1843,7 +1949,7 @@ function copyAnnounceUrl() {
    
    
    <!-- Nuked Torrent checkbox -->
-<div class="mb-3">
+<div class="switch-container">
     <div class="form-check form-switch">
         <input 
             class="form-check-input" 
@@ -1880,6 +1986,13 @@ function copyAnnounceUrl() {
     />
     <div class="form-text">Please provide a reason for nuking this torrent</div>
 </div>
+
+
+
+
+
+
+
  
    
 </td>
@@ -1896,24 +2009,65 @@ function copyAnnounceUrl() {
   
 
   <!-- Screenshots Upload -->
+                        <div class="col-12 mt-4">
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-body">
+                                    <h6 class="card-title d-flex align-items-center">
+                                        <i class="fas fa-camera text-primary me-2"></i>
+                                        Screenshots
+                                    </h6>
+                                    <div class="upload-zone mb-3" onclick="document.getElementById('screenshotsUpload').click()">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                        <h6>Drop screenshots here</h6>
+                                        <p class="text-muted mb-0">Multiple files allowed</p>
+                                        <input type="file" 
+                                               class="d-none" 
+                                               id="screenshotsUpload" 
+                                               name="screenshotsUpload[]" 
+                                               multiple 
+                                               accept="image/*">
+                                    </div>
+                                    <div id="screenshotsPreview" class="preview-container"></div>
+                                    
+                                    <!-- Existing Screenshots -->
+                                    <?php if(!empty($screenshots)): ?>
+                                        <h6 class="mt-4 mb-3">Existing Screenshots</h6>
+                                        <div id="existingScreenshots" class="preview-container">
+                                            <?php foreach($screenshots as $shot): ?>
+                                                <div class="screenshot-item" data-id="<?= $shot['id'] ?>">
+                                                    <img src="/torrents/screens/<?= htmlspecialchars($shot['filename']) ?>" 
+                                                         class="preview-img" 
+                                                         alt="Screenshot">
+                                                    <button type="button" 
+                                                            class="delete-btn delete-screenshot-btn"
+                                                            title="Delete screenshot">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+  
 
-<div class="mb-3">
-  <label for="screenshotsUpload" class="form-label">Upload Screenshots</label>
-  <input class="form-control" type="file" id="screenshotsUpload" name="screenshotsUpload[]" accept="image/*" multiple />
-  <div id="screenshotsPreview" class="d-flex flex-wrap mt-2"></div>
-</div>
 
-<?php if (!empty($screenshots)): ?>
-  <label class="form-label mt-3">Current Screenshots</label>
-  <div class="d-flex flex-wrap" id="existingScreenshots">
-    <?php foreach ($screenshots as $shot): ?>
-      <div class="position-relative m-1 screenshot-item" data-id="<?php echo (int)$shot['id']; ?>">
-        <img src="/torrents/screens/<?php echo htmlspecialchars($shot['filename']); ?>" class="img-thumbnail" style="max-width:100px;">
-        <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1 delete-screenshot-btn">&times;</button>
-      </div>
-    <?php endforeach; ?>
-  </div>
-<?php endif; ?>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
  
   
@@ -1926,6 +2080,42 @@ function copyAnnounceUrl() {
   <?php endif; ?>
 
   <button type="submit" class="btn btn-primary"><?= $buttonFullText ?></button>
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   
@@ -1948,6 +2138,7 @@ function copyAnnounceUrl() {
 
 
 <script src="<?= $BASEURL; ?>/scripts/upload_torrent.js"></script>
+
 
 
 

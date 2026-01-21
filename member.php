@@ -2315,7 +2315,7 @@ if($mybb->input['action'] == "profile")
 $sql = "
     SELECT u.*, p.canupload, p.candownload, p.cancomment
     FROM users u
-    LEFT JOIN ts_u_perm p ON (u.id = p.userid)
+    LEFT JOIN users_perm p ON (u.id = p.userid)
     WHERE u.id = ?
     LIMIT 1
 ";

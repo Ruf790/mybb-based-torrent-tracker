@@ -10,7 +10,7 @@
 
 
  
-  if (!($db = mysqli_connect ('localhost', 'user', 'password','database')))
+  if (!($db = mysqli_connect ('localhost', 'root', 'megarave1995','tracker')))
   {
       exit ('Error: Mysql Connection!');
       ;

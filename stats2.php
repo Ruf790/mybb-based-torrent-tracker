@@ -135,7 +135,7 @@ while ($row = $db->fetch_array($query)) {
 
 
 
-stdhead($lang->stats['head']);
+stdhead('head');
 ?>
 
 <div class="container mt-3">

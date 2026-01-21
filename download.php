@@ -42,12 +42,12 @@ if ($action_type == 'rss') {
         print_download_error();
     }
 
-    $ip = getip();
-    require_once INC_PATH . '/functions_isipbanned.php';
+    //$ip = getip();
+    //require_once INC_PATH . '/functions_isipbanned.php';
     
-    if (isipbanned($ip)) {
-        print_download_error();
-    }
+    //if (isipbanned($ip)) {
+        //print_download_error();
+    //}
 
     $res = $db->sql_query('SELECT * FROM users WHERE passkey=' . $db->sqlesc($secret_key) . ' LIMIT 1');
     
@@ -95,7 +95,7 @@ $is_mod = is_mod($usergroups);
 $res = $db->sql_query('SELECT t.id, t.name, t.filename, t.ts_external, t.size, t.owner, t.free FROM torrents t LEFT JOIN categories c ON t.category = c.id WHERE t.id = ' . $db->sqlesc($id));
 $row = $db->fetch_array($res);
 
-$query = $db->sql_query('SELECT candownload FROM ts_u_perm WHERE userid = ' . $db->sqlesc($CURUSER['id']));
+$query = $db->sql_query('SELECT candownload FROM users_perm WHERE userid = ' . $db->sqlesc($CURUSER['id']));
 if ($db->num_rows($query) > 0) {
     $downperm = $db->fetch_array($query);
     if ($downperm['candownload'] == '0') {

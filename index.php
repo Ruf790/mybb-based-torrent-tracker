@@ -39,7 +39,7 @@ $_wgo_query = $db->sql_query_prepared("
            u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment, u.lastactive
     FROM sessions s
     LEFT JOIN users u ON (s.uid = u.id)
-    LEFT JOIN ts_u_perm p ON (u.id = p.userid)
+    LEFT JOIN users_perm p ON (u.id = p.userid)
     WHERE s.uid != '0' AND s.time > ?
     ORDER BY u.username, u.lastactive
 ", [$_dt2]);
@@ -86,7 +86,7 @@ $_wgo_query2 = $db->sql_query_prepared(
     'SELECT u.id, u.username, u.avatar, u.usergroup, u.enabled, u.invisible, 
             u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment
      FROM users u 
-     LEFT JOIN ts_u_perm p ON u.id = p.userid
+     LEFT JOIN users_perm p ON u.id = p.userid
      WHERE u.last_login > ?
      ORDER BY u.username, u.last_login',
     [$timeLimit]
@@ -286,6 +286,7 @@ if ($db->num_rows($Query) > 0) {
 <!-- Highcharts.js -->
 <script type="text/javascript" src="<?= $BASEURL ?>/scripts/highcharts.js"></script>
 <script type="text/javascript" src="<?= $BASEURL ?>/scripts/exporting.js"></script>
+<script type="text/javascript" src="<?= $BASEURL ?>/scripts/accessibility.js"></script>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {

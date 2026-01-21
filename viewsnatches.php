@@ -893,7 +893,7 @@ INNER JOIN (
     WHERE torrentid = ? AND finished = 'yes'
     GROUP BY userid
 ) AS sn ON sn.userid = u.id
-LEFT JOIN ts_u_perm p ON u.id = p.userid
+LEFT JOIN users_perm p ON u.id = p.userid
 INNER JOIN usergroups g ON u.usergroup = g.gid
 ORDER BY sn.last_completedat DESC
 {$limit_sql}

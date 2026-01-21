@@ -267,8 +267,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
             $moderation = new Moderation;
 
             $moderation->delete_thread($tid);
-            mark_reports($tid, "thread");
-            
+           
             write_log('Thread (' . $tid . ' - ' . $thread['subject'] . ') has been deleted by ' . $CURUSER['username']);
 
             if ($mybb->input['ajax'] == 1) {
@@ -287,8 +286,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
             $moderation = new Moderation;
 
             $moderation->delete_post($pid);
-            mark_reports($pid, "post");
-                
+		 
             write_log('Post (' . $pid . ' - ' . $thread['subject'] . ') has been deleted by ' . $CURUSER['username']);
 
             $query = $db->simple_select("tsf_posts", "pid", "tid='{$tid}' AND dateline <= '{$post['dateline']}'", ["limit" => 1, "order_by" => "dateline DESC, pid DESC"]);

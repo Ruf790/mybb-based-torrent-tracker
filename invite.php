@@ -283,7 +283,7 @@ public static function renderPendingInvites(int $inviterid): void
                    u.donor, p.canupload, p.candownload, p.cancomment, g.namestyle 
             FROM users u 
             LEFT JOIN usergroups g ON (u.usergroup = g.gid) 
-            LEFT JOIN ts_u_perm p ON (u.id = p.userid) 
+            LEFT JOIN users_perm p ON (u.id = p.userid) 
             WHERE u.invited_by = ' . $db->sqlesc($inviterid)
         );
 

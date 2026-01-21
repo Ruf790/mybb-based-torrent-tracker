@@ -62,7 +62,7 @@ $lang->load('cronjobs');
 
 // Get pending cron jobs
 $cronQuery = $db->simple_select(
-    "ts_cron", 
+    "cron", 
     "cronid, minutes, filename, loglevel", 
     "nextrun <= '" . TIMENOW . "' AND active = '1'"
 );
@@ -89,7 +89,7 @@ if ($db->num_rows($cronQuery) > 0) {
             
             // Update next run time
             $db->update_query(
-                "ts_cron", 
+                "cron", 
                 ["nextrun" => $nextRun], 
                 "cronid = '" . (int)$cronJob['cronid'] . "'"
             );

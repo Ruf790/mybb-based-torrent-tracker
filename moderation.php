@@ -202,13 +202,13 @@ switch($mybb->input['action'])
 			}
 			if(count($tids) < 1)
 			{
-				error($lang->error_inline_nothreadsselected, $lang->error);
+				stderr($lang->moderation['error_inline_nothreadsselected']);
 			}
 
 			$mybb->input['tids'] = $tids;
 		}
 
-		add_breadcrumb($lang->delayed_moderation);
+		add_breadcrumb($lang->moderation['delayed_moderation']);
 
 		
 
@@ -262,13 +262,13 @@ switch($mybb->input['action'])
 			if(!in_array($mybb->input['type'], $allowed_types))
 			{
 				$mybb->input['type'] = '';
-				$errors[] = $lang->error_delayedmoderation_unsupported_type;
+				$errors[] = $lang->moderation['error_delayedmoderation_unsupported_type'];
 			}
 
 			if($mybb->input['type'] == 'move' && (!isset($mybb->input['delayedmoderation']['method']) || !in_array($mybb->input['delayedmoderation']['method'], array('move', 'redirect', 'copy'))))
 			{
 				$mybb->input['delayedmoderation']['method'] = '';
-				$errors[] = $lang->error_delayedmoderation_unsupported_method;
+				$errors[] = $lang->moderation['error_delayedmoderation_unsupported_method'];
 			}
 
 			if($mybb->input['type'] == 'move')
@@ -1060,7 +1060,7 @@ switch($mybb->input['action'])
 
 		$moderation->delete_thread($tid);
 
-		mark_reports($tid, "thread");
+		//mark_reports($tid, "thread");
 		moderation_redirect(get_forum_link($fid), $lang->moderation['redirect_threaddeleted']);
 		break;
 
@@ -3578,7 +3578,7 @@ HTML;
 			foreach($tids as $tid)
 			{
 				$moderation->delete_thread($tid);
-				mark_reports($tid, "thread");
+				//mark_reports($tid, "thread");
 				$url = get_forum_link($fid);
 			}
 		}
@@ -3590,12 +3590,12 @@ HTML;
 			if(!$numposts)
 			{
 				$moderation->delete_thread($tid);
-				mark_reports($tid, "thread");
+				//mark_reports($tid, "thread");
 				$url = get_forum_link($fid);
 			}
 			else
 			{
-				mark_reports($plist, "posts");
+				//mark_reports($plist, "posts");
 				$url = get_thread_link($thread['tid']);
 			}
 		}
@@ -5052,7 +5052,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 				$cache->update_awaitingactivation();
 
 				// Update reports cache
-				$cache->update_reportedcontent();
+				//$cache->update_reportedcontent();
 			}
 			elseif($mybb->settings['purgespammerbandelete'] == "delete")
 			{

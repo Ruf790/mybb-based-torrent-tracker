@@ -61,7 +61,7 @@ function build_prefix_select($fid, $selected_pid=0, $multiple=0, $previous_pid=0
 		$fid = (int)$fid;
 	}
 
-	$prefix_cache = build_prefixes(0);
+	//$prefix_cache = build_prefixes(0);
 	if(empty($prefix_cache))
 	{
 		// We've got no prefixes to show
@@ -472,7 +472,7 @@ if($mybb->input['action'] == "results")
 			LIMIT $start, $perpage
 		");
 
-		$threadprefixes = build_prefixes();
+		//$threadprefixes = build_prefixes();
 		$thread_cache = array();
 		while($thread = $db->fetch_array($query))
 		{
@@ -1417,8 +1417,8 @@ elseif($mybb->input['action'] == "finduser")
 	}
 
 	// Moderators can view unapproved threads and deleted threads from forums they moderate
-	//$unapproved_where = get_visible_where();
-	//$where_sql .= " AND ({$unapproved_where})";
+	$unapproved_where = get_visible_where();
+	$where_sql .= " AND ({$unapproved_where})";
 
 	$permsql = "";
 	$onlyusfids = array();

@@ -14,7 +14,7 @@ define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'showthread.php');
 define("SCRIPTNAME", "showthread.php");
 
-$templatelist = "showthread,postbit,postbit_author_user,postbit_author_guest,showthread_newthread,showthread_newreply,showthread_newreply_closed,postbit_avatar,postbit_find,postbit_pm,postbit_www,postbit_email,postbit_edit,postbit_quote,postbit_report";
+$templatelist = "showthread,postbit,postbit_author_user,postbit_author_guest,showthread_newthread,showthread_newreply,showthread_newreply_closed,postbit_avatar,postbit_find,postbit_pm,postbit_www,postbit_email,postbit_edit,postbit_quote";
 $templatelist .= ",multipage,multipage_breadcrumb,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start,showthread_inlinemoderation_softdelete,showthread_poll_editpoll";
 $templatelist .= ",postbit_editedby,showthread_similarthreads,showthread_similarthreads_bit,postbit_iplogged_show,postbit_iplogged_hiden,postbit_profilefield,showthread_quickreply,showthread_printthread,showthread_add_poll,showthread_send_thread,showthread_inlinemoderation_restore";
 $templatelist .= ",forumjump_advanced,forumjump_special,forumjump_bit,postbit_attachments,postbit_attachments_attachment,postbit_attachments_thumbnails,postbit_attachments_images_image,postbit_attachments_images,showthread_quickreply_options_stick,postbit_status";
@@ -1279,9 +1279,8 @@ $result = $db->fetch_field($query, "count");
 		$posts = '';
 		
 		$query = $db->sql_query("
-			SELECT u.*, u.username AS userusername, p.*, f.*, r.reporters, eu.username AS editusername
+			SELECT u.*, u.username AS userusername, p.*, f.*, eu.username AS editusername
 			FROM tsf_posts p
-			LEFT JOIN reportedcontent r ON (r.id=p.pid AND r.type='post' AND r.reportstatus != 1)
 			LEFT JOIN users u ON (u.id=p.uid)
 			LEFT JOIN userfields f ON (f.ufid=u.id)
 			LEFT JOIN users eu ON (eu.id=p.edituid)

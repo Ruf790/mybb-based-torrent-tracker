@@ -388,27 +388,56 @@ if($mybb->input['action'] == "results")
 	{
 		$msgalt = $msgstatus = '';
 
-		// Determine Folder Icon
-		if($message['status'] == 0)
-		{
-			$msgstatus = 'new_pm';
-			$msgalt = 'new_pm';
-		}
-		else if($message['status'] == 1)
-		{
-			$msgstatus = 'old_pm';
-			$msgalt = 'old_pm';
-		}
-		else if($message['status'] == 3)
-		{
-			$msgstatus = 're_pm';
-			$msgalt = 'reply_pm';
-		}
-		else if($message['status'] == 4)
-		{
-			$msgstatus = 'fw_pm';
-			$msgalt = 'fwd_pm';
-		}
+		
+// Determine Folder Icon
+
+// В том же блоке где определяете статус
+if ($message['status'] == 0) {
+    $msgstatus   = 'new_pm';
+    $msgalt      = 'Новое сообщение';
+    $fa_icon_html = '<i class="fa-solid fa-envelope"></i>';
+    $icon_color  = '#e74c3c';
+    $icon_bg     = 'rgba(231, 76, 60, 0.1)';
+    $badge_class = 'status-new';
+}
+else if ($message['status'] == 1) {
+    $msgstatus   = 'old_pm';
+    $msgalt      = 'Прочитанное сообщение';
+    $fa_icon_html = '<i class="fa-solid fa-envelope-open"></i>';
+    $icon_color  = '#95a5a6';
+    $icon_bg     = 'rgba(149, 165, 166, 0.1)';
+    $badge_class = 'status-read';
+}
+else if ($message['status'] == 3) {
+    $msgstatus   = 're_pm';
+    $msgalt      = 'Ответ на сообщение';
+    $fa_icon_html = '<i class="fa-solid fa-reply"></i>';
+    $icon_color  = '#3498db';
+    $icon_bg     = 'rgba(52, 152, 219, 0.1)';
+    $badge_class = 'status-reply';
+}
+else if ($message['status'] == 4) {
+    $msgstatus   = 'fw_pm';
+    $msgalt      = 'Пересланное сообщение';
+    $fa_icon_html = '<i class="fa-solid fa-share"></i>';
+    $icon_color  = '#27ae60';
+    $icon_bg     = 'rgba(39, 174, 96, 0.1)';
+    $badge_class = 'status-forward';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 		$folder = $message['folder'];
 
@@ -1139,7 +1168,7 @@ if($mybb->input['action'] == "read")
 
 	if(!$pm['username'])
 	{
-		$pm['username'] = $lang->na;
+		$pm['username'] = 'na';
 	}
 
 	// Fetch the recipients for this message
@@ -2066,6 +2095,9 @@ if($mybb->input['action'] == "do_export" && $mybb->request_method == "post")
 			}
 			$tofrom = $lang->from;
 		}
+		
+		
+		
 
 		if($tofromuid == 0)
 		{
@@ -2076,6 +2108,7 @@ if($mybb->input['action'] == "do_export" && $mybb->request_method == "post")
 		{
 			$message['tousername'] = $lang->not_sent;
 		}
+		
 
 		$message['subject'] = $parser->parse_badwords($message['subject']);
 		if($message['folder'] != "3")
@@ -2118,6 +2151,9 @@ if($mybb->input['action'] == "do_export" && $mybb->request_method == "post")
 			$message['tousername'] = my_escape_csv($message['tousername']);
 			$message['fromusername'] = my_escape_csv($message['fromusername']);
 		}
+		
+		
+		
 
 		if(empty($donefolder[$message['folder']]))
 		{
@@ -2394,7 +2430,7 @@ if(!$mybb->input['action'])
 	}
 
 	$query = $db->sql_query("
-		SELECT pm.*, fu.username AS fromusername, tu.username as tousername
+		SELECT pm.*, fu.username AS fromusername, tu.username as tousername,fu.avatar, fu.avatardimensions
 		FROM privatemessages pm
 		LEFT JOIN users fu ON (fu.id=pm.fromid)
 		LEFT JOIN users tu ON (tu.id=pm.toid)
@@ -2410,30 +2446,65 @@ if(!$mybb->input['action'])
 		{
 			$msgalt = $msgstatus = '';
 
-			// Determine Folder Icon
-			if($message['status'] == 0)
-			{
-				$msgstatus = 'new_pm';
-				$msgalt = $lang->private['new_pm'];
-			}
-			else if($message['status'] == 1)
-			{
-				$msgstatus = 'old_pm';
-				$msgalt = $lang->private['old_pm'];
-			}
 			
 			
-			else if($message['status'] == 3)
-			{
-				$msgstatus = 're_pm';
-				$msgalt = $lang->private['reply_pm'];
 			
-			}
-			else if($message['status'] == 4)
-			{
-				$msgstatus = 'fw_pm';
-				$msgalt = $lang->private['fwd_pm'];
-			}
+			
+// Determine Folder Icon
+
+if($message['status'] == 0)
+{
+    $msgstatus = 'new_pm';
+    $msgalt = $lang->private['new_pm'];
+    $fa_icon_html = '<i class="fa-solid fa-envelope fa-fw"></i>';
+    $badge_class = 'status-new';
+    $popover_title = 'New Message';
+    $popover_content = 'This message has not been read yet';
+}
+else if($message['status'] == 1)
+{
+    $msgstatus = 'old_pm';
+    $msgalt = $lang->private['old_pm'];
+    $fa_icon_html = '<i class="fa-regular fa-envelope-open fa-fw"></i>';
+    $badge_class = 'status-read';
+    $popover_title = 'Read Message';
+    $popover_content = 'This message has been read';
+}
+else if($message['status'] == 3)
+{
+    $msgstatus = 're_pm';
+    $msgalt = $lang->private['reply_pm'];
+    $fa_icon_html = '<i class="fa-solid fa-reply fa-fw"></i>';
+    $badge_class = 'status-reply';
+    $popover_title = 'Reply to Message';
+    $popover_content = 'This is a reply to a previous message';
+}
+else if($message['status'] == 4)
+{
+    $msgstatus = 'fw_pm';
+    $msgalt = $lang->private['fwd_pm'];
+    $fa_icon_html = '<i class="fa-solid fa-share fa-fw"></i>';
+    $badge_class = 'status-forward';
+    $popover_title = 'Forwarded Message';
+    $popover_content = 'This message has been forwarded';
+}
+
+
+
+
+
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			$avatar = $message['avatar'];
+            $dimensions = $message['avatardimensions'];
+			
 
 			$tofromuid = 0;
 			if($folder == 2 || $folder == 3)
@@ -2488,7 +2559,7 @@ if(!$mybb->input['action'])
 				}
 				else
 				{
-					$tofromusername = $lang->not_sent;
+					$tofromusername = 'not_sent';
 				}
 			}
 			else
@@ -2508,6 +2579,35 @@ if(!$mybb->input['action'])
 			}
 
 			$tofromusername = build_profile_link($tofromusername, $tofromuid);
+			
+			
+			
+
+			
+			
+			
+			
+			
+		   $useravatar = format_avatar($avatar, $avatardimensions);
+
+           if (strpos($useravatar['image'], '<') === 0) 
+           {
+      
+	               $ava_img = '
+                        <svg class="nav-avatar rounded border avatar-ring2" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                           <circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/>
+                           <text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">No Avatar</text>
+                        </svg>';
+            } 
+            else 
+            {
+                   $ava_img = '<img class="user-avatar" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . ' />';
+            }
+
+
+			
+			
+			
 
 			if($usergroups['candenypmreceipts'] == 1 && $message['receipt'] == '1' && $message['folder'] != '3' && $message['folder'] != 2)
 			
@@ -2632,6 +2732,8 @@ if(!$mybb->input['action'])
 	eval("\$folder = \"".$templates->get("private")."\";");
 	
 	stdhead('title');
+	
+	echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
 	
 	echo $folder;
 	

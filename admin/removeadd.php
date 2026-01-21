@@ -1,14 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/******************************************************************/
-/*==========[ TS Special Edition v.5.6 - Modernized ]============*/
-/*====================[ Special Thanks To ]======================*/
-/*        DrNet - wWw.SpecialCoders.CoM                         */
-/*        Vinson - wWw.Decode4u.CoM                             */
-/*    MrDecoder - wWw.Fearless-Releases.CoM                     */
-/*        Fynnon - wWw.BvList.CoM                               */
-/*****************************************************************/
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     http_response_code(403);

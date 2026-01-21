@@ -26,7 +26,7 @@ $parser_options = [
 
 stdhead('Manage Site News');
 define('IN_EDITOR', true);
-require_once INC_PATH . '/functions_html.php';
+//require_once INC_PATH . '/functions_html.php';
 
 require_once $rootpath . 'cache/smilies.php';
 require_once INC_PATH . '/editor.php';

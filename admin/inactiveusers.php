@@ -1,16 +1,9 @@
 <?php
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/* DrNet - wWw.SpecialCoders.CoM               */
-/* Vinson - wWw.Decode4u.CoM                   */
-/* MrDecoder - wWw.Fearless-Releases.CoM       */
-/* Fynnon - wWw.BvList.CoM                     */
-/***********************************************/
+
 
 define('IN_MYBB', 1);
 require_once INC_PATH . '/functions_multipage.php';
-require_once INC_PATH . '/functions_html.php';
+
 
 // Include our base data handler class
 require_once INC_PATH . '/datahandler.php';
@@ -43,7 +36,7 @@ function send_warning_emails($selected_users)
             $response .= '<td align="center">' . ($sendmail ? '<font color="green">Success!</font>' : '<font color="red">Failed!</font>') . '</td></tr>';
             
             if ($sendmail) {
-                $db->sql_query('REPLACE INTO ts_inactivity (userid, inactivitytag) VALUES (' . $db->sqlesc($user['id']) . ', ' . $db->sqlesc(TIMENOW) . ')');
+                $db->sql_query('REPLACE INTO inactivity (userid, inactivitytag) VALUES (' . $db->sqlesc($user['id']) . ', ' . $db->sqlesc(TIMENOW) . ')');
                 $count++;
             }
         }
@@ -196,7 +189,7 @@ if ($page > 0) {
 $page_url = str_replace("{fid}", $fid, $_this_script_ . '');
 $multipage = multipage($threadcount, $perpage, $page, $page_url);
 
-$query_inactive = $db->sql_query('SELECT u.id,u.username,u.usergroup,u.email,u.uploaded,u.downloaded,u.lastactive,u.lastvisit,u.added,i.inactivitytag FROM users u LEFT JOIN ts_inactivity i ON (u.id=i.userid) WHERE u.enabled = \'yes\' AND u.ustatus = \'confirmed\' AND u.lastactive < ' . $dt . ('' . '  ORDER BY i.inactivitytag DESC, u.lastactive DESC LIMIT ' . $start . ', ' . $perpage . ''));
+$query_inactive = $db->sql_query('SELECT u.id,u.username,u.usergroup,u.email,u.uploaded,u.downloaded,u.lastactive,u.lastvisit,u.added,i.inactivitytag FROM users u LEFT JOIN inactivity i ON (u.id=i.userid) WHERE u.enabled = \'yes\' AND u.ustatus = \'confirmed\' AND u.lastactive < ' . $dt . ('' . '  ORDER BY i.inactivitytag DESC, u.lastactive DESC LIMIT ' . $start . ', ' . $perpage . ''));
 
 // --- HTML and user interface ---
 

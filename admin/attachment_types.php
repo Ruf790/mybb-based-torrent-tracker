@@ -1,1494 +1,1013 @@
 <?php
 /**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
+ * MyBB 1.8 - Attachment Types Manager
+ * Modernized for PHP 8.5 with enhanced security and structure
  */
 
+declare(strict_types=1);
 
-define("IN_MYBB", 1);
-define("IN_ADMINCP", 1);
-define ('TSF_FORUMS_TSSEv56', true);
-define ('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define ('TSF_VERSION', 'v1.5 by xam');
+define('IN_MYBB', 1);
+define('IN_ADMINCP', 1);
 
+// Добавляем глобальные переменные, которые используются в функциях
+global $mybb, $db, $plugins, $cache, $lang;
 
-
-
-function print_selection_javascript()
+/**
+ * Generate JavaScript for selection toggles
+ */
+function print_selection_javascript(): void
 {
-	static $already_printed = false;
+    static $already_printed = false;
 
-	if($already_printed)
-	{
-		return;
-	}
+    if ($already_printed) {
+        return;
+    }
 
-	$already_printed = true;
+    $already_printed = true;
 
-	echo "<script type=\"text/javascript\">
-	function checkAction(id)
-	{
-		var checked = '';
-
-		$('.'+id+'_forums_groups_check').each(function(e, val)
-		{
-			if($(this).prop('checked') == true)
-			{
-				checked = $(this).val();
-			}
-		});
-
-		$('.'+id+'_forums_groups').each(function(e)
-		{
-			$(this).hide();
-		});
-
-		if($('#'+id+'_forums_groups_'+checked))
-		{
-			$('#'+id+'_forums_groups_'+checked).show();
-		}
-	}
-</script>";
+    echo <<<HTML
+<script type="text/javascript">
+// Функция для переключения видимости
+function checkAction(id) {
+    const checkedRadio = document.querySelector('.' + id + '_forums_groups_check:checked');
+    if (!checkedRadio) return;
+    
+    const checkedValue = checkedRadio.value;
+    
+    // Скрыть все блоки
+    document.querySelectorAll('.' + id + '_forums_groups').forEach(el => {
+        el.style.display = 'none';
+    });
+    
+    // Показать выбранный блок
+    const targetEl = document.getElementById(id + '_forums_groups_' + checkedValue);
+    if (targetEl) {
+        targetEl.style.display = 'block';
+    }
 }
 
-
-
-
-
-function generate_yes_no_radio($name, $value="1", $int=true, $yes_options=array(), $no_options = array())
-{
-		global $lang;
-
-		// Checked status
-		if($value === "no" || $value === '0' || $value === 0)
-		{
-			$no_checked = 1;
-			$yes_checked = 0;
-		}
-		else
-		{
-			$yes_checked = 1;
-			$no_checked = 0;
-		}
-		// Element value
-		if($int == true)
-		{
-			$yes_value = 1;
-			$no_value = 0;
-		}
-		else
-		{
-			$yes_value = "yes";
-			$no_value = "no";
-		}
-
-		if(!isset($yes_options['class']))
-		{
-			$yes_options['class'] = '';
-		}
-
-		if(!isset($no_options['class']))
-		{
-			$no_options['class'] = '';
-		}
-
-		// Set the options straight
-		$yes_options['class'] = "radio_yes ".$yes_options['class'];
-		$yes_options['checked'] = $yes_checked;
-		$no_options['class'] = "radio_no ".$no_options['class'];
-		$no_options['checked'] = $no_checked;
-
-		$yes = generate_radio_button($name, $yes_value, 'yes', $yes_options);
-		$no = generate_radio_button($name, $no_value, 'no', $no_options);
-		return $yes." ".$no;
+// Вешаем обработчики событий на все radio buttons
+document.addEventListener('DOMContentLoaded', function() {
+    // Обработчик для групп
+    document.querySelectorAll('.groups_forums_groups_check').forEach(radio => {
+        radio.addEventListener('change', function() {
+            checkAction('groups');
+        });
+    });
+    
+    // Обработчик для форумов
+    document.querySelectorAll('.forums_forums_groups_check').forEach(radio => {
+        radio.addEventListener('change', function() {
+            checkAction('forums');
+        });
+    });
+    
+    // Инициализация при загрузке
+    checkAction('groups');
+    checkAction('forums');
+});
+</script>
+HTML;
 }
 
-
-
-
-function generate_group_select($name, $selected=array(), $options=array())
-{
-		global $cache;
-
-		$select = "<select name=\"{$name}\"";
-
-		if(isset($options['multiple']))
-		{
-			$select .= " multiple=\"multiple\"";
-		}
-
-		if(isset($options['class']))
-		{
-			$select .= " class=\"{$options['class']}\"";
-		}
-
-		if(isset($options['id']))
-		{
-			$select .= " id=\"{$options['id']}\"";
-		}
-
-		if(isset($options['size']))
-		{
-			$select .= " size=\"{$options['size']}\"";
-		}
-
-		$select .= ">\n";
-
-		$groups_cache = $cache->read('usergroups');
-
-		if(!is_array($selected))
-		{
-			$selected = array($selected);
-		}
-
-		foreach($groups_cache as $group)
-		{
-			$selected_add = "";
-
-
-			if(in_array($group['gid'], $selected))
-			{
-				$selected_add = " selected=\"selected\"";
-			}
-
-			$select .= "<option value=\"{$group['gid']}\"{$selected_add}>".htmlspecialchars_uni($group['title'])."</option>";
-		}
-
-		$select .= "</select>";
-
-		return $select;
+/**
+ * Generate yes/no radio buttons with modern PHP features
+ */
+function generate_yes_no_radio(
+    string $name, 
+    $value = "1", 
+    bool $int = true, 
+    array $yes_options = [], 
+    array $no_options = []
+): string {
+    global $lang;
+    
+    // Determine checked status using strict comparison
+    $is_no = $value === "no" || $value === '0' || $value === 0;
+    $yes_checked = $is_no ? 0 : 1;
+    $no_checked = $is_no ? 1 : 0;
+    
+    // Determine values
+    $yes_value = $int ? 1 : "yes";
+    $no_value = $int ? 0 : "no";
+    
+    // Set default classes
+    $yes_options['class'] = ($yes_options['class'] ?? '') . ' radio_yes';
+    $no_options['class'] = ($no_options['class'] ?? '') . ' radio_no';
+    
+    // Set checked status
+    $yes_options['checked'] = $yes_checked;
+    $no_options['checked'] = $no_checked;
+    
+    $yes = generate_radio_button($name, $yes_value, 'yes', $yes_options);
+    $no = generate_radio_button($name, $no_value, 'no', $no_options);
+    
+    return "{$yes} {$no}";
 }
 
+/**
+ * Generate group select with type safety
+ */
+function generate_group_select(string $name, $selected = [], array $options = []): string
+{
+    global $cache;
+    
+    $multiple = $options['multiple'] ?? false;
+    $class = $options['class'] ?? '';
+    $id = $options['id'] ?? '';
+    $size = $options['size'] ?? '';
+    
+    $select_attrs = [
+        'name' => $name,
+        'class' => $class,
+        'id' => $id,
+        'size' => $size,
+        'multiple' => $multiple ? 'multiple' : null
+    ];
+    
+    $select = '<select' . build_attributes($select_attrs) . ">\n";
+    
+    $groups_cache = $cache->read('usergroups') ?: [];
+    $selected = is_array($selected) ? $selected : [$selected];
+    
+    foreach ($groups_cache as $group) {
+        $is_selected = in_array($group['gid'], $selected, true);
+        $selected_attr = $is_selected ? ' selected="selected"' : '';
+        
+        $group_title = htmlspecialchars_uni($group['title'] ?? '');
+        $select .= "<option value=\"{$group['gid']}\"{$selected_attr}>{$group_title}</option>\n";
+    }
+    
+    $select .= "</select>";
+    return $select;
+}
 
+/**
+ * Helper function to build HTML attributes
+ */
+function build_attributes(array $attributes): string
+{
+    $attrs = [];
+    foreach ($attributes as $key => $value) {
+        if ($value !== null && $value !== '') {
+            $attrs[] = $key . '="' . htmlspecialchars((string)$value, ENT_QUOTES) . '"';
+        }
+    }
+    return $attrs ? ' ' . implode(' ', $attrs) : '';
+}
 
+/**
+ * Process and display attachment icon with modern parsing
+ */
+function process_attachment_icon(array &$attachment_type): void
+{
+    $icon_html = trim($attachment_type['icon'] ?? '');
+    
+    // Handle HTML Font Awesome icons
+    if (!empty($icon_html) && $icon_html !== "pic/attachtypes/" && str_starts_with($icon_html, '<')) {
+        $name = htmlspecialchars_uni($attachment_type['name'] ?? '');
+        
+        // Add title if missing
+        if (!str_contains($icon_html, 'title=')) {
+            $pos = strpos($icon_html, '>');
+            if ($pos !== false) {
+                $icon_html = substr($icon_html, 0, $pos) . ' title="' . $name . '"' . substr($icon_html, $pos);
+            }
+        }
+        
+        // Adjust font size for admin panel
+        if (!str_contains($icon_html, 'style=')) {
+            $pos = strpos($icon_html, '>');
+            if ($pos !== false) {
+                $icon_html = substr($icon_html, 0, $pos) . ' style="font-size: 18px;"' . substr($icon_html, $pos);
+            }
+        } else {
+            $icon_html = str_replace('style="', 'style="font-size: 18px; ', $icon_html);
+        }
+        
+        $attachment_type['icon'] = $icon_html;
+    } 
+    // Handle empty or default icons
+    elseif (empty($icon_html) || $icon_html === "pic/attachtypes/") {
+        $name = htmlspecialchars_uni($attachment_type['name'] ?? '');
+        $attachment_type['icon'] = '<i class="fas fa-file" title="' . $name . '" style="font-size: 18px; color: #ccc;"></i>';
+    }
+    // Handle legacy image paths
+    else {
+        $processed_icon = htmlspecialchars_uni(str_replace("{theme}", "images", $icon_html));
+        
+        $image = my_validate_url($processed_icon, true) 
+            ? $processed_icon 
+            : "../" . $processed_icon;
+        
+        if (empty($processed_icon) || $processed_icon === "pic/attachtypes/") {
+            $attachment_type['icon'] = '<i class="fas fa-file" style="font-size: 18px; color: #ccc;"></i>';
+        } else {
+            $name = htmlspecialchars_uni($attachment_type['name'] ?? '');
+            $attachment_type['icon'] = sprintf(
+                '<img src="%s" title="%s" alt="" style="height: 18px; width: 18px;" />',
+                $image,
+                $name
+            );
+        }
+    }
+}
 
+/**
+ * Generate selection form HTML for groups/forums
+ */
+function generate_selection_html(string $field, string $selected_value, array $selected_ids = []): string
+{
+    $checked = [
+        'all' => $selected_value == -1 ? 'checked="checked"' : '',
+        'custom' => $selected_value != '' && $selected_value != -1 ? 'checked="checked"' : '',
+        'none' => $selected_value == '' ? 'checked="checked"' : ''
+    ];
+    
+    $field_label = ucfirst($field);
+    
+    return <<<HTML
+    <dl style="margin-top: 0; margin-bottom: 0; width: 100%">
+        <dt><label style="display: block;">
+            <input type="radio" name="{$field}" value="all" {$checked['all']} 
+                   class="{$field}_forums_groups_check" onclick="checkAction('{$field}');" 
+                   style="vertical-align: middle;" /> 
+            <strong>All {$field_label}</strong>
+        </label></dt>
+        <dt><label style="display: block;">
+            <input type="radio" name="{$field}" value="custom" {$checked['custom']} 
+                   class="{$field}_forums_groups_check" onclick="checkAction('{$field}');" 
+                   style="vertical-align: middle;" /> 
+            <strong>Select {$field}</strong>
+        </label></dt>
+        <dd style="margin-top: 4px;" id="{$field}_forums_groups_custom" class="{$field}_forums_groups">
+            <table cellpadding="4">
+                <tr>
+                    <td valign="top"><small>{$field_label}:</small></td>
+                    <td>
+    HTML . generate_group_select("select[{$field}][]", $selected_ids, [
+        'id' => $field, 
+        'multiple' => true, 
+        'size' => 5
+    ]) . <<<HTML
+                    </td>
+                </tr>
+            </table>
+        </dd>
+        <dt><label style="display: block;">
+            <input type="radio" name="{$field}" value="none" {$checked['none']} 
+                   class="{$field}_forums_groups_check" onclick="checkAction('{$field}');" 
+                   style="vertical-align: middle;" /> 
+            <strong>None</strong>
+        </label></dt>
+    </dl>
+    <script type="text/javascript">checkAction('{$field}');</script>
+    HTML;
+}
 
+/**
+ * Render add form
+ */
+function render_add_form(array $errors = []): void
+{
+    global $mybb, $lang;
+    
+    stdhead('Attachment Types - Add New Attachment Type');
+    output_admin_resources();
+    
+    $sub_tabs = [
+        'attachment_types' => [
+            'title' => 'Attachment Types',
+            'link' => "index.php?act=attachment_types"
+        ],
+        'add_attachment_type' => [
+            'title' => 'Add New Attachment Type',
+            'link' => "index.php?act=attachment_types&action=add",
+            'description' => 'Adding a new attachment type will allow members to attach files of this type to their posts.'
+        ]
+    ];
+    
+    output_nav_tabs($sub_tabs, 'add_attachment_type');
+    
+    // PHP settings for file size limits
+    $upload_max_filesize = @ini_get('upload_max_filesize');
+    $post_max_size = @ini_get('post_max_size');
+    $limit_string = '';
+    
+    if ($upload_max_filesize || $post_max_size) {
+        $limit_string = '<br><br>Please ensure the maximum file size is below the smallest of the following PHP limits:';
+        if ($upload_max_filesize) {
+            $limit_string .= '<br>Upload Max File Size: ' . htmlspecialchars($upload_max_filesize);
+        }
+        if ($post_max_size) {
+            $limit_string .= '<br>Max Post Size: ' . htmlspecialchars($post_max_size);
+        }
+    }
+    
+    // Generate form fields
+    $attach_name = generate_text_box('name', $mybb->get_input('name'), ['id' => 'name']);
+    $file_exten = generate_text_box('extension', $mybb->get_input('extension'), ['id' => 'extension']);
+    $mime_type = generate_text_box('mimetype', $mybb->get_input('mimetype'), ['id' => 'mimetype']);
+    $max_size = generate_numeric_field('maxsize', $mybb->get_input('maxsize', 1024), ['id' => 'maxsize', 'min' => 0]);
+    
+    $icon_description = <<<HTML
+    <div class="description">
+        Enter HTML code for Font Awesome icon with color. Examples:<br>
+        <code>&lt;i class="fas fa-file-pdf" style="color: #e74c3c;"&gt;&lt;/i&gt;</code> - PDF file<br>
+        <code>&lt;i class="fas fa-file-image" style="color: #1abc9c;"&gt;&lt;/i&gt;</code> - WEBP image<br>
+        <code>&lt;i class="fas fa-file-archive" style="color: #e67e22;"&gt;&lt;/i&gt;</code> - Archive<br>
+        <code>&lt;i class="fas fa-file-word" style="color: #2b579a;"&gt;&lt;/i&gt;</code> - Word document<br>
+        <code>&lt;i class="fas fa-file-excel" style="color: #217346;"&gt;&lt;/i&gt;</code> - Excel document<br>
+        <code>&lt;i class="fas fa-file-powerpoint" style="color: #d24726;"&gt;&lt;/i&gt;</code> - PowerPoint document
+    </div>
+    HTML;
+    
+    $attach_icon = $icon_description . '<div class="form_row">' . 
+                   generate_text_box('icon', $mybb->get_input('icon', 'pic/attachtypes/'), [
+                       'id' => 'icon', 
+                       'style' => 'width: 400px;'
+                   ]) . '</div>';
+    
+    $enabled = generate_yes_no_radio('enabled', $mybb->get_input('enabled', 1));
+    $force_download = generate_yes_no_radio('forcedownload', $mybb->get_input('forcedownload', 0));
+    $avatar_file = generate_yes_no_radio('avatarfile', $mybb->get_input('avatarfile', 0));
+    
+    // Groups selection
+    $selected_groups = $mybb->get_input('groups') != '' && $mybb->get_input('groups') != -1 
+        ? explode(',', $mybb->get_input('groups')) 
+        : [];
+    $groups_select = generate_selection_html('groups', $mybb->get_input('groups', ''), $selected_groups);
+    
+    // Forums selection
+    $selected_forums = $mybb->get_input('forums') != '' && $mybb->get_input('forums') != -1 
+        ? explode(',', $mybb->get_input('forums')) 
+        : [];
+    
+    // Подготавливаем переменные для форумов
+    $forum_checked = [
+        'all' => $mybb->get_input('forums', '') == -1 ? 'checked="checked"' : '',
+        'custom' => $mybb->get_input('forums', '') != '' && $mybb->get_input('forums', '') != -1 ? 'checked="checked"' : '',
+        'none' => $mybb->get_input('forums', '') == '' ? 'checked="checked"' : ''
+    ];
+    
+    // Определяем переменную $selected_values для generate_forum_select()
+    $selected_values = $selected_forums;
+    
+    // Сюда вставляем код из вашего сообщения
+    $forums_select = "
+    <dl style=\"margin-top: 0; margin-bottom: 0; width: 100%\">
+        <dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"all\" {$forum_checked['all']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>All Forums</strong></label></dt>
+        <dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"custom\" {$forum_checked['custom']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>Select forums</strong></label></dt>
+        <dd style=\"margin-top: 4px;\" id=\"forums_forums_groups_custom\" class=\"forums_forums_groups\">
+            <table cellpadding=\"4\">
+                <tr>
+                    <td valign=\"top\"><small>Forums:</small></td>
+                    <td>".generate_forum_select('select[forums][]', $selected_values, array('id' => 'forums', 'multiple' => true, 'size' => 5))."</td>
+                </tr>
+            </table>
+        </dd>
+        <dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"none\" {$forum_checked['none']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>None</strong></label></dt>
+    </dl>
+    <script type=\"text/javascript\">
+        checkAction('forums');
+    </script>";
+    
+    // Output form
+    echo <<<HTML
+    <form action="index.php?act=attachment_types&action=add" method="post" id="add">
+        <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
+        
+        <div class="container mt-3">
+            <div class="card">
+                <div class="card-header rounded-bottom text-19 fw-bold">
+                    Add New Attachment Type
+                </div>
+                <div class="card-body">
+    HTML;
+    
+    if (!empty($errors)) {
+        output_inline_error($errors);
+    }
+    
+    echo <<<HTML
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <div class="description">Enter the name of the attachment type</div>
+                        {$attach_name}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="extension" class="form-label">File Extension *</label>
+                        <div class="description">Enter the file extension (without the period)</div>
+                        {$file_exten}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="mimetype" class="form-label">MIME Type *</label>
+                        <div class="description">Enter the MIME type for this file type</div>
+                        {$mime_type}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="maxsize" class="form-label">Maximum File Size (Kilobytes)</label>
+                        <div class="description">Maximum size in KB (1 MB = 1024 KB){$limit_string}</div>
+                        {$max_size}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="icon" class="form-label">Attachment Icon</label>
+                        {$attach_icon}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Enabled?</label>
+                        <div class="form_row">{$enabled}</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Force Download</label>
+                        <div class="description">Always force download instead of displaying</div>
+                        <div class="form_row">{$force_download}</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Available to Groups</label>
+                        {$groups_select}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Available in Forums</label>
+                        {$forums_select}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Avatar File</label>
+                        <div class="description">Allow this type for avatars?</div>
+                        <div class="form_row">{$avatar_file}</div>
+                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <input type="submit" value="Save Attachment Type" class="btn btn-primary">
+                </div>
+            </div>
+        </div>
+    </form>
+    HTML;
+    
+    stdfoot();
+}
+
+/**
+ * Render edit form
+ */
+function render_edit_form(array $attachment_type, array $errors = []): void
+{
+    global $mybb, $lang;
+    
+    stdhead('Attachment Types - Edit Attachment Type');
+    output_admin_resources();
+    
+    $sub_tabs = [
+        'edit_attachment_type' => [
+            'title' => 'Edit Attachment Type',
+            'link' => "index.php?act=attachment_types&action=edit&atid={$attachment_type['atid']}",
+            'description' => 'Edit attachment type settings'
+        ]
+    ];
+    
+    output_nav_tabs($sub_tabs, 'edit_attachment_type');
+    
+    // PHP settings for file size limits
+    $upload_max_filesize = @ini_get('upload_max_filesize');
+    $post_max_size = @ini_get('post_max_size');
+    $limit_string = '';
+    
+    if ($upload_max_filesize || $post_max_size) {
+        $limit_string = '<br><br>PHP limits:';
+        if ($upload_max_filesize) {
+            $limit_string .= '<br>Upload Max: ' . htmlspecialchars($upload_max_filesize);
+        }
+        if ($post_max_size) {
+            $limit_string .= '<br>Post Max: ' . htmlspecialchars($post_max_size);
+        }
+    }
+    
+    // Generate form fields
+    $name_field = generate_text_box('name', $attachment_type['name'] ?? '', ['id' => 'name']);
+    $extension_field = generate_text_box('extension', $attachment_type['extension'] ?? '', ['id' => 'extension']);
+    $mime_field = generate_text_box('mimetype', $attachment_type['mimetype'] ?? '', ['id' => 'mimetype']);
+    $maxsize_field = generate_numeric_field('maxsize', $attachment_type['maxsize'] ?? 1024, [
+        'id' => 'maxsize', 
+        'min' => 0
+    ]);
+    
+    $icon_description = 
+    '<div class="description">
+        HTML Font Awesome icon code with color<br>
+        Example: &lt;i class="fas fa-file-pdf" style="color: #e74c3c;"&gt;&lt;/i&gt;
+    </div>'
+    ;
+    
+    $icon_field = $icon_description . '<div class="form_row">' . 
+                  generate_text_box('icon', $attachment_type['icon'] ?? 'pic/attachtypes/', [
+                      'id' => 'icon', 
+                      'style' => 'width: 400px;'
+                  ]) . '</div>';
+    
+    $enabled_field = generate_yes_no_radio('enabled', $attachment_type['enabled'] ?? 1);
+    $forcedownload_field = generate_yes_no_radio('forcedownload', $attachment_type['forcedownload'] ?? 0);
+    $avatarfile_field = generate_yes_no_radio('avatarfile', $attachment_type['avatarfile'] ?? 0);
+    
+    // Groups selection
+    $selected_groups = ($attachment_type['groups'] ?? '') != '' && ($attachment_type['groups'] ?? '') != -1 
+        ? explode(',', $attachment_type['groups'] ?? '') 
+        : [];
+    $groups_select = generate_selection_html('groups', $attachment_type['groups'] ?? '', $selected_groups);
+    
+    // Forums selection
+    $selected_forums = ($attachment_type['forums'] ?? '') != '' && ($attachment_type['forums'] ?? '') != -1 
+        ? explode(',', $attachment_type['forums'] ?? '') 
+        : [];
+    
+    // Подготавливаем переменные для форумов
+    $forum_checked = [
+        'all' => ($attachment_type['forums'] ?? '') == -1 ? 'checked="checked"' : '',
+        'custom' => ($attachment_type['forums'] ?? '') != '' && ($attachment_type['forums'] ?? '') != -1 ? 'checked="checked"' : '',
+        'none' => ($attachment_type['forums'] ?? '') == '' ? 'checked="checked"' : ''
+    ];
+    
+    // Определяем переменную $selected_values для generate_forum_select()
+    $selected_values = $selected_forums;
+    
+    // Сюда вставляем код из вашего сообщения
+    $forums_select = "
+    <dl style=\"margin-top: 0; margin-bottom: 0; width: 100%\">
+        <dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"all\" {$forum_checked['all']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>All Forums</strong></label></dt>
+        <dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"custom\" {$forum_checked['custom']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>Select forums</strong></label></dt>
+        <dd style=\"margin-top: 4px;\" id=\"forums_forums_groups_custom\" class=\"forums_forums_groups\">
+            <table cellpadding=\"4\">
+                <tr>
+                    <td valign=\"top\"><small>Forums:</small></td>
+                    <td>".generate_forum_select('select[forums][]', $selected_values, array('id' => 'forums', 'multiple' => true, 'size' => 5))."</td>
+                </tr>
+            </table>
+        </dd>
+        <dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"none\" {$forum_checked['none']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>None</strong></label></dt>
+    </dl>
+    <script type=\"text/javascript\">
+        checkAction('forums');
+    </script>";
+    
+    // Output form
+    echo <<<HTML
+    <form action="index.php?act=attachment_types&action=edit&atid={$attachment_type['atid']}" method="post" id="edit">
+        <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
+        
+        <div class="container mt-3">
+            <div class="card">
+                <div class="card-header rounded-bottom text-19 fw-bold">
+                    Edit Attachment Type
+                </div>
+                <div class="card-body">
+    HTML;
+    
+    if (!empty($errors)) {
+        output_inline_error($errors);
+    }
+    
+    echo <<<HTML
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <div class="description">Attachment type name</div>
+                        {$name_field}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="extension" class="form-label">File Extension *</label>
+                        <div class="description">File extension (without period)</div>
+                        {$extension_field}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="mimetype" class="form-label">MIME Type *</label>
+                        <div class="description">Server MIME type</div>
+                        {$mime_field}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="maxsize" class="form-label">Maximum Size (KB)</label>
+                        <div class="description">Max file size in kilobytes{$limit_string}</div>
+                        {$maxsize_field}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="icon" class="form-label">Attachment Icon</label>
+                        {$icon_field}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Enabled?</label>
+                        <div class="form_row">{$enabled_field}</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Force Download</label>
+                        <div class="description">Force file download</div>
+                        <div class="form_row">{$forcedownload_field}</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Available to Groups</label>
+                        {$groups_select}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Available in Forums</label>
+                        {$forums_select}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Avatar File</label>
+                        <div class="description">Allow for avatars?</div>
+                        <div class="form_row">{$avatarfile_field}</div>
+                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <input type="submit" value="Save Attachment Type" class="btn btn-primary">
+                </div>
+            </div>
+        </div>
+    </form>
+    HTML;
+    
+    stdfoot();
+}
+
+// Run plugin hooks
 $plugins->run_hooks("admin_config_attachment_types_begin");
 
-if($mybb->input['action'] == "add")
-{
-	$plugins->run_hooks("admin_config_attachment_types_add");
-
-	if($mybb->request_method == "post")
-	{
-		if(!trim($mybb->input['mimetype']) && !trim($mybb->input['extension']))
-		{
-			$errors[] = 'You did not enter a MIME type for this attachment type';
-		}
-
-		if(!trim($mybb->input['extension']) && !trim($mybb->input['mimetype']))
-		{
-			$errors[] = 'You did not enter a file extension for this attachment type';
-		}
-
-		if(!$errors)
-		{
-			if($mybb->input['mimetype'] == "pic/attachtypes/")
-			{
-				$mybb->input['mimetype'] = '';
-			}
-
-			if(substr($mybb->input['extension'], 0, 1) == '.')
-			{
-				$mybb->input['extension'] = substr($mybb->input['extension'], 1);
-			}
-
-			foreach(array('groups', 'forums') as $key)
-			{
-				if($mybb->input[$key] == 'all')
-				{
-					$mybb->input[$key] = -1;
-				}
-				elseif($mybb->input[$key] == 'custom')
-				{
-					if(isset($mybb->input['select'][$key]) && is_array($mybb->input['select'][$key]))
-					{
-						foreach($mybb->input['select'][$key] as &$val)
-						{
-							$val = (int)$val;
-						}
-						unset($val);
-
-						$mybb->input[$key] = implode(',', (array)$mybb->input['select'][$key]);
-					}
-					else
-					{
-						$mybb->input[$key] = '';
-					}
-				}
-				else
-				{
-					$mybb->input[$key] = '';
-				}
-			}
-
-			$maxsize = $mybb->get_input('maxsize', MyBB::INPUT_INT);
-
-			if($maxsize == 0)
-			{
-				$maxsize = "";
-			}
-
-			$new_type = array(
-				"name" => $db->escape_string($mybb->input['name']),
-				"mimetype" => $db->escape_string($mybb->input['mimetype']),
-				"extension" => $db->escape_string($mybb->input['extension']),
-				"maxsize" => $maxsize,
-				"icon" => $db->escape_string($mybb->input['icon']),
-				'enabled' => $mybb->get_input('enabled', MyBB::INPUT_INT),
-				'forcedownload' => $mybb->get_input('forcedownload', MyBB::INPUT_INT),
-				'groups' => $db->escape_string($mybb->get_input('groups')),
-				'forums' => $db->escape_string($mybb->get_input('forums')),
-				'avatarfile' => $mybb->get_input('avatarfile', MyBB::INPUT_INT)
-			);
-
-			$atid = $db->insert_query("attachtypes", $new_type);
-
-			$plugins->run_hooks("admin_config_attachment_types_add_commit");
-
-			// Log admin action
-			//log_admin_action($atid, $mybb->input['extension']);
-
-			$cache->update_attachtypes();
-
-			flash_message('success_attachment_type_created', 'success');
-			admin_redirect("index.php?act=attachment_types");
-		}
-	}
-
-
-	stdhead('Attachment Types - Add New Attachment Type');
-	
-	
-	
-	echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
-
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
-
-	// Stop JS elements showing while page is loading (JS supported browsers only)
-	echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-	
-	
-	
-	
-	
-	
-	
-	
-	
-
-	$sub_tabs['attachment_types'] = array(
-		'title' => 'Attachment Types',
-		'link' => "index.php?act=attachment_types"
-	);
-
-	$sub_tabs['add_attachment_type'] = array(
-		'title' => 'Add New Attachment Type',
-		'link' => "index.php?act=attachment_types&amp;action=add",
-		'description' => 'Adding a new attachment type will allow members to attach files of this type to their posts. You have the ability to control the extension, MIME type, maximum size and show a small icon for each attachment type'
-	);
-
-	output_nav_tabs($sub_tabs, 'add_attachment_type');
-
-	//$form = new Form("index.php?act=attachment_types&amp;action=add", "post", "add");
-	
-	echo '
-	<form action="index.php?act=attachment_types&amp;action=add" method="post" id="add">
-    <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-	';
-	
-
-	if($errors)
-	{
-		switch($mybb->input['groups'])
-		{
-			case 'all':
-				$mybb->input['groups'] = -1;
-				break;
-			case 'custom':
-				$mybb->input['groups'] = implode(',', (array)$mybb->input['select']['groups']);
-				break;
-			default:
-				$mybb->input['groups'] = '';
-				break;
-		}
-
-		switch($mybb->input['forums'])
-		{
-			case 'all':
-				$mybb->input['forums'] = -1;
-				break;
-			case 'custom':
-				$mybb->input['forums'] = implode(',', (array)$mybb->input['select']['forums']);
-				break;
-			default:
-				$mybb->input['forums'] = '';
-				break;
-		}
-
-		output_inline_error($errors);
-	}
-	else
-	{
-		$mybb->input['maxsize'] = '1024';
-		$mybb->input['icon'] = "pic/attachtypes/";
-	}
-
-	if(empty($mybb->input['groups']))
-	{
-		$mybb->input['groups'] = '';
-	}
-
-	if(empty($mybb->input['forums']))
-	{
-		$mybb->input['forums'] = '';
-	}
-
-	// PHP settings
-	$upload_max_filesize = @ini_get('upload_max_filesize');
-	$post_max_size = @ini_get('post_max_size');
-	$limit_string = '';
-	if($upload_max_filesize || $post_max_size)
-	{
-		$limit_string = '<br /><br />'.'Please ensure the maximum file size is below the smallest of the following PHP limits:';
-		if($upload_max_filesize)
-		{
-			$limit_string .= '<br />'.sprintf('Upload Max File Size: '.$upload_max_filesize.'');
-		}
-		if($post_max_size)
-		{
-			$limit_string .= '<br />'.sprintf('Max Post Size: '.$post_max_size.'');
-		}
-	}
-
-	$selected_values = '';
-	if($mybb->input['groups'] != '' && $mybb->input['groups'] != -1)
-	{
-		$selected_values = explode(',', $mybb->get_input('groups'));
-
-		foreach($selected_values as &$value)
-		{
-			$value = (int)$value;
-		}
-		unset($value);
-	}
-
-	$group_checked = array('all' => '', 'custom' => '', 'none' => '');
-	if($mybb->input['groups'] == -1)
-	{
-		$group_checked['all'] = 'checked="checked"';
-	}
-	elseif($mybb->input['groups'] != '')
-	{
-		$group_checked['custom'] = 'checked="checked"';
-	}
-	else
-	{
-		$group_checked['none'] = 'checked="checked"';
-	}
-
-	print_selection_javascript();
-
-	$groups_select_code = "
-	<dl style=\"margin-top: 0; margin-bottom: 0; width: 100%\">
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"groups\" value=\"all\" {$group_checked['all']} class=\"groups_forums_groups_check\" onclick=\"checkAction('groups');\" style=\"vertical-align: middle;\" /> <strong>All groups</strong></label></dt>
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"groups\" value=\"custom\" {$group_checked['custom']} class=\"groups_forums_groups_check\" onclick=\"checkAction('groups');\" style=\"vertical-align: middle;\" /> <strong>Select groups</strong></label></dt>
-		<dd style=\"margin-top: 4px;\" id=\"groups_forums_groups_custom\" class=\"groups_forums_groups\">
-			<table cellpadding=\"4\">
-				<tr>
-					<td valign=\"top\"><small>Groups:</small></td>
-					<td>".generate_group_select('select[groups][]', $selected_values, array('id' => 'groups', 'multiple' => true, 'size' => 5))."</td>
-				</tr>
-			</table>
-		</dd>
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"groups\" value=\"none\" {$group_checked['none']} class=\"groups_forums_groups_check\" onclick=\"checkAction('groups');\" style=\"vertical-align: middle;\" /> <strong>None</strong></label></dt>
-	</dl>
-	<script type=\"text/javascript\">
-		checkAction('groups');
-	</script>";
-
-	$selected_values = '';
-	if($mybb->input['forums'] != '' && $mybb->input['forums'] != -1)
-	{
-		$selected_values = explode(',', $mybb->get_input('forums'));
-
-		foreach($selected_values as &$value)
-		{
-			$value = (int)$value;
-		}
-		unset($value);
-	}
-
-	$forum_checked = array('all' => '', 'custom' => '', 'none' => '');
-	if($mybb->input['forums'] == -1)
-	{
-		$forum_checked['all'] = 'checked="checked"';
-	}
-	elseif($mybb->input['forums'] != '')
-	{
-		$forum_checked['custom'] = 'checked="checked"';
-	}
-	else
-	{
-		$forum_checked['none'] = 'checked="checked"';
-	}
-
-	$forums_select_code = "
-	<dl style=\"margin-top: 0; margin-bottom: 0; width: 100%\">
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"all\" {$forum_checked['all']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>All Forums</strong></label></dt>
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"custom\" {$forum_checked['custom']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>Select forums</strong></label></dt>
-		<dd style=\"margin-top: 4px;\" id=\"forums_forums_groups_custom\" class=\"forums_forums_groups\">
-			<table cellpadding=\"4\">
-				<tr>
-					<td valign=\"top\"><small>Forums:</small></td>
-					<td>".generate_forum_select('select[forums][]', $selected_values, array('id' => 'forums', 'multiple' => true, 'size' => 5))."</td>
-				</tr>
-			</table>
-		</dd>
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"none\" {$forum_checked['none']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>None</strong></label></dt>
-	</dl>
-	<script type=\"text/javascript\">
-		checkAction('forums');
-	</script>";
-	
-	$mybb->input['forcedownload'] = $mybb->get_input('forcedownload', MyBB::INPUT_INT);
-
-	
-	
-	$attach_name = generate_text_box('name', $mybb->get_input('name'), array('id' => 'name'));
-	
-	$file_exten = generate_text_box('extension', $mybb->get_input('extension'), array('id' => 'extension'));
-	
-	$mime_typess = generate_text_box('mimetype', $mybb->get_input('mimetype'), array('id' => 'mimetype'));
-	
-	$max_file_size = generate_numeric_field('maxsize', $mybb->get_input('maxsize'), array('id' => 'maxsize', 'min' => 0));
-	
-	
-	$attach_iconss = generate_text_box('icon', $mybb->get_input('icon'), array('id' => 'icon'));
-	
-	$enabledd = generate_yes_no_radio('enabled', $mybb->get_input('enabled'));
-	
-	$force_download = generate_yes_no_radio('forcedownload', $mybb->get_input('forcedownload'));
-	
-	
-	$avatar_file = generate_yes_no_radio('avatarfile', $mybb->get_input('avatarfile'));
-	
-	echo '
-	
-	<div class="container mt-3">
-	
-	<div class="card">
-    <div class="card-header rounded-bottom text-19 fw-bold">Add New Attachment Type</div>
-    <div class="card-body">';
-	
-	
-	echo '
-	
-	<tr class="first">
-			<td class="first"><label for="name">Name</label>
-<div class="description">Enter the name of the attachment type</div>
-<div class="form_row">
-
-'.$attach_name.'
-
-</div>
-</td>
-		</tr>
-		
-		
-		
-	<tr class="alt_row">
-			<td class="first"><label for="extension">File Extension <em>*</em></label>
-<div class="description">Enter the file extension you wish to allow uploads for here (Do not include the period before the extension) (Example: txt)</div>
-<div class="form_row">
-
-'.$file_exten.'
-
-</div>
-</td>
-		</tr>	
-		
-		
-		
-		
-	<tr>
-			<td class="first"><label for="mimetype">MIME Type <em>*</em></label>
-<div class="description">Enter the MIME type sent by the server when downloading files of this type (<a href=\"http://www.freeformatter.com/mime-types-list.html\">See a list here</a>)</div>
-<div class="form_row">
-
-'.$mime_typess.'
-
-</div>
-</td>
-		</tr>
-		
-		
-		
-		
-		
-		
-		
-	<tr class="alt_row">
-			<td class="first"><label for="maxsize">Maximum File Size (Kilobytes)</label>
-<div class="description">The maximum file size for uploads of this attachment type in Kilobytes (1 MB = 1024 KB)
-
-'.$limit_string.'</div>
-<div class="form_row">
-
-'.$max_file_size.'
-
-</div>
-</td>
-		</tr>
-		
-		
-		
-		
-		
-		
-		
-	<tr>
-			<td class="first"><label for="icon">Attachment Icon</label>
-<div class="description">If you wish to show a small attachment icon for attachments of this type then enter the path to it here. {theme} will be replaced by the image directory for the viewers theme allowing you to specify per-theme attachment icons</div>
-<div class="form_row">
-
-'.$attach_iconss.'
-
-
-</div>
-</td>
-		</tr>	
-		
-		
-		
-		
-		
-		
-	<tr class="alt_row">
-			<td class="first">
-			<label for="enabled">Enabled?</label>
-			<div class="form_row">
-			
-			'.$enabledd.'
-			
-			</div>
-</td>
-		</tr>	
-		
-		
-		
-	
-	</br>
-	<tr>
-	
-			</br>
-			<td class="first"><label for="forcedownload">Force Download</label>
-<div class="description">Enabling this will always force the attachment to be downloaded as a file</div>
-<div class="form_row">
-
-'.$force_download.'
-
-</div>
-</td>
-		</tr>
-		
-		
-	
-	
-	</br>
-<tr id="row_groups" class="alt_row">
-			</br>
-			<td class="first"><label>Available to groups</label>
-			
-			<div class="form_row">
-			
-	
-	'.$groups_select_code.'
-	
-	</div>
-</td>
-		</tr>	
-	
-	
-	
-	<hr>
-	
-	
-<tr id="row_forums">
-			<td class="first"><label>Available in forums</label>
-			
-			<div class="form_row">
-			
-			'.$forums_select_code.'
-
-	
-	</div>
-</td>
-		</tr>	
-	
-	
-	
-	
-	
-	<tr class="last alt_row">
-			<td class="first"><label for="avatarfile">Avatar File</label>
-<div class="description">Do you want to allow this attachment type to be used for avatars?</div>
-<div class="form_row">
-
-'.$avatar_file.'
- 
- </div>
-</td>
-		</tr>
-		
-		
-		
-		
-	
-	
-	
-	
-	
-	
-	';
-	
-	
-    echo "</div></div></div>";
-	
-	
-	
-	
-
-
-    echo '
-		
-		<div class="container mt-3">
-		<div class="card-footer text-center">
-	<tr><td colspan=3 align=center>
-<input type="submit" value="Save Attachment Type" class="btn btn-primary"> 
-</td></tr>
-</div></div>';
-
-
-	
-	
-	echo "</form>";
-
-	stdfoot();
+// Main action router
+switch ($mybb->input['action'] ?? '') {
+    case 'add':
+        handle_add_action();
+        break;
+    case 'edit':
+        handle_edit_action();
+        break;
+    case 'delete':
+        handle_delete_action();
+        break;
+    case 'toggle_status':
+        handle_toggle_status_action();
+        break;
+    default:
+        handle_list_action();
+        break;
 }
 
-if($mybb->input['action'] == "edit")
+// ... остальные функции остаются без изменений ...
+
+/**
+ * Handle add new attachment type
+ */
+function handle_add_action(): void
 {
-	$query = $db->simple_select("attachtypes", "*", "atid='".$mybb->get_input('atid', MyBB::INPUT_INT)."'");
-	$attachment_type = $db->fetch_array($query);
-
-	if(!$attachment_type['atid'])
-	{
-		flash_message('error_invalid_attachment_type', 'error');
-		admin_redirect("index.php?act=attachment_types");
-	}
-
-	$plugins->run_hooks("admin_config_attachment_types_edit");
-
-	if($mybb->request_method == "post")
-	{
-		if(!trim($mybb->input['mimetype']) && !trim($mybb->input['extension']))
-		{
-			$errors[] = 'You did not enter a MIME type for this attachment type';
-		}
-
-		if(!trim($mybb->input['extension']) && !trim($mybb->input['mimetype']))
-		{
-			$errors[] = 'You did not enter a file extension for this attachment type';
-		}
-
-		if(!$errors)
-		{
-			if($mybb->input['mimetype'] == "images/attachtypes/")
-			{
-				$mybb->input['mimetype'] = '';
-			}
-
-			if(substr($mybb->input['extension'], 0, 1) == '.')
-			{
-				$mybb->input['extension'] = substr($mybb->input['extension'], 1);
-			}
-
-			foreach(array('groups', 'forums') as $key)
-			{
-				if($mybb->input[$key] == 'all')
-				{
-					$mybb->input[$key] = -1;
-				}
-				elseif($mybb->input[$key] == 'custom')
-				{
-					if(isset($mybb->input['select'][$key]) && is_array($mybb->input['select'][$key]))
-					{
-						foreach($mybb->input['select'][$key] as &$val)
-						{
-							$val = (int)$val;
-						}
-						unset($val);
-
-						$mybb->input[$key] = implode(',', (array)$mybb->input['select'][$key]);
-					}
-					else
-					{
-						$mybb->input[$key] = '';
-					}
-				}
-				else
-				{
-					$mybb->input[$key] = '';
-				}
-			}
-
-			$updated_type = array(
-				"name" => $db->escape_string($mybb->input['name']),
-				"mimetype" => $db->escape_string($mybb->input['mimetype']),
-				"extension" => $db->escape_string($mybb->input['extension']),
-				"maxsize" => $mybb->get_input('maxsize', MyBB::INPUT_INT),
-				"icon" => $db->escape_string($mybb->input['icon']),
-				'enabled' => $mybb->get_input('enabled', MyBB::INPUT_INT),
-				'forcedownload' => $mybb->get_input('forcedownload', MyBB::INPUT_INT),
-				'groups' => $db->escape_string($mybb->get_input('groups')),
-				'forums' => $db->escape_string($mybb->get_input('forums')),
-				'avatarfile' => $mybb->get_input('avatarfile', MyBB::INPUT_INT)
-			);
-
-			$plugins->run_hooks("admin_config_attachment_types_edit_commit");
-
-			$db->update_query("attachtypes", $updated_type, "atid='{$attachment_type['atid']}'");
-
-			// Log admin action
-			//log_admin_action($attachment_type['atid'], $mybb->input['extension']);
-
-			$cache->update_attachtypes();
-
-			flash_message('success_attachment_type_updated', 'success');
-			admin_redirect("index.php?act=attachment_types");
-		}
-	}
-
-
-	
-	stdhead('Attachment Types'." - ".'Edit Attachment Type');
-	
-	
-	
-	echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
-
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
-
-	// Stop JS elements showing while page is loading (JS supported browsers only)
-	echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-
-	$sub_tabs['edit_attachment_type'] = array(
-		'title' => 'Edit Attachment Type',
-		'link' => "index.php?act=attachment_types&amp;action=edit&amp;atid={$attachment_type['atid']}",
-		'description' => 'You have the ability to control the extension, MIME type, maximum size and show a small MIME type for this attachment type'
-	);
-
-	output_nav_tabs($sub_tabs, 'edit_attachment_type');
-
-	
-	
-	
-	echo '<form action="index.php?act=attachment_types&amp;action=edit&amp;atid='.$attachment_type['atid'].'" method="post" id="add">
-          <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />';
-	
-	
-
-	if($errors)
-	{
-		switch($mybb->input['groups'])
-		{
-			case 'all':
-				$mybb->input['groups'] = -1;
-				break;
-			case 'custom':
-				$mybb->input['groups'] = implode(',', (array)$mybb->input['select']['groups']);
-				break;
-			default:
-				$mybb->input['groups'] = '';
-				break;
-		}
-
-		switch($mybb->input['forums'])
-		{
-			case 'all':
-				$mybb->input['forums'] = -1;
-				break;
-			case 'custom':
-				$mybb->input['forums'] = implode(',', (array)$mybb->input['select']['forums']);
-				break;
-			default:
-				$mybb->input['forums'] = '';
-				break;
-		}
-	
-		output_inline_error($errors);
-	}
-	else
-	{
-		$mybb->input = array_merge($mybb->input, $attachment_type);
-	}
-
-	if(empty($mybb->input['groups']))
-	{
-		$mybb->input['groups'] = '';
-	}
-
-	if(empty($mybb->input['forums']))
-	{
-		$mybb->input['forums'] = '';
-	}
-
-	// PHP settings
-	$upload_max_filesize = @ini_get('upload_max_filesize');
-	$post_max_size = @ini_get('post_max_size');
-	$limit_string = '';
-	if($upload_max_filesize || $post_max_size)
-	{
-		$limit_string = '<br /><br />'.$lang->limit_intro;
-		if($upload_max_filesize)
-		{
-			$limit_string .= '<br />'.sprintf('Upload Max File Size: '.$upload_max_filesize.'');
-		}
-		if($post_max_size)
-		{
-			$limit_string .= '<br />'.sprintf('Max Post Size: '.$post_max_size.'');
-		}
-	}
-
-	$selected_values = '';
-	if($mybb->input['groups'] != '' && $mybb->input['groups'] != -1)
-	{
-		$selected_values = explode(',', $mybb->get_input('groups'));
-
-		foreach($selected_values as &$value)
-		{
-			$value = (int)$value;
-		}
-		unset($value);
-	}
-
-	$group_checked = array('all' => '', 'custom' => '', 'none' => '');
-	if($mybb->input['groups'] == -1)
-	{
-		$group_checked['all'] = 'checked="checked"';
-	}
-	elseif($mybb->input['groups'] != '')
-	{
-		$group_checked['custom'] = 'checked="checked"';
-	}
-	else
-	{
-		$group_checked['none'] = 'checked="checked"';
-	}
-
-	print_selection_javascript();
-
-	$groups_select_code = "
-	<dl style=\"margin-top: 0; margin-bottom: 0; width: 100%\">
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"groups\" value=\"all\" {$group_checked['all']} class=\"groups_forums_groups_check\" onclick=\"checkAction('groups');\" style=\"vertical-align: middle;\" /> <strong>All groups</strong></label></dt>
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"groups\" value=\"custom\" {$group_checked['custom']} class=\"groups_forums_groups_check\" onclick=\"checkAction('groups');\" style=\"vertical-align: middle;\" /> <strong>Select groups</strong></label></dt>
-		<dd style=\"margin-top: 4px;\" id=\"groups_forums_groups_custom\" class=\"groups_forums_groups\">
-			<table cellpadding=\"4\">
-				<tr>
-					<td valign=\"top\"><small>Groups:</small></td>
-					<td>".generate_group_select('select[groups][]', $selected_values, array('id' => 'groups', 'multiple' => true, 'size' => 5))."</td>
-				</tr>
-			</table>
-		</dd>
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"groups\" value=\"none\" {$group_checked['none']} class=\"groups_forums_groups_check\" onclick=\"checkAction('groups');\" style=\"vertical-align: middle;\" /> <strong>None</strong></label></dt>
-	</dl>
-	<script type=\"text/javascript\">
-		checkAction('groups');
-	</script>";
-
-	$selected_values = '';
-	if($mybb->input['forums'] != '' && $mybb->input['forums'] != -1)
-	{
-		$selected_values = explode(',', $mybb->get_input('forums'));
-
-		foreach($selected_values as &$value)
-		{
-			$value = (int)$value;
-		}
-		unset($value);
-	}
-
-	$forum_checked = array('all' => '', 'custom' => '', 'none' => '');
-	if($mybb->input['forums'] == -1)
-	{
-		$forum_checked['all'] = 'checked="checked"';
-	}
-	elseif($mybb->input['forums'] != '')
-	{
-		$forum_checked['custom'] = 'checked="checked"';
-	}
-	else
-	{
-		$forum_checked['none'] = 'checked="checked"';
-	}
-
-	$forums_select_code = "
-	<dl style=\"margin-top: 0; margin-bottom: 0; width: 100%\">
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"all\" {$forum_checked['all']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>All Forums</strong></label></dt>
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"custom\" {$forum_checked['custom']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>Select forums</strong></label></dt>
-		<dd style=\"margin-top: 4px;\" id=\"forums_forums_groups_custom\" class=\"forums_forums_groups\">
-			<table cellpadding=\"4\">
-				<tr>
-					<td valign=\"top\"><small>Forums:</small></td>
-					<td>".generate_forum_select('select[forums][]', $selected_values, array('id' => 'forums', 'multiple' => true, 'size' => 5))."</td>
-				</tr>
-			</table>
-		</dd>
-		<dt><label style=\"display: block;\"><input type=\"radio\" name=\"forums\" value=\"none\" {$forum_checked['none']} class=\"forums_forums_groups_check\" onclick=\"checkAction('forums');\" style=\"vertical-align: middle;\" /> <strong>None</strong></label></dt>
-	</dl>
-	<script type=\"text/javascript\">
-		checkAction('forums');
-	</script>";
-
-	$mybb->input['forcedownload'] = $mybb->get_input('forcedownload', MyBB::INPUT_INT);
-
-	
-	
-	$naame = generate_text_box('name', $mybb->input['name'], array('id' => 'name'));
-	
-	$filee_extension = generate_text_box('extension', $mybb->input['extension'], array('id' => 'extension'));
-	
-	$mimmes_type = generate_text_box('mimetype', $mybb->input['mimetype'], array('id' => 'mimetype'));
-	
-	$maxx_size = generate_numeric_field('maxsize', $mybb->input['maxsize'], array('id' => 'maxsize', 'min' => 0));
-	
-	$attachs_icon = generate_text_box('icon', $mybb->input['icon'], array('id' => 'icon'));
-	
-	$enaabled = generate_yes_no_radio('enabled', $mybb->input['enabled']);
-	
-	$for_down = generate_yes_no_radio('forcedownload', $mybb->input['forcedownload']);
-	
-	$avas = generate_yes_no_radio('avatarfile', $mybb->input['avatarfile']);
-	
-	
-	echo '
-	
-	<div class="container mt-3">
-	
-	<div class="card">
-    <div class="card-header rounded-bottom text-19 fw-bold">Edit Attachment Type</div>
-    <div class="card-body">';
-	
-	
-	echo '
-	
-	
-	<tr class="first">
-			<td class="first"><label for="name">Name</label>
-<div class="description">Enter the name of the attachment type</div>
-<div class="form_row">
-
-'.$naame.'
-
-</div>
-</td>
-</tr>
-
-<hr>
-
-
-<tr class="alt_row">
-			<td class="first"><label for="extension">File Extension <em>*</em></label>
-<div class="description">file_extension_desc</div>
-<div class="form_row">
-
-'.$filee_extension.'
-
-</div>
-</td>
-		</tr>
-
-
-<hr>
-
-<tr>
-			<td class="first"><label for="mimetype">MIME Type <em>*</em></label>
-<div class="description">Enter the MIME type sent by the server when downloading files of this type (<a href=\"http://www.freeformatter.com/mime-types-list.html\">See a list here</a>)</div>
-<div class="form_row">
-
-'.$mimmes_type.'
-
-</div>
-</td>
-		</tr>
-		
-		
-		
-		
-	<tr class="alt_row">
-			<td class="first"><label for="maxsize">Maximum File Size (Kilobytes)</label>
-<div class="description">The maximum file size for uploads of this attachment type in Kilobytes (1 MB = 1024 KB)'.$limit_string.'</div>
-<div class="form_row">
-
-'.$maxx_size.'
-
-</div>
-</td>
-		</tr>	
-		
-
-
-
-<tr>
-			<td class="first"><label for="icon">Attachment Icon</label>
-<div class="description">If you wish to show a small attachment icon for attachments of this type then enter the path to it here. {theme} will be replaced by the image directory for the viewers theme allowing you to specify per-theme attachment icons</div>
-<div class="form_row">
-
-'.$attachs_icon.'
-
-</div>
-</td>
-		</tr>
-
-
-
-<tr class="alt_row">
-			<td class="first">
-			
-			<label for="enabled">Enabled?</label>
-			<div class="form_row">
-			
-			'.$enaabled.'
-			
-			</div>
-</td>
-		</tr>
-		
-		
-		
-
-</br>		
-<tr>
-			</br>
-			<td class="first"><label for="forcedownload">Force Download</label>
-<div class="description">Enabling this will always force the attachment to be downloaded as a file</div>
-<div class="form_row">
-
-'.$for_down.'
-
-</div>
-</td>
-		</tr>
-		
-		
-		
-		
-		
-		
-	</br>	
-	<tr id="row_groups" class="alt_row">
-			</br>
-			<td class="first"><label>Available to groups</label>
-			
-			<div class="form_row">
-			
-			'.$groups_select_code.'
-	
-	
-	
-	</div>
-</td>
-		</tr>	
-		
-		
-	<hr>	
-		
-		
-	<tr id="row_forums">
-			<td class="first"><label>Available in forums</label>
-			
-			<div class="form_row">
-			'.$forums_select_code.'
-			
-	</div>
-
-</td>
-				</tr>	
-		
-		
-		
-		
-		
-	<tr class="last alt_row">
-			<td class="first"><label for="avatarfile">Avatar File</label>
-<div class="description">Do you want to allow this attachment type to be used for avatars?</div>
-<div class="form_row">
-
-'.$avas.'
-
-</div>
-</td>
-		</tr>	
-		
-		
-		
-		
-
-	
-	
-	';
-	
-	 echo "</div></div></div>";
-	
-
-	
-	echo '
-		
-		<div class="container mt-3">
-		<div class="card-footer text-center">
-	<tr><td colspan=3 align=center>
-<input type="submit" value="Save Attachment Type" class="btn btn-primary"> 
-</td></tr>
-</div></div>';
-	
-	
-	echo "</form>";
-	
-
-	stdfoot();
-}
-
-if($mybb->input['action'] == "delete")
-{
-	if($mybb->get_input('no'))
-	{
-		admin_redirect("index.php?module=config-attachment_types");
-	}
-
-	$query = $db->simple_select("attachtypes", "*", "atid='".$mybb->get_input('atid', MyBB::INPUT_INT)."'");
-	$attachment_type = $db->fetch_array($query);
-
-	if(!$attachment_type['atid'])
-	{
-		flash_message($lang->error_invalid_attachment_type, 'error');
-		admin_redirect("index.php?module=config-attachment_types");
-	}
-
-	$plugins->run_hooks("admin_config_attachment_types_delete");
-
-	if($mybb->request_method == "post")
-	{
-		$db->delete_query("attachtypes", "atid='{$attachment_type['atid']}'");
-
-		$plugins->run_hooks("admin_config_attachment_types_delete_commit");
-
-		$cache->update_attachtypes();
-
-		// Log admin action
-		log_admin_action($attachment_type['atid'], $attachment_type['extension']);
-
-		flash_message($lang->success_attachment_type_deleted, 'success');
-		admin_redirect("index.php?module=config-attachment_types");
-	}
-	else
-	{
-		$page->output_confirm_action("index.php?module=config-attachment_types&amp;action=delete&amp;atid={$attachment_type['atid']}", 'Are you sure you wish to delete this attachment type?');
-	}
-}
-
-if($mybb->input['action'] == 'toggle_status')
-{
-	//if(!verify_post_check($mybb->get_input('my_post_key')))
-	//{
-	//	flash_message($lang->invalid_post_verify_key2, 'error');
-	//	admin_redirect('index.php?act=attachment_types');
-	//}
-
-	$atid = $mybb->get_input('atid', MyBB::INPUT_INT);
-
-	$query = $db->simple_select('attachtypes', '*', "atid='{$atid}'");
-	$attachment_type = $db->fetch_array($query);
-
-	if(!$attachment_type['atid'])
-	{
-		flash_message($lang->error_invalid_mycode, 'error');
-		admin_redirect('index.php?act=attachment_types');
-	}
-
-	$plugins->run_hooks('admin_config_attachment_types_toggle_status');
-
-	$update_array = array('enabled' => 1);
-	$phrase = 'success_activated_attachment_type';
-	if($attachment_type['enabled'] == 1)
-	{
-		$update_array['enabled'] = 0;
-		$phrase = $lang->success_deactivated_attachment_type;
-	}
-
-	$plugins->run_hooks('admin_config_attachment_types_toggle_status_commit');
-
-	$db->update_query('attachtypes', $update_array, "atid='{$atid}'");
-
-	$cache->update_attachtypes();
-
-	// Log admin action
-	//log_admin_action($atid, $attachment_type['extension'], $update_array['enabled']);
-
-	flash_message($phrase, 'success');
-	admin_redirect('index.php?act=attachment_types');
-}
-
-if(!$mybb->input['action'])
-{
-	
-	
-	stdhead('Attachment Types');
-	
-	
-	echo "	<link rel=\"stylesheet\" href=\"templates/forum.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/main.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/modal.css?ver=1813\" type=\"text/css\" />\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
-	echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
-
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-	echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-	echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
-
-	// Stop JS elements showing while page is loading (JS supported browsers only)
-	echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
-	echo "  <script type=\"text/javascript\">\n".
-				"//<![CDATA[\n".
-				"	document.write('<style type=\"text/css\">.popup_button { display: inline; } .popup_menu { display: none; }<\/style>');\n".
-                "//]]>\n".
-                "</script>\n";
-
-	
-
-	$sub_tabs['attachment_types'] = array(
-		'title' => 'Attachment Types',
-		'link' => "index.php?act=attachment_types",
-		'description' => 'Here you can create and manage attachment types which define which types of files users can attach to posts. Note: Disabling an attachment type will make existing attachments of this type inaccessible'
-	);
-	$sub_tabs['add_attachment_type'] = array(
-		'title' => 'Add New Attachment Type',
-		'link' => "index.php?act=attachment_types&amp;action=add",
-	);
-
-	$plugins->run_hooks("admin_config_attachment_types_start");
-
-	output_nav_tabs($sub_tabs, 'attachment_types');
-
-	$query = $db->simple_select("attachtypes", "COUNT(atid) AS attachtypes");
-	$total_rows = $db->fetch_field($query, "attachtypes");
-
-	$pagenum = $mybb->get_input('page', MyBB::INPUT_INT);
-	if($pagenum)
-	{
-		$start = ($pagenum - 1) * 20;
-		$pages = ceil($total_rows / 20);
-		if($pagenum > $pages)
-		{
-			$start = 0;
-			$pagenum = 1;
-		}
-	}
-	else
-	{
-		$start = 0;
-		$pagenum = 1;
-	}
-	
-	
-	echo  '<div class="container mt-3">
-            <div class="card border-0 mb-4">
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		     Attachment Types
-	      </div>
-	       </div>
-	    </div>';
-		
-	
-
-    echo '
-        <div class="container mt-3">
-  <div class="card">
+    global $mybb, $db, $plugins, $cache, $lang;
+    
+    $plugins->run_hooks("admin_config_attachment_types_add");
+    
+    if ($mybb->request_method === "post") {
+        $errors = validate_attachment_type_input($mybb->input);
+        
+        if (empty($errors)) {
+            $attachment_type_data = prepare_attachment_type_data($mybb->input);
+            $atid = $db->insert_query("attachtypes", $attachment_type_data);
             
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>Extension</th>
-        <th>MIME Type</th>
-        <th>Enabled</th>
-		<th>Maximum Size</th>
-		<th>Controls</th>
-      </tr>
-    </thead>';	
-		
-	
+            $plugins->run_hooks("admin_config_attachment_types_add_commit");
+            $cache->update_attachtypes();
+            
+            flash_message('success_attachment_type_created', 'success');
+            admin_redirect("index.php?act=attachment_types");
+        }
+    }
+    
+    render_add_form($errors ?? []);
+}
 
-	$query = $db->simple_select("attachtypes", "*", "", array('limit_start' => $start, 'limit' => 20, 'order_by' => 'extension'));
-	while($attachment_type = $db->fetch_array($query))
-	{
-		// Just show default icons in ACP
-		$attachment_type['icon'] = htmlspecialchars_uni(str_replace("{theme}", "images", $attachment_type['icon']));
-		if(my_validate_url($attachment_type['icon'], true))
-		{
-			$image = $attachment_type['icon'];
-		}
-		else
-		{
-			$image = "../".$attachment_type['icon'];
-		}
+/**
+ * Handle edit attachment type
+ */
+function handle_edit_action(): void
+{
+    global $mybb, $db, $plugins, $cache;
+    
+    $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
+    $attachment_type = $db->fetch_array(
+        $db->simple_select("attachtypes", "*", "atid='{$atid}'")
+    );
+    
+    if (!$attachment_type['atid']) {
+        flash_message('error_invalid_attachment_type', 'error');
+        admin_redirect("index.php?act=attachment_types");
+    }
+    
+    $plugins->run_hooks("admin_config_attachment_types_edit");
+    
+    if ($mybb->request_method === "post") {
+        $errors = validate_attachment_type_input($mybb->input);
+        
+        if (empty($errors)) {
+            $updated_data = prepare_attachment_type_data($mybb->input);
+            $db->update_query("attachtypes", $updated_data, "atid='{$atid}'");
+            
+            $plugins->run_hooks("admin_config_attachment_types_edit_commit");
+            $cache->update_attachtypes();
+            
+            flash_message('success_attachment_type_updated', 'success');
+            admin_redirect("index.php?act=attachment_types");
+        }
+    } else {
+        $mybb->input = array_merge($mybb->input, $attachment_type);
+    }
+    
+    render_edit_form($attachment_type, $errors ?? []);
+}
 
-		if(!$attachment_type['icon'] || $attachment_type['icon'] == "pic/attachtypes/")
-		{
-			$attachment_type['icon'] = "&nbsp;";
-		}
-		else
-		{
-			$attachment_type['name'] = htmlspecialchars_uni($attachment_type['name']);
-			$attachment_type['icon'] = "<img src=\"{$image}\" title=\"{$attachment_type['name']}\" alt=\"\" />";
-		}
+/**
+ * Handle delete action
+ */
+function handle_delete_action(): void
+{
+    global $mybb, $db, $plugins, $cache, $lang;
+    
+    $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
+    $attachment_type = $db->fetch_array(
+        $db->simple_select("attachtypes", "*", "atid='{$atid}'")
+    );
+    
+    if (!$attachment_type['atid']) {
+        flash_message($lang->error_invalid_attachment_type, 'error');
+        admin_redirect("index.php?module=config-attachment_types");
+    }
+    
+    $plugins->run_hooks("admin_config_attachment_types_delete");
+    
+    if ($mybb->request_method === "post") {
+        $db->delete_query("attachtypes", "atid='{$atid}'");
+        
+        $plugins->run_hooks("admin_config_attachment_types_delete_commit");
+        $cache->update_attachtypes();
+        
+        flash_message($lang->success_attachment_type_deleted, 'success');
+        admin_redirect("index.php?module=config-attachment_types");
+    } else {
+        $page->output_confirm_action(
+            "index.php?module=config-attachment_types&amp;action=delete&amp;atid={$atid}",
+            'Are you sure you wish to delete this attachment type?'
+        );
+    }
+}
 
-		if($attachment_type['enabled'])
-		{
-			$phrase = 'Disable';
-			$icon = "on.png\" alt=\"({$lang->alt_enabled})\" title=\"{$lang->alt_enabled}";
-		}
-		else
-		{
-			$phrase = 'Enable';
-			$icon = "off.png\" alt=\"({$lang->alt_disabled})\" title=\"{$lang->alt_disabled}";
-		}
+/**
+ * Handle toggle status action
+ */
+function handle_toggle_status_action(): void
+{
+    global $mybb, $db, $plugins, $cache, $lang;
+    
+    $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
+    $attachment_type = $db->fetch_array(
+        $db->simple_select('attachtypes', '*', "atid='{$atid}'")
+    );
+    
+    if (!$attachment_type['atid']) {
+        flash_message($lang->error_invalid_mycode, 'error');
+        admin_redirect('index.php?act=attachment_types');
+    }
+    
+    $plugins->run_hooks('admin_config_attachment_types_toggle_status');
+    
+    $new_status = $attachment_type['enabled'] == 1 ? 0 : 1;
+    $db->update_query('attachtypes', ['enabled' => $new_status], "atid='{$atid}'");
+    
+    $plugins->run_hooks('admin_config_attachment_types_toggle_status_commit');
+    $cache->update_attachtypes();
+    
+    $phrase = $new_status ? 'success_activated_attachment_type' : 'success_deactivated_attachment_type';
+    flash_message($phrase, 'success');
+    admin_redirect('index.php?act=attachment_types');
+}
 
-		$attachment_type['extension'] = htmlspecialchars_uni($attachment_type['extension']);
+/**
+ * Handle list action (default)
+ */
+function handle_list_action(): void
+{
+    global $mybb, $db, $plugins, $lang;
+    
+    stdhead('Attachment Types');
+    output_admin_resources();
+    
+    $sub_tabs = [
+        'attachment_types' => [
+            'title' => 'Attachment Types',
+            'link' => "index.php?act=attachment_types",
+            'description' => 'Manage attachment types for file uploads'
+        ],
+        'add_attachment_type' => [
+            'title' => 'Add New Attachment Type',
+            'link' => "index.php?act=attachment_types&amp;action=add"
+        ]
+    ];
+    
+    $plugins->run_hooks("admin_config_attachment_types_start");
+    output_nav_tabs($sub_tabs, 'attachment_types');
+    
+    // Pagination
+    $per_page = 20;
+    $total_rows = (int) $db->fetch_field(
+        $db->simple_select("attachtypes", "COUNT(atid) AS attachtypes"),
+        "attachtypes"
+    );
+    
+    $page = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
+    $start = ($page - 1) * $per_page;
+    $pages = ceil($total_rows / $per_page);
+    
+    // Render table
+    echo render_attachment_types_table($start, $per_page);
+    
+    // Render pagination
+    if ($pages > 1) {
+        echo '<div class="container mt-3">';
+        echo draw_admin_pagination($page, $per_page, $total_rows, "index.php?act=attachment_types&amp;page={page}");
+        echo '</div>';
+    }
+    
+    stdfoot();
+}
 
+/**
+ * Validate attachment type input data
+ */
+function validate_attachment_type_input(array $input): array
+{
+    $errors = [];
+    
+    if (!trim($input['mimetype'] ?? '') && !trim($input['extension'] ?? '')) {
+        $errors[] = 'You did not enter a MIME type for this attachment type';
+    }
+    
+    if (!trim($input['extension'] ?? '') && !trim($input['mimetype'] ?? '')) {
+        $errors[] = 'You did not enter a file extension for this attachment type';
+    }
+    
+    return $errors;
+}
 
-		$options_link = '
+/**
+ * Prepare attachment type data for database
+ */
+function prepare_attachment_type_data(array $input): array
+{
+    global $db, $mybb;
+    
+    // Clean inputs
+    $mimetype = $input['mimetype'] === "pic/attachtypes/" ? '' : $input['mimetype'];
+    $extension = str_starts_with($input['extension'] ?? '', '.') 
+        ? substr($input['extension'], 1) 
+        : $input['extension'];
+    
+    // Process groups and forums
+    $processed = [];
+    foreach (['groups', 'forums'] as $key) {
+        $processed[$key] = process_selection_field($input[$key] ?? '', $input['select'][$key] ?? []);
+    }
+    
+    $maxsize = $mybb->get_input('maxsize', MyBB::INPUT_INT) ?: "";
+    
+    return [
+        "name" => $db->escape_string($input['name'] ?? ''),
+        "mimetype" => $db->escape_string($mimetype),
+        "extension" => $db->escape_string($extension),
+        "maxsize" => $maxsize,
+        "icon" => $db->escape_string($input['icon'] ?? ''),
+        'enabled' => $mybb->get_input('enabled', MyBB::INPUT_INT),
+        'forcedownload' => $mybb->get_input('forcedownload', MyBB::INPUT_INT),
+        'groups' => $db->escape_string($processed['groups']),
+        'forums' => $db->escape_string($processed['forums']),
+        'avatarfile' => $mybb->get_input('avatarfile', MyBB::INPUT_INT)
+    ];
+}
 
-<i class="fa-solid fa-gear"></i> &nbsp;Manage Attachment Types
-  <table>
-			  <tr>
-				<td class="subheader2">
-				<a href="index.php?act=attachment_types&amp;action=edit&amp;atid='.$attachment_type['atid'].'">Edit</a>
-	
-				</td>
-			  </tr>
-			  
-			  
-			  <tr>
-				<td class="subheader2">
-				<a href=index.php?act=attachment_types&amp;action=toggle_status&amp;atid='.$attachment_type['atid'].'&amp;my_post_key='.$mybb->post_code.'">'.$phrase.'</a>
-	
-				</td>
-			  </tr>
-			  
-			  
-			  
-			  
-			  
-		            			  
-</table>';	
+/**
+ * Process selection field (groups/forums)
+ */
+function process_selection_field(string $value, $custom_values): string
+{
+    if ($value === 'all') {
+        return '-1';
+    } elseif ($value === 'custom') {
+        if (is_array($custom_values)) {
+            $custom_values = array_map('intval', $custom_values);
+            return implode(',', array_filter($custom_values));
+        }
+        return '';
+    }
+    return '';
+}
 
-		
+/**
+ * Output admin CSS and JS resources
+ */
+function output_admin_resources(): void
+{
+    // ВЫЗЫВАЕМ ФУНКЦИЮ JavaScript ЗДЕСЬ, ЧТОБЫ ОНА БЫЛА В ШАПКЕ
+    print_selection_javascript();
+}
 
-		
-		
-		echo '
-		
-		<tr class="first">
-			<td class="first" width="1">'.$attachment_type['icon'].'
-			<strong>'.$attachment_type['extension'].'</strong></td>
-			<td>'.htmlspecialchars_uni($attachment_type['mimetype']).'</td>
-			
-			<td class="align_center alt_col">
-			<img src="images/bullet_'.$icon.'" alt="()" title="" style="vertical-align: middle;" />
-			</td>
-			
-			<td class="align_center">'.mksize($attachment_type['maxsize']*1024).'</td>
-			
-			
-			
-			
-			<td>		
-            <ul class="list-inline mt-0 mb-0" style="margin-bottom: 0px">
-            <li class="list-inline-item">
-            <div class="dropdown"><a href="#" aria-expanded="true" data-bs-toggle="dropdown" type="button"><i class="fa-solid fa-gear"></i> &nbsp;Options <i class="fa-solid fa-angle-down small"></i></a>
-            <div class="dropdown-menu dropdown-menu-start border rounded" data-bs-popper="none" style="width: 200px">
-            <div class="row p-2">
-            <div class="col align-self-center">
-                  '.$options_link.'
+/**
+ * Render attachment types table
+ */
+function render_attachment_types_table(int $start, int $per_page): string
+{
+    global $db, $lang, $mybb;
+    
+    $query = $db->simple_select(
+        "attachtypes", 
+        "*", 
+        "", 
+        [
+            'limit_start' => $start, 
+            'limit' => $per_page, 
+            'order_by' => 'extension'
+        ]
+    );
+    
+    $html = <<<HTML
+    <div class="container mt-3">
+        <div class="card border-0 mb-4">
+            <div class="card-header rounded-bottom text-19 fw-bold">
+                Attachment Types
             </div>
-           </div>
-           </div>
-           </div>
-            </div> 
+        </div>
+    </div>
+    
+    <div class="container mt-3">
+        <div class="card">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Extension</th>
+                        <th>MIME Type</th>
+                        <th>Enabled</th>
+                        <th>Maximum Size</th>
+                        <th>Controls</th>
+                    </tr>
+                </thead>
+                <tbody>
+    HTML;
+    
+    while ($attachment_type = $db->fetch_array($query)) {
+        process_attachment_icon($attachment_type);
+        
+       $status_icon = $attachment_type['enabled'] 
+    ? '<i class="fas fa-toggle-on text-success" title="Enabled" style="font-size: 18px;"></i>'
+    : '<i class="fas fa-toggle-off text-secondary" title="Disabled" style="font-size: 18px;"></i>';
+        
+        $phrase = $attachment_type['enabled'] ? 'Disable' : 'Enable';
+        
+        $html .= <<<HTML
+        <tr>
+            <td>
+                {$attachment_type['icon']}
+                <strong>{$attachment_type['extension']}</strong>
             </td>
-	    </tr>';
-		
-	
-		
-		
-		
-	}
-	
-	
-	echo '</table></div></div>';
-
-	//if($table->num_rows() == 0)
-	//{
-	//	$table->construct_cell('no_attachment_types', array('colspan' => 6));
-	//	$table->construct_row();
-	//}
-	
-
-	//$table->output('Attachment Types');
-
-	
-	echo '<div class="container mt-3">';
-	echo "<br />".draw_admin_pagination($pagenum, "20", $total_rows, "index.php?act=attachment_types&amp;page={page}");
-	echo '</div>';
-
-	stdfoot();
+            <td>{$attachment_type['mimetype']}</td>
+            <td class="align_center">{$status_icon}</td>
+            <td class="align_center">{$attachment_type['maxsize']}</td>
+            <td>
+                <div class="dropdown">
+                    <a href="#" data-bs-toggle="dropdown">
+                        <i class="fa-solid fa-gear"></i> Options
+                        <i class="fa-solid fa-angle-down small"></i>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="index.php?act=attachment_types&action=edit&atid={$attachment_type['atid']}">Edit</a>
+                        <a href="index.php?act=attachment_types&action=toggle_status&atid={$attachment_type['atid']}&my_post_key={$mybb->post_code}">{$phrase}</a>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        HTML;
+    }
+    
+    $html .= <<<HTML
+                </tbody>
+            </table>
+        </div>
+    </div>
+    HTML;
+    
+    return $html;
 }

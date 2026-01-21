@@ -23,7 +23,7 @@ if ($_GET['action'] == 'add_smilie') {
             if (!file_exists($SmilieDir . '/' . $spath)) {
                 $error = '<div class="alert alert-danger">Этот смайлик не существует!</div>';
             } else {
-                $db->sql_query('INSERT INTO ts_smilies (stitle, stext, spath, sorder) VALUES (' . $db->sqlesc($stitle) . ', ' . $db->sqlesc($stext) . ', ' . $db->sqlesc($spath) . ', \'' . $sorder . '\')');
+                $db->sql_query('INSERT INTO smilies (stitle, stext, spath, sorder) VALUES (' . $db->sqlesc($stitle) . ', ' . $db->sqlesc($stext) . ', ' . $db->sqlesc($spath) . ', \'' . $sorder . '\')');
                 $cache->update_smilies();
                 $message = '<div class="alert alert-success">Смайлик успешно добавлен!</div>';
                 header('Location: '.$_this_script_.'&action=manage_smilies&message=' . urlencode($message));
@@ -93,7 +93,7 @@ if ($_GET['action'] == 'add_smilie') {
 if ($_GET['action'] == 'edit_smilie') 
 {
     $sid = intval($_GET['sid']);
-    $query = $db->sql_query('SELECT stitle, stext, spath, sorder FROM ts_smilies WHERE sid = \'' . $sid . '\'');
+    $query = $db->sql_query('SELECT stitle, stext, spath, sorder FROM smilies WHERE sid = \'' . $sid . '\'');
     
     if ($db->num_rows($query) == 0) {
         exit('<div class="alert alert-danger">Неверный ID смайлика!</div>');
@@ -119,7 +119,7 @@ if ($_GET['action'] == 'edit_smilie')
             } 
 			else 
 			{
-                $db->sql_query('UPDATE ts_smilies SET stitle = ' . $db->sqlesc($stitle) . ', stext = ' . $db->sqlesc($stext) . ', spath = ' . $db->sqlesc($spath) . ', sorder = \'' . $sorder . '\' WHERE sid = \'' . $sid . '\'');
+                $db->sql_query('UPDATE smilies SET stitle = ' . $db->sqlesc($stitle) . ', stext = ' . $db->sqlesc($stext) . ', spath = ' . $db->sqlesc($spath) . ', sorder = \'' . $sorder . '\' WHERE sid = \'' . $sid . '\'');
                 $cache->update_smilies();
                 $message = '<div class="alert alert-success">Смайлик успешно обновлен!</div>';
                 header('Location: '.$_this_script_.'&action=manage_smilies&message=' . urlencode('Смайлик успешно обновлен!'));
@@ -191,7 +191,7 @@ if ($_GET['action'] == 'edit_smilie')
 // Удаление смайлика
 if ($_GET['action'] == 'delete_smilie' && is_valid_id($_GET['sid'])) 
 {
-    $db->sql_query('DELETE FROM ts_smilies WHERE sid = ' . intval($_GET['sid']));
+    $db->sql_query('DELETE FROM smilies WHERE sid = ' . intval($_GET['sid']));
     $cache->update_smilies();
     $message = '<div class="alert alert-success">Смайлик успешно удален!</div>';
     header('Location: '.$_this_script_.'&action=manage_smilies&message=' . urlencode($message));
@@ -208,7 +208,7 @@ if ($_GET['action'] == 'update_smilies_order')
             if (is_valid_id($sid)) 
 			{
                 $sorder = 0 + $sorder;
-                $db->sql_query('UPDATE ts_smilies SET sorder = \'' . $sorder . '\' WHERE sid = \'' . $sid . '\'');
+                $db->sql_query('UPDATE smilies SET sorder = \'' . $sorder . '\' WHERE sid = \'' . $sid . '\'');
             }
         }
         $cache->update_smilies();
@@ -273,7 +273,7 @@ if (!isset($_GET['action']) || $_GET['action'] == 'manage_smilies')
         . '</div>';
 }
 
-    $query = $db->sql_query('SELECT sid, stitle, stext, spath, sorder FROM ts_smilies ORDER BY sorder, stitle');
+    $query = $db->sql_query('SELECT sid, stitle, stext, spath, sorder FROM smilies ORDER BY sorder, stitle');
     $smiliesPerRow = 4; // Изменили на 5 смайликов в ряд
     
     while ($Sa = mysqli_fetch_assoc($query)) {

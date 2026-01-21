@@ -1376,7 +1376,6 @@ if($mybb->input['action'] == "add")
 				"open" => $mybb->get_input('open', MyBB::INPUT_INT),
 				"usepostcounts" => $mybb->get_input('usepostcounts', MyBB::INPUT_INT),
 				"usethreadcounts" => $mybb->get_input('usethreadcounts', MyBB::INPUT_INT),
-				"requireprefix" => $mybb->get_input('requireprefix', MyBB::INPUT_INT),
 				"password" => $db->escape_string($mybb->input['password']),
 				"defaultdatecut" => $mybb->get_input('defaultdatecut', MyBB::INPUT_INT),
 				"defaultsortby" => $db->escape_string($mybb->input['defaultsortby']),
@@ -1536,7 +1535,7 @@ if($mybb->input['action'] == "add")
 	$forum_data['showinjump'] = 1;
 	$forum_data['usepostcounts'] = 1;
 	$forum_data['usethreadcounts'] = 1;
-	$forum_data['requireprefix'] = 0;
+	
 
 	if($errors)
 	{
@@ -1798,10 +1797,7 @@ echo '
 			<input type="checkbox" name="usethreadcounts" value="1" class="form-check-input" id="usethreadcounts" checked="checked" /> Yes, threads in this forum should count towards user thread counts</label>
 			</div>
 		    
-			<div class="forum_settings_bit">
-			<label for="requireprefix">
-			<input type="checkbox" name="requireprefix" value="1" class="form-check-input" id="requireprefix" /> Yes, require a thread prefix for all threads</label>
-			</div>
+			
 			
 			
 </td>
@@ -2150,7 +2146,6 @@ if($mybb->input['action'] == "edit")
 				"open" => $mybb->get_input('open', MyBB::INPUT_INT),
 				"usepostcounts" => $mybb->get_input('usepostcounts', MyBB::INPUT_INT),
 				"usethreadcounts" => $mybb->get_input('usethreadcounts', MyBB::INPUT_INT),
-				"requireprefix" => $mybb->get_input('requireprefix', MyBB::INPUT_INT),
 				"password" => $db->escape_string($mybb->input['password']),
 				"defaultdatecut" => $mybb->get_input('defaultdatecut', MyBB::INPUT_INT),
 				"defaultsortby" => $db->escape_string($mybb->input['defaultsortby']),
@@ -2622,10 +2617,7 @@ echo '</br>';
 			'.generate_check_box('usethreadcounts', 1,'Yes, threads in this forum should count towards user thread counts', array('checked' => $forum_data['usethreadcounts'], 'id' => 'usethreadcounts')).'
 			</div>
 		    
-			<div class="forum_settings_bit">
-			<label for="requireprefix">
-			'.generate_check_box('requireprefix', 1, 'Yes, require a thread prefix for all threads', array('checked' => $forum_data['requireprefix'], 'id' => 'requireprefix')).'
-			</div>
+			
 			
 			
 </td>

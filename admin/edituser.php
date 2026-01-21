@@ -1116,7 +1116,7 @@ function renderPermissionsTab(): string
     global $userdata, $db, $userid;
     
     // Get current permissions
-    $query = $db->sql_query('SELECT canupload, candownload, cancomment FROM ts_u_perm WHERE userid = ' . $db->sqlesc($userid));
+    $query = $db->sql_query('SELECT canupload, candownload, cancomment FROM users_perm WHERE userid = ' . $db->sqlesc($userid));
     if ($db->num_rows($query) > 0) 
 	{
         $permresults = mysqli_fetch_assoc($query);
@@ -2459,7 +2459,7 @@ function updateUserPermissions(): void
         'candownload' => ($_POST['candownload'] == 'yes' ? 1 : 0)
     ];
     
-    $db->sql_query('REPLACE INTO ts_u_perm (userid, cancomment, canupload, candownload) 
+    $db->sql_query('REPLACE INTO users_perm (userid, cancomment, canupload, candownload) 
                    VALUES (' . $userid . ', ' . $updateperm['cancomment'] . ', ' . $updateperm['canupload'] . ', ' . $updateperm['candownload'] . ')');
 }
 

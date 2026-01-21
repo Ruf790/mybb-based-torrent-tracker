@@ -743,6 +743,18 @@ else
             'Mass Comment Delete' => ['danger', 'Mass Comment Delete', 'fa-comment'],
 			
 			
+			
+			'Seedbonus cron: Система отключена' => ['danger', 'Seedbonus', 'fa-ban'],
+'Seedbonus cron: start' => ['info', 'Seedbonus Start', 'fa-play'],
+'Seedbonus cron: done | no active seeders' => ['secondary', 'Seedbonus Done', 'fa-stop'],
+'WARNING: User' => ['warning', 'Seedbonus Warning', 'fa-exclamation-triangle'],
+'Seedbonus cron: done | users=' => ['success', 'Seedbonus Done', 'fa-check'],
+
+			
+			
+			
+			
+			
             'settings updated' => ['primary', 'Settings', 'fa-cogs'],
             '[SQL ERROR]' => ['danger', 'SQL Error', 'fa-exclamation-triangle'],
             'Screenshot uploaded:' => ['success', 'Screen Upload', 'fa-image'],

@@ -53,7 +53,7 @@
   stdhead ($lang->faq['faqtitle'], true, '', '');
   
   
-  echo  '<script type="text/javascript" src="'.$BASEURL.'/scripts/collapse222222222.js"></script>';
+ 
   
   
   
@@ -65,8 +65,8 @@
     }
     else
     {
-      $query = $db->sql_query ('' . 'SELECT a.id,a.name,a.description,b.name as title FROM ts_faq a 
-	  LEFT JOIN ts_faq b ON (a.pid=b.id) WHERE a.type = \'2\' AND a.pid = \'' . $id . '\' ORDER By a.disporder ASC');
+      $query = $db->sql_query ('' . 'SELECT a.id,a.name,a.description,b.name as title FROM faq a 
+	  LEFT JOIN faq b ON (a.pid=b.id) WHERE a.type = \'2\' AND a.pid = \'' . $id . '\' ORDER By a.disporder ASC');
       if ($db->num_rows ($query) == 0)
       {
         $faq_errors[] = $lang->faq['faqerror'];
@@ -146,7 +146,7 @@
     {
       foreach ($orders as $id => $order)
       {
-        $db->sql_query ('UPDATE ts_faq SET disporder = ' . $db->sqlesc ($order) . ' WHERE id = ' . $db->sqlesc ($id));
+        $db->sql_query ('UPDATE faq SET disporder = ' . $db->sqlesc ($order) . ' WHERE id = ' . $db->sqlesc ($id));
       }
     }
   }
@@ -159,8 +159,8 @@
     }
     else
     {
-      $db->sql_query ('DELETE FROM ts_faq WHERE id = ' . $db->sqlesc ($id));
-      $db->sql_query ('DELETE FROM ts_faq WHERE pid = ' . $db->sqlesc ($id));
+      $db->sql_query ('DELETE FROM faq WHERE id = ' . $db->sqlesc ($id));
+      $db->sql_query ('DELETE FROM faq WHERE pid = ' . $db->sqlesc ($id));
     }
   }
 
@@ -179,7 +179,7 @@
       }
       else
       {
-        $db->sql_query ('INSERT INTO ts_faq (type,name,description,disporder) VALUES (\'1\',' . $db->sqlesc ($name) . ',' . $db->sqlesc ($description) . ',' . $db->sqlesc ($disporder) . ')');
+        $db->sql_query ('INSERT INTO faq (type,name,description,disporder) VALUES (\'1\',' . $db->sqlesc ($name) . ',' . $db->sqlesc ($description) . ',' . $db->sqlesc ($disporder) . ')');
         header ('Location: ' . $_this_script_);
         exit ();
       }
@@ -292,7 +292,7 @@
       }
       else
       {
-        $db->sql_query ('INSERT INTO ts_faq (type,name,description,disporder,pid) VALUES (\'2\',' . $db->sqlesc ($name) . ',' . $db->sqlesc ($description) . ',' . $db->sqlesc ($disporder) . ',' . $db->sqlesc ($pid) . ')');
+        $db->sql_query ('INSERT INTO faq (type,name,description,disporder,pid) VALUES (\'2\',' . $db->sqlesc ($name) . ',' . $db->sqlesc ($description) . ',' . $db->sqlesc ($disporder) . ',' . $db->sqlesc ($pid) . ')');
         header ('Location: ' . $_this_script_);
         exit ();
       }
@@ -305,7 +305,7 @@
     }
     else
     {
-      ($query = $db->sql_query ('SELECT * FROM ts_faq WHERE type = \'1\''));
+      ($query = $db->sql_query ('SELECT * FROM faq WHERE type = \'1\''));
       if ($db->num_rows ($query) == 0)
       {
         $faq_errors[] = $lang->faq['faqerror'];
@@ -431,7 +431,7 @@
       }
       else
       {
-        ($db->sql_query ('UPDATE ts_faq SET type = ' . $db->sqlesc ($type) . ', name = ' . $db->sqlesc ($name) . ', description = ' . $db->sqlesc ($description) . ', disporder=' . $db->sqlesc ($disporder) . ', pid = ' . $db->sqlesc ($pid) . ' WHERE id = ' . $db->sqlesc ($id)));
+        ($db->sql_query ('UPDATE faq SET type = ' . $db->sqlesc ($type) . ', name = ' . $db->sqlesc ($name) . ', description = ' . $db->sqlesc ($description) . ', disporder=' . $db->sqlesc ($disporder) . ', pid = ' . $db->sqlesc ($pid) . ' WHERE id = ' . $db->sqlesc ($id)));
         header ('Location: ' . $_this_script_);
         exit ();
       }
@@ -444,7 +444,7 @@
     }
     else
     {
-      ($firstquery = $db->sql_query ('SELECT * FROM ts_faq WHERE id = ' . $db->sqlesc ($id)));
+      ($firstquery = $db->sql_query ('SELECT * FROM faq WHERE id = ' . $db->sqlesc ($id)));
       if ($db->num_rows ($firstquery) == 0)
       {
         $faq_errors[] = $lang->faq['faqerror'];
@@ -456,7 +456,7 @@
         show_faq_errors ();
         if ($editfaq['type'] == 2)
         {
-          ($query2 = $db->sql_query ('SELECT * FROM ts_faq WHERE type = \'1\' ORDER By disporder ASC'));
+          ($query2 = $db->sql_query ('SELECT * FROM faq WHERE type = \'1\' ORDER By disporder ASC'));
           $categories = '				
 				<tr>
 					<td align="right" valign="top">
@@ -570,7 +570,7 @@
 
   show_faq_errors ();
   $where = array ('Add New FAQ Item' => $_this_script_ . '&amp;do=new');
-  ($query = $db->sql_query ('SELECT disporder, id, name FROM ts_faq WHERE type = \'1\' ORDER By disporder ASC'));
+  ($query = $db->sql_query ('SELECT disporder, id, name FROM faq WHERE type = \'1\' ORDER By disporder ASC'));
   if (0 < $db->num_rows ($query))
   {
     echo '

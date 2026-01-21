@@ -10,7 +10,7 @@ declare(strict_types=1);
   define ('DC_VERSION', '0.5 by xam');
   define ('SKIP_CRON_JOBS', true);
   define ('RUN_CRONJOBS', true);
-  ($db->sql_query ('UPDATE ts_cron SET nextrun = \'0\''));
+  ($db->sql_query ('UPDATE cron SET nextrun = \'0\''));
   $ts_cron_image = '<img src="' . $BASEURL . '/ts_cron.php?rand=' . time () . '&run_cronjobs=true" alt="" width="1" height="1" border="0" />';
   stdhead ('CleanUp');
   

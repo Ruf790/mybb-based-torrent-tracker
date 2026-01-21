@@ -144,7 +144,7 @@ stdhead('Cheat Attempts');
 									    p.cancomment, t.name, t.added 
                                         FROM cheat_attempts c 
                                         LEFT JOIN users u ON (c.uid=u.id) 
-                                        LEFT JOIN ts_u_perm p ON (u.id=p.userid) 
+                                        LEFT JOIN users_perm p ON (u.id=p.userid) 
                                         LEFT JOIN torrents t ON (c.torrentid=t.id) 
                                         ORDER BY c.added DESC LIMIT '.$start.',' . $perpage);
                                     

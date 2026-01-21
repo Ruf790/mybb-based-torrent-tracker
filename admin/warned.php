@@ -206,7 +206,7 @@ $multipage = multipage(
     $query = $db->sql_query_prepared(
         "SELECT u.*, p.canupload, p.candownload, p.cancomment 
          FROM users u 
-         LEFT JOIN ts_u_perm p ON (u.id = p.userid) 
+         LEFT JOIN users_perm p ON (u.id = p.userid) 
          WHERE u.usergroup != '" . UC_BANNED . "' 
            AND u.enabled = 'yes' 
            AND (u.warned = 'yes' OR u.leechwarn = 'yes') 

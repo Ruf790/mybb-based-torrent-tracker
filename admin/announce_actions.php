@@ -133,7 +133,7 @@ stdhead('Announce Actions');
                                         u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment, t.name, t.added 
                                         FROM announce_actions c 
                                         LEFT JOIN users u ON (c.userid=u.id) 
-                                        LEFT JOIN ts_u_perm p ON (u.id=p.userid) 
+                                        LEFT JOIN users_perm p ON (u.id=p.userid) 
                                         LEFT JOIN torrents t ON (c.torrentid=t.id) 
                                         ORDER BY c.actiontime DESC LIMIT '.$start.', ' . $perpage);
                                     

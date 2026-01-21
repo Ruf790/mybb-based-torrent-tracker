@@ -312,7 +312,7 @@ function isNumeric(value) {
                     FROM snatched s 
                     LEFT JOIN torrents t ON (s.torrentid=t.id) 
                     LEFT JOIN users u ON (s.userid=u.id) 
-                    LEFT JOIN ts_u_perm p ON (u.id=p.userid)
+                    LEFT JOIN users_perm p ON (u.id=p.userid)
                     " . $where_clause . "
                     ORDER BY s.to_go DESC 
                     LIMIT " . $start . ", " . $perpage;

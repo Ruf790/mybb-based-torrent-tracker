@@ -40,12 +40,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if($act2==='save_new') 
 		{
             $nextrun = TIMENOW+$minutes;
-            $db->sql_query("INSERT INTO ts_cron (filename,description,minutes,nextrun,active,loglevel) VALUES ($filename,$description,'$minutes','$nextrun','$act2ive','$loglevel')");
+            $db->sql_query("INSERT INTO cron (filename,description,minutes,nextrun,active,loglevel) VALUES ($filename,$description,'$minutes','$nextrun','$act2ive','$loglevel')");
             flash_message("New cron job created successfully!", "success");
         } 
 		else 
 		{
-            $db->sql_query("UPDATE ts_cron SET filename=$filename, description=$description, minutes='$minutes', active='$act2ive', loglevel='$loglevel' WHERE cronid='$cronid'");
+            $db->sql_query("UPDATE cron SET filename=$filename, description=$description, minutes='$minutes', active='$act2ive', loglevel='$loglevel' WHERE cronid='$cronid'");
             flash_message("Cron job updated successfully!", "success");
         }
 
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 {
     if ($act2 === 'run' && is_valid_id($cronid)) 
 	{
-        $db->sql_query("UPDATE ts_cron SET nextrun='".TIMENOW."' WHERE cronid='$cronid'");
+        $db->sql_query("UPDATE cron SET nextrun='".TIMENOW."' WHERE cronid='$cronid'");
         flash_message("Cron job scheduled to run immediately!", "info");
         admin_redirect($_this_script_);
         exit();
@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
     if (in_array($act2,['active','disable']) && is_valid_id($cronid)) 
 	{
         $status = ($act2==='active')?1:0;
-        $db->sql_query("UPDATE ts_cron SET active='$status' WHERE cronid='$cronid'");
+        $db->sql_query("UPDATE cron SET active='$status' WHERE cronid='$cronid'");
         $status_text = $status ? "enabled" : "disabled";
         flash_message("Cron job {$status_text} successfully!", "success");
         admin_redirect($_this_script_);
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 
     if ($act2==='delete' && is_valid_id($cronid)) 
 	{
-        $db->sql_query("DELETE FROM ts_cron WHERE cronid='$cronid'");
+        $db->sql_query("DELETE FROM cron WHERE cronid='$cronid'");
         flash_message("Cron job deleted successfully!", "success");
         admin_redirect($_this_script_);
         exit();
@@ -100,7 +100,7 @@ if(in_array($act2,['edit','save_new']) && ($act2==='save_new' || is_valid_id($cr
 
     if(!$IsNew) 
 	{
-        $query = $db->sql_query("SELECT * FROM ts_cron WHERE cronid='$cronid'");
+        $query = $db->sql_query("SELECT * FROM cron WHERE cronid='$cronid'");
         if($db->num_rows($query)) 
 		{
             $Cron = $db->fetch_array($query);
@@ -182,7 +182,7 @@ foreach($timeFields as $name=>$max) {
 </thead>
 <tbody>
 <?php
-$result = $db->sql_query("SELECT * FROM ts_cron ORDER BY cronid");
+$result = $db->sql_query("SELECT * FROM cron ORDER BY cronid");
 if($db->num_rows($result) > 0) 
 {
     while($cron = $db->fetch_array($result)) 
@@ -230,7 +230,7 @@ else
 </thead>
 <tbody>
 <?php
-$query = $db->sql_query('SELECT * FROM ts_cron_log ORDER BY runtime DESC LIMIT 50');
+$query = $db->sql_query('SELECT * FROM cron_log ORDER BY runtime DESC LIMIT 50');
 if($db->num_rows($query) > 0) 
 {
     while($log = $db->fetch_array($query)) 

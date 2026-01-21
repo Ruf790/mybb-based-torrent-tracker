@@ -1,0 +1,556 @@
+.category-card {
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.category-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.card-header-custom {
+    padding: 1.25rem 1.5rem;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.card-header-custom:hover {
+    background: linear-gradient(135deg, var(--thead-hover-bg, #e9ecef) 0%, color-mix(in srgb, var(--thead-hover-bg, #e9ecef) 80%, white 20%) 100%) !important;
+}
+
+.expand-toggle {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.expand-toggle:hover {
+    background: white;
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.expand-icon {
+    font-size: 1.2rem;
+    color: rgba(var(--theme-rgb, 13, 110, 253), 0.7);
+    transition: transform 0.3s ease;
+}
+
+.category-title {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 1.25rem;
+}
+
+.category-link {
+    color: inherit;
+    text-decoration: none;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.category-link:hover {
+    color: rgb(var(--theme-rgb, 13, 110, 253));
+    text-decoration: none;
+}
+
+.category-link::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    bottom: -2px;
+    left: 0;
+    background: linear-gradient(90deg, rgb(var(--theme-rgb, 13, 110, 253)), rgba(var(--theme-rgb, 13, 110, 253), 0.5));
+    transition: width 0.3s ease;
+}
+
+.category-link:hover::after {
+    width: 100%;
+}
+
+.category-description {
+    opacity: 0.9;
+    transition: opacity 0.3s ease;
+}
+
+.category-card:hover .category-description {
+    opacity: 1;
+}
+
+.card-body-custom {
+    padding: 1.5rem;
+}
+
+
+.forum-item {
+    position: relative;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.forum-card {
+    background: linear-gradient(135deg, 
+                rgba(255, 255, 255, 0.9) 0%,
+                rgba(248, 249, 250, 0.7) 100%);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.forum-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, 
+                var(--theme-color, #0d6efd) 0%,
+                rgba(var(--theme-rgb, 13, 110, 253), 0.5) 100%);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.6s ease;
+}
+
+.forum-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1),
+                0 0 0 1px rgba(var(--theme-rgb, 13, 110, 253), 0.1);
+}
+
+.forum-card:hover::before {
+    transform: scaleX(1);
+}
+
+/* Иконка статуса */
+.forum-status-indicator {
+    position: relative;
+}
+
+.status-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    border: 2px solid transparent;
+}
+
+.status-circle.pulse-hover:hover {
+    animation: statusPulse 1.5s infinite;
+}
+
+.status-new {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    box-shadow: 0 0 20px rgba(40, 167, 69, 0.3);
+}
+
+.status-old {
+    background: linear-gradient(135deg, #6c757d, #adb5bd);
+    color: white;
+}
+
+.status-hot {
+    background: linear-gradient(135deg, #dc3545, #fd7e14);
+    color: white;
+    box-shadow: 0 0 20px rgba(220, 53, 69, 0.3);
+}
+
+.new-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 20px;
+    height: 20px;
+    background: #ffc107;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    color: #212529;
+    animation: badgePulse 2s infinite;
+}
+
+/* Заголовок форума */
+.forum-title {
+    font-weight: 700;
+    font-size: 1.25rem;
+}
+
+.forum-link {
+    color: #2c3e50;
+    text-decoration: none;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.forum-link:hover {
+    color: var(--theme-color, #0d6efd);
+    transform: translateX(5px);
+}
+
+.forum-icon {
+    color: rgba(var(--theme-rgb, 13, 110, 253), 0.8);
+    transition: transform 0.3s ease;
+}
+
+.forum-link:hover .forum-icon {
+    transform: scale(1.2);
+}
+
+/* Бейджи */
+.forum-badges .badge {
+    font-weight: 500;
+    padding: 0.4em 0.8em;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    cursor: help;
+}
+
+/* Статистика */
+.stats-grid {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+}
+
+.stat-item {
+    text-align: center;
+    min-width: 80px;
+    cursor: help;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+}
+
+.unapproved-count {
+    font-size: 0.9rem;
+    color: #fd7e14;
+    font-weight: 600;
+}
+
+.stat-label {
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+/* Мобильная статистика */
+.forum-mobile-stats {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 12px;
+    padding: 1rem;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.mobile-stat {
+    text-align: center;
+    padding: 0.75rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    cursor: help;
+}
+
+.mobile-stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--theme-color, #0d6efd);
+}
+
+/* Подфорумы */
+.subforums-section {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 12px;
+    padding: 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.subforums-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* Декорации */
+.forum-decoration {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100px;
+    pointer-events: none;
+    opacity: 0.1;
+    z-index: 0;
+}
+
+.decoration-line {
+    position: absolute;
+    top: 50%;
+    right: 30px;
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--theme-color, #0d6efd));
+    transform: translateY(-50%);
+}
+
+.decoration-dots {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+}
+
+.decoration-dots span {
+    display: block;
+    width: 6px;
+    height: 6px;
+    background: var(--theme-color, #0d6efd);
+    border-radius: 50%;
+    margin: 4px 0;
+    opacity: 0.5;
+}
+
+/* ========== Popover Styles ========== */
+.popover {
+    border: 1px solid rgba(var(--theme-rgb, 13, 110, 253), 0.2);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(10px);
+}
+
+.popover-header {
+    background: linear-gradient(135deg, 
+                rgba(var(--theme-rgb, 13, 110, 253), 0.1) 0%,
+                rgba(var(--theme-rgb, 13, 110, 253), 0.05) 100%);
+    border-bottom: 1px solid rgba(var(--theme-rgb, 13, 110, 253), 0.1);
+    border-top-left-radius: 11px;
+    border-top-right-radius: 11px;
+    font-weight: 600;
+    color: var(--theme-color, #0d6efd);
+    padding: 0.75rem 1rem;
+}
+
+.popover-body {
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.95);
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
+}
+
+.popover-content {
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* Стрелка Popover */
+.bs-popover-auto[data-popper-placement^=top] > .popover-arrow::after,
+.bs-popover-top > .popover-arrow::after {
+    border-top-color: rgba(var(--theme-rgb, 13, 110, 253), 0.1);
+}
+
+.bs-popover-auto[data-popper-placement^=right] > .popover-arrow::after,
+.bs-popover-end > .popover-arrow::after {
+    border-right-color: rgba(var(--theme-rgb, 13, 110, 253), 0.1);
+}
+
+/* ========== Animations ========== */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes forumAppear {
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-10px); }
+}
+
+@keyframes statusPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(var(--theme-rgb, 13, 110, 253), 0.4); }
+    50% { box-shadow: 0 0 0 10px rgba(var(--theme-rgb, 13, 110, 253), 0); }
+}
+
+@keyframes badgePulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+    50% { transform: scale(1.1); box-shadow: 0 0 0 5px rgba(255, 193, 7, 0); }
+}
+
+@keyframes popoverFadeIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Анимация бейджа "New" */
+.pulse-badge {
+    animation: pulse 2s infinite;
+    position: relative;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+
+/* ========== Темная тема ========== */
+@media (prefers-color-scheme: dark) {
+    .category-card {
+        background: #2d3748;
+        color: #e2e8f0;
+    }
+    
+    .card-header-custom {
+        background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%) !important;
+    }
+    
+    .category-title,
+    .forum-title {
+        color: #e2e8f0;
+    }
+    
+    .forum-card {
+        background: linear-gradient(135deg, 
+                    rgba(45, 55, 72, 0.9) 0%,
+                    rgba(30, 41, 59, 0.7) 100%);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .forum-link {
+        color: #e2e8f0;
+    }
+    
+    .forum-description,
+    .category-description,
+    .stat-label,
+    .text-muted {
+        color: #a0aec0 !important;
+    }
+    
+    .mobile-stat {
+        background: #2d3748;
+    }
+    
+    .stat-value {
+        color: #e2e8f0;
+    }
+    
+    .subforums-section {
+        background: rgba(45, 55, 72, 0.5);
+        border-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .forum-mobile-stats {
+        background: rgba(45, 55, 72, 0.5);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .popover {
+        background: #2d3748;
+        border-color: #4a5568;
+    }
+    
+    .popover-header {
+        background: linear-gradient(135deg, 
+                    rgba(var(--theme-rgb, 13, 110, 253), 0.2) 0%,
+                    rgba(var(--theme-rgb, 13, 110, 253), 0.1) 100%);
+        border-bottom-color: #4a5568;
+        color: #e2e8f0;
+    }
+    
+    .popover-body {
+        background: #2d3748;
+        color: #e2e8f0;
+    }
+    
+    .popover-content {
+        color: #a0aec0;
+    }
+}
+
+/* ========== Адаптивность ========== */
+@media (max-width: 768px) {
+    .forum-card,
+    .category-card {
+        padding: 1.5rem !important;
+    }
+    
+    .stats-grid {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .stat-item {
+        min-width: auto;
+        width: 100%;
+    }
+    
+    .forum-decoration {
+        display: none;
+    }
+}
+
+
+/* Скрываем бейдж по умолчанию для всех статусов кроме forum_on */
+.forum-status-indicator:not(.forum_on) .new-badge,
+.ajax_mark_read:not(.forum_on) .new-badge {
+    display: none !important;
+}
+
+/* Показываем бейдж только для forum_on */
+.forum-status-indicator.forum_on .new-badge,
+.ajax_mark_read.forum_on .new-badge {
+    display: flex !important;
+}
+
+/* Дополнительные проверки для других возможных классов */
+.forum_off .new-badge,
+.forum_offclose .new-badge,
+.forum_offlock .new-badge,
+.forum_offlink .new-badge {
+    display: none !important;
+}

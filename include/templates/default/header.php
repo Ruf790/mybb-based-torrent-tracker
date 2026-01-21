@@ -405,6 +405,63 @@ if (isset($CURUSER)): ?>
                             </li>
                         </ul>
                     </li>
+					
+					
+					
+					
+					
+					
+					<!--Help Menu -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-ellipsis-h me-1"></i> <?= htmlspecialchars($lang->global['help'] ?? 'Help', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
+                        </a>
+                        <ul class="dropdown-menu">
+                            
+							
+							<li>
+            <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/videoformats.php">
+                <i class="fas fa-video me-2"></i> Video Formats
+            </a>
+        </li>
+        
+        <!-- Links & Resources -->
+        <li>
+            <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/links.php">
+                <i class="fas fa-link me-2"></i> Torrent Links
+            </a>
+        </li>
+        
+        <!-- Separator -->
+        <li><hr class="dropdown-divider"></li>
+        
+        <!-- Other Useful Links (optional) -->
+        <li>
+            <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/faq.php">
+                <i class="fas fa-question-circle me-2"></i> FAQ
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/rules.php">
+                <i class="fas fa-gavel me-2"></i> Rules
+            </a>
+        </li>
+							
+							
+							
+							
+                        </ul>
+                    </li>
+					
+					
+					
+					
+					
+					
+					
+					
+					
+					
                     
                     <!-- Staff Menu -->
                     <li class="nav-item dropdown">

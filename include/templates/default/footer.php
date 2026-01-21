@@ -92,7 +92,7 @@ if (($usergroups['cansettingspanel'] ?? 0) == 1) {
     }
 
     $QueryForm = '
-<form method="post" action="' . $BASEURL . '/admin/ts_query_explain.php" name="ts_queries" id="ts_queries">
+<form method="post" action="' . $BASEURL . '/admin/query_explain.php" name="ts_queries" id="ts_queries">
   ' . $totalTimeInput . '
   ' . $csrfField . '
   <input type="hidden" name="deep" id="deep_input" value="0">

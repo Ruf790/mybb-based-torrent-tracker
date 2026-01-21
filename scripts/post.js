@@ -1,4 +1,3 @@
-
 const removeattach_confirm = "Вы уверены, что хотите удалить это вложение?";
 
 const Post = {
@@ -29,7 +28,7 @@ const Post = {
             const dropZoneDiv = this.dropZone.querySelector('div');
             if (dropZoneDiv) dropZoneDiv.textContent = lang.drop_files;
 
-            // Event listeners
+            // Event listeners - ТОЛЬКО для кнопок управления файлами
             this.form.addEventListener('submit', (e) => this.checkAttachments(e));
             this.fileInput.addEventListener('change', () => this.addAttachments());
 
@@ -323,26 +322,31 @@ const Post = {
         }
     },
 
- 
- 
- 
- 
- checkAttachments: function(e) {
-    if (e) e.preventDefault();
-
-    const submitter = e ? e.submitter?.name : '';
-    const file = this.fileInput;
-    if (!file) {
-        // Если нет file input, позволяем форме отправиться
-        if (e && submitter === 'post_thread') {
-            this.form.submit();
+    checkAttachments: function(e) {
+        if (!e) return true;
+        
+        // Определяем какая кнопка вызвала submit
+        const submitter = e.submitter?.name || '';
+        
+        // Только эти кнопки должны проверять файлы
+        const fileButtons = ['newattachment', 'updateattachment'];
+        
+        // Если это не кнопка управления файлами - пропускаем проверку
+        if (!fileButtons.includes(submitter)) {
+            return true; // Позволяем форме отправиться
         }
-        return true;
-    }
+        
+        // Только для кнопок управления файлами блокируем отправку
+        e.preventDefault();
+        
+        const file = this.fileInput;
+        if (!file) {
+            showToast('File input not found', 'error');
+            return false;
+        }
 
-    // Проверяем только если это кнопки вложений или есть файлы
-    if (submitter === 'newattachment' || submitter === 'updateattachment' || file.files.length > 0) {
-        if (!file.files.length && (submitter === 'newattachment' || submitter === 'updateattachment')) {
+        // Проверяем только если это кнопки вложений
+        if (!file.files.length) {
             showToast(lang.attachment_missing, 'error');
             return false;
         }
@@ -379,20 +383,10 @@ const Post = {
             file.value = '';
             return false;
         }
-    }
 
-    // Если это основная кнопка отправки и проверки прошли - отправляем форму
-    if (e && submitter === 'post_thread') {
-        // Убираем обработчик чтобы избежать рекурсии
-        this.form.removeEventListener('submit', this.checkAttachments);
-        this.form.submit();
-    }
-
-    return true;
-},
- 
- 
- 
+        // Если проверка прошла успешно
+        return true;
+    },
 
     // Helper methods
     ajaxRequest: function(url, method, data = null, isFormData = false) {

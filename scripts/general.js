@@ -8,45 +8,7 @@ var MyBB = {
 
     pageLoaded: function() {
 		
-		// Печатаем в консоль все элементы с атрибутом name="allbox"
-    console.log(document.querySelectorAll('[name="allbox"]'));
-		
-        // Create the Check All feature
-        document.querySelectorAll('[name="allbox"]').forEach(function(allbox) {
-            var checked = allbox.checked;
-            
-			
-			
-        var checkboxes = document.querySelectorAll('input[type="checkbox"][id^="inlinemod_"]');
-			
-			
-			
-			
-			
 
-            checkboxes.forEach(function(checkbox) {
-                checkbox.addEventListener('change', function() {
-                    if(checked && !this.checked) {
-                        checked = false;
-                        allbox.dispatchEvent(new CustomEvent('change', {detail: {origin: 'item'}}));
-                    }
-                });
-            });
-
-            allbox.addEventListener('change', function(event) {
-                checked = this.checked;
-                var origin = event.detail ? event.detail.origin : undefined;
-
-                if(typeof origin == "undefined") {
-                    checkboxes.forEach(function(checkbox) {
-                        if(checked != checkbox.checked) {
-                            checkbox.checked = checked;
-                            checkbox.dispatchEvent(new Event('change'));
-                        }
-                    });
-                }
-            });
-        });
 
         // Initialise "initial focus" field if we have one
         var initialfocus = document.querySelector(".initial_focus");
@@ -54,28 +16,7 @@ var MyBB = {
             initialfocus.focus();
         }
 
-        if(typeof use_xmlhttprequest != "undefined" && use_xmlhttprequest == 1) {
-            var mark_read_imgs = document.querySelectorAll(".ajax_mark_read");
-            mark_read_imgs.forEach(function(element) {
-                if(element.classList.contains('forum_off') || 
-                   element.classList.contains('forum_offclose') || 
-                   element.classList.contains('forum_offlink') || 
-                   element.classList.contains('subforum_minioff') || 
-                   element.classList.contains('subforum_minioffclose') || 
-                   element.classList.contains('subforum_miniofflink') || 
-                   (element.title && element.title == lang.no_new_posts)) return;
-
-                element.addEventListener('click', function() {
-                    MyBB.markForumRead(this);
-                });
-
-                element.style.cursor = "pointer";
-                if(element.title) {
-                    element.title = element.title + " - ";
-                }
-                element.title = element.title + lang.click_mark_read;
-            });
-        }
+        
 
         document.querySelectorAll("a.referralLink").forEach(function(link) {
             link.addEventListener('click', MyBB.showReferrals);
@@ -92,39 +33,7 @@ var MyBB = {
         }
     },
 
-    markForumRead: function(element) {
-        if(!element) return false;
-        
-        var fid = element.id.replace("mark_read_", "");
-        if(!fid) return false;
-
-        var xhr = new XMLHttpRequest();
-        xhr.open('GET', 'misc.php?action=markread&fid=' + fid + '&ajax=1&my_post_key=' + my_post_key, true);
-        xhr.onreadystatechange = function() {
-            if(xhr.readyState === 4 && xhr.status === 200) {
-                MyBB.forumMarkedRead(fid, xhr.responseText);
-            }
-        };
-        xhr.send();
-    },
-
-    forumMarkedRead: function(fid, request) {
-        if(request == 1) {
-            var markreadfid = document.getElementById("mark_read_"+fid);
-            if(!markreadfid) return;
-            
-            if(markreadfid.classList.contains('subforum_minion')) {
-                markreadfid.classList.remove('subforum_minion');
-                markreadfid.classList.add('subforum_minioff');
-            } else {
-                markreadfid.classList.remove('forum_on');
-                markreadfid.classList.add('forum_off');
-            }
-            markreadfid.style.cursor = "default";
-            markreadfid.title = lang.no_new_posts;
-        }
-    },
-
+    
     unHTMLchars: function(text) {
         text = text.replace(/&lt;/g, "<");
         text = text.replace(/&gt;/g, ">");
@@ -154,32 +63,7 @@ var MyBB = {
         form.dispatchEvent(new Event('submit'));
     },
 
-    detectDSTChange: function(timezone_with_dst) {
-        var date = new Date();
-        var local_offset = date.getTimezoneOffset() / 60;
-        if(Math.abs(parseInt(timezone_with_dst) + local_offset) == 1) {
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', 'misc.php?action=dstswitch&ajax=1', true);
-            xhr.onerror = function() {
-                if(use_xmlhttprequest != 1) {
-                    var form = document.createElement("form");
-                    form.method = "post";
-                    form.action = "misc.php";
-                    form.style.display = "none";
-
-                    var input = document.createElement("input");
-                    input.name = "action";
-                    input.type = "hidden";
-                    input.value = "dstswitch";
-                    form.appendChild(input);
-
-                    document.body.appendChild(form);
-                    form.dispatchEvent(new Event('submit'));
-                }
-            };
-            xhr.send();
-        }
-    }
+    
 };
 
 var Cookie = {

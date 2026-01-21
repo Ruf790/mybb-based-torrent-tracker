@@ -33,7 +33,7 @@ function TS_IMDB(torrentId) {
     updateButton.textContent = 'Please Wait...';
     updateButton.disabled = true;
     
-    fetch(baseurl + "/ts_ajax5.php", {
+    fetch(baseurl + "/ajax_imdb.php", {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",

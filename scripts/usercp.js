@@ -1,160 +1,176 @@
-const UserCP = {
-    buddyField: null,
+document.addEventListener('DOMContentLoaded', () => {
+
+class UserMultiSelect {
+    constructor(containerId, hiddenInputId, limit = 5) {
+        this.container = document.getElementById(containerId);
+        this.hiddenInput = document.getElementById(hiddenInputId);
+        this.limit = limit;
+        this.selected = [];
+        if (this.container) this.init();
+    }
 
     init() {
-        // Закрытие popup по Escape
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && document.querySelector('#buddyselect_container')?.offsetParent !== null) {
-                document.querySelector('#buddyselect_container').style.display = 'none';
+        this.input = document.createElement('input');
+        this.input.placeholder = 'Поиск пользователя...';
+
+        this.dropdown = document.createElement('div');
+        this.dropdown.className = 'user-dropdown';
+        this.dropdown.hidden = true;
+
+        this.container.append(this.input, this.dropdown);
+
+        this.input.addEventListener('input', () => this.search());
+
+        document.addEventListener('click', e => {
+            if (!this.container.contains(e.target)) {
+                this.dropdown.hidden = true;
             }
         });
-    },
 
-    regenBuddySelected() {
-        const selectedBuddies = Array.from(document.querySelectorAll('input[id^="checkbox_"]'))
-            .filter(cb => cb.checked)
-            .map(cb => cb.parentElement.textContent.trim());
+        this.restore();
+    }
 
-        document.querySelector("#buddyselect_buddies").textContent = selectedBuddies.join(', ');
-    },
+    async search() {
+        const q = this.input.value.trim();
+        if (q.length < 2) return;
 
-    async openBuddySelect(field) {
-        const fieldEl = document.getElementById(field);
-        if (!fieldEl) return false;
+        const res = await fetch(
+            'xmlhttp.php?action=get_users&query=' + encodeURIComponent(q)
+        );
+        const data = await res.json();
 
-        this.buddyField = `#${field}`;
+        this.dropdown.innerHTML = '';
+        this.dropdown.hidden = false;
 
-        if (document.getElementById("buddyselect_container")) {
-            this.buddySelectLoaded();
-            return false;
+        (data.results || data).forEach(user => {
+            if (this.selected.some(u => u.id == user.id)) return;
+
+            const opt = document.createElement('div');
+            opt.className = 'user-option';
+            opt.innerHTML = `
+                ${user.avatar ? `<img src="${user.avatar}">` : ''}
+                <span>${user.text}</span>
+            `;
+            opt.addEventListener('click', () => this.add(user));
+            this.dropdown.appendChild(opt);
+        });
+    }
+
+    add(user) {
+        if (this.selected.length >= this.limit) {
+            alert(`Максимум ${this.limit}`);
+            return;
         }
+        this.selected.push(user);
+        this.render();
+        this.save();
+        this.dropdown.hidden = true;
+        this.input.value = '';
+    }
 
-        if (use_xmlhttprequest === 1) {
-            try {
-                const response = await fetch('xmlhttp.php?action=get_buddyselect');
-                const text = await response.text();
-                this.buddySelectLoaded({ responseText: text });
-            } catch (err) {
-                console.error('Ошибка загрузки списка друзей:', err);
-            }
-        }
-    },
+    remove(id) {
+        this.selected = this.selected.filter(u => u.id !== id);
+        this.render();
+        this.save();
+    }
 
-    buddySelectLoaded(request) {
-        let container = document.getElementById("buddyselect_container");
+    render() {
+        this.container.querySelectorAll('.user-tag').forEach(e => e.remove());
 
-        if (request) {
-            try {
-                const json = JSON.parse(request.responseText);
-                if (json.errors) {
-                    json.errors.forEach(msg => $.jGrowl(lang.buddylist_error + msg, { theme: 'jgrowl_error' }));
-                    return false;
-                }
-            } catch {
-                if (request.responseText) {
-                    container?.remove();
-                    container = document.createElement('div');
-                    container.id = "buddyselect_container";
-                    container.innerHTML = request.responseText;
-                    container.style.display = 'none';
-                    document.body.appendChild(container);
-                }
-            }
-        }
-
-        Object.assign(container.style, {
-            top: "50%",
-            left: "50%",
-            position: "fixed",
-            display: "block",
-            zIndex: "1000",
-            textAlign: "left",
-            transform: "translate(-50%, -50%)"
+        this.selected.forEach(user => {
+            const tag = document.createElement('div');
+            tag.className = 'user-tag';
+            tag.innerHTML = `
+                ${user.avatar ? `<img src="${user.avatar}">` : ''}
+                ${user.text}
+                <span>&times;</span>
+            `;
+            tag.querySelector('span').addEventListener('click', () => this.remove(user.id));
+            this.container.insertBefore(tag, this.input);
         });
 
-        // Сброс чекбоксов
-        document.querySelectorAll('input[id^="checkbox_"]').forEach(cb => cb.checked = false);
+        this.hiddenInput.value = this.selected.map(u => u.text).join(',');
+    }
 
-        // Выставляем выбранные опции
-        const listedBuddies = $(this.buddyField).select2("data");
-        listedBuddies.forEach(user => {
-            document.querySelectorAll('input[id^="checkbox_"]').forEach(cb => {
-                if (cb.parentElement.textContent.trim() === user.text) cb.checked = true;
-            });
-        });
+    save() {
+        localStorage.setItem(this.container.id, JSON.stringify(this.selected));
+    }
 
-        this.regenBuddySelected();
-    },
-
-    closeBuddySelect(canceled = false) {
-        if (!canceled) {
-            const buddies = document.querySelector("#buddyselect_buddies").textContent.split(",")
-                .map(b => b.trim())
-                .filter(b => b);
-
-            const newBuddies = buddies.map(b => ({ id: b, text: b }));
-            $(this.buddyField).select2("data", newBuddies).select2("focus");
+    restore() {
+        const saved = localStorage.getItem(this.container.id);
+        if (saved) {
+            this.selected = JSON.parse(saved);
+            this.render();
         }
-        document.getElementById("buddyselect_container").style.display = 'none';
+    }
+}
+
+const UserCP = {
+    buddySelect: null,
+    ignoredSelect: null,
+
+    init() {
+        this.buddySelect = new UserMultiSelect(
+            'buddy_add_username',
+            'buddy_add_username_input'
+        );
+
+        this.ignoredSelect = new UserMultiSelect(
+            'ignored_add_username',
+            'ignored_add_username_input'
+        );
+
+        document.getElementById('buddy_search_btn')
+            ?.addEventListener('click', () => this.buddySelect.input.focus());
+
+        document.getElementById('ignored_search_btn')
+            ?.addEventListener('click', () => this.ignoredSelect.input.focus());
     },
 
     async addBuddy(type) {
-        const typeSubmit = document.getElementById(`${type}_submit`);
-        const typeAdd = document.getElementById(`${type}_add_username`);
+        const select = type === 'ignored'
+            ? this.ignoredSelect
+            : this.buddySelect;
 
-        if (!typeAdd.value.length) return false;
+        if (!select.hiddenInput.value) return false;
         if (use_xmlhttprequest !== 1) return true;
 
-        const oldValue = typeSubmit.value;
-        typeAdd.disabled = typeSubmit.disabled = true;
-        typeSubmit.value = type === "ignored" ? lang.adding_ignored : lang.adding_buddy;
-        const list = type === "ignored" ? "ignore" : "buddy";
+        const formData = new FormData();
+        formData.append('ajax', 1);
+        formData.append('add_username', select.hiddenInput.value);
 
-        try {
-            const formData = new FormData();
-            formData.append('ajax', 1);
-            formData.append('add_username', typeAdd.value);
+        const res = await fetch(
+            `usercp.php?action=do_editlists&manage=${type}&my_post_key=${my_post_key}`,
+            { method: 'POST', body: formData }
+        );
 
-            const res = await fetch(`usercp.php?action=do_editlists&my_post_key=${my_post_key}&manage=${type}`, {
-                method: 'POST',
-                body: formData
-            });
+        const html = await res.text();
+        document.getElementById(
+            type === 'ignored' ? 'ignore_list' : 'buddy_list'
+        ).innerHTML = html;
 
-            const text = await res.text();
-            if (text.includes("buddy_count") || text.includes("ignored_count")) {
-                document.getElementById(`${list}_list`).innerHTML = text;
-            } else {
-                document.getElementById("sentrequests").innerHTML = text;
-            }
-        } catch (err) {
-            console.error("Ошибка добавления пользователя:", err);
-        } finally {
-            typeSubmit.disabled = typeAdd.disabled = false;
-            typeSubmit.value = oldValue;
-            typeAdd.value = '';
-            typeAdd.focus();
-            $(typeAdd).select2('data', null);
-        }
+        select.selected = [];
+        select.render();
+        localStorage.removeItem(select.container.id);
 
         return false;
     },
 
     removeBuddy(type, uid) {
-    const message = type === "ignored" ? lang.remove_ignored : lang.remove_buddy;
+        if (!confirm(type === 'ignored' ? lang.remove_ignored : lang.remove_buddy)) {
+            return false;
+        }
 
-    if (confirm(message)) {
-        fetch(`usercp.php?action=do_editlists&my_post_key=${my_post_key}&manage=${type}&delete=${uid}`, {
-            method: 'POST',
-            body: new URLSearchParams({ ajax: 1 })
-        }).catch(err => {
-            console.error("Ошибка удаления пользователя:", err);
-        });
+        fetch(
+            `usercp.php?action=do_editlists&manage=${type}&delete=${uid}&my_post_key=${my_post_key}`,
+            { method: 'POST', body: new URLSearchParams({ ajax: 1 }) }
+        );
+
+        return false;
     }
-
-    return false;
-}
-
-
 };
 
-document.addEventListener('DOMContentLoaded', () => UserCP.init());
+window.UserCP = UserCP;
+UserCP.init();
+
+});

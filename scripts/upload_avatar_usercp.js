@@ -41,7 +41,7 @@ class AvatarUpload {
         if (!file) return;
 
         if (!this.validateFileType(file)) {
-            showToast("Please select a valid image file (JPG, PNG, GIF, SVG)", "error");
+            showToast("Please select a valid image file (JPG, PNG, GIF, SVG, WEBP)", "error");
             return;
         }
 
@@ -60,6 +60,7 @@ class AvatarUpload {
             'image/jpg', 
             'image/png', 
             'image/gif',
+			'image/webp',
             'image/svg+xml'
         ];
         return allowedTypes.includes(file.type);

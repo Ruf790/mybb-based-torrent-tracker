@@ -7,171 +7,190 @@ const BASEURL = "https://ruff-tracker.eu"; // change to your domain or root
 
 
 
-function showErrorModal(message) {
-  document.getElementById('errorModalBody').textContent = message;
-  const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
-  errorModal.show();
+
+// Инициализация переключения между URL и файлом
+document.addEventListener('DOMContentLoaded', function() {
+    // Для первого изображения
+    document.querySelectorAll('input[name="uploadType1"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const isUrl = this.value === 'url';
+            document.getElementById('uploadUrlGroup1').classList.toggle('d-none', !isUrl);
+            document.getElementById('uploadFileGroup1').classList.toggle('d-none', isUrl);
+            
+            // Очищаем неактивное поле
+            if (isUrl) {
+                document.getElementById('imagesUpload').value = '';
+            } else {
+                document.getElementById('imageUrl').value = '';
+            }
+        });
+    });
+
+    // Для второго изображения
+    document.querySelectorAll('input[name="uploadType2"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const isUrl = this.value === 'url';
+            document.getElementById('uploadUrlGroup2').classList.toggle('d-none', !isUrl);
+            document.getElementById('uploadFileGroup2').classList.toggle('d-none', isUrl);
+            
+            // Очищаем неактивное поле
+            if (isUrl) {
+                document.getElementById('imagesUpload2').value = '';
+            } else {
+                document.getElementById('imageUrl2').value = '';
+            }
+        });
+    });
+    
+    // Инициализируем начальное состояние
+    document.querySelector('#uploadByUrl1').dispatchEvent(new Event('change'));
+    document.querySelector('#uploadByUrl2').dispatchEvent(new Event('change'));
+});
+
+// Обработка загрузки изображения из файла
+function handleImageUpload(input, previewContainerId) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        
+        // Валидация файла
+        if (!file.type.match('image.*')) {
+            alert('Please select a valid image file (JPG, PNG, GIF, WebP)');
+            input.value = '';
+            return;
+        }
+        
+        if (file.size > 10 * 1024 * 1024) { // 10MB
+            alert('Image size should be less than 10MB');
+            input.value = '';
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            updateImagePreview(e.target.result, previewContainerId);
+        };
+        reader.readAsDataURL(file);
+    }
 }
 
+// Обновление предпросмотра изображения
+function updateImagePreview(imageSrc, previewContainerId) {
+    const previewContainer = document.getElementById(previewContainerId);
+    
+    previewContainer.innerHTML = `
+        <div class="preview-item">
+            <img src="${imageSrc}" 
+                 class="preview-img" 
+                 alt="Image preview">
+            <button type="button" 
+                    class="delete-btn" 
+                    onclick="removeImage('${previewContainerId}', '${previewContainerId === 'imagePreview' ? 'imageUrl' : 'imageUrl2'}', '${previewContainerId === 'imagePreview' ? 'imagesUpload' : 'imagesUpload2'}')"
+                    title="Remove image">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `;
+}
 
-
-
-  
-  
- // Toggle upload input groups
-  function toggleUploadInputs() {
-    const urlRadio = document.getElementById('uploadByUrl');
-    const fileRadio = document.getElementById('uploadByFile');
-    const urlGroup = document.getElementById('uploadUrlGroup');
-    const fileGroup = document.getElementById('uploadFileGroup');
-
-    if (urlRadio.checked) {
-      urlGroup.classList.remove('d-none');
-      fileGroup.classList.add('d-none');
-    } else if (fileRadio.checked) {
-      urlGroup.classList.add('d-none');
-      fileGroup.classList.remove('d-none');
+// Обновление предпросмотра из URL
+window.updateImagePreviewFromUrl = function(url, previewContainerId) {
+    if (!url.trim()) {
+        removeImage(previewContainerId);
+        return;
     }
-  }
+    
+    const previewContainer = document.getElementById(previewContainerId);
+    previewContainer.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    
+    const img = new Image();
+    img.onload = function() {
+        updateImagePreview(url, previewContainerId);
+    };
+    
+    img.onerror = function() {
+        previewContainer.innerHTML = `
+            <div class="alert alert-warning p-2">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Cannot load image from URL
+            </div>
+        `;
+    };
+    
+    img.src = url;
+}
 
-  // Initial toggle
-  toggleUploadInputs();
-
-  // Listen for radio changes
-  document.getElementsByName('uploadType').forEach(radio => {
-    radio.addEventListener('change', toggleUploadInputs);
-  });
-
-  // Live preview for URL input
-  document.getElementById('imageUrl').addEventListener('input', function() {
-    const url = this.value.trim();
-    const preview = document.getElementById('image22Preview');
-    preview.innerHTML = ''; // Clear previous previews
-
-    if (url) {
-      const img = document.createElement('img');
-      img.src = url;
-      img.style.maxWidth = '150px';
-      img.style.maxHeight = '150px';
-      img.style.objectFit = 'contain';
-      img.alt = "Preview Image (URL)";
-      img.onerror = () => {
-        preview.innerHTML = '<p class="text-danger">Invalid image URL or cannot load image.</p>';
-      };
-      preview.appendChild(img);
+// Удаление изображения
+window.removeImage = function(previewContainerId, urlInputId = null, fileInputId = null) {
+    const previewContainer = document.getElementById(previewContainerId);
+    previewContainer.innerHTML = '';
+    
+    // Очищаем соответствующие поля ввода
+    if (urlInputId) {
+        const urlInput = document.getElementById(urlInputId);
+        if (urlInput) urlInput.value = '';
     }
-  });
+    
+    if (fileInputId) {
+        const fileInput = document.getElementById(fileInputId);
+        if (fileInput) fileInput.value = '';
+    }
+}
 
-  // Live preview for file upload
-  document.getElementById('imagesUpload').addEventListener('change', function() {
-    const files = this.files;
-    const preview = document.getElementById('imagesPreview');
-    preview.innerHTML = ''; // Clear previous previews
-
-    if (files.length === 0) return;
-
-    Array.from(files).forEach(file => {
-      if (!file.type.startsWith('image/')) return; // skip non-images
-
-      const reader = new FileReader();
-      reader.onload = e => {
-        const img = document.createElement('img');
-        img.src = e.target.result;
-        img.style.maxWidth = '150px';
-        img.style.maxHeight = '150px';
-        img.style.objectFit = 'contain';
-        img.alt = file.name;
-        preview.appendChild(img);
-      };
-      reader.readAsDataURL(file);
+// Drag & Drop для зон загрузки
+document.querySelectorAll('.upload-zone-sm').forEach(zone => {
+    zone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.style.borderColor = '#4f46e5';
+        this.style.backgroundColor = '#e0e7ff';
     });
-  });
-  
-  
-  
-  
-  
-  
-// Toggle upload input groups for Image 2
-  function toggleUploadInputs2() {
-    const urlRadio = document.getElementById('uploadByUrl2');
-    const fileRadio = document.getElementById('uploadByFile2');
-    const urlGroup = document.getElementById('uploadUrlGroup2');
-    const fileGroup = document.getElementById('uploadFileGroup2');
-
-    if (urlRadio.checked) {
-      urlGroup.classList.remove('d-none');
-      fileGroup.classList.add('d-none');
-    } else if (fileRadio.checked) {
-      urlGroup.classList.add('d-none');
-      fileGroup.classList.remove('d-none');
-    }
-  }
-
-  // Initial toggle for Image 2
-  toggleUploadInputs2();
-
-  // Listen for radio changes Image 2
-  document.getElementsByName('uploadType2').forEach(radio => {
-    radio.addEventListener('change', toggleUploadInputs2);
-  });
-
-  // Live preview for URL input Image 2
-  document.getElementById('imageUrl2').addEventListener('input', function() {
-    const url = this.value.trim();
-    const preview = document.getElementById('image22Preview2');
-    preview.innerHTML = ''; // Clear previous previews
-
-    if (url) {
-      const img = document.createElement('img');
-      img.src = url;
-      img.style.maxWidth = '150px';
-      img.style.maxHeight = '150px';
-      img.style.objectFit = 'contain';
-      img.alt = "Preview Image 2 (URL)";
-      img.onerror = () => {
-        preview.innerHTML = '<p class="text-danger">Invalid image URL or cannot load image.</p>';
-      };
-      preview.appendChild(img);
-    }
-  });
-
-  // Live preview for file upload Image 2
-  document.getElementById('imagesUpload2').addEventListener('change', function() {
-    const files = this.files;
-    const preview = document.getElementById('imagesPreview2');
-    preview.innerHTML = ''; // Clear previous previews
-
-    if (files.length === 0) return;
-
-    Array.from(files).forEach(file => {
-      if (!file.type.startsWith('image/')) return; // skip non-images
-
-      const reader = new FileReader();
-      reader.onload = e => {
-        const img = document.createElement('img');
-        img.src = e.target.result;
-        img.style.maxWidth = '150px';
-        img.style.maxHeight = '150px';
-        img.style.objectFit = 'contain';
-        img.alt = file.name;
-        preview.appendChild(img);
-      };
-      reader.readAsDataURL(file);
+    
+    zone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.style.borderColor = '';
+        this.style.backgroundColor = '';
     });
-  });
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+    
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.style.borderColor = '';
+        this.style.backgroundColor = '';
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            const file = files[0];
+            const card = this.closest('.card');
+            const isFirstImage = card.querySelector('h6').textContent.includes('Main');
+            const inputId = isFirstImage ? 'imagesUpload' : 'imagesUpload2';
+            const previewId = isFirstImage ? 'imagePreview' : 'imagePreview2';
+            
+            // Выбираем загрузку файлом
+            const radioId = isFirstImage ? 'uploadByFile1' : 'uploadByFile2';
+            document.getElementById(radioId).checked = true;
+            document.getElementById(radioId).dispatchEvent(new Event('change'));
+            
+            // Устанавливаем файл в input
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            document.getElementById(inputId).files = dataTransfer.files;
+            
+            // Обрабатываем файл
+            setTimeout(() => {
+                handleImageUpload(document.getElementById(inputId), previewId);
+            }, 100);
+        }
+    });
+});
+
+// ========== Остальной существующий код ==========
+
+function showErrorModal(message) {
+    document.getElementById('errorModalBody').textContent = message;
+    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+    errorModal.show();
+}
 
 // Создаем глобальные переменные для модальных окон
 let uploadModal = null;
@@ -525,37 +544,57 @@ document.getElementById('formName').addEventListener('blur', function() {
     }
 });
 
-// Функция для показа модального окна ошибки (должна быть определена)
+// Функция для показа модального окна ошибки
 function showErrorModal22222(message) {
     console.error("Error modal:", message);
-    // Реализация показа модального окна ошибки
     alert("Error: " + message);
 }
 
+function ShowHideField(fieldId) {
+    var checkbox = document.querySelector('input[name="isnuked"]');
+    var reasonField = document.getElementById(fieldId);
+    
+    // Toggle the visibility based on checkbox state
+    if (checkbox.checked) {
+        reasonField.style.display = '';
+    } else {
+        reasonField.style.display = 'none';
+    }
+}
 
-
-
- function ShowHideField(fieldId) {
-      var checkbox = document.querySelector('input[name="isnuked"]');
-      var reasonField = document.getElementById(fieldId);
-      
-      // Toggle the visibility based on checkbox state
-      if (checkbox.checked) {
-         reasonField.style.display = '';
-      } else {
-         reasonField.style.display = 'none';
-      }
-   }
-
-   // Call ShowHideField on page load to set initial state
-   window.onload = function() {
-      ShowHideField('nukereason');
+// Call ShowHideField on page load to set initial state
+window.onload = function() {
+    ShowHideField('nukereason');
 };
 
 
 
 
 
+
+// Функция для удаления превью изображения
+window.removeImagePreview = function(previewContainerId, urlInputId = null, fileInputId = null) {
+    const previewContainer = document.getElementById(previewContainerId);
+    if (previewContainer) {
+        previewContainer.innerHTML = '';
+    }
+    
+    // Очищаем соответствующие поля ввода
+    if (urlInputId) {
+        const urlInput = document.getElementById(urlInputId);
+        if (urlInput) urlInput.value = '';
+    }
+    
+    if (fileInputId) {
+        const fileInput = document.getElementById(fileInputId);
+        if (fileInput) fileInput.value = '';
+    }
+};
+
+// Для совместимости со старым кодом
+if (!window.removeImage) {
+    window.removeImage = window.removeImagePreview;
+}
 
 
 

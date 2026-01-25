@@ -9,14 +9,11 @@ if (!defined('IN_CRON')) {
 function torrent_promotion_expire($days, $type = 2, $targettype = 1)
 {
     global $db, $CQueryCount;
-    
-    $secs = (int)($days * 86400); // XX дней
+
+    $secs = (int)($days * 86400);
     $dt = TIMENOW - $secs;
-    
-    // Определяем, какое поле проверять в зависимости от типа промо
+
     $field_condition = "";
-    
-    // Используем if вместо switch чтобы избежать ошибок
     if ($type == 1) {
         $field_condition = "free = 'no' AND silver = 'no' AND doubleupload = 'no'";
     } elseif ($type == 2) {
@@ -34,27 +31,22 @@ function torrent_promotion_expire($days, $type = 2, $targettype = 1)
     } else {
         $field_condition = "free = 'yes'";
     }
-    
-    // Запрос для поиска торрентов с истекшим промо
+
     $sql = "SELECT id, name FROM torrents 
             WHERE added < $dt 
             AND $field_condition AND ts_external = 'no'
             AND promotion_time_type = 0";
-				
-    
+
     $res = $db->sql_query($sql);
-	
-	++$CQueryCount;	
-    
+    ++$CQueryCount;
+
     if (!$res) {
         savelog("Database error in torrent_promotion_expire", 'error');
         return 0;
     }
-    
-    // Определяем новые значения полей в зависимости от targettype
+
     $update_fields = "";
     $become = "";
-    
     if ($targettype == 1) {
         $update_fields = "free = 'no', silver = 'no', doubleupload = 'no'";
         $become = "normal";
@@ -80,46 +72,43 @@ function torrent_promotion_expire($days, $type = 2, $targettype = 1)
         $update_fields = "free = 'no', silver = 'no', doubleupload = 'no'";
         $become = "normal";
     }
-    
+
     $processed = 0;
-    
-    // Используем $db методы вместо mysqli
+    $processed_names = [];
+
     while ($arr = $db->fetch_array($res)) {
         $id = (int)$arr['id'];
         $name = $arr['name'];
-        
+
         $update_sql = "UPDATE torrents SET $update_fields WHERE id = $id";
         $update_res = $db->sql_query($update_sql);
-		
-		++$CQueryCount;
-        
+        ++$CQueryCount;
+
         if (!$update_res) {
             savelog("Failed to update torrent $id", 'error');
-			
-			++$CQueryCount;
-			
+            ++$CQueryCount;
             continue;
         }
-        
-        if ($targettype == 1) {
-            savelog("Torrent $id ($name) is no longer on promotion (time expired)", 'normal');
-			
-			++$CQueryCount;
-			
-        } else {
-            savelog("Promotion type for torrent $id ($name) is changed to $become (time expired)", 'normal');
-			
-			++$CQueryCount;
-        }
-        
+
+        $processed_names[] = $name;
+
         $processed++;
     }
-    
+
     $db->free_result($res);
-    
-    // Возвращаем количество обработанных торрентов для логирования
+
+    if ($processed > 0) {
+        $names_str = implode("\n", $processed_names);
+        if ($targettype == 1) {
+            savelog("Torrents no longer on promotion (time expired):\n$names_str", 'normal');
+        } else {
+            savelog("Torrents promotion changed to $become (time expired):\n$names_str", 'normal');
+        }
+    }
+
     return $processed;
 }
+
 
 
 // Логируем запуск
@@ -128,6 +117,7 @@ savelog("Starting torrent promotion expiration cleanup", 'cron');
 
 // Обрабатываем истечение промо-акций
 $processed = 0;
+
 
 if ($expirehalfleech_torrent > 0) {
     $count = torrent_promotion_expire($expirehalfleech_torrent, 5, $halfleechbecome_torrent);

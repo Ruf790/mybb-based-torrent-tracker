@@ -1,6 +1,6 @@
 <?php
 
-/** Ruff Tracker Generated Cache - Do Not Alter
+/** Generated Cache - Do Not Alter
  * Cache Name: moderators
  * Generated: Wed, 24 Dec 2025 10:15:51 +0000
 */

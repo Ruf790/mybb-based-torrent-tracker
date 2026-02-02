@@ -30,7 +30,7 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 
 
 ### 🔹 Forum
-![Admin Panel](docs/8.jpeg)
+![Admin Panel](docs/11.jpeg)
 
 
 ### 🔹 Admin Panel

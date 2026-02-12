@@ -1,88 +1,80 @@
 <?php
+declare(strict_types=1);
+
 /**
- * This is an example style file for Admin CP styles.
- *
- * It allows you to override our existing layout generation
- * classes with your own to further customise the Admin CP
- * layout beyond CSS.
- *
- * Your class name      Should extend
- * ---------------      -------------
- * Page                 DefaultPage
- * SidebarItem          DefaultSidebarItem
- * PopupMenu            DefaultPopupMenu
- * Table                DefaultTable
- * Form                 DefaultForm
- * FormContainer        DefaultFormContainer
- *
- * For example, to output your own custom header:
- *
- * class Page extends DefaultPage
- * {
- *   function output_header($title)
- *   {
- *      echo "<h1>{$title}</h1>";
- *   }
- * }
- *
+ * Admin CP Style Override File
+ * 
+ * This file allows overriding default layout generation classes
+ * to customize Admin CP appearance beyond CSS styling.
  */
 
 // Disallow direct access to this file for security reasons
-if(!defined("IN_MYBB"))
-{
-	die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
+if (!defined('IN_MYBB')) {
+    die('Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.');
 }
 
+/**
+ * Custom Page class overriding breadcrumb generation
+ */
 #[AllowDynamicProperties]
 class Page extends DefaultPage
 {
-	function _generate_breadcrumb()
-	{
-		if(!is_array($this->_breadcrumb_trail))
-		{
-			return false;
-		}
-		$trail = "";
-		foreach($this->_breadcrumb_trail as $key => $crumb)
-		{
-			if(!empty($this->_breadcrumb_trail[$key+1]))
-			{
-				$trail .= "<a href=\"".$crumb['url']."\">".$crumb['name']."</a>";
-				if(!empty($this->_breadcrumb_trail[$key+2]))
-				{
-					$trail .= " &raquo; ";
-				}
-			}
-			else
-			{
-				$trail .= " &raquo; <span class=\"active\">".$crumb['name']."</span>";
-			}
-		}
-		return $trail;
-	}
+    /**
+     * Generate breadcrumb navigation trail
+     * 
+     * @return string|false Breadcrumb HTML or false on error
+     */
+    public function _generate_breadcrumb(): string|false
+    {
+        if (!is_array($this->_breadcrumb_trail) || empty($this->_breadcrumb_trail)) {
+            return false;
+        }
+
+        $trailParts = [];
+        $totalItems = count($this->_breadcrumb_trail);
+
+        foreach ($this->_breadcrumb_trail as $index => $crumb) {
+            $isLastItem = ($index === $totalItems - 1);
+            $crumbName = htmlspecialchars((string)($crumb['name'] ?? ''), ENT_QUOTES, 'UTF-8');
+            
+            if (!$isLastItem) {
+                $crumbUrl = htmlspecialchars((string)($crumb['url'] ?? ''), ENT_QUOTES, 'UTF-8');
+                $trailParts[] = sprintf('<a href="%s">%s</a>', $crumbUrl, $crumbName);
+            } else {
+                $trailParts[] = sprintf('<span class="active">%s</span>', $crumbName);
+            }
+        }
+
+        return implode(' &raquo; ', $trailParts);
+    }
 }
 
-#[AllowDynamicProperties]
-class SidebarItem extends DefaultSidebarItem
-{
-}
+/**
+ * Sidebar item class
+ */
+//#[AllowDynamicProperties]
+//class SidebarItem extends DefaultSidebarItem {}
 
-#[AllowDynamicProperties]
-class PopupMenu extends DefaultPopupMenu
-{
-}
+/**
+ * Popup menu class
+ */
+//#[AllowDynamicProperties]
+//class PopupMenu extends DefaultPopupMenu {}
 
+/**
+ * Table class
+ */
 #[AllowDynamicProperties]
-class Table extends DefaultTable
-{
-}
+class Table extends DefaultTable {}
 
+/**
+ * Form class
+ */
 #[AllowDynamicProperties]
-class Form extends DefaultForm
-{
-}
+class Form extends DefaultForm {}
 
+/**
+ * Form container class
+ */
 #[AllowDynamicProperties]
-class FormContainer extends DefaultFormContainer
-{
-}
+class FormContainer extends DefaultFormContainer {}

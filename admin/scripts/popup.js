@@ -83,39 +83,71 @@ function handleModalFormSubmit(e) {
         .then(responseText => {
             console.log('Server response:', responseText);
             
-            // Обрабатываем JSON строку со скриптом
             try {
-                // Убираем экранирование и получаем чистый JavaScript код
-                const cleanScript = responseText
-                    .replace(/^"/, '') // Убираем начальную кавычку
-                    .replace(/"$/, '') // Убираем конечную кавычку
-                    .replace(/\\"/g, '"') // Убираем экранирование кавычек
-                    .replace(/\\n/g, '\n') // Восстанавливаем переносы строк
-                    .replace(/\\t/g, '\t') // Восстанавливаем табы
-                    .replace(/\\\//g, '/'); // Восстанавливаем слеши
+                // Проверяем, является ли ответ JSON строкой
+                let cleanHtml = responseText;
+                if (responseText.startsWith('"') && responseText.endsWith('"')) {
+                    cleanHtml = JSON.parse(responseText);
+                }
+                
+                // Очищаем HTML, но сохраняем обратные слеши
+                cleanHtml = cleanHtml
+                    .replace(/\\"/g, '"')
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '\t');
+                
+                console.log('Cleaned HTML:', cleanHtml);
 
-                console.log('Cleaned script:', cleanScript);
-
-                // Извлекаем и выполняем JavaScript код
-                if (cleanScript.includes('<script')) {
-                    const scriptMatch = cleanScript.match(/<script[^>]*>([\s\S]*?)<\/script>/);
-                    if (scriptMatch && scriptMatch[1]) {
-                        const scriptContent = scriptMatch[1];
-                        console.log('Executing script:', scriptContent);
+                // Извлекаем скрипты
+                const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+                let match;
+                let scriptsExecuted = false;
+                
+                while ((match = scriptRegex.exec(cleanHtml)) !== null) {
+                    scriptsExecuted = true;
+                    let scriptContent = match[1];
+                    
+                    // Восстанавливаем экранированные кавычки в скрипте
+                    scriptContent = scriptContent
+                        .replace(/\\'/g, "'")
+                        .replace(/\\"/g, '"')
+                        .replace(/\\\\/g, '\\');
+                    
+                    console.log('Executing script via Function');
+                    
+                    try {
+                        // Используем eval вместо new Function для лучшей обработки
+                        eval(scriptContent);
+                        console.log('Script executed via eval');
+                    } catch (evalError) {
+                        console.error('Error executing script via eval:', evalError);
                         
+                        // Запасной вариант - script элемент
                         try {
-                            new Function(scriptContent)();
-                        } catch (scriptError) {
-                            console.error('Error executing script:', scriptError);
+                            const scriptEl = document.createElement('script');
+                            scriptEl.textContent = scriptContent;
+                            document.body.appendChild(scriptEl);
+                            document.body.removeChild(scriptEl);
+                            console.log('Script executed via script element');
+                        } catch (elementError) {
+                            console.error('Error executing script via element:', elementError);
                         }
                     }
-                } else {
-                    // Если это чистый JavaScript код (без тегов script)
-                    console.log('Executing raw script');
-                    try {
-                        new Function(cleanScript)();
-                    } catch (scriptError) {
-                        console.error('Error executing raw script:', scriptError);
+                }
+                
+                // Если скриптов нет, пробуем выполнить как есть
+                if (!scriptsExecuted && cleanHtml) {
+                    console.log('No scripts found, attempting to execute as HTML');
+                    const temp = document.createElement('div');
+                    temp.innerHTML = cleanHtml;
+                    
+                    // Ищем строку для обновления
+                    const newRow = temp.querySelector('[id^="row_"]');
+                    if (newRow && newRow.id) {
+                        const existingRow = document.getElementById(newRow.id);
+                        if (existingRow) {
+                            existingRow.outerHTML = newRow.outerHTML;
+                        }
                     }
                 }
 
@@ -123,10 +155,21 @@ function handleModalFormSubmit(e) {
                 console.error('Error parsing server response:', parseError);
             }
             
-            // Закрываем модальное окно после выполнения скрипта
-            const modal = bootstrap.Modal.getInstance(document.getElementById('dynamicModal'));
-            if (modal) {
-                modal.hide();
+            // Закрываем модальное окно
+            const modalElement = document.getElementById('dynamicModal');
+            if (modalElement) {
+                const modal = bootstrap.Modal.getInstance(modalElement);
+                if (modal) {
+                    modal.hide();
+                }
+            }
+            
+            // Переинициализируем QuickPermEditor
+            if (typeof QuickPermEditor !== 'undefined') {
+                setTimeout(() => {
+                    QuickPermEditor.initAll();
+                    console.log('QuickPermEditor reinitialized');
+                }, 200);
             }
             
             // Восстанавливаем кнопку

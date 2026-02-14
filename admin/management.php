@@ -1521,12 +1521,12 @@ if($mybb->input['action'] == "permissions")
 		if($mybb->input['fid'] && $mybb->input['gid'])
 		{
 			$sub_tabs['edit_permissions'] = array(
-				'title' => 'forum_permissions2',
+		'title' => $lang->forum_management['forum_permissions2'],
 				'link' => "index.php?act=management&action=permissions&fid=".$mybb->input['fid']."&amp;gid=".$mybb->input['gid'],
-				'description' => 'forum_permissions_desc'
+				'description' => $lang->forum_management['forum_permissions_desc']
 			);
 
-			$page->add_breadcrumb_item('forum_permissions2', "index.php?act=management&fid=".$mybb->input['fid']."#tab_permissions");
+			$page->add_breadcrumb_item($lang->forum_management['forum_permissions2'], "index.php?act=management&fid=".$mybb->input['fid']."#tab_permissions");
 		}
 		else
 		{
@@ -1534,15 +1534,15 @@ if($mybb->input['action'] == "permissions")
 			$mybb->input['fid'] = $db->fetch_field($query, "fid");
 
 			$sub_tabs['edit_permissions'] = array(
-				'title' => 'forum_permissions33',
+				'title' => $lang->forum_management['forum_permissions'],
 				'link' => "index.php?act=management&action=permissions&pid=".$mybb->get_input('pid', MyBB::INPUT_INT),
-				'description' => 'forum_permissions_desc'
+				'description' => $lang->forum_management['forum_permissions_desc']
 			);
 
-			$page->add_breadcrumb_item('forum_permissions2', "index.php?act=management&fid=".$mybb->input['fid']."#tab_permissions");
+			$page->add_breadcrumb_item($lang->forum_management['forum_permissions2'], "index.php?act=management&fid=".$mybb->input['fid']."#tab_permissions");
 		}
 
-		$page->add_breadcrumb_item('forum_permissions444');
+		$page->add_breadcrumb_item($lang->forum_management['forum_permissions']);
 		
 		
 		stdhead();
@@ -1556,10 +1556,6 @@ if($mybb->input['action'] == "permissions")
 	    echo "	<script type=\"text/javascript\" src=\"scripts/admincp.js?ver=1821\"></script>\n";
 		echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
 
-		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-		//echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
 
 		// Stop JS elements showing while page is loading (JS supported browsers only)
 		echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
@@ -4176,10 +4172,6 @@ if($mybb->input['action'] == "edit")
 		echo "	<script type=\"text/javascript\" src=\"scripts/tabs.js\"></script>\n";
 		echo "	<script type=\"text/javascript\" src=\"scripts/popup.js\"></script>\n";
 
-		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.min.css\" />\n";
-		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.structure.min.css\" />\n";
-		//echo "	<link rel=\"stylesheet\" href=\"templates/css/redmond/jquery-ui.theme.min.css\" />\n";
-		//echo "	<script src=\"scripts/jquery-ui.min.js?ver=1813\"></script>\n";
 
 		// Stop JS elements showing while page is loading (JS supported browsers only)
 		echo "  <style type=\"text/css\">.popup_button { display: none; } </style>\n";
@@ -5314,268 +5306,289 @@ echo "</div></div>";
 		'canpostreplys' => '&#149; Post Replies',
 		'canpostpolls' => '&#149; Post Polls',
 	);
+	
+
+
 
 	$ids = array();
 
 	$form_container = new FormContainer(sprintf('Forum22222222 Permissions in '.$forum_data['name'].''));
-	//$form_container->output_row_header('Group', array("class" => "align_center", 'style' => 'width: 30%'));
-	//$form_container->output_row_header('Overview: Allowed Actions', array("class" => "align_center"));
-	//$form_container->output_row_header('Overview: Disallowed Actions', array("class" => "align_center"));
-	//$form_container->output_row_header('Controls', array("class" => "align_center", 'style' => 'width: 120px', 'colspan' => 2));
 	
 	
 	
-	
+echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />';
+echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
 	
 	echo '
-	
-	
-	
-       <div class="card border-0 mb-4">
-	      <div class="card-header rounded-bottom text-19 fw-bold">
-		  Forum Permissions in '.$forum_data['name'].'
-	      </div>
-	   </div>
-	';
+<!-- Заголовок раздела -->
+<div class="card border-0 shadow-sm mb-4 overflow-hidden">
+    <div class="card-header bg-primary text-white py-4 px-4">
+        <div class="d-flex align-items-center">
+            <div class="header-icon bg-white bg-opacity-20 rounded-circle p-3 me-4">
+                <i class="fas fa-shield-alt fa-2x"></i>
+            </div>
+            <div>
+                <h2 class="h4 mb-2 fw-bold">
+                    <i class="fas fa-key me-2"></i>Forum Permissions
+                </h2>
+                <p class="mb-0 opacity-85">
+                    <i class="fas fa-folder-open me-1"></i>Managing permissions for: <strong>' . htmlspecialchars($forum_data['name']) . '</strong>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
 
+<!-- Основная таблица разрешений -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 px-4 border-bottom">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold text-dark">
+                <i class="fas fa-users-cog me-2 text-primary"></i>User Groups & Permissions
+            </h5>
+            <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2">
+                <i class="fas fa-info-circle me-1"></i>Drag & drop to enable/disable
+            </span>
+        </div>
+    </div>
 
-		
-		echo '
-	
-   
-  <div class="card">
-            
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>Group</th>
-        <th>Overview: Allowed Actions</th>
-        <th>Overview: Disallowed Actions</th>
-		<th>Controls</th>
-     
-      </tr>
-    </thead>';
-	
-	
-	
-	
-	
-	
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4 py-3 fw-semibold text-dark" style="width: 25%">
+                        <i class="fas fa-users me-2 text-muted"></i>User Group
+                    </th>
+                    <th class="py-3 fw-semibold text-dark" style="width: 35%">
+                        <i class="fas fa-check-circle me-2 text-success"></i>Allowed Actions
+                    </th>
+                    <th class="py-3 fw-semibold text-dark" style="width: 25%">
+                      <i class="fas fa-arrow-right-arrow-left me-2 text-info"></i>Status
+                    </th>
+                    <th class="text-end pe-4 py-3 fw-semibold text-dark" style="width: 15%">
+                        <i class="fas fa-sliders-h me-2 text-muted"></i>Actions
+                    </th>
+                </tr>
+            </thead>
+            <tbody>';
 
-	if($mybb->request_method == "post")
-	{
-		foreach($usergroupsSSS as $usergroup)
-		{
-			if(isset($mybb->input['fields_'.$usergroup['gid']]))
-			{
-				$input_permissions = $mybb->input['fields_'.$usergroup['gid']];
-				if(!is_array($input_permissions))
-				{
-					// Convering the comma separated list from Javascript form into a variable
-					$input_permissions = explode(',' , $input_permissions);
-				}
-				foreach($input_permissions as $input_permission)
-				{
-					$mybb->input['permissions'][$usergroup['gid']][$input_permission] = 1;
-				}
-			}
-		}
-	}
+foreach($usergroupsSSS as $usergroup)
+{
+    $perms = array();
+    if(isset($mybb->input['default_permissions']))
+    {
+        if($mybb->input['default_permissions'][$usergroup['gid']])
+        {
+            if(is_array($existing_permissions) && $existing_permissions[$usergroup['gid']])
+            {
+                $perms = $existing_permissions[$usergroup['gid']];
+                $default_checked = false;
+            }
+            elseif(is_array($cached_forum_perms) && $cached_forum_perms[$forum_data['fid']][$usergroup['gid']])
+            {
+                $perms = $cached_forum_perms[$forum_data['fid']][$usergroup['gid']];
+                $default_checked = true;
+            }
+            else if(is_array($cached_forum_perms) && $cached_forum_perms[$forum_data['pid']][$usergroup['gid']])
+            {
+                $perms = $cached_forum_perms[$forum_data['pid']][$usergroup['gid']];
+                $default_checked = true;
+            }
+        }
 
-	foreach($usergroupsSSS as $usergroup)
-	{
-		$perms = array();
-		if(isset($mybb->input['default_permissions']))
-		{
-			if($mybb->input['default_permissions'][$usergroup['gid']])
-			{
-				if(is_array($existing_permissions) && $existing_permissions[$usergroup['gid']])
-				{
-					$perms = $existing_permissions[$usergroup['gid']];
-					$default_checked = false;
-				}
-				elseif(is_array($cached_forum_perms) && $cached_forum_perms[$forum_data['fid']][$usergroup['gid']])
-				{
-					$perms = $cached_forum_perms[$forum_data['fid']][$usergroup['gid']];
-					$default_checked = true;
-				}
-				else if(is_array($cached_forum_perms) && $cached_forum_perms[$forum_data['pid']][$usergroup['gid']])
-				{
-					$perms = $cached_forum_perms[$forum_data['pid']][$usergroup['gid']];
-					$default_checked = true;
-				}
-			}
+        if(!$perms)
+        {
+            $perms = $usergroup;
+            $default_checked = true;
+        }
+    }
+    else
+    {
+        if(isset($existing_permissions) && is_array($existing_permissions) && !empty($existing_permissions[$usergroup['gid']]))
+        {
+            $perms = $existing_permissions[$usergroup['gid']];
+            $default_checked = false;
+        }
+        elseif(is_array($cached_forum_perms) && !empty($cached_forum_perms[$forum_data['fid']][$usergroup['gid']]))
+        {
+            $perms = $cached_forum_perms[$forum_data['fid']][$usergroup['gid']];
+            $default_checked = true;
+        }
+        else if(is_array($cached_forum_perms) && !empty($cached_forum_perms[$forum_data['pid']][$usergroup['gid']]))
+        {
+            $perms = $cached_forum_perms[$forum_data['pid']][$usergroup['gid']];
+            $default_checked = true;
+        }
 
-			if(!$perms)
-			{
-				$perms = $usergroup;
-				$default_checked = true;
-			}
-		}
-		else
-		{
-			if(isset($existing_permissions) && is_array($existing_permissions) && !empty($existing_permissions[$usergroup['gid']]))
-			{
-				$perms = $existing_permissions[$usergroup['gid']];
-				$default_checked = false;
-			}
-			elseif(is_array($cached_forum_perms) && !empty($cached_forum_perms[$forum_data['fid']][$usergroup['gid']]))
-			{
-				$perms = $cached_forum_perms[$forum_data['fid']][$usergroup['gid']];
-				$default_checked = true;
-			}
-			else if(is_array($cached_forum_perms) && !empty($cached_forum_perms[$forum_data['pid']][$usergroup['gid']]))
-			{
-				$perms = $cached_forum_perms[$forum_data['pid']][$usergroup['gid']];
-				$default_checked = true;
-			}
+        if(!$perms)
+        {
+            $perms = $usergroup;
+            $default_checked = true;
+        }
+    }
 
-			if(!$perms)
-			{
-				$perms = $usergroup;
-				$default_checked = true;
-			}
-		}
+    foreach($field_list as $forum_permission => $forum_perm_title)
+    {
+        if(isset($mybb->input['permissions']))
+        {
+            if($mybb->input['permissions'][$usergroup['gid']][$forum_permission])
+            {
+                $perms_checked[$forum_permission] = 1;
+            }
+            else
+            {
+                $perms_checked[$forum_permission] = 0;
+            }
+        }
+        else
+        {
+            if($perms[$forum_permission] == 1)
+            {
+                $perms_checked[$forum_permission] = 1;
+            }
+            else
+            {
+                $perms_checked[$forum_permission] = 0;
+            }
+        }
+    }
+    
+    $usergroup['title'] = htmlspecialchars_uni($usergroup['title']);
+    $inherited_text = $default_checked ? 'Inherited' : 'Custom';
+    $status_class = $default_checked ? 'bg-info bg-opacity-10 text-info' : 'bg-warning bg-opacity-10 text-warning';
+    $status_icon = $default_checked ? 'fas fa-link' : 'fas fa-pen';
 
-		foreach($field_list as $forum_permission => $forum_perm_title)
-		{
-			if(isset($mybb->input['permissions']))
-			{
-				if($mybb->input['permissions'][$usergroup['gid']][$forum_permission])
-				{
-					$perms_checked[$forum_permission] = 1;
-				}
-				else
-				{
-					$perms_checked[$forum_permission] = 0;
-				}
-			}
-			else
-			{
-				if($perms[$forum_permission] == 1)
-				{
-					$perms_checked[$forum_permission] = 1;
-				}
-				else
-				{
-					$perms_checked[$forum_permission] = 0;
-				}
-			}
-		}
-		$usergroup['title'] = htmlspecialchars_uni($usergroup['title']);
+    // Собираем разрешения для отображения
+    $enabled_permissions = '';
+    $disabled_permissions = '';
+    
+    foreach($field_list2 as $perm => $label)
+    {
+        if($perms_checked[$perm])
+        {
+            $enabled_permissions .= '<span class="badge bg-success bg-opacity-10 text-success me-2 mb-1 permission-badge" data-perm="' . $perm . '">' . strip_tags($label) . '</span>';
+        }
+        else
+        {
+            $disabled_permissions .= '<span class="badge bg-danger bg-opacity-10 text-danger me-2 mb-1 permission-badge" data-perm="' . $perm . '">' . strip_tags($label) . '</span>';
+        }
+    }
 
-		if($default_checked)
-		{
-			$inherited_text = 'inherited';
-		}
-		else
-		{
-			$inherited_text = 'custom';
-		}
+    // Генерация скрытых полей
+    $hidden_fields = '
+        <input type="hidden" name="fields_' . $usergroup['gid'] . '" id="fields_' . $usergroup['gid'] . '" value="' . implode(",", array_keys(array_filter($perms_checked))) . '">
+        <input type="hidden" name="fields_inherit_' . $usergroup['gid'] . '" id="fields_inherit_' . $usergroup['gid'] . '" value="' . (int)$default_checked . '">
+        <input type="hidden" name="fields_default_' . $usergroup['gid'] . '" id="fields_default_' . $usergroup['gid'] . '" value="' . implode(",", array_keys(array_filter($perms_checked))) . '">
+    ';
 
-		//$form_container->output_cell("<strong>{$usergroup['title']}</strong> <small style=\"vertical-align: middle;\">({$inherited_text})</small>");
-		
-		echo '
-			<tr>
-			<td><strong>'.$usergroup['title'].'</strong> <small>('.$inherited_text.')</small></td>
-			
-			';
-		
-		
+    echo '
+    <tr data-group-id="' . $usergroup['gid'] . '">
+        <td class="ps-4">
+            <div class="d-flex align-items-center">
+                <div class="group-icon me-3">';
+    
+    if(!empty($usergroup['image'])) 
+    {
+        echo $usergroup['image'];
+    } 
+    else 
+    {
+        echo '<div class="icon-compact default-group rounded-circle bg-light p-2">
+                <i class="bi bi-people-fill" style="color: #6c757d;"></i>
+              </div>';
+    }
+    
+    echo '      </div>
+                <div>
+                    <strong class="d-block text-dark">' . $usergroup['title'] . '</strong>
+                    <small class="text-muted">ID: ' . $usergroup['gid'] . '</small>
+                </div>
+            </div>
+        </td>
+        <td>
+            <div class="permission-fields" id="permission-fields-' . $usergroup['gid'] . '">
+                <div class="enabled-permissions mb-2" id="enabled-' . $usergroup['gid'] . '">
+                    ' . ($enabled_permissions ?: '<span class="text-muted fst-italic">No permissions</span>') . '
+                </div>
+                <div class="disabled-permissions" id="disabled-' . $usergroup['gid'] . '">
+                    ' . ($disabled_permissions ?: '<span class="text-muted fst-italic">No restrictions</span>') . '
+                </div>
+                ' . $hidden_fields . '
+            </div>
+        </td>
+        <td>
+            <span class="badge ' . $status_class . ' px-3 py-2">
+                <i class="' . $status_icon . ' me-1"></i>
+                ' . $inherited_text . '
+            </span>
+        </td>
+        <td class="text-end pe-4">
+            <div class="btn-group btn-group-sm">';
+    
+    if(!$default_checked)
+    {
+        echo '
+                <a href="index.php?act=management&action=permissions&amp;pid=' . $perms['pid'] . '" 
+                   class="btn btn-outline-primary btn-sm" 
+                   data-bs-toggle="tooltip" 
+                   title="Edit Custom Permissions"
+                   onclick="popupWindow(this.href, null, true); return false;">
+                    <i class="fas fa-edit"></i>
+                </a>
+                
+				
+				 <a href="javascript:void(0);" 
+            class="btn btn-outline-danger btn-sm ms-1 clear-permission-btn"
+            data-pid="' . $perms['pid'] . '"
+            data-fid="' . $fid . '"
+            data-gid="' . $usergroup['gid'] . '"
+            data-group-name="' . addslashes(htmlspecialchars($usergroup['title'])) . '"
+            data-post-key="' . $mybb->post_code . '"
+            data-bs-toggle="tooltip"
+            title="Clear Custom Permissions">
+            <i class="fas fa-trash"></i>
+          </a>
+				
+				';
+    }
+    else
+    {
+        echo '
+                <a href="index.php?act=management&action=permissions&amp;gid=' . $usergroup['gid'] . '&amp;fid=' . $fid . '" 
+                   class="btn btn-outline-primary btn-sm"
+                   data-bs-toggle="tooltip"
+                   title="Set Custom Permissions"
+                   onclick="popupWindow(this.href, null, true); return false;">
+                    <i class="fas fa-cog"></i>
+                </a>';
+    }
+    
+    echo '      </div>
+            </td>
+        </tr>';
 
-		$field_select = "<div class=\"quick_perm_fields\">\n";
-		$field_select .= "<div class=\"enabled\"><ul id=\"fields_enabled_{$usergroup['gid']}\">\n";
-		foreach($perms_checked as $perm => $value)
-		{
-			if($value == 1)
-			{
-				$field_select .= "<li id=\"field-{$perm}\">{$field_list2[$perm]}</li>";
-			}
-		}
-		$field_select .= "</ul></div>\n";
-		$field_select .= "<div class=\"disabled\"><ul id=\"fields_disabled_{$usergroup['gid']}\">\n";
-		foreach($perms_checked as $perm => $value)
-		{
-			if($value == 0)
-			{
-				$field_select .= "<li id=\"field-{$perm}\">{$field_list2[$perm]}</li>";
-			}
-		}
-		//$field_select .= "</ul></div></div>\n";
-		$field_select .= "</ul></div></div></td>\n";
-		$field_select .= $form->generate_hidden_field("fields_".$usergroup['gid'], @implode(",", @array_keys($perms_checked, '1')), array('id' => 'fields_'.$usergroup['gid']));
-		$field_select .= $form->generate_hidden_field("fields_inherit_".$usergroup['gid'], (int)$default_checked, array('id' => 'fields_inherit_'.$usergroup['gid']));
-		$field_select .= $form->generate_hidden_field("fields_default_".$usergroup['gid'], @implode(",", @array_keys($perms_checked, '1')), array('id' => 'fields_default_'.$usergroup['gid']));
-		$field_select = str_replace("'", "\\'", $field_select);
-		$field_select = str_replace("\n", "", $field_select);
+    $ids[] = $usergroup['gid'];
+}
 
-		$field_select = "<script type=\"text/javascript\">
-//<![CDATA[
-document.write('".str_replace("/", "\/", $field_select)."');
-//]]>
-</script>\n";
+echo '
+            </tbody>
+        </table>
+    </div>
 
-		$field_selected = array();
-		foreach($field_list as $forum_permission => $permission_title)
-		{
-			$field_options[$forum_permission] = $permission_title;
-			if($perms_checked[$forum_permission])
-			{
-				$field_selected[] = $forum_permission;
-			}
-		}
-
-		$field_select .= "<noscript>".$form->generate_select_box('fields_'.$usergroup['gid'].'[]', $field_options, $field_selected, array('id' => 'fields_'.$usergroup['gid'].'[]', 'multiple' => true))."</noscript>\n";
-		//$form_container->output_cell($field_select, array('colspan' => 2));
-		
-		echo '<td>'.$field_select.'</td>';
-
-		if(!$default_checked)
-		{
-			
-			
-			echo "<td align=right>
-			<a href=\"index.php?act=management&action=permissions&amp;pid={$perms['pid']}\" onclick=\"popupWindow('index.php?act=management&action=permissions&pid={$perms['pid']}&ajax=1', null, true); return false;\">Edit Permissions3333333</a></td>";
-			
-			
-			echo "<td align=right><a href=\"index.php?act=management&action=clear_permission&amp;pid={$perms['pid']}&amp;my_post_key={$mybb->post_code}\" onclick=\"return AdminCP.deleteConfirmation(this, '{confirm_clear_custom_permission55555555}')\">Clear Custom Permissions</a></td>";
-		}
-		else
-		{
-			
-			echo "
-			<td align=right>
-			<a href=\"index.php?act=management&action=permissions&amp;gid={$usergroup['gid']}&amp;fid={$fid}\" onclick=\"popupWindow('index.php?act=management&action=permissions&gid={$usergroup['gid']}&fid={$fid}&ajax=1', null, true); return false;\">Set Custom Permissions</a>
-			</td>
-			</tr>";
-		}
-
-		$form_container->construct_row(array('id' => 'row_'.$usergroup['gid']));
-
-		$ids[] = $usergroup['gid'];
-	}
-	//$form_container->end();
-	
-	//echo "</form>";
-
-	//$buttons[] = $form->generate_submit_button('Save Forum');
-	//$form->output_submit_wrapper($buttons);
-	
-	
-	echo '</table></div>';
-	
-	
-	
-	
-	
-	echo '<div class="card-footer text-center">
-	<tr><td colspan=3 align=center>
-<input type="submit" value="Save Forum" class="btn btn-primary"> 
-</td></tr>
+    <!-- Футер с кнопкой сохранения -->
+    <div class="card-footer bg-white py-3 px-4 border-top">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="text-muted">
+                <i class="fas fa-info-circle me-1"></i>
+                <small>Drag and drop permissions between columns to enable/disable</small>
+            </div>
+            <button type="submit" name="save_forum" class="btn btn-primary px-5 py-2">
+                <i class="fas fa-save me-2"></i>Save Changes
+            </button>
+        </div>
+    </div>
 </div>';
-	
-	
-	echo "</form>";
+
 
 	// Write in our JS based field selector
 echo "<script type=\"text/javascript\">\n<!--\n";
@@ -5586,6 +5599,287 @@ foreach($ids as $id)
 }
 echo "});\n";
 echo "// -->\n</script>\n";
+
+
+
+// ============================================
+// CSS modern design
+// ============================================
+echo '
+<style>
+    /* Общие стили */
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #4e54c8 0%, #8f94fb 100%) !important;
+    }
+    
+    .header-icon {
+        transition: transform 0.3s ease;
+    }
+    
+    .header-icon:hover {
+        transform: rotate(15deg);
+    }
+    
+    .nav-tabs-modern {
+        border-bottom: 2px solid #dee2e6;
+    }
+    
+    .nav-tabs-modern .nav-link {
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: #6c757d;
+        padding: 1rem 1.5rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        border-radius: 0;
+    }
+    
+    .nav-tabs-modern .nav-link:hover {
+        color: #0d6efd;
+        border-bottom-color: #dee2e6;
+    }
+    
+    .nav-tabs-modern .nav-link.active {
+        color: #0d6efd;
+        border-bottom-color: #0d6efd;
+        background-color: transparent;
+    }
+    
+    .table-container {
+        position: relative;
+    }
+    
+    .empty-state {
+        padding: 3rem 1rem;
+    }
+    
+    .group-icon, .moderator-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .sticky-top {
+        position: sticky;
+        z-index: 10;
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(13, 110, 253, 0.04);
+        transform: translateX(2px);
+        transition: all 0.2s ease;
+    }
+    
+    .card {
+        border: none;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+    }
+    
+    .breadcrumb {
+        background-color: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    .btn {
+        border-radius: 8px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+        border: none;
+    }
+    
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+    }
+    
+    .btn-outline-secondary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(108, 117, 125, 0.2);
+    }
+    
+    /* Стили для редактора разрешений - ОБЪЕДИНЕНЫ */
+    .permission-fields {
+        min-height: 80px;
+    }
+    
+    .enabled-permissions, .disabled-permissions {
+        min-height: 60px;
+        padding: 10px;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        border: 2px dashed transparent;
+    }
+    
+    .enabled-permissions {
+        background-color: rgba(40, 167, 69, 0.08);
+        border-color: rgba(40, 167, 69, 0.3);
+    }
+    
+    .disabled-permissions {
+        background-color: rgba(220, 53, 69, 0.08);
+        border-color: rgba(220, 53, 69, 0.3);
+    }
+    
+    .enabled-permissions:hover, .disabled-permissions:hover {
+        border-color: #0d6efd;
+        background-color: rgba(13, 110, 253, 0.05);
+    }
+    
+    .enabled-permissions:empty::before,
+    .disabled-permissions:empty::before {
+        content: "Drop here";
+        display: block;
+        text-align: center;
+        color: #6c757d;
+        font-size: 0.85em;
+        padding: 10px;
+        opacity: 0.7;
+    }
+    
+    .permission-badge {
+        cursor: move;
+        user-select: none;
+        display: inline-block;
+        margin: 3px;
+        padding: 6px 12px !important;
+        font-size: 0.85em;
+        font-weight: 500;
+        border-radius: 20px !important;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .permission-badge:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .permission-badge.dragging {
+        opacity: 0.5;
+        transform: scale(1.1);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+    }
+    
+    .enabled-permissions.drag-over,
+    .disabled-permissions.drag-over {
+        background-color: rgba(13, 110, 253, 0.15);
+        border-color: #0d6efd;
+        border-style: solid;
+    }
+    
+    /* Анимации */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes pulse {
+        0% { opacity: 0.6; }
+        50% { opacity: 1; }
+        100% { opacity: 0.6; }
+    }
+    
+    @keyframes save-flash {
+        0% { background-color: rgba(40, 167, 69, 0.2); }
+        100% { background-color: transparent; }
+    }
+    
+    .fade-in {
+        animation: fadeIn 0.5s ease forwards;
+        opacity: 0;
+    }
+    
+    .change-indicator {
+        animation: pulse 2s infinite;
+    }
+    
+    .save-success {
+        animation: save-flash 1s ease;
+    }
+    
+    .order-input.changed {
+        border-color: #0d6efd;
+        background-color: rgba(13, 110, 253, 0.05);
+    }
+    
+    /* Уведомления */
+    #notification-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        max-width: 400px;
+    }
+    
+    .alert {
+        margin-bottom: 10px;
+        border: none;
+        border-radius: 8px;
+        animation: slideIn 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .clear-permission-btn {
+        transition: all 0.2s ease;
+    }
+    
+    .clear-permission-btn:hover {
+        transform: scale(1.1);
+    }
+    
+    /* Автодополнение */
+    .autocomplete-suggestions {
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: white;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+    }
+    
+    .autocomplete-suggestion {
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .autocomplete-suggestion:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .autocomplete-suggestion.selected {
+        background-color: #e7f1ff;
+    }
+    
+    .table th {
+        position: sticky;
+        top: 0;
+        background-color: #f8f9fa;
+        z-index: 10;
+    }
+</style>';	
+	
+
+
+
 
 	stdfoot();
 }
@@ -6764,13 +7058,12 @@ if (!$default_checked) {
     </div>';
 	
 
-	// ============================================
-    // CSS стили для современного дизайна
-    // ============================================
-    echo '
-    <style>
-    
-    
+// ============================================
+// CSS modern design
+// ============================================
+echo '
+<style>
+    /* Общие стили */
     .bg-gradient-primary {
         background: linear-gradient(135deg, #4e54c8 0%, #8f94fb 100%) !important;
     }
@@ -6872,42 +7165,74 @@ if (!$default_checked) {
         box-shadow: 0 4px 12px rgba(108, 117, 125, 0.2);
     }
     
-    /* Стили для редактора разрешений */
+    /* Стили для редактора разрешений - ОБЪЕДИНЕНЫ */
     .permission-fields {
         min-height: 80px;
     }
     
     .enabled-permissions, .disabled-permissions {
-        min-height: 36px;
-        padding: 0.25rem;
-        border-radius: 4px;
-        transition: background-color 0.2s ease;
+        min-height: 60px;
+        padding: 10px;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        border: 2px dashed transparent;
     }
     
     .enabled-permissions {
-        background-color: rgba(25, 135, 84, 0.05);
-        border: 1px dashed rgba(25, 135, 84, 0.3);
+        background-color: rgba(40, 167, 69, 0.08);
+        border-color: rgba(40, 167, 69, 0.3);
     }
     
     .disabled-permissions {
-        background-color: rgba(220, 53, 69, 0.05);
-        border: 1px dashed rgba(220, 53, 69, 0.3);
+        background-color: rgba(220, 53, 69, 0.08);
+        border-color: rgba(220, 53, 69, 0.3);
+    }
+    
+    .enabled-permissions:hover, .disabled-permissions:hover {
+        border-color: #0d6efd;
+        background-color: rgba(13, 110, 253, 0.05);
+    }
+    
+    .enabled-permissions:empty::before,
+    .disabled-permissions:empty::before {
+        content: "Drop here";
+        display: block;
+        text-align: center;
+        color: #6c757d;
+        font-size: 0.85em;
+        padding: 10px;
+        opacity: 0.7;
     }
     
     .permission-badge {
         cursor: move;
         user-select: none;
+        display: inline-block;
+        margin: 3px;
+        padding: 6px 12px !important;
+        font-size: 0.85em;
+        font-weight: 500;
+        border-radius: 20px !important;
         transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     
     .permission-badge:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
     
     .permission-badge.dragging {
         opacity: 0.5;
         transform: scale(1.1);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+    }
+    
+    .enabled-permissions.drag-over,
+    .disabled-permissions.drag-over {
+        background-color: rgba(13, 110, 253, 0.15);
+        border-color: #0d6efd;
+        border-style: solid;
     }
     
     /* Анимации */
@@ -6916,9 +7241,33 @@ if (!$default_checked) {
         to { opacity: 1; transform: translateY(0); }
     }
     
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes pulse {
+        0% { opacity: 0.6; }
+        50% { opacity: 1; }
+        100% { opacity: 0.6; }
+    }
+    
+    @keyframes save-flash {
+        0% { background-color: rgba(40, 167, 69, 0.2); }
+        100% { background-color: transparent; }
+    }
+    
     .fade-in {
         animation: fadeIn 0.5s ease forwards;
         opacity: 0;
+    }
+    
+    .change-indicator {
+        animation: pulse 2s infinite;
+    }
+    
+    .save-success {
+        animation: save-flash 1s ease;
     }
     
     .order-input.changed {
@@ -6926,11 +7275,29 @@ if (!$default_checked) {
         background-color: rgba(13, 110, 253, 0.05);
     }
     
-    .table th {
-        position: sticky;
-        top: 0;
-        background-color: #f8f9fa;
-        z-index: 10;
+    /* Уведомления */
+    #notification-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        max-width: 400px;
+    }
+    
+    .alert {
+        margin-bottom: 10px;
+        border: none;
+        border-radius: 8px;
+        animation: slideIn 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .clear-permission-btn {
+        transition: all 0.2s ease;
+    }
+    
+    .clear-permission-btn:hover {
+        transform: scale(1.1);
     }
     
     /* Автодополнение */
@@ -6957,76 +7324,20 @@ if (!$default_checked) {
     .autocomplete-suggestion.selected {
         background-color: #e7f1ff;
     }
-    </style>';
-	
-	
-
-    // ============================================
-    // JavaScript для разрешений
-    // ============================================
-    if ($fid && isset($ids)) {
-        echo '
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        // Инициализация редактора разрешений для каждой группы
-        var groupIds = ' . json_encode($ids) . ';
-        groupIds.forEach(function(gid) {
-            if (typeof QuickPermEditor !== "undefined") {
-                QuickPermEditor.init(gid);
-            }
-        });
-        
-        // Функция сброса разрешений
-        window.resetPermissions = function() {
-            if (confirm("Are you sure you want to reset all permission changes?")) {
-                document.querySelectorAll(".permission-fields").forEach(function(container) {
-                    var gid = container.id.replace("permission-fields-", "");
-                    var defaultPerms = document.getElementById("fields_default_" + gid).value.split(",");
-                    
-                    // Сброс отображения
-                    var enabledDiv = container.querySelector(".enabled-permissions");
-                    var disabledDiv = container.querySelector(".disabled-permissions");
-                    
-                    // Здесь нужно добавить логику сброса к исходным значениям
-                    // Это будет зависеть от реализации QuickPermEditor
-                });
-            }
-        };
-        
-        // Инициализация автодополнения для имен пользователей
-        var usernameInputs = document.querySelectorAll(\'input[data-autocomplete-url]\');
-        usernameInputs.forEach(function(input) {
-            input.addEventListener("input", function() {
-                var query = this.value;
-                if (query.length < 2) return;
-                
-                // Реализация автодополнения
-                // Можно использовать существующий JavaScript код
-            });
-        });
-    });
     
-    // Функция для обновления статуса разрешений
-    function updatePermissionStatus(gid, isInherited) {
-        var statusBadge = document.querySelector(\'tr[data-group-id="\' + gid + \'"] .badge\');
-        if (statusBadge) {
-            if (isInherited) {
-                statusBadge.className = "badge bg-info bg-opacity-10 text-info px-3 py-2";
-                statusBadge.innerHTML = \'<i class="fas fa-link me-1"></i>Inherited\';
-            } else {
-                statusBadge.className = "badge bg-warning bg-opacity-10 text-warning px-3 py-2";
-                statusBadge.innerHTML = \'<i class="fas fa-pen me-1"></i>Custom\';
-            }
-        }
+    .table th {
+        position: sticky;
+        top: 0;
+        background-color: #f8f9fa;
+        z-index: 10;
     }
-    </script>';
-    }
-
+</style>';	
+	
+	
     echo '</div>'; // Закрываем admin-container
 
     $plugins->run_hooks("admin_forum_management_start_graph");
     
-    // Закрываем страницу
     stdfoot();
 }
 

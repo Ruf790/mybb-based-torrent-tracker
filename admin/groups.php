@@ -120,33 +120,36 @@ require_once $thispath . 'include/class_table.php';
 
 
 
-
 // Include the layout generation class overrides for this style
-if(file_exists('jqueryui/style.php'))
-{
-	require_once 'jqueryui/style.php';
+if (file_exists('include/style.php')) {
+    require_once 'include/style.php';
 }
 
-// Check if any of the layout generation classes we can override exist in the style file
-$classes = array(
-	"Page" => "DefaultPage",
-	"SidebarItem" => "DefaultSidebarItem",
-	"PopupMenu" => "DefaultPopupMenu",
-	"Table" => "DefaultTable",
-	"Form" => "DefaultForm",
-	"FormContainer" => "DefaultFormContainer"
-);
-foreach($classes as $style_name => $default_name)
-{
-	// Style does not have this layout generation class, create it
-	if(!class_exists($style_name))
-	{
-		eval("class {$style_name} extends {$default_name} { }");
-	}
+// Map style classes to their default implementations
+$classMap = [
+    'Page'          => DefaultPage::class,
+    'Table'         => DefaultTable::class,
+    'Form'          => DefaultForm::class,
+    'FormContainer' => DefaultFormContainer::class,
+];
+
+// Create class aliases for any classes not overridden by the style
+foreach ($classMap as $styleClass => $defaultClass) {
+    if (!class_exists($styleClass, false)) {
+        if (class_exists($defaultClass)) {
+            class_alias($defaultClass, $styleClass);
+        } else {
+            throw new RuntimeException(
+                sprintf('Required class %s not found while creating alias for %s', 
+                        $defaultClass, 
+                        $styleClass
+                )
+            );
+        }
+    }
 }
 
-$page = new Page;
-//$page->style = $cp_style;
+$page = new Page();
 
 
 
@@ -1214,7 +1217,7 @@ if(!$mybb->input['action'])
 	
 
 	
-	//echo "	<script type=\"text/javascript\" src=\"scripts/bootbox.min.js\"></script>\n";
+	
     echo "	<script type=\"text/javascript\" src=\"scripts/deleteGroup.js\"></script>\n";
 	
     
@@ -1294,21 +1297,29 @@ if(!$mybb->input['action'])
     echo '</tr>';
     echo '</thead>';
     echo '<tbody>';
+	
+	
+	echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />';
+   echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
 
     $query = $db->simple_select("usergroups", "*", "", array('order_by' => 'disporder'));
     while($usergroup = $db->fetch_array($query))
     {
-        $group_type_icon = ($usergroup['type'] > 1) 
-            ? '<i class="fas fa-gear text-secondary me-2"></i>' 
-            : '<i class="fas fa-id-card text-primary me-2"></i>';
+        
+	     $group_type_icon = !empty($usergroup['image']) 
+         ? $usergroup['image']
+         : (isset($group_icons[$usergroup['gid']]) 
+         ? '<i class="' . $group_icons[$usergroup['gid']] . '"></i>' 
+         : ($usergroup['type'] > 1 
+            ? '<i class="fas fa-cog text-secondary"></i>' 
+            : '<i class="fas fa-user text-primary"></i>'));	
+		
         
         $group_type_badge = ($usergroup['type'] > 1) 
             ? '<span class="badge bg-secondary ms-2">Custom</span>' 
             : '<span class="badge bg-primary ms-2">Default</span>';
 
-       
 
-       
 
         // Подсчет пользователей
         if(!isset($primaryusers[$usergroup['gid']])) $primaryusers[$usergroup['gid']] = 0;

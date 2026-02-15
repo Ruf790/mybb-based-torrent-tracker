@@ -778,7 +778,7 @@ echo '</div>';
 
 /* ---------- Scripts ---------- */
 //echo '<script src="'.$BASEURL.'/admin/scripts/bootbox.min.js"></script>';
-echo '<script src="'.$BASEURL.'/admin/scripts/deleteRecords.js"></script>';
+echo '<script src="'.$BASEURL.'/admin/scripts/deleteUser.js"></script>';
 
 /* единый скрытый инпут для всей страницы (ставим ДО скрипта) */
 echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*">';

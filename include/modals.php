@@ -7,6 +7,147 @@ if (isset($CURUSER) && is_array($CURUSER) && isset($CURUSER['id']))
     $user_id = (int)$CURUSER['id'];
 }
 
+
+
+$magnetModal = '
+
+<div class="modal fade" id="magnetModal" tabindex="-1" aria-labelledby="magnetModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg overflow-hidden">
+      
+      
+      <div class="modal-header border-0 bg-primary text-white position-relative" 
+           style="background: linear-gradient(145deg, #0d6efd 0%, #0b5ed7 100%) !important;">
+        
+        <!-- Декоративные элементы -->
+        <div class="position-absolute top-0 end-0 opacity-10">
+          <i class="fas fa-magnet fa-8x" style="transform: rotate(15deg);"></i>
+        </div>
+        <div class="position-absolute bottom-0 start-0 opacity-10">
+          <i class="fas fa-download fa-6x" style="transform: rotate(-15deg);"></i>
+        </div>
+        
+        <!-- Верхний блик -->
+        <div class="position-absolute top-0 start-0 w-100 h-25" 
+             style="background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 100%);"></div>
+        
+        <!-- Содержимое заголовка -->
+        <div class="position-relative z-index-1">
+          <h5 class="modal-title text-white fw-bold" id="magnetModalLabel">
+            <i class="fas fa-magnet me-2 fa-spin-slow"></i>Magnet Link
+          </h5>
+          <p class="text-white-75 small mb-0 mt-1">Download with your torrent client</p>
+        </div>
+        
+        <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 mt-3 me-3" data-bs-dismiss="modal" aria-label="Close"></button>
+        
+        <!-- Прогресс-бар в шапке (анимированный) -->
+        <div class="position-absolute bottom-0 start-0 w-100" style="height: 3px;">
+          <div class="h-100 bg-white" style="width: 100%; animation: shrinkWidth 5s linear forwards;"></div>
+        </div>
+      </div>
+      
+      <!-- Body с иконкой и контентом -->
+      <div class="modal-body text-center py-5 position-relative">
+        
+        <!-- Декоративные точки -->
+        <div class="particles">
+          <div class="particle" style="top: 20%; left: 10%; background: #0d6efd;"></div>
+          <div class="particle" style="top: 70%; left: 85%; background: #0b5ed7;"></div>
+          <div class="particle" style="top: 40%; left: 90%; background: #0d6efd;"></div>
+          <div class="particle" style="top: 80%; left: 15%; background: #0b5ed7;"></div>
+        </div>
+        
+        <!-- Анимированная иконка магнита -->
+        <div class="magnet-icon mb-4 position-relative">
+          <div class="icon-circle mx-auto position-relative" 
+               style="background: linear-gradient(145deg, #e6f0ff 0%, #cfe2ff 100%); box-shadow: 0 10px 30px rgba(13,110,253,0.2);">
+            <div class="glow-effect" style="background: radial-gradient(circle, rgba(13,110,253,0.2) 0%, transparent 70%);"></div>
+            <i class="fas fa-magnet fa-4x text-primary"></i>
+          </div>
+          
+          <!-- Пульсирующие кольца -->
+          <div class="pulse-ring" style="border-color: rgba(13,110,253,0.2);"></div>
+          <div class="pulse-ring" style="border-color: rgba(13,110,253,0.1); animation-delay: 0.5s;"></div>
+        </div>
+        
+        <!-- Инструкция в стиле Bootstrap -->
+        <div class="d-flex align-items-center justify-content-center gap-3 mb-4">
+          <div class="d-flex align-items-center">
+            <span class="badge bg-primary rounded-circle p-2 me-2">1</span>
+            <span class="text-muted small">Copy link</span>
+          </div>
+          <i class="fas fa-arrow-right text-primary"></i>
+          <div class="d-flex align-items-center">
+            <span class="badge bg-primary rounded-circle p-2 me-2">2</span>
+            <span class="text-muted small">Launch client</span>
+          </div>
+        </div>
+        
+        <!-- Input group с кнопкой копирования -->
+        <div class="input-group mb-3 shadow-sm">
+          <span class="input-group-text bg-light border-end-0" id="basic-addon1">
+            <i class="fas fa-link text-primary"></i>
+          </span>
+          <input type="text" id="magnetInput" class="form-control form-control-lg border-start-0 border-end-0" 
+                 readonly value="magnet:?xt=urn:btih:..." 
+                 style="font-family: "Fira Code", monospace; font-size: 0.9rem; background: #fff;">
+          <button class="btn2 btn-primary2" type="button" id="copyMagnetBtn">
+            <i class="fas fa-copy me-1"></i>Copy
+          </button>
+        </div>
+        
+        <!-- Success message -->
+        <div class="copy-success alert alert-primary mt-2 py-2 small d-none fade-in-up" id="copySuccess" 
+             style="border-left: 4px solid #0d6efd; background: #e6f0ff;">
+          <i class="fas fa-check-circle me-1 text-primary"></i> 
+          <span class="fw-medium">✓ Copied to clipboard!</span>
+        </div>
+        
+        <!-- Быстрые подсказки -->
+        <div class="d-flex align-items-center justify-content-center gap-3 mt-3">
+          <div class="d-flex align-items-center gap-1">
+            <i class="fas fa-clock text-primary small"></i>
+            <span class="small text-muted">Auto-closes in 5s</span>
+          </div>
+          <span class="text-primary small">•</span>
+          <div class="d-flex align-items-center gap-1">
+            <i class="fas fa-shield-alt text-primary small"></i>
+            <span class="small text-muted">Secure</span>
+          </div>
+        </div>
+        
+        <!-- External torrent badge -->
+        <div class="external-badge mt-3">
+          <span class="badge bg-primary bg-opacity-10 text-primary px-4 py-2 rounded-pill border border-primary border-opacity-25">
+            <i class="fas fa-globe me-2"></i>
+            <span class="fw-semibold">External Torrent</span>
+          </span>
+        </div>
+      </div>
+      
+      <!-- Footer с кнопками -->
+      <div class="modal-footer border-0 justify-content-center pb-4 gap-3 bg-light bg-opacity-50">
+        <button type="button" class="btn2 btn-outline-primary2 px-5 py-2 rounded-pill" data-bs-dismiss="modal">
+          <i class="fas fa-times me-2"></i>Close
+        </button>
+        
+        <button type="button" class="btn2 btn-primary2 px-5 py-2 rounded-pill position-relative" id="openMagnetBtn"
+                style="box-shadow: 0 8px 20px rgba(13,110,253,0.3);">
+          <span class="position-relative z-index-1">
+            <i class="fas fa-play me-2"></i>Launch Client
+          </span>
+          <span class="position-absolute top-0 start-0 w-100 h-100 rounded-pill" 
+                style="background: inherit; filter: blur(10px); opacity: 0.5; z-index: 0;"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>';
+
+
+
+
 ?>
 
 <!-- ========== COMMENT MODALS ========== -->
@@ -335,42 +476,173 @@ if (isset($CURUSER) && is_array($CURUSER) && isset($CURUSER['id']))
 
 
 
+
+
+
 <!-- Universal Image Preview Modal -->
 <div class="modal fade" id="universalImageModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title d-flex align-items-center gap-2" id="universalImageModalTitle">
-                    <i class="bi bi-image text-primary"></i> Image Preview
-                </h5>
+        <div class="modal-content" style="background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); border: none; box-shadow: 0 20px 40px rgba(0,0,0,0.15);">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(0,0,0,0.05);">
+                <div id="universalImageModalTitle" class="text-dark">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-image-fill text-primary me-2" style="font-size: 1.5rem;"></i>
+                        <div>
+                            <h5 class="mb-0 fw-semibold">Image Viewer</h5>
+                            <small class="text-muted">Press ESC to close</small>
+                        </div>
+                    </div>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body text-center bg-light p-0">
-                <div style="position: relative; height: 70vh; overflow: hidden;">
-                    <img src="" id="universalImagePreview" class="img-fluid"
-                         style="max-height: 100%; max-width: 100%; object-fit: contain;">
+            
+            <div class="modal-body p-0 position-relative">
+                <!-- Loading spinner -->
+                <div id="imageLoadingSpinner" class="position-absolute top-50 start-50 translate-middle" style="display: none; z-index: 10;">
+                    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                
+                <!-- Error message -->
+                <div id="imageErrorMessage" class="position-absolute top-50 start-50 translate-middle text-center" style="display: none; z-index: 10;">
+                    <div class="bg-danger text-white p-3 rounded-3 shadow-lg">
+                        <i class="bi bi-exclamation-triangle-fill fs-1"></i>
+                        <p class="mb-0 mt-2"><span></span></p>
+                    </div>
+                </div>
+                
+                <!-- Image container -->
+                <div class="text-center overflow-auto" style="max-height: 80vh; background: #f4f4f4; padding: 10px;">
+                    <img id="universalImagePreview" 
+                         class="img-fluid rounded-3 shadow-sm" 
+                         style="transition: transform 0.3s ease; cursor: zoom-in; background: white;"
+                         alt="Preview">
                 </div>
             </div>
-            <div class="modal-footer">
-                <div class="d-flex justify-content-between w-100">
-                    <div class="text-start">
-                        <span class="text-muted fw-medium" id="universalImageDimensions"></span>
-                        <span class="text-muted mx-2">•</span>
-                        <span class="text-muted fw-medium" id="universalImageSize"></span>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-outline-secondary" id="universalFullscreenBtn">
-                            <i class="bi bi-arrows-angle-expand me-1"></i> Fullscreen
-                        </button>
-                        <a href="#" class="btn btn-primary" id="universalDownloadBtn" download>
-                            <i class="bi bi-download me-1"></i> Download
-                        </a>
-                    </div>
+            
+            <div class="modal-footer" style="border-top: 1px solid rgba(0,0,0,0.05); background: rgba(255,255,255,0.8);">
+                <div class="d-flex gap-2 align-items-center">
+                    <!-- Image information -->
+                    <span id="universalImageSize" class="text-muted small bg-light px-3 py-2 rounded-pill">
+                        <i class="bi bi-database me-1"></i>
+                        <span class="fw-semibold">—</span>
+                    </span>
+                    <span id="universalImageDimensions" class="text-muted small bg-light px-3 py-2 rounded-pill">
+                        <i class="bi bi-arrows-angle-expand me-1"></i>
+                        <span class="fw-semibold">—</span>
+                    </span>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <!-- Zoom level -->
+                    <span id="zoomLevel" class="badge bg-light text-dark rounded-pill px-3 py-2 align-self-center shadow-sm" style="font-size: 0.85rem;">
+                        <i class="bi bi-percent me-1"></i>100%
+                    </span>
+                    
+                    <!-- Control buttons -->
+                    <button id="zoomOutBtn" class="btn btn-sm btn-light rounded-pill px-3" title="Zoom out (Ctrl+-)" style="border: 1px solid #dee2e6;">
+                        <i class="bi bi-zoom-out"></i>
+                    </button>
+                    <button id="zoomInBtn" class="btn btn-sm btn-light rounded-pill px-3" title="Zoom in (Ctrl++)" style="border: 1px solid #dee2e6;">
+                        <i class="bi bi-zoom-in"></i>
+                    </button>
+                    <button id="rotateBtn" class="btn btn-sm btn-light rounded-pill px-3" title="Rotate (R)" style="border: 1px solid #dee2e6;">
+                        <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                    <button id="universalFullscreenBtn" class="btn btn-sm btn-light rounded-pill px-3" title="Fullscreen (F)" style="border: 1px solid #dee2e6;">
+                        <i class="bi bi-arrows-fullscreen"></i>
+                    </button>
+                    <a id="universalDownloadBtn" class="btn btn-sm btn-primary rounded-pill px-4" download title="Download" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
+                        <i class="bi bi-download me-1"></i>
+                        Download
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+/* Additional styles for light theme */
+#universalImageModal .modal-content {
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+#universalImageModal .modal-header {
+    padding: 1rem 1.5rem;
+    background: white;
+}
+
+#universalImageModal .modal-footer {
+    padding: 1rem 1.5rem;
+    backdrop-filter: blur(10px);
+}
+
+#universalImageModal .btn-light {
+    background: white;
+    color: #495057;
+    transition: all 0.2s ease;
+}
+
+#universalImageModal .btn-light:hover {
+    background: #f8f9fa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    color: #667eea;
+}
+
+#universalImageModal .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
+}
+
+#universalImageModal .bg-light {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+    border: 1px solid rgba(255,255,255,0.5);
+}
+
+#universalImagePreview {
+    max-width: 100%;
+    max-height: calc(80vh - 20px);
+    object-fit: contain;
+}
+
+/* Animation for buttons */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+#universalImageModal .btn-primary:active {
+    animation: pulse 0.3s ease;
+}
+
+/* Scrollbar styles */
+#universalImageModal .overflow-auto::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+#universalImageModal .overflow-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+#universalImageModal .overflow-auto::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+}
+
+#universalImageModal .overflow-auto::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+</style>
+
+
+
 
 
 <!-- Modal Torrent Report -->

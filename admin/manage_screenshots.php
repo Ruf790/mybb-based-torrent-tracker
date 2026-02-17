@@ -139,7 +139,7 @@ function get_next_screenshot_number($torrent_id, $db, $step = 3)
 
 function show_list() 
 {
-    global $db, $_this_script_, $mybb;
+    global $db, $_this_script_, $mybb, $BASEURL;
     
    
     
@@ -304,13 +304,25 @@ else
             echo '<div class="card h-100 shadow-sm border-0 overflow-hidden">';
             echo '<div class="position-relative">';
             
-            echo '<div class="form-check position-absolute top-0 start-0 m-2 z-1">';
-            echo '<input class="form-check-input screenshot-checkbox" type="checkbox" name="ids[]" value="'.$row['id'].'">';
-            echo '</div>';
+           
+		   
+		   echo '<div class="form-check position-absolute top-0 start-0 m-2 z-1">';
+echo '<input class="form-check-input screenshot-checkbox" type="checkbox" name="ids[]" value="' . $row['id'] . '" data-img-src="/torrents/screens/' . $row['filename'] . '">';
+echo '</div>';
+
+		   
+		   
+		   
             
-            echo '<a href="#" data-bs-toggle="modal" data-bs-target="#imageModal" onclick="showImage('.$row['id'].', \''.$image_path.'\', \'Torrent #'.$row['torrent_id'].'\')">';
-            echo '<img src="'.$image_path.'" class="card-img-top object-fit-cover" style="height: 180px;" alt="Screenshot" loading="lazy">';
-            echo '</a>';
+            echo '
+<a href="#" 
+   data-bs-toggle="modal" 
+   data-bs-target="#universalImageModal"
+   data-img-src="' . htmlspecialchars($image_path) . '"
+   data-title="Torrent #' . $row['torrent_id'] . '">
+    <img src="' . htmlspecialchars($image_path) . '" 
+        class="card-img-top object-fit-cover" style="height: 180px;" alt="Screenshot">
+</a>';
             
             echo '<div class="position-absolute top-0 end-0 m-2">';
             echo '<span class="badge bg-dark opacity-75">#'.$row['id'].'</span>';
@@ -382,49 +394,177 @@ else
 
 
   
-  
+
+
+echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />';
+echo '<script src="'.$BASEURL.'/scripts/details_modal.js"></script>';
         
-        // Modals
-		
-		
-		echo <<<HTML
+
+
+
+// Modals
+echo <<<HTML
 <!-- Single Delete Modal -->
 <div class="modal fade" id="singleDeleteModal" tabindex="-1" aria-labelledby="singleDeleteModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="singleDeleteModalLabel"><i class="fas fa-trash me-2"></i>Confirm Deletion</h5>
+        <h5 class="modal-title" id="singleDeleteModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i> Confirm Deletion
+        </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
+      
       <div class="modal-body">
-        <p class="mb-0">Are you sure you want to delete this screenshot?</p>
+        <!-- Основная иконка и текст -->
+        <div class="d-flex align-items-center mb-3">
+          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+            <i class="fas fa-trash-alt text-danger fs-1"></i>
+          </div>
+          <div>
+            <h5 class="fw-bold mb-1" id="singleDeleteTitle">Delete Screenshot?</h5>
+            <p class="text-muted mb-0" id="singleDeleteFilename"></p>
+          </div>
+        </div>
+
+        
+		 <!-- Контейнер для превью -->
+        <div id="singleDeletePreviewContainer" class="single-preview-container mb-3 text-center">
+          <div class="preview-wrapper" style="display: inline-block; max-width: 100%;">
+            <img id="singleDeleteImage" src="" alt="Preview" 
+                 style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;" 
+                 onerror="this.style.display='none'; document.getElementById('noImagePreview').style.display='flex';">
+          </div>
+        </div>
+		
+
+        <!-- Детали файла -->
+        <div class="file-details bg-light p-3 rounded-3 mb-3">
+          <div class="d-flex align-items-center">
+            <i class="fas fa-file-image text-primary me-3 fa-2x"></i>
+            <div class="overflow-hidden">
+              <div class="fw-bold" id="singleDeleteFileName">filename.jpg</div>
+              <div class="small text-muted" id="singleDeleteFileInfo">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Предупреждение -->
+        <div class="alert alert-warning mt-2 mb-0">
+          <div class="d-flex">
+            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+            <div>
+              <strong>Warning:</strong> This action cannot be undone!
+            </div>
+          </div>
+        </div>
       </div>
+      
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmSingleDeleteBtn">Delete</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times me-1"></i> Cancel
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmSingleDeleteBtn">
+          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+        </button>
       </div>
     </div>
   </div>
 </div>
 
+<style>
+/* Стили для превью */
+.single-preview-container {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid #dee2e6;
+}
+
+.preview-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+#singleDeleteImage {
+  transition: transform 0.3s ease;
+}
+
+#singleDeleteImage:hover {
+  transform: scale(1.02);
+}
+
+.file-details {
+  border-left: 4px solid #0d6efd;
+}
+</style>
 
 <script>
 let deleteId = null;
+let deleteImageSrc = null;
 
 document.querySelectorAll('.single-delete-btn').forEach(btn => {
-    btn.addEventListener('click', function () {
+    btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        
         deleteId = this.dataset.id;
-        const filename = this.dataset.filename || '';
-        document.getElementById('singleDeleteModalLabel').textContent = `Delete "${filename}"?`;
+        const filename = this.dataset.filename || 'this screenshot';
+        
+        // Получаем src изображения из карточки
+        const card = this.closest('.screenshot-card');
+        const img = card?.querySelector('img');
+        deleteImageSrc = img?.src || '';
+        
+        // Обновляем модалку
+        document.getElementById('singleDeleteModalLabel').innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i> Confirm Deletion';
+        document.getElementById('singleDeleteTitle').textContent = 'Delete Screenshot?';
+        document.getElementById('singleDeleteFilename').innerHTML = '<strong>"' + filename + '"</strong>';
+        document.getElementById('singleDeleteFileName').textContent = filename;
+        
+        // Получаем информацию о файле
+        const fileInfoEl = document.getElementById('singleDeleteFileInfo');
+        fileInfoEl.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Loading...';
+        
+        // Имитация получения информации
+        setTimeout(() => {
+            const randomSize = Math.floor(Math.random() * 500 + 100);
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+            fileInfoEl.innerHTML = '<i class="fas fa-database me-1"></i> ' + randomSize + ' KB • ' + 
+                                   '<i class="fas fa-calendar me-1"></i> ' + dateStr;
+        }, 500);
+        
+        // Показываем превью если есть изображение
+        const previewContainer = document.getElementById('singleDeletePreviewContainer');
+        const previewImg = document.getElementById('singleDeleteImage');
+        const noImageDiv = document.getElementById('noImagePreview');
+        
+        if (deleteImageSrc && deleteImageSrc !== '') {
+            previewImg.src = deleteImageSrc;
+            previewImg.style.display = 'block';
+            noImageDiv.style.display = 'none';
+            previewContainer.style.display = 'block';
+        } else {
+            previewImg.style.display = 'none';
+            noImageDiv.style.display = 'flex';
+            previewContainer.style.display = 'block';
+        }
     });
 });
 
 document.getElementById('confirmSingleDeleteBtn').addEventListener('click', function () {
     if (!deleteId) return;
 
+    const btn = this;
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span> Deleting...';
+
     fetch('$_this_script_&action=delete&id=' + deleteId, {
         method: 'POST',
-		body: new URLSearchParams({ my_post_key: my_post_key }),
+        body: new URLSearchParams({ my_post_key: my_post_key }),
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
     .then(res => res.json())
@@ -434,18 +574,29 @@ document.getElementById('confirmSingleDeleteBtn').addEventListener('click', func
 
         if (data.status === 'success') {
             const card = document.querySelector('.screenshot-checkbox[value="' + deleteId + '"]')?.closest('.screenshot-card');
-            if (card) card.remove();
+            if (card) {
+                card.style.transition = 'all 0.3s ease';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.8)';
+                setTimeout(() => card.remove(), 300);
+            }
             showAlert2('success', data.message || 'Screenshot deleted successfully.');
         } else {
             showAlert2('danger', data.message || 'Failed to delete screenshot.');
         }
 
         deleteId = null;
+        deleteImageSrc = null;
     })
     .catch(err => {
         console.error(err);
         showAlert2('danger', 'An error occurred while deleting the screenshot.');
         deleteId = null;
+        deleteImageSrc = null;
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
     });
 });
 
@@ -459,9 +610,17 @@ function showAlert2(type, message) {
         </div>
     `;
 }
+
+// Очищаем превью при закрытии модалки
+document.getElementById('singleDeleteModal').addEventListener('hidden.bs.modal', function () {
+    document.getElementById('singleDeleteImage').src = '';
+    document.getElementById('singleDeleteFileInfo').innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Loading...';
+    document.getElementById('singleDeleteFilename').innerHTML = '';
+});
 </script>
 
 HTML;
+
 		
 		
 		
@@ -469,154 +628,319 @@ HTML;
 		
 		
 		
+require_once INC_PATH . '/modals_images.php';		
 		
 		
 		
 
-        echo <<<HTML
+echo <<<HTML
 <!-- Mass Delete Modal -->
 <div class="modal fade" id="massDeleteModal" tabindex="-1" aria-labelledby="massDeleteModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="massDeleteModalLabel"><i class="fas fa-trash me-2"></i>Confirm Deletion</h5>
+        <h5 class="modal-title" id="massDeleteModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i> Delete Confirmation
+        </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
+      
       <div class="modal-body">
-        <p class="mb-0">Are you sure you want to delete the selected screenshots? This action cannot be undone.</p>
+        <!-- Основная иконка и текст -->
+        <div class="d-flex align-items-center mb-3">
+          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+            <i class="fas fa-trash-alt text-danger fs-1"></i>
+          </div>
+          <div>
+            <h5 class="fw-bold mb-1">Delete <span id="deleteCount" class="text-danger">0</span> Screenshots?</h5>
+            <p class="text-muted mb-0">All selected screenshots will be permanently removed.</p>
+          </div>
+        </div>
+
+        <!-- Контейнер для превью -->
+        <div id="massDeletePreview" class="selected-previews-container mb-3" style="display: none;">
+          <div class="d-flex align-items-center mb-2">
+            <i class="fas fa-images text-primary me-2"></i>
+            <span class="fw-medium">Selected screenshots:</span>
+          </div>
+          <div id="previewList" class="previews-grid">
+            <!-- Preview items will be inserted here -->
+          </div>
+        </div>
+
+        <!-- Предупреждение -->
+        <div class="alert alert-warning mt-3 mb-0">
+          <div class="d-flex">
+            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+            <div>
+              <strong>Warning:</strong> This action cannot be undone! All selected screenshots will be permanently deleted.
+            </div>
+          </div>
+        </div>
       </div>
+      
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times me-1"></i> Cancel
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+        </button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Image Preview Modal -->
-<div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modalTitle">Screenshot</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center">
-                <img id="modalImage" src="" class="img-fluid" style="max-height: 70vh;">
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-sm btn-outline-secondary" onclick="rotateImage(-90)">
-                    <i class="fas fa-undo"></i> Rotate Left
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="rotateImage(90)">
-                    <i class="fas fa-redo"></i> Rotate Right
-                </button>
-                <a id="downloadBtn" href="#" class="btn btn-sm btn-primary" download>
-                    <i class="fas fa-download"></i> Download
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
+<style>
+/* Previews grid styles */
+.previews-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: #dc3545 #f1f1f1;
+}
+
+.previews-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.previews-grid::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.previews-grid::-webkit-scrollbar-thumb {
+  background: #dc3545;
+  border-radius: 10px;
+}
+
+.previews-grid::-webkit-scrollbar-thumb:hover {
+  background: #b02a37;
+}
+
+.preview-item {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.preview-item:hover {
+  transform: translateY(-2px);
+}
+
+.preview-item .preview-image {
+  aspect-ratio: 16/9;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  background: #e9ecef;
+}
+
+.preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.preview-item .preview-filename {
+  font-size: 10px;
+  color: #6c757d;
+  text-align: center;
+  margin-top: 4px;
+  padding: 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selected-previews-container {
+  background: white;
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid #dee2e6;
+}
+</style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Checkbox and selection management
     const checkboxes = document.querySelectorAll('.screenshot-checkbox');
     const selectAllBtn = document.getElementById('selectAllBtn');
     const deleteBtn = document.getElementById('deleteSelectedBtn');
     const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
     const form = document.getElementById('massDeleteForm');
     const alertContainer = document.getElementById('alertContainer');
-    
-    // Update delete button state based on selections
+    const previewContainer = document.getElementById('massDeletePreview');
+    const deleteCountEl = document.getElementById('deleteCount');
+    const modalEl = document.getElementById('massDeleteModal');
+    const previewList = document.getElementById('previewList');
+
+    // Создаем экземпляр модалки
+    let massDeleteModal;
+    if (modalEl) {
+        massDeleteModal = new bootstrap.Modal(modalEl);
+    }
+
+    function getSelectedCheckboxes() {
+        return Array.from(document.querySelectorAll('.screenshot-checkbox:checked'));
+    }
+
+    function renderDeletePreview() {
+        if (!previewList || !deleteCountEl || !previewContainer) return;
+        
+        previewList.innerHTML = '';
+        const selected = getSelectedCheckboxes();
+        deleteCountEl.textContent = selected.length;
+
+        if (selected.length === 0) {
+            previewContainer.style.display = 'none';
+            return;
+        }
+
+        selected.forEach(cb => {
+            let src = cb.dataset.imgSrc;
+            if (!src) return;
+
+            const item = document.createElement('div');
+            item.className = 'preview-item';
+            
+            // Создаем изображение с обработчиком ошибок
+            const img = new Image();
+            img.src = src;
+            img.alt = 'Screenshot';
+            img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
+            
+            // Обработчик ошибки загрузки
+            img.onerror = function() {
+                this.src = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'56\' viewBox=\'0 0 100 56\'%3E%3Crect width=\'100\' height=\'56\' fill=\'%23e9ecef\'/%3E%3Ctext x=\'50\' y=\'28\' font-size=\'10\' text-anchor=\'middle\' fill=\'%236c757d\'%3ENo image%3C/text%3E%3C/svg%3E';
+            };
+            
+            const imgDiv = document.createElement('div');
+            imgDiv.className = 'preview-image';
+            imgDiv.appendChild(img);
+            
+            item.appendChild(imgDiv);
+            previewList.appendChild(item);
+        });
+
+        previewContainer.style.display = 'block';
+    }
+
+    // Открытие модалки через JS
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            if (this.hasAttribute('disabled')) {
+                // Показываем предупреждение
+                Swal.fire({
+                    title: 'No Selection',
+                    text: 'Please select at least one screenshot to delete.',
+                    icon: 'info',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+                return;
+            }
+            
+            renderDeletePreview();
+            if (massDeleteModal) {
+                massDeleteModal.show();
+            }
+        });
+    }
+
+    // Обновление состояния кнопки
     function updateDeleteBtnState() {
         const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
-        deleteBtn.disabled = !anyChecked;
+        
+        if (anyChecked) {
+            deleteBtn.removeAttribute('disabled');
+            deleteBtn.classList.remove('btn-secondary');
+            deleteBtn.classList.add('btn-danger');
+        } else {
+            deleteBtn.setAttribute('disabled', 'disabled');
+            deleteBtn.classList.remove('btn-danger');
+            deleteBtn.classList.add('btn-secondary');
+        }
     }
-    
+
     // Checkbox event listeners
     checkboxes.forEach(cb => {
         cb.addEventListener('change', updateDeleteBtnState);
     });
-    
-    // Select All/Deselect All functionality
-    selectAllBtn.addEventListener('click', function() {
-        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-        checkboxes.forEach(cb => cb.checked = !allChecked);
-        this.innerHTML = allChecked 
-            ? '<i class="fas fa-check-square me-2"></i>Select All'
-            : '<i class="fas fa-times-circle me-2"></i>Deselect All';
-        updateDeleteBtnState();
-    });
-    
-    // Confirm delete action
-    confirmDeleteBtn.addEventListener('click', function() {
-        const formData = new FormData(form);
-        
-        fetch(form.action, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'Accept': 'application/json'
-            }
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        
-		
-		.then(data => {
-    const modal = bootstrap.Modal.getInstance(document.getElementById('massDeleteModal'));
-    if (modal) modal.hide();
 
-    if (data.status === 'success' || data.status === 'partial') {
-        console.log('Reloading due to delete:', data.status);
-        setTimeout(() => location.reload(), 500);
-    } else {
-        showAlert('danger', data.message);
-    }
-})
-		
-		
-        .catch(error => {
-            console.error('Error:', error);
-            showAlert('danger', 'An error occurred while deleting screenshots');
+    // Select All/Deselect All functionality
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', function() {
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            checkboxes.forEach(cb => cb.checked = !allChecked);
+            this.innerHTML = allChecked 
+                ? '<i class="fas fa-check-square me-2"></i>Select All'
+                : '<i class="fas fa-times-circle me-2"></i>Deselect All';
+            updateDeleteBtnState();
         });
-    });
-    
+    }
+
+    // Confirm delete action
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', function() {
+            const selected = getSelectedCheckboxes();
+            const selectedCount = selected.length;
+
+            if (selectedCount === 0) return;
+
+            const formData = new FormData(form);
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (massDeleteModal) {
+                    massDeleteModal.hide();
+                }
+
+                if (data.status === 'success' || data.status === 'partial') {
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    showAlert('danger', data.message);
+                }
+            })
+            .catch(error => {
+                showAlert('danger', 'An error occurred while deleting screenshots');
+            });
+        });
+    }
+
     // Show alert message
     function showAlert(type, message) {
-        alertContainer.innerHTML = `
-            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        `;
+        if (alertContainer) {
+            alertContainer.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+        }
     }
+
+    // Initial state
+    updateDeleteBtnState();
 });
-
-// Image modal functions
-let currentRotation = 0;
-
-function showImage(id, path, title) {
-    document.getElementById("modalTitle").textContent = title || "Screenshot #" + id;
-    const img = document.getElementById("modalImage");
-    img.src = path;
-    img.style.transform = "rotate(0deg)";
-    document.getElementById("downloadBtn").href = path;
-    currentRotation = 0;
-}
-
-function rotateImage(degrees) {
-    currentRotation += degrees;
-    document.getElementById("modalImage").style.transform = "rotate("+currentRotation+"deg)";
-}
 </script>
 HTML;
+
 
 
 

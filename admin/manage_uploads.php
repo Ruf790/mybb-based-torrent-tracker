@@ -11,6 +11,7 @@ require_once INC_PATH . '/functions_multipage.php';
 
 
 
+
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) 
 {
     header('Content-Type: application/json; charset=utf-8');
@@ -1015,46 +1016,14 @@ function getFileDimensions($file_path) {
 </div>
 
 
+<?
+require_once INC_PATH . '/modals_images.php';	
+
+?>
+
+<script src="<?= $BASEURL ?>/scripts/details_modal.js"></script>
 
 
-
-
-
-<!-- Preview Modal -->
-<div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title d-flex align-items-center gap-2" id="previewModalTitle">
-                    <i class="bi bi-image text-primary"></i> Image Preview
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center bg-light p-0">
-                <div id="imageContainer" style="position: relative; height: 70vh; overflow: hidden;">
-                    <img src="" class="preview-modal-img" id="previewModalImage" style="max-height: 100%; max-width: 100%; object-fit: contain;">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <div class="d-flex justify-content-between w-100">
-                    <div class="text-start">
-                        <span class="text-muted fw-medium" id="fileDimensions"></span>
-                        <span class="text-muted mx-2">•</span>
-                        <span class="text-muted fw-medium" id="fileSize"></span>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-outline-secondary" id="fullscreenBtn">
-                            <i class="bi bi-arrows-angle-expand me-1"></i> Fullscreen
-                        </button>
-                        <a href="#" class="btn btn-primary" id="downloadPreviewBtn">
-                            <i class="bi bi-download me-1"></i> Download
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 
 
 
@@ -1163,104 +1132,6 @@ function getFileDimensions($file_path) {
 
 
 <script>
-// Fullscreen functionality
-function toggleFullscreen() {
-    const imageContainer = document.getElementById('imageContainer');
-    const image = document.getElementById('previewModalImage');
-    
-    if (!document.fullscreenElement) {
-        if (imageContainer.requestFullscreen) {
-            imageContainer.requestFullscreen();
-        } else if (imageContainer.webkitRequestFullscreen) { /* Safari */
-            imageContainer.webkitRequestFullscreen();
-        } else if (imageContainer.msRequestFullscreen) { /* IE11 */
-            imageContainer.msRequestFullscreen();
-        }
-        
-        // Adjust image styling in fullscreen
-        image.style.maxHeight = '100vh';
-        image.style.maxWidth = '100vw';
-    } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) { /* Safari */
-            document.webkitExitFullscreen();
-        } else if (document.msExitFullscreen) { /* IE11 */
-            document.msExitFullscreen();
-        }
-        
-        // Reset image styling
-        image.style.maxHeight = '100%';
-        image.style.maxWidth = '100%';
-    }
-}
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    // Fullscreen button
-    const fullscreenBtn = document.getElementById('fullscreenBtn');
-    if (fullscreenBtn) {
-        fullscreenBtn.addEventListener('click', toggleFullscreen);
-    }
-    
-    // Handle fullscreen change events
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('msfullscreenchange', handleFullscreenChange);
-    
-    function handleFullscreenChange() {
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
-        if (fullscreenBtn) {
-            if (document.fullscreenElement || 
-                document.webkitFullscreenElement || 
-                document.msFullscreenElement) {
-                fullscreenBtn.innerHTML = '<i class="bi bi-arrows-angle-contract me-1"></i> Exit Fullscreen';
-            } else {
-                fullscreenBtn.innerHTML = '<i class="bi bi-arrows-angle-expand me-1"></i> Fullscreen';
-            }
-        }
-    }
-    
-    // Image preview modal
-    const previewModal = document.getElementById('previewModal');
-    if (previewModal) {
-        previewModal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            const imgSrc = button.getAttribute('data-img-src');
-            const imgName = button.getAttribute('data-img-name');
-            const imgDimensions = button.getAttribute('data-dimensions') || 'N/A';
-            const imgSize = button.getAttribute('data-size') || 'N/A';
-            
-            document.getElementById('previewModalImage').src = imgSrc;
-            document.getElementById('previewModalTitle').textContent = imgName;
-            document.getElementById('fileDimensions').textContent = imgDimensions;
-            document.getElementById('fileSize').textContent = imgSize;
-            document.getElementById('downloadPreviewBtn').href = imgSrc;
-            document.getElementById('downloadPreviewBtn').download = imgName;
-        });
-        
-        // Reset fullscreen when modal closes
-        previewModal.addEventListener('hidden.bs.modal', function() {
-            if (document.fullscreenElement || 
-                document.webkitFullscreenElement || 
-                document.msFullscreenElement) {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                } else if (document.webkitExitFullscreen) {
-                    document.webkitExitFullscreen();
-                } else if (document.msExitFullscreen) {
-                    document.msExitFullscreen();
-                }
-            }
-        });
-    }
-});
-
-
-
-
-
-
 // Debounce function
 function debounce(func, wait) {
     let timeout;
@@ -1376,24 +1247,7 @@ function initializeTableEvents() {
         cb.addEventListener('change', updateSelection);
     });
     
-    // Image preview
-    const previewModal = document.getElementById('previewModal');
-    if (previewModal) {
-        previewModal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            const imgSrc = button.getAttribute('data-img-src');
-            const imgName = button.getAttribute('data-img-name');
-            const imgDimensions = button.getAttribute('data-dimensions') || 'N/A';
-            const imgSize = button.getAttribute('data-size') || 'N/A';
-            
-            document.getElementById('previewModalImage').src = imgSrc;
-            document.getElementById('previewModalTitle').textContent = imgName;
-            document.getElementById('fileDimensions').textContent = imgDimensions;
-            document.getElementById('fileSize').textContent = imgSize;
-            document.getElementById('downloadPreviewBtn').href = imgSrc;
-            document.getElementById('downloadPreviewBtn').download = imgName;
-        });
-    }
+   
 }
 
 // Initialize on page load

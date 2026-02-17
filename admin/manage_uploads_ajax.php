@@ -163,11 +163,11 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
         <img src="<?= htmlspecialchars($file['file_url']) ?>" 
              class="img-preview"
              alt="<?= htmlspecialchars($file['file_name']) ?>"
-             data-bs-toggle="modal" 
-             data-bs-target="#previewModal"
+             data-bs-toggle="modal"
+             data-bs-target="#universalImageModal"
              data-img-src="<?= htmlspecialchars($file['file_url']) ?>"
-             data-img-name="<?= htmlspecialchars($file['file_name']) ?>">
-    <?php else: ?>
+             data-title="<?= htmlspecialchars($file['file_name']) ?>">
+    <?php else: ?>    
        
 	   
 	   

@@ -1081,35 +1081,277 @@ require_once INC_PATH . '/modals_images.php';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script src="<?php echo $BASEURL; ?>/scripts/toast.js"></script>
+
+
+
+
+
+
 <!-- Модалка подтверждения -->
 <div class="modal fade" id="confirmBulkDeleteModal" tabindex="-1" aria-labelledby="confirmBulkDeleteModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
+    <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
         <h5 class="modal-title" id="confirmBulkDeleteModalLabel">
-          <i class="bi bi-exclamation-triangle-fill me-2"></i> Delete Confirmation
+          <i class="fas fa-exclamation-triangle me-2"></i> Bulk Delete Confirmation
         </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
+      
       <div class="modal-body">
+        <!-- Основная иконка и счетчик -->
         <div class="d-flex align-items-center mb-3">
-          <i class="bi bi-trash-fill text-danger fs-1 me-3"></i>
+          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+            <i class="fas fa-trash-alt text-danger fs-1"></i>
+          </div>
           <div>
-            <h5>Are you sure you want to delete <span id="filesCount" class="fw-bold">0</span> files?</h5>
+            <h5 class="fw-bold mb-1">Delete <span id="filesCount" class="fw-bold text-danger">0</span> Selected Files?</h5>
             <p class="text-muted mb-0">All related images in content will be replaced with "[Image Deleted]"</p>
           </div>
         </div>
-        <div class="alert alert-warning mt-3">
-          <i class="bi bi-exclamation-circle-fill me-2"></i>
-          This action cannot be undone!
+
+        <!-- Контейнер для сетки превью -->
+        <div class="bulk-preview-grid mb-3" id="bulkPreviewGrid" style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+          <!-- Превью будут добавляться сюда динамически -->
+          <div class="preview-placeholder text-center py-4 text-muted" id="bulkPreviewPlaceholder">
+            <i class="fas fa-images fa-2x mb-2"></i>
+            <div class="small">No images selected</div>
+          </div>
+        </div>
+
+        <!-- Детали выделения -->
+        <div class="file-details bg-light p-3 rounded-3 mb-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center">
+              <i class="fas fa-check-circle text-success me-3 fa-2x"></i>
+              <div>
+                <div class="fw-bold" id="selectedFilesSummary">0 files selected</div>
+                <div class="small text-muted" id="selectedFilesSize">Total size: 0 MB</div>
+              </div>
+            </div>
+            <span class="badge bg-danger" id="selectedFilesCount">0</span>
+          </div>
+        </div>
+
+        <!-- Предупреждение -->
+        <div class="alert alert-warning mt-2 mb-0">
+          <div class="d-flex">
+            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+            <div>
+              <strong>Warning:</strong> This action cannot be undone!
+            </div>
+          </div>
         </div>
       </div>
+      
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-          <i class="bi bi-x-lg me-1"></i> Cancel
+          <i class="fas fa-times me-1"></i> Cancel
         </button>
         <button type="button" class="btn btn-danger" id="confirmBulkDelete">
-          <i class="bi bi-trash3 me-1"></i> Yes, Delete
+          <i class="fas fa-trash-alt me-1"></i> Yes, Delete <span id="confirmCount">0</span> Files
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+<style>
+/* Стили для превью в bulk-модалке */
+.bulk-preview-grid {
+  background: #f8f9fa;
+  border-radius: 8px;
+  scrollbar-width: thin;
+}
+
+.bulk-preview-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.bulk-preview-grid::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.bulk-preview-grid::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+}
+
+.preview-item {
+  position: relative;
+  aspect-ratio: 1/1;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.preview-item:hover {
+  transform: scale(1.05);
+  border-color: #dc3545;
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2);
+  z-index: 2;
+}
+
+.preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.preview-item .preview-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+  color: white;
+  padding: 4px 6px;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.preview-item:hover .preview-overlay {
+  opacity: 1;
+}
+
+.preview-item .preview-index {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(220, 53, 69, 0.9);
+  color: white;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.preview-item .remove-from-bulk {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0,0,0,0.5);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  padding: 0;
+  font-size: 12px;
+}
+
+.preview-item:hover .remove-from-bulk {
+  opacity: 1;
+}
+
+.remove-from-bulk:hover {
+  background: #dc3545 !important;
+  transform: scale(1.1);
+}
+</style>
+
+
+
+
+
+<script src="<?php echo $BASEURL; ?>/admin/scripts/manage_uploads.js"></script>
+
+
+
+
+
+<!-- Single Delete Modal with Preview -->
+<div class="modal fade" id="singleDeleteModal" tabindex="-1" aria-labelledby="singleDeleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="singleDeleteModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i> Delete File
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      
+      <div class="modal-body">
+        <!-- Основная иконка и название -->
+        <div class="d-flex align-items-center mb-3">
+          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+            <i class="fas fa-trash-alt text-danger fs-1"></i>
+          </div>
+          <div>
+            <h5 class="fw-bold mb-1" id="singleDeleteTitle">Delete File?</h5>
+            <p class="text-muted mb-0" id="singleDeleteFilename"></p>
+          </div>
+        </div>
+
+<!-- Контейнер для превью -->
+<div class="single-preview-container mb-3 text-center" id="singlePreviewContainer">
+    <div class="preview-wrapper" style="display: inline-block; max-width: 100%;">
+        <!-- Картинка для изображений -->
+        <img id="singleDeleteImage" src="" alt="Preview" 
+             style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;">
+    </div>
+</div>
+
+        <!-- Детали файла -->
+        <div class="file-details bg-light p-3 rounded-3 mb-3">
+          <div class="d-flex align-items-center">
+            <i class="fas fa-file-alt text-primary me-3 fa-2x"></i>
+            <div class="overflow-hidden">
+              <div class="fw-bold" id="singleDeleteFileName">filename.jpg</div>
+              <div class="small text-muted" id="singleDeleteFileInfo">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Предупреждение -->
+        <div class="alert alert-warning mt-2 mb-0">
+          <div class="d-flex">
+            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+            <div>
+              <strong>Warning:</strong> This action cannot be undone!
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times me-1"></i> Cancel
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmSingleDeleteBtn">
+          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
         </button>
       </div>
     </div>
@@ -1130,225 +1372,6 @@ require_once INC_PATH . '/modals_images.php';
 
 
 
-
-<script>
-// Debounce function
-function debounce(func, wait) {
-    let timeout;
-    return function() {
-        const context = this, args = arguments;
-        clearTimeout(timeout);
-        timeout = setTimeout(() => {
-            func.apply(context, args);
-        }, wait);
-    };
-}
-
-// Handle search
-function handleSearch() {
-    const searchTerm = document.getElementById('searchInput').value.trim();
-    const url = new URL(window.location.href);
-    
-    // Update URL parameters
-    url.searchParams.set('search', searchTerm);
-    url.searchParams.set('ajax_search', '1');
-    url.searchParams.delete('page'); // Reset to first page on new search
-    
-    // Show loading indicator
-    document.getElementById('filesTableContainer').innerHTML = `
-        <div class="text-center py-5 my-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-3 text-muted">Searching files...</p>
-        </div>
-    `;
-    
-    // Fetch results
-    fetch(url.toString())
-        .then(response => response.text())
-        .then(html => {
-            document.getElementById('filesTableContainer').innerHTML = html;
-            // Reinitialize event handlers
-            initializeTableEvents();
-            updatePaginationLinks(searchTerm);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('filesTableContainer').innerHTML = `
-                <div class="alert alert-danger mx-4 my-4">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Error loading results. Please try again.
-                </div>
-            `;
-        });
-}
-
-// Update pagination links after search
-function updatePaginationLinks(searchTerm) {
-    document.querySelectorAll('.pagination a').forEach(link => {
-        const href = new URL(link.href);
-        if (searchTerm) {
-            href.searchParams.set('search', searchTerm);
-        } else {
-            href.searchParams.delete('search');
-        }
-        link.href = href.toString();
-    });
-}
-
-// Initialize table event handlers
-function initializeTableEvents() {
-    // Edit buttons
-    document.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.getElementById('editId').value = this.dataset.id;
-            document.getElementById('editFileName').value = this.dataset.fileName || '';
-            document.getElementById('editCommentId').value = this.dataset.commentId || '';
-            document.getElementById('editNewsId').value = this.dataset.newsId || '';
-            document.getElementById('editTorrentId').value = this.dataset.torrentId || '';
-            
-			 document.getElementById('editPostId').value = this.dataset.postId || '';
-			
-			
-			
-			document.getElementById('editUserId').value = this.dataset.userId || '';
-            document.getElementById('editDescription').value = this.dataset.description || '';
-        });
-    });
-    
-    // Bulk selection
-    const selectAll = document.getElementById('selectAll');
-    const fileCheckboxes = document.querySelectorAll('.file-checkbox');
-    
-    function updateSelection() {
-        const selectedFiles = Array.from(document.querySelectorAll('.file-checkbox:checked'))
-            .map(cb => cb.value);
-        document.getElementById('selectedCount').textContent = selectedFiles.length;
-        document.getElementById('selectedFilesInput').value = selectedFiles.join(',');
-        selectAll.checked = selectedFiles.length === fileCheckboxes.length && selectedFiles.length > 0;
-        
-        // Show/hide bulk actions
-        const bulkActions = document.getElementById('bulkActions');
-        if (selectedFiles.length > 0) {
-            bulkActions.classList.add('show');
-        } else {
-            bulkActions.classList.remove('show');
-        }
-    }
-    
-    if (selectAll) {
-        selectAll.addEventListener('change', (e) => {
-            fileCheckboxes.forEach(cb => cb.checked = e.target.checked);
-            updateSelection();
-        });
-    }
-    
-    fileCheckboxes.forEach(cb => {
-        cb.addEventListener('change', updateSelection);
-    });
-    
-   
-}
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Bootstrap tooltips
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-    
-    initializeTableEvents();
-    
-    // Delayed search
-    const searchInput = document.getElementById('searchInput');
-    const searchForm = document.getElementById('searchForm');
-    const debouncedSearch = debounce(handleSearch, 350);
-    
-    if (searchInput) {
-        searchInput.addEventListener('input', debouncedSearch);
-        searchInput.focus();
-    }
-    
-    if (searchForm) {
-        searchForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            handleSearch();
-        });
-    }
-    
-    // Bulk actions
-    const bulkSelectBtn = document.getElementById('bulkSelectBtn');
-    const cancelBulkAction = document.getElementById('cancelBulkAction');
-    const bulkActions = document.getElementById('bulkActions');
-    
-    if (bulkSelectBtn) {
-        bulkSelectBtn.addEventListener('click', () => {
-            // Toggle all checkboxes
-            const checkboxes = document.querySelectorAll('.file-checkbox');
-            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            
-            checkboxes.forEach(cb => cb.checked = !allChecked);
-            
-            // Trigger change event to update selection
-            checkboxes.forEach(cb => {
-                const event = new Event('change');
-                cb.dispatchEvent(event);
-            });
-        });
-    }
-    
-    if (cancelBulkAction && bulkActions) {
-        cancelBulkAction.addEventListener('click', () => {
-            bulkActions.classList.remove('show');
-            document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
-            document.getElementById('selectedCount').textContent = '0';
-            document.getElementById('selectedFilesInput').value = '';
-            if (document.getElementById('selectAll')) {
-                document.getElementById('selectAll').checked = false;
-            }
-        });
-    }
-    
-    // File upload drag and drop
-    const dropArea = document.querySelector('.border-dashed');
-    if (dropArea) {
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, preventDefaults, false);
-        });
-        
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropArea.addEventListener(eventName, highlight, false);
-        });
-        
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, unhighlight, false);
-        });
-        
-        function highlight() {
-            dropArea.classList.add('border-primary', 'bg-primary-soft');
-        }
-        
-        function unhighlight() {
-            dropArea.classList.remove('border-primary', 'bg-primary-soft');
-        }
-        
-        dropArea.addEventListener('drop', handleDrop, false);
-        
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            console.log('Files dropped:', files);
-            // Handle file upload here
-        }
-    }
-});
-</script>
 
 <?php
 stdfoot();

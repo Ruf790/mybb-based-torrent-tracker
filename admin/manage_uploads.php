@@ -864,6 +864,12 @@ function getFileDimensions($file_path) {
                 </form>
                 
                 <div class="d-flex gap-2">
+				
+				     <!-- Кнопка Upload -->
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                         <i class="bi bi-cloud-arrow-up me-1"></i> Upload
+                    </button>
+				
                     <div class="dropdown">
                         <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="filterDropdown" data-bs-toggle="dropdown">
                             <i class="bi bi-funnel me-1"></i> Filter
@@ -1028,66 +1034,231 @@ require_once INC_PATH . '/modals_images.php';
 
 
 
-<!-- Upload Modal -->
+<!-- Upload Modal - Icon Style Enhanced -->
 <div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title d-flex align-items-center gap-2">
-                    <i class="bi bi-cloud-arrow-up text-primary"></i> Upload Files
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-cloud-upload text-primary me-2"></i>
+                    Upload New Files
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <div class="border-2 border-dashed rounded-3 p-4 text-center bg-light">
-                    <i class="bi bi-cloud-arrow-up fs-1 text-muted mb-3"></i>
-                    <h5 class="fw-medium mb-2">Drag & drop files here</h5>
-                    <p class="text-muted mb-3">or click to browse</p>
-                    <input type="file" class="d-none" id="fileUploadInput" multiple>
-                    <button class="btn btn-primary" onclick="document.getElementById('fileUploadInput').click()">
-                        <i class="bi bi-folder2-open me-1"></i> Select Files
+            
+            <div class="modal-body p-4">
+                <!-- Icon steps с анимацией -->
+                <div class="d-flex align-items-center justify-content-between mb-5 position-relative">
+                    <div class="text-center step-item" style="transition: transform 0.3s;">
+                        <div class="rounded-circle bg-primary bg-opacity-10 p-3 mb-2 step-circle" style="width: 60px; height: 60px; transition: 0.3s;">
+                            <i class="bi bi-link-45deg text-primary fs-4"></i>
+                        </div>
+                        <small class="text-muted">1. Link</small>
+                    </div>
+                    <div class="text-primary step-arrow"><i class="bi bi-arrow-right fs-4"></i></div>
+                    <div class="text-center step-item" style="transition: transform 0.3s;">
+                        <div class="rounded-circle bg-primary bg-opacity-10 p-3 mb-2 step-circle" style="width: 60px; height: 60px; transition: 0.3s;">
+                            <i class="bi bi-folder2-open text-primary fs-4"></i>
+                        </div>
+                        <small class="text-muted">2. Select</small>
+                    </div>
+                    <div class="text-primary step-arrow"><i class="bi bi-arrow-right fs-4"></i></div>
+                    <div class="text-center step-item" style="transition: transform 0.3s;">
+                        <div class="rounded-circle bg-primary bg-opacity-10 p-3 mb-2 step-circle" style="width: 60px; height: 60px; transition: 0.3s;">
+                            <i class="bi bi-cloud-upload text-primary fs-4"></i>
+                        </div>
+                        <small class="text-muted">3. Upload</small>
+                    </div>
+                </div>
+
+                <!-- Content selection with icons и валидацией -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label text-secondary mb-2">
+                            <i class="bi bi-tag me-1"></i>Content Type
+                        </label>
+                        <select class="form-select form-select-lg border-0 bg-light" id="contentTypeSelect" required>
+                            <option selected disabled>Choose type...</option>
+                            <option value="comment">💬 Comment</option>
+                            <option value="news">📰 News</option>
+                            <option value="torrent">⬇️ Torrent</option>
+                            <option value="post">📄 Post</option>               
+                        </select>
+                        <div class="invalid-feedback">Please select content type</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-secondary mb-2">
+                            <i class="bi bi-hash me-1"></i>Content ID
+                        </label>
+                        <input type="number" class="form-control form-control-lg border-0 bg-light" id="contentId" placeholder="Enter ID" required>
+                        <div class="invalid-feedback">Please enter content ID</div>
+                    </div>
+                </div>
+
+                <!-- Upload area с прогрессом и превью -->
+                <div class="upload-area bg-light rounded-4 p-5 text-center position-relative" 
+                     id="dropArea" 
+                     style="border: 2px dashed var(--bs-primary); cursor: pointer; transition: 0.3s;">
+                    
+                    <!-- Прогресс бар (скрыт по умолчанию) -->
+                    <div class="upload-progress position-absolute top-0 start-0 end-0" style="display: none;">
+                        <div class="progress rounded-0 rounded-top-4" style="height: 4px;">
+                            <div class="progress-bar bg-primary" role="progressbar" style="width: 0%;" id="uploadProgress"></div>
+                        </div>
+                    </div>
+
+                    <div class="row justify-content-center mb-4">
+                        <div class="col-auto file-type-icon">
+                            <i class="bi bi-file-earmark-image fs-1 text-primary opacity-50"></i>
+                        </div>
+                        <div class="col-auto file-type-icon">
+                            <i class="bi bi-file-earmark-pdf fs-1 text-danger opacity-50"></i>
+                        </div>
+                        <div class="col-auto file-type-icon">
+                            <i class="bi bi-file-earmark-word fs-1 text-primary opacity-50"></i>
+                        </div>
+                    </div>
+                    
+                    <!-- Превью изображений (показывается при выборе) -->
+                    <div class="image-preview-container mb-3" id="imagePreviewContainer" style="display: none;">
+                        <div class="d-flex flex-wrap gap-2 justify-content-center" id="imagePreviewList"></div>
+                    </div>
+                    
+                    <h5 class="fw-bold" id="dropAreaTitle">Drag & drop files here</h5>
+                    <p class="text-muted mb-4" id="dropAreaSubtitle">or click to browse</p>
+                    
+                    <div class="file-count-badge position-absolute top-0 end-0 m-3" id="fileCountBadge" style="display: none;">
+                        <span class="badge bg-primary rounded-pill p-2" id="fileCount"></span>
+                    </div>
+                    
+                    <input type="file" class="d-none" id="fileUploadInput" multiple accept="image/*,.pdf,.doc,.docx">
+                    <button class="btn btn-outline-primary btn-lg px-5 rounded-pill" 
+                            onclick="document.getElementById('fileUploadInput').click()"
+                            id="browseBtn">
+                        <i class="bi bi-folder2-open me-2"></i>Browse
+                    </button>
+                    
+                    <!-- Кнопка очистки (показывается при выборе файлов) -->
+                    <button class="btn btn-link text-danger mt-3" id="clearFilesBtn" style="display: none;" onclick="clearSelectedFiles()">
+                        <i class="bi bi-x-circle me-1"></i>Clear all
                     </button>
                 </div>
-                
-                <div class="mt-3">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="fw-medium">File type restrictions:</span>
-                        <span class="text-muted">Images, PDF, Docs</span>
+
+                <!-- Quick stats with icons и лимитами -->
+                <div class="d-flex justify-content-between mt-3 text-secondary small flex-wrap">
+                    <span class="stat-item">
+                        <i class="bi bi-check-circle text-success me-1"></i> 
+                        Images <span class="badge bg-light text-dark ms-1" id="imageCount">0</span>
+                    </span>
+                    <span class="stat-item">
+                        <i class="bi bi-check-circle text-success me-1"></i> 
+                        PDF <span class="badge bg-light text-dark ms-1" id="pdfCount">0</span>
+                    </span>
+                    <span class="stat-item">
+                        <i class="bi bi-check-circle text-success me-1"></i> 
+                        Docs <span class="badge bg-light text-dark ms-1" id="docCount">0</span>
+                    </span>
+                    <span class="stat-item" id="sizeWarning" style="display: none;">
+                        <i class="bi bi-exclamation-circle text-warning me-1"></i> 
+                        <span id="totalSize">0 MB</span>
+                    </span>
+                </div>
+
+                <!-- Selected files with icons и размерами -->
+                <div class="selected-files mt-4" id="selectedFilesList" style="display: none;">
+                    <div class="d-flex align-items-center justify-content-between bg-light p-3 rounded-3 mb-3">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-files text-primary fs-5 me-2"></i>
+                            <span class="fw-bold"><span id="selectedFilesCount">0</span> files ready</span>
+                        </div>
+                        <span class="text-muted small" id="totalSizeDisplay">0 KB</span>
                     </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="fw-medium">Max file size:</span>
-                        <span class="text-muted">10 MB</span>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="fw-medium">Total uploads:</span>
-                        <span class="text-muted">Up to 10 files</span>
-                    </div>
+                    <div class="list-group" id="selectedFilesListContainer" style="max-height: 200px; overflow-y: auto;"></div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    <i class="bi bi-x-lg me-1"></i> Cancel
+            
+            <div class="modal-footer border-0 p-4">
+                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>Cancel
                 </button>
-                <button type="button" class="btn btn-primary">
-                    <i class="bi bi-upload me-1"></i> Start Upload
+                <button type="button" class="btn btn-primary px-5 position-relative" id="startUploadBtn" disabled>
+                    <span class="upload-text"><i class="bi bi-cloud-upload me-2"></i>Upload Now</span>
+                    <span class="upload-loading d-none">
+                        <span class="spinner-border spinner-border-sm me-2"></span>Uploading...
+                    </span>
                 </button>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Добавь этот CSS для анимаций -->
+<style>
+.step-item:hover .step-circle {
+    transform: scale(1.1);
+    background-color: rgba(13, 110, 253, 0.2) !important;
+}
 
+.step-arrow {
+    animation: pulse 2s infinite;
+}
 
+.file-type-icon {
+    transition: transform 0.3s;
+}
 
+.file-type-icon:hover {
+    transform: translateY(-5px);
+}
 
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
 
+.upload-area.dragover {
+    background-color: rgba(13, 110, 253, 0.1) !important;
+    border-color: var(--bs-primary) !important;
+}
 
+.preview-item {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
 
+.preview-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
 
+.preview-item .remove-preview {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 20px;
+    height: 20px;
+    background: #dc3545;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
 
-
-
-
+.preview-item:hover .remove-preview {
+    opacity: 1;
+}
+</style>
 
 
 
@@ -1104,7 +1275,7 @@ require_once INC_PATH . '/modals_images.php';
 
 
 
-<!-- Модалка подтверждения -->
+<!-- Bulk Delete Modal -->
 <div class="modal fade" id="confirmBulkDeleteModal" tabindex="-1" aria-labelledby="confirmBulkDeleteModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">

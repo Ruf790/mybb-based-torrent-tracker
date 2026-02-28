@@ -232,11 +232,38 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
                     <?php endif; ?>
                 </td>
                 <td>
-                    <?php if ($file['comment_id']): ?>
-                        <span class="badge text-success bg-success bg-opacity-10">
-                            <i class="fas fa-comment me-1"></i> Comment #<?= $file['comment_id'] ?>
-                        </span>
-                    <?php endif; ?>
+                    
+					
+					
+					
+					<?php if ($file['comment_id']): ?>
+    <?php 
+    // Получаем torrent из таблицы comments
+    $torrent_result = $db->sql_query("SELECT torrent FROM comments WHERE id = " . (int)$file['comment_id']);
+    $torrent_row = $db->fetch_array($torrent_result);
+    $torrent_id = $torrent_row['torrent'] ?? 0;
+    
+    // Формируем ссылку
+    if ($torrent_id > 0) {
+        // Ссылка вида: torrent-50-comment-1320.html#pid1320
+        $comment_link = $BASEURL . '/torrent-' . $torrent_id . '-comment-' . $file['comment_id'] . '.html#pid' . $file['comment_id'];
+    } else {
+        // Если нет torrent, просто ссылка на комментарий
+        $comment_link = $BASEURL . '/comment-' . $file['comment_id'] . '.html#pid' . $file['comment_id'];
+    }
+    ?>
+    <span class="badge text-success bg-success bg-opacity-10">
+        <i class="fas fa-comment me-1"></i> 
+        <a href="<?= $comment_link ?>" target="_blank" class="text-decoration-none text-success">
+            Comment #<?= $file['comment_id'] ?>
+        </a>
+    </span>
+<?php endif; ?>
+					
+					
+					
+					
+					
 
                     <?php if ($file['news_id']): ?>
                         <span class="badge text-warning bg-warning bg-opacity-10">
@@ -244,17 +271,48 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
                         </span>
                     <?php endif; ?>
 
-                    <?php if ($file['torrent_id']): ?>
-                        <span class="badge text-info bg-info bg-opacity-10">
-                            <i class="fas fa-download me-1"></i> Torrent #<?= $file['torrent_id'] ?>
-                        </span>
-                    <?php endif; ?>
+                    
+					
+					<?php if ($file['torrent_id']): ?>
+    <?php 
+   
+    $torrent_link = $BASEURL . '/' . get_torrent_link($file['torrent_id']);
+    ?>
+    <span class="badge text-info bg-info bg-opacity-10">
+        <i class="fas fa-download me-1"></i> 
+        <a href="<?= $torrent_link ?>" target="_blank" class="text-decoration-none text-info">
+            Torrent #<?= $file['torrent_id'] ?>
+        </a>
+    </span>
+<?php endif; ?>
+					
+					
+					
+					
+					
 
-                    <?php if ($file['post_id']): ?>
-                        <span class="badge text-primary bg-primary bg-opacity-10">
-                            <i class="fas fa-file-alt me-1"></i> Post #<?= $file['post_id'] ?>
-                        </span>
-                    <?php endif; ?>
+                   
+<?php if ($file['post_id']): ?>
+    <?php 
+    // Получаем tid из таблицы tsf_posts
+    $post_result = $db->sql_query("SELECT tid FROM tsf_posts WHERE pid = " . (int)$file['post_id']);
+    $post_row = $db->fetch_array($post_result);
+    $tid = $post_row['tid'] ?? 0;
+    
+    // Получаем ссылку на пост и добавляем якорь #pid
+    $post_link = $BASEURL . '/' . get_post_link($file['post_id'], $tid) . '#pid' . $file['post_id'];
+    ?>
+    <span class="badge text-primary bg-primary bg-opacity-10">
+        <i class="fas fa-file-alt me-1"></i> 
+        <a href="<?= $post_link ?>" target="_blank" class="text-decoration-none text-primary">
+            Post #<?= $file['post_id'] ?>
+        </a>
+    </span>
+<?php endif; ?>
+				   
+				   
+				   
+				   
 					
 					
 					<?php if ($file['messages_id']): ?>

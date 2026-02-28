@@ -681,3 +681,457 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 });
+
+
+
+
+// Upload Modal Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadModal = document.getElementById('uploadModal');
+    const fileInput = document.getElementById('fileUploadInput');
+    const startUploadBtn = document.getElementById('startUploadBtn');
+    const dropArea = document.querySelector('.upload-area');
+    const contentTypeSelect = document.getElementById('contentTypeSelect');
+    const contentIdInput = document.getElementById('contentId');
+    const selectedFilesDiv = document.getElementById('selectedFilesList');
+    const selectedFilesCount = document.getElementById('selectedFilesCount');
+    const selectedFilesContainer = document.getElementById('selectedFilesListContainer');
+    const clearFilesBtn = document.getElementById('clearFilesBtn');
+    const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+    const imagePreviewList = document.getElementById('imagePreviewList');
+    const fileCountBadge = document.getElementById('fileCountBadge');
+    const fileCount = document.getElementById('fileCount');
+    const imageCount = document.getElementById('imageCount');
+    const pdfCount = document.getElementById('pdfCount');
+    const docCount = document.getElementById('docCount');
+    const totalSizeDisplay = document.getElementById('totalSizeDisplay');
+    const dropAreaTitle = document.getElementById('dropAreaTitle');
+    const dropAreaSubtitle = document.getElementById('dropAreaSubtitle');
+    const uploadProgress = document.getElementById('uploadProgress');
+    
+    if (!uploadModal || !startUploadBtn) {
+        console.log('Upload modal elements not found');
+        return;
+    }
+    
+    let selectedFiles = [];
+    
+    // Функция отображения выбранных файлов
+    function displaySelectedFiles() {
+        if (selectedFiles.length > 0) {
+            selectedFilesDiv.style.display = 'block';
+            selectedFilesCount.textContent = selectedFiles.length;
+            startUploadBtn.disabled = false;
+            if (clearFilesBtn) clearFilesBtn.style.display = 'inline-block';
+            
+            // Обновляем заголовок
+            dropAreaTitle.textContent = `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected`;
+            dropAreaSubtitle.textContent = 'Click to add more files';
+            
+            // Обновляем счетчик файлов
+            if (fileCountBadge) {
+                fileCountBadge.style.display = 'block';
+                fileCount.textContent = selectedFiles.length;
+            }
+            
+            // Обновляем статистику
+            updateFileStats();
+            
+            // Показываем превью для изображений
+            showImagePreviews();
+            
+            // Список файлов
+            let html = '';
+            selectedFiles.forEach((file, index) => {
+                const size = (file.size / 1024).toFixed(2);
+                const fileType = file.type.includes('image') ? 'image' : 
+                                file.type.includes('pdf') ? 'pdf' : 'text';
+                const iconColor = fileType === 'image' ? 'text-primary' : 
+                                  fileType === 'pdf' ? 'text-danger' : 'text-info';
+                
+                html += `
+                    <div class="list-group-item file-item d-flex justify-content-between align-items-center py-2 px-3 border-0 bg-light mb-1 rounded-3">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-file-earmark-${fileType} ${iconColor} me-2"></i>
+                            <span class="small fw-medium">${truncateFileName(file.name, 30)}</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-white text-dark px-3 py-2 rounded-pill">${size} KB</span>
+                            <button class="btn btn-sm btn-link text-danger p-0" onclick="removeFile(${index})">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            selectedFilesContainer.innerHTML = html;
+        } else {
+            selectedFilesDiv.style.display = 'none';
+            startUploadBtn.disabled = true;
+            if (clearFilesBtn) clearFilesBtn.style.display = 'none';
+            if (fileCountBadge) fileCountBadge.style.display = 'none';
+            if (imagePreviewContainer) imagePreviewContainer.style.display = 'none';
+            
+            // Сбрасываем заголовок
+            dropAreaTitle.textContent = 'Drag & drop files here';
+            dropAreaSubtitle.textContent = 'or click to browse';
+            
+            // Сбрасываем статистику
+            resetFileStats();
+        }
+    }
+    
+    // Функция обновления статистики
+    function updateFileStats() {
+        let imgCount = 0, pdfCount = 0, docCount = 0;
+        let totalSize = 0;
+        
+        selectedFiles.forEach(file => {
+            totalSize += file.size;
+            if (file.type.startsWith('image/')) imgCount++;
+            else if (file.type === 'application/pdf') pdfCount++;
+            else if (file.type.includes('document') || file.type.includes('msword')) docCount++;
+        });
+        
+        if (imageCount) imageCount.textContent = imgCount;
+        if (pdfCount) pdfCount.textContent = pdfCount;
+        if (docCount) docCount.textContent = docCount;
+        
+        const totalKB = (totalSize / 1024).toFixed(2);
+        const totalMB = (totalSize / (1024 * 1024)).toFixed(2);
+        if (totalSizeDisplay) {
+            totalSizeDisplay.textContent = totalMB > 1 ? `${totalMB} MB` : `${totalKB} KB`;
+        }
+    }
+    
+    // Функция сброса статистики
+    function resetFileStats() {
+        if (imageCount) imageCount.textContent = '0';
+        if (pdfCount) pdfCount.textContent = '0';
+        if (docCount) docCount.textContent = '0';
+        if (totalSizeDisplay) totalSizeDisplay.textContent = '0 KB';
+    }
+    
+    // Функция показа превью изображений
+
+
+// Функция показа превью изображений
+function showImagePreviews() {
+    if (!imagePreviewContainer || !imagePreviewList) return;
+    
+    // Очищаем контейнер перед добавлением новых превью
+    imagePreviewList.innerHTML = '';
+    
+    const imageFiles = selectedFiles.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length > 0) {
+        imagePreviewContainer.style.display = 'block';
+        
+        // Используем асинхронный подход с Promise для правильной загрузки
+        const loadPreviews = async () => {
+            for (let i = 0; i < Math.min(imageFiles.length, 5); i++) {
+                const file = imageFiles[i];
+                try {
+                    const dataUrl = await readFileAsDataURL(file);
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'preview-item';
+                    previewItem.dataset.index = i;
+                    previewItem.innerHTML = `
+                        <img src="${dataUrl}" alt="Preview">
+                        <div class="remove-preview" onclick="removeFileByIndex(${i})">
+                            <i class="bi bi-x"></i>
+                        </div>
+                    `;
+                    imagePreviewList.appendChild(previewItem);
+                } catch (error) {
+                    console.error('Error loading preview:', error);
+                }
+            }
+            
+            if (imageFiles.length > 5) {
+                const moreDiv = document.createElement('div');
+                moreDiv.className = 'preview-item bg-light d-flex align-items-center justify-content-center';
+                moreDiv.innerHTML = `<span class="fw-bold text-muted">+${imageFiles.length - 5}</span>`;
+                imagePreviewList.appendChild(moreDiv);
+            }
+        };
+        
+        loadPreviews();
+    } else {
+        imagePreviewContainer.style.display = 'none';
+    }
+}
+
+// Вспомогательная функция для чтения файла
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// Новая функция для удаления по индексу
+window.removeFileByIndex = function(index) {
+    // Находим реальный индекс в общем массиве
+    const imageFiles = selectedFiles.filter(file => file.type.startsWith('image/'));
+    if (index < 0 || index >= imageFiles.length) return;
+    
+    // Находим этот файл в общем массиве по уникальным свойствам
+    const fileToRemove = imageFiles[index];
+    const realIndex = selectedFiles.findIndex(f => 
+        f.name === fileToRemove.name && 
+        f.size === fileToRemove.size && 
+        f.lastModified === fileToRemove.lastModified
+    );
+    
+    if (realIndex !== -1) {
+        removeFile(realIndex);
+    }
+};
+
+
+
+    
+    // Функция удаления файла из списка
+   window.removeFile = function(index) {
+    if (index < 0 || index >= selectedFiles.length) return;
+    
+    selectedFiles.splice(index, 1);
+    
+    // Обновляем input
+    const dt = new DataTransfer();
+    selectedFiles.forEach(file => dt.items.add(file));
+    fileInput.files = dt.files;
+    
+    // Просто вызываем displaySelectedFiles, он сам очистит и пересоздаст всё
+    displaySelectedFiles();
+};
+    
+    // Функция очистки всех файлов
+    window.clearSelectedFiles = function() {
+        selectedFiles = [];
+        fileInput.value = '';
+        displaySelectedFiles();
+    };
+    
+    // Функция обрезки имени файла
+    function truncateFileName(name, maxLength) {
+        if (name.length <= maxLength) return name;
+        const ext = name.split('.').pop();
+        const nameWithoutExt = name.slice(0, -(ext.length + 1));
+        return nameWithoutExt.slice(0, maxLength - 3 - ext.length) + '...' + ext;
+    }
+    
+    // Handle file selection via button
+    fileInput.addEventListener('change', function(e) {
+        selectedFiles = Array.from(e.target.files);
+        console.log('Selected files:', selectedFiles.length);
+        displaySelectedFiles();
+    });
+    
+    // Drag and drop functionality
+    if (dropArea) {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
+        
+        function highlight() {
+            dropArea.classList.add('dragover');
+        }
+        
+        function unhighlight() {
+            dropArea.classList.remove('dragover');
+        }
+        
+        dropArea.addEventListener('drop', handleDrop, false);
+        
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            selectedFiles = Array.from(dt.files);
+            fileInput.files = dt.files;
+            console.log('Dropped files:', selectedFiles.length);
+            displaySelectedFiles();
+        }
+    }
+    
+    // Handle upload button click
+    startUploadBtn.addEventListener('click', function() {
+        console.log('Upload button clicked');
+        
+        // Check if files are selected
+        if (selectedFiles.length === 0) {
+            showToast('Please select files to upload.', 'warning');
+            return;
+        }
+        
+        // Check content type and ID
+        const contentType = contentTypeSelect ? contentTypeSelect.value : '';
+        const contentId = contentIdInput ? contentIdInput.value.trim() : '';
+        
+        console.log('Content type:', contentType);
+        console.log('Content ID:', contentId);
+        
+        if (!contentType) {
+            showToast('Please select content type.', 'warning');
+            return;
+        }
+        
+        if (!contentId) {
+            showToast('Please enter content ID.', 'warning');
+            return;
+        }
+        
+        // Validate file types and sizes
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        const maxSize = 10 * 1024 * 1024; // 10 MB
+        
+        let invalidFiles = [];
+        let oversizedFiles = [];
+        let totalSize = 0;
+        
+        selectedFiles.forEach(file => {
+            totalSize += file.size;
+            if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
+                invalidFiles.push(file.name);
+            }
+            if (file.size > maxSize) {
+                oversizedFiles.push(file.name);
+            }
+        });
+        
+        if (totalSize > 10 * 1024 * 1024) {
+            showToast('Total file size exceeds 10 MB limit.', 'error');
+            return;
+        }
+        
+        if (invalidFiles.length > 0) {
+            showToast(`Invalid file types: ${invalidFiles.join(', ')}`, 'error');
+            return;
+        }
+        
+        if (oversizedFiles.length > 0) {
+            showToast(`Files too large (max 10MB each): ${oversizedFiles.join(', ')}`, 'error');
+            return;
+        }
+        
+        // Create FormData
+        const formData = new FormData();
+        selectedFiles.forEach(file => {
+            formData.append('files[]', file);
+        });
+        formData.append('content_type', contentType);
+        formData.append('content_id', contentId);
+        
+        // Disable button and show loading
+        startUploadBtn.disabled = true;
+        startUploadBtn.classList.add('btn-loading');
+        startUploadBtn.querySelector('.upload-text').classList.add('d-none');
+        startUploadBtn.querySelector('.upload-loading').classList.remove('d-none');
+        
+        // Show progress bar
+        if (uploadProgress) {
+            uploadProgress.parentElement.parentElement.style.display = 'block';
+            uploadProgress.style.width = '0%';
+        }
+        
+        console.log('Sending upload request...');
+        
+        // Simulate progress (you can remove this in production)
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += 10;
+            if (uploadProgress && progress <= 90) {
+                uploadProgress.style.width = progress + '%';
+            }
+        }, 300);
+        
+        // Send upload request
+        fetch('upload_handler.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            clearInterval(progressInterval);
+            console.log('Upload response:', data);
+            
+            if (uploadProgress) {
+                uploadProgress.style.width = '100%';
+            }
+            
+            if (data.success) {
+                showToast(data.message, 'success');
+                
+                // Reset form
+                selectedFiles = [];
+                fileInput.value = '';
+                if (contentIdInput) contentIdInput.value = '';
+                if (contentTypeSelect) contentTypeSelect.value = '';
+                displaySelectedFiles();
+                
+                // Close modal after delay
+                setTimeout(() => {
+                    const modal = bootstrap.Modal.getInstance(uploadModal);
+                    if (modal) modal.hide();
+                    
+                    // Refresh file list
+                    if (typeof handleSearch === 'function') {
+                        handleSearch();
+                    } else {
+                        location.reload();
+                    }
+                }, 1500);
+            } else {
+                showToast(data.message || 'Upload failed.', 'error');
+                if (uploadProgress) {
+                    uploadProgress.parentElement.parentElement.style.display = 'none';
+                }
+            }
+        })
+        .catch(error => {
+            clearInterval(progressInterval);
+            console.error('Upload error:', error);
+            showToast('Server not responding.', 'error');
+            if (uploadProgress) {
+                uploadProgress.parentElement.parentElement.style.display = 'none';
+            }
+        })
+        .finally(() => {
+            startUploadBtn.disabled = false;
+            startUploadBtn.classList.remove('btn-loading');
+            startUploadBtn.querySelector('.upload-text').classList.remove('d-none');
+            startUploadBtn.querySelector('.upload-loading').classList.add('d-none');
+        });
+    });
+    
+    // Reset on modal close
+    uploadModal.addEventListener('hidden.bs.modal', function() {
+        selectedFiles = [];
+        fileInput.value = '';
+        if (contentIdInput) contentIdInput.value = '';
+        if (contentTypeSelect) contentTypeSelect.value = '';
+        displaySelectedFiles();
+        startUploadBtn.disabled = true;
+        startUploadBtn.innerHTML = '<span class="upload-text"><i class="bi bi-cloud-upload me-2"></i>Upload Now</span><span class="upload-loading d-none"><span class="spinner-border spinner-border-sm me-2"></span>Uploading...</span>';
+        
+        if (uploadProgress) {
+            uploadProgress.parentElement.parentElement.style.display = 'none';
+            uploadProgress.style.width = '0%';
+        }
+    });
+});

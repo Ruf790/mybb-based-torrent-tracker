@@ -1080,21 +1080,22 @@ function dltable($name, $arr, $torrent, $is_seeders = false)
 
     $totalcount = is_array($arr) ? count($arr) : 0;
     
-    // Заголовок секции
-    $p = '<div class="d-flex align-items-center mb-4">
-            <div class="bg-primary bg-opacity-10 rounded-circle p-3 me-3">
-                <i class="bi bi-people-fill text-primary fs-2"></i>
+    // Минималистичный заголовок
+    $p = '<div class="peers-header mb-4">
+            <div class="d-flex align-items-center">
+                <h4 class="fw-light mb-0 me-3">' . htmlspecialchars($name) . '</h4>
+                <div class="d-flex gap-2">
+                    <span class="badge bg-dark rounded-0 px-3 py-2">' . $totalcount . ' peers</span>
+                    ' . ($is_seeders ? '<span class="badge bg-success rounded-0 px-3 py-2">SEEDING</span>' : '<span class="badge bg-danger rounded-0 px-3 py-2">LEECHING</span>') . '
+                </div>
             </div>
-            <div>
-                <h4 class="fw-bold mb-1">' . htmlspecialchars($name) . '</h4>
-                <p class="text-muted mb-0"><i class="bi bi-person-check me-1"></i>' . htmlspecialchars((string)$totalcount) . ' active peers</p>
-            </div>
+            <hr class="my-3 opacity-25">
           </div>';
 
     if ($totalcount <= 0) {
-        $p .= '<div class="text-center py-5 bg-light rounded-3">
-                 <i class="bi bi-inbox display-4 text-muted mb-3"></i>
-                 <p class="text-muted fs-5">No peers currently connected</p>
+        $p .= '<div class="text-center py-5 bg-light">
+                 <i class="bi bi-cloud-slash fs-1 text-secondary opacity-25"></i>
+                 <p class="text-muted mt-3">No active peers</p>
                </div>';
         return $p;
     }
@@ -1102,97 +1103,178 @@ function dltable($name, $arr, $torrent, $is_seeders = false)
     $now = TIMENOW;
     include_once(INC_PATH . '/functions_ratio.php');
 
-    // Заголовки таблицы
-    $table_headers = '';
-    if ($is_seeders) {
-        $userLabel       = '<i class="bi bi-person-circle me-2"></i>' . ($lang->global['user'] ?? 'User');
-        $connectableLabel= '<i class="bi bi-wifi me-2"></i>' . ($lang->details['connectable'] ?? 'Connectable');
-        $uploadedLabel   = '<i class="bi bi-cloud-arrow-up me-2"></i>' . ($lang->details['uploaded'] ?? 'Uploaded');
-        $upRateLabel     = '<i class="bi bi-speedometer me-2"></i>' . ($lang->details['rate'] ?? 'Up Rate');
-        $downloadedLabel = '<i class="bi bi-cloud-arrow-down me-2"></i>' . ($lang->details['downloaded'] ?? 'Downloaded');
-        $downRateLabel   = '<i class="bi bi-speedometer2 me-2"></i>' . ($lang->details['rate'] ?? 'Down Rate');
-        $ratioLabel      = '<i class="bi bi-percent me-2"></i>' . ($lang->details['ratio'] ?? 'Ratio');
-        $completedLabel  = '<i class="bi bi-check-circle me-2"></i>' . ($lang->details['completed'] ?? 'Completed');
-        $connectedLabel  = '<i class="bi bi-clock-history me-2"></i>' . ($lang->details['connected'] ?? 'Connected');
-        $idleLabel       = '<i class="bi bi-hourglass-split me-2"></i>' . ($lang->details['idle'] ?? 'Idle');
-        $clientLabel     = '<i class="bi bi-laptop me-2"></i>' . ($lang->details['client'] ?? 'Client');
-
-        $table_headers = <<<HTML
-        <thead class="bg-gradient-primary text-white">
-            <tr>
-                <th scope="col" class="ps-4 py-3 border-0">{$userLabel}</th>
-                <th scope="col" class="text-center py-3 border-0">{$connectableLabel}</th>
-                <th scope="col" class="text-end py-3 border-0">{$uploadedLabel}</th>
-                <th scope="col" class="text-end py-3 border-0">{$upRateLabel}</th>
-                <th scope="col" class="text-end py-3 border-0">{$downloadedLabel}</th>
-                <th scope="col" class="text-end py-3 border-0">{$downRateLabel}</th>
-                <th scope="col" class="text-end py-3 border-0">{$ratioLabel}</th>
-                <th scope="col" class="text-end py-3 border-0">{$completedLabel}</th>
-                <th scope="col" class="text-end py-3 border-0">{$connectedLabel}</th>
-                <th scope="col" class="text-end py-3 border-0">{$idleLabel}</th>
-                <th scope="col" class="text-start pe-4 py-3 border-0">{$clientLabel}</th>
-            </tr>
-        </thead>
-HTML;
-    }
-
-    $s = '<div class="table-responsive rounded-3 shadow-sm border-0">';
-    $s .= '<table class="table table-hover table-borderless mb-0" role="grid" aria-label="Peers Table">';
-    $s .= $table_headers;
-    $s .= '<tbody class="bg-white">';
-
-    $num = 0;
+    // Карточки вместо таблицы
+    $s = '<div class="peers-grid">';
+    
     foreach ($arr as $e) {
-        $num++;
-
-        // Безопасное приведение значений
-        $e["uploaded"]   = (int)($e["uploaded"] ?? 0);
-        $e["downloaded"] = (int)($e["downloaded"] ?? 0);
-        $e["to_go"]      = (int)($e["to_go"] ?? 0);
-        $e["st"]         = (int)($e["st"] ?? 0);
-        $e["la"]         = (int)($e["la"] ?? 0);
-        $torrent["size"] = (int)($torrent["size"] ?? 1);
-
-        // Agent безопасный
-        $agent = (string)($e["agent"] ?? '');
-        $peer_id = (string)($e["peer_id"] ?? '');
-
+        // Проверка на невидимость (invisible)
+        $is_invisible = (isset($e['invisible']) && $e['invisible'] == '1');
+        
+        // Обычный пользователь видит всех, кроме invisible
         if (!$is_mod && $CURUSER['id'] != $e['id']) {
-            $s .= '<tr><td colspan="11" class="text-center py-4 text-muted">
-                     <i class="bi bi-eye-slash display-6 opacity-50 mb-2 d-block"></i>
-                     <span class="fs-5">Anonymous User</span>
-                   </td></tr>';
-            continue;
+            // Если пользователь invisible - показываем пустую карточку
+            if ($is_invisible) {
+                $progress = 100 * (1 - ($e["to_go"] / max(1, $torrent["size"])));
+                $progress = min(100, max(0, $progress));
+                
+                $s .= '
+                <div class="peer-card mb-3 p-3 bg-white border border-light">
+                    <div class="d-flex align-items-start">
+                        <!-- Бейдж вместо аватара -->
+                        <div class="me-3">
+                            <div class="anonymous-avatar-wrapper"><i class="bi bi-incognito fs-2 text-secondary"></i></div>
+                        </div>
+                        
+                        <!-- Информация с пустыми данными -->
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="w-100">
+                                    <div class="d-flex align-items-center">
+                                        <span class="text-muted"><i class="bi bi-incognito me-2"></i>Invisible User</span>
+                                    </div>
+                                    
+                                    <div class="d-flex gap-3 small text-secondary mt-2">
+                                        <span class="text-muted"><i class="bi bi-dash-circle"></i> --</span>
+                                        <span class="text-muted"><i class="bi bi-dash-circle"></i> --</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Invisible badge -->
+                                <div class="text-end ms-3">
+                                    <span class="badge bg-secondary rounded-0 px-3 py-2">
+                                        <i class="bi bi-incognito me-1"></i>INVISIBLE
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <!-- Прогресс бар (виден всем) -->
+                            <div class="mt-2">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Progress</span>
+                                    <span class="fw-bold">' . sprintf("%.1f%%", $progress) . '</span>
+                                </div>
+                                <div class="progress" style="height: 4px;">
+                                    <div class="progress-bar bg-' . ($is_seeders ? 'success' : 'info') . '" style="width: ' . $progress . '%"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Детали с пустыми данными -->
+                            <div class="d-flex flex-wrap gap-4 mt-3 small">
+                                <div>
+                                    <span class="text-secondary d-block">Upload rate</span>
+                                    <span class="fw-bold text-muted"><i class="bi bi-dash"></i> --</span>
+                                </div>
+                                <div>
+                                    <span class="text-secondary d-block">Download rate</span>
+                                    <span class="fw-bold text-muted"><i class="bi bi-dash"></i> --</span>
+                                </div>
+                                <div>
+                                    <span class="text-secondary d-block">Connected</span>
+                                    <span class="fw-bold">' . mkprettytime($now - $e["st"]) . '</span>
+                                </div>
+                                <div>
+                                    <span class="text-secondary d-block">Idle</span>
+                                    <span class="fw-bold">' . mkprettytime($now - $e["la"]) . '</span>
+                                </div>
+                                <div>
+                                    <span class="text-secondary d-block">Client</span>
+                                    <span class="fw-bold"><i class="bi bi-incognito"></i> Hidden</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>';
+                continue;
+            }
+            
+            // Если пользователь не invisible - показываем полные данные
+            // Здесь будет код для отображения полных данных
         }
 
-        $highlight = $CURUSER["id"] == $e["id"]
-            ? ' class="bg-success bg-opacity-10 border-start border-success border-4"'
-            : ' class="border-start border-light border-4"';
-
+        $progress = 100 * (1 - ($e["to_go"] / max(1, $torrent["size"])));
+        $progress = min(100, max(0, $progress));
+        
+        // Highlight для текущего пользователя
+        $is_current = ($CURUSER["id"] == $e["id"]);
+        $card_highlight = $is_current ? 'border-primary shadow current-user-card' : 'border-light';
+        
+        // IP display из старого кода
         $ip_display = $is_mod
-            ? '<div class="mt-1"><small class="badge bg-dark bg-opacity-25 text-dark"><i class="bi bi-globe me-1"></i>' . htmlspecialchars_uni($e["ip"]) . ':<span class="fw-bold">' . (int)$e['port'] . '</span></small></div>'
-            : '<div class="mt-1"><small class="badge bg-light text-muted"><i class="bi bi-eye me-1"></i>' . preg_replace('/\.\d+\.\d+$/', '***', htmlspecialchars_uni($e["ip"])) . ':<span class="fw-bold">' . (int)$e['port'] . '</span></small></div>';
+            ? '<div class="mt-1">
+			<small class="badge bg-dark bg-opacity-25 text-dark"><i class="bi bi-globe me-1"></i>' . htmlspecialchars_uni($e["ip"]) . ':<span class="fw-bold">' . (int)$e['port'] . '</span></small>
+			
+			<span><i class="bi bi-arrow-up text-success"></i> ' . mksize($e["uploaded"] ?? 0) . '</span>
+                                <span><i class="bi bi-arrow-down text-info"></i> ' . mksize($e["downloaded"] ?? 0) . '</span>
+			
+			
+			</div>
+			  
+			
+			
+			'
+            : '<div class="mt-1">
+			<small class="badge bg-light text-muted"><i class="bi bi-eye me-1"></i>' . preg_replace('/\.\d+\.\d+$/', '***', htmlspecialchars_uni($e["ip"])) . ':<span class="fw-bold">' . (int)$e['port'] . '</span>
+			</small>
+			
+			  <span><i class="bi bi-arrow-up text-success"></i> ' . mksize($e["uploaded"] ?? 0) . '</span>
+                                <span><i class="bi bi-arrow-down text-info"></i> ' . mksize($e["downloaded"] ?? 0) . '</span>
+			
+			</div>';
 
+        // User display из старого кода
         $user_display = empty($e["username"])
             ? '<span class="text-muted"><i class="bi bi-question-circle me-2"></i>Unknown</span>'
             : ($is_mod || $torrent['anonymous'] != 'yes' || $e['id'] != $torrent['owner']
                 ? '<div class="d-flex align-items-center">
-                      <div class="bg-primary bg-opacity-10 rounded-circle p-2 me-3">
-                          <i class="bi bi-person text-primary"></i>
-                      </div>
                       <div>
                           <a href="' . get_profile_link($e['userid']) . '" class="text-decoration-none fw-bold text-dark" data-bs-toggle="tooltip" title="View profile">' . get_user_color($e["username"], $e["namestyle"]) . '</a>
                       </div>
-                   </div>' . $ip_display
+                   </div>
+				   
+				    
+				   
+				   
+				   ' . $ip_display
+				   
+				 
+				   
+				   
                 : '<span class="text-muted"><i class="bi bi-incognito me-2"></i>Anonymous</span>');
 
-        $secs = max(1, ($now - $e["st"]) - ($now - $e["la"]));
+        // Получаем аватар для обычных пользователей
+        $avatar_html = '';
+        if (!empty($e["username"]) && ($is_mod || $torrent['anonymous'] != 'yes' || $e['id'] != $torrent['owner'])) {
+            $useravatar = format_avatar($e['avatar'] ?? '', $e['avatardimensions'] ?? '', '50x50');
+            
+            if (strpos($useravatar['image'] ?? '', '<') === 0) {
+                $avatar_html = str_replace('avatar-ring2', 'avatar-ring2 avatar-placeholder-custom', $useravatar['image'] ?? '');
+            } else {
+                $avatar_html = '<img class="avatar-image-custom rounded" src="' . ($useravatar['image'] ?? '') . '" alt="" ' . ($useravatar['width_height'] ?? 'width="50" height="50"') . ' />';
+            }
+        }
+		
+		
+		$agent = (string)($e["agent"] ?? '');
+        $peer_id = (string)($e["peer_id"] ?? '');
+		
+		$agent_info = get_agent_info($agent, $peer_id);
+        $client_display = get_agent_html($agent, $peer_id, true);
+		
+		
+		$secs = max(1, ($now - $e["st"]) - ($now - $e["la"]));
         $upload_rate = mksize(($e["uploaded"] - ($e["uploadoffset"] ?? 0)) / $secs) . '/s';
-        $download_rate = $e["seeder"] == "no"
+		
+		
+		$download_rate = $e["seeder"] == "no"
             ? mksize(($e["downloaded"] - ($e["downloadoffset"] ?? 0)) / $secs) . '/s'
             : mksize(($e["downloaded"] - ($e["downloadoffset"] ?? 0)) / max(1, ($e["finishedat"] ?? $now) - $e['st'])) . '/s';
-
-        // Ratio display
+		
+		
+		$download_rate_display = '<span class="badge bg-danger bg-opacity-75 text-white"><i class="bi bi-speedometer2 me-1"></i>' . $download_rate . '</span>';
+		$upload_rate_display = '<span class="badge bg-success bg-opacity-75 text-white"><i class="bi bi-speedometer me-1"></i>' . $upload_rate . '</span>';
+		
+		
+		// Ratio display
         if ($e["downloaded"]) {
             $ratio = floor(($e["uploaded"] / $e["downloaded"]) * 1000) / 1000;
             $ratio_color = get_ratio_color($ratio);
@@ -1203,51 +1285,216 @@ HTML;
         } else {
             $ratio_display = '<span class="text-muted">---</span>';
         }
-
-        $connect_icon = $e['connectable'] == 'yes' ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger';
-        $connect_label = $e['connectable'] == 'yes' ? 'Yes' : 'No';
-        $connect_display = '<div class="d-flex align-items-center justify-content-center"><i class="bi ' . $connect_icon . ' me-2"></i><span class="fw-semibold">' . $connect_label . '</span></div>';
-
-        $uploadedSize = '<span class="fw-bold text-success">' . mksize($e["uploaded"]) . '</span>';
-        $downloadedSize = '<span class="fw-bold text-info">' . mksize($e["downloaded"]) . '</span>';
-        $completedPerc = sprintf("%.2f%%", 100 * (1 - ($e["to_go"] / max(1, $torrent["size"]))));
-        $progress_width = min(100, (1 - ($e["to_go"] / max(1, $torrent["size"]))) * 100);
-
-        $completed_display = '
-            <div class="d-flex align-items-center justify-content-end">
-                <div class="me-3 text-end">
-                    <span class="fw-bold">' . $completedPerc . '</span>
+		
+		
+		
+		
+		
+        
+        $s .= '
+        <div class="peer-card mb-3 p-3 bg-white border ' . $card_highlight . '">
+            <div class="d-flex align-items-start">
+                <!-- Аватар или иконка -->
+                <div class="me-3 position-relative">
+                    ' . ($avatar_html ?: '<div class="avatar-placeholder-custom"><i class="bi bi-person"></i></div>') . '
+                    ' . ($CURUSER["id"] == $e["id"] ? '<span class="current-user-badge">You</span>' : '') . '
                 </div>
-                <div class="progress" style="width: 60px; height: 6px;">
-                    <div class="progress-bar bg-success" style="width: ' . $progress_width . '%"></div>
+                
+                <!-- Информация -->
+                <div class="flex-grow-1">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="w-100">
+                            ' . $user_display . '
+                            
+                            
+                                
+                                
+								<div class="d-flex gap-3 small text-secondary mt-2">
+								
+								
+								
+								
+								
+								
+								
+								<div>
+                            <span class="text-secondary d-block"><i class="bi bi-speedometer me-2"></i>Up Rate</span>
+							
+							
+							
+							
+                            '.$upload_rate_display.'
+                        </div>
+                        <div>
+                            <span class="text-secondary d-block"><i class="bi bi-speedometer2 me-2"></i>Down Rate</span>
+                            '.$download_rate_display.'
+                        </div>
+						
+						
+						 <div>
+                            <span class="text-secondary d-block"><i class="bi bi-percent me-2"></i>Ratio</span>
+                            '.$ratio_display.'
+                        </div>
+						
+						
+                        <div>
+                            <span class="text-secondary d-block"><i class="bi bi-clock-history me-2"></i>Connected</span>
+                            <span class="fw-bold">' . mkprettytime($now - $e["st"]) . '</span>
+                        </div>
+                        <div>
+                            <span class="text-secondary d-block"><i class="bi bi-hourglass-split me-2"></i>Idle</span>
+                            <span class="fw-bold">' . mkprettytime($now - $e["la"]) . '</span>
+                        </div>
+						
+						
+						 <div>
+                            <span class="text-secondary d-block"><i class="bi bi-laptop me-2"></i>Client</span>
+                            <span class="fw-bold">' . $client_display . '</span>
+                        </div>
+								
+								
+								
+								
+                            </div>
+                        </div>
+                        
+                        <!-- Connectable badge -->
+                        <div class="text-end ms-3">
+                            <span class="badge ' . ($e['connectable'] == 'yes' ? 'bg-success' : 'bg-danger') . ' rounded-0 px-3 py-2">
+                                ' . ($e['connectable'] == 'yes' ? 'CONNECTABLE' : 'FIREWALLED') . '
+                            </span>
+							
+							
+						<!-- Прогресс бар -->
+                    <div class="mt-2">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span>Progress</span>
+                            <span class="fw-bold">' . sprintf("%.1f%%", $progress) . '</span>
+                        </div>
+                        <div class="progress" style="height: 4px;">
+                            <div class="progress-bar bg-' . ($is_seeders ? 'success' : 'info') . '" style="width: ' . $progress . '%"></div>
+                        </div>
+                    </div>
+
+
+						
+							
+							
+                        </div>
+                    </div>
+                    
+                    
+                    
+                    <!-- Детали -->
+                    <div class="d-flex flex-wrap gap-4 mt-3 small">
+                        
+                        
+                    </div>
                 </div>
-            </div>';
-
-        $agent_info = get_agent_info($agent, $peer_id);
-        $client_display = get_agent_html($agent, $peer_id, true);
-
-        $startTime = '<span class="badge bg-primary bg-opacity-75 text-white"><i class="bi bi-clock-history me-1"></i>' . mkprettytime($now - $e["st"]) . '</span>';
-        $lastActive = '<span class="badge bg-warning bg-opacity-75 text-white"><i class="bi bi-hourglass-split me-1"></i>' . mkprettytime($now - $e["la"]) . '</span>';
-        $upload_rate_display = '<span class="badge bg-success bg-opacity-75 text-white"><i class="bi bi-speedometer me-1"></i>' . $upload_rate . '</span>';
-        $download_rate_display = '<span class="badge bg-info bg-opacity-75 text-white"><i class="bi bi-speedometer2 me-1"></i>' . $download_rate . '</span>';
-
-        $s .= <<<HTML
-<tr{$highlight}>
-    <td class="ps-4 py-3">{$user_display}</td>
-    <td class="text-center py-3">{$connect_display}</td>
-    <td class="text-end py-3">{$uploadedSize}</td>
-    <td class="text-end py-3">{$upload_rate_display}</td>
-    <td class="text-end py-3">{$downloadedSize}</td>
-    <td class="text-end py-3">{$download_rate_display}</td>
-    <td class="text-end py-3">{$ratio_display}</td>
-    <td class="text-end py-3">{$completed_display}</td>
-    <td class="text-end py-3">{$startTime}</td>
-    <td class="text-end py-3">{$lastActive}</td>
-    <td class="pe-4 py-3">{$client_display}</td>
-</tr>
-HTML;
+            </div>
+        </div>';
     }
-
-    $s .= '</tbody></table></div>';
+    
+    $s .= '</div>';
+    
+    $s .= '<style>
+        .peers-grid { 
+            max-height: 600px; 
+            overflow-y: auto; 
+            padding-right: 8px; 
+        }
+        .peers-grid::-webkit-scrollbar {
+            width: 6px;
+        }
+        .peers-grid::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .peers-grid::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .peers-grid::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .peer-card { 
+            transition: all 0.2s ease; 
+            border-left: 3px solid transparent; 
+            border-radius: 8px;
+        }
+        .peer-card:hover { 
+            transform: translateX(5px) translateY(-2px); 
+            border-left-color: #0d6efd; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .current-user-card {
+            background: linear-gradient(to right, rgba(13, 110, 253, 0.02), transparent);
+        }
+        .avatar-image-custom { 
+            width: 50px; 
+            height: 50px; 
+            border-radius: 12px; 
+            object-fit: cover; 
+            border: 2px solid #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .avatar-placeholder-custom {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #667eea;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .current-user-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #0d6efd;
+            color: white;
+            font-size: 8px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 10px;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+		
+		.anonymous-avatar-wrapper {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #e9ecef;
+            color: #adb5bd;
+        }
+		
+        .badge {
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+        @media (max-width: 768px) {
+            .peer-card .d-flex {
+                flex-direction: column;
+            }
+            .peer-card .me-3 {
+                margin-right: 0 !important;
+                margin-bottom: 15px;
+            }
+            .d-flex.gap-4 {
+                gap: 10px !important;
+                flex-wrap: wrap;
+            }
+        }
+    </style>';
+    
     return $p . $s;
 }

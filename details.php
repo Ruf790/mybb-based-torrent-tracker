@@ -687,7 +687,7 @@ $downloaders = [];
 $query = "
     SELECT p.seeder, p.finishedat, p.downloadoffset, p.uploadoffset, p.ip, p.port, p.uploaded, p.downloaded, p.to_go, 
            p.started AS st, p.connectable, p.agent, p.peer_id, p.last_action AS la, p.userid,  
-           u.id, u.enabled, u.username, u.displaygroup, u.warned, u.donor, g.namestyle 
+           u.id, u.avatar, u.avatardimensions, u.invisible, u.enabled, u.username, u.displaygroup, u.warned, u.donor, g.namestyle 
     FROM peers p
     LEFT JOIN users u ON (p.userid=u.id)
     LEFT JOIN usergroups g ON (u.usergroup=g.gid)
@@ -1299,6 +1299,11 @@ $act = "<span id=\"bookmark" . $Torrent['id'] . "\">" .
 
 
 
+$magnetButton = ($Torrent['ts_external'] === 'yes') 
+    ? '<li><a class="dropdown-item magnet-btn" href="#" data-magnet-id="' . $id . '"><i class="bi bi-magnet me-2"></i>Magnet Link</a></li>'
+    : '';
+
+
 
 
 $details = '
@@ -1372,8 +1377,7 @@ $details = '
                             <span class="visually-hidden">Toggle Dropdown</span>
                         </button>
                         <ul class="dropdown-menu shadow">
-                            <li><a class="dropdown-item" href=""><i class="bi bi-magnet me-2"></i>Magnet Link</a></li>
-                            <li><a class="dropdown-item" href="#"><i class="bi bi-share me-2"></i>Share</a></li>
+                            '.$magnetButton.'
                             <li><hr class="dropdown-divider"></li>
                             
 							<li>
@@ -1549,19 +1553,7 @@ $details = '
                     </div>
                     <div class="file-tree">'.renderAccordion($tree).'</div>
                 </div>
-				
-				
-				
 				' . $screenContent . '		
-				
-				
-				
-				
-				
-				
-				
-				
-
                 <!-- Вкладка пиров -->
                 <div class="tab-pane fade" id="peers" role="tabpanel">
                     '.$peerstable.'
@@ -1584,64 +1576,16 @@ $details = '
     '.$showcommenttable.'
 </div>
 
+'.$magnetModal.'
+
+<script type="text/javascript" src="'.$BASEURL.'/scripts/magnet.js"></script>
+
 ';
 
 
 
 
-
-
-
 echo '
-
-<style>
-/* Анимации для модалки */
-.modal-content {
-    animation: modalSlideIn 0.3s ease-out;
-}
-
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-50px) scale(0.9);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-/* Стили для формы */
-.form-select, .form-control {
-    border-radius: 0.5rem;
-    border: 1px solid #dee2e6;
-    transition: all 0.3s ease;
-}
-
-.form-select:focus, .form-control:focus {
-    border-color: #dc3545;
-    box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
-}
-
-/* Градиент для заголовка */
-.bg-gradient {
-    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-}
-
-/* Анимация кнопки отправки */
-#submitReport {
-    transition: all 0.3s ease;
-}
-
-#submitReport:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-}
-</style>
-
-
-
-
 
 '.($is_mod ? '
 <script type="text/javascript">
@@ -1649,12 +1593,6 @@ echo '
 	l_refresh = "'.$lang->global['refresh'].'";
 </script>
 <script type="text/javascript" src="'.$BASEURL.'/scripts/quick_imdb.js"></script>' : '');
-
-
-
-
-
-
 
 
 echo $details;

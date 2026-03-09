@@ -2568,7 +2568,7 @@ else if($message['status'] == 4)
 				$tofromuid = $message['fromid'];
 				if($tofromuid == 0)
 				{
-					$tofromusername = 'Ruff Tracker Engine';
+					$tofromusername = ''.$SITENAME.' Engine';
 				}
 
 				if(!$tofromusername)
@@ -2588,7 +2588,7 @@ else if($message['status'] == 4)
 			
 			
 			
-		   $useravatar = format_avatar($avatar, $avatardimensions);
+		   $useravatar = format_avatar($avatar, $dimensions);
 
            if (strpos($useravatar['image'], '<') === 0) 
            {

@@ -137,6 +137,12 @@ if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
     }
 }
 
+
+
+
+
+
+
 require TSDIR . '/cache/categories.php';
 $subcategories = [];
 $searcincategories = [];
@@ -214,45 +220,124 @@ if (($rows = count($_categoriesC)) > 0) {
 
 eval("\$categories .= \"" . $templates->get("browse_categories2") . "\";");
 
+
+
+
+
+
+
 require_once INC_PATH . '/functions_category.php';
 $catdropdown = ts_category_list('category', ($category ?? ''), '<option value="0" style="color: gray;">' . $lang->browse['alltypes'] . '</option>', 'categories');
 
+
+
+
+
+
+
+
+
+
+
+
+$size_min = $_GET['size_min'] ?? '';
+$size_max = $_GET['size_max'] ?? '';
+
+$size_options_min = [
+    ''            => 'Min Size',
+    '536870912'   => '0.5 GB',
+    '1073741824'  => '1 GB',
+    '2147483648'  => '2 GB',
+    '5368709120'  => '5 GB',
+    '10737418240' => '10 GB',
+    '21474836480' => '20 GB',
+    '53687091200' => '50 GB',
+];
+
+$size_options_max = [
+    ''             => 'Max Size',
+    '536870912'    => '0.5 GB',
+    '1073741824'   => '1 GB',
+    '2147483648'   => '2 GB',
+    '5368709120'   => '5 GB',
+    '10737418240'  => '10 GB',
+    '21474836480'  => '20 GB',
+    '53687091200'  => '50 GB',
+    '107374182400' => '100 GB',
+];
+
+$size_min_select = '<select class="form-select" name="size_min">';
+foreach ($size_options_min as $val => $label) {
+    $selected = ($size_min == $val) ? ' selected' : '';
+    $size_min_select .= '<option value="' . $val . '"' . $selected . '>' . $label . '</option>';
+}
+$size_min_select .= '</select>';
+
+$size_max_select = '<select class="form-select" name="size_max">';
+foreach ($size_options_max as $val => $label) {
+    $selected = ($size_max == $val) ? ' selected' : '';
+    $size_max_select .= '<option value="' . $val . '"' . $selected . '>' . $label . '</option>';
+}
+$size_max_select .= '</select>';
+
+
+
+
+
 $SearchTorrent = '
-        <div class="container mt-3">
-            ' . $lang->browse['tsearch'] . '
-            <form method="post" action="' . $_SERVER['SCRIPT_NAME'] . '" name="searchtorrent" id="searchtorrent">
-            <input type="hidden" name="do" value="search" />
-            
-            <div class="form-group position-relative">
-                <input type="text" class="form-control" id="torrent-search" name="keywords" placeholder="Search for a torrent..." autocomplete="off" value="' . ($keywords ? htmlspecialchars_uni($keywords) : '') . '">
-                <div id="autocomplete-results" class="dropdown-menu"></div>
-            </div>
-            </br>
-            
-            <label>
-                <select class="form-select" id="search_type" name="search_type">
-                    <option value="t_name"' . ($search_type === 't_name' ? ' selected="selected"' : '') . '>' . $lang->browse['t_name'] . '</option>
-                    <option value="t_description"' . ($search_type === 't_description' ? ' selected="selected"' : '') . '>' . $lang->browse['t_description'] . '</option>
-                    <option value="t_tags"' . ($search_type === 't_tags' ? ' selected="selected"' : '') . '>Tags</option>
-                    <option value="t_both"' . ($search_type === 't_both' || $search_type === '' ? ' selected="selected"' : '') . '>' . $lang->browse['t_both'] . '</option>
-                    <option value="t_uploader"' . ($search_type === 't_uploader' ? ' selected="selected"' : '') . '>' . $lang->browse['t_uploader'] . '</option>
-                    <option value="t_genre"' . ($search_type === 't_genre' ? ' selected="selected"' : '') . '>' . $lang->browse['t_genre'] . '</option>
-                </select>
-            </label>
-            
-            ' . $catdropdown . '
-            
-            <label>
-                <select class="form-select" name="include_dead_torrents">
-                    <option value="yes"' . ($include_dead_torrents === 'yes' ? ' selected="selected"' : '') . '>' . $lang->browse['incdead1'] . '</option>
-                    <option value="no"' . ($include_dead_torrents === 'no' ? ' selected="selected"' : '') . '>' . $lang->browse['incdead2'] . '</option>
-                </select>
-            </label>
-            
-            <button type="submit" class="btn btn-primary" name="submit" value="' . $lang->global['buttonsearch'] . '"><i class="fa-solid fa-magnifying-glass"></i> &nbsp;Search</button>
-            </form>
+<div class="container mt-3">
+    ' . $lang->browse['tsearch'] . '
+    <form method="get" action="' . $_SERVER['SCRIPT_NAME'] . '" name="searchtorrent" id="searchtorrent">
+    <input type="hidden" name="do" value="search" />
+
+    <!-- Поиск -->
+    <div class="form-group position-relative mb-2">
+        <input type="text" class="form-control" id="torrent-search" name="keywords"
+               placeholder="Search for a torrent..." autocomplete="off"
+               value="' . ($keywords ? htmlspecialchars_uni($keywords) : '') . '">
+        <div id="autocomplete-results" class="dropdown-menu"></div>
+    </div>
+
+    <!-- Все фильтры в один ряд -->
+    <div class="row g-2 mb-2">
+        <div class="col-md-2">
+            <select class="form-select" id="search_type" name="search_type">
+                <option value="t_name"'        . ($search_type === 't_name'        ? ' selected' : '') . '>' . $lang->browse['t_name']        . '</option>
+                <option value="t_description"' . ($search_type === 't_description' ? ' selected' : '') . '>' . $lang->browse['t_description'] . '</option>
+                <option value="t_tags"'        . ($search_type === 't_tags'        ? ' selected' : '') . '>Tags</option>
+                <option value="t_both"'        . ($search_type === 't_both' || $search_type === '' ? ' selected' : '') . '>' . $lang->browse['t_both'] . '</option>
+                <option value="t_uploader"'    . ($search_type === 't_uploader'    ? ' selected' : '') . '>' . $lang->browse['t_uploader']    . '</option>
+                <option value="t_genre"'       . ($search_type === 't_genre'       ? ' selected' : '') . '>' . $lang->browse['t_genre']       . '</option>
+            </select>
         </div>
+        <div class="col-md-2">
+            ' . $catdropdown . '
+        </div>
+        <div class="col-md-2">
+            <select class="form-select" name="include_dead_torrents">
+                <option value="yes"' . ($include_dead_torrents === 'yes' ? ' selected' : '') . '>' . $lang->browse['incdead1'] . '</option>
+                <option value="no"'  . ($include_dead_torrents === 'no'  ? ' selected' : '') . '>' . $lang->browse['incdead2'] . '</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            ' . $size_min_select . '
+        </div>
+        <div class="col-md-2">
+            ' . $size_max_select . '
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="fa-solid fa-magnifying-glass"></i> Search
+            </button>
+        </div>
+    </div>
+
+    </form>
+</div>
 ';
+
+
+
 
 $WHERE = " WHERE" . ($include_dead_torrents === 'yes' ? '' : " t.visible = 'yes' AND") . " t.banned = 'no'";
 $Links[] = 'include_dead_torrents=' . ($include_dead_torrents === 'yes' ? 'yes' : 'no');
@@ -388,22 +473,30 @@ if ($category) {
 }
 
 
-if (preg_match("#\[cat.+#i", $CURUSER['notifs'] ?? '')) {
-    $defaultcategories = [];
-    foreach ($searcincategories as $catid) {
-        if (str_contains(($CURUSER['notifs'] ?? ''), '[cat' . $catid . ']')) {
-            $defaultcategories[] = $catid;
-        }
-    }
-    if (count($defaultcategories) > 0) {
-        $WHERE .= ' AND t.category IN (' . implode(',', $defaultcategories) . ')';
-        unset($defaultcategories);
-    }
-}
+
 
 if ($special_search) {
     $Links[] = 'special_search=' . htmlspecialchars_uni($special_search);
 }
+
+
+
+// Фильтр по размеру — ДО применения extraquery
+$size_min_val = ($size_min !== '') ? (int)$size_min : null;
+$size_max_val = ($size_max !== '') ? (int)$size_max : null;
+
+if ($size_min_val !== null && $size_min_val > 0) {
+    $extraquery[] = 't.size >= ?';
+    $extra_params[] = $size_min_val;
+    $Links[] = 'size_min=' . $size_min_val;
+}
+
+if ($size_max_val !== null && $size_max_val > 0) {
+    $extraquery[] = 't.size <= ?';
+    $extra_params[] = $size_max_val;
+    $Links[] = 'size_max=' . $size_max_val;
+}
+
 
 if (count($extraquery) > 0) {
     $WHERE .= ' AND ' . implode(' AND ', $extraquery);
@@ -412,6 +505,10 @@ if (count($extraquery) > 0) {
     $Links[] = 'keywords=' . urlencode(htmlspecialchars_uni($keywords));
     $Links[] = 'search_type=' . urlencode(htmlspecialchars_uni($search_type));
 }
+
+
+
+
 
 $orderby = 't.sticky, t.added DESC';
 
@@ -599,8 +696,14 @@ if ($db->num_rows($Query)) {
     }
 }
 
-if ($TotalTorrents && count($TotalTorrents)) {
+
+
+
+
+if ($TotalTorrents && count($TotalTorrents)) 
+{
     
+	
     
     $worked = 0;
     foreach($TotalTorrents as $Torrent) {
@@ -700,21 +803,21 @@ if ($TotalTorrents && count($TotalTorrents)) {
         
         $zax = cutename($Torrent['name']);
         
-        $ss = '
-        <a href="' . $SEOLink . '" data-toggle="popover" data-img="' . htmlspecialchars_uni($Torrent['t_image']) . '" title="' . $zax . '">
-            ' . (!empty($keywords) ? 
-                highlight(htmlspecialchars_uni($keywords), cutename($Torrent['name'], ($ShowImdb ? 35 : 50))) : 
-                cutename($Torrent['name'], ($ShowImdb ? 35 : 50))) . '
-        </a>';
+       /// $ss = '
+        //<a href="' . $SEOLink. '" title="' . $zax . '">
+        //    ' . (!empty($keywords) ? 
+        //        highlight(htmlspecialchars_uni($keywords), cutename($Torrent['name'])) : 
+       //         cutename($Torrent['name'])) . '
+       /// </a>';
         
-        $zz = GetTorrentTags($Torrent);
-        $ads = my_datee('relative', $Torrent['added']);
-        $meksize = mksize($Torrent['size']);
-        $para = ts_nf($Torrent['times_completed']);
+        $flags = GetTorrentTags($Torrent);
+        $added = my_datee('relative', $Torrent['added']);
+        $size = mksize($Torrent['size']);
+        $times_completed = ts_nf($Torrent['times_completed']);
         $sedars = ts_nf($Torrent['seeders']);
         $lechars = ts_nf($Torrent['leechers']);
         
-        $waza = (!$is_mod && $Torrent['owner'] != $CURUSER['id'] && $Torrent['anonymous'] === 'yes' ? '
+        $uploader = (!$is_mod && $Torrent['owner'] != $CURUSER['id'] && $Torrent['anonymous'] === 'yes' ? '
             <div>
                 <i class="bi bi-eye-slash fs-5 opacity-50 mb-2 d-block"></i>  
             </div>' : '
@@ -727,7 +830,7 @@ if ($TotalTorrents && count($TotalTorrents)) {
         
         
 		
-		$mazaa = ($is_mod ? '
+		$moderation = ($is_mod ? '
 <td align="center" class="unsortable2">
     <div class="form-check form-switch">
         <input 
@@ -743,8 +846,466 @@ if ($TotalTorrents && count($TotalTorrents)) {
 		
 		
         
-        eval("\$ListTorrentsss = \"" . $templates->get("browses") . "\";");
-        $ListTorrents .= $ListTorrentsss;
+       
+	   
+	   
+	   
+	   
+	   
+	   
+$poster_zoom = !empty($Torrent['t_image']) 
+    ? 'data-zoom="'.htmlspecialchars_uni($Torrent['t_image']).'"' 
+    : '';		
+		
+		// Постер торрента
+$poster_html = '';
+if (!empty($Torrent['t_image'])) {
+    // URL уже полный — используем как есть
+    $poster_html = '<img src="'.htmlspecialchars_uni($Torrent['t_image']).'" 
+                        alt="'.htmlspecialchars_uni($Torrent['name']).'"
+                        class="torrent-poster"
+                        loading="lazy"
+                        onerror="this.style.display=\'none\'">';
+} else {
+    $poster_html = '<div class="torrent-poster-placeholder">
+        <i class="'.$categoryIcon.' fa-2x text-muted"></i>
+    </div>';
+}
+
+
+
+
+
+
+$s = (int)$Torrent['seeders'];
+$l = (int)$Torrent['leechers'];
+$total_peers = $s + $l;
+
+
+
+
+
+
+
+
+
+	
+$ListTorrentsss = '
+<tr class="torrent-row"
+    data-id="' . (int)$Torrent['id'] . '" 
+    data-seeders="' . $s . '" 
+    data-leechers="' . $l . '"
+    data-external="' . ($Torrent['ts_external'] === 'yes' ? 'yes' : 'no') . '">	
+	
+	
+	
+	
+	
+
+
+
+
+
+<style>
+/* ===== MODERN TORRENT TABLE ===== */
+/* Enhanced typography and spacing */
+
+
+.table td, .table th {
+    font-size: 1rem;
+}
+thead th {
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+thead th i { opacity: 0.75; }
+
+
+
+/* ===== POSTER STYLES ===== */
+.torrent-poster-cell {
+    width: 85px;
+    padding: 8px 6px !important;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.torrent-poster {
+    width: 60px;
+    height: 85px;
+    object-fit: cover;
+    border-radius: 8px;
+    display: block;
+    margin: 6px auto 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+}
+
+.torrent-poster:hover {
+    transform: scale(1.08) translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+}
+
+.torrent-poster-placeholder {
+    width: 60px;
+    height: 85px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--bs-secondary-bg), var(--bs-dark-bg));
+    border-radius: 8px;
+    margin: 6px auto 0;
+    border: 1px solid rgba(var(--bs-primary-rgb), 0.2);
+}
+
+/* ===== POSTER ZOOM ENHANCED ===== */
+.poster-zoom-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 9999;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.poster-zoom-img {
+    max-width: 280px;
+    max-height: 400px;
+    object-fit: cover;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    opacity: 0;
+    transform: scale(0.85);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+}
+.poster-zoom-img.visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* ===== CATEGORY ICON ===== */
+.category-icon-link {
+    display: block;
+    text-align: center;
+    text-decoration: none;
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.category-icon-small {
+    font-size: 20px;
+    transition: all 0.2s ease;
+    display: inline-block;
+}
+
+.category-icon-small:hover {
+    transform: scale(1.2);
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+}
+
+
+.category-card:hover {
+    border-color: #3b82f6 !important;
+    background: rgba(59,130,246,0.05);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59,130,246,0.12);
+}
+
+/* ===== TORRENT INFO ===== */
+.torrent-info-cell {
+    vertical-align: middle !important;
+    padding: 10px 12px !important;
+}
+
+.torrent-title {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.torrent-name-link {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--bs-body-color);
+    text-decoration: none;
+    flex: 1;
+    line-height: 1.4;
+    transition: all 0.2s ease;
+    display: inline-block;
+}
+
+.torrent-name-link:hover { 
+    color: var(--bs-primary);
+    transform: translateX(2px);
+}
+
+.torrent-actions-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.torrent-actions-inline a {
+    opacity: 0.7;
+    transition: all 0.2s ease;
+}
+
+.torrent-actions-inline a:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.torrent-meta {
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+}
+
+.torrent-date {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(var(--bs-primary-rgb), 0.08);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.torrent-flags {
+    display: inline-flex;
+    gap: 4px;
+}
+
+/* ===== TAGS ENHANCED ===== */
+.torrent-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.torrent-tags .badge {
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+    background: linear-gradient(135deg, var(--bs-primary), var(--bs-info));
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.torrent-tags .badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+/* ===== STAT CELLS ===== */
+.torrent-stat-cell {
+    vertical-align: middle !important;
+    white-space: nowrap;
+    font-size: 0.9rem;
+    padding: 8px 6px !important;
+    text-align: center;
+    font-weight: 600;
+}
+
+.torrent-stat-cell a {
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.torrent-stat-cell a:hover {
+    transform: translateY(-1px);
+}
+
+/* Seeders specific */
+.torrent-stat-cell a.text-success:hover {
+    text-shadow: 0 0 8px rgba(40,167,69,0.3);
+}
+
+/* Leechers specific */
+.torrent-stat-cell a.text-danger:hover {
+    text-shadow: 0 0 8px rgba(220,53,69,0.3);
+}
+
+/* ===== UPLOADER ===== */
+.torrent-uploader-cell {
+    vertical-align: middle !important;
+    font-size: 0.85rem;
+    padding: 8px 8px !important;
+    max-width: 130px;
+    font-weight: 500;
+}
+
+.torrent-uploader-cell a {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+}
+
+.torrent-uploader-cell a:hover {
+    color: var(--bs-primary) !important;
+    transform: translateX(2px);
+}
+
+/* ===== ROW ANIMATIONS ===== */
+.torrent-row {
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+}
+
+.torrent-row:hover {
+    background: rgba(var(--bs-primary-rgb), 0.05) !important;
+    border-left-color: var(--bs-primary);
+    transform: translateX(2px);
+}
+
+
+/* Dead torrent */
+.torrent-row.is-dead { opacity: 0.55; filter: grayscale(0.3); }
+.torrent-row.is-dead:hover { opacity: 0.8; filter: none; }
+
+
+
+
+
+
+/* ===== RESPONSIVE DESIGN ===== */
+/* Mobile */
+@media (max-width: 768px) {
+    .torrent-poster { width: 40px; height: 55px; }
+    .torrent-poster-placeholder { width: 40px; height: 55px; }
+    .torrent-name-link { font-size: 0.9rem !important; }
+    .torrent-stat-cell { font-size: 0.85rem !important; }
+    thead th i { font-size: 1rem; }
+}
+</style>
+
+
+
+<!-- Enhanced Poster Zoom Overlay -->
+<div class="poster-zoom-overlay" id="posterZoomOverlay">
+    <img src="" alt="Poster preview" class="poster-zoom-img" id="posterZoomImg">
+</div>
+
+<!-- Category Icon + Poster -->
+<td class="torrent-poster-cell">
+    <a href="'.$SEOLinkC.'" class="category-icon-link" data-tooltip="'.$Torrent['catname'].'">
+        <i class="'.$categoryIcon.' category-icon-small"></i>
+    </a>
+    <a href="'.$SEOLink.'" class="poster-link" '.$poster_zoom.'>
+        '.$poster_html.'
+    </a>
+</td>
+
+<!-- Torrent Information -->
+<td class="torrent-info-cell">
+    <div class="torrent-title">
+        <a href="'.$SEOLink.'" 
+           class="torrent-name-link"
+           data-tooltip="'.$zax.'">
+           '.(!empty($keywords) ? 
+               highlight(htmlspecialchars_uni($keywords), cutename($Torrent['name'])) : 
+               cutename($Torrent['name'])).'
+        </a>
+        <div class="torrent-actions-inline">
+            '.$d_link.'
+            <span id="bookmark'.$count.'" data-tooltip="Bookmark">
+                '.get_torrent_bookmark_state($CURUSER['id'], (int)$Torrent['id']).'
+            </span>
+        </div>
+    </div>
+
+    <div class="torrent-meta">
+        <span class="torrent-date">
+            <i class="bi bi-calendar3 me-1"></i>'.$added.'
+        </span>
+        '.($flags ? '<span class="torrent-flags">'.$flags.'</span>' : '').'
+    </div>
+    
+    '.($keywords2 ? '<div>'.$keywords2.'</div>' : '').'
+</td>
+
+<!-- Size -->
+<td class="torrent-stat-cell text-center">
+    <i class="bi bi-hdd-stack me-1 text-muted"></i>
+    <span class="fw-bold">'.$size.'</span>
+</td>
+
+<!-- Snatched -->
+<td class="torrent-stat-cell text-center">
+    <a href="'.$BASEURL.'/viewsnatches.php?id='.$Torrent['id'].'" 
+       class="text-decoration-none text-muted"
+       data-tooltip="Total snatched count">
+        <i class="bi bi-cloud-download me-1"></i>
+        <span class="fw-semibold">'.$times_completed.'</span>
+    </a>
+</td>
+
+<!-- Seeders -->
+<td class="torrent-stat-cell text-center">
+    <span id="seeders_'.$Torrent['id'].'">
+        <a href="'.$BASEURL.'/details.php?id='.$Torrent['id'].'&tab=peers#seeders" 
+           class="text-decoration-none text-success fw-bold"
+           data-tooltip="Current seeders">
+            <i class="bi bi-arrow-up-circle-fill me-1"></i>
+            <span class="fw-bold">'.$sedars.'</span>
+        </a>
+    </span>
+</td>
+
+<!-- Leechers -->
+<td class="torrent-stat-cell text-center">
+    <span id="leechers_'.$Torrent['id'].'">
+        <a href="'.$BASEURL.'/details.php?id='.$Torrent['id'].'&tab=peers#leechers" 
+           class="text-decoration-none text-danger"
+           data-tooltip="Current leechers">
+            <i class="bi bi-arrow-down-circle-fill me-1"></i>
+            <span class="fw-bold">'.$lechars.'</span>
+        </a>
+    </span>
+</td>
+
+<!-- Uploader -->
+<td class="torrent-uploader-cell">
+    <i class="bi bi-person-badge me-1 text-muted"></i>
+    '.$uploader.'
+</td>
+
+<!-- Moderation Checkbox -->
+'.$moderation.'
+
+</tr>';
+
+
+
+	   
+	   
+	   
+	   
+	   
+	   
+	   
+	   
+	   
+		
+		
+		
+		$ListTorrents .= $ListTorrentsss;
         $count++;
     }
 } else {
@@ -763,7 +1324,84 @@ if ($TotalTorrents && count($TotalTorrents)) {
     </tr>';
 }
 
-eval("\$bedit = \"" . $templates->get("browse_edit") . "\";");
+//eval("\$bedit = \"" . $templates->get("browse_edit") . "\";");
+
+
+
+$bedit = '
+<div class="container mt-3">
+    <div class="card">
+        <div class="card-header py-2 px-3">
+            <span style="font-size:.8rem;font-weight:600;color:#94a3b8;
+                         text-transform:uppercase;letter-spacing:1px;">
+                <i class="fas fa-shield-alt me-2" style="color:#3b82f6;"></i>
+                Moderation Actions
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="row g-2 align-items-center">
+
+                <!-- Action select -->
+                <div class="col-md-4">
+                    <select class="form-select form-select-sm" name="actiontype" 
+                            id="actiontype" onchange="check_it(this)"
+                            style="border-radius:8px;border:1.5px solid #e2e8f0;font-size:.83rem;">
+                       
+					  <option value="0">▸ Select Action</option>
+<optgroup label="── Torrent ──">
+    <option value="move">↗ Move selected</option>
+    <option value="delete">✕ Delete selected</option>
+    <option value="sticky">★ Sticky / Unsticky</option>
+    <option value="visible">◎ Visible / Hidden</option>
+    <option value="banned">◌ Ban / Unban</option>
+    <option value="nuke">✦ Nuke / Unnuke</option>
+</optgroup>
+<optgroup label="── Promo ──">
+    <option value="free">◈ Free / Non-Free</option>
+    <option value="silver">◇ Silver / Non-Silver</option>
+    <option value="doubleupload">⊕ Double Upload ON/OFF</option>
+</optgroup>
+<optgroup label="── Other ──">
+    <option value="anonymous">◉ Anonymize / Deanon</option>
+    <option value="openclose">⊞ Open / Close comments</option>
+    <option value="request">◫ Request / Non-Request</option>
+</optgroup>
+                    
+					
+					</select>
+                </div>
+
+                <!-- Move category (hidden) -->
+                <div class="col-md-4" id="movetorrent" style="display:none;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:.78rem;color:#64748b;white-space:nowrap;">
+                            <i class="fas fa-folder-open me-1"></i>Move to:
+                        </span>
+                        '.$catdropdown.'
+                    </div>
+                </div>
+
+                <!-- Submit -->
+                <div class="col-auto ms-auto">
+                    <button type="submit" class="btn btn-primary"
+                            style="border-radius:8px;font-weight:600;font-size:.83rem;">
+                        <i class="fas fa-play me-1"></i> Apply
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+</form>
+';
+
+
+
+
+
+
+
 
 $ListTorrents .= '
     </tbody>
@@ -772,6 +1410,9 @@ $ListTorrents .= '
 </div>';
 
 stdhead($lang->browse['btitle']);
+
+
+
 
 $showimages = 'yes';
 $i_torrent_limit = '15';
@@ -844,11 +1485,11 @@ if ($showimages === 'yes' && $total > 0): ?>
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover_image.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/autocomplete.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/category-highlight.js"></script>';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/autocomplete.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css">';
+
 
 
 
@@ -866,5 +1507,77 @@ echo '
 ' . $SearchTorrent . '
 ' . $table . '
 ';
+
+
+
+
+?>
+<script>
+(function() {
+    const overlay = document.getElementById('posterZoomOverlay');
+    const img     = document.getElementById('posterZoomImg');
+    let timer     = null;
+
+    document.addEventListener('mouseenter', function(e) {
+        if (!e.target || !e.target.closest) return;
+        const link = e.target.closest('.poster-link[data-zoom]');
+        if (!link) return;
+
+        const src = link.dataset.zoom;
+        if (!src) return;
+
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            img.src = src;
+            img.classList.add('visible');
+        }, 150);
+    }, true);
+
+    document.addEventListener('mouseleave', function(e) {
+        if (!e.target || !e.target.closest) return;
+        const link = e.target.closest('.poster-link[data-zoom]');
+        if (!link) return;
+
+        clearTimeout(timer);
+        img.classList.remove('visible');
+        setTimeout(() => { img.src = ''; }, 200);
+    }, true);
+
+    document.addEventListener('mousemove', function(e) {
+        if (!img.classList.contains('visible')) return;
+
+        const x = e.clientX;
+        const y = e.clientY;
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+
+        const offsetX = x > W / 2 ? -300 : 20;
+        const offsetY = y > H / 2 ? -420 : 20;
+
+        img.style.position  = 'fixed';
+        img.style.left      = (x + offsetX) + 'px';
+        img.style.top       = (y + offsetY) + 'px';
+        img.style.transform = 'none';
+    });
+})();
+
+
+document.querySelectorAll('.torrent-row').forEach(row => {
+    const seeders  = parseInt(row.dataset.seeders  || 0);
+    const leechers = parseInt(row.dataset.leechers || 0);
+    const external = row.dataset.external === 'yes';
+    
+    if (seeders === 0 && leechers === 0 && !external) {
+        row.classList.add('is-dead');
+    }
+});
+
+</script>
+
+
+<?
+
+
+
 
 stdfoot();

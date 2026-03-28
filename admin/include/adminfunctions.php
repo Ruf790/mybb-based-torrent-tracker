@@ -92,93 +92,141 @@ function get_thread_link($tid, $page=0, $action='')
 
 
 
-
-function log_admin_action()
+function log_moderator_action($data, $action="")
 {
-	global $db, $mybb, $CURUSER;
+	global $mybb, $db, $CURUSER, $session;
 
-	$data = func_get_args();
-
-	if(count($data) == 1 && is_array($data[0]))
+	$fid = 0;
+	if(isset($data['fid']))
 	{
-		$data = $data[0];
+		$fid = (int)$data['fid'];
+		unset($data['fid']);
 	}
 
-	if(!is_array($data))
+	$tid = 0;
+	if(isset($data['tid']))
 	{
-		$data = array($data);
+		$tid = (int)$data['tid'];
+		unset($data['tid']);
 	}
 
-	$module = $db->escape_string($mybb->get_input('module', MyBB::INPUT_STRING));
-	$action = $db->escape_string($mybb->get_input('action', MyBB::INPUT_STRING));
-	$username = $db->escape_string($CURUSER['username']);
+	$pid = 0;
+	if(isset($data['pid']))
+	{
+		$pid = (int)$data['pid'];
+		unset($data['pid']);
+	}
+
+	$tids = array();
+	if(isset($data['tids']))
+	{
+		$tids = (array)$data['tids'];
+		unset($data['tids']);
+	}
+
+	// Any remaining extra data - we my_serialize and insert in to its own column
+	if(is_array($data))
+	{
+		$data = my_serialize($data);
+	}
+
+
 	
-	// Определяем тип действия из данных
-	$data_action = (!empty($data[0]) && is_string($data[0])) ? $data[0] : $action;
-	
-	$log_text = "";
-	
-	if($data_action == 'deletemod' && count($data) >= 4)
+	$sql_array = array(
+		"uid" => (int)$CURUSER['id'],
+		"dateline" => TIMENOW,
+		"fid" => (int)$fid,
+		"tid" => $tid,
+		"pid" => $pid,
+		"action" => $db->escape_string($action),
+		"data" => $db->escape_string($data),
+		"ipaddress" => $db->escape_binary($session->packedip)
+	);
+
+	if($tids)
 	{
-		$log_text = "Deleted moderator #{$data[1]} ({$data[2]}) from forum #{$data[3]} ({$data[4]})";
-	}
-	elseif($data_action == 'editmod' && count($data) >= 4)
-	{
-		// editmod: [0:fid, 1:forum_name, 2:mid, 3:username]
-		$log_text = "Edited moderator #{$data[2]} ({$data[3]}) in forum #{$data[0]} ({$data[1]})";
-	}
-	elseif($data_action == 'addmod' && count($data) >= 5)
-	{
-		// addmod: [0:addmod, 1:mid, 2:username, 3:fid, 4:forum_name]
-		$log_text = "Added moderator #{$data[1]} ({$data[2]}) to forum #{$data[3]} ({$data[4]})";
-	}
-	elseif($action == 'add' && $module == 'moderators')
-	{
-		if(isset($data['username']))
+		$multiple_sql_array = array();
+
+		foreach($tids as $tid)
 		{
-			$log_text = "Added user moderator: {$data['username']} to forum #{$data['fid']}";
+			$sql_array['tid'] = (int)$tid;
+			$multiple_sql_array[] = $sql_array;
 		}
-		elseif(isset($data['usergroup']))
-		{
-			$log_text = "Added group moderator: {$data['usergroup']} to forum #{$data['fid']}";
-		}
-	}
-	elseif($action == 'permissions' && count($data) >= 2)
-	{
-		$log_text = "Edited group permissions for forum #{$data[0]} ({$data[1]})";
+
+		$db->insert_query_multiple("moderatorlog", $multiple_sql_array);
 	}
 	else
 	{
-		$log_text = "Admin action: {$username} - {$module}/{$action}";
-		
-		if(!empty($data))
-		{
-			$details = array();
-			foreach($data as $key => $value)
-			{
-				if(is_scalar($value))
-				{
-					$details[] = "{$key}:{$value}";
-				}
-			}
-			
-			if(!empty($details))
-			{
-				$log_text .= " [" . implode(', ', $details) . "]";
-			}
-		}
+		$db->insert_query("moderatorlog", $sql_array);
 	}
-
-	if(mb_strlen($log_text) > 255)
-	{
-		$log_text = mb_substr($log_text, 0, 252) . '...';
-	}
-
-	$db->insert_query("sitelog", array(
-		"added" => TIMENOW,
-		"txt" => $db->escape_string($log_text)
-	));
 }
+
+
+
+function log_admin_action()
+{
+    global $db, $mybb, $CURUSER;
+
+    $data = func_get_args();
+    if (count($data) == 1 && is_array($data[0])) {
+        $data = $data[0];
+    }
+    if (!is_array($data)) {
+        $data = array($data);
+    }
+
+    $act    = $mybb->get_input('act', MyBB::INPUT_STRING);
+    $action = $mybb->get_input('action', MyBB::INPUT_STRING);
+
+    // Маппинг act → MyBB формат module/action
+    $act_map = [
+        'management'     => 'forum-management',
+        'forums'         => 'forum-management',
+        'banning'        => 'config-banning',
+        'banning2'       => 'user-banning',
+        'liftban'        => 'user-banning',
+        'users'          => 'user-users',
+        'editprofile'    => 'user-users',
+        'deleteuser'     => 'user-users',
+        'usergroups'     => 'user-groups',
+        'groups'         => 'user-groups',
+        'editgroup'      => 'user-groups',
+        'settings'       => 'config-settings',
+        'editsettings'   => 'config-settings',
+        'plugins'        => 'config-plugins',
+        'templates'      => 'style-templates',
+        'themes'         => 'style-themes',
+        'adminlog'       => 'tools-adminlog',
+        'modlog'         => 'tools-modlog',
+        'backupdb'       => 'tools-backupdb',
+        'tasks'          => 'tools-tasks',
+        'cache'          => 'tools-cache',
+        'announcements'  => 'forum-announcements',
+        'attachments'    => 'forum-attachments',
+    ];
+
+    $module = $act_map[$act] ?? $act;
+
+    $uid = !empty($CURUSER['id']) ? (int)$CURUSER['id'] : (int)$mybb->user['id'];
+
+    $log_entry = [
+        "uid"       => $uid,
+        "ipaddress" => $db->escape_binary(my_inet_pton(get_ip())),
+        "dateline"  => TIMENOW,
+        "module"    => $db->escape_string($module),
+        "action"    => $db->escape_string($action),
+        "data"      => $db->escape_string(@my_serialize($data))
+    ];
+
+    $db->insert_query("adminlog", $log_entry);
+}
+
+
+
+
+
+
+
 
 
 
@@ -188,9 +236,9 @@ function log_admin_action()
 
 function join_usergroup($uid, $joingroup)
 {
-	global $db, $mybb;
+	global $db, $mybb, $CURUSER;
 
-	if($uid == $mybb->user['uid'])
+	if($uid == $CURUSER['id'])
 	{
 		$user = $mybb->user;
 	}
@@ -863,29 +911,84 @@ function get_user_by_username($username, $options=array())
 
 
 
-
 function output_inline_error($errors)
 {
-		global $lang;
+    global $lang;
 
-		if(!is_array($errors))
-		{
-			$errors = array($errors);
-		}
-		
-		
-		echo "<div class=\"container mt-3\">\n";
-		echo "<div class=\"red_alert\">\n";
-		
-		echo "<p><em>The following errors were encountered:</em></p>\n";
-		echo "<ul>\n";
-		foreach($errors as $error)
-		{
-			echo "<li>{$error}</li>\n";
-		}
-		echo "</ul>\n";
-		echo "</div></div>\n";
+    if(!is_array($errors))
+    {
+        $errors = array($errors);
+    }
+
+    $errors = array_filter($errors);
+    
+    if(empty($errors))
+    {
+        return;
+    }
+
+    echo '<div class="container mt-3">
+    <div class="error-alert">
+        <div class="error-title">
+            <i class="fas fa-exclamation-circle"></i>
+            <em>The following errors were encountered:</em>
+        </div>
+        <ul>';
+    
+    foreach($errors as $error)
+    {
+        echo '<li>' . htmlspecialchars_uni($error) . '</li>';
+    }
+    
+    echo '</ul>
+    </div>
+    </div>
+    
+    <style>
+        .error-alert {
+            background: #fff5f5;
+            border-left: 4px solid #dc3545;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .error-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #dc3545;
+            font-weight: 500;
+            margin-bottom: 0.75rem;
+        }
+        .error-title i {
+            font-size: 1.1rem;
+        }
+        .error-alert ul {
+            margin: 0;
+            padding-left: 1.5rem;
+            color: #721c24;
+        }
+        .error-alert li {
+            margin: 0.25rem 0;
+        }
+        @media (prefers-color-scheme: dark) {
+            .error-alert {
+                background: rgba(220, 38, 38, 0.1);
+            }
+            .error-title {
+                color: #f87171;
+            }
+            .error-alert li {
+                color: #fecaca;
+            }
+        }
+    </style>';
 }
+
+
+
+
+
 
 
 /**
@@ -961,8 +1064,6 @@ function output_nav_tabs(array $tabs, string $active_tab): void
 </style>
     <?php
 }
-
-
 
 
 
@@ -2001,8 +2102,7 @@ function delete_attachments ($pid, $tid, $aid = '')
 {
     global $f_upload_path, $db;
     $delete_files = array ();
-    //$query = $db->sql_query ('SELECT a_name FROM ' . TSF_PREFIX . 'attachments WHERE a_pid = ' . $db->escape_string($pid) . ' AND a_tid = ' . $db->escape_string($tid));
-	
+    
 	
 	$query = $db->simple_select("tsf_attachments", "a_name", "a_pid='{$pid}' AND a_tid='{$tid}'");
 	
@@ -2026,7 +2126,7 @@ function delete_attachments ($pid, $tid, $aid = '')
       }
     }
 
-    $db->sql_query ('DELETE FROM ' . TSF_PREFIX . 'attachments WHERE a_pid = ' . $db->escape_string($pid) . ' AND a_tid = ' . $db->escape_string($tid) . ($aid ? ' AND a_id = ' . $db->escape_string($aid) : ''));
+    $db->sql_query ('DELETE FROM tsf_attachments WHERE a_pid = ' . $db->escape_string($pid) . ' AND a_tid = ' . $db->escape_string($tid) . ($aid ? ' AND a_id = ' . $db->escape_string($aid) : ''));
 }
 
 

@@ -13,17 +13,62 @@ if (!defined('IN_CRON')) {
 /**
  * Log system events to `sitelog` table
  */
-function savelog(string $text): void
+
+function savelog(string $Text, string $category = '', int $level = 0): void
 {
-    global $db;
+    global $db, $CURUSER;
 
-    $insert = [
-        'added' => TIMENOW,
-        'txt'   => $db->escape_string($text)
-    ];
+    // Определяем category автоматически если не передана
+    if (empty($category)) {
+        $text_lower = strtolower($Text);
 
-    $db->insert_query('sitelog', $insert);
+        if (strpos($text_lower, 'screenshot') !== false) {
+            $category = 'screenshot';
+        } elseif (strpos($text_lower, 'torrent') !== false || strpos($text_lower, 'uploaded') !== false) {
+            $category = 'torrent';
+        } elseif (strpos($text_lower, 'seedbonus') !== false) {
+            $category = 'cron';
+        } elseif (strpos($text_lower, 'sql error') !== false || strpos($text_lower, '[sql error]') !== false) {
+            $category = 'error';
+            $level = 2; // автоматически danger
+        } elseif (strpos($text_lower, 'attempt') !== false || strpos($text_lower, 'unwanted') !== false) {
+            $category = 'security';
+            $level = 2;
+        } elseif (strpos($text_lower, 'settings updated') !== false) {
+            $category = 'settings';
+            $level = 1;
+        } elseif (strpos($text_lower, 'banned') !== false) {
+            $category = 'ban';
+            $level = 1;
+        } elseif (strpos($text_lower, 'deleted') !== false) {
+            $category = 'deletion';
+            $level = 1;
+        } elseif (strpos($text_lower, 'mail') !== false) {
+            $category = 'mail';
+        } elseif (strpos($text_lower, 'cron') !== false || strpos($text_lower, 'task') !== false) {
+            $category = 'cron';
+        } elseif (strpos($text_lower, 'warning') !== false) {
+            $category = 'warning';
+            $level = 1;
+        } else {
+            $category = 'general';
+        }
+    }
+
+    // Определяем uid
+    $uid = !empty($CURUSER['id']) ? (int)$CURUSER['id'] : 0;
+
+
+    $db->insert_query("sitelog", [
+        "added"     => TIMENOW,
+        "uid"       => $uid,
+        "ipaddress" => $db->escape_binary(my_inet_pton(get_ip())),
+        "txt"       => $db->escape_string($Text),
+        "category"  => $db->escape_string($category),
+        "level"     => $level,
+    ]);
 }
+
 
 /**
  * Log cron execution data to `ts_cron_log`

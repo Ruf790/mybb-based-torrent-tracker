@@ -270,11 +270,17 @@ function generateEditButton(int $pid, array $row, object $lang): string
  */
 function generateDeleteButton(array $row): string
 {
+    // Оставляем HTML как есть — strip_tags убираем
+    $preview = htmlspecialchars($row['text'] ?? '');
+
     return '
   <a href="#" 
      class="postbit_qdelete postbit_mirage dropdown-item" 
      data-commentid="' . $row['id'] . '" 
-     data-torrentid="' . $row['torrentid'] . '" 
+     data-torrentid="' . $row['torrentid'] . '"
+     data-author="' . htmlspecialchars($row['username'] ?? 'Unknown') . '"
+     data-date="' . (isset($row['dateline']) ? date('d M Y, H:i', $row['dateline']) : '') . '"
+     data-preview="' . $preview . '"
      data-bs-toggle="modal" data-bs-target="#deleteCommentModal">
      <i class="fa-solid fa-trash"></i>&nbsp;Delete
   </a>';

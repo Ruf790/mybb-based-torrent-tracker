@@ -1290,6 +1290,8 @@ function dltable($name, $arr, $torrent, $is_seeders = false)
 		
 		
 		
+		
+		
         
         $s .= '
         <div class="peer-card mb-3 p-3 bg-white border ' . $card_highlight . '">
@@ -1358,11 +1360,12 @@ function dltable($name, $arr, $torrent, $is_seeders = false)
                             </div>
                         </div>
                         
-                        <!-- Connectable badge -->
-                        <div class="text-end ms-3">
+                       <!-- Connectable badge -->
+                           <div class="text-end ms-3">
                             <span class="badge ' . ($e['connectable'] == 'yes' ? 'bg-success' : 'bg-danger') . ' rounded-0 px-3 py-2">
                                 ' . ($e['connectable'] == 'yes' ? 'CONNECTABLE' : 'FIREWALLED') . '
                             </span>
+
 							
 							
 						<!-- Прогресс бар -->

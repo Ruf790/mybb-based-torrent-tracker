@@ -10,50 +10,491 @@
 
 
 
-function inline_error($errors, $title="", $json_data=array())
+/**
+ * Display inline errors with beautiful styling
+ * 
+ * @param array|string $errors Array or string of errors
+ * @param string $title Optional custom title
+ * @param array $json_data Optional data for AJAX responses
+ * @return string HTML formatted errors or JSON response
+ */
+function inline_error222222222($errors, $title = "", $json_data = array())
 {
-	global $theme, $mybb, $db, $lang, $templates, $charset;
+    global $theme, $mybb, $db, $lang, $templates, $charset;
 
-	if(!$title)
-	{
-		$title = $lang->global['please_correct_errors'];
-	}
+    // Set default title
+    if(empty($title))
+    {
+        $title = $lang->global['please_correct_errors'] ?? 'Please correct the following errors:';
+    }
 
-	if(!is_array($errors))
-	{
-		$errors = array($errors);
-	}
+    // Convert to array if string
+    if(!is_array($errors))
+    {
+        $errors = array($errors);
+    }
 
-	// AJAX error message?
-	if($mybb->input['ajax'])
-	{
-		// Send our headers.
-		@header("Content-type: application/json; charset={$charset}");
+    // Remove empty errors
+    $errors = array_filter($errors);
 
-		if(empty($json_data))
-		{
-			echo json_encode(array("errors" => $errors));
-		}
-		else
-		{
-			echo json_encode(array_merge(array("errors" => $errors), $json_data));
-		}
-		exit;
-	}
+    // If no errors, return empty string
+    if(empty($errors))
+    {
+        return '';
+    }
 
-	$errorlist = '';
+    // AJAX error message
+    if(!empty($mybb->input['ajax']))
+    {
+        @header("Content-type: application/json; charset={$charset}");
+        
+        $response = array("errors" => $errors);
+        if(!empty($json_data))
+        {
+            $response = array_merge($response, $json_data);
+        }
+        
+        echo json_encode($response);
+        exit;
+    }
 
-	foreach($errors as $error)
-	{
-		$errorlist .= $error;
-	}
+    // Build error items
+    $error_items = '';
+    foreach($errors as $error)
+    {
+        $error_items .= '
+        <li class="inline-error-item">
+            <span class="inline-error-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </span>
+            <span class="inline-error-text">' . htmlspecialchars_uni($error) . '</span>
+        </li>';
+    }
 
-	$errors = '<div class="red_alert">
-           <i class="fa-solid fa-circle-exclamation"></i> &nbsp;'.$errorlist.'
-            </div>';
-
-	return $errors;
+    // Return beautiful error block
+    return '
+    <style>
+        @keyframes inlineErrorSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes inlineErrorPulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+        
+        .inline-error-container {
+            background: linear-gradient(135deg, rgba(220,53,69,.08) 0%, rgba(220,53,69,.03) 100%);
+            border: 1px solid rgba(220,53,69,.3);
+            border-left: 4px solid #dc3545;
+            border-radius: 12px;
+            padding: 18px 22px;
+            margin-bottom: 1.5rem;
+            backdrop-filter: blur(2px);
+            animation: inlineErrorSlideIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            transition: all 0.3s ease;
+        }
+        
+        .inline-error-container:hover {
+            transform: translateX(2px);
+            box-shadow: 0 4px 12px rgba(220,53,69,0.15);
+        }
+        
+        .inline-error-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            color: #dc3545;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(220,53,69,.2);
+        }
+        
+        .inline-error-title svg {
+            flex-shrink: 0;
+            animation: inlineErrorPulse 0.6s ease-in-out;
+        }
+        
+        .inline-error-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .inline-error-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13.5px;
+            color: #721c24;
+            line-height: 1.45;
+            background: rgba(220,53,69,.04);
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .inline-error-item:hover {
+            background: rgba(220,53,69,.1);
+            transform: translateX(4px);
+        }
+        
+        .inline-error-icon {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+        }
+        
+        .inline-error-icon svg {
+            color: #dc3545;
+        }
+        
+        .inline-error-text {
+            flex: 1;
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .inline-error-container {
+                background: linear-gradient(135deg, rgba(220,53,69,.12) 0%, rgba(220,53,69,.05) 100%);
+                border-color: rgba(220,53,69,.5);
+            }
+            
+            .inline-error-title {
+                color: #f87171;
+                border-bottom-color: rgba(248,113,113,.3);
+            }
+            
+            .inline-error-item {
+                color: #fecaca;
+                background: rgba(248,113,113,.08);
+            }
+            
+            .inline-error-item:hover {
+                background: rgba(248,113,113,.15);
+            }
+            
+            .inline-error-icon svg {
+                color: #f87171;
+            }
+        }
+        
+        /* Mobile optimization */
+        @media (max-width: 768px) {
+            .inline-error-container {
+                padding: 14px 16px;
+                margin-bottom: 1rem;
+            }
+            
+            .inline-error-title {
+                font-size: 14px;
+                gap: 8px;
+            }
+            
+            .inline-error-item {
+                font-size: 12.5px;
+                padding: 6px 10px;
+                gap: 8px;
+            }
+        }
+    </style>
+    <div class="inline-error-container" role="alert">
+        <div class="inline-error-title">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span>' . htmlspecialchars_uni($title) . '</span>
+        </div>
+        <ul class="inline-error-list">
+            ' . $error_items . '
+        </ul>
+    </div>';
 }
+
+
+
+
+
+function inline_error($errors, $title = "", $json_data = array())
+{
+    global $theme, $mybb, $db, $lang, $templates, $charset;
+
+    // Set default title
+    if(empty($title))
+    {
+        $title = $lang->global['please_correct_errors222'] ?? 'Please correct the following errors:';
+    }
+
+    // Convert to array if string
+    if(!is_array($errors))
+    {
+        $errors = array($errors);
+    }
+
+    // Remove empty errors
+    $errors = array_filter($errors);
+
+    // If no errors, return empty string
+    if(empty($errors))
+    {
+        return '';
+    }
+
+    // AJAX error message
+    if(!empty($mybb->input['ajax']))
+    {
+        @header("Content-type: application/json; charset={$charset}");
+        
+        $response = array("errors" => $errors);
+        if(!empty($json_data))
+        {
+            $response = array_merge($response, $json_data);
+        }
+        
+        echo json_encode($response);
+        exit;
+    }
+
+    // Build error items
+    $error_items = '';
+    foreach($errors as $error)
+    {
+        $error_items .= '
+        <div class="error-message-box mb-2">
+            <div class="d-flex align-items-start gap-3">
+                <div class="message-icon">
+                    <i class="bi bi-exclamation-circle-fill"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <p class="mb-0 fw-semibold">' . htmlspecialchars_uni($error) . '</p>
+                </div>
+            </div>
+        </div>';
+    }
+
+    // Return beautiful error block in card style
+    return '
+    <style>
+        :root {
+            --danger-gradient: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            --success-gradient: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        }
+        
+        .error-card-wrapper {
+            max-width: 100%;
+            margin: 0 auto;
+            animation: slideUp 0.5s ease-out;
+        }
+        
+        .error-card {
+            position: relative;
+            background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+            border-radius: 20px !important;
+            transition: transform 0.3s ease;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .error-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .gradient-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #ff6b6b, #dc3545, #c82333);
+            animation: gradientShift 3s ease infinite;
+        }
+        
+        .error-bg-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: radial-gradient(circle at 10px 10px, rgba(220, 53, 69, 0.05) 2px, transparent 2px);
+            background-size: 30px 30px;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        
+        .card-header-error {
+            background: var(--danger-gradient);
+            color: white;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .error-icon2 {
+            font-size: 2.5rem;
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        .error-title {
+            background: linear-gradient(45deg, #dc3545, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 800 !important;
+            letter-spacing: -2px;
+        }
+        
+        .error-subtitle {
+            color: #343a40;
+            font-weight: 600;
+        }
+        
+        .error-message-box {
+            background: rgba(220, 53, 69, 0.05);
+            border-left: 4px solid #dc3545;
+            border-radius: 10px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .error-message-box:hover {
+            background: rgba(220, 53, 69, 0.08);
+            transform: translateX(5px);
+        }
+        
+        .message-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(220, 53, 69, 0.1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: #dc3545;
+        }
+        
+        /* Animations */
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .error-card {
+                background: linear-gradient(135deg, #2b2b2b 0%, #1a1a1a 100%);
+            }
+            .error-subtitle {
+                color: #e0e0e0;
+            }
+            .error-message-box {
+                background: rgba(220, 53, 69, 0.1);
+            }
+            .error-message-box:hover {
+                background: rgba(220, 53, 69, 0.15);
+            }
+        }
+        
+        /* Mobile optimization */
+        @media (max-width: 768px) {
+            .card-header-error {
+                padding: 15px;
+            }
+            .error-icon2 {
+                font-size: 2rem;
+            }
+            .error-title {
+                font-size: 1.5rem !important;
+            }
+            .error-message-box {
+                padding: 0.75rem;
+            }
+            .message-icon {
+                width: 32px;
+                height: 32px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+    
+    <div class="error-card-wrapper">
+        <div class="error-card">
+            <div class="gradient-line"></div>
+            <div class="error-bg-pattern"></div>
+            <div class="card-header-error">
+                <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
+                <div>
+                    <h2 class="mb-0 fw-bold" style="color: white;">' . htmlspecialchars_uni($title) . '</h2>
+                    <p class="mb-0 opacity-75">Please review and fix the issues below</p>
+                </div>
+            </div>
+            <div class="card-body p-4">
+                <div class="mb-3">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-list-check fs-4" style="color: #dc3545;"></i>
+                        <h5 class="mb-0 fw-semibold">Issues Found (' . count($errors) . ')</h5>
+                    </div>
+                    ' . $error_items . '
+                </div>
+            </div>
+        </div>
+    </div>';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -196,6 +637,8 @@ function forum_password_validated($forum, $ignore_empty=false, $check_parents=fa
 
 
 
+
+
 function forum_permissions($fid=0, $uid=0, $gid=0)
 {
 	global $db, $cache, $groupscache, $forum_cache, $fpermcache, $mybb, $cached_forum_permissions_permissions, $cached_forum_permissions, $CURUSER;
@@ -278,6 +721,8 @@ function forum_permissions($fid=0, $uid=0, $gid=0)
 */
 function fetch_forum_permissions($fid, $gid, $groupperms)
 {
+	
+	
 	global $groupscache, $forum_cache, $fpermcache, $mybb, $fpermfields;
 
     if(isset($gid))
@@ -356,6 +801,7 @@ function fetch_forum_permissions($fid, $gid, $groupperms)
 
 	return $current_permissions;
 }
+
 
 
 
@@ -1768,124 +2214,89 @@ function update_forum_counters($fid, $changes=array())
   
   
   
-  function build_forum_jump($pid=0, $selitem=0, $addselect=1, $depth="", $showextras=1, $showall=false, $permissions="", $name="fid")
-  {
-	global $forum_cache, $jumpfcache, $permissioncache, $mybb, $forumjump, $forumjumpbits, $gobutton, $theme, $templates, $lang;
+function build_forum_jump(int|string $pid = 0, int|string $selitem = 0, int|string $addselect = 1, string $depth = "", int|string $showextras = 1, bool $showall = false, string $permissions = "", string $name = "fid"): string
+{
+    global $forum_cache, $jumpfcache, $permissioncache, $mybb, $forumjump, $forumjumpbits, $gobutton, $theme, $templates, $lang;
 
-	$pid = (int)$pid;
+    $pid        = (int)$pid;
+    $selitem    = (int)$selitem;
+    $addselect  = (int)$addselect;
+    $showextras = (int)$showextras;
 
-	if(!is_array($jumpfcache))
-	{
-		if(!is_array($forum_cache))
-		{
-			cache_forums();
-		}
+    if (!is_array($jumpfcache)) {
+        if (!is_array($forum_cache)) {
+            cache_forums();
+        }
+        foreach ($forum_cache as $fid => $forum) {
+            if ($forum['active'] != 0) {
+                $jumpfcache[$forum['pid']][$forum['disporder']][$forum['fid']] = $forum;
+            }
+        }
+    }
 
-		foreach($forum_cache as $fid => $forum)
-		{
-			if($forum['active'] != 0)
-			{
-				$jumpfcache[$forum['pid']][$forum['disporder']][$forum['fid']] = $forum;
-			}
-		}
-	}
+    if (!is_array($permissioncache)) {
+        $permissioncache = forum_permissions();
+    }
 
-	if(!is_array($permissioncache))
-	{
-		$permissioncache = forum_permissions();
-	}
+    // Для рекурсивных вызовов собираем только options
+    $bits = '';
 
-	if(isset($jumpfcache[$pid]) && is_array($jumpfcache[$pid]))
-	{
-		foreach($jumpfcache[$pid] as $main)
-		{
-			foreach($main as $forum)
-			{
-				$perms = $permissioncache[$forum['fid']];
+    if (isset($jumpfcache[$pid]) && is_array($jumpfcache[$pid])) {
+        foreach ($jumpfcache[$pid] as $main) {
+            foreach ($main as $forum) {
+                $optionselected = ($selitem == $forum['fid']) ? 'selected="selected"' : '';
+                $forum['name']  = htmlspecialchars_uni(strip_tags($forum['name']));
+                $bits .= '<option value="' . $forum['fid'] . '" ' . $optionselected . '>' . $depth . ' ' . $forum['name'] . '</option>';
+                if (!empty($forum_cache[$forum['fid']])) {
+                    $bits .= build_forum_jump($forum['fid'], $selitem, 0, $depth . "--", $showextras, $showall, $permissions, $name);
+                }
+            }
+        }
+    }
 
-				$hideprivateforums = "1";
-				
-				//if($forum['fid'] != "0" && ($perms['canview'] != 0 || $hideprivateforums == 0) && $forum['linkto'] == '' && ($forum['showinjump'] != 0 || $showall == true))
-				///{
-					$optionselected = "";
+    // Рекурсивный вызов — возвращаем только options
+    if (!$addselect) {
+        return $bits;
+    }
 
-					if($selitem == $forum['fid'])
-					{
-						$optionselected = 'selected="selected"';
-					}
+    // Основной вызов — оборачиваем в select/form
+    if ($showextras == 0) {
+        $forumjump = '<select name="' . $name . '" class="form-select form-select-sm border pe-5 w-auto">' . $bits . '</select>';
+    } else {
+        $gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;Go</button>';
 
-					$forum['name'] = htmlspecialchars_uni(strip_tags($forum['name']));
+        if (strpos(FORUM_URL, '.html') !== false) {
+            $forum_link = "'" . str_replace('{fid}', "'+option+'", FORUM_URL) . "'";
+        } else {
+            $forum_link = "'" . str_replace('{fid}', "'+option", FORUM_URL);
+        }
 
-					$forumjumpbits .= '<option value="'.$forum['fid'].'" '.$optionselected.'>'.$depth.' '.$forum['name'].'</option>';
-
-					if($forum_cache[$forum['fid']])
-					{
-						$newdepth = $depth."--";
-						$forumjumpbits .= build_forum_jump($forum['fid'], $selitem, 0, $newdepth, $showextras, $showall);
-					}
-				//}
-			}
-		}
-	}
-
-	if($addselect)
-	{
-		if($showextras == 0)
-		{
-			$templatez = '<select name="'.$name.'" class="form-select form-select-sm border pe-5 w-auto">'.$forumjumpbits.'</select>';
-		}
-		else
-		{
-			$gobutton = '<button type="submit" class="btn btn-sm btn-primary rounded" value="Go"><i class="fa-solid fa-shuffle"></i> &nbsp;Go</button>';
-			
-			$templatez = '
-		  <form action="forumdisplay.php" method="get">
-
-<select name="'.$name.'" class="form-select form-select-sm border pe-5 w-auto">
+        $forumjump = '
+<form action="forumdisplay.php" method="get">
+<select name="' . $name . '" class="form-select form-select-sm border pe-5 w-auto">
 <option value="-4">Private Messages</option>
 <option value="-3">User Control Panel</option>
 <option value="-5">Whos Online</option>
 <option value="-2">Search</option>
 <option value="-1">Forum Home</option>
-'.$forumjumpbits.'
+' . $bits . '
 </select>
-'.$gobutton.'
+' . $gobutton . '
 </form>
 <script type="text/javascript">
 $(".forumjump").on("change", function() {
-	var option = $(this).val();
-
-	if(option < 0)
-	{
-		window.location = "forumdisplay.php?fid="+option;
-	}
-	else
-	{
-		window.location = '.$forum_link.';
-	}
+    var option = $(this).val();
+    if(option < 0) {
+        window.location = "forumdisplay.php?fid="+option;
+    } else {
+        window.location = ' . $forum_link . ';
+    }
 });
 </script>';
-			
-			
-			
+    }
 
-			if(strpos(FORUM_URL, '.html') !== false)
-			{
-				$forum_link = "'".str_replace('{fid}', "'+option+'", FORUM_URL)."'";
-			}
-			else
-			{
-				$forum_link = "'".str_replace('{fid}', "'+option", FORUM_URL);
-			}
-		}
-
-		$forumjump = $templatez;
-	}
-
-	return $forumjump;
-
-
-  }
+    return $forumjump;
+}
   
   
   

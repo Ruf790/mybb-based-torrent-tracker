@@ -207,6 +207,10 @@ function error(string $error = "", string $title = ""): void
     }
 
     $timenow = my_datee('relative', TIMENOW);
+	
+	$current_time = date('H:i:s');
+    $current_date = date('Y-m-d');
+	
     
     eval("\$errorpage = \"".$templates->get("error")."\";");
     
@@ -265,7 +269,8 @@ function error_no_permission(): void
         eval("\$errorpage = \"".$templates->get("error_nopermission")."\";");
     }
 
-    error($errorpage);
+    
+	error($errorpage);
 }
 
 function redirect(string $url, string $message = "", string $title = "", bool $force_redirect = false): void
@@ -358,61 +363,221 @@ function stdmsg(string $heading = '', string $text = '', bool $htmlstrip = true,
     echo show_notice($text, ($div == 'error'), $heading);
 }
 
-function stderr(string $error = "", string $title = ""): void
+
+
+
+
+
+
+
+function stderr(string $error = "", string $title = "", int $errorCode = 400, string $errorType = "general"): void
 {
     global $SITENAME, $BASEURL, $header, $footer, $theme, $headerinclude, $db, $templates, $lang, $mybb, $plugins;
 
-    if(!$error) {
-        $error = 'unknown_error';
+    if (empty($error)) {
+        $error = 'An unknown error occurred';
     }
 
-    if(!$title) {
-        $title = $SITENAME;
+    if (empty($title)) {
+        $title = $SITENAME . ' - Error';
     }
 
-    $timenow = my_datee('relative', TIMENOW);
-    stdhead();
+    // Маппинг типов ошибок на иконки и заголовки
+    $errorTypes = [
+        '404' => [
+            'code' => 404,
+            'title' => 'Not Found',
+            'icon' => 'bi-exclamation-triangle-fill',
+            'messageIcon' => 'bi-database-slash',
+            'description' => 'The page or resource you\'re looking for doesn\'t exist'
+        ],
+        '403' => [
+            'code' => 403,
+            'title' => 'Access Denied',
+            'icon' => 'bi-shield-lock-fill',
+            'messageIcon' => 'bi-lock-fill',
+            'description' => 'You don\'t have permission to access this resource'
+        ],
+        '401' => [
+            'code' => 401,
+            'title' => 'Unauthorized',
+            'icon' => 'bi-person-x-fill',
+            'messageIcon' => 'bi-key-fill',
+            'description' => 'Please login to access this resource'
+        ],
+        '500' => [
+            'code' => 500,
+            'title' => 'Server Error',
+            'icon' => 'bi-gear-fill',
+            'messageIcon' => 'bi-exclamation-octagon-fill',
+            'description' => 'An internal server error occurred'
+        ],
+        '403upload' => [
+            'code' => 403,
+            'title' => 'Upload Forbidden',
+            'icon' => 'bi-cloud-upload-fill',
+            'messageIcon' => 'bi-ban-fill',
+            'description' => 'You don\'t have permission to upload'
+        ],
+        'torrent' => [
+            'code' => 404,
+            'title' => 'Torrent Not Found',
+            'icon' => 'bi-file-zip-fill',
+            'messageIcon' => 'bi-database-slash',
+            'description' => 'The requested torrent could not be found'
+        ],
+        'general' => [
+            'code' => $errorCode,
+            'title' => 'Error',
+            'icon' => 'bi-exclamation-triangle-fill',
+            'messageIcon' => 'bi-info-circle-fill',
+            'description' => 'A problem occurred while processing your request'
+        ]
+    ];
 
+    // Определяем тип ошибки
+    $type = isset($errorTypes[$errorType]) ? $errorTypes[$errorType] : $errorTypes['general'];
+    
+    // Устанавливаем HTTP код ответа
+    http_response_code($type['code']);
+
+    // Очищаем буферы вывода
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+
+    // Подключаем стандартный заголовок если нужно
+    if (function_exists('stdhead')) {
+        stdhead();
+    }
+
+    // Формируем страницу ошибки
     $errorpage = '
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <title>'.$title.'</title>
-  <link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
-  <link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>' . htmlspecialchars($title) . '</title>
+    <link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
+	<link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container mt-3">
-    <div class="card error-card">
-      <div class="card-header22">
-        <i class="bi bi-exclamation-triangle-fill error-icon"></i>
-        <div>
-          <h2 class="mb-0">Error</h2>
-          <p class="mb-0 opacity-75">A problem occurred while processing your request</p>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="alert alert-danger" role="alert">
-          '.$error.'
-        </div>
+    <div class="container">
+        <div class="error-card-wrapper">
+            <div class="error-card card border-0 shadow-lg overflow-hidden">
+                <div class="error-bg-pattern"></div>
+                <div class="gradient-line"></div>
+                
+                <div class="card-body p-4 p-md-5 position-relative">
+                    <div class="error-icon-wrapper mb-4 text-center">
+                        <div class="error-icon-circle mx-auto">
+                            <i class="bi ' . $type['icon'] . ' error-icon"></i>
+                        </div>
+                        <div class="error-pulse"></div>
+                    </div>
+                    
+                    <div class="text-center mb-4">
+                        <h1 class="error-title display-4 fw-bold mb-2">' . $type['code'] . '</h1>
+                        <h2 class="error-subtitle h3 mb-2">' . htmlspecialchars($type['title']) . '</h2>
+                        <p class="error-description text-muted mb-0">
+                            <i class="bi bi-info-circle me-2"></i>
+                            ' . htmlspecialchars($type['description']) . '
+                        </p>
+                    </div>
 
-        <div class="d-flex flex-column flex-sm-row gap-3">
-          <button onclick="history.back()" class="btn btn-outline-danger flex-grow-1">
-            <i class="bi bi-arrow-left me-2"></i> Go Back
-          </button>
-          <a href="'.$BASEURL.'/" class="btn btn-danger flex-grow-1">
-            <i class="bi bi-house me-2"></i> Home Page
-          </a>
+                    <div class="error-message-box mb-4">
+                        <div class="d-flex align-items-start">
+                            <div class="message-icon me-3">
+                                <i class="bi ' . $type['messageIcon'] . '"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h5 class="mb-2">' . $error . '</h5>
+                                <p class="text-muted mb-0 small">
+                                    ' . ($errorType === '403upload' ? 'You need special permissions to upload torrents.' : 'Please check your input and try again.') . '
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="error-details mb-4">
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <div class="detail-item p-3 rounded-3">
+                                    <i class="bi bi-clock-history text-danger mb-2"></i>
+                                    <h6 class="mb-1">Request Time</h6>
+                                    <small class="text-muted">' . date('H:i:s') . '</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="detail-item p-3 rounded-3">
+                                    <i class="bi bi-calendar-check text-danger mb-2"></i>
+                                    <h6 class="mb-1">Request Date</h6>
+                                    <small class="text-muted">' . date('Y-m-d') . '</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="actions-wrapper">
+                        <div class="d-flex flex-column flex-sm-row gap-3">
+                            <button onclick="history.back()" class="btn btn-outline-danger btn-lg flex-grow-1 hover-lift">
+                                <i class="bi bi-arrow-left me-2"></i> 
+                                <span>Go Back</span>
+                            </button>
+                            <a href="' . $BASEURL . '/" class="btn btn-danger btn-lg flex-grow-1 hover-lift">
+                                <i class="bi bi-house-door me-2"></i> 
+                                <span>Home Page</span>
+                            </a>
+                        </div>
+                        
+                        <div class="quick-links mt-4 pt-3 border-top">
+                            <small class="text-muted d-block mb-2">Quick Links:</small>
+                            <div class="d-flex flex-wrap gap-2">
+                                <a href="' . $BASEURL . '/browse.php" class="quick-link">
+                                    <i class="bi bi-grid"></i> Browse
+                                </a>
+                                <a href="' . $BASEURL . '/search.php" class="quick-link">
+                                    <i class="bi bi-search"></i> Search
+                                </a>
+                                <a href="' . $BASEURL . '/upload.php" class="quick-link">
+                                    <i class="bi bi-cloud-upload"></i> Upload
+                                </a>
+                                <a href="' . $BASEURL . '/index2.php" class="quick-link">
+                                    <i class="bi bi-chat"></i> Forum
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-footer bg-transparent border-0 text-center py-3">
+                    <small class="text-muted">
+                        <i class="bi bi-bug me-1"></i>
+                        If you believe this is a mistake, please contact 
+                        <a href="' . $BASEURL . '/contact.php" class="text-danger text-decoration-none">support</a>
+                    </small>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-  </div>
 </body>
 </html>';
 
     echo $errorpage;
-    stdfoot();
+    
+    if (function_exists('stdfoot')) {
+        stdfoot();
+    }
+    
     exit;
 }
+
+
+
+
+
+
 
 
 
@@ -1347,6 +1512,12 @@ function get_bdays(int $in): array
     ];
 }
 
+
+define('MAX_SERIALIZED_INPUT_LENGTH', 10240);
+define('MAX_SERIALIZED_ARRAY_LENGTH', 256);
+define('MAX_SERIALIZED_ARRAY_DEPTH', 5);
+
+
 function _safe_unserialize(string $str, bool $unlimited = true): mixed
 {
     if(!$unlimited && strlen($str) > MAX_SERIALIZED_INPUT_LENGTH) {
@@ -1508,7 +1679,9 @@ function my_unserialize(string $str, bool $unlimited = true): mixed
     return $out;
 }
 
-function my_set_array_cookie(string $name, string $id, mixed $value, string $expires = ""): void
+
+
+function my_set_array_cookie(string $name, string $id, mixed $value, string|int $expires = ""): void
 {
     global $mybb;
 
@@ -2688,16 +2861,74 @@ function tsrowcount(string $column, string $table, string|array $where = ''): in
     return (int)($row['cnt'] ?? 0);
 }
 
-function write_log(string $Text): void
-{
-    global $db;
 
-    $insert_log = [
-        "added" => TIMENOW,
-        "txt" => $db->escape_string($Text)
-    ];
-    $db->insert_query("sitelog", $insert_log);
+
+
+function write_log(string $Text, string $category = '', int $level = 0): void
+{
+    global $db, $CURUSER, $session;
+
+    // Определяем category автоматически если не передана
+    if (empty($category)) {
+        $text_lower = strtolower($Text);
+
+        if (strpos($text_lower, 'screenshot') !== false) {
+            $category = 'screenshot';
+        } elseif (strpos($text_lower, 'torrent') !== false || strpos($text_lower, 'uploaded') !== false) {
+            $category = 'torrent';
+        } elseif (strpos($text_lower, 'seedbonus') !== false) {
+            $category = 'cron';
+        } elseif (strpos($text_lower, 'sql error') !== false || strpos($text_lower, '[sql error]') !== false) {
+            $category = 'error';
+            $level = 2; // автоматически danger
+        } elseif (strpos($text_lower, 'attempt') !== false || strpos($text_lower, 'unwanted') !== false) {
+            $category = 'security';
+            $level = 2;
+        } elseif (strpos($text_lower, 'settings updated') !== false) {
+            $category = 'settings';
+            $level = 1;
+        } elseif (strpos($text_lower, 'banned') !== false) {
+            $category = 'ban';
+            $level = 1;
+        } elseif (strpos($text_lower, 'deleted') !== false) {
+            $category = 'deletion';
+            $level = 1;
+        } elseif (strpos($text_lower, 'mail') !== false) {
+            $category = 'mail';
+        } elseif (strpos($text_lower, 'cron') !== false || strpos($text_lower, 'task') !== false) {
+            $category = 'cron';
+        } elseif (strpos($text_lower, 'warning') !== false) {
+            $category = 'warning';
+            $level = 1;
+        } else {
+            $category = 'general';
+        }
+    }
+
+    // Определяем uid
+    $uid = !empty($CURUSER['id']) ? (int)$CURUSER['id'] : 0;
+
+
+    $db->insert_query("sitelog", [
+        "added"     => TIMENOW,
+        "uid"       => $uid,
+        "ipaddress" => $db->escape_binary(my_inet_pton(get_ip())),
+        "txt"       => $db->escape_string($Text),
+        "category"  => $db->escape_string($category),
+        "level"     => $level,
+    ]);
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2905,6 +3136,11 @@ function dir_list(string $dir): array
 }
 
 
+
+
+
+
+
 function ts_nf(int|float|string|null $number): string
 {
     if ($number === null || !is_numeric($number)) {
@@ -3059,6 +3295,32 @@ function print_no_permission(bool $log = false, bool $stdhead = true, string $ex
 
     exit();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function submit_disable(string $formname = '', string $buttonname = '', string $text = ''): string
 {

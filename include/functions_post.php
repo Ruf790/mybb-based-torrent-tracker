@@ -217,7 +217,7 @@ function build_postbit($post, $post_type=0)
 	$displaygroup = usergroup_displaygroup($post['displaygroup']);
 	if(is_array($displaygroup))
 	{
-		$usergroup = array_merge($usergroups, $displaygroup);
+		$usergroup = array_merge($usergroup, $displaygroup);
 	}
 
 	if(!is_array($titlescache))
@@ -491,6 +491,10 @@ function build_postbit($post, $post_type=0)
 			eval("\$post['button_edit'] = \"".$templates->get("postbit_edit")."\";");
 			
 			eval("\$modals = \"".$templates->get("modal_edit")."\";");
+			
+			
+			$message2 = $parser->parse_message($post['message'], $parser_options);
+			
 			
 			eval("\$modaldelete = \"".$templates->get("modal_delete")."\";");
 			

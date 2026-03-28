@@ -52,7 +52,7 @@ function subforums_count($array=array())
 
 function build_forumbits($pid=0, $depth=1)
 {
-	global $db, $fcache, $moderatorcache, $forumpermissions, $theme, $mybb, $templates, $bgcolor, $collapsed, $lang, $showdepth, $plugins, $parser, $forum_viewers;
+	global $db, $fcache, $moderatorcache, $forumpermissions, $BASEURL, $theme, $mybb, $templates, $bgcolor, $collapsed, $lang, $showdepth, $plugins, $parser, $forum_viewers;
 	static $private_forums;
 	
 	
@@ -89,6 +89,7 @@ function build_forumbits($pid=0, $depth=1)
 
 			// Get the permissions for this forum
 			$permissions = $forumpermissions[$forum['fid']];
+			
 
 			// If this user doesnt have permission to view this forum and we're hiding private forums, skip this forum
 			$hideprivateforums = "1";

@@ -89,6 +89,7 @@ class trackerlanguage
     public $viewsnatches;
     public $watch_list;
     public $xmlhttp;
+	
 
     function set_path($path)
     {

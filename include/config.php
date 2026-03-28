@@ -8,12 +8,12 @@
  */
 
   $config['database']['type'] = 'mysqli';
-  $config['database']['database'] = 'database';
+  $config['database']['database'] = '';
   $config['database']['table_prefix'] = '';
 
-  $config['database']['hostname'] = 'localhost';
-  $config['database']['username'] = 'user';
-  $config['database']['password'] = 'password';
+  $config['database']['hostname'] = '';
+  $config['database']['username'] = '';
+  $config['database']['password'] = '';
   $config['database']['encoding'] = 'utf8';
   $config['cache_store'] = 'files';
   

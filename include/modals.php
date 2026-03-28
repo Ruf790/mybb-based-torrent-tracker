@@ -154,22 +154,56 @@ $magnetModal = '
 
 <!-- Delete Comment Modal -->
 <div class="modal fade" id="deleteCommentModal" tabindex="-1" aria-labelledby="deleteCommentModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="deleteCommentModalLabel">Confirm Delete</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="deleteCommentModalLabel">
+          <i class="fa-solid fa-trash me-2"></i>Delete Comment
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        Are you sure you want to delete this comment? This action cannot be undone.
+
+        <div class="text-center mb-3">
+          <i class="fa-solid fa-triangle-exclamation text-warning fa-3x mb-3"></i>
+          <h6 class="fw-bold">Are you sure you want to delete this comment?</h6>
+          <p class="text-muted mb-0 small">This action cannot be undone.</p>
+        </div>
+
+        <!-- Превью комментария -->
+        <div class="card border-danger border-opacity-25 mb-3">
+          <div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">
+            <span class="small fw-bold text-danger">
+              <i class="fas fa-user me-1"></i><span id="commentPreviewAuthor">—</span>
+            </span>
+            <div class="d-flex gap-2 align-items-center">
+              <span class="text-muted small" id="commentPreviewDate"></span>
+              <span class="badge bg-secondary" id="commentPreviewId"></span>
+            </div>
+          </div>
+          <div class="card-body py-2 px-3">
+            <div class="small" style="max-height: 350px; overflow-y: auto;">
+              <p class="mb-0 text-muted" id="commentPreviewText"></p>
+            </div>
+          </div>
+        </div>
+
       </div>
-      <div class="modal-body" id="errorModalBody">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button id="confirmDeleteComment" type="button" class="btn btn-danger">Delete</button>
+      <div class="modal-footer d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+          <i class="fa-solid fa-xmark me-1"></i>Cancel
+        </button>
+        <button id="confirmDeleteComment" type="button" class="btn btn-danger btn-sm px-4">
+          <i class="fa-solid fa-trash me-1"></i>Delete Comment
+        </button>
       </div>
     </div>
   </div>
 </div>
+
+
+
+
 
 <!-- Edit Comment Modal -->
 <div class="modal fade" id="editCommentModal" tabindex="-1" aria-labelledby="editCommentModalLabel" aria-hidden="true">
@@ -226,20 +260,41 @@ $magnetModal = '
   </div>
 </div>
 
+
+
+
 <!-- Mass Delete comment(s) Confirm Modal -->
 <div class="modal fade" id="massDeleteConfirmModal" tabindex="-1" aria-labelledby="massDeleteConfirmModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="massDeleteConfirmModalLabel">Confirm Mass Delete</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="massDeleteConfirmModalLabel">
+          <i class="fa-solid fa-trash me-2"></i>Confirm Mass Delete
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
+
       <div class="modal-body">
-        Are you sure you want to delete <span id="selectedCommentsCount" class="fw-bold">0</span> comment(s)? This action cannot be undone.
+        <div class="text-center mb-3">
+          <i class="fa-solid fa-triangle-exclamation text-warning fa-3x mb-3"></i>
+          <h6 class="fw-bold">Are you sure you want to delete <span id="selectedCommentsCount" class="text-danger">0</span> comment(s)?</h6>
+          <p class="text-muted small mb-0">This action cannot be undone.</p>
+        </div>
+
+        <!-- Превью выбранных комментариев -->
+        <h6 class="text-muted mb-2">
+          <i class="fas fa-eye me-1"></i>Comments to be deleted:
+        </h6>
+        <div id="massDeletePreviewList" style="max-height: 450px; overflow-y: auto;"></div>
       </div>
-      <div class="modal-body">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button id="confirmMassDelete" type="button" class="btn btn-danger">Delete</button>
+
+      <div class="modal-footer d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+          <i class="fa-solid fa-xmark me-1"></i>Cancel
+        </button>
+        <button id="confirmMassDelete" type="button" class="btn btn-danger btn-sm px-4">
+          <i class="fa-solid fa-trash me-1"></i>Delete All Selected
+        </button>
       </div>
     </div>
   </div>

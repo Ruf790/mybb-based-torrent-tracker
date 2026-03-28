@@ -1672,7 +1672,6 @@ class Moderation
 				$threadarray = array(
 					"fid" => $thread['fid'],
 					"subject" => $db->escape_string($thread['subject']),
-					"icon" => $thread['icon'],
 					"uid" => $thread['uid'],
 					"username" => $db->escape_string($thread['username']),
 					"dateline" => $thread['dateline'],
@@ -1704,7 +1703,6 @@ class Moderation
 				$threadarray = array(
 					"fid" => $new_fid,
 					"subject" => $db->escape_string($thread['subject']),
-					"icon" => $thread['icon'],
 					"uid" => $thread['uid'],
 					"username" => $db->escape_string($thread['username']),
 					"dateline" => $thread['dateline'],
@@ -1786,7 +1784,6 @@ class Moderation
 						'tid' => $newtid,
 						'fid' => $new_fid,
 						'subject' => $db->escape_string($post['subject']),
-						'icon' => $post['icon'],
 						'uid' => $post['uid'],
 						'username' => $db->escape_string($post['username']),
 						'dateline' => $post['dateline'],
@@ -1996,7 +1993,7 @@ class Moderation
 		}
 
 		// Get the first split post
-		$query = $db->simple_select('tsf_posts', 'pid,uid,visible,icon,username,dateline', 'pid IN ('.$pids_list.')', array('order_by' => 'dateline, pid', 'limit' => 1));
+		$query = $db->simple_select('tsf_posts', 'pid,uid,visible,username,dateline', 'pid IN ('.$pids_list.')', array('order_by' => 'dateline, pid', 'limit' => 1));
 
 		$post_info = $db->fetch_array($query);
 
@@ -2017,7 +2014,6 @@ class Moderation
 			$newthread = array(
 				"fid" => $moveto,
 				"subject" => $newsubject,
-				"icon" => (int)$post_info['icon'],
 				"uid" => (int)$post_info['uid'],
 				"username" => $db->escape_string($post_info['username']),
 				"dateline" => (int)$post_info['dateline'],

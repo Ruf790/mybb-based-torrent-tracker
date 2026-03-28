@@ -117,44 +117,62 @@ class DataHandler
 	 *
 	 * @return array An array of errors in a MyBB format.
 	 */
-	function get_friendly_errors()
-	{
-		global $lang;
+	
+function get_friendly_errors()
+{
+    global $lang;
 
-		// Load the language pack we need
-		if($this->language_file)
-		{
-			$lang->load($this->language_file, true);
-		}
-		// Prefix all the error codes with the language prefix.
-		$errors = array();
-		foreach($this->errors as $error)
-		{
-			$lang_string = $this->language_prefix.'_'.$error['error_code'];
-			if(!isset($lang->$lang_string))
-			{
-				$errors[] = $error['error_code'];
-				continue;
-			}
+    // Load the language pack we need
+    if($this->language_file)
+    {
+        $lang->load($this->language_file);
+    }
+    
+    // Prefix all the error codes with the language prefix.
+    $errors = array();
+    foreach($this->errors as $error)
+    {
+        $lang_key = $this->language_prefix . '_' . $error['error_code'];
+        $error_message = null;
+        
+        // Проверяем прямой доступ к переменной
+        if(isset($lang->$lang_key))
+        {
+            $error_message = $lang->$lang_key;
+        }
+        // Проверяем в массиве $lang->{$this->language_file}
+        elseif(isset($lang->{$this->language_file}) && isset($lang->{$this->language_file}[$lang_key]))
+        {
+            $error_message = $lang->{$this->language_file}[$lang_key];
+        }
+        // Проверяем без префикса
+        elseif(isset($lang->{$this->language_file}) && isset($lang->{$this->language_file}[$error['error_code']]))
+        {
+            $error_message = $lang->{$this->language_file}[$error['error_code']];
+        }
+        
+        if($error_message === null)
+        {
+            $errors[] = $error['error_code'];
+            continue;
+        }
 
-			if(!empty($error['data']) && !is_array($error['data']))
-			{
-				$error['data'] = array($error['data']);
-			}
+        if(!empty($error['data']) && !is_array($error['data']))
+        {
+            $error['data'] = array($error['data']);
+        }
 
-			if(is_array($error['data']))
-			{
-				array_unshift($error['data'], $lang->$lang_string);
-				$errors[] = call_user_func_array(array($lang, "sprintf"), $error['data']);
-			}
-			else
-			{
-				$errors[] = $lang->$lang_string;
-				
-			}
-		}
-		return $errors;
-	}
+        if(is_array($error['data']) && !empty($error['data']))
+        {
+            $errors[] = vsprintf($error_message, $error['data']);
+        }
+        else
+        {
+            $errors[] = $error_message;
+        }
+    }
+    return $errors;
+}
 
 	/**
 	 * Sets whether or not we are done validating.

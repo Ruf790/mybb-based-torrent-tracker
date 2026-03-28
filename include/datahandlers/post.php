@@ -130,7 +130,7 @@ class PostDataHandler extends DataHandler
 		// Don't have a user ID at all - not good (note, a user id of 0 will still work).
 		if(!isset($post['uid']))
 		{
-			$this->set_error("The user id does not exist. Please supply a valid user id");
+			$this->set_error("invalid_user_id");
 			return false;
 		}
 		// If we have a user id but no username then fetch the username.
@@ -184,7 +184,7 @@ class PostDataHandler extends DataHandler
 			// If this is the first post there needs to be a subject, else make it the default one.
 			if(my_strlen($subject) == 0 && $this->first_post)
 			{
-				$this->set_error("The thread does not have a subject. Please enter a subject");
+				$this->set_error("firstpost_no_subject");
 				return false;
 			}
 			elseif(my_strlen($subject) == 0)
@@ -228,7 +228,7 @@ class PostDataHandler extends DataHandler
 		if($subject_length > 85)
 		{
 			// Subject is too long
-			$this->set_error('The subject is too long. Please enter a subject shorter than 85 characters (currently '.my_strlen($subject).')');
+			$this->set_error('subject_too_long', my_strlen($subject));
 			return false;
 		}
 
@@ -251,7 +251,7 @@ class PostDataHandler extends DataHandler
 		// Do we even have a message at all?
 		if(my_strlen($post['message']) == 0)
 		{
-			$this->set_error("The message is missing. Please enter a message");
+			$this->set_error("missing_message");
 			return false;
 		}
 		else
@@ -317,7 +317,7 @@ class PostDataHandler extends DataHandler
 
 				if(strlen($post['message']) > $limit && (!$is_moderator || $limit == $dblimit))
 				{
-					$this->set_error("The message is too long. Please enter a message shorter than ".$limit." characters (currently ".strlen($post['message']).")");
+					$this->set_error("message_too_long", array($limit, strlen($post['message'])));
 					return false;
 				}
 			}
@@ -341,14 +341,14 @@ class PostDataHandler extends DataHandler
 				
 				if(my_strlen($message) < $minmessagelength && $minmessagelength > 0 && !is_moderator($post['fid'], "", $post['uid']))
 				{
-					$this->set_error("The message is too short. Please enter a message longer than ".$minmessagelength." characters");
+					$this->set_error("message_too_short", array($minmessagelength));
 					return false;
 				}
 			}
 			//else if(my_strlen($post['message']) < $minmessagelength && $minmessagelength > 0 && !is_moderator($post['fid'], "", $post['uid']))
 			else if(my_strlen($post['message']) < $minmessagelength && $minmessagelength > 0)
 			{
-				$this->set_error("The message is too short. Please enter a message longer than ".$minmessagelength." characters");
+				$this->set_error("message_too_short", array($minmessagelength));
 				return false;
 			}
 		}
@@ -392,11 +392,11 @@ class PostDataHandler extends DataHandler
 				$time_to_wait = ($postfloodsecs - (TIMENOW-$user['lastpost'])) + 1;
 				if($time_to_wait == 1)
 				{
-					$this->set_error("You are trying to post a message too quickly after posting a previous message. Please wait 1 more second");
+					$this->set_error("post_flooding_one_second");
 				}
 				else
 				{
-					$this->set_error("You are trying to post a message too quickly after posting a previous message. Please wait ".$time_to_wait." more seconds");
+					$this->set_error("post_flooding", array($time_to_wait));
 				}
 				return false;
 			}
@@ -547,26 +547,7 @@ class PostDataHandler extends DataHandler
 		return true;
 	}
 
-	/**
-	* Verify the post icon.
-	*
-	* @return boolean True when valid, false when not valid.
-	*/
-	function verify_post_icon()
-	{
-		global $cache;
 
-		$post = &$this->data;
-
-		$posticons_cache = $cache->read("posticons");
-
-		// If we don't have a post icon assign it as 0.
-		if(empty($post['icon']) || !isset($posticons_cache[$post['icon']]))
-		{
-			$post['icon'] = 0;
-		}
-		return true;
-	}
 
 	/**
 	* Verify the dateline.
@@ -584,117 +565,6 @@ class PostDataHandler extends DataHandler
 		}
 	}
 
-	/**
-	 * Verify thread prefix.
-	 *
-	 * @return boolean True when valid, false when not valid.
-	 */
-	function verify_prefix()
-	{
-		$prefix = &$this->data['prefix'];
-
-		// If a valid prefix isn't supplied, don't assign one.
-		if(empty($prefix))
-		{
-			$prefix = 0;
-		}
-		else
-		{
-			if(!empty($this->data['tid']))
-			{
-				// Fetch the thread
-				$thread = get_thread($this->data['tid']);
-			}
-
-			$prefix_cache = build_prefixes($prefix);
-
-			if(empty($prefix_cache))
-			{
-				$this->set_error('invalid_prefix');
-				return false;
-			}
-			if($prefix_cache['groups'] != "-1")
-			{
-				if(!empty($this->data['edit_uid']))
-				{
-					// Post is being edited
-					$user = get_user($this->data['edit_uid']);
-				}
-				else
-				{
-					$user = get_user($this->data['uid']);
-				}
-
-				if(!is_member($prefix_cache['groups'], array('usergroup' => $user['usergroup'], 'additionalgroups' => $user['additionalgroups'])) && (empty($this->data['tid']) || $prefix != $thread['prefix']))
-				{
-					$this->set_error('invalid_prefix');
-					return false;
-				}
-			}
-			if($prefix_cache['forums'] != "-1")
-			{
-				// Decide whether this prefix can be used in our forum
-				$forums = explode(",", $prefix_cache['forums']);
-
-				if(!in_array($this->data['fid'], $forums) && (empty($this->data['tid']) || $prefix != $thread['prefix']))
-				{
-					$this->set_error('invalid_prefix');
-					return false;
-				}
-			}
-		}
-
-		// Does this forum require a prefix?
-		$forum = get_forum($this->data['fid']);
-
-		if($forum['requireprefix'] == 1)
-		{
-			$num_prefixes = false;
-
-			// Go through each of our prefixes and decide if there are any possible prefixes to use.
-			if(!empty($this->data['edit_uid']))
-			{
-				// Post is being edited
-				$user = get_user($this->data['edit_uid']);
-			}
-			else
-			{
-				$user = get_user($this->data['uid']);
-			}
-
-			$prefix_cache = build_prefixes();
-
-			if(!empty($prefix_cache))
-			{
-				foreach($prefix_cache as $required)
-				{
-					if($required['forums'] != "-1")
-					{
-						// Decide whether this prefix can be used in our forum
-						$forums = explode(",", $required['forums']);
-
-						if(!in_array($forum['fid'], $forums))
-						{
-							continue;
-						}
-					}
-
-					if(is_member($required['groups'], array('usergroup' => $user['usergroup'], 'additionalgroups' => $user['additionalgroups'])))
-					{
-						$num_prefixes = true;
-					}
-				}
-			}
-
-			if($prefix == 0 && $num_prefixes)
-			{
-				$this->set_error('require_prefix');
-				return false;
-			}
-		}
-
-		return true;
-	}
 
 	/**
 	 * Validate a post.
@@ -764,15 +634,12 @@ class PostDataHandler extends DataHandler
 			$this->verify_reply_to();
 		}
 
-		if($this->method == "insert" || array_key_exists('icon', $post))
-		{
-			$this->verify_post_icon();
-		}
+
 
 
 		if($this->method == "update" && $this->first_post)
 		{
-			$this->verify_prefix();
+			//$this->verify_prefix();
 		}
 
 		$plugins->run_hooks("datahandler_post_validate_post", $this);
@@ -906,7 +773,7 @@ class PostDataHandler extends DataHandler
 			$forum = get_forum($post['fid']);
 
 			// Decide on the visibility of this post.
-			//$forumpermissions = forum_permissions($post['fid'], $post['uid']);
+			$forumpermissions = forum_permissions($post['fid'], $post['uid']);
 			if($forumpermissions['modposts'] == 1 && !$ismod)
 			{
 				$visible = 0;
@@ -1031,7 +898,6 @@ class PostDataHandler extends DataHandler
 			// Update a post that is a draft
 			$this->post_update_data = array(
 				"subject" => $db->escape_string($post['subject']),
-				"icon" => (int)$post['icon'],
 				"uid" => $post['uid'],
 				"username" => $db->escape_string($post['username']),
 				"dateline" => (int)$post['dateline'],
@@ -1119,17 +985,7 @@ class PostDataHandler extends DataHandler
 			);
 
 			$excerpt = $parser->text_parse_message($post['message'], $parser_options);
-			//$excerpt = my_substr($excerpt, 0, $mybb->settings['subscribeexcerpt']).$lang->emailbit_viewthread;
-
-			// Fetch any users subscribed to this thread receiving instant notification and queue up their subscription notices
-			//$query = $db->sql_query("
-			//	SELECT u.username, u.email, u.id, u.loginkey, u.salt, u.added, s.notification
-			//	FROM tsf_threadsubscriptions s
-			//	LEFT JOIN users u ON (u.id=s.uid)
-			//	WHERE (s.notification='1' OR s.notification='2') AND s.tid='{$post['tid']}'
-			//	AND s.uid != '{$post['uid']}'
-			//	AND u.lastactive>'{$thread['lastpost']}'
-			//");
+			
 
 
             $query = $db->sql_query_prepared(
@@ -1163,11 +1019,11 @@ class PostDataHandler extends DataHandler
 
 				$done_users[$subscribedmember['uid']] = 1;
 
-				//$forumpermissions = forum_permissions($thread['fid'], $subscribedmember['uid']);
-				//if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0)
-				//{
-				    //continue;
-				//}
+				$forumpermissions = forum_permissions($thread['fid'], $subscribedmember['uid']);
+				if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0)
+				{
+				    continue;
+				}
 
 				if($thread['id'] != $subscribedmember['uid'] && $subscribedmember['id'])
 				{
@@ -1362,10 +1218,6 @@ class PostDataHandler extends DataHandler
 			$this->verify_author();
 		}
 
-		if($this->method == "insert" || array_key_exists('prefix', $thread))
-		{
-			$this->verify_prefix();
-		}
 
 		if($this->method == "insert" || array_key_exists('subject', $thread))
 		{
@@ -1380,11 +1232,6 @@ class PostDataHandler extends DataHandler
 		if($this->method == "insert" || array_key_exists('dateline', $thread))
 		{
 			$this->verify_dateline();
-		}
-
-		if($this->method == "insert" || array_key_exists('icon', $thread))
-		{
-			$this->verify_post_icon();
 		}
 
 
@@ -1409,7 +1256,7 @@ class PostDataHandler extends DataHandler
 	 */
 	function insert_thread()
 	{
-		global $db, $mybb, $plugins, $cache, $lang, $usergroups, $CURUSER;
+		global $db, $mybb, $plugins, $cache, $lang, $usergroups, $CURUSER, $SITENAME, $BASEURL;
 
 		// Yes, validating is required.
 		if(!$this->get_validated())
@@ -1436,7 +1283,7 @@ class PostDataHandler extends DataHandler
 		// Thread is being made now and we have a bit to do.
 		else
 		{
-			//$forumpermissions = forum_permissions($thread['fid'], $thread['uid']);
+			$forumpermissions = forum_permissions($thread['fid'], $thread['uid']);
 			// Decide on the visibility of this post.
 			if($forumpermissions['modthreads'] == 1 && !is_moderator($thread['fid'], "", $thread['uid']))
 			{
@@ -1476,7 +1323,6 @@ class PostDataHandler extends DataHandler
 		{
 			$this->thread_insert_data = array(
 				"subject" => $db->escape_string($thread['subject']),
-				"icon" => (int)$thread['icon'],
 				"username" => $db->escape_string($thread['username']),
 				"dateline" => (int)$thread['dateline'],
 				"lastpost" => (int)$thread['dateline'],
@@ -1490,7 +1336,6 @@ class PostDataHandler extends DataHandler
 
 			$this->post_insert_data = array(
 				"subject" => $db->escape_string($thread['subject']),
-				"icon" => (int)$thread['icon'],
 				"username" => $db->escape_string($thread['username']),
 				"dateline" => (int)$thread['dateline'],
 				"message" => $db->escape_string($thread['message']),
@@ -1674,21 +1519,13 @@ class PostDataHandler extends DataHandler
 				//$parser = new postParser;
 				//$excerpt = $parser->parse_badwords($excerpt);
 				//$excerpt = $parser->text_parse_message($excerpt);
-				if(strlen($excerpt) > $mybb->settings['subscribeexcerpt'])
+				$subscribeexcerpt = "100";
+				
+				if(strlen($excerpt) > $subscribeexcerpt)
 				{
-					$excerpt = my_substr($excerpt, 0, $mybb->settings['subscribeexcerpt']).$lang->emailbit_viewthread;
+					$excerpt = my_substr($excerpt, 0, $subscribeexcerpt).'emailbit_viewthread';
 				}
-				//$query = $db->sql_query("
-				//	SELECT u.username, u.email, u.id, u.added
-				//	FROM tsf_forumsubscriptions fs
-				//	LEFT JOIN users u ON (u.id=fs.uid)
-				//	LEFT JOIN usergroups g ON (g.gid=u.usergroup)
-				//	WHERE fs.fid='".(int)$thread['fid']."'
-				//	AND fs.uid != '".(int)$thread['uid']."'
-				//	AND u.lastactive > '{$forum['lastpost']}'
-				//	AND g.isbannedgroup != 1
-				//");
-
+				
 
 
 				 $query = $db->sql_query_prepared("
@@ -1715,17 +1552,19 @@ class PostDataHandler extends DataHandler
 					}
 					$done_users[$subscribedmember['uid']] = 1;
 
-					//$forumpermissions = forum_permissions($thread['fid'], $subscribedmember['uid']);
+					$forumpermissions = forum_permissions($thread['fid'], $subscribedmember['uid']);
 					if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0)
 					{
 					    continue;
 					}
 
-					if(!is_moderator($thread['fid'], "", $subscribedmember['uid']) && $forumpermissions['canonlyviewownthreads'] == 1)
-					{
+					//$is_mod = is_mod($usergroups);
+					
+					//if(!$is_mod && $subscribedmember['uid']) && $forumpermissions['canonlyviewownthreads'] == 1)
+					//{
 						// In a 'view own only' forum and not a moderator
-						continue;
-					}
+						//continue;
+					//}
 
 					// Determine the language pack we'll be using to send this email in and load it if it isn't already.
 					if($subscribedmember['language'] != '' && $lang->language_exists($subscribedmember['language']))
@@ -1875,7 +1714,7 @@ class PostDataHandler extends DataHandler
 		}
 
 		$forum = get_forum($post['fid']);
-		//$forumpermissions = forum_permissions($post['fid'], $uid);
+		$forumpermissions = forum_permissions($post['fid'], $uid);
 
 		// Decide on the visibility of this post.
 		//$ismod = is_moderator($post['fid'], "", $uid);
@@ -1908,20 +1747,14 @@ class PostDataHandler extends DataHandler
 		{
 			$this->tid = $post['tid'];
 
-			//if(isset($post['prefix']))
-			//{
-				//$this->thread_update_data['prefix'] = (int)$post['prefix'];
-			//}
+			
 
 			if(isset($post['subject']))
 			{
 				$this->thread_update_data['subject'] = $db->escape_string($post['subject']);
 			}
 
-			if(isset($post['icon']))
-			{
-				$this->thread_update_data['icon'] = (int)$post['icon'];
-			}
+			
 			if(count($this->thread_update_data) > 0)
 			{
 				$plugins->run_hooks("datahandler_post_update_thread", $this);
@@ -1965,11 +1798,6 @@ class PostDataHandler extends DataHandler
 		elseif(empty($post['editreason']))
 		{
 			$this->post_update_data['editreason'] = '';
-		}
-
-		if(isset($post['icon']))
-		{
-			$this->post_update_data['icon'] = (int)$post['icon'];
 		}
 
 		

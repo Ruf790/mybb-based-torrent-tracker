@@ -159,8 +159,6 @@ class UserDataHandler extends DataHandler
 	{
 		global $user, $db;
 		
-		
-		//if(isset($user['password2']) && $user['password'] !== $user['password2'])
 			
 		if (isset($user['invitehash'])) 
 		{
@@ -225,9 +223,6 @@ class UserDataHandler extends DataHandler
 
 		// Always check for the length of the password.
 		
-		//$minpasswordlength = "6";
-		//$maxpasswordlength = "30";
-		
 		
 		if(my_strlen($user['password']) < $minpasswordlength || my_strlen($user['password']) > $maxpasswordlength)
 		{
@@ -248,7 +243,6 @@ class UserDataHandler extends DataHandler
 		}
 
 		// See if the board has "require complex passwords" enabled.
-		//$requirecomplexpasswords = "0";
 		
 		if($requirecomplexpasswords == 1)
 		{
@@ -270,10 +264,6 @@ class UserDataHandler extends DataHandler
 
 		// Generate the user login key
 		$user['loginkey'] = generate_loginkey();
-		
-		//$user['secret'] = mksecret();
-        //$user['passhash'] = md5($user['secret'] . $user['password'] . $user['secret']);
-		
 		
 
 		// Combine the password and salt
@@ -354,46 +344,7 @@ class UserDataHandler extends DataHandler
 		return true;
 	}
 
-	/**
-	* Verifies if a website is valid or not.
-	*
-	* @return boolean True when valid, false when invalid.
-	*/
-	function verify_website()
-	{
-		$website = &$this->data['website'];
 
-		if(!empty($website) && !my_validate_url($website))
-		{
-			$website = 'http://'.$website;
-		}
-
-		if(!empty($website) && !my_validate_url($website))
-		{
-			$this->set_error('invalid_website');
-			return false;
-		}
-
-		return true;
-	}
-
-	/**
-	 * Verifies if an ICQ number is valid or not.
-	 *
-	 * @return boolean True when valid, false when invalid.
-	 */
-	function verify_icq()
-	{
-		$icq = &$this->data['icq'];
-
-		if($icq != '' && !is_numeric($icq))
-		{
-			$this->set_error("invalid_icq_number");
-			return false;
-		}
-		$icq = (int)$icq;
-		return true;
-	}
 
 	/**
 	* Verifies if a birthday is valid or not.
@@ -875,47 +826,7 @@ class UserDataHandler extends DataHandler
 
 	}
 
-	/**
-	 * Verifies if an away mode status is valid or not.
-	 *
-	 * @return boolean True when valid, false when invalid.
-	 */
-	function verify_away()
-	{
-		global $mybb;
 
-		$user = &$this->data;
-		// If the board does not allow "away mode" or the user is marking as not away, set defaults.
-		if($mybb->settings['allowaway'] == 0 || !isset($user['away']['away']) || $user['away']['away'] != 1)
-		{
-			$user['away']['away'] = 0;
-			$user['away']['date'] = 0;
-			$user['away']['returndate'] = 0;
-			$user['away']['awayreason'] = '';
-			return true;
-		}
-		elseif($user['away']['returndate'])
-		{
-			// Validate the awayreason length, since the db holds 200 chars for this field
-			$reasonlength = my_strlen($user['away']['awayreason']);
-			if($reasonlength > 200)
-			{
-				$this->set_error("away_too_long", array($reasonlength - 200));
-				return false;
-			}
-
-			list($returnday, $returnmonth, $returnyear) = explode('-', $user['away']['returndate']);
-			if(!$returnday || !$returnmonth || !$returnyear)
-			{
-				$this->set_error("missing_returndate");
-				return false;
-			}
-
-			// Validate the return date lengths
-			$user['away']['returndate'] = substr($returnday, 0, 2).'-'.substr($returnmonth, 0, 2).'-'.substr($returnyear, 0, 4);
-		}
-		return true;
-	}
 
 	/**
 	 * Verifies if a language is valid for this user or not.
@@ -1056,14 +967,7 @@ class UserDataHandler extends DataHandler
 		{
 			$this->verify_email();
 		}
-		if($this->method == "insert" || array_key_exists('website', $user))
-		{
-			$this->verify_website();
-		}
-		if($this->method == "insert" || array_key_exists('icq', $user))
-		{
-			$this->verify_icq();
-		}
+		
 		if($this->method == "insert" || (isset($user['birthday']) && is_array($user['birthday'])))
 		{
 			$this->verify_birthday();
@@ -1080,10 +984,7 @@ class UserDataHandler extends DataHandler
 		{
 			$this->verify_profile_fields();
 		}
-		//if($this->method == "insert" || array_key_exists('referrer', $user))
-		//{
-			//$this->verify_referrer();
-		//}
+		
 		if($this->method == "insert" || array_key_exists('options', $user))
 		{
 			$this->verify_options();
@@ -1100,14 +1001,6 @@ class UserDataHandler extends DataHandler
 		{
 			$this->verify_lastactive();
 		}
-		if($this->method == "insert" || array_key_exists('away', $user))
-		{
-			$this->verify_away();
-		}
-		//if($this->method == "insert" || array_key_exists('language', $user))
-		//{
-		//	$this->verify_language();
-		//}
 		if($this->method == "insert" || array_key_exists('timezone', $user))
 		{
 			$this->verify_timezone();
@@ -1164,7 +1057,7 @@ class UserDataHandler extends DataHandler
 
 		$user = &$this->data;
 
-		$array = array('postnum', 'threadnum', 'avatar', 'avatartype', 'additionalgroups', 'displaygroup', 'icq', 'skype', 'google', 'bday', 'signature', 'style', 'dateformat', 'timeformat', 'notepad', 'regip', 'lastip', 'coppa_user');
+		$array = array('postnum', 'threadnum', 'avatar', 'avatartype', 'additionalgroups', 'displaygroup', 'bday', 'signature', 'style', 'dateformat', 'timeformat', 'notepad', 'regip', 'lastip', 'coppa_user');
 		foreach($array as $value)
 		{
 			if(!isset($user[$value]))
@@ -1258,21 +1151,13 @@ class UserDataHandler extends DataHandler
 			"timeformat" => $db->escape_string($user['timeformat']),
 			"regip" => $db->escape_binary($user['regip']),
 			"lastip" => $db->escape_binary($user['lastip']),
-			//"language" => $db->escape_string($user['language']),
 			"buddyrequestspm" => (int)$user['options']['buddyrequestspm'],
 			"buddyrequestsauto" => (int)$user['options']['buddyrequestsauto'],
 			"buddylist" => '',
 			"ignorelist" => '',
 			"pmfolders" => "0**$%%$1**$%%$2**$%%$3**$%%$4**",
-			//"notepad" => '',
-			//"warningpoints" => 0,
 			"moderateposts" => 0,
 			"moderationtime" => 0
-			//"suspendposting" => 0,
-			//"suspensiontime" => 0,
-			//"coppauser" => (int)$user['coppa_user'],
-			//"classicpostbit" => (int)$user['options']['classicpostbit'],
-			//"usernotes" => ''
 		);
 
 		if($user['options']['dstcorrection'] == 1)
@@ -1439,22 +1324,6 @@ class UserDataHandler extends DataHandler
 		{
 			$this->user_update_data['signature'] = $db->escape_string($user['signature']);
 		}
-		if(isset($user['website']))
-		{
-			$this->user_update_data['website'] = $db->escape_string($user['website']);
-		}
-		if(isset($user['icq']))
-		{
-			$this->user_update_data['icq'] = (int)$user['icq'];
-		}
-		if(isset($user['skype']))
-		{
-			$this->user_update_data['skype'] = $db->escape_string($user['skype']);
-		}
-		if(isset($user['google']))
-		{
-			$this->user_update_data['google'] = $db->escape_string($user['google']);
-		}
 		if(isset($user['bday']))
 		{
 			$this->user_update_data['birthday'] = $user['bday'];
@@ -1487,17 +1356,6 @@ class UserDataHandler extends DataHandler
 		{
 			$this->user_update_data['lastip'] = $db->escape_binary($user['lastip']);
 		}
-		if(isset($user['language']))
-		{
-			$this->user_update_data['language'] = $db->escape_string($user['language']);
-		}
-		if(isset($user['away']))
-		{
-			$this->user_update_data['away'] = (int)$user['away']['away'];
-			$this->user_update_data['awaydate'] = $db->escape_string($user['away']['date']);
-			$this->user_update_data['returndate'] = $db->escape_string($user['away']['returndate']);
-			$this->user_update_data['awayreason'] = $db->escape_string($user['away']['awayreason']);
-		}
 		if(isset($user['notepad']))
 		{
 			$this->user_update_data['notepad'] = $db->escape_string($user['notepad']);
@@ -1517,6 +1375,8 @@ class UserDataHandler extends DataHandler
 		{
 			$this->user_update_data['coppauser'] = (int)$user['coppa_user'];
 		}
+		
+		
 		// First, grab the old user details for later use.
 		$old_user = get_user($user['uid']);
 
@@ -1668,24 +1528,6 @@ class UserDataHandler extends DataHandler
 		$db->update_query('privatemessages', array('fromid' => 0), "fromid IN({$this->delete_uids})");
 		
 
-		// Update thread ratings
-		//$query = $db->sql_query("
-		//	SELECT r.*, t.numratings, t.totalratings
-		//	FROM threadratings r
-		//	LEFT JOIN ".TABLE_PREFIX."threads t ON (t.tid=r.tid)
-		//	WHERE r.uid IN({$this->delete_uids})
-		//");
-		//while($rating = $db->fetch_array($query))
-		//{
-		//	$update_thread = array(
-		//		"numratings" => $rating['numratings'] - 1,
-		//		"totalratings" => $rating['totalratings'] - $rating['rating']
-		//	);
-			//$db->update_query("tsf_threads", $update_thread, "tid='{$rating['tid']}'");
-		//}
-
-		//$db->delete_query('threadratings', "uid IN({$this->delete_uids})");
-
 		// Update forums & threads if user is the lastposter
 		$db->update_query('tsf_forums', array('lastposteruid' => 0), "lastposteruid IN({$this->delete_uids})");
 		$db->update_query('tsf_threads', array('lastposteruid' => 0), "lastposteruid IN({$this->delete_uids})");
@@ -1702,7 +1544,6 @@ class UserDataHandler extends DataHandler
 		// Update  cache
 		//$cache->update_moderators();
 		$cache->update_forumsdisplay();
-		$cache->update_reportedcontent();
 		$cache->update_awaitingactivation();
 		$cache->update_birthdays();
 
@@ -1741,14 +1582,18 @@ class UserDataHandler extends DataHandler
 			return;
 		}
 
+		$db->sql_query ('DELETE FROM reports WHERE type=\'user\' AND reported_user_id = ' . $this->delete_uids);
+		
 		$db->delete_query('userfields', "ufid IN({$this->delete_uids})");
 		$db->delete_query('privatemessages', "uid IN({$this->delete_uids})");
 		
+		$db->delete_query('ts_secret_questions', "userid IN({$this->delete_uids})");
+		
 		
 		$db->delete_query('snatched', "userid IN({$this->delete_uids})");
-		$db->delete_query('ts_u_perm', "userid IN({$this->delete_uids})");
-		//$db->delete_query('ts_user_validation', "userid IN({$this->delete_uids})");
-		$db->delete_query('ts_inactivity', "userid IN({$this->delete_uids})");	
+		$db->delete_query('users_perm', "userid IN({$this->delete_uids})");
+		
+		$db->delete_query('inactivity', "userid IN({$this->delete_uids})");	
 		$db->delete_query('comments', "user IN({$this->delete_uids})");
 		$db->delete_query('invites', "inviter IN({$this->delete_uids})");
 		$db->delete_query('bookmarks', "userid IN({$this->delete_uids})");
@@ -1766,11 +1611,11 @@ class UserDataHandler extends DataHandler
 		$db->delete_query('tsf_threads', "uid IN({$this->delete_uids}) AND visible = -2");
 
 		// Delete reports made to the profile or reputation of the deleted users (i.e. made by them)
-		$db->delete_query('reportedcontent', "type='reputation' AND id3 IN({$this->delete_uids}) OR type='reputation' AND id2 IN({$this->delete_uids})");
-		$db->delete_query('reportedcontent', "type='profile' AND id IN({$this->delete_uids})");
+		//$db->delete_query('reportedcontent', "type='reputation' AND id3 IN({$this->delete_uids}) OR type='reputation' AND id2 IN({$this->delete_uids})");
+		//$db->delete_query('reportedcontent', "type='profile' AND id IN({$this->delete_uids})");
 
 		// Update the reports made by the deleted users by setting the uid to 0
-		$db->update_query('reportedcontent', array('uid' => 0), "uid IN({$this->delete_uids})");
+		//$db->update_query('reportedcontent', array('uid' => 0), "uid IN({$this->delete_uids})");
 
 		// Remove any of the user(s) uploaded avatars
 		require_once INC_PATH.'/functions_upload.php';

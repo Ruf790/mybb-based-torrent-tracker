@@ -1,12 +1,7 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
+
+
+declare(strict_types=1);
 
 // Disallow direct access to this file for security reasons
 if(!defined("IN_MYBB"))
@@ -14,59 +9,28 @@ if(!defined("IN_MYBB"))
 	die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
 
-/**
- * PM handling class, provides common structure to handle private messaging data.
- *
- */
+
 class PMDataHandler extends DataHandler
 {
-	/**
-	* The language file used in the data handler.
-	*
-	* @var string
-	*/
+	
 	public $language_file = 'datahandler_pm';
 
-	/**
-	* The prefix for the language variables used in the data handler.
-	*
-	* @var string
-	*/
+	
 	public $language_prefix = 'pmdata';
 
-	/**
-	 * Array of data inserted in to a private message.
-	 *
-	 * @var array
-	 */
+	
 	public $pm_insert_data = array();
 
-	/**
-	 * Array of data used to update a private message.
-	 *
-	 * @var array
-	 */
+	
 	public $pm_update_data = array();
 
-	/**
-	 * PM ID currently being manipulated by the datahandlers.
-	 *
-	 * @var int
-	 */
+	
 	public $pmid = 0;
 
-	/**
-	 * Values to be returned after inserting a PM.
-	 *
-	 * @var array
-	 */
+	
 	public $return_values = array();
 
-	/**
-	 * Verifies a private message subject.
-	 *
-	 * @return boolean True when valid, false when invalid.
-	 */
+	
 	function verify_subject()
 	{
 		$subject = &$this->data['subject'];
@@ -146,8 +110,8 @@ class PMDataHandler extends DataHandler
 
 		// Assign the sender information to the data.
 		$pm['sender'] = array(
-			"uid" => $sender['id'],
-			"username" => $sender['username']
+			"uid" => $sender['id'] ?? 0,
+			"username" => $sender['username'] ?? ''
 		);
 
 		return true;
@@ -158,241 +122,245 @@ class PMDataHandler extends DataHandler
 	 *
 	 * @return boolean True when valid, false when invalid.
 	 */
-	function verify_recipient()
-	{
-		global $cache, $db, $mybb, $lang;
+function verify_recipient()
+{
+    global $cache, $db, $mybb, $lang;
 
-		$pm = &$this->data;
+    $pm = &$this->data;
 
-		$recipients = array();
+    $recipients = array();
+    $invalid_recipients = array();
+    
+    // Исправление: приводим fromid к integer
+    $fromId = (int)$pm['fromid'];
+    
+    // We have our recipient usernames but need to fetch user IDs
+    if(array_key_exists("to", $pm))
+    {
+        foreach(array("to", "bcc") as $recipient_type)
+        {
+            if(!isset($pm[$recipient_type]))
+            {
+                $pm[$recipient_type] = array();
+            }
+            if(!is_array($pm[$recipient_type]))
+            {
+                $pm[$recipient_type] = array($pm[$recipient_type]);
+            }
 
-		$invalid_recipients = array();
-		// We have our recipient usernames but need to fetch user IDs
-		if(array_key_exists("to", $pm))
-		{
-			foreach(array("to", "bcc") as $recipient_type)
-			{
-				if(!isset($pm[$recipient_type]))
-				{
-					$pm[$recipient_type] = array();
-				}
-				if(!is_array($pm[$recipient_type]))
-				{
-					$pm[$recipient_type] = array($pm[$recipient_type]);
-				}
+            $pm[$recipient_type] = array_map('trim', $pm[$recipient_type]);
+            $pm[$recipient_type] = array_filter($pm[$recipient_type]);
 
-				$pm[$recipient_type] = array_map('trim', $pm[$recipient_type]);
-				$pm[$recipient_type] = array_filter($pm[$recipient_type]);
+            // No recipients? Skip query
+            if(empty($pm[$recipient_type]))
+            {
+                if($recipient_type == 'to' && empty($pm['saveasdraft']))
+                {
+                    $this->set_error("no_recipients");
+                    return false;
+                }
+                continue;
+            }
 
-				// No recipients? Skip query
-				if(empty($pm[$recipient_type]))
-				{
-					if($recipient_type == 'to' && empty($pm['saveasdraft']))
-					{
-						$this->set_error("no_recipients");
-						return false;
-					}
-					continue;
-				}
+            $recipientUsernames = array_map(array($db, 'escape_string'), $pm[$recipient_type]);
+            $recipientUsernames = "'".implode("','", $recipientUsernames)."'";
 
-				$recipientUsernames = array_map(array($db, 'escape_string'), $pm[$recipient_type]);
-				$recipientUsernames = "'".implode("','", $recipientUsernames)."'";
+            $query = $db->simple_select('users', '*', 'username IN('.$recipientUsernames.')');
 
-				$query = $db->simple_select('users', '*', 'username IN('.$recipientUsernames.')');
+            $validUsernames = array();
 
-				$validUsernames = array();
+            while($user = $db->fetch_array($query))
+            {
+                if($recipient_type == "bcc")
+                {
+                    $user['bcc'] = 1;
+                }
 
-				while($user = $db->fetch_array($query))
-				{
-					if($recipient_type == "bcc")
-					{
-						$user['bcc'] = 1;
-					}
+                $recipients[] = $user;
+                $validUsernames[] = $user['username'];
+            }
 
-					$recipients[] = $user;
-					$validUsernames[] = $user['username'];
-				}
+            foreach($pm[$recipient_type] as $username)
+            {
+                if(!in_array($username, $validUsernames))
+                {
+                    $invalid_recipients[] = $username;
+                }
+            }
+        }
+    }
+    // We have recipient IDs
+    else
+    {
+        foreach(array("toid", "bccid") as $recipient_type)
+        {
+            if(!isset($pm[$recipient_type]))
+            {
+                $pm[$recipient_type] = array();
+            }
+            if(!is_array($pm[$recipient_type]))
+            {
+                $pm[$recipient_type] = array($pm[$recipient_type]);
+            }
+            $pm[$recipient_type] = array_map('intval', $pm[$recipient_type]);
+            $pm[$recipient_type] = array_filter($pm[$recipient_type]);
 
-				foreach($pm[$recipient_type] as $username)
-				{
-					if(!in_array($username, $validUsernames))
-					{
-						$invalid_recipients[] = $username;
-					}
-				}
-			}
-		}
-		// We have recipient IDs
-		else
-		{
-			foreach(array("toid", "bccid") as $recipient_type)
-			{
-				if(!isset($pm[$recipient_type]))
-				{
-					$pm[$recipient_type] = array();
-				}
-				if(!is_array($pm[$recipient_type]))
-				{
-					$pm[$recipient_type] = array($pm[$recipient_type]);
-				}
-				$pm[$recipient_type] = array_map('intval', $pm[$recipient_type]);
-				$pm[$recipient_type] = array_filter($pm[$recipient_type]);
+            // No recipients? Skip query
+            if(empty($pm[$recipient_type]))
+            {
+                if($recipient_type == 'toid' && !$pm['saveasdraft'])
+                {
+                    $this->set_error("no_recipients");
+                    return false;
+                }
+                continue;
+            }
 
-				// No recipients? Skip query
-				if(empty($pm[$recipient_type]))
-				{
-					if($recipient_type == 'toid' && !$pm['saveasdraft'])
-					{
-						$this->set_error("no_recipients");
-						return false;
-					}
-					continue;
-				}
+            $recipientUids = "'".implode("','", $pm[$recipient_type])."'";
 
-				$recipientUids = "'".implode("','", $pm[$recipient_type])."'";
+            $query = $db->simple_select('users', '*', 'id IN('.$recipientUids.')');
 
-				$query = $db->simple_select('users', '*', 'id IN('.$recipientUids.')');
+            $validUids = array();
 
-				$validUids = array();
+            while($user = $db->fetch_array($query))
+            {
+                if($recipient_type == "bccid")
+                {
+                    $user['bcc'] = 1;
+                }
 
-				while($user = $db->fetch_array($query))
-				{
-					if($recipient_type == "bccid")
-					{
-						$user['bcc'] = 1;
-					}
+                $recipients[] = $user;
+                $validUids[] = $user['id'];
+            }
 
-					$recipients[] = $user;
-					$validUids[] = $user['id'];
-				}
+            foreach($pm[$recipient_type] as $uid)
+            {
+                if(!in_array($uid, $validUids))
+                {
+                    $invalid_recipients[] = $uid;
+                }
+            }
+        }
+    }
 
-				foreach($pm[$recipient_type] as $uid)
-				{
-					if(!in_array($uid, $validUids))
-					{
-						$invalid_recipients[] = $uid;
-					}
-				}
-			}
-		}
+    // If we have one or more invalid recipients and we're not saving a draft, error
+    if(count($invalid_recipients) > 0)
+    {
+        $invalid_recipients = implode($lang->comma, array_map("htmlspecialchars_uni", $invalid_recipients));
+        $this->set_error("invalid_recipients", array($invalid_recipients));
+        return false;
+    }
 
-		// If we have one or more invalid recipients and we're not saving a draft, error
-		if(count($invalid_recipients) > 0)
-		{
-			$invalid_recipients = implode($lang->comma, array_map("htmlspecialchars_uni", $invalid_recipients));
-			$this->set_error("invalid_recipients", array($invalid_recipients));
-			return false;
-		}
+    // ИСПРАВЛЕНИЕ: передаем integer вместо строки
+    $sender_permissions = user_permissions($fromId);
 
-		$sender_permissions = user_permissions($pm['fromid']);
+    // Are we trying to send this message to more users than the permissions allow?
+    if(isset($sender_permissions['maxpmrecipients']) && $sender_permissions['maxpmrecipients'] > 0 && count($recipients) > $sender_permissions['maxpmrecipients'] && $this->admin_override != true)
+    {
+        $this->set_error("You are only allowed to send messages to ".$sender_permissions['maxpmrecipients']." users at a time");
+    }
 
-		// Are we trying to send this message to more users than the permissions allow?
-		if($sender_permissions['maxpmrecipients'] > 0 && count($recipients) > $sender_permissions['maxpmrecipients'] && $this->admin_override != true)
-		{
-			$this->set_error("too_many_recipients", array($sender_permissions['maxpmrecipients']));
-		}
+    // Now we're done with that we loop through each recipient
+    $pm['recipients'] = array();
+    foreach($recipients as $user)
+    {
+        // ИСПРАВЛЕНИЕ: передаем integer вместо строки
+        $recipient_permissions = user_permissions((int)$user['id']);
 
-		// Now we're done with that we loop through each recipient
-		$pm['recipients'] = array();
-		foreach($recipients as $user)
-		{
-			// Collect group permissions for this recipient.
-			$recipient_permissions = user_permissions($user['id']);
+        // See if the sender is on the recipients ignore list and that either
+        // - admin_override is set or
+        // - sender is an administrator
+        if($this->admin_override != true && $sender_permissions['canoverridepm'] != 1)
+        {
+            if(!empty($user['ignorelist']) && strpos(','.$user['ignorelist'].',', ','.$pm['fromid'].',') !== false)
+            {
+                $this->set_error("recipient_is_ignoring", array(htmlspecialchars_uni($user['username'])));
+            }
 
-			// See if the sender is on the recipients ignore list and that either
-			// - admin_override is set or
-			// - sender is an administrator
-			if($this->admin_override != true && $sender_permissions['canoverridepm'] != 1)
-			{
-				if(!empty($user['ignorelist']) && strpos(','.$user['ignorelist'].',', ','.$pm['fromid'].',') !== false)
-				{
-					$this->set_error("recipient_is_ignoring", array(htmlspecialchars_uni($user['username'])));
-				}
+            // Is the recipient only allowing private messages from their buddy list?
+            $allowbuddyonly = "0";
+            
+            if(empty($pm['saveasdraft']) && $allowbuddyonly == 1 && $user['receivefrombuddy'] == 1 && !empty($user['buddylist']) && strpos(','.$user['buddylist'].',', ','.$pm['fromid'].',') === false)
+            {
+                $this->set_error('recipient_has_buddy_only', array(htmlspecialchars_uni($user['username'])));
+            }
 
-				// Is the recipient only allowing private messages from their buddy list?
-				$allowbuddyonly = "0";
-				
-				if(empty($pm['saveasdraft']) && $allowbuddyonly == 1 && $user['receivefrombuddy'] == 1 && !empty($user['buddylist']) && strpos(','.$user['buddylist'].',', ','.$pm['fromid'].',') === false)
-				{
-					$this->set_error('recipient_has_buddy_only', array(htmlspecialchars_uni($user['username'])));
-				}
+            // Can the recipient actually receive private messages based on their permissions or user setting?
+            if(($user['receivepms'] == 0 || $recipient_permissions['canusepms'] == 0) && empty($pm['saveasdraft']))
+            {
+                $this->set_error("recipient_pms_disabled", array(htmlspecialchars_uni($user['username'])));
+                return false;
+            }
+        }
 
-				// Can the recipient actually receive private messages based on their permissions or user setting?
-				if(($user['receivepms'] == 0 || $recipient_permissions['canusepms'] == 0) && empty($pm['saveasdraft']))
-				{
-					$this->set_error("recipient_pms_disabled", array(htmlspecialchars_uni($user['username'])));
-					return false;
-				}
-			}
+        // Check to see if the user has reached their private message quota - if they have, email them.
+        if($recipient_permissions['pmquota'] != 0 && $user['totalpms'] >= $recipient_permissions['pmquota'] && $sender_permissions['cancp'] != 1 && empty($pm['saveasdraft']) && !$this->admin_override)
+        {
+            if(trim($user['language'] ?? '') != '' && $lang->language_exists($user['language']))
+            {
+                $uselang = trim($user['language']);
+            }
+            elseif($mybb->settings['bblanguage'])
+            {
+                $uselang = $mybb->settings['bblanguage'];
+            }
+            else
+            {
+                $uselang = "english";
+            }
+            if($uselang == $mybb->settings['bblanguage'] || !$uselang)
+            {
+                $emailsubject = $lang->emailsubject_reachedpmquota;
+                $emailmessage = $lang->email_reachedpmquota;
+            }
+            else
+            {
+                $userlang = new MyLanguage;
+                $userlang->set_path(MYBB_ROOT."inc/languages");
+                $userlang->set_language($uselang);
+                $userlang->load("messages");
+                $emailsubject = $userlang->emailsubject_reachedpmquota;
+                $emailmessage = $userlang->email_reachedpmquota;
+            }
+            $emailmessage = $lang->sprintf($emailmessage, $user['username'], $mybb->settings['bbname'], $mybb->settings['bburl']);
+            $emailsubject = $lang->sprintf($emailsubject, $mybb->settings['bbname'], $pm['subject']);
 
-			// Check to see if the user has reached their private message quota - if they have, email them.
-			if($recipient_permissions['pmquota'] != 0 && $user['totalpms'] >= $recipient_permissions['pmquota'] && $sender_permissions['cancp'] != 1 && empty($pm['saveasdraft']) && !$this->admin_override)
-			{
-				if(trim($user['language']) != '' && $lang->language_exists($user['language']))
-				{
-					$uselang = trim($user['language']);
-				}
-				elseif($mybb->settings['bblanguage'])
-				{
-					$uselang = $mybb->settings['bblanguage'];
-				}
-				else
-				{
-					$uselang = "english";
-				}
-				if($uselang == $mybb->settings['bblanguage'] || !$uselang)
-				{
-					$emailsubject = $lang->emailsubject_reachedpmquota;
-					$emailmessage = $lang->email_reachedpmquota;
-				}
-				else
-				{
-					$userlang = new MyLanguage;
-					$userlang->set_path(MYBB_ROOT."inc/languages");
-					$userlang->set_language($uselang);
-					$userlang->load("messages");
-					$emailsubject = $userlang->emailsubject_reachedpmquota;
-					$emailmessage = $userlang->email_reachedpmquota;
-				}
-				$emailmessage = $lang->sprintf($emailmessage, $user['username'], $mybb->settings['bbname'], $mybb->settings['bburl']);
-				$emailsubject = $lang->sprintf($emailsubject, $mybb->settings['bbname'], $pm['subject']);
+            $new_email = array(
+                "mailto" => $db->escape_string($user['email']),
+                "mailfrom" => '',
+                "subject" => $db->escape_string($emailsubject),
+                "message" => $db->escape_string($emailmessage),
+                "headers" => ''
+            );
 
-				$new_email = array(
-					"mailto" => $db->escape_string($user['email']),
-					"mailfrom" => '',
-					"subject" => $db->escape_string($emailsubject),
-					"message" => $db->escape_string($emailmessage),
-					"headers" => ''
-				);
+            $db->insert_query("mailqueue", $new_email);
+            $cache->update_mailqueue();
 
-				$db->insert_query("mailqueue", $new_email);
-				$cache->update_mailqueue();
+            if($this->admin_override != true)
+            {
+                $this->set_error("recipient_reached_quota", array(htmlspecialchars_uni($user['username'])));
+            }
+        }
 
-				if($this->admin_override != true)
-				{
-					$this->set_error("recipient_reached_quota", array(htmlspecialchars_uni($user['username'])));
-				}
-			}
+        // Everything looks good, assign some specifics about the recipient
+        $pm['recipients'][$user['id']] = array(
+            "uid" => $user['id'] ?? 0,
+            "username" => $user['username'] ?? '',
+            "email" => $user['email'] ?? '',
+            "lastactive" => $user['lastactive'] ?? 0,
+            "pmnotice" => $user['pmnotice'] ?? 0,
+            "pmnotify" => $user['pmnotify'] ?? 0,
+            "language" => $user['language'] ?? ''
+        );
 
-			// Everything looks good, assign some specifics about the recipient
-			$pm['recipients'][$user['uid']] = array(
-				"uid" => $user['id'],
-				"username" => $user['username'],
-				"email" => $user['email'],
-				"lastactive" => $user['lastactive'],
-				"pmnotice" => $user['pmnotice'],
-				"pmnotify" => $user['pmnotify'],
-				"language" => $user['language']
-			);
-
-			// If this recipient is defined as a BCC recipient, save it
-			if(isset($user['bcc']) && $user['bcc'] == 1)
-			{
-				$pm['recipients'][$user['uid']]['bcc'] = 1;
-			}
-		}
-		return true;
-	}
+        // If this recipient is defined as a BCC recipient, save it
+        if(isset($user['bcc']) && $user['bcc'] == 1)
+        {
+            $pm['recipients'][$user['uid']]['bcc'] = 1;
+        }
+    }
+    return true;
+}
 
 	/**
 	* Verify that the user is not flooding the system.
@@ -449,9 +417,9 @@ class PMDataHandler extends DataHandler
 	{
 		$options = &$this->data['options'];
 
-		//$this->verify_yesno_option($options, 'signature', 1);
+		
 		$this->verify_yesno_option($options, 'savecopy', 1);
-		//$this->verify_yesno_option($options, 'disablesmilies', 0);
+		
 
 		// Requesting a read receipt?
 		if(isset($options['readreceipt']) && $options['readreceipt'] == 1)
@@ -580,7 +548,7 @@ class PMDataHandler extends DataHandler
 			'receipt' => (int)$pm['options']['readreceipt'],
 			'readtime' => 0,
 			'recipients' => $db->escape_string(my_serialize($recipient_list)),
-			'ipaddress' => $db->escape_binary($pm['ipaddress'])
+			'ipaddress' => $db->escape_binary($pm['ipaddress'] ?? '')
 		);
 
 		// Check if we're updating a draft or not.
@@ -634,7 +602,7 @@ class PMDataHandler extends DataHandler
 			$lastpm = $db->fetch_array($query);
 			if($recipient['pmnotify'] == 1 && (empty($lastpm['dateline']) || $recipient['lastactive'] > $lastpm['dateline']))
 			{
-				if($recipient['language'] != "" && $lang->language_exists($recipient['language']))
+				if(($recipient['language'] ?? '') != "" && $lang->language_exists($recipient['language']))
 				{
 					$uselang = $recipient['language'];
 				}
@@ -661,7 +629,7 @@ class PMDataHandler extends DataHandler
 					$emailmessage = $userlang->email_newpm;
 				}
 
-				if(!$pm['sender']['username'])
+				if(!($pm['sender']['username'] ?? ''))
 				{
 					$pm['sender']['username'] = 'Ruff Tracker Engine';
 				}
@@ -761,34 +729,22 @@ class PMDataHandler extends DataHandler
 			require_once INC_PATH."/functions_user.php";
 			update_pm_count($pm['sender']['uid'], 1);
 			
-			
-			
 			// --- ВСТАВИТЬ ПРИВЯЗКУ ФАЙЛОВ ЗДЕСЬ ---
-if (!empty($_POST['file_ids']) && is_array($_POST['file_ids'])) {
-    $file_ids = array_filter(array_map('intval', $_POST['file_ids']));
-    if ($file_ids) {
-        $id_list = implode(',', $file_ids);
-        foreach ((array)$this->pmid as $pmid) {
-            $pmid = (int)$pmid;
-            $db->sql_query("
-                UPDATE comment_files
-                SET messages_id = {$pmid}
-                WHERE id IN ($id_list)
-            ");
-        }
-    }
-}
-// --- КОНЕЦ ВСТАВКИ ---
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
+			if (!empty($_POST['file_ids']) && is_array($_POST['file_ids'])) {
+				$file_ids = array_filter(array_map('intval', $_POST['file_ids']));
+				if ($file_ids) {
+					$id_list = implode(',', $file_ids);
+					foreach ((array)$this->pmid as $pmid) {
+						$pmid = (int)$pmid;
+						$db->sql_query("
+							UPDATE comment_files
+							SET messages_id = {$pmid}
+							WHERE id IN ($id_list)
+						");
+					}
+				}
+			}
+			// --- КОНЕЦ ВСТАВКИ ---
 		}
 
 		// Return back with appropriate data

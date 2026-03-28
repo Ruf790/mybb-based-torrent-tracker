@@ -1,4 +1,4 @@
-<?
+<?php
 /***********************************************/
 /*=========[TS Special Edition v.5.6]==========*/
 /*=============[Special Thanks To]=============*/
@@ -8,677 +8,850 @@
 /*           Fynnon - wWw.BvList.CoM           */
 /***********************************************/
 
-
-  function show_faq_errors ()
-  {
-    global $faq_errors;
-    global $lang;
-    if (0 < count ($faq_errors))
-    {
-      $errors = implode ('<br />', $faq_errors);
-      echo '
-			<table class="main" border="0" cellspacing="0" cellpadding="5" width="100%">
-			<tr>
-				<td class="thead">
-					' . $lang->global['error'] . '
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<font color="red">
-						<strong>
-							' . $errors . '
-						</strong>
-					</font>
-				</td>
-			</tr>
-			</table>
-			<br />
-		';
+/**
+ * Display FAQ error messages
+ */
+function show_faq_errors()
+{
+    global $faq_errors, $lang;
+    
+    if (empty($faq_errors) || count($faq_errors) === 0) {
+        return;
     }
+    
+    $errors = implode('<br />', $faq_errors);
+    
+	stdhead($lang->faq['faqtitle'], true, '', '');
+	
+    echo '
+    <div class="container mt-3">
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <h5 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>' . $lang->global['error'] . '</h5>
+            <hr>
+            <p class="mb-0"><strong>' . $errors . '</strong></p>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>';
+}
 
-  }
+// Security check
+if (!defined('STAFF_PANEL_TSSEv56')) {
+    exit('<div class="alert alert-danger m-3" role="alert">
+        <i class="fas fa-ban me-2"></i><b>Error!</b> Direct initialization of this file is not allowed.
+    </div>');
+}
 
-  if (!defined ('STAFF_PANEL_TSSEv56'))
-  {
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-  }
+// Constants and initialization
+define('TSFAQMANAGE_VERSION', '1.3.2 by xam');
 
-  define ('TSFAQMANAGE_VERSION', '1.3.2 by xam');
-  $lang->load ('faq');
-  $do = (isset ($_GET['do']) ? htmlspecialchars_uni ($_GET['do']) : (isset ($_POST['do']) ? htmlspecialchars_uni ($_POST['do']) : ''));
-  $subdo = (isset ($_GET['subdo']) ? htmlspecialchars_uni ($_GET['subdo']) : (isset ($_POST['subdo']) ? htmlspecialchars_uni ($_POST['subdo']) : ''));
-  $id = (isset ($_GET['id']) ? intval ($_GET['id']) : (isset ($_POST['id']) ? intval ($_POST['id']) : ''));
-  $faq_errors = array ();
-  stdhead ($lang->faq['faqtitle'], true, '', '');
-  
-  
+$lang->load('faq');
+
+// Sanitize input
+$do = isset($_GET['do']) ? htmlspecialchars_uni($_GET['do']) : (isset($_POST['do']) ? htmlspecialchars_uni($_POST['do']) : '');
+$subdo = isset($_GET['subdo']) ? htmlspecialchars_uni($_GET['subdo']) : (isset($_POST['subdo']) ? htmlspecialchars_uni($_POST['subdo']) : '');
+$id = isset($_GET['id']) ? (int)$_GET['id'] : (isset($_POST['id']) ? (int)$_POST['id'] : 0);
+
+$faq_errors = array();
+
+// Start output
+
+
+
+echo '<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>';
+
+// Main routing - восстановим оригинальную логику
+if ($do == 'view') {
+    handleView($id);
+} elseif ($do == 'savedisplayorder') {
+    handleSaveDisplayOrder();
+} elseif ($do == 'delete') {
+    handleDelete($id);
+} elseif ($do == 'new') {
+    handleNew();
+} elseif ($do == 'add') {
+    handleAdd($id);
+} elseif ($do == 'edit') {
+    handleEdit($id);
+} else {
+    handleDefault();
+}
+
+stdfoot();
+
+/**
+ * Handle viewing FAQ items
+ */
  
-  
-  
-  
-  if ($do == 'view')
-  {
-    if (!is_valid_id ($id))
-    {
-      $faq_errors[] = $lang->faq['faqerror'];
-    }
-    else
-    {
-      $query = $db->sql_query ('' . 'SELECT a.id,a.name,a.description,b.name as title FROM faq a 
-	  LEFT JOIN faq b ON (a.pid=b.id) WHERE a.type = \'2\' AND a.pid = \'' . $id . '\' ORDER By a.disporder ASC');
-      if ($db->num_rows ($query) == 0)
-      {
+ 
+
+ 
+ 
+ 
+ 
+ 
+ 
+function handleView($id)
+{
+    global $db, $lang, $faq_errors, $_this_script_;
+
+    if (!is_valid_id($id)) {
         $faq_errors[] = $lang->faq['faqerror'];
-      }
-      else
-      {
-        echo '
-		
-		       <div class="container-md">
-  <div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-		' . $lang->faq['faqtitle'] . '
-	</div>
-	 </div>
-		</div>
-		
-		
-				
-				<div class="container mt-3">
-                <div class="card">
-  
-				<table class="tborder" border="0" cellspacing="0" cellpadding="5" width="100%">
-					<tr>
-						<td>
-							';
-        $uldone = false;
-        while ($faq = $db->fetch_array ($query))
-        {
-          if (!$uldone)
-          {
+        show_faq_errors();
+        return;
+    }
+
+    $query = $db->sql_query("
+        SELECT a.id, a.name, a.description, b.name AS title
+        FROM faq a
+        LEFT JOIN faq b ON (a.pid = b.id)
+        WHERE a.type = 2 AND a.pid = " . (int)$id . "
+        ORDER BY a.disporder ASC
+    ");
+
+    if (!$query) {
+        die('SQL ERROR: ' . $db->error());
+    }
+
+    if ($db->num_rows($query) == 0) {
+        $faq_errors[] = $lang->faq['faqerror'];
+        show_faq_errors();
+        return;
+    }
+
+    echo '
+    <div class="container mt-3">
+        <div class="card shadow border-0">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-question-circle me-2"></i>
+                    ' . $lang->faq['faqtitle'] . '
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="faqAccordion">';
+
+    $currentTitle = '';
+
+    while ($faq = $db->fetch_array($query)) {
+
+        if ($currentTitle !== $faq['title']) {
+            $currentTitle = $faq['title'];
             echo '
-						<ul><strong>' . $faq['title'] . '</strong>';
-          }
-
-          echo '
-						<li><a href="javascript:collapse' . $faq['id'] . '.slideit()"><font color="red">' . $faq['name'] . '</font></a> 
-						<a href="' . $_this_script_ . '&amp;do=edit&amp;id=' . $faq['id'] . '">
-						
-						
-						
-						<i class="fa-solid fa-pen-to-square fa-xl" style="color: #0658e5;" alt="Edit" title="Edit"></i>
-						
-						</a> 
-						<a href="' . $_this_script_ . '&amp;do=delete&amp;id=' . $faq['id'] . '" onclick="return confirmdelete()">
-						
-						<i class="fa-solid fa-trash-can fa-xl" style="color: #eb0f0f;" alt="Delete" title="Delete"></i>
-						
-						</a></li>
-						<div id="faq' . $faq['id'] . '" style="padding: 0px 0px 0px 0px; margin: 0px 0px 0px 15px;">' . $faq['description'] . '<br /></div>
-						<script type="text/javascript">				
-							var collapse' . $faq['id'] . '=new animatedcollapse("faq' . $faq['id'] . '", 850, true)
-						</script>';
-          $uldone = true;
+            <h5 class="text-primary mt-4 mb-3">
+                <i class="fas fa-folder me-2"></i>
+                ' . htmlspecialchars($currentTitle) . '
+            </h5>';
         }
 
-        echo '
-						</ul>
-					</td>
-				</tr>
-			</table>
-			</div>
-</div>
-			
-			<br />';
-      }
-    }
-  }
+        $collapseId = 'collapse' . (int)$faq['id'];
 
-  if ($do == 'savedisplayorder')
-  {
-    $orders = $_POST['disporder'];
-    if (!is_array ($orders))
-    {
-      $faq_errors[] = 'Empty FAQ order(s)!';
-    }
-    else
-    {
-      foreach ($orders as $id => $order)
-      {
-        $db->sql_query ('UPDATE faq SET disporder = ' . $db->sqlesc ($order) . ' WHERE id = ' . $db->sqlesc ($id));
-      }
-    }
-  }
+        stdhead ($lang->faq['faqtitle'], true, '', '');
+		
+		
+		echo '
+        <div class="accordion-item mb-2">
+            <h2 class="accordion-header" id="heading' . $faq['id'] . '">
+                <button class="accordion-button collapsed" type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#' . $collapseId . '">
+                    <strong class="text-danger">' . htmlspecialchars($faq['name']) . '</strong>
 
-  if ($do == 'delete')
-  {
-    if (!is_valid_id ($id))
-    {
-      $faq_errors[] = $lang->faq['faqerror'];
-    }
-    else
-    {
-      $db->sql_query ('DELETE FROM faq WHERE id = ' . $db->sqlesc ($id));
-      $db->sql_query ('DELETE FROM faq WHERE pid = ' . $db->sqlesc ($id));
-    }
-  }
+                    <span class="ms-auto">
+                        <a href="' . $_this_script_ . '&do=edit&id=' . (int)$faq['id'] . '" class="btn btn-sm btn-outline-primary me-1">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        <a href="' . $_this_script_ . '&do=delete&id=' . (int)$faq['id'] . '" 
+                           onclick="return confirm(\'Delete this item?\')"
+                           class="btn btn-sm btn-outline-danger">
+                            <i class="fas fa-trash"></i>
+                        </a>
+                    </span>
+                </button>
+            </h2>
 
-  if ($do == 'new')
-  {
-    if ($subdo == 'save')
-    {
-      print_r ($_POST);
-      exit ();
-      $name = trim ($_POST['name']);
-      $description = trim ($_POST['description']);
-      $disporder = intval ($_POST['disporder']);
-      if (empty ($name))
-      {
-        $faq_errors[] = 'Please fill all fields!';
-      }
-      else
-      {
-        $db->sql_query ('INSERT INTO faq (type,name,description,disporder) VALUES (\'1\',' . $db->sqlesc ($name) . ',' . $db->sqlesc ($description) . ',' . $db->sqlesc ($disporder) . ')');
-        header ('Location: ' . $_this_script_);
-        exit ();
-      }
-
-      show_faq_errors ();
+            <div id="' . $collapseId . '" class="accordion-collapse collapse">
+                <div class="accordion-body bg-light">
+                    ' . $faq['description'] . '
+                </div>
+            </div>
+        </div>';
     }
 
-    $where = array ('Cancel' => $_this_script_);
     echo '
-	<form method="post" action="' . $_this_script_ . '">
-	<input type="hidden" name="do" value="new">
-	<input type="hidden" name="subdo" value="save">
-	
-	
-	<div class="container mt-3">
-	<div class="float-end">
-			
-			' . jumpbutton ($where) . '
-			
-			</div>
-			</div>
-			</br>
-			</br>
-	
-	
-	<div class="container-md">
-  <div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-			Add New FAQ Item
-	</div>
-	 </div>
-		</div>
-		
-	
-	<div class="container mt-3">
-			
+                </div>
+            </div>
+        </div>
+    </div>';
+}
 
-			
-            <div class="card">
-            <div class="card-body">
-	
-	
-	
 
-		
-		
-		
-		<tr>
-			<td align="right" valign="top">
-				Title
-			</td>
-			<td align="left">
-				<input type="text" class="form-control" name="name" value="' . htmlspecialchars_uni ($name) . '" style="width: 745px;">
-			</td>
-		</tr>
-
-		
-		</br>
-		<tr>
-			<td align="right" valign="top">
-				Description
-			</td>
-			<td align="left">
-				<textarea name="description" class="form-control form-control-sm border" style="height: 300px" id="description">' . htmlspecialchars_uni ($description) . '</textarea>				
-			</td>
-		</tr>
-
-		
-		</br>
-		<tr>
-			<td align="right" valign="top">
-				Display Order
-			</td>
-			<td align="left">
-				<label>
-				<input type="text" class="form-control form-control-sm" name="disporder" value="' . $disporder . '" size="4">
-				</label>
-			</td>
-		</tr>
-
-		<tr>
-			<td align="center" colspan="3">
-				<input type="submit" class="btn btn-primary" value="save"> <input type="reset" class="btn btn-primary" value="reset">
-			</td>
-		</tr>
-	
-	</div>
-    </div>
-    </div>
-	
-	
-	</form>
-	
-	';
-    stdfoot ();
-    exit ();
-  }
-
-  if ($do == 'add')
-  {
-    if ($subdo == 'save')
-    {
-      $name = trim ($_POST['name']);
-      $description = trim ($_POST['description']);
-      $disporder = intval ($_POST['disporder']);
-      $pid = intval ($_POST['pid']);
-      if (empty ($name))
-      {
-        $faq_errors[] = 'Please fill all fields!';
-      }
-      else
-      {
-        $db->sql_query ('INSERT INTO faq (type,name,description,disporder,pid) VALUES (\'2\',' . $db->sqlesc ($name) . ',' . $db->sqlesc ($description) . ',' . $db->sqlesc ($disporder) . ',' . $db->sqlesc ($pid) . ')');
-        header ('Location: ' . $_this_script_);
-        exit ();
-      }
+/**
+ * Handle saving display order
+ */
+function handleSaveDisplayOrder()
+{
+    global $db, $faq_errors;
+    
+    $orders = isset($_POST['disporder']) ? $_POST['disporder'] : array();
+    
+    if (!is_array($orders)) {
+        $faq_errors[] = 'Empty FAQ order(s)!';
+        show_faq_errors();
+        return;
     }
-
-    if (!is_valid_id ($id))
-    {
-      $faq_errors[] = $lang->faq['faqerror'];
-      show_faq_errors ();
+    
+    foreach ($orders as $id => $order) {
+        $db->sql_query("UPDATE faq SET disporder = '" . $db->escape_string($order) . "' WHERE id = '" . $db->escape_string($id) . "'");
     }
-    else
-    {
-      ($query = $db->sql_query ('SELECT * FROM faq WHERE type = \'1\''));
-      if ($db->num_rows ($query) == 0)
-      {
+    
+    // Redirect to prevent form resubmission
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+/**
+ * Handle deletion
+ */
+function handleDelete($id)
+{
+    global $db, $lang, $faq_errors, $_this_script_;
+    
+    if (!is_valid_id($id)) {
         $faq_errors[] = $lang->faq['faqerror'];
-        show_faq_errors ();
-      }
-      else
-      {
-        show_faq_errors ();
-        $categories = '<select name="pid" class="form-select form-select-sm border pe-5 w-auto">';
-        while ($faq = $db->fetch_array ($query))
-        {
-          $categories .= '<option value="' . $faq['id'] . ($id == $faq['id'] ? ' selected="selected"' : '') . '">' . $faq['name'] . '</option>';
-        }
+        show_faq_errors();
+        return;
+    }
+    
+    $db->sql_query("DELETE FROM faq WHERE id = '" . $db->escape_string($id) . "'");
+    $db->sql_query("DELETE FROM faq WHERE pid = '" . $db->escape_string($id) . "'");
+    
+    // Redirect after deletion
+    header('Location: ' . $_this_script_);
+    exit;
+}
 
+/**
+ * Handle new FAQ creation
+ */
+function handleNew()
+{
+    global $db, $lang, $faq_errors, $_this_script_;
+    
+    if (isset($_POST['subdo']) && $_POST['subdo'] == 'save') {
+        $name = isset($_POST['name']) ? trim($_POST['name']) : '';
+        $description = isset($_POST['description']) ? trim($_POST['description']) : '';
+        $disporder = isset($_POST['disporder']) ? (int)$_POST['disporder'] : 0;
+        
+        if (empty($name)) {
+            $faq_errors[] = 'Please fill all fields!';
+        } else {
+            $db->sql_query("INSERT INTO faq (type,name,description,disporder) VALUES ('1','" . $db->escape_string($name) . "','" . $db->escape_string($description) . "','" . $db->escape_string($disporder) . "')");
+            header('Location: ' . $_this_script_);
+            exit;
+        }
+        
+        show_faq_errors();
+    }
+    
+    $name = isset($_POST['name']) ? htmlspecialchars_uni($_POST['name']) : '';
+    $description = isset($_POST['description']) ? htmlspecialchars_uni($_POST['description']) : '';
+    $disporder = isset($_POST['disporder']) ? (int)$_POST['disporder'] : 0;
+    
+    $where = array('Cancel' => $_this_script_);
+	
+	stdhead($lang->faq['faqtitle'], true, '', '');
+    
+    echo '
+    <form method="post" action="' . $_this_script_ . '">
+    <input type="hidden" name="do" value="new">
+    <input type="hidden" name="subdo" value="save">
+    
+    <div class="container-fluid">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h3 class="text-primary">
+                        <i class="fas fa-plus-circle me-2"></i>
+                        Add New FAQ Item
+                    </h3>
+                    <div>
+                        ' . jumpbutton($where) . '
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-12">
+                                <label for="name" class="form-label">
+                                    <i class="fas fa-heading me-1"></i>
+                                    Title <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="name" 
+                                       name="name" 
+                                       value="' . $name . '" 
+                                       required>
+                            </div>
+                            
+                            <div class="col-md-12">
+                                <label for="description" class="form-label">
+                                    <i class="fas fa-align-left me-1"></i>
+                                    Description
+                                </label>
+                                <textarea class="form-control" 
+                                          id="description" 
+                                          name="description" 
+                                          rows="8">' . $description . '</textarea>
+                            </div>
+                            
+                            <div class="col-md-3">
+                                <label for="disporder" class="form-label">
+                                    <i class="fas fa-sort-numeric-up me-1"></i>
+                                    Display Order
+                                </label>
+                                <input type="number" 
+                                       class="form-control" 
+                                       id="disporder" 
+                                       name="disporder" 
+                                       value="' . $disporder . '" 
+                                       min="0">
+                            </div>
+                            
+                            <div class="col-12 mt-4">
+                                <div class="d-flex gap-2">
+                                    <button type="submit" class="btn btn-primary px-4">
+                                        <i class="fas fa-save me-2"></i>
+                                        Save FAQ Item
+                                    </button>
+                                    <button type="reset" class="btn btn-outline-secondary">
+                                        <i class="fas fa-undo me-2"></i>
+                                        Reset
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </form>';
+    
+    stdfoot();
+    exit;
+}
+
+/**
+ * Handle adding child FAQ item
+ */
+function handleAdd($id)
+{
+    global $db, $lang, $faq_errors, $_this_script_;
+    
+    if (!is_valid_id($id)) {
+        $faq_errors[] = $lang->faq['faqerror'];
+        show_faq_errors();
+        return;
+    }
+    
+    if (isset($_POST['subdo']) && $_POST['subdo'] == 'save') {
+        $name = isset($_POST['name']) ? trim($_POST['name']) : '';
+        $description = isset($_POST['description']) ? trim($_POST['description']) : '';
+        $disporder = isset($_POST['disporder']) ? (int)$_POST['disporder'] : 0;
+        $pid = isset($_POST['pid']) ? (int)$_POST['pid'] : 0;
+        
+        if (empty($name)) {
+            $faq_errors[] = 'Please fill all fields!';
+        } else {
+            $db->sql_query("INSERT INTO faq (type,name,description,disporder,pid) VALUES ('2','" . $db->escape_string($name) . "','" . $db->escape_string($description) . "','" . $db->escape_string($disporder) . "','" . $db->escape_string($pid) . "')");
+            header('Location: ' . $_this_script_);
+            exit;
+        }
+    }
+    
+    $query = $db->sql_query("SELECT * FROM faq WHERE type = '1'");
+    if ($db->num_rows($query) == 0) {
+        $faq_errors[] = $lang->faq['faqerror'];
+        show_faq_errors();
+    } else {
+        show_faq_errors();
+        
+        $categories = '<select name="pid" class="form-select">';
+        while ($faq = $db->fetch_array($query)) {
+            $categories .= '<option value="' . $faq['id'] . '"' . ($id == $faq['id'] ? ' selected="selected"' : '') . '>' . $faq['name'] . '</option>';
+        }
         $categories .= '</select>';
-        $where = array ('Cancel' => $_this_script_);
-        echo '
-			<form method="post" action="' . $_this_script_ . '">
-			<input type="hidden" name="do" value="add">
-			<input type="hidden" name="subdo" value="save">
-			<input type="hidden" name="id" value="' . $id . '">
-			
-			
-			
-			<div class="container mt-3">
-  <div class="float-end">
-  ' . jumpbutton ($where) . '
-  </div></div>
-  </br>
-  </br>
-			
-			
-			
-			
-			
-			
-			<div class="container-md">
-  <div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-		Add Child FAQ Item
-	</div>
-	 </div>
-		</div>
+        
+        $name = isset($_POST['name']) ? htmlspecialchars_uni($_POST['name']) : '';
+        $description = isset($_POST['description']) ? htmlspecialchars_uni($_POST['description']) : '';
+        $disporder = isset($_POST['disporder']) ? (int)$_POST['disporder'] : 0;
+        
+        $where = array('Cancel' => $_this_script_);
+        
+        stdhead($lang->faq['faqtitle'], true, '', '');
 		
-		
-			
-			
-			<div class="container mt-3">
-            <div class="card">
-			
-			<table class="tborder" border="0" cellspacing="0" cellpadding="5" width="100%">
-				
-
-				<tr>
-					<td align="right" valign="top">
-						Category
-					</td>
-					<td align="left">
-						' . $categories . '
-					</td>
-				</tr>
-
-				<tr>
-					<td align="right" valign="top">
-						Title
-					</td>
-					<td align="left">
-						<input type="text" class="form-control" name="name" value="' . htmlspecialchars_uni ($name) . '" style="width: 745px;">
-					</td>
-				</tr>
-
-				<tr>
-					<td align="right" valign="top">
-						Description
-					</td>
-					<td align="left">
-						<textarea class="form-control" style="height: 250px; width: 750px;" name="description" id="description">' . htmlspecialchars_uni ($description) . '</textarea>						
-					</td>
-				</tr>
-
-				<tr>
-					<td align="right" valign="top">
-						Display Order
-					</td>
-					<td align="left">
-					    <label>
-						<input type="text" class="form-control" name="disporder" value="' . $disporder . '">
-						</label>
-					</td>
-				</tr>
-
-				<tr>
-					<td align="center" colspan="3">
-						<input type="submit" class="btn btn-primary" value="save"> <input type="reset" class="btn btn-primary" value="reset">
-					</td>
-				</tr>
-			</table>
-			
-			</div>
+		echo '
+        <form method="post" action="' . $_this_script_ . '">
+        <input type="hidden" name="do" value="add">
+        <input type="hidden" name="subdo" value="save">
+        <input type="hidden" name="id" value="' . $id . '">
+        
+        <div class="container mt-3">
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h3 class="text-primary">
+                            <i class="fas fa-plus-circle me-2"></i>
+                            Add Child FAQ Item
+                        </h3>
+                        <div>
+                            ' . jumpbutton($where) . '
+                        </div>
+                    </div>
+                </div>
             </div>
-			
-			</form>
-			';
-      }
+            
+            <div class="row">
+                <div class="col-12">
+                    <div class="card shadow">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-12">
+                                    <label for="pid" class="form-label">
+                                        <i class="fas fa-folder me-1"></i>
+                                        Category
+                                    </label>
+                                    ' . $categories . '
+                                </div>
+                                
+                                <div class="col-md-12">
+                                    <label for="name" class="form-label">
+                                        <i class="fas fa-heading me-1"></i>
+                                        Title <span class="text-danger">*</span>
+                                    </label>
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="name" 
+                                           name="name" 
+                                           value="' . $name . '" 
+                                           required>
+                                </div>
+                                
+                                <div class="col-md-12">
+                                    <label for="description" class="form-label">
+                                        <i class="fas fa-align-left me-1"></i>
+                                        Description
+                                    </label>
+                                    <textarea class="form-control" 
+                                              id="description" 
+                                              name="description" 
+                                              rows="8">' . $description . '</textarea>
+                                </div>
+                                
+                                <div class="col-md-3">
+                                    <label for="disporder" class="form-label">
+                                        <i class="fas fa-sort-numeric-up me-1"></i>
+                                        Display Order
+                                    </label>
+                                    <input type="number" 
+                                           class="form-control" 
+                                           id="disporder" 
+                                           name="disporder" 
+                                           value="' . $disporder . '" 
+                                           min="0">
+                                </div>
+                                
+                                <div class="col-12 mt-4">
+                                    <div class="d-flex gap-2">
+                                        <button type="submit" class="btn btn-primary px-4">
+                                            <i class="fas fa-save me-2"></i>
+                                            Save Child FAQ Item
+                                        </button>
+                                        <button type="reset" class="btn btn-outline-secondary">
+                                            <i class="fas fa-undo me-2"></i>
+                                            Reset
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </form>';
     }
+    
+   
+}
 
-    stdfoot ();
-    exit ();
-  }
-
-  if ($do == 'edit')
-  {
-    if (($subdo == 'save' AND is_valid_id ($id)))
-    {
-      $type = intval ($_POST['type']);
-      $name = trim ($_POST['name']);
-      $description = trim ($_POST['description']);
-      $disporder = intval ($_POST['disporder']);
-      $pid = intval ($_POST['pid']);
-      if ((empty ($name) OR ($type == 2 AND empty ($description))))
-      {
-        $faq_errors[] = 'Please fill all fields!';
-      }
-      else
-      {
-        ($db->sql_query ('UPDATE faq SET type = ' . $db->sqlesc ($type) . ', name = ' . $db->sqlesc ($name) . ', description = ' . $db->sqlesc ($description) . ', disporder=' . $db->sqlesc ($disporder) . ', pid = ' . $db->sqlesc ($pid) . ' WHERE id = ' . $db->sqlesc ($id)));
-        header ('Location: ' . $_this_script_);
-        exit ();
-      }
-    }
-
-    if (!is_valid_id ($id))
-    {
-      $faq_errors[] = $lang->faq['faqerror'];
-      show_faq_errors ();
-    }
-    else
-    {
-      ($firstquery = $db->sql_query ('SELECT * FROM faq WHERE id = ' . $db->sqlesc ($id)));
-      if ($db->num_rows ($firstquery) == 0)
-      {
+/**
+ * Handle editing FAQ item - ВОССТАНОВИМ ОРИГИНАЛЬНУЮ ЛОГИКУ
+ */
+function handleEdit($id)
+{
+    global $db, $lang, $faq_errors, $_this_script_;
+    
+    if (!is_valid_id($id)) {
         $faq_errors[] = $lang->faq['faqerror'];
-        show_faq_errors ();
-      }
-      else
-      {
-        $editfaq = $db->fetch_array ($firstquery);
-        show_faq_errors ();
-        if ($editfaq['type'] == 2)
-        {
-          ($query2 = $db->sql_query ('SELECT * FROM faq WHERE type = \'1\' ORDER By disporder ASC'));
-          $categories = '				
-				<tr>
-					<td align="right" valign="top">
-						Category
-					</td>
-					<td align="left">
-					<select name="pid" class="form-select form-select-sm border pe-5 w-auto">';
-          while ($cat = $db->fetch_array ($query2))
-          {
-            $categories .= '<option value="' . $cat['id'] . ($editfaq['pid'] == $cat['id'] ? ' selected="selected"' : '') . '">' . $cat['name'] . '</option>';
-          }
+        stdhead($lang->faq['faqtitle']);
+        show_faq_errors();
+        stdfoot();
+        return;
+    }
+    
+    if (isset($_POST['subdo']) && $_POST['subdo'] == 'save' && is_valid_id($id)) {
+    $type = isset($_POST['type']) ? $_POST['type'] : 'category'; // получаем как строку
+    $name = isset($_POST['name']) ? trim($_POST['name']) : '';
+    $description = isset($_POST['description']) ? trim($_POST['description']) : '';
+    $disporder = isset($_POST['disporder']) ? (int)$_POST['disporder'] : 0;
+    $pid = isset($_POST['pid']) ? (int)$_POST['pid'] : 0;
 
-          $categories .= '
-				</select>
-				</td>
-				</tr>';
-        }
-        else
-        {
-          $categories = '<input type="hidden" name="pid" value="' . $editfaq['pid'] . '">';
-        }
+    // Если type передан как число (старый код), конвертируем в enum
+    if ($type === '1' || $type === 1) {
+        $type = 'category';
+    } elseif ($type === '2' || $type === 2) {
+        $type = 'item';
+    }
 
-        $where = array ('Cancel' => $_this_script_);
+    if (empty($name) || ($type == 'item' && empty($description))) {
+        $faq_errors[] = 'Please fill all fields!';
+    } else {
+        $db->sql_query("UPDATE faq SET 
+            type = '" . $db->escape_string($type) . "', 
+            name = '" . $db->escape_string($name) . "', 
+            description = '" . $db->escape_string($description) . "', 
+            disporder = '" . $db->escape_string($disporder) . "', 
+            pid = '" . $db->escape_string($pid) . "' 
+        WHERE id = '" . $db->escape_string($id) . "'");
+
+        header('Location: ' . $_this_script_);
+        exit;
+    }
+}
+
+    
+    $firstquery = $db->sql_query("SELECT * FROM faq WHERE id = '" . $db->escape_string($id) . "'");
+    if ($db->num_rows($firstquery) == 0) {
+        $faq_errors[] = $lang->faq['faqerror'];
+        show_faq_errors();
+    } else {
+        $editfaq = $db->fetch_array($firstquery);
+        show_faq_errors();
+        
+        if ($editfaq['type'] == 2) {
+            $query2 = $db->sql_query("SELECT * FROM faq WHERE type = '1' ORDER BY disporder ASC");
+            $categories = '
+                <div class="col-md-12">
+                    <label for="pid" class="form-label">
+                        <i class="fas fa-folder me-1"></i>
+                        Category
+                    </label>
+                    <select name="pid" class="form-select">';
+            
+            while ($cat = $db->fetch_array($query2)) {
+                $categories .= '<option value="' . $cat['id'] . '"' . ($editfaq['pid'] == $cat['id'] ? ' selected="selected"' : '') . '>' . $cat['name'] . '</option>';
+            }
+            
+            $categories .= '</select>
+                </div>';
+        } else {
+            $categories = '<input type="hidden" name="pid" value="' . $editfaq['pid'] . '">';
+        }
+        
+        $nameValue = isset($_POST['name']) ? htmlspecialchars_uni($_POST['name']) : htmlspecialchars_uni($editfaq['name']);
+        $descriptionValue = isset($_POST['description']) ? htmlspecialchars_uni($_POST['description']) : $editfaq['description'];
+        $disporderValue = isset($_POST['disporder']) ? htmlspecialchars_uni($_POST['disporder']) : $editfaq['disporder'];
+        
+        $where = array('Cancel' => $_this_script_);
+		
+		stdhead($lang->faq['faqtitle'], true, '', '');
+        
         echo '
-			<form method="post" action="' . $_this_script_ . '">
-			<input type="hidden" name="do" value="edit">
-			<input type="hidden" name="subdo" value="save">
-			<input type="hidden" name="id" value="' . $id . '">
-			<input type="hidden" name="type" value="' . $editfaq['type'] . '">
-			
-			
-			
-			
-            <div class="container mt-3">
-			
-			<div class="float-end">
-			
-			' . jumpbutton ($where) . '
-			
-			</div>
-			</br>
-			</br>
-
-			
-			
-			
-            <div class="card">
-            <div class="card-body">
-			
-			
-			
-
-
-			
-				<tr>
-					<td class="thead" colspan="2">
-						Edit FAQ Item: ' . htmlspecialchars_uni ($editfaq['name']) . '
-					</td>
-				</tr>				
-				' . $categories . '
-				
-				
-				</br>
-				<tr>
-					<td align="right" valign="top">
-						Title
-					</td>
-					<td align="left">
-						<input  style="width: 745px;"  type="text" class="form-control" name="name" value="' . (!empty ($name) ? htmlspecialchars_uni ($name) : htmlspecialchars_uni ($editfaq['name'])) . '">
-					</td>
-				</tr>
-
-                </br>
-				<tr>
-					<td align="right" valign="top">
-						Description
-					</td>
-					<td align="left">						
-						<textarea class="form-control form-control-sm border" style="height: 300px" name="description" id="description">' . (!empty ($description) ? htmlspecialchars_uni ($description) : $editfaq['description']) . '</textarea>
-					</td>
-				</tr>
-
-				</br>
-				<tr>
-					<td align="right" valign="top">
-						Display Order
-					</td>
-					<td align="left">
-						<input type="text" name="disporder" value="' . (!empty ($disporder) ? htmlspecialchars_uni ($disporder) : $editfaq['disporder']) . '" size="4">
-					</td>
-				</tr>
-
-				<tr>
-					<td align="center" colspan="3">
-						<input type="submit" class="btn btn-primary" value="save"> <input type="reset" class="btn btn-primary" value="reset">
-					</td>
-				</tr>
-			</div>
+        <form method="post" action="' . $_this_script_ . '">
+        <input type="hidden" name="do" value="edit">
+        <input type="hidden" name="subdo" value="save">
+        <input type="hidden" name="id" value="' . $id . '">
+        <input type="hidden" name="type" value="' . $editfaq['type'] . '">
+        
+        <div class="container mt-3">
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h3 class="text-primary">
+                            <i class="fas fa-edit me-2"></i>
+                            Edit FAQ Item: ' . htmlspecialchars_uni($editfaq['name']) . '
+                        </h3>
+                        <div>
+                            ' . jumpbutton($where) . '
+                        </div>
+                    </div>
+                </div>
             </div>
+            
+            <div class="row">
+                <div class="col-12">
+                    <div class="card shadow">
+                        <div class="card-body">
+                            <div class="row g-3">
+                                ' . $categories . '
+                                
+                                <div class="col-md-12">
+                                    <label for="name" class="form-label">
+                                        <i class="fas fa-heading me-1"></i>
+                                        Title <span class="text-danger">*</span>
+                                    </label>
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="name" 
+                                           name="name" 
+                                           value="' . $nameValue . '" 
+                                           required>
+                                </div>
+                                
+                                <div class="col-md-12">
+                                    <label for="description" class="form-label">
+                                        <i class="fas fa-align-left me-1"></i>
+                                        Description
+                                    </label>
+                                    <textarea class="form-control" 
+                                              id="description" 
+                                              name="description" 
+                                              rows="8">' . $descriptionValue . '</textarea>
+                                </div>
+                                
+                                <div class="col-md-3">
+                                    <label for="disporder" class="form-label">
+                                        <i class="fas fa-sort-numeric-up me-1"></i>
+                                        Display Order
+                                    </label>
+                                    <input type="number" 
+                                           class="form-control" 
+                                           id="disporder" 
+                                           name="disporder" 
+                                           value="' . $disporderValue . '" 
+                                           min="0">
+                                </div>
+                                
+                                <div class="col-12 mt-4">
+                                    <div class="d-flex gap-2">
+                                        <button type="submit" class="btn btn-primary px-4">
+                                            <i class="fas fa-save me-2"></i>
+                                            Save Changes
+                                        </button>
+                                        <button type="reset" class="btn btn-outline-secondary">
+                                            <i class="fas fa-undo me-2"></i>
+                                            Reset
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-			
-			</form>
-			
-			';
-      }
+        </div>
+        </form>';
     }
+    
+    
+}
 
-    stdfoot ();
-    exit ();
-  }
-
-  show_faq_errors ();
-  $where = array ('Add New FAQ Item' => $_this_script_ . '&amp;do=new');
-  ($query = $db->sql_query ('SELECT disporder, id, name FROM faq WHERE type = \'1\' ORDER By disporder ASC'));
-  if (0 < $db->num_rows ($query))
-  {
-    echo '
-	<script type="text/javascript">
-		function confirmdelete()
-		{
-			ht = document.getElementsByTagName("html");
-			ht[0].style.filter = "progid:DXImageTransform.Microsoft.BasicImage(grayscale=1)";
-			if (confirm("Are you sure you want to delete this FAQ item?"))
-			{
-				return true;
-			}
-			else
-			{
-				ht[0].style.filter = "";
-				return false;
-			}
-		};
-	</script>
-	<form method="post" action="' . $_this_script_ . '">
-	<input type="hidden" name="do" value="savedisplayorder">
+/**
+ * Handle default view (FAQ list)
+ */
+function handleDefault()
+{
+    global $db, $lang, $_this_script_;
 	
-	
-	<div class="container mt-3">
-	<div class="float-end">
-		' . jumpbutton ($where) . '
-	</div>
-	</div>
-	</br>
-	</br>
-			
-	
-		
-		
-	<div class="container-md">
-  <div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-		' . $lang->faq['faqtitle'] . '
-	</div>
-	 </div>
-		</div>	
-		
-		
-		
-		
-		
-  <div class="container mt-3">
-  <div class="card">       
-  <table class="table table-hover">
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>Display Order</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-		
-		
-		
-		
-	';
-    while ($faq = $db->fetch_array ($query))
-    {
-      echo '
-		<tr>
-			<td>
-				<a href="' . $_this_script_ . '&amp;do=view&amp;id=' . $faq['id'] . '">' . $faq['name'] . '</a>
-			</td>
-			<td align="center">
-				<input type="text" class="form-control form-control-sm" name="disporder[' . $faq['id'] . ']" value="' . $faq['disporder'] . '" size="3">
-			</td>
-			<td align="center">
-		<a href="' . $_this_script_ . '&amp;do=edit&amp;id=' . $faq['id'] . '">
-		
-		<i class="fa-solid fa-pen-to-square fa-xl" style="color: #0658e5;" alt="Edit" title="Edit"></i>
-		
-		</a> 
-		<a href="' . $_this_script_ . '&amp;do=add&amp;id=' . $faq['id'] . '">
-		
-		
-		
-		<i class="fa-solid fa-plus fa-xl" style="color: #22ce9a;" alt="Add Child FAQ Item" title="Add Child FAQ Item"></i>
-		
-		</a>
-		<a href="' . $_this_script_ . '&amp;do=delete&amp;id=' . $faq['id'] . '" onclick="return confirmdelete()">
-		
-		<i class="fa-solid fa-trash-can fa-xl" style="color: #eb0f0f;" alt="Delete" title="Delete"></i>
-		
-		
-		</a>
-			</td>
-		</tr>';
+	stdhead($lang->faq['faqtitle'], true, '', '');
+    
+    show_faq_errors();
+    
+    $where = array('Add New FAQ Item' => $_this_script_ . '&do=new');
+    
+    $query = $db->sql_query("SELECT disporder, id, name FROM faq WHERE type = '1' ORDER BY disporder ASC");
+    
+    if ($db->num_rows($query) == 0) {
+        echo '
+        <div class="container mt-3">
+            <div class="alert alert-info text-center">
+                <h4 class="alert-heading">
+                    <i class="fas fa-info-circle me-2"></i>
+                    No FAQ Items Found
+                </h4>
+                <p class="mb-3">There are no FAQ items created yet.</p>
+                <a href="' . $_this_script_ . '&amp;do=new" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>
+                    Create First FAQ Item
+                </a>
+            </div>
+        </div>';
+        return;
     }
-
-    echo '
-		<tr>
-  <td colspan="3" align="center"><input type="submit" class="btn btn-primary btn-sm" value="Save Display Order">
-		</tr>
-	</table>
-	</div>
-    </div>
+    
+    
 	
-	</form>';
-  }
-  else
-  {
-    stdmsg ('Error', 'There is no FAQ items yet. Click <a href="' . $_this_script_ . '&amp;do=new">here</a> to create one', false);
-  }
+	?>
+	<script>
+        function confirmDeleteSwal(url) {
+    Swal.fire({
+        title: 'Are you sure?',
+        text: "This FAQ item will be permanently deleted!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Перенаправляем на удаление
+            window.location.href = url;
+        }
+    });
+    return false; // Чтобы не происходил переход по ссылке
+}
 
-  stdfoot ();
+
+
+// Уведомление после сохранения/редактирования/добавления
+function showSavedSwal(message = "Saved successfully!") {
+    Swal.fire({
+        icon: 'success',
+        title: 'Success',
+        text: message,
+        timer: 1800,
+        timerProgressBar: true,
+        showConfirmButton: false
+    });
+}
+
+
+
+
+
+    </script>
+	<?
+	
+	
+	echo '
+    
+    
+    <div class="container mt-3">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h3 class="text-primary">
+                        <i class="fas fa-question-circle me-2"></i>
+                        ' . $lang->faq['faqtitle'] . '
+                    </h3>
+                    <div>
+                        ' . jumpbutton($where) . '
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-body p-0">
+                        <form method="post" action="' . $_this_script_ . '">
+                            <input type="hidden" name="do" value="savedisplayorder">
+                            
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-4">
+                                                <i class="fas fa-heading me-2"></i>
+                                                Title
+                                            </th>
+                                            <th class="text-center" style="width: 150px;">
+                                                <i class="fas fa-sort-numeric-up me-2"></i>
+                                                Display Order
+                                            </th>
+                                            <th class="text-center" style="width: 250px;">
+                                                <i class="fas fa-cogs me-2"></i>
+                                                Actions
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>';
+    
+    while ($faq = $db->fetch_array($query)) {
+        echo '
+        <tr>
+            <td class="ps-4">
+                <a href="' . $_this_script_ . '&amp;do=view&amp;id=' . $faq['id'] . '" 
+                   class="text-decoration-none text-dark fw-bold">
+                    <i class="fas fa-folder text-warning me-2"></i>
+                    ' . $faq['name'] . '
+                </a>
+            </td>
+            <td class="text-center">
+                <input type="number" 
+                       class="form-control form-control-sm text-center" 
+                       name="disporder[' . $faq['id'] . ']" 
+                       value="' . $faq['disporder'] . '" 
+                       min="0" 
+                       style="width: 80px;">
+            </td>
+            <td class="text-center">
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="' . $_this_script_ . '&do=view&amp;id=' . $faq['id'] . '" 
+                       class="btn btn-outline-info" 
+                       title="View">
+                        <i class="fas fa-eye"></i>
+                    </a>
+                    <a href="' . $_this_script_ . '&do=edit&amp;id=' . $faq['id'] . '" 
+                       class="btn btn-outline-primary" 
+                       title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </a>
+                    <a href="' . $_this_script_ . '&do=add&amp;id=' . $faq['id'] . '" 
+                       class="btn btn-outline-success" 
+                       title="Add Child Item">
+                        <i class="fas fa-plus"></i>
+                    </a>
+                    <a href="#" 
+   onclick="return confirmDeleteSwal(\'' . $_this_script_ . '&do=delete&id=' . $faq['id'] . '\')" 
+   class="btn btn-outline-danger" 
+   title="Delete">
+    <i class="fas fa-trash"></i>
+</a>
+
+                </div>
+            </td>
+        </tr>';
+    }
+    
+    echo '
+                                    </tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <td colspan="3" class="text-center py-3">
+                                                <button type="submit" class="btn btn-primary px-4">
+                                                    <i class="fas fa-save me-2"></i>
+                                                    Save Display Order
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>';
+}
 ?>

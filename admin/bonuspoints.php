@@ -430,30 +430,31 @@ HTML;
     }
 
     private function updateUser(): void
-    {
-        $userId = $this->getValidatedUserId();
-        $bonusPoints = (float)$_POST['seedbonus'];
-        
-        $result = $this->db->sql_query(
-            "UPDATE users SET seedbonus = " . $this->db->sqlesc($bonusPoints) . 
-            " WHERE id = " . $this->db->sqlesc($userId)
+{
+    $userId = $this->getValidatedUserId();
+    $bonusPoints = (float)$_POST['seedbonus'];
+    
+    $result = $this->db->sql_query(
+        "UPDATE users SET seedbonus = " . $this->db->sqlesc($bonusPoints) . 
+        " WHERE id = " . $this->db->sqlesc($userId)
+    );
+    
+    if ($result) {
+        stderr(
+            'User ID: ' . $userId . ' successfully updated',
+            'Success',
+            200,  // Код успеха
+            'general'
         );
-        
-        if ($result) {
-            stderr(
-                'Success', 
-                '<i class="bi bi-check-circle-fill text-success me-2"></i>' . 
-                "User ID: {$userId} successfully updated." . $this->renderNavigation(), 
-                false
-            );
-        } else {
-            stderr(
-                'Error', 
-                '<i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>' . 
-                "Unable to update user: {$userId}"
-            );
-        }
+    } else {
+        stderr(
+            'Unable to update user: ' . $userId,
+            'Error',
+            500,  // Код ошибки сервера
+            'general'
+        );
     }
+}
 
     private function updateBonusSystem(): void
     {

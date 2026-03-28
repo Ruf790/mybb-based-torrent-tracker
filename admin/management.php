@@ -3687,6 +3687,10 @@ $field_list2 = array(
 
 $ids = array();
 
+
+echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />';
+echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
+
 echo <<<HTML
 <div class="card">
     <div class="card-header bg-primary text-white rounded-top py-3">
@@ -3806,8 +3810,6 @@ $gid = $usergroup['gid'];
 $title = $usergroup['title'];
 $defaultChecked = $default_checked ? 'checked' : '';
 
-echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />';
-echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
 
 echo <<<HTML
 <tr data-group="$gid">

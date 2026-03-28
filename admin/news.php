@@ -315,7 +315,7 @@ function updateNewsPreview() {
                 .replace(/\[color=(.*?)\](.*?)\[\/color\]/g, '<span style="color: $1">$2</span>')
                 .replace(/\[size=(\d+)\](.*?)\[\/size\]/g, '<span style="font-size: $1px">$2</span>')
                 .replace(/\[url\](.*?)\[\/url\]/g, '<a href="$1" target="_blank">$1</a>')
-                .replace(/\[img\](.*?)\[\/img\]/g, '<img src="$1" style="max-width: 200px; height: auto;" alt="Image">')
+                .replace(/\[img\](.*?)\[\/img\]/g, '<img src="$1" class="rounded" style="max-width: 400px; height: auto;" alt="Image">')
                 .replace(/\[quote\](.*?)\[\/quote\]/g, '<blockquote class="blockquote">$1</blockquote>')
                 .replace(/\[code\](.*?)\[\/code\]/g, '<code>$1</code>')
                 .replace(/\[list\](.*?)\[\/list\]/gs, '<ul>$1</ul>')

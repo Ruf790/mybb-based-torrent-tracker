@@ -16,6 +16,9 @@ define("IN_ADMINCP", 1);
 require_once INC_PATH . '/datahandler.php';
 
 
+require_once INC_PATH . '/functions_multipage.php';
+
+
 
 
 
@@ -191,6 +194,185 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
 
 
 $lang->load('usersearch');
+
+
+
+
+
+
+
+
+
+// Bulk actions handler
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !empty($_POST['user_ids'])) {
+    header('Content-Type: application/json');
+
+    $action   = $_POST['bulk_action'];
+    $user_ids = array_map('intval', $_POST['user_ids']);
+    $user_ids = array_filter($user_ids);
+
+    if (empty($user_ids)) {
+        echo json_encode(['success' => false, 'error' => 'No users selected']);
+        exit;
+    }
+
+    $ids_str = implode(',', $user_ids);
+
+    switch ($action) {
+       
+	   
+	   
+	case 'ban':
+    $ban_reason = $db->escape_string(trim($_POST['ban_reason'] ?? ''));
+    $ban_time   = $db->escape_string(trim($_POST['ban_time']   ?? '---'));
+
+    // Вычисляем lifted через ban_date2timestamp
+    if ($ban_time === '---' || empty($ban_time)) {
+        $lifted  = 0;
+        $ban_time = '---';
+    } else {
+        $lifted = ban_date2timestamp($ban_time, TIMENOW);
+    }
+
+    // Находим banned group
+    $banned_gid = 2; // дефолт
+    $groupscache = $cache->read("usergroups");
+    foreach ($groupscache as $group) {
+        if (!empty($group['isbannedgroup'])) {
+            $banned_gid = (int)$group['gid'];
+            break;
+        }
+    }
+
+    foreach ($user_ids as $uid) {
+        $user_row = $db->fetch_array(
+            $db->simple_select("users", "username, usergroup, additionalgroups, displaygroup", "id='{$uid}'")
+        );
+        if (!$user_row) continue;
+
+        $old_group       = (int)$user_row['usergroup'];
+        $old_addgroups   = $db->escape_string($user_row['additionalgroups']);
+        $old_displaygroup = (int)$user_row['displaygroup'];
+
+        // Пишем в banned
+        $db->sql_query("
+            INSERT INTO banned 
+                (uid, gid, oldgroup, oldadditionalgroups, olddisplaygroup, admin, dateline, bantime, lifted, reason)
+            VALUES 
+                ('{$uid}', '{$banned_gid}', '{$old_group}', '{$old_addgroups}', '{$old_displaygroup}',
+                '".(int)$CURUSER['id']."', '".TIMENOW."', '{$ban_time}', '{$lifted}', '{$ban_reason}')
+            ON DUPLICATE KEY UPDATE
+                gid              = '{$banned_gid}',
+                oldgroup         = '{$old_group}',
+                oldadditionalgroups = '{$old_addgroups}',
+                olddisplaygroup  = '{$old_displaygroup}',
+                admin            = '".(int)$CURUSER['id']."',
+                dateline         = '".TIMENOW."',
+                bantime          = '{$ban_time}',
+                lifted           = '{$lifted}',
+                reason           = '{$ban_reason}'
+        ");
+
+        // Меняем группу юзера на banned group
+        $db->update_query("users", [
+            'usergroup' => $banned_gid,
+            'enabled'   => 'no'
+        ], "id='{$uid}'");
+		
+		
+		 // Логируем
+    log_moderator_action(
+        ['uid' => $uid, 'username' => $user_row['username']],
+        'Banned User (bulk)'
+    );
+		
+		
+		
+    }
+
+    echo json_encode(['success' => true, 'message' => count($user_ids) . ' users banned']);
+    break;
+	   
+	   
+	   
+	   
+	   
+	 case 'unban':
+    $unbanned = 0;
+    $failed   = 0;
+
+    foreach ($user_ids as $uid) {
+        // Берём данные из banned
+        $ban_row = $db->fetch_array(
+            $db->simple_select("banned", "*", "uid='{$uid}'")
+        );
+
+        if (!$ban_row) {
+            // Юзер не в бане — просто включаем
+            $db->update_query("users", ['enabled' => 'yes'], "id='{$uid}'");
+            $unbanned++;
+            continue;
+        }
+
+        // Восстанавливаем группу как в liftban
+        $updated_group = [
+            'usergroup'          => (int)$ban_row['oldgroup'],
+            'additionalgroups'   => $db->escape_string($ban_row['oldadditionalgroups']),
+            'displaygroup'       => (int)$ban_row['olddisplaygroup'],
+            'enabled'            => 'yes',
+            'notifs'             => ''
+        ];
+
+        $db->update_query("users", $updated_group, "id='{$uid}'");
+        $db->delete_query("banned", "uid='{$uid}'");
+
+        // Логируем
+        $user_row = $db->fetch_array(
+            $db->simple_select("users", "username", "id='{$uid}'")
+        );
+        if ($user_row) {
+            log_moderator_action(
+                ['uid' => $uid, 'username' => $user_row['username']],
+                'Lifted User Ban (bulk)'
+            );
+        }
+
+        $unbanned++;
+    }
+
+    $cache->update_moderators();
+    echo json_encode(['success' => true, 'message' => $unbanned . ' users unbanned']);
+    break;  
+        
+			
+			
+			
+        case 'changegroup':
+            $gid = (int)($_POST['group_id'] ?? 0);
+            if ($gid <= 0) { echo json_encode(['success' => false, 'error' => 'Invalid group']); exit; }
+            $db->sql_query("UPDATE users SET usergroup='{$gid}' WHERE id IN ({$ids_str})");
+            echo json_encode(['success' => true, 'message' => count($user_ids) . ' users moved to group ' . $gid]);
+            break;
+        case 'delete':
+            $db->sql_query("DELETE FROM users WHERE id IN ({$ids_str})");
+            echo json_encode(['success' => true, 'message' => count($user_ids) . ' users deleted']);
+            break;
+        default:
+            echo json_encode(['success' => false, 'error' => 'Unknown action']);
+    }
+    exit;
+}
+
+
+
+
+
+
+
+
+
+
+
 stdhead('User Search', true, 'collapse');
 
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />';
@@ -201,7 +383,7 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
 echo '<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/airbnb.css">';
 echo '<script src="'.$BASEURL.'/admin/scripts/flatpickr.js"></script>';
 echo '<script src="'.$BASEURL.'/admin/scripts/ru.js"></script>';
-
+echo '<script src="'.$BASEURL.'/scripts/toast.js"></script>';
 
 
 echo '
@@ -379,6 +561,8 @@ $orderdir = (isset($_GET['orderby2']) && $_GET['orderby2'] === 'DESC') ? 'DESC' 
 
 
 echo '<div class="container mt-4">';
+
+
 echo '
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h1 class="m-0">User Search</h1>
@@ -389,6 +573,106 @@ echo '
     </form>
   </div>
 ';
+
+
+
+
+
+
+
+// Статистика юзеров
+$stat_total   = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users"), 'COUNT(*)');
+$stat_active  = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE enabled='yes'"), 'COUNT(*)');
+$stat_banned  = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE enabled='no'"), 'COUNT(*)');
+$stat_new7    = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE added >= '".(TIMENOW - 604800)."'"), 'COUNT(*)');
+$stat_today   = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE added >= '".(TIMENOW - 86400)."'"), 'COUNT(*)');
+$stat_online  = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE lastactive >= '".(TIMENOW - 900)."'"), 'COUNT(*)');
+
+echo '
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <div class="fs-2 fw-bold text-primary">'.$stat_total.'</div>
+                <div class="small text-muted"><i class="bi bi-people me-1"></i>Total Users</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <div class="fs-2 fw-bold text-success">'.$stat_active.'</div>
+                <div class="small text-muted"><i class="bi bi-check-circle me-1"></i>Active</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <div class="fs-2 fw-bold text-danger">'.$stat_banned.'</div>
+                <div class="small text-muted"><i class="bi bi-ban me-1"></i>Banned</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <div class="fs-2 fw-bold text-info">'.$stat_new7.'</div>
+                <div class="small text-muted"><i class="bi bi-calendar-week me-1"></i>New (7d)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <div class="fs-2 fw-bold text-warning">'.$stat_today.'</div>
+                <div class="small text-muted"><i class="bi bi-calendar-day me-1"></i>New Today</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center p-3">
+                <div class="fs-2 fw-bold text-success">'.$stat_online.'</div>
+                <div class="small text-muted"><i class="bi bi-circle-fill text-success me-1" style="font-size:8px;"></i>Online (15m)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Быстрые фильтры -->
+<div class="d-flex flex-wrap gap-2 mb-4">
+    <span class="text-muted small align-self-center me-1"><i class="bi bi-lightning me-1"></i>Quick filters:</span>
+    <a href="?act=usersearch&enabled=no" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-ban me-1"></i>Banned ('.$stat_banned.')
+    </a>
+    <a href="?act=usersearch&added='.date('Y-m-d', TIMENOW - 86400).'" class="btn btn-sm btn-outline-warning">
+        <i class="bi bi-calendar-day me-1"></i>New Today ('.$stat_today.')
+    </a>
+    <a href="?act=usersearch&added='.date('Y-m-d', TIMENOW - 604800).'" class="btn btn-sm btn-outline-info">
+        <i class="bi bi-calendar-week me-1"></i>New 7 Days ('.$stat_new7.')
+    </a>
+    <a href="?act=usersearch&latest=1" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-clock-history me-1"></i>Latest 10
+    </a>
+    <a href="?act=usersearch&enabled=yes" class="btn btn-sm btn-outline-success">
+        <i class="bi bi-check-circle me-1"></i>Active ('.$stat_active.')
+    </a>
+</div>
+';
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- SEARCH FORM (ON TOP) ---------- */
 echo '
@@ -562,13 +846,17 @@ if (isset($_GET['latest'])) {
     $latest_res = $db->sql_query("SELECT id, username, usergroup, added, avatar, avatardimensions, email FROM users ORDER BY id DESC LIMIT 10");
     echo '<div class="card mb-4"><div class="card-header fw-bold">Latest Users</div>';
     echo '<div class="table-responsive"><table class="table table-striped table-hover align-middle mb-0">';
-    echo '<thead><tr>
-        <th>ID</th><th>Avatar</th><th>Username</th><th>Email</th><th>Joined</th><th>Actions</th>
-    </tr></thead><tbody>';
-
+   echo '<thead><tr>
+    <th>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="checkAll">
+        </div>
+    </th>
+    <th>ID</th><th>Avatar</th><th>Username</th><th>Email</th><th>Group</th>
+    <th>Reg IP/Last IP</th><th>Upl/Down</th><th>Ratio</th><th>Actions</th>
+</tr></thead>';
     while ($user = $db->fetch_array($latest_res)) {
         $profile_url = $BASEURL . '/' . get_profile_link($user['id']);
-
         $av = format_avatar($user['avatar'], $user['avatardimensions'], '80|80');
         if (!empty($av['is_html'])) 
 		{
@@ -579,11 +867,24 @@ if (isset($_GET['latest'])) {
 		{
             $avatar_img = '<img src="'.$av['image'].'" '.($av['width_height'] ?: '').' class="rounded" width="50" alt="avatar">';
         }
-
         $formattedname = format_name($user['username'], $user['usergroup']);
         $joined = my_datee($dateformat, $user['added']) . ' ' . my_datee($timeformat, $user['added']);
-
         echo '<tr>';
+		
+		
+		// ДОБАВЬ СРАЗУ ПОСЛЕ:
+// СТАЛО:
+echo '<td>
+    <div class="form-check">
+        <input class="form-check-input user-checkbox" type="checkbox" value="'.(int)$user['id'].'">
+    </div>
+</td>';
+		
+		
+		
+		
+		
+		
         echo '<td>'.(int)$user['id'].'</td>';
         echo '<td>'.$avatar_img.'</td>';
         echo '<td><a href="'.$profile_url.'" class="fw-bold">'.$formattedname.'</a></td>';
@@ -596,8 +897,10 @@ if (isset($_GET['latest'])) {
         echo '</tr>';
     }
     echo '</tbody></table></div></div>';
+}
 
-} else {
+
+else {
     // Search results
     
     
@@ -653,12 +956,96 @@ $num = $db->num_rows($query_result);
 
     if ($num > 0) 
 	{
-        echo '<div class="card mb-4"><div class="card-header fw-bold">Users found: '.$total.'</div>';
+        
+		
+		
+		
+		
+		
+		
+		
+
+		
+		
+			echo '
+<div id="bulkActionBar" class="card card-body mb-3 d-none">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="fw-bold text-primary">
+            <i class="bi bi-check2-square me-1"></i>
+            Selected: <span id="selectedCount">0</span> users
+        </span>
+        <div class="vr"></div>
+        <button type="button" class="btn btn-sm btn-warning" onclick="bulkAction(\'ban\')">
+            <i class="bi bi-ban me-1"></i>Ban
+        </button>
+        <button type="button" class="btn btn-sm btn-success" onclick="bulkAction(\'unban\')">
+            <i class="bi bi-check-circle me-1"></i>Unban
+        </button>
+        <div class="input-group input-group-sm" style="width:auto;">
+            <select class="form-select form-select-sm" id="bulkGroupSelect">
+                <option value="">Change group...</option>';
+                $q = $db->sql_query("SELECT gid, title FROM usergroups ORDER BY title ASC");
+                while ($g = $db->fetch_array($q)) {
+                    echo '<option value="'.(int)$g['gid'].'">'.htmlspecialchars_uni($g['title']).'</option>';
+                }
+echo '      </select>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkAction(\'changegroup\')">
+                <i class="bi bi-people me-1"></i>Apply
+            </button>
+        </div>
+        <div class="vr"></div>
+        <button type="button" class="btn btn-sm btn-danger" onclick="bulkAction(\'delete\')">
+            <i class="bi bi-trash me-1"></i>Delete
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" onclick="clearSelection()">
+            <i class="bi bi-x me-1"></i>Clear
+        </button>
+    </div>
+</div>
+';
+	
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		echo '<div class="card mb-4"><div class="card-header fw-bold">Users found: '.$total.'</div>';
         echo '<div class="table-responsive"><table class="table table-hover align-middle mb-0">';
-        echo '<thead><tr>
-            <th>ID</th><th>Avatar</th><th>Username</th><th>Email</th><th>Group</th>
-            <th>Reg IP/Last IP</th><th>Upl/Down</th><th>Ratio</th><th>Actions</th>
-        </tr></thead><tbody>';
+       
+	   
+	  echo '<thead><tr>
+    <th>ID</th>
+    <th>Avatar</th>
+    <th>Username</th>
+    <th>Email</th>
+    <th>Group</th>
+    <th>Reg IP/Last IP</th>
+    <th>Upl/Down</th>
+
+    <th>Info</th>
+    <th class="text-center" style="width:80px;">
+        Actions
+        <div class="mt-1">
+            <input class="form-check-input" type="checkbox" id="checkAll" title="Select all">
+        </div>
+    </th>
+</tr></thead><tbody>';
+	   
 
         require_once INC_PATH . '/functions_ratio.php';
 
@@ -719,54 +1106,88 @@ $num = $db->num_rows($query_result);
 			
 
             echo '<tr>';
+			
+			// ДОБАВЬ СРАЗУ ПОСЛЕ:
+
             echo '<td>'.(int)$u['id'].'</td>';
+			
+			
+			
+           
             echo '<td data-avatar-cell="1" data-uid="'.(int)$u['id'].'" title="Click to change avatar">'.$avatar_img.'</td>';
 			
 			
 			
 			
-            echo '<td><a href="'.$profile_url.'" class="fw-bold">'.$formattedname.'</a>'.$pic.'</td>';
+            echo '<td><a href="'.$profile_url.'" class="fw-bold">'.$formattedname.'</a></br>'.get_user_ratio($u['uploaded'], $u['downloaded']).''.$pic.'</td>';
+			
+			
             echo '<td>'.htmlspecialchars_uni($u['email']).'</td>';
             echo '<td>'.$usertitle.'</td>';
             echo '<td><code>'.$regip.'<br>'.$lastip.'</code></td>';
             echo '<td>'.mksize($u['uploaded']).'<br>'.mksize($u['downloaded']).'</td>';
-            echo '<td>'.get_user_ratio($u['uploaded'], $u['downloaded']).'</td>';
-          
-			echo '<td><a class="delete_employee" data-emp-id="'.$u['id'].'" href="javascript:void(0)" title="Delete">
-                    <i class="fa-solid fa-trash-can fa-xl" style="color:#eb0f0f;"></i></a></td>';		
+           
+			
+			
+			
+			
+
+// ← ДОБАВЬ СЮДА:
+echo '<td>
+    <div class="d-flex flex-column gap-1">
+        <div class="d-flex align-items-center gap-1">
+            <span class="font-monospace passkey-text"
+                  data-passkey="'.htmlspecialchars_uni($u['passkey']).'"
+                  style="filter:blur(4px);user-select:none;transition:filter 0.3s;font-size:0.7rem;">
+                '.substr($u['passkey'], 0, 8).'...
+            </span>
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
+                    onclick="togglePasskey(this)" title="Show/Hide">
+                <i class="bi bi-eye" style="font-size:0.7rem;"></i>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
+                    onclick="copyPasskey(this)" title="Copy">
+                <i class="bi bi-clipboard" style="font-size:0.7rem;"></i>
+            </button>
+        </div>
+        <small class="text-muted">
+            <i class="bi bi-chat me-1"></i>'.$u['postnum'].'
+            &nbsp;|&nbsp;
+            <i class="bi bi-chat-dots me-1"></i>'.$u['comms'].'
+            &nbsp;|&nbsp;
+            <i class="bi bi-star text-warning me-1"></i>'.number_format((float)$u['seedbonus'], 1).'
+        </small>
+        '.($u['warned'] === 'yes' ? '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Warned x'.$u['timeswarned'].'</span>' : '').'
+        '.($u['donor'] === 'yes'  ? '<span class="badge bg-success ms-1"><i class="bi bi-heart me-1"></i>Donor</span>' : '').'
+    </div>
+</td>';
+
+
+        
+			// СТАЛО:
+echo '<td class="text-center align-middle">
+    <input class="form-check-input user-checkbox" type="checkbox" value="'.(int)$u['id'].'">
+</td>';	
 		
             echo '</tr>';
         }
         echo '</tbody></table></div></div>';
 
-        // Pagination (под таблицей)
-        echo '<nav><ul class="pagination justify-content-center mb-4">';
-
-        if ($page > 1) {
-            $q1 = $_GET; $q1['page'] = 1;
-            echo '<li class="page-item"><a class="page-link" href="?'.htmlspecialchars(http_build_query($q1)).'">&laquo;&laquo;</a></li>';
-            $qp = $_GET; $qp['page'] = $page - 1;
-            echo '<li class="page-item"><a class="page-link" href="?'.htmlspecialchars(http_build_query($qp)).'">&laquo; Prev</a></li>';
-        } else {
-            echo '<li class="page-item disabled"><span class="page-link">&laquo; Prev</span></li>';
-        }
-
-        for ($i = 1; $i <= $total_pages; $i++) {
-            $active = ($i == $page) ? ' active' : '';
-            $qi = $_GET; $qi['page'] = $i;
-            echo '<li class="page-item'.$active.'"><a class="page-link" href="?'.htmlspecialchars(http_build_query($qi)).'">'.$i.'</a></li>';
-        }
-
-        if ($page < $total_pages) {
-            $qn = $_GET; $qn['page'] = $page + 1;
-            echo '<li class="page-item"><a class="page-link" href="?'.htmlspecialchars(http_build_query($qn)).'">Next &raquo;</a></li>';
-            $ql = $_GET; $ql['page'] = $total_pages;
-            echo '<li class="page-item"><a class="page-link" href="?'.htmlspecialchars(http_build_query($ql)).'">&raquo;&raquo;</a></li>';
-        } else {
-            echo '<li class="page-item disabled"><span class="page-link">Next &raquo;</span></li>';
-        }
-
-        echo '</ul></nav>';
+        
+		
+		
+// Собираем search_url из текущих GET параметров без page
+$search_params = $_GET;
+unset($search_params['page']);
+unset($search_params['act']); // ← добавь это
+$search_params = array_filter($search_params, fn($v) => $v !== '' && $v !== null);
+$search_url = !empty($search_params) ? '&' . http_build_query($search_params) : '';
+$page_url   = $_SERVER['PHP_SELF'] . '?act=usersearch' . $search_url;
+$multipage  = multipage($total, $perpage, $page, $page_url);
+echo $multipage;
+		
+		
+		
 
     } elseif (!empty($_GET)) {
         echo '<div class="alert alert-danger">No users found.</div>';
@@ -778,7 +1199,44 @@ echo '</div>';
 
 /* ---------- Scripts ---------- */
 //echo '<script src="'.$BASEURL.'/admin/scripts/bootbox.min.js"></script>';
-echo '<script src="'.$BASEURL.'/admin/scripts/deleteUser.js"></script>';
+//echo '<script src="'.$BASEURL.'/admin/scripts/deleteUser.js"></script>';
+
+
+echo "<script>
+function togglePasskey(btn) {
+    const span = btn.closest('div').querySelector('.passkey-text');
+    const icon = btn.querySelector('i');
+    const passkey = span.dataset.passkey;
+
+    if (span.style.filter === 'none') {
+        span.textContent = passkey.substring(0, 8) + '...';
+        span.style.filter = 'blur(4px)';
+        span.style.userSelect = 'none';
+        icon.className = 'bi bi-eye';
+    } else {
+        span.textContent = passkey;
+        span.style.filter = 'none';
+        span.style.userSelect = 'text';
+        icon.className = 'bi bi-eye-slash';
+    }
+}
+
+function copyPasskey(btn) {
+    const span = btn.closest('div').querySelector('.passkey-text');
+    const passkey = span.dataset.passkey;
+
+    navigator.clipboard.writeText(passkey).then(() => {
+        showToast('Passkey copied!', 'success');
+        const icon = btn.querySelector('i');
+        icon.className = 'bi bi-clipboard-check text-success';
+        setTimeout(() => { icon.className = 'bi bi-clipboard'; }, 2000);
+    }).catch(() => {
+        showToast('Failed to copy', 'error');
+    });
+}
+
+</script>";
+
 
 /* единый скрытый инпут для всей страницы (ставим ДО скрипта) */
 echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*">';
@@ -788,103 +1246,15 @@ echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*">
   td[data-avatar-cell]{ cursor:pointer; }
 </style>
 
-<script>
-(function(){
-  const fileInput = document.getElementById('avatarUploadInput');
-  const UPLOAD_URL = 'index.php?act=usersearch&action=upload_avatar';
-  let targetCell = null, targetUid = null;
-
-  document.addEventListener('click', (e) => {
-    const cell = e.target.closest('td[data-avatar-cell]');
-    if (!cell) return;
-    targetCell = cell;
-    targetUid  = cell.dataset.uid;
-    fileInput.value = '';
-    fileInput.click();
-  });
-
-  fileInput.addEventListener('change', () => {
-    if (!fileInput.files || !fileInput.files[0] || !targetUid) return;
-
-    const fd = new FormData();
-    fd.append('avatar', fileInput.files[0]);
-    fd.append('id', targetUid);
-
-    const box  = targetCell;                   // подменяем весь <td>
-    const prev = box.innerHTML;
-    box.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:50px;width:50px;font-size:12px;color:#666;">Uploading…</div>';
-
-    fetch(UPLOAD_URL, { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
-      .then(r => r.json())
-      .then(j => {
-        if (!j.ok) throw new Error(j.error || 'Upload failed');
-        const url = (j.href || j.url) + '?v=' + Date.now();
-        box.innerHTML = '<img src="'+url+'" alt="avatar" class="rounded" width="50">';
-      })
-      .catch(err => { alert(err.message || 'Upload error'); box.innerHTML = prev; })
-      .finally(() => { targetCell = null; targetUid = null; });
-  });
-})();
-
-</script>
-
-
-
-
-<script>
-(function () {
-  if (!window.flatpickr) return;
-
-  // Общие настройки: красивый человеко-читаемый вид + нужный формат для сервера
-  const baseOpts = {
-    dateFormat: 'Y-m-d',          // то, что уйдёт на сервер
-    altInput: true,               // показываем красивую дату в отдельном визуальном поле
-    altFormat: 'd F Y',           // 24 сентября 2025
-    allowInput: true,
-    locale: flatpickr.l10ns.ru,
-	disableMobile: true,          // на телефонах тоже наш календарь
-    static: true                  // заголовок календаря фиксирован
-  };
-
-  const fpAdded   = flatpickr('#added',      baseOpts);
-  const fpRegTo   = flatpickr('#reg_to',     baseOpts);
-  const fpActFrom = flatpickr('#active_from',baseOpts);
-  const fpActTo   = flatpickr('#active_to',  baseOpts);
-
-  // Линкуем диапазоны: from <= to
-  function linkRange(fromFP, toFP){
-    if (!fromFP || !toFP) return;
-    fromFP.config.onChange.push(sel => {
-      toFP.set('minDate', sel && sel[0] ? sel[0] : null);
-    });
-    toFP.config.onChange.push(sel => {
-      fromFP.set('maxDate', sel && sel[0] ? sel[0] : null);
-    });
-    // Если значения уже есть в инпутах — учтём сразу
-    if (fromFP.input.value) toFP.set('minDate', fromFP.selectedDates[0] || fromFP.input.value);
-    if (toFP.input.value)   fromFP.set('maxDate', toFP.selectedDates[0] || toFP.input.value);
-  }
-  linkRange(fpAdded, fpRegTo);
-  linkRange(fpActFrom, fpActTo);
-
-  // Кнопки очистки
-  document.querySelectorAll('[data-clear]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const sel = btn.getAttribute('data-clear');
-      const el  = document.querySelector(sel);
-      if (!el || !el._flatpickr) return;
-      el._flatpickr.clear();
-      // Снимаем ограничения у парного поля, если есть
-      [fpAdded, fpRegTo, fpActFrom, fpActTo].forEach(fp => { if (fp) { fp.set('minDate', null); fp.set('maxDate', null); }});
-    });
-  });
-})();
-</script>
-
-
+<script src="<?= $BASEURL ?>/admin/scripts/usersearch_bulkActions.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/avatarUpload.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/datepicker.js"></script>
 
 
 
 <?php
+
+
+
 stdfoot();
 exit;

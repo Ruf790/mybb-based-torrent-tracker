@@ -1,12 +1,5 @@
 <?
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
@@ -47,7 +40,7 @@ if (!isset($_GET['begin_optimization'])) {
     </div>
 	</div>';
 	stdfoot();
-    exit; // останавливаем выполнение дальше
+    exit;
 }
 
 
@@ -128,9 +121,9 @@ delete_invalid_records('peers', "userid NOT IN ({$ValidUsers}) OR torrent NOT IN
 delete_invalid_records('reports', "addedby NOT IN ({$ValidUsers})");
 delete_invalid_records('snatched', "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
 delete_invalid_records('staffmessages', "sender NOT IN ({$ValidUsers})");
-delete_invalid_records('ts_hit_and_run', "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
-delete_invalid_records('ts_inactivity', "userid NOT IN ({$ValidUsers})", 'userid');
-delete_invalid_records('ts_u_perm', "userid NOT IN ({$ValidUsers})", 'userid');
+delete_invalid_records('hit_and_run', "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
+delete_invalid_records('inactivity', "userid NOT IN ({$ValidUsers})", 'userid');
+delete_invalid_records('users_perm', "userid NOT IN ({$ValidUsers})", 'userid');
 
 
 delete_invalid_records('comment_files', "user_id NOT IN ({$ValidUsers}) OR torrent_id NOT IN ({$ValidTorrents})");

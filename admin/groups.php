@@ -247,6 +247,9 @@ if($mybb->input['action'] == "add")
             // Update the caches
             $cache->update_usergroups();
             $cache->update_forumpermissions();
+			
+			// Log admin action
+			log_admin_action($gid, $mybb->input['title']);
 
             $groups = $cache->read('usergroups');
             $grouptitles = array_column($groups, 'title');

@@ -181,6 +181,18 @@ function handlePostRequest() {
             $numfiles = count($filesList);
             $size = 0;
             foreach ($filesList as $f) $size += $f->length;
+			
+			
+			// ← СЮДА добавить проверку дубликата:
+$existing = $db->sql_query_prepared(
+    "SELECT id FROM torrents WHERE info_hash = ? LIMIT 1",
+    [$info_hash]
+);
+if ($db->num_rows($existing) > 0) {
+    $errors[] = "'{$name}': torrent already exists on the tracker";
+    continue;
+}
+			
 
             // ------------------- Получение данных из CSV -------------------
             $csvMetadata = null;
@@ -410,10 +422,32 @@ function getCategoryOptions($selected = 0) {
     return $options;
 }
 
+
+
+
+
 function showForm() {
-    global $mybb;
+    global $mybb, $db;
     
-    stdhead('Пакетная загрузка торрентов');
+    stdhead('Mass Upload Torrents');
+	
+	
+	
+	
+	$js_categories = '';
+    $cat_query = $db->simple_select("categories", "id, name", "", ["order_by" => "id"]);
+    while ($cat = $db->fetch_array($cat_query)) 
+    {
+            $js_categories .= '<option value="' . (int)$cat['id'] . '">' 
+        . htmlspecialchars($cat['name']) . '</option>';
+    }
+	
+	
+	
+	
+	
+	
+	
     ?>
 
 <div class="container mt-4">
@@ -914,15 +948,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function getCategoryOptions() {
-        // Эта функция должна возвращать HTML опций категорий
-        // В реальном коде это должно быть динамически сгенерировано
-        return `
-            <option value="1">Category 1</option>
-            <option value="2">Category 2</option>
-            <option value="3">Category 3</option>
-            <option value="4">Category 4</option>
-        `;
-    }
+    return <?= json_encode($js_categories) ?>;
+}
     
     function updateUploadButton() {
         const uploadBtn = document.getElementById('batchUploadBtn');

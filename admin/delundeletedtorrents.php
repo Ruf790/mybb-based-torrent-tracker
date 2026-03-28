@@ -96,7 +96,7 @@ function deep_delete(int $id): void
     $db->delete_query("bookmarks", "torrentid='$id'");
     $db->delete_query("snatched", "torrentid='$id'");
     $db->delete_query("torrents", "id='$id'");
-    $db->delete_query("ts_nfo", "id='$id'");
+    $db->delete_query("torrents_nfo", "id='$id'");
 }
 
 // Get all torrent IDs from database

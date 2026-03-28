@@ -12,6 +12,20 @@ $language['moderation'] = array
 (
 
 
+'january' => "January",
+'february' => "February",
+'march' => "March",
+'april' => "April",
+'may' => "May",
+'june' => "June",
+'july' => "July",
+'august' => "August",
+'september' => "September",
+'october' => "October",
+'november' => "November",
+'december' => "December",
+
+
 'nav_deletethread' => "Delete Thread Permanently",
 'nav_deletepoll' => "Delete Poll",
 'nav_deleteposts' => "Delete Selective Posts",
@@ -59,7 +73,7 @@ $language['moderation'] = array
 'method_move_redirect' => "Move thread and leave redirect in existing forum for days:",
 'redirect_expire_note' => "(leave blank for 'infinite')",
 'method_copy' => "Copy thread to the new forum",
-'split_thread_subject' => "[split",
+'split_thread_subject' => "[split]",
 'split_thread' => "Split Thread",
 'move_posts' => "Move Posts",
 'thread_to_move_to' => "Thread to move the posts to:",

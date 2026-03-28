@@ -21,6 +21,8 @@ $language['showthread'] = array
 
 'standard_mod_tools' => "Standard Tools",
 
+'error_invalidthread22' => "The specified thread does not exist.",
+
 'author' => "Author",
 'message' => "Message",
 'threaded' => "Threaded Mode",

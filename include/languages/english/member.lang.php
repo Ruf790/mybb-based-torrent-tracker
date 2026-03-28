@@ -45,7 +45,7 @@ $language['member'] = array
 
 
 
-
+'welcome_register' => "Register",
 
 
 

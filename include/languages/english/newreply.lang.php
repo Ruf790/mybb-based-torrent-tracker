@@ -23,7 +23,7 @@ $language['newreply'] = array
 'add_attachment' => "Add Attachment",
 'update_attachment' => "Update Attachment",
 
-
+'redirect_return_forum' => "<br /><br />Alternatively, <a href=\"{1}\">return to the forum</a>.",
 
 'nav_newreply' => "Post Reply",
 

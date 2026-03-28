@@ -62,7 +62,7 @@ $language['online'] = array
 'posting_thread' => "Posting New Thread",
 'posting_thread2' => 'Posting New Thread in <a href="{1}">{2}</a>',
 'viewing_wol' => 'Viewing <a href="online.php">Whos Online</a>',
-'viewing_woltoday' => "Viewing <a href=>\"online.php?action=>today\">Who Was Online Today</a>",
+'viewing_woltoday' => "Viewing <a href='online.php?action=today'>Who Was Online Today</a>",
 'creating_poll' => "Creating New Poll",
 'editing_poll' => "Editing a Poll",
 'viewing_pollresults' => "Viewing Poll Results",

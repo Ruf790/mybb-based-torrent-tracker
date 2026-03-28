@@ -12,6 +12,15 @@ if(!defined('IN_TRACKER'))
 $language['usercp'] = array 
 (
 
+
+
+'e_pass8'	=>	 'Your question and secret answer',
+	'e_pass9'	=>	 'If you forget your password, we\'ll ask for your secret answer.',
+	'e_pass10'	=>	 '<b>Question:</b>',
+	'e_pass11'	=>	 'Secret answer:',
+	
+	
+
 'no_books_selected' => "You did not select any bookmarks to perform the selected action on.",
 
 'remove_all_book' => "Remove All Bookmarks",

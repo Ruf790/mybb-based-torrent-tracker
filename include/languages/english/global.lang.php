@@ -28,6 +28,8 @@ $language['global'] = array
 (
 
 
+'change_user' => "change user",
+
 'please_correct_errors' => "Please correct the following errors before continuing:",
 
 'error_invalidpost' => "The specified post does not exist.",
@@ -56,7 +58,7 @@ $language['global'] = array
 
 'forum_closed' => "Forum is Closed",
 
-'no_new_posts' => "Forum Contains No New Posts",
+'no_new_posts' => "Forum Contains No New Posts66666666666666666666",
 
 'new_posts' => "Forum Contains New Posts",
 
@@ -68,7 +70,10 @@ $language['global'] = array
 'postbit_button_quote' => 'Reply',
 
 
+'toplinks_help' => "Help",
 
+
+'view_attachments' => "[View My Attachments]",
 
 
 
@@ -269,6 +274,12 @@ Thank you,
 	
 	'newpm_notice_one' => "<strong>You have one unread private message</strong> from {1} titled <a href=\"{2}/private.php?action=read&amp;pmid={3}\" style=\"font-weight: bold;\">{4}</a>",
     'newpm_notice_multiple' => "<strong>You have {1} unread private messages.</strong> The most recent is from {2} titled <a href=\"{3}/private.php?action=read&amp;pmid={4}\" style=\"font-weight: bold;\">{5}</a>",
+	
+	
+	
+
+	
+	
 
 	
 	'redirect_width' =>"50%",

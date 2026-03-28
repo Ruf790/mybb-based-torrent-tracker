@@ -13,6 +13,8 @@ $language['newthread'] = array
 (
 
 
+'view_attachments' => "[View My Attachments]",
+
 'moderation_user_posts' => "Please note that new posts you make must be approved by a moderator before becoming visible.",
 
 'remove_attachment' => "Remove",

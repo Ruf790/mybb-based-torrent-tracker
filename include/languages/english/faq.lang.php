@@ -1,43 +1,49 @@
 <?php
-/*
-************************************************
-*==========[TS Special Edition v.5.6]==========*
-************************************************
-*              Special Thanks To               *
-*        DrNet - wWw.SpecialCoders.CoM         *
-*          Vinson - wWw.Decode4u.CoM           *
-*    MrDecoder - wWw.Fearless-Releases.CoM     *
-*           Fynnon - wWw.BvList.CoM            *
-*==============================================*
-*   Note: Don't Modify Or Delete This Credit   *
-*     Next Target: TS Special Edition v5.7     *
-*     TS SE WILL BE ALWAYS FREE SOFTWARE !     *
-************************************************
-*/
-/* 
-TS Special Edition English Language File
-Translation by xam Version: 0.3 [!!!!!*** RE-CREATED SINCE v3.8 ***!!!!!]
 
-*/
 
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
 // faq.php
-$language['faq'] = array 
-(
-	'faqtitle'		=>'FAQ (Frequently Asked Questions)',
-	'search'		=>'Search FAQ',
-	'words'		=>'Search Word(s):',
-	'searchin'	=>'Search in:',
-	'searchin1'	=>'Search Titles &amp; Text',
-	'searchin2'	=>'Search Titles Only',
-	'dosearch'	=>'Search FAQ',
-	'reset'		=>'Reset Fields',
-	'searcherror'=>'Sorry, but no results were returned using the query information you provided.',
-	'faqerror'		=>'Empty FAQ!',
-	'results'		=>'Search Results',
-	'wait'			=>'Ratio below {1} and/or upload below {2} GB delay of {3} hour(s).',
-	'slot'			=>'Ratio below {1} and/or upload below {2} GB available slot(s) {3}.'
+$language['faq'] = array(
+    'faqtitle'           => 'Frequently Asked Questions',
+    'faqdesc'            => 'Find answers to common questions about our platform',
+    'search'             => 'Search FAQ',
+    'searchplaceholder'  => 'Search for answers...',
+    'dosearch'          => 'Search',
+    'searchresults'      => 'Search Results',
+    'noresults'         => 'No Results Found',
+    'noresultsfor'      => 'No results found for "%s"',
+    'foundresults'      => 'Found %d results for "%s"',
+    'viewanswer'        => 'View Answer',
+    'category'          => 'Category',
+    'categories'        => 'Categories',
+    'questions'         => 'questions',
+    'browse'            => 'Browse',
+    'popular'           => 'Popular Questions',
+    'stats'             => 'FAQ Statistics',
+    'totalquestions'    => 'Total Questions',
+    'totalcategories'   => 'Categories',
+    'totalviews'        => 'Total Views',
+    'views'             => 'views',
+    'quicklinks'        => 'Quick Links',
+    'contactsupport'    => 'Contact Support',
+    'communityforum'    => 'Community Forum',
+    'helpcenter'        => 'Help Center',
+    'copylink'          => 'Copy Link',
+    'linkcopied'        => 'Link copied to clipboard!',
+    'searchminchars'    => 'Please enter at least 3 characters for search',
+    'backtofaq'         => 'Back to FAQ',
+    'noquestions'       => 'No questions found in this category',
+    'nocategories'      => 'No FAQ categories found',
+    'searcherror'       => 'Please enter at least 3 characters',
+    'error'             => 'Error',
 );
+
+
+
+
+
+
+
 ?>

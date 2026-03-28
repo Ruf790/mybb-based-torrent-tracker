@@ -30,12 +30,22 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Триггер удаления (именно кнопка удаления)
-    const delBtnEl = e.target.closest('.postbit_qdelete');
-    if (delBtnEl) {
-      commentToDeleteId = delBtnEl.getAttribute('data-commentid');
-      torrentId         = delBtnEl.getAttribute('data-torrentid');
-      // сама модалка удаление открывается через data-bs-toggle="modal"
-    }
+   const delBtnEl = e.target.closest('.postbit_qdelete');
+if (delBtnEl) {
+    commentToDeleteId = delBtnEl.getAttribute('data-commentid');
+    torrentId         = delBtnEl.getAttribute('data-torrentid');
+
+    // Заполняем превью
+    document.getElementById('commentPreviewAuthor').textContent = delBtnEl.getAttribute('data-author')  || 'Unknown';
+    document.getElementById('commentPreviewDate').textContent   = delBtnEl.getAttribute('data-date')    || '';
+    document.getElementById('commentPreviewId').textContent     = 'CID: ' + (commentToDeleteId || '');
+    document.getElementById('commentPreviewText').innerHTML = parseBBCode(
+    delBtnEl.getAttribute('data-preview') || 'No content'
+);
+}
+   
+   
+   
   });
 
   // === Сохранить изменения (AJAX) ===
@@ -170,7 +180,10 @@ function parseBBCode(text) {
     .replace(/\[size=(\d+)\](.*?)\[\/size\]/gi, '<span style="font-size:$1px;">$2</span>')
 
     .replace(/\[url\](.*?)\[\/url\]/gi, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/\[img\](.*?)\[\/img\]/gi, '<img src="$1" alt="Image" class="rounded" style="max-width:100%;height:auto;" />')
+    
+	.replace(/\[img\](.*?)\[\/img\]/gi, '<img src="$1" alt="Image" class="rounded" style="max-width: 400px;">')
+	
+	
     .replace(/\[video\](.*?)\[\/video\]/gi, '<video controls style="max-width:100%;"><source src="$1" type="video/mp4"></video>')
     .replace(/\[youtube\](.*?)\[\/youtube\]/gi, '<iframe width="100%" height="315" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen referrerpolicy="no-referrer"></iframe>')
 
@@ -204,29 +217,59 @@ if (typeof window.selectedTorrentIds === 'undefined') {
     window.selectedTorrentIds = [];
 }
 
+
+
+
 function massDeleteComments() {
     const selectedCheckboxes = document.querySelectorAll('.comment-checkbox:checked');
-    
+
     if (selectedCheckboxes.length === 0) {
         showToast('Please select at least one comment to delete.', 'warning');
         return;
     }
 
-    // Сохраняем выбранные комментарии
     window.selectedCommentIds = [];
     window.selectedTorrentIds = [];
-    
-    selectedCheckboxes.forEach(checkbox => {
+
+    var previewHTML = '';
+
+    selectedCheckboxes.forEach(function(checkbox) {
         window.selectedCommentIds.push(checkbox.value);
         window.selectedTorrentIds.push(checkbox.dataset.tid);
+
+        var cid       = checkbox.value;
+        var deleteBtn = document.querySelector('.postbit_qdelete[data-commentid="' + cid + '"]');
+        var author    = deleteBtn ? (deleteBtn.getAttribute('data-author')  || 'Unknown') : 'Unknown';
+        var date      = deleteBtn ? (deleteBtn.getAttribute('data-date')    || '')        : '';
+        var preview   = deleteBtn ? (deleteBtn.getAttribute('data-preview') || '')        : '';
+
+        previewHTML +=
+            '<div class="card mb-2 border-danger border-opacity-25">' +
+                '<div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">' +
+                    '<span class="small fw-bold text-danger">' +
+                        '<i class="fas fa-user me-1"></i>' + author +
+                    '</span>' +
+                    '<div class="d-flex gap-2 align-items-center">' +
+                        '<span class="text-muted small">' + date + '</span>' +
+                        '<span class="badge bg-secondary">CID: ' + cid + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="card-body py-2 px-3 small">' +
+                    (preview ? parseBBCode(preview) : '<span class="text-muted">No content</span>') +
+                '</div>' +
+            '</div>';
     });
 
-    // Показываем модальное окно подтверждения
-    const selectedCountElement = document.getElementById('selectedCommentsCount');
+    var selectedCountElement = document.getElementById('selectedCommentsCount');
     if (selectedCountElement) {
         selectedCountElement.textContent = window.selectedCommentIds.length;
     }
-    
+
+    var previewList = document.getElementById('massDeletePreviewList');
+    if (previewList) {
+        previewList.innerHTML = previewHTML;
+    }
+
     const massDeleteModal = new bootstrap.Modal(document.getElementById('massDeleteConfirmModal'));
     massDeleteModal.show();
 }

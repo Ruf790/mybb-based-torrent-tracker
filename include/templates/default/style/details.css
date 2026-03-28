@@ -1,16 +1,120 @@
+/* ===============================================
+   MAIN STYLESHEET
+   =============================================== */
 
-
+/* -----------------------------------------------
+   1. CSS Variables & Root
+   ----------------------------------------------- */
 :root {
+    /* Gradients */
     --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --primary-gradient-alt: linear-gradient(135deg, #4158D0 0%, #C850C0 46%, #FFCC70 100%);
     --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
     --warning-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
     --info-gradient: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    --danger-gradient: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    --btn-primary-gradient: linear-gradient(145deg, #0d6efd, #0b5ed7);
+    
+    /* Glass Effects */
     --glass-bg: rgba(255, 255, 255, 0.1);
     --glass-border: rgba(255, 255, 255, 0.2);
+    
+    /* Shadows */
     --shadow-premium: 0 20px 60px rgba(0, 0, 0, 0.15);
+    --shadow-primary: 0 15px 30px rgba(13,110,253,0.4);
+    --shadow-danger: 0 4px 12px rgba(220, 53, 69, 0.3);
+    
+    /* Colors */
+    --primary-color: #0d6efd;
+    --primary-dark: #0b5ed7;
+    --danger-color: #dc3545;
+    --danger-dark: #c82333;
+    
+    /* Transitions */
+    --transition-default: all 0.3s ease;
 }
 
-/* Animated Background */
+/* -----------------------------------------------
+   2. Global Keyframes Animations
+   ----------------------------------------------- */
+@keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes shrinkWidth {
+    from { width: 100%; }
+    to { width: 0%; }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 0; }
+}
+
+@keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-20px); }
+    100% { transform: translateY(0px); }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes wave {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* -----------------------------------------------
+   3. Background Elements
+   ----------------------------------------------- */
 .background-elements {
     position: fixed;
     top: 0;
@@ -33,17 +137,35 @@
 .shape-2 { width: 150px; height: 150px; top: 60%; right: 10%; animation-delay: 2s; }
 .shape-3 { width: 100px; height: 100px; bottom: 20%; left: 15%; animation-delay: 4s; }
 
-@keyframes float {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-20px) rotate(180deg); }
+/* -----------------------------------------------
+   4. Particles Animation
+   ----------------------------------------------- */
+.particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    pointer-events: none;
 }
 
-/* Hero Section */
+.particle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    opacity: 0.2;
+    animation: float 4s ease-in-out infinite;
+}
+
+/* -----------------------------------------------
+   5. Hero Section
+   ----------------------------------------------- */
 .hero-card {
     background: var(--primary-gradient);
     color: white;
 }
-
 
 .hero-background {
     position: absolute;
@@ -55,13 +177,14 @@
     background-size: cover;
 }
 
-
 .hero-title {
     font-size: 2.5rem;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
 }
 
-/* Breadcrumb Improvements */
+/* -----------------------------------------------
+   6. Breadcrumb Improvements
+   ----------------------------------------------- */
 .breadcrumb-container {
     position: relative;
 }
@@ -88,9 +211,11 @@
     color: white;
 }
 
-/* Hover Effects */
+/* -----------------------------------------------
+   7. Hover Effects
+   ----------------------------------------------- */
 .hover-lift {
-    transition: all 0.3s ease;
+    transition: var(--transition-default);
 }
 
 .hover-lift:hover {
@@ -102,10 +227,21 @@
     box-shadow: 0 0 20px rgba(255,255,255,0.5);
 }
 
-/* Advanced Stat Cards */
+.transition-scale {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.transition-scale:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+}
+
+/* -----------------------------------------------
+   8. Advanced Stat Cards
+   ----------------------------------------------- */
 .stat-card.advanced {
     border-left: 4px solid;
-    transition: all 0.3s ease;
+    transition: var(--transition-default);
 }
 
 .stat-card.advanced:hover {
@@ -122,9 +258,11 @@
     background: rgba(0,0,0,0.1);
 }
 
-/* Smart Tabs */
+/* -----------------------------------------------
+   9. Smart Tabs
+   ----------------------------------------------- */
 .smart-tab {
-    transition: all 0.3s ease;
+    transition: var(--transition-default);
     border: 2px solid transparent;
 }
 
@@ -155,7 +293,9 @@
     background: rgba(255,255,255,0.2);
 }
 
-/* Download Icon Animation */
+/* -----------------------------------------------
+   10. Download Icon Animation
+   ----------------------------------------------- */
 .download-main-icon {
     width: 70px;
     height: 70px;
@@ -169,13 +309,9 @@
     animation: pulse 2s infinite;
 }
 
-@keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-    100% { transform: scale(1); }
-}
-
-/* Animated Wave */
+/* -----------------------------------------------
+   11. Animated Wave
+   ----------------------------------------------- */
 .animated-wave {
     position: absolute;
     bottom: 0;
@@ -189,18 +325,17 @@
     animation: wave 2s linear infinite;
 }
 
-@keyframes wave {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-}
-
-/* Section Titles */
+/* -----------------------------------------------
+   12. Section Titles
+   ----------------------------------------------- */
 .section-title {
     color: #2c3e50;
     font-weight: 600;
 }
 
-/* Image Modal Enhancements */
+/* -----------------------------------------------
+   13. Image Modal Enhancements
+   ----------------------------------------------- */
 .zoomable-image {
     cursor: zoom-in;
 }
@@ -209,53 +344,83 @@
     transition: transform 0.3s ease;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-    .hero-title {
-        font-size: 1.8rem;
-    }
-    
-    .display-6 {
-        font-size: 2rem;
-    }
-    
-    .smart-tab {
-        padding: 1rem !important;
-    }
-    
-    .tab-icon {
-        width: 36px;
-        height: 36px;
-        font-size: 1rem;
-    }
+.screenshot-wrapper:hover img {
+    opacity: 0.9;
 }
 
-/* Dark Mode Enhancements */
-@media (prefers-color-scheme: dark) {
-    .bg-light {
-        background-color: #2d3748 !important;
-        color: #e2e8f0;
-    }
-    
-    .text-dark {
-        color: #e2e8f0 !important;
-    }
-    
-    .text-muted {
-        color: #a0aec0 !important;
-    }
-    
-    .card {
-        background-color: #2d3748;
-        border-color: #4a5568;
-    }
+/* -----------------------------------------------
+   14. Icon & Dropdown Enhancements
+   ----------------------------------------------- */
+.btn-icon {
+    transition: var(--transition-default);
+    border: 1px solid #e9ecef;
 }
 
+.btn-icon:hover {
+    transform: scale(1.1);
+    border-color: #007bff;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
 
+.dropdown-item {
+    transition: var(--transition-default);
+}
 
-/* ============================
-   Delete Torrent Modal Styles
-   ============================ */
+.dropdown-item:hover {
+    background: #007bff;
+    color: white;
+    margin-left: 5px;
+    margin-right: -5px;
+    border-radius: 6px;
+}
+
+/* -----------------------------------------------
+   15. Magnet Modal Specific Styles
+   ----------------------------------------------- */
+.icon-circle {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: float 3s ease-in-out infinite;
+}
+
+.glow-effect {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    animation: pulse 3s infinite;
+}
+
+.pulse-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 120px;
+    height: 120px;
+    border: 2px solid;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+.fa-spin-slow {
+    animation: spin-slow 3s linear infinite;
+}
+
+.fade-in-up {
+    animation: fadeInUp 0.5s ease;
+}
+
+/* -----------------------------------------------
+   16. Delete Torrent Modal Styles
+   ----------------------------------------------- */
 #deleteTorrentModal .modal-content {
     border-radius: 12px;
     overflow: hidden;
@@ -282,59 +447,292 @@
 
 #confirmDeleteBtn:not(:disabled):hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+    box-shadow: var(--shadow-danger);
 }
 
-/* Smooth transitions */
-#deleteTorrentModal .modal-content,
-#deleteTorrentModal .btn {
-    transition: all 0.2s ease;
-}
-
-/* Focus styles */
 #deleteTorrentModal .form-check-input:focus {
-    border-color: #dc3545;
+    border-color: var(--danger-color);
     box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
 }
 
-/* ============================
-   Icon & Dropdown Enhancements
-   ============================ */
-.btn-icon {
-    transition: all 0.3s ease;
-    border: 1px solid #e9ecef;
+/* -----------------------------------------------
+   17. General Modal Styles
+   ----------------------------------------------- */
+.modal-content {
+    animation: modalSlideIn 0.3s ease-out;
 }
 
-.btn-icon:hover {
-    transform: scale(1.1);
-    border-color: #007bff;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  
+
+/* -----------------------------------------------
+   18. Form Styles
+   ----------------------------------------------- */
+.form-select, .form-control {
+    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+    transition: var(--transition-default);
 }
 
-.dropdown-item {
-    transition: all 0.2s ease;
+.form-select:focus, .form-control:focus {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
 }
 
-.dropdown-item:hover {
-    background: #007bff;
+.form-control {
+    border-radius: 0 !important;
+    border: 1px solid #dee2e6;
+}
+
+.form-control:focus {
+    box-shadow: none;
+    border-color: var(--primary-color);
+}
+
+.input-group-text {
+    border-radius: 10px 0 0 10px !important;
+}
+
+.input-group .btn-primary {
+    border-radius: 0 10px 10px 0 !important;
+}
+
+/* -----------------------------------------------
+   19. Button Styles
+   ----------------------------------------------- */
+.btn-primary2 {
+    background: var(--btn-primary-gradient);
+    border: none;
+    transition: var(--transition-default);
+}
+
+.btn-primary2:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-primary) !important;
+}
+
+.btn-outline-primary2 {
+    border: 1px solid var(--primary-color);
+    color: var(--primary-color);
+    transition: var(--transition-default);
+}
+
+.btn-outline-primary2:hover {
+    background: var(--btn-primary-gradient);
     color: white;
-    margin-left: 5px;
-    margin-right: -5px;
-    border-radius: 6px;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 15px rgba(13,110,253,0.3);
 }
 
-/* ============================
-   Extra Hover & Transition Effects
-   ============================ */
-.transition-scale {
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+.btn2 {
+    transition: var(--transition-default);
 }
 
-.transition-scale:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+/* Submit Report Button */
+#submitReport {
+    transition: var(--transition-default);
 }
 
-.screenshot-wrapper:hover img {
-    opacity: 0.9;
+#submitReport:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-danger);
+}
+
+/* -----------------------------------------------
+   20. Text Utilities
+   ----------------------------------------------- */
+.text-white-75 {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.bg-gradient {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+/* -----------------------------------------------
+   21. Magnet Loading Animation
+   ----------------------------------------------- */
+.magnet-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(5px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.3s ease;
+}
+
+.magnet-loading-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 24px;
+    box-shadow: var(--shadow-premium);
+    text-align: center;
+    max-width: 320px;
+    width: 90%;
+    animation: slideInRight 0.3s ease;
+    border: 1px solid rgba(13, 110, 253, 0.1);
+}
+
+.magnet-spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid #e2e8f0;
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    margin: 0 auto 1.5rem;
+    animation: spin 1s linear infinite;
+}
+
+.magnet-spinner.success {
+    border-top-color: #10b981;
+}
+
+.magnet-spinner.error {
+    border-top-color: #ef4444;
+}
+
+.magnet-loading-text {
+    color: #1e293b;
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.magnet-loading-progress {
+    width: 100%;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.magnet-progress-bar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--primary-dark));
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+/* -----------------------------------------------
+   22. Responsive Design
+   ----------------------------------------------- */
+@media (max-width: 768px) {
+    .hero-title {
+        font-size: 1.8rem;
+    }
+    
+    .display-6 {
+        font-size: 2rem;
+    }
+    
+    .smart-tab {
+        padding: 1rem !important;
+    }
+    
+    .tab-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .icon-circle {
+        width: 70px;
+        height: 70px;
+    }
+    
+    .icon-circle i {
+        font-size: 2rem;
+    }
+    
+    .modal-footer {
+        flex-direction: column;
+        gap: 10px !important;
+    }
+    
+    .modal-footer .btn {
+        width: 100%;
+    }
+    
+    .d-flex.gap-3 {
+        flex-wrap: wrap;
+    }
+    
+    .magnet-loading-content {
+        padding: 1.5rem;
+    }
+    
+    .magnet-spinner {
+        width: 50px;
+        height: 50px;
+        border-width: 3px;
+    }
+    
+    .magnet-loading-text {
+        font-size: 0.9rem;
+    }
+}
+
+/* -----------------------------------------------
+   23. Dark Mode Enhancements
+   ----------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+    .bg-light {
+        background-color: #2d3748 !important;
+        color: #e2e8f0;
+    }
+    
+    .text-dark {
+        color: #e2e8f0 !important;
+    }
+    
+    .text-muted {
+        color: #a0aec0 !important;
+    }
+    
+    .card {
+        background-color: #2d3748;
+        border-color: #4a5568;
+    }
+    
+    .magnet-loading-overlay {
+        background: rgba(26, 32, 44, 0.95);
+    }
+    
+    .magnet-loading-content {
+        background: #2d3748;
+        border-color: #4a5568;
+    }
+    
+    .magnet-loading-text {
+        color: #e2e8f0;
+    }
+    
+    .magnet-spinner {
+        border-color: #4a5568;
+    }
+}
+
+/* -----------------------------------------------
+   24. Utility Classes
+   ----------------------------------------------- */
+.magnet-btn {
+    transition: var(--transition-default);
+}
+
+.magnet-btn:active {
+    transform: scale(0.95);
+}
+
+.magnet-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }

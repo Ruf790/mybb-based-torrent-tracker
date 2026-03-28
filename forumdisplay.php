@@ -111,7 +111,8 @@ $fpermissions = $forumpermissions[$fid];
 
 if($fpermissions['canview'] != 1)
 {
-	print_no_permission();
+	stdhead();
+	error_no_permission();
 }
 
 if($CURUSER['id'] == 0)
@@ -940,7 +941,7 @@ else
 }
 
 $tids = $threadcache = array();
-//$icon_cache = $cache->read("posticons");
+
 
 if($fpermissions['canviewthreads'] != 0)
 {
@@ -1181,18 +1182,7 @@ if(!empty($threadcache) && is_array($threadcache))
 		$thread['subject'] = $parser->parse_badwords($thread['subject']);
 		$thread['subject'] = htmlspecialchars_uni($thread['subject']);
 
-		if($thread['icon'] > 0 && isset($icon_cache[$thread['icon']]))
-		{
-			$icon = $icon_cache[$thread['icon']];
-			$icon['path'] = str_replace("{theme}", $theme['imgdir'], $icon['path']);
-			$icon['path'] = htmlspecialchars_uni($icon['path']);
-			$icon['name'] = htmlspecialchars_uni($icon['name']);
-			eval("\$icon = \"".$templates->get("forumdisplay_thread_icon")."\";");
-		}
-		else
-		{
-			$icon = "&nbsp;";
-		}
+		
 
 		$prefix = '';
 		//if($thread['poll'])
@@ -1709,8 +1699,7 @@ if($foruminfo['type'] != "c")
 		$clearstoredpass = ' | <a href="misc.php?action=clearpass&amp;fid='.$fid.'&amp;my_post_key='.$mybb->post_code.'">{$lang->clear_stored_password}</a>';
 	}
 
-	//$prefixselect = build_forum_prefix_select($fid, $tprefix);
-
+	
 	
 	// Populate Forumsort
     $forumsort = '';

@@ -51,6 +51,8 @@ require_once INC_PATH."/functions_timezone.php";
 
 require_once INC_PATH.'/functions_mkprettytime.php';
 
+require_once INC_PATH.'/functions_multipage.php';
+
 
 require_once INC_PATH . '/functions_ratio.php';
 
@@ -2927,74 +2929,187 @@ function rt_cat_fa(?string $iconRaw, string $title = ''): string {
     return '<i class="'.hsafe($cls).'" title="'.hsafe($title).'" aria-hidden="true"></i>';
 }
 
+
+
+
+
 /**
  * Активные раздачи/закачки пользователя из peers.
  * Возвращает: ['seed_html','leech_html','seed_count','leech_count']
  */
-function build_user_active_swarm($db, int $uid, int $limit = 10): array {
-    global $BASEURL, $dateformat;
+function build_user_active_swarm($db, int $uid, int $limit = 10): array
+{
+    global $BASEURL, $dateformat, $timeformat;
 
     $uid   = max(0, $uid);
     $limit = max(1, $limit);
 
-    $render = function($sql) use ($db, $BASEURL, $dateformat) {
-        $res = $db->sql_query($sql);
+    $render = function(string $seeder_val) use ($db, $uid, $limit, $BASEURL, $dateformat, $timeformat) {
+
+        $sql = "
+            SELECT t.id, t.name, t.size, t.category, t.t_image, t.t_link,
+                   c.name AS cat_name, c.icon AS cat_icon,
+                   p.uploaded, p.downloaded, p.to_go, p.last_action,
+                   p.seeder
+            FROM peers p
+            JOIN torrents t ON t.id = p.torrent
+            LEFT JOIN categories c ON c.id = t.category
+            WHERE p.userid = ? AND p.seeder = ?
+            ORDER BY p.last_action DESC
+            LIMIT ?
+        ";
+
+        $res = $db->sql_query_prepared($sql, [$uid, $seeder_val, $limit]);
+
         if (!$res || $db->num_rows($res) === 0) {
-            return ['html' => '<div class="muted">—</div>', 'count' => 0];
+            return ['html' => '
+            <div class="text-center py-4">
+                <div class="d-inline-flex flex-column align-items-center gap-2">
+                    <i class="bi bi-' . ($seeder_val === 'yes' ? 'cloud-upload' : 'cloud-download') . ' fs-1 text-secondary opacity-25"></i>
+                    <div class="text-muted small">Nothing active right now</div>
+                </div>
+            </div>', 'count' => 0];
         }
-        $html = '<ul class="list-unstyled m-0">';
-        $cnt = 0;
+
+        $html = '<div class="d-flex flex-column gap-2">';
+        $cnt  = 0;
+
         while ($r = $db->fetch_array($res)) {
             $cnt++;
-            $id    = (int)$r['id'];
-            $name  = (string)($r['name'] ?? '');
-            $cat   = (string)($r['cat_name'] ?? '');
-            $icon  = rt_cat_fa($r['cat_icon'] ?? '', $cat);
-            $up    = mksize((int)($r['uploaded'] ?? 0));
-            $dn    = mksize((int)($r['downloaded'] ?? 0));
-            $seen  = my_datee($dateformat, (int)($r['last_action'] ?? 0));
-            $link  = $BASEURL.'/torrent-'.$id.'.html';
+            $id   = (int)$r['id'];
+            $name = (string)($r['name'] ?? '');
+            $cat  = (string)($r['cat_name'] ?? '');
+            $icon = rt_cat_fa($r['cat_icon'] ?? '', $cat);
+            $link = $BASEURL . '/torrent-' . $id . '.html';
+
+            $up   = mksize((int)($r['uploaded']   ?? 0));
+            $dn   = mksize((int)($r['downloaded'] ?? 0));
+            $seen = my_datee($dateformat, (int)($r['last_action'] ?? 0))
+                  . ' ' . my_datee($timeformat, (int)($r['last_action'] ?? 0));
+
+            // Прогресс
+            $size     = max(1, (int)($r['size'] ?? 1));
+            $to_go    = (int)($r['to_go'] ?? 0);
+            $progress = $seeder_val === 'yes'
+                ? 100
+                : min(100, max(0, (int)round((1 - $to_go / $size) * 100)));
+            $progress_color = $seeder_val === 'yes' ? 'success' : 'info';
+
+            // Скорость
+            $upspeed   = (int)($r['upspeed']   ?? 0);
+            $downspeed = (int)($r['downspeed'] ?? 0);
+            $speed_html = '';
+            if ($upspeed > 0 || $downspeed > 0) {
+                $speed_html = '
+                <div class="d-flex gap-2 mt-1">
+                    ' . ($upspeed > 0 ? '
+                    <span class="badge bg-success bg-opacity-10 text-success rounded-pill" style="font-size:0.65rem;">
+                        <i class="bi bi-arrow-up me-1"></i>' . mksize($upspeed) . '/s
+                    </span>' : '') . '
+                    ' . ($downspeed > 0 ? '
+                    <span class="badge bg-info bg-opacity-10 text-info rounded-pill" style="font-size:0.65rem;">
+                        <i class="bi bi-arrow-down me-1"></i>' . mksize($downspeed) . '/s
+                    </span>' : '') . '
+                </div>';
+            }
+
+            // IMDb
+            $imdb_badge = '';
+            if (!empty($r['t_link']) && preg_match('#(\d+\.?\d*)/10#', $r['t_link'], $m)) {
+                $imdb_badge = '<span class="badge ms-1" style="background:#f5c518;color:#000;font-size:0.6rem;">
+                    <i class="bi bi-star-fill me-1"></i>' . $m[1] . '
+                </span>';
+            }
+
+            // Обложка
+            $poster = !empty($r['t_image']) ? htmlspecialchars($r['t_image']) : '';
+
+            // ETA для личей
+            $eta_html = '';
+            if ($seeder_val === 'no' && $to_go > 0 && $downspeed > 0) {
+                $eta_secs = (int)($to_go / $downspeed);
+                $eta_html = '
+                <span class="badge bg-warning bg-opacity-10 text-warning rounded-pill" style="font-size:0.65rem;">
+                    <i class="bi bi-stopwatch me-1"></i>' . mkprettytime($eta_secs) . '
+                </span>';
+            }
 
             $html .= '
-            <li class="list-row">
-              <a class="text-decoration-none d-flex align-items-start gap-2 flex-grow-1" href="'.$link.'">
-                <span class="mt-1">'.$icon.'</span>
-                <span class="flex-grow-1">
-                  <div class="fw-semibold">'.htmlspecialchars_uni($name).'</div>
-                  <div class="small muted mt-1">'.$seen.'</div>
-                </span>
-              </a>
-              <span class="d-flex flex-column text-end small">
-                <span class="chip"><i class="bi bi-arrow-up-circle me-1"></i>'.$up.'</span>
-                <span class="chip mt-1"><i class="bi bi-arrow-down-circle me-1"></i>'.$dn.'</span>
-              </span>
-            </li>';
+            <div class="card border-0 shadow-sm overflow-hidden hov-scale">
+                <div class="d-flex">
+
+                    <!-- Обложка или иконка -->
+                    ' . ($poster ? '
+                    <a href="' . $link . '" class="flex-shrink-0">
+                        <img src="' . $poster . '"
+                             style="width:70px;min-height:85px;object-fit:cover;background:#111;"
+                             alt="' . hsafe($name) . '"
+                             onerror="this.parentElement.style.display=\'none\'">
+                    </a>' : '
+                    <a href="' . $link . '" class="flex-shrink-0 d-flex align-items-center justify-content-center bg-light"
+                       style="width:70px;min-height:85px;">
+                        <span class="fs-3">' . $icon . '</span>
+                    </a>') . '
+
+                    <div class="card-body p-2 flex-grow-1 min-width-0">
+
+                        <!-- Категория + IMDb -->
+                        <div class="d-flex align-items-center gap-1 mb-1">
+                            <span class="badge bg-light text-dark border" style="font-size:0.6rem;">
+                                ' . $icon . ' ' . hsafe($cat) . '
+                            </span>
+                            ' . $imdb_badge . '
+                        </div>
+
+                        <!-- Название -->
+                        <a href="' . $link . '" class="text-decoration-none">
+                            <div class="fw-semibold text-dark clamp-2" style="font-size:0.82rem;">
+                                ' . htmlspecialchars_uni($name) . '
+                            </div>
+                        </a>
+
+                        <!-- Прогресс -->
+                        <div class="mt-2 mb-1">
+                            <div class="d-flex justify-content-between mb-1" style="font-size:0.7rem;">
+                                <span class="text-muted">Progress</span>
+                                <span class="fw-bold text-' . $progress_color . '">' . $progress . '%</span>
+                            </div>
+                            <div class="progress" style="height:4px;">
+                                <div class="progress-bar bg-' . $progress_color . '"
+                                     style="width:' . $progress . '%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Статистика -->
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            <span class="badge bg-success bg-opacity-10 text-success rounded-pill" style="font-size:0.65rem;">
+                                <i class="bi bi-arrow-up-circle-fill me-1"></i>' . $up . '
+                            </span>
+                            <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill" style="font-size:0.65rem;">
+                                <i class="bi bi-arrow-down-circle-fill me-1"></i>' . $dn . '
+                            </span>
+                            ' . $eta_html . '
+                        </div>
+
+                        <!-- Скорость -->
+                        ' . $speed_html . '
+
+                        <!-- Время -->
+                        <div class="text-muted mt-1" style="font-size:0.68rem;">
+                            <i class="bi bi-clock me-1"></i>' . $seen . '
+                        </div>
+
+                    </div>
+                </div>
+            </div>';
         }
-        $html .= '</ul>';
+
+        $html .= '</div>';
         return ['html' => $html, 'count' => $cnt];
     };
 
-    $sql_seed = "
-      SELECT t.id,t.name,t.category,c.name AS cat_name,c.icon AS cat_icon,
-             p.uploaded,p.downloaded,p.last_action
-      FROM peers p
-      JOIN torrents t ON t.id = p.torrent
-      LEFT JOIN categories c ON c.id = t.category
-      WHERE p.userid = {$uid} AND p.seeder = 'yes'
-      ORDER BY p.last_action DESC
-      LIMIT {$limit}";
-    $seed = $render($sql_seed);
-
-    $sql_leech = "
-      SELECT t.id,t.name,t.category,c.name AS cat_name,c.icon AS cat_icon,
-             p.uploaded,p.downloaded,p.last_action
-      FROM peers p
-      JOIN torrents t ON t.id = p.torrent
-      LEFT JOIN categories c ON c.id = t.category
-      WHERE p.userid = {$uid} AND p.seeder = 'no'
-      ORDER BY p.last_action DESC
-      LIMIT {$limit}";
-    $leech = $render($sql_leech);
+    $seed  = $render('yes');
+    $leech = $render('no');
 
     return [
         'seed_html'   => $seed['html'],
@@ -3009,100 +3124,170 @@ function build_user_active_swarm($db, int $uid, int $limit = 10): array {
 
 
 
-
-
-
 /**
  * Карточки последних торрентов пользователя
  */
+
 function build_recent_user_torrents($db, int $uid): string
 {
     global $BASEURL, $dateformat, $lang;
 
     $uid = max(0, $uid);
 
-    
-   // Подгони WHERE под свою схему: если нет полей visible/banned — убери их
-$sql = "
-    SELECT
-        t.id, t.name, t.size, t.added,
-        t.seeders, t.leechers, t.times_completed,
-        t.category,
-        c.name AS cat_name, c.icon AS cat_icon
-    FROM torrents t
-    LEFT JOIN categories c ON c.id = t.category
-    WHERE t.owner = ?
-      AND (t.visible = 'yes' OR t.visible = 1 OR t.visible IS NULL)
-      AND (t.banned  = 'no'  OR t.banned  = 0  OR t.banned  IS NULL)
-    ORDER BY t.added DESC
-    LIMIT 12
-";
+    $sql = "
+        SELECT
+            t.id, t.name, t.size, t.added,
+            t.seeders, t.leechers, t.times_completed,
+            t.t_image, t.t_link,
+            t.category,
+            c.name AS cat_name, c.icon AS cat_icon
+        FROM torrents t
+        LEFT JOIN categories c ON c.id = t.category
+        WHERE t.owner = ?
+          AND (t.visible = 'yes' OR t.visible = 1 OR t.visible IS NULL)
+          AND (t.banned  = 'no'  OR t.banned  = 0  OR t.banned  IS NULL)
+        ORDER BY t.added DESC
+        LIMIT 12
+    ";
 
-// Выполнение подготовленного запроса
-$res = $db->sql_query_prepared($sql, [(int)$uid]);
+    $res = $db->sql_query_prepared($sql, [(int)$uid]);
 
-
-    if (!$res || $db->num_rows($res) === 0) 
-	{
-        // Пусто — вернём аккуратный плейсхолдер
-        return '<div class="muted">No uploads yet.</div>';
+    if (!$res || $db->num_rows($res) === 0) {
+        return '<div class="text-center p-4">
+            <div class="d-inline-flex flex-column align-items-center gap-3">
+                <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width:70px;height:70px;">
+                    <i class="bi bi-cloud-arrow-up fs-1 text-secondary"></i>
+                </div>
+                <div class="text-secondary fw-medium">No uploads yet.</div>
+            </div>
+        </div>';
     }
 
     $html = '<div class="row g-3">';
-    while ($r = $db->fetch_array($res)) 
-	{
+
+    while ($r = $db->fetch_array($res)) {
         $id    = (int)$r['id'];
         $name  = $r['name'] ?? '';
         $size  = mksize((int)$r['size']);
         $added = my_datee($dateformat, (int)$r['added']);
-
         $seed  = ts_nf((int)$r['seeders']);
         $leech = ts_nf((int)$r['leechers']);
         $done  = ts_nf((int)$r['times_completed']);
+        $link  = $BASEURL . '/torrent-' . $id . '.html';
 
-        
-		
-		$catName = (string)($r['cat_name'] ?? '');
+        // Категория
+        $catName  = (string)($r['cat_name'] ?? '');
+        $iconRaw  = trim((string)($r['cat_icon'] ?? ''));
+        $iconClass = preg_replace('/[^a-z0-9\-\s]/i', '', $iconRaw) ?: 'fa-solid fa-question';
+        $catIcon  = '<i class="' . hsafe($iconClass) . '" title="' . hsafe($catName) . '" aria-hidden="true"></i>';
 
-        // ИКОНКА БЕЗ ХЕЛПЕРА: берём классы FA прямо из БД
-        $iconRaw   = trim((string)($r['cat_icon'] ?? ''));
-        // лёгкая очистка: только буквы/цифры/дефис/пробел
-        $iconClass = preg_replace('/[^a-z0-9\-\s]/i', '', $iconRaw);
-        if ($iconClass === '' || $iconClass === null) {
-            $iconClass = 'fa-solid fa-question';
+        // Обложка
+        $poster = !empty($r['t_image'])
+            ? htmlspecialchars($r['t_image'])
+            : '';
+
+        // IMDb рейтинг
+        $imdb_badge = '';
+        if (!empty($r['t_link']) && preg_match('#(\d+\.?\d*)/10#', $r['t_link'], $m)) {
+            $imdb_badge = '<span class="badge ms-1" style="background:#f5c518;color:#000;font-size:0.7rem;">
+                <i class="bi bi-star-fill me-1"></i>' . $m[1] . '
+            </span>';
         }
-        $catIcon = '<i class="'.hsafe($iconClass).' me-1" title="'.hsafe($catName).'" aria-hidden="true"></i>';
-		
-		
-		
-		
-        // SEO-ссылка как у тебя: /torrent-123.html
-        $link = $BASEURL.'/torrent-'.$id.'.html';
+
+        // Health цвет
+        $health = (int)$r['seeders'] > 0 ? 'success' : 'danger';
 
         $html .= '
-        <div class="col-12 col-md-6">
-          <a class="text-decoration-none" href="'.$link.'">
-            <div class="card-clean p-3 hov-soft">
-              <div class="d-flex align-items-start">
-                <div class="me-2">'.$catIcon.'</div>
-                <div class="flex-grow-1">
-                  <div class="fw-semibold clamp-2">'.htmlspecialchars_uni($name).'</div>
-<div class="small muted mt-1">'.hsafe($size).' • '.hsafe($added).'</div>
-<div class="small mt-2 d-flex flex-wrap gap-2">
-  <span class="chip chip--seed"><i class="bi bi-arrow-up-circle me-1"></i>'.$seed.'</span>
-  <span class="chip chip--leech"><i class="bi bi-arrow-down-circle me-1"></i>'.$leech.'</span>
-  <span class="chip chip--done"><i class="bi bi-check2-circle me-1"></i>'.$done.'</span>
-</div>
+        <div class="col-12">
+            <div class="card border-0 shadow-sm hov-scale overflow-hidden">
+                <div class="d-flex">
+
+                    <!-- Обложка -->
+                    ' . ($poster ? '
+                    <a href="' . $link . '" class="flex-shrink-0">
+                        <img src="' . $poster . '"
+                             style="width:75px;height:90%;object-fit:cover;min-height:90px;background:#111;"
+                             alt="' . hsafe($name) . '"
+                             onerror="this.parentElement.style.display=\'none\'">
+                    </a>' : '') . '
+
+                    <div class="card-body p-3 flex-grow-1 min-width-0">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div class="min-width-0">
+
+                                <!-- Категория + название -->
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="badge bg-light text-dark border" style="font-size:0.7rem;">
+                                        ' . $catIcon . ' ' . hsafe($catName) . '
+                                    </span>
+                                    ' . $imdb_badge . '
+                                </div>
+
+                                <a href="' . $link . '" class="text-decoration-none">
+                                    <h6 class="fw-semibold text-dark mb-1 clamp-2">' . htmlspecialchars_uni($name) . '</h6>
+                                </a>
+
+                                <div class="small text-muted d-flex flex-wrap gap-2 mb-2">
+                                    <span><i class="bi bi-hdd me-1"></i>' . hsafe($size) . '</span>
+                                    <span><i class="bi bi-calendar3 me-1"></i>' . hsafe($added) . '</span>
+                                </div>
+
+                                <div class="d-flex flex-wrap gap-1">
+                                    <span class="badge bg-success bg-opacity-10 text-success rounded-pill">
+                                        <i class="bi bi-arrow-up-circle-fill me-1"></i>' . $seed . '
+                                    </span>
+                                    <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill">
+                                        <i class="bi bi-arrow-down-circle-fill me-1"></i>' . $leech . '
+                                    </span>
+                                    <span class="badge bg-info bg-opacity-10 text-info rounded-pill">
+                                        <i class="bi bi-check2-circle me-1"></i>' . $done . '
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Кнопка скачать -->
+                            <div class="flex-shrink-0">
+                                <a href="' . $BASEURL . '/download.php/' . $id . '.torrent"
+                                   class="btn btn-primary btn-sm rounded-pill"
+                                   title="Download">
+                                    <i class="bi bi-download"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-              </div>
             </div>
-          </a>
+			
+			<style>
+			.hov-scale {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border-radius: 12px !important;
+}
+.hov-scale:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important;
+}
+.clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.min-width-0 { min-width: 0; }
+	</style>		
+			
+			
+			
+			
         </div>';
     }
-    $html .= '</div>';
 
+    $html .= '</div>';
     return $html;
 }
+
+
+
 
 
 
@@ -3121,83 +3306,166 @@ $res = $db->sql_query_prepared($sql, [(int)$uid]);
  * Completed torrents из snatched (s.finished='yes').
  * Возвращает ['html' => string, 'count' => int]
  */
+
 function build_user_completed_torrents_from_snatched($db, int $uid, int $limit = 10): array
 {
     global $BASEURL, $dateformat, $timeformat;
 
+    $uid   = max(0, $uid);
+    $limit = max(1, $limit);
 
-$uid   = max(0, $uid);
-$limit = max(1, $limit);
+    // Счётчик
+    $sql_cnt = "SELECT COUNT(*) AS cnt
+                FROM snatched s
+                LEFT JOIN torrents t ON (s.torrentid = t.id)
+                INNER JOIN categories c ON (t.category = c.id)
+                WHERE s.finished = 'yes' AND s.userid = ?";
+    $rc    = $db->sql_query_prepared($sql_cnt, [(int)$uid]);
+    $rowc  = $rc ? $db->fetch_array($rc) : null;
+    $total = (int)($rowc['cnt'] ?? 0);
 
-// общий счётчик с подготовленным запросом
-$sql_cnt = "SELECT COUNT(*) AS cnt
+    // Записи — добавили t_image и t_link
+    $sql = "SELECT s.torrentid AS id,
+                   s.uploaded, s.downloaded, s.completedat, s.last_action,
+                   t.seeders, t.leechers, t.name, t.category,
+                   t.t_image, t.t_link,
+                   c.name AS categoryname, c.icon AS caticon
             FROM snatched s
-            LEFT JOIN torrents t ON (s.torrentid=t.id)
-            INNER JOIN categories c ON (t.category=c.id)
-            WHERE s.finished='yes' AND s.userid=?";
-$rc = $db->sql_query_prepared($sql_cnt, [(int)$uid]);
-$rowc = $rc ? $db->fetch_array($rc) : null;
-$total = (int)($rowc['cnt'] ?? 0);
+            LEFT JOIN torrents t ON (s.torrentid = t.id)
+            INNER JOIN categories c ON (t.category = c.id)
+            WHERE s.finished = 'yes' AND s.userid = ?
+            ORDER BY s.completedat DESC, s.last_action DESC
+            LIMIT ?";
+    $res = $db->sql_query_prepared($sql, [(int)$uid, (int)$limit]);
 
-// сами записи с подготовленным запросом
-$sql = "SELECT s.torrentid AS id,
-               s.uploaded, s.downloaded, s.completedat, s.last_action,
-               t.seeders, t.leechers, t.name, t.category,
-               c.name AS categoryname, c.icon AS caticon
-        FROM snatched s
-        LEFT JOIN torrents t ON (s.torrentid=t.id)
-        INNER JOIN categories c ON (t.category=c.id)
-        WHERE s.finished='yes' AND s.userid=?
-        ORDER BY s.completedat DESC, s.last_action DESC
-        LIMIT ?";
-$res = $db->sql_query_prepared($sql, [(int)$uid, (int)$limit]);
-
-
-    if (!$res || $db->num_rows($res) === 0) 
-	{
-        return ['html' => '<div class="muted">No completed history.</div>', 'count' => $total];
+    if (!$res || $db->num_rows($res) === 0) {
+        return ['html' => '
+        <div class="text-center py-4">
+            <div class="d-inline-flex flex-column align-items-center gap-3">
+                <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center"
+                     style="width:70px;height:70px;">
+                    <i class="bi bi-check2-circle fs-1 text-secondary opacity-50"></i>
+                </div>
+                <div class="text-secondary fw-medium">No completed history.</div>
+                <div class="small text-muted">Completed torrents will appear here</div>
+            </div>
+        </div>', 'count' => $total];
     }
 
-    $html = '<ul class="list-unstyled m-0">';
-    while ($r = $db->fetch_array($res)) 
-	{
-        $id    = (int)($r['id'] ?? 0);
-        $name  = (string)($r['name'] ?? '');
-        $cat   = (string)($r['categoryname'] ?? '');
-        $icon  = rt_cat_fa($r['caticon'] ?? '', $cat);
+    $html = '<div class="d-flex flex-column gap-2">';
 
-        
-		
-		
-		$when = my_datee ($dateformat, $r['completedat']) . '<br />' . my_datee ($timeformat, $r['completedat']);
+    while ($r = $db->fetch_array($res)) {
+        $id   = (int)($r['id']   ?? 0);
+        $name = (string)($r['name'] ?? '');
+        $cat  = (string)($r['categoryname'] ?? '');
+        $icon = rt_cat_fa($r['caticon'] ?? '', $cat);
+        $link = $BASEURL . '/torrent-' . $id . '.html';
+
+        $when = my_datee($dateformat, $r['completedat'])
+              . ' ' . my_datee($timeformat, $r['completedat']);
 
         $up   = mksize((int)($r['uploaded']   ?? 0));
         $dn   = mksize((int)($r['downloaded'] ?? 0));
         $seed = ts_nf((int)($r['seeders']  ?? 0));
         $lee  = ts_nf((int)($r['leechers'] ?? 0));
 
-        $link = $BASEURL.'/torrent-'.$id.'.html';
+        // Ratio
+        $dl = (int)($r['downloaded'] ?? 0);
+        $ul = (int)($r['uploaded']   ?? 0);
+        if ($dl > 0) {
+            $ratio_val = $ul / $dl;
+            $ratio_str = number_format($ratio_val, 2);
+            $ratio_color = $ratio_val >= 1.0 ? 'success' : ($ratio_val >= 0.5 ? 'warning' : 'danger');
+        } else {
+            $ratio_str   = $ul > 0 ? '∞' : '0.00';
+            $ratio_color = $ul > 0 ? 'success' : 'secondary';
+        }
+
+        // IMDb
+        $imdb_badge = '';
+        if (!empty($r['t_link']) && preg_match('#(\d+\.?\d*)/10#', $r['t_link'], $m)) {
+            $imdb_badge = '<span class="badge ms-1" style="background:#f5c518;color:#000;font-size:0.65rem;">
+                <i class="bi bi-star-fill me-1"></i>' . $m[1] . '
+            </span>';
+        }
+
+        // Обложка
+        $poster = !empty($r['t_image']) ? htmlspecialchars($r['t_image']) : '';
+
+        // Health
+        $health_color = (int)$r['seeders'] > 0 ? 'success' : 'danger';
+        $health_icon  = (int)$r['seeders'] > 0 ? 'bi-wifi' : 'bi-wifi-off';
 
         $html .= '
-        <li class="list-row">
-          <a class="text-decoration-none d-flex align-items-start gap-2 flex-grow-1" href="'.$link.'">
-            <span class="mt-1">'.$icon.'</span>
-            <span class="flex-grow-1">
-              <div class="fw-semibold clamp-2">'.htmlspecialchars_uni($name).'</div>
-              <div class="small muted mt-1">'.$when.'</div>
-            </span>
-          </a>
-          <span class="d-flex flex-column text-end small">
-            <span class="chip"><i class="bi bi-arrow-up-circle me-1"></i>'.$up.'</span>
-            <span class="chip mt-1"><i class="bi bi-arrow-down-circle me-1"></i>'.$dn.'</span>
-            <span class="chip mt-1" title="Seeders / Leechers"><i class="bi bi-people-fill me-1"></i>'.$seed.' / '.$lee.'</span>
-          </span>
-        </li>';
-    }
-    $html .= '</ul>';
+        <div class="card border-0 shadow-sm overflow-hidden hov-scale">
+            <div class="d-flex">
 
+                <!-- Обложка -->
+                ' . ($poster ? '
+                <a href="' . $link . '" class="flex-shrink-0">
+                    <img src="' . $poster . '"
+                         style="width:75px;min-height:90px;object-fit:cover;background:#111;"
+                         alt="' . hsafe($name) . '"
+                         onerror="this.parentElement.style.display=\'none\'">
+                </a>' : '
+                <a href="' . $link . '" class="flex-shrink-0 d-flex align-items-center justify-content-center bg-light"
+                   style="width:75px;min-height:90px;">
+                    <span class="fs-3">' . $icon . '</span>
+                </a>') . '
+
+                <div class="card-body p-2 flex-grow-1 min-width-0">
+
+                    <!-- Категория + IMDb -->
+                    <div class="d-flex align-items-center gap-1 mb-1">
+                        <span class="badge bg-light text-dark border" style="font-size:0.65rem;">
+                            ' . $icon . ' ' . hsafe($cat) . '
+                        </span>
+                        ' . $imdb_badge . '
+                        <span class="badge bg-' . $health_color . ' bg-opacity-10 text-' . $health_color . ' ms-auto" style="font-size:0.65rem;">
+                            <i class="bi ' . $health_icon . ' me-1"></i>' . $seed . '/' . $lee . '
+                        </span>
+                    </div>
+
+                    <!-- Название -->
+                    <a href="' . $link . '" class="text-decoration-none">
+                        <div class="fw-semibold text-dark clamp-2" style="font-size:0.85rem;">
+                            ' . htmlspecialchars_uni($name) . '
+                        </div>
+                    </a>
+
+                    <!-- Дата -->
+                    <div class="text-muted mt-1" style="font-size:0.72rem;">
+                        <i class="bi bi-calendar-check me-1"></i>' . $when . '
+                    </div>
+
+                    <!-- Статистика -->
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                        <span class="badge bg-success bg-opacity-10 text-success rounded-pill" style="font-size:0.65rem;">
+                            <i class="bi bi-arrow-up-circle-fill me-1"></i>' . $up . '
+                        </span>
+                        <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill" style="font-size:0.65rem;">
+                            <i class="bi bi-arrow-down-circle-fill me-1"></i>' . $dn . '
+                        </span>
+                        <span class="badge bg-' . $ratio_color . ' bg-opacity-10 text-' . $ratio_color . ' rounded-pill" style="font-size:0.65rem;">
+                            <i class="bi bi-percent me-1"></i>' . $ratio_str . '
+                        </span>
+                    </div>
+
+                </div>
+            </div>
+        </div>';
+    }
+
+    $html .= '</div>';
     return ['html' => $html, 'count' => $total];
 }
+
+
+
+
+
+
+
 
 
 
@@ -3235,9 +3503,6 @@ $downloaded_percent = min(100, (int)round($down / $total * 100));
 $ratio_class = $ratio_class;
 
 $ratio = $ratio;
-
-
-
 
 
 
@@ -3340,6 +3605,86 @@ $reasons_map = [
         ]
 ];
 
+
+// Текстовый индикатор ratio
+$ratio_label = match($ratio_class) {
+    'ratio-ok'   => '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Good</span>',
+    'ratio-warn' => '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle me-1"></i>Fair</span>',
+    default      => '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Poor</span>',
+};
+
+
+
+
+
+
+
+
+// Последние комментарии пользователя
+$recent_comments_html = '';
+$recent_comments_query = $db->sql_query_prepared("
+    SELECT c.id, c.text, c.dateline, c.torrent AS torrentid,
+           t.name AS torrent_name
+    FROM comments c
+    LEFT JOIN torrents t ON (c.torrent = t.id)
+    WHERE c.user = ?
+    ORDER BY c.dateline DESC
+    LIMIT 10
+", [$uid]);
+
+if ($recent_comments_query && $db->num_rows($recent_comments_query) > 0) {
+    while ($comment = $db->fetch_array($recent_comments_query)) {
+        $torrent_link = get_torrent_link($comment['torrentid']);
+        $comment_date = my_datee($dateformat, $comment['dateline']);
+        $comment_time = my_datee($timeformat, $comment['dateline']);
+
+        // Обрезаем текст
+        $comment_text = strip_tags($comment['text']);
+        $comment_text = mb_strlen($comment_text) > 120
+            ? mb_substr($comment_text, 0, 120) . '...'
+            : $comment_text;
+		
+        $pid = $comment['id'];	
+		$tid = $comment['torrentid'];
+		
+		$postlink = get_comment_link($pid, $tid);
+        $comment_link = $BASEURL . '/' . $postlink;
+		
+
+        $torrent_name = htmlspecialchars_uni($comment['torrent_name'] ?? 'Unknown');
+
+        $recent_comments_html .= '
+        <div class="list-row">
+            <div class="flex-grow-1 me-3" style="min-width:0;">
+                <div class="fw-semibold text-truncate">
+                     <a href="' . $comment_link . '#pid' . $pid . '" 
+                       class="text-decoration-none">
+                        <i class="bi bi-collection-play me-1 text-muted"></i>
+                        ' . $torrent_name . '
+                    </a>
+                </div>
+                <div class="muted mt-1" style="font-size:0.85rem;">
+                    ' . $comment_text . '
+                </div>
+            </div>
+            <div class="text-end flex-shrink-0">
+                <div class="small text-muted">' . $comment_date . '</div>
+                <div class="small text-muted">' . $comment_time . '</div>
+            </div>
+        </div>';
+    }
+} else {
+    $recent_comments_html = '
+    <div class="text-center py-4">
+        <div class="d-inline-flex flex-column align-items-center gap-3">
+            <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" 
+                 style="width:70px;height:70px;">
+                <i class="bi bi-chat-square-dots fs-1 text-secondary opacity-50"></i>
+            </div>
+            <div class="text-secondary fw-medium">No comments yet.</div>
+        </div>
+    </div>';
+}
 
 
 

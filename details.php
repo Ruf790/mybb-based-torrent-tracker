@@ -182,7 +182,7 @@ $query = $db->sql_query_prepared("
            p.canupload, p.candownload, p.cancomment,
            u.id, u.username, u.usergroup, u.enabled, u.donor, u.warned, u.leechwarn
     FROM torrents t
-    LEFT JOIN torrents_nfo n ON (t.id = n.id)
+    LEFT JOIN torrents_nfo n ON (t.id = n.torrent_id)
     LEFT JOIN categories c ON (t.category = c.id)
     LEFT JOIN users u ON (t.owner = u.id)
     LEFT JOIN users_perm p ON (u.id = p.userid)
@@ -230,7 +230,7 @@ $Torrent_name = $Torrent['name'];
 $query = "
     SELECT MATCH(t.name) AGAINST(? IN BOOLEAN MODE) AS score,
            t.id, t.name, t.anonymous, t.owner, t.category, t.size, t.added, t.seeders,
-           t.leechers, c.icon AS catimage, c.name AS catname, u.username, u.usergroup
+           t.leechers, t.t_image, c.icon AS catimage, c.name AS catname, u.username, u.usergroup
     FROM torrents t
     LEFT JOIN categories c ON (c.id = t.category)
     LEFT JOIN users u ON (t.owner = u.id)
@@ -239,7 +239,7 @@ $query = "
       AND t.visible = 'yes'
       AND t.banned = 'no'
     ORDER BY score DESC
-    LIMIT 10
+    LIMIT 12
 ";
 
 // Параметры для prepared statement
@@ -252,60 +252,66 @@ $query_result = $db->sql_query_prepared($query, $params);
 if ($query_result && $db->num_rows($query_result) > 0)
 {
     $FoundSMTQ = '';
-    // Использование $query_result->result вместо $query_result
     while ($SMTQ = $db->fetch_array($query_result)) {
         if ($SMTQ['score'] > 1) {
-            $SEOLink = get_torrent_link($SMTQ['id']);
+            $SEOLink  = get_torrent_link($SMTQ['id']);
             $SEOLinkC = ts_seo($SMTQ['category'], $SMTQ['catname'], 'c');
 
+            $poster = !empty($SMTQ['t_image'])
+                ? htmlspecialchars_uni($SMTQ['t_image'])
+                : $BASEURL . '/include/templates/default/images/no_image.png';
+
+            $uploaderHtml = (!$is_mod && $SMTQ['owner'] != $CURUSER['id'] && $SMTQ['anonymous'] == 'yes')
+                ? '<span class="text-muted small"><i class="bi bi-eye-slash me-1"></i>' . $lang->global['anonymous'] . '</span>'
+                : '<a href="' . get_profile_link($SMTQ['owner']) . '" class="text-decoration-none small">'
+                  . format_name($SMTQ['username'], $SMTQ['usergroup']) . '</a>'
+                  . ($SMTQ['anonymous'] == 'yes' ? ' <span class="text-muted small">(' . $lang->global['anonymous'] . ')</span>' : '');
+
             $FoundSMTQ .= '
-            <tr>
-                <td align="center" style="width: 40px; height: 36px;">
-                   
-				   
-<a href="'.$SEOLinkC.'" 
-   class="badge-popover"
-   data-bs-toggle="popover" 
-   data-bs-placement="top" 
-   data-bs-title="📁 Category Info" 
-   data-bs-content="'.htmlspecialchars('
-        <div class="category-popover-content">
-            <div class="d-flex align-items-center mb-2">
-                <i class="'.$SMTQ['catimage'].' text-primary me-2"></i>
-                <strong>'.htmlspecialchars($SMTQ['catname']).'</strong>
-            </div>
-            <div class="small text-muted">
-                Browse all torrents in this category
-            </div>
-        </div>
-   ', ENT_QUOTES).'" 
-   data-bs-html="true"
-   data-bs-trigger="hover focus">
-   <i class="'.$SMTQ['catimage'].' fa-2x category-icon" title="'.htmlspecialchars($SMTQ['catname']).'"></i>
-</a>
-
-
-
-                </td>
-                <td>
-                    <a href="'.$SEOLink.'">'.htmlspecialchars_uni($SMTQ['name']).'</a>
-                </td>
-                <td>
-                    <span class="small text-muted">
-                        <i class="bi bi-calendar me-1"></i> '.my_datee($dateformat, $SMTQ['added']).'
-                    </span><br>
-                    <span class="small text-muted">
-                        <i class="bi bi-clock me-1"></i> '.my_datee($timeformat, $SMTQ['added']).'
-                    </span>
-                </td>
-                <td>
-                    '.(!$is_mod && $SMTQ['owner'] != $CURUSER['id'] && $SMTQ['anonymous'] == 'yes'
-                        ? '<div class="gray">'.$lang->global['anonymous'].'</div>'
-                        : '<a href="'.get_profile_link($SMTQ['owner']).'">'.format_name($SMTQ['username'], $SMTQ['usergroup']).'</a>'
-                          .($SMTQ['anonymous'] == 'yes' ? '<div class="gray">'.$lang->global['anonymous'].'</div>' : ''))
-                    .'
-                </td>
-            </tr>';
+            <div class="col-6 col-md-4 col-lg-3 col-xl-2">
+                <div class="card h-100 border-0 shadow-sm similar-torrent-card">
+                    <a href="' . $SEOLink . '" class="text-decoration-none">
+                        <div class="position-relative overflow-hidden" style="height:160px;">
+                            <img src="' . $poster . '"
+                                 class="card-img-top w-100 h-100"
+                                 style="object-fit:cover; transition: transform 0.3s ease;"
+                                 alt="' . htmlspecialchars_uni($SMTQ['name']) . '"
+                                 onerror="this.src=\'' . $BASEURL . '/include/templates/default/images/no_image.png\'">
+                            <!-- Оверлей при наведении -->
+                            <div class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center similar-overlay">
+                                <i class="bi bi-play-circle-fill text-white" style="font-size:2.5rem; opacity:0.9;"></i>
+                            </div>
+                            <!-- Категория -->
+                            <a href="' . $SEOLinkC . '" class="position-absolute top-0 end-0 m-2">
+                                <span class="badge bg-dark bg-opacity-75">
+                                    <i class="' . $SMTQ['catimage'] . '"></i>
+                                </span>
+                            </a>
+                            <!-- Сиды/личи -->
+                            <div class="position-absolute bottom-0 start-0 m-2 d-flex gap-1">
+                                <span class="badge bg-success bg-opacity-90">
+                                    <i class="bi bi-arrow-up-circle me-1"></i>' . ts_nf($SMTQ['seeders']) . '
+                                </span>
+                                <span class="badge bg-danger bg-opacity-90">
+                                    <i class="bi bi-arrow-down-circle me-1"></i>' . ts_nf($SMTQ['leechers']) . '
+                                </span>
+                            </div>
+                        </div>
+                    </a>
+                    <div class="card-body p-2">
+                        <a href="' . $SEOLink . '" class="text-decoration-none text-dark">
+                            <h6 class="card-title mb-1 text-truncate small fw-semibold"
+                                title="' . htmlspecialchars_uni($SMTQ['name']) . '">
+                                ' . htmlspecialchars_uni($SMTQ['name']) . '
+                            </h6>
+                        </a>
+                        <div class="d-flex justify-content-between align-items-center">
+                            ' . $uploaderHtml . '
+                            <span class="text-muted small">' . mksize($SMTQ['size']) . '</span>
+                        </div>
+                    </div>
+                </div>
+            </div>';
         }
     }
 
@@ -1122,7 +1128,7 @@ $descr = $parsedDescr;
 $screenshots = [];
 
 // Подготовленный запрос
-$query = "SELECT id, filename FROM `screenshots` WHERE torrent_id = ? ORDER BY id ASC";
+$query = "SELECT id, filename FROM `screenshots` WHERE torrent_id = ? ORDER BY sort_order ASC, id ASC";
 $params = [$id];
 
 $res = $db->sql_query_prepared($query, $params);
@@ -1306,6 +1312,65 @@ $magnetButton = ($Torrent['ts_external'] === 'yes')
 
 
 
+
+
+
+
+
+
+$nfoTab = '';
+$nfoContent = '';
+
+if (!empty($torrent2['nfo'])) {
+    $nfoTab = '
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-semibold" id="nfo-tab" data-bs-toggle="tab" data-bs-target="#nfo" type="button" role="tab">
+            <i class="bi bi-file-text me-2"></i>NFO
+        </button>
+    </li>';
+
+    $nfoContent = '
+    <div class="tab-pane fade" id="nfo" role="tabpanel" aria-labelledby="nfo-tab">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0 fw-semibold"><i class="bi bi-file-text me-2"></i>NFO File</h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyNfo()">
+                <i class="bi bi-clipboard me-1"></i>Copy
+            </button>
+        </div>
+        <div class="card border-0" style="border: 1px solid #dee2e6 !important;">
+            <div class="card-header d-flex justify-content-between align-items-center py-2"
+                 style="background:#f1f3f5; border-bottom: 1px solid #dee2e6;">
+                <span class="text-dark small">
+                    <i class="fas fa-file-alt me-1 text-primary"></i>
+                    ' . htmlspecialchars($Torrent['name']) . '.nfo
+                </span>
+            </div>
+            <div class="card-body p-0">
+                <pre id="nfoText"
+                     style="background:#f8f9fa; color:#212529; font-family:\'Courier New\',monospace;
+                            font-size:0.75rem; padding:1rem; margin:0; max-height:500px;
+                            overflow-y:auto; white-space:pre; border-radius:0 0 8px 8px;">' 
+                     . htmlspecialchars($torrent2['nfo']) . 
+                '</pre>
+            </div>
+        </div>
+    </div>';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 $details = '
 
 
@@ -1452,6 +1517,9 @@ $details = '
 				
 				' . $screenTab . '
 				
+				' . $nfoTab . '
+				
+				
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-semibold" id="files-tab" data-bs-toggle="tab" data-bs-target="#files" type="button" role="tab">
                         <i class="bi bi-folder me-2"></i>Files ('.ts_nf($Torrent['numfiles']).')
@@ -1553,7 +1621,12 @@ $details = '
                     </div>
                     <div class="file-tree">'.renderAccordion($tree).'</div>
                 </div>
-				' . $screenContent . '		
+				' . $screenContent . '	
+                
+				' . $nfoContent . '
+				
+			
+				
                 <!-- Вкладка пиров -->
                 <div class="tab-pane fade" id="peers" role="tabpanel">
                     '.$peerstable.'
@@ -1596,6 +1669,25 @@ echo '
 
 
 echo $details;
+
+
+
+
+echo '
+<script>
+function copyNfo() {
+    var text = document.getElementById("nfoText").textContent;
+    navigator.clipboard.writeText(text).then(function() {
+        showToast("NFO copied to clipboard!", "success");
+    }).catch(function() {
+        showToast("Copy failed", "danger");
+    });
+}
+</script>';
+
+
+
+
 
 
 stdfoot();

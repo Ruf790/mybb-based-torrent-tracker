@@ -99,6 +99,14 @@ $numannouncements = $nummodqueuethreads = $nummodqueueposts = $nummodqueueattach
 
 
 
+
+
+
+
+
+
+
+
   function fetch_ban_times()
   {
 	global $plugins, $lang;
@@ -314,7 +322,7 @@ if($mybb->input['action'] == "do_banuser" && $mybb->request_method == "post")
 		$uid = (int)$mybb->input['uid']; 
 
         $query = $db->sql_query_prepared("
-           SELECT b.*, u.uid, u.username, u.usergroup, u.additionalgroups, u.displaygroup
+           SELECT b.*, u.id, u.username, u.usergroup, u.additionalgroups, u.displaygroup
            FROM banned b
            LEFT JOIN users u ON (b.uid = u.id)
            WHERE b.uid = ?", [$uid]);

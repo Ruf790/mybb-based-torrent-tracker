@@ -1,65 +1,72 @@
-<?
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+<?php
+
+require_once('global.php');
+
+define('SL_VERSION', '0.4');
 
 
-  function fix_url ($url)
-  {
-    $url = htmlspecialchars ($url);
-    $f[0] = '&amp;';
-    $f[1] = ' ';
-    $f[2] = '  ';
-    $r[0] = '&';
-    $r[1] = '&nbsp;';
-    $r[2] = '&nbsp;&nbsp;';
-    return str_replace ($f, $r, $url);
-  }
 
-  define ('SL_VERSION', '0.4 ');
-  $language = fix_url ($_GET['language']);
-  setcookie ('ts_language', $language, time () + 60 * 60 * 24 * 365, '/');
-  if (((isset ($_GET['redirect']) AND $redirect = $_GET['redirect']) AND $redirect == 'yes'))
-  {
-    $to = (!empty ($_SERVER['HTTP_REFERER']) ? fix_url ($_SERVER['HTTP_REFERER']) : 'index.php');
-    header ('Location: ' . $to);
-    exit ();
-    return 1;
-  }
+// Проверяем что язык передан
+if(empty($_GET['language']))
+{
+    header('Location: index.php');
+    exit();
+}
 
-  echo '
-	<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-	<html xmlns="http://www.w3.org/1999/xhtml">
-		<head>
-			<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-			<title>Update Language</title>
-			<style type="text/css">
-				<!--
-				.style1
-				{
-					color: #FF0000;
-					font-weight: bold;
-					font-size: 10px;
-				}
-				body,td,th
-				{
-					font-family: Verdana, Arial, Helvetica, sans-serif;
-				}
-				-->
-			</style>
-			<script type="text/javascript">
-				setInterval("window.close()",3000);
-				opener.location.reload();
-			</script>
-		</head>
-		<body>
-			<span class="style1">Language setting has been updated...</span>
-		</body>
-	</html>';
-  exit ();
+$language = fix_url($_GET['language']);
+
+// Защита от path traversal
+$language = str_replace(array('/', '\\', '..'), '', trim($language));
+
+// Проверяем что такой язык существует
+$lang_path = INC_PATH . '/languages/' . $language;
+if(!is_dir($lang_path))
+{
+    header('Location: index.php');
+    exit();
+}
+
+// Сохраняем в куки
+setcookie('ts_language', $language, time() + 60 * 60 * 24 * 365, '/');
+
+// Сохраняем в БД если пользователь залогинен
+if(isset($CURUSER) && !empty($CURUSER['id']))
+{
+    $db->sql_query("UPDATE users SET language = '" . $db->escape_string($language) . "' WHERE id = " . (int)$CURUSER['id']);
+}
+
+// Редирект обратно
+if(isset($_GET['redirect']) && $_GET['redirect'] == 'yes')
+{
+    $to = !empty($_GET['from'])
+        ? fix_url($_GET['from'])
+        : (!empty($_SERVER['HTTP_REFERER'])
+            ? fix_url($_SERVER['HTTP_REFERER'])
+            : 'index.php');
+    header('Location: ' . $to);
+    exit();
+}
+
+// Если редирект не нужен — показываем сообщение
+?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Update Language</title>
+    <style type="text/css">
+        body, td, th { font-family: Verdana, Arial, Helvetica, sans-serif; font-size: 12px; }
+        .msg { color: #006600; font-weight: bold; }
+    </style>
+    <script type="text/javascript">
+        setTimeout(function(){ window.close(); }, 2000);
+        if(window.opener) { window.opener.location.reload(); }
+    </script>
+</head>
+<body>
+    <span class="msg">Language has been updated to: <?php echo htmlspecialchars($language); ?></span>
+</body>
+</html>
+<?php
+exit();
 ?>

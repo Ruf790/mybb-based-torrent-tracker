@@ -2,9 +2,16 @@
 
 declare(strict_types=1);
 
+define("IN_MYBB", 1);
 define("SCRIPTNAME", "upload.php");
 require_once 'global.php';
 require(INC_PATH . '/functions_category.php');
+require_once INC_PATH.'/datahandler.php';
+
+require_once INC_PATH . '/functions_notify.php';
+
+
+
 
 require_once 'cache/smilies.php';
 
@@ -19,6 +26,16 @@ use Arokettu\Torrent\TorrentFile;
 require_once INC_PATH . '/editor.php';
 
 $editor = insert_bbcode_editor($smilies, $BASEURL, 'description');
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -57,8 +74,114 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
 }
 
 
+// Переупорядочивание скриншотов
+if (isset($_POST['action']) && $_POST['action'] === 'reorder_screenshots')
+{
+    if (empty($_POST['order']) || !is_array($_POST['order'])) {
+        echo json_encode(['success' => false, 'error' => 'No order provided']);
+        exit;
+    }
+
+    $order = array_map('intval', $_POST['order']);
+
+    foreach ($order as $position => $screenshotId) {
+        if ($screenshotId <= 0) continue;
+        $db->update_query(
+            "screenshots",
+            ['sort_order' => (int)$position],
+            "id='" . $screenshotId . "'"
+        );
+    }
+
+    echo json_encode(['success' => true]);
+    exit;
+}
 
 
+
+// Проверка дубликата торрента по info_hash
+if (isset($_GET['action']) && $_GET['action'] === 'check_torrent_hash')
+{
+    header("Content-type: application/json; charset=utf-8");
+
+    $info_hash = trim($_GET['info_hash'] ?? '');
+
+    if (empty($info_hash)) {
+        echo json_encode(['exists' => false, 'error' => 'No hash provided']);
+        exit;
+    }
+
+    $escaped = $db->escape_string($info_hash);
+    $query   = $db->simple_select("torrents", "id, name, added", "info_hash='{$escaped}'", ['limit' => 1]);
+    $torrent = $db->fetch_array($query);
+
+    if ($torrent) {
+        echo json_encode([
+            'exists' => true,
+            'id'     => (int)$torrent['id'],
+            'name'   => htmlspecialchars_uni($torrent['name']),
+            'link'   => get_torrent_link($torrent['id']),
+            'added'  => my_datee('relative', $torrent['added']),
+        ]);
+    } else {
+        echo json_encode(['exists' => false]);
+    }
+    exit;
+}
+
+
+
+// Получение данных IMDb по URL
+if (isset($_GET['action']) && $_GET['action'] === 'get_imdb_data' && $_SERVER['REQUEST_METHOD'] === 'GET')
+{
+    header("Content-type: application/json; charset=utf-8");
+
+    $imdb_url = trim($_GET['imdb_url'] ?? '');
+
+    if (empty($imdb_url)) {
+        echo json_encode(['success' => false, 'error' => 'No URL provided']);
+        exit;
+    }
+
+    // Валидация URL
+    if (!preg_match('@^https?://www\.imdb\.com/title/tt\d+/@i', $imdb_url)) {
+        echo json_encode(['success' => false, 'error' => 'Invalid IMDb URL']);
+        exit;
+    }
+
+    // Добавляем слеш если нет
+    if (substr($imdb_url, -1) !== '/') {
+        $imdb_url .= '/';
+    }
+
+    $t_link = $imdb_url;
+
+    try {
+        include_once(INC_PATH . '/IMDB.php');
+
+        $imdbObj = new IMDB($t_link);
+        $data    = $imdbObj->parse();
+
+        $poster = $data['poster'] ?? '';
+        if ($poster) {
+            $poster = preg_replace('#\._V1_.*?\.(jpg|png|jpeg)$#i', '.$1', $poster);
+        }
+
+        echo json_encode([
+            'success' => true,
+            'poster'  => $poster,
+            'title'   => $data['title']  ?? '',
+            'year'    => $data['year']   ?? '',
+            'plot'    => $data['plot']   ?? '',
+            'rating'  => $data['rating'] ?? '',
+            'genre'   => !empty($data['genres'])    ? implode(', ', $data['genres'])    : '',
+            'country' => !empty($data['countries']) ? implode(', ', $data['countries']) : '',
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
 
 
 
@@ -81,6 +204,9 @@ if ($db->num_rows($query))
 
 
 
+
+
+
 if (strtoupper($_SERVER["REQUEST_METHOD"]) == "POST")
 {
 
@@ -89,6 +215,15 @@ if (strtoupper($_SERVER["REQUEST_METHOD"]) == "POST")
 header('Content-Type: application/json');
 
 
+
+ // ← ЧИТАЕМ NFO СРАЗУ пока tmp файл ещё существует
+    $nfoContentRaw = null;
+    if (!empty($_FILES['nfoFile']['tmp_name']) && $_FILES['nfoFile']['error'] === UPLOAD_ERR_OK) {
+        $nfoContentRaw = file_get_contents($_FILES['nfoFile']['tmp_name']);
+        if ($nfoContentRaw === false) {
+            $nfoContentRaw = null;
+        }
+    }
 
 
 
@@ -140,9 +275,6 @@ function saveFile($file, $targetDir, $allowedTypes)
 
     return false;
 }
-
-
-
 
 
 
@@ -315,6 +447,20 @@ if (!empty($_FILES['screenshotsUpload']['tmp_name'][0]))
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Description
 $description = trim($_POST['description'] ?? '');
@@ -593,6 +739,8 @@ else
 		// Now log the upload event
         write_log(sprintf($lang->upload['newtorrent'],'[URL=' . $BASEURL . "/" . get_torrent_link($NewTID) . ']<font color=red>' . $torrentName . '</font>[/URL]','[URL=' . $BASEURL . '/' . get_profile_link($CURUSER['id']) . ']' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '[/URL]'));
         $cache->update_torrents();
+		
+		notify_upload_subscribers((int)$category, $NewTID, $torrentName);
 		
 		
     }
@@ -913,14 +1061,116 @@ if (!empty($_POST['imageUrl2']))
 // === JSON Response ===
 // Проверяем ошибки
 
+
+// Screenshot URLs (bulk URL upload)
+if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
+    foreach ($_POST['screenshot_urls'] as $screenshotUrl) {
+        $screenshotUrl = filter_var(trim($screenshotUrl), FILTER_VALIDATE_URL);
+        if (!$screenshotUrl) continue;
+        if (!preg_match('/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i', $screenshotUrl)) continue;
+
+        $ext = strtolower(pathinfo(parse_url($screenshotUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) continue;
+
+        // Используем include из functions_ts_remote_connect.php если есть
+        // иначе file_get_contents с подавлением ошибок
+        $imgData = false;
+        if (file_exists(INC_PATH . '/functions_ts_remote_connect.php')) {
+            include_once(INC_PATH . '/functions_ts_remote_connect.php');
+            $imgData = TS_Fetch_Data($screenshotUrl, false);
+        } else {
+            $context = stream_context_create([
+                'http' => [
+                    'timeout'         => 10,
+                    'follow_location' => true,
+                    'user_agent'      => 'Mozilla/5.0',
+                ]
+            ]);
+            $imgData = @file_get_contents($screenshotUrl, false, $context);
+        }
+
+        if (!$imgData) continue;
+
+        $count    = get_next_screenshot_number($NewTID, $db, 3);
+        $filename = $NewTID . '_' . $count . '.' . $ext;
+        $filePath = rtrim($screenshotDir, '/') . '/' . $filename;
+
+        if (@file_put_contents($filePath, $imgData)) {
+            $db->insert_query("screenshots", [
+                'torrent_id'  => $db->escape_string($NewTID),
+                'filename'    => $db->escape_string($filename),
+                'uploaded_at' => TIMENOW
+            ]);
+        }
+    }
+}
+
+
+
+
+
+
+
+// NFO файл — сохраняем в БД
+if ($nfoContentRaw !== null && strlen($nfoContentRaw) > 0) {
+    // Пробуем определить кодировку только из поддерживаемых
+    $nfoUtf8 = null;
+
+    // Проверяем валидный ли UTF-8
+    if (mb_check_encoding($nfoContentRaw, 'UTF-8')) {
+        $nfoUtf8 = $nfoContentRaw;
+    } else {
+        // NFO файлы обычно в Windows-1252 или ISO-8859-1
+        $nfoUtf8 = mb_convert_encoding($nfoContentRaw, 'UTF-8', 'Windows-1252');
+    }
+
+    if (!empty($nfoUtf8)) {
+        $escaped     = $db->escape_string($nfoUtf8);
+        $existingNfo = $db->simple_select("torrents_nfo", "id", "torrent_id='{$NewTID}'", ['limit' => 1]);
+
+        if ($db->num_rows($existingNfo)) {
+            $db->update_query("torrents_nfo",
+                ['nfo' => $escaped, 'uploaded_at' => TIMENOW],
+                "torrent_id='{$NewTID}'"
+            );
+        } else {
+            $db->insert_query("torrents_nfo", [
+                'torrent_id'  => (int)$NewTID,
+                'nfo'         => $escaped,
+                'uploaded_at' => TIMENOW
+            ]);
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
 // ✅ Очистить буферы
 while (ob_get_level()) 
 {
     ob_end_clean();
 }
 
+
+
+
+
+
+
 // ✅ Повторно ставим заголовок (обязательно!)
 header('Content-Type: application/json; charset=utf-8');
+
+
+
+
 
 if (!empty($errors)) 
 {
@@ -943,15 +1193,9 @@ else
 
     echo json_encode($response);
 }
+
+
 exit;
-
-
-
-
-
-
-
-
 
 
 }
@@ -1024,7 +1268,7 @@ if (isset($_GET['id']) && is_numeric($_GET['id']))
 	
 	// Получить все скрины торрента
     $screenshots = [];
-    $res = $db->sql_query("SELECT id, filename FROM `screenshots` WHERE torrent_id = '{$EditTorrentID}'");
+    $res = $db->sql_query("SELECT id, filename FROM `screenshots` WHERE torrent_id = '{$EditTorrentID}' ORDER BY sort_order ASC, id ASC");
     while ($row = $db->fetch_array($res)) 
     {
        $screenshots[] = $row;
@@ -1258,42 +1502,83 @@ function copyAnnounceUrl() {
 
 
 
+<script src="<?= $BASEURL; ?>/scripts/toast.js"></script>
+
+
+
+
+
+<!-- Modal for deleting screenshot with preview -->
 <div class="modal fade" id="deleteScreenshotModal" tabindex="-1" aria-labelledby="deleteScreenshotModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
+    <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="deleteScreenshotModalLabel">Delete Screenshot</h5>
+        <h5 class="modal-title" id="deleteScreenshotModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i> Confirm Deletion
+        </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
+      
       <div class="modal-body">
-        Are you sure you want to delete this screenshot?
+        <!-- Основная иконка и текст -->
+        <div class="d-flex align-items-center mb-3">
+          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+            <i class="fas fa-trash-alt text-danger fs-1"></i>
+          </div>
+          <div>
+            <h5 class="fw-bold mb-1" id="deleteScreenshotTitle">Delete Screenshot?</h5>
+            <p class="text-muted mb-0" id="deleteScreenshotFilename"></p>
+          </div>
+        </div>
+
+        <!-- Контейнер для превью -->
+        <div id="deleteScreenshotPreviewContainer" class="preview-container mb-3 text-center">
+          <div class="preview-wrapper" style="display: inline-block; max-width: 100%;">
+            <img id="deleteScreenshotImage" src="" alt="Preview" 
+                 style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;" 
+                 onerror="handleImageError(this)">
+            <div id="noImagePreview" class="d-none flex-column align-items-center justify-content-center p-4" style="min-height: 150px;">
+              <i class="fas fa-image fa-3x text-muted mb-2"></i>
+              <span class="text-muted">No preview available</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Детали файла -->
+        <div class="file-details bg-light p-3 rounded-3 mb-3">
+          <div class="d-flex align-items-center">
+            <i class="fas fa-file-image text-primary me-3 fa-2x"></i>
+            <div class="overflow-hidden">
+              <div class="fw-bold" id="deleteScreenshotFileName">screenshot.jpg</div>
+              <div class="small text-muted" id="deleteScreenshotFileInfo">
+                <i class="fas fa-image me-1"></i> Existing screenshot
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Предупреждение -->
+        <div class="alert alert-warning mt-2 mb-0">
+          <div class="d-flex">
+            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+            <div>
+              <strong>Warning:</strong> This action cannot be undone!
+            </div>
+          </div>
+        </div>
       </div>
+      
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteScreenshotBtn">Yes, Delete</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times me-1"></i> Cancel
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteScreenshotBtn">
+          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+        </button>
       </div>
     </div>
   </div>
 </div>
-
-
-
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999">
-  <div id="screenshotToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body" id="toastMessage">
-        Screenshot deleted successfully!
-      </div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-    </div>
-  </div>
-</div>
-
-
-
-
-
-
 
 
 
@@ -1373,53 +1658,130 @@ function copyAnnounceUrl() {
 
   
   
-  
+  <script src="<?= $BASEURL; ?>/scripts/Sortable.min.js"></script>
+<script src="<?= $BASEURL; ?>/scripts/upload_torrent.js"></script>
   
  
 <!-- Torrent File -->
 <div class="mb-4">
     <label for="torrentFile" class="form-label fw-semibold">
         <i class="fas fa-file-alt me-1 text-primary"></i>Torrent File
-        <?php if (!$isEdit): ?>
-            <span class="text-danger">*</span>
-        <?php endif; ?>
+        <?php if (!$isEdit): ?><span class="text-danger">*</span><?php endif; ?>
     </label>
-    
-    <div class="input-group has-validation">
-        <span class="input-group-text bg-light">
-            <i class="fas fa-cloud-upload-alt text-muted"></i>
-        </span>
-        
-        <input 
-            class="form-control" 
-            type="file" 
-            id="torrentFile" 
-            name="torrentFile" 
-            accept=".torrent" 
-            <?= $isEdit ? '' : 'required' ?>
-        />
-        
-        <div class="invalid-feedback">Please select a valid .torrent file</div>
+
+    <!-- Drop Zone -->
+    <div id="torrentDropZone"
+         class="border border-2 border-dashed rounded-3 p-4 text-center position-relative"
+         style="border-color: #0d6efd !important; cursor: pointer; transition: all 0.3s ease; background: #f8f9ff;">
+
+        <!-- Иконка и текст -->
+        <div id="torrentDropContent">
+            <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3 d-block"></i>
+            <h6 class="fw-bold mb-1">Drag & Drop your .torrent file here</h6>
+            <p class="text-muted small mb-3">or click to browse files</p>
+           <button type="button" class="btn btn-outline-primary btn-sm px-4">
+                <i class="fas fa-folder-open me-2"></i>Browse File
+            </button>
+        </div>
+
+        <!-- Файл выбран — показываем инфо -->
+        <div id="torrentFileSelected" style="display:none;">
+            <div class="d-flex align-items-center justify-content-center gap-3">
+                <div class="bg-primary bg-opacity-10 rounded-3 p-3">
+                    <i class="fas fa-file-alt fa-2x text-primary"></i>
+                </div>
+                <div class="text-start">
+                    <div class="fw-bold" id="torrentSelectedName">filename.torrent</div>
+                    <div class="text-muted small" id="torrentSelectedSize">0 KB</div>
+                    <span class="badge bg-success mt-1">
+                        <i class="fas fa-check me-1"></i>Ready to upload
+                    </span>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-3" id="torrentRemoveBtn" onclick="removeTorrentFile()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Скрытый input -->
+        <input class="d-none"
+               type="file"
+               id="torrentFile"
+               name="torrentFile"
+               accept=".torrent"
+               <?= $isEdit ? '' : 'required' ?> />
     </div>
-    
-    <!-- File Info -->
+
+    <!-- Прогресс бар при загрузке -->
+    <div id="torrentUploadProgress" class="mt-2" style="display:none;">
+        <div class="progress" style="height:6px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                 style="width:100%;"></div>
+        </div>
+        <small class="text-muted">Validating torrent file...</small>
+    </div>
+
     <div class="d-flex justify-content-between align-items-center mt-2">
         <small class="form-text text-muted">
             <i class="fas fa-info-circle me-1"></i>
-            Select your .torrent file <?= $isEdit ? '(optional for edit)' : '' ?>
+            Accepted format: .torrent <?= $isEdit ? '(optional for edit)' : '' ?>
         </small>
-        <small class="text-muted file-info" id="torrentFileInfo"></small>
+        <small class="text-muted" id="torrentFileInfo"></small>
     </div>
-    
-    <!-- File Preview -->
     <div class="mt-2" id="torrentFilePreview"></div>
 </div>
 
 
 
-  
-  
-  
+
+
+
+<!-- Метаданные торрента -->
+<div id="torrentMetaInfo" style="display:none;" class="mt-3">
+    <div class="card border-0 bg-light">
+        <div class="card-body py-3">
+            <h6 class="card-title mb-3">
+                <i class="fas fa-info-circle text-primary me-2"></i>Torrent Info
+            </h6>
+            <div class="row g-2 mb-3">
+                <div class="col-auto">
+                    <span class="badge bg-primary">
+                        <i class="fas fa-hdd me-1"></i>Size: <strong id="torrentMetaSize">—</strong>
+                    </span>
+                </div>
+                <div class="col-auto">
+                    <span class="badge bg-secondary">
+                        <i class="fas fa-file me-1"></i>Files: <strong id="torrentMetaFiles">—</strong>
+                    </span>
+                </div>
+                <div class="col-auto">
+                    <span class="badge bg-info text-dark">
+                        <i class="fas fa-fingerprint me-1"></i>Hash: <strong id="torrentMetaHash">—</strong>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Список файлов -->
+            <div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="fw-bold text-muted">
+                        <i class="fas fa-list me-1"></i>File List
+                    </small>
+                    <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2"
+                            onclick="toggleTorrentFileList()">
+                        <i class="fas fa-eye me-1" id="torrentFileListToggleIcon"></i>
+                        <span id="torrentFileListToggleText">Show</span>
+                    </button>
+                </div>
+                <div id="torrentFileList" style="display:none; max-height:200px; overflow-y:auto;">
+                    <!-- Список вставляется через JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 
     
 <!-- External Torrent Checkbox -->
@@ -1453,12 +1815,65 @@ function copyAnnounceUrl() {
   
   
 
-  <!-- NFO File -->
-  <div class="mb-3">
-    <label for="nfoFile" class="form-label">NFO File</label>
-    <input class="form-control" type="file" id="nfoFile" name="nfoFile" accept=".nfo,text/plain" />
-    <div class="form-text">Optional: Upload your .nfo file</div>
-  </div>
+<!-- NFO File -->
+<div class="mb-3">
+    <label for="nfoFile" class="form-label fw-semibold">
+        <i class="fas fa-file-alt me-1 text-primary"></i>NFO File
+        <span class="text-muted fw-normal small">(optional)</span>
+    </label>
+
+    <div class="input-group">
+        <input class="form-control" type="file" id="nfoFile" name="nfoFile" accept=".nfo,text/plain" />
+        <button type="button" class="btn btn-outline-secondary" id="nfoPreviewBtn"
+                style="display:none;" onclick="toggleNfoPreview()">
+            <i class="fas fa-eye me-1"></i>Preview
+        </button>
+    </div>
+    <div class="form-text">Optional: Upload your .nfo file (stored in database)</div>
+
+    <!-- NFO Preview -->
+    <div id="nfoPreviewContainer" class="mt-2" style="display:none;">
+        <div class="card border-0" style="border: 1px solid #dee2e6 !important;">
+    <div class="card-header d-flex justify-content-between align-items-center py-2"
+         style="background:#f1f3f5; border-bottom: 1px solid #dee2e6;">
+        <span class="text-dark small">
+            <i class="fas fa-file-alt me-1 text-primary"></i>
+            <span id="nfoPreviewFilename">file.nfo</span>
+        </span>
+        <div class="d-flex gap-2">
+            <span class="badge bg-secondary" id="nfoPreviewSize"></span>
+            <span class="badge bg-secondary" id="nfoPreviewLines"></span>
+            <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2"
+                    onclick="toggleNfoPreview()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <pre id="nfoPreviewText"
+             style="background:#f8f9fa; color:#212529; font-family:'Courier New',monospace;
+                    font-size:0.75rem; padding:1rem; margin:0; max-height:300px;
+                    overflow-y:auto; white-space:pre; border-radius:0 0 8px 8px;
+                    border: none;"></pre>
+    </div>
+</div>
+    </div>
+
+    <?php if ($isEdit): ?>
+    <!-- Показываем что NFO уже есть -->
+    <?php
+    $existingNfoRow = $db->fetch_array($db->simple_select("torrents_nfo", "id", "id='{$EditTorrentID}'"));
+    if ($existingNfoRow):
+    ?>
+    <div class="mt-2 d-flex align-items-center gap-2">
+        <span class="badge bg-success">
+            <i class="fas fa-check me-1"></i>NFO already uploaded
+        </span>
+        <small class="text-muted">Upload a new file to replace it</small>
+    </div>
+    <?php endif; ?>
+    <?php endif; ?>
+</div>
 
   
   
@@ -1524,22 +1939,89 @@ function copyAnnounceUrl() {
 
 
 <!-- IMDb Link -->
-                        <div class="col-md-12 mb-4">
-                            <label class="form-label fw-semibold">
-                                <i class="fab fa-imdb text-warning me-2"></i>IMDb Link
-                            </label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light">
-                                    <i class="fas fa-link"></i>
-                                </span>
-                                <input type="url" 
-                                       class="form-control form-control-custom" 
-                                       id="imdbUrl" 
-                                       name="imdbUrl" 
-                                       value="<?= htmlspecialchars($t_link) ?>" 
-                                       placeholder="Example: https://www.imdb.com/title/tt1234567/">
-                            </div>
+<!-- IMDb Link -->
+<div class="col-md-12 mb-4">
+    <label class="form-label fw-semibold">
+        <i class="fab fa-imdb text-warning me-2"></i>IMDb Link
+    </label>
+    <div class="input-group">
+        <span class="input-group-text bg-light">
+            <i class="fas fa-link"></i>
+        </span>
+        <input type="url"
+               class="form-control form-control-custom"
+               id="imdbUrl"
+               name="imdbUrl"
+               value="<?= htmlspecialchars($t_link) ?>"
+               placeholder="Example: https://www.imdb.com/title/tt1234567/">
+        <button type="button" class="btn btn-warning" id="imdbFetchBtn" onclick="fetchImdbData()">
+            <i class="fab fa-imdb me-1"></i>Fetch
+        </button>
+    </div>
+    <div class="form-text">
+        <i class="fas fa-info-circle me-1"></i>
+        Paste IMDb URL and click Fetch to auto-fill poster and info
+    </div>
+
+    <!-- IMDb Preview -->
+    <div id="imdbPreview" class="mt-3" style="display:none;">
+        <div class="card border-0 bg-light">
+            <div class="card-body p-3">
+                <div class="d-flex gap-3 align-items-start">
+
+                    <!-- Постер -->
+                    <div id="imdbPosterPreview" style="flex-shrink:0; display:none;">
+                        <img id="imdbPosterImg" src="" alt="Poster"
+                             style="width:80px;height:120px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+                        <div class="mt-1 d-flex gap-1">
+                            <button type="button" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 w-100"
+                                    onclick="applyImdbPoster('main')" title="Set as Main Image">
+                                <i class="fas fa-image me-1"></i>Main
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2 w-100"
+                                    onclick="applyImdbPoster('secondary')" title="Set as Secondary Image">
+                                <i class="fas fa-images me-1"></i>2nd
+                            </button>
                         </div>
+                    </div>
+
+                    <!-- Инфо -->
+                    <div class="flex-grow-1">
+                        <h6 class="mb-1 fw-bold" id="imdbPreviewTitle">—</h6>
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <span class="badge bg-warning text-dark" id="imdbPreviewYear" style="display:none;"></span>
+                            <span class="badge bg-secondary" id="imdbPreviewGenre" style="display:none;"></span>
+                            <span class="badge bg-success" id="imdbPreviewRating" style="display:none;">
+                                <i class="fas fa-star me-1"></i><span></span>
+                            </span>
+                        </div>
+                        <p class="small text-muted mb-2" id="imdbPreviewPlot"></p>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyImdbToDescription()">
+                                <i class="fas fa-paste me-1"></i>Add to Description
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Индикатор загрузки -->
+    <div id="imdbLoading" class="mt-2" style="display:none;">
+        <div class="d-flex align-items-center gap-2 text-muted small">
+            <div class="spinner-border spinner-border-sm text-warning"></div>
+            Fetching IMDb data...
+        </div>
+    </div>
+
+    <!-- Ошибка -->
+    <div id="imdbError" class="alert alert-warning mt-2 small py-2" style="display:none;">
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        <span id="imdbErrorText"></span>
+    </div>
+</div>
 
 
 
@@ -1549,7 +2031,9 @@ function copyAnnounceUrl() {
 
   
 
-  
+
+
+
   
  
 						<!-- Image Uploads -->
@@ -1618,10 +2102,10 @@ function copyAnnounceUrl() {
                     <?php if(!empty($torrent['t_image'])): ?>
                         <div class="preview-item">
                             <img src="<?= htmlspecialchars($torrent['t_image']) ?>" 
-                                 class="preview-img" 
+                                 class="preview-poster" 
                                  alt="Main image">
                             <button type="button" 
-                                    class="delete-btn" 
+                                    class="delete-btn2" 
                                     onclick="removeImagePreview('imagePreview', 'imageUrl', 'imagesUpload')"
                                     title="Remove image">
                                 <i class="fas fa-times"></i>
@@ -1697,10 +2181,10 @@ function copyAnnounceUrl() {
                     <?php if(!empty($torrent['t_image2'])): ?>
                         <div class="preview-item">
                             <img src="<?= htmlspecialchars($torrent['t_image2']) ?>" 
-                                 class="preview-img" 
+                                 class="preview-poster" 
                                  alt="Secondary image">
                             <button type="button" 
-                                    class="delete-btn" 
+                                    class="delete-btn2" 
                                     onclick="removeImagePreview('imagePreview2', 'imageUrl2', 'imagesUpload2')"
                                     title="Remove image">
                                 <i class="fas fa-times"></i>
@@ -2008,48 +2492,201 @@ function copyAnnounceUrl() {
 
   
 
-  <!-- Screenshots Upload -->
-                        <div class="col-12 mt-4">
-                            <div class="card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <h6 class="card-title d-flex align-items-center">
-                                        <i class="fas fa-camera text-primary me-2"></i>
-                                        Screenshots
-                                    </h6>
-                                    <div class="upload-zone mb-3" onclick="document.getElementById('screenshotsUpload').click()">
-                                        <i class="fas fa-cloud-upload-alt"></i>
-                                        <h6>Drop screenshots here</h6>
-                                        <p class="text-muted mb-0">Multiple files allowed</p>
-                                        <input type="file" 
-                                               class="d-none" 
-                                               id="screenshotsUpload" 
-                                               name="screenshotsUpload[]" 
-                                               multiple 
-                                               accept="image/*">
-                                    </div>
-                                    <div id="screenshotsPreview" class="preview-container"></div>
-                                    
-                                    <!-- Existing Screenshots -->
-                                    <?php if(!empty($screenshots)): ?>
-                                        <h6 class="mt-4 mb-3">Existing Screenshots</h6>
-                                        <div id="existingScreenshots" class="preview-container">
-                                            <?php foreach($screenshots as $shot): ?>
-                                                <div class="screenshot-item" data-id="<?= $shot['id'] ?>">
-                                                    <img src="/torrents/screens/<?= htmlspecialchars($shot['filename']) ?>" 
-                                                         class="preview-img" 
-                                                         alt="Screenshot">
-                                                    <button type="button" 
-                                                            class="delete-btn delete-screenshot-btn"
-                                                            title="Delete screenshot">
-                                                        <i class="fas fa-times"></i>
-                                                    </button>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-  
+<!-- Screenshots Upload -->
+<div class="col-12 mt-4">
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h6 class="card-title d-flex align-items-center">
+                <i class="fas fa-camera text-primary me-2"></i>
+                Screenshots
+            </h6>
+
+            <!-- Переключатель между File и URL -->
+            <div class="mb-3">
+                <div class="btn-group btn-group-sm w-100" role="group">
+                    <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByFile" value="file" checked>
+                    <label class="btn btn-outline-primary" for="screenshotByFile">
+                        <i class="fas fa-upload me-1"></i>Upload Files
+                    </label>
+                    <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByUrl" value="url">
+                    <label class="btn btn-outline-primary" for="screenshotByUrl">
+                        <i class="fas fa-link me-1"></i>Bulk URL
+                    </label>
+                </div>
+            </div>
+
+            <!-- Upload Files -->
+            <div id="screenshotFileGroup">
+                <div class="upload-zone mb-3" onclick="document.getElementById('screenshotsUpload').click()">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h6>Drop screenshots here</h6>
+                    <p class="text-muted mb-0">Multiple files allowed</p>
+                    <input type="file"
+                           class="d-none"
+                           id="screenshotsUpload"
+                           name="screenshotsUpload[]"
+                           multiple
+                           accept="image/*">
+                </div>
+                <!-- Preview ВНУТРИ screenshotFileGroup -->
+                <div id="screenshotsPreview" class="preview-container"></div>
+            </div>
+
+            <!-- Bulk URL -->
+            <div id="screenshotUrlGroup" class="d-none">
+                <div class="mb-2">
+                    <label class="form-label fw-semibold small">
+                        <i class="fas fa-link me-1 text-primary"></i>Screenshot URLs
+                        <span class="text-muted fw-normal">(one URL per line)</span>
+                    </label>
+                    <textarea
+                        id="screenshotUrlsInput"
+                        class="form-control font-monospace"
+                        rows="6"
+                        placeholder="https://example.com/screen1.jpg
+https://example.com/screen2.png
+https://example.com/screen3.webp"></textarea>
+                    <div class="d-flex justify-content-between align-items-center mt-1">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>Supported: jpg, png, gif, webp
+                        </small>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="loadScreenshotUrls()">
+                            <i class="fas fa-eye me-1"></i>Load Previews
+                        </button>
+                    </div>
+                </div>
+                <div id="screenshotUrlPreview" class="preview-container mt-2"></div>
+                <div id="screenshotUrlInputs"></div>
+            </div>
+
+            <!-- Existing Screenshots -->
+            <?php if(!empty($screenshots)): ?>
+                <h6 class="mt-4 mb-3">Existing Screenshots</h6>
+                <div id="existingScreenshots" class="preview-container">
+                    <?php foreach($screenshots as $shot): ?>
+                        <div class="screenshot-item" data-id="<?= $shot['id'] ?>">
+                            <img src="/torrents/screens/<?= htmlspecialchars($shot['filename']) ?>"
+                                 class="preview-screenshot"
+                                 alt="Screenshot">
+                            <button type="button"
+                                    class="delete-btn"
+                                    title="Delete screenshot">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+        </div>
+    </div>
+</div>
+	
+	
+	
+<style>
+/* Torrent Drop Zone */
+#torrentDropZone {
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#torrentDropZone.drag-over {
+    background: #e7f1ff !important;
+    border-color: #0b5ed7 !important;
+    transform: scale(1.01);
+    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.15);
+}
+
+#torrentDropZone.drag-invalid {
+    background: #fff5f5 !important;
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 4px rgba(220, 53, 69, 0.15);
+}
+
+
+/* Screenshot Drag & Drop */
+.screenshot-drag-ghost {
+    opacity: 0.4;
+    background: #e7f1ff;
+    border: 2px dashed #0d6efd !important;
+    border-radius: 6px;
+}
+
+.screenshot-drag-chosen {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    transform: scale(1.05);
+    z-index: 999;
+}
+
+.screenshot-drag-active {
+    cursor: grabbing !important;
+}
+
+.screenshot-item img,
+.screenshot-url-item img {
+    cursor: grab;
+}
+
+.screenshot-item img:active,
+.screenshot-url-item img:active {
+    cursor: grabbing;
+}
+
+.screenshot-order-badge {
+    pointer-events: none;
+}
+
+
+
+
+/* Скриншоты при загрузке файлов */
+#screenshotsPreview.preview-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+#screenshotsPreview .screenshot-item {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid var(--light-border);
+    background: white;
+    transition: all 0.3s;
+    animation: fadeIn 0.3s ease;
+}
+
+#screenshotsPreview .screenshot-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+    border-color: var(--primary-light);
+}
+
+#screenshotsPreview .screenshot-item .preview-screenshot {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    display: block;
+}
+
+
+
+
+
+/* Подсказка о сортировке */
+#existingScreenshots::before,
+#screenshotsPreview::before {
+    content: '';
+}
+</style>	
+	
+	
+	
+
 
 
 
@@ -2137,7 +2774,6 @@ function copyAnnounceUrl() {
 
 
 
-<script src="<?= $BASEURL; ?>/scripts/upload_torrent.js"></script>
 
 
 

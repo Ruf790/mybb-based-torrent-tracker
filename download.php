@@ -29,6 +29,11 @@ $lang->load('download');
 
 $action_type = $_GET['type'] ?? '';
 
+if ($action_type == 'magnet') {
+    define('SKIP_LOCATION_SAVE', true);
+    // без passkey — просто продолжаем
+}
+
 if ($action_type == 'rss') {
     define('SKIP_LOCATION_SAVE', true);
 
@@ -165,6 +170,33 @@ use Arokettu\Torrent\TorrentFile;
 use Arokettu\Bencode\Bencode;
 
 $torrentFileObj = TorrentFile::load($fn);
+
+
+// Magnet для внешних торрентов без passkey
+if ($external && $action_type == 'magnet') {
+    $infoHash = $torrentFileObj->v1()->getInfoHash();
+    $name = $torrentFileObj->getName();
+
+    $magnet = 'magnet:?xt=urn:btih:' . $infoHash;
+    $magnet .= '&dn=' . urlencode($name);
+
+    $announceList = $torrentFileObj->getAnnounceList();
+    if ($announceList) {
+        foreach ($announceList as $tier) {
+            foreach ($tier as $tracker) {
+                $magnet .= '&tr=' . urlencode((string)$tracker);
+            }
+        }
+    }
+
+    header('Content-Type: text/plain; charset=utf-8');
+    echo $magnet;
+    exit;
+}
+
+
+
+
 
 if (!$external) {
     $AnnounceURL = ts_seo($CURUSER['passkey'], $row['filename'], "a");

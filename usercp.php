@@ -51,6 +51,8 @@ $templatelist .= ",usercp_addsubscription_thread,forumdisplay_password,forumdisp
   define('FORUM_SECURE', true);
   require_once INC_PATH . '/tsf_functions.php';
   
+  require INC_PATH . '/functions_category2.php';
+  
   
   
   
@@ -337,6 +339,22 @@ if($mybb->input['action'] == "do_options" && $mybb->request_method == "post")
 	$user = array();
 
 	$plugins->run_hooks("usercp_do_options_start");
+	
+	
+	$notifs = '';
+if ($mybb->get_input('pmnotif') == 'yes') {
+    $notifs .= '[pm]';
+}
+if ($mybb->get_input('emailnotif') == 'yes') {
+    $notifs .= '[email]';
+}
+$cats_query = $db->sql_query("SELECT id FROM categories");
+while ($cat = $db->fetch_array($cats_query)) {
+    if ($mybb->get_input('cat' . $cat['id']) == 'yes') {
+        $notifs .= '[cat' . $cat['id'] . ']';
+    }
+}
+	
 
 	// Set up user handler.
 	require_once INC_PATH."/datahandlers/user.php";
@@ -367,7 +385,9 @@ if($mybb->input['action'] == "do_options" && $mybb->request_method == "post")
 		"buddyrequestspm" => $mybb->get_input('buddyrequestspm', MyBB::INPUT_INT),
 		"pmnotice" => $mybb->get_input('pmnotice', MyBB::INPUT_INT),
 		"pmnotify" => $mybb->get_input('pmnotify', MyBB::INPUT_INT),
-		"receivepms" => $mybb->get_input('receivepms', MyBB::INPUT_INT)
+		"receivepms" => $mybb->get_input('receivepms', MyBB::INPUT_INT),
+		
+		"notifs" => $notifs
 		
 	);
 
@@ -791,6 +811,11 @@ if($mybb->input['action'] == "options")
 		eval("\$pppselect2 = \"".$templates->get("usercp_options_tpppselect")."\";");
 	}
 	
+	
+	$pmnotif    = strpos($CURUSER['notifs'], '[pm]')    !== false ? 'checked' : '';
+    $emailnotif = strpos($CURUSER['notifs'], '[email]') !== false ? 'checked' : '';
+    $category_subscriptions = ts_category_list2(1, 'edit_details');
+	
 
 
 $plugins->run_hooks("usercp_options_end");
@@ -824,7 +849,7 @@ echo $editprofile;
 	$plugins->run_hooks("usercp_do_email_start");
 	if(validate_password_from_uid($CURUSER['id'], $mybb->get_input('password')) == false)
 	{
-		$errors[] = 'error_invalidpassword';
+		$errors[] = $lang->usercp['error_invalidpassword'];
 	}
 	else
 	{
@@ -979,7 +1004,7 @@ if($mybb->input['action'] == "do_password" && $mybb->request_method == "post")
 	$plugins->run_hooks("usercp_do_password_start");
 	if(validate_password_from_uid($CURUSER['id'], $mybb->get_input('oldpassword')) == false)
 	{
-		$errors[] = 'error_invalidpassword';
+		$errors[] = $lang->usercp['error_invalidpassword'];
 	}
 	else
 	{
@@ -1947,10 +1972,10 @@ if($mybb->input['action'] == "subscriptions")
 		//get_visible_where('t')
 	);
 
-	//if($unviewable_forums = get_unviewable_forums(true))
-	//{
-	//	$where[] = "t.fid NOT IN ({$unviewable_forums})";
-	//}
+	if($unviewable_forums = get_unviewable_forums(true))
+	{
+		$where[] = "t.fid NOT IN ({$unviewable_forums})";
+	}
 
 	if($inactive_forums = get_inactive_forums())
 	{
@@ -4744,7 +4769,7 @@ if($mybb->input['action'] == "do_attachments" && $mybb->request_method == "post"
 
 	// Get unviewable forums
 	$f_perm_sql = '';
-	//$unviewable_forums = get_unviewable_forums(true);
+	$unviewable_forums = get_unviewable_forums(true);
     $inactiveforums = get_inactive_forums();
 	if($unviewable_forums)
 	{
@@ -4789,7 +4814,7 @@ if($mybb->input['action'] == "attachments")
 
 	// Get unviewable forums
 	$f_perm_sql = '';
-	//$unviewable_forums = get_unviewable_forums(true);
+	$unviewable_forums = get_unviewable_forums(true);
 	$inactiveforums = get_inactive_forums();
 	if($unviewable_forums)
 	{

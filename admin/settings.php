@@ -1,3346 +1,1391 @@
-<?
+<?php
+declare(strict_types=1);
 
-
-if (session_status() === PHP_SESSION_NONE) 
-{
+if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-
-
 
 $rootpath = './../';
 $thispath = './';
 require_once $rootpath . 'global.php';
-
-
 require_once INC_PATH . '/readconfig.php';
 require_once INC_PATH . '/functions_mkprettytime.php';
-
 require TSDIR . '/cache/freeleech.php';
 
-
-
-if (($usergroups['cansettingspanel'] == '0' OR $usergroups['cansettingspanel'] != '1'))
-{
+if ($usergroups['cansettingspanel'] !== '1') {
     stdhead();
-	error_no_permission (true);
-    exit ();
+    error_no_permission(true);
+    exit();
 }
 
-
-
-
-
-
-function flash_message($message = null, $type = 'info')
+function flash_message(?string $message = null, string $type = 'info'): void
 {
-    // Добавляем новое сообщение в сессию
     if ($message !== null) {
-        $_SESSION['flash'][] = [
-            'message' => $message,
-            'type'    => $type
-        ];
+        $_SESSION['flash'][] = ['message' => $message, 'type' => $type];
         return;
     }
+    if (empty($_SESSION['flash'])) return;
 
-    // Если есть сообщения — выводим
-    if (!empty($_SESSION['flash'])) {
-        echo '
-        <div aria-live="polite" aria-atomic="true" class="position-relative">
-            <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">';
-
-        foreach ($_SESSION['flash'] as $flash) {
-            $typeClass = match ($flash['type']) {
-                'success' => 'bg-success text-white',
-                'error', 'danger' => 'bg-danger text-white',
-                'warning' => 'bg-warning text-dark',
-                default => 'bg-info text-white',
-            };
-
-            $msg = htmlspecialchars($flash['message']);
-            echo "
-            <div class='toast border-0 mb-2' role='alert' aria-live='assertive' aria-atomic='true'>
-                <div class='toast-header {$typeClass}'>
-                    <strong class='me-auto'>Message</strong>
-                    <small>Now</small>
-                    <button type='button' class='btn-close' data-bs-dismiss='toast' aria-label='Close'></button>
+    echo '<div aria-live="polite" aria-atomic="true" class="position-relative">
+          <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1100">';
+    foreach ($_SESSION['flash'] as $flash) {
+        $cls = match($flash['type']) {
+            'success'        => 'bg-success text-white',
+            'error','danger' => 'bg-danger text-white',
+            'warning'        => 'bg-warning text-dark',
+            default          => 'bg-info text-white',
+        };
+        $msg = htmlspecialchars($flash['message']);
+        echo "<div class='toast border-0 mb-2' role='alert' aria-live='assertive' aria-atomic='true'>
+                <div class='toast-header {$cls}'>
+                  <strong class='me-auto'>Message</strong><small>Now</small>
+                  <button type='button' class='btn-close' data-bs-dismiss='toast'></button>
                 </div>
-                <div class='toast-body'>
-                    {$msg}
-                </div>
-            </div>";
-        }
-
-        echo '
-          </div>
-            </div> 
-       <script>
-          document.addEventListener("DOMContentLoaded", function() {
-          document.querySelectorAll(".toast").forEach(function(toastEl) {
-          let toast = new bootstrap.Toast(toastEl, { delay: 5000 });
-          toast.show();
-            });
-        });
-        </script>';
-
-        unset($_SESSION['flash']); // очищаем после показа
+                <div class='toast-body'>{$msg}</div>
+              </div>";
     }
+    echo '</div></div>
+    <script>document.addEventListener("DOMContentLoaded",()=>{
+      document.querySelectorAll(".toast").forEach(t=>new bootstrap.Toast(t,{delay:5000}).show());
+    });</script>';
+    unset($_SESSION['flash']);
 }
 
-
-
-function admin_redirect($url)
+function admin_redirect(string $url): never
 {
-	if(!headers_sent())
-	{
-		$url = str_replace("&amp;", "&", $url);
-		header("Location: $url");
-	}
-	else
-	{
-		echo "<meta http-equiv=\"refresh\" content=\"0; url={$url}\">";
-	}
-	exit;
+    if (!headers_sent()) {
+        header("Location: " . str_replace("&amp;", "&", $url));
+    } else {
+        echo "<meta http-equiv='refresh' content='0; url={$url}'>";
+    }
+    exit;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-stdhead();
-
-
-
-
-flash_message();
-
-
-
-
-
-function rebuild_announce_settings()
+function rebuild_announce_settings(): bool
 {
     global $cache, $db;
-
-    // Загружаем ANNOUNCE из кеша
     $announce = $cache->read('ANNOUNCE');
-    if (!is_array($announce)) 
-	{
-        return false;
-    }
+    if (!is_array($announce)) return false;
 
-    // Загружаем KPS из кеша
-    $kps = $cache->read('KPS');
-    $bonus          = $kps['bonus'] ?? 'enable';
-    $kpsseed        = $kps['kpsseed'] ?? '5.0';
-    $bdayreward     = $kps['bdayreward'] ?? 'yes';
+    $kps            = $cache->read('KPS') ?? [];
+    $bonus          = $kps['bonus']          ?? 'enable';
+    $kpsseed        = $kps['kpsseed']        ?? '5.0';
+    $bdayreward     = $kps['bdayreward']     ?? 'yes';
     $bdayrewardtype = $kps['bdayrewardtype'] ?? 'silverleech';
 
-    // Загружаем данные из settings
     $settings = [];
-    $query = $db->simple_select("settings", "name, value");
-    while ($row = $db->fetch_array($query)) 
-	{
-        $settings[$row['name']] = $row['value'];
-    }
+    $q = $db->simple_select("settings", "name, value");
+    while ($r = $db->fetch_array($q)) $settings[$r['name']] = $r['value'];
 
-    // Достаём нужные данные из settings
-    $BASEURL             = $settings['BASEURL'] ?? '';
-    $SITENAME            = $settings['SITENAME'] ?? '';
-    $privatetrackerpatch = $settings['privatetrackerpatch'] ?? 'no';
-    $gzipcompress        = $settings['gzipcompress'] ?? 'yes';
-    $charset             = $settings['charset'] ?? 'UTF-8';
-    $aggressivecheckip   = $settings['aggressivecheckip'] ?? 'no';
-	$snatchmod = $settings['snatchmod'] ?? 'yes';
+    $keys = ['announce_actions','aggressivecheat','nc','announce_wait','announce_interval',
+             'max_rate','bannedclientdetect','allowed_clients','detectbrowsercheats',
+             'checkconnectable','checkip','mysql_host','mysql_user','mysql_pass','mysql_db'];
 
-    // Собираем содержимое для файла
-    $content = "<?php #DO NOT EDIT THIS FILE, PLEASE USE THE SETTINGS PANEL!!\n";
-    $content .= "if(!defined('IN_ANNOUNCE')) die('Hacking attempt!');\n\n";
-
-    // Ключи ANNOUNCE
-    $announceKeys = [
-        'announce_actions', 'aggressivecheat', 'nc', 'announce_wait', 'announce_interval',
-        'max_rate', 'bannedclientdetect', 'allowed_clients', 'detectbrowsercheats',
-        'checkconnectable', 'checkip', 'mysql_host','mysql_user', 'mysql_pass', 'mysql_db'
-    ];
-
-    foreach ($announceKeys as $key) 
-	{
-        $value = $announce[$key] ?? '';
-        $content .= "\${$key} = '" . addslashes($value) . "';\n";
-    }
-
-    // Дополнительные данные
-    $content .= "\$BASEURL = '" . addslashes($BASEURL) . "';\n";
-    $content .= "\$SITENAME = '" . addslashes($SITENAME) . "';\n";
-    $content .= "\$privatetrackerpatch = '" . addslashes($privatetrackerpatch) . "';\n";
-    $content .= "\$gzipcompress = '" . addslashes($gzipcompress) . "';\n";
-    $content .= "\$charset = '" . addslashes($charset) . "';\n";
-    $content .= "\$aggressivecheckip = '" . addslashes($aggressivecheckip) . "';\n";
-	$content .= "\$snatchmod = '" . addslashes($snatchmod) . "';\n";
-
-    // Данные из KPS
-    $content .= "\$bonus = '" . addslashes($bonus) . "';\n";
-    $content .= "\$kpsseed = '" . addslashes($kpsseed) . "';\n";
-    $content .= "\$bdayreward = '" . addslashes($bdayreward) . "';\n";
-    $content .= "\$bdayrewardtype = '" . addslashes($bdayrewardtype) . "';\n";
-
-    $content .= "?>";
-
-    // Записываем файл
-    $file = INC_PATH . '/config_announce.php';
-    if (file_put_contents($file, $content) === false) 
-	{
-        return false;
-    }
-
-    return true;
+    $c  = "<?php #DO NOT EDIT THIS FILE, PLEASE USE THE SETTINGS PANEL!!\n";
+    $c .= "if(!defined('IN_ANNOUNCE')) die('Hacking attempt!');\n\n";
+    foreach ($keys as $k) $c .= "\${$k} = '" . addslashes((string)($announce[$k] ?? '')) . "';\n";
+    foreach ([
+        'BASEURL'=>$settings['BASEURL']??'','SITENAME'=>$settings['SITENAME']??'',
+        'privatetrackerpatch'=>$settings['privatetrackerpatch']??'no',
+        'gzipcompress'=>$settings['gzipcompress']??'yes',
+        'charset'=>$settings['charset']??'UTF-8',
+        'aggressivecheckip'=>$settings['aggressivecheckip']??'no',
+        'snatchmod'=>$settings['snatchmod']??'yes',
+        'bonus'=>$bonus,'kpsseed'=>$kpsseed,'bdayreward'=>$bdayreward,'bdayrewardtype'=>$bdayrewardtype,
+    ] as $k => $v) $c .= "\${$k} = '" . addslashes((string)$v) . "';\n";
+    $c .= "?>";
+    return file_put_contents(INC_PATH . '/config_announce.php', $c) !== false;
 }
 
-
-
-
-
-
-
-$query = $db->simple_select("settings", "name, value");
-while ($row = $db->fetch_array($query)) 
-{
-    $settings[$row['name']] = $row['value'];
-}
-
-
-
+// ── Load settings ──────────────────────────────────────────────────────────────
+$settings = [];
+$q = $db->simple_select("settings", "name, value");
+while ($r = $db->fetch_array($q)) $settings[$r['name']] = $r['value'];
 $announce_url = $settings['announce_urls[]'] ?? '';
 
-
-
-
-// Включим буферизацию вывода
 ob_start();
 
+// ── POST handlers ──────────────────────────────────────────────────────────────
+match(true) {
 
+    isset($_POST['save_kps']) => (function() use ($cache): void {
+        $keys = ['bonus','kpsseed','kpsupload','kpscomment','kpsthanks','kpsrate','kpspoll',
+                 'kpsmaxpoint','kpsinvite','kpstitle','kpsvip','kpsgift','kpswarning','kpsratiofix',
+                 'bdayreward','bdayrewardtype'];
+        $data = array_intersect_key($_POST['configoption'] ?? [], array_flip($keys));
+        if (!empty($data)) $cache->update('KPS', $data);
+        flash_message("KPS settings saved successfully!", "success");
+        admin_redirect("settings.php#kps-settings");
+    })(),
 
+    isset($_POST['save_user_management']) => (function() use ($cache): void {
+        $keys = ['ai','autoinvitetime','max_dead_torrent_time','promote_gig_limit','promote_min_ratio',
+                 'promote_min_reg_days','demote_min_ratio','referrergift','leechwarn_min_ratio',
+                 'leechwarn_gig_limit','leechwarn_length','leechwarn_remove_ratio','ban_user_limit'];
+        $data = array_intersect_key($_POST['configoption'] ?? [], array_flip($keys));
+        if (!empty($data)) $cache->update('CLEANUP', $data);
+        flash_message("Cleanup settings saved successfully!", "success");
+        admin_redirect("settings.php?saved=cleanup#user-management-settings");
+    })(),
 
+    isset($_POST['save_registration']) => (function() use ($cache): void {
+        $keys = ['invitesystem','regtype','minnamelength','maxnamelength','maxip','illegalusernames',
+                 'minpasswordlength','maxpasswordlength','requirecomplexpasswords','failedlogincount',
+                 'failedlogintext','username_method','disableregs','r_verification','maxusers',
+                 'coppa','_d_usergroup','invite_count','autogigsignup','autosbsignup'];
+        $data = array_intersect_key($_POST['configoption'] ?? [], array_flip($keys));
+        if (!empty($data)) $cache->update('SIGNUP', $data);
+        flash_message("Registration settings saved successfully!", "success");
+        admin_redirect("settings.php?saved=registration#registration-settings");
+    })(),
 
+    isset($_POST['save_announce']) => (function() use ($cache): void {
+        $keys = ['announce_actions','aggressivecheat','nc','announce_wait','announce_interval',
+                 'max_rate','bannedclientdetect','allowed_clients','detectbrowsercheats',
+                 'checkconnectable','checkip','mysql_host','mysql_user','mysql_pass','mysql_db'];
+        $data = array_intersect_key($_POST['configoption'] ?? [], array_flip($keys));
+        if (!empty($data)) { $cache->update('ANNOUNCE', $data); rebuild_announce_settings(); }
+        flash_message("Announce settings saved successfully!", "success");
+        admin_redirect("settings.php?saved=announce#announce-settings");
+    })(),
 
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_kps'])) 
-{
-    $kpsUpKeys = [
-        'bonus','kpsseed','kpsupload','kpscomment','kpsthanks','kpsrate','kpspoll',
-        'kpsmaxpoint','kpsinvite','kpstitle','kpsvip','kpsgift','kpswarning',
-        'kpsratiofix','bdayreward','bdayrewardtype'
-		
-		
-    ];
-
-    $kpsUpData = [];
-
-    if (isset($_POST['configoption']) && is_array($_POST['configoption'])) 
-	{
-        foreach ($_POST['configoption'] as $name => $value) 
-		{
-            if (in_array($name, $kpsUpKeys)) 
-			{
-                $kpsUpData[$name] = $value;
-            }
+    isset($_POST['save_freeleech']) => (function(): void {
+        $start   = $_POST['configoption']['start']  ?? '';
+        $end     = $_POST['configoption']['end']    ?? '';
+        $flstype = $_POST['configoption']['system'] ?? 'freeleech';
+        $file    = TSDIR . '/cache/freeleech.php';
+        $fp      = @fopen($file, 'w');
+        if ($fp) {
+            $c  = "<?php\n/** Cache: FreeLeech | Generated: " . gmdate('r') . " */\n";
+            $c .= "\$__FLSTYPE = '" . addslashes($flstype) . "';\n";
+            $c .= "\$__F_START = '" . addslashes($start) . "';\n";
+            $c .= "\$__F_END   = '" . addslashes($end) . "';\n?>";
+            fwrite($fp, $c); fclose($fp);
+            flash_message("Freeleech settings saved successfully!", "success");
+            admin_redirect("settings.php?saved=freeleech#freeleech-settings");
         }
-    }
+        flash_message("Error: unable to write FreeLeech cache!", "danger");
+        admin_redirect("settings.php#freeleech-settings");
+    })(),
 
-    if (!empty($kpsUpData)) 
-	{
-        $cache->update('KPS', $kpsUpData);
-    }
-	
-	
-	flash_message("KPS settings saved successfully!", "success"); 
-	admin_redirect("settings.php#kps-settings");
+    isset($_POST['save_staff']) => (function() use ($db): void {
+        $valid = [];
+        $q = $db->sql_query("SELECT u.id, u.username FROM users u LEFT JOIN usergroups g ON u.usergroup=g.gid WHERE u.enabled='yes' AND (g.cansettingspanel='1' OR g.issupermod='1' OR g.canstaffpanel='1')");
+        while ($r = $db->fetch_array($q)) $valid[(string)$r['id']] = $r['username'];
 
-    
-}
-
-
-
-
-
-
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_user_management'])) 
-{
-    $cleanUpKeys = [
-        'ai', 'autoinvitetime', 'max_dead_torrent_time',
-        'promote_gig_limit', 'promote_min_ratio', 'promote_min_reg_days',
-        'demote_min_ratio', 'referrergift', 'leechwarn_min_ratio',
-        'leechwarn_gig_limit', 'leechwarn_length', 'leechwarn_remove_ratio',
-        'ban_user_limit'		
-    ];
-
-    $cleanUpData = [];
-
-    if (isset($_POST['configoption']) && is_array($_POST['configoption'])) 
-	{
-        foreach ($_POST['configoption'] as $name => $value) 
-		{
-            if (in_array($name, $cleanUpKeys)) 
-			{
-                $cleanUpData[$name] = $value;
-            }
+        $entries = []; $errors = [];
+        foreach (($_POST['staffids'] ?? []) as $i => $rawId) {
+            $id   = trim((string)$rawId);
+            $name = trim((string)($_POST['staffnames'][$i] ?? ''));
+            if ($id === '' && $name === '') continue;
+            if ($id !== '' && !ctype_digit($id))      { $errors[] = "{$name}:{$id} (invalid ID format)"; continue; }
+            if (!isset($valid[$id]))                   { $errors[] = "{$name}:{$id} (not allowed)"; continue; }
+            if (strcasecmp($valid[$id], $name) !== 0) { $errors[] = "{$name}:{$id} (name does not match)"; continue; }
+            $entries[] = "{$name}:{$id}";
         }
-    }
-
-    if (!empty($cleanUpData)) 
-	{
-        $cache->update('CLEANUP', $cleanUpData);
-    }
-
-    
-    flash_message("Cleanup settings saved successfully!", "success"); 
-	admin_redirect("settings.php?saved=cleanup#user-management-settings");
-    
-}
-
-
-
-
-
-
-
-
-
-
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_registration'])) 
-{
-    $regUpKeys = [
-        'invitesystem', 'regtype', 'minnamelength', 'maxnamelength', 'maxip',
-        'illegalusernames', 'minpasswordlength', 'maxpasswordlength',
-        'requirecomplexpasswords', 'failedlogincount', 'failedlogintext',
-        'username_method', 'disableregs', 'r_verification', 'maxusers',
-        'coppa', '_d_usergroup', 'invite_count', 'autogigsignup', 'autosbsignup'
-    ];
-
-    $regUpData = [];
-
-    if (isset($_POST['configoption']) && is_array($_POST['configoption'])) 
-	{
-        foreach ($_POST['configoption'] as $key => $value) 
-		{
-            if (in_array($key, $regUpKeys)) 
-			{
-                $regUpData[$key] = $value;
-            }
-        }
-    }
-
-    if (!empty($regUpData)) 
-	{
-        $cache->update('SIGNUP', $regUpData);
-    }
-
-   
-   flash_message("Registration settings saved successfully!!", "success"); 
-   admin_redirect("settings.php?saved=registration#registration-settings");
-        
-    	
-}
-
-
-
-
-
-
-
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_announce'])) 
-{
-    $announceKeys = [
-        'announce_actions', 'aggressivecheat', 'nc', 'announce_wait', 'announce_interval',
-        'max_rate', 'bannedclientdetect', 'allowed_clients', 'detectbrowsercheats',
-        'checkconnectable', 'checkip', 'mysql_host','mysql_user', 'mysql_pass', 'mysql_db'
-    ];
-
-    $announceData = [];
-    if (isset($_POST['configoption']) && is_array($_POST['configoption'])) 
-	{
-        foreach ($_POST['configoption'] as $key => $value) 
-		{
-            if (in_array($key, $announceKeys)) 
-			{
-                $announceData[$key] = $value;
-            }
-        }
-    }
-
-    if (!empty($announceData)) 
-	{
-        $cache->update('ANNOUNCE', $announceData);
-		rebuild_announce_settings();
-    }
-
-	
-	flash_message("Announce settings saved successfully!", "success"); 
-    admin_redirect("settings.php?saved=announce#announce-settings");
-	
-    
-}
-
-
-
-
-
-
-
-
-
-// STAFFTEAM
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_staff'])) 
-{
-    $validStaff = [];
-    $q = $db->sql_query("
-        SELECT u.id, u.username
-        FROM users u
-        LEFT JOIN usergroups g ON (u.usergroup = g.gid)
-        WHERE u.enabled = 'yes'
-          AND (g.cansettingspanel = '1' OR g.issupermod = '1' OR g.canstaffpanel = '1')
-    ");
-    while ($row = $db->fetch_array($q)) 
-	{
-        $validStaff[(string)$row['id']] = $row['username'];
-    }
-
-    $postIds   = $_POST['staffids']   ?? [];
-    $postNames = $_POST['staffnames'] ?? [];
-
-    $saveEntries = [];
-    $errors = [];
-
-    foreach ($postIds as $index => $staffIdRaw) 
-	{
-        $staffId   = trim((string)$staffIdRaw);
-        $staffName = trim((string)($postNames[$index] ?? ''));
-
-        if ($staffId === '' && $staffName === '') 
-		{
-            continue;
-        }
-
-        if ($staffId !== '' && !ctype_digit($staffId)) 
-		{
-            $errors[] = "{$staffName}:{$staffId} (invalid ID format)";
-            continue;
-        }
-
-        if (!isset($validStaff[$staffId])) 
-		{
-            $errors[] = "{$staffName}:{$staffId} (not allowed)";
-            continue;
-        }
-
-        if (strcasecmp($validStaff[$staffId], $staffName) !== 0) {
-            $errors[] = "{$staffName}:{$staffId} (name does not match)";
-            continue;
-        }
-
-        $saveEntries[] = "{$staffName}:{$staffId}";
-    }
-
-    if (!empty($errors)) 
-	{
-        flash_message("Errors while saving staff: " . implode(', ', $errors), "danger");
-        admin_redirect("settings.php#staff-team");
-    } 
-	else 
-	{
-        $filename = CONFIG_DIR . '/STAFFTEAM';
-        $data = implode(',', $saveEntries);
-
-        $written = @file_put_contents($filename, $data, LOCK_EX);
-        if ($written === false) 
-		{
+        if (!empty($errors)) {
+            flash_message("Errors: " . implode(', ', $errors), "danger");
+        } elseif (file_put_contents(CONFIG_DIR . '/STAFFTEAM', implode(',', $entries), LOCK_EX) === false) {
             flash_message("Failed to write STAFFTEAM config file!", "danger");
-            admin_redirect("settings.php#staff-team");
-        } 
-		else 
-		{
+        } else {
             flash_message("Staff team saved successfully!", "success");
-            admin_redirect("settings.php#staff-team");
         }
+        admin_redirect("settings.php#staff-team");
+    })(),
+
+    $_SERVER['REQUEST_METHOD'] === 'POST' => (function() use ($db, $settings): void {
+        $opts   = $_POST['configoption'] ?? [];
+        $ofType = $_POST['offline_mode_type'] ?? 'limited';
+        $ofMins = (int)($_POST['offline_minutes_input'] ?? 30);
+
+        if (($opts['SITEONLINE'] ?? '') === 'no') {
+            if ($ofType === 'unlimited') {
+                $opts['offline_minutes'] = 'unlimited';
+                write_log("[MAINTENANCE] Site set to offline (unlimited)");
+            } else {
+                $ofMins = max(1, min(1440, $ofMins));
+                $end    = time() + $ofMins * 60;
+                $opts['offline_minutes'] = $end;
+                write_log("[MAINTENANCE] Site offline for {$ofMins}min, back at: " . date('Y-m-d H:i:s', $end));
+                if ($end <= time()) { $opts['SITEONLINE'] = 'yes'; $opts['offline_minutes'] = ''; }
+            }
+        } else {
+            $opts['offline_minutes'] = '';
+            if (isset($opts['SITEONLINE'])) write_log("[MAINTENANCE] Site set to online");
+        }
+
+        $db->sql_query("START TRANSACTION");
+        try {
+            foreach ($opts as $name => $value) {
+                if (!$db->sql_query("UPDATE settings SET value=" . $db->sqlesc($value) . " WHERE name=" . $db->sqlesc($name)))
+                    throw new \Exception("Failed to update '{$name}'");
+            }
+            $db->sql_query("COMMIT");
+            rebuild_settings();
+            flash_message("Settings updated successfully!", "success");
+        } catch (\Throwable $e) {
+            $db->sql_query("ROLLBACK");
+            write_log("[ERROR] " . $e->getMessage());
+            flash_message("Error: " . $e->getMessage(), "danger");
+        }
+        admin_redirect($_SERVER['PHP_SELF']);
+    })(),
+
+    default => null,
+};
+
+ob_end_flush();
+
+// ── Load caches ────────────────────────────────────────────────────────────────
+$announce = $cache->read('ANNOUNCE') ?? [];
+foreach (['announce_actions','aggressivecheat','nc','announce_wait','announce_interval',
+          'max_rate','bannedclientdetect','allowed_clients','detectbrowsercheats',
+          'checkconnectable','checkip','mysql_host','mysql_user','mysql_pass','mysql_db'] as $k) $$k = $announce[$k] ?? '';
+
+$kps            = $cache->read('KPS') ?? [];
+$bonus          = $kps['bonus']          ?? 'enable';
+$kpsseed        = $kps['kpsseed']        ?? '5.0';
+$kpsupload      = $kps['kpsupload']      ?? '0';
+$kpscomment     = $kps['kpscomment']     ?? '0';
+$kpsthanks      = $kps['kpsthanks']      ?? '0';
+$kpsrate        = $kps['kpsrate']        ?? '0';
+$kpspoll        = $kps['kpspoll']        ?? '0';
+$kpsmaxpoint    = $kps['kpsmaxpoint']    ?? '0';
+$kpsinvite      = $kps['kpsinvite']      ?? 'yes';
+$kpstitle       = $kps['kpstitle']       ?? 'yes';
+$kpsvip         = $kps['kpsvip']         ?? 'yes';
+$kpsgift        = $kps['kpsgift']        ?? 'yes';
+$kpswarning     = $kps['kpswarning']     ?? 'yes';
+$kpsratiofix    = $kps['kpsratiofix']    ?? 'yes';
+$bdayreward     = $kps['bdayreward']     ?? 'yes';
+$bdayrewardtype = $kps['bdayrewardtype'] ?? 'silverleech';
+
+$signup               = $cache->read('SIGNUP') ?? [];
+$invitesystem         = $signup['invitesystem']           ?? 'on';
+$regtype              = $signup['regtype']                ?? 'instant';
+$minnamelength        = $signup['minnamelength']          ?? '3';
+$maxnamelength        = $signup['maxnamelength']          ?? '20';
+$maxip                = $signup['maxip']                  ?? '0';
+$illegalusernames     = $signup['illegalusernames']       ?? '';
+$minpasswordlength    = $signup['minpasswordlength']      ?? '6';
+$maxpasswordlength    = $signup['maxpasswordlength']      ?? '40';
+$requirecomplexpasswords = $signup['requirecomplexpasswords'] ?? '0';
+$failedlogincount     = $signup['failedlogincount']       ?? '0';
+$failedlogintext      = $signup['failedlogintext']        ?? '0';
+$username_method      = $signup['username_method']        ?? '0';
+$disableregs          = $signup['disableregs']            ?? '0';
+$r_verification       = $signup['r_verification']         ?? 'yes';
+$maxusers             = $signup['maxusers']               ?? '0';
+$coppa                = $signup['coppa']                  ?? 'disabled';
+$_d_usergroup         = $signup['_d_usergroup']           ?? '1';
+$invite_count         = $signup['invite_count']           ?? '0';
+$autogigsignup        = $signup['autogigsignup']          ?? '0';
+$autosbsignup         = $signup['autosbsignup']           ?? '0';
+
+$cleanup              = $cache->read('CLEANUP') ?? [];
+$ai                   = $cleanup['ai']                    ?? 'no';
+$autoinvitetime       = $cleanup['autoinvitetime']        ?? '30';
+$max_dead_torrent_time= $cleanup['max_dead_torrent_time'] ?? '30';
+$promote_gig_limit    = $cleanup['promote_gig_limit']     ?? '0';
+$promote_min_ratio    = $cleanup['promote_min_ratio']     ?? '0.5';
+$promote_min_reg_days = $cleanup['promote_min_reg_days']  ?? '30';
+$demote_min_ratio     = $cleanup['demote_min_ratio']      ?? '0.2';
+$referrergift         = $cleanup['referrergift']          ?? '0';
+$leechwarn_min_ratio  = $cleanup['leechwarn_min_ratio']   ?? '0.3';
+$leechwarn_gig_limit  = $cleanup['leechwarn_gig_limit']   ?? '10';
+$leechwarn_length     = $cleanup['leechwarn_length']      ?? '2';
+$leechwarn_remove_ratio = $cleanup['leechwarn_remove_ratio'] ?? '0.5';
+$ban_user_limit       = $cleanup['ban_user_limit']        ?? '3';
+
+$offlineMinutesValue = $settings['offline_minutes'] ?? '';
+$isUnlimited         = ($settings['SITEONLINE'] ?? 'yes') === 'no' && $offlineMinutesValue === 'unlimited';
+$durationMinutes     = 30;
+$timeRemaining       = '';
+if (($settings['SITEONLINE'] ?? 'yes') === 'no') {
+    if ($isUnlimited) {
+        $timeRemaining = '<span class="text-success">Unlimited (manual enable required)</span>';
+    } elseif (is_numeric($offlineMinutesValue) && (int)$offlineMinutesValue > time()) {
+        $rem             = (int)ceil(((int)$offlineMinutesValue - time()) / 60);
+        $h               = (int)floor($rem / 60); $m = $rem % 60;
+        $durationMinutes = max(1, $rem);
+        $timeRemaining   = '<span class="text-warning">' . ($h > 0 ? "{$h}h " : '') . "{$m}m remaining</span>";
+    } else {
+        $durationMinutes = is_numeric($offlineMinutesValue) ? max(1, (int)$offlineMinutesValue) : 30;
+        $timeRemaining   = '<span class="text-danger">Time expired (should auto-enable)</span>';
     }
 }
 
+$iv                  = $settings['iv']               ?? 'no';
+$vkeyword            = $settings['vkeyword']         ?? 'no';
+$reCAPTCHAPublickey  = $settings['reCAPTCHAPublickey']  ?? '';
+$reCAPTCHAPrivatekey = $settings['reCAPTCHAPrivatekey'] ?? '';
+$reCAPTCHATheme      = $settings['reCAPTCHATheme']      ?? 'white';
+$reCAPTCHALanguage   = $settings['reCAPTCHALanguage']   ?? 'en';
 
+$staffarray = [];
+$staffFile  = CONFIG_DIR . '/STAFFTEAM';
+if (is_readable($staffFile)) {
+    foreach (explode(',', (string)file_get_contents($staffFile)) as $entry) {
+        $parts = explode(':', trim($entry), 2);
+        if (count($parts) === 2 && $parts[0] !== '') {
+            $staffarray[] = ['name' => trim($parts[0]), 'id' => trim($parts[1])];
+        }
+    }
+}
+$availableStaff = [];
+$q = $db->sql_query("SELECT u.id, u.username, g.title FROM users u LEFT JOIN usergroups g ON u.usergroup=g.gid WHERE u.enabled='yes' AND (g.cansettingspanel='1' OR g.issupermod='1' OR g.canstaffpanel='1') ORDER BY u.username ASC");
+while ($r = $db->fetch_array($q)) $availableStaff[] = $r;
 
-
-
-
-
-
-
-
-
-
-
-
-// Подключаем стили
 echo '<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
 echo '<link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">';
 
-
-
-
-
-
-
-
-
-
-
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_freeleech'])) 
-{
-    $_START   = $_POST['configoption']['start'];
-    $_END     = $_POST['configoption']['end'];
-    $_FLSTYPE = $_POST['configoption']['system'];
-
-    $_filename = TSDIR . '/cache/freeleech.php';
-
-    if ($fp = @fopen($_filename, 'w')) 
-    {
-        $_cachecontents = "<?php
-/**
- * Cache Name: FreeLeech
- * Generated: " . gmdate('r') . "
-*/
-";
-        $_cachecontents .= "\$__FLSTYPE = '" . addslashes($_FLSTYPE) . "';\n";
-        $_cachecontents .= "\$__F_START = '" . addslashes($_START) . "';\n";
-        $_cachecontents .= "\$__F_END   = '" . addslashes($_END) . "';\n";
-        $_cachecontents .= "?>";
-
-        @fwrite($fp, $_cachecontents);
-        @fclose($fp);
-	
-    
-		// ✅ success message
-		flash_message("Freeleech settings saved successfully!", "success");
-        admin_redirect("settings.php?saved=freeleech#freeleech-settings");
-	
-		
-    } 
-    else 
-    {
-        // ❌ error message
-		flash_message("Error: unable to write FreeLeech cache!", "danger");
-        admin_redirect("settings.php#freeleech-settings");
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-// Обработка данных из формы
-if ($_SERVER['REQUEST_METHOD'] === 'POST') 
-{
-    $settings_updated = false;
-
-    // Инициализация и безопасное получение данных
-    $configOptions = $_POST['configoption'] ?? [];
-    $offlineModeType = $_POST['offline_mode_type'] ?? 'limited';
-    $offlineMinutesInput = isset($_POST['offline_minutes_input']) ? (int)$_POST['offline_minutes_input'] : 30;
-
-    // Обработка режима "Оффлайн"
-    if (isset($configOptions['SITEONLINE']) && $configOptions['SITEONLINE'] === 'no') {
-        if ($offlineModeType === 'unlimited') {
-            $configOptions['offline_minutes'] = 'unlimited';
-            write_log("[MAINTENANCE] Site set to offline mode (unlimited duration)");
-        } else {
-            $offlineMinutesInput = max(1, min(1440, $offlineMinutesInput));
-            $offlineEndTime = time() + ($offlineMinutesInput * 60);
-            $configOptions['offline_minutes'] = $offlineEndTime;
-
-            $endTimeFormatted = date('Y-m-d H:i:s', $offlineEndTime);
-            write_log("[MAINTENANCE] Site set to offline for $offlineMinutesInput minutes. Will be back at: $endTimeFormatted");
-
-            if ($offlineEndTime <= time()) {
-                $configOptions['SITEONLINE'] = 'yes';
-                $configOptions['offline_minutes'] = '';
-                write_log("[MAINTENANCE] Auto-corrected to online - specified time already passed");
-            }
-        }
-    } elseif (isset($configOptions['SITEONLINE'])) {
-        $configOptions['offline_minutes'] = '';
-        write_log("[MAINTENANCE] Site set to online mode");
-    }
-
-    // Обновление настроек в БД с транзакцией
-    $db->sql_query("START TRANSACTION");
-    try {
-        foreach ($configOptions as $name => $value) {
-            $escaped_value = $db->sqlesc($value);
-            $escaped_name = $db->sqlesc($name);
-
-            $query = "UPDATE settings SET value = $escaped_value WHERE name = $escaped_name";
-            if (!$db->sql_query($query)) {
-                throw new Exception("Failed to update setting '$name'");
-            }
-        }
-
-        $db->sql_query("COMMIT");
-        $settings_updated = true;
-
-        rebuild_settings();
-
-        if (isset($configOptions['SITEONLINE']) && $configOptions['SITEONLINE'] === 'no' 
-            && $configOptions['offline_minutes'] !== 'unlimited') 
-        {
-            $remainingMinutes = ceil(($configOptions['offline_minutes'] - time()) / 60);
-            write_log("[MAINTENANCE] Time remaining: " . max(0, $remainingMinutes) . " minutes");
-        }
-
-    } catch (Exception $e) {
-        $db->sql_query("ROLLBACK");
-        write_log("[ERROR] Settings update failed: " . $e->getMessage());
-
-        flash_message("Error: " . $e->getMessage(), "danger");
-        admin_redirect($_SERVER['PHP_SELF']);
-    }
-
-    // Редирект после успешного сохранения
-    if ($settings_updated) {
-        flash_message("Settings updated successfully!", "success");
-        admin_redirect($_SERVER['PHP_SELF']);
-    }
-}
-
-
-
-// Завершаем буферизацию
-ob_end_flush();
-
-
-
-
-
-
-
-
+stdhead();
+flash_message();
 ?>
-
-    <title>Ruff Tracker Admin Panel</title>
-
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-	<div class="container mt-3">
-        <div class="row">
-            
-
-<!-- Sidebar -->
-
-<div class="row g-0">
-    <div class="col-md-3 col-lg-2 sidebar">
-        
-        <ul class="nav flex-column">
-            <li class="nav-item">
-                <a class="nav-link active" href="#main-settings" data-bs-toggle="tab">
-                    <i class="fas fa-cog me-2"></i>Main Settings
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#tracker-settings" data-bs-toggle="tab">
-                    <i class="fas fa-server me-2"></i>Tracker Settings
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#date-time" data-bs-toggle="tab">
-                    <i class="far fa-clock me-2"></i>Date & Time
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#cookie-settings" data-bs-toggle="tab">
-                    <i class="fas fa-cookie me-2"></i>Cookie Settings
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#avatar-settings" data-bs-toggle="tab">
-                    <i class="fas fa-user-circle me-2"></i>Avatar Settings
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#security-settings" data-bs-toggle="tab">
-                    <i class="fas fa-shield-alt me-2"></i>Security Settings
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#email-settings" data-bs-toggle="tab">
-                    <i class="fas fa-envelope me-2"></i>Email Settings
-                </a>
-            </li>
-			
-			
-			<li class="nav-item">
-                <a class="nav-link" href="#announce-settings" data-bs-toggle="tab">
-                    <i class="fas fa-broadcast-tower me-2"></i>ANNOUNCE Settings
-                </a>
-            </li>
-			
-			
-			<li class="nav-item">
-                <a class="nav-link" href="#kps-settings" data-bs-toggle="tab">
-                    <i class="fas fa-coins me-2"></i>KPS Settings
-               </a>
-            </li>
-			
-			
-			<li class="nav-item">
-                <a class="nav-link" href="#user-management-settings" data-bs-toggle="tab">
-                    <i class="fas fa-users-cog me-2"></i>Cleanup Settings
-                </a>
-            </li>
-			
-			
-			
-			
-			<li class="nav-item">
-    <a class="nav-link" href="#registration-settings" data-bs-toggle="tab">
-        <span class="nav-icon-wrapper">
-            <i class="fas fa-user-plus me-2"></i>
-            <span class="nav-link-text">Registration</span>
-        </span>
-    </a>
-</li>
-
-
-
-<li class="nav-item">
-    <a class="nav-link" href="#staff-team" data-bs-toggle="tab">
-        <i class="fas fa-users-cog me-2"></i>Staff Team
-    </a>
-</li>
-
-
-<li class="nav-item">
-    <a class="nav-link" href="#freeleech-settings" data-bs-toggle="tab">
-        <i class="fas fa-gift me-2"></i> Freeleech Settings
-    </a>
-</li>
-
-
-
-
-
-			
-			
-			<li class="nav-item">
-    <a class="nav-link" href="index.php?act=cronjobs">
-        <i class="fas fa-clock me-2"></i>Cronjobs
-    </a>
-</li>
-
-
-			
-			
-			
-			
-        </ul>
-    </div>
-
-
-
-
-
-
-
-
-			
-			
-
-            <!-- Main Content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
-                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                    <h1 class="h2">Tracker Settings</h1>
-                    <div class="btn-toolbar mb-2 mb-md-0">
-                        <button class="btn btn-primary" type="submit" form="settings-form">
-                            <i class="fas fa-save me-1"></i> Save Settings
-                        </button>
-                    </div>
-                </div>
-
-                <div class="tab-content">
-                    <!-- Main Settings Tab -->
-                    <div class="tab-pane fade show active" id="main-settings">
-                        <form id="settings-form" method="post">
-                            <div class="card mb-4">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">Basic Information</h5>
-                                </div>
-                                <div class="card-body">
-                                    <div class="mb-3">
-                                        <label for="sitename" class="form-label">Tracker Name</label>
-                                        <div class="input-group">
-                                            <input type="text" class="form-control" id="sitename" name="configoption[SITENAME]" value="<?php echo htmlspecialchars($settings['SITENAME']); ?>">
-                                            <span class="input-group-text help-icon" title="Enter your Tracker name here.">
-                                                <i class="fas fa-info-circle"></i>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="baseurl" class="form-label">Base URL</label>
-                                        <div class="input-group">
-                                            <input type="text" class="form-control" id="baseurl" name="configoption[BASEURL]" value="<?php echo htmlspecialchars($settings['BASEURL']); ?>">
-                                            <span class="input-group-text help-icon" title="Enter your tracker URL here. ie: http://yourwebsiteurl.com. Note: NO trailing slash (/) at the end!">
-                                                <i class="fas fa-info-circle"></i>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="siteemail" class="form-label">Site Email</label>
-                                        <div class="input-group">
-                                            <input type="email" class="form-control" id="siteemail" name="configoption[SITEEMAIL]" value="<?php echo htmlspecialchars($settings['SITEEMAIL']); ?>">
-                                            <span class="input-group-text help-icon" title="Enter your tracker contact email here. ie: contact@sitename.com">
-                                                <i class="fas fa-info-circle"></i>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="reportemail" class="form-label">Report Email</label>
-                                        <div class="input-group">
-                                            <input type="email" class="form-control" id="reportemail" name="configoption[REPORTMAIL]" value="<?php echo htmlspecialchars($settings['REPORTMAIL']); ?>">
-                                            <span class="input-group-text help-icon" title="Enter your tracker report email here. ie: report@sitename.com">
-                                                <i class="fas fa-info-circle"></i>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="contactemail" class="form-label">Contact Email(s)</label>
-                                        <div class="input-group">
-                                            <input type="text" class="form-control" id="contactemail" name="configoption[contactemail]" value="<?php echo htmlspecialchars($settings['contactemail']); ?>">
-                                            <span class="input-group-text help-icon" title="Enter your tracker contact E-mail addresses here. They will be used on Contact Us Page. Separate multiple E-mails with commas.">
-                                                <i class="fas fa-info-circle"></i>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    
-									
-									
-									
-									
-
-
-
-
-
-
-
-<?php
-// Получаем текущее значение из настроек
-$offlineMinutesValue = isset($settings['offline_minutes']) ? $settings['offline_minutes'] : '';
-
-// Определяем значение для поля ввода и информацию о времени
-$durationMinutes = 30; // Значение по умолчанию
-$timeRemaining = '';
-$isUnlimited = false;
-
-if ($settings['SITEONLINE'] === 'no') {
-    if ($offlineMinutesValue === 'unlimited') {
-        $isUnlimited = true;
-        $durationMinutes = 'unlimited';
-        $timeRemaining = '<span class="text-success">Unlimited (manual enable required)</span>';
-    } elseif (is_numeric($offlineMinutesValue) && $offlineMinutesValue > time()) {
-        // Расчет оставшегося времени
-        $remainingSeconds = $offlineMinutesValue - time();
-        $remainingMinutes = ceil($remainingSeconds / 60);
-        $durationMinutes = max(1, $remainingMinutes);
-        
-        // Форматирование времени
-        $hours = floor($remainingMinutes / 60);
-        $minutes = $remainingMinutes % 60;
-        
-        $timeParts = [];
-        if ($hours > 0) {
-            $timeParts[] = $hours . ' ' . ($hours === 1 ? 'hour' : 'hours');
-        }
-        if ($minutes > 0 || $hours === 0) {
-            $timeParts[] = $minutes . ' ' . ($minutes === 1 ? 'minute' : 'minutes');
-        }
-        
-        $timeRemaining = implode(' and ', $timeParts) . ' remaining';
-        $timeRemaining = '<span class="text-warning">' . $timeRemaining . '</span>';
-    } else {
-        $durationMinutes = is_numeric($offlineMinutesValue) ? max(1, (int)$offlineMinutesValue) : 30;
-        $timeRemaining = '<span class="text-danger">Time expired (should auto-enable)</span>';
-    }
-}
-?>
-
-<!-- Форма в админке -->
-<div class="mb-3">
-    <label for="siteonline" class="form-label">Site Status</label>
-    <select class="form-select" id="siteonline" name="configoption[SITEONLINE]">
-        <option value="yes" <?= $settings['SITEONLINE'] === 'yes' ? 'selected' : '' ?>>Online</option>
-        <option value="no" <?= $settings['SITEONLINE'] === 'no' ? 'selected' : '' ?>>Offline</option>
-    </select>
-</div>
-
-<div class="mb-3" id="offlineDurationGroup" style="display: <?= $settings['SITEONLINE'] === 'no' ? 'block' : 'none' ?>;">
-    <?php if ($timeRemaining): ?>
-    <div class="alert alert-info mb-3">
-        <i class="bi bi-clock"></i> <?= $timeRemaining ?>
-        <?php if (!$isUnlimited && is_numeric($offlineMinutesValue)): ?>
-        <div class="small mt-1">Will be back at: <?= date('Y-m-d H:i:s', $offlineMinutesValue) ?></div>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
-
-    <div class="form-check mb-2">
-        <input class="form-check-input" type="radio" name="offline_mode_type" id="limitedMode" 
-               value="limited" <?= !$isUnlimited ? 'checked' : '' ?>>
-        <label class="form-check-label" for="limitedMode">
-            Limited Time
-        </label>
-    </div>
-    
-    <div class="form-check mb-3">
-        <input class="form-check-input" type="radio" name="offline_mode_type" id="unlimitedMode" 
-               value="unlimited" <?= $isUnlimited ? 'checked' : '' ?>>
-        <label class="form-check-label" for="unlimitedMode">
-            Unlimited
-        </label>
-    </div>
-    
-    <div id="timeLimitGroup" style="display: <?= !$isUnlimited ? 'block' : 'none' ?>;">
-        <label for="offline_minutes_input" class="form-label">Duration (minutes)</label>
-        <div class="input-group">
-            <input type="number" min="1" max="1440" class="form-control" 
-                   id="offline_minutes_input" name="offline_minutes_input" 
-                   value="<?= !$isUnlimited ? $durationMinutes : 30 ?>">
-            <span class="input-group-text">min (max 24h)</span>
-        </div>
-    </div>
-</div>
-
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    const siteOnline = document.getElementById("siteonline");
-    const durationGroup = document.getElementById("offlineDurationGroup");
-    const limitedMode = document.getElementById("limitedMode");
-    const unlimitedMode = document.getElementById("unlimitedMode");
-    const timeLimitGroup = document.getElementById("timeLimitGroup");
-    
-    siteOnline.addEventListener("change", function() {
-        durationGroup.style.display = this.value === 'no' ? 'block' : 'none';
-    });
-    
-    limitedMode.addEventListener("change", function() {
-        timeLimitGroup.style.display = this.checked ? 'block' : 'none';
-    });
-    
-    unlimitedMode.addEventListener("change", function() {
-        timeLimitGroup.style.display = this.checked ? 'none' : 'block';
-    });
-});
-</script>
-
-
-
-
-
-
-
-
-
-
-									
-									
-									
-									
-									
-									
-									
-
-                                    <div class="mb-3">
-                                        <label for="slogan" class="form-label">Tracker Slogan</label>
-                                        <div class="input-group">
-                                            <input type="text" class="form-control" id="slogan" name="configoption[slogan]" value="<?php echo htmlspecialchars($settings['slogan']); ?>">
-                                            <span class="input-group-text help-icon" title="Set your tracker slogan.">
-                                                <i class="fas fa-info-circle"></i>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="metakeywords" class="form-label">Meta Keywords</label>
-                                        <div class="input-group">
-                                            <textarea class="form-control" id="metakeywords" name="configoption[metakeywords]" rows="3"><?php echo htmlspecialchars($settings['metakeywords']); ?></textarea>
-                                            <span class="input-group-text help-icon" title="Type in keywords separated by commas that describe your website. These keywords will help your site be listed in search engines.">
-                                                <i class="fas fa-info-circle"></i>
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label for="metadesc" class="form-label">Meta Description</label>
-                                        <div class="input-group">
-                                            <textarea class="form-control" id="metadesc" name="configoption[metadesc]" rows="3"><?php echo htmlspecialchars($settings['metadesc']); ?></textarea>
-                                            <span class="input-group-text help-icon" title="Description of your website: Helps your website's position in search engines.">
-                                                <i class="fas fa-info-circle"></i>
-                                            </span>
-                                        </div>
-                                    </div>
-									
-											
-									
-									
-								
-									
-                                </div>
-                            </div>
-						</div>	
-							
-							
-							
-							<!-- Tracker Settings Tab -->
-                    <div class="tab-pane fade" id="tracker-settings">
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5>Tracker Configuration</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label for="useajax" class="form-label">Active Ajax Features?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="useajax" name="configoption[useajax]">
-                                            <option value="yes" <?php echo ($settings['useajax'] == 'yes') ? 'selected' : ''; ?>>Active</option>
-                                            <option value="no" <?php echo ($settings['useajax'] == 'no') ? 'selected' : ''; ?>>Disable</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="AJAX uses javascript and features of recent browsers to allow additional data to be retrieved without doing a page refresh.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-								
-								
-								
-								
-								
-								<div class="mb-3">
-    <label for="use_xmlhttprequest" class="form-label">Use Xmlhttprequest</label>
-    <div class="input-group">
-        <select class="form-select" id="use_xmlhttprequest" name="configoption[use_xmlhttprequest]">
-            <option value="1" <?= ($settings['use_xmlhttprequest'] == '1') ? 'selected' : '' ?>>Yes</option>
-            <option value="0" <?= ($settings['use_xmlhttprequest'] == '0') ? 'selected' : '' ?>>No</option>
-        </select>
-        <span class="input-group-text help-icon" 
-              title="Do you want to show a 'jump to page' form in pagination if number of pages exceeds 'Maximum Page Links in Pagination'?">
-            <i class="fas fa-fast-forward"></i>
-        </span>
-    </div>
-</div>	
-
-
-
-
-
-
-
-
-
-<div class="mb-3">
-    <label for="redirects" class="form-label">Friendly Redirection Pages</label>
-    <div class="input-group">
-        <select class="form-select" id="redirects" name="configoption[redirects]">
-            <option value="1" <?= ($settings['redirects'] == '1') ? 'selected' : '' ?>>Yes</option>
-            <option value="0" <?= ($settings['redirects'] == '0') ? 'selected' : '' ?>>No</option>
-        </select>
-        <span class="input-group-text help-icon" 
-              title="This will enable friendly redirection pages instead of bumping the user directly to the page">
-            <i class="fas fa-fast-forward"></i>
-        </span>
-    </div>
-</div>	
-
-
-
-
-
-
-
-
-
-
-								
-								
-								
-								
-								
-								
-								
-								
-								
-
-                                <div class="mb-3">
-                                    <label for="externalscrape" class="form-label">Active External Scrape?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="externalscrape" name="configoption[externalscrape]">
-                                            <option value="yes" <?php echo ($settings['externalscrape'] == 'yes') ? 'selected' : ''; ?>>Active</option>
-                                            <option value="no" <?php echo ($settings['externalscrape'] == 'no') ? 'selected' : ''; ?>>Disable</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Users can also upload torrents tracked by other public trackers!">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="includeexpeers" class="form-label">Include External Peers?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="includeexpeers" name="configoption[includeexpeers]">
-                                            <option value="yes" <?php echo ($settings['includeexpeers'] == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="no" <?php echo ($settings['includeexpeers'] == 'no') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Include External Peers to Internal Peers which will update stats automatically.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="membersonly" class="form-label">Registered Members Only?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="membersonly" name="configoption[MEMBERSONLY]">
-                                            <option value="yes" <?php echo ($settings['MEMBERSONLY'] == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="no" <?php echo ($settings['MEMBERSONLY'] == 'no') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="If you set this to 'NO', guests can access to some pages such as index, browse, forums etc.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="maxloginattempts" class="form-label">Max. Login Attempts</label>
-                                    <div class="input-group">
-                                        <input type="number" class="form-control" id="maxloginattempts" name="configoption[maxloginattempts]" value="<?php echo htmlspecialchars($settings['maxloginattempts']); ?>">
-                                        <span class="input-group-text help-icon" title="Disable/Ban IP address who exceed this limit.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="securehash" class="form-label">Secure Hash</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="securehash" name="configoption[securehash]" value="<?php echo htmlspecialchars($settings['securehash']); ?>">
-                                        <span class="input-group-text help-icon" title="Please enter a secure word that only known by you. Whenever you change this, all users must re-login.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="announce_urls" class="form-label">Announce URL</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="announce_urls" name="configoption[announce_urls[]]" value="<?php echo htmlspecialchars($announce_url); ?>">
-
-                                        <span class="input-group-text help-icon" title="Enter your announce URL here. ie: http://yourwebsiteurl.com/announce.php">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="torrent_dir" class="form-label">Torrent Directory Path</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="torrent_dir" name="configoption[torrent_dir]" value="<?php echo htmlspecialchars($settings['torrent_dir']); ?>">
-                                        <span class="input-group-text help-icon" title="Enter Tracker Torrent Directory Path. Note: NO trailing slash (/) at the end!">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-								
-								
-								
-								<!-- Max. Torrent Size -->
-                                    <div class="mb-3">
-                                        <label for="max_torrent_size" class="form-label">Max. Torrent Size?</label>
-                                        <div class="input-group">
-                                             <input type="text" class="form-control" id="max_torrent_size" name="configoption[max_torrent_size]" value="<?php echo htmlspecialchars($settings['max_torrent_size']); ?>" class="bginput">
-                                             <span class="input-group-text help-icon" title="Max. Torrent Limit for Upload. 10 GB (10 * 1024 * 1024)">
-                                                 <i class="fas fa-info-circle"></i>
-                                             </span>
-                                        </div>
-                                    </div>
-								
-								
-								
-								
-								
-								
-								
-
-                                <div class="mb-3">
-                                    <label for="pic_base_url" class="form-label">Image Directory Path</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="pic_base_url" name="configoption[pic_base_url]" value="<?php echo htmlspecialchars($settings['pic_base_url']); ?>">
-                                        <span class="input-group-text help-icon" title="Enter Tracker Image Directory Path. Note: ADD a trailing slash (/) at the end!">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                                
-								
-								<div class="mb-3">
-                                    <label for="seourls" class="form-label">Active SEO</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="seourls" name="configoption[seourls]">
-                                           <option value="yes" <?php echo ($settings['seourls'] == 'yes') ? 'selected' : ''; ?>>Active</option>
-                                           <option value="no" <?php echo ($settings['seourls'] == 'no') ? 'selected' : ''; ?>>Disable</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Check banned IP's in Aggressive mode. This might decrease server load.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-								
-								
-								
-								<div class="mb-3">
-    <label for="gzipcompress" class="form-label">GZIP Compression Enabled</label>
-    <div class="input-group">
-        <select class="form-select" id="gzipcompress" name="configoption[gzipcompress]">
-            <option value="yes" <?php echo ($settings['gzipcompress'] == 'yes' ? 'selected' : ''); ?>>Yes</option>
-            <option value="no" <?php echo ($settings['gzipcompress'] == 'no' ? 'selected' : ''); ?>>No</option>
-        </select>
-        <span class="input-group-text help-icon" title="If your server is running off of apache, then you can turn this setting on to compress your pages potentially making your site much quicker.">
-            <i class="fas fa-compress-alt"></i>
-        </span>
-    </div>
-</div>
-			
-
-		<div class="mb-3">
-    <label for="jumptopagemultipage" class="form-label">Show Jump To Page Form in Pagination</label>
-    <div class="input-group">
-        <select class="form-select" id="jumptopagemultipage" name="configoption[jumptopagemultipage]">
-            <option value="1" <?= ($settings['jumptopagemultipage'] == '1') ? 'selected' : '' ?>>Yes</option>
-            <option value="0" <?= ($settings['jumptopagemultipage'] == '0') ? 'selected' : '' ?>>No</option>
-        </select>
-        <span class="input-group-text help-icon" 
-              title="Do you want to show a 'jump to page' form in pagination if number of pages exceeds 'Maximum Page Links in Pagination'?">
-            <i class="fas fa-fast-forward"></i>
-        </span>
-    </div>
-</div>	
-
-
-
-
-                         <div class="mb-3">
-                                    <label for="maxmultipagelinks" class="form-label">Maximum Page Links in Pagination</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="maxmultipagelinks" name="configoption[maxmultipagelinks]" value="<?php echo htmlspecialchars($settings['maxmultipagelinks']); ?>">
-                                        <span class="input-group-text help-icon" title="Here you can set the number of next and previous page links to show in the pagination for threads or forums with more than one page of results. Set to 0 to disable the limitation">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-								
-								
-								
-								
-							<div class="mb-3">
-    <label for="hitrun" class="form-label">HIT & RUN System Enabled?</label>
-    <div class="input-group">
-        <select class="form-select" id="hitrun" name="configoption[hitrun]">
-            <option value="yes" <?= $settings['hitrun'] == 'yes' ? 'selected' : '' ?>>Yes</option>
-            <option value="no" <?= $settings['hitrun'] == 'no' ? 'selected' : '' ?>>No</option>
-        </select>
-        <span class="input-group-text help-icon" title="Enable or disable HIT & RUN system.">
-            <i class="fas fa-info-circle"></i>
-        </span>
-    </div>
-</div>
-
-<div class="mb-3">
-    <label for="hitrun_ratio" class="form-label">Min. Ratio for HIT & RUN</label>
-    <div class="input-group">
-        <input type="text" class="form-control" id="hitrun_ratio" 
-               name="configoption[hitrun_ratio]" value="<?= htmlspecialchars($settings['hitrun_ratio']) ?>">
-        <span class="input-group-text help-icon" title="Minimum ratio allowed before marking as HIT & RUN.">
-            <i class="fas fa-info-circle"></i>
-        </span>
-    </div>
-</div>
-
-<div class="mb-3">
-    <label for="hitrun_gig" class="form-label">Min. GB limit for HIT & RUN</label>
-    <div class="input-group">
-        <input type="text" class="form-control" id="hitrun_gig" 
-               name="configoption[hitrun_gig]" value="<?= htmlspecialchars($settings['hitrun_gig']) ?>">
-        <span class="input-group-text help-icon" title="Minimum GB downloaded before HIT & RUN triggers.">
-            <i class="fas fa-info-circle"></i>
-        </span>
-    </div>
-</div>
-	
-								
-								
-								
-								
-								
-								
-								
-								
-								
-								
-								
-
-
-
-
-
-
-
-
-<div class="mb-3">
-    <label for="wolcutoffmins" class="form-label">Cut-off Time (mins)</label>
-    <div class="input-group" style="max-width: 200px;">
-        <input type="number" class="form-control" id="wolcutoffmins" 
-               name="configoption[wolcutoffmins]" value="<?= htmlspecialchars($settings['wolcutoffmins']) ?>"
-               min="1" max="60" step="1">
-        <span class="input-group-text help-icon" 
-              title="The number of minutes before a user is marked offline. Recommended: 15">
-            <i class="fas fa-clock"></i>
-        </span>
-    </div>
-</div>
-							
-							
-							
-							
-							
-							
-							</div>
-                        </div>
-                    </div>
-				
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-				
-							
-							
-				<!-- Date & Time Settings Tab -->
-                    <div class="tab-pane fade" id="date-time">
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5>Date & Time Settings</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label for="dateformat" class="form-label">Date Format</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="dateformat" name="configoption[dateformat]" value="<?php echo htmlspecialchars($settings['dateformat']); ?>">
-                                        <span class="input-group-text help-icon" title="The format of the dates used on the tracker/forum. This format uses the PHP date() function.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="timeformat" class="form-label">Time Format</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="timeformat" name="configoption[timeformat]" value="<?php echo htmlspecialchars($settings['timeformat']); ?>">
-                                        <span class="input-group-text help-icon" title="The format of the dates used on the tracker/forum. This format uses the PHP date() function.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="regdateformat" class="form-label">Registered Date Format</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="regdateformat" name="configoption[regdateformat]" value="<?php echo htmlspecialchars($settings['regdateformat']); ?>">
-                                        <span class="input-group-text help-icon" title="The format used on showthread/userdetails etc.. where it shows when the user registered.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="timezoneoffset" class="form-label">Default Timezone Offset</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="timezoneoffset" name="configoption[timezoneoffset]">
-                                            <option value="-12" <?php echo ($settings['timezoneoffset'] == '-12') ? 'selected' : ''; ?>>GMT -12:00 hours</option>
-                                            <option value="-11" <?php echo ($settings['timezoneoffset'] == '-11') ? 'selected' : ''; ?>>GMT -11:00 hours</option>
-                                            <option value="-10" <?php echo ($settings['timezoneoffset'] == '-10') ? 'selected' : ''; ?>>GMT -10:00 hours</option>
-                                            <option value="-9" <?php echo ($settings['timezoneoffset'] == '-9') ? 'selected' : ''; ?>>GMT -9:00 hours</option>
-                                            <option value="-8" <?php echo ($settings['timezoneoffset'] == '-8') ? 'selected' : ''; ?>>GMT -8:00 hours</option>
-                                            <option value="-7" <?php echo ($settings['timezoneoffset'] == '-7') ? 'selected' : ''; ?>>GMT -7:00 hours</option>
-                                            <option value="-6" <?php echo ($settings['timezoneoffset'] == '-6') ? 'selected' : ''; ?>>GMT -6:00 hours</option>
-                                            <option value="-5" <?php echo ($settings['timezoneoffset'] == '-5') ? 'selected' : ''; ?>>GMT -5:00 hours</option>
-                                            <option value="-4" <?php echo ($settings['timezoneoffset'] == '-4') ? 'selected' : ''; ?>>GMT -4:00 hours</option>
-                                            <option value="-3.5" <?php echo ($settings['timezoneoffset'] == '-3.5') ? 'selected' : ''; ?>>GMT -3:30 hours</option>
-                                            <option value="-3" <?php echo ($settings['timezoneoffset'] == '-3') ? 'selected' : ''; ?>>GMT -3:00 hours</option>
-                                            <option value="-2" <?php echo ($settings['timezoneoffset'] == '-2') ? 'selected' : ''; ?>>GMT -2:00 hours</option>
-                                            <option value="-1" <?php echo ($settings['timezoneoffset'] == '-1') ? 'selected' : ''; ?>>GMT -1:00 hours</option>
-                                            <option value="0" <?php echo ($settings['timezoneoffset'] == '0') ? 'selected' : ''; ?>>GMT</option>
-                                            <option value="+1" <?php echo ($settings['timezoneoffset'] == '+1') ? 'selected' : ''; ?>>GMT +1:00 hours</option>
-                                            <option value="+2" <?php echo ($settings['timezoneoffset'] == '+2') ? 'selected' : ''; ?>>GMT +2:00 hours</option>
-                                            <option value="+3" <?php echo ($settings['timezoneoffset'] == '+3') ? 'selected' : ''; ?>>GMT +3:00 hours</option>
-                                            <option value="+3.5" <?php echo ($settings['timezoneoffset'] == '+3.5') ? 'selected' : ''; ?>>GMT +3:30 hours</option>
-                                            <option value="+4" <?php echo ($settings['timezoneoffset'] == '+4') ? 'selected' : ''; ?>>GMT +4:00 hours</option>
-                                            <option value="+4.5" <?php echo ($settings['timezoneoffset'] == '+4.5') ? 'selected' : ''; ?>>GMT +4:30 hours</option>
-                                            <option value="+5" <?php echo ($settings['timezoneoffset'] == '+5') ? 'selected' : ''; ?>>GMT +5:00 hours</option>
-                                            <option value="+5.5" <?php echo ($settings['timezoneoffset'] == '+5.5') ? 'selected' : ''; ?>>GMT +5:30 hours</option>
-                                            <option value="+5.75" <?php echo ($settings['timezoneoffset'] == '+5.75') ? 'selected' : ''; ?>>GMT +5:45 hours</option>
-                                            <option value="+6" <?php echo ($settings['timezoneoffset'] == '+6') ? 'selected' : ''; ?>>GMT +6:00 hours</option>
-                                            <option value="+7" <?php echo ($settings['timezoneoffset'] == '+7') ? 'selected' : ''; ?>>GMT +7:00 hours</option>
-                                            <option value="+8" <?php echo ($settings['timezoneoffset'] == '+8') ? 'selected' : ''; ?>>GMT +8:00 hours</option>
-                                            <option value="+9" <?php echo ($settings['timezoneoffset'] == '+9') ? 'selected' : ''; ?>>GMT +9:00 hours</option>
-                                            <option value="+9.5" <?php echo ($settings['timezoneoffset'] == '+9.5') ? 'selected' : ''; ?>>GMT +9:30 hours</option>
-                                            <option value="+10" <?php echo ($settings['timezoneoffset'] == '+10') ? 'selected' : ''; ?>>GMT +10:00 hours</option>
-                                            <option value="+10.5" <?php echo ($settings['timezoneoffset'] == '+10.5') ? 'selected' : ''; ?>>GMT +10:30 hours</option>
-                                            <option value="+11" <?php echo ($settings['timezoneoffset'] == '+11') ? 'selected' : ''; ?>>GMT +11:00 hours</option>
-                                            <option value="+12" <?php echo ($settings['timezoneoffset'] == '+12') ? 'selected' : ''; ?>>GMT +12:00 hours</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Here you can set the default timezone offset for guests and members using the default offset.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="dstcorrection" class="form-label">Day Light Savings Time?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="dstcorrection" name="configoption[dstcorrection]">
-                                            <option value="1" <?php echo ($settings['dstcorrection'] == '1') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="0" <?php echo ($settings['dstcorrection'] == '0') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="If times are an hour out above and your timezone is selected correctly, enable day light savings time correction.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="datetimesep" class="form-label">Date/Time Separator</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="datetimesep" name="configoption[datetimesep]" value="<?php echo htmlspecialchars($settings['datetimesep']); ?>">
-                                        <span class="input-group-text help-icon" title="Where MyBB joins date and time formats this setting is used to separate them (typically a space or comma).">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Cookie Settings Tab -->
-                    <div class="tab-pane fade" id="cookie-settings">
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5>Cookie Settings</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label for="cookiedomain" class="form-label">Cookie Domain</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="cookiedomain" name="configoption[cookiedomain]" value="<?php echo htmlspecialchars($settings['cookiedomain']); ?>">
-                                        <span class="input-group-text help-icon" title="The domain which cookies should be set to. This can remain blank. It should also start with a . so it covers all subdomains.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="cookiepath" class="form-label">Cookie Path</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="cookiepath" name="configoption[cookiepath]" value="<?php echo htmlspecialchars($settings['cookiepath']); ?>">
-                                        <span class="input-group-text help-icon" title="The path which cookies are set to. We recommend setting this to the full directory path to your forums with a trailing slash.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="cookieprefix" class="form-label">Cookie Prefix</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="cookieprefix" name="configoption[cookieprefix]" value="<?php echo htmlspecialchars($settings['cookieprefix']); ?>">
-                                        <span class="input-group-text help-icon" title="A prefix to append to all cookies set by MyBB. This is useful if you wish to install multiple copies of MyBB on the one domain or have other software installed which conflicts with the names of the cookies in MyBB. If not specified, no prefix will be used.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="cookiesecureflag" class="form-label">Secure Cookie Flag</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="cookiesecureflag" name="configoption[cookiesecureflag]">
-                                            <option value="1" <?php echo ($settings['cookiesecureflag'] == '1') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="0" <?php echo ($settings['cookiesecureflag'] == '0') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Cookies can be set with the Secure flag to prevent them from being sent over unencrypted connections. You should enable this setting only if your forum works correctly under HTTPS.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="cookiesamesiteflag" class="form-label">SameSite Cookie Flag</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="cookiesamesiteflag" name="configoption[cookiesamesiteflag]">
-                                            <option value="1" <?php echo ($settings['cookiesamesiteflag'] == '1') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="0" <?php echo ($settings['cookiesamesiteflag'] == '0') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Authentication cookies will carry the SameSite flag to prevent CSRF attacks. Keep this disabled if you expect cross-origin POST requests">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>			
-							
-						
-
-<!-- Avatar Settings Tab -->
-                    <div class="tab-pane fade" id="avatar-settings">
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5>Avatar Settings</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label for="useravatar" class="form-label">Default User Avatar</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="useravatar" name="configoption[useravatar]" value="<?php echo htmlspecialchars($settings['useravatar']); ?>">
-                                        <span class="input-group-text help-icon" title="If the user does not set a custom avatar this image will be used instead.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="useravatardims" class="form-label">Default Avatar Dimensions</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="useravatardims" name="configoption[useravatardims]" value="<?php echo htmlspecialchars($settings['useravatardims']); ?>">
-                                        <span class="input-group-text help-icon" title="The dimensions of the default avatar; width and height separated by | or x (e.g. 40|40 or 40x40).">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="maxavatardims" class="form-label">Maximum Avatar Dimensions</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="maxavatardims" name="configoption[maxavatardims]" value="<?php echo htmlspecialchars($settings['maxavatardims']); ?>">
-                                        <span class="input-group-text help-icon" title="The maximum dimensions that an avatar can be, width and height separated by | or x If this is left blank then there will be no dimension restriction.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="allowremoteavatars" class="form-label">Allow Remote Avatars</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="allowremoteavatars" name="configoption[allowremoteavatars]">
-                                            <option value="1" <?php echo ($settings['allowremoteavatars'] == '1') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="0" <?php echo ($settings['allowremoteavatars'] == '0') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Whether to allow the usage of avatars from remote servers. Having this enabled can expose your servers IP address.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="avataruploadpath" class="form-label">Avatar Upload Path</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="avataruploadpath" name="configoption[avataruploadpath]" value="<?php echo htmlspecialchars($settings['avataruploadpath']); ?>">
-                                        <span class="input-group-text help-icon" title="The path where avatars will be uploaded to.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="avatarsize" class="form-label">Maximum Avatar Size (bytes)</label>
-                                    <div class="input-group">
-                                        <input type="number" class="form-control" id="avatarsize" name="configoption[avatarsize]" value="<?php echo htmlspecialchars($settings['avatarsize']); ?>">
-                                        <span class="input-group-text help-icon" title="The maximum file size of avatars in bytes.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-					
-					
-					
-					
-					
-					 <!-- Security Settings Tab -->
-                    <div class="tab-pane fade" id="security-settings">
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5>Security Settings</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label for="aggressivecheckip" class="form-label">Aggressive IP Ban?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="aggressivecheckip" name="configoption[aggressivecheckip]">
-                                            <option value="yes" <?php echo ($settings['aggressivecheckip'] == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="no" <?php echo ($settings['aggressivecheckip'] == 'no') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Check banned IP's in Aggressive mode. This might decrease server load.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="aggressivecheckemail" class="form-label">Aggressive EMAIL Ban?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="aggressivecheckemail" name="configoption[aggressivecheckemail]">
-                                            <option value="yes" <?php echo ($settings['aggressivecheckemail'] == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="no" <?php echo ($settings['aggressivecheckemail'] == 'no') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Check banned EMAIL's in Aggressive mode.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="iplog1" class="form-label">Save User IP?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="iplog1" name="configoption[iplog1]">
-                                            <option value="yes" <?php echo ($settings['iplog1'] == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="no" <?php echo ($settings['iplog1'] == 'no') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="When user login with a different IP, save it into database.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="ctracker" class="form-label">Cracker Tracker Protection Enabled?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="ctracker" name="configoption[ctracker]">
-                                            <option value="yes" <?php echo ($settings['ctracker'] == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="no" <?php echo ($settings['ctracker'] == 'no') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Extra Protection against Hacker Attacks. (URL Protection)">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="iv" class="form-label">Image Verification Enabled?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="iv" name="configoption[iv]">
-                                            <option value="yes" <?php echo ($iv == 'yes') ? 'selected' : ''; ?>>Yes, use Image Verification (GD/GD2).</option>
-                                            <option value="reCAPTCHA" <?php echo ($iv == 'reCAPTCHA') ? 'selected' : ''; ?>>Yes, use reCAPTCHA™</option>
-                                            <option value="no" <?php echo ($iv == 'no') ? 'selected' : ''; ?>>No, disabled.</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Require users to enter a Visual Verify Code to register/login/recover? (GD OR GD2 Library required)">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <?php if ($iv == 'reCAPTCHA'): ?>
-                                <div class="mb-3">
-                                    <label for="reCAPTCHAPublickey" class="form-label">reCAPTCHA™ Public Key</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="reCAPTCHAPublickey" name="configoption[reCAPTCHAPublickey]" value="<?php echo htmlspecialchars($reCAPTCHAPublickey); ?>">
-                                        <span class="input-group-text help-icon" title="Public key provided to you by reCAPTCHA™">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="reCAPTCHAPrivatekey" class="form-label">reCAPTCHA™ Private Key</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="reCAPTCHAPrivatekey" name="configoption[reCAPTCHAPrivatekey]" value="<?php echo htmlspecialchars($reCAPTCHAPrivatekey); ?>">
-                                        <span class="input-group-text help-icon" title="Private key provided to you by reCAPTCHA™">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="reCAPTCHATheme" class="form-label">reCAPTCHA™ Theme</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="reCAPTCHATheme" name="configoption[reCAPTCHATheme]">
-                                            <option value="red" <?php echo ($reCAPTCHATheme == 'red') ? 'selected' : ''; ?>>Red</option>
-                                            <option value="white" <?php echo ($reCAPTCHATheme == 'white') ? 'selected' : ''; ?>>White</option>
-                                            <option value="blackglass" <?php echo ($reCAPTCHATheme == 'blackglass') ? 'selected' : ''; ?>>Black Glass</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="reCAPTCHA™ provides different themes for their CAPTCHA's. This option allows you to select the theme to use within your website.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="reCAPTCHALanguage" class="form-label">reCAPTCHA™ Language</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="reCAPTCHALanguage" name="configoption[reCAPTCHALanguage]">
-                                            <option value="en" <?php echo ($reCAPTCHALanguage == 'en') ? 'selected' : ''; ?>>English</option>
-                                            <option value="nl" <?php echo ($reCAPTCHALanguage == 'nl') ? 'selected' : ''; ?>>Dutch</option>
-                                            <option value="fr" <?php echo ($reCAPTCHALanguage == 'fr') ? 'selected' : ''; ?>>French</option>
-                                            <option value="de" <?php echo ($reCAPTCHALanguage == 'de') ? 'selected' : ''; ?>>German</option>
-                                            <option value="pt" <?php echo ($reCAPTCHALanguage == 'pt') ? 'selected' : ''; ?>>Portuguese</option>
-                                            <option value="ru" <?php echo ($reCAPTCHALanguage == 'ru') ? 'selected' : ''; ?>>Russian</option>
-                                            <option value="es" <?php echo ($reCAPTCHALanguage == 'es') ? 'selected' : ''; ?>>Spanish</option>
-                                            <option value="tr" <?php echo ($reCAPTCHALanguage == 'tr') ? 'selected' : ''; ?>>Turkish</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="reCAPTCHA™ provides different languages for their CAPTCHA's. This option allows you to select the default language of reCAPTCHA™">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                                <?php endif; ?>
-
-                                <div class="mb-3">
-                                    <label for="vkeyword" class="form-label">Virtual Keyboard Enabled?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="vkeyword" name="configoption[vkeyword]">
-                                            <option value="yes" <?php echo ($vkeyword == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="no" <?php echo ($vkeyword == 'no') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Enable this feature to prevent Keylogger hacks.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="privatetrackerpatch" class="form-label">Private Tracker Patch Enabled?</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="privatetrackerpatch" name="configoption[privatetrackerpatch]">
-                                            <option value="yes" <?php echo ($settings['privatetrackerpatch'] == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="no" <?php echo ($settings['privatetrackerpatch'] == 'no') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Re-download is necessary for seed after upload a torrent.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-
-
-
-
-<!-- Email Settings Tab -->
-                    <div class="tab-pane fade" id="email-settings">
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5>Email Settings</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="mb-3">
-                                    <label for="mail_handler" class="form-label">Mail Handler</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="mail_handler" name="configoption[mail_handler]">
-                                            <option value="mail" <?php echo ($settings['mail_handler'] == 'mail') ? 'selected' : ''; ?>>PHP Mail</option>
-                                            <option value="smtp" <?php echo ($settings['mail_handler'] == 'smtp') ? 'selected' : ''; ?>>SMTP</option>
-                                            <option value="sendmail" <?php echo ($settings['mail_handler'] == 'sendmail') ? 'selected' : ''; ?>>Sendmail</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Select the method your server uses to send mail.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <?php if ($settings['mail_handler'] == 'smtp'): ?>
-                                <div class="mb-3">
-                                    <label for="smtp_host" class="form-label">SMTP Host</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="smtp_host" name="configoption[smtp_host]" value="<?php echo htmlspecialchars($settings['smtp_host']); ?>">
-                                        <span class="input-group-text help-icon" title="The hostname of your SMTP server.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="smtp_user" class="form-label">SMTP Username</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="smtp_user" name="configoption[smtp_user]" value="<?php echo htmlspecialchars($settings['smtp_user']); ?>">
-                                        <span class="input-group-text help-icon" title="The username to authenticate with your SMTP server.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="smtp_pass" class="form-label">SMTP Password</label>
-                                    <div class="input-group">
-                                        <input type="password" class="form-control" id="smtp_pass" name="configoption[smtp_pass]" value="<?php echo htmlspecialchars($settings['smtp_pass']); ?>">
-                                        <span class="input-group-text help-icon" title="The password to authenticate with your SMTP server.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="smtp_port" class="form-label">SMTP Port</label>
-                                    <div class="input-group">
-                                        <input type="number" class="form-control" id="smtp_port" name="configoption[smtp_port]" value="<?php echo htmlspecialchars($settings['smtp_port']); ?>">
-                                        <span class="input-group-text help-icon" title="The port number to connect to your SMTP server (usually 25, 465 for SSL, or 587 for TLS).">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="secure_smtp" class="form-label">Secure SMTP</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="secure_smtp" name="configoption[secure_smtp]">
-                                            <option value="0" <?php echo ($settings['secure_smtp'] == '0') ? 'selected' : ''; ?>>No encryption</option>
-                                            <option value="1" <?php echo ($settings['secure_smtp'] == '1') ? 'selected' : ''; ?>>SSL encryption</option>
-                                            <option value="2" <?php echo ($settings['secure_smtp'] == '2') ? 'selected' : ''; ?>>TLS encryption</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Select the security protocol for your SMTP connection.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                                <?php endif; ?>
-
-                                <div class="mb-3">
-                                    <label for="mail_logging" class="form-label">Mail Logging</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="mail_logging" name="configoption[mail_logging]">
-                                            <option value="0" <?php echo ($settings['mail_logging'] == '0') ? 'selected' : ''; ?>>None</option>
-                                            <option value="1" <?php echo ($settings['mail_logging'] == '1') ? 'selected' : ''; ?>>Log emails without content</option>
-                                            <option value="2" <?php echo ($settings['mail_logging'] == '2') ? 'selected' : ''; ?>>Log everything</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Select the level of email logging you require.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-								
-								
-								
-								
-								
-								<div class="mb-3">
-                                    <label for="mail_message_id" class="form-label">Add message ID in mail headers</label>
-                                    <div class="input-group">
-                                        <select class="form-select" id="mail_message_id" name="configoption[mail_message_id]">
-                                            <option value="1" <?php echo ($settings['mail_message_id'] == '1') ? 'selected' : ''; ?>>Yes</option>
-                                            <option value="0" <?php echo ($settings['mail_message_id'] == '0') ? 'selected' : ''; ?>>No</option>
-                                        </select>
-                                        <span class="input-group-text help-icon" title="Disabling this option on some shared hosts resolves issues with forum emails being marked as spam.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-								
-								
-								
-								
-								
-								
-								
-								
-								
-								
-								
-								
-								
-								
-								
-
-                                <div class="mb-3">
-                                    <label for="mail_queue_limit" class="form-label">Messages to send from the mail queue</label>
-                                    <div class="input-group">
-                                        <input type="number" class="form-control" id="mail_queue_limit" name="configoption[mail_queue_limit]" value="<?php echo htmlspecialchars($settings['mail_queue_limit']); ?>">
-                                        <span class="input-group-text help-icon" title="The maximum number of emails that can be sent per batch when using the mail queue.">
-                                            <i class="fas fa-info-circle"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-
-
-					
-</form>
-
-
-
-
-
-
-<!-- Announce Settings Tab -->
-<div class="tab-pane fade" id="announce-settings">
-  <form method="POST" action="" id="announce-settings-form">
-    <div class="card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Announce Settings</h5>
-      </div>
-      <div class="card-body">
-
-        <div class="mb-3">
-          <label for="announce_actions" class="form-label">Log Cheat Attempts?</label>
-          <div class="input-group">
-            <select class="form-select" id="announce_actions" name="configoption[announce_actions]">
-              <option value="yes" <?= $announce_actions == 'yes' ? 'selected' : '' ?>>Yes</option>
-              <option value="no" <?= $announce_actions == 'no' ? 'selected' : '' ?>>No</option>
-            </select>
-            <span class="input-group-text help-icon" title="Disable this for better performance.">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="aggressivecheat" class="form-label">Aggressive Cheat Detection?</label>
-          <div class="input-group">
-            <select class="form-select" id="aggressivecheat" name="configoption[aggressivecheat]">
-              <option value="yes" <?= $aggressivecheat == 'yes' ? 'selected' : '' ?>>Yes</option>
-              <option value="no" <?= $aggressivecheat == 'no' ? 'selected' : '' ?>>No</option>
-            </select>
-            <span class="input-group-text help-icon" title="Detect cheat tools like RatioMaster, Ratio Faker etc.">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="nc" class="form-label">Disable DL/UL?</label>
-          <div class="input-group">
-            <select class="form-select" id="nc" name="configoption[nc]">
-              <option value="yes" <?= $nc == 'yes' ? 'selected' : '' ?>>Yes</option>
-              <option value="no" <?= $nc == 'no' ? 'selected' : '' ?>>No</option>
-            </select>
-            <span class="input-group-text help-icon" title="Block download/upload for not connectable users.">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="announce_wait" class="form-label">Min. Announce Refresh Time?</label>
-          <div class="input-group">
-            <input type="text" size="10" id="announce_wait" name="configoption[announce_wait]" 
-                   value="<?= htmlspecialchars($announce_wait) ?>" class="form-control">
-            <span class="input-group-text help-icon" title="Minimum announce refresh time (flood limit). 0 = disabled">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="announce_interval" class="form-label">Announce Interval?</label>
-          <div class="input-group">
-            <input type="text" size="10" id="announce_interval" name="configoption[announce_interval]" 
-                   value="<?= htmlspecialchars($announce_interval) ?>" class="form-control">
-            <span class="input-group-text help-icon" title="Announce interval in seconds. Higher = better performance">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="max_rate" class="form-label">Max. Transfer Rate?</label>
-          <div class="input-group">
-            <input type="text" size="10" id="max_rate" name="configoption[max_rate]" 
-                   value="<?= htmlspecialchars($max_rate) ?>" class="form-control">
-            <span class="input-group-text help-icon" title="Detect suspicious speeds if above this rate">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="bannedclientdetect" class="form-label">Banned Client Detection?</label>
-          <div class="input-group">
-            <select class="form-select" id="bannedclientdetect" name="configoption[bannedclientdetect]">
-              <option value="yes" <?= $bannedclientdetect == 'yes' ? 'selected' : '' ?>>Yes</option>
-              <option value="no" <?= $bannedclientdetect == 'no' ? 'selected' : '' ?>>No</option>
-            </select>
-            <span class="input-group-text help-icon" title="Allow only clients from whitelist if enabled">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="allowed_clients" class="form-label">Allowed Clients</label>
-          <div class="input-group">
-            <textarea name="configoption[allowed_clients]" rows="4" class="form-control"><?= htmlspecialchars($allowed_clients) ?></textarea>
-            <span class="input-group-text help-icon" title="Whitelist of allowed clients">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="detectbrowsercheats" class="form-label">Detect Browser Cheats?</label>
-          <div class="input-group">
-            <select class="form-select" id="detectbrowsercheats" name="configoption[detectbrowsercheats]">
-              <option value="yes" <?= $detectbrowsercheats == 'yes' ? 'selected' : '' ?>>Yes</option>
-              <option value="no" <?= $detectbrowsercheats == 'no' ? 'selected' : '' ?>>No</option>
-            </select>
-            <span class="input-group-text help-icon" title="Detect browser-based cheat attempts">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="checkconnectable" class="form-label">Detect Connectable?</label>
-          <div class="input-group">
-            <select class="form-select" id="checkconnectable" name="configoption[checkconnectable]">
-              <option value="yes" <?= $checkconnectable == 'yes' ? 'selected' : '' ?>>Yes</option>
-              <option value="no" <?= $checkconnectable == 'no' ? 'selected' : '' ?>>No</option>
-            </select>
-            <span class="input-group-text help-icon" title="Decreases performance if enabled">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="checkip" class="form-label">Check IP?</label>
-          <div class="input-group">
-            <select class="form-select" id="checkip" name="configoption[checkip]">
-              <option value="yes" <?= $checkip == 'yes' ? 'selected' : '' ?>>Yes</option>
-              <option value="no" <?= $checkip == 'no' ? 'selected' : '' ?>>No</option>
-            </select>
-            <span class="input-group-text help-icon" title="Match user’s last IP in DB with client IP">
-              <i class="fas fa-info-circle"></i>
-            </span>
-          </div>
-        </div>
-		
-		
-		
-<div class="mb-3">
-    <label for="mysql_host" class="form-label">MYSQL Host</label>
-    <div class="input-group">
-        <input type="text" class="form-control" id="mysql_host" name="configoption[mysql_host]" value="<?php echo htmlspecialchars($mysql_host); ?>">
-        <span class="input-group-text help-icon" title="Please enter your MySQL host name here.">
-            <i class="fas fa-info-circle"></i>
-        </span>
-    </div>
-</div>
-
-<div class="mb-3">
-    <label for="mysql_user" class="form-label">MYSQL User</label>
-    <div class="input-group">
-        <input type="text" class="form-control" id="mysql_user" name="configoption[mysql_user]" value="<?php echo htmlspecialchars($mysql_user); ?>">
-        <span class="input-group-text help-icon" title="Please enter your MySQL user name here.">
-            <i class="fas fa-info-circle"></i>
-        </span>
-    </div>
-</div>
-
-<div class="mb-3">
-    <label for="mysql_pass" class="form-label">MYSQL Password</label>
-    <div class="input-group">
-        <input type="password" class="form-control" id="mysql_pass" name="configoption[mysql_pass]" value="">
-        <span class="input-group-text help-icon" title="Please enter your MySQL password here.">
-            <i class="fas fa-info-circle"></i>
-        </span>
-    </div>
-</div>
-
-<div class="mb-3">
-    <label for="mysql_db" class="form-label">MYSQL Database Name</label>
-    <div class="input-group">
-        <input type="text" class="form-control" id="mysql_db" name="configoption[mysql_db]" value="<?php echo htmlspecialchars($mysql_db); ?>">
-        <span class="input-group-text help-icon" title="Please enter your MySQL database name here.">
-            <i class="fas fa-info-circle"></i>
-        </span>
-    </div>
-</div>
-
-		
-		
-		
-		
-
-        <!-- Save button -->
-        <div class="d-flex justify-content-end mt-4">
-          <button type="submit" name="save_announce" class="btn btn-primary px-4">
-            <i class="fas fa-save me-2"></i> Save Changes
-          </button>
-        </div>
-      </div>
-    </div>
-  </form>
-</div>
-
-
-
-
-
-
-<!-- Registration Settings Tab -->
-<div class="tab-pane fade" id="registration-settings">
-  <form method="POST" action="" id="registration-settings-form">
-    <div class="card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Registration Settings</h5>
-      </div>
-      <div class="card-body">
-        
-        <div class="mb-4">
-          <h6 class="mb-3 border-bottom pb-2">Registration System</h6>
-          <div class="row">
-            <div class="col-md-6 mb-3">
-              <label for="invitesystem" class="form-label">Invite System</label>
-              <div class="input-group">
-                <select class="form-select" id="invitesystem" name="configoption[invitesystem]">
-                  <option value="on" <?= $invitesystem == 'on' ? 'selected' : '' ?>>Enabled</option>
-                  <option value="off" <?= $invitesystem == 'off' ? 'selected' : '' ?>>Disabled</option>
-                </select>
-                <span class="input-group-text help-icon" title="Enable invite-only registration system">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label for="regtype" class="form-label">Registration Method</label>
-              <div class="input-group">
-                <select class="form-select" id="regtype" name="configoption[regtype]">
-                  <option value="invite" <?= $regtype == 'invite' ? 'selected' : '' ?>>Invite System</option>
-                  <option value="instant" <?= $regtype == 'instant' ? 'selected' : '' ?>>Instant Activation</option>
-                  <option value="verify" <?= $regtype == 'verify' ? 'selected' : '' ?>>Email Verification</option>
-                  <option value="randompass" <?= $regtype == 'randompass' ? 'selected' : '' ?>>Random Password</option>
-                  <option value="admin" <?= $regtype == 'admin' ? 'selected' : '' ?>>Admin Activation</option>
-                  <option value="both" <?= $regtype == 'both' ? 'selected' : '' ?>>Email + Admin Activation</option>
-                </select>
-                <span class="input-group-text help-icon" title="Select how new users will activate their accounts">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Username Settings -->
-        <div class="mb-4">
-          <h6 class="mb-3 border-bottom pb-2">Username Requirements</h6>
-          <div class="row">
-            <div class="col-md-6 mb-3">
-              <label for="minnamelength" class="form-label">Min Username Length</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="minnamelength" 
-                       name="configoption[minnamelength]" value="<?= htmlspecialchars($minnamelength) ?>">
-                <span class="input-group-text help-icon" title="Minimum characters required for usernames">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            
-            <div class="col-md-6 mb-3">
-              <label for="maxnamelength" class="form-label">Max Username Length</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="maxnamelength" 
-                       name="configoption[maxnamelength]" value="<?= htmlspecialchars($maxnamelength) ?>">
-                <span class="input-group-text help-icon" title="Maximum characters allowed for usernames">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            
-            <div class="col-md-6 mb-3">
-              <label for="maxip" class="form-label">Max. IP's</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="maxip" 
-                       name="configoption[maxip]" value="<?= htmlspecialchars($maxip) ?>">
-                <span class="input-group-text help-icon" title="Disable registration with same IP Address. Leave it 'disable' to disable this feature">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label for="illegalusernames" class="form-label">Banned Usernames</label>
-            <div class="input-group">
-              <textarea class="form-control" id="illegalusernames" name="configoption[illegalusernames]" rows="3"><?= htmlspecialchars($illegalusernames) ?></textarea>
-              <span class="input-group-text help-icon" title="Space-separated list of banned username fragments">
-                <i class="fas fa-info-circle"></i>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Password Settings -->
-        <div class="mb-4">
-          <h6 class="mb-3 border-bottom pb-2">Password Requirements</h6>
-          <div class="row">
-            <div class="col-md-6 mb-3">
-              <label for="minpasswordlength" class="form-label">Min Password Length</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="minpasswordlength" 
-                       name="configoption[minpasswordlength]" value="<?= htmlspecialchars($minpasswordlength) ?>">
-                <span class="input-group-text help-icon" title="Minimum characters required for passwords">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label for="maxpasswordlength" class="form-label">Max Password Length</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="maxpasswordlength" 
-                       name="configoption[maxpasswordlength]" value="<?= htmlspecialchars($maxpasswordlength) ?>">
-                <span class="input-group-text help-icon" title="Maximum characters allowed for passwords">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label for="requirecomplexpasswords" class="form-label">Complex Passwords</label>
-            <div class="input-group">
-              <select class="form-select" id="requirecomplexpasswords" name="configoption[requirecomplexpasswords]">
-                <option value="1" <?= $requirecomplexpasswords == '1' ? 'selected' : '' ?>>Required</option>
-                <option value="0" <?= $requirecomplexpasswords == '0' ? 'selected' : '' ?>>Not Required</option>
-              </select>
-              <span class="input-group-text help-icon" title="Require uppercase, lowercase and numbers in passwords">
-                <i class="fas fa-info-circle"></i>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Security Settings -->
-        <div class="mb-4">
-          <h6 class="mb-3 border-bottom pb-2">Security Settings</h6>
-          <div class="row">
-            <div class="col-md-6 mb-3">
-              <label for="failedlogincount" class="form-label">Number of times to allow failed logins</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="failedlogincount" 
-                       name="configoption[failedlogincount]" value="<?= htmlspecialchars($failedlogincount) ?>">
-                <span class="input-group-text help-icon" title="Number of allowed failed login attempts (0 to disable)">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label for="failedlogintext" class="form-label">Display number of failed logins</label>
-              <div class="input-group">
-                <select class="form-select" id="failedlogintext" name="configoption[failedlogintext]">
-                  <option value="1" <?= $failedlogintext == '1' ? 'selected' : '' ?>>Yes</option>
-                  <option value="0" <?= $failedlogintext == '0' ? 'selected' : '' ?>>No</option>
-                </select>
-                <span class="input-group-text help-icon" title="Show users how many login attempts remain">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="row">
-            <div class="col-md-6 mb-3">
-              <label for="username_method" class="form-label">Allowed Login Methods</label>
-              <div class="input-group">
-                <select class="form-select" id="username_method" name="configoption[username_method]">
-                  <option value="0" <?= $username_method == '0' ? 'selected' : '' ?>>Username Only</option>
-                  <option value="1" <?= $username_method == '1' ? 'selected' : '' ?>>Email Only</option>
-                  <option value="2" <?= $username_method == '2' ? 'selected' : '' ?>>Both Username and Email</option>
-                </select>
-                <span class="input-group-text help-icon" title="Allowed login identification methods">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label for="disableregs" class="form-label">Disable Registrations</label>
-              <div class="input-group">
-                <select class="form-select" id="disableregs" name="configoption[disableregs]">
-                  <option value="1" <?= $disableregs == '1' ? 'selected' : '' ?>>Yes</option>
-                  <option value="0" <?= $disableregs == '0' ? 'selected' : '' ?>>No</option>
-                </select>
-                <span class="input-group-text help-icon" title="Temporarily disable new registrations">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            
-            <div class="col-md-6 mb-3">
-              <label for="r_verification" class="form-label">Verification Fields</label>
-              <div class="input-group">
-                <select class="form-select" id="r_verification" name="configoption[r_verification]">
-                  <option value="yes" <?= $r_verification == 'yes' ? 'selected' : '' ?>>Yes</option>
-                  <option value="no" <?= $r_verification == 'no' ? 'selected' : '' ?>>No</option>
-                </select>
-                <span class="input-group-text help-icon" title="User must agree rules before registering">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            
-            <div class="col-md-6 mb-3">
-              <label for="maxusers" class="form-label">Max Users</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="maxusers" 
-                       name="configoption[maxusers]" value="<?= htmlspecialchars($maxusers) ?>">
-                <span class="input-group-text help-icon" title="Disable registration whenever this limit will be reached">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Additional Settings -->
-        <div class="mb-4">
-          <h6 class="mb-3 border-bottom pb-2">Additional Settings</h6>
-          <div class="row">
-            <div class="col-md-6 mb-3">
-              <label for="coppa" class="form-label">COPPA Compliance</label>
-              <div class="input-group">
-                <select class="form-select" id="coppa" name="configoption[coppa]">
-                  <option value="enabled" <?= $coppa == 'enabled' ? 'selected' : '' ?>>Enabled</option>
-                  <option value="deny" <?= $coppa == 'deny' ? 'selected' : '' ?>>Deny users under 13</option>
-                  <option value="disabled" <?= $coppa == 'disabled' ? 'selected' : '' ?>>Disabled</option>
-                </select>
-                <span class="input-group-text help-icon" title="Children's Online Privacy Protection Act settings">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            <div class="col-md-6 mb-3">
-              <label for="default_usergroup" class="form-label">Default Usergroup</label>
-              <div class="input-group">
-                <select class="form-select" id="default_usergroup" name="configoption[_d_usergroup]">
-                  <?php 
-                  $squery = $db->sql_query('SELECT gid, title, namestyle FROM usergroups');
-                  while ($gid = mysqli_fetch_assoc($squery)): 
-                  ?>
-                    <option value="<?= $gid['gid'] ?>" <?= $_d_usergroup == $gid['gid'] ? 'selected' : '' ?>>
-                      <?= get_user_color($gid['title'], $gid['namestyle']) ?>
-                    </option>
-                  <?php endwhile; ?>
-                </select>
-                <span class="input-group-text help-icon" title="Default group for new registrations">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="row">
-            <div class="col-md-4 mb-3">
-              <label for="invite_count" class="form-label">Initial Invites</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="invite_count" 
-                       name="configoption[invite_count]" value="<?= htmlspecialchars($invite_count) ?>">
-                <span class="input-group-text help-icon" title="Invites given to new users (0 to disable)">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            <div class="col-md-4 mb-3">
-              <label for="autogigsignup" class="form-label">Auto GB on Signup</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="autogigsignup" 
-                       name="configoption[autogigsignup]" value="<?= htmlspecialchars($autogigsignup) ?>">
-                <span class="input-group-text help-icon" title="GB given to new users (0 to disable)">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-            <div class="col-md-4 mb-3">
-              <label for="autosbsignup" class="form-label">Auto SeedBonus</label>
-              <div class="input-group">
-                <input type="number" class="form-control" id="autosbsignup" 
-                       name="configoption[autosbsignup]" value="<?= htmlspecialchars($autosbsignup) ?>">
-                <span class="input-group-text help-icon" title="SeedBonus given to new users (0 to disable)">
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Save Button -->
-        <div class="d-flex justify-content-end mt-4">
-          <button type="submit" name="save_registration" class="btn btn-primary px-4">
-            <i class="fas fa-save me-2"></i> Save Changes
-          </button>
-        </div>
-      </div> <!-- .card-body -->
-    </div> <!-- .card -->
-  </form>
-</div> <!-- .tab-pane -->
-
-
-
-
-
-
-
-
-
-<!-- Cleanup Settings Tab -->
-<div class="tab-pane fade" id="user-management-settings">
-  <form method="POST" action="" id="user-management-form">
-    <div class="card mb-4">
-      <div class="card-header">
-        <h5>Cleanup Settings</h5>
-      </div>
-      <div class="card-body">
-
-
-
-
-
-<!-- Automatic Invites Section -->
-            <div class="mb-3">
-                <label for="ai" class="form-label">Automatic Invite?</label>
-                <div class="input-group">
-                    <select class="form-select" id="ai" name="configoption[ai]">
-                        <option value="yes" <?php echo ($ai == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                        <option value="no" <?php echo ($ai == 'no') ? 'selected' : ''; ?>>No</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Give x Invites every <?php echo $autoinvitetime; ?> days if usergroup have this feature.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="autoinvitetime" class="form-label">Automatic Invite Time (days)</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" id="autoinvitetime" name="configoption[autoinvitetime]" value="<?php echo htmlspecialchars($autoinvitetime); ?>">
-                    <span class="input-group-text help-icon" title="Give x Invites every X days if usergroup have this feature.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <!-- Torrent Settings Section -->
-            <div class="mb-3">
-                <label for="max_dead_torrent_time" class="form-label">Mark Torrents Invisible After (days)</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" id="max_dead_torrent_time" name="configoption[max_dead_torrent_time]" value="<?php echo htmlspecialchars($max_dead_torrent_time); ?>">
-                    <span class="input-group-text help-icon" title="Mark torrents as invisible after X days. (Torrent Last Action < X days)">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <!-- Promotion Settings Section -->
-            <div class="card-header d-flex justify-content-between align-items-center mt-4">
-                <h5 class="mb-0">User Promotion Settings</h5>
-            </div>
-
-            <div class="mb-3 mt-3">
-                <label for="promote_gig_limit" class="form-label">Promote Users GB Limit</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" id="promote_gig_limit" name="configoption[promote_gig_limit]" value="<?php echo htmlspecialchars($promote_gig_limit); ?>">
-                    <span class="input-group-text help-icon" title="Once Regular User reach this Limit, his/her account will be promoted automatically to Power User. Leave 0 to disable this feature.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="promote_min_ratio" class="form-label">Promote Users RATIO Limit</label>
-                <div class="input-group">
-                    <input type="number" step="0.01" class="form-control" id="promote_min_ratio" name="configoption[promote_min_ratio]" value="<?php echo htmlspecialchars($promote_min_ratio); ?>">
-                    <span class="input-group-text help-icon" title="Once Regular User reach this Limit, his/her account will be promoted automatically to Power User.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="promote_min_reg_days" class="form-label">Promote Users DAYS Limit</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" id="promote_min_reg_days" name="configoption[promote_min_reg_days]" value="<?php echo htmlspecialchars($promote_min_reg_days); ?>">
-                    <span class="input-group-text help-icon" title="Min. DAYS Limit for promote.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="demote_min_ratio" class="form-label">Demote Users RATIO Limit</label>
-                <div class="input-group">
-                    <input type="number" step="0.01" class="form-control" id="demote_min_ratio" name="configoption[demote_min_ratio]" value="<?php echo htmlspecialchars($demote_min_ratio); ?>">
-                    <span class="input-group-text help-icon" title="Whenever user have below ratio from this limit, his/her account will be demoted automatically to User.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="referrergift" class="form-label">Referrer Gift (GB)</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" id="referrergift" name="configoption[referrergift]" value="<?php echo htmlspecialchars($referrergift); ?>">
-                    <span class="input-group-text help-icon" title="Referrer will receive X GB Upload when his referred users reach Power User Level.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <!-- Warning Settings Section -->
-            <div class="card-header d-flex justify-content-between align-items-center mt-4">
-                <h5 class="mb-0">User Warning Settings</h5>
-            </div>
-
-            <div class="mb-3 mt-3">
-                <label for="leechwarn_min_ratio" class="form-label">Warn User MIN. Ratio</label>
-                <div class="input-group">
-                    <input type="number" step="0.01" class="form-control" id="leechwarn_min_ratio" name="configoption[leechwarn_min_ratio]" value="<?php echo htmlspecialchars($leechwarn_min_ratio); ?>">
-                    <span class="input-group-text help-icon" title="Min. Ratio for LeechWarning.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="leechwarn_gig_limit" class="form-label">Warn User GB Limit</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" id="leechwarn_gig_limit" name="configoption[leechwarn_gig_limit]" value="<?php echo htmlspecialchars($leechwarn_gig_limit); ?>">
-                    <span class="input-group-text help-icon" title="Min. GB Limit for LeechWarning.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="leechwarn_length" class="form-label">Warning Length (weeks)</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" id="leechwarn_length" name="configoption[leechwarn_length]" value="<?php echo htmlspecialchars($leechwarn_length); ?>">
-                    <span class="input-group-text help-icon" title="LeechWarning Length (weeks).">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="leechwarn_remove_ratio" class="form-label">Remove Warning Min. Ratio</label>
-                <div class="input-group">
-                    <input type="number" step="0.01" class="form-control" id="leechwarn_remove_ratio" name="configoption[leechwarn_remove_ratio]" value="<?php echo htmlspecialchars($leechwarn_remove_ratio); ?>">
-                    <span class="input-group-text help-icon" title="Min. Ratio Limit to Remove LeechWarning.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="ban_user_limit" class="form-label">Ban Warned Users After X Warnings</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" id="ban_user_limit" name="configoption[ban_user_limit]" value="<?php echo htmlspecialchars($ban_user_limit); ?>">
-                    <span class="input-group-text help-icon" title="Once an user has reached this limit, he will be automatically banned.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-			
-			
-	<div class="d-flex justify-content-end mt-4">
-          <button type="submit" name="save_user_management" class="btn btn-primary px-4">
-            <i class="fas fa-save me-2"></i> Save Changes
-          </button>
-        </div>
-      </div> <!-- .card-body -->
-    </div> <!-- .card -->
-  </form>
-</div> <!-- .tab-pane -->	
-
-
-
-
-
-
-
-
-
-
-<!-- KPS (Bonus Points) System Settings Tab -->
-<div class="tab-pane fade" id="kps-settings">
-  <form method="POST" action="" id="kps-settings-form">
-    <div class="card mb-4">
-      <div class="card-header">
-        <h5>KPS (Bonus Points) System Settings</h5>
-      </div>
-      <div class="card-body">
-
-        
-		
-		  <div class="mb-3">
-                <label for="bonus" class="form-label">KPS System Enabled?</label>
-                <div class="input-group">
-                    <select class="form-select" id="bonus" name="configoption[bonus]">
-                        <option value="enable" <?php echo ($bonus == 'enable') ? 'selected' : ''; ?>>Yes, Enabled</option>
-                        <option value="disablesave" <?php echo ($bonus == 'disablesave') ? 'selected' : ''; ?>>No, But Save Points</option>
-                        <option value="disable" <?php echo ($bonus == 'disable') ? 'selected' : ''; ?>>No, Disabled</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Once user earn points by seeding a torrent, posting a comment etc. they can trade this points on KPS page.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsseed" class="form-label">Seed Point</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="kpsseed" name="configoption[kpsseed]" value="<?php echo htmlspecialchars($kpsseed); ?>">
-                    <span class="input-group-text help-icon" title="This points depending on your Announce Interval value. Example: Set this to 0.5 and set Announce Interval to 1800 so seeders will get 1 point per hour.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsupload" class="form-label">Upload Point</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="kpsupload" name="configoption[kpsupload]" value="<?php echo htmlspecialchars($kpsupload); ?>">
-                    <span class="input-group-text help-icon" title="Give seeding bonus when user upload a torrent.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpscomment" class="form-label">Post/Comment/Thread Point</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="kpscomment" name="configoption[kpscomment]" value="<?php echo htmlspecialchars($kpscomment); ?>">
-                    <span class="input-group-text help-icon" title="Give seeding bonus when user submit a comment/post/thread.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsthanks" class="form-label">Thanks Point</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="kpsthanks" name="configoption[kpsthanks]" value="<?php echo htmlspecialchars($kpsthanks); ?>">
-                    <span class="input-group-text help-icon" title="Give seeding bonus when user say thanks.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsrate" class="form-label">Rating Point</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="kpsrate" name="configoption[kpsrate]" value="<?php echo htmlspecialchars($kpsrate); ?>">
-                    <span class="input-group-text help-icon" title="Give seeding bonus when user rate a torrent.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpspoll" class="form-label">Poll Point</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="kpspoll" name="configoption[kpspoll]" value="<?php echo htmlspecialchars($kpspoll); ?>">
-                    <span class="input-group-text help-icon" title="Give seeding bonus when user vote a poll.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsmaxpoint" class="form-label">Max. Bonus Point</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="kpsmaxpoint" name="configoption[kpsmaxpoint]" value="<?php echo htmlspecialchars($kpsmaxpoint); ?>">
-                    <span class="input-group-text help-icon" title="Once user reach this limit he can only use trade for GIFT!">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsinvite" class="form-label">Enable Invite Usage?</label>
-                <div class="input-group">
-                    <select class="form-select" id="kpsinvite" name="configoption[kpsinvite]">
-                        <option value="yes" <?php echo ($kpsinvite == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                        <option value="no" <?php echo ($kpsinvite == 'no') ? 'selected' : ''; ?>>No</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Enable/Disable Invite Gift for KPS Page.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpstitle" class="form-label">Enable Custom Title Usage?</label>
-                <div class="input-group">
-                    <select class="form-select" id="kpstitle" name="configoption[kpstitle]">
-                        <option value="yes" <?php echo ($kpstitle == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                        <option value="no" <?php echo ($kpstitle == 'no') ? 'selected' : ''; ?>>No</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Enable/Disable Custom Title Gift for KPS Page.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsvip" class="form-label">Enable VIP Status Usage?</label>
-                <div class="input-group">
-                    <select class="form-select" id="kpsvip" name="configoption[kpsvip]">
-                        <option value="yes" <?php echo ($kpsvip == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                        <option value="no" <?php echo ($kpsvip == 'no') ? 'selected' : ''; ?>>No</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Enable/Disable VIP Gift for KPS Page.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsgift" class="form-label">Enable Give A Karma Gift Usage?</label>
-                <div class="input-group">
-                    <select class="form-select" id="kpsgift" name="configoption[kpsgift]">
-                        <option value="yes" <?php echo ($kpsgift == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                        <option value="no" <?php echo ($kpsgift == 'no') ? 'selected' : ''; ?>>No</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Enable/Disable Give A Karma Gift Usage for KPS Page.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpswarning" class="form-label">Enable Remove Warning Usage?</label>
-                <div class="input-group">
-                    <select class="form-select" id="kpswarning" name="configoption[kpswarning]">
-                        <option value="yes" <?php echo ($kpswarning == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                        <option value="no" <?php echo ($kpswarning == 'no') ? 'selected' : ''; ?>>No</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Enable/Disable Remove Warning Usage for KPS Page.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="kpsratiofix" class="form-label">Enable Fix Torrent Ratio Usage?</label>
-                <div class="input-group">
-                    <select class="form-select" id="kpsratiofix" name="configoption[kpsratiofix]">
-                        <option value="yes" <?php echo ($kpsratiofix == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                        <option value="no" <?php echo ($kpsratiofix == 'no') ? 'selected' : ''; ?>>No</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Enable/Disable Fix Torrent Ratio Usage for KPS Page.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="card-header d-flex justify-content-between align-items-center mt-4">
-                <h5 class="mb-0">Birthday Reward Settings</h5>
-            </div>
-
-            <div class="mb-3 mt-3">
-                <label for="bdayreward" class="form-label">Birthday Reward System Enabled?</label>
-                <div class="input-group">
-                    <select class="form-select" id="bdayreward" name="configoption[bdayreward]">
-                        <option value="yes" <?php echo ($bdayreward == 'yes') ? 'selected' : ''; ?>>Yes</option>
-                        <option value="no" <?php echo ($bdayreward == 'no') ? 'selected' : ''; ?>>No</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Free/Silver/Double leech/seed on user's birthday!">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label for="bdayrewardtype" class="form-label">Birthday Reward Type</label>
-                <div class="input-group">
-                    <select class="form-select" id="bdayrewardtype" name="configoption[bdayrewardtype]">
-                        <option value="freeleech" <?php echo ($bdayrewardtype == 'freeleech') ? 'selected' : ''; ?>>Free Leech</option>
-                        <option value="silverleech" <?php echo ($bdayrewardtype == 'silverleech') ? 'selected' : ''; ?>>Silver Leech</option>
-                        <option value="doubleupload" <?php echo ($bdayrewardtype == 'doubleupload') ? 'selected' : ''; ?>>x2 Upload</option>
-                    </select>
-                    <span class="input-group-text help-icon" title="Select Birthday Reward Type:
-                    Free Leech: Free Torrents download when set gives the users upload credit only and no download credit is posted to the users stats.
-                    Silver Leech: Silver Torrents when set only record 50% of the users download credit on that file.
-                    x2 Upload: x2 Double Upload Credit for seeding back files.">
-                        <i class="fas fa-info-circle"></i>
-                    </span>
-                </div>
-            </div>
-		
-		
-		
-
-        <!-- Кнопка отправки -->
-        <div class="d-flex justify-content-end mt-4">
-          <button type="submit" name="save_kps" class="btn btn-primary px-4">
-            <i class="fas fa-save me-2"></i> Save Changes
-          </button>
-        </div>
-      </div>
-    </div>
-  </form>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<?php
-// Read current staff team
-$filename = CONFIG_DIR . '/STAFFTEAM';
-$staffarray = [];
-
-if (file_exists($filename) && is_readable($filename)) {
-    $staffteam = file_get_contents($filename);
-    if ($staffteam !== false) {
-        $staffEntries = explode(',', $staffteam);
-        foreach ($staffEntries as $entry) {
-            $entry = trim($entry);
-            if (!empty($entry)) {
-                $staffParts = explode(':', $entry, 2);
-                if (count($staffParts) === 2) {
-                    $staffarray[] = [
-                        'name' => trim($staffParts[0]),
-                        'id'   => trim($staffParts[1])
-                    ];
-                }
-            }
-        }
-    }
-}
-
-// Fetch all available staff for autocomplete
-$availableStaff = [];
-$query = $db->sql_query("
-    SELECT u.id, u.username, g.title 
-    FROM users u 
-    LEFT JOIN usergroups g ON (u.usergroup = g.gid) 
-    WHERE u.enabled = 'yes' 
-    AND (g.cansettingspanel = '1' OR g.issupermod = '1' OR g.canstaffpanel = '1')
-    ORDER BY u.username ASC
-");
-
-if ($db->num_rows($query) > 0) {
-    while ($row = $db->fetch_array($query)) {
-        $availableStaff[] = [
-            'id'       => $row['id'],
-            'username' => $row['username'],
-            'group'    => $row['title']
-        ];
-    }
-}
-?>
+<title>Ruff Tracker Admin Panel</title>
 
 <style>
-    table.table tbody tr:hover {
-        background-color: #f8f9fa;
-        transition: background-color 0.3s ease;
-    }
+/* ========== GLOBAL FONT SCALE ========== */
+html {
+    font-size: 120%;
+}
 
-    input.bg-success {
-        transition: background-color 0.8s ease;
-    }
+/* ===== BASE ===== */
+body {
+    line-height: 1.6;
+}
 
-    .btn:hover {
-        transform: scale(1.05);
-        transition: transform 0.2s ease;
-    }
+/* ===== SIDEBAR ===== */
+.sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-top: 8px;
+}
 
-    .modal-header {
-        background: linear-gradient(90deg, #0d6efd, #0b5ed7);
-    }
+.sidebar .nav-link {
+  font-size: 16px;
+  padding: 12px 18px;
+  color: #475569;
+  border-radius: 6px;
+  margin: 2px 8px;
+  border-left: 3px solid transparent;
+  transition: all .15s;
+}
 
-    .modal-header h5 {
-        font-weight: bold;
-    }
+.sidebar .nav-link i {
+  font-size: 18px;
+  width: 22px;
+  text-align: center;
+}
 
-    .gradient-header {
-        background: linear-gradient(90deg, #0d6efd, #0b5ed7);
-        color: white;
-    }
+.sidebar .nav-link:hover {
+  background: #eff6ff;
+  color: #0d6efd;
+  border-left-color: rgba(13,110,253,.25);
+}
 
-    .gradient-header .badge {
-        background: rgba(255, 255, 255, 0.2);
-        color: white;
-    }
+.sidebar .nav-link.active {
+  background: #dbeafe;
+  color: #0d6efd;
+  border-left-color: #0d6efd;
+  font-weight: 600;
+}
+
+/* ===== TOP BAR ===== */
+.page-topbar {
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 15px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+
+h1.h2 {
+    font-size: 28px;
+    font-weight: 700;
+}
+
+/* ===== CARD ===== */
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  background: #fff;
+}
+
+.card-header {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-weight: 600;
+  color: #374151;
+  font-size: 17px;
+  padding: 16px 20px;
+}
+
+.card-header h5 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.card-body {
+    font-size: 16px;
+    padding: 24px;
+}
+
+/* ===== FORM ===== */
+.form-label {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.form-control, .form-select {
+  font-size: 16px;
+  padding: 12px 14px;
+  border-color: #d1d5db;
+  border-radius: 6px;
+  background: #fafbfc;
+  color: #1e293b;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 3px rgba(13,110,253,.12);
+  background: #fff;
+}
+
+textarea.form-control {
+  resize: vertical;
+  min-height: 100px;
+}
+
+/* ===== INPUT GROUP ===== */
+.input-group-text {
+  font-size: 15px;
+  padding: 12px 14px;
+  background: #f1f5f9;
+  border-color: #d1d5db;
+  color: #64748b;
+}
+
+.help-icon {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #0d6efd;
+  cursor: help;
+}
+
+.help-icon:hover {
+  background: #dbeafe;
+}
+
+/* ===== BUTTONS ===== */
+.btn {
+    font-size: 16px;
+    padding: 10px 20px;
+    font-weight: 500;
+}
+
+.btn-primary {
+  background: #0d6efd;
+  border-color: #0d6efd;
+  font-weight: 600;
+  transition: background .15s, box-shadow .15s, transform .1s;
+}
+
+.btn-primary:hover {
+  background: #0b5ed7;
+  box-shadow: 0 4px 12px rgba(13,110,253,.3);
+}
+
+.btn-primary:active {
+  transform: scale(.97);
+}
+
+/* ===== TABS ===== */
+.nav-tabs .nav-link {
+    font-size: 16px;
+    padding: 10px 18px;
+}
+
+.tab-content {
+    font-size: 16px;
+}
+
+.tab-content > .tab-pane {
+  animation: fadeSlide .2s ease;
+}
+
+@keyframes fadeSlide {
+  from { opacity:0; transform:translateY(5px); }
+  to { opacity:1; transform:translateY(0); }
+}
+
+/* ===== TABLE ===== */
+.table {
+    font-size: 15px;
+}
+
+.table thead th {
+    font-size: 14px;
+    color: #64748b;
+    border-bottom-width: 1px;
+}
+
+.table td, .table th {
+    padding: 12px;
+    vertical-align: middle;
+}
+
+.table-hover tbody tr:hover td {
+    background: #f0f7ff;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: rgba(0,0,0,.02);
+}
+
+/* ===== TEXT ===== */
+.text-muted, small {
+    font-size: 14px;
+}
+
+/* ===== ALERT ===== */
+.alert {
+    font-size: 15px;
+    padding: 12px 16px;
+}
+
+/* ===== DROPDOWN ===== */
+.dropdown-menu {
+    font-size: 15px;
+}
+
+.dropdown-item {
+    font-size: 15px;
+    padding: 8px 16px;
+}
+
+/* ===== MISC ===== */
+.section-sub {
+  font-size: 14px;
+  color: #64748b;
+  border-bottom: 1px solid #e9ecef;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.section-sub::before {
+  content: '';
+  width: 3px;
+  height: 11px;
+  background: #0d6efd;
+  border-radius: 2px;
+}
+
+.offline-wrap {
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-top: 12px;
+  font-size: 15px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ========== DARK MODE (Bootstrap compatible) ========== */
+
+[data-bs-theme="dark"] {
+    background: #0f172a;
+    color: #e2e8f0;
+}
+
+/* SIDEBAR */
+[data-bs-theme="dark"] .sidebar {
+    background: #020617;
+    border-right: 1px solid #1e293b;
+}
+
+[data-bs-theme="dark"] .sidebar .nav-link {
+    color: #94a3b8;
+}
+
+[data-bs-theme="dark"] .sidebar .nav-link:hover {
+    background: #1e293b;
+    color: #60a5fa;
+}
+
+[data-bs-theme="dark"] .sidebar .nav-link.active {
+    background: #1e293b;
+    color: #60a5fa;
+    border-left-color: #60a5fa;
+}
+
+/* TOPBAR */
+[data-bs-theme="dark"] .page-topbar {
+    background: #020617;
+    border-bottom: 1px solid #1e293b;
+}
+
+/* CARD */
+[data-bs-theme="dark"] .card {
+    background: #020617;
+    border: 1px solid #1e293b;
+}
+
+[data-bs-theme="dark"] .card-header {
+    background: #020617;
+    border-bottom: 1px solid #1e293b;
+    color: #e2e8f0;
+}
+
+/* FORM */
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select {
+    background: #020617;
+    border-color: #1e293b;
+    color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .form-control:focus,
+[data-bs-theme="dark"] .form-select:focus {
+    border-color: #3b82f6;
+}
+
+/* INPUT GROUP */
+[data-bs-theme="dark"] .input-group-text {
+    background: #020617;
+    border-color: #1e293b;
+    color: #94a3b8;
+}
+
+/* TABLE */
+[data-bs-theme="dark"] .table {
+    color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .table thead th {
+    color: #94a3b8;
+}
+
+[data-bs-theme="dark"] .table-hover tbody tr:hover td {
+    background: #1e293b;
+}
+
+[data-bs-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: rgba(255,255,255,.03);
+}
+
+/* DROPDOWN */
+[data-bs-theme="dark"] .dropdown-menu {
+    background: #020617;
+    border: 1px solid #1e293b;
+}
+
+[data-bs-theme="dark"] .dropdown-item {
+    color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .dropdown-item:hover {
+    background: #1e293b;
+}
+
+/* TEXT */
+[data-bs-theme="dark"] .text-muted {
+    color: #94a3b8 !important;
+}
+
+/* ALERT */
+[data-bs-theme="dark"] .alert {
+    background: #1e293b;
+    border-color: #334155;
+    color: #e2e8f0;
+}
 </style>
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    // Smooth auto-close for alerts
-    ['staff-success', 'staff-error'].forEach(function (id) {
-        const alertBox = document.getElementById(id);
-        if (alertBox) {
-            setTimeout(() => {
-                bootstrap.Alert.getOrCreateInstance(alertBox).close();
-            }, id === 'staff-success' ? 2500 : 5000);
-        }
-    });
+<div class="container mt-3">
+<div class="row g-0">
 
-    // Auto-fill ID when typing username
-    const staffData = <?php echo json_encode($availableStaff); ?>;
-    document.querySelectorAll('input[name="staffnames[]"]').forEach(input => {
-        input.addEventListener('input', function () {
-            const username = this.value.trim();
-            const idInput = this.closest('tr').querySelector('input[name="staffids[]"]');
-            if (username) {
-                const user = staffData.find(u => u.username.toLowerCase() === username.toLowerCase());
-                if (user && !idInput.value) {
-                    idInput.value = user.id;
-                    idInput.classList.add('bg-success', 'bg-opacity-25');
-                    setTimeout(() => idInput.classList.remove('bg-success', 'bg-opacity-25'), 1500);
-                }
-            }
-        });
-    });
+  <!-- ══════════════════ SIDEBAR (оригинальный твой) ══════════════════════ -->
+  <div class="col-md-3 col-lg-2 sidebar">
+    <ul class="nav flex-column">
+      <li class="nav-item"><a class="nav-link active" href="#main-settings" data-bs-toggle="tab"><i class="fas fa-cog me-2"></i>Main Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#tracker-settings" data-bs-toggle="tab"><i class="fas fa-server me-2"></i>Tracker Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#date-time" data-bs-toggle="tab"><i class="far fa-clock me-2"></i>Date & Time</a></li>
+      <li class="nav-item"><a class="nav-link" href="#cookie-settings" data-bs-toggle="tab"><i class="fas fa-cookie me-2"></i>Cookie Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#avatar-settings" data-bs-toggle="tab"><i class="fas fa-user-circle me-2"></i>Avatar Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#security-settings" data-bs-toggle="tab"><i class="fas fa-shield-alt me-2"></i>Security Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#email-settings" data-bs-toggle="tab"><i class="fas fa-envelope me-2"></i>Email Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#announce-settings" data-bs-toggle="tab"><i class="fas fa-broadcast-tower me-2"></i>ANNOUNCE Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#kps-settings" data-bs-toggle="tab"><i class="fas fa-coins me-2"></i>KPS Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#user-management-settings" data-bs-toggle="tab"><i class="fas fa-users-cog me-2"></i>Cleanup Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="#registration-settings" data-bs-toggle="tab"><i class="fas fa-user-plus me-2"></i>Registration</a></li>
+      <li class="nav-item"><a class="nav-link" href="#staff-team" data-bs-toggle="tab"><i class="fas fa-user-shield me-2"></i>Staff Team</a></li>
+      <li class="nav-item"><a class="nav-link" href="#freeleech-settings" data-bs-toggle="tab"><i class="fas fa-gift me-2"></i>Freeleech Settings</a></li>
+      <li class="nav-item"><a class="nav-link" href="index.php?act=cronjobs"><i class="fas fa-clock me-2"></i>Cronjobs</a></li>
+    </ul>
+  </div>
 
-    // Form validation
-    document.querySelector('form').addEventListener('submit', function(e) {
-        let hasErrors = false;
-        document.querySelectorAll('tbody tr').forEach(row => {
-            const name = row.querySelector('input[name="staffnames[]"]').value.trim();
-            const id = row.querySelector('input[name="staffids[]"]').value.trim();
-            if ((name && !id) || (!name && id)) {
-                hasErrors = true;
-                row.classList.add('table-danger');
-                setTimeout(() => row.classList.remove('table-danger'), 2000);
-            }
-        });
-        if (hasErrors) {
-            e.preventDefault();
-            alert('⚠ Please fill in both Username and ID for each entry, or leave both fields empty.');
-        }
-    });
+  <!-- ═══════════════════════════ CONTENT ══════════════════════════════════ -->
+  <main class="col-md-9 ms-sm-auto col-lg-10">
 
-    // Initialize tooltips
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.map(el => new bootstrap.Tooltip(el));
-});
+    <div class="page-topbar">
+      <h1 id="current-tab-title">Tracker Settings</h1>
+      <button class="btn btn-primary btn-sm px-3"
+              onclick="document.querySelector('.tab-pane.show.active form')?.requestSubmit()">
+        <i class="fas fa-save me-1"></i> Save Settings
+      </button>
+    </div>
 
-function findUser() {
-    window.open('<?php echo htmlspecialchars($BASEURL); ?>/users.php#searchuser', 'finduser',
-        'toolbar=no,scrollbars=yes,resizable=no,width=800,height=600,top=50,left=50');
-}
-</script>
+    <div class="content-pad">
+    <div class="tab-content">
 
-<!-- Staff Team Management Tab -->
-<div class="tab-pane fade" id="staff-team">
-    <div class="card mb-4 shadow-sm">
-        <div class="card-header gradient-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fas fa-users-cog me-2"></i> Staff Team Management</h5>
-            <span class="badge rounded-pill shadow-sm">
-                <i class="fas fa-user me-1"></i><?php echo count($staffarray); ?>
-            </span>
-        </div>
-        <div class="card-body">
+      <!-- ── MAIN SETTINGS ─────────────────────────────────────────────── -->
+      <div class="tab-pane fade show active" id="main-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Basic Information</div>
+            <div class="card-body">
+
+              <div class="mb-3">
+                <label class="form-label">Tracker Name</label>
+                <div class="input-group">
+                  <input type="text" class="form-control" name="configoption[SITENAME]" value="<?= htmlspecialchars($settings['SITENAME'] ?? '') ?>">
+                  <span class="input-group-text help-icon" data-bs-toggle="popover" data-bs-title="Tracker Name" data-bs-content="Your tracker display name" data-bs-trigger="hover focus"><i class="fas fa-info-circle"></i></span>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Base URL</label>
+                <div class="input-group">
+                  <input type="text" class="form-control" name="configoption[BASEURL]" value="<?= htmlspecialchars($settings['BASEURL'] ?? '') ?>" placeholder="https://yourtracker.com">
+                  <span class="input-group-text help-icon" data-bs-toggle="popover" data-bs-title="Base URL" data-bs-content="No trailing slash!" data-bs-trigger="hover focus"><i class="fas fa-info-circle"></i></span>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Site Email</label>
+                  <input type="email" class="form-control" name="configoption[SITEEMAIL]" value="<?= htmlspecialchars($settings['SITEEMAIL'] ?? '') ?>">
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Report Email</label>
+                  <input type="email" class="form-control" name="configoption[REPORTMAIL]" value="<?= htmlspecialchars($settings['REPORTMAIL'] ?? '') ?>">
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Contact Email(s) <small class="text-muted fw-normal" style="text-transform:none;letter-spacing:0">— separate with commas</small></label>
+                <input type="text" class="form-control" name="configoption[contactemail]" value="<?= htmlspecialchars($settings['contactemail'] ?? '') ?>">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Tracker Slogan</label>
+                <input type="text" class="form-control" name="configoption[slogan]" value="<?= htmlspecialchars($settings['slogan'] ?? '') ?>">
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Meta Keywords</label>
+                  <textarea class="form-control" name="configoption[metakeywords]" rows="3"><?= htmlspecialchars($settings['metakeywords'] ?? '') ?></textarea>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Meta Description</label>
+                  <textarea class="form-control" name="configoption[metadesc]" rows="3"><?= htmlspecialchars($settings['metadesc'] ?? '') ?></textarea>
+                </div>
+              </div>
+
+              <div class="section-sub">Site Status</div>
+              <div class="mb-3">
+                <label class="form-label">Status</label>
+                <select class="form-select" id="siteonline" name="configoption[SITEONLINE]">
+                  <option value="yes" <?= ($settings['SITEONLINE']??'yes')==='yes'?'selected':'' ?>>🟢 Online</option>
+                  <option value="no"  <?= ($settings['SITEONLINE']??'yes')==='no' ?'selected':'' ?>>🔴 Offline / Maintenance</option>
+                </select>
+              </div>
+              <div id="offlineDurationGroup" class="offline-wrap" style="display:<?= ($settings['SITEONLINE']??'yes')==='no'?'block':'none' ?>">
+                <?php if ($timeRemaining): ?>
+                  <div class="mb-2 small"><i class="fas fa-clock me-1"></i> <?= $timeRemaining ?>
+                    <?php if (!$isUnlimited && is_numeric($offlineMinutesValue)): ?>
+                      <div class="text-muted mt-1">Back at: <?= date('Y-m-d H:i:s', (int)$offlineMinutesValue) ?></div>
+                    <?php endif; ?>
+                  </div>
+                <?php endif; ?>
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="radio" name="offline_mode_type" id="limitedMode" value="limited" <?= !$isUnlimited?'checked':'' ?>>
+                  <label class="form-check-label" for="limitedMode">Limited Time</label>
+                </div>
+                <div class="form-check mb-3">
+                  <input class="form-check-input" type="radio" name="offline_mode_type" id="unlimitedMode" value="unlimited" <?= $isUnlimited?'checked':'' ?>>
+                  <label class="form-check-label" for="unlimitedMode">Unlimited</label>
+                </div>
+                <div id="timeLimitGroup" style="display:<?= !$isUnlimited?'block':'none' ?>">
+                  <label class="form-label">Duration (minutes)</label>
+                  <div class="input-group" style="max-width:220px">
+                    <input type="number" min="1" max="1440" class="form-control" name="offline_minutes_input" value="<?= !$isUnlimited?$durationMinutes:30 ?>">
+                    <span class="input-group-text">min (max 24h)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2">
+            <button class="btn btn-primary px-4" type="submit"><i class="fas fa-save me-1"></i> Save</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ── TRACKER SETTINGS ──────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tracker-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Tracker Configuration</div>
+            <div class="card-body">
+              <?php
+              $yn  = ['yes'=>'Yes','no'=>'No'];
+              $yn1 = ['1'=>'Yes','0'=>'No'];
+              function fsel(string $n,array $o,string $cur,string $lbl,string $tip=''): void {
+                echo '<div class="mb-3"><label class="form-label">'.htmlspecialchars($lbl).'</label><div class="input-group">';
+                echo '<select class="form-select" name="configoption['.htmlspecialchars($n).']">';
+                foreach($o as $v=>$t) echo '<option value="'.htmlspecialchars((string)$v).'"'.($cur==$v?' selected':'').'>'.htmlspecialchars($t).'</option>';
+                echo '</select>';
+                if($tip) echo '<span class="input-group-text help-icon" data-bs-toggle="popover" data-bs-title="'.htmlspecialchars($lbl).'" data-bs-content="'.htmlspecialchars($tip).'" data-bs-trigger="hover focus"><i class="fas fa-info-circle"></i></span>';
+                echo '</div></div>';
+              }
+              function ftxt(string $n,string $v,string $lbl,string $tip='',string $type='text'): void {
+                echo '<div class="mb-3"><label class="form-label">'.htmlspecialchars($lbl).'</label><div class="input-group">';
+                echo '<input type="'.$type.'" class="form-control" name="configoption['.htmlspecialchars($n).']" value="'.htmlspecialchars($v).'">';
+                if($tip) echo '<span class="input-group-text help-icon" data-bs-toggle="popover" data-bs-title="'.htmlspecialchars($lbl).'" data-bs-content="'.htmlspecialchars($tip).'" data-bs-trigger="hover focus"><i class="fas fa-info-circle"></i></span>';
+                echo '</div></div>';
+              }
+              $s = $settings;
+              ?>
+              <div class="row">
+                <div class="col-md-6"><?php fsel('useajax',$yn,$s['useajax']??'yes','Active Ajax Features?','AJAX allows live data without page refresh'); ?></div>
+                <div class="col-md-6"><?php fsel('use_xmlhttprequest',$yn1,$s['use_xmlhttprequest']??'1','Use XMLHttpRequest'); ?></div>
+                <div class="col-md-6"><?php fsel('redirects',$yn1,$s['redirects']??'1','Friendly Redirection Pages'); ?></div>
+                <div class="col-md-6"><?php fsel('externalscrape',$yn,$s['externalscrape']??'no','Active External Scrape?'); ?></div>
+                <div class="col-md-6"><?php fsel('includeexpeers',$yn,$s['includeexpeers']??'no','Include External Peers?'); ?></div>
+                <div class="col-md-6"><?php fsel('MEMBERSONLY',$yn,$s['MEMBERSONLY']??'yes','Registered Members Only?'); ?></div>
+                <div class="col-md-6"><?php fsel('seourls',$yn,$s['seourls']??'no','Active SEO'); ?></div>
+                <div class="col-md-6"><?php fsel('gzipcompress',$yn,$s['gzipcompress']??'yes','GZIP Compression Enabled','Compresses pages for faster delivery'); ?></div>
+                <div class="col-md-6"><?php fsel('jumptopagemultipage',$yn1,$s['jumptopagemultipage']??'1','Show Jump To Page in Pagination'); ?></div>
+                <div class="col-md-6"><?php fsel('hitrun',$yn,$s['hitrun']??'yes','HIT & RUN System Enabled?'); ?></div>
+              </div>
+
+              <div class="section-sub">Limits & Paths</div>
+              <div class="row">
+                <div class="col-md-4"><?php ftxt('maxloginattempts',$s['maxloginattempts']??'5','Max. Login Attempts','Ban IPs over this limit','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('maxmultipagelinks',$s['maxmultipagelinks']??'5','Max Pagination Links','','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('wolcutoffmins',$s['wolcutoffmins']??'15','Cut-off Time (mins)','Minutes before user marked offline','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('hitrun_ratio',$s['hitrun_ratio']??'0.5','Min. Ratio for H&R'); ?></div>
+                <div class="col-md-4"><?php ftxt('hitrun_gig',$s['hitrun_gig']??'5','Min. GB for H&R','','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('max_torrent_size',$s['max_torrent_size']??'','Max. Torrent Size','10 GB = 10*1024*1024'); ?></div>
+                <div class="col-md-6"><?php ftxt('securehash',$s['securehash']??'','Secure Hash','Changing this forces all users to re-login'); ?></div>
+                <div class="col-md-6"><?php ftxt('announce_urls[]',$announce_url,'Announce URL','Full URL to announce.php'); ?></div>
+                <div class="col-md-6"><?php ftxt('torrent_dir',$s['torrent_dir']??'','Torrent Directory Path','No trailing slash'); ?></div>
+                <div class="col-md-6"><?php ftxt('pic_base_url',$s['pic_base_url']??'','Image Directory Path','With trailing slash'); ?></div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2"><button class="btn btn-primary px-4" type="submit"><i class="fas fa-save me-1"></i> Save</button></div>
+        </form>
+      </div>
+
+      <!-- ── DATE & TIME ───────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="date-time">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Date & Time Settings</div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6"><?php ftxt('dateformat',$settings['dateformat']??'d M Y','Date Format','PHP date() format'); ?></div>
+                <div class="col-md-6"><?php ftxt('timeformat',$settings['timeformat']??'H:i','Time Format'); ?></div>
+                <div class="col-md-6"><?php ftxt('regdateformat',$settings['regdateformat']??'d M Y','Registered Date Format'); ?></div>
+                <div class="col-md-6"><?php ftxt('datetimesep',$settings['datetimesep']??', ','Date/Time Separator'); ?></div>
+                <div class="col-md-6"><?php fsel('dstcorrection',['1'=>'Yes','0'=>'No'],$settings['dstcorrection']??'0','Day Light Savings Time?'); ?></div>
+                <div class="col-md-6">
+                  <div class="mb-3"><label class="form-label">Default Timezone Offset</label>
+                    <select class="form-select" name="configoption[timezoneoffset]">
+                      <?php foreach(['-12','-11','-10','-9','-8','-7','-6','-5','-4','-3.5','-3','-2','-1','0','+1','+2','+3','+3.5','+4','+4.5','+5','+5.5','+5.75','+6','+7','+8','+9','+9.5','+10','+10.5','+11','+12'] as $tz):
+                        $sel = ($settings['timezoneoffset']??'0')==$tz?' selected':'';
+                        echo "<option value=\"{$tz}\"{$sel}>GMT {$tz}</option>";
+                      endforeach; ?>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2"><button class="btn btn-primary px-4" type="submit"><i class="fas fa-save me-1"></i> Save</button></div>
+        </form>
+      </div>
+
+      <!-- ── COOKIES ───────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="cookie-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Cookie Settings</div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6"><?php ftxt('cookiedomain',$settings['cookiedomain']??'','Cookie Domain','Start with a dot for all subdomains'); ?></div>
+                <div class="col-md-6"><?php ftxt('cookiepath',$settings['cookiepath']??'/','Cookie Path'); ?></div>
+                <div class="col-md-6"><?php ftxt('cookieprefix',$settings['cookieprefix']??'','Cookie Prefix'); ?></div>
+                <div class="col-md-6"><?php fsel('cookiesecureflag',['1'=>'Yes','0'=>'No'],$settings['cookiesecureflag']??'0','Secure Cookie Flag','Only enable on HTTPS'); ?></div>
+                <div class="col-md-6"><?php fsel('cookiesamesiteflag',['1'=>'Yes','0'=>'No'],$settings['cookiesamesiteflag']??'0','SameSite Cookie Flag','Prevents CSRF attacks'); ?></div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2"><button class="btn btn-primary px-4" type="submit"><i class="fas fa-save me-1"></i> Save</button></div>
+        </form>
+      </div>
+
+      <!-- ── AVATARS ───────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="avatar-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Avatar Settings</div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6"><?php ftxt('useravatar',$settings['useravatar']??'','Default User Avatar','Used when user has no avatar'); ?></div>
+                <div class="col-md-6"><?php ftxt('useravatardims',$settings['useravatardims']??'40x40','Default Avatar Dimensions','40x40 or 40|40'); ?></div>
+                <div class="col-md-6"><?php ftxt('maxavatardims',$settings['maxavatardims']??'100x100','Maximum Avatar Dimensions'); ?></div>
+                <div class="col-md-6"><?php ftxt('avataruploadpath',$settings['avataruploadpath']??'','Avatar Upload Path'); ?></div>
+                <div class="col-md-6"><?php ftxt('avatarsize',$settings['avatarsize']??'102400','Maximum Avatar Size (bytes)','','number'); ?></div>
+                <div class="col-md-6"><?php fsel('allowremoteavatars',['1'=>'Yes','0'=>'No'],$settings['allowremoteavatars']??'0','Allow Remote Avatars','Exposes your server IP'); ?></div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2"><button class="btn btn-primary px-4" type="submit"><i class="fas fa-save me-1"></i> Save</button></div>
+        </form>
+      </div>
+
+      <!-- ── SECURITY ──────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="security-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Security Settings</div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6"><?php fsel('aggressivecheckip',$yn,$settings['aggressivecheckip']??'no','Aggressive IP Ban?'); ?></div>
+                <div class="col-md-6"><?php fsel('aggressivecheckemail',$yn,$settings['aggressivecheckemail']??'no','Aggressive EMAIL Ban?'); ?></div>
+                <div class="col-md-6"><?php fsel('iplog1',$yn,$settings['iplog1']??'yes','Save User IP?','Log IP changes to DB'); ?></div>
+                <div class="col-md-6"><?php fsel('ctracker',$yn,$settings['ctracker']??'yes','Cracker Tracker Protection?','URL protection against attacks'); ?></div>
+                <div class="col-md-6"><?php fsel('vkeyword',['yes'=>'Yes','no'=>'No'],$vkeyword,'Virtual Keyboard Enabled?','Prevents keylogger attacks'); ?></div>
+                <div class="col-md-6"><?php fsel('privatetrackerpatch',$yn,$settings['privatetrackerpatch']??'no','Private Tracker Patch Enabled?'); ?></div>
+              </div>
+
+              <div class="section-sub">Image Verification (CAPTCHA)</div>
+              <div class="mb-3">
+                <label class="form-label">Image Verification Enabled?</label>
+                <div class="input-group">
+                  <select class="form-select" name="configoption[iv]">
+                    <option value="yes"       <?= $iv==='yes'      ?'selected':''?>>Yes, use Image Verification (GD/GD2)</option>
+                    <option value="reCAPTCHA" <?= $iv==='reCAPTCHA'?'selected':''?>>Yes, use reCAPTCHA™</option>
+                    <option value="no"        <?= $iv==='no'       ?'selected':''?>>No, disabled</option>
+                  </select>
+                  <span class="input-group-text help-icon" data-bs-toggle="popover" data-bs-title="Image Verification" data-bs-content="GD or GD2 library required" data-bs-trigger="hover focus"><i class="fas fa-info-circle"></i></span>
+                </div>
+              </div>
+              <?php if ($iv === 'reCAPTCHA'): ?>
+              <div class="row">
+                <div class="col-md-6"><?php ftxt('reCAPTCHAPublickey',$reCAPTCHAPublickey,'reCAPTCHA™ Public Key'); ?></div>
+                <div class="col-md-6"><?php ftxt('reCAPTCHAPrivatekey',$reCAPTCHAPrivatekey,'reCAPTCHA™ Private Key'); ?></div>
+                <div class="col-md-6"><?php fsel('reCAPTCHATheme',['red'=>'Red','white'=>'White','blackglass'=>'Black Glass'],$reCAPTCHATheme,'reCAPTCHA™ Theme'); ?></div>
+                <div class="col-md-6"><?php fsel('reCAPTCHALanguage',['en'=>'English','nl'=>'Dutch','fr'=>'French','de'=>'German','pt'=>'Portuguese','ru'=>'Russian','es'=>'Spanish','tr'=>'Turkish'],$reCAPTCHALanguage,'reCAPTCHA™ Language'); ?></div>
+              </div>
+              <?php endif; ?>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2"><button class="btn btn-primary px-4" type="submit"><i class="fas fa-save me-1"></i> Save</button></div>
+        </form>
+      </div>
+
+      <!-- ── EMAIL ─────────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="email-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Email Settings</div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6"><?php fsel('mail_handler',['mail'=>'PHP Mail','smtp'=>'SMTP','sendmail'=>'Sendmail'],$settings['mail_handler']??'mail','Mail Handler'); ?></div>
+                <div class="col-md-6"><?php fsel('mail_logging',['0'=>'None','1'=>'Log without content','2'=>'Log everything'],$settings['mail_logging']??'0','Mail Logging'); ?></div>
+                <div class="col-md-6"><?php fsel('mail_message_id',['1'=>'Yes','0'=>'No'],$settings['mail_message_id']??'1','Add Message-ID in headers?','Disable on shared hosting if spam issues'); ?></div>
+                <div class="col-md-6"><?php ftxt('mail_queue_limit',$settings['mail_queue_limit']??'50','Messages to send from mail queue','Max per cron batch','number'); ?></div>
+              </div>
+              <?php if (($settings['mail_handler']??'mail')==='smtp'): ?>
+              <div class="section-sub">SMTP Configuration</div>
+              <div class="row">
+                <div class="col-md-6"><?php ftxt('smtp_host',$settings['smtp_host']??'','SMTP Host'); ?></div>
+                <div class="col-md-6"><?php ftxt('smtp_user',$settings['smtp_user']??'','SMTP Username'); ?></div>
+                <div class="col-md-6">
+                  <div class="mb-3"><label class="form-label">SMTP Password</label>
+                    <input type="password" class="form-control" name="configoption[smtp_pass]" value="<?= htmlspecialchars($settings['smtp_pass']??'') ?>">
+                  </div>
+                </div>
+                <div class="col-md-6"><?php ftxt('smtp_port',$settings['smtp_port']??'587','SMTP Port','25 / 465 (SSL) / 587 (TLS)','number'); ?></div>
+                <div class="col-md-6"><?php fsel('secure_smtp',['0'=>'No encryption','1'=>'SSL encryption','2'=>'TLS encryption'],$settings['secure_smtp']??'0','Secure SMTP'); ?></div>
+              </div>
+              <?php endif; ?>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2"><button class="btn btn-primary px-4" type="submit"><i class="fas fa-save me-1"></i> Save</button></div>
+        </form>
+      </div>
+
+      <!-- ── ANNOUNCE ──────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="announce-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">ANNOUNCE Settings</div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6"><?php fsel('announce_actions',$yn,(string)$announce_actions,'Log Cheat Attempts?','Disable for better performance'); ?></div>
+                <div class="col-md-6"><?php fsel('aggressivecheat',$yn,(string)$aggressivecheat,'Aggressive Cheat Detection?','Detects RatioMaster etc.'); ?></div>
+                <div class="col-md-6"><?php fsel('nc',$yn,(string)$nc,'Disable DL/UL?','Block non-connectable peers'); ?></div>
+                <div class="col-md-6"><?php fsel('bannedclientdetect',$yn,(string)$bannedclientdetect,'Banned Client Detection?'); ?></div>
+                <div class="col-md-6"><?php fsel('detectbrowsercheats',$yn,(string)$detectbrowsercheats,'Detect Browser Cheats?'); ?></div>
+                <div class="col-md-6"><?php fsel('checkconnectable',$yn,(string)$checkconnectable,'Detect Connectable?','Decreases performance'); ?></div>
+                <div class="col-md-6"><?php fsel('checkip',$yn,(string)$checkip,'Check IP?','Match DB IP vs client IP'); ?></div>
+                <div class="col-md-6"><?php ftxt('announce_wait',(string)$announce_wait,'Min. Announce Refresh Time?','Flood limit in seconds'); ?></div>
+                <div class="col-md-6"><?php ftxt('announce_interval',(string)$announce_interval,'Announce Interval?','Higher = better performance'); ?></div>
+                <div class="col-md-6"><?php ftxt('max_rate',(string)$max_rate,'Max. Transfer Rate?','Flag suspicious speeds above this'); ?></div>
+              </div>
+              <div class="mb-3">
+    <label class="form-label">Allowed Clients</label>
+    <div class="input-group">
+        <textarea class="form-control" name="configoption[allowed_clients]" rows="4"><?= htmlspecialchars((string)$allowed_clients) ?></textarea>
+        <span class="input-group-text help-icon"
+              data-bs-toggle="popover"
+              data-bs-title="Allowed Clients"
+              data-bs-content="Whitelist of allowed clients"
+              data-bs-trigger="hover focus">
+            <i class="fas fa-info-circle"></i>
+        </span>
+    </div>
+</div>
+              <div class="section-sub">Database Connection (Announce)</div>
+              <div class="row">
+                <div class="col-md-6"><?php ftxt('mysql_host',(string)$mysql_host,'MYSQL Host'); ?></div>
+                <div class="col-md-6"><?php ftxt('mysql_user',(string)$mysql_user,'MYSQL User'); ?></div>
+                <div class="col-md-6">
+                  <div class="mb-3"><label class="form-label">MYSQL Password</label>
+                    <input type="password" class="form-control" name="configoption[mysql_pass]" placeholder="Leave blank to keep current">
+                  </div>
+                </div>
+                <div class="col-md-6"><?php ftxt('mysql_db',(string)$mysql_db,'MYSQL Database Name'); ?></div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2">
+            <button class="btn btn-primary px-4" type="submit" name="save_announce"><i class="fas fa-save me-1"></i> Save Changes</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ── KPS ───────────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="kps-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">KPS (Bonus Points) System Settings</div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label">KPS System Enabled?</label>
+                <div class="input-group">
+                  <select class="form-select" name="configoption[bonus]">
+                    <option value="enable"      <?= $bonus==='enable'     ?'selected':''?>>Yes, Enabled</option>
+                    <option value="disablesave" <?= $bonus==='disablesave'?'selected':''?>>No, But Save Points</option>
+                    <option value="disable"     <?= $bonus==='disable'    ?'selected':''?>>No, Disabled</option>
+                  </select>
+                  <span class="input-group-text help-icon" data-bs-toggle="popover" data-bs-title="KPS System" data-bs-content="Users trade points on KPS page" data-bs-trigger="hover focus"><i class="fas fa-info-circle"></i></span>
+                </div>
+              </div>
+
+              <div class="section-sub">Point Values</div>
+              <div class="row">
+                <div class="col-md-4"><?php ftxt('kpsseed',$kpsseed,'Seed Point'); ?></div>
+                <div class="col-md-4"><?php ftxt('kpsupload',$kpsupload,'Upload Point'); ?></div>
+                <div class="col-md-4"><?php ftxt('kpscomment',$kpscomment,'Post/Comment/Thread Point'); ?></div>
+                <div class="col-md-4"><?php ftxt('kpsthanks',$kpsthanks,'Thanks Point'); ?></div>
+                <div class="col-md-4"><?php ftxt('kpsrate',$kpsrate,'Rating Point'); ?></div>
+                <div class="col-md-4"><?php ftxt('kpspoll',$kpspoll,'Poll Point'); ?></div>
+                <div class="col-md-4"><?php ftxt('kpsmaxpoint',$kpsmaxpoint,'Max. Bonus Point'); ?></div>
+              </div>
+
+              <div class="section-sub">Feature Toggles</div>
+              <div class="row">
+                <div class="col-md-4"><?php fsel('kpsinvite',$yn,$kpsinvite,'Enable Invite Usage?'); ?></div>
+                <div class="col-md-4"><?php fsel('kpstitle',$yn,$kpstitle,'Enable Custom Title Usage?'); ?></div>
+                <div class="col-md-4"><?php fsel('kpsvip',$yn,$kpsvip,'Enable VIP Status Usage?'); ?></div>
+                <div class="col-md-4"><?php fsel('kpsgift',$yn,$kpsgift,'Enable Give A Karma Gift?'); ?></div>
+                <div class="col-md-4"><?php fsel('kpswarning',$yn,$kpswarning,'Enable Remove Warning Usage?'); ?></div>
+                <div class="col-md-4"><?php fsel('kpsratiofix',$yn,$kpsratiofix,'Enable Fix Torrent Ratio Usage?'); ?></div>
+              </div>
+
+              <div class="section-sub">Birthday Reward Settings</div>
+              <div class="row">
+                <div class="col-md-6"><?php fsel('bdayreward',$yn,$bdayreward,'Birthday Reward System Enabled?'); ?></div>
+                <div class="col-md-6"><?php fsel('bdayrewardtype',['freeleech'=>'Free Leech','silverleech'=>'Silver Leech','doubleupload'=>'x2 Upload'],$bdayrewardtype,'Birthday Reward Type'); ?></div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2">
+            <button class="btn btn-primary px-4" type="submit" name="save_kps"><i class="fas fa-save me-1"></i> Save Changes</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ── CLEANUP ───────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="user-management-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Cleanup Settings</div>
+            <div class="card-body">
+              <div class="section-sub">Automatic Invites</div>
+              <div class="row">
+                <div class="col-md-6"><?php fsel('ai',$yn,$ai,'Automatic Invite?'); ?></div>
+                <div class="col-md-6"><?php ftxt('autoinvitetime',$autoinvitetime,'Automatic Invite Time (days)','','number'); ?></div>
+              </div>
+
+              <div class="section-sub">Torrents</div>
+              <?php ftxt('max_dead_torrent_time',$max_dead_torrent_time,'Mark Torrents Invisible After (days)','Torrent Last Action < X days','number'); ?>
+
+              <div class="section-sub">User Promotion Settings</div>
+              <div class="row">
+                <div class="col-md-4"><?php ftxt('promote_gig_limit',$promote_gig_limit,'Promote Users GB Limit','0 = disabled','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('promote_min_ratio',$promote_min_ratio,'Promote Users RATIO Limit'); ?></div>
+                <div class="col-md-4"><?php ftxt('promote_min_reg_days',$promote_min_reg_days,'Promote Users DAYS Limit','','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('demote_min_ratio',$demote_min_ratio,'Demote Users RATIO Limit'); ?></div>
+                <div class="col-md-4"><?php ftxt('referrergift',$referrergift,'Referrer Gift (GB)','','number'); ?></div>
+              </div>
+
+              <div class="section-sub">User Warning Settings</div>
+              <div class="row">
+                <div class="col-md-4"><?php ftxt('leechwarn_min_ratio',$leechwarn_min_ratio,'Warn User MIN. Ratio'); ?></div>
+                <div class="col-md-4"><?php ftxt('leechwarn_gig_limit',$leechwarn_gig_limit,'Warn User GB Limit','','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('leechwarn_length',$leechwarn_length,'Warning Length (weeks)','','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('leechwarn_remove_ratio',$leechwarn_remove_ratio,'Remove Warning Min. Ratio'); ?></div>
+                <div class="col-md-4"><?php ftxt('ban_user_limit',$ban_user_limit,'Ban Warned Users After X Warnings','','number'); ?></div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2">
+            <button class="btn btn-primary px-4" type="submit" name="save_user_management"><i class="fas fa-save me-1"></i> Save Changes</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ── REGISTRATION ──────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="registration-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header">Registration Settings</div>
+            <div class="card-body">
+              <div class="section-sub">Registration System</div>
+              <div class="row">
+                <div class="col-md-6"><?php fsel('invitesystem',['on'=>'Enabled','off'=>'Disabled'],$invitesystem,'Invite System'); ?></div>
+                <div class="col-md-6"><?php fsel('regtype',['invite'=>'Invite System','instant'=>'Instant Activation','verify'=>'Email Verification','randompass'=>'Random Password','admin'=>'Admin Activation','both'=>'Email + Admin Activation'],$regtype,'Registration Method'); ?></div>
+                <div class="col-md-6"><?php fsel('disableregs',['1'=>'Yes','0'=>'No'],$disableregs,'Disable Registrations'); ?></div>
+                <div class="col-md-6"><?php ftxt('maxusers',$maxusers,'Max Users (0 = unlimited)','','number'); ?></div>
+              </div>
+
+              <div class="section-sub">Username Requirements</div>
+              <div class="row">
+                <div class="col-md-4"><?php ftxt('minnamelength',$minnamelength,'Min Username Length','','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('maxnamelength',$maxnamelength,'Max Username Length','','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('maxip',$maxip,'Max. IPs','0 = disabled','number'); ?></div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Banned Usernames</label>
+                <textarea class="form-control" name="configoption[illegalusernames]" rows="3"><?= htmlspecialchars($illegalusernames) ?></textarea>
+              </div>
+
+              <div class="section-sub">Password Requirements</div>
+              <div class="row">
+                <div class="col-md-4"><?php ftxt('minpasswordlength',$minpasswordlength,'Min Password Length','','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('maxpasswordlength',$maxpasswordlength,'Max Password Length','','number'); ?></div>
+                <div class="col-md-4"><?php fsel('requirecomplexpasswords',['1'=>'Required','0'=>'Not Required'],$requirecomplexpasswords,'Complex Passwords'); ?></div>
+              </div>
+
+              <div class="section-sub">Security & Bonuses</div>
+              <div class="row">
+                <div class="col-md-4"><?php ftxt('failedlogincount',$failedlogincount,'Max Failed Logins','0 = disabled','number'); ?></div>
+                <div class="col-md-4"><?php fsel('failedlogintext',['1'=>'Yes','0'=>'No'],$failedlogintext,'Display Failed Login Count'); ?></div>
+                <div class="col-md-4"><?php fsel('username_method',['0'=>'Username Only','1'=>'Email Only','2'=>'Both'],$username_method,'Allowed Login Methods'); ?></div>
+                <div class="col-md-4"><?php fsel('r_verification',$yn,$r_verification,'Verification Fields'); ?></div>
+                <div class="col-md-4"><?php fsel('coppa',['enabled'=>'Enabled','deny'=>'Deny under 13','disabled'=>'Disabled'],$coppa,'COPPA Compliance'); ?></div>
+                <div class="col-md-4">
+                  <div class="mb-3"><label class="form-label">Default Usergroup</label>
+                    <select class="form-select" name="configoption[_d_usergroup]">
+                      <?php $gq = $db->sql_query('SELECT gid, title, namestyle FROM usergroups');
+                      while ($g = mysqli_fetch_assoc($gq)) {
+                        $sel = $_d_usergroup == $g['gid'] ? ' selected' : '';
+                        echo "<option value=\"{$g['gid']}\"{$sel}>" . htmlspecialchars(strip_tags($g['title'])) . "</option>";
+                      } ?>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-md-4"><?php ftxt('invite_count',$invite_count,'Initial Invites','0 = disabled','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('autogigsignup',$autogigsignup,'Auto GB on Signup','0 = disabled','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('autosbsignup',$autosbsignup,'Auto SeedBonus','0 = disabled','number'); ?></div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2">
+            <button class="btn btn-primary px-4" type="submit" name="save_registration"><i class="fas fa-save me-1"></i> Save Changes</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ── STAFF TEAM ────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="staff-team">
+        <div class="card mb-4 shadow-sm">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-users-cog me-2"></i> Staff Team Management</span>
+            <span class="badge bg-primary rounded-pill"><?= count($staffarray) ?> members</span>
+          </div>
+          <div class="card-body">
             <div class="alert alert-info mb-4">
-                <i class="fas fa-lightbulb me-2"></i> <strong>Tip:</strong>
-                Add new members in green rows, or use <strong>"Find User"</strong> for quick ID lookup.
+              <i class="fas fa-lightbulb me-2"></i>
+              <strong>Tip:</strong> Type a username — ID auto-fills if found. Use <strong>Find User</strong> for manual search.
             </div>
-
-            <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover align-middle">
-                        <thead class="table-dark">
-                            <tr>
-                                <th width="5%">#</th>
-                                <th width="47%">Username</th>
-                                <th width="43%">User ID</th>
-                                <th width="5%">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (!empty($staffarray)): ?>
-                                <?php foreach ($staffarray as $index => $staff): ?>
-                                <tr>
-                                    <td class="text-center fw-bold"><?php echo $index + 1; ?></td>
-                                    <td>
-                                        <input type="text" name="staffnames[]"
-                                               value="<?php echo htmlspecialchars($staff['name']); ?>"
-                                               class="form-control"
-                                               placeholder="Enter username"
-                                               list="staffNames">
-                                    </td>
-                                    <td>
-                                        <input type="text" name="staffids[]"
-                                               value="<?php echo htmlspecialchars($staff['id']); ?>"
-                                               class="form-control"
-                                               placeholder="Enter user ID">
-                                    </td>
-                                    <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-outline-danger"
-                                                data-bs-toggle="tooltip" title="Clear this row"
-                                                onclick="this.closest('tr').querySelectorAll('input').forEach(i => i.value = '')">
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr>
-                                    <td colspan="4" class="text-center text-muted py-5">
-                                        <i class="fas fa-users-slash fa-3x mb-3 opacity-50"></i>
-                                        <p class="mb-0 fw-semibold">No staff members found</p>
-                                        <small class="text-muted">Add your first team member below</small>
-                                    </td>
-                                </tr>
-                            <?php endif; ?>
-
-                            <!-- Empty rows for new entries -->
-                            <?php for ($i = 0; $i < 3; $i++): ?>
-                                <tr class="table-success">
-                                    <td class="text-center">
-                                        <span class="badge bg-success rounded-pill">New</span>
-                                    </td>
-                                    <td>
-                                        <input type="text" name="staffnames[]" class="form-control"
-                                               placeholder="Enter username"
-                                               list="staffNames">
-                                    </td>
-                                    <td>
-                                        <input type="text" name="staffids[]" class="form-control"
-                                               placeholder="Enter user ID">
-                                    </td>
-                                    <td></td>
-                                </tr>
-                            <?php endfor; ?>
-                        </tbody>
-                    </table>
+            <form method="post" action="<?= htmlspecialchars($_SERVER['PHP_SELF']) ?>">
+              <datalist id="staffNames">
+                <?php foreach ($availableStaff as $st): ?>
+                <option value="<?= htmlspecialchars($st['username']) ?>"><?= htmlspecialchars($st['username']) ?> (<?= htmlspecialchars($st['group'] ?? '') ?>)</option>
+                <?php endforeach; ?>
+              </datalist>
+              <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle">
+                  <thead class="table-dark">
+                    <tr><th width="5%">#</th><th width="47%">Username</th><th width="43%">User ID</th><th width="5%">Actions</th></tr>
+                  </thead>
+                  <tbody>
+                    <?php if (!empty($staffarray)): ?>
+                      <?php foreach ($staffarray as $i => $st): ?>
+                      <tr>
+                        <td class="text-center fw-bold"><?= $i + 1 ?></td>
+                        <td><input type="text" name="staffnames[]" value="<?= htmlspecialchars($st['name']) ?>" class="form-control" list="staffNames" placeholder="Username"></td>
+                        <td><input type="text" name="staffids[]"   value="<?= htmlspecialchars($st['id'])   ?>" class="form-control" placeholder="User ID"></td>
+                        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').querySelectorAll('input').forEach(i=>i.value='')"><i class="fas fa-times"></i></button></td>
+                      </tr>
+                      <?php endforeach; ?>
+                    <?php else: ?>
+                      <tr><td colspan="4" class="text-center text-muted py-4">No staff members found. Add below.</td></tr>
+                    <?php endif; ?>
+                    <?php for ($i = 0; $i < 3; $i++): ?>
+                    <tr class="table-success">
+                      <td class="text-center"><span class="badge bg-success rounded-pill">New</span></td>
+                      <td><input type="text" name="staffnames[]" class="form-control" list="staffNames" placeholder="Enter username"></td>
+                      <td><input type="text" name="staffids[]"   class="form-control" placeholder="Enter user ID"></td>
+                      <td></td>
+                    </tr>
+                    <?php endfor; ?>
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-3 p-3 bg-light rounded">
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-outline-primary btn-sm"
+                          onclick="window.open('<?= htmlspecialchars($BASEURL) ?>/users.php#searchuser','finduser','toolbar=no,scrollbars=yes,width=800,height=600')">
+                    <i class="fas fa-search me-1"></i> Find User
+                  </button>
                 </div>
-
-                <!-- Autocomplete datalist -->
-                <datalist id="staffNames">
-                    <?php foreach ($availableStaff as $staff): ?>
-                        <option value="<?php echo htmlspecialchars($staff['username']); ?>">
-                            <?php echo htmlspecialchars($staff['username']); ?> (<?php echo htmlspecialchars($staff['group']); ?>)
-                        </option>
-                    <?php endforeach; ?>
-                </datalist>
-
-                <div class="d-flex justify-content-between align-items-center mt-4 p-3 bg-light rounded shadow-sm">
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#helpModal">
-                            <i class="fas fa-question-circle me-2"></i> Help Guide
-                        </button>
-                        <button type="button" onclick="findUser()" class="btn btn-outline-primary">
-                            <i class="fas fa-search me-2"></i> Find User
-                        </button>
-                    </div>
-                    <div class="d-flex align-items-center gap-3">
-                        <span class="text-muted small">
-                            <i class="fas fa-database me-1"></i>
-                            <?php echo count($availableStaff); ?> available staff members
-                        </span>
-                        <button type="submit" name="save_staff" class="btn btn-primary px-4 shadow-sm">
-                            <i class="fas fa-save me-2"></i> Save Changes
-                        </button>
-                    </div>
+                <div class="d-flex align-items-center gap-3">
+                  <span class="text-muted small"><i class="fas fa-database me-1"></i><?= count($availableStaff) ?> available staff</span>
+                  <button type="submit" name="save_staff" class="btn btn-primary px-4"><i class="fas fa-save me-1"></i> Save Changes</button>
                 </div>
+              </div>
             </form>
-        </div>
-    </div>
-</div>
-
-<!-- Help Modal -->
-<div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content shadow-lg">
-            <div class="modal-header">
-                <h5 class="modal-title text-white">
-                    <i class="fas fa-life-ring me-2"></i> Staff Management Guide
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card border-success mb-3">
-                            <div class="card-header bg-success text-white">
-                                <i class="fas fa-plus-circle me-2"></i> Adding Members
-                            </div>
-                            <div class="card-body">
-                                <ol>
-                                    <li>Type the username in a green row</li>
-                                    <li>The user ID will auto-fill if found</li>
-                                    <li>Use the <strong>Find User</strong> button for manual search</li>
-                                    <li>Click <strong>Save Changes</strong></li>
-                                </ol>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card border-danger mb-3">
-                            <div class="card-header bg-danger text-white">
-                                <i class="fas fa-times-circle me-2"></i> Removing Members
-                            </div>
-                            <div class="card-body">
-                                <ol>
-                                    <li>Click the red X button, or</li>
-                                    <li>Clear both the Username and ID fields</li>
-                                    <li>Click <strong>Save Changes</strong> to confirm</li>
-                                </ol>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="alert alert-warning mt-3">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Important:</strong> Changes take effect immediately. Make sure both fields are filled for each entry.
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary shadow-sm" data-bs-dismiss="modal">
-                    <i class="fas fa-check me-2"></i> Got It
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- FreeLeech Settings Tab -->
-<div class="tab-pane fade" id="freeleech-settings">
-  <form method="POST" action="" id="freeleech-settings-form">
-    <div class="card mb-4">
-      <div class="card-header">
-        <h5><i class="fas fa-gift me-2"></i> FreeLeech Settings</h5>
-      </div>
-      <div class="card-body">
-
-        <!-- Тип системы -->
-        <div class="mb-3">
-          <label for="system" class="form-label">Select System Type</label>
-          <select class="form-select" name="configoption[system]" id="system">
-            <option value="freeleech" <?= $__FLSTYPE == 'freeleech' ? 'selected' : '' ?>>Free Leech</option>
-            <option value="silverleech" <?= $__FLSTYPE == 'silverleech' ? 'selected' : '' ?>>Silver Leech</option>
-            <option value="doubleupload" <?= $__FLSTYPE == 'doubleupload' ? 'selected' : '' ?>>Double Upload</option>
-          </select>
-        </div>
-
-        <!-- Begin Date -->
-        <div class="mb-3">
-          <label for="start" class="form-label">Begin Date</label>
-          <div class="input-group">
-            <input type="text" 
-                   id="startPicker"
-                   class="form-control"
-                   name="configoption[start]"
-                   value="<?= $__F_START != '0000-00-00 00:00:00' ? $__F_START : '' ?>"
-                   placeholder="YYYY-MM-DD HH:MM:SS">
-            <span class="input-group-text"><i class="bi bi-calendar"></i></span>
           </div>
         </div>
-
-        <!-- End Date -->
-        <div class="mb-3">
-          <label for="end" class="form-label">End Date</label>
-          <div class="input-group">
-            <input type="text" 
-                   id="endPicker"
-                   class="form-control"
-                   name="configoption[end]"
-                   value="<?= $__F_END != '0000-00-00 00:00:00' ? $__F_END : '' ?>"
-                   placeholder="YYYY-MM-DD HH:MM:SS">
-            <span class="input-group-text"><i class="bi bi-calendar"></i></span>
-          </div>
-        </div>
-
-        <div class="d-flex justify-content-end mt-4">
-          <button type="submit" name="save_freeleech" class="btn btn-primary px-4">
-            <i class="fas fa-save me-2"></i> Save Changes
-          </button>
-        </div>
-
       </div>
-    </div>
-  </form>
+
+      <!-- ── FREELEECH ─────────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="freeleech-settings">
+        <form method="post">
+          <div class="card mb-4">
+            <div class="card-header"><i class="fas fa-gift me-2"></i> FreeLeech Settings</div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label">Select System Type</label>
+                <select class="form-select" name="configoption[system]">
+                  <option value="freeleech"    <?= ($__FLSTYPE??'')==='freeleech'   ?'selected':''?>>Free Leech</option>
+                  <option value="silverleech"  <?= ($__FLSTYPE??'')==='silverleech' ?'selected':''?>>Silver Leech</option>
+                  <option value="doubleupload" <?= ($__FLSTYPE??'')==='doubleupload'?'selected':''?>>Double Upload</option>
+                </select>
+              </div>
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="mb-3"><label class="form-label">Begin Date</label>
+                    <div class="input-group">
+                      <input type="text" id="startPicker" class="form-control" name="configoption[start]"
+                             value="<?= ($__F_START??'')!=='0000-00-00 00:00:00' ? htmlspecialchars($__F_START??'') : '' ?>"
+                             placeholder="YYYY-MM-DD HH:MM:SS">
+                      <span class="input-group-text"><i class="bi bi-calendar"></i></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3"><label class="form-label">End Date</label>
+                    <div class="input-group">
+                      <input type="text" id="endPicker" class="form-control" name="configoption[end]"
+                             value="<?= ($__F_END??'')!=='0000-00-00 00:00:00' ? htmlspecialchars($__F_END??'') : '' ?>"
+                             placeholder="YYYY-MM-DD HH:MM:SS">
+                      <span class="input-group-text"><i class="bi bi-calendar"></i></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mb-2">
+            <button class="btn btn-primary px-4" type="submit" name="save_freeleech"><i class="fas fa-save me-1"></i> Save Changes</button>
+          </div>
+        </form>
+      </div>
+
+    </div><!-- /.tab-content -->
+    </div><!-- /.content-pad -->
+  </main>
+</div>
 </div>
 
-<!-- Flatpickr Dependencies -->
+
+<!-- Flatpickr -->
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/airbnb.css">
 <script src="<?= $BASEURL ?>/admin/scripts/flatpickr.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/ru.js"></script>
 
+<!-- Pass PHP data to JavaScript (должен быть ДО загрузки admin-settings.js) -->
 <script>
-flatpickr("#startPicker", {
-    enableTime: true,
-    dateFormat: "Y-m-d H:i:S",
-    //locale: "ru",
-});
-
-flatpickr("#endPicker", {
-    enableTime: true,
-    dateFormat: "Y-m-d H:i:S",
-    //locale: "ru",
-});
+// Pass staff data from PHP to JavaScript
+const staffData = <?= json_encode(array_map(fn($s) => ['id' => $s['id'], 'username' => $s['username']], $availableStaff)) ?>;
 </script>
 
-<style>
-.flatpickr-calendar {
-    border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.08);
-}
-.flatpickr-day.today {
-    border-color: var(--bs-primary);
-}
-.flatpickr-day.selected,
-.flatpickr-day.startRange,
-.flatpickr-day.endRange {
-    background: var(--bs-primary);
-    border-color: var(--bs-primary);
-}
-.input-group-text .bi { opacity: .8; }
-</style>
+<!-- Include the external JavaScript file (ДОЛЖЕН быть ПОСЛЕ определения staffData) -->
+<script src="<?= $BASEURL ?>/admin/scripts/admin-settings.js"></script>
 
 
 
-
-
-
-
-
-
-
-<!-- Tab Activation Script -->
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const hash = window.location.hash;
-  if (hash && document.querySelector('a[data-bs-toggle="tab"][href="' + hash + '"]')) {
-    new bootstrap.Tab(document.querySelector('a[data-bs-toggle="tab"][href="' + hash + '"]')).show();
-  }
-});
-</script>
-
-
-				
-					
-                </div>
-            </main>
-        </div>
-    </div>
-
-    <!-- Bootstrap JS Bundle with Popper -->
-   
-    <script>
-        // Initialize tooltips
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('.help-icon'));
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl);
-        });
-    </script>
-</body>
-</html>
-
-<?
-stdfoot();
+<?php stdfoot(); ?>

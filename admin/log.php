@@ -1188,6 +1188,7 @@ elseif ($entry_type === 'admin') {
 			
 			'Database backup completed successfully' => ['success', 'Database Backup Completed', 'fa-database'],
 			
+			'Created a backup' => ['success', 'Database Backup Created', 'fa-database'],
 			
 			'done | no active seeders' => ['success', 'Seed Bonus Awarded', 'fa-check-circle'],
 	
@@ -1203,14 +1204,6 @@ elseif ($entry_type === 'admin') {
             'Removed disallowed'=> ['success', 'Blacklist Del', 'fa-check-circle'],
             'Added IP ban'      => ['danger',  'IP Ban',        'fa-shield-alt'],
             'Removed IP ban'    => ['success', 'IP Unban',      'fa-shield-alt'],
-			
-			
-			'Deleted a backup' => ['danger', 'Backup Deleted', 'fa-trash-alt'],
-			
-			'Created a backup' => ['success', 'Backup Created', 'fa-database'],
-			
-			
-			'Thread views task' => ['info', 'Thread Views Task', 'fa-eye'],
 			
 			
 			

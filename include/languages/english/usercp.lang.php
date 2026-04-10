@@ -19,7 +19,7 @@ $language['usercp'] = array
 	'e_pass10'	=>	 '<b>Question:</b>',
 	'e_pass11'	=>	 'Secret answer:',
 	
-	
+'ucp_nav_profile' => "Your Profile",	
 
 'no_books_selected' => "You did not select any bookmarks to perform the selected action on.",
 

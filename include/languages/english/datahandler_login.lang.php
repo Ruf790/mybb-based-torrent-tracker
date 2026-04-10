@@ -19,4 +19,9 @@ $language['datahandler_login'] = array
 'logindata_regimageinvalid' => "The image verification code that you entered was incorrect. Please enter the code exactly how it appears in the image.",
 'logindata_regimagerequired' => "Please fill out the image verification code to continue the login process. Please enter the code exactly how it appears in the image.",
 
+
+'logindata_failed_login_again' => "<br />You have <strong>{1}</strong> more login attempts.",
+
+
+
 );

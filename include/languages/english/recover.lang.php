@@ -109,5 +109,50 @@ The {4} Team.',
 	'generated1'				=>'New Password Generated!',
 	'generated2'				=>'Your new password is <input type="text" value="{1}"> (Proceed to <a href={2}/login.php>login</a>)',
 	'msent'	=>'Your username and details about how to reset your password have been sent to you by email.',//Added v3.9.0
+	
+	
+	
+	
+	
+	
+'sent_title'         => 'Email Sent',
+'sent_body'          => 'If an account with that username exists, a password reset link has been sent to the associated email address.',
+'sent_hint'          => 'The link is valid for 60 minutes. Please check your spam folder if you did not receive the email.',
+
+'invalid_token'      => 'The password reset link is invalid or has already been used.',
+'token_expired'      => 'The reset link has expired. Please request a new one.',
+'passwords_mismatch' => 'The passwords you entered do not match.',
+'password_tooshort'  => 'Your password must be at least 8 characters long.',
+'password_changed222222'   => 'Your password has been changed successfully. You can now log in with your new password.',
+
+'password_changed' => 'Your password has been changed successfully. You are now logged in.',
+
+'newpassword_title'  => 'Set New Password',
+'newpassword_info'   => 'Setting a new password for account <strong>%s</strong>.',
+'newpassword'        => 'New Password',
+'confirmpassword'    => 'Confirm Password',
+'go_login'           => 'Go to Login',
+
+// Email template
+'email_subject' => 'Password Reset Request',
+'email_body'    =>
+"Hi %s,
+
+Someone (hopefully you) requested a password reset for your account on our site.
+
+To set a new password, please follow the link below:
+%s
+
+This link is valid for %d minutes. If you did not request this, simply ignore this email.
+
+Regards,
+The Team",
+	
+	
+	
+	
+	
+	
+	
 );
 ?>

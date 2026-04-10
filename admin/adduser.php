@@ -5,7 +5,7 @@ declare(strict_types=1);
 // Include our base data handler class
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_user.php';
-require_once INC_PATH . '/readconfig.php';
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
@@ -218,8 +218,7 @@ class UserRegistrationHandler
         $downloaded = (int)($post_data['downloaded'] ?? 0);
         $confirm = trim($post_data['confirm'] ?? '');
         $avatar_url = trim($post_data['avatar_url'] ?? '');
-        $passhint = (int)($post_data['passhint'] ?? 0);
-        $hintanswer = trim($post_data['hintanswer'] ?? '');
+       
 
         // Валидации
         $validations = [
@@ -293,19 +292,6 @@ class UserRegistrationHandler
 
         $user_id = $db->insert_id();
 
-        // Секретные вопросы
-        if (!empty($passhint) && !empty($hintanswer)) {
-            $secret_data = [
-                $user_id,
-                $passhint,
-                md5($hintanswer)
-            ];
-            
-            $db->sql_query_prepared(
-                "REPLACE INTO ts_secret_questions (userid, passhint, hintanswer) VALUES (?, ?, ?)",
-                $secret_data
-            );
-        }
 
         // User fields
         $pfcache = $cache->read('profilefields');
@@ -427,11 +413,6 @@ if (!empty($errors)) {
 }
 
 $allowed_groups = $registration_handler->getAllowedUsergroups();
-$questions = [
-    1 => $lang->member["hr0"] ?? 'Question 1',
-    2 => $lang->member["hr1"] ?? 'Question 2', 
-    3 => $lang->member["hr2"] ?? 'Question 3'
-];
 
 echo '
 <div class="container mt-4">
@@ -568,37 +549,7 @@ echo '                      </select>
                     </div>
                 </div>
 
-                <!-- Security Questions -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <select name="passhint" id="input_passhint" class="form-select">
-                                <option value="">Select a question...</option>';
-                                foreach ($questions as $value => $question) {
-                                    $selected = ($_POST['passhint'] ?? '') == $value ? 'selected' : '';
-                                    echo '<option value="' . $value . '" ' . $selected . '>' . htmlspecialchars_uni($question) . '</option>';
-                                }
-echo '                      </select>
-                            <label for="input_passhint" class="form-label">
-                                <i class="fas fa-shield-alt me-2 text-primary"></i>Security Question
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="text" 
-                                   class="form-control" 
-                                   id="input_hintanswer" 
-                                   name="hintanswer" 
-                                   value="' . htmlspecialchars_uni($_POST['hintanswer'] ?? '') . '"
-                                   placeholder="Security Answer">
-                            <label for="input_hintanswer" class="form-label">
-                                <i class="fas fa-key me-2 text-primary"></i>Security Answer
-                            </label>
-                        </div>
-                    </div>
-                </div>
+                
 
                 <!-- Traffic Stats -->
                 <div class="row g-3 mb-4">

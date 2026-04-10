@@ -538,6 +538,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+
+
+
+
+
+
 // Form Validation helper function
 function validateForm() {
     let valid = true;
@@ -545,7 +551,6 @@ function validateForm() {
     // Torrent File validation
     const torrentFileInput = document.getElementById("torrentFile");
     const isEdit = document.querySelector('input[name="EditTorrent"]') !== null;
-
     if (!isEdit && !torrentFileInput.files.length) {
         torrentFileInput.classList.add("is-invalid");
         valid = false;
@@ -556,10 +561,7 @@ function validateForm() {
     // Form Name validation
     const formNameInput = document.getElementById("formName");
     const formNameValue = formNameInput.value.trim();
-    const minLength = 3;
-    const maxLength = 255;
-
-    if (!formNameValue || formNameValue.length < minLength || formNameValue.length > maxLength) {
+    if (!formNameValue || formNameValue.length < 3 || formNameValue.length > 255) {
         formNameInput.classList.add("is-invalid");
         valid = false;
     } else {
@@ -573,6 +575,30 @@ function validateForm() {
         valid = false;
     } else {
         descriptionInput.classList.remove("is-invalid");
+    }
+
+    // ── Category validation ──────────────────────────────
+    const categoryInput = document.getElementById("categorySelected");
+    const categoryError = document.getElementById("categoryError");
+    const categoryLabel = document.getElementById("categoryLabel");
+
+    if (!categoryInput.value || categoryInput.value === '0') {
+        categoryError.style.display = 'block';
+        categoryLabel.innerHTML =
+            '<span class="text-danger">' +
+            '<i class="fas fa-exclamation-circle me-1"></i>Please select a category' +
+            '</span>';
+        // Подсвечиваем все кнопки красной рамкой
+        document.querySelectorAll('.cat-pick-btn').forEach(btn => {
+            btn.style.borderColor = '#dc3545';
+        });
+        valid = false;
+    } else {
+        categoryError.style.display = 'none';
+        // Убираем красную рамку
+        document.querySelectorAll('.cat-pick-btn').forEach(btn => {
+            btn.style.borderColor = '';
+        });
     }
 
     return valid;

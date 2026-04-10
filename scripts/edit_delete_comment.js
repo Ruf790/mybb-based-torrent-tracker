@@ -118,18 +118,42 @@ if (delBtnEl) {
       body: JSON.stringify({ pid: commentToDeleteId, tid: torrentId })
     })
     .then(res => res.json())
-    .then(data => {
-      if (!data || !data.success) {
+    
+	
+	.then(data => {
+    if (!data || !data.success) {
         showToast((data && data.error) || 'Failed to delete comment.', 'danger');
         return;
-      }
+    }
 
-      const container = document.getElementById('comment-' + commentToDeleteId);
-      if (container) container.remove();
+    deleteModal.hide();
+    showToast('Comment deleted successfully.', 'success');
 
-      deleteModal.hide();
-      showToast('Comment deleted successfully.', 'success');
-    })
+    const totalOnPage = document.querySelectorAll('.closest[id^="comment-"]').length;
+
+    if (totalOnPage <= 1) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentPage = parseInt(urlParams.get('page') || '1');
+
+        setTimeout(() => {
+            if (currentPage > 1) {
+                urlParams.set('page', currentPage - 1);
+                window.location.search = urlParams.toString();
+            } else {
+                window.location.reload();
+            }
+        }, 800);
+    } else {
+        const container = document.getElementById('comment-' + commentToDeleteId);
+        if (container) {
+            container.style.opacity = '0';
+            container.style.transition = 'opacity 0.3s ease';
+            setTimeout(() => container.remove(), 300);
+        }
+    }
+})
+
+	
     .catch(() => {
       showToast('Request failed. Please try again.', 'danger');
     })
@@ -313,25 +337,50 @@ function executeMassDelete() {
             massDeleteModal.hide();
         }
 
-        if (data.success) {
-            // Удаляем комментарии из DOM
-            window.selectedCommentIds.forEach(commentId => {
-                const commentElement = document.getElementById('comment-' + commentId);
-                if (commentElement) {
-                    commentElement.style.opacity = '0';
-                    commentElement.style.transition = 'opacity 0.3s ease';
-                    setTimeout(() => {
-                        commentElement.remove();
-                    }, 300);
-                }
-            });
-            
-            // Обновляем счетчики
-            updateCommentCounters(window.selectedCommentIds.length);
-            
-            // Показываем уведомление об успехе
-            showToast(`Successfully deleted ${data.deleted || window.selectedCommentIds.length} comments!`, 'success');
-        } else {
+    
+
+
+
+if (data.success) {
+    const deletedCount = data.deleted || window.selectedCommentIds.length;
+    
+    // Считаем сколько останется после удаления
+    const totalOnPage = document.querySelectorAll('.closest[id^="comment-"]').length;
+    const willBeEmpty = totalOnPage <= window.selectedCommentIds.length;
+
+    if (willBeEmpty) {
+        // Страница будет пустой — сразу редиректим без анимации
+        showToast(`Successfully deleted ${deletedCount} comments!`, 'success');
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentPage = parseInt(urlParams.get('page') || '1');
+
+        setTimeout(() => {
+            if (currentPage > 1) {
+                urlParams.set('page', currentPage - 1);
+                window.location.search = urlParams.toString();
+            } else {
+                window.location.reload();
+            }
+        }, 800); // Даём время показать toast
+    } else {
+        // Остаются комментарии — анимируем удаление
+        window.selectedCommentIds.forEach(commentId => {
+            const commentElement = document.getElementById('comment-' + commentId);
+            if (commentElement) {
+                commentElement.style.opacity = '0';
+                commentElement.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => commentElement.remove(), 300);
+            }
+        });
+
+        updateCommentCounters(deletedCount);
+        showToast(`Successfully deleted ${deletedCount} comments!`, 'success');
+    }
+}
+
+		
+		else {
             // Показываем ошибку
             showToast('Error: ' + (data.error || 'Failed to delete comments'), 'error');
         }

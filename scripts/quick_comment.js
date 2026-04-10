@@ -85,11 +85,15 @@ function TSajaxquickcomment(TorrentID) {
     var messageElement = document.getElementById('message');
     var message = messageElement ? messageElement.value : '';
     
-    var pars = {
-        ajax_quick_comment: 1,
-        id: intval(TorrentID),
-        text: urlencode(message)
-    };
+   var pageInput = document.querySelector('input[name="page"]');
+var currentPage = pageInput ? parseInt(pageInput.value) || 1 : 1;
+
+var pars = {
+    ajax_quick_comment: 1,
+    id: intval(TorrentID),
+    text: urlencode(message),
+    page: currentPage
+};
 
     // Добавляем каждый file_ids[] в запрос, если они существуют
     const fileInputs = document.querySelectorAll('#fileIdsContainer input[name="file_ids[]"]');
@@ -129,27 +133,43 @@ function TSajaxquickcomment(TorrentID) {
         }
         return response.text();
     })
-    .then(result => {
-        var match = result.match(/<error>(.*)<\/error>/);
-        if (match) {
-            var errorMessage = match[1] || l_ajaxerror;
-            showModalError(l_updateerror + errorMessage);
-        } else {
-            var ajaxCommentPreview = document.getElementById('ajax_comment_preview');
-            if (ajaxCommentPreview) {
-                var newDiv = document.createElement('div');
-                newDiv.id = 'PostedReply';
-                newDiv.innerHTML = result;
-                ajaxCommentPreview.appendChild(newDiv);
-            }
-            
-            // Очищаем поля
-            if (messageElement) messageElement.value = '';
-            
-            var fileIdsContainer = document.getElementById('fileIdsContainer');
-            if (fileIdsContainer) fileIdsContainer.innerHTML = '';
+    
+	
+	
+	.then(result => {
+    var match = result.match(/<error>(.*)<\/error>/);
+    if (match) {
+        var errorMessage = match[1] || l_ajaxerror;
+        showModalError(l_updateerror + errorMessage);
+    } else {
+        // Проверяем редирект
+        var redirectMatch = result.match(/<redirect>(.*?)<\/redirect>/);
+        if (redirectMatch) {
+            window.location.href = redirectMatch[1];
+            return;
         }
-    })
+
+        var ajaxCommentPreview = document.getElementById('ajax_comment_preview');
+        if (ajaxCommentPreview) {
+            var newDiv = document.createElement('div');
+            newDiv.id = 'PostedReply';
+            newDiv.innerHTML = result;
+            ajaxCommentPreview.appendChild(newDiv);
+        }
+        
+        // Очищаем поля
+        if (messageElement) messageElement.value = '';
+        
+        var fileIdsContainer = document.getElementById('fileIdsContainer');
+        if (fileIdsContainer) fileIdsContainer.innerHTML = '';
+    }
+})
+	
+	
+	
+	
+	
+	
     .catch(error => {
         showModalError(l_ajaxerror + "\n\n" + error.message);
     })

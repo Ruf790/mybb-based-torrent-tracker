@@ -49,55 +49,32 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 
 ## ⚡ Installation
 
-### 1. Import Database
-Upload the SQL file from:
-admin/backup
+### Option A — Web Installer (Recommended)
+1. Upload all files to your web server
+2. Open `http://yoursite.com/install.php` in your browser
+3. Follow the step-by-step setup wizard:
+   - ✅ Requirements check
+   - 🗄️ Database configuration
+   - 🌐 Site settings
+   - 👤 Admin account creation
+   - 🚀 One-click install
+4. Delete `install.php` after installation
 
+---
 
-and import it into your MySQL/MariaDB database.
+## 📌 Requirements
+- PHP 8.4+
+- MySQL 5.7+ / MariaDB 10.3+
+- Composer
+- mod_rewrite (Apache) or equivalent
 
-### 2. Install Dependencies
-composer require arokettu/torrent-file
-
-
-
-### 3. Configure Database
-Edit `include/config.php`:
-```php
-$config['database']['database'] = 'dbname';
-$config['database']['hostname'] = 'localhost';
-$config['database']['username'] = 'user';
-$config['database']['password'] = 'password';
-4. Configure Announce
-Edit include/config_announce.php:
-
-
-$mysql_host = '';
-$mysql_user = '';
-$mysql_pass = '';
-$mysql_db   = '';
-
-$BASEURL = 'https://localhost';
-$SITENAME = 'Tracker Name';
-5. Configure Site Settings
-Edit include/settings.php:
-
-
-$SITENAME = "Tracker Name";
-$BASEURL = "https://localhost";
-$cookiedomain = ".localhost";
-$announce_urls[] = "https://localhost/announce.php";
-6. Default Admin User
-
-Username: Admins
-Password: 123456
-✅ Ready to Go
-After completing these steps, your tracker should be up and running.
-Please don’t kill me hahah 😅
-
-📌 Requirements
-PHP 8.4
-
-MySQL 5.7+ / MariaDB
-
-Composer
+## 📁 Directory Permissions
+```bash
+chmod 755 torrents/
+chmod 755 uploads/
+chmod 755 uploads/avatars/
+chmod 755 cache/
+chmod 666 include/config.php
+chmod 666 include/settings.php
+chmod 666 include/config_announce.php
+```

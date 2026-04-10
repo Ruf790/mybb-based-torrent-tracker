@@ -972,7 +972,7 @@ function categoriestable($res, $frame_caption) {
                 <td class='text-center text-success'>" . number_format((int)($a["total_seeders"] ?? 0)) . "</td>
                 <td class='text-center text-warning'>" . number_format((int)($a["total_leechers"] ?? 0)) . "</td>
                 <td class='text-center text-info'>" . number_format((int)($a["total_snatches"] ?? 0)) . "</td>
-                <td class='text-center'>" . mksize($a["total_size"]) . "</td>
+                <td class='text-center'>" . mksize($a["total_size"] ?? 0) . "</td>
               </tr>";
     }
     echo '</tbody></table></div></div></div>';

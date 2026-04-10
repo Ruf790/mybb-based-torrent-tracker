@@ -26,14 +26,14 @@ const VERSION = '';
 const TS_MESSAGE = 'Powered by Ruff Tracker';
 
 // --- Default Usergroups ---
-const UC_GUEST         = 0;
-const UC_USER          = 1;
-const UC_POWER_USER    = 2;
-const UC_VIP           = 3;
-const UC_UPLOADER      = 4;
-const UC_MODERATOR     = 5;
-const UC_ADMINISTRATOR = 6;
-const UC_SYSOP         = 7;
+const UC_GUEST         = 1;
+const UC_USER          = 2;
+const UC_POWER_USER    = 3;
+const UC_VIP           = 4;
+const UC_UPLOADER      = 5;
+const UC_MODERATOR     = 6;
+const UC_ADMINISTRATOR = 7;
+const UC_SYSOP         = 8;
 const UC_BANNED        = 9;
 
 // --- Script name ---
@@ -87,8 +87,7 @@ if (defined('IN_FORUM') && IN_FORUM === true) {
     
     // Load forum-specific files ONLY in forum context
     require_once INC_PATH . '/tsf_functions.php';        
-    //include_once INC_PATH . '/functions_multipage.php';  
-    require_once INC_PATH . '/readconfig.php';           
+    //include_once INC_PATH . '/functions_multipage.php';            
     include_once INC_PATH . '/class_parser.php';         
     
     // Initialize parser (forum only)

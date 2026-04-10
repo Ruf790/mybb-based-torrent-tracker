@@ -754,7 +754,7 @@ function handleSearchTorrents(): void
  */
 function handleQuickComment(): void
 {
-    global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins;
+    global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins, $ts_perpage;
     
     if (!isset($_POST['ajax_quick_comment']) || !isset($_POST['id']) || !isset($_POST['text']) || !$CURUSER) {
         return;
@@ -834,6 +834,25 @@ function handleQuickComment(): void
                 
                 if ($db->affected_rows()) {
                     $commentposted = true;
+					
+				
+                   // Редирект на последнюю страницу к этому комменту
+$count_query = $db->simple_select("comments", "COUNT(id) as total", "torrent='{$torrentid}'");
+$count_row   = $db->fetch_array($count_query);
+$total       = (int)($count_row['total'] ?? 0);
+$perpage     = (int)($ts_perpage ?? 20);
+if ($perpage <= 0) $perpage = 20;
+$lastpage    = max(1, (int)ceil($total / $perpage));
+$currentpage = (int)($_POST['page'] ?? 1);
+if ($currentpage <= 0) $currentpage = 1;
+
+if ($lastpage > 1 && $currentpage < $lastpage) {
+    $url = get_comment_link($newid, $torrentid, $lastpage) . "#pid{$newid}";
+    show_msg('<redirect>' . $url . '</redirect>', false, '', false);
+}
+				   
+				   
+					
                 }
             }
         }
@@ -907,8 +926,29 @@ function handleQuickComment(): void
     $lcid = (int)($_POST["lcid"] ?? 0);
     define("LCID", $lcid);
     
-    $showcommenttable = commenttable($allrows, "", "", false, true, true);
-    show_msg($showcommenttable, false, "", false);
+   
+    
+	// Считаем страницу для нового комментария
+$count_query = $db->simple_select("comments", "COUNT(id) as total", "torrent='{$torrentid}'");
+$count_row   = $db->fetch_array($count_query);
+$total       = (int)($count_row['total'] ?? 0);
+$perpage     = (int)($ts_perpage ?? 20);
+if ($perpage <= 0) $perpage = 20;
+$lastpage    = max(1, (int)ceil($total / $perpage));
+$currentpage = (int)($_POST['page'] ?? 1);
+if ($currentpage <= 0) $currentpage = 1;
+
+
+
+if ($lastpage > 1 && $currentpage < $lastpage) {
+    $url = get_comment_link($cid, $torrentid, $lastpage) . "#pid{$cid}";
+    show_msg('<redirect>' . $url . '</redirect>', false, '', false);
+}
+
+$showcommenttable = commenttable($allrows, "", "", false, true, true);
+show_msg($showcommenttable, false, "", false);
+	
+	
 }
 
 

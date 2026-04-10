@@ -12,6 +12,8 @@ require './global.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_bookmark.php';
 
+
+
 if (!isset($CURUSER)) {
     print_no_permission();
 }
@@ -43,7 +45,7 @@ require_once INC_PATH . '/functions_mkprettytime.php';
 $_freelechmod = $_silverleechmod = $_x2mod = false;
 $___notice = '';
 include TSDIR . '/cache/freeleech.php';
-include INC_PATH . '/readconfig.php';
+
 
 if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
     
@@ -1418,12 +1420,12 @@ $showimages = 'yes';
 $i_torrent_limit = '15';
 
 $torrent_cache = $cache->read('torrents');
-
-// Preprocess the data first
 $carouselItems = [];
-foreach ($torrent_cache as $row2) {
-    if (!empty($row2['t_image'])) {
-        $carouselItems[] = $row2;
+if (!empty($torrent_cache) && is_array($torrent_cache)) {
+    foreach ($torrent_cache as $row2) {
+        if (!empty($row2['t_image'])) {
+            $carouselItems[] = $row2;
+        }
     }
 }
 $total = count($carouselItems);

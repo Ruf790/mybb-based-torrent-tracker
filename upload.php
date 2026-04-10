@@ -323,6 +323,7 @@ if (!$isEdit || ($torrentFile && $torrentFile['error'] === UPLOAD_ERR_OK))
         echo json_encode(["success" => false, "error" => "Invalid or unsupported torrent file format."]);
         exit;
     }
+    $originalTorrentFilename = $torrentFilename; // ✅ сохраняем оригинальное имя
     $torrentPath = $torrentDir . $torrentFilename;
 } 
 elseif ($isEdit) 
@@ -565,7 +566,7 @@ $isEdit = isset($_POST['EditTorrent']) && !empty($_POST['EditTorrentID']);
 $metadata = array(
     'name' => $db->escape_string($torrentName),
     't_link' => $t_link,
-    'tags' => $Genre,
+    'tags' => $db->escape_string(trim($_POST['tags'] ?? $Genre)),
     //'owner' => $db->escape_string($CURUSER['id']),
     'category' => $category,
     'anonymous' => $db->escape_string($anonymous),
@@ -591,13 +592,21 @@ if (!$isEdit)
 }
 
 
+
 if ($torrentFilename) 
 {
-    $metadata['filename'] = $db->escape_string($torrentFilename);
+    // filename обновляем только если загружен новый файл
+    if ($newFileUploaded) {
+        $metadata['filename'] = $db->escape_string($originalTorrentFilename);
+    } elseif (!$isEdit) {
+        $metadata['filename'] = $db->escape_string($originalTorrentFilename);
+    }
     $metadata['info_hash'] = $db->escape_string($info_hash);
-	$metadata['size'] = (int)$size;
+    $metadata['size'] = (int)$size;
     $metadata['numfiles'] = (int)$numfiles;
 }
+
+
 
 
 // Check if it's an external torrent and update accordingly
@@ -824,7 +833,7 @@ $originalTorrentPath = $torrentDir . $torrentFilename;
 $finalTorrentFilename = $NewTID . '.torrent';
 $finalTorrentPath = $torrentDir . $finalTorrentFilename;
 
-if ($torrentFilename && file_exists($originalTorrentPath)) 
+if (($newFileUploaded || !$isEdit) && $torrentFilename && file_exists($originalTorrentPath)) 
 {
     if (!rename($originalTorrentPath, $finalTorrentPath)) 
 	{
@@ -1204,48 +1213,7 @@ exit;
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-stdhead('Upload Torrent');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+stdhead($lang->upload['head']);
 
 
 $torrent = [];
@@ -1291,7 +1259,7 @@ else
 
 // Определяем режим (у тебя уже есть эти переменные)
 $isEdit = isset($EditTorrent) && !empty($EditTorrentID);
-$headingText = $isEdit ? "Edit Torrent" : "Upload Torrent";
+$headingText = $isEdit ? $lang->upload['head_edit'] : $lang->upload['head'];
 
 // Заголовок: иконка + стиль
 if ($isEdit) 
@@ -1299,14 +1267,14 @@ if ($isEdit)
     $icon = '<i class="fa-solid fa-pen-to-square me-2 text-primary"></i>'; // иконка
     $style = 'style="font-weight: 700; color: #0d6efd;"'; // синий заголовок
     $buttonIcon = '<i class="fa-solid fa-pen-to-square me-1"></i>'; // оранжевая иконка для кнопки
-    $buttonText = "Update Torrent";
+    $buttonText = $lang->upload['btn_update'];
 }
 else 
 {
     $icon = '<i class="fa-solid fa-cloud-arrow-up me-2 text-primary"></i>'; // синяя иконка
     $style = 'style="font-weight: 700; color: #0d6efd;"'; // синий заголовок
     $buttonIcon = '<i class="fa-solid fa-upload me-1"></i>'; // синяя иконка для кнопки
-    $buttonText = "Upload Torrent";
+    $buttonText = $lang->upload['btn_upload'];
 }
 
 
@@ -1337,9 +1305,9 @@ echo '
 <div class="alert d-flex align-items-start flex-column flex-md-row" style="background-color: #e8f4fd; color: #084298; border: 1px solid #b6e0fe;">
   <i class="fa-solid fa-circle-info fa-lg me-2 mt-1"></i>
   <div class="flex-grow-1">
-    <strong>Important!</strong> ' . sprintf($lang->upload["title2"], '<code id="announceUrl">' . $AnnounceURL . '</code>') . '
+    <strong>'.$lang->upload['announce_important'].'</strong> ' . sprintf($lang->upload["title2"], '<code id="announceUrl">' . $AnnounceURL . '</code>') . '
   </div>
-  <button type="button" class="btn btn-sm btn-outline-primary ms-0 ms-md-3 mt-2 mt-md-0" onclick="copyAnnounceUrl()">Copy</button>
+  <button type="button" class="btn btn-sm btn-outline-primary ms-0 ms-md-3 mt-2 mt-md-0" onclick="copyAnnounceUrl()">'.$lang->upload['announce_copy'].'</button>
 </div>
 </div>
 
@@ -1374,14 +1342,14 @@ function copyAnnounceUrl() {
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="errorModalLabel">Upload Error</h5>
+        <h5 class="modal-title" id="errorModalLabel"><?= $lang->upload['error_title'] ?></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body" id="errorModalBody">
         <!-- Error message will be inserted here -->
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $lang->upload['error_close'] ?></button>
       </div>
     </div>
   </div>
@@ -1397,7 +1365,7 @@ function copyAnnounceUrl() {
       <div class="modal-header bg-success text-white border-0">
         <div class="d-flex align-items-center w-100">
           <i class="fas fa-check-circle fa-2x me-3"></i>
-          <h5 class="modal-title mb-0" id="uploadCompleteModalLabel">Upload Successful!</h5>
+          <h5 class="modal-title mb-0" id="uploadCompleteModalLabel"><?= $lang->upload['upload_success_title'] ?></h5>
         </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
@@ -1405,16 +1373,16 @@ function copyAnnounceUrl() {
         <div class="success-animation mb-3">
           <i class="fas fa-check text-success" style="font-size: 3rem;"></i>
         </div>
-        <h4 class="text-success mb-2">Congratulations!</h4>
-        <p class="text-muted mb-0">Your torrent has been successfully uploaded and is now live.</p>
-        <p class="text-muted">You will be redirected shortly...</p>
+        <h4 class="text-success mb-2"><?= $lang->upload['upload_success_congrats'] ?></h4>
+        <p class="text-muted mb-0"><?= $lang->upload['upload_success_text'] ?></p>
+        <p class="text-muted"><?= $lang->upload['upload_success_redirect'] ?></p>
       </div>
       <div class="modal-footer border-0 justify-content-center pb-4">
         <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">
-          <i class="fas fa-times me-2"></i>Stay Here
+          <i class="fas fa-times me-2"></i><?= $lang->upload['upload_stay'] ?>
         </button>
         <button type="button" class="btn btn-success" onclick="redirectToTorrent()">
-          <i class="fas fa-eye me-2"></i>View Torrent
+          <i class="fas fa-eye me-2"></i><?= $lang->upload['upload_view'] ?>
         </button>
       </div>
     </div>
@@ -1434,7 +1402,7 @@ function copyAnnounceUrl() {
       <div class="modal-header bg-gradient-primary text-white border-0">
         <div class="d-flex align-items-center w-100">
           <i class="fas fa-cloud-upload-alt fa-2x me-3"></i>
-          <h5 class="modal-title mb-0" id="uploadModalLabel">Processing Upload</h5>
+          <h5 class="modal-title mb-0" id="uploadModalLabel"><?= $lang->upload['upload_processing'] ?></h5>
         </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
@@ -1448,8 +1416,8 @@ function copyAnnounceUrl() {
         </div>
         
         <!-- Progress text -->
-        <h6 class="text-primary mb-2">Uploading your content...</h6>
-        <p class="text-muted mb-3">Please wait while we process your torrent and files</p>
+        <h6 class="text-primary mb-2"><?= $lang->upload['upload_wait'] ?></h6>
+        <p class="text-muted mb-3"><?= $lang->upload['upload_wait_sub'] ?></p>
         
         <!-- Animated dots -->
         <div class="loading-dots mb-3">
@@ -1479,7 +1447,7 @@ function copyAnnounceUrl() {
             </div>
           </div>
           <div class="progress-text mt-2">
-            <small class="text-muted" id="uploadStatusText">Initializing upload process...</small>
+            <small class="text-muted" id="uploadStatusText"><?= $lang->upload['upload_init'] ?></small>
             <small class="text-primary fw-bold float-end" id="progressPercentage">0%</small>
           </div>
         </div>
@@ -1487,7 +1455,7 @@ function copyAnnounceUrl() {
       <div class="modal-footer border-0 justify-content-center pb-4">
         <small class="text-muted">
           <i class="fas fa-info-circle me-1"></i>
-          This may take a few moments depending on file sizes
+          <?= $lang->upload['upload_size_note'] ?>
         </small>
       </div>
     </div>
@@ -1514,7 +1482,7 @@ function copyAnnounceUrl() {
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
         <h5 class="modal-title" id="deleteScreenshotModalLabel">
-          <i class="fas fa-exclamation-triangle me-2"></i> Confirm Deletion
+          <i class="fas fa-exclamation-triangle me-2"></i> <?= $lang->upload['screenshots_delete_title'] ?>
         </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
@@ -1526,7 +1494,7 @@ function copyAnnounceUrl() {
             <i class="fas fa-trash-alt text-danger fs-1"></i>
           </div>
           <div>
-            <h5 class="fw-bold mb-1" id="deleteScreenshotTitle">Delete Screenshot?</h5>
+            <h5 class="fw-bold mb-1" id="deleteScreenshotTitle"><?= $lang->upload['screenshots_delete_title'] ?></h5>
             <p class="text-muted mb-0" id="deleteScreenshotFilename"></p>
           </div>
         </div>
@@ -1539,7 +1507,7 @@ function copyAnnounceUrl() {
                  onerror="handleImageError(this)">
             <div id="noImagePreview" class="d-none flex-column align-items-center justify-content-center p-4" style="min-height: 150px;">
               <i class="fas fa-image fa-3x text-muted mb-2"></i>
-              <span class="text-muted">No preview available</span>
+              <span class="text-muted"><?= $lang->upload['screenshots_no_preview'] ?></span>
             </div>
           </div>
         </div>
@@ -1562,7 +1530,7 @@ function copyAnnounceUrl() {
           <div class="d-flex">
             <i class="fas fa-exclamation-circle me-2 mt-1"></i>
             <div>
-              <strong>Warning:</strong> This action cannot be undone!
+              <strong><?= $lang->upload['error_title'] ?>:</strong> <?= $lang->upload['screenshots_delete_warning'] ?>
             </div>
           </div>
         </div>
@@ -1573,7 +1541,7 @@ function copyAnnounceUrl() {
           <i class="fas fa-times me-1"></i> Cancel
         </button>
         <button type="button" class="btn btn-danger" id="confirmDeleteScreenshotBtn">
-          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+          <i class="fas fa-trash-alt me-1"></i><?= $lang->upload['screenshots_delete_confirm'] ?>
         </button>
       </div>
     </div>
@@ -1620,7 +1588,7 @@ function copyAnnounceUrl() {
  <!-- Form Name -->
 <div class="mb-4">
     <label for="formName" class="form-label fw-semibold">
-        <i class="fas fa-heading me-1 text-primary"></i>Torrent Name
+        <i class="fas fa-heading me-1 text-primary"></i><?= $lang->upload['torrent_name'] ?>
         <span class="text-danger">*</span>
     </label>
     
@@ -1634,19 +1602,19 @@ function copyAnnounceUrl() {
             type="text" 
             id="formName" 
             name="formName" 
-            placeholder="Enter torrent name (min 3 characters)" 
+            placeholder="<?= $lang->upload['torrent_name_hint'] ?>" 
             required 
             minlength="3" 
             maxlength="255" 
             value="<?= isset($torrent['name']) ? htmlspecialchars($torrent['name']) : '' ?>"
         />
         
-        <div class="invalid-feedback">Please enter a valid torrent name (3-255 characters)</div>
+        <div class="invalid-feedback"><?= $lang->upload['torrent_name_invalid'] ?></div>
     </div>
     
     <div class="d-flex justify-content-between align-items-center mt-2">
         <small class="form-text text-muted">
-            <i class="fas fa-info-circle me-1"></i>Choose a descriptive name for your torrent
+            <i class="fas fa-info-circle me-1"></i><?= $lang->upload['torrent_name_hint'] ?>
         </small>
         <small class="text-muted">
             <span id="formNameCharCount">0</span>/255
@@ -1665,7 +1633,7 @@ function copyAnnounceUrl() {
 <!-- Torrent File -->
 <div class="mb-4">
     <label for="torrentFile" class="form-label fw-semibold">
-        <i class="fas fa-file-alt me-1 text-primary"></i>Torrent File
+        <i class="fas fa-file-alt me-1 text-primary"></i><?= $lang->upload['torrent_file'] ?>
         <?php if (!$isEdit): ?><span class="text-danger">*</span><?php endif; ?>
     </label>
 
@@ -1677,10 +1645,10 @@ function copyAnnounceUrl() {
         <!-- Иконка и текст -->
         <div id="torrentDropContent">
             <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3 d-block"></i>
-            <h6 class="fw-bold mb-1">Drag & Drop your .torrent file here</h6>
-            <p class="text-muted small mb-3">or click to browse files</p>
+            <h6 class="fw-bold mb-1"><?= $lang->upload['torrent_drop_title'] ?></h6>
+           <p class="text-muted small mb-3"><?= $lang->upload['torrent_drop_sub'] ?></p>
            <button type="button" class="btn btn-outline-primary btn-sm px-4">
-                <i class="fas fa-folder-open me-2"></i>Browse File
+                <i class="fas fa-folder-open me-2"></i><?= $lang->upload['torrent_browse'] ?>
             </button>
         </div>
 
@@ -1718,13 +1686,13 @@ function copyAnnounceUrl() {
             <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
                  style="width:100%;"></div>
         </div>
-        <small class="text-muted">Validating torrent file...</small>
+        <small class="text-muted"><?= $lang->upload['torrent_validating'] ?></small>
     </div>
 
     <div class="d-flex justify-content-between align-items-center mt-2">
         <small class="form-text text-muted">
             <i class="fas fa-info-circle me-1"></i>
-            Accepted format: .torrent <?= $isEdit ? '(optional for edit)' : '' ?>
+            <?= $isEdit ? $lang->upload['torrent_file_hint_edit'] : $lang->upload['torrent_file_hint'] ?>
         </small>
         <small class="text-muted" id="torrentFileInfo"></small>
     </div>
@@ -1741,7 +1709,7 @@ function copyAnnounceUrl() {
     <div class="card border-0 bg-light">
         <div class="card-body py-3">
             <h6 class="card-title mb-3">
-                <i class="fas fa-info-circle text-primary me-2"></i>Torrent Info
+                <i class="fas fa-info-circle text-primary me-2"></i><?= $lang->upload['torrent_info'] ?>
             </h6>
             <div class="row g-2 mb-3">
                 <div class="col-auto">
@@ -1765,12 +1733,12 @@ function copyAnnounceUrl() {
             <div>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <small class="fw-bold text-muted">
-                        <i class="fas fa-list me-1"></i>File List
+                        <i class="fas fa-list me-1"></i><?= $lang->upload['torrent_file_list'] ?>
                     </small>
                     <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2"
                             onclick="toggleTorrentFileList()">
                         <i class="fas fa-eye me-1" id="torrentFileListToggleIcon"></i>
-                        <span id="torrentFileListToggleText">Show</span>
+                        <span id="torrentFileListToggleText"><?= $lang->upload['torrent_show'] ?></span>
                     </button>
                 </div>
                 <div id="torrentFileList" style="display:none; max-height:200px; overflow-y:auto;">
@@ -1799,9 +1767,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['ts_external']) && $torrent['ts_external'] === 'yes' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold text-success" for="externalTorrent">
-            <i class="fas fa-link me-1"></i> External Torrent
+            <i class="fas fa-link me-1"></i><?= $lang->upload['external'] ?>
         </label>
-        <div class="form-text">Torrent is linked from another tracker</div>
+        <div class="form-text"><?= $lang->upload['external_hint'] ?></div>
     </div>
 </div>
 <?php endif; ?>
@@ -1818,8 +1786,8 @@ function copyAnnounceUrl() {
 <!-- NFO File -->
 <div class="mb-3">
     <label for="nfoFile" class="form-label fw-semibold">
-        <i class="fas fa-file-alt me-1 text-primary"></i>NFO File
-        <span class="text-muted fw-normal small">(optional)</span>
+        <i class="fas fa-file-alt me-1 text-primary"></i><?= $lang->upload['nfofile'] ?>
+        <span class="text-muted fw-normal small"><?= $lang->upload['nfofile_optional'] ?></span>
     </label>
 
     <div class="input-group">
@@ -1829,7 +1797,7 @@ function copyAnnounceUrl() {
             <i class="fas fa-eye me-1"></i>Preview
         </button>
     </div>
-    <div class="form-text">Optional: Upload your .nfo file (stored in database)</div>
+    <div class="form-text"><?= $lang->upload['nfofile_hint'] ?></div>
 
     <!-- NFO Preview -->
     <div id="nfoPreviewContainer" class="mt-2" style="display:none;">
@@ -1867,9 +1835,9 @@ function copyAnnounceUrl() {
     ?>
     <div class="mt-2 d-flex align-items-center gap-2">
         <span class="badge bg-success">
-            <i class="fas fa-check me-1"></i>NFO already uploaded
+            <i class="fas fa-check me-1"></i><?= $lang->upload['nfofile_uploaded'] ?>
         </span>
-        <small class="text-muted">Upload a new file to replace it</small>
+        <small class="text-muted"><?= $lang->upload['nfofile_replace'] ?></small>
     </div>
     <?php endif; ?>
     <?php endif; ?>
@@ -1885,7 +1853,7 @@ function copyAnnounceUrl() {
   
 <!-- Description with BBCode textarea -->
 <div class="mb-3">
-  <label for="description" class="form-label">Description</label>
+  <label for="description" class="form-label"><?= $lang->upload['description'] ?></label>
 
   
   <!-- Textarea -->
@@ -1895,10 +1863,10 @@ function copyAnnounceUrl() {
     name="description" 
     rows="10" 
     required 
-    placeholder="Enter Torrent Description..."><?= isset($torrent['descr']) ? htmlspecialchars($torrent['descr']) : '' ?></textarea>
+    placeholder="<?= $lang->upload['description_placeholder'] ?>"><?= isset($torrent['descr']) ? htmlspecialchars($torrent['descr']) : '' ?></textarea>
 
   <div class="form-text text-end"><span id="charCount2">0 / 500</span></div>
-  <div class="invalid-feedback">Please enter a description.</div>
+  <div class="invalid-feedback"><?= $lang->upload['description_invalid'] ?></div>
   
 
 
@@ -1909,22 +1877,158 @@ function copyAnnounceUrl() {
 </div>
 
 
-    <!-- Category Dropdown -->
-    <div class="mb-3">
-      <label for="category" class="form-label">Select Category</label>
-      <?php
-        // Call the function to generate the category select list
-        $category = isset($torrent['category']) ? intval($torrent['category']) : 0;
-        echo ts_category_list('category', $category);
-		
+   
+   
+   
+   
+<!-- Category Picker -->
+<div class="mb-4">
+    <label class="form-label fw-semibold">
+        <i class="fas fa-th-large me-1 text-primary"></i><?= $lang->upload['category'] ?>
+        <span class="text-danger">*</span>
+    </label>
 
-		
-      ?>
-      <div class="invalid-feedback">Please select a category.</div>
+    <?php
+    $category = isset($torrent['category']) ? intval($torrent['category']) : 0;
+
+    if (!isset($_categoriesC) || !is_array($_categoriesC)) {
+        require_once TSDIR . '/cache/categories.php';
+    }
+
+    $activeCatName = '';
+    foreach ($_categoriesC as $c) {
+        if ((int)$c['id'] === $category) {
+            $activeCatName = $c['name'];
+            break;
+        }
+    }
+    ?>
+
+    <input type="hidden" name="category" id="categorySelected" value="<?= $category ?>">
+
+    <div class="category-icon-picker">
+        <?php foreach ($_categoriesC as $cat):
+            $isActive = ($category === (int)$cat['id']) ? 'active' : '';
+        ?>
+        <button type="button"
+                class="cat-pick-btn <?= $isActive ?>"
+                data-id="<?= (int)$cat['id'] ?>"
+                data-name="<?= htmlspecialchars($cat['name']) ?>"
+                title="<?= htmlspecialchars($cat['name']) ?>"
+                onclick="selectCategory(this)">
+            <i class="<?= htmlspecialchars($cat['icon']) ?>"></i>
+            <span><?= htmlspecialchars($cat['name']) ?></span>
+        </button>
+        <?php endforeach; ?>
     </div>
 
+    <div id="categoryLabel" class="mt-2 small">
+        <?php if ($category && $activeCatName): ?>
+            <i class="fas fa-check-circle text-success me-1"></i>
+            <strong><?= htmlspecialchars($activeCatName) ?></strong>
+        <?php else: ?>
+            <span class="text-muted">
+                <i class="fas fa-hand-pointer me-1"></i>Click a category to select
+            </span>
+        <?php endif; ?>
+    </div>
+
+    <div class="text-danger small mt-1" id="categoryError" style="display:none;">
+        <?= $lang->upload['category_invalid'] ?>
+    </div>
+</div>
+
+        
+    
 
 
+   
+   
+   
+   
+   
+   
+   
+   
+
+
+
+
+<!-- Tags Field -->
+<div class="mb-4">
+    <label for="tags" class="form-label fw-semibold">
+        <i class="fas fa-tags me-2 text-gradient"></i><?= $lang->upload['tags'] ?>
+        <span class="text-muted fw-normal small">(optional)</span>
+    </label>
+
+    <div class="input-group mb-3">
+        <span class="input-group-text bg-gradient-light border-0 shadow-sm">
+            <i class="fas fa-tag text-primary"></i>
+        </span>
+        <input type="text"
+               class="form-control border-0 shadow-sm"
+               id="tags"
+               name="tags"
+               placeholder="<?= $lang->upload['tags_placeholder'] ?>"
+               value="<?= htmlspecialchars($torrent['tags'] ?? '') ?>"
+               style="background: #f8f9fa;">
+        <button type="button" class="btn btn-gradient-secondary shadow-sm" onclick="clearAllTags()">
+            <i class="fas fa-eraser me-2"></i><?= $lang->upload['tags_clear'] ?>
+        </button>
+    </div>
+
+    <!-- Genre icon buttons -->
+    <div class="d-flex flex-wrap gap-2 mb-3" id="genreButtons">
+        <?php
+        $genres = [
+            ['Action',      'fas fa-bolt',              '#ff4757'],
+            ['Adventure',   'fas fa-compass',           '#ffa502'],
+            ['Animation',   'fas fa-film',              '#7bed9f'],
+            ['Biography',   'fas fa-user-graduate',     '#70a1ff'],
+            ['Comedy',      'fas fa-laugh-squint',      '#ff6b81'],
+            ['Crime',       'fas fa-gavel',             '#2f3542'],
+            ['Documentary', 'fas fa-video',             '#a4b0be'],
+            ['Drama',       'fas fa-mask',              '#57606f'],
+            ['Family',      'fas fa-users',             '#ff7f50'],
+            ['Fantasy',     'fas fa-dragon',            '#dfe6e9'],
+            ['History',     'fas fa-landmark',          '#cd84f1'],
+            ['Horror',      'fas fa-ghost',             '#ff4d4d'],
+            ['Music',       'fas fa-music',             '#1e90ff'],
+            ['Mystery',     'fas fa-search',            '#8e44ad'],
+            ['Romance',     'fas fa-heart',             '#ff6b6b'],
+            ['Sci-Fi',      'fas fa-rocket',            '#00cec9'],
+            ['Sport',       'fas fa-trophy',            '#fdcb6e'],
+            ['Thriller',    'fas fa-skull',             '#e17055'],
+            ['War',         'fas fa-fist-raised',       '#636e72'],
+            ['Western',     'fas fa-horse-head',        '#f39c12'],
+        ];
+        
+        $currentTags = array_map('trim', explode(',', $torrent['tags'] ?? ''));
+        
+        foreach ($genres as [$label, $icon, $color]):
+            $active = in_array($label, $currentTags) ? 'genre-active' : '';
+            $bgColor = $active ? $color : 'transparent';
+            $textColor = $active ? 'white' : ($color ?? '#6c757d');
+        ?>
+        <button type="button"
+                class="btn genre-tag-btn <?= $active ?>"
+                data-genre="<?= $label ?>"
+                data-color="<?= $color ?>"
+                onclick="toggleGenreTag(this)"
+                style="border-color: <?= $color ?>80; color: <?= $textColor ?>;">
+            <i class="<?= $icon ?> me-2" style="font-size: 1.1rem;"></i>
+            <span><?= $label ?></span>
+        </button>
+        <?php endforeach; ?>
+    </div>
+
+    <div class="alert alert-info alert-dismissible fade show border-0 shadow-sm" role="alert" style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);">
+        <i class="fas fa-info-circle me-2 text-primary"></i>
+        <?= $lang->upload['tags_hint'] ?> to add or remove it from tags. 
+        Tags will be automatically filled from IMDb when you click the <strong>Fetch Movie Info</strong> button.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+</div>
 
 
 
@@ -1933,7 +2037,7 @@ function copyAnnounceUrl() {
 
 <div class="section-label">
                         <i class="fas fa-images"></i>
-                        Media & Images
+                        <?= $lang->upload['media_section'] ?>
                     </div>
 
 
@@ -1942,7 +2046,7 @@ function copyAnnounceUrl() {
 <!-- IMDb Link -->
 <div class="col-md-12 mb-4">
     <label class="form-label fw-semibold">
-        <i class="fab fa-imdb text-warning me-2"></i>IMDb Link
+        <i class="fab fa-imdb text-warning me-2"></i><?= $lang->upload['imdb_link'] ?>
     </label>
     <div class="input-group">
         <span class="input-group-text bg-light">
@@ -1953,14 +2057,14 @@ function copyAnnounceUrl() {
                id="imdbUrl"
                name="imdbUrl"
                value="<?= htmlspecialchars($t_link) ?>"
-               placeholder="Example: https://www.imdb.com/title/tt1234567/">
+               placeholder="<?= $lang->upload['imdb_placeholder'] ?>"
         <button type="button" class="btn btn-warning" id="imdbFetchBtn" onclick="fetchImdbData()">
-            <i class="fab fa-imdb me-1"></i>Fetch
+            <i class="fab fa-imdb me-1"></i><?= $lang->upload['imdb_fetch'] ?>
         </button>
     </div>
     <div class="form-text">
         <i class="fas fa-info-circle me-1"></i>
-        Paste IMDb URL and click Fetch to auto-fill poster and info
+        <?= $lang->upload['imdb_hint'] ?>
     </div>
 
     <!-- IMDb Preview -->
@@ -1975,12 +2079,12 @@ function copyAnnounceUrl() {
                              style="width:80px;height:120px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
                         <div class="mt-1 d-flex gap-1">
                             <button type="button" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 w-100"
-                                    onclick="applyImdbPoster('main')" title="Set as Main Image">
-                                <i class="fas fa-image me-1"></i>Main
+                                    onclick="applyImdbPoster('main')" title="<?= $lang->upload['imdb_set_main'] ?>">
+                                <i class="fas fa-image me-1"></i><?= $lang->upload['imdb_poster_main'] ?>
                             </button>
                             <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2 w-100"
-                                    onclick="applyImdbPoster('secondary')" title="Set as Secondary Image">
-                                <i class="fas fa-images me-1"></i>2nd
+                                    onclick="applyImdbPoster('secondary')" title="<?= $lang->upload['imdb_set_secondary'] ?>">
+                                <i class="fas fa-images me-1"></i><?= $lang->upload['imdb_poster_secondary'] ?>
                             </button>
                         </div>
                     </div>
@@ -1998,7 +2102,7 @@ function copyAnnounceUrl() {
                         <p class="small text-muted mb-2" id="imdbPreviewPlot"></p>
                         <div class="d-flex gap-2">
                             <button type="button" class="btn btn-sm btn-outline-primary" onclick="applyImdbToDescription()">
-                                <i class="fas fa-paste me-1"></i>Add to Description
+                                <i class="fas fa-paste me-1"></i><?= $lang->upload['imdb_add_description'] ?>
                             </button>
                         </div>
                     </div>
@@ -2012,7 +2116,7 @@ function copyAnnounceUrl() {
     <div id="imdbLoading" class="mt-2" style="display:none;">
         <div class="d-flex align-items-center gap-2 text-muted small">
             <div class="spinner-border spinner-border-sm text-warning"></div>
-            Fetching IMDb data...
+            <?= $lang->upload['imdb_fetching'] ?>
         </div>
     </div>
 
@@ -2044,7 +2148,7 @@ function copyAnnounceUrl() {
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center">
                     <i class="fas fa-image text-primary me-2"></i>
-                    Main Image
+                    <?= $lang->upload['image_main'] ?>
                 </h6>
                 
                 <!-- Choose Upload Method -->
@@ -2064,13 +2168,13 @@ function copyAnnounceUrl() {
 
                 <!-- Upload by URL -->
                 <div class="mb-3" id="uploadUrlGroup1">
-                    <label for="imageUrl" class="form-label">Image URL</label>
+                    <label for="imageUrl" class="form-label"><?= $lang->upload['image_url_label'] ?></label>
                     <input type="url" 
                            class="form-control form-control-custom" 
                            id="imageUrl" 
                            name="imageUrl" 
                            value="<?= htmlspecialchars($torrent['t_image'] ?? '') ?>" 
-                           placeholder="https://example.com/image.jpg"
+                           placeholder="<?= $lang->upload['image_url_placeholder'] ?>"
                            oninput="updateImagePreviewFromUrl(this.value, 'imagePreview')">
                     <div class="form-text mt-1">
                         <i class="fas fa-info-circle text-muted me-1"></i>
@@ -2082,8 +2186,8 @@ function copyAnnounceUrl() {
                 <div class="mb-3 d-none" id="uploadFileGroup1">
                     <div class="upload-zone-sm" onclick="document.getElementById('imagesUpload').click()">
                         <i class="fas fa-cloud-upload-alt fa-2x mb-2 text-muted"></i>
-                        <p class="mb-1 fw-semibold">Click to upload image</p>
-                        <p class="small text-muted mb-0">or drag & drop</p>
+                        <p class="mb-1 fw-semibold"><?= $lang->upload['image_click_upload'] ?></p>
+                        <p class="small text-muted mb-0"><?= $lang->upload['image_drag_drop'] ?></p>
                         <input type="file" 
                                class="d-none" 
                                id="imagesUpload" 
@@ -2093,7 +2197,7 @@ function copyAnnounceUrl() {
                     </div>
                     <div class="form-text mt-1">
                         <i class="fas fa-info-circle text-muted me-1"></i>
-                        JPG, PNG, GIF, WebP (max 10MB)
+                        <?= $lang->upload['image_file_hint'] ?>
                     </div>
                 </div>
 
@@ -2123,7 +2227,7 @@ function copyAnnounceUrl() {
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center">
                     <i class="fas fa-images text-primary me-2"></i>
-                    Secondary Image
+                    <?= $lang->upload['image_secondary'] ?>
                 </h6>
                 
                 <!-- Choose Upload Method -->
@@ -2143,13 +2247,13 @@ function copyAnnounceUrl() {
 
                 <!-- Upload by URL -->
                 <div class="mb-3" id="uploadUrlGroup2">
-                    <label for="imageUrl2" class="form-label">Image URL</label>
+                    <label for="imageUrl2" class="form-label"><?= $lang->upload['image_url_label'] ?></label>
                     <input type="url" 
                            class="form-control form-control-custom" 
                            id="imageUrl2" 
                            name="imageUrl2" 
                            value="<?= htmlspecialchars($torrent['t_image2'] ?? '') ?>" 
-                           placeholder="https://example.com/image2.jpg"
+                           placeholder="<?= $lang->upload['image_url_placeholder'] ?>"
                            oninput="updateImagePreviewFromUrl(this.value, 'imagePreview2')">
                     <div class="form-text mt-1">
                         <i class="fas fa-info-circle text-muted me-1"></i>
@@ -2161,8 +2265,8 @@ function copyAnnounceUrl() {
                 <div class="mb-3 d-none" id="uploadFileGroup2">
                     <div class="upload-zone-sm" onclick="document.getElementById('imagesUpload2').click()">
                         <i class="fas fa-cloud-upload-alt fa-2x mb-2 text-muted"></i>
-                        <p class="mb-1 fw-semibold">Click to upload image</p>
-                        <p class="small text-muted mb-0">or drag & drop</p>
+                        <p class="mb-1 fw-semibold"><?= $lang->upload['image_click_upload'] ?></p>
+                        <p class="small text-muted mb-0"><?= $lang->upload['image_drag_drop'] ?></p>
                         <input type="file" 
                                class="d-none" 
                                id="imagesUpload2" 
@@ -2172,7 +2276,7 @@ function copyAnnounceUrl() {
                     </div>
                     <div class="form-text mt-1">
                         <i class="fas fa-info-circle text-muted me-1"></i>
-                        JPG, PNG, GIF, WebP (max 10MB)
+                        <?= $lang->upload['image_file_hint'] ?>
                     </div>
                 </div>
 
@@ -2210,7 +2314,7 @@ function copyAnnounceUrl() {
 	  <br />
 	  <div class="section-label">
                         <i class="fas fa-cog"></i>
-                        Torrent Settings
+                        <?= $lang->upload['settings_section'] ?>
                     </div>
 <tr>
   <td class="none">
@@ -2237,9 +2341,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['anonymous']) && $torrent['anonymous'] === 'yes' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold" for="anonymous">
-            <i class="fas fa-user-secret me-1"></i> Anonymous Upload
+            <i class="fas fa-user-secret me-1"></i><?= $lang->upload['anonymous'] ?>
         </label>
-        <div class="form-text">Check this box if you want to upload this torrent anonymously</div>
+        <div class="form-text"><?= $lang->upload['anonymous_hint'] ?></div>
     </div>
 
 </div>
@@ -2273,9 +2377,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['isrequest']) && $torrent['isrequest'] === 'yes' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold" for="request">
-            <i class="fas fa-hand-paper me-1"></i> Requested Torrent
+            <i class="fas fa-hand-paper me-1"></i><?= $lang->upload['request'] ?>
         </label>
-        <div class="form-text">Please check this box if you are uploading a requested torrent</div>
+        <div class="form-text"><?= $lang->upload['request_hint'] ?></div>
     </div>
 </div>
  
@@ -2305,9 +2409,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['free']) && $torrent['free'] === 'yes' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold text-success" for="free">
-            <i class="fas fa-gift me-1"></i> Free Torrent
+            <i class="fas fa-gift me-1"></i><?= $lang->upload['free'] ?>
         </label>
-        <div class="form-text">Mark this torrent as FREE! Only Upload stats will be recorded!</div>
+        <div class="form-text"><?= $lang->upload['free_hint'] ?></div>
     </div>
 </div>
 	  
@@ -2331,9 +2435,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['silver']) && $torrent['silver'] === 'yes' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold text-info" for="silver">
-            <i class="fas fa-star me-1"></i> Silver Torrent
+            <i class="fas fa-star me-1"></i><?= $lang->upload['silver'] ?>
         </label>
-        <div class="form-text">Mark this torrent as SILVER! Only 50% Download stats will be recorded!</div>
+        <div class="form-text"><?= $lang->upload['silver_hint'] ?></div>
     </div>
 </div>
 	  
@@ -2359,9 +2463,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['doubleupload']) && $torrent['doubleupload'] === 'yes' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold text-warning" for="doubleupload">
-            <i class="fas fa-bolt me-1"></i> x2 Torrent
+            <i class="fas fa-bolt me-1"></i><?= $lang->upload['doubleupload'] ?>
         </label>
-        <div class="form-text">Mark this torrent as x2! Give Double Upload stats for this torrent</div>
+        <div class="form-text"><?= $lang->upload['doubleupload_hint'] ?></div>
     </div>
 </div>
 	  
@@ -2386,9 +2490,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['allowcomments']) && $torrent['allowcomments'] === 'no' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold text-secondary" for="allowcomments">
-            <i class="fas fa-comment-slash me-1"></i> Disable Comments
+            <i class="fas fa-comment-slash me-1"></i><?= $lang->upload['allowcomments'] ?>
         </label>
-        <div class="form-text">Check this box to disable comments on this Torrent!</div>
+        <div class="form-text"><?= $lang->upload['allowcomments_hint'] ?></div>
     </div>
 </div>
 	  
@@ -2414,9 +2518,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['sticky']) && $torrent['sticky'] === 'yes' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold text-primary" for="sticky">
-            <i class="fas fa-thumbtack me-1"></i> Sticky Torrent
+            <i class="fas fa-thumbtack me-1"></i><?= $lang->upload['sticky'] ?>
         </label>
-        <div class="form-text">Check this box to set this torrent as Sticky</div>
+        <div class="form-text"><?= $lang->upload['sticky_hint'] ?></div>
     </div>
 </div>
 	  
@@ -2446,9 +2550,9 @@ function copyAnnounceUrl() {
             <?= isset($torrent['isnuked']) && $torrent['isnuked'] === 'yes' ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold text-danger" for="isnuked">
-            <i class="fas fa-radiation me-1"></i> Nuked Torrent
+            <i class="fas fa-radiation me-1"></i><?= $lang->upload['isnuked'] ?>
         </label>
-        <div class="form-text">Please check this box if you want to Nuke this torrent</div>
+        <div class="form-text"><?= $lang->upload['isnuked_hint'] ?></div>
     </div>
 </div>
    
@@ -2458,17 +2562,17 @@ function copyAnnounceUrl() {
    <!-- Nuke Reason (conditional) -->
 <div class="mb-3" id="nukereason" style="<?= isset($torrent['isnuked']) && $torrent['isnuked'] === 'yes' ? '' : 'display:none;' ?>">
     <label for="WhyNuked" class="form-label fw-bold text-danger">
-        <i class="fas fa-exclamation-circle me-1"></i> Nuke Reason
+        <i class="fas fa-exclamation-circle me-1"></i><?= $lang->upload['nuke_reason'] ?>
     </label>
     <input 
         type="text" 
         class="form-control" 
         id="WhyNuked" 
         name="WhyNuked" 
-        placeholder="Enter reason for nuking this torrent"
+        placeholder="<?= $lang->upload['nuke_reason_placeholder'] ?>"
         value="<?= isset($torrent['WhyNuked']) ? htmlspecialchars($torrent['WhyNuked']) : '' ?>" 
     />
-    <div class="form-text">Please provide a reason for nuking this torrent</div>
+    <div class="form-text"><?= $lang->upload['nuke_reason_hint'] ?></div>
 </div>
 
 
@@ -2498,7 +2602,7 @@ function copyAnnounceUrl() {
         <div class="card-body">
             <h6 class="card-title d-flex align-items-center">
                 <i class="fas fa-camera text-primary me-2"></i>
-                Screenshots
+               <?= $lang->upload['screenshots'] ?>
             </h6>
 
             <!-- Переключатель между File и URL -->
@@ -2506,11 +2610,11 @@ function copyAnnounceUrl() {
                 <div class="btn-group btn-group-sm w-100" role="group">
                     <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByFile" value="file" checked>
                     <label class="btn btn-outline-primary" for="screenshotByFile">
-                        <i class="fas fa-upload me-1"></i>Upload Files
+                        <i class="fas fa-upload me-1"></i><?= $lang->upload['screenshots_upload_files'] ?>
                     </label>
                     <input type="radio" class="btn-check" name="screenshotUploadType" id="screenshotByUrl" value="url">
                     <label class="btn btn-outline-primary" for="screenshotByUrl">
-                        <i class="fas fa-link me-1"></i>Bulk URL
+                        <i class="fas fa-link me-1"></i><?= $lang->upload['screenshots_bulk_url'] ?>
                     </label>
                 </div>
             </div>
@@ -2519,8 +2623,8 @@ function copyAnnounceUrl() {
             <div id="screenshotFileGroup">
                 <div class="upload-zone mb-3" onclick="document.getElementById('screenshotsUpload').click()">
                     <i class="fas fa-cloud-upload-alt"></i>
-                    <h6>Drop screenshots here</h6>
-                    <p class="text-muted mb-0">Multiple files allowed</p>
+                    <h6><?= $lang->upload['screenshots_drop'] ?></h6>
+                    <p class="text-muted mb-0"><?= $lang->upload['screenshots_multiple'] ?></p>
                     <input type="file"
                            class="d-none"
                            id="screenshotsUpload"
@@ -2548,10 +2652,10 @@ https://example.com/screen2.png
 https://example.com/screen3.webp"></textarea>
                     <div class="d-flex justify-content-between align-items-center mt-1">
                         <small class="text-muted">
-                            <i class="fas fa-info-circle me-1"></i>Supported: jpg, png, gif, webp
+                            <i class="fas fa-info-circle me-1"></i><?= $lang->upload['screenshots_url_supported'] ?>
                         </small>
                         <button type="button" class="btn btn-primary btn-sm" onclick="loadScreenshotUrls()">
-                            <i class="fas fa-eye me-1"></i>Load Previews
+                            <i class="fas fa-eye me-1"></i><?= $lang->upload['screenshots_load_preview'] ?>
                         </button>
                     </div>
                 </div>
@@ -2561,7 +2665,7 @@ https://example.com/screen3.webp"></textarea>
 
             <!-- Existing Screenshots -->
             <?php if(!empty($screenshots)): ?>
-                <h6 class="mt-4 mb-3">Existing Screenshots</h6>
+                <h6 class="mt-4 mb-3"><?= $lang->upload['screenshots_existing'] ?></h6>
                 <div id="existingScreenshots" class="preview-container">
                     <?php foreach($screenshots as $shot): ?>
                         <div class="screenshot-item" data-id="<?= $shot['id'] ?>">
@@ -2770,7 +2874,187 @@ https://example.com/screen3.webp"></textarea>
 	
   </div>
 
-<!-- JavaScripts -->
+
+
+
+
+
+
+<style>
+:root {
+    --genre-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.genre-tag-btn {
+    border-radius: 40px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.5rem 1.2rem;
+    transition: var(--genre-transition);
+    position: relative;
+    overflow: hidden;
+    background: white;
+    border-width: 1.5px;
+    letter-spacing: 0.3px;
+}
+
+.genre-tag-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.4s, height 0.4s;
+}
+
+.genre-tag-btn:hover::before {
+    width: 120%;
+    height: 120%;
+}
+
+.genre-tag-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.genre-tag-btn.genre-active {
+    background: linear-gradient(135deg, currentColor 0%, currentColor 100%);
+    color: white !important;
+    border-color: transparent !important;
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.genre-tag-btn.genre-active i {
+    animation: bounce 0.3s ease;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+.genre-tag-btn i {
+    transition: transform 0.2s ease;
+}
+
+.genre-tag-btn:hover i {
+    transform: rotate(5deg) scale(1.1);
+}
+
+.bg-gradient-light {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.btn-gradient-secondary {
+    background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+    color: white;
+    border: none;
+    transition: var(--genre-transition);
+}
+
+.btn-gradient-secondary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+    color: white;
+}
+
+.text-gradient {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.shadow-sm {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Pulse animation for active tags */
+.genre-tag-btn.genre-active {
+    animation: gentlePulse 2s infinite;
+}
+
+@keyframes gentlePulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.2);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(0, 0, 0, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+    }
+}
+
+/* Ripple effect on click */
+.genre-tag-btn:active {
+    transform: scale(0.96);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .genre-tag-btn {
+        padding: 0.35rem 0.9rem;
+        font-size: 0.75rem;
+    }
+    
+    .genre-tag-btn i {
+        font-size: 0.9rem;
+    }
+}
+
+/* Custom scrollbar for genre container */
+#genreButtons {
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    scrollbar-width: thin;
+}
+
+#genreButtons::-webkit-scrollbar {
+    width: 6px;
+}
+
+#genreButtons::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+#genreButtons::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 10px;
+}
+
+/* Tooltip effect */
+.genre-tag-btn {
+    position: relative;
+}
+
+.genre-tag-btn:hover::after {
+    content: attr(data-genre);
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+/* Font Awesome specific adjustments */
+.fa, .fas, .far, .fab {
+    line-height: 1;
+}
 
 
 
@@ -2778,11 +3062,70 @@ https://example.com/screen3.webp"></textarea>
 
 
 
+.category-icon-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.cat-pick-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 18px;
+    min-width: 90px;
+    border: 1.5px solid #dee2e6;
+    border-radius: 14px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #6c757d;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.cat-pick-btn i {
+    font-size: 1.8rem;
+    transition: transform 0.2s ease;
+}
+
+.cat-pick-btn:hover {
+    border-color: #0d6efd;
+    color: #0d6efd;
+    background: #f0f5ff;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(13,110,253,0.15);
+}
+
+.cat-pick-btn:hover i {
+    transform: scale(1.2);
+}
+
+.cat-pick-btn.active {
+    border-color: #0d6efd;
+    border-width: 2px;
+    background: #e7f1ff;
+    color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13,110,253,0.12);
+    transform: translateY(-2px);
+}
+
+.cat-pick-btn.active span {
+    font-weight: 700;
+}
+
+
+</style>
 
 
 
 
-
+<script src="<?= $BASEURL ?>/scripts/tags.js"></script>
+<script src="<?= $BASEURL ?>/scripts/category_picker.js"></script>
 
 
 <?

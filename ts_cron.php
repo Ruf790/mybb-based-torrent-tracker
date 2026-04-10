@@ -18,14 +18,14 @@ define('TSDIR', THIS_PATH);
 const APP_INITIALIZED = true;
 
 // User group constants
-const UC_GUEST = 0;
-const UC_USER = 1;
-const UC_POWER_USER = 2;
-const UC_VIP = 3;
-const UC_UPLOADER = 4;
-const UC_MODERATOR = 5;
-const UC_ADMINISTRATOR = 6;
-const UC_SYSOP = 7;
+const UC_GUEST = 1;
+const UC_USER = 2;
+const UC_POWER_USER = 3;
+const UC_VIP = 4;
+const UC_UPLOADER = 5;
+const UC_MODERATOR = 6;
+const UC_ADMINISTRATOR = 7;
+const UC_SYSOP = 8;
 const UC_BANNED = 9;
 
 // Size and time constants
@@ -37,7 +37,6 @@ const HOUR_IN_SECONDS = 3600;
 // Required files
 require_once INC_PATH . '/init.php';
 require CRON_PATH . '/cron_functions.php';
-require_once INC_PATH . '/readconfig.php';
 require_once INC_PATH . '/datahandler.php';
 
 

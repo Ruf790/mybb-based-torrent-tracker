@@ -613,7 +613,6 @@ if (!isset($CURUSER) || ($CURUSER["id"] ?? 0) === 0) {
 gzip();
 maxsysop();
 define('I_VERSION', '1.2');
-require INC_PATH . '/readconfig.php';
 
 $lang->load('invite');
 $action = htmlspecialchars($_POST['action'] ?? $_GET['action'] ?? 'main');

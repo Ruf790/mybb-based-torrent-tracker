@@ -1,170 +1,238 @@
-<?
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+<?php
+
+declare(strict_types=1);
+
+require_once 'global.php';
+
+define('IN_MYBB', 1);
+define('FORUM_ACTIVE', true);
+define('FORUM_SECURE', true);
+
+require_once INC_PATH . '/tsf_functions.php';
+
+require_once INC_PATH . '/datahandler.php';
 
 
-  function show_unbaniprequest_errors ()
-  {
-    global $error;
-    global $lang;
-    if (0 < count ($error))
-    {
-      $errors = implode ('<br />', $error);
-      echo '
-			<table class="main" border="1" cellspacing="0" cellpadding="5" width="100%">
-			<tr>
-				<td class="thead">
-					' . $lang->global['error'] . '
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<font color="red">
-						<strong>
-							' . $errors . '
-						</strong>
-					</font>
-				</td>
-			</tr>
-			</table>
-			<br />
-		';
+gzip();
+
+define('UIR_VERSION', 'v0.6');
+
+$lang->load('unbaniprequest');
+
+// ── Resolve IP ────────────────────────────────────────────────
+$userip = trim((string)($_POST['ip'] ?? ''));
+if ($userip === '') {
+    $userip = getip();
+}
+
+// ── Check if IP is actually banned ────────────────────────────
+$query = $db->sql_query(
+    "SELECT id FROM loginattempts WHERE ip = " . $db->sqlesc($userip) . " AND banned = 'yes' LIMIT 1"
+);
+if ($db->num_rows($query) < 1) {
+    stderr($lang->unbaniprequest['error'] ?? 'Your IP is not banned.');
+}
+
+// ── Check if request already submitted ───────────────────────
+$query = $db->sql_query(
+    "SELECT id FROM unbanrequests
+     WHERE ip = " . $db->sqlesc($userip) . "
+        OR realip = " . $db->sqlesc($userip) . "
+     LIMIT 1"
+);
+if ($db->num_rows($query) > 0) {
+    stderr($lang->unbaniprequest['error2'] ?? 'You have already submitted an unban request.');
+}
+
+// ── Handle POST ───────────────────────────────────────────────
+$errors  = [];
+$email   = '';
+$comment = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $email   = trim((string)($_POST['email']   ?? ''));
+    $comment = trim((string)($_POST['comment'] ?? ''));
+
+    if (!check_email($email)) {
+        $errors[] = $lang->unbaniprequest['error3'] ?? 'Invalid email address.';
     }
 
-  }
+    //require_once INC_PATH . '/functions_EmailBanned.php';
+   // if (emailbanned($email)) {
+   //     $errors[] = $lang->unbaniprequest['error4'] ?? 'This email address is banned.';
+   // }
+	
+	
+	
+if (is_banned_email($email, true)) {
+    $errors[] = $lang->unbaniprequest['error4'] ?? 'This email address is banned.';
+}
+	
+	
 
-  require_once 'global.php';
-  gzip ();
-
-  define ('UIR_VERSION', ' v.0.6');
-  $lang->load ('unbaniprequest');
-  $userip = ($_POST['ip'] ? $_POST['ip'] : getip ());
-  ($query = $db->sql_query ('SELECT id FROM loginattempts WHERE ip = ' . $db->sqlesc ($userip) . ' AND banned = \'yes\' LIMIT 1'));
-  if ($db->num_rows ($query) < 1)
-  {
-    stderr ($lang->unbaniprequest['error']);
-  }
-
-  ($query = $db->sql_query ('SELECT id FROM unbanrequests WHERE ip = ' . $db->sqlesc ($userip) . ' OR realip = ' . $db->sqlesc ($userip) . ' LIMIT 1'));
-  if (0 < $db->num_rows ($query))
-  {
-    stderr ($lang->unbaniprequest['error2']);
-  }
-
-  if (strtoupper ($_SERVER['REQUEST_METHOD']) == 'POST')
-  {
-    $error = array ();
-    $email = trim ($_POST['email']);
-    $comment = trim ($_POST['comment']);
-    if (!check_email ($email))
-    {
-      $error[] = $lang->unbaniprequest['error3'];
+    if (strlen($comment) < 10) {
+        $errors[] = $lang->unbaniprequest['error5'] ?? 'Comment must be at least 10 characters.';
     }
 
-    require_once INC_PATH . '/functions_EmailBanned.php';
-    if (emailbanned ($email))
-    {
-      $error[] = $lang->unbaniprequest['error4'];
-    }
+    if (empty($errors)) {
+        $query = $db->sql_query(
+            "INSERT INTO unbanrequests (ip, realip, email, comment, added)
+             VALUES (
+                 " . $db->sqlesc($userip) . ",
+                 " . $db->sqlesc(getip()) . ",
+                 " . $db->sqlesc($email) . ",
+                 " . $db->sqlesc($comment) . ",
+                 " . TIMENOW . "
+             )"
+        );
 
-    if (strlen ($comment) < 10)
-    {
-      $error[] = $lang->unbaniprequest['error5'];
-    }
+        $newid = $db->insert_id();
 
-    if (count ($error) == 0)
-    {
-      ($query = $db->sql_query ('INSERT INTO unbanrequests (ip, realip, email, comment, added) VALUES (' . $db->sqlesc ($userip) . ', ' . $db->sqlesc (getip ()) . ', ' . $db->sqlesc ($email) . ', ' . $db->sqlesc ($comment) . ', '.TIMENOW.')'));
-      $newid = $db->insert_id ();
-      if (($db->affected_rows () AND $newid))
-      {
-        ($query = $db->sql_query ('SELECT usergroups FROM staffpanel WHERE name = \'viewunbaniprequest\' OR filename = \'viewunbaniprequest.php\' LIMIT 1'));
-        if (0 < $db->num_rows ($query))
-        {
-          $permusergroups = $db->fetch_field ($query, 'usergroups');
-          if ($permusergroups)
-          {
-            $permusergroups = str_replace (array ('[', ']'), '', $permusergroups);
-            if ($permusergroups)
-            {
-              ($query = $db->sql_query ('' . 'SELECT id FROM users WHERE usergroup IN (' . $permusergroups . ')'));
-              if (0 < $db->num_rows ($query))
-              {
-                $subject = $lang->unbaniprequest['subject'];
-                $msg = sprintf ($lang->unbaniprequest['message'], htmlspecialchars_uni ($userip), $BASEURL . '/admin/index.php?act=viewunbaniprequest#show_id' . $newid);
-                require_once INC_PATH . '/functions_pm.php';
-                while ($pmstaff = mysqli_fetch_assoc ($query))
-                {
-                  send_pm ($pmstaff['id'], $msg, $subject);
+        if ($db->affected_rows() && $newid) {
+            // Notify staff via PM
+            $query = $db->sql_query(
+                "SELECT usergroups FROM staffpanel
+                 WHERE name = 'viewunbaniprequest'
+                    OR filename = 'viewunbaniprequest.php'
+                 LIMIT 1"
+            );
+
+            if ($db->num_rows($query) > 0) {
+                $permusergroups = $db->fetch_field($query, 'usergroups');
+                $permusergroups = trim(str_replace(['[', ']'], '', (string)$permusergroups));
+
+                if ($permusergroups !== '') {
+                    $query = $db->sql_query(
+                        "SELECT id FROM users WHERE usergroup IN ({$permusergroups})"
+                    );
+
+                    if ($db->num_rows($query) > 0) {
+                        $subject = $lang->unbaniprequest['subject'] ?? 'Unban IP Request';
+                        $msg     = sprintf(
+                            $lang->unbaniprequest['message'] ?? 'Unban request from %s. View: %s',
+                            htmlspecialchars_uni($userip),
+                            $BASEURL . '/admin/index.php?act=viewunbaniprequest#show_id' . $newid,
+                        );
+
+                        require_once INC_PATH . '/functions_pm.php';
+                        while ($pmstaff = mysqli_fetch_assoc($query)) {
+    send_pm([
+        'subject' => $subject,
+        'message' => $msg,
+        'touid'   => (int)$pmstaff['id'],
+        'sender'  => ['uid' => -1],
+    ], -1, true);
+}
+						
+						
+						
+						
+						
+						
+						
+                    }
                 }
-              }
             }
-          }
+
+            // Success page
+            stdhead($lang->unbaniprequest["title"]);
+            
+			
+			
+stdok(
+    $lang->unbaniprequest['saved']  ?? 'Your request has been saved.',
+    $lang->unbaniprequest['title']  ?? 'Unban IP Request',
+    $lang->unbaniprequest['head']   ?? 'Unban IP Request',
+);
+			
+			
+			
+			
+			
+			
+         
+
+        } else {
+            stderr($lang->global['dberror'] ?? 'Database error.');
         }
-
-        stdhead ($lang->unbaniprequest['head']);
-        echo '
-			<table width="100%" border="0" cellpadding="5" cellspacing="0">
-				<tr>
-					<td class="thead" align="center">' . $lang->unbaniprequest['title'] . '</td>
-				</tr>
-				<tr>
-					<td>' . $lang->unbaniprequest['saved'] . '</td>
-				</tr>
-			</table>
-			';
-        stdfoot ();
-        exit ();
-      }
-      else
-      {
-        stderr ($lang->global['dberror']);
-      }
     }
-  }
+}
 
-  stdhead ($lang->unbaniprequest['head']);
-  show_unbaniprequest_errors ();
-  echo '
-<form method="POST" action="' . $_SERVER['SCRIPT_NAME'] . '">
-<table width="100%" border="0" class="tborder" cellpadding="5" cellspacing="0">
-	<tr>
-		<td class="thead" align="center">' . $lang->unbaniprequest['title'] . '</td>
-	</tr>
-	<tr>
-		<td class="subheader">' . $lang->unbaniprequest['info'] . '</td>
-	</tr>
-	<tr>
-		<td>
-			<fieldset>
-				<legend>' . $lang->unbaniprequest['field1'] . '</legend>
-				' . $lang->unbaniprequest['field2'] . '<br />
-				<input type="text" name="ip" value="' . htmlspecialchars_uni ($userip) . '" size="30" />
-			</fieldset>
-			<fieldset>
-				<legend>' . $lang->unbaniprequest['field3'] . '</legend>
-				' . $lang->unbaniprequest['field4'] . '<br />
-				<input type="text" name="email" value="' . ($email ? htmlspecialchars_uni ($email) : '') . '" size="30" />
-			</fieldset>
-			<fieldset>
-				<legend>' . $lang->unbaniprequest['field5'] . '</legend>
-				' . $lang->unbaniprequest['field6'] . '<br />
-				<textarea name="comment" rows="3" cols="60">' . ($comment ? htmlspecialchars_uni ($comment) : '') . '</textarea>
-			</fieldset>
-			<fieldset>
-				<legend>' . $lang->unbaniprequest['field7'] . '</legend>
-				<input type="submit" value="' . $lang->unbaniprequest['field8'] . '" /> <input type="submit" value="' . $lang->unbaniprequest['field9'] . '" />
-			</fieldset>
-		</td>
-	</tr>
-</table>
-</form>
-';
-  stdfoot ();
-?>
+// ── Show form ─────────────────────────────────────────────────
+stdhead($lang->unbaniprequest["title"]);
+
+if (!empty($errors)) {
+    
+	
+	echo '<div class="container mt-3">'. inline_error($errors).'</div>';
+}
+
+echo render_form($userip, $email, $comment, $lang);
+
+stdfoot();
+
+// ── Render helpers ────────────────────────────────────────────
+
+
+function render_form(string $userip, string $email, string $comment, object $lang): string
+{
+    $title   = htmlspecialchars_uni($lang->unbaniprequest['title']   ?? 'Unban IP Request');
+    $info    = $lang->unbaniprequest['info']    ?? '';
+    $field1  = htmlspecialchars_uni($lang->unbaniprequest['field1']  ?? 'IP Address');
+    $field2  = $lang->unbaniprequest['field2']  ?? '';
+    $field3  = htmlspecialchars_uni($lang->unbaniprequest['field3']  ?? 'Email');
+    $field4  = $lang->unbaniprequest['field4']  ?? '';
+    $field5  = htmlspecialchars_uni($lang->unbaniprequest['field5']  ?? 'Comment');
+    $field6  = $lang->unbaniprequest['field6']  ?? '';
+    $field7  = htmlspecialchars_uni($lang->unbaniprequest['field7']  ?? '');
+    $field8  = htmlspecialchars_uni($lang->unbaniprequest['field8']  ?? 'Submit');
+    $field9  = htmlspecialchars_uni($lang->unbaniprequest['field9']  ?? 'Reset');
+    $action  = htmlspecialchars_uni($_SERVER['SCRIPT_NAME']);
+    $ip_val  = htmlspecialchars_uni($userip);
+    $em_val  = htmlspecialchars_uni($email);
+    $co_val  = htmlspecialchars_uni($comment);
+
+    return '
+    <div class="container mt-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i>' . $title . '</h5>
+            </div>
+            <div class="card-body p-4">
+                ' . ($info !== '' ? '<p class="text-muted mb-4">' . $info . '</p>' : '') . '
+                <form method="post" action="' . $action . '" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">' . $field1 . '</label>
+                        <p class="text-muted small mb-1">' . $field2 . '</p>
+                        <input type="text" name="ip" class="form-control"
+                               value="' . $ip_val . '">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">' . $field3 . '</label>
+                        <p class="text-muted small mb-1">' . $field4 . '</p>
+                        <input type="email" name="email" class="form-control"
+                               value="' . $em_val . '" required>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">' . $field5 . '</label>
+                        <p class="text-muted small mb-1">' . $field6 . '</p>
+                        <textarea name="comment" class="form-control"
+                                  rows="4" required>' . $co_val . '</textarea>
+                        <div class="form-text">Minimum 10 characters.</div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit"  class="btn btn-danger px-4">
+                            <i class="bi bi-send me-2"></i>' . $field8 . '
+                        </button>
+                        <button type="reset" class="btn btn-outline-secondary px-4">
+                            <i class="bi bi-arrow-counterclockwise me-2"></i>' . $field9 . '
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>';
+}

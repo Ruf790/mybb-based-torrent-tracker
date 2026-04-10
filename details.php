@@ -789,7 +789,7 @@ $showcommenttable .= '
     ' . $editor['toolbar'] . '
     <form name="comment" id="comment" method="post" action="comment.php?action=add&tid=' . $id . '" novalidate>
         <input type="hidden" name="ctype" value="quickcomment">
-        <input type="hidden" name="page" value="' . intval(isset($_GET['page']) ? $_GET['page'] : 0) . '">
+        <input type="hidden" name="page" value="' . intval($page ?? ($_GET['page'] ?? 1)) . '">
         <div id="fileIdsContainer"></div>
         <div class="mb-3">
             <label for="message" class="form-label">Your Comment <small class="text-muted">(макс. 500 символов)</small></label>
@@ -960,59 +960,8 @@ $show_manage .= '
 
 
 
-
-
-
-if (is_file(TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent") && ($Data = file_get_contents(TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent"))) 
+function getFileIcon($filename) 
 {
-    
-	
-	$TorrentPath = TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent";
-    
-    // Загружаем торрент
-    $TorrentObj = TorrentFile::load($TorrentPath);
-
-    $files = $TorrentObj->v1()->getFiles();
-	
-
-    // Step 1: Build folder structure
-    $tree = [];
-
-
-
-foreach ($files as $file) 
-{
-    $path = str_replace('\\', '/', implode('/', $file->path)); // ✅ тут исправлено
-    $size = $file->length;
-    $parts = explode('/', $path);
-    $current = &$tree;
-
-    foreach ($parts as $i => $part) 
-	{
-        if ($i === count($parts) - 1) 
-		{
-            $current[$part] = $size; // file
-        } 
-		else 
-		{
-            if (!isset($current[$part])) 
-			{
-                $current[$part] = [];
-            }
-            $current = &$current[$part]; // folder
-        }
-    }
-}
-
-
-
-
-
-
-    // Step 2: Icon helper
-	
-	function getFileIcon($filename) 
-    {
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
     $icons = [
@@ -1064,14 +1013,13 @@ foreach ($files as $file)
                 <i class="' . $iconClass . ' me-1" style="font-size: 1em;"></i>
                 <small style="line-height:1;">' . htmlspecialchars(strtoupper($ext)) . '</small>
             </span>';
-    }
+}
 
-	
-	
 
-    // Step 3: Recursive render function
-    function renderAccordion($tree, $parentId = 'root', $level = 0) 
-	{
+
+
+function renderAccordion($tree, $parentId = 'root', $level = 0) 
+{
         static $counter = 0;
         $html = '<div class="accordion" id="accordion-' . $parentId . '">';
         foreach ($tree as $name => $content) 
@@ -1106,9 +1054,54 @@ foreach ($files as $file)
         }
         $html .= '</div>';
         return $html;
-    }
+}
 
-    //echo renderAccordion($tree);
+ 
+
+
+
+if (is_file(TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent") && ($Data = file_get_contents(TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent"))) 
+{
+    
+	
+	$TorrentPath = TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent";
+    
+    // Загружаем торрент
+    $TorrentObj = TorrentFile::load($TorrentPath);
+
+    $files = $TorrentObj->v1()->getFiles();
+	
+
+    // Step 1: Build folder structure
+    $tree = [];
+
+
+
+foreach ($files as $file) 
+{
+    $path = str_replace('\\', '/', implode('/', $file->path)); // ✅ тут исправлено
+    $size = $file->length;
+    $parts = explode('/', $path);
+    $current = &$tree;
+
+    foreach ($parts as $i => $part) 
+	{
+        if ($i === count($parts) - 1) 
+		{
+            $current[$part] = $size; // file
+        } 
+		else 
+		{
+            if (!isset($current[$part])) 
+			{
+                $current[$part] = [];
+            }
+            $current = &$current[$part]; // folder
+        }
+    }
+}
+
+ 
 }
 
 
@@ -1617,9 +1610,11 @@ $details = '
                                         <i class="bi bi-dash-circle"></i>
                                         <span>Collapse All</span>
                                     </button>
-                        </div>
+                       </div>
                     </div>
-                    <div class="file-tree">'.renderAccordion($tree).'</div>
+                    '.(isset($tree) && $tree !== null
+    ? '<div class="file-tree">' . renderAccordion($tree) . '</div>'
+    : '<div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation me-2"></i>Torrent file is missing</div>').'
                 </div>
 				' . $screenContent . '	
                 

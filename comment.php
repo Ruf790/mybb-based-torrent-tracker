@@ -267,6 +267,13 @@ function displayAddCommentForm(int $torrentid): void
     $editor = insert_bbcode_editor($smilies, $BASEURL, 'commentText');
 	
 	$titlez = sprintf($lang->comment['addcomment'], htmlspecialchars_uni($arr['name']));
+	
+	
+	$prefill = '';
+if (!empty($_GET['quote'])) {
+    $prefill = htmlspecialchars(urldecode($_GET['quote']));
+}
+	
     
     echo <<<HTML
 <div class="container mt-4">
@@ -276,7 +283,7 @@ function displayAddCommentForm(int $torrentid): void
     <form id="commentForm" method="post" name="compose" action="{$_SERVER['SCRIPT_NAME']}?action=add&tid={$torrentid}" novalidate>
         <div class="mb-3">
             <label for="commentText" class="form-label">{$lang->comment['insertcomment']}</label>
-            <textarea class="form-control" id="commentText" name="msgtext" rows="6" placeholder="Write your comment using BBCode..." maxlength="500" aria-describedby="charCount" required></textarea>
+            <textarea class="form-control" id="commentText" name="msgtext" rows="6" placeholder="Write your comment using BBCode..." maxlength="500" aria-describedby="charCount" required>{$prefill}</textarea>
             <div id="charCount" class="form-text text-end">0 / 500</div>
         </div>
 

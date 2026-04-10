@@ -413,9 +413,9 @@ $boardstats = '';
     }
 	
 	
-	$stats_mostonline = sprintf($lang->index['online'], ts_nf($onlinestats['most_ever']), my_datee($dateformat, $onlinestats['most_ever_time']), my_datee($timeformat, $onlinestats['most_ever_time']));
+	//$stats_mostonline = sprintf($lang->index['online'], ts_nf($onlinestats['most_ever']), my_datee($dateformat, $onlinestats['most_ever_time']), my_datee($timeformat, $onlinestats['most_ever_time']));
 
-	
+	$stats_mostonline = sprintf($lang->index['online'], ts_nf($onlinestats['most_ever'] ?? 0), my_datee($dateformat, $onlinestats['most_ever_time'] ?? 0), my_datee($timeformat, $onlinestats['most_ever_time'] ?? 0));
 	
 
     

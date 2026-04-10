@@ -1177,14 +1177,6 @@ class UserDataHandler extends DataHandler
 		$user['user_fields']['ufid'] = $this->uid;
 		
 		
-		$secret_questions = array(
-		    "userid" => $db->escape_string($this->uid),
-		    "passhint" => $user['passhint'],
-		    "hintanswer" => $db->escape_string(md5($user['hintanswer']))
-		);
-			
-	    $db->replace_query("ts_secret_questions", $secret_questions);
-		
 		
 		if($regtype == "invite") 
 		{
@@ -1587,7 +1579,7 @@ class UserDataHandler extends DataHandler
 		$db->delete_query('userfields', "ufid IN({$this->delete_uids})");
 		$db->delete_query('privatemessages', "uid IN({$this->delete_uids})");
 		
-		$db->delete_query('ts_secret_questions', "userid IN({$this->delete_uids})");
+		
 		
 		
 		$db->delete_query('snatched', "userid IN({$this->delete_uids})");

@@ -578,6 +578,140 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
 
 
 
+function stdok(string $message = "", string $title = "Success", string $subtitle = "Operation completed without errors"): void
+{
+    global $SITENAME, $BASEURL;
+
+    if (empty($message)) {
+        $message = 'Operation completed successfully.';
+    }
+
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+
+    if (function_exists('stdhead')) {
+        stdhead();
+    }
+
+    $e    = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+    $time = date('H:i:s');
+    $date = date('Y-m-d');
+
+    $okpage = '
+<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
+<link href="' . $BASEURL . '/include/templates/default/style/errorss.css" rel="stylesheet">
+
+<div class="container">
+    <div class="error-card-wrapper">
+        <div class="error-card-ok card border-0 overflow-hidden">
+            <div class="error-bg-pattern-ok"></div>
+            <div class="gradient-line-ok"></div>
+
+            <div class="card-body p-4 p-md-5 position-relative">
+
+                <div class="error-icon-wrapper mb-4 text-center">
+                    <div class="ok-icon-circle mx-auto">
+                        <i class="bi bi-check-lg ok-icon"></i>
+                    </div>
+                    <div class="ok-pulse"></div>
+                </div>
+
+                <div class="text-center mb-4">
+                    <h1 class="ok-title display-4 fw-bold mb-2">Success</h1>
+                    <h2 class="ok-subtitle h3 mb-2">' . $e($title) . '</h2>
+                    <p class="ok-description text-muted mb-0">
+                        <i class="bi bi-info-circle me-2"></i>
+                        ' . $e($subtitle) . '
+                    </p>
+                </div>
+
+                <div class="ok-message-box mb-4">
+                    <div class="d-flex align-items-start">
+                        <div class="ok-message-icon me-3">
+                            <i class="bi bi-check-circle-fill"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h5 class="mb-2">' . $e($message) . '</h5>
+                            <p class="text-muted mb-0 small">No further action is required.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ok-details mb-4">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <div class="ok-detail-item p-3 rounded-3">
+                                <i class="bi bi-clock-history text-success mb-2"></i>
+                                <h6 class="mb-1">Completed at</h6>
+                                <small class="text-muted">' . $time . '</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="ok-detail-item p-3 rounded-3">
+                                <i class="bi bi-calendar-check text-success mb-2"></i>
+                                <h6 class="mb-1">Date</h6>
+                                <small class="text-muted">' . $date . '</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions-wrapper">
+                    <div class="d-flex flex-column flex-sm-row gap-3">
+                        <button onclick="history.back()" class="btn btn-outline-success btn-lg flex-grow-1 hover-lift-ok">
+                            <i class="bi bi-arrow-left me-2"></i>
+                            <span>Go Back</span>
+                        </button>
+                        <a href="' . $e($BASEURL) . '/" class="btn btn-success btn-lg flex-grow-1 hover-lift-ok">
+                            <i class="bi bi-house-door me-2"></i>
+                            <span>Home Page</span>
+                        </a>
+                    </div>
+
+                    <div class="quick-links-ok mt-4 pt-3 border-top">
+                        <small class="text-muted d-block mb-2">Quick Links:</small>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="' . $e($BASEURL) . '/browse.php" class="quick-link-ok">
+                                <i class="bi bi-grid"></i> Browse
+                            </a>
+                            <a href="' . $e($BASEURL) . '/search.php" class="quick-link-ok">
+                                <i class="bi bi-search"></i> Search
+                            </a>
+                            <a href="' . $e($BASEURL) . '/upload.php" class="quick-link-ok">
+                                <i class="bi bi-cloud-upload"></i> Upload
+                            </a>
+                            <a href="' . $e($BASEURL) . '/index2.php" class="quick-link-ok">
+                                <i class="bi bi-chat"></i> Forum
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-footer bg-transparent border-0 text-center py-3">
+                <small class="text-muted">
+                    <i class="bi bi-question-circle me-1"></i>
+                    Need help? Visit our
+                    <a href="' . $e($BASEURL) . '/faq.php" class="text-success text-decoration-none">FAQ</a>
+                    or contact
+                    <a href="' . $e($BASEURL) . '/contact.php" class="text-success text-decoration-none">support</a>
+                </small>
+            </div>
+        </div>
+    </div>
+</div>';
+
+    echo $okpage;
+
+    if (function_exists('stdfoot')) {
+        stdfoot();
+    }
+
+    exit;
+}
+
+
 
 
 
@@ -3819,6 +3953,6 @@ function get_thread3333(int|string $tid, bool $recache = false): array|false
 
 
 if (!defined('APP_INITIALIZED')) {
-    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization000 of this file is not allowed.</font>');
 }
 ?>

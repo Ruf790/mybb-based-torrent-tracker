@@ -8,238 +8,6 @@
 /*           Fynnon - wWw.BvList.CoM           */
 /***********************************************/
 
-
-
-/**
- * Display inline errors with beautiful styling
- * 
- * @param array|string $errors Array or string of errors
- * @param string $title Optional custom title
- * @param array $json_data Optional data for AJAX responses
- * @return string HTML formatted errors or JSON response
- */
-function inline_error222222222($errors, $title = "", $json_data = array())
-{
-    global $theme, $mybb, $db, $lang, $templates, $charset;
-
-    // Set default title
-    if(empty($title))
-    {
-        $title = $lang->global['please_correct_errors'] ?? 'Please correct the following errors:';
-    }
-
-    // Convert to array if string
-    if(!is_array($errors))
-    {
-        $errors = array($errors);
-    }
-
-    // Remove empty errors
-    $errors = array_filter($errors);
-
-    // If no errors, return empty string
-    if(empty($errors))
-    {
-        return '';
-    }
-
-    // AJAX error message
-    if(!empty($mybb->input['ajax']))
-    {
-        @header("Content-type: application/json; charset={$charset}");
-        
-        $response = array("errors" => $errors);
-        if(!empty($json_data))
-        {
-            $response = array_merge($response, $json_data);
-        }
-        
-        echo json_encode($response);
-        exit;
-    }
-
-    // Build error items
-    $error_items = '';
-    foreach($errors as $error)
-    {
-        $error_items .= '
-        <li class="inline-error-item">
-            <span class="inline-error-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="8" x2="12" y2="12"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-            </span>
-            <span class="inline-error-text">' . htmlspecialchars_uni($error) . '</span>
-        </li>';
-    }
-
-    // Return beautiful error block
-    return '
-    <style>
-        @keyframes inlineErrorSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        @keyframes inlineErrorPulse {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.05);
-            }
-        }
-        
-        .inline-error-container {
-            background: linear-gradient(135deg, rgba(220,53,69,.08) 0%, rgba(220,53,69,.03) 100%);
-            border: 1px solid rgba(220,53,69,.3);
-            border-left: 4px solid #dc3545;
-            border-radius: 12px;
-            padding: 18px 22px;
-            margin-bottom: 1.5rem;
-            backdrop-filter: blur(2px);
-            animation: inlineErrorSlideIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-            transition: all 0.3s ease;
-        }
-        
-        .inline-error-container:hover {
-            transform: translateX(2px);
-            box-shadow: 0 4px 12px rgba(220,53,69,0.15);
-        }
-        
-        .inline-error-title {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 700;
-            font-size: 15px;
-            color: #dc3545;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(220,53,69,.2);
-        }
-        
-        .inline-error-title svg {
-            flex-shrink: 0;
-            animation: inlineErrorPulse 0.6s ease-in-out;
-        }
-        
-        .inline-error-list {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .inline-error-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 13.5px;
-            color: #721c24;
-            line-height: 1.45;
-            background: rgba(220,53,69,.04);
-            padding: 8px 12px;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-        }
-        
-        .inline-error-item:hover {
-            background: rgba(220,53,69,.1);
-            transform: translateX(4px);
-        }
-        
-        .inline-error-icon {
-            flex-shrink: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 20px;
-            height: 20px;
-        }
-        
-        .inline-error-icon svg {
-            color: #dc3545;
-        }
-        
-        .inline-error-text {
-            flex: 1;
-        }
-        
-        /* Dark mode support */
-        @media (prefers-color-scheme: dark) {
-            .inline-error-container {
-                background: linear-gradient(135deg, rgba(220,53,69,.12) 0%, rgba(220,53,69,.05) 100%);
-                border-color: rgba(220,53,69,.5);
-            }
-            
-            .inline-error-title {
-                color: #f87171;
-                border-bottom-color: rgba(248,113,113,.3);
-            }
-            
-            .inline-error-item {
-                color: #fecaca;
-                background: rgba(248,113,113,.08);
-            }
-            
-            .inline-error-item:hover {
-                background: rgba(248,113,113,.15);
-            }
-            
-            .inline-error-icon svg {
-                color: #f87171;
-            }
-        }
-        
-        /* Mobile optimization */
-        @media (max-width: 768px) {
-            .inline-error-container {
-                padding: 14px 16px;
-                margin-bottom: 1rem;
-            }
-            
-            .inline-error-title {
-                font-size: 14px;
-                gap: 8px;
-            }
-            
-            .inline-error-item {
-                font-size: 12.5px;
-                padding: 6px 10px;
-                gap: 8px;
-            }
-        }
-    </style>
-    <div class="inline-error-container" role="alert">
-        <div class="inline-error-title">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-            <span>' . htmlspecialchars_uni($title) . '</span>
-        </div>
-        <ul class="inline-error-list">
-            ' . $error_items . '
-        </ul>
-    </div>';
-}
-
-
-
-
-
 function inline_error($errors, $title = "", $json_data = array())
 {
     global $theme, $mybb, $db, $lang, $templates, $charset;
@@ -284,17 +52,22 @@ function inline_error($errors, $title = "", $json_data = array())
     $error_items = '';
     foreach($errors as $error)
     {
-        $error_items .= '
-        <div class="error-message-box mb-2">
-            <div class="d-flex align-items-start gap-3">
-                <div class="message-icon">
-                    <i class="bi bi-exclamation-circle-fill"></i>
-                </div>
-                <div class="flex-grow-1">
-                    <p class="mb-0 fw-semibold">' . htmlspecialchars_uni($error) . '</p>
-                </div>
+    // Если строка содержит HTML — выводим как есть, иначе экранируем
+    $error_output = (strip_tags($error) !== $error)
+        ? $error
+        : htmlspecialchars_uni($error);
+
+    $error_items .= '
+    <div class="error-message-box mb-2">
+        <div class="d-flex align-items-start gap-3">
+            <div class="message-icon">
+                <i class="bi bi-exclamation-circle-fill"></i>
             </div>
-        </div>';
+            <div class="flex-grow-1">
+                <p class="mb-0 fw-semibold">' . $error_output . '</p>
+            </div>
+        </div>
+    </div>';
     }
 
     // Return beautiful error block in card style

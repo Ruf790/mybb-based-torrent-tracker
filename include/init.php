@@ -44,8 +44,33 @@ require_once INC_PATH . '/class_plugins.php';
 $plugins = new pluginSystem();
 
 // --- Database configuration and connection ---
+if (!file_exists(INC_PATH . '/config.php')) {
+    die('<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Required</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center" style="min-height:100vh">
+    <div class="text-center p-5">
+        <div class="mb-4">
+            <i class="fas fa-cog fa-spin text-primary" style="font-size:5rem"></i>
+        </div>
+        <h2 class="fw-bold mb-3">Tracker Not Configured</h2>
+        <p class="text-muted mb-4">Configuration file <code>include/config.php</code> not found.</p>
+        <a href="/install.php" class="btn btn-primary btn-lg">
+            <i class="fas fa-rocket me-2"></i>Run Installer
+        </a>
+    </div>
+</body>
+</html>');
+}
 require_once INC_PATH . '/config.php';
 $mybb->config = $config;
+
 
 require_once INC_PATH . '/db_base.php';
 $dbDriverFile = INC_PATH . "/db_{$config['database']['type']}.php";

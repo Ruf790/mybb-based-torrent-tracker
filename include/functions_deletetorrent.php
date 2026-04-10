@@ -8,7 +8,7 @@ declare(strict_types=1);
  */
 function deletetorrent(int $id, bool $permission = false): void
 {
-    global $torrent_dir, $usergroups, $db;
+    global $torrent_dir, $usergroups, $db, $cache;
     
     if ((!$permission && !is_mod($usergroups)) || !is_valid_id($id)) {
         print_no_permission(true);
@@ -28,7 +28,7 @@ function deletetorrent(int $id, bool $permission = false): void
     delete_torrent_database_records($id);
     
     // Clear cache
-    clear_torrent_cache($id);
+    $cache->update_torrents();
 }
 
 /**
@@ -292,7 +292,10 @@ function delete_torrent_database_records(int $id): void
         "snatched" => "torrentid='$id'",
         "torrents" => "id='$id'",
         "torrents_nfo" => "id='$id'",
-		"reports" => "reported_id='$id'"
+		"reports" => "reported_id='$id'",
+		"announce_actions" => "torrentid='$id'",
+		"cheat_attempts" => "torrentid='$id'",
+		"hit_and_run" => "torrentid='$id'"
     ];
     
     foreach ($tables as $table => $condition) {
@@ -300,30 +303,6 @@ function delete_torrent_database_records(int $id): void
     }
 }
 
-/**
- * Clear torrent-related cache
- */
-function clear_torrent_cache(int $torrent_id): void
-{
-    global $cache;
-    
-    // Clear torrent cache
-    if (method_exists($cache, 'delete')) {
-        $cache->delete("torrent_{$torrent_id}");
-        $cache->delete("torrent_details_{$torrent_id}");
-    }
-    
-    // Clear comments cache
-    if (function_exists('cache_clear_comments')) {
-        cache_clear_comments();
-    }
-    
-    // Clear recent torrents cache
-    if (method_exists($cache, 'delete')) {
-        $cache->delete("recent_torrents");
-        $cache->delete("top_torrents");
-    }
-}
 
 // Security check
 if (!defined('APP_INITIALIZED')) {

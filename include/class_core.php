@@ -1,693 +1,330 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
 
-class MyBB {
-	/**
-	 * The friendly version number of MyBB we're running.
-	 *
-	 * @var string
-	 */
-	public $version = "1.8.38";
 
-	/**
-	 * The version code of MyBB we're running.
-	 *
-	 * @var integer
-	 */
-	public $version_code = 1838;
+declare(strict_types=1);
 
-	/**
-	 * The current working directory.
-	 *
-	 * @var string
-	 */
-	public $cwd = ".";
+class MyBB
+{
+    public string $version      = "1.8.38";
+    public int    $version_code = 1838;
+    public string $cwd          = ".";
+    public array  $input        = [];
+    public array  $cookies      = [];
+    public array  $user         = [];
+    public array  $usergroup    = [];
+    public array  $settings     = [];
+    public bool   $seo_support  = false;
+    public array  $config       = [];
+    public string $request_method = "";
+    public bool   $safemode     = false;
+    public bool   $dev_mode     = false;
+    public bool   $use_shutdown = true;
+    public bool   $debug_mode   = false;
+    public ?string $asset_url   = null;
+    public mixed $session = null;
+    public string $post_code    = '';
+    public mixed  $admin        = null;
+    public mixed  $cache        = null;
 
-	/**
-	 * Input variables received from the outer world.
-	 *
-	 * @var array
-	 */
-	public $input = array();
+    public array $ignore_clean_variables = [];
 
-	/**
-	 * Cookie variables received from the outer world.
-	 *
-	 * @var array
-	 */
-	public $cookies = array();
+    public array $clean_variables = [
+        "int" => [
+            "tid", "pid", "uid",
+            "eid", "pmid", "fid",
+            "aid", "rid", "sid",
+            "vid", "cid", "bid",
+            "hid", "gid", "mid",
+            "wid", "lid", "iid",
+            "did", "qid", "id"
+        ],
+        "pos" => [
+            "page", "perpage"
+        ],
+        "a-z" => [
+            "sortby", "order"
+        ]
+    ];
 
-	/**
-	 * Information about the current user.
-	 *
-	 * @var array
-	 */
-	public $user = array();
+    public array $binary_fields = [
+        'adminlog'      => ['ipaddress' => true],
+        'adminsessions' => ['ip' => true],
+        'maillogs'      => ['ipaddress' => true],
+        'moderatorlog'  => ['ipaddress' => true],
+        'sitelog'       => ['ipaddress' => true],
+        'pollvotes'     => ['ipaddress' => true],
+        'tsf_pollvotes' => ['ipaddress' => true],
+        'posts'         => ['ipaddress' => true],
+        'tsf_posts'     => ['ipaddress' => true],
+        'privatemessages' => ['ipaddress' => true],
+        'searchlog'     => ['ipaddress' => true],
+        'sessions'      => ['ip' => true],
+        'threadratings' => ['ipaddress' => true],
+        'users'         => ['regip' => true, 'lastip' => true],
+        'spamlog'       => ['ipaddress' => true],
+    ];
 
-	/**
-	 * Information about the current usergroup.
-	 *
-	 * @var array
-	 */
-	public $usergroup = array();
+    const INPUT_STRING = 0;
+    const INPUT_INT    = 1;
+    const INPUT_ARRAY  = 2;
+    const INPUT_FLOAT  = 3;
+    const INPUT_BOOL   = 4;
 
-	/**
-	 * MyBB settings.
-	 *
-	 * @var array
-	 */
-	public $settings = array();
+    // ----------------------------
+    // КОНСТРУКТОР
+    // ----------------------------
+    function __construct()
+    {
+        $protected = ["_GET", "_POST", "_SERVER", "_COOKIE", "_FILES", "_ENV", "GLOBALS"];
+        foreach ($protected as $var) {
+            if (isset($_POST[$var]) || isset($_GET[$var]) || isset($_COOKIE[$var]) || isset($_FILES[$var])) {
+                die("Hacking attempt");
+            }
+        }
 
-	/**
-	 * Whether or not magic quotes are enabled.
-	 *
-	 * @var int
-	 */
-	public $magicquotes = 0;
+        if (defined("IGNORE_CLEAN_VARS")) {
+            $this->ignore_clean_variables = is_array(IGNORE_CLEAN_VARS)
+                ? IGNORE_CLEAN_VARS
+                : [IGNORE_CLEAN_VARS];
+        }
 
-	/**
-	 * Whether or not MyBB supports SEO URLs
-	 *
-	 * @var boolean
-	 */
-	public $seo_support = false;
+        $this->parse_incoming($_GET);
+        $this->parse_incoming($_POST);
 
-	/**
-	 * MyBB configuration.
-	 *
-	 * @var array
-	 */
-	public $config = array();
+        $this->request_method = match($_SERVER['REQUEST_METHOD'] ?? '') {
+            'POST' => 'post',
+            'GET'  => 'get',
+            default => ''
+        };
 
-	/**
-	 * The request method that called this page.
-	 *
-	 * @var string
-	 */
-	public $request_method = "";
+        $this->clean_input();
 
-	/**
-	 * Whether or not PHP's safe_mode is enabled
-	 *
-	 * @var boolean
-	 */
-	public $safemode = false;
+        $safe_mode_status = @ini_get("safe_mode");
+        if ($safe_mode_status == 1 || strtolower((string)$safe_mode_status) === 'on') {
+            $this->safemode = true;
+        }
 
-	/**
-	 * Loads templates directly from the master theme and disables the installer locked error
-	 *
-	 * @var boolean
-	 */
-	public $dev_mode = false;
+        if (isset($_SERVER['MYBB_DEV_MODE']) && $_SERVER['MYBB_DEV_MODE'] == 1) {
+            $this->dev_mode = true;
+        }
 
-	/**
-	 * Variables that need to be clean.
-	 *
-	 * @var array
-	 */
-	public $clean_variables = array(
-		"int" => array(
-			"tid", "pid", "uid",
-			"eid", "pmid", "fid",
-			"aid", "rid", "sid",
-			"vid", "cid", "bid",
-			"hid", "gid", "mid",
-			"wid", "lid", "iid",
-			"did", "qid", "id"
-		),
-		"pos" => array(
-			"page", "perpage"
-		),
-		"a-z" => array(
-			"sortby", "order"
-		)
-	);
+        if (isset($this->input['debug']) && $this->input['debug'] == 1) {
+            $this->debug_mode = true;
+        }
 
-	/**
-	 * Variables that are to be ignored from cleansing process
-	 *
-	 * @var array
-	 */
-	public $ignore_clean_variables = array();
+        if (isset($this->input['action']) && $this->input['action'] === "mybb_logo") {
+            require_once dirname(__FILE__) . "/mybb_group.php";
+            output_logo();
+        }
 
-	/**
-	 * Using built in shutdown functionality provided by register_shutdown_function for < PHP 5?
-	 *
-	 * @var bool
-	 */
-	public $use_shutdown = true;
+        if (isset($this->input['intcheck']) && $this->input['intcheck'] == 1) {
+            die("&#077;&#089;&#066;&#066;");
+        }
+    }
 
-	/**
-	 * Debug mode?
-	 *
-	 * @var bool
-	 */
-	public $debug_mode = false;
+    // ----------------------------
+    // ВХОДНЫЕ ДАННЫЕ
+    // ----------------------------
+    function parse_incoming(array $array): void
+    {
+        foreach ($array as $key => $val) {
+            $this->input[$key] = $val;
+        }
+    }
 
-	/**
-	 * Binary database fields need to be handled differently
-	 *
-	 * @var array
-	 */
-	public $binary_fields = array(
-		'adminlog' => array('ipaddress' => true),
-		'adminsessions' => array('ip' => true),
-		'maillogs' => array('ipaddress' => true),
-		'moderatorlog' => array('ipaddress' => true),
-		'sitelog' => array('ipaddress' => true),
-		'pollvotes' => array('ipaddress' => true),
-		'tsf_pollvotes' => array('ipaddress' => true),
-		'posts' => array('ipaddress' => true),
-		'tsf_posts' => array('ipaddress' => true),      // добавить эту строку
-		'privatemessages' => array('ipaddress' => true),
-		'searchlog' => array('ipaddress' => true),
-		'sessions' => array('ip' => true),
-		'threadratings' => array('ipaddress' => true),
-		'users' => array('regip' => true, 'lastip' => true),
-		'spamlog' => array('ipaddress' => true),
-	);
+    function parse_cookies(): void
+    {
+        global $cookieprefix;
 
-	/**
-	 * The cache instance to use.
-	 *
-	 * @var datacache
-	 */
-	public $cache;
+        if (!is_array($_COOKIE)) {
+            return;
+        }
 
-	/**
-	 * The base URL to assets.
-	 *
-	 * @var string
-	 */
-	public $asset_url = null;
+        $cookieprefix   = "";
+        $prefix_length  = strlen($cookieprefix);
 
-	/**
-	 * @var array
-	 */
-	public $session = array();
+        foreach ($_COOKIE as $key => $val) {
+            if ($prefix_length && str_starts_with($key, $cookieprefix)) {
+                $key = substr($key, $prefix_length);
+                if (isset($this->cookies[$key])) {
+                    unset($this->cookies[$key]);
+                }
+            }
 
-	/**
-	 * @var string
-	 */
-	public $post_code;
+            if (empty($this->cookies[$key])) {
+                $this->cookies[$key] = $val;
+            }
+        }
+    }
 
-	/**
-	 * @var array
-	 */
-	public $admin;
+    function clean_input(): void
+    {
+        foreach ($this->clean_variables as $type => $variables) {
+            foreach ($variables as $var) {
+                if (in_array($var, $this->ignore_clean_variables)) {
+                    continue;
+                }
 
-	/**
-	 * String input constant for use with get_input().
-	 *
-	 * @see get_input
-	 */
-	const INPUT_STRING = 0;
-	/**
-	 * Integer input constant for use with get_input().
-	 *
-	 * @see get_input
-	 */
-	const INPUT_INT = 1;
-	/**
-	 * Array input constant for use with get_input().
-	 *
-	 * @see get_input
-	 */
-	const INPUT_ARRAY = 2;
-	/**
-	 * Float input constant for use with get_input().
-	 *
-	 * @see get_input
-	 */
-	const INPUT_FLOAT = 3;
-	/**
-	 * Boolean input constant for use with get_input().
-	 *
-	 * @see get_input
-	 */
-	const INPUT_BOOL = 4;
+                if (!isset($this->input[$var])) {
+                    continue;
+                }
 
-	/**
-	 * Constructor of class.
-	 */
-	function __construct()
-	{
-		// Set up MyBB
-		$protected = array("_GET", "_POST", "_SERVER", "_COOKIE", "_FILES", "_ENV", "GLOBALS");
-		foreach($protected as $var)
-		{
-			if(isset($_POST[$var]) || isset($_GET[$var]) || isset($_COOKIE[$var]) || isset($_FILES[$var]))
-			{
-				die("Hacking attempt");
-			}
-		}
+                $this->input[$var] = match($type) {
+                    'int' => $this->get_input($var, self::INPUT_INT),
+                    'a-z' => preg_replace("#[^a-z\.\-_]#i", "", $this->get_input($var)),
+                    'pos' => (
+                        ($this->input[$var] < 0 && $var !== "page") ||
+                        ($var === "page" && $this->input[$var] !== "last" && $this->input[$var] < 0)
+                    ) ? 0 : $this->input[$var],
+                    default => $this->input[$var]
+                };
+            }
+        }
+    }
 
-		if(defined("IGNORE_CLEAN_VARS"))
-		{
-			if(!is_array(IGNORE_CLEAN_VARS))
-			{
-				$this->ignore_clean_variables = array(IGNORE_CLEAN_VARS);
-			}
-			else
-			{
-				$this->ignore_clean_variables = IGNORE_CLEAN_VARS;
-			}
-		}
+    function get_input(string $name, int $type = self::INPUT_STRING): int|float|array|string|bool
+    {
+        return match($type) {
+            self::INPUT_ARRAY => (isset($this->input[$name]) && is_array($this->input[$name]))
+                ? $this->input[$name]
+                : [],
 
-		// Determine Magic Quotes Status (< PHP 6.0)
-		if(version_compare(PHP_VERSION, '6.0', '<'))
-		{
-			if(@get_magic_quotes_gpc())
-			{
-				$this->magicquotes = 1;
-				$this->strip_slashes_array($_POST);
-				$this->strip_slashes_array($_GET);
-				$this->strip_slashes_array($_COOKIE);
-			}
-			@set_magic_quotes_runtime(0);
-			@ini_set("magic_quotes_gpc", 0);
-			@ini_set("magic_quotes_runtime", 0);
-		}
+            self::INPUT_INT => (isset($this->input[$name]) && is_numeric($this->input[$name]))
+                ? (int)$this->input[$name]
+                : 0,
 
-		// Determine input
-		$this->parse_incoming($_GET);
-		$this->parse_incoming($_POST);
+            self::INPUT_FLOAT => (isset($this->input[$name]) && is_numeric($this->input[$name]))
+                ? (float)$this->input[$name]
+                : 0.0,
 
-		if($_SERVER['REQUEST_METHOD'] == "POST")
-		{
-			$this->request_method = "post";
-		}
-		else if($_SERVER['REQUEST_METHOD'] == "GET")
-		{
-			$this->request_method = "get";
-		}
+            self::INPUT_BOOL => (isset($this->input[$name]) && is_scalar($this->input[$name]))
+                ? (bool)$this->input[$name]
+                : false,
 
-		// If we've got register globals on, then kill them too
-		if(@ini_get("register_globals") == 1)
-		{
-			$this->unset_globals($_POST);
-			$this->unset_globals($_GET);
-			$this->unset_globals($_FILES);
-			$this->unset_globals($_COOKIE);
-		}
-		$this->clean_input();
+            default => (isset($this->input[$name]) && is_scalar($this->input[$name]))
+                ? $this->input[$name]
+                : ''
+        };
+    }
 
-		$safe_mode_status = @ini_get("safe_mode");
-		if($safe_mode_status == 1 || strtolower($safe_mode_status) == 'on')
-		{
-			$this->safemode = true;
-		}
+    // ----------------------------
+    // ASSETS
+    // ----------------------------
+    public function get_asset_url(string $path = '', bool $use_cdn = true): string
+    {
+        global $BASEURL;
 
-		// Are we running on a development server?
-		if(isset($_SERVER['MYBB_DEV_MODE']) && $_SERVER['MYBB_DEV_MODE'] == 1)
-		{
-			$this->dev_mode = 1;
-		}
+        $cdnurl  = "";
+        $usecdn  = "0";
 
-		// Are we running in debug mode?
-		if(isset($this->input['debug']) && $this->input['debug'] == 1)
-		{
-			$this->debug_mode = true;
-		}
+        $path = ltrim((string)$path, '/');
 
-		if(isset($this->input['action']) && $this->input['action'] == "mybb_logo")
-		{
-			require_once dirname(__FILE__)."/mybb_group.php";
-			output_logo();
-		}
+        if (!str_starts_with($path, 'http')) {
+            if (str_starts_with($path, './')) {
+                $path = substr($path, 2);
+            }
 
-		if(isset($this->input['intcheck']) && $this->input['intcheck'] == 1)
-		{
-			die("&#077;&#089;&#066;&#066;");
-		}
-	}
+            $base_path = ($use_cdn && $usecdn && !empty($cdnurl))
+                ? rtrim($cdnurl, '/')
+                : rtrim((string)$BASEURL, '/');
 
-	/**
-	 * Parses the incoming variables.
-	 *
-	 * @param array $array The array of incoming variables.
-	 */
-	function parse_incoming($array)
-	{
-		if(!is_array($array))
-		{
-			return;
-		}
+            return !empty($path)
+                ? $base_path . '/' . $path
+                : $base_path;
+        }
 
-		foreach($array as $key => $val)
-		{
-			$this->input[$key] = $val;
-		}
-	}
+        return $path;
+    }
 
-	/**
-	 * Parses the incoming cookies
-	 *
-	 */
-	function parse_cookies()
-	{
-		
-		global $cookieprefix;
-		
-		
-		if(!is_array($_COOKIE))
-		{
-			return;
-		}
+    // ----------------------------
+    // ОШИБКИ
+    // ----------------------------
+    function trigger_generic_error(string $code): void
+    {
+        global $error_handler;
 
-		
-		$cookieprefix = "";
-		
-		$prefix_length = strlen($cookieprefix);
+        [$message, $error_code] = match($code) {
+            'cache_no_write'      => ["The data cache directory (cache/) needs to exist and be writable by the web server.", MYBB_CACHE_NO_WRITE],
+            'install_directory'   => ["The install directory (install/) still exists on your server and is not locked.", MYBB_INSTALL_DIR_EXISTS],
+            'board_not_installed' => ["Your board has not yet been installed and configured.", MYBB_NOT_INSTALLED],
+            'board_not_upgraded'  => ["Your board has not yet been upgraded.", MYBB_NOT_UPGRADED],
+            'sql_load_error'      => ["MyBB was unable to load the SQL extension. <a href=\"https://mybb.com\">MyBB Website</a>", MYBB_SQL_LOAD_ERROR],
+            'apc_load_error'      => ["APC needs to be configured with PHP to use the APC cache support.", MYBB_CACHEHANDLER_LOAD_ERROR],
+            'apcu_load_error'     => ["APCu needs to be configured with PHP to use the APCu cache support.", MYBB_CACHEHANDLER_LOAD_ERROR],
+            'memcache_load_error' => ["Your server does not have memcache support enabled.", MYBB_CACHEHANDLER_LOAD_ERROR],
+            'memcached_load_error'=> ["Your server does not have memcached support enabled.", MYBB_CACHEHANDLER_LOAD_ERROR],
+            'redis_load_error'    => ["Your server does not have redis support enabled.", MYBB_CACHEHANDLER_LOAD_ERROR],
+            default               => ["MyBB has experienced an internal error. <a href=\"https://mybb.com\">MyBB Website</a>", MYBB_GENERAL]
+        };
 
-		foreach($_COOKIE as $key => $val)
-		{
-			if($prefix_length && substr($key, 0, $prefix_length) == $this->$cookieprefix)
-			{
-				$key = substr($key, $prefix_length);
+        $error_handler->trigger($message, $error_code);
+    }
 
-				// Fixes conflicts with one board having a prefix and another that doesn't on the same domain
-				// Gives priority to our cookies over others (overwrites them)
-				if(isset($this->cookies[$key]))
-				{
-					unset($this->cookies[$key]);
-				}
-			}
-
-			if(empty($this->cookies[$key]))
-			{
-				$this->cookies[$key] = $val;
-			}
-		}
-	}
-
-	/**
-	 * Strips slashes out of a given array.
-	 *
-	 * @param array $array The array to strip.
-	 */
-	function strip_slashes_array(&$array)
-	{
-		foreach($array as $key => $val)
-		{
-			if(is_array($array[$key]))
-			{
-				$this->strip_slashes_array($array[$key]);
-			}
-			else
-			{
-				$array[$key] = stripslashes($array[$key]);
-			}
-		}
-	}
-
-	/**
-	 * Unsets globals from a specific array.
-	 *
-	 * @param array $array The array to unset from.
-	 */
-	function unset_globals($array)
-	{
-		if(!is_array($array))
-		{
-			return;
-		}
-
-		foreach(array_keys($array) as $key)
-		{
-			unset($GLOBALS[$key]);
-			unset($GLOBALS[$key]); // Double unset to circumvent the zend_hash_del_key_or_index hole in PHP <4.4.3 and <5.1.4
-		}
-	}
-
-	/**
-	 * Cleans predefined input variables.
-	 *
-	 */
-	function clean_input()
-	{
-		foreach($this->clean_variables as $type => $variables)
-		{
-			foreach($variables as $var)
-			{
-				// If this variable is in the ignored array, skip and move to next.
-				if(in_array($var, $this->ignore_clean_variables))
-				{
-					continue;
-				}
-
-				if(isset($this->input[$var]))
-				{
-					switch($type)
-					{
-						case "int":
-							$this->input[$var] = $this->get_input($var, MyBB::INPUT_INT);
-							break;
-						case "a-z":
-							$this->input[$var] = preg_replace("#[^a-z\.\-_]#i", "", $this->get_input($var));
-							break;
-						case "pos":
-							if(($this->input[$var] < 0 && $var != "page") || ($var == "page" && $this->input[$var] != "last" && $this->input[$var] < 0))
-								$this->input[$var] = 0;
-							break;
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Checks the input data type before usage.
-	 *
-	 * @param string $name Variable name ($mybb->input)
-	 * @param int $type The type of the variable to get. Should be one of MyBB::INPUT_INT, MyBB::INPUT_ARRAY or MyBB::INPUT_STRING.
-	 *
-	 * @return int|float|array|string Checked data. Type depending on $type
-	 */
-	function get_input($name, $type = MyBB::INPUT_STRING)
-	{
-		switch($type)
-		{
-			case MyBB::INPUT_ARRAY:
-				if(!isset($this->input[$name]) || !is_array($this->input[$name]))
-				{
-					return array();
-				}
-				return $this->input[$name];
-			case MyBB::INPUT_INT:
-				if(!isset($this->input[$name]) || !is_numeric($this->input[$name]))
-				{
-					return 0;
-				}
-				return (int)$this->input[$name];
-			case MyBB::INPUT_FLOAT:
-				if(!isset($this->input[$name]) || !is_numeric($this->input[$name]))
-				{
-					return 0.0;
-				}
-				return (float)$this->input[$name];
-			case MyBB::INPUT_BOOL:
-				if(!isset($this->input[$name]) || !is_scalar($this->input[$name]))
-				{
-					return false;
-				}
-				return (bool)$this->input[$name];
-			default:
-				if(!isset($this->input[$name]) || !is_scalar($this->input[$name]))
-				{
-					return '';
-				}
-				return $this->input[$name];
-		}
-	}
-
-	/**
-	 * Get the path to an asset using the CDN URL if configured.
-	 *
-	 * @param string $path    The path to the file.
-	 * @param bool   $use_cdn Whether to use the configured CDN options.
-	 *
-	 * @return string The complete URL to the asset.
-	 */
-	public function get_asset_url($path = '', $use_cdn = true)
-	{
-		global $BASEURL;
-		
-		$cdnurl = "";
-        $usecdn = "0";
-		
-		$path = (string) $path;
-		$path = ltrim($path, '/');
-
-		if(substr($path, 0, 4) != 'http')
-		{
-			if(substr($path, 0, 2) == './')
-			{
-				$path = substr($path, 2);
-			}
-
-			if($use_cdn && $usecdn && !empty($cdnurl))
-			{
-				$base_path = rtrim($cdnurl, '/');
-			}
-			else
-			{
-				$base_path = rtrim((string)$BASEURL, '/');
-			}
-
-			$url = $base_path;
-
-			if(!empty($path))
-			{
-				$url = $base_path . '/' . $path;
-			}
-		}
-		else
-		{
-			$url = $path;
-		}
-
-		return $url;
-	}
-
-	/**
-	 * Triggers a generic error.
-	 *
-	 * @param string $code The error code.
-	 */
-	function trigger_generic_error($code)
-	{
-		global $error_handler;
-
-		switch($code)
-		{
-			case "cache_no_write":
-				$message = "The data cache directory (cache/) needs to exist and be writable by the web server. Change its permissions so that it is writable (777 on Unix based servers).";
-				$error_code = MYBB_CACHE_NO_WRITE;
-				break;
-			case "install_directory":
-				$message = "The install directory (install/) still exists on your server and is not locked. To access MyBB please either remove this directory or create an empty file in it called 'lock'.";
-				$error_code = MYBB_INSTALL_DIR_EXISTS;
-				break;
-			case "board_not_installed":
-				$message = "Your board has not yet been installed and configured. Please do so before attempting to browse it.";
-				$error_code = MYBB_NOT_INSTALLED;
-				break;
-			case "board_not_upgraded":
-				$message = "Your board has not yet been upgraded. Please do so before attempting to browse it.";
-				$error_code = MYBB_NOT_UPGRADED;
-				break;
-			case "sql_load_error":
-				$message = "MyBB was unable to load the SQL extension. Please contact the MyBB Group for support. <a href=\"https://mybb.com\">MyBB Website</a>";
-				$error_code = MYBB_SQL_LOAD_ERROR;
-				break;
-			case "apc_load_error":
-				$message = "APC needs to be configured with PHP to use the APC cache support.";
-				$error_code = MYBB_CACHEHANDLER_LOAD_ERROR;
-				break;
-			case "apcu_load_error":
-				$message = "APCu needs to be configured with PHP to use the APCu cache support.";
-				$error_code = MYBB_CACHEHANDLER_LOAD_ERROR;
-				break;
-			case "eaccelerator_load_error":
-				$message = "eAccelerator needs to be configured with PHP to use the eAccelerator cache support.";
-				$error_code = MYBB_CACHEHANDLER_LOAD_ERROR;
-				break;
-			case "memcache_load_error":
-				$message = "Your server does not have memcache support enabled.";
-				$error_code = MYBB_CACHEHANDLER_LOAD_ERROR;
-				break;
-			case "memcached_load_error":
-				$message = "Your server does not have memcached support enabled.";
-				$error_code = MYBB_CACHEHANDLER_LOAD_ERROR;
-				break;
-			case "xcache_load_error":
-				$message = "Xcache needs to be configured with PHP to use the Xcache cache support.";
-				$error_code = MYBB_CACHEHANDLER_LOAD_ERROR;
-				break;
-			case "redis_load_error":
-				$message = "Your server does not have redis support enabled.";
-				$error_code = MYBB_CACHEHANDLER_LOAD_ERROR;
-				break;
-			default:
-				$message = "MyBB has experienced an internal error. Please contact the MyBB Group for support. <a href=\"https://mybb.com\">MyBB Website</a>";
-				$error_code = MYBB_GENERAL;
-		}
-		$error_handler->trigger($message, $error_code);
-	}
-
-	function __destruct()
-	{
-		// Run shutdown function
-		if(function_exists("run_shutdown"))
-		{
-			run_shutdown();
-		}
-	}
+    function __destruct()
+    {
+        if (function_exists("run_shutdown")) {
+            run_shutdown();
+        }
+    }
 }
 
-/**
- * Do this here because the core is used on every MyBB page
- */
+// ----------------------------
+// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ГРУПП
+// ----------------------------
+$grouppermignore = ["gid", "type", "title", "description", "namestyle"];
 
-$grouppermignore = array("gid", "type", "title", "description", "namestyle");
-$groupzerogreater = array(
-	'maxposts',
-	'attachquota',
-	'edittimelimit',
-	'maxreputationsperthread',
-	'maxreputationsperuser',
-	'maxreputationsday',
-	'maxwarningsday',
-	'pmquota',
-	'maxpmrecipients',
-	'maxemails',
-);
-$groupzerolesser = array(
-	'canusesigxposts',
-	'emailfloodtime',
-);
-$groupxgreater = array(
-	'reputationpower' => 0,
-);
-$grouppermbyswitch = array(
-	'maxposts' => array('canpostthreads', 'canpostreplys'),
-	'attachquota' => 'canpostattachments',
-	'edittimelimit' => 'caneditposts',
-	'pmquota' => 'canusepms',
-	'maxpmrecipients' => 'canusepms',
-	'maxemails' => 'cansendemail',
-	'emailfloodtime' => 'cansendemail',
-);
+$groupzerogreater = [
+    'maxposts',
+    'attachquota',
+    'edittimelimit',
+    'maxreputationsperthread',
+    'maxreputationsperuser',
+    'maxreputationsday',
+    'maxwarningsday',
+    'pmquota',
+    'maxpmrecipients',
+    'maxemails',
+];
 
-$displaygroupfields = array("title", "description", "namestyle");
+$groupzerolesser = [
+    'canusesigxposts',
+    'emailfloodtime',
+];
 
-// These are fields in the usergroups table that are also forum permission specific.
-$fpermfields = array(
-	'canview',
-	'canviewthreads',
-	'candlattachments',
-	'canpostthreads',
-	'canpostreplys',
-	'canpostattachments',
-	'canratethreads',
-	'caneditposts',
-	'candeleteposts',
-	'candeletethreads',
-	'caneditattachments',
-	'canviewdeletionnotice',
-	'modposts',
-	'modthreads',
-	'modattachments',
-	'mod_edit_posts',
-	'canpostpolls',
-	'canvotepolls',
-	'cansearch'
-);
+$groupxgreater = [
+    'reputationpower' => 0,
+];
+
+$grouppermbyswitch = [
+    'maxposts'        => ['canpostthreads', 'canpostreplys'],
+    'attachquota'     => 'canpostattachments',
+    'edittimelimit'   => 'caneditposts',
+    'pmquota'         => 'canusepms',
+    'maxpmrecipients' => 'canusepms',
+    'maxemails'       => 'cansendemail',
+    'emailfloodtime'  => 'cansendemail',
+];
+
+$displaygroupfields = ["title", "description", "namestyle"];
+
+$fpermfields = [
+    'canview',
+    'canviewthreads',
+    'candlattachments',
+    'canpostthreads',
+    'canpostreplys',
+    'canpostattachments',
+    'canratethreads',
+    'caneditposts',
+    'candeleteposts',
+    'candeletethreads',
+    'caneditattachments',
+    'canviewdeletionnotice',
+    'modposts',
+    'modthreads',
+    'modattachments',
+    'mod_edit_posts',
+    'canpostpolls',
+    'canvotepolls',
+    'cansearch'
+];

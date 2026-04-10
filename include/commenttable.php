@@ -24,7 +24,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     ];
 
     $moderator = is_mod($usergroups);
-    //$dt = get_date_time(gmtime() - TS_TIMEOUT);
+    
     $totalrows = count($rows);
     $quickmenu = '';
     $showcommentstable = '';
@@ -45,6 +45,9 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 <?php
     $modals_html = ob_get_clean();
     $showcommentstable = $modals_html;
+	
+    $torrent_name = isset($Torrent['name']) ? htmlspecialchars_uni($Torrent['name']) : '';
+    $showcommentstable .= generateHeaderSection($torrent_name, $moderator);
 
 
 
@@ -148,11 +151,15 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
             $post['button_quickdelete'] = generateDeleteButton($row);
         }
 
-        // Quote button
+
+		$QuoteTagRaw = '[quote=' . $row['username'] . ' pid=' . $row['id'] . ' dateline=' . $row['dateline'] . ']' . $row['text'] . '[/quote]';
+		
+		// Quote button
         $post['button_quote'] = '
-            <a href="comment.php?action=add&tid=' . $tid . '" class="dropdown-item">
-                <i class="fa-solid fa-reply"></i> &nbsp;Reply
+            <a href="comment.php?action=add&tid=' . $tid . '&quote=' . urlencode($QuoteTagRaw) . '" class="dropdown-item">
+                 <i class="fa-solid fa-reply"></i> &nbsp;Reply
             </a>';
+
         
         $post['button_multiquote'] = $p_quote;
 		
@@ -173,15 +180,10 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
        </li>';
 		
 		
-		
-		
-		
-		
-		
 
         $postcounter++;
         $post_number = ts_nf($postcounter);
-        $torrent_name = isset($Torrent['name']) ? htmlspecialchars_uni($Torrent['name']) : '';
+       
         
         eval("\$post['posturl'] = \"" . $templates->get("comment_posturl") . "\";");
 
@@ -197,11 +199,10 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         eval("\$post['commentstables'] = \"" . $templates->get("commentstable") . "\";");
 
         // Build comment table
-        $showcommentstable .= ($postcounter == 1 ? '' : '<br />') . 
-            ($postcounter == 1 ? generateHeaderSection($torrent_name, $moderator) : '') . 
-            '<div class="closest" id="comment-' . $row['id'] . '">' . 
-            $post['commentstables'] . 
-            '</div>';
+        $showcommentstable .= '<br />' .
+        '<div class="closest" id="comment-' . $row['id'] . '">' .
+        $post['commentstables'] .
+        '</div>';
     }
 
     $showcommentstable .= '<div style="display: block;" id="ajax_comment_preview"></div><div style="display: block;" id="ajax_comment_preview2"></div>';

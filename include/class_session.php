@@ -325,7 +325,7 @@ class Session
         // Set up defaults
         $time = TIMENOW;
         $mybb->user = [
-            'usergroup' => 0,
+            'usergroup' => 1,
             'additionalgroups' => '',
             'username' => '',
             'id' => 0,

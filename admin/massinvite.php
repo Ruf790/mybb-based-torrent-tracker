@@ -90,7 +90,15 @@ class MassInviteManager
         $username = $_SESSION['username'] ?? 'Admin';
         write_log("[MASS INVITE] Admin: {$username} | Action: " . ($type === '+' ? 'ADD' : 'REMOVE') . " | Amount: {$amount} | Group: {$userGroup} | Affected users: {$count}");
 
-        stderr("Success,Invites updated successfully for {$count} users.");
+        //stderr("Success,Invites updated successfully for {$count} users.");
+		
+		stdok(
+    message: sprintf("Success,Invites updated successfully for {$count} users."),
+    title:   'Registration successful',
+    subtitle: 'Your account has been created.'
+);
+		
+		
         stdfoot();
         exit();
     }

@@ -43,7 +43,10 @@ class ReseedRequestHandler
 	
 	private function processReseedRequest(): void
     {
-    $torrentIds = $this->validateTorrentIds($_POST['torrents'] ?? '');
+    
+	global $_this_script_;
+	
+	$torrentIds = $this->validateTorrentIds($_POST['torrents'] ?? '');
     $subject = trim($_POST['subject'] ?? '');
     $message = trim($_POST['message'] ?? '');
     $senderId = (int)($_POST['sender'] ?? 0);

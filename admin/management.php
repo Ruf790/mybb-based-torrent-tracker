@@ -208,8 +208,10 @@ if($mybb->input['action'] == "copy")
             if(!$errors)
             {
                 $new_forum = $from_forum;
-                unset($new_forum['fid'], $new_forum['threads'], $new_forum['posts'], $new_forum['lastpost'], $new_forum['lastposter'], $new_forum['lastposteruid'], $newbb->input['lastposttid'], $new_forum['lastpostsubject'], $new_forum['unapprovedthreads'], $new_forum['unapprovedposts']);
-                $new_forum['name'] = $to_forum['name'];
+                
+				unset($new_forum['fid'], $new_forum['threads'], $new_forum['posts'], $new_forum['lastpost'], $new_forum['lastposter'], $new_forum['lastposteruid'], $new_forum['lastposttid'], $new_forum['lastpostsubject'], $new_forum['unapprovedthreads'], $new_forum['unapprovedposts']);
+				
+				$new_forum['name'] = $to_forum['name'];
                 $new_forum['description'] = $to_forum['description'];
                 $new_forum['pid'] = $to_forum['pid'];
                 $new_forum['parentlist'] = $to_forum['parentlist'];

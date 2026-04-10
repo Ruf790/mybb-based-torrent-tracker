@@ -9,62 +9,108 @@ if (!defined ('STAFF_PANEL_TSSEv56'))
 }
 
 
-require_once INC_PATH . '/readconfig.php';
+
 
 // Проверяем отправку формы
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_torrent_settings') {
     save_torrent_settings();
-    // Перезагружаем настройки после сохранения
-    $promo = $cache->read('promo');
 }
+
+
+$promo_settings = [];
+$q = $db->sql_query("SELECT name, value FROM settings WHERE name IN (
+    'prorules','randomhalfleech','randomfree','randomtwoup','randomtwoupfree',
+    'randomtwouphalfdown','randomthirtypercentdown','largesize','largepro',
+    'expirehalfleech','expirefree','expiretwoup','expiretwoupfree',
+    'expiretwouphalfleech','expirethirtypercentleech','expirenormal',
+    'halfleechbecome','freebecome','twoupbecome','twoupfreebecome',
+    'twouphalfleechbecome','thirtypercentleechbecome','normalbecome',
+    'hotdays','hotseeder','uploaderdouble','deldeadtorrent'
+)");
+while ($r = $db->fetch_array($q)) $promo_settings[$r['name']] = $r['value'];
+
+$prorules_torrent              = $promo_settings['prorules']                    ?? 'yes';
+$randomhalfleech_torrent       = $promo_settings['randomhalfleech']             ?? 5;
+$randomfree_torrent            = $promo_settings['randomfree']                  ?? 2;
+$randomtwoup_torrent           = $promo_settings['randomtwoup']                 ?? 2;
+$randomtwoupfree_torrent       = $promo_settings['randomtwoupfree']             ?? 1;
+$randomtwouphalfdown_torrent   = $promo_settings['randomtwouphalfdown']         ?? 0;
+$randomthirtypercentdown_torrent = $promo_settings['randomthirtypercentdown']   ?? 0;
+$largesize_torrent             = $promo_settings['largesize']                   ?? 12;
+$largepro_torrent              = (int)($promo_settings['largepro']              ?? 5);
+$expirehalfleech_torrent       = $promo_settings['expirehalfleech']             ?? 70;
+$expirefree_torrent            = $promo_settings['expirefree']                  ?? 60;
+$expiretwoup_torrent           = $promo_settings['expiretwoup']                 ?? 60;
+$expiretwoupfree_torrent       = $promo_settings['expiretwoupfree']             ?? 30;
+$expiretwouphalfleech_torrent  = $promo_settings['expiretwouphalfleech']        ?? 30;
+$expirethirtypercentleech_torrent = $promo_settings['expirethirtypercentleech'] ?? 30;
+$expirenormal_torrent          = $promo_settings['expirenormal']                ?? 0;
+$halfleechbecome_torrent       = (int)($promo_settings['halfleechbecome']       ?? 1);
+$freebecome_torrent            = (int)($promo_settings['freebecome']            ?? 1);
+$twoupbecome_torrent           = (int)($promo_settings['twoupbecome']           ?? 1);
+$twoupfreebecome_torrent       = (int)($promo_settings['twoupfreebecome']       ?? 1);
+$twouphalfleechbecome_torrent  = (int)($promo_settings['twouphalfleechbecome']  ?? 1);
+$thirtypercentleechbecome_torrent = (int)($promo_settings['thirtypercentleechbecome'] ?? 1);
+$normalbecome_torrent          = (int)($promo_settings['normalbecome']          ?? 1);
+$hotdays_torrent               = $promo_settings['hotdays']                     ?? 7;
+$hotseeder_torrent             = $promo_settings['hotseeder']                   ?? 5;
+$uploaderdouble_torrent        = $promo_settings['uploaderdouble']              ?? 'no';
+$deldeadtorrent_torrent        = $promo_settings['deldeadtorrent']              ?? 'no';
+
+
+
+
 
 function save_torrent_settings(): void 
 {
-    global $cache, $lang, $_this_script_;
+    global $db, $lang, $_this_script_;
     
-    // Собираем все настройки из формы
-    $settings = [
-        'prorules' => $_POST['prorules'] ?? 'no',
-        'randomhalfleech' => (int)($_POST['randomhalfleech'] ?? 5),
-        'randomfree' => (int)($_POST['randomfree'] ?? 2),
-        'randomtwoup' => (int)($_POST['randomtwoup'] ?? 2),
-        'randomtwoupfree' => (int)($_POST['randomtwoupfree'] ?? 1),
-        'randomtwouphalfdown' => (int)($_POST['randomtwouphalfdown'] ?? 0),
-        'randomthirtypercentdown' => (int)($_POST['randomthirtypercentdown'] ?? 0),
-        'largesize' => (string)(float)($_POST['largesize'] ?? 20.0), // Сохраняем как строку!
-        'largepro' => (int)($_POST['largepro'] ?? 2),
-        'expirehalfleech' => (int)($_POST['expirehalfleech'] ?? 150),
-        'expirefree' => (int)($_POST['expirefree'] ?? 60),
-        'expiretwoup' => (int)($_POST['expiretwoup'] ?? 60),
-        'expiretwoupfree' => (int)($_POST['expiretwoupfree'] ?? 30),
-        'expiretwouphalfleech' => (int)($_POST['expiretwouphalfleech'] ?? 30),
+    $data = [
+        'prorules'                 => $_POST['prorules'] ?? 'no',
+        'randomhalfleech'          => (int)($_POST['randomhalfleech'] ?? 5),
+        'randomfree'               => (int)($_POST['randomfree'] ?? 2),
+        'randomtwoup'              => (int)($_POST['randomtwoup'] ?? 2),
+        'randomtwoupfree'          => (int)($_POST['randomtwoupfree'] ?? 1),
+        'randomtwouphalfdown'      => (int)($_POST['randomtwouphalfdown'] ?? 0),
+        'randomthirtypercentdown'  => (int)($_POST['randomthirtypercentdown'] ?? 0),
+        'largesize'                => (string)(float)($_POST['largesize'] ?? 20.0),
+        'largepro'                 => (int)($_POST['largepro'] ?? 2),
+        'expirehalfleech'  => (int)($_POST['expirehalfleech'] ?? 150),
+        'expirefree'       => (int)($_POST['expirefree'] ?? 60),
+        'expiretwoup'      => (int)($_POST['expiretwoup'] ?? 60),
+        'expiretwoupfree'  => (int)($_POST['expiretwoupfree'] ?? 30),
+        'expiretwouphalfleech'     => (int)($_POST['expiretwouphalfleech'] ?? 30),
         'expirethirtypercentleech' => (int)($_POST['expirethirtypercentleech'] ?? 30),
-        'expirenormal' => (int)($_POST['expirenormal'] ?? 0),
-        'halfleechbecome' => (int)($_POST['halfleechbecome'] ?? 1),
-        'freebecome' => (int)($_POST['freebecome'] ?? 1),
-        'twoupbecome' => (int)($_POST['twoupbecome'] ?? 1),
-        'twoupfreebecome' => (int)($_POST['twoupfreebecome'] ?? 1),
-        'twouphalfleechbecome' => (int)($_POST['twouphalfleechbecome'] ?? 1),
+        'expirenormal'     => (int)($_POST['expirenormal'] ?? 0),
+        'halfleechbecome'          => (int)($_POST['halfleechbecome'] ?? 1),
+        'freebecome'               => (int)($_POST['freebecome'] ?? 1),
+        'twoupbecome'              => (int)($_POST['twoupbecome'] ?? 1),
+        'twoupfreebecome'          => (int)($_POST['twoupfreebecome'] ?? 1),
+        'twouphalfleechbecome'     => (int)($_POST['twouphalfleechbecome'] ?? 1),
         'thirtypercentleechbecome' => (int)($_POST['thirtypercentleechbecome'] ?? 1),
-        'normalbecome' => (int)($_POST['normalbecome'] ?? 1),
-        'hotdays' => (int)($_POST['hotdays'] ?? 7),
-        'hotseeder' => (int)($_POST['hotseeder'] ?? 5),
-        'uploaderdouble' => $_POST['uploaderdouble'] ?? 'no',
-        'deldeadtorrent' => $_POST['deldeadtorrent'] ?? 'no',
+        'normalbecome'             => (int)($_POST['normalbecome'] ?? 1),
+        'hotdays'          => (int)($_POST['hotdays'] ?? 7),
+        'hotseeder'        => (int)($_POST['hotseeder'] ?? 5),
+        'uploaderdouble'   => $_POST['uploaderdouble'] ?? 'no',
+        'deldeadtorrent'   => $_POST['deldeadtorrent'] ?? 'no',
     ];
+
+    foreach ($data as $name => $value) {
+        $n = $db->escape_string($name);
+        $v = $db->escape_string((string)$value);
+        $db->sql_query("UPDATE settings SET value='{$v}' WHERE name='{$n}'");
+        
+    }
     
-   
+    rebuild_settings();
     
-    // Обновляем кэш
-    $cache->update('promo',$settings);
-    
-    // Показываем сообщение об успехе через flash сообщение
     flash_message($lang->settings['settings_saved'] ?? 'Settings saved successfully!', 'success');
-    
-    // Редирект без GET параметра
     header("Location: " . $_this_script_);
     exit;
 }
+
+
+
 
 stdhead('Torrent Promotion Settings');
 $lang->load('settings');

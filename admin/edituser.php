@@ -2524,7 +2524,17 @@ function handleDeleteAccount(): void
     }
 
     write_log('Account: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been deleted by ' . $CURUSER['username']);
-    stderr('Success, The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted');
+    //stderr('Success, The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted');
+	
+	
+	stdok(
+    message: sprintf('Success, The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted'),
+    title:   'Registration successful',
+    subtitle: 'Your account has been created.'
+);
+	
+	
+	
 }
 
 /**

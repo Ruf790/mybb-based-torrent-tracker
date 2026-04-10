@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 define("IN_ARCHIVE", true);
 require_once INC_PATH.'/class_parser.php';
-require_once INC_PATH.'/readconfig.php';
+
 
 $parser = new postParser;
 $parser_options = [

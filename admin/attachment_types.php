@@ -322,12 +322,11 @@ function render_add_form(array $errors = []): void
     </div>
     HTML;
     
-    $attach_icon = $icon_description . '<div class="form_row">' . 
-                   generate_text_box('icon', $mybb->get_input('icon', 'pic/attachtypes/'), [
-                       'id' => 'icon', 
-                       'style' => 'width: 400px;'
-                   ]) . '</div>';
-    
+   $attach_icon = $icon_description . '<div class="form_row">' . 
+               generate_text_box('icon', $mybb->get_input('icon', MyBB::INPUT_STRING) ?: 'pic/attachtypes/', [
+                   'id' => 'icon', 
+                   'style' => 'width: 400px;'
+               ]) . '</div>';
     $enabled = generate_yes_no_radio('enabled', $mybb->get_input('enabled', 1));
     $force_download = generate_yes_no_radio('forcedownload', $mybb->get_input('forcedownload', 0));
     $avatar_file = generate_yes_no_radio('avatarfile', $mybb->get_input('avatarfile', 0));
@@ -336,7 +335,7 @@ function render_add_form(array $errors = []): void
     $selected_groups = $mybb->get_input('groups') != '' && $mybb->get_input('groups') != -1 
         ? explode(',', $mybb->get_input('groups')) 
         : [];
-    $groups_select = generate_selection_html('groups', $mybb->get_input('groups', ''), $selected_groups);
+    $groups_select = generate_selection_html('groups', $mybb->get_input('groups', MyBB::INPUT_STRING), $selected_groups);
     
     // Forums selection
     $selected_forums = $mybb->get_input('forums') != '' && $mybb->get_input('forums') != -1 
@@ -344,11 +343,12 @@ function render_add_form(array $errors = []): void
         : [];
     
     // Подготавливаем переменные для форумов
-    $forum_checked = [
-        'all' => $mybb->get_input('forums', '') == -1 ? 'checked="checked"' : '',
-        'custom' => $mybb->get_input('forums', '') != '' && $mybb->get_input('forums', '') != -1 ? 'checked="checked"' : '',
-        'none' => $mybb->get_input('forums', '') == '' ? 'checked="checked"' : ''
-    ];
+   $forum_input = $mybb->get_input('forums', MyBB::INPUT_STRING);
+$forum_checked = [
+    'all'    => $forum_input == -1 ? 'checked="checked"' : '',
+    'custom' => $forum_input != '' && $forum_input != -1 ? 'checked="checked"' : '',
+    'none'   => $forum_input == '' ? 'checked="checked"' : ''
+];
     
     // Определяем переменную $selected_values для generate_forum_select()
     $selected_values = $selected_forums;

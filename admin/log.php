@@ -112,6 +112,13 @@ $admin_log_lang = [
 	'admin_log_forum_attachments_delete_post' => "Deleted attachment #{1} ({2}) from post #{3}",
 'admin_log_forum_attachments_delete' => "Deleted attachment #{1} ({2})",
 'admin_log_forum_attachments_delete_orphans' => "Deleted orphaned attachments",
+
+'admin_log_user_awaiting_activation_activate_activated' => "Activated {2} user account(s)",
+'admin_log_user_awaiting_activation_activate_deleted' => "Deleted {2} user account(s)",
+
+'awaiting_activation' => "Awaiting Activation",
+'awaiting_activation_desc' => "Here you can manage users who are awaiting activation. Please note any user who is awaiting email activation will not need to confirm their email if they are activated here.",
+
 	
 	
 	
@@ -1204,6 +1211,9 @@ elseif ($entry_type === 'admin') {
             'Removed disallowed'=> ['success', 'Blacklist Del', 'fa-check-circle'],
             'Added IP ban'      => ['danger',  'IP Ban',        'fa-shield-alt'],
             'Removed IP ban'    => ['success', 'IP Unban',      'fa-shield-alt'],
+			
+			
+			'DB Optimized SUCCESS' => ['success', 'DB Optimized', 'fa-database'],
 			
 			
 			

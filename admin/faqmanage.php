@@ -101,11 +101,11 @@ function handleView($id)
     }
 
     $query = $db->sql_query("
-        SELECT a.id, a.name, a.description, b.name AS title
-        FROM faq a
-        LEFT JOIN faq b ON (a.pid = b.id)
-        WHERE a.type = 2 AND a.pid = " . (int)$id . "
-        ORDER BY a.disporder ASC
+    SELECT a.id, a.name, a.description, b.name AS title
+    FROM faq a
+    LEFT JOIN faq b ON (a.pid = b.id)
+    WHERE a.type = 'item' AND a.pid = " . (int)$id . "
+    ORDER BY a.disporder ASC
     ");
 
     if (!$query) {
@@ -375,7 +375,7 @@ function handleAdd($id)
         }
     }
     
-    $query = $db->sql_query("SELECT * FROM faq WHERE type = '1'");
+    $query = $db->sql_query("SELECT * FROM faq WHERE type = 'category'");
     if ($db->num_rows($query) == 0) {
         $faq_errors[] = $lang->faq['faqerror'];
         show_faq_errors();
@@ -676,7 +676,7 @@ function handleDefault()
     
     $where = array('Add New FAQ Item' => $_this_script_ . '&do=new');
     
-    $query = $db->sql_query("SELECT disporder, id, name FROM faq WHERE type = '1' ORDER BY disporder ASC");
+    $query = $db->sql_query("SELECT disporder, id, name FROM faq WHERE type = 'category' ORDER BY disporder ASC");
     
     if ($db->num_rows($query) == 0) {
         echo '

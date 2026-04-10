@@ -126,6 +126,9 @@ delete_invalid_records('inactivity', "userid NOT IN ({$ValidUsers})", 'userid');
 delete_invalid_records('users_perm', "userid NOT IN ({$ValidUsers})", 'userid');
 
 
+delete_invalid_records('privatemessages', "fromid NOT IN ({$ValidUsers}) AND toid NOT IN ({$ValidUsers})", 'pmid');
+
+
 delete_invalid_records('comment_files', "user_id NOT IN ({$ValidUsers}) OR torrent_id NOT IN ({$ValidTorrents})");
 delete_invalid_records('screenshots', "torrent_id NOT IN ({$ValidTorrents})");
 
@@ -159,7 +162,7 @@ $tables_to_optimize = array(
     'announce_actions', 'bookmarks', 'cheat_attempts', 'comments', 'invites',
     'notconnectablepmlog', 'peers', 'reports', 'snatched', 'staffmessages',
     'ts_hit_and_run', 'ts_inactivity', 'ts_u_perm', 'comment_files',
-    'screenshots', 'sessions', 'searchlog', 'loginattempts', 'iplog'
+    'privatemessages', 'screenshots', 'sessions', 'searchlog', 'loginattempts', 'iplog'
 );
 
 foreach ($tables_to_optimize as $table) {

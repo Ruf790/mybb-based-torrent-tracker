@@ -911,84 +911,29 @@ function get_user_by_username($username, $options=array())
 
 
 
+
 function output_inline_error($errors)
 {
-    global $lang;
+		global $lang;
 
-    if(!is_array($errors))
-    {
-        $errors = array($errors);
-    }
-
-    $errors = array_filter($errors);
-    
-    if(empty($errors))
-    {
-        return;
-    }
-
-    echo '<div class="container mt-3">
-    <div class="error-alert">
-        <div class="error-title">
-            <i class="fas fa-exclamation-circle"></i>
-            <em>The following errors were encountered:</em>
-        </div>
-        <ul>';
-    
-    foreach($errors as $error)
-    {
-        echo '<li>' . htmlspecialchars_uni($error) . '</li>';
-    }
-    
-    echo '</ul>
-    </div>
-    </div>
-    
-    <style>
-        .error-alert {
-            background: #fff5f5;
-            border-left: 4px solid #dc3545;
-            border-radius: 8px;
-            padding: 1rem 1.25rem;
-            margin-bottom: 1rem;
-        }
-        .error-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: #dc3545;
-            font-weight: 500;
-            margin-bottom: 0.75rem;
-        }
-        .error-title i {
-            font-size: 1.1rem;
-        }
-        .error-alert ul {
-            margin: 0;
-            padding-left: 1.5rem;
-            color: #721c24;
-        }
-        .error-alert li {
-            margin: 0.25rem 0;
-        }
-        @media (prefers-color-scheme: dark) {
-            .error-alert {
-                background: rgba(220, 38, 38, 0.1);
-            }
-            .error-title {
-                color: #f87171;
-            }
-            .error-alert li {
-                color: #fecaca;
-            }
-        }
-    </style>';
+		if(!is_array($errors))
+		{
+			$errors = array($errors);
+		}
+		
+		
+		echo "<div class=\"container mt-3\">\n";
+		echo "<div class=\"red_alert\">\n";
+		
+		echo "<p><em>The following errors were encountered:</em></p>\n";
+		echo "<ul>\n";
+		foreach($errors as $error)
+		{
+			echo "<li>{$error}</li>\n";
+		}
+		echo "</ul>\n";
+		echo "</div></div>\n";
 }
-
-
-
-
-
 
 
 /**

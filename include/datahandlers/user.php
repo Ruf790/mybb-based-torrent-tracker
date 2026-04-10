@@ -1043,7 +1043,8 @@ class UserDataHandler extends DataHandler
 	*/
 	function insert_user()
 	{
-		global $db, $cache, $plugins, $regtype;
+		global $db, $cache, $plugins, $regtype, $_d_usergroup, $autogigsignup, $autosbsignup, $invite_count;
+		
 
 		// Yes, validating is required.
 		if(!$this->get_validated())
@@ -1082,12 +1083,12 @@ class UserDataHandler extends DataHandler
 		}
 		
 		
-		require INC_PATH . '/readconfig.php';
+		
 		
 		
 		$uploaded = 0 < $autogigsignup ? $autogigsignup * 1024 * 1024 * 1024 : 0;
         $seedbonus = 0 < $autosbsignup ? $autosbsignup : 0;
-        $usergroup = $_d_usergroup ? $_d_usergroup : 1;
+        $usergroup = $_d_usergroup ? $_d_usergroup : 2;
 		
 		$invites = 0 + $invite_count;
 		

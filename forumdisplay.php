@@ -1699,7 +1699,7 @@ if($foruminfo['type'] != "c")
 		$clearstoredpass = ' | <a href="misc.php?action=clearpass&amp;fid='.$fid.'&amp;my_post_key='.$mybb->post_code.'">{$lang->clear_stored_password}</a>';
 	}
 
-	
+	eval('$gobutton = "'.$templates->get('gobutton').'";');
 	
 	// Populate Forumsort
     $forumsort = '';

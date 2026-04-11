@@ -13,9 +13,9 @@ define('ALLOWABLE_PAGE', 'register,do_register,login,do_login,logout,lostpw,do_l
 
 $nosession['avatar'] = 1;
 
-$templatelist  = 'maketable_torrents,torrents_completed,user_profile,torrent_stats,member_register,member_register_hiddencaptcha,member_register_coppa,member_register_agreement_coppa,member_register_agreement,member_register_customfield,member_register_requiredfields,member_profile_findthreads';
-$templatelist .= ',member_loggedin_notice,member_profile_away,member_register_regimage,member_register_regimage_recaptcha_invisible,member_register_regimage_nocaptcha,post_captcha_hcaptcha_invisible,post_captcha_hcaptcha,post_captcha_hidden,post_captcha,member_register_referrer';
-$templatelist .= ',member_profile_email,member_profile_offline,member_profile_warn,member_profile_warninglevel_link,member_profile_customfields_field,member_profile_customfields,member_profile_adminoptions_manageban,member_profile_adminoptions,member_profile';
+$templatelist  = 'maketable_torrents,torrents_completed,user_profile,torrent_stats,member_register,member_register_hiddencaptcha,member_register_agreement,member_register_customfield,member_register_requiredfields,member_profile_findthreads';
+$templatelist .= ',member_loggedin_notice,member_profile_away,member_register_regimage,member_register_regimage_recaptcha_invisible,member_register_regimage_nocaptcha,post_captcha_hcaptcha_invisible';
+$templatelist .= ',member_profile_email,member_profile_offline,member_profile_customfields_field,member_profile_customfields,member_profile_adminoptions_manageban,member_profile_adminoptions,member_profile';
 $templatelist .= ',member_profile_signature,member_profile_avatar,member_profile_groupimage,member_referrals_link,member_profile_referrals,member_activate,member_lostpw,member_register_additionalfields';
 $templatelist .= ',member_profile_modoptions_manageuser,member_profile_modoptions_editprofile,member_profile_modoptions_banuser,member_profile_modoptions_viewnotes,member_profile_modoptions_editnotes';
 $templatelist .= ',usercp_profile_profilefields_select_option,usercp_profile_profilefields_multiselect,usercp_profile_profilefields_select,usercp_profile_profilefields_textarea,usercp_profile_profilefields_radio,member_viewnotes';
@@ -23,7 +23,7 @@ $templatelist .= ',usercp_options_timezone,usercp_options_timezone_option,usercp
 $templatelist .= ',member_profile_pm,member_profile_contact_details,member_profile_modoptions_manageban';
 $templatelist .= ',member_profile_banned_remaining,member_profile_addremove,member_emailuser_guest,member_register_day,usercp_options_tppselect_option,postbit_warninglevel_formatted,member_profile_userstar,member_profile_findposts';
 $templatelist .= ',usercp_options_tppselect,usercp_options_pppselect,member_resetpassword,member_login,member_profile_online,usercp_options_pppselect_option,postbit_reputation_formatted,member_emailuser,usercp_profile_profilefields_text';
-$templatelist .= ',member_profile_modoptions_ipaddress,member_profile_modoptions,member_profile_banned,member_register_language,member_resendactivation,usercp_profile_profilefields_checkbox,member_register_password,member_coppa_form,torrent_stats';
+$templatelist .= ',member_profile_modoptions_ipaddress,member_profile_modoptions,member_profile_banned,member_register_language,member_resendactivation,usercp_profile_profilefields_checkbox,member_register_password,torrent_stats';
 
 require_once 'global.php';
 
@@ -596,12 +596,12 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
         $mybb->input['password2'] = $mybb->input['password'];
     }
 
-    $usergroup = in_array($regtype, ['verify', 'admin', 'both'], true) || $mybb->get_input('coppa', MyBB::INPUT_INT) == 1 ? 5 : 2;
+    $usergroup = in_array($regtype, ['verify', 'admin', 'both'], true) ? 5 : 2;
 
     require_once INC_PATH . '/datahandlers/user.php';
     $userhandler = new UserDataHandler('insert');
 
-    $coppauser = (int)($mybb->cookies['coppauser'] ?? 0);
+    
 
     $user = [
         'username'       => $mybb->get_input('username'),
@@ -616,16 +616,12 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
         'language'       => $mybb->get_input('language'),
         'profile_fields' => $mybb->get_input('profile_fields', MyBB::INPUT_ARRAY),
         'regip'          => $session->packedip,
-        'coppa_user'     => $coppauser,
         'regcheck1'      => $mybb->get_input('regcheck1'),
         'regcheck2'      => $mybb->get_input('regcheck2'),
         'registration'   => true,
     ];
 
-    if (isset($mybb->cookies['coppadob'])) {
-        [$dob_day, $dob_month, $dob_year] = explode('-', $mybb->cookies['coppadob']);
-        $user['birthday'] = ['day' => $dob_day, 'month' => $dob_month, 'year' => $dob_year];
-    }
+    
 
     $user['options'] = [
         'allownotices'       => $mybb->get_input('allownotices', MyBB::INPUT_INT),
@@ -682,16 +678,13 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
     } else {
         $user_info = $userhandler->insert_user();
 
-        if ($regtype !== 'randompass' && empty($mybb->cookies['coppauser'])) {
-            my_setcookie('mybbuser', $user_info['uid'] . '_' . $user_info['loginkey'], null, true, 'lax');
+        if ($regtype !== 'randompass') {
+           my_setcookie('mybbuser', $user_info['uid'] . '_' . $user_info['loginkey'], null, true, 'lax');
         }
 
-        if (!empty($mybb->cookies['coppauser'])) {
-            my_unsetcookie('coppauser');
-            my_unsetcookie('coppadob');
-            $plugins->run_hooks('member_do_register_end');
-            error(sprintf($lang->redirect_registered_coppa_activate, $SITENAME, htmlspecialchars_uni($user_info['username'])));
-        } elseif ($regtype === 'verify') {
+         
+		
+		if ($regtype === 'verify') {
             $activationcode = random_str();
             $db->insert_query('awaitingactivation', ['uid' => $user_info['uid'], 'dateline' => TIMENOW, 'code' => $activationcode, 'type' => 'r']);
             $emailsubject = sprintf($lang->member['emailsubject_activateaccount'], $SITENAME);
@@ -709,7 +702,8 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
 			 
 
 			
-        } elseif ($regtype === 'randompass') {
+        } 
+		elseif ($regtype === 'randompass') {
             $emailsubject = sprintf($lang->member['emailsubject_randompassword'], $SITENAME);
             $emailmessage = sprintf($lang->member['email_randompassword' . ($username_method ?: '')], $user['username'], $SITENAME, $user_info['username'], $mybb->get_input('password'));
             my_mail($user_info['email'], $emailsubject, $emailmessage);
@@ -764,73 +758,20 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// ACTION: coppa_form
-// ══════════════════════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'coppa_form') {
-    $faxno = $faxno ?: '&nbsp;';
-    $plugins->run_hooks('member_coppa_form');
-    eval("\$coppa_form = \"".$templates->get('member_coppa_form')."\";");
-    echo $coppa_form;
-}
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: register
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'register') {
-    $bdaysel = '';
-    $mybb->input['bday1'] = $mybb->get_input('bday1', MyBB::INPUT_INT);
-    for ($day = 1; $day <= 31; ++$day) {
-        $selected = $mybb->input['bday1'] == $day ? ' selected="selected"' : '';
-        eval("\$bdaysel .= \"".$templates->get('member_register_day')."\";");
-    }
+   
 
-    $mybb->input['bday2'] = $mybb->get_input('bday2', MyBB::INPUT_INT);
-    $bdaymonthsel = array_fill(1, 12, '');
-    $bdaymonthsel[$mybb->input['bday2']] = 'selected="selected"';
-    $birthday_year = $mybb->get_input('bday3', MyBB::INPUT_INT) ?: '';
-    $under_thirteen = false;
-
-    if ($coppa !== 'disabled' && !isset($mybb->input['step'])) {
-        if ($mybb->input['bday1'] && $mybb->input['bday2'] && $birthday_year) {
-            my_unsetcookie('coppauser');
-            $months = get_bdays($birthday_year);
-            if ($mybb->input['bday2'] < 1 || $mybb->input['bday2'] > 12
-                || $birthday_year < (date('Y') - 100) || $birthday_year > date('Y')
-                || $mybb->input['bday1'] > $months[$mybb->input['bday2'] - 1]) {
-                error($lang->error_invalid_birthday);
-            }
-            $bdaytime = @mktime(0, 0, 0, $mybb->input['bday2'], $mybb->input['bday1'], $birthday_year);
-            my_setcookie('coppadob', "{$mybb->input['bday1']}-{$mybb->input['bday2']}-{$birthday_year}", -1);
-            if ($bdaytime >= mktime(0, 0, 0, my_datee('n'), my_datee('d'), my_datee('Y') - 13)) {
-                my_setcookie('coppauser', 1, -0);
-                $under_thirteen = true;
-            } else {
-                my_setcookie('coppauser', 0, -0);
-            }
-            $mybb->request_method = '';
-        } else {
-            $plugins->run_hooks('member_register_coppa');
-            my_unsetcookie('coppauser');
-            $coppa_desc = $coppa === 'deny' ? $lang->member['coppa_desc_for_deny'] : $lang->member['coppa_desc'];
-            eval("\$coppa = \"".$templates->get('member_register_coppa')."\";");
-            stdhead('title');
-            echo $coppa;
-            exit;
-        }
-    }
-
-    if ((!isset($mybb->input['agree']) && !isset($mybb->input['regsubmit'])) && $fromreg == 0 || $mybb->request_method !== 'post') {
-        $coppa_agreement = '';
-        if ($coppa !== 'disabled' && (!empty($mybb->cookies['coppauser']) || $under_thirteen)) {
-            if ($coppa === 'deny') { stderr($lang->member['error_need_to_be_thirteen']); }
-            eval("\$coppa_agreement = \"".$templates->get('member_register_agreement_coppa')."\";");
-        }
-        $plugins->run_hooks('member_register_agreement');
-        eval("\$agreement = \"".$templates->get('member_register_agreement')."\";");
-        stdhead();
-        echo $agreement;
+    if (false) 
+	{
+    // agreement removed
     } else {
+		
+		
         $plugins->run_hooks('member_register_start');
 
         $js_validator_username_length = '';
@@ -862,7 +803,7 @@ if ($mybb->input['action'] === 'register') {
         $mybb->input['profile_fields'] = $mybb->get_input('profile_fields', MyBB::INPUT_ARRAY);
         $altbg          = 'trow1';
         $requiredfields = $customfields = '';
-        $usergroup      = in_array($regtype, ['verify', 'admin', 'both'], true) || $mybb->get_input('coppa', MyBB::INPUT_INT) == 1 ? 5 : 2;
+        $usergroup = in_array($regtype, ['verify', 'admin', 'both'], true) ? 5 : 2;
         $pfcache        = $cache->read('profilefields');
         $jsvar_reqfields = [];
 
@@ -965,7 +906,14 @@ if ($mybb->input['action'] === 'register') {
             eval("\$passboxes = \"".$templates->get('member_register_password')."\";");
         }
 
-        $invitehash     = htmlspecialchars_uni($_POST['invitehash'] ?? $_GET['invitehash'] ?? '');
+        $invitehash = htmlspecialchars_uni(
+            $_POST['invitehash'] ?? 
+            $_GET['invitehash'] ?? 
+            $_GET['invite'] ?? 
+            $_POST['invite'] ?? 
+            ''
+        );
+		
         $showinvitecode = '';
         if ($regtype === 'invite') {
             $showinvitecode = '<div class="py-3">' . $lang->member['invitecode']
@@ -1244,7 +1192,7 @@ if ($mybb->input['action'] === 'do_login' && $mybb->request_method === 'post') {
 		failedlogins('login', false, true, true, $login_user_uid);
         $errors = $loginhandler->get_friendly_errors();
     } else {
-        if ($loginhandler->login_data['coppauser']) { error($lang->error_awaitingcoppa); }
+        
         $loginhandler->complete_login();
         $plugins->run_hooks('member_do_login_end');
 

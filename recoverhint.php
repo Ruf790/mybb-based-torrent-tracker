@@ -3,6 +3,7 @@
 /*============[Recover Password — Email Token]=*/
 /***********************************************/
 define('IN_MYBB', 1);
+define('ALLOWABLE_PAGE', 1);
 define('SCRIPTNAME', 'recoverhint.php');
 define('RH_VERSION', '2.0.0');
 
@@ -266,9 +267,9 @@ if ($act === 3) {
             exit();
         }
 
-        if (!empty($_SESSION['password_generated'])) {
-           print_no_permission();
-        }
+        //if (!empty($_SESSION['password_generated'])) {
+        //   print_no_permission();
+        //}
 
         $newpass1 = $_POST['password']  ?? '';
         $newpass2 = $_POST['password2'] ?? '';
@@ -285,7 +286,7 @@ if ($act === 3) {
             exit();
         }
 
-        require INC_PATH . '/readconfig.php';
+        
         require_once INC_PATH . '/datahandlers/user.php';
 
         $userhandler = new UserDataHandler('update');
@@ -323,7 +324,7 @@ if ($act === 3) {
 	
     stdhead($lang->recover['head']);
     ?>
-  <?php require INC_PATH . '/readconfig.php'; ?>
+  
 
 <div class="container mt-5" style="max-width:560px;">
     <div class="card shadow border-0 rounded-4">

@@ -429,7 +429,7 @@ class PostDataHandler extends DataHandler
 		
 		$postmergefignore = "";
 		
-		$postmergeuignore = "5,6,7";
+		$postmergeuignore = "6,7,8";
 		
 		
 		if(empty($postmergemins))

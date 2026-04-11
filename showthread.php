@@ -96,6 +96,8 @@ $forumpermissions = forum_permissions($thread['fid']);
 // ---------------------------------------------------------------------------
 
 $visible_states = ["1", "-1"];
+
+$usergroups = $mybb->usergroup ?? [];
 $is_mod = is_mod($usergroups);
 
 if ($is_mod) {
@@ -652,12 +654,7 @@ if ($mybb->input['action'] === "thread") {
     // Thread mode / pagination
     // -----------------------------------------------------------------------
 
-    $defaultmode = match (true) {
-        !empty($CURUSER['threadmode']) => $CURUSER['threadmode'],
-        $threadusenetstyle == 1        => 'threaded',
-        default                        => 'linear',
-    };
-
+    $defaultmode = 'linear';
     $mybb->input['mode'] ??= $defaultmode;
 
     $thread_toggle = 'threaded';
@@ -722,27 +719,26 @@ if ($mybb->input['action'] === "thread") {
     $highlight  = "";
     $threadmode = "";
 
+    
+	
     if ($mybb->seo_support) {
-        if ($mybb->get_input('highlight')) {
-            $highlight = "?highlight=" . urlencode($mybb->get_input('highlight'));
-        }
-        if ($defaultmode !== "linear") {
-            $threadmode = $highlight ? "&amp;mode=linear" : "?mode=linear";
-        }
-    } else {
-        if (!empty($mybb->input['highlight'])) {
-            if (is_array($mybb->input['highlight'])) {
-                foreach ($mybb->input['highlight'] as $word) {
-                    $highlight .= "&amp;highlight[]=" . urlencode($word);
-                }
-            } else {
-                $highlight = "&amp;highlight=" . urlencode($mybb->get_input('highlight'));
-            }
-        }
-        if ($defaultmode !== "linear") {
-            $threadmode = "&amp;mode=linear";
-        }
+    if ($mybb->get_input('highlight')) {
+        $highlight = "?highlight=" . urlencode($mybb->get_input('highlight'));
     }
+      } else {
+    if (!empty($mybb->input['highlight'])) {
+        if (is_array($mybb->input['highlight'])) {
+            foreach ($mybb->input['highlight'] as $word) {
+                $highlight .= "&amp;highlight[]=" . urlencode($word);
+            }
+        } else {
+            $highlight = "&amp;highlight=" . urlencode($mybb->get_input('highlight'));
+        }
+      }
+    }
+	
+	
+	
 
     $multipage = multipage($postcount, $perpage, $page, str_replace("{tid}", $tid, THREAD_URL_PAGED . $highlight . $threadmode));
 

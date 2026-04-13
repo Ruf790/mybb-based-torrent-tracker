@@ -1,136 +1,67 @@
-var Rating = {
-	init: function()
-	{
-		var rating_elements = $(".star_rating");
-		rating_elements.each(function()
-		{
-			var rating_element = $(this);
-			var elements = rating_element.find("li a");
-			if(rating_element.hasClass("star_rating_notrated"))
-			{
-				elements.each(function()
-				{
-					var element = $(this);
-					element.on('click', function()
-					{
-						var parameterString = element.attr("href").replace(/.*\?(.*)/, "$1");
-						return Rating.add_rating(parameterString);
-					});
-				});
-			}
-			else
-			{
-				elements.each(function()
-				{
-					var element = $(this);
-					element.attr("onclick", "return false;");
-					element.css("cursor", "default");
-					var element_id = element.attr("href").replace(/.*\?(.*)/, "$1").match(/tid=(.*)&(.*)&/)[1];
-					element.attr("title", $("#current_rating_"+element_id).text());
-				});
-			}
-		});
-	},
+var userRating = 0;
+var torrentId  = 0;
+var ratingBaseUrl = '';
 
-	build_forumdisplay: function(tid, options)
-	{
-		var list = $("#rating_thread_"+tid);
-		if(!list.length)
-		{
-			return;
-		}
-		
-		list.addClass("star_rating")
-			.addClass(options.extra_class);
+function ratingInit(uid, tid, baseUrl) {
+    userRating   = uid;
+    torrentId    = tid;
+    ratingBaseUrl = baseUrl;
 
-		list_classes = new Array();
-		list_classes[1] = 'one_star';
-		list_classes[2] = 'two_stars';
-		list_classes[3] = 'three_stars';
-		list_classes[4] = 'four_stars';
-		list_classes[5] = 'five_stars';
+    document.querySelectorAll('.user-star').forEach(function(s, idx, all) {
+        s.addEventListener('mouseover', function() {
+            all.forEach(function(st, i) {
+                st.style.color = i <= idx ? '#f59e0b' : '#dee2e6';
+            });
+        });
+        s.addEventListener('mouseout', function() {
+            all.forEach(function(st, i) {
+                st.style.color = i < userRating ? '#f59e0b' : '#dee2e6';
+            });
+        });
+    });
+}
 
-		for(var i = 1; i <= 5; i++)
-		{
-			var list_element = $("<li></li>");
-			var list_element_a = $("<a></a>");
-			list_element_a.addClass(list_classes[i])
-						  .attr("title", lang.stars[i])
-						  .attr("href", "./ratethread.php?tid="+tid+"&rating="+i+"&my_post_key="+my_post_key)
-			              .html(i);
-			list_element.append(list_element_a);
-			list.append(list_element);
-		}
-	},
+function rateTorrent(val) {
+    var stars = document.querySelectorAll('.user-star');
+    stars.forEach(function(s) {
+        s.style.pointerEvents = 'none';
+        s.style.opacity = '0.5';
+    });
 
-	add_rating: function(parameterString)
-	{
-		var tid = parameterString.match(/tid=(.*)&(.*)&/)[1];
-		var rating = parameterString.match(/rating=(.*)&(.*)/)[1];
-		$.ajax(
-		{
-			url: 'ratethread.php?ajax=1&my_post_key='+my_post_key+'&tid='+tid+'&rating='+rating,
-			async: true,
-			method: 'post',
-			dataType: 'json',
-	        complete: function (request)
-	        {
-	        	Rating.rating_added(request, tid);
-	        }
-		});
-		return false;
-	},
+    fetch(ratingBaseUrl + '/xmlhttp.php?action=rate_torrent', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'torrent_id=' + torrentId + '&rating=' + val
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.success) return;
 
-	rating_added: function(request, element_id)
-	{
-		var json = JSON.parse(request.responseText);
-		if(json.hasOwnProperty("errors"))
-		{
-			$.each(json.errors, function(i, error)
-			{
-				$.jGrowl(lang.ratings_update_error + ' ' + error, {theme:'jgrowl_error'});
-			});
-		}
-		else if(json.hasOwnProperty("success"))
-		{
-			var element = $("#rating_thread_"+element_id);
-			element.parent().before(element.next());
-			element.removeClass("star_rating_notrated");
+        userRating = val;
+        stars.forEach(function(s, i) {
+            s.style.pointerEvents = 'auto';
+            s.style.opacity = '1';
+            s.classList.toggle('active', i < val);
+            s.style.color = i < val ? '#f59e0b' : '#dee2e6';
+        });
 
-			$.jGrowl(json.success, {theme:'jgrowl_success'});
-			if(json.hasOwnProperty("average"))
-			{
-				$("#current_rating_"+element_id).html(json.average);
-			}
+        var scoreEl = document.querySelector('.rating-score');
+        if (scoreEl) scoreEl.textContent = data.avg;
 
-			var rating_elements = $(".star_rating");
-			rating_elements.each(function()
-			{
-				var rating_element = $(this);
-				var elements = rating_element.find("li a");
-				if(rating_element.hasClass('star_rating_notrated'))
-				{
-					elements.each(function()
-					{
-						var element = $(this);
-						if(element.attr("id") == "rating_thread_" + element_id)
-						{
-							element.attr("onclick", "return false;")
-								   .css("cursor", "default")
-							       .attr("title", $("#current_rating_"+element_id).text());
-						}
-					});
-				}
-			});
-			$("#current_rating_"+element_id).css("width", json.width+"%");
-		}
-	}
-};
+        var hintEl = document.getElementById('rating-hint');
+        if (hintEl) hintEl.textContent = val + '/10';
 
-if(use_xmlhttprequest == 1)
-{
-	$(function()
-	{
-		Rating.init();
-	});
+        var displayEl = document.getElementById('rating-display');
+        if (displayEl) {
+            var html = '';
+            for (var i = 1; i <= 10; i++) {
+                if (data.avg >= i)       html += '<i class="bi bi-star-fill rating-star-filled"></i>';
+                else if (data.avg >= i - 0.5) html += '<i class="bi bi-star-half rating-star-filled"></i>';
+                else                     html += '<i class="bi bi-star rating-star-empty"></i>';
+            }
+            displayEl.innerHTML = html;
+        }
+
+        if (typeof showToast === 'function') showToast('Rating saved!', 'success');
+    });
 }

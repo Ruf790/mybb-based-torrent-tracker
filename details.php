@@ -180,7 +180,9 @@ $query = $db->sql_query_prepared("
     SELECT t.name, t.banned, t.owner, n.nfo, c.name AS categoryname,
            c.pid, c.type, c.id AS categoryid, c.icon,
            p.canupload, p.candownload, p.cancomment,
-           u.id, u.username, u.usergroup, u.enabled, u.donor, u.warned, u.leechwarn
+           u.id, u.username, u.usergroup, u.enabled, u.donor, u.warned, u.leechwarn,
+           (SELECT ROUND(AVG(r.rating), 1) FROM torrent_ratings r WHERE r.torrent_id = t.id) AS rating_avg,
+           (SELECT COUNT(r.id) FROM torrent_ratings r WHERE r.torrent_id = t.id) AS rating_count
     FROM torrents t
     LEFT JOIN torrents_nfo n ON (t.id = n.torrent_id)
     LEFT JOIN categories c ON (t.category = c.id)
@@ -456,9 +458,110 @@ $lratio = $Torrent['seeders'] > 0 ? $Torrent['leechers'] / $Torrent['seeders'] :
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 $showcommenttable = '';
 
 $threadcount = 0;
+
+
+
+
+// Rating
+$user_rating = 0;
+$rating_data = [
+    'avg'         => (float)($torrent2['rating_avg'] ?? 0),
+    'count'       => (int)($torrent2['rating_count'] ?? 0),
+    'user_rating' => $user_rating,
+];
+if ($CURUSER['id']) {
+    $q2 = $db->sql_query("SELECT rating FROM torrent_ratings WHERE torrent_id = {$id} AND user_id = {$CURUSER['id']} LIMIT 1");
+    if ($ur = $db->fetch_array($q2)) $rating_data['user_rating'] = (int)$ur['rating'];
+}
+
+// Avg stars
+$avg_stars_html = '';
+for ($i = 1; $i <= 10; $i++) {
+    $filled = $rating_data['avg'] >= $i;
+    $half   = !$filled && $rating_data['avg'] >= $i - 0.5;
+    if ($filled)    $avg_stars_html .= '<i class="bi bi-star-fill rating-star-filled"></i>';
+    elseif ($half)  $avg_stars_html .= '<i class="bi bi-star-half rating-star-filled"></i>';
+    else            $avg_stars_html .= '<i class="bi bi-star rating-star-empty"></i>';
+}
+
+// User stars
+$user_stars_html = '';
+if ($CURUSER['id']) {
+    for ($i = 1; $i <= 10; $i++) {
+        $active = $rating_data['user_rating'] >= $i ? 'active' : '';
+        $user_stars_html .= '<i class="bi bi-star-fill user-star ' . $active . '" data-value="' . $i . '" onclick="rateTorrent(' . $i . ')"></i>';
+    }
+    $user_section = '
+        <div class="d-flex align-items-center gap-2">
+            <div class="user-stars d-flex gap-1" id="user-stars">' . $user_stars_html . '</div>
+            <span class="small text-muted" id="rating-hint">' . ($rating_data['user_rating'] ? $rating_data['user_rating'] . '/10' : 'rate') . '</span>
+        </div>';
+} else {
+    $user_section = '<a href="login.php" class="btn btn-sm btn-outline-primary rounded-pill">Login to rate</a>';
+}
+
+$rating_html = '
+<style>
+.rating-modern { background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:all 0.2s; }
+.rating-modern:hover { box-shadow:0 4px 16px rgba(0,0,0,0.1); }
+.rating-score { font-size:2.2rem; font-weight:800; color:#1a1a2e; line-height:1; }
+.rating-stars { display:flex; gap:4px; font-size:1rem; }
+.rating-star-filled { color:#f59e0b; }
+.rating-star-empty { color:#e9ecef; }
+.user-star { font-size:1.5rem; cursor:pointer; transition:0.15s; color:#dee2e6; }
+.user-star:hover { transform:scale(1.15); color:#f59e0b !important; }
+.user-star.active { color:#f59e0b; }
+@media(max-width:768px) { .rating-score { font-size:1.8rem; } .user-star { font-size:1.2rem; } }
+</style>
+<div class="rating-modern">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="text-center">
+                <div class="rating-score">' . ($rating_data['count'] > 0 ? $rating_data['avg'] : '—') . '</div>
+                <div class="small text-muted">' . number_format($rating_data['count']) . ' votes</div>
+            </div>
+            <div class="rating-stars" id="rating-display">' . $avg_stars_html . '</div>
+        </div>
+        ' . $user_section . '
+    </div>
+</div>
+<script src="' . $BASEURL . '/scripts/rating.js"></script>
+<script>ratingInit(' . $rating_data['user_rating'] . ', ' . $id . ', "' . $BASEURL . '");</script>';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 $query = $db->simple_select("comments c", "COUNT(id) AS commentss", "torrent = '$id'");
@@ -1461,6 +1564,8 @@ $details = '
         <div class="card-body p-4">
            
                         '.$modal_images.'
+						
+						
                   
 
             <!-- Прогресс-бары с улучшенным стилем -->
@@ -1594,6 +1699,11 @@ $details = '
                         <div class="d-flex flex-wrap gap-2">'.$keywords.'</div>
                     </div>' : '').'
                 </div>
+				
+				
+				'.$rating_html.'
+				
+				
 				
 
                 <!-- Вкладка файлов -->

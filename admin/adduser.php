@@ -14,6 +14,7 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
 define('AU_VERSION', '1.1 by xam');
 define("IN_MYBB", 1);
 
+
 $lang->load('adduser');
 $lang->load("signup");
 $lang->load("member");
@@ -200,6 +201,79 @@ class UserRegistrationHandler
 
         return $avatar_data;
     }
+	
+	
+	
+	private function handleAvatarUpload(int $user_id = 0): array
+{
+    global $BASEURL;
+    
+    $avatar_data = ['url' => '', 'dimensions' => '0|0'];
+    
+    if (empty($_FILES['avatar_file']['tmp_name'])) {
+        return $avatar_data;
+    }
+    
+    $file = $_FILES['avatar_file'];
+    
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $this->errors[] = 'Avatar upload failed';
+        return $avatar_data;
+    }
+    
+    $allowed_types = ['image/jpeg','image/png','image/gif','image/webp'];
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime  = $finfo->file($file['tmp_name']);
+    
+    if (!in_array($mime, $allowed_types, true)) {
+        $this->errors[] = 'Invalid avatar file type';
+        return $avatar_data;
+    }
+    
+    if ($file['size'] > 512000) {
+        $this->errors[] = 'Avatar file too large (max 500KB)';
+        return $avatar_data;
+    }
+    
+    $image_info = getimagesize($file['tmp_name']);
+    if (!$image_info) {
+        $this->errors[] = 'Invalid image file';
+        return $avatar_data;
+    }
+    
+    $ext = match($mime) {
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp',
+    };
+    
+    $filename    = 'avatar_' . $user_id . '.' . $ext;
+    $upload_path = TSDIR . '/uploads/avatars/' . $filename;
+    
+    
+    if (!move_uploaded_file($file['tmp_name'], $upload_path)) {
+        $this->errors[] = 'Failed to save avatar';
+        return $avatar_data;
+    }
+    
+    return [
+        'url'        => $BASEURL . '/uploads/avatars/' . $filename,
+        'dimensions' => $image_info[0] . '|' . $image_info[1],
+    ];
+}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 
     public function processRegistration(array $post_data): bool
     {
@@ -228,7 +302,7 @@ class UserRegistrationHandler
             $this->validateUsergroup($usergroup)
         ];
 
-        $avatar_data = $this->validateAvatar($avatar_url);
+        
 
         if (in_array(false, $validations, true) || !empty($this->errors)) {
             return false;
@@ -265,9 +339,9 @@ class UserRegistrationHandler
             $uploaded,
             $downloaded,
             '2',
-            $avatar_data['url'],
-            $avatar_data['dimensions'],
-            "remote",
+            '',      
+            '0|0',   
+            "upload",
             '1',
             '1',
             '1',
@@ -291,6 +365,26 @@ class UserRegistrationHandler
         }
 
         $user_id = $db->insert_id();
+		
+		
+// Аватар — только здесь с реальным $user_id
+if (!empty($_FILES['avatar_file']['tmp_name'])) {
+    $avatar_data = $this->handleAvatarUpload($user_id);
+    if (!empty($avatar_data['url'])) {
+        $db->sql_query_prepared(
+            "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = 'upload' WHERE id = ?",
+            [$avatar_data['url'], $avatar_data['dimensions'], $user_id]
+        );
+    }
+} elseif (!empty($avatar_url)) {
+    $avatar_data = $this->validateAvatar($avatar_url);
+    if (!empty($avatar_data['url'])) {
+        $db->sql_query_prepared(
+            "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = 'remote' WHERE id = ?",
+            [$avatar_data['url'], $avatar_data['dimensions'], $user_id]
+        );
+    }
+}
 
 
         // User fields
@@ -383,34 +477,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Отображение формы
 stdhead($lang->adduser['title']);
 
+
 $errors = $registration_handler->getErrors();
 if (!empty($errors)) {
    
-    echo '
-   
-   <link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
-   <link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
+   $send_errors = inline_error($errors);
 
-
-   <div class="container mt-3">
-   <div class="card error-card">
-      <div class="card-header22">
-        <i class="bi bi-exclamation-triangle-fill error-icon"></i>
-        <div>
-          <h2 class="mb-0">Detect Errors</h2>
-          <p class="mb-0 opacity-75"></p>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="alert alert-danger" role="alert">
-          ' . implode ('<br />', $errors) . '
-        </div>
-      </div>
-    </div>
-	</div>
+   echo '<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
+   echo '<div class="container mt-3">'.$send_errors.'</div>';
 	
-	<br>';
+	
 }
+
+
+
 
 $allowed_groups = $registration_handler->getAllowedUsergroups();
 
@@ -423,7 +503,7 @@ echo '
             ($requirecomplexpasswords ? ' (letters & numbers required)' : '') . '</small>
         </div>
         
-        <form method="POST" action="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '" class="needs-validation" novalidate>
+        <form method="POST" action="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '" class="needs-validation" novalidate enctype="multipart/form-data">
             <input type="hidden" name="act" value="adduser">
             
             <div class="card-body">
@@ -613,21 +693,91 @@ echo '                      </select>
                     </div>
                 </div>
 
-                <!-- Avatar -->
-                <div class="mb-4">
-                    <div class="form-floating">
-                        <input type="url" 
-                               class="form-control" 
-                               id="input_avatar" 
-                               name="avatar_url" 
-                               value="' . htmlspecialchars_uni($_POST['avatar_url'] ?? '') . '" 
-                               placeholder="Avatar URL">
-                        <label for="input_avatar" class="form-label">
-                            <i class="fas fa-image me-2 text-primary"></i>Avatar URL
-                        </label>
-                        <div class="form-text">Optional: URL to user avatar image</div>
-                    </div>
-                </div>
+               
+				
+				
+				
+				
+				<!-- Avatar -->
+<div class="mb-4">
+    <label class="form-label fw-semibold">
+        <i class="fas fa-image me-1 text-primary"></i>Avatar
+    </label>
+
+    <!-- Tabs -->
+    <ul class="nav nav-pills mb-3" id="avatarTabs">
+        <li class="nav-item">
+            <button class="nav-link active" id="tab-url" type="button" onclick="switchAvatarTab(\'url\')">
+                <i class="fas fa-link me-1"></i>URL
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="tab-file" type="button" onclick="switchAvatarTab(\'file\')">
+                <i class="fas fa-upload me-1"></i>Upload file
+            </button>
+        </li>
+    </ul>
+
+    <!-- URL panel -->
+    <div id="avatar-panel-url">
+        <div class="form-floating">
+            <input type="url"
+                   class="form-control"
+                   id="input_avatar"
+                   name="avatar_url"
+                   value="' . htmlspecialchars_uni($_POST['avatar_url'] ?? '') . '"
+                   placeholder="https://example.com/avatar.jpg">
+            <label for="input_avatar"><i class="fas fa-link me-1"></i>Image URL</label>
+        </div>
+        <div class="form-text">Direct link to JPG, PNG, GIF or WEBP image</div>
+    </div>
+
+    <!-- File panel -->
+    <div id="avatar-panel-file" style="display:none">
+        <div class="border rounded-3 p-4 text-center bg-light" id="avatar-dropzone"
+             ondragover="event.preventDefault();this.classList.add(\'border-primary\')"
+             ondragleave="this.classList.remove(\'border-primary\')"
+             ondrop="handleAvatarDrop(event)">
+            <i class="fas fa-cloud-upload-alt fa-2x text-muted mb-2"></i>
+            <p class="mb-2 text-muted">Drag & drop image here or</p>
+            <label class="btn btn-outline-primary btn-sm mb-0" for="input_avatar_file">
+                <i class="fas fa-folder-open me-1"></i>Choose file
+            </label>
+            <input type="file"
+                   class="d-none"
+                   id="input_avatar_file"
+                   name="avatar_file"
+                   accept="image/jpeg,image/png,image/gif,image/webp">
+            <p class="text-muted mt-2 mb-0" style="font-size:.8rem">JPG, PNG, GIF, WEBP — max 500KB</p>
+            <p id="avatar-filename" class="text-success mt-1 mb-0 fw-semibold" style="font-size:.85rem;display:none"></p>
+        </div>
+    </div>
+
+    <!-- Preview -->
+    <div id="avatar_preview" class="mt-3 d-flex align-items-center gap-3" style="display:none!important">
+        <img id="avatar_preview_img" src="" class="rounded-circle border shadow-sm"
+             style="width:150px;height:150px;object-fit:cover;">
+        <div>
+            <div class="fw-semibold small">Preview</div>
+            <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearAvatar()">
+                <i class="fas fa-times me-1"></i>Remove
+            </button>
+        </div>
+    </div>
+</div>
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
 
                 <!-- Options -->
                 <div class="form-check mb-4">
@@ -755,6 +905,65 @@ document.getElementById(\'input_password2\').addEventListener(\'input\', functio
     color: #dc3545 !important;
 }
 </style>';
+
+
+
+
+
+
+?>
+<script>
+function switchAvatarTab(tab) {
+    document.getElementById("avatar-panel-url").style.display  = tab === "url"  ? "" : "none";
+    document.getElementById("avatar-panel-file").style.display = tab === "file" ? "" : "none";
+    document.getElementById("tab-url").classList.toggle("active",  tab === "url");
+    document.getElementById("tab-file").classList.toggle("active", tab === "file");
+}
+
+function showAvatarPreview(src) {
+    const preview = document.getElementById("avatar_preview");
+    document.getElementById("avatar_preview_img").src = src;
+    preview.style.display = "flex";
+}
+
+function clearAvatar() {
+    document.getElementById("avatar_preview").style.display = "none";
+    document.getElementById("input_avatar").value = "";
+    document.getElementById("input_avatar_file").value = "";
+    document.getElementById("avatar-filename").style.display = "none";
+}
+
+function handleAvatarDrop(e) {
+    e.preventDefault();
+    document.getElementById("avatar-dropzone").classList.remove("border-primary");
+    const file = e.dataTransfer.files[0];
+    if (file) setAvatarFile(file);
+}
+
+function setAvatarFile(file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById("input_avatar_file").files = dt.files;
+    const name = document.getElementById("avatar-filename");
+    name.textContent = file.name;
+    name.style.display = "block";
+    const reader = new FileReader();
+    reader.onload = e => showAvatarPreview(e.target.result);
+    reader.readAsDataURL(file);
+}
+
+document.getElementById("input_avatar_file").addEventListener("change", function() {
+    if (this.files[0]) setAvatarFile(this.files[0]);
+});
+
+document.getElementById("input_avatar").addEventListener("input", function() {
+    if (this.value) showAvatarPreview(this.value);
+    else document.getElementById("avatar_preview").style.display = "none";
+});
+</script>
+<?
+
+
 
 stdfoot();
 ?>

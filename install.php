@@ -953,6 +953,19 @@ CREATE TABLE IF NOT EXISTS `{$p}torrents_nfo` (
   KEY `torrent_id` (`torrent_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
+
+CREATE TABLE IF NOT EXISTS `{$p}torrent_ratings` (
+    `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `torrent_id` INT UNSIGNED NOT NULL,
+    `user_id`    INT UNSIGNED NOT NULL,
+    `rating`     TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    `added`      INT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unique_vote` (`torrent_id`, `user_id`)
+) ENGINE=InnoDB;
+
+
+
 CREATE TABLE IF NOT EXISTS `{$p}tsf_announcements` (
   `aid` int unsigned NOT NULL AUTO_INCREMENT,
   `fid` int NOT NULL DEFAULT '0',

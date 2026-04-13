@@ -86,46 +86,7 @@ class Session
         $GLOBALS['ts_cron_image'] = !defined('SKIP_CRON_JOBS');
     }
 
-    /**
-     * Load a search engine spider
-     */
-    public function load_spider(int $spider_id): void
-    {
-        global $mybb, $db;
-
-        $query = $db->simple_select("spiders", "*", "sid='{$spider_id}'");
-        $spider = $db->fetch_array($query);
-
-        $this->is_spider = true;
-        $userGroup = (int)($spider['usergroup'] ?? 1); // ✅ ИСПРАВЛЕНО: приводим к int
-        
-        $mybb->user = [
-            'usergroup' => $userGroup,
-            'username' => '',
-            'id' => 0,
-            'displaygroup' => $userGroup,
-            'additionalgroups' => '',
-            'invisible' => 0
-        ];
-
-        // Gather permissions for spider
-        $mybb->usergroup = usergroup_permissions($userGroup);
-        $mydisplaygroup = usergroup_displaygroup($userGroup); // ✅ Теперь передаем число
-        if (is_array($mydisplaygroup)) {
-            $mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
-        }
-
-        // Update spider last visit
-        if (($spider['lastvisit'] ?? 0) < TIMENOW - 120) {
-            $db->update_query("spiders", ["lastvisit" => TIMENOW], "sid='{$spider_id}'");
-        }
-
-        // Update online data
-        if (!defined("NO_ONLINE") && !defined('IN_UPGRADE')) {
-            $this->sid = "bot=".$spider_id;
-            $this->create_session();
-        }
-    }
+   
 
     /**
      * Load a user via the user credentials
@@ -377,6 +338,51 @@ class Session
             }
         }
     }
+	
+	
+	
+	/**
+     * Load a search engine spider
+     */
+    public function load_spider(int $spider_id): void
+    {
+        global $mybb, $db;
+
+        $query = $db->simple_select("spiders", "*", "sid='{$spider_id}'");
+        $spider = $db->fetch_array($query);
+
+        $this->is_spider = true;
+        $userGroup = (int)($spider['usergroup'] ?? 1); // ✅ ИСПРАВЛЕНО: приводим к int
+        
+        $mybb->user = [
+            'usergroup' => $userGroup,
+            'username' => '',
+            'id' => 0,
+            'displaygroup' => $userGroup,
+            'additionalgroups' => '',
+            'invisible' => 0
+        ];
+
+        // Gather permissions for spider
+        $mybb->usergroup = usergroup_permissions($userGroup);
+        $mydisplaygroup = usergroup_displaygroup($userGroup); // ✅ Теперь передаем число
+        if (is_array($mydisplaygroup)) {
+            $mybb->usergroup = array_merge($mybb->usergroup, $mydisplaygroup);
+        }
+
+        // Update spider last visit
+        if (($spider['lastvisit'] ?? 0) < TIMENOW - 120) {
+            $db->update_query("spiders", ["lastvisit" => TIMENOW], "sid='{$spider_id}'");
+        }
+
+        // Update online data
+        if (!defined("NO_ONLINE") && !defined('IN_UPGRADE')) {
+            $this->sid = "bot=".$spider_id;
+            $this->create_session();
+        }
+    }
+	
+	
 
     /**
      * Update a user session

@@ -97,6 +97,7 @@ function handleXmlHttpAction(): void
         'search_torrents' => handleSearchTorrents(),
         'quick_comment' => handleQuickComment(),
 		'edit_torrent' => handleEditTorrent(),
+		'rate_torrent' => handleRateTorrent(),
         default => handleUnknownAction()
     };
 }
@@ -168,6 +169,55 @@ function allowcomments(int $torrentid = 0): bool
 
     return !($allowcomments != "yes" && !$is_mod);
 }
+
+
+
+
+
+function handleRateTorrent(): void
+{
+    global $db, $CURUSER, $charset;
+
+    header("Content-Type: application/json; charset={$charset}");
+
+    if (!$CURUSER) {
+        echo json_encode(['success' => false]);
+        exit;
+    }
+
+    $torrent_id = (int)($_POST['torrent_id'] ?? 0);
+    $rating     = max(1, min(10, (int)($_POST['rating'] ?? 0)));
+
+    if (!$torrent_id || !$rating) {
+        echo json_encode(['success' => false]);
+        exit;
+    }
+
+    $db->sql_query("
+        INSERT INTO torrent_ratings (torrent_id, user_id, rating, added)
+        VALUES ({$torrent_id}, {$CURUSER['id']}, {$rating}, " . TIMENOW . ")
+        ON DUPLICATE KEY UPDATE rating = {$rating}, added = " . TIMENOW
+    );
+
+    $q = $db->sql_query("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM torrent_ratings WHERE torrent_id = {$torrent_id}");
+    $row = $db->fetch_array($q);
+
+    echo json_encode([
+        'success' => true,
+        'avg'     => (float)$row['avg'],
+        'count'   => (int)$row['cnt'],
+    ]);
+    exit;
+}
+
+
+
+
+
+
+
+
+
 
 /**
  * Handle get_users action

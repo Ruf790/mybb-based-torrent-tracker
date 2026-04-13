@@ -116,9 +116,22 @@ function stdhead(string $title = '', bool $msgalert = true, string $script = '',
         $downloaded = $CURUSER['downloaded'] ?? 0;
         $ratio = get_user_ratio($CURUSER['uploaded'] ?? 0, $CURUSER['downloaded'] ?? 0, true);
         
-        $medaldon = ($CURUSER['donor'] === 'yes') ? '<i class="fa-solid fa-star"></i>' : '';
-        $warn = ($CURUSER['warned'] === 'yes') ? '<i class="fa-solid fa-triangle-exclamation fa-bounce text-danger" title="'.$lang->global['imgwarned'].'"></i>' : '';
-        $lwarn = ($CURUSER['leechwarn'] === 'yes') ? '<i class="fa-solid fa-triangle-exclamation fa-bounce" style="color:#FFD43B;" title="LeechWarned"></i>' : '';
+       
+	   
+	    $medaldon = (!empty($CURUSER['donor'] ?? null) && $CURUSER['donor'] === 'yes')
+    ? '<i class="fa-solid fa-star"></i>'
+    : '';
+
+$warn = (!empty($CURUSER['warned'] ?? null) && $CURUSER['warned'] === 'yes')
+    ? '<i class="fa-solid fa-triangle-exclamation fa-bounce text-danger" title="'.$lang->global['imgwarned'].'"></i>'
+    : '';
+
+$lwarn = (!empty($CURUSER['leechwarn'] ?? null) && $CURUSER['leechwarn'] === 'yes')
+    ? '<i class="fa-solid fa-triangle-exclamation fa-bounce" style="color:#FFD43B;" title="LeechWarned"></i>'
+    : '';
+	   
+	   
+	   
 
         if ($checkconnectable == 'yes') {
             $connectablequery = $db->sql_query("SELECT userid FROM peers WHERE connectable = 'no' AND userid = ".sqlesc($CURUSER['id']));
@@ -186,92 +199,7 @@ function my_validate_url(string $url, bool $relative_path = false, bool $allow_l
     return false;
 }
 
-function error(string $error = "", string $title = ""): void
-{
-    global $header, $footer, $theme, $headerinclude, $db, $templates, $lang, $mybb, $plugins, $charset, $BASEURL, $SITENAME;
 
-    $error = $plugins->run_hooks("error", $error);
-    if(!$error) {
-        $error = 'unknown_error';
-    }
-
-    // AJAX error message?
-    if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
-        @header("Content-type: application/json; charset={$charset}");
-        echo json_encode(["errors" => [$error]]);
-        exit;
-    }
-
-    if(!$title) {
-        $title = $SITENAME;
-    }
-
-    $timenow = my_datee('relative', TIMENOW);
-	
-	$current_time = date('H:i:s');
-    $current_date = date('Y-m-d');
-	
-    
-    eval("\$errorpage = \"".$templates->get("error")."\";");
-    
-    echo $errorpage;
-    exit;
-}
-
-function error_no_permission(): void
-{
-    global $mybb, $theme, $templates, $db, $lang, $plugins, $session, $charset, $CURUSER;
-
-    $time = TIMENOW;
-    $plugins->run_hooks("no_permission");
-
-    $noperm_array = [
-        "nopermission" => '1',
-        "location1" => 0,
-        "location2" => 0
-    ];
-
-    $db->update_query("sessions", $noperm_array, "sid='{$session->sid}'");
-
-    if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
-        header("Content-type: application/json; charset={$charset}");
-        echo json_encode(["errors" => [$lang->error_nopermission_user_ajax]]);
-        exit;
-    }
-
-    if($CURUSER['id']) {
-        $error_nopermission_user_username = sprintf('You are currently logged in with the username: '.htmlspecialchars_uni($CURUSER['username']).'');
-        eval("\$errorpage = \"".$templates->get("error_nopermission_loggedin")."\";");
-    } else {
-        $redirect_url = $_SERVER['PHP_SELF'] ?? '';
-        if($_SERVER['QUERY_STRING'] ?? '') {
-            $redirect_url .= '?'.$_SERVER['QUERY_STRING'];
-        }
-
-        $redirect_url = htmlspecialchars_uni($redirect_url);
-        
-        $username_method = "0";
-
-        switch($username_method) {
-            case 0:
-                $lang_username = 'username';
-                break;
-            case 1:
-                $lang_username = 'username1';
-                break;
-            case 2:
-                $lang_username = 'username2';
-                break;
-            default:
-                $lang_username = 'username';
-                break;
-        }
-        eval("\$errorpage = \"".$templates->get("error_nopermission")."\";");
-    }
-
-    
-	error($errorpage);
-}
 
 function redirect(string $url, string $message = "", string $title = "", bool $force_redirect = false): void
 {
@@ -2926,23 +2854,55 @@ function show_notice(string $notice = '', bool $iserror = false, string $title =
     ' . $BR;
 }
 
+
+
+
 function maxsysop(): void
 {
-    global $CURUSER, $lang;
+    global $CURUSER, $mybb, $lang;
 
-    if (is_mod($CURUSER)) {
+    if (is_mod($mybb->usergroup)) 
+	{
         $staff_file = CONFIG_DIR . '/STAFFTEAM';
-        if (file_exists($staff_file)) {
+        if (file_exists($staff_file)) 
+		{
             $results = explode(',', file_get_contents($staff_file));
-            if (!in_array($CURUSER['username'] . ':' . $CURUSER['id'], $results, true)) {
+            if (!in_array($CURUSER['username'] . ':' . $CURUSER['id'], $results, true))
+			{
                 require_once INC_PATH . '/functions_pm.php';
-                send_pm(1, 'Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $CURUSER['id'] . ' - UserIP : ' . getip(), 'Warning: Fake Account Detected!');
+				require_once INC_PATH . '/datahandler.php';
+               
+			   $ip = getip();
+			   $reasons = 'not in STAFFTEAM file';
+				
+				
+				$msg = "Fake Staff Detected:"
+         . " Username={$CURUSER['username']}"
+         . " ID={$CURUSER['id']}"
+         . " IP={$ip}"
+         . " Reasons=[{$reasons}]";
+				
+				$pm = [
+                  'subject' => 'Security Alert: Fake Staff Account',
+                  'message' => $msg,
+                  'touid'   => '1',
+                ];
+                $pm['sender']['uid'] = -1;
+                send_pm($pm, -1, true);
+				
+				
+				
+				
                 write_log('Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $CURUSER['id'] . ' - UserIP : ' . getip(), 'Warning: Fake Account Detected!');
                 stderr($lang->global['fakeaccount']);
             }
         }
     }
 }
+
+
+
+
 
 function fix_url(string $url): string
 {
@@ -3408,6 +3368,101 @@ function flood_check(string $type = '', ?string $last = null, bool $shoutbox = f
 
 
 
+
+
+
+
+function error(string $error = "", string $title = ""): void
+{
+    global $header, $footer, $theme, $headerinclude, $db, $templates, $lang, $mybb, $plugins, $charset, $BASEURL, $SITENAME;
+
+    $error = $plugins->run_hooks("error", $error);
+    if(!$error) {
+        $error = 'unknown_error';
+    }
+
+    // AJAX error message?
+    if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
+        @header("Content-type: application/json; charset={$charset}");
+        echo json_encode(["errors" => [$error]]);
+        exit;
+    }
+
+    if(!$title) {
+        $title = $SITENAME;
+    }
+
+    $timenow = my_datee('relative', TIMENOW);
+	
+	$current_time = date('H:i:s');
+    $current_date = date('Y-m-d');
+	
+    
+    eval("\$errorpage = \"".$templates->get("error")."\";");
+    
+    echo $errorpage;
+    exit;
+}
+
+function error_no_permission(): void
+{
+    global $mybb, $theme, $templates, $db, $lang, $plugins, $session, $charset, $CURUSER;
+
+    $time = TIMENOW;
+    $plugins->run_hooks("no_permission");
+
+    $noperm_array = [
+        "nopermission" => '1',
+        "location1" => 0,
+        "location2" => 0
+    ];
+
+    $db->update_query("sessions", $noperm_array, "sid='{$session->sid}'");
+
+    if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
+        header("Content-type: application/json; charset={$charset}");
+        echo json_encode(["errors" => [$lang->error_nopermission_user_ajax]]);
+        exit;
+    }
+
+    if (!empty($CURUSER['id'] ?? 0)) 
+	{
+        $error_nopermission_user_username = sprintf('You are currently logged in with the username: '.htmlspecialchars_uni($CURUSER['username'] ?? '').'');
+        eval("\$errorpage = \"".$templates->get("error_nopermission_loggedin")."\";");
+    } else {
+        $redirect_url = $_SERVER['PHP_SELF'] ?? '';
+        if($_SERVER['QUERY_STRING'] ?? '') {
+            $redirect_url .= '?'.$_SERVER['QUERY_STRING'];
+        }
+
+        $redirect_url = htmlspecialchars_uni($redirect_url);
+        
+        $username_method = "0";
+
+        switch($username_method) {
+            case 0:
+                $lang_username = 'username';
+                break;
+            case 1:
+                $lang_username = 'username1';
+                break;
+            case 2:
+                $lang_username = 'username2';
+                break;
+            default:
+                $lang_username = 'username';
+                break;
+        }
+        eval("\$errorpage = \"".$templates->get("error_nopermission")."\";");
+    }
+
+    
+	error($errorpage);
+}
+
+
+
+
 function print_no_permission(bool $log = false, bool $stdhead = true, string $extra = ''): void
 {
     global $lang, $SITENAME, $BASEURL, $CURUSER;
@@ -3428,6 +3483,107 @@ function print_no_permission(bool $log = false, bool $stdhead = true, string $ex
     }
 
     exit();
+}
+
+
+
+
+
+// ── inline_error ──────────────────────────────────────────────────────────────
+function inline_error(array|string $errors, string $title = '', array $json_data = []): string
+{
+    global $mybb, $charset;
+
+    if (empty($title)) {
+        $title = 'Please correct the following errors:';
+    }
+
+    if (!is_array($errors)) {
+        $errors = [$errors];
+    }
+
+    $errors = array_filter($errors);
+
+    if (empty($errors)) {
+        return '';
+    }
+
+    if (!empty($mybb->input['ajax'])) {
+        header("Content-type: application/json; charset={$charset}");
+        echo json_encode(array_merge(['errors' => $errors], $json_data));
+        exit;
+    }
+
+    $error_items = '';
+    foreach ($errors as $error) {
+        $error_output = strip_tags((string)$error) !== (string)$error
+            ? $error
+            : htmlspecialchars_uni((string)$error);
+
+        $error_items .= '
+        <div class="error-message-box mb-2">
+            <div class="d-flex align-items-start gap-3">
+                <div class="message-icon">
+                    <i class="bi bi-exclamation-circle-fill"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <p class="mb-0 fw-semibold">' . $error_output . '</p>
+                </div>
+            </div>
+        </div>';
+    }
+
+    $count = count($errors);
+    $title_escaped = htmlspecialchars_uni($title);
+
+    return <<<HTML
+    <style>
+        .error-card-wrapper { max-width: 100%; margin: 0 auto; animation: slideUp 0.5s ease-out; }
+        .error-card { position: relative; background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%); border-radius: 20px !important; transition: transform 0.3s ease; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; }
+        .error-card:hover { transform: translateY(-5px); }
+        .gradient-line { position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #ff6b6b, #dc3545, #c82333); }
+        .error-bg-pattern { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-image: radial-gradient(circle at 10px 10px, rgba(220,53,69,0.05) 2px, transparent 2px); background-size: 30px 30px; opacity: 0.5; pointer-events: none; }
+        .card-header-error { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; padding: 20px; display: flex; align-items: center; gap: 15px; }
+        .error-icon2 { font-size: 2.5rem; animation: float 3s ease-in-out infinite; }
+        .error-message-box { background: rgba(220,53,69,0.05); border-left: 4px solid #dc3545; border-radius: 10px; padding: 1rem; transition: all 0.3s ease; }
+        .error-message-box:hover { background: rgba(220,53,69,0.08); transform: translateX(5px); }
+        .message-icon { width: 40px; height: 40px; background: rgba(220,53,69,0.1); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #dc3545; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        @media (prefers-color-scheme: dark) {
+            .error-card { background: linear-gradient(135deg, #2b2b2b 0%, #1a1a1a 100%); }
+            .error-message-box { background: rgba(220,53,69,0.1); }
+        }
+        @media (max-width: 768px) {
+            .card-header-error { padding: 15px; }
+            .error-icon2 { font-size: 2rem; }
+            .error-message-box { padding: 0.75rem; }
+            .message-icon { width: 32px; height: 32px; font-size: 1rem; }
+        }
+    </style>
+    <div class="error-card-wrapper">
+        <div class="error-card">
+            <div class="gradient-line"></div>
+            <div class="error-bg-pattern"></div>
+            <div class="card-header-error">
+                <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
+                <div>
+                    <h2 class="mb-0 fw-bold" style="color:white;">{$title_escaped}</h2>
+                    <p class="mb-0 opacity-75">Please review and fix the issues below</p>
+                </div>
+            </div>
+            <div class="card-body p-4">
+                <div class="mb-3">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-list-check fs-4" style="color:#dc3545;"></i>
+                        <h5 class="mb-0 fw-semibold">Issues Found ({$count})</h5>
+                    </div>
+                    {$error_items}
+                </div>
+            </div>
+        </div>
+    </div>
+    HTML;
 }
 
 

@@ -361,4 +361,5 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (115,'cronjobs','Manage Cronjobs','cronjobs.php','[8]'),
 (116,'torrents_promo','Torrent Promotional','torrents_promo.php','[5],[6],[8]'),
 (117,'batch_upload','Multi Torrents Uploads','batch_upload.php','[5],[6],[8]'),
-(118,'seedbonus_settings','configure seedbonus','seedbonus_settings.php','[8]');
+(118,'seedbonus_settings','configure seedbonus','seedbonus_settings.php','[8]'),
+(119,'manage_invites', 'Manage Invites', 'manage_invites.php', '[8]');

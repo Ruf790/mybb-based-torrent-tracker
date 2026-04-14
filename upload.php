@@ -2042,7 +2042,9 @@ function copyAnnounceUrl() {
 
 
 
-<!-- IMDb Link -->
+
+
+
 <!-- IMDb Link -->
 <div class="col-md-12 mb-4">
     <label class="form-label fw-semibold">
@@ -2057,7 +2059,7 @@ function copyAnnounceUrl() {
                id="imdbUrl"
                name="imdbUrl"
                value="<?= htmlspecialchars($t_link) ?>"
-               placeholder="<?= $lang->upload['imdb_placeholder'] ?>"
+               placeholder="<?= $lang->upload['imdb_placeholder'] ?>">
         <button type="button" class="btn btn-warning" id="imdbFetchBtn" onclick="fetchImdbData()">
             <i class="fab fa-imdb me-1"></i><?= $lang->upload['imdb_fetch'] ?>
         </button>

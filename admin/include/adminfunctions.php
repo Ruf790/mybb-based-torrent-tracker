@@ -683,73 +683,42 @@ function mk_path_abs22($path, $base = TSDIR)
 
 
 
-function get_attachment_icon($ext)
+function get_attachment_icon(string $ext): string
 {
-	global $cache, $attachtypes, $theme, $templates, $lang, $mybb;
+    global $cache, $attachtypes;
+    static $processed = [];
 
-	if(!$attachtypes)
-	{
-		$attachtypes = $cache->read("attachtypes");
-	}
+    if (!$attachtypes) {
+        $attachtypes = $cache->read('attachtypes');
+    }
 
-	$ext = my_strtolower($ext);
+    $ext = my_strtolower($ext);
 
-	if($attachtypes[$ext]['icon'])
-	{
-		static $attach_icons_schemes = array();
-		if(!isset($attach_icons_schemes[$ext]))
-		{
-			$attach_icons_schemes[$ext] = parse_url($attachtypes[$ext]['icon']);
-			if(!empty($attach_icons_schemes[$ext]['scheme']))
-			{
-				$attach_icons_schemes[$ext] = $attachtypes[$ext]['icon'];
-			}
-			elseif(defined("IN_ADMINCP"))
-			{
-				$attach_icons_schemes[$ext] = str_replace("{theme}", "", $attachtypes[$ext]['icon']);
-				if(my_substr($attach_icons_schemes[$ext], 0, 1) != "")
-				{
-					$attach_icons_schemes[$ext] = "../".$attach_icons_schemes[$ext];
-				}
-			}
-			elseif(defined("IN_PORTAL"))
-			{
-				global $change_dir;
-				$attach_icons_schemes[$ext] = $change_dir."".str_replace("{theme}", $theme['imgdir'], $attachtypes[$ext]['icon']);
-				$attach_icons_schemes[$ext] = $mybb->get_asset_url($attach_icons_schemes[$ext]);
-			}
-			else
-			{
-				$attach_icons_schemes[$ext] = str_replace("{theme}", $theme['imgdir'], $attachtypes[$ext]['icon']);
-				$attach_icons_schemes[$ext] = $mybb->get_asset_url($attach_icons_schemes[$ext]);
-			}
-		}
+    if (isset($processed[$ext])) {
+        return $processed[$ext];
+    }
 
-		$icon = $attach_icons_schemes[$ext];
+    $name = htmlspecialchars_uni($attachtypes[$ext]['name'] ?? $ext);
 
-		$name = htmlspecialchars_uni($attachtypes[$ext]['name']);
-	}
-	else
-	{
-		if(defined("IN_ADMINCP"))
-		{
-			$theme['imgdir'] = "../pic";
-		}
-		else if(defined("IN_PORTAL"))
-		{
-			global $change_dir;
-			$theme['imgdir'] = "{$change_dir}/pic";
-		}
+    if (!empty($attachtypes[$ext]['icon'])) {
+        $icon = trim($attachtypes[$ext]['icon']);
+        if (str_starts_with($icon, '<')) {
+            if (!str_contains($icon, 'title=')) {
+                $pos  = strpos($icon, '>');
+                $icon = $pos !== false
+                    ? substr($icon, 0, $pos) . " title=\"{$name}\">" . substr($icon, $pos + 1)
+                    : $icon;
+            }
+            if (!str_contains($icon, 'font-size:')) {
+                $icon = str_contains($icon, 'style=')
+                    ? str_replace('style="', 'style="font-size:16px; ', $icon)
+                    : str_replace('<i ', '<i style="font-size:16px;" ', $icon);
+            }
+            return $processed[$ext] = $icon;
+        }
+    }
 
-		$icon = "{$theme['imgdir']}/attachtypes/unknown.png";
-
-		$name = 'unknown';
-	}
-
-	$icon = htmlspecialchars_uni($icon);
-	$attachment_icon = '<img src="'.$icon.'" title="'.$name.'" style="height: 16px; width: 16px" border="0" alt=".'.$ext.'" />';
-	
-	return $attachment_icon;
+    return $processed[$ext] = "<i class=\"fas fa-file\" title=\"{$name}\" style=\"font-size:16px;color:#ccc;\"></i>";
 }
 
 

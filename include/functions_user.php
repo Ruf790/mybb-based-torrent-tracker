@@ -699,7 +699,7 @@ function update_pm_count($uid=0, $count_to_update=7)
 	// If no user id, assume that we mean the current logged in user.
 	if((int)$uid == 0)
 	{
-		$uid = $CURUSER['id'];
+		$uid = (int)(is_array($CURUSER) ? ($CURUSER['id'] ?? 0) : 0);
 	}
 
 	$uid = (int)$uid;

@@ -96,9 +96,8 @@ class Session
         global $mybb, $db, $lang, $mybbgroups, $cache, $timeformat, $dateformat, $f_postsperpage, $f_threadsperpage, $securehash, $SITENAME;
 
         $query = $db->sql_query_prepared("
-            SELECT u.*, f.*
+            SELECT u.*
             FROM users u
-            LEFT JOIN userfields f ON (f.ufid=u.id)
             WHERE u.id = ?
             LIMIT 1", [$uid]);
 
@@ -352,7 +351,9 @@ class Session
         $spider = $db->fetch_array($query);
 
         $this->is_spider = true;
-        $userGroup = (int)($spider['usergroup'] ?? 1); // ✅ ИСПРАВЛЕНО: приводим к int
+        //$userGroup = (int)($spider['usergroup'] ?? 1); // ✅ ИСПРАВЛЕНО: приводим к int
+		
+		$userGroup = !empty($spider['usergroup']) ? (int)$spider['usergroup'] : 1;
         
         $mybb->user = [
             'usergroup' => $userGroup,

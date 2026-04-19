@@ -118,7 +118,8 @@ INSERT IGNORE INTO `cron` (`cronid`, `nextrun`, `minutes`, `filename`, `descript
 (30, 0, 1860, 'delayedmoderation.php', 'Automatically performs delayed moderation actions every 24 hours.', 1, 1),
 (31, 0, 1200, 'torrentspromo.php', 'Automatically updates torrent promotions and expires old ones.', 1, 1),
 (32, 0, 900, 'seedbonus.php', 'Automatically updates users seedbonus', 1, 1),
-(33, 0, 1260, 'logcleanup.php', 'Automatically cleans up old log files.', 1, 1);
+(33, 0, 1260, 'logcleanup.php', 'Automatically cleans up old log files.', 1, 1),
+(34, 0, 3600 ,'weekly_cleanups.php','This script performs various cleanup tasks once per week', 1, 1);
 
 -- helpsections
 INSERT IGNORE INTO `helpsections` (`sid`, `name`, `description`, `usetranslation`, `enabled`, `disporder`) VALUES

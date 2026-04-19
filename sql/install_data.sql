@@ -117,7 +117,7 @@ INSERT IGNORE INTO `cron` (`cronid`, `nextrun`, `minutes`, `filename`, `descript
 (26, 0, 180, 'sendmailqueue.php', 'Sends the mail queue every minute.', 1, 1),
 (30, 0, 1860, 'delayedmoderation.php', 'Automatically performs delayed moderation actions every 24 hours.', 1, 1),
 (31, 0, 1200, 'torrentspromo.php', 'Automatically updates torrent promotions and expires old ones.', 1, 1),
-(32, 0, 900, 'bonus.php', 'Automatically updates users seedbonus', 1, 1),
+(32, 0, 900, 'seedbonus.php', 'Automatically updates users seedbonus', 1, 1),
 (33, 0, 1260, 'logcleanup.php', 'Automatically cleans up old log files.', 1, 1);
 
 -- helpsections

@@ -1,446 +1,619 @@
 <?php
+declare(strict_types=1);
+
 $rootpath = './../';
 $thispath = './';
 require_once $rootpath . 'global.php';
 
-if (($usergroups['cansettingspanel'] == '0' OR $usergroups['cansettingspanel'] != '1')) 
-{
+if ($usergroups['cansettingspanel'] != '1') {
     stdhead();
     error_no_permission(true);
-    exit();
+    exit;
 }
 
-stdhead();
-
-// Initialize session for query history if not exists
-if (!isset($_SESSION['query_history'])) 
-{
+// ── Session history ───────────────────────────────────────────────────────────
+if (!isset($_SESSION['query_history'])) {
     $_SESSION['query_history'] = [];
 }
 
-// Add current query to history if it was executed
+// Clear history
+if (isset($_GET['clear_history'])) {
+    $_SESSION['query_history'] = [];
+    header('Location: ' . $_this_script_);
+    exit;
+}
+
+// ── DB connection ─────────────────────────────────────────────────────────────
+if (!isset($GLOBALS['mysqli']) || !($GLOBALS['mysqli'] instanceof mysqli)) {
+    $GLOBALS['mysqli'] = new mysqli(
+        $config['database']['hostname'],
+        $config['database']['username'],
+        $config['database']['password'],
+        $config['database']['database']
+    );
+}
+
+$mysqli   = $GLOBALS['mysqli'];
+$db_ok    = !$mysqli->connect_errno;
+$db_name  = $config['database']['database'];
+
+// ── Query execution ───────────────────────────────────────────────────────────
+$query       = '';
+$alert       = '';
+$table       = '';
+$exec_time   = null;
+$rows_info   = '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execute_sql_query') {
     $query = trim($_POST['query'] ?? '');
+
     if (!empty($query)) {
-        // Add to history (limit to 20 most recent)
+        // Save to history
         array_unshift($_SESSION['query_history'], [
-            'query' => $query,
-            'timestamp' => time()
+            'query'     => $query,
+            'timestamp' => time(),
         ]);
         $_SESSION['query_history'] = array_slice($_SESSION['query_history'], 0, 20);
+
+        $t0      = microtime(true);
+        $result  = $mysqli->query($query);
+        $exec_time = round((microtime(true) - $t0) * 1000, 2);
+
+        if ($result === false) {
+            $alert = 'danger';
+            $rows_info = htmlspecialchars($mysqli->error);
+        } elseif ($result instanceof \mysqli_result) {
+            $num = $result->num_rows;
+            $alert = 'success';
+            $rows_info = "{$num} row(s) returned";
+
+            if ($num > 0) {
+                $table = '<div class="qe-result-scroll"><table class="qe-table">';
+                $first = true;
+                while ($row = $result->fetch_assoc()) {
+                    if ($first) {
+                        $table .= '<thead><tr>';
+                        foreach (array_keys($row) as $col) {
+                            $table .= '<th>' . htmlspecialchars($col) . '</th>';
+                        }
+                        $table .= '</tr></thead><tbody>';
+                        $first = false;
+                    }
+                    $table .= '<tr>';
+                    foreach ($row as $val) {
+                        $display = $val === null ? '<em class="qe-null">NULL</em>' : htmlspecialchars((string)$val);
+                        $table .= '<td>' . $display . '</td>';
+                    }
+                    $table .= '</tr>';
+                }
+                $table .= '</tbody></table></div>';
+            } else {
+                $alert = 'info';
+                $rows_info = 'Query returned no rows.';
+            }
+        } else {
+            $affected = $mysqli->affected_rows;
+            $alert    = 'success';
+            $rows_info = max(0, $affected) . ' row(s) affected';
+        }
+    } else {
+        $alert     = 'warning';
+        $rows_info = 'Empty query — nothing to execute.';
     }
 }
 
+stdhead('SQL Query Editor');
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQL Query Editor</title>
-    
-   
-    <style>
-       
-        .sql-container {
-            background: #fff;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
-            padding: 2rem;
-            margin-top: 1.5rem;
-            overflow: hidden;
-        }
-        .sql-header {
-            border-bottom: 1px solid #e9ecef;
-            padding-bottom: 1.2rem;
-            margin-bottom: 1.8rem;
-        }
-        .sql-editor {
-            border: 1px solid #ced4da;
-            border-radius: 8px;
-            margin-bottom: 1.2rem;
-            font-family: 'Fira Code', monospace;
-            font-size: 15px;
-            transition: all 0.3s ease;
-        }
-        .sql-editor:focus-within {
-            border-color: #86b7fe;
-            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
-        }
-        .sql-toolbar {
-            background-color: #f8f9fa;
-            border-top: 1px solid #e9ecef;
-            padding: 0.9rem;
-            border-radius: 0 0 8px 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .btn-run {
-            background: linear-gradient(to right, #4e54c8, #8f94fb);
-            border: none;
-            border-radius: 30px;
-            padding: 0.6rem 1.8rem;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .btn-run:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(78, 84, 200, 0.3);
-        }
-        .result-container {
-            margin-top: 2.2rem;
-            transition: all 0.3s ease;
-        }
-        .alert-box {
-            border-radius: 8px;
-            border-left: 5px solid #0d6efd;
-        }
-        .form-label {
-            font-weight: 600;
-            color: #495057;
-            margin-bottom: 0.8rem;
-            display: flex;
-            align-items: center;
-        }
-        .form-label i {
-            margin-right: 8px;
-            color: #4e54c8;
-        }
-        .examples {
-            margin-top: 1.5rem;
-            padding: 1.2rem;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #4e54c8;
-        }
-        .example-btn {
-            margin: 0.3rem;
-            font-size: 0.85rem;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 2rem;
-            color: #6c757d;
-            font-size: 0.9rem;
-        }
-        #query {
-            font-family: 'Fira Code', monospace;
-            font-size: 15px;
-            line-height: 1.5;
-            padding: 1.2rem;
-            min-height: 200px;
-            border: none;
-            border-radius: 8px 8px 0 0;
-        }
-        #query:focus {
-            outline: none;
-            box-shadow: none;
-        }
-        .tooltip-icon {
-            font-size: 0.9rem;
-            color: #6c757d;
-            margin-left: 8px;
-            cursor: pointer;
-        }
-        .connection-status {
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            display: inline-flex;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        .connection-status.connected {
-            background-color: #d1e7dd;
-            color: #0f5132;
-        }
-        .connection-status.disconnected {
-            background-color: #f8d7da;
-            color: #842029;
-        }
-        .history-modal .history-item {
-            border-left: 3px solid transparent;
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-        .history-modal .history-item:hover {
-            border-left-color: #0d6efd;
-            background-color: #f8f9fa;
-        }
-        .history-time {
-            font-size: 0.8rem;
-            color: #6c757d;
-        }
-        @media (max-width: 768px) {
-            .sql-toolbar {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            .btn-group {
-                margin-bottom: 10px;
-                justify-content: center;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container py-4">
-        <div class="sql-container">
-            <div class="sql-header">
-                <h2 class="mb-1"><i class="fas fa-database me-2 text-primary"></i>SQL Query Editor</h2>
-                <p class="text-muted">Execute SQL queries and analyze results</p>
-                
-                <?php
-                // Ensure DB connection is initialized
-                if (!isset($GLOBALS['mysqli']) || !$GLOBALS['mysqli'] instanceof mysqli) {
-                    $GLOBALS['mysqli'] = new mysqli($config['database']['hostname'], $config['database']['username'], $config['database']['password'], $config['database']['database']);
-                    
-                    if ($GLOBALS['mysqli']->connect_errno) {
-                        echo '<div class="connection-status disconnected">
-                                <i class="fas fa-times-circle me-2"></i>Connection error: ' . $GLOBALS['mysqli']->connect_error . '
-                              </div>';
-                    } else {
-                        echo '<div class="connection-status connected">
-                                <i class="fas fa-check-circle me-2"></i>Connected to database: tracker
-                              </div>';
-                    }
-                } else {
-                    echo '<div class="connection-status connected">
-                            <i class="fas fa-check-circle me-2"></i>Database connection already established
-                          </div>';
-                }
-
-                $query   = '';
-                $alert   = '';
-                $table   = '';
-
-                if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execute_sql_query') {
-                    $query = trim($_POST['query'] ?? '');
-                    if (!empty($query)) {
-                        $doquery = mysqli_query($GLOBALS['mysqli'], $query);
-
-                        if ($doquery) {
-                            // SELECT: show results
-                            if (stripos($query, 'SELECT') === 0) {
-                                $num_rows = mysqli_num_rows($doquery);
-
-                                if ($num_rows > 0) {
-                                    $alert = '<div class="alert alert-success mt-3">
-                                                  <strong>Success!</strong> Query executed. 
-                                                  <br>Rows found: <strong>' . $num_rows . '</strong>
-                                              </div>';
-                                    $table = '<div class="table-responsive mt-3"><table class="table table-bordered table-sm table-striped table-hover align-middle">';
-                                    $first = true;
-
-                                    while ($row = mysqli_fetch_assoc($doquery)) {
-                                        if ($first) {
-                                            $table .= '<thead class="table-light"><tr>';
-                                            foreach (array_keys($row) as $col) {
-                                                $table .= '<th>' . htmlspecialchars($col) . '</th>';
-                                            }
-                                            $table .= '</tr></thead><tbody>';
-                                            $first = false;
-                                        }
-                                        $table .= '<tr>';
-                                        foreach ($row as $val) {
-                                            $table .= '<td style="white-space: nowrap; max-width: 250px; overflow: hidden; text-overflow: ellipsis;">' 
-                                                    . htmlspecialchars((string)$val) . '</td>';
-                                        }
-                                        $table .= '</tr>';
-                                    }
-
-                                    $table .= '</tbody></table></div>';
-                                } else {
-                                    $alert = '<div class="alert alert-info mt-3"><strong>Info:</strong> Query returned no results.</div>';
-                                }
-                            } else {
-                                // Non-SELECT queries
-                                $count = mysqli_affected_rows($GLOBALS['mysqli']);
-                                $alert = '<div class="alert alert-success mt-3">
-                                              <strong>Success!</strong> Query executed. 
-                                              <br>Rows affected: <strong>' . max(0, $count) . '</strong>
-                                          </div>';
-                            }
-                        } else {
-                            $alert = '<div class="alert alert-danger mt-3">
-                                          <strong>Error!</strong> ' . htmlspecialchars(mysqli_error($GLOBALS['mysqli'])) . '
-                                      </div>';
-                        }
-                    } else {
-                        $alert = '<div class="alert alert-warning mt-3">
-                                      <strong>Warning!</strong> Empty SQL query.
-                                  </div>';
-                    }
-                }
-                ?>
-            </div>
-            
-            <form method="post" action="#sql-executor">
-                <input type="hidden" name="do" value="ts_execute_sql_query">
-                
-                <div class="mb-4">
-                    <label for="query" class="form-label">
-                        <i class="fas fa-code"></i>SQL Query
-                        <span class="tooltip-icon" data-bs-toggle="tooltip" title="Enter your SQL query in this field">
-                            <i class="fas fa-question-circle"></i>
-                        </span>
-                    </label>
-                    <div class="sql-editor">
-                        <textarea name="query" id="query" rows="6" 
-                                class="form-control"
-                                placeholder="Enter your SQL query here"><?= htmlspecialchars($query) ?></textarea>
-                    </div>
-                </div>
-                
-                <div class="sql-toolbar">
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="format-btn">
-                            <i class="fas fa-indent me-1"></i> Format
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="history-btn">
-                            <i class="fas fa-history me-1"></i> History
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-success" id="clear-btn">
-                            <i class="fas fa-broom me-1"></i> Clear
-                        </button>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary">
-                      <i class="fas fa-play me-1"></i> Execute Query
-                    </button>
-                </div>
-            </form>
-            
-            <div class="examples">
-                <h6><i class="fas fa-lightbulb me-2 text-warning"></i>Query Examples:</h6>
-                <button class="btn btn-sm example-btn btn-outline-secondary" data-query="SELECT * FROM users;">SELECT all users</button>
-                <button class="btn btn-sm example-btn btn-outline-secondary" data-query="SELECT username, email FROM users WHERE enabled = 'yes';">Active users</button>
-                <button class="btn btn-sm example-btn btn-outline-secondary" data-query="INSERT INTO users (name, email) VALUES ('John', 'john@example.com');">Add user</button>
-                <button class="btn btn-sm example-btn btn-outline-secondary" data-query="UPDATE users SET enabled = 'no' WHERE id = 5;">Update record</button>
-            </div>
-            
-            <div class="result-container mt-4">
-                <h5><i class="fas fa-list-alt me-2 text-success"></i>Results:</h5>
-                <?= $alert ?>
-                <?= $table ?>
-            </div>
-        </div>
-    </div>
-
-    <!-- History Modal -->
-    <div class="modal fade history-modal" id="historyModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="historyModalLabel"><i class="fas fa-history me-2"></i>Query History</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <?php if (!empty($_SESSION['query_history'])): ?>
-                        <div class="list-group">
-                            <?php foreach ($_SESSION['query_history'] as $index => $historyItem): ?>
-                                <div class="list-group-item history-item p-3" data-query="<?= htmlspecialchars($historyItem['query']) ?>">
-                                    <div class="d-flex w-100 justify-content-between">
-                                        <h6 class="mb-1">Query #<?= count($_SESSION['query_history']) - $index ?></h6>
-                                        <small class="history-time"><?= date('Y-m-d H:i:s', $historyItem['timestamp']) ?></small>
-                                    </div>
-                                    <p class="mb-1 font-monospace small"><?= htmlspecialchars(substr($historyItem['query'], 0, 100)) ?><?= strlen($historyItem['query']) > 100 ? '...' : '' ?></p>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php else: ?>
-                        <div class="text-center py-4">
-                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">No query history yet. Your executed queries will appear here.</p>
-                        </div>
-                    <?php endif; ?>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-danger" id="clear-history-btn">Clear History</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql-formatter/11.0.2/sql-formatter.min.js"></script>
-    <script>
-        // Initialize Bootstrap tooltip
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl)
-        });
-        
-        // Format button
-        document.getElementById('format-btn').addEventListener('click', function() {
-            const textarea = document.getElementById('query');
-            try {
-                const formatted = sqlFormatter.format(textarea.value);
-                textarea.value = formatted;
-            } catch (e) {
-                alert('Formatting error: ' + e.message);
-            }
-        });
-        
-        // Clear button
-        document.getElementById('clear-btn').addEventListener('click', function() {
-            document.getElementById('query').value = '';
-        });
-        
-        // History button - show modal
-        document.getElementById('history-btn').addEventListener('click', function() {
-            const historyModal = new bootstrap.Modal(document.getElementById('historyModal'));
-            historyModal.show();
-        });
-        
-        // Query examples
-        document.querySelectorAll('.example-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                document.getElementById('query').value = this.getAttribute('data-query');
-            });
-        });
-        
-        // History item selection
-        document.querySelectorAll('.history-item').forEach(item => {
-            item.addEventListener('click', function() {
-                document.getElementById('query').value = this.getAttribute('data-query');
-                const historyModal = bootstrap.Modal.getInstance(document.getElementById('historyModal'));
-                historyModal.hide();
-            });
-        });
-        
-        // Clear history button
-        document.getElementById('clear-history-btn').addEventListener('click', function() {
-            if (confirm('Are you sure you want to clear all query history?')) {
-                // This would typically be done via AJAX to a PHP endpoint
-                // For this example, we'll just reload the page with a clear parameter
-                window.location.href = window.location.pathname + '?clear_history=1';
-            }
-        });
-        
-        // Scroll to results after query execution
-        <?php if (!empty($alert)): ?>
-        document.addEventListener('DOMContentLoaded', function() {
-            document.querySelector('.result-container').scrollIntoView({
-                behavior: 'smooth'
-            });
-        });
-        <?php endif; ?>
-    </script>
-</body>
-</html>
-
-<?php
-// Clear history if requested
-if (isset($_GET['clear_history']) && $_GET['clear_history'] == 1) {
-    $_SESSION['query_history'] = [];
-    header('Location: ' . str_replace('?clear_history=1', '', $_SERVER['REQUEST_URI']));
-    exit();
+<style>
+/* ── Layout ── */
+.qe-wrap {
+    max-width: 1100px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    font-size: 1rem;
 }
 
-stdfoot();
-?>
+/* ── Card ── */
+.qe-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,.07);
+    margin-bottom: 1.5rem;
+}
+
+.qe-card-header {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: 1rem 1.5rem;
+    background: var(--bs-primary);
+    color: #fff;
+}
+.qe-card-header h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0;
+    flex: 1;
+}
+.qe-card-header p {
+    font-size: .82rem;
+    opacity: .75;
+    margin: 0;
+}
+.qe-card-header-text { flex: 1; }
+
+.qe-card-body { padding: 1.75rem; }
+
+/* ── Status pill ── */
+.qe-status {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .3rem .85rem;
+    border-radius: 20px;
+    font-size: .82rem;
+    font-weight: 600;
+    margin-bottom: 1.25rem;
+}
+.qe-status-ok  { background: #dcfce7; color: #14532d; }
+.qe-status-err { background: #fef2f2; color: #7f1d1d; }
+
+/* ── Editor ── */
+.qe-editor-wrap {
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+    margin-bottom: 1rem;
+}
+.qe-editor-wrap:focus-within {
+    border-color: #1a56db;
+    box-shadow: 0 0 0 3px rgba(26,86,219,.12);
+}
+
+#query {
+    width: 100%;
+    min-height: 200px;
+    padding: 1.1rem;
+    font-family: "Fira Code", "Cascadia Code", "Courier New", monospace;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #1e293b;
+    background: #fafafa;
+    border: none;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+}
+#query:focus { background: #fff; }
+
+/* ── Toolbar ── */
+.qe-toolbar {
+    background: #f8fafc;
+    border-top: 1px solid #e9ecef;
+    padding: .85rem 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .6rem;
+}
+
+.qe-tool-group { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+.qe-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .4rem .9rem;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: .875rem;
+    font-weight: 500;
+    color: #374151;
+    background: #fff;
+    cursor: pointer;
+    transition: all .15s;
+}
+.qe-tool-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
+
+.qe-run-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .5rem 1.4rem;
+    background: linear-gradient(135deg, #1a56db, #1648c0);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .18s;
+    box-shadow: 0 2px 8px rgba(26,86,219,.25);
+}
+.qe-run-btn:hover {
+    background: linear-gradient(135deg, #1648c0, #1e40af);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(26,86,219,.35);
+}
+
+/* ── Examples ── */
+.qe-examples {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #1a56db;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-top: 1.25rem;
+}
+.qe-examples h6 {
+    font-size: .9rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: .6rem;
+}
+.qe-ex-btn {
+    display: inline-flex;
+    align-items: center;
+    margin: .2rem;
+    padding: .3rem .8rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    font-size: .8rem;
+    font-family: "Fira Code", monospace;
+    color: #374151;
+    background: #fff;
+    cursor: pointer;
+    transition: all .15s;
+}
+.qe-ex-btn:hover { background: #1a56db; color: #fff; border-color: #1a56db; }
+
+/* ── Result card ── */
+.qe-result-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    overflow: hidden;
+    margin-top: 1.5rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+}
+
+.qe-result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .75rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+.qe-result-title {
+    font-size: .9rem;
+    font-weight: 600;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.qe-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .25rem .75rem;
+    border-radius: 20px;
+    font-size: .78rem;
+    font-weight: 600;
+}
+.qe-badge-success { background: #dcfce7; color: #14532d; }
+.qe-badge-danger  { background: #fef2f2; color: #7f1d1d; }
+.qe-badge-info    { background: #eff6ff; color: #1e3a8a; }
+.qe-badge-warning { background: #fffbeb; color: #78350f; }
+.qe-badge-time    { background: #f1f5f9; color: #475569; }
+
+.qe-result-body { padding: 1.25rem; }
+
+/* ── Table ── */
+.qe-result-scroll {
+    overflow-x: auto;
+    border-radius: 10px;
+    border: 1px solid #e9ecef;
+}
+.qe-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .9rem;
+}
+.qe-table thead th {
+    background: #f1f5f9;
+    color: #374151;
+    font-weight: 600;
+    padding: .6rem 1rem;
+    text-align: left;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap;
+}
+.qe-table tbody tr { transition: background .1s; }
+.qe-table tbody tr:hover { background: #f8fafc; }
+.qe-table tbody td {
+    padding: .55rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: "Fira Code", monospace;
+    font-size: .875rem;
+}
+.qe-table tbody tr:last-child td { border-bottom: none; }
+.qe-null { color: #94a3b8; font-style: italic; }
+
+/* ── Alert messages ── */
+.qe-msg {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    padding: .85rem 1rem;
+    border-radius: 10px;
+    font-size: .95rem;
+}
+.qe-msg i { font-size: 1.1rem; flex-shrink: 0; margin-top: .05rem; }
+.qe-msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #bbf7d0; }
+.qe-msg-danger  { background: #fef2f2; color: #7f1d1d; border: 1px solid #fecaca; }
+.qe-msg-info    { background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe; }
+.qe-msg-warning { background: #fffbeb; color: #78350f; border: 1px solid #fde68a; }
+
+/* ── History modal ── */
+.qe-history-item {
+    padding: .85rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+    transition: background .15s;
+    border-left: 3px solid transparent;
+}
+.qe-history-item:last-child { border-bottom: none; }
+.qe-history-item:hover {
+    background: #f8fafc;
+    border-left-color: #1a56db;
+}
+.qe-history-query {
+    font-family: "Fira Code", monospace;
+    font-size: .85rem;
+    color: #374151;
+    margin: .2rem 0 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.qe-history-meta {
+    font-size: .75rem;
+    color: #94a3b8;
+    margin-bottom: .15rem;
+}
+
+@media (max-width: 640px) {
+    .qe-toolbar { flex-direction: column; align-items: stretch; }
+    .qe-run-btn { justify-content: center; }
+    .qe-card-body { padding: 1.1rem; }
+}
+</style>
+
+<div class="qe-wrap">
+
+    <!-- Main card -->
+    <div class="qe-card">
+        <div class="qe-card-header">
+            <i class="bi bi-terminal-fill" style="font-size:1.3rem"></i>
+            <div class="qe-card-header-text">
+                <h2>SQL Query Editor</h2>
+                <p>Execute queries and inspect results — admin only</p>
+            </div>
+        </div>
+
+        <div class="qe-card-body">
+
+            <!-- Connection status -->
+            <div class="qe-status <?= $db_ok ? 'qe-status-ok' : 'qe-status-err' ?>">
+                <i class="bi <?= $db_ok ? 'bi-circle-fill' : 'bi-x-circle-fill' ?>"></i>
+                <?= $db_ok
+                    ? 'Connected &rarr; <strong>' . htmlspecialchars($db_name) . '</strong>'
+                    : 'Connection failed: ' . htmlspecialchars($mysqli->connect_error) ?>
+            </div>
+
+            <!-- Form -->
+            <form method="post" id="qeForm">
+                <input type="hidden" name="do" value="ts_execute_sql_query">
+
+                <div class="qe-editor-wrap">
+                    <textarea name="query" id="query"
+                              placeholder="-- Enter your SQL query here&#10;SELECT * FROM users LIMIT 10;"
+                    ><?= htmlspecialchars($query) ?></textarea>
+
+                    <div class="qe-toolbar">
+                        <div class="qe-tool-group">
+                            <button type="button" class="qe-tool-btn" id="qeFormat">
+                                <i class="bi bi-text-indent-left"></i> Format
+                            </button>
+                            <button type="button" class="qe-tool-btn" id="qeHistory"
+                                    data-bs-toggle="modal" data-bs-target="#histModal">
+                                <i class="bi bi-clock-history"></i>
+                                History
+                                <?php if (!empty($_SESSION['query_history'])): ?>
+                                <span style="background:#1a56db;color:#fff;border-radius:10px;
+                                             padding:1px 7px;font-size:.7rem">
+                                    <?= count($_SESSION['query_history']) ?>
+                                </span>
+                                <?php endif; ?>
+                            </button>
+                            <button type="button" class="qe-tool-btn" id="qeClear">
+                                <i class="bi bi-eraser"></i> Clear
+                            </button>
+                        </div>
+                        <button type="submit" class="qe-run-btn">
+                            <i class="bi bi-play-fill"></i> Execute
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Examples -->
+            <div class="qe-examples">
+                <h6><i class="bi bi-lightbulb-fill me-1" style="color:#f59e0b"></i>Quick examples</h6>
+                <button class="qe-ex-btn" data-q="SELECT * FROM users LIMIT 20;">SELECT users</button>
+                <button class="qe-ex-btn" data-q="SELECT id, username, email FROM users WHERE enabled = 'yes' LIMIT 50;">Active users</button>
+                <button class="qe-ex-btn" data-q="SHOW TABLES;">SHOW TABLES</button>
+                <button class="qe-ex-btn" data-q="SHOW STATUS LIKE 'Threads%';">Thread status</button>
+                <button class="qe-ex-btn" data-q="SELECT table_name, ROUND((data_length+index_length)/1024/1024,2) AS size_mb FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY size_mb DESC;">Table sizes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <?php if (!empty($alert)): ?>
+    <div class="qe-result-card">
+        <div class="qe-result-header">
+            <div class="qe-result-title">
+                <i class="bi bi-grid-3x3-gap-fill"></i> Query Result
+            </div>
+            <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+                <?php if ($exec_time !== null): ?>
+                <span class="qe-badge qe-badge-time">
+                    <i class="bi bi-stopwatch"></i> <?= $exec_time ?>ms
+                </span>
+                <?php endif; ?>
+                <span class="qe-badge qe-badge-<?= $alert ?>">
+                    <?php match ($alert) {
+                        'success' => print('<i class="bi bi-check-circle-fill"></i>'),
+                        'danger'  => print('<i class="bi bi-x-circle-fill"></i>'),
+                        'info'    => print('<i class="bi bi-info-circle-fill"></i>'),
+                        'warning' => print('<i class="bi bi-exclamation-triangle-fill"></i>'),
+                        default   => null,
+                    }; ?>
+                    <?= htmlspecialchars($rows_info) ?>
+                </span>
+            </div>
+        </div>
+        <div class="qe-result-body">
+            <?php if ($alert === 'danger'): ?>
+            <div class="qe-msg qe-msg-danger">
+                <i class="bi bi-x-circle-fill"></i>
+                <span><?= htmlspecialchars($rows_info) ?></span>
+            </div>
+            <?php elseif (empty($table) && $alert !== 'danger'): ?>
+            <div class="qe-msg qe-msg-<?= $alert ?>">
+                <i class="bi bi-info-circle-fill"></i>
+                <span><?= htmlspecialchars($rows_info) ?></span>
+            </div>
+            <?php endif; ?>
+            <?= $table ?>
+        </div>
+    </div>
+    <?php endif; ?>
+
+</div><!-- /.qe-wrap -->
+
+<!-- History Modal -->
+<div class="modal fade" id="histModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius:16px;overflow:hidden;border:none">
+            <div class="modal-header"
+                 style="background:var(--bs-primary);color:#fff;border:none">
+                <h5 class="modal-title" style="font-weight:700">
+                    <i class="bi bi-clock-history me-2"></i>Query History
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" style="max-height:460px;overflow-y:auto">
+                <?php if (!empty($_SESSION['query_history'])): ?>
+                    <?php foreach ($_SESSION['query_history'] as $i => $h): ?>
+                    <div class="qe-history-item" data-q="<?= htmlspecialchars($h['query']) ?>">
+                        <div class="qe-history-meta">
+                            #<?= count($_SESSION['query_history']) - $i ?>
+                            &nbsp;·&nbsp;
+                            <?= date('Y-m-d H:i:s', $h['timestamp']) ?>
+                        </div>
+                        <div class="qe-history-query">
+                            <?= htmlspecialchars(substr($h['query'], 0, 120))
+                                . (strlen($h['query']) > 120 ? '…' : '') ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox" style="font-size:2.5rem;opacity:.4"></i>
+                        <p class="mt-2 mb-0">No history yet.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid #f1f5f9">
+                <a href="index.php?act=execute_sql_query&clear_history=1"
+                   class="btn btn-sm btn-outline-danger"
+                   onclick="return confirm('Clear all history?')">
+                    <i class="bi bi-trash3 me-1"></i>Clear history
+                </a>
+                <button type="button" class="btn btn-sm btn-secondary"
+                        data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Format (simple keyword uppercase)
+document.getElementById('qeFormat').addEventListener('click', function(){
+    const ta = document.getElementById('query');
+    const kw = ['SELECT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN',
+                 'ON','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','INSERT INTO',
+                 'VALUES','UPDATE','SET','DELETE','CREATE','DROP','ALTER','TRUNCATE',
+                 'AND','OR','NOT','IN','IS NULL','IS NOT NULL','AS','DISTINCT'];
+    let sql = ta.value;
+    kw.forEach(k => {
+        sql = sql.replace(new RegExp('\\b' + k + '\\b', 'gi'), k);
+    });
+    ta.value = sql;
+});
+
+document.getElementById('qeClear').addEventListener('click', () => {
+    document.getElementById('query').value = '';
+    document.getElementById('query').focus();
+});
+
+// Examples
+document.querySelectorAll('.qe-ex-btn').forEach(btn => {
+    btn.addEventListener('click', function(){
+        document.getElementById('query').value = this.dataset.q;
+        document.getElementById('query').focus();
+    });
+});
+
+// History items
+document.querySelectorAll('.qe-history-item').forEach(item => {
+    item.addEventListener('click', function(){
+        document.getElementById('query').value = this.dataset.q;
+        bootstrap.Modal.getInstance(document.getElementById('histModal'))?.hide();
+    });
+});
+
+// Scroll to results
+<?php if (!empty($alert)): ?>
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelector('.qe-result-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+<?php endif; ?>
+
+// Ctrl+Enter to submit
+document.getElementById('query').addEventListener('keydown', function(e){
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('qeForm').submit();
+    }
+});
+</script>
+
+<?php stdfoot(); ?>

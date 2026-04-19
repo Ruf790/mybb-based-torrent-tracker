@@ -584,7 +584,7 @@ function render_top_attachments_section(string $title, string $order, string $te
     while ($attachment = $db->fetch_array($query)) {
         $date = $attachment['dateuploaded'] > 0 ? my_datee('relative', $attachment['dateuploaded']) : 'Unknown';
         $username = $attachment['user_username'] ?: $attachment['username'];
-        //$user_link = build_profile_link(htmlspecialchars_uni($username), $attachment['uid'], "_blank");
+        
 		
 		
 		$user_link = !empty($attachment['uid']) 

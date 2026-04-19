@@ -115,7 +115,6 @@ delete_invalid_records('announce_actions', "userid NOT IN ({$ValidUsers}) OR tor
 delete_invalid_records('bookmarks', "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
 delete_invalid_records('cheat_attempts', "uid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
 delete_invalid_records('comments', "user NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})");
-delete_invalid_records('invites', "inviter NOT IN ({$ValidUsers})");
 delete_invalid_records('notconnectablepmlog', "user NOT IN ({$ValidUsers})");
 delete_invalid_records('peers', "userid NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})");
 delete_invalid_records('reports', "addedby NOT IN ({$ValidUsers})");
@@ -159,7 +158,7 @@ if ($deleted > 0) {
 
 // Оптимизация таблиц
 $tables_to_optimize = array(
-    'announce_actions', 'bookmarks', 'cheat_attempts', 'comments', 'invites',
+    'announce_actions', 'bookmarks', 'cheat_attempts', 'comments',
     'notconnectablepmlog', 'peers', 'reports', 'snatched', 'staffmessages',
     'ts_hit_and_run', 'ts_inactivity', 'ts_u_perm', 'comment_files',
     'privatemessages', 'screenshots', 'sessions', 'searchlog', 'loginattempts', 'iplog'

@@ -523,7 +523,6 @@ define("IN_ADMINCP", 1);
 // Include required files
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_user.php';
-require_once INC_PATH . '/readconfig.php'; 
 require_once INC_PATH . '/functions_upload.php';
 
 
@@ -2468,7 +2467,7 @@ function updateUserPermissions(): void
  */
 function handleDeleteAccount(): void
 {
-    global $userdata, $usergroups, $db, $CURUSER;
+    global $userdata, $usergroups, $mybb, $db, $CURUSER;
     
     if (($usergroups['issupermod'] != '1' && $usergroups['cansettingspanel'] != '1')) {
         print_no_permission();
@@ -2524,14 +2523,16 @@ function handleDeleteAccount(): void
     }
 
     write_log('Account: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been deleted by ' . $CURUSER['username']);
-    //stderr('Success, The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted');
-	
+    
 	
 	stdok(
-    message: sprintf('Success, The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted'),
-    title:   'Registration successful',
-    subtitle: 'Your account has been created.'
+    message:  'The account <strong>' . htmlspecialchars_uni($userdata['username']) . '</strong> has been successfully deleted.',
+    title:    'Account Deleted',
+    subtitle: 'The user has been removed from the system.'
 );
+	
+	
+	
 	
 	
 	

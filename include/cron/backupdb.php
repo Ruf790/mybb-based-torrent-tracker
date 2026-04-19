@@ -16,7 +16,7 @@ if (!defined('IN_CRON')) {
 }
 
 $BackupDirectory = THIS_PATH . '/admin/backup';
-$db->set_table_prefix('');
+
 
 
 
@@ -40,7 +40,7 @@ if (!$fp) {
     return;
 }
 
-$tables = $db->list_tables($config['database']['database'], $config['database']['table_prefix']);
+$tables = $db->list_tables($config['database']['database']);
 ++$CQueryCount;
 
 $time = date('dS F Y \a\t H:i', TIMENOW);
@@ -71,7 +71,7 @@ foreach ($tables as $table) {
 
    
     if ($db->engine === 'mysqli') {
-        $query = mysqli_query($db->read_link, "SELECT * FROM {$db->table_prefix}{$table}", MYSQLI_USE_RESULT);
+        $query = mysqli_query($db->read_link, "SELECT * FROM {$table}", MYSQLI_USE_RESULT);
     } else {
         $query = $db->simple_select($table);
     }
@@ -114,7 +114,7 @@ if ($contents !== '') {
     clear_overflow($fp, $contents, $useGzip);
 }
 
-$db->set_table_prefix(TABLE_PREFIX);
+
 
 
 // Завершение и статистика

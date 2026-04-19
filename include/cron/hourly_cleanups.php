@@ -17,8 +17,8 @@ if (!defined('IN_CRON')) {
 $db->sql_query("DELETE FROM loginattempts WHERE banned='no' AND added < '" . (TIMENOW - DAY_IN_SECONDS) . "'");
 $CQueryCount++;
 
-$db->sql_query("DELETE FROM invites WHERE time_invited < '" . (TIMENOW - 2 * DAY_IN_SECONDS) . "'");
-$CQueryCount++;
+//$db->sql_query("DELETE FROM invites WHERE time_invited < '" . (TIMENOW - 2 * DAY_IN_SECONDS) . "'");
+//$CQueryCount++;
 
 // ======= Очистка пиров =======
 $deadtime = deadtime();

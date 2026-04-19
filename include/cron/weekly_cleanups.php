@@ -1,112 +1,180 @@
 <?php
-/***********************************************/
-/*=============[Optimized Hit & Run Cron]=====*/
-/***********************************************/
+/**
+ * Hit & Run Cron
+ *
+ * Правила:
+ * - каждый торрент-нарушитель = +1 к timeswarned + PM
+ * - бан обрабатывается отдельным кроном по timeswarned >= ban_user_limit
+ */
 
-if (!defined('IN_CRON')) 
-{
-    exit();
+if (!defined('IN_CRON')) exit();
+
+require_once INC_PATH . '/functions_pm.php';
+
+// ── Настройки ─────────────────────────────────────────────
+$MinSeedHours   = 24;
+$MinFinishDate  = 1230772229;
+$Enabled        = true;
+$HRSkipGroups   = [4, 5, 6, 7, 8];
+$ban_user_limit = 5;
+
+if (!$Enabled || $MinSeedHours <= 0) return;
+
+// ── Выборка нарушителей ───────────────────────────────────
+$seed_seconds = $MinSeedHours * HOUR_IN_SECONDS;
+
+$where = [
+    "s.warned      = '0'",
+    "s.finished    = 'yes'",
+    "t.banned      = 'no'",
+    "u.enabled     = 'yes'",
+    "u.ustatus     = 'confirmed'",
+    "s.completedat > " . (int)$MinFinishDate,
+    "s.seedtime    < {$seed_seconds}",
+    "NOT EXISTS (
+        SELECT 1 FROM peers p
+        WHERE p.torrent = s.torrentid
+          AND p.userid  = s.userid
+          AND p.seeder  = 'yes'
+    )",
+];
+
+if (!empty($HRSkipGroups)) {
+    $skip    = implode(',', array_map('intval', $HRSkipGroups));
+    $where[] = "u.usergroup NOT IN (0,{$skip})";
 }
 
-require INC_PATH . '/functions_pm.php';
+$res = $db->sql_query("
+    SELECT s.id, s.torrentid, s.userid, s.seedtime, s.completedat,
+           t.name,
+           u.username, u.timeswarned
+    FROM snatched s
+    INNER JOIN torrents t ON s.torrentid = t.id
+    INNER JOIN users    u ON s.userid    = u.id
+    WHERE " . implode(' AND ', $where) . "
+    ORDER BY s.userid, s.completedat ASC
+");
+$CQueryCount++;
 
-// ======= Настройки =======
-$MinRatio      = 3.5;
-$MinSeedTime   = 24;          // часы
-$MinFinishDate = 1230772229;
-$Enabled       = true;
-$HRSkipGroups  = [7];         // массив usergroup для пропуска
+// ── Группируем по юзеру ───────────────────────────────────
+$userTorrents  = [];
+$userWarnCount = [];
 
-define('HOUR_IN_SECONDS', 3600);
-
-// ======= Функции =======
-
-// Безопасное формирование IN-условия
-function build_safe_in_clause(array $ids, string $field = 'id'): string {
-    if (empty($ids)) return '0=1';
-    $safe_ids = array_map('intval', $ids);
-    return $field . ' IN (' . implode(',', $safe_ids) . ')';
+while ($row = $db->fetch_array($res)) {
+    $uid = (int)$row['userid'];
+    $userTorrents[$uid][] = $row;
+    $userWarnCount[$uid]  = (int)$row['timeswarned'];
 }
 
-// Массовая отправка PM
-function send_bulk_pm(array $users, string $subject, string $message_template) 
-{
-    global $CQueryCount, $db;
-    $pm_data = [
-        'subject' => $subject,
-        'sender'  => ['uid' => -1]
-    ];
+// ── Распределяем по стадиям ───────────────────────────────
+$warnPm     = []; // обычный PM
+$finalPm    = []; // финальный PM (следующий — бан, но бан не наш)
+$silentMark = []; // snatched.id — warned=1 без PM (уже за порогом)
 
-    foreach ($users as $HR) 
-	{
-        $message = sprintf(
-            $message_template,
-            $HR['username'],
-            '[URL=details.php?id=' . $HR['torrentid'] . ']' . htmlspecialchars($HR['name']) . '[/URL]',
-            ($HR['seedtime'] > 0 ? floor($HR['seedtime'] / HOUR_IN_SECONDS) : 0),
-            $GLOBALS['MinSeedTime'],
-            '[URL=download.php?id=' . $HR['torrentid'] . ']' . htmlspecialchars($HR['name']) . '[/URL]',
-            $GLOBALS['MinSeedTime']
+foreach ($userTorrents as $uid => $torrents) {
+    $warns = $userWarnCount[$uid];
+
+    foreach ($torrents as $row) {
+        if ($warns >= $ban_user_limit) {
+            // Уже за порогом — тихая пометка, бан сделает другой крон
+            $silentMark[] = (int)$row['id'];
+            continue;
+        }
+
+        $warns++;
+
+        if ($warns >= $ban_user_limit) {
+            $finalPm[] = $row; // последний варн перед баном
+        } else {
+            $warnPm[] = $row;
+        }
+    }
+}
+
+// ── Отправка PM ───────────────────────────────────────────
+if (!empty($warnPm)) {
+    hr_send_pm($warnPm, $lang->cronjobs['hr_warn_subject'], $lang->cronjobs['hr_warn_message']);
+}
+
+if (!empty($finalPm)) {
+    hr_send_pm($finalPm, $lang->cronjobs['hr_final_subject'], $lang->cronjobs['hr_final_message']);
+}
+
+if (!empty($silentMark)) {
+    $in = implode(',', $silentMark);
+    $db->sql_query("UPDATE snatched SET warned = '1' WHERE id IN ({$in})");
+    $CQueryCount++;
+}
+
+// ── Инкремент timeswarned (+1 за каждый торрент) ─────────
+$incrementMap = [];
+foreach (array_merge($warnPm, $finalPm) as $row) {
+    $uid = (int)$row['userid'];
+    $incrementMap[$uid] = ($incrementMap[$uid] ?? 0) + 1;
+}
+
+if (!empty($incrementMap)) {
+    if (max($incrementMap) === 1) {
+        $in = implode(',', array_keys($incrementMap));
+        $db->sql_query("UPDATE users SET timeswarned = timeswarned + 1 WHERE id IN ({$in})");
+    } else {
+        $caseWhen = array_map(
+            fn($uid, $cnt) => "WHEN {$uid} THEN timeswarned + {$cnt}",
+            array_keys($incrementMap),
+            $incrementMap
+        );
+        $in = implode(',', array_keys($incrementMap));
+        $db->sql_query(
+            "UPDATE users SET timeswarned = CASE id\n"
+            . implode("\n", $caseWhen)
+            . "\nEND WHERE id IN ({$in})"
+        );
+    }
+    $CQueryCount++;
+}
+
+// ── Лог ───────────────────────────────────────────────────
+savelog(sprintf(
+    'HR cron: warn=%d final=%d silent=%d',
+    count($warnPm),
+    count($finalPm),
+    count($silentMark)
+), 'cron');
+
+// ── Функции ───────────────────────────────────────────────
+
+function hr_send_pm(array $rows, string $subject, string $tpl): void
+{
+    global $CQueryCount, $MinSeedHours, $BASEURL, $db;
+
+    $snatchedIds = [];
+
+    foreach ($rows as $r) {
+        $seeded_h = (int)floor($r['seedtime'] / HOUR_IN_SECONDS);
+
+        $message = sprintf($tpl,
+            $r['username'],
+            '[URL=' . $BASEURL . '/details.php?id='  . $r['torrentid'] . ']' . htmlspecialchars($r['name']) . '[/URL]',
+            $seeded_h,
+            $MinSeedHours,
+            '[URL=' . $BASEURL . '/download.php?id=' . $r['torrentid'] . ']' . htmlspecialchars($r['name']) . '[/URL]',
+            $MinSeedHours
         );
 
-        $pm_data['message'] = $message;
-        $pm_data['touid'] = (int)$HR['userid'];
-        send_pm($pm_data, -1, true);
+        send_pm([
+            'subject' => $subject,
+            'message' => $message,
+            'touid'   => (int)$r['userid'],
+            'sender'  => ['uid' => -1],
+        ], -1, true);
+
+        $CQueryCount++;
+        $snatchedIds[] = (int)$r['id'];
+    }
+
+    if (!empty($snatchedIds)) {
+        $in = implode(',', $snatchedIds);
+        $db->sql_query("UPDATE snatched SET warned = '1' WHERE id IN ({$in})");
         $CQueryCount++;
     }
 }
-
-// ======= Основной код =======
-if ($Enabled && ($MinSeedTime > 0 || $MinRatio > 0)) 
-{
-    $conditions = [
-        "s.finished = 'yes'",
-        "s.seeder = 'no'",
-        "t.banned = 'no'",
-        "u.enabled = 'yes'"
-    ];
-
-    if (!empty($HRSkipGroups)) {
-        $conditions[] = 'u.usergroup NOT IN (0,' . implode(',', array_map('intval', $HRSkipGroups)) . ')';
-    }
-
-    if ($MinSeedTime > 0) {
-        $conditions[] = "s.seedtime < " . ($MinSeedTime * HOUR_IN_SECONDS);
-    }
-
-    if ($MinRatio > 0) {
-        $conditions[] = "s.uploaded / s.downloaded < " . $MinRatio;
-    }
-
-    if ($MinFinishDate > 0) {
-        $conditions[] = "s.completedat > " . intval($MinFinishDate);
-    }
-
-   
-    $query = $db->sql_query("
-        SELECT s.torrentid, s.userid, s.seedtime, t.name, u.username
-        FROM snatched s
-        INNER JOIN torrents t ON s.torrentid = t.id
-        INNER JOIN users u ON s.userid = u.id
-        WHERE " . implode(' AND ', $conditions)
-    );
-    $CQueryCount++;
-
-    $WarnUsers = [];
-    while ($HR = $db->fetch_array($query)) {
-        $WarnUsers[$HR['userid']] = $HR;
-    }
-
-    if (!empty($WarnUsers)) 
-	{
-        
-        send_bulk_pm(array_values($WarnUsers), $lang->cronjobs['lwarning_subject'], $lang->cronjobs['hr_warn_message']);
-
-        
-        $db->sql_query("UPDATE users SET timeswarned = timeswarned + 1 WHERE " . build_safe_in_clause(array_keys($WarnUsers)));
-        $CQueryCount++;
-    }
-
-    unset($WarnUsers);
-}
-?>

@@ -4,169 +4,124 @@ if (!defined('IN_CRON')) {
     exit();
 }
 
+// ============================================================
+//  Маппинг типов промо-акций
+//  Ключ = тип (int), значение = условие WHERE для SELECT
+// ============================================================
 
+const PROMO_CONDITIONS = [
+    1 => "free = 'no'  AND silver = 'no'  AND doubleupload = 'no'",
+    2 => "free = 'yes'",
+    3 => "doubleupload = 'yes' AND free = 'no'",
+    4 => "free = 'yes' AND doubleupload = 'yes'",
+    5 => "silver = 'yes' AND free = 'no'  AND doubleupload = 'no'",
+    6 => "silver = 'yes' AND doubleupload = 'yes' AND free = 'no'",
+    7 => "silver = 'yes' AND free = 'no'  AND doubleupload = 'no'",
+];
 
-function torrent_promotion_expire($days, $type = 2, $targettype = 1)
+// Что ставим в UPDATE и как называем тип для лога
+const PROMO_TARGETS = [
+    1 => ["free = 'no',  silver = 'no',  doubleupload = 'no'",  'normal'],
+    2 => ["free = 'yes', silver = 'no',  doubleupload = 'no'",  'Free'],
+    3 => ["free = 'no',  silver = 'no',  doubleupload = 'yes'", '2X'],
+    4 => ["free = 'yes', silver = 'no',  doubleupload = 'yes'", '2X Free'],
+    5 => ["free = 'no',  silver = 'yes', doubleupload = 'no'",  '50%'],
+    6 => ["free = 'no',  silver = 'yes', doubleupload = 'yes'", '2X 50%'],
+    7 => ["free = 'no',  silver = 'yes', doubleupload = 'no'",  '50%'],
+];
+
+// ============================================================
+
+/**
+ * Истекает промо-акцию для торрентов старше $days дней.
+ *
+ * Вместо UPDATE по одному — один SELECT + один UPDATE по IN(ids).
+ *
+ * @param float $days        Возраст в днях после которого промо истекает
+ * @param int   $type        Тип текущей промо-акции (ключ PROMO_CONDITIONS)
+ * @param int   $targettype  Тип в который переводим (ключ PROMO_TARGETS)
+ * @return int Количество обновлённых торрентов
+ */
+function torrent_promotion_expire(float $days, int $type = 2, int $targettype = 1): int
 {
     global $db, $CQueryCount;
 
-    $secs = (int)($days * 86400);
-    $dt = TIMENOW - $secs;
+    $condition  = PROMO_CONDITIONS[$type]       ?? PROMO_CONDITIONS[2];
+    [$setFields, $targetLabel] = PROMO_TARGETS[$targettype] ?? PROMO_TARGETS[1];
 
-    $field_condition = "";
-    if ($type == 1) {
-        $field_condition = "free = 'no' AND silver = 'no' AND doubleupload = 'no'";
-    } elseif ($type == 2) {
-        $field_condition = "free = 'yes'";
-    } elseif ($type == 3) {
-        $field_condition = "doubleupload = 'yes' AND free = 'no'";
-    } elseif ($type == 4) {
-        $field_condition = "free = 'yes' AND doubleupload = 'yes'";
-    } elseif ($type == 5) {
-        $field_condition = "silver = 'yes' AND free = 'no' AND doubleupload = 'no'";
-    } elseif ($type == 6) {
-        $field_condition = "silver = 'yes' AND doubleupload = 'yes' AND free = 'no'";
-    } elseif ($type == 7) {
-        $field_condition = "silver = 'yes' AND free = 'no' AND doubleupload = 'no'";
-    } else {
-        $field_condition = "free = 'yes'";
-    }
+    $dt = TIMENOW - (int)($days * 86400);
 
-    $sql = "SELECT id, name FROM torrents 
-            WHERE added < $dt 
-            AND $field_condition AND ts_external = 'no'
-            AND promotion_time_type = 0";
-
-    $res = $db->sql_query($sql);
+    // Один SELECT — берём только id и name
+    $res = $db->sql_query("
+        SELECT id, name
+        FROM torrents
+        WHERE added < {$dt}
+          AND {$condition}
+          AND ts_external = 'no'
+          AND promotion_time_type = 0
+    ");
     ++$CQueryCount;
 
-    if (!$res) {
-        savelog("Database error in torrent_promotion_expire", 'error');
+    if (!$res || !$db->num_rows($res)) {
         return 0;
     }
 
-    $update_fields = "";
-    $become = "";
-    if ($targettype == 1) {
-        $update_fields = "free = 'no', silver = 'no', doubleupload = 'no'";
-        $become = "normal";
-    } elseif ($targettype == 2) {
-        $update_fields = "free = 'yes', silver = 'no', doubleupload = 'no'";
-        $become = "Free";
-    } elseif ($targettype == 3) {
-        $update_fields = "free = 'no', silver = 'no', doubleupload = 'yes'";
-        $become = "2X";
-    } elseif ($targettype == 4) {
-        $update_fields = "free = 'yes', silver = 'no', doubleupload = 'yes'";
-        $become = "2X Free";
-    } elseif ($targettype == 5) {
-        $update_fields = "free = 'no', silver = 'yes', doubleupload = 'no'";
-        $become = "50%";
-    } elseif ($targettype == 6) {
-        $update_fields = "free = 'no', silver = 'yes', doubleupload = 'yes'";
-        $become = "2X 50%";
-    } elseif ($targettype == 7) {
-        $update_fields = "free = 'no', silver = 'yes', doubleupload = 'no'";
-        $become = "50%";
-    } else {
-        $update_fields = "free = 'no', silver = 'no', doubleupload = 'no'";
-        $become = "normal";
+    $ids   = [];
+    $names = [];
+
+    while ($row = $db->fetch_array($res)) {
+        $ids[]   = (int)$row['id'];
+        $names[] = $row['name'];
     }
-
-    $processed = 0;
-    $processed_names = [];
-
-    while ($arr = $db->fetch_array($res)) {
-        $id = (int)$arr['id'];
-        $name = $arr['name'];
-
-        $update_sql = "UPDATE torrents SET $update_fields WHERE id = $id";
-        $update_res = $db->sql_query($update_sql);
-        ++$CQueryCount;
-
-        if (!$update_res) {
-            savelog("Failed to update torrent $id", 'error');
-            ++$CQueryCount;
-            continue;
-        }
-
-        $processed_names[] = $name;
-
-        $processed++;
-    }
-
     $db->free_result($res);
 
-    if ($processed > 0) {
-        $names_str = implode("\n", $processed_names);
-        if ($targettype == 1) {
-            savelog("Torrents no longer on promotion (time expired):\n$names_str", 'normal');
-        } else {
-            savelog("Torrents promotion changed to $become (time expired):\n$names_str", 'normal');
-        }
+    // Один UPDATE вместо N
+    $in = implode(',', $ids);
+    $db->sql_query("UPDATE torrents SET {$setFields} WHERE id IN ({$in})");
+    ++$CQueryCount;
+
+    $updated = (int)$db->affected_rows();
+
+    if ($updated > 0) {
+        $label   = $targettype === 1 ? 'no longer on promotion' : "changed to {$targetLabel}";
+        $nameLog = implode("\n", $names);
+        savelog("Torrents {$label} (time expired):\n{$nameLog}", 'normal');
     }
 
-    return $processed;
+    return $updated;
 }
 
+// ============================================================
+//  Конфигурация запусков: [days, fromType, toType, label]
+// ============================================================
 
+$promotions = [
+    [$expirehalfleech,         5, $halfleechbecome,         'Expired 50% Leech'],
+    [$expirefree,              2, $freebecome,              'Expired Free Leech'],
+    [$expiretwoup,             3, $twoupbecome,             'Expired 2X Upload'],
+    [$expiretwoupfree,         4, $twoupfreebecome,         'Expired Free + 2X'],
+    [$expiretwouphalfleech,    6, $twouphalfleechbecome,    'Expired 50% + 2X'],
+    [$expirethirtypercentleech,7, $thirtypercentleechbecome,'Expired 30% Leech'],
+    [$expirenormal,            1, $normalbecome,            'Expired Normal'],
+];
 
-// Логируем запуск
-savelog("Starting torrent promotion expiration cleanup", 'cron');
-++$CQueryCount;
+// ============================================================
+//  Запуск
+// ============================================================
 
-// Обрабатываем истечение промо-акций
-$processed = 0;
+savelog('Starting torrent promotion expiration cleanup', 'cron');
 
+$totalProcessed = 0;
 
-if ($expirehalfleech_torrent > 0) {
-    $count = torrent_promotion_expire($expirehalfleech_torrent, 5, $halfleechbecome_torrent);
-    $processed += $count;
-    savelog("Expired 50% Leech promotions: $count torrents", 'cron');
-	++$CQueryCount;
+foreach ($promotions as [$days, $fromType, $toType, $label]) {
+    if (empty($days) || $days <= 0) {
+        continue;
+    }
+
+    $count = torrent_promotion_expire((float)$days, (int)$fromType, (int)$toType);
+    $totalProcessed += $count;
+
+    savelog("{$label} promotions: {$count} torrents", 'cron');
 }
 
-if ($expirefree_torrent > 0) {
-    $count = torrent_promotion_expire($expirefree_torrent, 2, $freebecome_torrent);
-    $processed += $count;
-    savelog("Expired Free Leech promotions: $count torrents", 'cron');
-	++$CQueryCount;
-}
-
-if ($expiretwoup_torrent > 0) {
-    $count = torrent_promotion_expire($expiretwoup_torrent, 3, $twoupbecome_torrent);
-    $processed += $count;
-    savelog("Expired 2X Upload promotions: $count torrents", 'cron');
-	++$CQueryCount;
-}
-
-if ($expiretwoupfree_torrent > 0) {
-    $count = torrent_promotion_expire($expiretwoupfree_torrent, 4, $twoupfreebecome_torrent);
-    $processed += $count;
-    savelog("Expired Free + 2X promotions: $count torrents", 'cron');
-	++$CQueryCount;
-}
-
-if ($expiretwouphalfleech_torrent > 0) {
-    $count = torrent_promotion_expire($expiretwouphalfleech_torrent, 6, $twouphalfleechbecome_torrent);
-    $processed += $count;
-    savelog("Expired 50% + 2X promotions: $count torrents", 'cron');
-	++$CQueryCount;
-}
-
-if ($expirethirtypercentleech_torrent > 0) {
-    $count = torrent_promotion_expire($expirethirtypercentleech_torrent, 7, $thirtypercentleechbecome_torrent);
-    $processed += $count;
-    savelog("Expired 30% Leech promotions: $count torrents", 'cron');
-	++$CQueryCount;
-}
-
-if ($expirenormal_torrent > 0) {
-    $count = torrent_promotion_expire($expirenormal_torrent, 1, $normalbecome_torrent);
-    $processed += $count;
-    savelog("Expired Normal torrents (set to new promotion): $count torrents", 'cron');
-	++$CQueryCount;
-}
-
-savelog("Finished torrent promotion expiration cleanup. Total processed: $processed torrents", 'cron');
-++$CQueryCount;
+savelog("Finished promotion expiration. Total: {$totalProcessed} torrents", 'cron');

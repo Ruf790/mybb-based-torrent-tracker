@@ -114,14 +114,38 @@ if ($leech_ban_ids) {
     $CQueryCount++;
 }
 
-// ======= Ban by max warn =======
-$query = $db->sql_query("SELECT DISTINCT id FROM users WHERE enabled='yes' AND timeswarned >= '$ban_user_limit'");
-$CQueryCount++;
 
+
+
+// ======= Ban by max warn =======
+$query = $db->sql_query("SELECT DISTINCT id, usergroup, additionalgroups, displaygroup FROM users WHERE enabled='yes' AND timeswarned >= '$ban_user_limit'");
+$CQueryCount++;
 $ban_limit_ids = [];
 $reason = 'Reason: Automatically banned system. Max Warn Limit reached!';
+
 while ($row = $db->fetch_array($query)) {
     $ban_limit_ids[] = $row['id'];
+
+    // Запись в таблицу banned
+    $db->sql_query("
+        INSERT INTO banned (uid, gid, oldgroup, oldadditionalgroups, olddisplaygroup, admin, dateline, bantime, lifted, reason)
+        VALUES (
+            " . intval($row['id']) . ",
+            " . intval(UC_BANNED) . ",
+            " . intval($row['usergroup']) . ",
+            " . $db->sqlesc($row['additionalgroups'] ?? '') . ",
+            " . intval($row['displaygroup']) . ",
+            0,
+            " . TIMENOW . ",
+            'permanent',
+            0,
+            " . $db->sqlesc($reason) . "
+        )
+        ON DUPLICATE KEY UPDATE
+            dateline = " . TIMENOW . ",
+            reason   = " . $db->sqlesc($reason) . "
+    ");
+    $CQueryCount++;
 }
 
 if ($ban_limit_ids) {
@@ -137,6 +161,10 @@ if ($ban_limit_ids) {
     savelog('Banned users (Max warn limit): ' . implode(', ', $ban_limit_ids));
     $CQueryCount++;
 }
+
+
+
+
 
 // ======= Remove expired warns =======
 $query = $db->sql_query("SELECT DISTINCT id FROM users WHERE warned='yes' AND warneduntil < " . TIMENOW . " AND enabled='yes'");

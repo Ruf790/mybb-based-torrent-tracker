@@ -1,85 +1,118 @@
 <?php
 /**
- * TS Special Edition / MyBB Database Optimization Task
+ * Database Optimization cron
  * Fully compatible with PHP 8.4
  */
-
 declare(strict_types=1);
-
 if (!defined('IN_CRON')) {
     exit();
 }
 
-$startTime = microtime(true);
-$currentTime = date('Y-m-d H:i:s');
+$startTime    = microtime(true);
+$currentTime  = date('Y-m-d H:i:s');
 $databaseName = $config['database']['database'];
 
-$dbCheck = $db->sql_query("SHOW DATABASES LIKE '" . $db->escape_string($databaseName) . "'");
+// Получаем список таблиц
+$tableNames = $db->list_tables($databaseName);
 ++$CQueryCount;
 
-if ($dbCheck === false) {
-    savelog("ERROR: [{$currentTime}] Database check query failed: " . $db->error);
+if (empty($tableNames)) {
+    savelog("DB Optimized INFO: [{$currentTime}] No tables found in '{$databaseName}'.");
     exit();
 }
 
-if ($db->num_rows($dbCheck) === 0) {
-    savelog("ERROR: [{$currentTime}] Database '{$databaseName}' does not exist. Skipping optimization.");
-    exit();
-}
+$optimizedTables = [];
+$errorTables     = [];
+$totalFreedMB    = 0.0;
+$skippedCount    = 0;
 
-$query = $db->sql_query("SHOW TABLE STATUS FROM `" . $db->escape_string($databaseName) . "`");
-++$CQueryCount;
+foreach ($tableNames as $tableName) {
 
-if ($query === false) {
-    savelog("ERROR: [{$currentTime}] SHOW TABLE STATUS failed: " . $db->error);
-    exit();
-}
+    // Статистика до оптимизации
+    $query = $db->sql_query(
+        "SHOW TABLE STATUS FROM `" . $db->escape_string($databaseName) . "`"
+        . " WHERE Name = '" . $db->escape_string($tableName) . "'"
+    );
+    ++$CQueryCount;
 
-$optimizedTables = 0;
-$totalFreedMB = 0.0;
+    $table           = $db->fetch_array($query);
+    $dataFree        = (int)($table['Data_free']    ?? 0);
+    $engine          = $table['Engine']             ?? 'Unknown';
+    $rowsCount       = (int)($table['Rows']         ?? 0);
+    $tableSizeBefore = round(
+        (($table['Data_length'] ?? 0) + ($table['Index_length'] ?? 0)) / 1024 / 1024, 2
+    );
 
-while ($table = $db->fetch_array($query)) {
-    $tableName = $table['Name'] ?? '';
-    $dataFree = (int)($table['Data_free'] ?? 0);
-    $engine = $table['Engine'] ?? 'Unknown';
-    $tableSizeBefore = round((($table['Data_length'] ?? 0) + ($table['Index_length'] ?? 0)) / 1024 / 1024, 2);
-    $rowsCount = (int)($table['Rows'] ?? 0);
+    // Пропускаем таблицы без фрагментации или не MyISAM
+    if ($dataFree === 0 || $engine !== 'MyISAM') {
+        ++$skippedCount;
+        continue;
+    }
 
-    if ($dataFree > 0 && $engine === 'MyISAM') {
-        try {
-            $db->optimize_table($tableName);
-            ++$CQueryCount;
+    try {
+        // Шаг 1 — оптимизация (дефрагментация + освобождение места)
+        $db->optimize_table($tableName);
+        ++$CQueryCount;
 
-            $queryAfter = $db->sql_query("SHOW TABLE STATUS FROM `" . $db->escape_string($databaseName) . "` WHERE Name = '" . $db->escape_string($tableName) . "'");
-            $tableAfter = $db->fetch_array($queryAfter);
+        // Шаг 2 — анализ (пересчёт статистики индексов для query optimizer)
+        $db->analyze_table($tableName);
+        ++$CQueryCount;
 
-            $tableSizeAfter = round((($tableAfter['Data_length'] ?? 0) + ($tableAfter['Index_length'] ?? 0)) / 1024 / 1024, 2);
-            $sizeDifference = max(0, $tableSizeBefore - $tableSizeAfter);
-            $totalFreedMB += $sizeDifference;
+        // Статистика после оптимизации
+        $queryAfter = $db->sql_query(
+            "SHOW TABLE STATUS FROM `" . $db->escape_string($databaseName) . "`"
+            . " WHERE Name = '" . $db->escape_string($tableName) . "'"
+        );
+        ++$CQueryCount;
 
-            $sizeDifferenceStr = $sizeDifference > 0
-                ? " Freed space: {$sizeDifference} MB"
-                : " No size change.";
+        $tableAfter     = $db->fetch_array($queryAfter);
+        $tableSizeAfter = round(
+            (($tableAfter['Data_length'] ?? 0) + ($tableAfter['Index_length'] ?? 0)) / 1024 / 1024, 2
+        );
 
-            savelog("SUCCESS: [{$currentTime}] Table '{$tableName}' optimized successfully. "
-                . "Before: {$tableSizeBefore} MB, After: {$tableSizeAfter} MB. "
-                . "Data_free: {$dataFree} bytes, Engine: {$engine}, Rows: {$rowsCount}.{$sizeDifferenceStr}");
-            ++$CQueryCount;
+        $freed        = max(0.0, $tableSizeBefore - $tableSizeAfter);
+        $totalFreedMB += $freed;
 
-            ++$optimizedTables;
-        } catch (Throwable $e) {
-            savelog("ERROR: [{$currentTime}] Failed to optimize table '{$tableName}': " . $e->getMessage());
-        }
+        $optimizedTables[] = "{$tableName}("
+            . ($freed > 0 ? "-{$freed}MB" : "no change")
+            . ", rows:{$rowsCount})";
+
+    } catch (Throwable $e) {
+        $errorTables[] = "{$tableName}: " . $e->getMessage();
     }
 }
 
-$elapsed = round(microtime(true) - $startTime, 3);
+// Итоговый лог
+$elapsed        = round(microtime(true) - $startTime, 3);
+$optimizedCount = count($optimizedTables);
+$errorCount     = count($errorTables);
 
-if ($optimizedTables > 0) {
-    savelog("INFO: [{$currentTime}] Optimization completed in {$elapsed}s. "
-        . "{$optimizedTables} tables optimized, total freed: {$totalFreedMB} MB.");
-    ++$CQueryCount;
+if ($optimizedCount > 0 && $totalFreedMB > 0) {
+    // Полный лог со списком таблиц
+    $tableList = implode(', ', $optimizedTables);
+    savelog(
+        "DB Optimized SUCCESS: [{$currentTime}] freed: {$totalFreedMB} MB in {$elapsed}s, skipped: {$skippedCount}. "
+        . "Tables: [{$tableList}]"
+    );
+	++$CQueryCount;
+} elseif ($optimizedCount > 0) {
+    // Оптимизировали но место не освободилось
+    savelog(
+        "DB Optimized INFO: [{$currentTime}] {$optimizedCount} tables processed, no space freed ({$elapsed}s)."
+    );
+	++$CQueryCount;
 } else {
-    savelog("INFO: [{$currentTime}] No tables required optimization in '{$databaseName}' ({$elapsed}s).");
-    ++$CQueryCount;
+    savelog(
+        "DB Optimized INFO: [{$currentTime}] No tables required optimization ({$elapsed}s), skipped: {$skippedCount}."
+    );
+	++$CQueryCount;
+}
+
+// Ошибки отдельной строкой если были
+if ($errorCount > 0) {
+    savelog(
+        "DB Optimized ERROR: [{$currentTime}] Failed tables ({$errorCount}): "
+        . implode(' | ', $errorTables)
+    );
+	++$CQueryCount;
 }

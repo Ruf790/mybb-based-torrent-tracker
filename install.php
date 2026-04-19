@@ -831,6 +831,7 @@ CREATE TABLE IF NOT EXISTS `{$p}snatched` (
   `seedtime` int unsigned NOT NULL DEFAULT '0',
   `leechtime` int unsigned NOT NULL DEFAULT '0',
   `ip` char(15) NOT NULL DEFAULT '',
+  `warned` tinyint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `seeder` (`seeder`,`last_action`),
   KEY `torrentid` (`torrentid`),
@@ -1149,13 +1150,6 @@ CREATE TABLE IF NOT EXISTS `{$p}unbanrequests` (
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}userfields` (
-  `ufid` int unsigned NOT NULL DEFAULT '0',
-  `fid1` text NOT NULL,
-  `fid2` text NOT NULL,
-  `fid3` text NOT NULL,
-  PRIMARY KEY (`ufid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
 CREATE TABLE IF NOT EXISTS `{$p}usergroups` (
   `gid` smallint unsigned NOT NULL AUTO_INCREMENT,
@@ -1465,8 +1459,6 @@ if (file_put_contents($staffteam_file, $staffteam_content) === false) {
 	
     
 
-    // userfields для admin
-    mysqli_query($conn, "INSERT IGNORE INTO `{$p}userfields` (`ufid`,`fid1`,`fid2`,`fid3`) VALUES ({$admin_id},'','','')");
 
     // Новость
     $siteName = mysqli_real_escape_string($conn, $site['name']);

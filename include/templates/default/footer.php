@@ -140,7 +140,7 @@ if (($usergroups['cansettingspanel'] ?? 0) == 1 && !defined('SKIP_SHOW_QUERIES')
 }
 
 $cron_code = '';
-if (isset($GLOBALS['ts_cron_image'])) {
+if (!defined('SKIP_CRON_JOBS') && isset($GLOBALS['ts_cron_image'])) {
     $cron_code = '
 <!-- TS Auto Cronjobs code -->
     <img src="' . $BASEURL . '/ts_cron.php?rand=' . TIMENOW . '" alt="" width="1" height="1" border="0">

@@ -234,3 +234,253 @@
             .quick-link { background: #333; border-color: #444; color: #999; }
             .border-top { border-top-color: #333 !important; }
         }
+		
+		
+		
+		
+		
+		
+		
+/////////////////////////////////////////////
+
+.error-card-ok {
+    position: relative;
+    background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+    border-radius: 20px !important;
+    transition: transform 0.3s ease;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+}
+.error-card-ok:hover {
+    transform: translateY(-5px);
+}
+.error-bg-pattern-ok {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image: radial-gradient(circle at 10px 10px, rgba(40,167,69,0.05) 2px, transparent 2px);
+    background-size: 30px 30px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+.gradient-line-ok {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #51cf66, #28a745, #218838);
+    animation: gradientShift 3s ease infinite;
+}
+.ok-icon-circle {
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, #d4edda, #c3e6cb);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 2;
+    animation: pulse-ok 2s infinite;
+}
+.ok-icon {
+    font-size: 3.5rem;
+    color: #28a745;
+}
+.ok-pulse {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px; height: 100px;
+    background: rgba(40, 167, 69, 0.2);
+    border-radius: 50%;
+    animation: ripple-ok 2s infinite;
+    z-index: 1;
+}
+.ok-title {
+    background: linear-gradient(45deg, #28a745, #51cf66);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 800 !important;
+    letter-spacing: -2px;
+}
+.ok-subtitle { color: #343a40; font-weight: 600; }
+.ok-message-box {
+    background: rgba(40, 167, 69, 0.05);
+    border-left: 4px solid #28a745;
+    border-radius: 10px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+}
+.ok-message-box:hover {
+    background: rgba(40, 167, 69, 0.08);
+    transform: translateX(5px);
+}
+.ok-message-icon {
+    width: 40px; height: 40px;
+    background: rgba(40, 167, 69, 0.1);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: #28a745;
+}
+.ok-detail-item {
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.05);
+    text-align: center;
+    transition: all 0.3s ease;
+}
+.ok-detail-item:hover {
+    background: #28a745;
+    border-color: #28a745;
+}
+.ok-detail-item:hover i,
+.ok-detail-item:hover h6,
+.ok-detail-item:hover small { color: #fff !important; }
+.ok-detail-item i { font-size: 1.5rem; transition: all 0.3s ease; }
+.hover-lift-ok { transition: all 0.3s ease; }
+.hover-lift-ok:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(40, 167, 69, 0.2);
+}
+.quick-link-ok {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.05);
+    border-radius: 30px;
+    color: #6c757d;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+.quick-link-ok:hover {
+    background: #28a745;
+    border-color: #28a745;
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(40, 167, 69, 0.2);
+}
+@keyframes pulse-ok {
+    0%, 100% { transform: scale(1); box-shadow: 0 5px 15px rgba(40,167,69,0.3); }
+    50% { transform: scale(1.05); box-shadow: 0 10px 25px rgba(40,167,69,0.5); }
+}
+@keyframes ripple-ok {
+    0% { width: 100px; height: 100px; opacity: 0.5; }
+    100% { width: 150px; height: 150px; opacity: 0; }
+}
+@media (prefers-color-scheme: dark) {
+    .error-card-ok { background: linear-gradient(135deg, #2b2b2b 0%, #1a1a1a 100%); }
+    .ok-subtitle { color: #e0e0e0; }
+    .ok-description { color: #999 !important; }
+    .ok-detail-item { background: #333; border-color: #444; }
+    .ok-detail-item h6 { color: #e0e0e0; }
+    .quick-link-ok { background: #333; border-color: #444; color: #999; }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Недостающие стили для ok-details */
+.ok-details {
+    margin-bottom: 1.5rem;
+}
+.ok-detail-item {
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.05);
+    text-align: center;
+    transition: all 0.3s ease;
+    border-radius: 10px;          /* ← не было */
+    padding: 1rem;                /* ← не было */
+    display: flex;                /* ← не было */
+    flex-direction: column;       /* ← не было */
+    align-items: center;          /* ← не было */
+}
+.ok-detail-item i {
+    font-size: 1.5rem;
+    display: block;               /* ← не было */
+    margin-bottom: 6px;           /* ← не было */
+    transition: all 0.3s ease;
+}
+.ok-detail-item:hover {
+    background: #28a745;
+    border-color: #28a745;
+}
+.ok-detail-item:hover i,
+.ok-detail-item:hover h6,
+.ok-detail-item:hover small {
+    color: #fff !important;
+}
+
+/* Карточка — боковые линии и тень */
+.error-card-ok {
+    position: relative;
+    background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+    border-radius: 20px !important;
+    transition: transform 0.3s ease;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    border: 1px solid rgba(40,167,69,0.15) !important;  /* ← боковые линии */
+}
+.error-card-ok:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 30px 60px rgba(40,167,69,0.15);       /* ← зелёная тень при hover */
+}
+
+/* card-body нужен padding */
+.error-card-ok .card-body {
+    padding: 2rem 2.5rem;
+}
+
+/* card-footer — граница сверху */
+.error-card-ok .card-footer {
+    border-top: 1px solid rgba(40,167,69,0.1) !important;
+    padding: 1rem 2.5rem;
+}
+
+/* quick-links-ok — граница сверху */
+.quick-links-ok {
+    border-top-color: rgba(40,167,69,0.1) !important;
+}
+
+/* dark mode дополнения */
+@media (prefers-color-scheme: dark) {
+    .error-card-ok {
+        background: linear-gradient(135deg, #2b2b2b 0%, #1a1a1a 100%);
+        border-color: rgba(40,167,69,0.2) !important;
+    }
+    .ok-detail-item {
+        background: #333;
+        border-color: #444;
+    }
+    .ok-detail-item h6 { color: #e0e0e0; }
+    .ok-subtitle { color: #e0e0e0; }
+    .ok-description { color: #999 !important; }
+    .quick-link-ok { background: #333; border-color: #444; color: #999; }
+    .error-card-ok .card-footer {
+        border-top-color: rgba(40,167,69,0.15) !important;
+    }
+}
+
+/* mobile */
+@media (max-width: 576px) {
+    .ok-title { font-size: 3rem !important; }
+    .ok-subtitle { font-size: 1.5rem !important; }
+    .ok-icon-circle { width: 80px; height: 80px; }
+    .ok-icon { font-size: 2.5rem; }
+    .ok-pulse { width: 80px; height: 80px; }
+    .ok-detail-item { padding: 0.75rem !important; }
+    .quick-link-ok { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+    .error-card-ok .card-body { padding: 1.5rem 1.25rem; }
+}

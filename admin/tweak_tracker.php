@@ -1,168 +1,137 @@
-<?
-
+<?php
+declare(strict_types=1);
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
-    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+    exit('<b>Error!</b> Direct initialization of this file is not allowed.');
 }
 
-@ini_set('memory_limit', '20000M');
+ini_set('memory_limit', '20000M');
 define('TT_VERSION', '2.1 by xam');
 
+// ── CSS helper ────────────────────────────────────────────
+function render_css(string $BASEURL): string
+{
+    return '<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">'
+         . '<link href="' . $BASEURL . '/include/templates/default/style/errorss.css" rel="stylesheet">';
+}
 
-
-
-
+// ── Confirmation screen ───────────────────────────────────
 if (!isset($_GET['begin_optimization'])) {
-    
-	stdhead();
-	echo '
-   
-    <link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
-    <link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
-
+    stdhead();
+    echo render_css($BASEURL);
+    echo '
     <div class="container mt-3">
-	<div class="card error-card">
-        <div class="card-header22">
-            <i class="bi bi-exclamation-triangle-fill text-danger me-2" style="font-size:2rem;"></i>
-            <div>
-                <h2 class="mb-0">Sanity Check!</h2>
-                <p class="mb-0 opacity-75">Are you sure you want to optimize your tracker tables?</p>
+        <div class="card error-card">
+            <div class="card-header22">
+                <i class="bi bi-exclamation-triangle-fill text-danger me-2" style="font-size:2rem"></i>
+                <div>
+                    <h2 class="mb-0">Sanity Check!</h2>
+                    <p class="mb-0 opacity-75">Are you sure you want to optimize your tracker tables?</p>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning"><strong>Warning!</strong> Please backup your database first!</div>
+                <a href="' . $_this_script_ . '&begin_optimization=true" class="btn btn-danger">
+                    <i class="bi bi-play-fill me-1"></i> Click to Begin
+                </a>
             </div>
         </div>
-        <div class="card-body">
-            <div class="alert alert-warning" role="alert">
-                <strong>Warning!</strong> Please backup your database first!
-            </div>
-            <a href="'.$_this_script_.'&begin_optimization=true" class="btn btn-danger">
-                <i class="bi bi-play-fill me-1"></i> Click to Begin
-            </a>
-        </div>
-    </div>
-	</div>';
-	stdfoot();
+    </div>';
+    stdfoot();
     exit;
 }
 
+// ── Load valid IDs ────────────────────────────────────────
+$torrent_ids = [];
+$q = $db->simple_select('torrents', 'id');
+while ($row = $db->fetch_array($q)) $torrent_ids[] = (int)$row['id'];
 
+$user_ids = [];
+$q = $db->simple_select('users', 'id', "enabled='yes' AND ustatus='confirmed'");
+while ($row = $db->fetch_array($q)) $user_ids[] = (int)$row['id'];
 
-
-
-
-
-
-
-$torrents = array();
-$users = array();
-
-// Получаем ID торрентов
-$Query = $db->simple_select("torrents", "id");
-while ($torrent = $db->fetch_array($Query)) {
-    $torrents[] = $torrent['id'];
+if (empty($torrent_ids) || empty($user_ids)) {
+    stderr($lang->global['error'], 'No torrent/user found. You must have at least one torrent/user.');
 }
 
-// Получаем ID активных пользователей
-$Query = $db->simple_select("users", "id", "enabled ='yes' AND ustatus ='confirmed'");
-while ($user = $db->fetch_array($Query)) {
-    $users[] = $user['id'];
+$ValidTorrents = implode(',', $torrent_ids);
+$ValidUsers    = implode(',', $user_ids);
+unset($torrent_ids, $user_ids);
+
+// ── Batch delete helper ───────────────────────────────────
+function delete_invalid_records(string $table, string $condition, string $id_field = 'id'): int
+{
+    global $db;
+
+    $q       = $db->simple_select($table, $id_field, $condition);
+    $total   = 0;
+    $batch   = [];
+
+    while ($row = $db->fetch_array($q)) {
+        $batch[] = $row[$id_field];
+        $total++;
+
+        if (count($batch) >= 1000) {
+            $db->delete_query($table, "$id_field IN (" . implode(',', $batch) . ")");
+            $batch = [];
+        }
+    }
+
+    if ($batch) {
+        $db->delete_query($table, "$id_field IN (" . implode(',', $batch) . ")");
+    }
+
+    return $total;
 }
 
-if ((!$ValidTorrents = implode(',', $torrents) OR !$ValidUsers = implode(',', $users))) {
-    stderr($lang->global['error'], 'There is no torrent/user found. You must have at least one torrent/user to use this tool.');
-}
-
-unset($torrents);
-unset($users);
-
-// Массив для логирования
-$log = array();
+// ── Run cleanup ───────────────────────────────────────────
+$log        = [];
 $start_time = microtime(true);
 
-// Функция для массового удаления
-function delete_invalid_records($table, $condition, $id_field = 'id') {
-    global $db, $log;
-    
-    $deleted_count = 0;
-    $Query = $db->simple_select($table, $id_field, $condition);
-    
-    if ($db->num_rows($Query) > 0) {
-        $ids_to_delete = array();
-        while ($Delete = $db->fetch_array($Query)) {
-            $ids_to_delete[] = $Delete[$id_field];
-            $deleted_count++;
-            
-            // Удаляем пачками по 1000 записей для избежания слишком больших запросов
-            if (count($ids_to_delete) >= 1000) {
-                $ids_string = implode(',', $ids_to_delete);
-                $db->delete_query($table, "$id_field IN ($ids_string)");
-                $ids_to_delete = array();
-            }
-        }
-        
-        // Удаляем оставшиеся записи
-        if (!empty($ids_to_delete)) {
-            $ids_string = implode(',', $ids_to_delete);
-            $db->delete_query($table, "$id_field IN ($ids_string)");
-        }
-        
-        $log[] = "Deleted {$deleted_count} invalid records from {$table}";
-    }
-    
-    return $deleted_count;
+$cleanups = [
+    ['announce_actions',    "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
+    ['bookmarks',           "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
+    ['cheat_attempts',      "uid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})",    'id'],
+    ['comments',            "user NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})"],
+    ['notconnectablepmlog', "user NOT IN ({$ValidUsers})"],
+    ['peers',               "userid NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})"],
+    ['reports',             "addedby NOT IN ({$ValidUsers})"],
+    ['snatched',            "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
+    ['staffmessages',       "sender NOT IN ({$ValidUsers})"],
+    ['hit_and_run',         "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
+    ['inactivity',          "userid NOT IN ({$ValidUsers})",                                         'userid'],
+    ['users_perm',          "userid NOT IN ({$ValidUsers})",                                         'userid'],
+    ['privatemessages',     "fromid NOT IN ({$ValidUsers}) AND toid NOT IN ({$ValidUsers})",         'pmid'],
+    ['comment_files',       "user_id NOT IN ({$ValidUsers}) OR torrent_id NOT IN ({$ValidTorrents})"],
+    ['screenshots',         "torrent_id NOT IN ({$ValidTorrents})"],
+];
+
+foreach ($cleanups as [$table, $cond, $field]) {
+    $n = delete_invalid_records($table, $cond, $field ?? 'id');
+    if ($n > 0) $log[] = "Deleted {$n} invalid records from {$table}";
 }
 
-// Очистка таблиц
-delete_invalid_records('announce_actions', "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
-delete_invalid_records('bookmarks', "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
-delete_invalid_records('cheat_attempts', "uid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
-delete_invalid_records('comments', "user NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})");
-delete_invalid_records('notconnectablepmlog', "user NOT IN ({$ValidUsers})");
-delete_invalid_records('peers', "userid NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})");
-delete_invalid_records('reports', "addedby NOT IN ({$ValidUsers})");
-delete_invalid_records('snatched', "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
-delete_invalid_records('staffmessages', "sender NOT IN ({$ValidUsers})");
-delete_invalid_records('hit_and_run', "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})");
-delete_invalid_records('inactivity', "userid NOT IN ({$ValidUsers})", 'userid');
-delete_invalid_records('users_perm', "userid NOT IN ({$ValidUsers})", 'userid');
+// ── Time-based cleanup ────────────────────────────────────
+$thirty_days = TIMENOW - 30 * 86400;
+$seven_days  = TIMENOW - 7  * 86400;
 
-
-delete_invalid_records('privatemessages', "fromid NOT IN ({$ValidUsers}) AND toid NOT IN ({$ValidUsers})", 'pmid');
-
-
-delete_invalid_records('comment_files', "user_id NOT IN ({$ValidUsers}) OR torrent_id NOT IN ({$ValidTorrents})");
-delete_invalid_records('screenshots', "torrent_id NOT IN ({$ValidTorrents})");
-
-// Очистка устаревших данных
-$thirty_days_ago = TIMENOW - (30 * 86400);
-$seven_days_ago = TIMENOW - (7 * 86400);
-
-// Очистка старых сессий
-$db->delete_query('sessions', "time < {$thirty_days_ago}");
-$deleted = $db->affected_rows();
-if ($deleted > 0) {
-    $log[] = "Deleted {$deleted} old session records";
+foreach ([
+    ['sessions',      "time < {$thirty_days}"],
+    ['searchlog',     "dateline < {$seven_days}"],
+    ['loginattempts', "added < {$thirty_days}"],
+] as [$table, $cond]) {
+    $db->delete_query($table, $cond);
+    $n = $db->affected_rows();
+    if ($n > 0) $log[] = "Deleted {$n} old records from {$table}";
 }
 
-// Очистка старых поисковых запросов
-$db->delete_query('searchlog', "dateline < {$seven_days_ago}");
-$deleted = $db->affected_rows();
-if ($deleted > 0) {
-    $log[] = "Deleted {$deleted} old search log records";
-}
-
-// Очистка старых попыток входа
-$db->delete_query('loginattempts', "added < {$thirty_days_ago}");
-$deleted = $db->affected_rows();
-if ($deleted > 0) {
-    $log[] = "Deleted {$deleted} old login attempt records";
-}
-
-// Оптимизация таблиц
-$tables_to_optimize = array(
+// ── Optimize tables ───────────────────────────────────────
+$tables_to_optimize = [
     'announce_actions', 'bookmarks', 'cheat_attempts', 'comments',
     'notconnectablepmlog', 'peers', 'reports', 'snatched', 'staffmessages',
     'ts_hit_and_run', 'ts_inactivity', 'ts_u_perm', 'comment_files',
-    'privatemessages', 'screenshots', 'sessions', 'searchlog', 'loginattempts', 'iplog'
-);
+    'privatemessages', 'screenshots', 'sessions', 'searchlog', 'loginattempts', 'iplog',
+];
 
 foreach ($tables_to_optimize as $table) {
     if ($db->table_exists($table)) {
@@ -171,62 +140,33 @@ foreach ($tables_to_optimize as $table) {
     }
 }
 
+// ── Report ────────────────────────────────────────────────
+$execution_time = round(microtime(true) - $start_time, 2);
 
-
-
-
-
-
-
-
-// Формирование отчета
-$end_time = microtime(true);
-$execution_time = round($end_time - $start_time, 2);
+$log_items = implode('', array_map(fn(string $e) => '<li>' . htmlspecialchars($e) . '</li>', $log));
 
 stdhead();
-
+echo render_css($BASEURL);
 echo '
-<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
-<link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
-
 <div class="container mt-3">
     <div class="card error-card">
         <div class="card-header22 success">
-            <i class="bi bi-check-circle-fill me-2" style="font-size:2rem;"></i>
+            <i class="bi bi-check-circle-fill me-2" style="font-size:2rem"></i>
             <div>
                 <h2 class="mb-0">Database Optimization Complete</h2>
                 <p class="mb-0 opacity-75">Tracker tables successfully optimized!</p>
             </div>
         </div>
         <div class="card-body">
-            <div class="alert alert-success" role="alert">
-                <strong>Success!</strong> Optimization finished in '.$execution_time.' seconds.
+            <div class="alert alert-success">
+                <strong>Success!</strong> Optimization finished in ' . $execution_time . ' seconds.
             </div>
             <p><strong>Actions Performed:</strong></p>
-            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #28a745; padding: 10px;">
-                <ul>';
-foreach ($log as $log_entry) {
-    echo '<li>'.$log_entry.'</li>';
-}
-echo '
-                </ul>
+            <div style="max-height:300px;overflow-y:auto;border:1px solid #28a745;padding:10px">
+                <ul>' . $log_items . '</ul>
             </div>
-            <p><strong>Next Steps:</strong> Please run a full database optimization through your database management tool.</p>
+            <p class="mt-3"><strong>Next Steps:</strong> Run a full database optimization through your database management tool.</p>
         </div>
     </div>
 </div>';
-
 stdfoot();
-exit;
-
-
-
-
-
-
-
-
-
-
-
-?>

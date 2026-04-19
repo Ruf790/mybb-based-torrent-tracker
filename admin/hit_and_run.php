@@ -322,7 +322,7 @@ ORDER BY u.timeswarned DESC, s.uploaded/s.downloaded ASC
 $query = $db->sql_query($main_query);
 
 if ($db->num_rows($query) > 0) {
-    include_once INC_PATH . '/readconfig_cleanup.php';
+   
     $criticallimit = ($ban_user_limit ?? 7) - 1;
     
     stdhead('TS Hit & Run Detection Tool');

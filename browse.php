@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'browse.php');
 define('B_VERSION', '6.6.3');
 define("SCRIPTNAME", "browse.php");
@@ -11,6 +12,8 @@ $templatelist = "browses,browse_table,browse_edit,browse_categories,browse_categ
 require './global.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_bookmark.php';
+
+maxsysop();
 
 
 
@@ -151,19 +154,23 @@ $searcincategories = [];
 
 if (count($_categoriesS) > 0) {
     foreach ($_categoriesS as $sc) {
+
         $sc['name'] = htmlspecialchars_uni($sc['name']);
         $searcincategories[] = $sc['id'];
-        $scdesc = htmlspecialchars_uni($sc['cat_desc']);
+
         $SEOLinkC = ts_seo($sc['id'], $sc['name'], 'c');
+
         $subcategories[$sc['pid']][] = '
         <span id="category' . $sc['id'] . '"' . (
-            (isset($category) && $category === $sc['id']) || 
-            (!$category && str_contains(($CURUSER['notifs'] ?? ''), '[cat' . $sc['id'] . ']') && $usergroups['canemailnotify'] === 'yes') ? 
-            ' class="highlight"' : ''
+            (isset($category) && $category === $sc['id']) ||
+            (!$category && str_contains(($CURUSER['notifs'] ?? ''), '[cat' . $sc['id'] . ']'))
+            ? ' class="highlight"'
+            : ''
         ) . '>
-            <a href="' . $SEOLinkC . '" title="' . $scdesc . '">' . $sc['name'] . '</a>
+            <a href="' . $SEOLinkC . '" title="' . $sc['name'] . '">' . $sc['name'] . '</a>
         </span>';
     }
+
     unset($_categoriesS);
 }
 
@@ -183,37 +190,42 @@ if (($rows = count($_categoriesC)) > 0) {
 
         $tracker_cats_width = '';
         $cname = htmlspecialchars_uni($c['name']);
-        $cdesc = htmlspecialchars_uni($c['cat_desc']);
         $SEOLinkC = ts_seo($c['id'], $cname, 'c');
 
-        $categories .= '
-        <td class="p-2">
-            <div class="d-flex border rounded p-2 category-container" data-category-id="' . $c['id'] . '">
-                <div class="text-center">
-                    <a href="' . $SEOLinkC . '" class="d-block">
-                        <i class="' . $c['icon'] . ' fa-2x category-icon" title="' . $cname . '"></i>
-                    </a>
-                </div>
-                <div class="ms-2" style="width: ' . $tracker_cats_width . 'px;">
-                    <span id="category' . $c['id'] . '"' . (
-                        (isset($category) && $category === $c['id']) || 
-                        (
-                            !$category && 
-                            str_contains(($CURUSER['notifs'] ?? ''), '[cat' . $c['id'] . ']') && 
-                            $usergroups['canemailnotify'] === 'yes'
-                        ) ? 
-                        ' class="fw-bold text-primary"' : ''
-                    ) . '>
-                        <a href="' . $SEOLinkC . '" title="' . $cdesc . '" class="text-decoration-none category-link" data-cat-id="' . $c['id'] . '">
-                             <h6 class="mb-1">' . $cname . '</h6>
-                        </a>
-                    </span>
-                    <div class="small text-muted">
-                        ' . (isset($subcategories[$c['id']]) ? implode(', ', $subcategories[$c['id']]) : $c['cat_desc']) . '
-                    </div>
-                </div>
+$categories .= '
+<td class="p-2">
+    <div class="d-flex border rounded p-2 category-container" data-category-id="' . $c['id'] . '">
+        <div class="text-center">
+            <a href="' . $SEOLinkC . '" class="d-block">
+                <i class="' . $c['icon'] . ' fa-2x category-icon" title="' . $cname . '"></i>
+            </a>
+        </div>
+
+        <div class="ms-2" style="width: ' . $tracker_cats_width . 'px;">
+
+            <span id="category' . $c['id'] . '"' . (
+                (isset($category) && $category === $c['id']) ||
+                (
+                    !$category &&
+                    str_contains(($CURUSER['notifs'] ?? ''), '[cat' . $c['id'] . ']')
+                )
+                ? ' class="fw-bold text-primary"'
+                : ''
+            ) . '>
+
+                <a href="' . $SEOLinkC . '" title="' . $cname . '" class="text-decoration-none category-link" data-cat-id="' . $c['id'] . '">
+                    <h6 class="mb-1">' . $cname . '</h6>
+                </a>
+
+            </span>
+
+            <div class="small text-muted">
+                ' . (isset($subcategories[$c['id']]) ? implode(', ', $subcategories[$c['id']]) : '') . '
             </div>
-        </td>';
+
+        </div>
+    </div>
+</td>';
 
         $count++;
     }
@@ -898,305 +910,6 @@ $ListTorrentsss = '
     data-seeders="' . $s . '" 
     data-leechers="' . $l . '"
     data-external="' . ($Torrent['ts_external'] === 'yes' ? 'yes' : 'no') . '">	
-	
-	
-	
-	
-	
-
-
-
-
-
-<style>
-/* ===== MODERN TORRENT TABLE ===== */
-/* Enhanced typography and spacing */
-
-
-.table td, .table th {
-    font-size: 1rem;
-}
-thead th {
-    font-weight: 600;
-    white-space: nowrap;
-    vertical-align: middle;
-}
-thead th i { opacity: 0.75; }
-
-
-
-/* ===== POSTER STYLES ===== */
-.torrent-poster-cell {
-    width: 85px;
-    padding: 8px 6px !important;
-    text-align: center;
-    vertical-align: middle;
-}
-
-.torrent-poster {
-    width: 60px;
-    height: 85px;
-    object-fit: cover;
-    border-radius: 8px;
-    display: block;
-    margin: 6px auto 0;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    cursor: pointer;
-}
-
-.torrent-poster:hover {
-    transform: scale(1.08) translateY(-3px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
-}
-
-.torrent-poster-placeholder {
-    width: 60px;
-    height: 85px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, var(--bs-secondary-bg), var(--bs-dark-bg));
-    border-radius: 8px;
-    margin: 6px auto 0;
-    border: 1px solid rgba(var(--bs-primary-rgb), 0.2);
-}
-
-/* ===== POSTER ZOOM ENHANCED ===== */
-.poster-zoom-overlay {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: 9999;
-    pointer-events: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.poster-zoom-img {
-    max-width: 280px;
-    max-height: 400px;
-    object-fit: cover;
-    border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0,0,0,.5);
-    opacity: 0;
-    transform: scale(0.85);
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    pointer-events: none;
-}
-.poster-zoom-img.visible {
-    opacity: 1;
-    transform: scale(1);
-}
-
-/* ===== CATEGORY ICON ===== */
-.category-icon-link {
-    display: block;
-    text-align: center;
-    text-decoration: none;
-    line-height: 1;
-    margin-bottom: 6px;
-}
-
-.category-icon-small {
-    font-size: 20px;
-    transition: all 0.2s ease;
-    display: inline-block;
-}
-
-.category-icon-small:hover {
-    transform: scale(1.2);
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-}
-
-
-.category-card:hover {
-    border-color: #3b82f6 !important;
-    background: rgba(59,130,246,0.05);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59,130,246,0.12);
-}
-
-/* ===== TORRENT INFO ===== */
-.torrent-info-cell {
-    vertical-align: middle !important;
-    padding: 10px 12px !important;
-}
-
-.torrent-title {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 6px;
-}
-
-.torrent-name-link {
-    font-weight: 700;
-    font-size: 1rem;
-    color: var(--bs-body-color);
-    text-decoration: none;
-    flex: 1;
-    line-height: 1.4;
-    transition: all 0.2s ease;
-    display: inline-block;
-}
-
-.torrent-name-link:hover { 
-    color: var(--bs-primary);
-    transform: translateX(2px);
-}
-
-.torrent-actions-inline {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-
-.torrent-actions-inline a {
-    opacity: 0.7;
-    transition: all 0.2s ease;
-}
-
-.torrent-actions-inline a:hover {
-    opacity: 1;
-    transform: scale(1.1);
-}
-
-.torrent-meta {
-    margin-top: 6px;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    font-size: 0.8rem;
-    color: var(--bs-secondary-color);
-}
-
-.torrent-date {
-    display: inline-flex;
-    align-items: center;
-    background: rgba(var(--bs-primary-rgb), 0.08);
-    padding: 2px 8px;
-    border-radius: 12px;
-}
-
-.torrent-flags {
-    display: inline-flex;
-    gap: 4px;
-}
-
-/* ===== TAGS ENHANCED ===== */
-.torrent-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 6px;
-}
-
-.torrent-tags .badge {
-    font-size: 0.7rem;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-weight: 600;
-    background: linear-gradient(135deg, var(--bs-primary), var(--bs-info));
-    color: white;
-    transition: all 0.2s ease;
-}
-
-.torrent-tags .badge:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-}
-
-/* ===== STAT CELLS ===== */
-.torrent-stat-cell {
-    vertical-align: middle !important;
-    white-space: nowrap;
-    font-size: 0.9rem;
-    padding: 8px 6px !important;
-    text-align: center;
-    font-weight: 600;
-}
-
-.torrent-stat-cell a {
-    text-decoration: none;
-    font-weight: 600;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.torrent-stat-cell a:hover {
-    transform: translateY(-1px);
-}
-
-/* Seeders specific */
-.torrent-stat-cell a.text-success:hover {
-    text-shadow: 0 0 8px rgba(40,167,69,0.3);
-}
-
-/* Leechers specific */
-.torrent-stat-cell a.text-danger:hover {
-    text-shadow: 0 0 8px rgba(220,53,69,0.3);
-}
-
-/* ===== UPLOADER ===== */
-.torrent-uploader-cell {
-    vertical-align: middle !important;
-    font-size: 0.85rem;
-    padding: 8px 8px !important;
-    max-width: 130px;
-    font-weight: 500;
-}
-
-.torrent-uploader-cell a {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    transition: all 0.2s ease;
-}
-
-.torrent-uploader-cell a:hover {
-    color: var(--bs-primary) !important;
-    transform: translateX(2px);
-}
-
-/* ===== ROW ANIMATIONS ===== */
-.torrent-row {
-    transition: all 0.2s ease;
-    border-left: 3px solid transparent;
-}
-
-.torrent-row:hover {
-    background: rgba(var(--bs-primary-rgb), 0.05) !important;
-    border-left-color: var(--bs-primary);
-    transform: translateX(2px);
-}
-
-
-/* Dead torrent */
-.torrent-row.is-dead { opacity: 0.55; filter: grayscale(0.3); }
-.torrent-row.is-dead:hover { opacity: 0.8; filter: none; }
-
-
-
-
-
-
-/* ===== RESPONSIVE DESIGN ===== */
-/* Mobile */
-@media (max-width: 768px) {
-    .torrent-poster { width: 40px; height: 55px; }
-    .torrent-poster-placeholder { width: 40px; height: 55px; }
-    .torrent-name-link { font-size: 0.9rem !important; }
-    .torrent-stat-cell { font-size: 0.85rem !important; }
-    thead th i { font-size: 1rem; }
-}
-</style>
-
 
 
 <!-- Enhanced Poster Zoom Overlay -->
@@ -1415,6 +1128,8 @@ stdhead($lang->browse['btitle']);
 
 
 
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse.css">';
+
 
 $showimages = 'yes';
 $i_torrent_limit = '15';
@@ -1514,67 +1229,9 @@ echo '
 
 
 ?>
-<script>
-(function() {
-    const overlay = document.getElementById('posterZoomOverlay');
-    const img     = document.getElementById('posterZoomImg');
-    let timer     = null;
-
-    document.addEventListener('mouseenter', function(e) {
-        if (!e.target || !e.target.closest) return;
-        const link = e.target.closest('.poster-link[data-zoom]');
-        if (!link) return;
-
-        const src = link.dataset.zoom;
-        if (!src) return;
-
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-            img.src = src;
-            img.classList.add('visible');
-        }, 150);
-    }, true);
-
-    document.addEventListener('mouseleave', function(e) {
-        if (!e.target || !e.target.closest) return;
-        const link = e.target.closest('.poster-link[data-zoom]');
-        if (!link) return;
-
-        clearTimeout(timer);
-        img.classList.remove('visible');
-        setTimeout(() => { img.src = ''; }, 200);
-    }, true);
-
-    document.addEventListener('mousemove', function(e) {
-        if (!img.classList.contains('visible')) return;
-
-        const x = e.clientX;
-        const y = e.clientY;
-        const W = window.innerWidth;
-        const H = window.innerHeight;
-
-        const offsetX = x > W / 2 ? -300 : 20;
-        const offsetY = y > H / 2 ? -420 : 20;
-
-        img.style.position  = 'fixed';
-        img.style.left      = (x + offsetX) + 'px';
-        img.style.top       = (y + offsetY) + 'px';
-        img.style.transform = 'none';
-    });
-})();
 
 
-document.querySelectorAll('.torrent-row').forEach(row => {
-    const seeders  = parseInt(row.dataset.seeders  || 0);
-    const leechers = parseInt(row.dataset.leechers || 0);
-    const external = row.dataset.external === 'yes';
-    
-    if (seeders === 0 && leechers === 0 && !external) {
-        row.classList.add('is-dead');
-    }
-});
-
-</script>
+<script src="<?= $BASEURL ?>/scripts/browse.js"></script>
 
 
 <?

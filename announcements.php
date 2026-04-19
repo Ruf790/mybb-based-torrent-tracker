@@ -82,10 +82,9 @@ if($fid > 0)
 // Get announcement info
 $time = TIMENOW;
 
-$query = $db->sql_query("SELECT u.*, u.username AS userusername, a.*, f.*
+$query = $db->sql_query("SELECT u.*, u.username AS userusername, a.*
 FROM tsf_announcements a
 LEFT JOIN users u ON (u.id=a.uid)
-LEFT JOIN userfields f ON (f.ufid=u.id)
 WHERE a.startdate<='$time' AND (a.enddate>='$time' OR a.enddate='0') AND a.aid='$aid'");
 
 $announcementarray = $db->fetch_array($query);

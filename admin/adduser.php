@@ -387,23 +387,9 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
 }
 
 
-        // User fields
-        $pfcache = $cache->read('profilefields');
-        $user_fields = ['ufid' => $user_id];
-
-        if (is_array($pfcache)) {
-            foreach ($pfcache as $profile_field) {
-                $user_fields["fid{$profile_field['fid']}"] = '';
-            }
-        }
-
-        $field_placeholders = '?' . str_repeat(',?', count($user_fields) - 1);
-        $field_values = array_values($user_fields);
+      
         
-        $db->sql_query_prepared(
-            "INSERT INTO userfields VALUES ({$field_placeholders})",
-            $field_values
-        );
+   
 
         // Обновление статистики
         update_stats(['numusers' => '+1']);

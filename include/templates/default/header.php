@@ -623,9 +623,9 @@ if (is_array($usergroups) &&
         <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
         <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/errorss.css" rel="stylesheet">
         <div class="container mt-3">
-            <div class="card error-card">
+            <div class="card error-card222">
                 <div class="card-header22">
-                    <i class="bi bi-exclamation-triangle-fill error-icon"></i>
+                    <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
                     <div>
                         <h2 class="mb-0">Attention</h2>
                         <p class="mb-0 opacity-75">Awaiting Activation</p>
@@ -712,7 +712,7 @@ if ($offlinemsg ?? false) {
     <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/errorss.css" rel="stylesheet">
     <div class="card error-card">
         <div class="card-header22">
-            <i class="bi bi-exclamation-triangle-fill error-icon"></i>
+            <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
             <div>
                 <h2 class="mb-0">The tracker is currently offline!</h2>
                 <p class="mb-0 opacity-75"></p>
@@ -734,9 +734,9 @@ if ((isset($CURUSER) && ($CURUSER['id'] ?? 0) > 0 && ($CURUSER['downloaded'] ?? 
     $warnmessages[] = '
     <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
     <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/errorss.css" rel="stylesheet">
-    <div class="card error-card">
+    <div class="card error-card222">
         <div class="card-header22">
-            <i class="bi bi-exclamation-triangle-fill error-icon"></i>
+            <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
             <div>
                 <h2 class="mb-0">You are now warned for having a low ratio!</h2>
                 <p class="mb-0 opacity-75"></p>
@@ -751,10 +751,13 @@ if ((isset($CURUSER) && ($CURUSER['id'] ?? 0) > 0 && ($CURUSER['downloaded'] ?? 
 }
 
 // Announcements
-if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no') {
-    $res = $db->sql_query('SELECT subject, message, added, `by` FROM announcements WHERE minclassread IN (0,' . (int)($CURUSER['usergroup'] ?? 0) . ') ORDER by added DESC LIMIT 1');
-    if ($db->num_rows($res) > 0) {
+if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no') 
+{
+    $res = $db->sql_query('SELECT id, subject, message, added, `by` FROM announcements WHERE minclassread IN (0,' . (int)($CURUSER['usergroup'] ?? 0) . ') ORDER by added DESC LIMIT 1');
+    if ($db->num_rows($res) > 0) 
+	{
         $arr = $db->fetch_array($res);
+		$announcement_id = (int)$arr['id']; // Вот здесь получаем ID
         
         require_once INC_PATH . '/class_parser.php';
         $parser = new postParser;
@@ -826,9 +829,9 @@ if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no') {
                                 This announcement will be marked as read
                             </div>
                             <div class="btn-group">
-                                <a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/clear_ann.php" class="btn btn-success px-4">
-                                    <i class="fas fa-check me-2"></i>
-                                    Mark as Read
+                                <a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/clear_ann.php?id=' . $announcement_id . '" class="btn btn-success px-4">
+                                   <i class="fas fa-check me-2"></i>
+                                   Mark as Read
                                 </a>
                                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
                                     <i class="fas fa-times me-2"></i>
@@ -840,6 +843,9 @@ if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no') {
                 </div>
             </div>
         </div>
+		
+
+		
 
         <style>
         .announcement-floating {

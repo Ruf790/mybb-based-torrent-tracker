@@ -12,11 +12,11 @@ $templatelist .= ',usercp_usergroups_memberof_usergroup,usercp_usergroups_member
 $templatelist .= ',usercp_nav_messenger,usercp_nav_changename,usercp_nav_profile,usercp_nav_misc,usercp_usergroups_leader_usergroup,usercp_usergroups_leader,usercp_currentavatar,usercp_reputation,usercp_avatar_remove,usercp_resendactivation';
 $templatelist .= ',usercp_attachments_attachment,usercp_attachments,usercp_profile_away,usercp_profile_customfield,usercp_profile_profilefields,usercp_profile_customtitle,usercp_forumsubscriptions_none,usercp_profile_customtitle_currentcustom';
 $templatelist .= ',usercp_forumsubscriptions,usercp_subscriptions_none,usercp_subscriptions,usercp_options_pms_from_buddys,usercp_options_tppselect,usercp_options_pppselect,usercp_themeselector,usercp_profile_customtitle_reverttitle';
-$templatelist .= ',usercp_nav_editsignature,usercp_referrals,usercp_notepad,usercp_latest_threads_threads,forumdisplay_thread_gotounread,usercp_latest_threads,usercp_subscriptions_remove,usercp_nav_messenger_folder,usercp_profile_profilefields_text';
-$templatelist .= ',usercp_editsig_suspended,usercp_editsig,usercp_avatar_current,usercp_options_timezone_option,usercp_drafts,usercp_options_language,usercp_options_date_format,usercp_profile_website,usercp_latest_subscribed,usercp_warnings';
+$templatelist .= ',usercp_nav_editsignature,usercp_latest_threads_threads,forumdisplay_thread_gotounread,usercp_latest_threads,usercp_subscriptions_remove,usercp_nav_messenger_folder,usercp_profile_profilefields_text';
+$templatelist .= ',usercp_editsig_suspended,usercp_editsig,usercp_avatar_current,usercp_options_timezone_option,usercp_drafts,usercp_options_date_format,usercp_latest_subscribed,usercp_warnings';
 $templatelist .= ',usercp_avatar,usercp_editlists_userusercp_editlists,usercp_drafts_draft,usercp_usergroups_joingroup,usercp_attachments_none,usercp_avatar_upload,usercp_options_timezone,usercp_usergroups_joinable_usergroup_join';
 $templatelist .= ',usercp_warnings_warning,usercp_nav_messenger_tracking,multipage,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start';
-$templatelist .= ',codebuttons,usercp_nav_messenger_compose,usercp_options_language_option,usercp_editlists,usercp_profile_contact_fields_field,usercp_latest_subscribed_threads,usercp_profile_contact_fields,usercp_profile_day,usercp_nav_home';
+$templatelist .= ',codebuttons,usercp_nav_messenger_compose,usercp_editlists,usercp_profile_contact_fields_field,usercp_latest_subscribed_threads,usercp_profile_contact_fields,usercp_profile_day,usercp_nav_home';
 $templatelist .= ',usercp_profile_profilefields_select_option,usercp_profile_profilefields_multiselect,usercp_profile_profilefields_select,usercp_profile_profilefields_textarea,usercp_profile_profilefields_radio,usercp_profile_profilefields_checkbox';
 $templatelist .= ',usercp_options_tppselect_option,usercp_options_pppselect_option,forumbit_depth2_forum_lastpost_never,forumbit_depth2_forum_lastpost_hidden,usercp_avatar_auto_resize_auto,usercp_avatar_auto_resize_user,usercp_options';
 $templatelist .= ',usercp_editlists_no_buddies,usercp_editlists_no_ignored,usercp_editlists_no_requests,usercp_editlists_received_requests,usercp_editlists_sent_requests,usercp_drafts_draft_thread,usercp_drafts_draft_forum,usercp_editlists_user';
@@ -1602,7 +1602,7 @@ if ($mybb->input['action'] === 'manage_files') {
         while ($file = $db->fetch_array($query)) {
             $file_size      = mksize($file['file_size']);
             $file_type_icon = get_file_type_icon($file['file_type']);
-            $postlink       = get_post_link($file['postid'], $file['thread_id']);
+            $postlink       = get_post_link((int)$file['postid'], (int)$file['thread_id']);
 
             // Build badge links inline
             $badge_comment = $file['comment_id']
@@ -2398,10 +2398,11 @@ if ($mybb->input['action'] === 'attachments') {
     $start   = ($page - 1) * $perpage;
 
     $query = $db->sql_query_prepared("
-        SELECT a.*, p.subject, p.dateline, t.tid, t.subject AS threadsubject
+        SELECT a.*, p.subject, p.dateline, t.tid, t.subject AS threadsubject, u.username AS username
         FROM attachments a
         LEFT JOIN tsf_posts p ON (a.pid=p.pid)
         LEFT JOIN tsf_threads t ON (t.tid=p.tid)
+		LEFT JOIN users u ON (u.id=p.uid)
         WHERE a.uid=? {$f_perm_sql}
         ORDER BY p.dateline DESC, p.pid DESC LIMIT ?,?", [(int) $CURUSER['id'], $start, $perpage]);
 
@@ -2479,8 +2480,8 @@ if (!$mybb->input['action']) {
     $daysreg = max(1, (TIMENOW - $CURUSER['added']) / 86400);
     $perday  = round(min($CURUSER['postnum'], $CURUSER['postnum'] / $daysreg), 2);
 
-    $stats   = $cache->read('indexstats');
-    $posts   = $stats['totalposts'];
+    $stats = $cache->read("stats");
+	$posts = $stats['numposts'];
     $percent = ($posts > 0) ? round($CURUSER['postnum'] * 100 / $posts, 2) : 0;
 
     $colspan = 2;

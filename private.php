@@ -53,10 +53,10 @@ require_once INC_PATH . '/datahandler.php';
 // Load global language phrases
 $lang->load("private");
 
-//if($mybb->settings['enablepms'] == 0)
-//{
-	//error($lang->pms_disabled);
-//}
+if($enablepms == 0)
+{
+	error($lang->pms_disabled);
+}
 
 
 
@@ -803,9 +803,8 @@ $codebuttons ='
 		$options = $mybb->get_input('options', MyBB::INPUT_ARRAY);
 		
 		$query = $db->sql_query_prepared("
-          SELECT u.username AS userusername, u.*, f.*
+          SELECT u.username AS userusername, u.*
           FROM users u
-          LEFT JOIN userfields f ON f.ufid = u.id
           WHERE u.id = ?", [(int)$CURUSER['id']]);
 
 
@@ -1052,10 +1051,9 @@ if($mybb->input['action'] == "read")
 	$pmid = $mybb->get_input('pmid', MyBB::INPUT_INT);
 
 	$query = $db->sql_query("
-		SELECT pm.*, u.*, f.*
+		SELECT pm.*, u.*
 		FROM privatemessages pm
 		LEFT JOIN users u ON (u.id=pm.fromid)
-		LEFT JOIN userfields f ON (f.ufid=u.id)
 		WHERE pm.pmid='{$pmid}' AND pm.uid='".$CURUSER['id']."'
 	");
 	$pm = $db->fetch_array($query);
@@ -1075,8 +1073,6 @@ if($mybb->input['action'] == "read")
 	$data_key = array(
 		'title' => 'grouptitle',
 		'usertitle' => 'groupusertitle',
-		'stars' => 'groupstars',
-		'starimage' => 'groupstarimage',
 		'image' => 'groupimage',
 		'namestyle' => 'namestyle'
 	);

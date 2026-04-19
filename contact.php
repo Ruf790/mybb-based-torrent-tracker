@@ -20,57 +20,6 @@ require_once('global.php');
 $lang->load("contact");
 
 
-
-
-function inline_error($errors, $title="", $json_data=array())
-{
-	global $theme, $mybb, $db, $lang, $templates, $charset;
-
-	if(!$title)
-	{
-		$title = $lang->please_correct_errors;
-	}
-
-	if(!is_array($errors))
-	{
-		$errors = array($errors);
-	}
-
-	// AJAX error message?
-	if($mybb->input['ajax'])
-	{
-		// Send our headers.
-		@header("Content-type: application/json; charset={$charset}");
-
-		if(empty($json_data))
-		{
-			echo json_encode(array("errors" => $errors));
-		}
-		else
-		{
-			echo json_encode(array_merge(array("errors" => $errors), $json_data));
-		}
-		exit;
-	}
-
-	$errorlist = '';
-
-	foreach($errors as $error)
-	{
-		$errorlist .= $error;
-	}
-
-	$errors = '<div class="red_alert">
-           <i class="fa-solid fa-circle-exclamation"></i> &nbsp;'.$errorlist.'
-            </div>';
-
-	return $errors;
-}
-
-
-
-
-
 $plugins->run_hooks('contact_start');
 
 // Make navigation

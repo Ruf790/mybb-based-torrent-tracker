@@ -12,7 +12,7 @@ define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'memberlist.php');
 define("SCRIPTNAME", "memberlist.php");
 
-$templatelist = "memberlist,memberlist_search,memberlist_user,memberlist_user_groupimage,memberlist_user_avatar,memberlist_user_userstar,memberlist_search_contact_field,memberlist_referrals,memberlist_referrals_bit";
+$templatelist = "memberlist,memberlist_search,memberlist_user,memberlist_user_groupimage,memberlist_user_avatar,memberlist_user_userstar,memberlist_search_contact_field,memberlist_referrals_bit";
 $templatelist .= ",multipage,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start,memberlist_error,memberlist_orderarrow";
 
 
@@ -93,12 +93,7 @@ if($mybb->get_input('action') == "search")
 
 	$referrals_option = '';
 	
-	$usereferrals = "0";
 	
-	if($usereferrals == 1)
-	{
-		eval("\$referrals_option = \"".$templates->get("memberlist_referrals_option")."\";");
-	}
 
 	stdhead('title');
 	
@@ -380,14 +375,9 @@ else
 	$referral_header = '';
 
 	
-	$usereferrals = "0";
 	
-	// Referral?
-	if($usereferrals == 1)
-	{
-		$colspan = 7;
-		eval("\$referral_header = \"".$templates->get("memberlist_referrals")."\";");
-	}
+	
+	
 
 	$multipage = multipage($num_users, $per_page, $page, $search_url);
 
@@ -400,9 +390,8 @@ else
 	}
 	$users = '';
 	$query = $db->sql_query("
-		SELECT u.*, f.*
+		SELECT u.*
 		FROM users u
-		LEFT JOIN userfields f ON (f.ufid=u.id)
 		WHERE {$search_query}
 		ORDER BY {$sort_field} {$sort_order}
 		LIMIT {$start}, {$per_page}
@@ -443,20 +432,7 @@ else
 
 		$referral_bit = '';
 
-		// Build referral?
-		$usereferrals = "0";
 		
-		if($usereferrals == 1)
-		{
-			$referral_count = (int) $user['referrals'];
-			if($referral_count > 0)
-			{
-				$uid = (int) $user['uid'];
-				eval("\$user['referrals'] = \"".$templates->get('member_referrals_link')."\";");
-			}
-
-			eval("\$referral_bit = \"".$templates->get("memberlist_referrals_bit")."\";");
-		}
 
 
 		
@@ -522,10 +498,7 @@ else
 	}
 
 	$referrals_option = '';
-	if($usereferrals == 1)
-	{
-		eval("\$referrals_option = \"".$templates->get("memberlist_referrals_option")."\";");
-	}
+	
 
 	$plugins->run_hooks("memberlist_end");
 

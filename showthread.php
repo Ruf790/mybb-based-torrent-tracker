@@ -140,7 +140,8 @@ if (!$ismod) {
 // ---------------------------------------------------------------------------
 
 if ($forumpermissions['canview'] != 1 || $forumpermissions['canviewthreads'] != 1) {
-    print_no_permission();
+
+	print_no_permission();
 }
 
 if (
@@ -148,7 +149,7 @@ if (
     $forumpermissions['canonlyviewownthreads'] == 1 &&
     $thread['uid'] !== $CURUSER['id']
 ) {
-    print_no_permission();
+	print_no_permission();
 }
 
 $forum = get_forum($fid);
@@ -783,10 +784,9 @@ if ($mybb->input['action'] === "thread") {
 
     $posts = '';
     $query = $db->sql_query("
-        SELECT u.*, u.username AS userusername, p.*, f.*, eu.username AS editusername
+        SELECT u.*, u.username AS userusername, p.*, eu.username AS editusername
         FROM tsf_posts p
         LEFT JOIN users u ON (u.id=p.uid)
-        LEFT JOIN userfields f ON (f.ufid=u.id)
         LEFT JOIN users eu ON (eu.id=p.edituid)
         WHERE $pids
         ORDER BY p.dateline, p.pid

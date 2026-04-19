@@ -724,7 +724,7 @@ function _torrenttable($res, $frame_caption) {
                     </a>
                 </td>
                 <td class='text-end fw-bold'>" . number_format($a["times_completed"]) . "</td>
-                <td class='text-end text-info fw-bold'>" . mksize($a["data"]) . "</td>
+                <td class='text-end text-info fw-bold'>" . mksize((int)$a["data"]) . "</td>
                 <td class='text-end text-success'>" . number_format($a["seeders"]) . "</td>
                 <td class='text-end text-warning'>" . number_format($a["leechers"]) . "</td>
                 <td class='text-end fw-bold'>" . ($a["leechers"] + $a["seeders"]) . "</td>

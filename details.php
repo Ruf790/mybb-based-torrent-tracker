@@ -1698,10 +1698,13 @@ $details = '
                         <h6 class="fw-semibold"><i class="bi bi-tags me-2"></i>Tags</h6>
                         <div class="d-flex flex-wrap gap-2">'.$keywords.'</div>
                     </div>' : '').'
+					
+					'.$rating_html.'
+					
                 </div>
 				
 				
-				'.$rating_html.'
+				
 				
 				
 				

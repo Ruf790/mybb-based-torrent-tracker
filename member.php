@@ -13,7 +13,7 @@ define('ALLOWABLE_PAGE', 'register,do_register,login,do_login,logout,lostpw,do_l
 
 $nosession['avatar'] = 1;
 
-$templatelist  = 'maketable_torrents,torrents_completed,user_profile,torrent_stats,member_register,member_register_hiddencaptcha,member_register_agreement,member_register_customfield,member_register_requiredfields,member_profile_findthreads';
+$templatelist  = 'user_profile,torrent_stats,member_register,member_register_hiddencaptcha,member_register_agreement,member_register_customfield,member_register_requiredfields,member_profile_findthreads';
 $templatelist .= ',member_loggedin_notice,member_profile_away,member_register_regimage,member_register_regimage_recaptcha_invisible,member_register_regimage_nocaptcha,post_captcha_hcaptcha_invisible';
 $templatelist .= ',member_profile_email,member_profile_offline,member_profile_customfields_field,member_profile_customfields,member_profile_adminoptions_manageban,member_profile_adminoptions,member_profile';
 $templatelist .= ',member_profile_signature,member_profile_avatar,member_profile_groupimage,member_referrals_link,member_profile_referrals,member_activate,member_lostpw,member_register_additionalfields';
@@ -592,7 +592,7 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
     $password_length = (int)$minpasswordlength;
     if ($regtype === 'randompass') {
         if ($password_length < 8) { $password_length = min(8, (int)$maxpasswordlength); }
-        $mybb->input['password']  = random_str($password_length, $requirecomplexpasswords);
+        $mybb->input['password']  = random_str($password_length, (bool)$requirecomplexpasswords);
         $mybb->input['password2'] = $mybb->input['password'];
     }
 
@@ -614,7 +614,6 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
         'referrer'       => $mybb->get_input('referrername'),
         'timezone'       => $mybb->get_input('timezoneoffset'),
         'language'       => $mybb->get_input('language'),
-        'profile_fields' => $mybb->get_input('profile_fields', MyBB::INPUT_ARRAY),
         'regip'          => $session->packedip,
         'regcheck1'      => $mybb->get_input('regcheck1'),
         'regcheck2'      => $mybb->get_input('regcheck2'),
@@ -734,8 +733,27 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
         } elseif ($regtype === 'both') {
             $activationcode = random_str();
             $db->insert_query('awaitingactivation', ['uid' => $user_info['uid'], 'dateline' => TIMENOW, 'code' => $activationcode, 'type' => 'b']);
-            $emailmessage = sprintf($lang->email_activateaccount . ($username_method ?: ''), $user_info['username'], $SITENAME, $BASEURL, $user_info['uid'], $activationcode);
-            my_mail($user_info['email'], sprintf($lang->emailsubject_activateaccount, $SITENAME), $emailmessage);
+           	
+			
+			
+			$emailsubject = sprintf($lang->member['emailsubject_activateaccount'], $SITENAME);
+
+$template = match((int)($username_method ?? 0)) {
+    1 => $lang->member['email_activateaccount1'],
+    2 => $lang->member['email_activateaccount2'],
+    default => $lang->member['email_activateaccount'],
+};
+
+$emailmessage = sprintf($template, $user_info['username'], $SITENAME, $BASEURL, $user_info['uid'], $activationcode);
+
+my_mail($user_info['email'], $emailsubject, $emailmessage);
+			
+			
+			
+			
+			
+			
+            
             $plugins->run_hooks('member_do_register_end');
            
 			stdok(
@@ -800,91 +818,12 @@ if ($mybb->input['action'] === 'register') {
             eval("\$pppselect = \"".$templates->get('usercp_options_pppselect')."\";");
         }
 
-        $mybb->input['profile_fields'] = $mybb->get_input('profile_fields', MyBB::INPUT_ARRAY);
+       
         $altbg          = 'trow1';
-        $requiredfields = $customfields = '';
         $usergroup = in_array($regtype, ['verify', 'admin', 'both'], true) ? 5 : 2;
-        $pfcache        = $cache->read('profilefields');
+       
         $jsvar_reqfields = [];
 
-        if (is_array($pfcache)) {
-            foreach ($pfcache as $profilefield) {
-                if ($profilefield['required'] != 1 && $profilefield['registration'] != 1
-                    || !is_member($profilefield['editableby'], ['usergroup' => $mybb->user['usergroup'], 'additionalgroups' => $usergroup])) {
-                    continue;
-                }
-
-                $code = $select = $val = $options = $expoptions = $useropts = '';
-                $seloptions = [];
-                $profilefield['type']        = htmlspecialchars_uni($profilefield['type']);
-                $profilefield['description'] = htmlspecialchars_uni($profilefield['description']);
-                $profilefield['name']        = htmlspecialchars_uni($profilefield['name']);
-                $thing   = explode("\n", $profilefield['type'], 2);
-                $type    = trim($thing[0]);
-                $options = $thing[1] ?? null;
-                $field   = 'fid' . $profilefield['fid'];
-                $userfield = (!empty($errors) && isset($mybb->input['profile_fields'][$field])) ? $mybb->input['profile_fields'][$field] : '';
-
-                if (in_array($type, ['multiselect', 'checkbox'], true)) {
-                    $useropts = !empty($errors) ? $userfield : explode("\n", $userfield);
-                    if (is_array($useropts)) {
-                        foreach ($useropts as $v) { $seloptions[$v] = $v; }
-                    }
-                }
-
-                switch ($type) {
-                    case 'multiselect':
-                        foreach (explode("\n", (string)$options) as $val) {
-                            $val = str_replace("\n", "\\n", trim($val));
-                            $sel = (isset($seloptions[$val]) && $val == $seloptions[$val]) ? ' selected="selected"' : '';
-                            eval("\$select .= \"".$templates->get('usercp_profile_profilefields_select_option')."\";");
-                        }
-                        if (!$profilefield['length']) { $profilefield['length'] = 3; }
-                        eval("\$code = \"".$templates->get('usercp_profile_profilefields_multiselect')."\";");
-                        break;
-                    case 'select':
-                        foreach (explode("\n", (string)$options) as $val) {
-                            $val = str_replace("\n", "\\n", trim($val));
-                            $sel = $val == $userfield ? ' selected="selected"' : '';
-                            eval("\$select .= \"".$templates->get('usercp_profile_profilefields_select_option')."\";");
-                        }
-                        if (!$profilefield['length']) { $profilefield['length'] = 1; }
-                        eval("\$code = \"".$templates->get('usercp_profile_profilefields_select')."\";");
-                        break;
-                    case 'radio':
-                        foreach (explode("\n", (string)$options) as $val) {
-                            $checked = $val == $userfield ? 'checked="checked"' : '';
-                            eval("\$code .= \"".$templates->get('usercp_profile_profilefields_radio')."\";");
-                        }
-                        break;
-                    case 'checkbox':
-                        foreach (explode("\n", (string)$options) as $val) {
-                            $checked = (isset($seloptions[$val]) && $val == $seloptions[$val]) ? 'checked="checked"' : '';
-                            eval("\$code .= \"".$templates->get('usercp_profile_profilefields_checkbox')."\";");
-                        }
-                        break;
-                    case 'textarea':
-                        $value = htmlspecialchars_uni($userfield);
-                        eval("\$code = \"".$templates->get('usercp_profile_profilefields_textarea')."\";");
-                        break;
-                    default:
-                        $value     = htmlspecialchars_uni($userfield);
-                        $maxlength = $profilefield['maxlength'] > 0 ? ' maxlength="' . $profilefield['maxlength'] . '"' : '';
-                        eval("\$code = \"".$templates->get('usercp_profile_profilefields_text')."\";");
-                        break;
-                }
-
-                if ($profilefield['required'] == 1) {
-                    if ($type !== 'select') { $jsvar_reqfields[] = ['type' => $type, 'fid' => $field]; }
-                    eval("\$requiredfields .= \"".$templates->get('member_register_customfield')."\";");
-                } else {
-                    eval("\$customfields .= \"".$templates->get('member_register_customfield')."\";");
-                }
-            }
-
-            if ($requiredfields) { eval("\$requiredfields = \"".$templates->get('member_register_requiredfields')."\";"); }
-            if ($customfields)   { eval("\$customfields = \"".$templates->get('member_register_additionalfields')."\";"); }
-        }
 
         if (!$fromreg) {
             $allownoticescheck = 'checked="checked"';
@@ -922,15 +861,14 @@ if ($mybb->input['action'] === 'register') {
         }
 
         $time            = TIMENOW;
-        $jsvar_reqfields = json_encode($jsvar_reqfields);
+       
 
         $validator_javascript = '<script type="text/javascript">
             var regsettings = {
-                requiredfields: \'' . $jsvar_reqfields . '\',
                 minnamelength: \'' . $minnamelength . '\',
                 maxnamelength: \'' . $maxnamelength . '\',
                 minpasswordlength: \'' . $minpasswordlength . '\',
-                questionexists: \'' . $question_exists . '\',
+                maxpasswordlength:       \'' . $maxpasswordlength . '\',
                 requirecomplexpasswords: \'' . $requirecomplexpasswords . '\',
                 regtype: \'' . $regtype . '\'
             };
@@ -974,11 +912,11 @@ if ($mybb->input['action'] === 'activate') {
 
         if (!$activation)                                       { stderr('error_alreadyactivated'); }
         if ($activation['code'] !== $mybb->get_input('code'))  { stderr('error_badactivationcode'); }
-        if ($activation['type'] === 'b' && $activation['validated'] == 1) { stderr('error_alreadyvalidated'); }
+        if ($activation['type'] === 'b' && $activation['validated'] == 1) { stderr($lang->member['error_alreadyvalidated']); }
 
         $db->delete_query('awaitingactivation', "uid='{$user['id']}' AND (type='r' OR type='e')");
 
-        if ($user['usergroup'] == 5 && !in_array($activation['type'], ['e', 'b'], true)) {
+        if ($user['usergroup'] == 2 && !in_array($activation['type'], ['e', 'b'], true)) {
             $db->update_query('users', ['usergroup' => 2], "id='{$user['id']}'");
             $cache->update_awaitingactivation();
         }
@@ -989,7 +927,19 @@ if ($mybb->input['action'] === 'activate') {
             redirect('usercp.php', $lang->member['redirect_emailupdated']);
         } elseif ($activation['type'] === 'b') {
             $db->update_query('awaitingactivation', ['validated' => 1], "uid='{$user['id']}' AND type='b'");
-            $plugins->run_hooks('member_activate_emailactivated');
+			$db->update_query('users', ['ustatus' => 'confirmed'], "id='{$user['id']}' AND ustatus='pending' AND enabled='yes'");
+			$cache->update_awaitingactivation();
+            
+			require_once INC_PATH . '/functions_pm.php';
+            $pm = ['subject' => sprintf($lang->member['welcomepmsubject'], $SITENAME), 'message' => sprintf($lang->member['welcomepmbody'], $user['username'], $SITENAME, $BASEURL), 'touid' => $user['id']];
+            $pm['sender']['uid'] = -1;
+            send_pm($pm, -1, true);
+			
+			
+			$plugins->run_hooks('member_activate_emailactivated');
+			
+			
+			
             redirect('index.php', $lang->member['redirect_accountactivated_admin'], '', true);
         } else {
             $plugins->run_hooks('member_activate_accountactivated');
@@ -1542,9 +1492,11 @@ if ($mybb->input['action'] === 'profile') {
     eval("\$ipaddress = \"".$templates->get('member_profile_modoptions_ipaddress')."\";");
 
     // Stats
-    $zaza  = $cache->read('indexstats');
-    $stats = $zaza['totalposts'];
-    $stats22 = $zaza['totalthreads'];
+  
+	$zaza = $cache->read("stats");
+	
+    $stats = $zaza['numposts'];
+    $stats22 = $zaza['numthreads'];
     $daysreg = max(1, (TIMENOW - $memprofile['added']) / 86400);
 
     $ppd = round(min($memprofile['postnum'], $memprofile['postnum'] / $daysreg), 2);

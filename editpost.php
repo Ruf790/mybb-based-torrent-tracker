@@ -660,9 +660,8 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
             $postinfo = $db->fetch_array($query);
         } else {
             $sql = "
-               SELECT u.*, f.*, p.dateline
+               SELECT u.*, p.dateline
                FROM users u
-               LEFT JOIN userfields f ON (f.ufid = u.id)
                LEFT JOIN tsf_posts p ON (p.uid = u.id)
                WHERE u.id = ? AND p.pid = ? LIMIT 1";
 

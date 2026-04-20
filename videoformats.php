@@ -1,13 +1,394 @@
 <?php
 declare(strict_types=1);
 
-
 require_once __DIR__ . '/global.php';
 gzip();
 
-stdhead("Video Formats Guide 2024");
+// ── Данные ────────────────────────────────────────────────
 
+const FORMATS = [
+    'theater' => [
+        [
+            'id' => 'cam', 'title' => 'CAM',
+            'icon' => 'fas fa-video-camera', 'color' => 'danger',
+            'header_bg' => 'bg-danger bg-opacity-10',
+            'badges' => [['Lowest','danger'],['Legacy','dark']],
+            'desc' => 'Theater recording with digital camera. Poor quality.',
+            'specs' => ['Bitrate'=>'500-1000 kbps','Audio'=>'Camera mic','Resolution'=>'480p-720p'],
+            'footer' => 'Avoid unless absolutely necessary',
+        ],
+        [
+            'id' => 'ts', 'title' => 'TELESYNC (TS)',
+            'icon' => 'fas fa-headphones', 'color' => 'warning',
+            'header_bg' => 'bg-warning bg-opacity-10',
+            'badges' => [['Low','warning']],
+            'desc' => 'CAM with external audio source. Quality varies.',
+            'specs' => ['Bitrate'=>'800-1500 kbps','Audio'=>'Theater audio jack','Resolution'=>'576p-720p'],
+        ],
+        [
+            'id' => 'tc', 'title' => 'TELECINE (TC)',
+            'icon' => 'fas fa-film', 'color' => 'info',
+            'header_bg' => 'bg-info bg-opacity-10',
+            'badges' => [['Medium','info']],
+            'desc' => 'Professional film reel transfer. Uncommon but good quality.',
+            'specs' => ['Bitrate'=>'2000-4000 kbps','Audio'=>'Excellent','Resolution'=>'Up to 1080p'],
+        ],
+        [
+            'id' => 'dcp', 'title' => 'DCP Rip',
+            'icon' => 'fas fa-projector', 'color' => 'success',
+            'header_bg' => 'bg-success bg-opacity-10',
+            'badges' => [['High','success'],['New','primary']],
+            'desc' => 'Rip from Digital Cinema Package. Near-perfect theater quality.',
+            'specs' => ['Bitrate'=>'50-250 Mbps','Audio'=>'5.1/7.1 Lossless','Resolution'=>'2K/4K'],
+            'footer' => 'Professional theater source',
+            'footer_icon' => 'fas fa-star',
+            'footer_class' => 'text-success',
+        ],
+    ],
+    'digital' => [
+        [
+            'id' => 'web-dl', 'title' => 'WEB-DL',
+            'icon' => 'fas fa-download', 'color' => 'primary',
+            'header_bg' => 'bg-primary bg-opacity-10',
+            'badges' => [['Excellent','primary'],['Standard','info']],
+            'desc' => 'Downloaded from streaming services (iTunes, Amazon, etc.).',
+            'specs' => ['Sources'=>'iTunes, Amazon, Netflix, Hulu','Quality'=>'Identical to streaming','DRM'=>'Removed'],
+            'variants' => ['WEB-DL 1080p','WEB-DL 2160p','HDR'],
+        ],
+        [
+            'id' => 'webrip', 'title' => 'WEBRip',
+            'icon' => 'fas fa-cloud-download-alt', 'color' => 'secondary',
+            'header_bg' => 'bg-secondary bg-opacity-10',
+            'badges' => [['Good','secondary']],
+            'desc' => 'Captured/re-encoded from streaming. Slightly lower quality.',
+            'specs' => ['Method'=>'Screen capture/re-encode','Quality'=>'Slight loss','Common'=>'Netflix, Disney+, HBO Max'],
+        ],
+        [
+            'id' => 'amzn', 'title' => 'AMZN WEB-DL',
+            'icon' => 'fab fa-amazon', 'color' => 'success',
+            'header_bg' => 'bg-success bg-opacity-10',
+            'badges' => [['Excellent','success'],['New','primary']],
+            'desc' => 'Amazon Prime Video download. Often highest bitrate.',
+            'specs' => ['Bitrate'=>'10-20 Mbps (1080p)','Audio'=>'DD+ 5.1, sometimes Atmos','Features'=>'HDR10, Dolby Vision'],
+        ],
+        [
+            'id' => 'netflix', 'title' => 'NF WEB-DL',
+            'icon' => 'fab fa-netflix', 'color' => 'danger',
+            'header_bg' => 'bg-danger bg-opacity-10',
+            'badges' => [['Excellent','success'],['New','primary']],
+            'desc' => 'Netflix download. Known for excellent encoding.',
+            'specs' => ['Bitrate'=>'8-16 Mbps (1080p)','Codec'=>'x264/x265','Features'=>'4K, HDR, Atmos'],
+        ],
+        [
+            'id' => 'disney', 'title' => 'DSNP WEB-DL',
+            'icon' => 'fab fa-disney', 'color' => 'info',
+            'header_bg' => 'bg-info bg-opacity-10',
+            'badges' => [['Excellent','success'],['New','primary']],
+            'desc' => 'Disney+ download. High quality with IMAX Enhanced.',
+            'specs' => ['Features'=>'IMAX Enhanced ratio','Audio'=>'Atmos common','HDR'=>'HDR10, Dolby Vision'],
+        ],
+        [
+            'id' => 'hbo', 'title' => 'HMAX WEB-DL',
+            'icon' => 'fas fa-crown', 'color' => 'purple',
+            'header_bg' => 'bg-purple bg-opacity-10',
+            'badges' => [['Excellent','success'],['New','primary']],
+            'desc' => 'HBO Max download. High bitrate 4K releases.',
+            'specs' => ['Bitrate'=>'15-25 Mbps (4K)','Quality'=>'Reference grade','Features'=>'4K HDR'],
+        ],
+    ],
+    'disc' => [
+        [
+            'id' => 'dvdrip', 'title' => 'DVDRip',
+            'icon' => 'fas fa-compact-disc', 'color' => 'warning',
+            'header_bg' => 'bg-warning bg-opacity-10',
+            'badges' => [['Standard','warning']],
+            'desc' => 'Rip from retail DVD. Standard definition.',
+            'specs' => ['Resolution'=>'480p/576p','Bitrate'=>'1500-3000 kbps','Aspect'=>'4:3 or 16:9'],
+        ],
+        [
+            'id' => 'bdrip', 'title' => 'BDRip / BRRip',
+            'icon' => 'fas fa-compact-disc', 'color' => 'primary',
+            'header_bg' => 'bg-primary bg-opacity-10',
+            'badges' => [['High','primary']],
+            'desc' => 'Rip from Blu-ray disc. High definition.',
+            'specs' => ['Resolution'=>'720p/1080p','Bitrate'=>'4000-10000 kbps','Codecs'=>'x264, x265'],
+        ],
+        [
+            'id' => 'remux', 'title' => 'REMUX',
+            'icon' => 'fas fa-database', 'color' => 'success',
+            'header_bg' => 'bg-success bg-opacity-10',
+            'badges' => [['Perfect','success'],['Lossless','info']],
+            'desc' => 'Direct stream copy from Blu-ray. No re-encoding.',
+            'specs' => ['Quality'=>'1:1 with source','Size'=>'20-80GB (1080p)','Audio'=>'Lossless (TrueHD, DTS-HD MA)'],
+            'alert' => 'Best possible quality',
+        ],
+        [
+            'id' => 'uhd', 'title' => 'UHD REMUX',
+            'icon' => 'fas fa-tv', 'color' => 'purple',
+            'header_bg' => 'bg-purple bg-opacity-10',
+            'badges' => [['Ultimate','purple'],['New','primary']],
+            'desc' => '4K Ultra HD Blu-ray remux. Maximum quality.',
+            'specs' => ['Resolution'=>'2160p (4K)','Size'=>'50-100GB','Features'=>'HDR10, Dolby Vision, Atmos'],
+        ],
+        [
+            'id' => 'bd100', 'title' => 'BD66 / BD100',
+            'icon' => 'fas fa-layer-group', 'color' => 'dark',
+            'header_bg' => 'bg-dark bg-opacity-10',
+            'badges' => [['Full Disc','dark'],['New','primary']],
+            'desc' => 'Complete Blu-ray disc image with menus and extras.',
+            'specs' => ['Format'=>'ISO or BDMV folder','Size'=>'66GB or 100GB','Features'=>'All bonus content'],
+        ],
+    ],
+    'codecs' => [
+        [
+            'id' => 'x264', 'title' => 'x264 / AVC',
+            'icon' => 'fas fa-file-video', 'color' => 'primary',
+            'header_bg' => 'bg-primary bg-opacity-10',
+            'badges' => [['Standard','primary']],
+            'desc' => 'H.264 video codec. Most common for 1080p.',
+            'specs' => ['Efficiency'=>'Good','Compatibility'=>'Excellent','Bitrate'=>'Higher than x265'],
+        ],
+        [
+            'id' => 'x265', 'title' => 'x265 / HEVC',
+            'icon' => 'fas fa-file-video', 'color' => 'success',
+            'header_bg' => 'bg-success bg-opacity-10',
+            'badges' => [['Efficient','success'],['New','primary']],
+            'desc' => 'H.265 video codec. 50% better compression.',
+            'specs' => ['Efficiency'=>'Excellent','4K/HDR'=>'Required','Hardware'=>'Modern devices needed'],
+        ],
+        [
+            'id' => 'av1', 'title' => 'AV1',
+            'icon' => 'fas fa-file-video', 'color' => 'info',
+            'header_bg' => 'bg-info bg-opacity-10',
+            'badges' => [['Future','info'],['New','primary']],
+            'desc' => 'Royalty-free codec. 30% better than HEVC.',
+            'specs' => ['Royalties'=>'Free','Adoption'=>'YouTube, Netflix','Hardware'=>'Limited support'],
+        ],
+        [
+            'id' => 'vvc', 'title' => 'VVC / H.266',
+            'icon' => 'fas fa-file-video', 'color' => 'purple',
+            'header_bg' => 'bg-purple bg-opacity-10',
+            'badges' => [['Next-gen','purple'],['New','primary']],
+            'desc' => 'H.266 codec. 50% better than HEVC.',
+            'specs' => ['Efficiency'=>'Best','8K'=>'Designed for','Release'=>'2020+'],
+        ],
+    ],
+];
+
+const HDR_FORMATS = [
+    ['id'=>'hdr10',  'css_bg'=>'bg-hdr10',    'label'=>'HDR10',        'title'=>'Standard HDR',        'desc'=>'10-bit color, static metadata'],
+    ['id'=>'hdr10+', 'css_bg'=>'bg-hdr10plus','label'=>'HDR10+',       'title'=>'Dynamic HDR',         'desc'=>'Dynamic metadata, Samsung/Amazon'],
+    ['id'=>'dolby',  'css_bg'=>'bg-dolby',    'label'=>'Dolby Vision', 'title'=>'Premium HDR',         'desc'=>'12-bit color, frame-by-frame'],
+];
+
+const STREAMING_FORMATS = [
+    [
+        'id' => 'atmos', 'title' => 'Dolby Atmos',
+        'icon' => 'fas fa-volume-up', 'color' => 'info',
+        'header_bg' => 'bg-info bg-opacity-10',
+        'badges' => [['Object-based','info']],
+        'desc' => '3D object-based audio with height channels.',
+        'specs' => ['Channels'=>'7.1.4+','Format'=>'TrueHD or DD+ with Atmos','Devices'=>'Requires Atmos speakers'],
+    ],
+    [
+        'id' => 'dtsx', 'title' => 'DTS:X',
+        'icon' => 'fas fa-wave-square', 'color' => 'warning',
+        'header_bg' => 'bg-warning bg-opacity-10',
+        'badges' => [['Competitor','warning']],
+        'desc' => "DTS's object-based audio format.",
+        'specs' => ['Format'=>'DTS-HD MA with X','Features'=>'Backward compatible','Common'=>'Blu-ray discs'],
+    ],
+    [
+        'id' => 'imax', 'title' => 'IMAX Enhanced',
+        'icon' => 'fas fa-expand-alt', 'color' => 'danger',
+        'header_bg' => 'bg-danger bg-opacity-10',
+        'badges' => [['IMAX','danger'],['New','primary']],
+        'desc' => 'IMAX theater ratio with enhanced audio.',
+        'specs' => ['Aspect'=>'1.90:1 or 1.43:1','Audio'=>'DTS:X optimized','Sources'=>'Disney+, Sony Bravia Core'],
+    ],
+];
+
+const CONTAINERS = [
+    ['id'=>'mkv',  'color'=>'primary', 'label'=>'MKV',  'desc'=>'Matroska - Most common'],
+    ['id'=>'mp4',  'color'=>'success', 'label'=>'MP4',  'desc'=>'Universal compatibility'],
+    ['id'=>'avi',  'color'=>'warning', 'label'=>'AVI',  'desc'=>'Legacy format'],
+    ['id'=>'m2ts', 'color'=>'danger',  'label'=>'M2TS', 'desc'=>'Blu-ray container'],
+];
+
+const SCENE_TAGS = [
+    'Release Types' => [
+        ['PROPER','Fixes errors in a previous release'],
+        ['REPACK','Replaces a bad release from same group'],
+        ['REAL','Distinguishes from a fake PROPER'],
+        ['READNFO','Read the NFO file for notes'],
+        ['LIMITED','Limited theatrical release'],
+        ['INTERNAL','Group internal release, not for trading'],
+        ['RETAIL','Retail copy (vs screener/promo)'],
+        ['EXTENDED','Extended cut with additional scenes'],
+        ['UNRATED','Unrated version, not for general release'],
+        ['DC',"Director's Cut"],
+        ['THEATRICAL','Standard theatrical version'],
+        ['REMASTERED','Remastered from original source'],
+    ],
+    'Source Tags' => [
+        ['SCREENER','Early promotional copy, watermarks possible'],
+        ['DVDSCR','DVD screener copy'],
+        ['HDTV','Captured from HD television broadcast'],
+        ['PDTV','Pure digital TV capture'],
+        ['VODRip','Video On Demand source'],
+        ['iTUNES','iTunes digital download'],
+    ],
+    'Quality Tags' => [
+        ['2160p','4K resolution'],
+        ['1080p','Full HD'],
+        ['1080i','Interlaced Full HD'],
+        ['720p','HD Ready'],
+        ['576p','PAL DVD resolution'],
+        ['480p','NTSC DVD resolution'],
+    ],
+    'Encoding Tags' => [
+        ['10bit','10-bit color depth (better gradients)'],
+        ['12bit','12-bit for HDR content'],
+        ['SDR','Standard Dynamic Range'],
+        ['HDR','High Dynamic Range'],
+        ['HDR10','HDR with static metadata'],
+        ['DV','Dolby Vision HDR'],
+        ['HYBRID','Mixed source (e.g. WEB video + BD audio)'],
+    ],
+    'Audio Tags' => [
+        ['AAC','Advanced Audio Coding'],
+        ['AC3','Dolby Digital 5.1'],
+        ['DD+','Dolby Digital Plus'],
+        ['DTS','DTS 5.1'],
+        ['DTS-HD','DTS-HD Master Audio (lossless)'],
+        ['TrueHD','Dolby TrueHD lossless'],
+        ['FLAC','Free Lossless Audio Codec'],
+        ['Atmos','Dolby Atmos object audio'],
+        ['DTS:X','DTS object-based audio'],
+        ['MP3','MPEG-1 Audio Layer III'],
+    ],
+];
+
+const COMPARISON_ROWS = [
+    ['CAM',       '1/10',   'danger', '1-2 GB',   '500-1000 kbps', 'Mono',        'Theater day',      'text-danger',  'Avoid'],
+    ['TS',        '3/10',   'warning','1-3 GB',   '800-1500 kbps', 'Stereo',      'Theater',          'text-warning', 'Low quality'],
+    ['WEB-DL',    '9/10',   'success','3-8 GB',   '5000-15000 kbps','5.1 DD+',    'Digital release',  'text-success', 'Excellent'],
+    ['BDRip',     '8/10',   'primary','8-15 GB',  '8000-12000 kbps','5.1/7.1',    'Blu-ray release',  'text-primary', 'Very Good'],
+    ['REMUX',     '10/10',  'purple', '20-40 GB', '20-35 Mbps',    'Lossless',    'Blu-ray release',  'text-purple',  'Perfect'],
+    ['4K WEB-DL', '9.5/10', 'info',   '15-30 GB', '15-25 Mbps',    'Atmos/TrueHD','Digital 4K release','text-info',   'Best Value'],
+    ['UHD REMUX', '10/10',  'dark',   '50-80 GB', '50-100 Mbps',   'Atmos/DTS:X', 'UHD Blu-ray',      'text-dark',    'Ultimate'],
+];
+
+// ── Рендер-функции ────────────────────────────────────────
+
+function renderBadges(array $badges): string
+{
+    return implode(' ', array_map(
+        fn($b) => sprintf('<span class="badge bg-%s">%s</span>', htmlspecialchars($b[1]), htmlspecialchars($b[0])),
+        $badges
+    ));
+}
+
+function renderSpecs(array $specs): string
+{
+    $rows = '';
+    foreach ($specs as $k => $v) {
+        $rows .= sprintf('<small><strong>%s:</strong> %s</small><br>', htmlspecialchars($k), htmlspecialchars($v));
+    }
+    return '<div class="tech-specs">' . $rows . '</div>';
+}
+
+function renderFormatCard(array $f): string
+{
+    $badges   = renderBadges($f['badges'] ?? []);
+    $specs    = renderSpecs($f['specs']   ?? []);
+
+    // footer
+    $footer = '';
+    if (!empty($f['footer'])) {
+        $fi     = isset($f['footer_icon']) ? '<i class="' . $f['footer_icon'] . '"></i> ' : '';
+        $fc     = $f['footer_class'] ?? 'text-muted';
+        $footer = '<div class="card-footer bg-transparent"><small class="' . $fc . '">' . $fi . htmlspecialchars($f['footer']) . '</small></div>';
+    }
+
+    // alert
+    $alert = !empty($f['alert'])
+        ? '<div class="alert alert-info mt-2 p-2"><small><i class="fas fa-info-circle"></i> '
+          . htmlspecialchars($f['alert']) . '</small></div>'
+        : '';
+
+    // variants
+    $variants = '';
+    if (!empty($f['variants'])) {
+        $pills = implode(' ', array_map(
+            fn($v) => '<span class="badge bg-light text-dark">' . htmlspecialchars($v) . '</span>',
+            $f['variants']
+        ));
+        $variants = '<div class="variants mt-2"><small><strong>Variants:</strong> ' . $pills . '</small></div>';
+    }
+
+    $hBg    = htmlspecialchars($f['header_bg']);
+    $icon   = htmlspecialchars($f['icon']);
+    $color  = htmlspecialchars($f['color']);
+    $id     = htmlspecialchars($f['id']);
+    $title  = htmlspecialchars($f['title']);
+    $desc   = htmlspecialchars($f['desc']);
+
+    return <<<HTML
+<div class="col-12 col-lg-6" data-format="{$id}">
+    <div class="format-card card border-0 shadow-sm h-100">
+        <div class="card-header {$hBg}">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="card-title mb-0">
+                    <i class="{$icon} text-{$color} me-2"></i>{$title}
+                </h4>
+                <div>{$badges}</div>
+            </div>
+        </div>
+        <div class="card-body">
+            <p class="card-text">{$desc}</p>
+            {$specs}{$variants}{$alert}
+        </div>
+        {$footer}
+    </div>
+</div>
+HTML;
+}
+
+function renderTabCards(array $formats): string
+{
+    return implode('', array_map('renderFormatCard', $formats));
+}
+
+stdhead("Video Formats Guide 2024");
 ?>
+
+
+<style>
+.video-formats-container .format-card {
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.video-formats-container .format-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.12) !important;
+}
+
+.hdr-card {
+    transition: transform .15s ease;
+    background: var(--bs-body-bg);
+}
+.hdr-card:hover { transform: translateY(-2px); }
+
+.tech-specs { font-size: .85rem; color: #555; }
+
+/* Скролл в мобильных табах */
+@media (max-width: 768px) {
+    .nav-tabs { flex-wrap: nowrap; overflow-x: auto; }
+    .nav-tabs .nav-link { white-space: nowrap; }
+}
+</style>
+
+
 <!-- Main Content -->
 <main class="video-formats-container">
     <!-- Hero Section -->
@@ -36,27 +417,27 @@ stdhead("Video Formats Guide 2024");
             <div class="formats-nav">
                 <nav>
                     <div class="nav nav-tabs" id="formatsTab" role="tablist">
-                        <button class="nav-link active" id="theater-tab" data-bs-toggle="tab" 
+                        <button class="nav-link active" id="theater-tab" data-bs-toggle="tab"
                                 data-bs-target="#theater" type="button" role="tab">
                             <i class="fas fa-film me-2"></i>Theater Rips
                         </button>
-                        <button class="nav-link" id="digital-tab" data-bs-toggle="tab" 
+                        <button class="nav-link" id="digital-tab" data-bs-toggle="tab"
                                 data-bs-target="#digital" type="button" role="tab">
                             <i class="fas fa-globe me-2"></i>Digital Sources
                         </button>
-                        <button class="nav-link" id="disc-tab" data-bs-toggle="tab" 
+                        <button class="nav-link" id="disc-tab" data-bs-toggle="tab"
                                 data-bs-target="#disc" type="button" role="tab">
                             <i class="fas fa-compact-disc me-2"></i>Disc Rips
                         </button>
-                        <button class="nav-link" id="streaming-tab" data-bs-toggle="tab" 
+                        <button class="nav-link" id="streaming-tab" data-bs-toggle="tab"
                                 data-bs-target="#streaming" type="button" role="tab">
                             <i class="fas fa-stream me-2"></i>Streaming
                         </button>
-                        <button class="nav-link" id="codecs-tab" data-bs-toggle="tab" 
+                        <button class="nav-link" id="codecs-tab" data-bs-toggle="tab"
                                 data-bs-target="#codecs" type="button" role="tab">
-                            <i class="fas fa-file-video me-2"></i>Codecs & Containers
+                            <i class="fas fa-file-video me-2"></i>Codecs &amp; Containers
                         </button>
-                        <button class="nav-link" id="scene-tab" data-bs-toggle="tab" 
+                        <button class="nav-link" id="scene-tab" data-bs-toggle="tab"
                                 data-bs-target="#scene" type="button" role="tab">
                             <i class="fas fa-tags me-2"></i>Scene Tags
                         </button>
@@ -74,7 +455,7 @@ stdhead("Video Formats Guide 2024");
                     <span class="input-group-text bg-primary text-white">
                         <i class="fas fa-search"></i>
                     </span>
-                    <input type="text" class="form-control" id="formatSearch" 
+                    <input type="text" class="form-control" id="formatSearch"
                            placeholder="Search 140+ formats (CAM, WEB-DL, x265, HDR, etc.)">
                     <button class="btn btn-outline-secondary" type="button" id="clearSearch">
                         <i class="fas fa-times"></i>
@@ -82,13 +463,21 @@ stdhead("Video Formats Guide 2024");
                 </div>
                 <div class="search-tags mt-3">
                     <small class="text-muted">Trending: </small>
-                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="web-dl">WEB-DL</span>
-                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="hdr">HDR</span>
-                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="dolby">Dolby Vision</span>
-                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="4k">4K</span>
-                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="remux">REMUX</span>
-                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="x265">x265</span>
-                    <span class="badge bg-light text-dark me-1 mb-1 tag-link" data-tag="atmos">Atmos</span>
+                    <?php
+                    $trendTags = [
+                        'web-dl' => 'digital',  'hdr'    => 'streaming',
+                        'dolby'  => 'streaming', '4k'    => 'disc',
+                        'remux'  => 'disc',      'x265'  => 'codecs',
+                        'atmos'  => 'streaming',
+                    ];
+                    foreach ($trendTags as $tag => $tabTarget):
+                    ?>
+                    <span class="badge bg-light text-dark me-1 mb-1 tag-link"
+                          data-tag="<?= htmlspecialchars($tag) ?>"
+                          data-tab="<?= htmlspecialchars($tabTarget) ?>">
+                        <?= htmlspecialchars(strtoupper($tag)) ?>
+                    </span>
+                    <?php endforeach; ?>
                 </div>
             </div>
         </div>
@@ -98,537 +487,59 @@ stdhead("Video Formats Guide 2024");
     <section class="content-section">
         <div class="container">
             <div class="tab-content" id="formatsTabContent">
-                
+
                 <!-- Theater Rips Tab -->
                 <div class="tab-pane fade show active" id="theater" role="tabpanel">
                     <div class="row g-4">
-                        
-                        <!-- CAM -->
-                        <div class="col-12 col-lg-6" data-format="cam">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-danger bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-video-camera text-danger me-2"></i>
-                                            CAM
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-danger">Lowest</span>
-                                            <span class="badge bg-dark">Legacy</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Theater recording with digital camera. Poor quality.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Bitrate:</strong> 500-1000 kbps</small><br>
-                                        <small><strong>Audio:</strong> Camera mic</small><br>
-                                        <small><strong>Resolution:</strong> 480p-720p</small>
-                                    </div>
-                                </div>
-                                <div class="card-footer bg-transparent">
-                                    <small class="text-muted">Avoid unless absolutely necessary</small>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- TS -->
-                        <div class="col-12 col-lg-6" data-format="ts">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-warning bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-headphones text-warning me-2"></i>
-                                            TELESYNC (TS)
-                                        </h4>
-                                        <span class="badge bg-warning">Low</span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">CAM with external audio source. Quality varies.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Bitrate:</strong> 800-1500 kbps</small><br>
-                                        <small><strong>Audio:</strong> Theater audio jack</small><br>
-                                        <small><strong>Resolution:</strong> 576p-720p</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- TC -->
-                        <div class="col-12 col-lg-6" data-format="tc">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-info bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-film text-info me-2"></i>
-                                            TELECINE (TC)
-                                        </h4>
-                                        <span class="badge bg-info">Medium</span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Professional film reel transfer. Uncommon but good quality.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Bitrate:</strong> 2000-4000 kbps</small><br>
-                                        <small><strong>Audio:</strong> Excellent</small><br>
-                                        <small><strong>Resolution:</strong> Up to 1080p</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: DCPRip -->
-                        <div class="col-12 col-lg-6" data-format="dcp">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-success bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-projector text-success me-2"></i>
-                                            DCP Rip
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-success">High</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Rip from Digital Cinema Package. Near-perfect theater quality.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Bitrate:</strong> 50-250 Mbps</small><br>
-                                        <small><strong>Audio:</strong> 5.1/7.1 Lossless</small><br>
-                                        <small><strong>Resolution:</strong> 2K/4K</small>
-                                    </div>
-                                </div>
-                                <div class="card-footer bg-transparent">
-                                    <small class="text-success">
-                                        <i class="fas fa-star"></i> Professional theater source
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-
+                        <?= renderTabCards(FORMATS['theater']) ?>
                     </div>
                 </div>
 
                 <!-- Digital Sources Tab -->
                 <div class="tab-pane fade" id="digital" role="tabpanel">
                     <div class="row g-4">
-                        
-                        <!-- WEB-DL -->
-                        <div class="col-12 col-lg-6" data-format="web-dl">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-primary bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-download text-primary me-2"></i>
-                                            WEB-DL
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-primary">Excellent</span>
-                                            <span class="badge bg-info">Standard</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Downloaded from streaming services (iTunes, Amazon, etc.).</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Sources:</strong> iTunes, Amazon, Netflix, Hulu</small><br>
-                                        <small><strong>Quality:</strong> Identical to streaming</small><br>
-                                        <small><strong>DRM:</strong> Removed</small>
-                                    </div>
-                                    <div class="variants mt-2">
-                                        <small><strong>Variants:</strong> 
-                                            <span class="badge bg-light text-dark">WEB-DL 1080p</span>
-                                            <span class="badge bg-light text-dark">WEB-DL 2160p</span>
-                                            <span class="badge bg-light text-dark">HDR</span>
-                                        </small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- WEBRip -->
-                        <div class="col-12 col-lg-6" data-format="webrip">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-secondary bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-cloud-download-alt text-secondary me-2"></i>
-                                            WEBRip
-                                        </h4>
-                                        <span class="badge bg-secondary">Good</span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Captured/re-encoded from streaming. Slightly lower quality.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Method:</strong> Screen capture/re-encode</small><br>
-                                        <small><strong>Quality:</strong> Slight loss</small><br>
-                                        <small><strong>Common:</strong> Netflix, Disney+, HBO Max</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: AMZN WEB-DL -->
-                        <div class="col-12 col-lg-6" data-format="amzn">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-success bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fab fa-amazon text-success me-2"></i>
-                                            AMZN WEB-DL
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-success">Excellent</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Amazon Prime Video download. Often highest bitrate.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Bitrate:</strong> 10-20 Mbps (1080p)</small><br>
-                                        <small><strong>Audio:</strong> DD+ 5.1, sometimes Atmos</small><br>
-                                        <small><strong>Features:</strong> HDR10, Dolby Vision</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: NF WEB-DL -->
-                        <div class="col-12 col-lg-6" data-format="netflix">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-danger bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fab fa-netflix text-danger me-2"></i>
-                                            NF WEB-DL
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-success">Excellent</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Netflix download. Known for excellent encoding.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Bitrate:</strong> 8-16 Mbps (1080p)</small><br>
-                                        <small><strong>Codec:</strong> x264/x265</small><br>
-                                        <small><strong>Features:</strong> 4K, HDR, Atmos</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: DSNP WEB-DL -->
-                        <div class="col-12 col-lg-6" data-format="disney">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-info bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fab fa-disney text-info me-2"></i>
-                                            DSNP WEB-DL
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-success">Excellent</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Disney+ download. High quality with IMAX Enhanced.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Features:</strong> IMAX Enhanced ratio</small><br>
-                                        <small><strong>Audio:</strong> Atmos common</small><br>
-                                        <small><strong>HDR:</strong> HDR10, Dolby Vision</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: HMAX WEB-DL -->
-                        <div class="col-12 col-lg-6" data-format="hbo">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-purple bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-crown text-purple me-2"></i>
-                                            HMAX WEB-DL
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-success">Excellent</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">HBO Max download. High bitrate 4K releases.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Bitrate:</strong> 15-25 Mbps (4K)</small><br>
-                                        <small><strong>Quality:</strong> Reference grade</small><br>
-                                        <small><strong>Features:</strong> 4K HDR</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
+                        <?= renderTabCards(FORMATS['digital']) ?>
                     </div>
                 </div>
 
                 <!-- Disc Rips Tab -->
                 <div class="tab-pane fade" id="disc" role="tabpanel">
                     <div class="row g-4">
-                        
-                        <!-- DVDRip -->
-                        <div class="col-12 col-lg-6" data-format="dvdrip">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-warning bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-compact-disc text-warning me-2"></i>
-                                            DVDRip
-                                        </h4>
-                                        <span class="badge bg-warning">Standard</span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Rip from retail DVD. Standard definition.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Resolution:</strong> 480p/576p</small><br>
-                                        <small><strong>Bitrate:</strong> 1500-3000 kbps</small><br>
-                                        <small><strong>Aspect:</strong> 4:3 or 16:9</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- BDRip -->
-                        <div class="col-12 col-lg-6" data-format="bdrip">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-primary bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-compact-disc text-primary me-2"></i>
-                                            BDRip / BRRip
-                                        </h4>
-                                        <span class="badge bg-primary">High</span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Rip from Blu-ray disc. High definition.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Resolution:</strong> 720p/1080p</small><br>
-                                        <small><strong>Bitrate:</strong> 4000-10000 kbps</small><br>
-                                        <small><strong>Codecs:</strong> x264, x265</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- REMUX -->
-                        <div class="col-12 col-lg-6" data-format="remux">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-success bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-database text-success me-2"></i>
-                                            REMUX
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-success">Perfect</span>
-                                            <span class="badge bg-info">Lossless</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Direct stream copy from Blu-ray. No re-encoding.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Quality:</strong> 1:1 with source</small><br>
-                                        <small><strong>Size:</strong> 20-80GB (1080p)</small><br>
-                                        <small><strong>Audio:</strong> Lossless (TrueHD, DTS-HD MA)</small>
-                                    </div>
-                                    <div class="alert alert-info mt-2 p-2">
-                                        <small><i class="fas fa-info-circle"></i> Best possible quality</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: UHD REMUX -->
-                        <div class="col-12 col-lg-6" data-format="uhd">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-purple bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-tv text-purple me-2"></i>
-                                            UHD REMUX
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-purple">Ultimate</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">4K Ultra HD Blu-ray remux. Maximum quality.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Resolution:</strong> 2160p (4K)</small><br>
-                                        <small><strong>Size:</strong> 50-100GB</small><br>
-                                        <small><strong>Features:</strong> HDR10, Dolby Vision, Atmos</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: BD66 / BD100 -->
-                        <div class="col-12 col-lg-6" data-format="bd100">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-dark bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-layer-group text-dark me-2"></i>
-                                            BD66 / BD100
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-dark">Full Disc</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Complete Blu-ray disc image with menus and extras.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Format:</strong> ISO or BDMV folder</small><br>
-                                        <small><strong>Size:</strong> 66GB or 100GB</small><br>
-                                        <small><strong>Features:</strong> All bonus content</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
+                        <?= renderTabCards(FORMATS['disc']) ?>
                     </div>
                 </div>
 
                 <!-- Streaming Tab -->
                 <div class="tab-pane fade" id="streaming" role="tabpanel">
                     <div class="row g-4">
-                        
-                        <!-- NEW: HDR Formats -->
+
+                        <!-- HDR Formats -->
                         <div class="col-12">
                             <div class="card border-0 shadow-sm mb-4">
                                 <div class="card-header bg-gradient-hdr">
                                     <h4 class="card-title text-white mb-0">
-                                        <i class="fas fa-sun text-warning me-2"></i>
-                                        HDR Formats
+                                        <i class="fas fa-sun text-warning me-2"></i>HDR Formats
                                     </h4>
                                 </div>
                                 <div class="card-body">
                                     <div class="row g-4">
-                                        
-                                        <div class="col-md-4" data-format="hdr10">
+                                        <?php foreach (HDR_FORMATS as $h): ?>
+                                        <div class="col-md-4" data-format="<?= htmlspecialchars($h['id']) ?>">
                                             <div class="hdr-card">
-                                                <div class="hdr-badge bg-hdr10">HDR10</div>
-                                                <p class="mb-1"><strong>Standard HDR</strong></p>
-                                                <small>10-bit color, static metadata</small>
+                                                <div class="hdr-badge <?= htmlspecialchars($h['css_bg']) ?>">
+                                                    <?= htmlspecialchars($h['label']) ?>
+                                                </div>
+                                                <p class="mb-1"><strong><?= htmlspecialchars($h['title']) ?></strong></p>
+                                                <small><?= htmlspecialchars($h['desc']) ?></small>
                                             </div>
                                         </div>
-                                        
-                                        <div class="col-md-4" data-format="hdr10+">
-                                            <div class="hdr-card">
-                                                <div class="hdr-badge bg-hdr10plus">HDR10+</div>
-                                                <p class="mb-1"><strong>Dynamic HDR</strong></p>
-                                                <small>Dynamic metadata, Samsung/Amazon</small>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="col-md-4" data-format="dolby">
-                                            <div class="hdr-card">
-                                                <div class="hdr-badge bg-dolby">Dolby Vision</div>
-                                                <p class="mb-1"><strong>Premium HDR</strong></p>
-                                                <small>12-bit color, frame-by-frame</small>
-                                            </div>
-                                        </div>
-                                        
+                                        <?php endforeach; ?>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- NEW: Audio Formats -->
-                        <div class="col-12 col-lg-6" data-format="atmos">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-info bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-volume-up text-info me-2"></i>
-                                            Dolby Atmos
-                                        </h4>
-                                        <span class="badge bg-info">Object-based</span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">3D object-based audio with height channels.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Channels:</strong> 7.1.4+</small><br>
-                                        <small><strong>Format:</strong> TrueHD or DD+ with Atmos</small><br>
-                                        <small><strong>Devices:</strong> Requires Atmos speakers</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: DTS:X -->
-                        <div class="col-12 col-lg-6" data-format="dtsx">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-warning bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-wave-square text-warning me-2"></i>
-                                            DTS:X
-                                        </h4>
-                                        <span class="badge bg-warning">Competitor</span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">DTS's object-based audio format.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Format:</strong> DTS-HD MA with X</small><br>
-                                        <small><strong>Features:</strong> Backward compatible</small><br>
-                                        <small><strong>Common:</strong> Blu-ray discs</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: IMAX Enhanced -->
-                        <div class="col-12 col-lg-6" data-format="imax">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-danger bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-expand-alt text-danger me-2"></i>
-                                            IMAX Enhanced
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-danger">IMAX</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">IMAX theater ratio with enhanced audio.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Aspect:</strong> 1.90:1 or 1.43:1</small><br>
-                                        <small><strong>Audio:</strong> DTS:X optimized</small><br>
-                                        <small><strong>Sources:</strong> Disney+, Sony Bravia Core</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <?= renderTabCards(STREAMING_FORMATS) ?>
 
                     </div>
                 </div>
@@ -636,107 +547,8 @@ stdhead("Video Formats Guide 2024");
                 <!-- Codecs Tab -->
                 <div class="tab-pane fade" id="codecs" role="tabpanel">
                     <div class="row g-4">
-                        
-                        <!-- x264 -->
-                        <div class="col-12 col-lg-6" data-format="x264">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-primary bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-file-video text-primary me-2"></i>
-                                            x264 / AVC
-                                        </h4>
-                                        <span class="badge bg-primary">Standard</span>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">H.264 video codec. Most common for 1080p.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Efficiency:</strong> Good</small><br>
-                                        <small><strong>Compatibility:</strong> Excellent</small><br>
-                                        <small><strong>Bitrate:</strong> Higher than x265</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
-                        <!-- x265 -->
-                        <div class="col-12 col-lg-6" data-format="x265">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-success bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-file-video text-success me-2"></i>
-                                            x265 / HEVC
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-success">Efficient</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">H.265 video codec. 50% better compression.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Efficiency:</strong> Excellent</small><br>
-                                        <small><strong>4K/HDR:</strong> Required</small><br>
-                                        <small><strong>Hardware:</strong> Modern devices needed</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: AV1 -->
-                        <div class="col-12 col-lg-6" data-format="av1">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-info bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-file-video text-info me-2"></i>
-                                            AV1
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-info">Future</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">Royalty-free codec. 30% better than HEVC.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Royalties:</strong> Free</small><br>
-                                        <small><strong>Adoption:</strong> YouTube, Netflix</small><br>
-                                        <small><strong>Hardware:</strong> Limited support</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- NEW: VVC (H.266) -->
-                        <div class="col-12 col-lg-6" data-format="vvc">
-                            <div class="format-card card border-0 shadow-sm h-100">
-                                <div class="card-header bg-purple bg-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <h4 class="card-title mb-0">
-                                            <i class="fas fa-file-video text-purple me-2"></i>
-                                            VVC / H.266
-                                        </h4>
-                                        <div>
-                                            <span class="badge bg-purple">Next-gen</span>
-                                            <span class="badge bg-primary">New</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">H.266 codec. 50% better than HEVC.</p>
-                                    <div class="tech-specs">
-                                        <small><strong>Efficiency:</strong> Best</small><br>
-                                        <small><strong>8K:</strong> Designed for</small><br>
-                                        <small><strong>Release:</strong> 2020+</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <?= renderTabCards(FORMATS['codecs']) ?>
 
                         <!-- Containers -->
                         <div class="col-12">
@@ -746,42 +558,17 @@ stdhead("Video Formats Guide 2024");
                                 </div>
                                 <div class="card-body">
                                     <div class="row g-3">
-                                        <div class="col-md-3" data-format="mkv">
+                                        <?php foreach (CONTAINERS as $c): ?>
+                                        <div class="col-md-3" data-format="<?= htmlspecialchars($c['id']) ?>">
                                             <div class="container-card text-center p-3 border rounded">
                                                 <div class="container-icon mb-2">
-                                                    <i class="fas fa-cube fa-2x text-primary"></i>
+                                                    <i class="fas fa-cube fa-2x text-<?= htmlspecialchars($c['color']) ?>"></i>
                                                 </div>
-                                                <strong>MKV</strong><br>
-                                                <small>Matroska - Most common</small>
+                                                <strong><?= htmlspecialchars($c['label']) ?></strong><br>
+                                                <small><?= htmlspecialchars($c['desc']) ?></small>
                                             </div>
                                         </div>
-                                        <div class="col-md-3" data-format="mp4">
-                                            <div class="container-card text-center p-3 border rounded">
-                                                <div class="container-icon mb-2">
-                                                    <i class="fas fa-cube fa-2x text-success"></i>
-                                                </div>
-                                                <strong>MP4</strong><br>
-                                                <small>Universal compatibility</small>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-3" data-format="avi">
-                                            <div class="container-card text-center p-3 border rounded">
-                                                <div class="container-icon mb-2">
-                                                    <i class="fas fa-cube fa-2x text-warning"></i>
-                                                </div>
-                                                <strong>AVI</strong><br>
-                                                <small>Legacy format</small>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-3" data-format="m2ts">
-                                            <div class="container-card text-center p-3 border rounded">
-                                                <div class="container-icon mb-2">
-                                                    <i class="fas fa-cube fa-2x text-danger"></i>
-                                                </div>
-                                                <strong>M2TS</strong><br>
-                                                <small>Blu-ray container</small>
-                                            </div>
-                                        </div>
+                                        <?php endforeach; ?>
                                     </div>
                                 </div>
                             </div>
@@ -793,8 +580,28 @@ stdhead("Video Formats Guide 2024");
                 <!-- Scene Tags Tab -->
                 <div class="tab-pane fade" id="scene" role="tabpanel">
                     <div class="row g-4">
-                        <!-- Scene tags would go here -->
-                        <!-- (Same scene tags from previous version, but updated) -->
+                        <?php foreach (SCENE_TAGS as $group => $tags): ?>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-header bg-dark text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-tag me-2"></i><?= htmlspecialchars($group) ?>
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <?php foreach ($tags as [$tag, $desc]): ?>
+                                    <div class="d-flex align-items-start mb-2">
+                                        <span class="badge bg-dark me-2 mt-1"
+                                              style="min-width:80px;font-size:.75em">
+                                            <?= htmlspecialchars($tag) ?>
+                                        </span>
+                                        <small class="text-muted"><?= htmlspecialchars($desc) ?></small>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
                     </div>
                 </div>
 
@@ -808,8 +615,7 @@ stdhead("Video Formats Guide 2024");
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-gradient-compare">
                     <h3 class="card-title text-white mb-0">
-                        <i class="fas fa-balance-scale me-2"></i>
-                        Format Comparison 2024
+                        <i class="fas fa-balance-scale me-2"></i>Format Comparison 2024
                     </h3>
                 </div>
                 <div class="card-body">
@@ -827,60 +633,17 @@ stdhead("Video Formats Guide 2024");
                                 </tr>
                             </thead>
                             <tbody>
+                                <?php foreach (COMPARISON_ROWS as [$fmt, $q, $qc, $size, $bitrate, $audio, $time, $rc, $rec]): ?>
                                 <tr>
-                                    <td><strong>CAM</strong></td>
-                                    <td><span class="badge bg-danger">1/10</span></td>
-                                    <td>1-2 GB</td>
-                                    <td>500-1000 kbps</td>
-                                    <td>Mono</td>
-                                    <td>Theater day</td>
-                                    <td class="text-danger">Avoid</td>
+                                    <td><strong><?= htmlspecialchars($fmt) ?></strong></td>
+                                    <td><span class="badge bg-<?= htmlspecialchars($qc) ?>"><?= htmlspecialchars($q) ?></span></td>
+                                    <td><?= htmlspecialchars($size) ?></td>
+                                    <td><?= htmlspecialchars($bitrate) ?></td>
+                                    <td><?= htmlspecialchars($audio) ?></td>
+                                    <td><?= htmlspecialchars($time) ?></td>
+                                    <td class="<?= htmlspecialchars($rc) ?>"><?= htmlspecialchars($rec) ?></td>
                                 </tr>
-                                <tr>
-                                    <td><strong>WEB-DL</strong></td>
-                                    <td><span class="badge bg-success">9/10</span></td>
-                                    <td>3-8 GB</td>
-                                    <td>5000-15000 kbps</td>
-                                    <td>5.1 DD+</td>
-                                    <td>Digital release</td>
-                                    <td class="text-success">Excellent</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>BDRip</strong></td>
-                                    <td><span class="badge bg-primary">8/10</span></td>
-                                    <td>8-15 GB</td>
-                                    <td>8000-12000 kbps</td>
-                                    <td>5.1/7.1</td>
-                                    <td>Blu-ray release</td>
-                                    <td class="text-primary">Very Good</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>REMUX</strong></td>
-                                    <td><span class="badge bg-purple">10/10</span></td>
-                                    <td>20-40 GB</td>
-                                    <td>20-35 Mbps</td>
-                                    <td>Lossless</td>
-                                    <td>Blu-ray release</td>
-                                    <td class="text-purple">Perfect</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>4K WEB-DL</strong></td>
-                                    <td><span class="badge bg-info">9.5/10</span></td>
-                                    <td>15-30 GB</td>
-                                    <td>15-25 Mbps</td>
-                                    <td>Atmos/TrueHD</td>
-                                    <td>Digital 4K release</td>
-                                    <td class="text-info">Best Value</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>UHD REMUX</strong></td>
-                                    <td><span class="badge bg-dark">10/10</span></td>
-                                    <td>50-80 GB</td>
-                                    <td>50-100 Mbps</td>
-                                    <td>Atmos/DTS:X</td>
-                                    <td>UHD Blu-ray</td>
-                                    <td class="text-dark">Ultimate</td>
-                                </tr>
+                                <?php endforeach; ?>
                             </tbody>
                         </table>
                     </div>
@@ -893,127 +656,32 @@ stdhead("Video Formats Guide 2024");
     <section class="info-section">
         <div class="container">
             <div class="row g-4">
+                <?php
+                $infoCards = [
+                    ['fa-bolt fa-3x text-warning',      'Release Timeline',       'CAM → WEB-DL → BDRip → REMUX → UHD REMUX'],
+                    ['fa-chart-line fa-3x text-success', 'Quality vs Size',        'WEB-DL offers best quality/size ratio for most users'],
+                    ['fa-eye fa-3x text-info',           'Viewing Recommendations','For 4K HDR: OLED TV with Atmos sound system'],
+                ];
+                foreach ($infoCards as [$icon, $title, $text]):
+                ?>
                 <div class="col-md-4">
                     <div class="info-card card border-0 shadow-sm h-100">
                         <div class="card-body text-center">
                             <div class="info-icon mb-3">
-                                <i class="fas fa-bolt fa-3x text-warning"></i>
+                                <i class="fas <?= $icon ?>"></i>
                             </div>
-                            <h5>Release Timeline</h5>
-                            <p class="small">CAM → WEB-DL → BDRip → REMUX → UHD REMUX</p>
+                            <h5><?= htmlspecialchars($title) ?></h5>
+                            <p class="small"><?= htmlspecialchars($text) ?></p>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="info-card card border-0 shadow-sm h-100">
-                        <div class="card-body text-center">
-                            <div class="info-icon mb-3">
-                                <i class="fas fa-chart-line fa-3x text-success"></i>
-                            </div>
-                            <h5>Quality vs Size</h5>
-                            <p class="small">WEB-DL offers best quality/size ratio for most users</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="info-card card border-0 shadow-sm h-100">
-                        <div class="card-body text-center">
-                            <div class="info-icon mb-3">
-                                <i class="fas fa-eye fa-3x text-info"></i>
-                            </div>
-                            <h5>Viewing Recommendations</h5>
-                            <p class="small">For 4K HDR: OLED TV with Atmos sound system</p>
-                        </div>
-                    </div>
-                </div>
+                <?php endforeach; ?>
             </div>
         </div>
     </section>
 
 </main>
 
+<script src="<?= $BASEURL ?>/scripts/videoformats.js"></script>
 
-
-<!-- JavaScript -->
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Search functionality
-        const searchInput = document.getElementById('formatSearch');
-        const clearButton = document.getElementById('clearSearch');
-        const tagLinks = document.querySelectorAll('.tag-link');
-        const formatCards = document.querySelectorAll('[data-format]');
-        
-        searchInput.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase().trim();
-            
-            formatCards.forEach(card => {
-                const format = card.getAttribute('data-format');
-                const text = card.textContent.toLowerCase();
-                
-                if (searchTerm === '' || format.includes(searchTerm) || text.includes(searchTerm)) {
-                    card.style.display = 'block';
-                    card.classList.remove('d-none');
-                } else {
-                    card.style.display = 'none';
-                    card.classList.add('d-none');
-                }
-            });
-        });
-        
-        clearButton.addEventListener('click', function() {
-            searchInput.value = '';
-            searchInput.dispatchEvent(new Event('input'));
-            searchInput.focus();
-        });
-        
-        tagLinks.forEach(tag => {
-            tag.addEventListener('click', function() {
-                const tagName = this.getAttribute('data-tag');
-                searchInput.value = tagName;
-                searchInput.dispatchEvent(new Event('input'));
-                
-                // Find and activate relevant tab
-                const formats = {
-                    'web-dl': 'digital',
-                    'hdr': 'streaming',
-                    'dolby': 'streaming',
-                    '4k': 'disc',
-                    'remux': 'disc',
-                    'x265': 'codecs',
-                    'atmos': 'streaming'
-                };
-                
-                if (formats[tagName]) {
-                    const tabId = formats[tagName] + '-tab';
-                    const tabElement = document.getElementById(tabId);
-                    if (tabElement) {
-                        new bootstrap.Tab(tabElement).show();
-                    }
-                }
-            });
-        });
-        
-        // Initialize Bootstrap tooltips
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl);
-        });
-        
-        // Auto-focus search on Ctrl+F
-        document.addEventListener('keydown', function(e) {
-            if (e.ctrlKey && e.key === 'f') {
-                e.preventDefault();
-                searchInput.focus();
-            }
-            
-            if (e.key === 'Escape' && document.activeElement === searchInput) {
-                searchInput.value = '';
-                searchInput.dispatchEvent(new Event('input'));
-            }
-        });
-    });
-</script>
-
-<?php
-stdfoot();
-?>
+<?php stdfoot(); ?>

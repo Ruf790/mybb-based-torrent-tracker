@@ -9,7 +9,7 @@
 /***********************************************/
 
 
-  //$BASEURL = 'https://ruff-tracker.eu';
+  //$BASEURL = '';
   $announce_actions = 'no';
   $aggressivecheat = 'yes';
   $nc = 'no';

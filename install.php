@@ -1,19 +1,19 @@
 <?php
 /**
- * Ruff Tracker — Installer v1.1
- * Точная схема под реальную БД трекера
+ * Ruff Tracker — Installer v1.2
+ * Переписан под DB-класс (DB_MySQLi / DB_MySQL / DB_PgSQL / DB_SQLite)
  */
 const IN_TRACKER = true;
 const APP_INITIALIZED = true;
 define('IN_MYBB', 1);
+define('TSDIR', __DIR__);
 define('MYBB_ROOT', __DIR__ . '/');
 define('INC_PATH', __DIR__ . '/include');
 
 require_once INC_PATH . '/functions.php';
 require_once INC_PATH . '/functions_user.php';
 
-
-define('INSTALLER_VERSION', '1.1.0');
+define('INSTALLER_VERSION', '1.2.0');
 define('LOCK_FILE', __DIR__ . '/install.lock');
 
 if (file_exists(LOCK_FILE) && !isset($_GET['force'])) {
@@ -26,91 +26,36 @@ if (file_exists(LOCK_FILE) && !isset($_GET['force'])) {
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <style>
-       
-        .lock-card {
-            backdrop-filter: blur(10px);
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 30px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-            transition: transform 0.3s ease;
-        }
-        .lock-card:hover {
-            transform: translateY(-5px);
-        }
-        .lock-icon {
-            font-size: 5rem;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        .danger-btn {
-            transition: all 0.3s ease;
-        }
-        .danger-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(220, 53, 69, 0.3);
-        }
-        code {
-            background: #f8f9fa;
-            padding: 4px 8px;
-            border-radius: 8px;
-            font-weight: 600;
-            color: #dc3545;
-        }
-        .warning-alert {
-            border-left: 4px solid #ffc107;
-            background: #fff9e6;
-        }
+        .lock-card { backdrop-filter:blur(10px); background:rgba(255,255,255,.95); border-radius:30px; box-shadow:0 25px 50px -12px rgba(0,0,0,.25); transition:transform .3s ease; }
+        .lock-card:hover { transform:translateY(-5px); }
+        .lock-icon { font-size:5rem; animation:pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.1);opacity:.8} }
+        .danger-btn { transition:all .3s ease; }
+        .danger-btn:hover { transform:translateY(-2px); box-shadow:0 10px 20px rgba(220,53,69,.3); }
+        code { background:#f8f9fa; padding:4px 8px; border-radius:8px; font-weight:600; color:#dc3545; }
+        .warning-alert { border-left:4px solid #ffc107; background:#fff9e6; }
     </style>
 </head>
-<body class="d-flex align-items-center justify-content-center" style="min-height: 100vh; margin: 0; padding: 20px;">
-    <div class="container" style="max-width: 550px;">
+<body class="d-flex align-items-center justify-content-center" style="min-height:100vh;margin:0;padding:20px;">
+    <div class="container" style="max-width:550px;">
         <div class="lock-card p-5">
             <div class="text-center mb-4">
-                <div class="lock-icon mb-3">
-                    <i class="fas fa-lock-circle fa-4x text-danger"></i>
-                </div>
-                <div class="mb-3">
-                    <span class="badge bg-danger bg-opacity-10 text-danger px-3 py-2 rounded-pill">
-                        <i class="fas fa-shield-alt me-2"></i>Installation Locked
-                    </span>
-                </div>
-                <h2 class="fw-bold mb-2" style="color: #1a1a2e;">Already Installed</h2>
+                <div class="lock-icon mb-3"><i class="fas fa-lock-circle fa-4x text-danger"></i></div>
+                <div class="mb-3"><span class="badge bg-danger bg-opacity-10 text-danger px-3 py-2 rounded-pill"><i class="fas fa-shield-alt me-2"></i>Installation Locked</span></div>
+                <h2 class="fw-bold mb-2" style="color:#1a1a2e;">Already Installed</h2>
                 <p class="text-muted mb-1">Ruff Tracker is already installed and configured.</p>
                 <p class="text-muted">Delete <code>install.lock</code> to reinstall.</p>
             </div>
-
             <hr class="my-4">
-
             <div class="warning-alert p-3 rounded mb-4">
                 <div class="d-flex">
-                    <div class="flex-shrink-0">
-                        <i class="fas fa-exclamation-triangle text-warning fa-lg"></i>
-                    </div>
-                    <div class="ms-3">
-                        <strong class="d-block mb-1">Warning!</strong>
-                        <small class="text-muted">Force reinstall will overwrite your current settings and data.</small>
-                    </div>
+                    <div class="flex-shrink-0"><i class="fas fa-exclamation-triangle text-warning fa-lg"></i></div>
+                    <div class="ms-3"><strong class="d-block mb-1">Warning!</strong><small class="text-muted">Force reinstall will overwrite your current settings and data.</small></div>
                 </div>
             </div>
-
             <div class="d-grid gap-3">
-                <a href="install.php?force=1" class="btn btn-outline-danger btn-lg danger-btn">
-                    <i class="fas fa-rotate-right me-2"></i>Force Reinstall
-                </a>
-                <a href="/" class="btn btn-secondary btn-lg">
-                    <i class="fas fa-home me-2"></i>Go to Homepage
-                </a>
-            </div>
-
-            <div class="text-center mt-4">
-                <small class="text-muted">
-                    <i class="fas fa-info-circle me-1"></i>
-                    Need help? Check the documentation
-                </small>
+                <a href="install.php?force=1" class="btn btn-outline-danger btn-lg danger-btn"><i class="fas fa-rotate-right me-2"></i>Force Reinstall</a>
+                <a href="/" class="btn btn-secondary btn-lg"><i class="fas fa-home me-2"></i>Go to Homepage</a>
             </div>
         </div>
     </div>
@@ -133,53 +78,101 @@ $step   = isset($_GET['step']) ? (int)$_GET['step'] : 1;
 $step   = max(1, min(6, $step));
 $errors = [];
 
+// ── Инициализация DB-класса из сессии (начиная со шага 3) ─────────────────────
+function getDb(): mixed
+{
+    $dbSess = $_SESSION['db'] ?? [];
+    if (empty($dbSess)) return null;
+
+    $config = [
+        'database' => [
+            'type'         => $dbSess['type']     ?? 'mysqli',
+            'hostname'     => $dbSess['hostname']  ?? 'localhost',
+            'database'     => $dbSess['database']  ?? '',
+            'username'     => $dbSess['username']  ?? '',
+            'password'     => $dbSess['password']  ?? '',
+            'table_prefix' => $dbSess['prefix']    ?? '',
+            'encoding'     => 'utf8mb4',
+        ],
+    ];
+
+    require_once INC_PATH . '/db_base.php';
+    $driverFile = INC_PATH . "/db_{$config['database']['type']}.php";
+    if (!file_exists($driverFile)) {
+        throw new RuntimeException("Database driver not found: {$config['database']['type']}");
+    }
+    require_once $driverFile;
+
+    $db = match($config['database']['type']) {
+        'sqlite' => new DB_SQLite(),
+        'pgsql'  => new DB_PgSQL(),
+        'mysqli' => new DB_MySQLi(),
+        default  => new DB_MySQL(),
+    };
+
+    define('TABLE_PREFIX', $config['database']['table_prefix']);
+    $db->connect($config['database']);
+    $db->set_table_prefix(TABLE_PREFIX);
+    $db->type = $config['database']['type'];
+
+    return $db;
+}
+
 // ── POST обработка ────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
+    // ── Шаг 2: проверка соединения ────────────────────────────────────────────
     if ($step === 2) {
+        $dbType = trim($_POST['db_type'] ?? 'mysqli');
+
         $_SESSION['db'] = [
+            'type'     => $dbType,
             'hostname' => trim($_POST['db_host'] ?? 'localhost'),
             'database' => trim($_POST['db_name'] ?? ''),
             'username' => trim($_POST['db_user'] ?? ''),
             'password' => $_POST['db_pass'] ?? '',
             'prefix'   => trim($_POST['db_prefix'] ?? ''),
         ];
-        $conn = @mysqli_connect($_SESSION['db']['hostname'], $_SESSION['db']['username'], $_SESSION['db']['password'], $_SESSION['db']['database']);
-        if (!$conn) {
-            $errors[] = 'Cannot connect to database: ' . mysqli_connect_error();
-        } else {
-            //mysqli_close($conn);
+
+        try {
+            $db = getDb();
+            // Простой тест: запрос версии
+            $db->sql_query("SELECT 1");
             header('Location: install.php?step=3'); exit;
+        } catch (Throwable $e) {
+            $errors[] = 'Cannot connect to database: ' . $e->getMessage();
         }
     }
 
+    // ── Шаг 3: настройки сайта ────────────────────────────────────────────────
     if ($step === 3) {
         $url = rtrim(trim($_POST['site_url'] ?? ''), '/');
         $_SESSION['site'] = [
-            'name'          => trim($_POST['site_name'] ?? ''),
+            'name'          => trim($_POST['site_name']      ?? ''),
             'url'           => $url,
-            'email'         => trim($_POST['site_email'] ?? ''),
-            'timezone'      => trim($_POST['timezone'] ?? '2'),
-            'cookie_domain' => trim($_POST['cookie_domain'] ?? ''),
-            'smtp_host'     => trim($_POST['smtp_host'] ?? 'smtp.gmail.com'),
-            'smtp_user'     => trim($_POST['smtp_user'] ?? ''),
-            'smtp_pass'     => $_POST['smtp_pass'] ?? '',
-            'smtp_port'     => trim($_POST['smtp_port'] ?? '587'),
-            'membersonly'   => isset($_POST['membersonly']) ? 'yes' : 'no',
+            'email'         => trim($_POST['site_email']     ?? ''),
+            'timezone'      => trim($_POST['timezone']       ?? '2'),
+            'cookie_domain' => trim($_POST['cookie_domain']  ?? ''),
+            'smtp_host'     => trim($_POST['smtp_host']      ?? 'smtp.gmail.com'),
+            'smtp_user'     => trim($_POST['smtp_user']      ?? ''),
+            'smtp_pass'     => $_POST['smtp_pass']           ?? '',
+            'smtp_port'     => trim($_POST['smtp_port']      ?? '587'),
+            'membersonly'   => isset($_POST['membersonly'])  ? 'yes' : 'no',
             'privatepatch'  => isset($_POST['privatepatch']) ? 'yes' : 'no',
         ];
-        if (!$_SESSION['site']['name']) $errors[] = 'Site name is required.';
-        if (!$_SESSION['site']['url'])  $errors[] = 'Site URL is required.';
+        if (!$_SESSION['site']['name'])  $errors[] = 'Site name is required.';
+        if (!$_SESSION['site']['url'])   $errors[] = 'Site URL is required.';
         if (!$_SESSION['site']['email']) $errors[] = 'Site email is required.';
         if (!$errors) { header('Location: install.php?step=4'); exit; }
     }
 
+    // ── Шаг 4: аккаунт администратора ────────────────────────────────────────
     if ($step === 4) {
         $_SESSION['admin'] = [
-            'username' => trim($_POST['admin_user'] ?? ''),
-            'email'    => trim($_POST['admin_email'] ?? ''),
-            'password' => $_POST['admin_pass'] ?? '',
-            'confirm'  => $_POST['admin_confirm'] ?? '',
+            'username' => trim($_POST['admin_user']    ?? ''),
+            'email'    => trim($_POST['admin_email']   ?? ''),
+            'password' => $_POST['admin_pass']         ?? '',
+            'confirm'  => $_POST['admin_confirm']      ?? '',
         ];
         if (!$_SESSION['admin']['username']) $errors[] = 'Admin username is required.';
         if (!$_SESSION['admin']['email'])    $errors[] = 'Admin email is required.';
@@ -188,6 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$errors) { header('Location: install.php?step=5'); exit; }
     }
 
+    // ── Шаг 5: запуск установки ───────────────────────────────────────────────
     if ($step === 5) {
         $result = runInstallation();
         if ($result === true) {
@@ -197,23 +191,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors = $result;
         }
     }
+	
 }
 
 // ── Основная функция установки ────────────────────────────────────────────────
-function runInstallation() {
-    $db    = $_SESSION['db']    ?? [];
-    $site  = $_SESSION['site']  ?? [];
-    $admin = $_SESSION['admin'] ?? [];
+function runInstallation(): true|array
+{
+    $dbSess = $_SESSION['db']    ?? [];
+    $site   = $_SESSION['site']  ?? [];
+    $admin  = $_SESSION['admin'] ?? [];
 
-    $conn = @mysqli_connect($db['hostname'], $db['username'], $db['password'], $db['database']);
-    if (!$conn) return ['Database connection failed: ' . mysqli_connect_error()];
-    mysqli_set_charset($conn, 'utf8mb4');
+    // --- Подключение через DB-класс ---
+    try {
+        $db = getDb();
+    } catch (Throwable $e) {
+        return ['Database connection failed: ' . $e->getMessage()];
+    }
 
-    $p = $db['prefix'];
+    $p = $dbSess['prefix'] ?? '';
 
-    // ── SQL — точная схема трекера ────────────────────────────────────────────
+    // ── SQL — схема трекера ───────────────────────────────────────────────────
     $tables = <<<SQL
-
 CREATE TABLE IF NOT EXISTS `{$p}adminlog` (
   `uid` int unsigned NOT NULL DEFAULT '0',
   `ipaddress` varbinary(16) NOT NULL DEFAULT '',
@@ -317,12 +315,6 @@ CREATE TABLE IF NOT EXISTS `{$p}banned` (
   KEY `uid` (`uid`),
   KEY `dateline` (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
-
-CREATE TABLE IF NOT EXISTS `{$p}bannedemails` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `value` mediumtext NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `{$p}bookmarks` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -487,41 +479,24 @@ CREATE TABLE IF NOT EXISTS `{$p}inactivity` (
   KEY `inactivitytag` (`inactivitytag`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-
-
 CREATE TABLE IF NOT EXISTS `{$p}invites` (
-    `id`          int unsigned NOT NULL AUTO_INCREMENT,
-    `code`        varchar(64)  NOT NULL,
-    `inviter_id`  int unsigned NOT NULL DEFAULT '0',
-    `invitee_id`  int unsigned          DEFAULT NULL,
-    `email`       varchar(64)           DEFAULT NULL,
-    `status`      enum('pending','used','expired','revoked') NOT NULL DEFAULT 'pending',
-    `created_at`  int unsigned NOT NULL DEFAULT '0',
-    `expires_at`  int unsigned          DEFAULT NULL,
-    `used_at`     int unsigned          DEFAULT NULL,
-    `ip_created`  varchar(45)           DEFAULT NULL,
-    `ip_used`     varchar(45)           DEFAULT NULL,
-    `note`        varchar(255)          DEFAULT NULL,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `code` (`code`),
-    KEY `inviter_id` (`inviter_id`),
-    KEY `status` (`status`),
-    KEY `expires_at` (`expires_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
-
-
-
-
-
-
-
-CREATE TABLE IF NOT EXISTS `{$p}iplog` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `ip` char(15) NOT NULL DEFAULT '',
-  `userid` int unsigned NOT NULL DEFAULT '0',
+  `code` varchar(64) NOT NULL,
+  `inviter_id` int unsigned NOT NULL DEFAULT '0',
+  `invitee_id` int unsigned DEFAULT NULL,
+  `email` varchar(64) DEFAULT NULL,
+  `status` enum('pending','used','expired','revoked') NOT NULL DEFAULT 'pending',
+  `created_at` int unsigned NOT NULL DEFAULT '0',
+  `expires_at` int unsigned DEFAULT NULL,
+  `used_at` int unsigned DEFAULT NULL,
+  `ip_created` varchar(45) DEFAULT NULL,
+  `ip_used` varchar(45) DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `userid` (`userid`),
-  KEY `ip` (`ip`)
+  UNIQUE KEY `code` (`code`),
+  KEY `inviter_id` (`inviter_id`),
+  KEY `status` (`status`),
+  KEY `expires_at` (`expires_at`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `{$p}loginattempts` (
@@ -954,18 +929,15 @@ CREATE TABLE IF NOT EXISTS `{$p}torrents_nfo` (
   KEY `torrent_id` (`torrent_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-
 CREATE TABLE IF NOT EXISTS `{$p}torrent_ratings` (
-    `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `torrent_id` INT UNSIGNED NOT NULL,
-    `user_id`    INT UNSIGNED NOT NULL,
-    `rating`     TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    `added`      INT UNSIGNED NOT NULL DEFAULT 0,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `unique_vote` (`torrent_id`, `user_id`)
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `torrent_id` INT UNSIGNED NOT NULL,
+  `user_id` INT UNSIGNED NOT NULL,
+  `rating` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `added` INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_vote` (`torrent_id`, `user_id`)
 ) ENGINE=InnoDB;
-
-
 
 CREATE TABLE IF NOT EXISTS `{$p}tsf_announcements` (
   `aid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1149,7 +1121,6 @@ CREATE TABLE IF NOT EXISTS `{$p}unbanrequests` (
   `reply` varchar(150) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
-
 
 CREATE TABLE IF NOT EXISTS `{$p}usergroups` (
   `gid` smallint unsigned NOT NULL AUTO_INCREMENT,
@@ -1381,29 +1352,27 @@ CREATE TABLE IF NOT EXISTS `{$p}notconnectablepmlog` (
   `date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
-
 SQL;
 
-    // Выполняем все таблицы по одной (mysqli_multi_query может глючить)
+    // ── Выполняем CREATE TABLE через DB-класс ─────────────────────────────────
     $statements = array_filter(array_map('trim', explode(";\n", $tables)));
     $sql_errors = [];
     foreach ($statements as $sql) {
         if (empty($sql)) continue;
-        if (!mysqli_query($conn, $sql)) {
-            $err = mysqli_error($conn);
+        try {
+            $db->sql_query($sql);
+        } catch (Throwable $e) {
+            $err = $e->getMessage();
             if (!str_contains($err, 'already exists')) {
                 $sql_errors[] = $err;
             }
         }
     }
     if ($sql_errors) {
-        //mysqli_close($conn);
         return array_merge(['SQL errors:'], array_slice($sql_errors, 0, 5));
     }
 
-    // ── Базовые группы пользователей (точно как в usergroups) ────────────────
     $now = time();
-    
 
     // ── Базовые категории ─────────────────────────────────────────────────────
     $cats = [
@@ -1414,73 +1383,95 @@ SQL;
         ['UltraHD', 'fa-solid fa-satellite-dish'],
     ];
     foreach ($cats as $cat) {
-        $name = mysqli_real_escape_string($conn, $cat[0]);
-        $icon = mysqli_real_escape_string($conn, $cat[1]);
-        mysqli_query($conn, "INSERT IGNORE INTO `{$p}categories` (`name`,`icon`,`type`,`minclassread`) VALUES ('{$name}','{$icon}','c',0)");
+        $db->insert_query(
+            'categories',
+            ['name' => $cat[0], 'icon' => $cat[1], 'type' => 'c', 'minclassread' => 0],
+            true   // IGNORE
+        );
     }
 
-
     // ── Страна по умолчанию ───────────────────────────────────────────────────
-    mysqli_query($conn, "INSERT IGNORE INTO `{$p}countries` (`id`,`name`,`flagpic`) VALUES (1,'Unknown','unknown.gif')");
+    $db->insert_query(
+        'countries',
+        ['id' => 1, 'name' => 'Unknown', 'flagpic' => 'unknown.gif'],
+        true
+    );
 
     // ── Создаём admin пользователя ────────────────────────────────────────────
     $salt      = random_str();
     $loginkey  = generate_loginkey();
     $pass_hash = md5(md5($salt) . md5($admin['password']));
 
-   
+    $admin_id = $db->insert_query('users', [
+        'username'     => $admin['username'],
+        'password'     => $pass_hash,
+        'salt'         => $salt,
+        'loginkey'     => $loginkey,
+        'email'        => $admin['email'],
+        'ustatus'      => 'confirmed',
+        'enabled'      => 'yes',
+        'added'        => $now,
+		'lastactive'   => $now,
+		'lastvisit'    => $now,
+        'usergroup'    => 8,
+        'timezone'     => '0',
+        'ignorelist'   => '',
+        'buddylist'    => '',
+        'pmfolders'    => '0**$%%$1**$%%$2**$%%$3**$%%$4**',
+        'notifs'       => '',
+		'announce_read' => 'no',
+    ]);
 
-    $uname  = mysqli_real_escape_string($conn, $admin['username']);
-    $uemail = mysqli_real_escape_string($conn, $admin['email']);
+    // ── STAFFTEAM ─────────────────────────────────────────────────────────────
+    $staffteam_dir  = __DIR__ . '/config';
+    $staffteam_file = $staffteam_dir . '/STAFFTEAM';
+    if (!is_dir($staffteam_dir)) {
+        @mkdir($staffteam_dir, 0755, true);
+    }
+    $errors_out = [];
+    if (file_put_contents($staffteam_file, $admin['username'] . ':' . $admin_id) === false) {
+        $errors_out[] = 'Cannot write config/STAFFTEAM — check permissions';
+    }
 
-    
-    mysqli_query($conn, "INSERT INTO `{$p}users`
-    (`username`,`password`,`salt`,`loginkey`,`email`,`ustatus`,`enabled`,
-     `added`,`usergroup`,`timezone`,`ignorelist`,`buddylist`,`pmfolders`,`notifs`)
-    VALUES
-    ('{$uname}','{$pass_hash}','{$salt}','{$loginkey}','{$uemail}','confirmed','yes',
-     {$now},8,'0','','','0**\$%%\$1**\$%%\$2**\$%%\$3**\$%%\$4**','')");
-    $admin_id = (int)mysqli_insert_id($conn);
-	
-	
-// ── STAFFTEAM ─────────────────────────────────────────────────────────────────
-$staffteam_dir  = __DIR__ . '/config';
-$staffteam_file = $staffteam_dir . '/STAFFTEAM';
+    // ── Новость и объявление ──────────────────────────────────────────────────
+    $db->insert_query('news', [
+        'userid' => $admin_id,
+        'added'  => $now,
+        'body'   => '<p>Welcome to <strong>' . $site['name'] . '</strong>! The tracker is now online.</p>',
+        'title'  => 'Welcome!',
+    ]);
 
-if (!is_dir($staffteam_dir)) {
-    @mkdir($staffteam_dir, 0755, true);
-}
+    $db->insert_query('announcements', [
+        'subject'      => 'Welcome to ' . $site['name'],
+        'message'      => '<p>The tracker is now online and ready to use!</p>',
+        'by'           => $admin['username'],
+        'added'        => $now,
+        'updated'      => $now,
+        'minclassread' => 0,
+    ]);
 
-$staffteam_content = $admin['username'] . ':' . $admin_id;
+    // ── Инициализация кэша и обновление новостей ──────────────────────────────
+    $GLOBALS['db'] = $db;
+    require_once INC_PATH . '/class_datacache.php';
+    $cache = new datacache();
+    $cache->cache();
+    $cache->update_news();
 
-if (file_put_contents($staffteam_file, $staffteam_content) === false) {
-    $errors_out[] = 'Cannot write config/STAFFTEAM — check permissions';
-}
-	
-    
-
-
-    // Новость
-    $siteName = mysqli_real_escape_string($conn, $site['name']);
-    mysqli_query($conn, "INSERT IGNORE INTO `{$p}news` (`userid`,`added`,`body`,`title`) VALUES ({$admin_id},{$now},'<p>Welcome to <strong>{$siteName}</strong>! The tracker is now online.</p>','Welcome!')");
-
-    // Объявление
-    $by = mysqli_real_escape_string($conn, $admin['username']);
-    mysqli_query($conn, "INSERT IGNORE INTO `{$p}announcements` (`subject`,`message`,`by`,`added`,`updated`,`minclassread`) VALUES ('Welcome to {$siteName}','<p>The tracker is now online and ready to use!</p>','{$by}',{$now},{$now},0)");
-
-    //mysqli_close($conn);
-
-    // ── Генерация config.php ──────────────────────────────────────────────────
-    $securehash = 'RT__' . preg_replace('#^https?://(www\.)?#', '', $site['url']) . '_' . rand(1,9) . '_' . rand(10,99) . '-' . rand(100,999) . '-' . rand(10,99);
+    // ── Генерация файлов конфигурации ─────────────────────────────────────────
+    $securehash  = 'RT__' . preg_replace('#^https?://(www\.)?#', '', $site['url'])
+                 . '_' . rand(1,9) . '_' . rand(10,99) . '-' . rand(100,999) . '-' . rand(10,99);
     $cookieDomain = $site['cookie_domain'] ?: ('.' . preg_replace('#^https?://(www\.)?#', '', $site['url']));
+    $announce_url = $site['url'] . '/announce.php';
+    $db_cfg       = $dbSess;
 
+    // config.php
     $config_php  = "<?php\n";
-    $config_php .= "  \$config['database']['type'] = 'mysqli';\n";
-    $config_php .= "  \$config['database']['database'] = '" . addslashes($db['database']) . "';\n";
-    $config_php .= "  \$config['database']['table_prefix'] = '" . addslashes($db['prefix']) . "';\n";
-    $config_php .= "  \$config['database']['hostname'] = '" . addslashes($db['hostname']) . "';\n";
-    $config_php .= "  \$config['database']['username'] = '" . addslashes($db['username']) . "';\n";
-    $config_php .= "  \$config['database']['password'] = '" . addslashes($db['password']) . "';\n";
+    $config_php .= "  \$config['database']['type'] = '" . addslashes($db_cfg['type'] ?? 'mysqli') . "';\n";
+    $config_php .= "  \$config['database']['database'] = '" . addslashes($db_cfg['database']) . "';\n";
+    $config_php .= "  \$config['database']['table_prefix'] = '" . addslashes($db_cfg['prefix']) . "';\n";
+    $config_php .= "  \$config['database']['hostname'] = '" . addslashes($db_cfg['hostname']) . "';\n";
+    $config_php .= "  \$config['database']['username'] = '" . addslashes($db_cfg['username']) . "';\n";
+    $config_php .= "  \$config['database']['password'] = '" . addslashes($db_cfg['password']) . "';\n";
     $config_php .= "  \$config['database']['encoding'] = 'utf8';\n";
     $config_php .= "  \$config['cache_store'] = 'files';\n";
     $config_php .= "  \$config['super_admins'] = '{$admin_id}';\n";
@@ -1488,543 +1479,152 @@ if (file_put_contents($staffteam_file, $staffteam_content) === false) {
     $config_php .= "    'admin_logs' => 365,\n    'mod_logs' => 365,\n    'task_logs' => 30,\n";
     $config_php .= "    'mail_logs' => 180,\n    'user_mail_logs' => 180,\n    'promotion_logs' => 180\n  );\n";
 
-    // ── Генерация settings.php ────────────────────────────────────────────────
-    $announce_url = $site['url'] . '/announce.php';
-    $s = "<?php\n/*********************************\\\n  DO NOT EDIT THIS FILE, PLEASE USE\n  THE SETTINGS EDITOR\n\\*********************************/\n";
-    $s .= "\$SITENAME = \"" . addslashes($site['name']) . "\";\n";
-    $s .= "\$BASEURL = \"" . addslashes($site['url']) . "\";\n";
-    $s .= "\$SITEEMAIL = \"" . addslashes($site['email']) . "\";\n";
-    $s .= "\$REPORTMAIL = \"" . addslashes($site['email']) . "\";\n";
-    $s .= "\$contactemail = \"" . addslashes($site['email']) . "\";\n";
-    $s .= "\$SITEONLINE = \"yes\";\n";
-    $s .= "\$useajax = \"yes\";\n";
-    $s .= "\$externalscrape = \"yes\";\n";
-    $s .= "\$includeexpeers = \"no\";\n";
-    $s .= "\$MEMBERSONLY = \"" . $site['membersonly'] . "\";\n";
-    $s .= "\$aggressivecheckip = \"no\";\n";
-    $s .= "\$aggressivecheckemail = \"no\";\n";
-    $s .= "\$maxloginattempts = \"7\";\n";
-    $s .= "\$securehash = \"{$securehash}\";\n";
-    $s .= "\$charset = \"UTF-8\";\n";
-    $s .= "\$shoutboxcharset = \"UTF-8\";\n";
-    $s .= "\$metakeywords = \"torrent, tracker\";\n";
-    $s .= "\$metadesc = \"" . addslashes($site['name']) . " - Torrent Tracker\";\n";
-    $s .= "\$slogan = \"The Best Tracker\";\n";
-    $s .= "\$usezip = \"no\";\n";
-    $s .= "\$iplog1 = \"yes\";\n";
-    $s .= "\$ctracker = \"yes\";\n";
-    $s .= "\$gzipcompress = \"no\";\n";
-    $s .= "\$snatchmod = \"yes\";\n";
-    $s .= "\$ts_perpage = \"20\";\n";
-    $s .= "\$loadlimit = \"\";\n";
-    $s .= "\$useredirectsystem = \"yes\";\n";
-    $s .= "\$vkeyword = \"no\";\n";
-    $s .= "\$privatetrackerpatch = \"" . $site['privatepatch'] . "\";\n";
-    $s .= "\$iv = \"no\";\n";
-    $s .= "\$dateformat = \"l, jS F, Y\";\n";
-    $s .= "\$timeformat = \"h:i A\";\n";
-    $s .= "\$regdateformat = \"M Y\";\n";
-    $s .= "\$timezoneoffset = \"" . addslashes($site['timezone']) . "\";\n";
-    $s .= "\$dstcorrection = \"1\";\n";
-    $s .= "\$cookiedomain = \"" . addslashes($cookieDomain) . "\";\n";
-    $s .= "\$cookiepath = \"/\";\n";
-    $s .= "\$cookieprefix = \"\";\n";
-    $s .= "\$cookiesecureflag = \"0\";\n";
-    $s .= "\$cookiesamesiteflag = \"1\";\n";
-    $s .= "\$maxmultipagelinks = \"5\";\n";
-    $s .= "\$jumptopagemultipage = \"1\";\n";
-    $s .= "\$useravatar = \"pic/default_avatar.gif\";\n";
-    $s .= "\$useravatardims = \"200|200\";\n";
-    $s .= "\$maxavatardims = \"200x200\";\n";
-    $s .= "\$allowremoteavatars = \"1\";\n";
-    $s .= "\$delayedthreadviews = \"1\";\n";
-    $s .= "\$datetimesep = \", \";\n";
-    $s .= "\$announce_urls[] = \"{$announce_url}\";\n";
-    $s .= "\$torrent_dir = \"torrents\";\n";
-    $s .= "\$pic_base_url = \"pic/\";\n";
-    $s .= "\$table_cat = \"categories\";\n";
-    $s .= "\$maxchar = \"250\";\n";
-    $s .= "\$max_torrent_size = \"10 * 1024 * 1024\";\n";
-    $s .= "\$wolcutoffmins = \"15\";\n";
-    $s .= "\$defaultlanguage = \"english\";\n";
-    $s .= "\$defaulttemplate = \"default\";\n";
-    $s .= "\$avataruploadpath = \"./uploads/avatars\";\n";
-    $s .= "\$avatarsize = \"250000\";\n";
-    $s .= "\$f_postsperpage = \"10\";\n";
-    $s .= "\$f_threadsperpage = \"20\";\n";
-    $s .= "\$threadreadcut = \"7\";\n";
-    $s .= "\$use_xmlhttprequest = \"1\";\n";
-    $s .= "\$redirects = \"0\";\n";
-    $s .= "\$uploadspath = \"./uploads\";\n";
-    $s .= "\$attachthumbh = \"96\";\n";
-    $s .= "\$attachthumbw = \"96\";\n";
-    $s .= "\$enableattachments = \"1\";\n";
-    $s .= "\$showownunapproved = \"1\";\n";
-    $s .= "\$seourls = \"yes\";\n";
-    $s .= "\$enablepms = \"1\";\n";
-    $s .= "\$mail_handler = \"smtp\";\n";
-    $s .= "\$smtp_host = \"" . addslashes($site['smtp_host']) . "\";\n";
-    $s .= "\$smtp_user = \"" . addslashes($site['smtp_user']) . "\";\n";
-    $s .= "\$smtp_port = \"" . addslashes($site['smtp_port']) . "\";\n";
-    $s .= "\$smtp_pass = \"" . addslashes($site['smtp_pass']) . "\";\n";
-    $s .= "\$secure_smtp = \"2\";\n";
-    $s .= "\$mail_logging = \"2\";\n";
-    $s .= "\$mail_message_id = \"1\";\n";
-    $s .= "\$mail_queue_limit = \"10\";\n";
-    $s .= "\$hitrun = \"no\";\n";
-    $s .= "\$hitrun_ratio = \"0.4\";\n";
-    $s .= "\$hitrun_gig = \"7\";\n";
-    $s .= "\$offline_minutes = \"\";\n";
-    $s .= "\$betweenregstime = \"24\";\n";
-    $s .= "\$maxregsbetweentime = \"2\";\n";
-    $s .= "\$showforumpagesbreadcrumb = \"1\";\n";
-    $s .= "\$browsingthisthread = \"1\";\n";
-    $s .= "\$userpppoptions = \"5,10,15,20,25,30,40,50\";\n";
-    $s .= "\$usertppoptions = \"10,15,20,25,30,40,50\";\n";
-    $s .= "\$attachthumbnails = \"yes\";\n";
-	$s .= "\$invitesystem = \"off\";\n";
-    $s .= "\$regtype = \"instant\";\n";
-    $s .= "\$minnamelength = \"6\";\n";
-    $s .= "\$maxnamelength = \"30\";\n";
-    $s .= "\$maxip = \"444466\";\n";
-    $s .= "\$illegalusernames = \"\";\n";
-    $s .= "\$minpasswordlength = \"6\";\n";
-$s .= "\$maxpasswordlength = \"30\";\n";
-$s .= "\$requirecomplexpasswords = \"0\";\n";
-$s .= "\$failedlogincount = \"3\";\n";
-$s .= "\$failedlogintext = \"1\";\n";
-$s .= "\$username_method = \"0\";\n";
-$s .= "\$disableregs = \"0\";\n";
-$s .= "\$r_verification = \"yes\";\n";
-$s .= "\$maxusers = \"5000\";\n";
-$s .= "\$coppa = \"disabled\";\n";
-$s .= "\$_d_usergroup = \"1\";\n";
-$s .= "\$invite_count = \"1\";\n";
-$s .= "\$autogigsignup = \"11\";\n";
-$s .= "\$autosbsignup = \"500\";\n";
-$s .= "\$bonus = \"enable\";\n";
-$s .= "\$kpsseed = \"5.0\";\n";
-$s .= "\$kpsupload = \"15.0\";\n";
-$s .= "\$kpscomment = \"5.0\";\n";
-$s .= "\$kpsthanks = \"3.0\";\n";
-$s .= "\$kpsrate = \"3.0\";\n";
-$s .= "\$kpspoll = \"2.0\";\n";
-$s .= "\$kpsmaxpoint = \"999.0\";\n";
-$s .= "\$kpsinvite = \"yes\";\n";
-$s .= "\$kpstitle = \"yes\";\n";
-$s .= "\$kpsvip = \"yes\";\n";
-$s .= "\$kpsgift = \"yes\";\n";
-$s .= "\$kpswarning = \"yes\";\n";
-$s .= "\$kpsratiofix = \"yes\";\n";
-$s .= "\$bdayreward = \"yes\";\n";
-$s .= "\$bdayrewardtype = \"freeleech\";\n";
-$s .= "\$announce_actions = \"yes\";\n";
-$s .= "\$aggressivecheat = \"yes\";\n";
-$s .= "\$nc = \"no\";\n";
-$s .= "\$bannedclientdetect = \"no\";\n";
-$s .= "\$detectbrowsercheats = \"no\";\n";
-$s .= "\$checkconnectable = \"no\";\n";
-$s .= "\$checkip = \"no\";\n";
-$s .= "\$announce_wait = \"0\";\n";
-$s .= "\$announce_interval = \"900\";\n";
-$s .= "\$max_rate = \"2097152\";\n";
-$s .= "\$allowed_clients = \"-UT1610-,-AZ3034-,-UT1750-\";\n";
-$s .= "\$mysql_host = \"" . addslashes($db['hostname']) . "\";\n";
-$s .= "\$mysql_user = \"" . addslashes($db['username']) . "\";\n";
-$s .= "\$mysql_pass = \"" . addslashes($db['password']) . "\";\n";
-$s .= "\$mysql_db = \"" . addslashes($db['database']) . "\";\n";
-$s .= "\$ai = \"no\";\n";
-$s .= "\$autoinvitetime = \"28\";\n";
-$s .= "\$max_dead_torrent_time = \"2\";\n";
-$s .= "\$promote_gig_limit = \"25\";\n";
-$s .= "\$promote_min_ratio = \"1.05\";\n";
-$s .= "\$promote_min_reg_days = \"28\";\n";
-$s .= "\$demote_min_ratio = \"0.95\";\n";
-$s .= "\$referrergift = \"2.5\";\n";
-$s .= "\$leechwarn_min_ratio = \"0.4\";\n";
-$s .= "\$leechwarn_gig_limit = \"5\";\n";
-$s .= "\$leechwarn_length = \"2\";\n";
-$s .= "\$leechwarn_remove_ratio = \"0.8\";\n";
-$s .= "\$ban_user_limit = \"5\";\n";
-$s .= "\$prorules = \"yes\";\n";
-$s .= "\$randomhalfleech = \"7\";\n";
-$s .= "\$randomfree = \"2\";\n";
-$s .= "\$randomtwoup = \"2\";\n";
-$s .= "\$randomtwoupfree = \"1\";\n";
-$s .= "\$randomtwouphalfdown = \"0\";\n";
-$s .= "\$randomthirtypercentdown = \"0\";\n";
-$s .= "\$largesize = \"12\";\n";
-$s .= "\$largepro = \"5\";\n";
-$s .= "\$expirehalfleech = \"70\";\n";
-$s .= "\$expirefree = \"60\";\n";
-$s .= "\$expiretwoup = \"60\";\n";
-$s .= "\$expiretwoupfree = \"30\";\n";
-$s .= "\$expiretwouphalfleech = \"30\";\n";
-$s .= "\$expirethirtypercentleech = \"30\";\n";
-$s .= "\$expirenormal = \"0\";\n";
-$s .= "\$halfleechbecome = \"1\";\n";
-$s .= "\$freebecome = \"1\";\n";
-$s .= "\$twoupbecome = \"1\";\n";
-$s .= "\$twoupfreebecome = \"1\";\n";
-$s .= "\$twouphalfleechbecome = \"1\";\n";
-$s .= "\$thirtypercentleechbecome = \"1\";\n";
-$s .= "\$normalbecome = \"1\";\n";
-$s .= "\$hotdays = \"7\";\n";
-$s .= "\$hotseeder = \"5\";\n";
-$s .= "\$uploaderdouble = \"no\";\n";
-$s .= "\$deldeadtorrent = \"no\";\n";
-	
-    
-    
-    
-    
-    
-    // ── Запись всех настроек в таблицу settings ───────────────────────────────
-$db_settings = [
-    'SITENAME'              => $site['name'],
-    'BASEURL'               => $site['url'],
-    'SITEEMAIL'             => $site['email'],
-    'REPORTMAIL'            => $site['email'],
-    'contactemail'          => $site['email'],
-    'SITEONLINE'            => 'yes',
-    'useajax'               => 'yes',
-    'externalscrape'        => 'yes',
-    'includeexpeers'        => 'no',
-    'MEMBERSONLY'           => $site['membersonly'],
-    'aggressivecheckip'     => 'no',
-    'aggressivecheckemail'  => 'no',
-    'maxloginattempts'      => '7',
-    'securehash'            => $securehash,
-    'charset'               => 'UTF-8',
-    'shoutboxcharset'       => 'UTF-8',
-    'metakeywords'          => 'torrent, tracker',
-    'metadesc'              => $site['name'] . ' - Torrent Tracker',
-    'slogan'                => 'The Best Tracker',
-    'usezip'                => 'no',
-    'iplog1'                => 'yes',
-    'ctracker'              => 'yes',
-    'gzipcompress'          => 'no',
-    'snatchmod'             => 'yes',
-    'ts_perpage'            => '20',
-    'loadlimit'             => '',
-    'useredirectsystem'     => 'yes',
-    'vkeyword'              => 'no',
-    'privatetrackerpatch'   => $site['privatepatch'],
-    'iv'                    => 'no',
-    'dateformat'            => 'l, jS F, Y',
-    'timeformat'            => 'h:i A',
-    'regdateformat'         => 'M Y',
-    'timezoneoffset'        => $site['timezone'],
-    'dstcorrection'         => '1',
-    'cookiedomain'          => $cookieDomain,
-    'cookiepath'            => '/',
-    'cookieprefix'          => '',
-    'cookiesecureflag'      => '0',
-    'cookiesamesiteflag'    => '1',
-    'maxmultipagelinks'     => '5',
-    'jumptopagemultipage'   => '1',
-    'useravatar'            => 'pic/default_avatar.gif',
-    'useravatardims'        => '200|200',
-    'maxavatardims'         => '200x200',
-    'allowremoteavatars'    => '1',
-    'delayedthreadviews'    => '1',
-    'datetimesep'           => ', ',
-    'announce_urls[]'       => $announce_url,
-    'torrent_dir'           => 'torrents',
-    'pic_base_url'          => 'pic/',
-    'table_cat'             => 'categories',
-    'maxchar'               => '250',
-    'max_torrent_size'      => '10 * 1024 * 1024',
-    'wolcutoffmins'         => '15',
-    'defaultlanguage'       => 'english',
-    'defaulttemplate'       => 'default',
-    'avataruploadpath'      => './uploads/avatars',
-    'avatarsize'            => '250000',
-    'f_postsperpage'        => '10',
-    'f_threadsperpage'      => '20',
-    'threadreadcut'         => '7',
-    'use_xmlhttprequest'    => '1',
-    'redirects'             => '0',
-    'uploadspath'           => './uploads',
-    'attachthumbh'          => '96',
-    'attachthumbw'          => '96',
-    'enableattachments'     => '1',
-    'showownunapproved'     => '1',
-    'seourls'               => 'yes',
-    'enablepms'             => '1',
-    'mail_handler'          => 'smtp',
-    'smtp_host'             => $site['smtp_host'],
-    'smtp_user'             => $site['smtp_user'],
-    'smtp_port'             => $site['smtp_port'],
-    'smtp_pass'             => $site['smtp_pass'],
-    'secure_smtp'           => '2',
-    'mail_logging'          => '2',
-    'mail_message_id'       => '1',
-    'mail_queue_limit'      => '10',
-    'hitrun'                => 'no',
-    'hitrun_ratio'          => '0.4',
-    'hitrun_gig'            => '7',
-    'offline_minutes'       => '',
-    'betweenregstime'       => '24',
-    'maxregsbetweentime'    => '2',
-    'showforumpagesbreadcrumb' => '1',
-    'browsingthisthread'    => '1',
-    'userpppoptions'        => '5,10,15,20,25,30,40,50',
-    'usertppoptions'        => '10,15,20,25,30,40,50',
-    'attachthumbnails'      => 'yes',
-	
-	// ANNOUNCE settings
-    'announce_actions'    => 'yes',
-    'aggressivecheat'     => 'yes',
-    'nc'                  => 'no',
-    'bannedclientdetect'  => 'no',
-    'detectbrowsercheats' => 'no',
-    'checkconnectable'    => 'no',
-    'checkip'             => 'no',
-    'announce_wait'       => '0',
-    'announce_interval'   => '900',
-    'max_rate'            => '2097152',
-    'allowed_clients'     => '-UT1610-,-AZ3034-,-UT1750-',
-    'mysql_host'          => $db['hostname'],
-    'mysql_user'          => $db['username'],
-    'mysql_pass'          => $db['password'],
-    'mysql_db'            => $db['database'],
-    // CLEANUP settings
-    'ai'                     => 'no',
-    'autoinvitetime'         => '28',
-    'max_dead_torrent_time'  => '2',
-    'promote_gig_limit'      => '25',
-    'promote_min_ratio'      => '1.05',
-    'promote_min_reg_days'   => '28',
-    'demote_min_ratio'       => '0.95',
-    'referrergift'           => '2.5',
-    'leechwarn_min_ratio'    => '0.4',
-    'leechwarn_gig_limit'    => '5',
-    'leechwarn_length'       => '2',
-    'leechwarn_remove_ratio' => '0.8',
-    'ban_user_limit'         => '5',
-	
-	// SIGNUP settings
-    'invitesystem'           => 'off',
-    'regtype'                => 'instant',
-    'minnamelength'          => '6',
-    'maxnamelength'          => '30',
-    'maxip'                  => '444466',
-    'illegalusernames'       => '',
-    'minpasswordlength'      => '6',
-    'maxpasswordlength'      => '30',
-    'requirecomplexpasswords'=> '0',
-    'failedlogincount'       => '3',
-    'failedlogintext'        => '1',
-    'username_method'        => '0',
-    'disableregs'            => '0',
-    'r_verification'         => 'yes',
-    'maxusers'               => '5000',
-    'coppa'                  => 'disabled',
-    '_d_usergroup'           => '1',
-    'invite_count'           => '1',
-    'autogigsignup'          => '11',
-    'autosbsignup'           => '500',
-    // KPS settings
-    'bonus'                  => 'enable',
-    'kpsseed'                => '5.0',
-    'kpsupload'              => '15.0',
-    'kpscomment'             => '5.0',
-    'kpsthanks'              => '3.0',
-    'kpsrate'                => '3.0',
-    'kpspoll'                => '2.0',
-    'kpsmaxpoint'            => '999.0',
-    'kpsinvite'              => 'yes',
-    'kpstitle'               => 'yes',
-    'kpsvip'                 => 'yes',
-    'kpsgift'                => 'yes',
-    'kpswarning'             => 'yes',
-    'kpsratiofix'            => 'yes',
-    'bdayreward'             => 'yes',
-    'bdayrewardtype'         => 'freeleech',
-	
-	// PROMO settings
-    'prorules'                 => 'yes',
-    'randomhalfleech'          => '7',
-    'randomfree'               => '2',
-    'randomtwoup'              => '2',
-    'randomtwoupfree'          => '1',
-    'randomtwouphalfdown'      => '0',
-    'randomthirtypercentdown'  => '0',
-    'largesize'                => '12',
-    'largepro'                 => '5',
-    'expirehalfleech'          => '70',
-    'expirefree'               => '60',
-    'expiretwoup'              => '60',
-    'expiretwoupfree'          => '30',
-    'expiretwouphalfleech'     => '30',
-    'expirethirtypercentleech' => '30',
-    'expirenormal'             => '0',
-    'halfleechbecome'          => '1',
-    'freebecome'               => '1',
-    'twoupbecome'              => '1',
-    'twoupfreebecome'          => '1',
-    'twouphalfleechbecome'     => '1',
-    'thirtypercentleechbecome' => '1',
-    'normalbecome'             => '1',
-    'hotdays'                  => '7',
-    'hotseeder'                => '5',
-    'uploaderdouble'           => 'no',
-    'deldeadtorrent'           => 'no',
-	
-	
-	
-	
-];
-
-foreach ($db_settings as $name => $value) {
-    $n = mysqli_real_escape_string($conn, $name);
-    $v = mysqli_real_escape_string($conn, $value);
-    $check = mysqli_query($conn, "SELECT `sid` FROM `{$p}settings` WHERE `name`='{$n}' LIMIT 1");
-    if (mysqli_num_rows($check) > 0) {
-        mysqli_query($conn, "UPDATE `{$p}settings` SET `value`='{$v}' WHERE `name`='{$n}'");
-    } else {
-        mysqli_query($conn, "INSERT INTO `{$p}settings` (`name`,`value`) VALUES ('{$n}','{$v}')");
+    // ── Записываем настройки из sql/default_settings.sql ───────────────────────
+    // Плейсхолдеры вида {{KEY}} заменяются реальными значениями перед выполнением.
+    $settings_sql_file = __DIR__ . '/sql/default_settings.sql';
+    if (!file_exists($settings_sql_file)) {
+        return ['Missing file: sql/default_settings.sql'];
     }
-}
-    
-    
- 
- // ── Генерация config_announce.php ────────────────────────────────────────────
-$announce_php  = "<?php #DO NOT EDIT THIS FILE, PLEASE USE THE SETTINGS PANEL!!\n";
-$announce_php .= "if(!defined('IN_ANNOUNCE')) die('Hacking attempt!');\n";
-$announce_php .= "\$announce_actions = 'yes';\n";
-$announce_php .= "\$aggressivecheat = 'yes';\n";
-$announce_php .= "\$nc = 'no';\n";
-$announce_php .= "\$announce_wait = '0';\n";
-$announce_php .= "\$announce_interval = '900';\n";
-$announce_php .= "\$max_rate = '2097152';\n";
-$announce_php .= "\$bannedclientdetect = 'no';\n";
-$announce_php .= "\$allowed_clients = '-UT1610-,-AZ3034-,-UT1750-';\n";
-$announce_php .= "\$detectbrowsercheats = 'no';\n";
-$announce_php .= "\$checkconnectable = 'no';\n";
-$announce_php .= "\$checkip = 'no';\n";
-$announce_php .= "\$mysql_host = '" . addslashes($db['hostname']) . "';\n";
-$announce_php .= "\$mysql_user = '" . addslashes($db['username']) . "';\n";
-$announce_php .= "\$mysql_pass = '" . addslashes($db['password']) . "';\n";
-$announce_php .= "\$mysql_db = '" . addslashes($db['database']) . "';\n";
-$announce_php .= "\$BASEURL = '" . addslashes($site['url']) . "';\n";
-$announce_php .= "\$SITENAME = '" . addslashes($site['name']) . "';\n";
-$announce_php .= "\$privatetrackerpatch = '" . $site['privatepatch'] . "';\n";
-$announce_php .= "\$gzipcompress = 'no';\n";
-$announce_php .= "\$charset = 'UTF-8';\n";
-$announce_php .= "\$aggressivecheckip = 'no';\n";
-$announce_php .= "\$snatchmod = 'yes';\n";
-$announce_php .= "\$bonus = 'enable';\n";
-$announce_php .= "\$kpsseed = '5.0';\n";
-$announce_php .= "\$bdayreward = 'yes';\n";
-$announce_php .= "\$bdayrewardtype = 'freeleech';\n";
-$announce_php .= "?>\n";
+    $settings_sql = file_get_contents($settings_sql_file);
 
+    // Подставляем все плейсхолдеры
+    $placeholders = [
+        '{{SITENAME}}'     => $site['name'],
+        '{{BASEURL}}'      => $site['url'],
+        '{{SITEEMAIL}}'    => $site['email'],
+        '{{MEMBERSONLY}}'  => $site['membersonly'],
+        '{{PRIVATEPATCH}}' => $site['privatepatch'],
+        '{{TIMEZONE}}'     => $site['timezone'],
+        '{{COOKIEDOMAIN}}' => $cookieDomain,
+        '{{SECUREHASH}}'   => $securehash,
+        '{{ANNOUNCE_URL}}' => $announce_url,
+        '{{SMTP_HOST}}'    => $site['smtp_host'],
+        '{{SMTP_USER}}'    => $site['smtp_user'],
+        '{{SMTP_PASS}}'    => $site['smtp_pass'],
+        '{{SMTP_PORT}}'    => $site['smtp_port'],
+        '{{DB_HOST}}'      => $db_cfg['hostname'],
+        '{{DB_USER}}'      => $db_cfg['username'],
+        '{{DB_PASS}}'      => $db_cfg['password'],
+        '{{DB_NAME}}'      => $db_cfg['database'],
+    ];
+    // Экранируем значения для SQL-строк (одинарные кавычки)
+    foreach ($placeholders as $key => $val) {
+        $settings_sql = str_replace($key, $db->escape_string($val), $settings_sql);
+    }
 
-    
+    // Добавляем префикс таблицы если нужен
+    if ($p !== '') {
+        $settings_sql = str_ireplace('INSERT IGNORE INTO `settings`', "INSERT IGNORE INTO `{$p}settings`", $settings_sql);
+    }
 
+    // Выполняем одним запросом
+    try {
+        $db->sql_query($settings_sql);
+    } catch (Throwable $e) {
+        return ['Failed to insert default settings: ' . $e->getMessage()];
+    }
 
-$errors_out = [];
+    // ── Генерируем settings.php из таблицы БД ────────────────────────────────
+    // Формат: $VARNAME = "value"; — именно так читает трекер (global.php, my_setcookie и т.д.)
+    // Единый источник истины: БД первична, файл — её кэш.
+    $settings_out = '';
+    $q = $db->simple_select('settings', 'name, value');
+    while ($row = $db->fetch_array($q)) {
+        $n = $row['name'];                        // имя переменной — как есть
+        $v = addcslashes($row['value'], '\\"$'); // экранируем \, " и $ в значении
+        $settings_out .= "\${$n} = \"{$v}\";\n";
+    }
+    $s = "<?php\n"
+       . "/*********************************\\\n"
+       . "  DO NOT EDIT THIS FILE, PLEASE USE\n"
+       . "  THE SETTINGS EDITOR\n"
+       . "\\*********************************/\n\n"
+       . $settings_out
+       . "\n";
 
-if (@file_put_contents(__DIR__ . '/include/config.php', $config_php) === false) {
-    $errors_out[] = 'Cannot write config.php — check permissions';
-}
-if (@file_put_contents(__DIR__ . '/include/settings.php', $s) === false) {
-    $errors_out[] = 'Cannot write settings.php — check permissions';
-}
-if (@file_put_contents(__DIR__ . '/include/config_announce.php', $announce_php) === false) {
-    $errors_out[] = 'Cannot write config_announce.php — check permissions';
-}
-if (!is_dir(__DIR__ . '/cache')) {
-    @mkdir(__DIR__ . '/cache', 0755, true);
-}
+    // config_announce.php
+    $announce_php  = "<?php #DO NOT EDIT THIS FILE, PLEASE USE THE SETTINGS PANEL!!\n";
+    $announce_php .= "if(!defined('IN_ANNOUNCE')) die('Hacking attempt!');\n";
+    $announce_php .= "\$announce_actions = 'yes';\n\$aggressivecheat = 'yes';\n\$nc = 'no';\n";
+    $announce_php .= "\$announce_wait = '0';\n\$announce_interval = '900';\n\$max_rate = '2097152';\n";
+    $announce_php .= "\$bannedclientdetect = 'no';\n\$allowed_clients = '-UT1610-,-AZ3034-,-UT1750-';\n";
+    $announce_php .= "\$detectbrowsercheats = 'no';\n\$checkconnectable = 'no';\n\$checkip = 'no';\n";
+    $announce_php .= "\$mysql_host = '" . addslashes($db_cfg['hostname']) . "';\n";
+    $announce_php .= "\$mysql_user = '" . addslashes($db_cfg['username']) . "';\n";
+    $announce_php .= "\$mysql_pass = '" . addslashes($db_cfg['password']) . "';\n";
+    $announce_php .= "\$mysql_db = '" . addslashes($db_cfg['database']) . "';\n";
+    $announce_php .= "\$BASEURL = '" . addslashes($site['url']) . "';\n";
+    $announce_php .= "\$SITENAME = '" . addslashes($site['name']) . "';\n";
+    $announce_php .= "\$privatetrackerpatch = '" . $site['privatepatch'] . "';\n";
+    $announce_php .= "\$gzipcompress = 'no';\n\$charset = 'UTF-8';\n\$aggressivecheckip = 'no';\n";
+    $announce_php .= "\$snatchmod = 'yes';\n\$bonus = 'enable';\n\$kpsseed = '5.0';\n";
+    $announce_php .= "\$bdayreward = 'yes';\n\$bdayrewardtype = 'freeleech';\n?>\n";
 
-    
+    // Запись файлов
+    if (@file_put_contents(__DIR__ . '/include/config.php', $config_php) === false) {
+        $errors_out[] = 'Cannot write config.php — check permissions';
+    }
+    if (@file_put_contents(__DIR__ . '/include/settings.php', $s) === false) {
+        $errors_out[] = 'Cannot write settings.php — check permissions';
+    }
+    if (@file_put_contents(__DIR__ . '/include/config_announce.php', $announce_php) === false) {
+        $errors_out[] = 'Cannot write config_announce.php — check permissions';
+    }
+    if (!is_dir(__DIR__ . '/cache')) {
+        @mkdir(__DIR__ . '/cache', 0755, true);
+    }
 
-
-    // Директории
-    //foreach (['uploads','uploads/avatars','torrents','torrents/images','torrents/screens','cache','cache/datacache'] as $dir) {
-     //   $path = __DIR__ . '/' . $dir;
-    //    if (!is_dir($path)) @mkdir($path, 0755, true);
-    //}
-    
-    
-    
-
-
-// Загружаем базовые данные
-$data_sql = @file_get_contents(__DIR__ . '/sql/install_data.sql');
-if ($data_sql) {
-    $data_sql = str_replace("\r\n", "\n", $data_sql);
-    $blocks = preg_split('/\n\n+/', $data_sql);
-    foreach ($blocks as $block) {
-        $block = trim($block);
-        if (empty($block)) continue;
-        if (preg_match('/^--/m', $block) && !preg_match('/^INSERT/im', $block)) continue;
-        $lines = explode("\n", $block);
-        $sql_lines = [];
-        foreach ($lines as $line) {
-            if (strpos(trim($line), '--') === 0) continue;
-            $sql_lines[] = $line;
+    // ── SQL-файлы с базовыми данными ──────────────────────────────────────────
+    $data_sql = @file_get_contents(__DIR__ . '/sql/install_data.sql');
+    if ($data_sql) {
+        $data_sql = str_replace("\r\n", "\n", $data_sql);
+        foreach (preg_split('/\n\n+/', $data_sql) as $block) {
+            $block = trim($block);
+            if (empty($block)) continue;
+            $lines = array_filter(explode("\n", $block), fn($l) => strpos(trim($l), '--') !== 0);
+            $sql = trim(implode("\n", $lines));
+            if (!preg_match('/^INSERT/i', $sql)) continue;
+            try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
         }
-        $sql = trim(implode("\n", $sql_lines));
-        if (empty($sql)) continue;
-        if (!preg_match('/^INSERT/i', $sql)) continue;
-        $sql = rtrim($sql, ';');
-        mysqli_query($conn, $sql);
     }
-}
 
-
-// Загружаем FAQ
-$faq_sql = @file_get_contents(__DIR__ . '/sql/faq.sql');
-if ($faq_sql) {
-    $faq_sql = str_replace("\r\n", "\n", $faq_sql);
-    $faq_sql = str_ireplace('INSERT INTO faq', 'INSERT IGNORE INTO `' . $p . 'faq`', $faq_sql);
-    foreach (array_filter(array_map('trim', explode("\n", $faq_sql))) as $sql) {
-        if (stripos($sql, 'INSERT') !== 0) continue;
-        mysqli_query($conn, rtrim($sql, ';'));
+    $faq_sql = @file_get_contents(__DIR__ . '/sql/faq.sql');
+    if ($faq_sql) {
+        $faq_sql = str_replace("\r\n", "\n", $faq_sql);
+        $faq_sql = str_ireplace('INSERT INTO faq', 'INSERT IGNORE INTO `' . $p . 'faq`', $faq_sql);
+        foreach (array_filter(array_map('trim', explode("\n", $faq_sql))) as $sql) {
+            if (stripos($sql, 'INSERT') !== 0) continue;
+            try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
+        }
     }
-}
 
-// Загружаем группы пользователей
-$usergroups_sql = @file_get_contents(__DIR__ . '/sql/group.sql');
-if ($usergroups_sql) {
-    $usergroups_sql = str_replace("\r\n", "\n", $usergroups_sql);
-   $usergroups_sql = str_replace('\\"', '"', $usergroups_sql);
-    $usergroups_sql = str_ireplace('INSERT IGNORE INTO usergroups', 'INSERT IGNORE INTO `' . $p . 'usergroups`', $usergroups_sql);
-    foreach (array_filter(array_map('trim', explode("\n", $usergroups_sql))) as $sql) {
-        if (stripos($sql, 'INSERT') !== 0) continue;
-        mysqli_query($conn, rtrim($sql, ';'));
+    $usergroups_sql = @file_get_contents(__DIR__ . '/sql/group.sql');
+    if ($usergroups_sql) {
+        $usergroups_sql = str_replace(["\r\n", '\\"'], ["\n", '"'], $usergroups_sql);
+        $usergroups_sql = str_ireplace('INSERT IGNORE INTO usergroups', 'INSERT IGNORE INTO `' . $p . 'usergroups`', $usergroups_sql);
+        foreach (array_filter(array_map('trim', explode("\n", $usergroups_sql))) as $sql) {
+            if (stripos($sql, 'INSERT') !== 0) continue;
+            try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
+        }
     }
-}
 
-
-
-
-
-// Загружаем шаблоны
-$templates_sql = @file_get_contents(__DIR__ . '/sql/templates.sql');
-if ($templates_sql) {
-    $templates_sql = str_replace("\r\n", "\n", $templates_sql);
-    $statements = explode("');\n", $templates_sql);
-    foreach ($statements as $sql) {
-        $sql = trim($sql);
-        if (empty($sql)) continue;
-        $sql .= "');";
-        if (stripos($sql, 'INSERT') !== 0) continue;
-        mysqli_query($conn, $sql);
+    $templates_sql = @file_get_contents(__DIR__ . '/sql/templates.sql');
+    if ($templates_sql) {
+        $templates_sql = str_replace("\r\n", "\n", $templates_sql);
+        foreach (explode("');\n", $templates_sql) as $sql) {
+            $sql = trim($sql);
+            if (empty($sql)) continue;
+            if (stripos($sql, 'INSERT') !== 0) continue;
+            try { $db->sql_query($sql . "');"); } catch (Throwable) {}
+        }
     }
-}
-
-    
 
     return $errors_out ?: true;
 }
 
 // ── Проверка требований ───────────────────────────────────────────────────────
-function checkRequirements() {
+function checkRequirements(): array
+{
     return [
         ['PHP Version ≥ 8.0',    version_compare(PHP_VERSION, '8.0.0', '>='), PHP_VERSION],
         ['MySQLi',               extension_loaded('mysqli'),   extension_loaded('mysqli') ? 'OK' : 'Missing'],
@@ -2033,8 +1633,9 @@ function checkRequirements() {
         ['MB String',            extension_loaded('mbstring'), extension_loaded('mbstring') ? 'OK' : 'Missing'],
         ['OpenSSL',              extension_loaded('openssl'),  extension_loaded('openssl') ? 'OK' : 'Missing'],
         ['cURL',                 extension_loaded('curl'),     extension_loaded('curl') ? 'OK' : 'Missing'],
-        ['config.php writable',  is_writable(__DIR__) || (file_exists(__DIR__.'/config.php') && is_writable(__DIR__.'/config.php')), is_writable(__DIR__) ? 'Writable' : 'Not writable — run: chmod 666 config.php'],
-        ['settings.php writable',is_writable(__DIR__) || (file_exists(__DIR__.'/settings.php') && is_writable(__DIR__.'/settings.php')), is_writable(__DIR__) ? 'Writable' : 'Not writable — run: chmod 666 settings.php'],
+        ['DB base driver',       file_exists(INC_PATH . '/db_base.php'), file_exists(INC_PATH . '/db_base.php') ? 'Found' : 'Missing: include/db_base.php'],
+        ['config.php writable',  is_writable(__DIR__) || (file_exists(__DIR__.'/include/config.php') && is_writable(__DIR__.'/include/config.php')), is_writable(__DIR__) ? 'Writable' : 'Not writable'],
+        ['settings.php writable',is_writable(__DIR__) || (file_exists(__DIR__.'/include/settings.php') && is_writable(__DIR__.'/include/settings.php')), is_writable(__DIR__) ? 'Writable' : 'Not writable'],
     ];
 }
 
@@ -2050,585 +1651,260 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
 <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
-    :root {
-        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        --success-gradient: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
-        --danger-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    }
-    
-    
-    .installer-container {
-        max-width: 800px;
-        margin: 0 auto;
-    }
-    
-    .main-card {
-        background: white;
-        border-radius: 20px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        overflow: hidden;
-        backdrop-filter: blur(10px);
-    }
-    
-    .card-header {
-        background: var(--primary-gradient);
-        color: white;
-        padding: 25px 30px;
-        border-bottom: none;
-    }
-    
-    .step-progress {
-        padding: 25px 30px;
-        background: #f8f9fa;
-        border-bottom: 1px solid #e9ecef;
-    }
-    
-    .step-item {
-        position: relative;
-        flex: 1;
-        text-align: center;
-    }
-    
-    .step-circle {
-        width: 40px;
-        height: 40px;
-        background: #dee2e6;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 8px;
-        font-weight: bold;
-        color: #6c757d;
-        transition: all 0.3s ease;
-        position: relative;
-        z-index: 2;
-    }
-    
-    .step-item.active .step-circle {
-        background: #667eea;
-        color: white;
-        box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
-        transform: scale(1.1);
-    }
-    
-    .step-item.completed .step-circle {
-        background: #28a745;
-        color: white;
-    }
-    
-    .step-label {
-        font-size: 12px;
-        color: #6c757d;
-        font-weight: 500;
-    }
-    
-    .step-item.active .step-label {
-        color: #667eea;
-        font-weight: 600;
-    }
-    
-    .step-connector {
-        position: absolute;
-        top: 20px;
-        left: 50%;
-        width: 100%;
-        height: 2px;
-        background: #dee2e6;
-        z-index: 1;
-    }
-    
-    .step-item:last-child .step-connector {
-        display: none;
-    }
-    
-    .form-control, .form-select {
-        border-radius: 12px;
-        border: 2px solid #e9ecef;
-        transition: all 0.3s ease;
-        padding: 10px 15px;
-    }
-    
-    .form-control:focus, .form-select:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-    }
-    
-    .btn {
-        border-radius: 12px;
-        padding: 12px 24px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-    
-    .btn-primary {
-        background: var(--primary-gradient);
-        border: none;
-    }
-    
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-    }
-    
-    .btn-success {
-        background: var(--success-gradient);
-        border: none;
-        color: #333;
-    }
-    
-    .btn-success:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 20px rgba(132, 250, 176, 0.3);
-    }
-    
-    .requirement-item {
-        display: flex;
-        align-items: center;
-        padding: 12px 0;
-        border-bottom: 1px solid #f0f0f0;
-    }
-    
-    .requirement-item:last-child {
-        border-bottom: none;
-    }
-    
-    .requirement-status {
-        width: 30px;
-        text-align: center;
-        margin-right: 15px;
-    }
-    
-    .info-card {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        border-radius: 15px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-    
-    .animate-spin {
-        animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-    }
-    
-    .fade-in {
-        animation: fadeIn 0.5s ease-in;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .badge-custom {
-        background: rgba(102, 126, 234, 0.1);
-        color: #667eea;
-        padding: 5px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-    }
-    
-    .alert-custom {
-        border-radius: 15px;
-        border-left: 4px solid;
-    }
+    :root { --primary-gradient: linear-gradient(135deg,#667eea 0%,#764ba2 100%); --success-gradient: linear-gradient(135deg,#84fab0 0%,#8fd3f4 100%); }
+    .installer-container { max-width:800px; margin:0 auto; }
+    .main-card { background:#fff; border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,.3); overflow:hidden; }
+    .card-header { background:var(--primary-gradient); color:#fff; padding:25px 30px; border-bottom:none; }
+    .step-progress { padding:25px 30px; background:#f8f9fa; border-bottom:1px solid #e9ecef; }
+    .step-item { position:relative; flex:1; text-align:center; }
+    .step-circle { width:40px; height:40px; background:#dee2e6; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 8px; font-weight:bold; color:#6c757d; transition:all .3s ease; position:relative; z-index:2; }
+    .step-item.active .step-circle { background:#667eea; color:#fff; box-shadow:0 0 0 4px rgba(102,126,234,.2); transform:scale(1.1); }
+    .step-item.completed .step-circle { background:#28a745; color:#fff; }
+    .step-label { font-size:12px; color:#6c757d; font-weight:500; }
+    .step-item.active .step-label { color:#667eea; font-weight:600; }
+    .step-connector { position:absolute; top:20px; left:50%; width:100%; height:2px; background:#dee2e6; z-index:1; }
+    .step-item:last-child .step-connector { display:none; }
+    .form-control,.form-select { border-radius:12px; border:2px solid #e9ecef; transition:all .3s ease; padding:10px 15px; }
+    .form-control:focus,.form-select:focus { border-color:#667eea; box-shadow:0 0 0 .2rem rgba(102,126,234,.25); }
+    .btn { border-radius:12px; padding:12px 24px; font-weight:600; transition:all .3s ease; }
+    .btn-primary { background:var(--primary-gradient); border:none; }
+    .btn-primary:hover { transform:translateY(-2px); box-shadow:0 10px 20px rgba(102,126,234,.3); }
+    .btn-success { background:var(--success-gradient); border:none; color:#333; }
+    .btn-success:hover { transform:translateY(-2px); box-shadow:0 10px 20px rgba(132,250,176,.3); }
+    .requirement-item { display:flex; align-items:center; padding:12px 0; border-bottom:1px solid #f0f0f0; }
+    .requirement-item:last-child { border-bottom:none; }
+    .requirement-status { width:30px; text-align:center; margin-right:15px; }
+    .info-card { background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%); border-radius:15px; padding:20px; margin-bottom:20px; }
+    .alert-custom { border-radius:15px; border-left:4px solid; }
+    .fade-in { animation:fadeIn .5s ease-in; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
 </style>
 </head>
 <body>
-<div class="installer-container fade-in">
+<div class="installer-container fade-in p-3">
     <div class="main-card">
         <div class="card-header">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <h2 class="mb-1">
-                        <i class="fas fa-satellite-dish me-2"></i>
-                        Ruff Tracker Installer
-                    </h2>
+                    <h2 class="mb-1"><i class="fas fa-satellite-dish me-2"></i>Ruff Tracker Installer</h2>
                     <p class="mb-0 opacity-75">Professional Torrent Tracker Setup</p>
                 </div>
-                <div>
-                    <span class="badge bg-light text-dark px-3 py-2 rounded-pill">
-                        <i class="fas fa-code-branch me-1"></i> v<?= INSTALLER_VERSION ?>
-                    </span>
-                </div>
+                <span class="badge bg-light text-dark px-3 py-2 rounded-pill">
+                    <i class="fas fa-code-branch me-1"></i> v<?= INSTALLER_VERSION ?>
+                </span>
             </div>
         </div>
-        
+
         <div class="step-progress">
             <div class="d-flex justify-content-between position-relative">
                 <?php foreach ($steps as $num => $label): ?>
-                <div class="step-item text-center <?= $num < $step ? 'completed' : ($num == $step ? 'active' : '') ?>">
+                <div class="step-item <?= $num < $step ? 'completed' : ($num == $step ? 'active' : '') ?>">
                     <div class="step-circle">
-                        <?php if ($num < $step): ?>
-                            <i class="fas fa-check"></i>
-                        <?php else: ?>
-                            <?= $num ?>
-                        <?php endif; ?>
+                        <?php if ($num < $step): ?><i class="fas fa-check"></i><?php else: ?><?= $num ?><?php endif; ?>
                     </div>
                     <div class="step-label"><?= $label ?></div>
-                    <?php if ($num < count($steps)): ?>
-                        <div class="step-connector"></div>
-                    <?php endif; ?>
+                    <?php if ($num < count($steps)): ?><div class="step-connector"></div><?php endif; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
         </div>
-        
+
         <div class="p-4">
             <?php if ($errors): ?>
-            <div class="alert alert-danger alert-custom mb-4" style="border-left-color: #dc3545;">
+            <div class="alert alert-danger alert-custom mb-4" style="border-left-color:#dc3545">
                 <div class="d-flex">
-                    <div class="me-3">
-                        <i class="fas fa-exclamation-triangle fa-2x"></i>
-                    </div>
+                    <div class="me-3"><i class="fas fa-exclamation-triangle fa-2x"></i></div>
                     <div>
-                        <strong>Installation Errors:</strong>
-                        <ul class="mb-0 mt-2">
-                            <?php foreach ($errors as $e): ?>
-                                <li><?= htmlspecialchars($e) ?></li>
-                            <?php endforeach; ?>
-                        </ul>
+                        <strong>Errors:</strong>
+                        <ul class="mb-0 mt-2"><?php foreach ($errors as $e): ?><li><?= htmlspecialchars($e) ?></li><?php endforeach; ?></ul>
                     </div>
                 </div>
             </div>
             <?php endif; ?>
-            
+
             <?php if ($step === 1): ?>
-            <div class="info-card">
-                <div class="d-flex align-items-center mb-3">
-                    <i class="fas fa-clipboard-list fa-2x me-3"></i>
-                    <h5 class="mb-0">System Requirements Check</h5>
-                </div>
-                <p class="text-muted small">Please ensure all requirements are met before proceeding with installation.</p>
-            </div>
-            
+            <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-clipboard-list fa-2x me-3"></i><h5 class="mb-0">System Requirements Check</h5></div><p class="text-muted small mb-0">All checks must pass before proceeding.</p></div>
             <div class="mb-4">
                 <?php foreach ($reqs as $req): ?>
                 <div class="requirement-item">
-                    <div class="requirement-status">
-                        <i class="fas fa-<?= $req[1] ? 'check-circle text-success' : 'times-circle text-danger' ?> fa-lg"></i>
-                    </div>
-                    <div class="flex-grow-1">
-                        <strong><?= $req[0] ?></strong>
-                        <div class="small text-muted"><?= htmlspecialchars($req[2]) ?></div>
-                    </div>
-                    <?php if ($req[1]): ?>
-                        <span class="badge bg-success bg-opacity-10 text-success px-3 py-1 rounded-pill">
-                            <i class="fas fa-check me-1"></i>Passed
-                        </span>
-                    <?php else: ?>
-                        <span class="badge bg-danger bg-opacity-10 text-danger px-3 py-1 rounded-pill">
-                            <i class="fas fa-times me-1"></i>Failed
-                        </span>
-                    <?php endif; ?>
+                    <div class="requirement-status"><i class="fas fa-<?= $req[1] ? 'check-circle text-success' : 'times-circle text-danger' ?> fa-lg"></i></div>
+                    <div class="flex-grow-1"><strong><?= $req[0] ?></strong><div class="small text-muted"><?= htmlspecialchars($req[2]) ?></div></div>
+                    <span class="badge bg-<?= $req[1] ? 'success' : 'danger' ?> bg-opacity-10 text-<?= $req[1] ? 'success' : 'danger' ?> px-3 py-1 rounded-pill">
+                        <i class="fas fa-<?= $req[1] ? 'check' : 'times' ?> me-1"></i><?= $req[1] ? 'Passed' : 'Failed' ?>
+                    </span>
                 </div>
                 <?php endforeach; ?>
             </div>
-            
             <?php if ($allOk): ?>
-                <a href="install.php?step=2" class="btn btn-primary btn-lg w-100">
-                    <i class="fas fa-arrow-right me-2"></i>Continue to Database Setup
-                </a>
+                <a href="install.php?step=2" class="btn btn-primary btn-lg w-100"><i class="fas fa-arrow-right me-2"></i>Continue to Database Setup</a>
             <?php else: ?>
-                <div class="alert alert-warning text-center mb-3">
-                    <i class="fas fa-tools me-2"></i>
-                    Please fix the issues above before continuing
-                </div>
-                <a href="install.php?step=1" class="btn btn-outline-secondary w-100">
-                    <i class="fas fa-sync-alt me-2"></i>Recheck Requirements
-                </a>
+                <div class="alert alert-warning text-center mb-3"><i class="fas fa-tools me-2"></i>Please fix the issues above before continuing</div>
+                <a href="install.php?step=1" class="btn btn-outline-secondary w-100"><i class="fas fa-sync-alt me-2"></i>Recheck</a>
             <?php endif; ?>
-            
+
             <?php elseif ($step === 2): ?>
-            <div class="info-card">
-                <div class="d-flex align-items-center mb-3">
-                    <i class="fas fa-database fa-2x me-3"></i>
-                    <h5 class="mb-0">Database Configuration</h5>
-                </div>
-                <p class="text-muted small">Connect to your MySQL database where the tracker tables will be installed.</p>
-            </div>
-            
+            <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-database fa-2x me-3"></i><h5 class="mb-0">Database Configuration</h5></div><p class="text-muted small mb-0">Connects via your DB class (db_base.php + driver).</p></div>
             <form method="post" action="install.php?step=2">
                 <div class="row g-3">
-                    <div class="col-md-9">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-server me-1"></i>Database Host
-                        </label>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold"><i class="fas fa-plug me-1"></i>Driver Type</label>
+                        <select class="form-select" name="db_type">
+                            <?php foreach (['mysqli','mysql','pgsql','sqlite'] as $t): ?>
+                            <option value="<?= $t ?>" <?= ($_SESSION['db']['type'] ?? 'mysqli') === $t ? 'selected' : '' ?>><?= strtoupper($t) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold"><i class="fas fa-server me-1"></i>Database Host</label>
                         <input type="text" class="form-control" name="db_host" value="<?= htmlspecialchars($_SESSION['db']['hostname'] ?? 'localhost') ?>" required>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-plug me-1"></i>Port
-                        </label>
-                        <input type="text" class="form-control" name="db_port" value="3306">
-                    </div>
                     <div class="col-12">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-database me-1"></i>Database Name
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-database me-1"></i>Database Name</label>
                         <input type="text" class="form-control" name="db_name" value="<?= htmlspecialchars($_SESSION['db']['database'] ?? '') ?>" placeholder="tracker_db" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-user me-1"></i>Database Username
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-user me-1"></i>Username</label>
                         <input type="text" class="form-control" name="db_user" value="<?= htmlspecialchars($_SESSION['db']['username'] ?? '') ?>" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-lock me-1"></i>Database Password
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-lock me-1"></i>Password</label>
                         <input type="password" class="form-control" name="db_pass" value="<?= htmlspecialchars($_SESSION['db']['password'] ?? '') ?>">
                     </div>
                     <div class="col-12">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-tag me-1"></i>Table Prefix
-                        </label>
-                        <input type="text" class="form-control" name="db_prefix" value="<?= htmlspecialchars($_SESSION['db']['prefix'] ?? '') ?>" placeholder="Optional">
-                        <small class="text-muted">Leave empty for no prefix</small>
+                        <label class="form-label fw-semibold"><i class="fas fa-tag me-1"></i>Table Prefix</label>
+                        <input type="text" class="form-control" name="db_prefix" value="<?= htmlspecialchars($_SESSION['db']['prefix'] ?? '') ?>" placeholder="Optional — leave empty for none">
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary w-100 mt-4">
-                    <i class="fas fa-database me-2"></i>Test Connection & Continue
-                </button>
+                <button type="submit" class="btn btn-primary w-100 mt-4"><i class="fas fa-database me-2"></i>Test Connection & Continue</button>
             </form>
-            
+
             <?php elseif ($step === 3): ?>
-            <div class="info-card">
-                <div class="d-flex align-items-center mb-3">
-                    <i class="fas fa-globe fa-2x me-3"></i>
-                    <h5 class="mb-0">Site Configuration</h5>
-                </div>
-                <p class="text-muted small">Configure your tracker's basic settings and appearance.</p>
-            </div>
-            
+            <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-globe fa-2x me-3"></i><h5 class="mb-0">Site Configuration</h5></div><p class="text-muted small mb-0">Basic tracker settings.</p></div>
             <form method="post" action="install.php?step=3">
                 <div class="row g-3">
                     <div class="col-12">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-tag me-1"></i>Site Name
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-tag me-1"></i>Site Name</label>
                         <input type="text" class="form-control" name="site_name" value="<?= htmlspecialchars($_SESSION['site']['name'] ?? '') ?>" placeholder="My Awesome Tracker" required>
                     </div>
                     <div class="col-12">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-link me-1"></i>Site URL
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-link me-1"></i>Site URL</label>
                         <input type="url" class="form-control" name="site_url" value="<?= htmlspecialchars($_SESSION['site']['url'] ?? '') ?>" placeholder="https://tracker.example.com" required>
-                        <small class="text-muted">No trailing slash. HTTPS recommended for security.</small>
+                        <small class="text-muted">No trailing slash.</small>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-envelope me-1"></i>Site Email
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-envelope me-1"></i>Site Email</label>
                         <input type="email" class="form-control" name="site_email" value="<?= htmlspecialchars($_SESSION['site']['email'] ?? '') ?>" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-clock me-1"></i>Timezone
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-clock me-1"></i>Timezone</label>
                         <select class="form-select" name="timezone">
                             <?php for ($i=-12;$i<=14;$i++): ?>
-                                <option value="<?=$i?>" <?=(($_SESSION['site']['timezone']??2)==$i)?'selected':''?>>
-                                    UTC <?=$i>=0?'+'.$i:$i?>
-                                </option>
+                            <option value="<?=$i?>" <?=(($_SESSION['site']['timezone']??2)==$i)?'selected':''?>>UTC <?=$i>=0?'+'.$i:$i?></option>
                             <?php endfor; ?>
                         </select>
                     </div>
-                    <div class="col-12">
-                        <div class="form-check form-switch">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch mt-2">
                             <input class="form-check-input" type="checkbox" name="membersonly" id="membersonly" <?= ($_SESSION['site']['membersonly'] ?? 'yes') === 'yes' ? 'checked' : '' ?>>
-                            <label class="form-check-label fw-semibold" for="membersonly">
-                                <i class="fas fa-users me-1"></i>Members Only Mode
-                            </label>
-                            <div class="form-text">Only registered users can browse the site</div>
+                            <label class="form-check-label fw-semibold" for="membersonly"><i class="fas fa-users me-1"></i>Members Only Mode</label>
                         </div>
                     </div>
-                    <div class="col-12">
-                        <div class="form-check form-switch">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch mt-2">
                             <input class="form-check-input" type="checkbox" name="privatepatch" id="privatepatch" <?= ($_SESSION['site']['privatepatch'] ?? 'yes') === 'yes' ? 'checked' : '' ?>>
-                            <label class="form-check-label fw-semibold" for="privatepatch">
-                                <i class="fas fa-lock me-1"></i>Private Tracker Mode
-                            </label>
-                            <div class="form-text">Force private flag on all torrents</div>
+                            <label class="form-check-label fw-semibold" for="privatepatch"><i class="fas fa-lock me-1"></i>Private Tracker Mode</label>
                         </div>
                     </div>
                 </div>
-                
                 <hr class="my-4">
-                
-                <h6 class="mb-3">
-                    <i class="fas fa-envelope me-2"></i>
-                    SMTP Configuration <small class="text-muted">(Optional)</small>
-                </h6>
+                <h6 class="mb-3"><i class="fas fa-envelope me-2"></i>SMTP <small class="text-muted">(Optional)</small></h6>
                 <div class="row g-3">
-                    <div class="col-md-8">
-                        <input type="text" class="form-control" name="smtp_host" value="<?= htmlspecialchars($_SESSION['site']['smtp_host'] ?? 'smtp.gmail.com') ?>" placeholder="SMTP Host">
-                    </div>
-                    <div class="col-md-4">
-                        <input type="text" class="form-control" name="smtp_port" value="<?= htmlspecialchars($_SESSION['site']['smtp_port'] ?? '587') ?>" placeholder="Port">
-                    </div>
-                    <div class="col-md-6">
-                        <input type="text" class="form-control" name="smtp_user" value="<?= htmlspecialchars($_SESSION['site']['smtp_user'] ?? '') ?>" placeholder="SMTP Username">
-                    </div>
-                    <div class="col-md-6">
-                        <input type="password" class="form-control" name="smtp_pass" value="<?= htmlspecialchars($_SESSION['site']['smtp_pass'] ?? '') ?>" placeholder="SMTP Password">
-                    </div>
+                    <div class="col-md-8"><input type="text" class="form-control" name="smtp_host" value="<?= htmlspecialchars($_SESSION['site']['smtp_host'] ?? 'smtp.gmail.com') ?>" placeholder="SMTP Host"></div>
+                    <div class="col-md-4"><input type="text" class="form-control" name="smtp_port" value="<?= htmlspecialchars($_SESSION['site']['smtp_port'] ?? '587') ?>" placeholder="Port"></div>
+                    <div class="col-md-6"><input type="text" class="form-control" name="smtp_user" value="<?= htmlspecialchars($_SESSION['site']['smtp_user'] ?? '') ?>" placeholder="SMTP Username"></div>
+                    <div class="col-md-6"><input type="password" class="form-control" name="smtp_pass" value="<?= htmlspecialchars($_SESSION['site']['smtp_pass'] ?? '') ?>" placeholder="SMTP Password"></div>
                 </div>
-                
-                <button type="submit" class="btn btn-primary w-100 mt-4">
-                    <i class="fas fa-arrow-right me-2"></i>Continue to Admin Setup
-                </button>
+                <button type="submit" class="btn btn-primary w-100 mt-4"><i class="fas fa-arrow-right me-2"></i>Continue to Admin Setup</button>
             </form>
-            
+
             <?php elseif ($step === 4): ?>
-            <div class="info-card">
-                <div class="d-flex align-items-center mb-3">
-                    <i class="fas fa-user-shield fa-2x me-3"></i>
-                    <h5 class="mb-0">Administrator Account</h5>
-                </div>
-                <p class="text-muted small">Create the master administrator account for your tracker.</p>
-            </div>
-            
-            <div class="alert alert-info alert-custom mb-4" style="border-left-color: #17a2b8;">
-                <i class="fas fa-info-circle me-2"></i>
-                Password is hashed using MD5+salt (tracker native format). Please use a strong password.
-            </div>
-            
+            <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-user-shield fa-2x me-3"></i><h5 class="mb-0">Administrator Account</h5></div><p class="text-muted small mb-0">Master admin for your tracker.</p></div>
             <form method="post" action="install.php?step=4">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-user me-1"></i>Username
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-user me-1"></i>Username</label>
                         <input type="text" class="form-control" name="admin_user" value="<?= htmlspecialchars($_SESSION['admin']['username'] ?? '') ?>" required minlength="3">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-envelope me-1"></i>Email Address
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-envelope me-1"></i>Email</label>
                         <input type="email" class="form-control" name="admin_email" value="<?= htmlspecialchars($_SESSION['admin']['email'] ?? '') ?>" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-lock me-1"></i>Password
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-lock me-1"></i>Password</label>
                         <input type="password" class="form-control" name="admin_pass" required minlength="6">
-                        <small class="text-muted">Minimum 6 characters</small>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">
-                            <i class="fas fa-check-double me-1"></i>Confirm Password
-                        </label>
+                        <label class="form-label fw-semibold"><i class="fas fa-check-double me-1"></i>Confirm Password</label>
                         <input type="password" class="form-control" name="admin_confirm" required>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary w-100 mt-4">
-                    <i class="fas fa-arrow-right me-2"></i>Continue to Installation
-                </button>
+                <button type="submit" class="btn btn-primary w-100 mt-4"><i class="fas fa-arrow-right me-2"></i>Continue to Installation</button>
             </form>
-            
+
             <?php elseif ($step === 5): ?>
-            <div class="info-card">
-                <div class="d-flex align-items-center mb-3">
-                    <i class="fas fa-rocket fa-2x me-3"></i>
-                    <h5 class="mb-0">Ready to Install</h5>
-                </div>
-                <p class="text-muted small">Review your settings and begin the installation process.</p>
-            </div>
-            
+            <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-rocket fa-2x me-3"></i><h5 class="mb-0">Ready to Install</h5></div></div>
             <div class="bg-light rounded p-3 mb-4">
-                <h6 class="mb-3"><i class="fas fa-info-circle me-2"></i>Installation Summary</h6>
+                <h6 class="mb-3"><i class="fas fa-info-circle me-2"></i>Summary</h6>
                 <div class="row g-2 small">
-                    <div class="col-4 fw-semibold">Database:</div>
-                    <div class="col-8"><?= htmlspecialchars(($_SESSION['db']['database']??'').'@'.($_SESSION['db']['hostname']??'')) ?></div>
-                    <div class="col-4 fw-semibold">Site Name:</div>
-                    <div class="col-8"><?= htmlspecialchars($_SESSION['site']['name']??'') ?></div>
-                    <div class="col-4 fw-semibold">Site URL:</div>
-                    <div class="col-8"><?= htmlspecialchars($_SESSION['site']['url']??'') ?></div>
-                    <div class="col-4 fw-semibold">Admin Username:</div>
-                    <div class="col-8"><?= htmlspecialchars($_SESSION['admin']['username']??'') ?></div>
-                    <div class="col-4 fw-semibold">Admin Email:</div>
-                    <div class="col-8"><?= htmlspecialchars($_SESSION['admin']['email']??'') ?></div>
+                    <div class="col-4 fw-semibold">Driver:</div><div class="col-8"><?= htmlspecialchars(strtoupper($_SESSION['db']['type'] ?? 'mysqli')) ?></div>
+                    <div class="col-4 fw-semibold">Database:</div><div class="col-8"><?= htmlspecialchars(($_SESSION['db']['database']??'').'@'.($_SESSION['db']['hostname']??'')) ?></div>
+                    <div class="col-4 fw-semibold">Site:</div><div class="col-8"><?= htmlspecialchars($_SESSION['site']['name']??'') ?> — <?= htmlspecialchars($_SESSION['site']['url']??'') ?></div>
+                    <div class="col-4 fw-semibold">Admin:</div><div class="col-8"><?= htmlspecialchars($_SESSION['admin']['username']??'') ?> &lt;<?= htmlspecialchars($_SESSION['admin']['email']??'') ?>&gt;</div>
                 </div>
             </div>
-            
-            <div class="alert alert-warning alert-custom mb-4" style="border-left-color: #ffc107;">
+            <div class="alert alert-warning alert-custom mb-4" style="border-left-color:#ffc107">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                <strong>Important:</strong> This will create all database tables and configuration files. This process cannot be undone.
+                <strong>Warning:</strong> This will create all database tables and config files. Cannot be undone.
             </div>
-            
             <form method="post" action="install.php?step=5">
-                <button type="submit" class="btn btn-success w-100 btn-lg">
-                    <i class="fas fa-download me-2"></i>Install Ruff Tracker Now!
-                </button>
+                <button type="submit" class="btn btn-success w-100 btn-lg"><i class="fas fa-download me-2"></i>Install Ruff Tracker Now!</button>
             </form>
-            
+
             <?php elseif ($step === 6): ?>
             <div class="text-center py-4">
-                <div class="mb-4">
-                    <i class="fas fa-check-circle text-success" style="font-size: 5rem;"></i>
-                </div>
+                <i class="fas fa-check-circle text-success mb-4" style="font-size:5rem;display:block"></i>
                 <h3 class="text-success fw-bold mb-3">Installation Complete!</h3>
-                <p class="text-muted mb-4">Your Ruff Tracker has been successfully installed and configured.</p>
-                
+                <p class="text-muted mb-4">Ruff Tracker has been successfully installed and configured.</p>
                 <div class="alert alert-danger text-start mb-4">
-                    <div class="d-flex">
-                        <div class="me-3">
-                            <i class="fas fa-exclamation-triangle fa-2x"></i>
-                        </div>
-                        <div>
-                            <strong>Security Notice!</strong>
-                            <p class="mb-0 mt-1">Please delete <code>install.php</code> from your server immediately to prevent unauthorized access.</p>
-                        </div>
-                    </div>
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Security:</strong> Delete <code>install.php</code> from your server immediately!
                 </div>
-                
                 <div class="info-card text-start mb-4">
-                    <h6 class="mb-3"><i class="fas fa-key me-2"></i>Access Information</h6>
-                    <div class="row g-2">
-                        <div class="col-4 fw-semibold">Site URL:</div>
-                        <div class="col-8">
-                            <a href="<?= htmlspecialchars($_SESSION['site']['url']??'/') ?>" target="_blank">
-                                <?= htmlspecialchars($_SESSION['site']['url']??'/') ?>
-                            </a>
-                        </div>
+                    <h6 class="mb-3"><i class="fas fa-key me-2"></i>Access</h6>
+                    <div class="row g-2 small">
+                        <div class="col-4 fw-semibold">Site:</div>
+                        <div class="col-8"><a href="<?= htmlspecialchars($_SESSION['site']['url']??'/') ?>" target="_blank"><?= htmlspecialchars($_SESSION['site']['url']??'/') ?></a></div>
                         <div class="col-4 fw-semibold">Admin Panel:</div>
-                        <div class="col-8">
-                            <a href="<?= htmlspecialchars(($_SESSION['site']['url']??'').'/admin/index.php') ?>" target="_blank">
-                                <?= htmlspecialchars(($_SESSION['site']['url']??'').'/admin/index.php') ?>
-                            </a>
-                        </div>
+                        <div class="col-8"><a href="<?= htmlspecialchars(($_SESSION['site']['url']??'').'/admin/index.php') ?>" target="_blank">admin/index.php</a></div>
                         <div class="col-4 fw-semibold">Username:</div>
                         <div class="col-8"><?= htmlspecialchars($_SESSION['admin']['username']??'') ?></div>
                     </div>
                 </div>
-                
                 <div class="d-grid gap-3">
-                    <a href="<?= htmlspecialchars($_SESSION['site']['url']??'/') ?>" class="btn btn-primary btn-lg">
-                        <i class="fas fa-home me-2"></i>Go to Your Tracker
-                    </a>
-                    <a href="<?= htmlspecialchars(($_SESSION['site']['url']??'').'/admin/index.php') ?>" class="btn btn-outline-primary btn-lg">
-                        <i class="fas fa-crown me-2"></i>Access Admin Panel
-                    </a>
+                    <a href="<?= htmlspecialchars($_SESSION['site']['url']??'/') ?>" class="btn btn-primary btn-lg"><i class="fas fa-home me-2"></i>Go to Tracker</a>
+                    <a href="<?= htmlspecialchars(($_SESSION['site']['url']??'').'/admin/index.php') ?>" class="btn btn-outline-primary btn-lg"><i class="fas fa-crown me-2"></i>Admin Panel</a>
                 </div>
             </div>
             <?php endif; ?>
         </div>
     </div>
-    
     <div class="text-center mt-3">
         <small class="text-white-50">
-            <i class="fas fa-code me-1"></i> Ruff Tracker Installer v<?= INSTALLER_VERSION ?> | 
+            <i class="fas fa-code me-1"></i> Ruff Tracker Installer v<?= INSTALLER_VERSION ?> |
             <a href="install.php?step=1" class="text-white-50 text-decoration-none">Start Over</a>
         </small>
     </div>
 </div>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

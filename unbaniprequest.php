@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once 'global.php';
 
 define('IN_MYBB', 1);
+define('ALLOWABLE_PAGE', 1);
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
 

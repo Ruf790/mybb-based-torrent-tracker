@@ -1,0 +1,26 @@
+.hover-lift { transition: all .3s; }
+        .hover-lift:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,.15)!important; }
+        .card-header { border-bottom: none; }
+        .stats-card {
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .stats-card:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .badge-small {
+            font-size: 0.7rem;
+            padding: 0.15em 0.4em;
+        }
+        .formula-box {
+            border-left: 4px solid var(--bs-primary);
+        }
+        .formula-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #f8f9fa, #fff);
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .very-small { font-size: 0.75rem; }

@@ -1,1093 +1,847 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
+declare(strict_types=1);
+
+// ---------------------------------------------------------------------------
+// Глобальные настройки CDN (переопределяются снаружи если нужно)
+// ---------------------------------------------------------------------------
+$cdnpath = '';
+$usecdn  = '0';
+
+
+// ---------------------------------------------------------------------------
+// Upload limit
+// ---------------------------------------------------------------------------
 
 /**
- * Get maximum upload filesize limit set in PHP
- * @since MyBB 1.8.27
- * @return int maximum allowed filesize
+ * Возвращает минимальный из PHP-лимитов на загрузку файлов (в байтах).
+ * Возвращает 0 если лимиты не заданы.
  */
- 
-
-
-function get_php_upload_limit()
-{	
-	$maxsize = array(return_bytes(ini_get('upload_max_filesize')), return_bytes(ini_get('post_max_size')));
-	$maxsize = array_filter($maxsize); // Remove empty values
-
-	if(empty($maxsize))
-	{
-		return 0;
-	}
-	else
-	{
-		return (int)min($maxsize);
-	}
-}
- 
- 
- 
- 
- $cdnpath = "";
- $usecdn = "0";
- 
-function copy_file_to_cdn($file_path = '', &$uploaded_path = null)
+function get_php_upload_limit(): int
 {
-	global $mybb, $cdnpath, $usecdn, $plugins;
+    $sizes = array_filter([
+        return_bytes(ini_get('upload_max_filesize')),
+        return_bytes(ini_get('post_max_size')),
+    ]);
 
-	$success = false;
-
-	$file_path = (string)$file_path;
-
-	$real_file_path = realpath($file_path);
-
-	$file_dir_path = dirname($real_file_path);
-	$file_dir_path = str_replace(TSDIR, '', $file_dir_path);
-	$file_dir_path = ltrim($file_dir_path, './\\');
-
-	$file_name = basename($real_file_path);
-
-	if(file_exists($file_path))
-	{
-
-		if(is_object($plugins))
-		{
-			$hook_args = array(
-				'file_path' => &$file_path,
-				'real_file_path' => &$real_file_path,
-				'file_name' => &$file_name,
-				'file_dir_path'	=> &$file_dir_path
-			);
-			$plugins->run_hooks('copy_file_to_cdn_start', $hook_args);
-		}
-
-		if(!empty($usecdn) && !empty($cdnpath))
-		{
-			$cdn_path = rtrim($cdnpath, '/\\');
-
-			if(substr($file_dir_path, 0, my_strlen(TSDIR)) == TSDIR)
-			{
-				$file_dir_path = str_replace(TSDIR, '', $file_dir_path);
-			}
-
-			$cdn_upload_path = $cdn_path . DIRECTORY_SEPARATOR . $file_dir_path;
-
-			if(!($dir_exists = is_dir($cdn_upload_path)))
-			{
-				$dir_exists = @mkdir($cdn_upload_path, 0777, true);
-			}
-
-			if($dir_exists)
-			{
-				if(($cdn_upload_path = realpath($cdn_upload_path)) !== false)
-				{
-					$success = @copy($file_path, $cdn_upload_path.DIRECTORY_SEPARATOR.$file_name);
-
-					if($success)
-					{
-						$uploaded_path = $cdn_upload_path;
-					}
-				}
-			}
-		}
-
-		if(is_object($plugins))
-		{
-			$hook_args = array(
-				'file_path' => &$file_path,
-				'real_file_path' => &$real_file_path,
-				'file_name' => &$file_name,
-				'uploaded_path' => &$uploaded_path,
-				'success' => &$success,
-			);
-
-			$plugins->run_hooks('copy_file_to_cdn_end', $hook_args);
-		}
-	}
-
-	return $success;
-} 
- 
-
-
-/**
- * Remove any matching avatars for a specific user ID
- *
- * @param int $uid The user ID
- * @param string $exclude A file name to be excluded from the removal
- */
-function remove_avatars($uid, $exclude="")
-{
-	global $mybb, $avataruploadpath, $plugins;
-
-	
-	
-	if(defined('IN_ADMINCP'))
-	{
-		$avatarpath = '../'.$avataruploadpath;
-	}
-	else
-	{
-		$avatarpath = $avataruploadpath;
-	}
-
-	$dir = opendir($avatarpath);
-	if($dir)
-	{
-		while($file = @readdir($dir))
-		{
-			$plugins->run_hooks("remove_avatars_do_delete", $file);
-
-			if(preg_match("#avatar_".$uid."\.#", $file) && is_file($avatarpath."/".$file) && $file != $exclude)
-			{
-				delete_uploaded_file($avatarpath."/".$file);
-			}
-		}
-
-		@closedir($dir);
-	}
+    return empty($sizes) ? 0 : (int)min($sizes);
 }
 
 
+// ---------------------------------------------------------------------------
+// CDN
+// ---------------------------------------------------------------------------
+
 /**
- * Upload a new avatar in to the file system
+ * Копирует файл в CDN-директорию если CDN включён.
  *
- * @param array $avatar Incoming FILE array, if we have one - otherwise takes $_FILES['avatarupload']
- * @param int $uid User ID this avatar is being uploaded for, if not the current user
- * @return array Array of errors if any, otherwise filename of successful.
+ * @param string      $file_path     Локальный путь к файлу.
+ * @param string|null $uploaded_path Устанавливается в CDN-путь при успехе.
  */
-function upload_avatar($avatar=array(), $uid=0)
+function copy_file_to_cdn(string $file_path = '', ?string &$uploaded_path = null): bool
 {
-	global $db, $mybb, $CURUSER, $lang, $plugins, $cache, $avataruploadpath, $avatarsize;
+    global $cdnpath, $usecdn, $plugins;
 
+    $success        = false;
+    $real_file_path = realpath($file_path);
 
-	
-
-	
-	$ret = array();
-
-	if(!$uid)
-	{
-		$uid = $CURUSER['id'];
-	}
-
-	if(empty($avatar['name']) || empty($avatar['tmp_name']))
-	{
-		$avatar = $_FILES['avatarupload'];
-	}
-
-	if(!is_uploaded_file($avatar['tmp_name']))
-	{
-		$ret['error'] = 'The file upload failed. Please choose a valid file and try again.';
-		return $ret;
-	}
-
-	// Check we have a valid extension
-    	$ext = get_extension(my_strtolower($avatar['name']));
-    	if(!preg_match("#^(gif|jpg|jpeg|jpe|bmp|png|webp)$#i", $ext))
-    	{
-        	$ret['error'] = 'Invalid file type. An uploaded avatar must be in GIF, JPEG, BMP or PNG format';
-        	return $ret;
-    	}
-
-	
-		$avatarpath = $avataruploadpath;
-	
-
-	$filename = "avatar_".$uid.".".$ext;
-	$file = upload_file($avatar, $avatarpath, $filename);
-	if(!empty($file['error']))
-	{
-		delete_uploaded_file($avatarpath."/".$filename);
-		$ret['error'] = 'The file upload failed. Please choose a valid file and try again';
-		return $ret;
-	}
-
-	// Lets just double check that it exists
-	if(!file_exists($avatarpath."/".$filename))
-	{
-		$ret['error'] = 'The file upload failed. Please choose a valid file and try again';
-		delete_uploaded_file($avatarpath."/".$filename);
-		return $ret;
-	}
-
-	// Check if this is a valid image or not
-	$img_dimensions = @getimagesize($avatarpath."/".$filename);
-	if(!is_array($img_dimensions))
-	{
-		delete_uploaded_file($avatarpath."/".$filename);
-		$ret['error'] = 'The file upload failed. Please choose a valid file and try again';
-		return $ret;
-	}
-
-	
-
-	// Check a list of known MIME types to establish what kind of avatar we're uploading
-	$attachtypes = (array)$cache->read('attachtypes');
-
-	$allowed_mime_types = array();
-	foreach($attachtypes as $attachtype)
-	{
-		if(defined('IN_ADMINCP') || is_member($attachtype['groups']) && $attachtype['avatarfile'])
-		{
-			$allowed_mime_types[$attachtype['mimetype']] = $attachtype['maxsize'];
-		}
-	}
-
-	$avatar['type'] = my_strtolower($avatar['type']);
-
-	switch($avatar['type'])
-    {
-    case "image/gif":
-        $img_type = 1;
-        break;
-    case "image/jpeg":
-    case "image/x-jpg":
-    case "image/x-jpeg":
-    case "image/pjpeg":
-    case "image/jpg":
-        $img_type = 2;
-        break;
-    case "image/png":
-    case "image/x-png":
-        $img_type = 3;
-        break;
-    case "image/webp":
-        $img_type = 18; // Важно: должно соответствовать IMAGETYPE_WEBP
-        break;
-    case "image/bmp":
-    case "image/x-bmp":
-    case "image/x-windows-bmp":
-        $img_type = 6;
-        break;
-    default:
-        $img_type = 0;
+    if ($real_file_path === false) {
+        return false;
     }
 
-	// Check if the uploaded file type matches the correct image type (returned by getimagesize)
-	if(empty($allowed_mime_types[$avatar['type']]) || $img_dimensions[2] != $img_type || $img_type == 0)
-	{
-		$ret['error'] = 'The file upload failed. Please choose a valid file and try again';
-		delete_uploaded_file($avatarpath."/".$filename);
-		return $ret;
-	}
+    $file_dir_path = str_replace(TSDIR, '', dirname($real_file_path));
+    $file_dir_path = ltrim($file_dir_path, './\\');
+    $file_name     = basename($real_file_path);
 
-	
-	// Next check the file size
-	if(($avatarsize > 0 && $avatar['size'] > ($avatarsize*1024)) || $avatar['size'] > ($allowed_mime_types[$avatar['type']]*1024))
-	{
-		delete_uploaded_file($avatarpath."/".$filename);
-		$ret['error'] = 'The size of the uploaded file is too large';
-		return $ret;
-	}
+    if (!file_exists($file_path)) {
+        return false;
+    }
 
-	// Everything is okay so lets delete old avatars for this user
-	remove_avatars($uid, $filename);
+    if (is_object($plugins)) {
+        $hook_args = [
+            'file_path'      => &$file_path,
+            'real_file_path' => &$real_file_path,
+            'file_name'      => &$file_name,
+            'file_dir_path'  => &$file_dir_path,
+        ];
+        $plugins->run_hooks('copy_file_to_cdn_start', $hook_args);
+    }
 
-	$ret = array(
-		"avatar" => $avataruploadpath."/".$filename,
-		"width" => (int)$img_dimensions[0],
-		"height" => (int)$img_dimensions[1]
-	);
-	$ret = $plugins->run_hooks("upload_avatar_end", $ret);
-	return $ret;
+    if (!empty($usecdn) && !empty($cdnpath)) {
+        $cdn_base       = rtrim($cdnpath, '/\\');
+        $cdn_upload_dir = $cdn_base . DIRECTORY_SEPARATOR . $file_dir_path;
+
+        $dir_exists = is_dir($cdn_upload_dir) || @mkdir($cdn_upload_dir, 0777, true);
+
+        if ($dir_exists) {
+            $real_cdn_dir = realpath($cdn_upload_dir);
+            if ($real_cdn_dir !== false) {
+                $success = @copy($file_path, $real_cdn_dir . DIRECTORY_SEPARATOR . $file_name);
+                if ($success) {
+                    $uploaded_path = $real_cdn_dir;
+                }
+            }
+        }
+    }
+
+    if (is_object($plugins)) {
+        $hook_args = [
+            'file_path'      => &$file_path,
+            'real_file_path' => &$real_file_path,
+            'file_name'      => &$file_name,
+            'uploaded_path'  => &$uploaded_path,
+            'success'        => &$success,
+        ];
+        $plugins->run_hooks('copy_file_to_cdn_end', $hook_args);
+    }
+
+    return $success;
 }
 
 
+// ---------------------------------------------------------------------------
+// Аватары
+// ---------------------------------------------------------------------------
 
-
-
-
-
-function check_parse_php_upload_err($FILE)
+/**
+ * Удаляет все аватары пользователя кроме указанного файла.
+ */
+function remove_avatars(int $uid, string $exclude = ''): void
 {
-	global $lang;
+    global $avataruploadpath, $plugins;
 
-	$err = '';
+    $avatarpath = defined('IN_ADMINCP') ? '../' . $avataruploadpath : $avataruploadpath;
 
-	if(isset($FILE['error']) && $FILE['error'] != 0 && ($FILE['error'] != UPLOAD_ERR_NO_FILE || $FILE['name']))
-	{
-		$err = $lang->error_uploadfailed.$lang->error_uploadfailed_detail;
-		switch($FILE['error'])
-		{
-			case 1: // UPLOAD_ERR_INI_SIZE
-				$err .= 'error_uploadfailed_php1';
-				break;
-			case 2: // UPLOAD_ERR_FORM_SIZE
-				$err .= 'error_uploadfailed_php2';
-				break;
-			case 3: // UPLOAD_ERR_PARTIAL
-				$err .= 'error_uploadfailed_php3';
-				break;
-			case 4: // UPLOAD_ERR_NO_FILE
-				$err .= 'error_uploadfailed_php4';
-				break;
-			case 6: // UPLOAD_ERR_NO_TMP_DIR
-				$err .= 'error_uploadfailed_php6';
-				break;
-			case 7: // UPLOAD_ERR_CANT_WRITE
-				$err .= 'error_uploadfailed_php7';
-				break;
-			default:
-				$err .= sprintf('error_uploadfailed_phpx', $FILE['error']);
-				break;
-		}
-	}
+    $dir = @opendir($avatarpath);
+    if ($dir === false) {
+        return;
+    }
 
-	return $err;
+    while (($file = @readdir($dir)) !== false) {
+        $plugins->run_hooks('remove_avatars_do_delete', $file);
+
+        if (
+            preg_match('#avatar_' . $uid . '\.#', $file)
+            && is_file($avatarpath . '/' . $file)
+            && $file !== $exclude
+        ) {
+            delete_uploaded_file($avatarpath . '/' . $file);
+        }
+    }
+
+    @closedir($dir);
+}
+
+/**
+ * Загружает аватар в файловую систему.
+ *
+ * @param array $avatar Массив из $_FILES, если пустой — берёт $_FILES['avatarupload'].
+ * @param int   $uid    ID пользователя (0 = текущий).
+ * @return array Массив с ключами 'error' при ошибке, или 'avatar'/'width'/'height' при успехе.
+ */
+function upload_avatar(array $avatar = [], int $uid = 0): array
+{
+    global $db, $CURUSER, $lang, $plugins, $cache, $avataruploadpath, $avatarsize;
+
+    if (!$uid) {
+        $uid = (int)$CURUSER['id'];
+    }
+
+    if (empty($avatar['name']) || empty($avatar['tmp_name'])) {
+        $avatar = $_FILES['avatarupload'] ?? [];
+    }
+
+    if (empty($avatar['tmp_name']) || !is_uploaded_file($avatar['tmp_name'])) {
+        return ['error' => 'The file upload failed. Please choose a valid file and try again.'];
+    }
+
+    $ext = get_extension(my_strtolower($avatar['name']));
+    if (!preg_match('#^(gif|jpg|jpeg|jpe|bmp|png|webp)$#i', $ext)) {
+        return ['error' => 'Invalid file type. An uploaded avatar must be in GIF, JPEG, BMP, PNG or WebP format'];
+    }
+
+    $avatarpath = $avataruploadpath;
+    $filename   = 'avatar_' . $uid . '.' . $ext;
+    $file       = upload_file($avatar, $avatarpath, $filename);
+
+    if (!empty($file['error'])) {
+        delete_uploaded_file($avatarpath . '/' . $filename);
+        return ['error' => 'The file upload failed. Please choose a valid file and try again'];
+    }
+
+    if (!file_exists($avatarpath . '/' . $filename)) {
+        delete_uploaded_file($avatarpath . '/' . $filename);
+        return ['error' => 'The file upload failed. Please choose a valid file and try again'];
+    }
+
+    $img_dimensions = @getimagesize($avatarpath . '/' . $filename);
+    if (!is_array($img_dimensions)) {
+        delete_uploaded_file($avatarpath . '/' . $filename);
+        return ['error' => 'The file upload failed. Please choose a valid file and try again'];
+    }
+
+    // Разрешённые MIME-типы из кэша
+    $attachtypes       = (array)$cache->read('attachtypes');
+    $allowed_mime_types = [];
+    foreach ($attachtypes as $attachtype) {
+        if (defined('IN_ADMINCP') || (is_member($attachtype['groups']) && $attachtype['avatarfile'])) {
+            $allowed_mime_types[$attachtype['mimetype']] = $attachtype['maxsize'];
+        }
+    }
+
+    $mime_type = my_strtolower($avatar['type']);
+    $img_type  = _mime_to_imagetype($mime_type);
+
+    if (empty($allowed_mime_types[$mime_type]) || $img_dimensions[2] !== $img_type || $img_type === 0) {
+        delete_uploaded_file($avatarpath . '/' . $filename);
+        return ['error' => 'The file upload failed. Please choose a valid file and try again'];
+    }
+
+    $max_size = min(
+        $avatarsize > 0 ? $avatarsize * 1024 : PHP_INT_MAX,
+        ($allowed_mime_types[$mime_type] ?? 0) * 1024
+    );
+
+    if ($avatar['size'] > $max_size) {
+        delete_uploaded_file($avatarpath . '/' . $filename);
+        return ['error' => 'The size of the uploaded file is too large'];
+    }
+
+    remove_avatars($uid, $filename);
+
+    $ret = [
+        'avatar' => $avataruploadpath . '/' . $filename,
+        'width'  => (int)$img_dimensions[0],
+        'height' => (int)$img_dimensions[1],
+    ];
+
+    return $plugins->run_hooks('upload_avatar_end', $ret);
 }
 
 
-function create_attachment_index($path)
+// ---------------------------------------------------------------------------
+// Вспомогательные функции
+// ---------------------------------------------------------------------------
+
+/**
+ * Проверяет PHP-ошибки загрузки файла и возвращает строку ошибки или ''.
+ */
+function check_parse_php_upload_err(array $FILE): string
 {
-	$index = @fopen(rtrim($path, '/').'/index.html', 'w');
-	@fwrite($index, '<html>\n<head>\n<title></title>\n</head>\n<body>\n&nbsp;\n</body>\n</html>');
-	@fclose($index);
+    global $lang;
+
+    $error = $FILE['error'] ?? 0;
+
+    if ($error === 0 || ($error === UPLOAD_ERR_NO_FILE && empty($FILE['name']))) {
+        return '';
+    }
+
+    $detail = $lang->error_uploadfailed . $lang->error_uploadfailed_detail;
+
+    return $detail . match($error) {
+        UPLOAD_ERR_INI_SIZE   => 'error_uploadfailed_php1',
+        UPLOAD_ERR_FORM_SIZE  => 'error_uploadfailed_php2',
+        UPLOAD_ERR_PARTIAL    => 'error_uploadfailed_php3',
+        UPLOAD_ERR_NO_FILE    => 'error_uploadfailed_php4',
+        UPLOAD_ERR_NO_TMP_DIR => 'error_uploadfailed_php6',
+        UPLOAD_ERR_CANT_WRITE => 'error_uploadfailed_php7',
+        default               => sprintf('error_uploadfailed_phpx', $error),
+    };
+}
+
+/**
+ * Создаёт index.html-заглушку в директории загрузок.
+ */
+function create_attachment_index(string $path): void
+{
+    $index = @fopen(rtrim($path, '/') . '/index.html', 'w');
+    if ($index !== false) {
+        @fwrite($index, "<html>\n<head>\n<title></title>\n</head>\n<body>\n&nbsp;\n</body>\n</html>");
+        @fclose($index);
+    }
+}
+
+/**
+ * Приводит относительный путь к абсолютному.
+ */
+function mk_path_abs(string $path, string $base = TSDIR): string
+{
+    $isWin = str_starts_with(strtoupper(PHP_OS), 'WIN');
+    $char1 = $path[0] ?? '';
+
+    if ($char1 !== '/' && !($isWin && ($char1 === '\\' || preg_match('(^[a-zA-Z]:\\\\)', $path)))) {
+        $base = rtrim($base, ".\\/") . DIRECTORY_SEPARATOR;
+        $path = $base . ltrim($path, '/\\');
+    }
+
+    return $path;
+}
+
+/**
+ * Альтернативная версия mk_path_abs (оставлена для совместимости).
+ */
+function mk_path_abs2(string $path, string $base = TSDIR): string
+{
+    $isWin = str_starts_with(strtoupper(PHP_OS), 'WIN');
+    $char1 = my_substr($path, 0, 1);
+
+    if ($char1 !== '/' && !($isWin && ($char1 === '\\' || preg_match('(^[a-zA-Z]:\\\\)', $path)))) {
+        $path = $base . $path;
+    }
+
+    return $path;
+}
+
+/**
+ * chmod с проверкой формата строки.
+ */
+function my_chmod(string $file, string $mode): bool
+{
+    if ($mode[0] !== '0' || strlen($mode) !== 4) {
+        return false;
+    }
+    $old = umask(0);
+    $result = chmod($file, octdec($mode));
+    umask($old);
+    return $result;
+}
+
+/**
+ * Удаляет загруженный файл (локально и из CDN если включён).
+ */
+function delete_uploaded_file(string $path = ''): bool
+{
+    global $plugins;
+
+    $cdnpath = '';
+    $usecdn  = '0';
+
+    $deleted = @unlink($path);
+
+    $cdn_base = rtrim($cdnpath, '/');
+    $rel_path = ltrim($path, '/');
+    $cdn_full = realpath($cdn_base . '/' . $rel_path);
+
+    if (!empty($usecdn) && !empty($cdn_base) && $cdn_full !== false) {
+        $deleted = @unlink($cdn_full) && $deleted;
+    }
+
+    $hook_params = ['path' => &$path, 'deleted' => &$deleted];
+    $plugins->run_hooks('delete_uploaded_file', $hook_params);
+
+    return $deleted;
+}
+
+/**
+ * Удаляет директорию загрузок (вместе с index.html-заглушкой).
+ */
+function delete_upload_directory(string $path = ''): bool
+{
+    global $plugins;
+
+    $cdnpath = '';
+    $usecdn  = '0';
+
+    $deleted_index = @unlink(rtrim($path, '/') . '/index.html');
+    $deleted       = @rmdir($path);
+
+    $cdn_base = rtrim($cdnpath, '/');
+    $rel_path = ltrim($path, '/');
+    $cdn_full = realpath($cdn_base . '/' . $rel_path);
+
+    if (!empty($usecdn) && !empty($cdn_base) && $cdn_full !== false) {
+        $deleted = @rmdir(rtrim($cdn_full, '/')) && $deleted;
+    }
+
+    $hook_params = ['path' => &$path, 'deleted' => &$deleted];
+    $plugins->run_hooks('delete_upload_directory', $hook_params);
+
+    if (!$deleted && $deleted_index) {
+        create_attachment_index($path);
+    }
+
+    return $deleted;
+}
+
+/**
+ * Перемещает загруженный файл в нужную директорию.
+ *
+ * @return array Массив с 'error' при неудаче или данными файла при успехе.
+ */
+function upload_file(array $file, string $path, string $filename = ''): array
+{
+    global $plugins;
+
+    if (empty($file['name']) || $file['name'] === 'none' || $file['size'] < 1) {
+        return ['error' => 1];
+    }
+
+    if (!$filename) {
+        $filename = $file['name'];
+    }
+
+    // Безопасное имя файла — убираем trailing slash
+    $original = preg_replace('#/$#', '', $file['name']);
+    $filename  = preg_replace('#/$#', '', $filename);
+
+    if (!@move_uploaded_file($file['tmp_name'], $path . '/' . $filename)) {
+        return ['error' => 2];
+    }
+
+    @my_chmod($path . '/' . $filename, '0644');
+
+    $cdn_path    = '';
+    $moved_to_cdn = copy_file_to_cdn($path . '/' . $filename, $cdn_path);
+
+    $upload = [
+        'original_filename' => $original,
+        'filename'          => $filename,
+        'path'              => $path,
+        'type'              => $file['type'],
+        'size'              => $file['size'],
+    ];
+
+    $upload = $plugins->run_hooks('upload_file_end', $upload);
+
+    if ($moved_to_cdn) {
+        $upload['cdn_path'] = $cdn_path;
+    }
+
+    return $upload;
 }
 
 
-function mk_path_abs2($path, $base = TSDIR)
+// ---------------------------------------------------------------------------
+// Аттачменты
+// ---------------------------------------------------------------------------
+
+/**
+ * Загружает один аттачмент и сохраняет запись в БД.
+ */
+function upload_attachment(array $attachment, bool $update_attachment = false): array
 {
-	$iswin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-	$char1 = my_substr($path, 0, 1);
-	if($char1 != '/' && !($iswin && ($char1 == '\\' || preg_match('(^[a-zA-Z]:\\\\)', $path))))
-	{
-		$path = $base.$path;
-	}
+    global $mybb, $db, $lang, $plugins, $cache, $usergroups,
+           $uploadspath, $attachthumbh, $attachthumbw,
+           $posthash, $pid, $tid, $forum, $CURUSER;
 
-	return $path;
-}
+    $posthash = $db->escape_string($mybb->get_input('posthash'));
+    $pid      = (int)$pid;
 
-
-
-
-
-function mk_path_abs($path, $base = TSDIR)
-{
-	$iswin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-	$char1 = my_substr($path, 0, 1);
-
-	if($char1 != '/' && !($iswin && ($char1 == '\\' || preg_match('(^[a-zA-Z]:\\\\)', $path))))
-	{
-		// Убираем точку и лишние слэши
-		$base = rtrim($base, ".\\/").DIRECTORY_SEPARATOR;
-		$path = $base . ltrim($path, "/\\");
-	}
-
-	return $path;
-}
-
-
-
-
-
-
-
-
-function upload_attachment($attachment, $update_attachment=false)
-{
-	global $mybb, $db, $theme, $templates, $posthash, $pid, $tid, $forum, $mybb, $lang, $plugins, $cache, $usergroups, $uploadspath, $attachthumbh, $attachthumbw, $CURUSER;
-
-	
-	$posthash = $db->escape_string($mybb->get_input('posthash'));
-	$pid = (int)$pid;
-
-	if(!is_uploaded_file($attachment['tmp_name']) || empty($attachment['tmp_name']))
-	{
-		$ret['error'] = $lang->error_uploadfailed.$lang->error_uploadfailed_php4;
-		return $ret;
-	}
+    if (!is_uploaded_file($attachment['tmp_name']) || empty($attachment['tmp_name'])) {
+        return ['error' => $lang->error_uploadfailed . $lang->error_uploadfailed_php4];
+    }
 
     $attachtypes = (array)$cache->read('attachtypes');
-    $attachment = $plugins->run_hooks("upload_attachment_start", $attachment);
-
-	$allowed_mime_types = array();
-	foreach($attachtypes as $ext => $attachtype)
-	{
-		//if(!is_member($attachtype['groups']) || ($attachtype['forums'] != -1 && strpos(','.$attachtype['forums'].',', ','.$forum['fid'].',') === false))
-		//{
-			//unset($attachtypes[$ext]);
-		//}
-	}
+    $attachment  = $plugins->run_hooks('upload_attachment_start', $attachment);
 
     $ext = get_extension($attachment['name']);
-    // Check if we have a valid extension
-    if(!isset($attachtypes[$ext]))
-    {
-    	$ret['error'] = 'The type of file that you attached is not allowed. Please remove the attachment or choose a different type';
-		return $ret;
-	}
-	else
-	{
-		$attachtype = $attachtypes[$ext];
-	}
+    if (!isset($attachtypes[$ext])) {
+        return ['error' => 'The type of file that you attached is not allowed. Please remove the attachment or choose a different type'];
+    }
+    $attachtype = $attachtypes[$ext];
 
-	// check the length of the filename
-	$maxFileNameLength = 255;
-	if(my_strlen($attachment['name']) > $maxFileNameLength)
-	{
-		$ret['error'] = sprintf('The file name '.htmlspecialchars_uni($attachment['name']).' exceeds the maximum file name length '.$maxFileNameLength.'. Please upload a file with a shorter file name.');
-		return $ret;
-	}
+    // Длина имени файла
+    if (my_strlen($attachment['name']) > 255) {
+        return ['error' => 'The file name ' . htmlspecialchars_uni($attachment['name']) . ' exceeds the maximum file name length 255.'];
+    }
 
-	// Check the size
-	if($attachment['size'] > $attachtype['maxsize']*1024 && $attachtype['maxsize'] != "")
-	{
-		$ret['error'] = sprintf('The file '.htmlspecialchars_uni($attachment['name']).' is too large. The maximum size for that type of file is '.$attachtype['maxsize'].' kilobytes');
-		return $ret;
-	}
+    // Размер файла
+    if ($attachtype['maxsize'] !== '' && $attachment['size'] > (int)$attachtype['maxsize'] * 1024) {
+        return ['error' => 'The file ' . htmlspecialchars_uni($attachment['name']) . ' is too large. The maximum size for that type of file is ' . $attachtype['maxsize'] . ' kilobytes'];
+    }
 
-	// Double check attachment space usage
-	if($usergroups['attachquota'] > 0)
-	{
-		$query = $db->simple_select("attachments", "SUM(filesize) AS ausage", "uid='".$CURUSER['id']."'");
-		$usage = $db->fetch_array($query);
-		$usage = $usage['ausage']+$attachment['size'];
-		if($usage > ($usergroups['attachquota']*1024))
-		{
-			$friendlyquota = mksize($usergroups['attachquota']*1024);
-			$ret['error'] = sprintf('Sorry, but you cannot attach this file because you have reached your attachment quota of '.$friendlyquota.'');
-			return $ret;
-		}
-	}
+    // Квота пользователя
+    if ($usergroups['attachquota'] > 0) {
+        $query = $db->simple_select('attachments', 'SUM(filesize) AS ausage', "uid='" . $CURUSER['id'] . "'");
+        $usage = (int)$db->fetch_array($query)['ausage'] + $attachment['size'];
+        if ($usage > $usergroups['attachquota'] * 1024) {
+            return ['error' => 'Sorry, but you cannot attach this file because you have reached your attachment quota of ' . mksize($usergroups['attachquota'] * 1024)];
+        }
+    }
 
-	// Gather forum permissions
-	//$forumpermissions = forum_permissions($forum['fid']);
+    // Уже существующий аттачмент с таким именем
+    $uploaded_query = $pid !== 0 ? "pid='{$pid}'" : "posthash='{$posthash}'";
+    $query          = $db->simple_select('attachments', '*', "filename='" . $db->escape_string($attachment['name']) . "' AND " . $uploaded_query);
+    $prevattach     = $db->fetch_array($query);
 
-	// Check if an attachment with this name is already in the post
-	if($pid != 0)
-	{
-		$uploaded_query = "pid='{$pid}'";
-	}
-	else
-	{
-		$uploaded_query = "posthash='{$posthash}'";
-	}
-	$query = $db->simple_select("attachments", "*", "filename='".$db->escape_string($attachment['name'])."' AND ".$uploaded_query);
-	$prevattach = $db->fetch_array($query);
-	if($prevattach && $update_attachment == false)
-	{
-		if(!$mybb->usergroup['caneditattachments'] && !$forumpermissions['caneditattachments'])
-		{
-			$ret['error'] = $lang->error_alreadyuploaded_perm;
-			return $ret;
-		}
+    if ($prevattach && !$update_attachment) {
+        return ['error' => sprintf('error_alreadyuploaded', htmlspecialchars_uni($attachment['name']))];
+    }
 
-		$ret['error'] = sprintf('error_alreadyuploaded', htmlspecialchars_uni($attachment['name']));
-		return $ret;
-	}
+    // Максимум аттачментов на пост
+    $maxattachments = 5;
+    if ($maxattachments > 0 && !$update_attachment) {
+        $query       = $db->simple_select('attachments', 'COUNT(aid) AS numattachs', $uploaded_query);
+        $attachcount = (int)$db->fetch_field($query, 'numattachs');
+        if ($attachcount >= $maxattachments) {
+            return ['error' => 'Sorry but you cannot attach this file because you have reached the maximum number of attachments allowed per post of ' . $maxattachments];
+        }
+    }
 
-	// Check to see how many attachments exist for this post already
-	
-	$maxattachments = "5";
-	
-	if($maxattachments > 0 && $update_attachment == false)
-	{
-		$query = $db->simple_select("attachments", "COUNT(aid) AS numattachs", $uploaded_query);
-		$attachcount = $db->fetch_field($query, "numattachs");
-		if($attachcount >= $maxattachments)
-		{
-			$ret['error'] = sprintf('Sorry but you cannot attach this file because you have reached the maximum number of attachments allowed per post of '.$maxattachments.'');
-			return $ret;
-		}
-	}
+    // Подготовка директории по месяцам
+    $uploadspath_abs = mk_path_abs($uploadspath);
+    $month_dir       = gmdate('Ym');
 
-	
-	$uploadspath_abs = mk_path_abs($uploadspath);
-	$month_dir = '';
-	//if($mybb->safemode == false)
-	//{
-		// Check if the attachment directory (YYYYMM) exists, if not, create it
-		$month_dir = gmdate("Ym");
-		if(!@is_dir($uploadspath_abs."/".$month_dir))
-		{
-			@mkdir($uploadspath_abs."/".$month_dir);
-			// Still doesn't exist - oh well, throw it in the main directory
-			if(!@is_dir($uploadspath_abs."/".$month_dir))
-			{
-				$month_dir = '';
-			}
-			else
-			{
-				create_attachment_index($uploadspath_abs."/".$month_dir);
-			}
-		}
-	//}
+    if (!@is_dir($uploadspath_abs . '/' . $month_dir)) {
+        @mkdir($uploadspath_abs . '/' . $month_dir);
+        if (!@is_dir($uploadspath_abs . '/' . $month_dir)) {
+            $month_dir = '';
+        } else {
+            create_attachment_index($uploadspath_abs . '/' . $month_dir);
+        }
+    }
 
-	// All seems to be good, lets move the attachment!
-	$filename = "post_".$CURUSER['id']."_".TIMENOW."_".md5(random_str()).".attach";
-	
+    $filename = 'post_' . $CURUSER['id'] . '_' . TIMENOW . '_' . md5(random_str()) . '.attach';
+    $file     = upload_file($attachment, $uploadspath_abs . '/' . $month_dir, $filename);
 
-	$file = upload_file($attachment, $uploadspath_abs."/".$month_dir, $filename);
+    // Если не получилось в месячную директорию — в корень
+    if (!empty($file['error']) && $month_dir) {
+        $file = upload_file($attachment, $uploadspath_abs . '/', $filename);
+    } elseif ($month_dir) {
+        $filename = $month_dir . '/' . $filename;
+    }
 
-	// Failed to create the attachment in the monthly directory, just throw it in the main directory
-	if(!empty($file['error']) && $month_dir)
-	{
-		$file = upload_file($attachment, $uploadspath_abs.'/', $filename);
-	}
-	elseif($month_dir)
-	{
-		$filename = $month_dir."/".$filename;
-	}
+    if (!empty($file['error'])) {
+        $err = $lang->error_uploadfailed . $lang->error_uploadfailed_detail;
+        $err .= match($file['error']) {
+            1       => 'error_uploadfailed_nothingtomove',
+            2       => 'error_uploadfailed_movefailed',
+            default => '',
+        };
+        return ['error' => $err];
+    }
 
-	if(!empty($file['error']))
-	{
-		$ret['error'] = $lang->error_uploadfailed.$lang->error_uploadfailed_detail;
-		switch($file['error'])
-		{
-			case 1:
-				$ret['error'] .= 'error_uploadfailed_nothingtomove';
-				break;
-			case 2:
-				$ret['error'] .= 'error_uploadfailed_movefailed';
-				break;
-		}
-		return $ret;
-	}
+    if (!file_exists($uploadspath_abs . '/' . $filename)) {
+        return ['error' => 'error_uploadfailed' . 'error_uploadfailed_detail' . 'error_uploadfailed_lost'];
+    }
 
-	// Lets just double check that it exists
-	if(!file_exists($uploadspath_abs."/".$filename))
-	{
-		$ret['error'] = 'error_uploadfailed'.'error_uploadfailed_detail'.'error_uploadfailed_lost';
-		return $ret;
-	}
+    $attacharray = [
+        'pid'         => $pid,
+        'posthash'    => $posthash,
+        'uid'         => $CURUSER['id'],
+        'filename'    => $db->escape_string($file['original_filename']),
+        'filetype'    => $db->escape_string($file['type']),
+        'filesize'    => (int)$file['size'],
+        'attachname'  => $filename,
+        'downloads'   => 0,
+        'dateuploaded'=> TIMENOW,
+    ];
 
-	// Generate the array for the insert_query
-	$attacharray = array(
-		"pid" => $pid,
-		"posthash" => $posthash,
-		"uid" => $CURUSER['id'],
-		"filename" => $db->escape_string($file['original_filename']),
-		"filetype" => $db->escape_string($file['type']),
-		"filesize" => (int)$file['size'],
-		"attachname" => $filename,
-		"downloads" => 0,
-		"dateuploaded" => TIMENOW
-	);
+    // Генерация миниатюры для изображений
+    if (in_array($ext, ['gif', 'png', 'jpg', 'jpeg', 'jpe', 'webp'], true)) {
+        $attacharray = _process_image_attachment(
+            $attacharray, $file, $ext, $filename,
+            $uploadspath_abs, $attachtypes,
+            $attachthumbh, $attachthumbw,
+            $plugins, $lang
+        );
 
-	// If we're uploading an image, check the MIME type compared to the image type and attempt to generate a thumbnail
-	if($ext == "gif" || $ext == "png" || $ext == "jpg" || $ext == "jpeg" || $ext == "jpe" || $ext == "webp")
-	{
-		// Check a list of known MIME types to establish what kind of image we're uploading
-		switch(my_strtolower($file['type']))
-		{
-			case "image/gif":
-				$img_type =  1;
-				break;
-			case "image/jpeg":
-			case "image/x-jpg":
-			case "image/x-jpeg":
-			case "image/pjpeg":
-			case "image/jpg":
-				$img_type = 2;
-				break;
-			case "image/png":
-			case "image/x-png":
-				$img_type = 3;
-				break;
-				
-				case "image/webp":
-			    $img_type = 18;
-			    break;
-				
-			default:
-				$img_type = 0;
-		}
+        // Если _process вернул ошибку
+        if (isset($attacharray['error'])) {
+            return $attacharray;
+        }
+    }
 
-		$supported_mimes = array();
-		foreach($attachtypes as $attachtype)
-		{
-			if(!empty($attachtype['mimetype']))
-			{
-				$supported_mimes[] = $attachtype['mimetype'];
-			}
-		}
+    $attacharray['visible'] = 1;
+    $attacharray = $plugins->run_hooks('upload_attachment_do_insert', $attacharray);
 
-		// Check if the uploaded file type matches the correct image type (returned by getimagesize)
-		$img_dimensions = @getimagesize($uploadspath_abs."/".$filename);
+    if ($prevattach && $update_attachment) {
+        unset($attacharray['downloads']);
+        $db->update_query('attachments', $attacharray, "aid='" . $db->escape_string($prevattach['aid']) . "'");
+        _cleanup_old_attachment($prevattach, $uploadspath_abs, $db);
+        $aid = $prevattach['aid'];
+    } else {
+        $aid = $db->insert_query('attachments', $attacharray);
+        if ($pid) {
+            update_thread_counters($tid, ['attachmentcount' => '+1']);
+        }
+    }
 
-		$mime = "";
-		$file_path = $uploadspath_abs."/".$filename;
-		//if(function_exists("finfo_open"))
-		//{
-			//$file_info = finfo_open(FILEINFO_MIME);
-			//list($mime, ) = explode(';', finfo_file($file_info, $file_path), 1);
-			//finfo_close($file_info);
-		//}
-		
-		
-if(function_exists("finfo_open"))
-{
-    $file_info = finfo_open(FILEINFO_MIME);
-    list($mime, ) = explode(';', finfo_file($file_info, $file_path), 1);
-    // finfo_close($file_info); // Deprecated in PHP 8.5 - objects are freed automatically
+    return ['aid' => $aid];
 }
-		
-		
-		
-		
-		
-		else if(function_exists("mime_content_type"))
-		{
-			$mime = mime_content_type($file_path);
-		}
-
-		if(!is_array($img_dimensions) || ($img_dimensions[2] != $img_type && !in_array($mime, $supported_mimes)))
-		{
-			delete_uploaded_file($uploadspath_abs."/".$filename);
-			$ret['error'] = $lang->error_uploadfailed;
-			return $ret;
-		}
-		require_once INC_PATH . "/functions_image.php";
-		$thumbname = str_replace(".attach", "_thumb.$ext", $filename);
-
-		$attacharray = $plugins->run_hooks("upload_attachment_thumb_start", $attacharray);
-
-		
-		
-
-		
-		$thumbnail = generate_thumbnail($uploadspath_abs."/".$filename, $uploadspath_abs, $thumbname, $attachthumbh, $attachthumbw);
-
-		if(!empty($thumbnail['filename']))
-		{
-			$attacharray['thumbnail'] = $thumbnail['filename'];
-		}
-		elseif($thumbnail['code'] == 4)
-		{
-			$attacharray['thumbnail'] = "SMALL";
-		}
-	}
-	//if($forumpermissions['modattachments'] == 1 && !is_moderator($forum['fid'], "canapproveunapproveattachs"))
-	//{
-	//	$attacharray['visible'] = 0;
-	//}
-	//else
-	//{
-		$attacharray['visible'] = 1;
-	//}
-
-	$attacharray = $plugins->run_hooks("upload_attachment_do_insert", $attacharray);
-
-	if($prevattach && $update_attachment == true)
-	{
-		unset($attacharray['downloads']); // Keep our download count if we're updating an attachment
-		$db->update_query("attachments", $attacharray, "aid='".$db->escape_string($prevattach['aid'])."'");
-
-		// Remove old attachment file
-		// Check if this attachment is referenced in any other posts. If it isn't, then we are safe to delete the actual file.
-		$query = $db->simple_select("attachments", "COUNT(aid) as numreferences", "attachname='".$db->escape_string($prevattach['attachname'])."'");
-		if($db->fetch_field($query, "numreferences") == 0)
-		{
-			delete_uploaded_file($uploadspath_abs."/".$prevattach['attachname']);
-			if($prevattach['thumbnail'])
-			{
-				delete_uploaded_file($uploadspath_abs."/".$prevattach['thumbnail']);
-			}
-
-			$date_directory = explode('/', $prevattach['attachname']);
-			$query_indir = $db->simple_select("attachments", "COUNT(aid) as indir", "attachname LIKE '".$db->escape_string_like($date_directory[0])."/%'");
-			if($db->fetch_field($query_indir, 'indir') == 0 && @is_dir($uploadspath_abs."/".$date_directory[0]))
-			{
-				delete_upload_directory($uploadspath_abs."/".$date_directory[0]);
-			}
-		}
-
-		$aid = $prevattach['aid'];
-	}
-	else
-	{
-		$aid = $db->insert_query("attachments", $attacharray);
-		if($pid)
-		{
-			update_thread_counters($tid, array("attachmentcount" => "+1"));
-		}
-	}
-	$ret['aid'] = $aid;
-	return $ret;
-}
-
-
-
-
-function remove_attachment($pid, $posthash, $aid)
-{
-	global $db, $mybb, $plugins, $uploadspath;
-	$aid = (int)$aid;
-	$posthash = $db->escape_string($posthash);
-	if(!empty($posthash))
-	{
-		$query = $db->simple_select("attachments", "aid, attachname, thumbnail, visible", "aid='{$aid}' AND posthash='{$posthash}'");
-		$attachment = $db->fetch_array($query);
-	}
-	else
-	{
-		$query = $db->simple_select("attachments", "aid, attachname, thumbnail, visible", "aid='{$aid}' AND pid='{$pid}'");
-		$attachment = $db->fetch_array($query);
-	}
-
-	$plugins->run_hooks("remove_attachment_do_delete", $attachment);
-
-	if($attachment === false)
-	{
-		// no attachment found with the given details
-		return;
-	}
-
-	$db->delete_query("attachments", "aid='{$attachment['aid']}'");
-
-	
-	$uploadspath_abs = mk_path_abs($uploadspath);
-
-	// Check if this attachment is referenced in any other posts. If it isn't, then we are safe to delete the actual file.
-	$query = $db->simple_select("attachments", "COUNT(aid) as numreferences", "attachname='".$db->escape_string($attachment['attachname'])."'");
-	if($db->fetch_field($query, "numreferences") == 0)
-	{
-		delete_uploaded_file($uploadspath_abs."/".$attachment['attachname']);
-		if($attachment['thumbnail'] && $attachment['thumbnail'] !== 'SMALL')
-		{
-			delete_uploaded_file($uploadspath_abs."/".$attachment['thumbnail']);
-		}
-
-		$date_directory = explode('/', $attachment['attachname']);
-		$query_indir = $db->simple_select("attachments", "COUNT(aid) as indir", "attachname LIKE '".$db->escape_string_like($date_directory[0])."/%'");
-		if($db->fetch_field($query_indir, 'indir') == 0 && @is_dir($uploadspath_abs."/".$date_directory[0]))
-		{
-			delete_upload_directory($uploadspath_abs."/".$date_directory[0]);
-		}
-	}
-
-	if($attachment['visible'] == 1 && $pid)
-	{
-		$post = get_post($pid);
-		update_thread_counters($post['tid'], array("attachmentcount" => "-1"));
-	}
-}
-
-
-
-function remove_attachments($pid, $posthash="")
-{
-	global $db, $mybb, $plugins, $uploadspath;
-
-	if($pid)
-	{
-		$post = get_post($pid);
-	}
-	$posthash = $db->escape_string($posthash);
-	if($posthash != "" && !$pid)
-	{
-		$query = $db->simple_select("attachments", "*", "posthash='$posthash'");
-	}
-	else
-	{
-		$query = $db->simple_select("attachments", "*", "pid='$pid'");
-	}
-
-	
-	$uploadspath_abs = mk_path_abs($uploadspath);
-
-	$num_attachments = 0;
-	while($attachment = $db->fetch_array($query))
-	{
-		if($attachment['visible'] == 1)
-		{
-			$num_attachments++;
-		}
-
-		$plugins->run_hooks("remove_attachments_do_delete", $attachment);
-
-		$db->delete_query("attachments", "aid='".$attachment['aid']."'");
-
-		// Check if this attachment is referenced in any other posts. If it isn't, then we are safe to delete the actual file.
-		$query2 = $db->simple_select("attachments", "COUNT(aid) as numreferences", "attachname='".$db->escape_string($attachment['attachname'])."'");
-		if($db->fetch_field($query2, "numreferences") == 0)
-		{
-			delete_uploaded_file($uploadspath_abs."/".$attachment['attachname']);
-			if($attachment['thumbnail'])
-			{
-				delete_uploaded_file($uploadspath_abs."/".$attachment['thumbnail']);
-			}
-
-			$date_directory = explode('/', $attachment['attachname']);
-			$query_indir = $db->simple_select("attachments", "COUNT(aid) as indir", "attachname LIKE '".$db->escape_string_like($date_directory[0])."/%'");
-			if($db->fetch_field($query_indir, 'indir') == 0 && @is_dir($uploadspath_abs."/".$date_directory[0]))
-			{
-				delete_upload_directory($uploadspath_abs."/".$date_directory[0]);
-			}
-		}
-	}
-
-	if($post['tid'])
-	{
-		update_thread_counters($post['tid'], array("attachmentcount" => "-{$num_attachments}"));
-	}
-}
-
-
-
-
-
-
-function add_attachments($pid, $forumpermissions, $attachwhere, $action=false)
-{
-	global $db, $mybb, $editdraftpid, $lang;
-
-	$ret = array();
-
-	//if($forumpermissions['canpostattachments'])
-	//{
-		$attachments = array();
-		$fields = array ('name', 'type', 'tmp_name', 'error', 'size');
-		$aid = array();
-
-		$total = isset($_FILES['attachments']['name']) ? count($_FILES['attachments']['name']) : 0;
-		$filenames = "";
-		$delim = "";
-		for($i=0; $i<$total; ++$i)
-		{
-			foreach($fields as $field)
-			{
-				$attachments[$i][$field] = $_FILES['attachments'][$field][$i];
-			}
-
-			$FILE = $attachments[$i];
-			if(!empty($FILE['name']) && !empty($FILE['type']) && $FILE['size'] > 0)
-			{
-				$filenames .= $delim . "'" . $db->escape_string($FILE['name']) . "'";
-				$delim = ",";
-			}
-		}
-
-		if ($filenames != '')
-		{
-			$query = $db->simple_select("attachments", "filename", "{$attachwhere} AND filename IN (".$filenames.")");
-
-			while ($row = $db->fetch_array($query))
-			{
-				$aid[$row['filename']] = true;
-			}
-		}
-
-		foreach($attachments as $FILE)
-		{
-			if($err = check_parse_php_upload_err($FILE))
-			{
-				$ret['errors'][] = $err;
-				$mybb->input['action'] = $action;
-			}
-			else if(!empty($FILE['name']) && !empty($FILE['type']))
-			{
-				if($FILE['size'] > 0)
-				{
-					$filename = $db->escape_string($FILE['name']);
-					$exists = !empty($aid[$filename]);
-
-					$update_attachment = false;
-					if($action == "editpost")
-					{
-						if($exists && $mybb->get_input('updateattachment'))
-						{
-							$update_attachment = true;
-						}
-					}
-					else
-					{
-						if($exists && $mybb->get_input('updateattachment'))
-						{
-							$update_attachment = true;
-						}
-					}
-					
-					if(!$exists && $mybb->get_input('updateattachment') && $mybb->get_input('updateconfirmed', MyBB::INPUT_INT) != 1)
-					{
-						$ret['errors'][] = sprintf('error_updatefailed', $filename);
-					}
-					else
-					{
-						$attachedfile = upload_attachment($FILE, $update_attachment);
-
-						if(!empty($attachedfile['error']))
-						{
-							$ret['errors'][] = $attachedfile['error'];
-							$mybb->input['action'] = $action;
-						}
-						else if(isset($attachedfile['aid']) && $mybb->get_input('ajax', MyBB::INPUT_INT) == 1)
-						{
-							$ret['success'][] = array($attachedfile['aid'], get_attachment_icon(get_extension($filename)), htmlspecialchars_uni($filename), mksize($FILE['size']));
-						}
-					}
-				}
-				else
-				{
-					$ret['errors'][] = sprintf('error_uploadempty', htmlspecialchars_uni($FILE['name']));
-					$mybb->input['action'] = $action;
-				}
-			}
-		}
-	//}
-
-	return $ret;
-}
-
-
-
-
 
 /**
- * Delete an uploaded file both from the relative path and the CDN path if a CDN is in use.
- *
- * @param string $path The relative path to the uploaded file.
- *
- * @return bool Whether the file was deleted successfully.
+ * Удаляет один аттачмент из БД и файловой системы.
  */
-function delete_uploaded_file($path = '')
+function remove_attachment(int $pid, string $posthash, int $aid): void
 {
-	global $mybb, $plugins;
+    global $db, $plugins, $uploadspath;
 
-	$cdnpath = "";
-	$usecdn = "0";
-	
-	$deleted = false;
+    $aid      = (int)$aid;
+    $posthash = $db->escape_string($posthash);
 
-	$deleted = @unlink($path);
+    $where     = !empty($posthash) ? "aid='{$aid}' AND posthash='{$posthash}'" : "aid='{$aid}' AND pid='{$pid}'";
+    $query     = $db->simple_select('attachments', 'aid, attachname, thumbnail, visible', $where);
+    $attachment = $db->fetch_array($query);
 
-	$cdn_base_path = rtrim($cdnpath, '/');
-	$path = ltrim($path, '/');
-	$cdn_path = realpath($cdn_base_path . '/' . $path);
+    if ($attachment === false) {
+        return;
+    }
 
-	if(!empty($usecdn) && !empty($cdn_base_path))
-	{
-		$deleted = $deleted && @unlink($cdn_path);
-	}
+    $plugins->run_hooks('remove_attachment_do_delete', $attachment);
+    $db->delete_query('attachments', "aid='{$attachment['aid']}'");
 
-	$hook_params = array(
-		'path' => &$path,
-		'deleted' => &$deleted,
-	);
+    $uploadspath_abs = mk_path_abs($uploadspath);
+    _delete_attachment_files($attachment, $uploadspath_abs, $db);
 
-	$plugins->run_hooks('delete_uploaded_file', $hook_params);
-
-	return $deleted;
+    if ($attachment['visible'] == 1 && $pid) {
+        $post = get_post($pid);
+        update_thread_counters($post['tid'], ['attachmentcount' => '-1']);
+    }
 }
-
-
 
 /**
- * Actually move a file to the uploads directory
- *
- * @param array $file The PHP $_FILE array for the file
- * @param string $path The path to save the file in
- * @param string $filename The filename for the file (if blank, current is used)
- * @return array The uploaded file
+ * Удаляет все аттачменты поста или posthash.
  */
- 
- 
-function my_chmod($file, $mode)
+function remove_attachments(int $pid, string $posthash = ''): void
 {
-	// Passing $mode as an octal number causes strlen and substr to return incorrect values. Instead pass as a string
-	if(substr($mode, 0, 1) != '0' || strlen($mode) !== 4)
-	{
-		return false;
-	}
-	$old_umask = umask(0);
+    global $db, $plugins, $uploadspath;
 
-	// We convert the octal string to a decimal number because passing a octal string doesn't work with chmod
-	// and type casting subsequently removes the prepended 0 which is needed for octal numbers
-	$result = chmod($file, octdec($mode));
-	umask($old_umask);
-	return $result;
+    $post     = $pid ? get_post($pid) : [];
+    $posthash = $db->escape_string($posthash);
+
+    $where = ($posthash !== '' && !$pid) ? "posthash='$posthash'" : "pid='$pid'";
+    $query = $db->simple_select('attachments', '*', $where);
+
+    $uploadspath_abs  = mk_path_abs($uploadspath);
+    $num_attachments  = 0;
+
+    while ($attachment = $db->fetch_array($query)) {
+        if ($attachment['visible'] == 1) {
+            $num_attachments++;
+        }
+
+        $plugins->run_hooks('remove_attachments_do_delete', $attachment);
+        $db->delete_query('attachments', "aid='" . $attachment['aid'] . "'");
+        _delete_attachment_files($attachment, $uploadspath_abs, $db);
+    }
+
+    if (!empty($post['tid'])) {
+        update_thread_counters($post['tid'], ['attachmentcount' => "-{$num_attachments}"]);
+    }
+}
+
+/**
+ * Обрабатывает аттачменты при создании/редактировании поста.
+ */
+function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere, string|false $action = false): array
+{
+    global $db, $mybb, $lang;
+
+    $ret   = [];
+    $total = isset($_FILES['attachments']['name']) ? count($_FILES['attachments']['name']) : 0;
+
+    if ($total === 0) {
+        return $ret;
+    }
+
+    $fields      = ['name', 'type', 'tmp_name', 'error', 'size'];
+    $attachments = [];
+    $filenames   = '';
+    $delim       = '';
+
+    for ($i = 0; $i < $total; $i++) {
+        $attachments[$i] = [];
+        foreach ($fields as $field) {
+            $attachments[$i][$field] = $_FILES['attachments'][$field][$i];
+        }
+
+        $FILE = $attachments[$i];
+        if (!empty($FILE['name']) && !empty($FILE['type']) && $FILE['size'] > 0) {
+            $filenames .= $delim . "'" . $db->escape_string($FILE['name']) . "'";
+            $delim      = ',';
+        }
+    }
+
+    // Предзагрузка уже существующих имён
+    $existing = [];
+    if ($filenames !== '') {
+        $query = $db->simple_select('attachments', 'filename', "{$attachwhere} AND filename IN ({$filenames})");
+        while ($row = $db->fetch_array($query)) {
+            $existing[$row['filename']] = true;
+        }
+    }
+
+    foreach ($attachments as $FILE) {
+        $err = check_parse_php_upload_err($FILE);
+        if ($err !== '') {
+            $ret['errors'][]      = $err;
+            $mybb->input['action'] = $action;
+            continue;
+        }
+
+        if (empty($FILE['name']) || empty($FILE['type'])) {
+            continue;
+        }
+
+        if ($FILE['size'] <= 0) {
+            $ret['errors'][]      = sprintf('error_uploadempty', htmlspecialchars_uni($FILE['name']));
+            $mybb->input['action'] = $action;
+            continue;
+        }
+
+        $filename         = $db->escape_string($FILE['name']);
+        $exists           = !empty($existing[$filename]);
+        $update_attachment = $exists && (bool)$mybb->get_input('updateattachment');
+
+        if (!$exists && $mybb->get_input('updateattachment') && $mybb->get_input('updateconfirmed', MyBB::INPUT_INT) != 1) {
+            $ret['errors'][] = sprintf('error_updatefailed', $filename);
+            continue;
+        }
+
+        $attachedfile = upload_attachment($FILE, $update_attachment);
+
+        if (!empty($attachedfile['error'])) {
+            $ret['errors'][]      = $attachedfile['error'];
+            $mybb->input['action'] = $action;
+        } elseif (isset($attachedfile['aid']) && $mybb->get_input('ajax', MyBB::INPUT_INT) === 1) {
+            $ret['success'][] = [
+                $attachedfile['aid'],
+                get_attachment_icon(get_extension($filename)),
+                htmlspecialchars_uni($filename),
+                mksize($FILE['size']),
+            ];
+        }
+    }
+
+    return $ret;
 }
 
 
+// ---------------------------------------------------------------------------
+// Внутренние хелперы
+// ---------------------------------------------------------------------------
 
-
-function delete_upload_directory($path = '')
+/**
+ * Конвертирует MIME-тип в константу IMAGETYPE_*.
+ */
+function _mime_to_imagetype(string $mime): int
 {
-	global $mybb, $plugins;
-
-	$deleted = false;
-
-	$deleted_index = @unlink(rtrim($path, '/').'/index.html');
-
-	$deleted = @rmdir($path);
-
-	$cdnpath = "";
-	$usecdn = "0";
-	
-	$cdn_base_path = rtrim($cdnpath, '/');
-	$path = ltrim($path, '/');
-	$cdn_path = rtrim(realpath($cdn_base_path . '/' . $path), '/');
-
-	if(!empty($usecdn) && !empty($cdn_base_path))
-	{
-		$deleted = $deleted && @rmdir($cdn_path);
-	}
-
-	$hook_params = array(
-		'path' => &$path,
-		'deleted' => &$deleted,
-	);
-
-	$plugins->run_hooks('delete_upload_directory', $hook_params);
-
-	// If not successfully deleted then reinstante the index file
-	if(!$deleted && $deleted_index)
-	{
-		create_attachment_index($path);
-	}
-
-	return $deleted;
+    return match($mime) {
+        'image/gif'                                                   => IMAGETYPE_GIF,
+        'image/jpeg', 'image/x-jpg', 'image/x-jpeg',
+        'image/pjpeg', 'image/jpg'                                    => IMAGETYPE_JPEG,
+        'image/png', 'image/x-png'                                    => IMAGETYPE_PNG,
+        'image/webp'                                                   => IMAGETYPE_WEBP,
+        'image/bmp', 'image/x-bmp', 'image/x-windows-bmp'            => IMAGETYPE_BMP,
+        default                                                        => 0,
+    };
 }
- 
- 
-function upload_file($file, $path, $filename="")
+
+/**
+ * Определяет MIME-тип файла через finfo или mime_content_type.
+ */
+function _detect_mime(string $file_path): string
 {
-	global $plugins, $mybb;
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME);
+        [$mime] = explode(';', finfo_file($finfo, $file_path), 2);
+        // finfo_close не нужен в PHP 8.1+ — объект освобождается автоматически
+        return trim($mime);
+    }
 
-	$upload = array();
+    if (function_exists('mime_content_type')) {
+        return (string)mime_content_type($file_path);
+    }
 
-	if(empty($file['name']) || $file['name'] == "none" || $file['size'] < 1)
-	{
-		$upload['error'] = 1;
-		return $upload;
-	}
+    return '';
+}
 
-	if(!$filename)
-	{
-		$filename = $file['name'];
-	}
+/**
+ * Обрабатывает изображение: проверяет MIME и генерирует миниатюру.
+ * Возвращает обновлённый $attacharray или массив с 'error'.
+ */
+function _process_image_attachment(
+    array  $attacharray,
+    array  $file,
+    string $ext,
+    string $filename,
+    string $uploadspath_abs,
+    array  $attachtypes,
+    int|string $attachthumbh,
+    int|string $attachthumbw,
+    object $plugins,
+    object $lang,
+): array {
+    $img_type = _mime_to_imagetype(my_strtolower($file['type']));
 
-	$upload['original_filename'] = preg_replace("#/$#", "", $file['name']); // Make the filename safe
-	$filename = preg_replace("#/$#", "", $filename); // Make the filename safe
-	$moved = @move_uploaded_file($file['tmp_name'], $path."/".$filename);
+    $supported_mimes = array_filter(array_column($attachtypes, 'mimetype'));
 
-	$cdn_path = '';
+    $file_path      = $uploadspath_abs . '/' . $filename;
+    $img_dimensions = @getimagesize($file_path);
+    $mime           = _detect_mime($file_path);
 
-	$moved_cdn = copy_file_to_cdn($path."/".$filename, $cdn_path);
+    if (!is_array($img_dimensions) || ($img_dimensions[2] !== $img_type && !in_array($mime, $supported_mimes, true))) {
+        delete_uploaded_file($file_path);
+        return ['error' => $lang->error_uploadfailed];
+    }
 
-	if(!$moved)
-	{
-		$upload['error'] = 2;
-		return $upload;
-	}
-	@my_chmod($path."/".$filename, '0644');
-	$upload['filename'] = $filename;
-	$upload['path'] = $path;
-	$upload['type'] = $file['type'];
-	$upload['size'] = $file['size'];
-	$upload = $plugins->run_hooks("upload_file_end", $upload);
+    require_once INC_PATH . '/functions_image.php';
 
-	if($moved_cdn)
-	{
-		$upload['cdn_path'] = $cdn_path;
-	}
+    $thumbname   = str_replace('.attach', "_thumb.{$ext}", $filename);
+    $attacharray = $plugins->run_hooks('upload_attachment_thumb_start', $attacharray);
+    $thumbnail   = generate_thumbnail($file_path, $uploadspath_abs, $thumbname, $attachthumbh, $attachthumbw);
 
-	return $upload;
+    if (!empty($thumbnail['filename'])) {
+        $attacharray['thumbnail'] = $thumbnail['filename'];
+    } elseif (($thumbnail['code'] ?? 0) === 4) {
+        $attacharray['thumbnail'] = 'SMALL';
+    }
+
+    return $attacharray;
+}
+
+/**
+ * Удаляет файлы старого аттачмента при обновлении.
+ */
+function _cleanup_old_attachment(array $prevattach, string $uploadspath_abs, object $db): void
+{
+    $query = $db->simple_select('attachments', 'COUNT(aid) as numreferences', "attachname='" . $db->escape_string($prevattach['attachname']) . "'");
+    if ($db->fetch_field($query, 'numreferences') > 0) {
+        return;
+    }
+
+    delete_uploaded_file($uploadspath_abs . '/' . $prevattach['attachname']);
+
+    if (!empty($prevattach['thumbnail'])) {
+        delete_uploaded_file($uploadspath_abs . '/' . $prevattach['thumbnail']);
+    }
+
+    _maybe_delete_month_dir($prevattach['attachname'], $uploadspath_abs, $db);
+}
+
+/**
+ * Удаляет файлы аттачмента если на него нет других ссылок.
+ */
+function _delete_attachment_files(array $attachment, string $uploadspath_abs, object $db): void
+{
+    $query = $db->simple_select('attachments', 'COUNT(aid) as numreferences', "attachname='" . $db->escape_string($attachment['attachname']) . "'");
+    if ($db->fetch_field($query, 'numreferences') > 0) {
+        return;
+    }
+
+    delete_uploaded_file($uploadspath_abs . '/' . $attachment['attachname']);
+
+    if (!empty($attachment['thumbnail']) && $attachment['thumbnail'] !== 'SMALL') {
+        delete_uploaded_file($uploadspath_abs . '/' . $attachment['thumbnail']);
+    }
+
+    _maybe_delete_month_dir($attachment['attachname'], $uploadspath_abs, $db);
+}
+
+/**
+ * Удаляет месячную директорию если она пуста.
+ */
+function _maybe_delete_month_dir(string $attachname, string $uploadspath_abs, object $db): void
+{
+    $parts = explode('/', $attachname);
+    if (count($parts) < 2) {
+        return;
+    }
+
+    $month_dir   = $parts[0];
+    $query_indir = $db->simple_select('attachments', 'COUNT(aid) as indir', "attachname LIKE '" . $db->escape_string_like($month_dir) . "/%'");
+
+    if ($db->fetch_field($query_indir, 'indir') == 0 && @is_dir($uploadspath_abs . '/' . $month_dir)) {
+        delete_upload_directory($uploadspath_abs . '/' . $month_dir);
+    }
 }

@@ -3198,10 +3198,14 @@ function cutename2(string $name, int $max = 25): string
     return htmlspecialchars_uni($max < strlen($name) ? substr($name, 0, $max) . '...' : $name);
 }
 
-function get_extension(string $file): string
+
+function get_extension(string $filename): string
 {
-    return strtolower(substr(strrchr($file, '.'), 1));
+    $pos = strrpos($filename, '.');
+    return $pos !== false ? strtolower(substr($filename, $pos + 1)) : '';
 }
+
+
 
 function dir_list(string $dir): array
 {

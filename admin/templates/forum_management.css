@@ -1,0 +1,177 @@
+/* ═══════════════════════════════════════════════
+   Forum Management — Shared Stylesheet
+   Replaces all inline <style> blocks in management.php
+   ═══════════════════════════════════════════════ */
+
+/* ── Layout ─────────────────────────────────── */
+.admin-container .card          { border:none; box-:0 2px 12px rgba(0,0,0,.08); transition: .3s,box- .3s; }
+.admin-container .card:hover    { :translateY(-2px); box-:0 8px 25px rgba(0,0,0,.12); }
+.breadcrumb                     { background:#fff; box-:0 2px 8px rgba(0,0,0,.05); }
+.header-icon                    { transition: .3s; }
+.header-icon:hover              { :rotate(15deg); }
+.sticky-top                     { position:sticky; z-index:10; }
+
+/* ── Buttons ─────────────────────────────────── */
+.btn                            { border-radius:8px; font-weight:500; transition:all .3s; }
+.btn-primary                    { background:linear-gradient(135deg,#0d6efd,#0b5ed7); border:none; }
+.btn-primary:hover              { :translateY(-2px); box-:0 4px 12px rgba(13,110,253,.3); }
+.btn-outline-secondary:hover    { :translateY(-2px); box-:0 4px 12px rgba(108,117,125,.2); }
+.btn-lg                         { padding:12px 30px; font-size:15px; font-weight:600; border-radius:8px; }
+
+/* ── Nav tabs ────────────────────────────────── */
+.nav-tabs-modern                { border-bottom:2px solid #dee2e6; }
+.nav-tabs-modern .nav-link      { border:none; border-bottom:3px solid transparent; color:#6c757d; padding:1rem 1.5rem; font-weight:500; transition:all .3s; border-radius:0; }
+.nav-tabs-modern .nav-link:hover{ color:#0d6efd; border-bottom-color:#dee2e6; }
+.nav-tabs-modern .nav-link.active{ color:#0d6efd; border-bottom-color:#0d6efd; background:transparent; }
+
+/* ── Form elements ───────────────────────────── */
+.form-control:focus,
+.form-select:focus              { border-color:#86b7fe; box-:0 0 0 .25rem rgba(13,110,253,.25); }
+.form-label                     { font-size:15px; color:#2d3748; margin-bottom:10px; }
+.required-badge                 { background:#fee2e2; color:#dc2626; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+.input-group-text               { background:#f8fafc; border:1px solid #e2e8f0; color:#64748b; }
+
+/* ── Forum type cards ────────────────────────── */
+.type-card                      { border:2px solid #eef2f7; border-radius:12px; padding:25px; cursor:pointer; transition:all .3s; position:relative; background:#fff; height:100%; }
+.type-card:hover                { :translateY(-3px); border-color:#c6d4e9; box-:0 8px 25px rgba(0,0,0,.08); }
+.type-card.active               { border-color:#4d6dee; background:linear-gradient(135deg,#f8fafe,#f0f4ff); }
+.type-icon                      { width:70px; height:70px; border-radius:50%; background:linear-gradient(135deg,#667eea20,#764ba220); display:flex; align-items:center; justify-content:center; margin:0 auto; color:#667eea; }
+.type-check                     { position:absolute; top:15px; right:15px; color:#4d6dee; font-size:20px; opacity:0; transition:opacity .3s; }
+.type-card.active .type-check   { opacity:1; }
+
+/* ── Icon helpers ────────────────────────────── */
+.icon-circle                    { border-radius:50%; display:flex; align-items:center; justify-content:center; }
+.step-number                    { display:flex; align-items:center; justify-content:center; font-weight:bold; flex-shrink:0; }
+.group-icon, .moderator-icon    { width:40px; height:40px; display:flex; align-items:center; justify-content:center; }
+
+/* ── Permissions drag-and-drop ───────────────── */
+.permission-fields              { min-height:80px; }
+.enabled-permissions,
+.disabled-permissions           { min-height:60px; padding:10px; border-radius:8px; transition:all .3s; border:2px dashed transparent; }
+.enabled-permissions            { background:rgba(40,167,69,.08); border-color:rgba(40,167,69,.3); }
+.disabled-permissions           { background:rgba(220,53,69,.08); border-color:rgba(220,53,69,.3); }
+.enabled-permissions:hover,
+.disabled-permissions:hover     { border-color:#0d6efd; background:rgba(13,110,253,.05); }
+.enabled-permissions.drag-over,
+.disabled-permissions.drag-over { background:rgba(13,110,253,.15); border-color:#0d6efd; border-style:solid; }
+.permission-badge               { cursor:move; user-select:none; display:inline-block; margin:3px; padding:6px 12px !important; font-size:.85em; font-weight:500; border-radius:20px !important; transition:all .2s; box-:0 2px 4px rgba(0,0,0,.05); }
+.permission-badge:hover         { :translateY(-2px); box-:0 4px 8px rgba(0,0,0,.1); }
+
+/* ── Additional options toggle ───────────────── */
+.toggle-options-btn             { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; border:none; padding:14px 28px; border-radius:10px; font-weight:600; font-size:15px; cursor:pointer; transition:all .3s; display:inline-flex; align-items:center; gap:12px; box-:0 6px 20px rgba(102,126,234,.25); }
+.toggle-options-btn:hover       { :translateY(-3px); box-:0 8px 25px rgba(102,126,234,.35); }
+.toggle-options-btn i           { transition: .4s; font-size:18px; }
+#additional_options             { animation:slideDown .4s cubic-bezier(.175,.885,.32,1.275); -origin:top; }
+
+/* ── Settings grid cards ─────────────────────── */
+.form-section                   { padding:25px; background:#fff; border-radius:12px; border:1px solid #eef2f7; transition:all .3s; margin-bottom:40px; }
+.form-section:hover             { border-color:#c6d4e9; box-:0 5px 20px rgba(0,0,0,.05); }
+.form-section:last-child        { margin-bottom:0; }
+.settings-group                 { background:linear-gradient(135deg,#fff,#f8fafc); border:2px solid #e2e8f0; border-radius:10px; padding:20px; transition:all .3s; position:relative; overflow:hidden; }
+.settings-group::before         { content:''; position:absolute; top:0; left:0; width:100%; height:4px; background:linear-gradient(90deg,#667eea,#764ba2); }
+.settings-group:hover           { :translateY(-5px); box-:0 10px 25px rgba(0,0,0,.1); border-color:#cbd5e0; }
+.settings-group-title           { display:flex; align-items:center; gap:10px; font-weight:700; color:#2d3748; margin-bottom:16px; font-size:14px; text-:uppercase; letter-spacing:.5px; }
+.settings-grid                  { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:24px; margin-top:20px; }
+
+/* ── Table ───────────────────────────────────── */
+.table th                       { position:sticky; top:0; background:#f8f9fa; z-index:10; }
+.table-hover tbody tr:hover     { background:rgba(13,110,253,.04); :translateX(2px); transition:all .2s; }
+.clear-permission-btn:hover     { :scale(1.1); }
+
+/* ── Moderator permissions toggle ────────────── */
+.form-switch .form-check-input  { width:3em; height:1.5em; }
+.custom-switch                  { position:relative; display:inline-block; width:36px; height:20px; }
+.custom-switch input            { opacity:0; width:0; height:0; }
+.custom-switch-slider           { position:absolute; cursor:pointer; inset:0; background:#cbd5e1; transition:.4s; border-radius:34px; }
+.custom-switch-slider::before   { position:absolute; content:""; height:16px; width:16px; left:2px; bottom:2px; background:#fff; transition:.4s; border-radius:50%; box-:0 2px 4px rgba(0,0,0,.2); }
+.custom-switch input:checked + .custom-switch-slider                { background:linear-gradient(135deg,#10b981,#059669); }
+.custom-switch input:checked + .custom-switch-slider::before        { :translateX(16px); }
+
+/* ── Copy-forum specific ─────────────────────── */
+.permissions-column             { border-radius:12px; overflow:hidden; border:1px solid #e2e8f0; }
+.permissions-column-header      { background:#f8fafc; padding:12px 16px; border-bottom:1px solid #e2e8f0; font-weight:600; font-size:13px; color:#475569; display:flex; align-items:center; justify-content:space-between; }
+.permissions-column-header.allowed   { color:#059669; }
+.permissions-column-header.disallowed{ color:#dc2626; }
+.permissions-count              { background:rgba(5,150,105,.1); color:#059669; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:700; }
+.permissions-count.disallowed   { background:rgba(220,38,38,.1); color:#dc2626; }
+.permissions-list               { padding:12px; min-height:120px; background:#fff; }
+.permissions-list ul            { list-style:none; padding:0; margin:0; }
+.permissions-list li            { padding:10px 12px; margin-bottom:6px; background:#f8fafc; border-radius:8px; font-size:13px; color:#334155; display:flex; align-items:center; gap:10px; cursor:move; transition:all .2s; border-left:3px solid transparent; }
+.permissions-list li:hover      { background:#f1f5f9; :translateX(3px); }
+.permissions-list li.allowed    { border-left-color:#10b981; }
+.permissions-list li.disallowed { border-left-color:#ef4444; }
+.permission-icon                { width:24px; height:24px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; flex-shrink:0; }
+.permission-icon.view     { background:#3b82f6; }
+.permission-icon.threads  { background:#8b5cf6; }
+.permission-icon.replies  { background:#10b981; }
+.permission-icon.polls    { background:#f59e0b; }
+
+/* ── Notifications ───────────────────────────── */
+#notification-container         { position:fixed; top:20px; right:20px; z-index:9999; max-width:400px; }
+.alert                          { margin-bottom:10px; border:none; border-radius:8px; animation:slideIn .3s ease; box-:0 4px 12px rgba(0,0,0,.15); }
+
+/* ── Forum delete animation ──────────────────── */
+.forum-row.deleting             { animation:slideOutLeft .5s ease forwards; }
+.pulse-ring                     { position:absolute; inset:-10px; border:2px solid rgba(220,53,69,.3); border-radius:50%; animation:pulse 2s infinite; }
+
+/* ── Autocomplete ────────────────────────────── */
+.autocomplete-suggestions       { border:1px solid #dee2e6; border-radius:4px; background:#fff; box-:0 4px 12px rgba(0,0,0,.1); max-height:200px; overflow-y:auto; z-index:1000; }
+.autocomplete-suggestion        { padding:8px 12px; cursor:pointer; transition:background-color .2s; }
+.autocomplete-suggestion:hover  { background:#f8f9fa; }
+.autocomplete-suggestion.selected{ background:#e7f1ff; }
+
+/* ── Keyframes ───────────────────────────────── */
+@keyframes fadeIn       { from{opacity:0;:translateY(10px)} to{opacity:1;:translateY(0)} }
+@keyframes slideIn      { from{:translateX(100%);opacity:0} to{:translateX(0);opacity:1} }
+@keyframes slideOutLeft { from{opacity:1;:translateX(0)} to{opacity:0;:translateX(-100%)} }
+@keyframes pulse        { 0%,100%{opacity:.6} 50%{opacity:1} }
+@keyframes slideDown    { from{opacity:0;:translateY(-15px) scale(.98)} to{opacity:1;:translateY(0) scale(1)} }
+@keyframes save-flash   { 0%{background:rgba(40,167,69,.2)} 100%{background:transparent} }
+.fade-in        { animation:fadeIn .5s ease forwards; opacity:0; }
+.change-indicator{ animation:pulse 2s infinite; }
+.save-success   { animation:save-flash 1s ease; }
+.order-input.changed{ border-color:#0d6efd; background:rgba(13,110,253,.05); }
+
+/* ── bg-purple util ──────────────────────────── */
+.bg-purple      { background-color:#6f42c1 !important; }
+.text-purple    { color:#6f42c1 !important; }
+
+
+
+
+/* Modal */
+.modal-content { border-radius:16px; border:none; }
+
+/* Empty state */
+.empty-state { padding:3rem 1rem; }
+.table-container { position:relative; }
+
+/* Hierarchy preview */
+.hierarchy-preview { background:linear-gradient(135deg,#f8fafc,#f1f5f9); border:1px solid #e2e8f0; }
+.hierarchy-tree .tree-item { padding:6px 12px; background:#fff; border-radius:6px; margin-bottom:5px; border:1px solid #e2e8f0; }
+.hierarchy-tree .tree-item.active { background:#f0f4ff; border-color:#c6d4e9; }
+
+/* Form rows (additional options) */
+.form-row { margin-bottom:28px; padding-bottom:28px; border-bottom:2px solid #f0f2f5; position:relative; }
+.form-row:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+.form-description { color:#718096; font-size:14px; margin-bottom:16px; line-height:1.6; }
+
+/* Opacity util */
+.opacity-85 { opacity:.85; }
+
+
+/* ── Delete icon wrapper ─────────────────────── */
+.delete-icon-wrapper            { position:relative; display:inline-block; width:80px; height:80px; }
+.modal-icon                     { width:50px; height:50px; display:flex; align-items:center; justify-content:center; }
+
+.form-switch .form-check-input {
+    width: 3em;
+    height: 1.5em;
+}
+.form-switch .form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+.text-purple {
+    color: #6f42c1 !important;
+}

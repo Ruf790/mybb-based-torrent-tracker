@@ -1,0 +1,26 @@
+/* ── Flatpickr overrides ───────────────────────────────────────────────────── */
+.flatpickr-calendar {
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+}
+.flatpickr-day.today {
+    border-color: var(--bs-primary);
+}
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+}
+.input-group-text .bi { opacity: .8; }
+
+/* ── Avatar cell ───────────────────────────────────────────────────────────── */
+td[data-avatar-cell] { cursor: pointer; }
+
+/* ── Passkey text ──────────────────────────────────────────────────────────── */
+.passkey-text {
+    font-size: .7rem;
+    filter: blur(4px);
+    user-select: none;
+    transition: filter .3s;
+}

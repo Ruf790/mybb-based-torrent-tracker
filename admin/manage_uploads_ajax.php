@@ -420,7 +420,23 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
 				
 				
             </tr>
-            <?php endforeach; ?>
+           <?php endforeach; ?>
+            <?php if (empty($files)): ?>
+            <tr>
+                <td colspan="7">
+                    <div class="text-center py-5">
+                        <i class="bi bi-images fs-1 text-muted mb-3 d-block"></i>
+                        <h5 class="text-muted">No files found.</h5>
+                        <?php if ($search || $typeFilter): ?>
+                            <p class="text-muted small">Try clearing your search or filter.</p>
+                            <a href="index.php?act=manage_uploads" class="btn btn-outline-secondary btn-sm">
+                                <i class="bi bi-x-circle me-1"></i> Clear filters
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </td>
+            </tr>
+            <?php endif; ?>
         </tbody>
     </table>
 </div>

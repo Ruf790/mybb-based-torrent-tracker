@@ -314,8 +314,13 @@ stdhead('Inactive Users more than ' . $maxdays . ' days! (Total ' . $threadcount
         } else {
             ?>
             <tr>
-                <td colspan="7" class="text-center">No inactive users found.</td>
-            </tr>
+    <td colspan="7">
+        <div class="text-center py-5">
+            <i class="bi bi-person-slash fs-1 text-muted mb-3 d-block"></i>
+            <h5 class="text-muted">No inactive users found.</h5>
+        </div>
+    </td>
+</tr>
             <?php
         }
         ?>

@@ -51,7 +51,7 @@ $q = $db->simple_select('users', 'id', "enabled='yes' AND ustatus='confirmed'");
 while ($row = $db->fetch_array($q)) $user_ids[] = (int)$row['id'];
 
 if (empty($torrent_ids) || empty($user_ids)) {
-    stderr($lang->global['error'], 'No torrent/user found. You must have at least one torrent/user.');
+    stderr('Error, No torrent/user found. You must have at least one torrent/user.');
 }
 
 $ValidTorrents = implode(',', $torrent_ids);
@@ -63,9 +63,9 @@ function delete_invalid_records(string $table, string $condition, string $id_fie
 {
     global $db;
 
-    $q       = $db->simple_select($table, $id_field, $condition);
-    $total   = 0;
-    $batch   = [];
+    $q     = $db->simple_select($table, $id_field, $condition);
+    $total = 0;
+    $batch = [];
 
     while ($row = $db->fetch_array($q)) {
         $batch[] = $row[$id_field];
@@ -84,6 +84,15 @@ function delete_invalid_records(string $table, string $condition, string $id_fie
     return $total;
 }
 
+// ── Size format helper ────────────────────────────────────
+function format_filesize(int $bytes): string
+{
+    if ($bytes >= 1073741824) return round($bytes / 1073741824, 2) . ' GB';
+    if ($bytes >= 1048576)    return round($bytes / 1048576, 2)    . ' MB';
+    if ($bytes >= 1024)       return round($bytes / 1024, 2)       . ' KB';
+    return $bytes . ' B';
+}
+
 // ── Run cleanup ───────────────────────────────────────────
 $log        = [];
 $start_time = microtime(true);
@@ -99,8 +108,7 @@ $cleanups = [
     ['snatched',            "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
     ['staffmessages',       "sender NOT IN ({$ValidUsers})"],
     ['hit_and_run',         "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
-    ['inactivity',          "userid NOT IN ({$ValidUsers})",                                         'userid'],
-    ['users_perm',          "userid NOT IN ({$ValidUsers})",                                         'userid'],
+    ['inactivity',          "userid NOT IN ({$ValidUsers})",                                         'userid'],                                      
     ['privatemessages',     "fromid NOT IN ({$ValidUsers}) AND toid NOT IN ({$ValidUsers})",         'pmid'],
     ['comment_files',       "user_id NOT IN ({$ValidUsers}) OR torrent_id NOT IN ({$ValidTorrents})"],
     ['screenshots',         "torrent_id NOT IN ({$ValidTorrents})"],
@@ -109,6 +117,46 @@ $cleanups = [
 foreach ($cleanups as [$table, $cond, $field]) {
     $n = delete_invalid_records($table, $cond, $field ?? 'id');
     if ($n > 0) $log[] = "Deleted {$n} invalid records from {$table}";
+}
+
+// ── Orphaned uploaded files ───────────────────────────────
+// Файлы в comment_files не привязанные ни к чему — удаляем файлы и записи
+
+$orphaned_query = $db->simple_select(
+    'comment_files',
+    'id, file_path, file_size',
+    'comment_id  IS NULL
+ AND news_id     IS NULL
+ AND torrent_id  IS NULL
+ AND post_id     IS NULL
+ AND messages_id IS NULL'
+);
+
+$orphaned_count = 0;
+$orphaned_freed = 0;
+$orphaned_batch = [];
+
+while ($file = $db->fetch_array($orphaned_query)) {
+    // Удаляем физический файл если существует
+    if (!empty($file['file_path']) && file_exists($file['file_path'])) {
+        @unlink($file['file_path']);
+    }
+    $orphaned_freed += (int)$file['file_size'];
+    $orphaned_batch[] = (int)$file['id'];
+    $orphaned_count++;
+
+    if (count($orphaned_batch) >= 1000) {
+        $db->delete_query('comment_files', 'id IN (' . implode(',', $orphaned_batch) . ')');
+        $orphaned_batch = [];
+    }
+}
+
+if (!empty($orphaned_batch)) {
+    $db->delete_query('comment_files', 'id IN (' . implode(',', $orphaned_batch) . ')');
+}
+
+if ($orphaned_count > 0) {
+    $log[] = "Deleted {$orphaned_count} orphaned uploaded file(s), freed " . format_filesize($orphaned_freed);
 }
 
 // ── Time-based cleanup ────────────────────────────────────
@@ -129,7 +177,7 @@ foreach ([
 $tables_to_optimize = [
     'announce_actions', 'bookmarks', 'cheat_attempts', 'comments',
     'notconnectablepmlog', 'peers', 'reports', 'snatched', 'staffmessages',
-    'hit_and_run', 'inactivity', 'users_perm', 'comment_files',
+    'hit_and_run', 'inactivity', 'comment_files',
     'privatemessages', 'screenshots', 'sessions', 'searchlog', 'loginattempts',
 ];
 
@@ -142,8 +190,10 @@ foreach ($tables_to_optimize as $table) {
 
 // ── Report ────────────────────────────────────────────────
 $execution_time = round(microtime(true) - $start_time, 2);
-
-$log_items = implode('', array_map(fn(string $e) => '<li>' . htmlspecialchars($e) . '</li>', $log));
+$log_items      = implode('', array_map(
+    fn(string $e) => '<li>' . htmlspecialchars($e) . '</li>',
+    $log
+));
 
 stdhead();
 echo render_css($BASEURL);

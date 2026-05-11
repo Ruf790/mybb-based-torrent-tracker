@@ -93,7 +93,7 @@ function acp_rebuild_forum_counters(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_forum_counters");
 
-    $query = $db->simple_select("tsf_forums", "COUNT(*) as num_forums");
+    $query = $db->simple_select("forums", "COUNT(*) as num_forums");
     $num_forums = (int)$db->fetch_field($query, 'num_forums');
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
@@ -103,7 +103,7 @@ function acp_rebuild_forum_counters(): void
     $end = $start + $per_page;
 
     $query = $db->simple_select(
-        "tsf_forums", 
+        "forums", 
         "fid", 
         '', 
         [
@@ -116,7 +116,7 @@ function acp_rebuild_forum_counters(): void
     
     while ($forum = $db->fetch_array($query)) {
         $update = ['parentlist' => make_parent_list((int)$forum['fid'])];
-        $db->update_query("tsf_forums", $update, "fid='{$forum['fid']}'");
+        $db->update_query("forums", $update, "fid='{$forum['fid']}'");
         rebuild_forum_counters((int)$forum['fid']);
     }
 
@@ -142,7 +142,7 @@ function acp_rebuild_thread_counters(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_thread_counters");
 
-    $query = $db->simple_select("tsf_threads", "COUNT(*) as num_threads");
+    $query = $db->simple_select("threads", "COUNT(*) as num_threads");
     $num_threads = (int)$db->fetch_field($query, 'num_threads');
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
@@ -152,7 +152,7 @@ function acp_rebuild_thread_counters(): void
     $end = $start + $per_page;
 
     $query = $db->simple_select(
-        "tsf_threads", 
+        "threads", 
         "tid", 
         '', 
         [
@@ -189,7 +189,7 @@ function acp_rebuild_poll_counters(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_poll_counters");
 
-    $query = $db->simple_select("tsf_polls", "COUNT(*) as num_polls");
+    $query = $db->simple_select("polls", "COUNT(*) as num_polls");
     $num_polls = (int)$db->fetch_field($query, 'num_polls');
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
@@ -199,7 +199,7 @@ function acp_rebuild_poll_counters(): void
     $end = $start + $per_page;
 
     $query = $db->simple_select(
-        "tsf_polls", 
+        "polls", 
         "pid", 
         '', 
         [
@@ -246,7 +246,7 @@ function acp_recount_user_posts(): void
     $end = $start + $per_page;
 
     $fids = [];
-    $query = $db->simple_select("tsf_forums", "fid", "usepostcounts = 0");
+    $query = $db->simple_select("forums", "fid", "usepostcounts = 0");
     
     while ($forum = $db->fetch_array($query)) {
         $fids[] = (int)$forum['fid'];
@@ -273,8 +273,8 @@ function acp_recount_user_posts(): void
     while ($user = $db->fetch_array($query)) {
         $query2 = $db->sql_query("
             SELECT COUNT(p.pid) AS post_count
-            FROM tsf_posts p
-            LEFT JOIN tsf_threads t ON (t.tid = p.tid)
+            FROM posts p
+            LEFT JOIN threads t ON (t.tid = p.tid)
             WHERE p.uid = '{$user['id']}' 
             AND t.visible > 0 
             AND p.visible > 0
@@ -317,7 +317,7 @@ function acp_recount_user_threads(): void
     $end = $start + $per_page;
 
     $fids = [];
-    $query = $db->simple_select("tsf_forums", "fid", "usethreadcounts = 0");
+    $query = $db->simple_select("forums", "fid", "usethreadcounts = 0");
     
     while ($forum = $db->fetch_array($query)) {
         $fids[] = (int)$forum['fid'];
@@ -344,7 +344,7 @@ function acp_recount_user_threads(): void
     while ($user = $db->fetch_array($query)) {
         $query2 = $db->sql_query("
             SELECT COUNT(t.tid) AS thread_count
-            FROM tsf_threads t
+            FROM threads t
             WHERE t.uid = '{$user['id']}' 
             AND t.visible > 0 
             AND t.closed NOT LIKE 'moved|%'

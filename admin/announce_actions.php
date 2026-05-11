@@ -130,12 +130,30 @@ stdhead('Announce Actions');
                                 <tbody>
                                     <?php
                                     $res = $db->sql_query('SELECT c.*, u.id as userid, u.username, u.usergroup, u.uploaded, u.enabled, 
-                                        u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment, t.name, t.added 
+                                        u.donor, u.leechwarn, u.warned, t.name, t.added 
                                         FROM announce_actions c 
                                         LEFT JOIN users u ON (c.userid=u.id) 
-                                        LEFT JOIN users_perm p ON (u.id=p.userid) 
+                                       
                                         LEFT JOIN torrents t ON (c.torrentid=t.id) 
                                         ORDER BY c.actiontime DESC LIMIT '.$start.', ' . $perpage);
+										
+										
+									if ($db->num_rows($res) === 0) {
+                                    echo '
+                                      <tr>
+                                         <td colspan="8">
+                                         <div class="text-center py-5">
+                                          <i class="fas fa-shield-alt fa-4x text-muted mb-3"></i>
+                                          <h5 class="text-muted">No announce actions found.</h5>
+                                         </div>
+                                         </td>
+                                         </tr>';
+                                    } 	
+										
+										
+										
+										
+									else {	
                                     
                                     while ($arr = $db->fetch_array($res)) {
                                         $mb = '';
@@ -234,6 +252,8 @@ stdhead('Announce Actions');
                                         </tr>
                                         <?php
                                     }
+									
+									}
                                     ?>
                                 </tbody>
                                 <tfoot>

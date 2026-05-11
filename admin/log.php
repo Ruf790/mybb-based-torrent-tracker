@@ -520,7 +520,7 @@ if (!empty($post_ids)) {
 
 if (!empty($announcement_ids)) {
     $announcement_ids_str = implode(',', array_keys($announcement_ids));
-    $result = $db->sql_query("SELECT aid, subject FROM tsf_announcements WHERE aid IN ($announcement_ids_str)");
+    $result = $db->sql_query("SELECT id, subject FROM announcements WHERE id IN ($announcement_ids_str)");
     while ($row = $db->fetch_array($result)) {
         $announcements_data[$row['aid']] = $row;
     }
@@ -892,9 +892,12 @@ if ($total_count > $perpage)
 
 
 
-if (count($logs) == 0) 
-{
-    echo '<div class="alert alert-warning text-center">No logs found matching your criteria.</div>';
+if (count($logs) == 0) {
+    echo '
+    <div class="text-center py-5">
+        <i class="fas fa-list fa-4x text-muted mb-3"></i>
+        <h5 class="text-muted">No logs found matching your criteria.</h5>
+    </div>';
 } 
 else 
 {

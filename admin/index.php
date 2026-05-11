@@ -5,10 +5,6 @@
 
 /* ─────────────────────────── Bootstrap ──────────────────────────── */
 
-$templatelist = 'multipage,multipage_breadcrumb,multipage_end,multipage_jump_page,'
-              . 'multipage_nextpage,multipage_page,multipage_page_current,'
-              . 'multipage_page_link_current,multipage_prevpage,multipage_start';
-
 $rootpath = './../';
 $thispath = './';
 

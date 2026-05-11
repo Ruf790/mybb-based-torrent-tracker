@@ -304,10 +304,9 @@ $pagerbottom = $pagertop;
 // Основной запрос
 $main_query = 'SELECT s.torrentid, s.seedtime, s.leechtime, s.userid, s.downloaded, s.uploaded, 
 t.name, t.seeders, t.leechers, u.timeswarned, u.username, u.enabled, u.donor, u.leechwarn, u.warned, 
-p.canupload, p.candownload, p.cancomment, g.namestyle 
+g.namestyle 
 FROM snatched s 
 INNER JOIN users u ON (s.userid=u.id) 
-LEFT JOIN users_perm p ON (u.id=p.userid) 
 LEFT JOIN torrents t ON (s.torrentid=t.id) 
 LEFT JOIN usergroups g ON (u.usergroup=g.gid) 
 WHERE s.finished=\'yes\' AND s.seeder=\'no\' 

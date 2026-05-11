@@ -548,7 +548,7 @@ if ($mybb->input['action'] === 'copy') {
         $from = $mybb->get_input('from', MyBB::INPUT_INT);
         $to   = $mybb->get_input('to',   MyBB::INPUT_INT);
 
-        $query      = $db->simple_select('tsf_forums', '*', "fid='{$from}'");
+        $query      = $db->simple_select('forums', '*', "fid='{$from}'");
         $from_forum = $db->fetch_array($query);
         if (!$db->num_rows($query)) $errors[] = 'error_invalid_source_forum';
 
@@ -569,11 +569,11 @@ if ($mybb->input['action'] === 'copy') {
                 $new_forum['parentlist']  = '';
                 $new_forum = array_map([$db, 'escape_string'], $new_forum);
 
-                $to = $db->insert_query('tsf_forums', $new_forum);
-                $db->update_query('tsf_forums', ['parentlist' => make_parent_list($to)], "fid='{$to}'");
+                $to = $db->insert_query('forums', $new_forum);
+                $db->update_query('forums', ['parentlist' => make_parent_list($to)], "fid='{$to}'");
             }
         } elseif ($mybb->input['copyforumsettings'] == 1) {
-            $query    = $db->simple_select('tsf_forums', '*', "fid='{$to}'");
+            $query    = $db->simple_select('forums', '*', "fid='{$to}'");
             $to_forum = $db->fetch_array($query);
             if (!$db->num_rows($query)) $errors[] = 'Invalid destination forum';
 
@@ -587,7 +587,7 @@ if ($mybb->input['action'] === 'copy') {
                 $new_forum['pid']         = $to_forum['pid'];
                 $new_forum['parentlist']  = $to_forum['parentlist'];
                 $new_forum = array_map([$db, 'escape_string'], $new_forum);
-                $db->update_query('tsf_forums', $new_forum, "fid='{$to}'");
+                $db->update_query('forums', $new_forum, "fid='{$to}'");
             }
         } else {
             $new_forum['name'] = null;
@@ -1300,7 +1300,7 @@ document.addEventListener("DOMContentLoaded", () => {
             fm_errors($errors);
             $permission_data = $mybb->input;
             $usergroup = $db->fetch_array($db->simple_select('usergroups', '*', "gid='" . $db->escape_string($permission_data['gid']) . "'"));
-            $forum     = $db->fetch_array($db->simple_select('tsf_forums',  '*', "fid='" . $db->escape_string($permission_data['fid']) . "'"));
+            $forum     = $db->fetch_array($db->simple_select('forums',  '*', "fid='" . $db->escape_string($permission_data['fid']) . "'"));
         } else {
             $query = $pid
                 ? $db->simple_select('forumpermissions', '*', "pid='{$pid}'")
@@ -1315,7 +1315,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             $usergroup   = $db->fetch_array($db->simple_select('usergroups', '*', "gid='{$gid}'"));
-            $forum       = $db->fetch_array($db->simple_select('tsf_forums',  '*', "fid='{$fid}'"));
+            $forum       = $db->fetch_array($db->simple_select('forums',  '*', "fid='{$fid}'"));
             $customperms = $db->fetch_array($db->simple_select(
                 'forumpermissions', '*',
                 build_parent_list($fid) . " AND gid='{$gid}'"
@@ -1519,8 +1519,8 @@ if ($mybb->input['action'] === 'add') {
             ];
 
             $plugins->run_hooks('admin_forum_management_add_start');
-            $fid = $db->insert_query('tsf_forums', $insert);
-            $db->update_query('tsf_forums', ['parentlist' => make_parent_list($fid)], "fid='{$fid}'");
+            $fid = $db->insert_query('forums', $insert);
+            $db->update_query('forums', ['parentlist' => make_parent_list($fid)], "fid='{$fid}'");
             $cache->update_forums();
 
             $inherit = $mybb->input['default_permissions'] ?? [];
@@ -1759,7 +1759,7 @@ if ($mybb->input['action'] === 'edit') {
         admin_redirect('index.php?act=management');
     }
     $fid   = $mybb->get_input('fid', MyBB::INPUT_INT);
-    $query = $db->simple_select('tsf_forums', '*', "fid='{$fid}'");
+    $query = $db->simple_select('forums', '*', "fid='{$fid}'");
     $forum_data = $db->fetch_array($query);
     if (!$forum_data) {
         flash_message($lang->forum_management['error_invalid_fid'], 'error');
@@ -1774,17 +1774,17 @@ if ($mybb->input['action'] === 'edit') {
         $pid = $mybb->get_input('pid', MyBB::INPUT_INT);
         if ($pid === $fid)                   $errors[] = 'The forum parent cannot be the forum itself';
         else {
-            $parents = explode(',', $db->fetch_field($db->simple_select('tsf_forums','parentlist',"fid='{$pid}'"), 'parentlist'));
+            $parents = explode(',', $db->fetch_field($db->simple_select('forums','parentlist',"fid='{$pid}'"), 'parentlist'));
             if (in_array($fid, $parents))    $errors[] = 'Cannot set parent to a child forum';
         }
         $type = $mybb->input['type'];
         if ($pid <= 0 && $type === 'f')      $errors[] = 'You must select a parent forum';
         if ($type === 'c' && $forum_data['type'] === 'f') {
-            if ($db->fetch_field($db->simple_select('tsf_threads','COUNT(tid) as n',"fid='{$fid}'"), 'n') > 0)
+            if ($db->fetch_field($db->simple_select('threads','COUNT(tid) as n',"fid='{$fid}'"), 'n') > 0)
                 $errors[] = 'Forums with threads cannot be converted to categories';
         }
         if (!empty($mybb->input['linkto']) && empty($forum_data['linkto'])) {
-            if ($db->fetch_field($db->simple_select('tsf_threads','COUNT(tid) as n',"fid='{$fid}'",[]), 'n') > 0)
+            if ($db->fetch_field($db->simple_select('threads','COUNT(tid) as n',"fid='{$fid}'",[]), 'n') > 0)
                 $errors[] = 'Forums with threads cannot be redirected';
         }
 
@@ -1806,16 +1806,16 @@ if ($mybb->input['action'] === 'edit') {
                 'defaultsortby'    => $db->escape_string($mybb->input['defaultsortby']),
                 'defaultsortorder' => $db->escape_string($mybb->input['defaultsortorder']),
             ];
-            $db->update_query('tsf_forums', $update, "fid='{$fid}'");
+            $db->update_query('forums', $update, "fid='{$fid}'");
 
             if ($pid !== (int)$forum_data['pid']) {
-                $db->update_query('tsf_forums', ['parentlist' => make_parent_list($fid)], "fid='{$fid}'");
+                $db->update_query('forums', ['parentlist' => make_parent_list($fid)], "fid='{$fid}'");
                 $col = $db->type === 'pgsql' || $db->type === 'sqlite'
                     ? "','||parentlist||',' LIKE '%,{$fid},%'"
                     : "CONCAT(',',parentlist,',') LIKE '%,{$fid},%'";
-                $q2 = $db->simple_select('tsf_forums', 'fid', $col);
+                $q2 = $db->simple_select('forums', 'fid', $col);
                 while ($ch = $db->fetch_array($q2)) {
-                    $db->update_query('tsf_forums', ['parentlist' => make_parent_list($ch['fid'])], "fid='{$ch['fid']}'");
+                    $db->update_query('forums', ['parentlist' => make_parent_list($ch['fid'])], "fid='{$ch['fid']}'");
                 }
             }
 
@@ -2155,7 +2155,7 @@ if ($mybb->input['action'] === 'delete')
     }
 
     // Проверяем существование форума
-    $query = $db->simple_select('tsf_forums', '*', "fid='{$fid}'");
+    $query = $db->simple_select('forums', '*', "fid='{$fid}'");
     $forum = $db->fetch_array($query);
 
     if (!$forum)
@@ -2178,7 +2178,7 @@ if ($mybb->input['action'] === 'delete')
         case 'pgsql':
         case 'sqlite':
             $query = $db->simple_select(
-                'tsf_forums',
+                'forums',
                 '*',
                 "','||parentlist||',' LIKE '%,$fid,%'"
             );
@@ -2186,7 +2186,7 @@ if ($mybb->input['action'] === 'delete')
 
         default:
             $query = $db->simple_select(
-                'tsf_forums',
+                'forums',
                 '*',
                 "CONCAT(',', parentlist, ',') LIKE '%,$fid,%'"
             );
@@ -2206,7 +2206,7 @@ if ($mybb->input['action'] === 'delete')
 
     // Удаляем ВСЕ темы сразу (без HTML-пагинации)
     $query = $db->simple_select(
-        'tsf_threads',
+        'threads',
         'tid',
         "fid='{$fid}' {$delquery}"
     );
@@ -2219,21 +2219,21 @@ if ($mybb->input['action'] === 'delete')
     // -------------------------------------------------
     // Удаляем форум и подфорумы
     // -------------------------------------------------
-    $db->delete_query('tsf_forums', "fid='{$fid}'");
+    $db->delete_query('forums', "fid='{$fid}'");
 
     switch ($db->type)
     {
         case 'pgsql':
         case 'sqlite':
             $db->delete_query(
-                'tsf_forums',
+                'forums',
                 "','||parentlist||',' LIKE '%,$fid,%'"
             );
             break;
 
         default:
             $db->delete_query(
-                'tsf_forums',
+                'forums',
                 "CONCAT(',', parentlist, ',') LIKE '%,$fid,%'"
             );
     }
@@ -2242,10 +2242,10 @@ if ($mybb->input['action'] === 'delete')
     // Чистим связанные таблицы
     // -------------------------------------------------
     $db->delete_query('moderators', "fid='{$fid}' {$delquery}");
-    $db->delete_query('tsf_forumsubscriptions', "fid='{$fid}' {$delquery}");
+    $db->delete_query('forumsubscriptions', "fid='{$fid}' {$delquery}");
     $db->delete_query('forumpermissions', "fid='{$fid}' {$delquery}");
-    $db->delete_query('tsf_announcements', "fid='{$fid}' {$delquery}");
-    $db->delete_query('tsf_forumsread', "fid='{$fid}' {$delquery}");
+    $db->delete_query('announcements', "type IN ('forum', 'global') AND fid='{$fid}' {$delquery}");
+    $db->delete_query('forumsread', "fid='{$fid}' {$delquery}");
 
     // -------------------------------------------------
     // Хуки, кеши, лог
@@ -2413,7 +2413,7 @@ if (!$action) {
                 $disporders = $mybb->input['disporder'] ?? [];
                 if (!empty($disporders) && is_array($disporders)) {
                     foreach ($disporders as $update_fid => $order) {
-                        $db->update_query('tsf_forums', ['disporder' => (int)$order], "fid='" . (int)$update_fid . "'");
+                        $db->update_query('forums', ['disporder' => (int)$order], "fid='" . (int)$update_fid . "'");
                     }
                     $plugins->run_hooks('admin_forum_management_start_disporder_commit');
                     $cache->update_forums();
@@ -3343,7 +3343,7 @@ function retrieve_single_permissions_row(int $gid, int $fid): string
     global $cache, $db, $mybb;
 
     $usergroup  = $db->fetch_array($db->simple_select('usergroups', '*', "gid='{$gid}'"));
-    $forum_data = $db->fetch_array($db->simple_select('tsf_forums', '*', "fid='{$fid}'"));
+    $forum_data = $db->fetch_array($db->simple_select('forums', '*', "fid='{$fid}'"));
 
     $existing_permissions = [];
     $q = $db->simple_select('forumpermissions', '*', "fid='{$fid}'");

@@ -39,7 +39,7 @@ if ($action === 'showlist') {
     stdhead('Warned Users');
     
     // Get total count of warned users
-    $countrows = number_format(tsrowcount(
+    $countrows = ts_nf(tsrowcount(
         'id', 
         'users', 
         "enabled = 'yes' AND usergroup != '" . UC_BANNED . "' AND (warned = 'yes' OR leechwarn = 'yes')"
@@ -204,9 +204,9 @@ $multipage = multipage(
 
     // Fetch warned users
     $query = $db->sql_query_prepared(
-        "SELECT u.*, p.canupload, p.candownload, p.cancomment 
+        "SELECT u.* 
          FROM users u 
-         LEFT JOIN users_perm p ON (u.id = p.userid) 
+        
          WHERE u.usergroup != '" . UC_BANNED . "' 
            AND u.enabled = 'yes' 
            AND (u.warned = 'yes' OR u.leechwarn = 'yes') 
@@ -241,7 +241,7 @@ $multipage = multipage(
             $uploaded = mksize($res['uploaded']);
             
             $ratio = ($res['downloaded'] != 0 ? number_format($res['uploaded'] / $res['downloaded'], 3) : '---');
-            $ratioColor = get_ratio_color($ratio);
+            $ratioColor = get_ratio_color((float)$ratio);
             $ratio = '<span style="color: ' . $ratioColor . '">' . $ratio . '</span>';
             
             // Warning expiration handling

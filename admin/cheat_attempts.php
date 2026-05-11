@@ -140,15 +140,31 @@ stdhead('Cheat Attempts');
                                 </thead>
                                 <tbody>
                                     <?php
-                                    $res = $db->sql_query('SELECT c.*, u.id as userid, u.username, u.usergroup, u.uploaded, u.enabled, u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, 
-									    p.cancomment, t.name, t.added 
+                                    $res = $db->sql_query('SELECT c.*, u.id as userid, u.username, u.usergroup, u.uploaded, u.enabled, u.donor, u.leechwarn, u.warned, 
+									    t.name, t.added 
                                         FROM cheat_attempts c 
                                         LEFT JOIN users u ON (c.uid=u.id) 
-                                        LEFT JOIN users_perm p ON (u.id=p.userid) 
+                                        
                                         LEFT JOIN torrents t ON (c.torrentid=t.id) 
                                         ORDER BY c.added DESC LIMIT '.$start.',' . $perpage);
+										
+									 require_once INC_PATH . '/functions_mkprettytime.php';
+									
+									if ($db->num_rows($res) === 0) {
+    echo '
+    <tr>
+        <td colspan="11">
+            <div class="text-center py-5">
+                <i class="fas fa-shield-alt fa-4x text-muted mb-3"></i>
+                <h5 class="text-muted">No cheat attempts found.</h5>
+            </div>
+        </td>
+    </tr>';
+} 	
+										
+				else {						
                                     
-                                    require_once INC_PATH . '/functions_mkprettytime.php';
+                                   
                                     
                                     while ($arr = mysqli_fetch_assoc($res)) 
 									{
@@ -239,6 +255,8 @@ stdhead('Cheat Attempts');
                                             </td>
                                         </tr>';
                                     }
+									
+				}
                                     ?>
                                 </tbody>
                                 <tfoot>

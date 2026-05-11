@@ -1,364 +1,271 @@
-<?
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+<?php
+declare(strict_types=1);
 
+if (!defined('STAFF_PANEL_TSSEv56')) {
+    exit('<b>Error!</b> Direct initialization of this file is not allowed.');
+}
 
-  
+define('M_VERSION', 'Mass Mail v.3.0');
+define('IN_MYBB', 1);
 
-  function show_error ()
-  {
+set_time_limit(0);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function mm_esc(string $s): string
+{
+    return htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+
+function show_error(): void
+{
     global $errormessage;
-    if (!empty ($errormessage))
-    {
-      echo '	
-		<table width="100%" border="0" class="none" style="clear: both;" cellpadding="4" cellspacing="0">
-			<tr><td class="thead">An error has occcured!</td></tr>
-			<tr><td><font color="red"><strong>' . $errormessage . '</strong></font></td></tr>
-			</table>
-		<br />';
+    if (!empty($errormessage)) {
+        echo '<div class="alert alert-danger mt-3"><strong>Error:</strong> ' . mm_esc($errormessage) . '</div>';
+    }
+}
+
+function build_usergroup_checkboxes(): string
+{
+    global $db;
+
+    $query  = $db->sql_query('SELECT gid, title, namestyle FROM usergroups ORDER BY gid');
+    $items  = '';
+    $count  = 0;
+
+    while ($row = $db->fetch_array($query)) {
+        $label  = get_user_color($row['title'], $row['namestyle']);
+        $items .= sprintf(
+            '<div class="form-check form-check-inline me-3 mb-2">
+                <input class="form-check-input" type="checkbox" name="usergroup[]" id="ug_%1$d" value="%1$d">
+                <label class="form-check-label" for="ug_%1$d">%2$s</label>
+            </div>',
+            (int)$row['gid'],
+            $label
+        );
+        ++$count;
     }
 
-  }
+    return '<fieldset class="border rounded p-3 mb-3">
+        <legend class="float-none w-auto px-2 fs-6 fw-bold">Recipients (usergroups)</legend>
+        <div class="d-flex flex-wrap">' . $items . '</div>
+        <a href="#" class="btn btn-sm btn-outline-secondary mt-2" onclick="
+            document.querySelectorAll(\'[name=\\\'usergroup[]\\\']\'
+            ).forEach(c => c.checked = true); return false;">
+            Check all
+        </a>
+    </fieldset>';
+}
 
-  function form ()
-  {
-    global $waitbeforeredirect;
-    global $max_results;
-    global $sgids;
+function show_form(string $ugids_html): void
+{
     global $_this_script_;
-    echo '<form method="post" action="';
-    echo $_this_script_;
-    echo '" name="massmail" onsubmit="document.massmail.submit.value=\'Please wait ...\';document.massmail.submit.disabled=true">
-<input type="hidden" name="action" value="sent">
+    $action = mm_esc($_this_script_);
+    echo <<<HTML
+    <form method="post" action="{$action}" name="massmail"
+          onsubmit="this.submit.value='Please wait…'; this.submit.disabled=true;">
+        <input type="hidden" name="action" value="sent">
 
+        <div class="container-md">
+            <div class="card mb-4">
+                <div class="card-header fw-bold fs-5">Mass Mail to Tracker Users</div>
+                <div class="card-body">
 
- <div class="container-md">
-  <div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-		Mass Mail to Tracker Users
-	</div>
-	 </div>
-		</div>
-		
-		
-		
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Sleep time <small class="text-muted">(seconds)</small></label>
+                            <input type="number" min="1" name="waitbeforeredirect" class="form-control" value="30">
+                            <div class="form-text">Wait X seconds before sending next batch.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Batch size</label>
+                            <input type="number" min="1" name="max_results" class="form-control" value="10">
+                            <div class="form-text">Emails per batch. Keep low for better performance.</div>
+                        </div>
+                    </div>
 
-<div class="container mt-3">
- 
-  <div class="card">
-   
-  <div class="card-body">
+                    {$ugids_html}
 
-			
-	<tr>
-	  <td align="right" style="color:black"><b>Sleep Time ';
-    echo '(in seconds)</b></td>
-	  <td><label><input type="text" name="waitbeforeredirect" class="form-control" value="30" /></label> Wait X seconds and post next part. Leave this high to better performance.</td>
-	</tr>
-	</br>
-	<tr>
-	  <td align="right" style="color:black"><b>Total</b></td>
-	  <td><label><input type="text" name="max_results" class="form-control" value="10" /></label> Post X mails per job. Leave this low to be';
-    echo 'tter performance.</td>
-	</tr>
-	</br>
-	</br>
-	<tr>
-	  <td align="right" style="color:black"><b>Recipients</b></td>
-	  <td align="left" style="color:black">';
-    echo $sgids;
-    echo '</td>
-	</tr>
-	<tr>
-	  <td align="right" style="color:black"><b>Subject</b></td>
-	  <td><input type="text" name="subject" class="form-control" value="" style="width: 744px;" /></td>
-	</tr>
-	<tr>
-	  <td align="right" valign="top" style="color:black"> ';
-    echo '<s';
-    echo 'pan class="gen"><b>Message</b></span>
-	  </br>
-	  <td><textarea class="form-control form-control-sm border" style="height: 250px; width: 750px;" name="message" id="open-source-plugins"></textarea>
-	</tr>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Subject</label>
+                        <input type="text" name="subject" class="form-control">
+                    </div>
 
-	</br>
-	<tr>
-	  <td align="center" colspan="12"><input type="submit" class="btn btn-primary" value="post mail" name="submit" /> <input type="reset" class="btn btn-primary" value="reset" name="reset" /></td>
-	</tr>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Message</label>
+                        <textarea name="message" id="message" class="form-control" style="height:260px;"></textarea>
+                    </div>
 
+                    <div class="d-flex gap-2">
+                        <button type="submit" name="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane me-1"></i> Send Mail
+                        </button>
+                        <button type="reset" class="btn btn-outline-secondary">Reset</button>
+                    </div>
 
-</div>
- </div>
- </div>
+                </div>
+            </div>
+        </div>
+    </form>
+    HTML;
+}
 
+// ─── Config path ──────────────────────────────────────────────────────────────
 
-</form>
-';
-    echo '<s';
-    echo 'cript>
-	(function() {
-		var Dom = YAHOO.util.Dom,
-			Event = YAHOO.util.Event;
-		
-		var myConfig = {
-			height: "300px",
-			width: "600px",
-			dompath: true,
-			focusAtStart: true,
-			handleSubmit: true
-		};
-		
-		var myEditor = new YAHOO.widget.Editor("message", myConfig);
-		myEditor._defaultToolbar.buttonType = "basic";
-		myEditor.render();
-		
-	})();
-</script>
-';
-  }
+$config_file = TSDIR . '/cache/massmail_config.php';
 
-  if (!defined ('STAFF_PANEL_TSSEv56'))
-  {
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-  }
+// ─── Determine action ─────────────────────────────────────────────────────────
 
-  set_time_limit (0);
-  define ('M_VERSION', 'Mass Mail v.2.6 by xam');
-  define("IN_MYBB", 1);
-  if ((isset ($_GET['do']) AND $_GET['do'] == 'stop'))
-  {
+$action = 'start';
+$page   = 1;
+
+if (isset($_GET['do']) && $_GET['do'] === 'stop') {
     $action = 'start';
-  }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-  if ($_SERVER['REQUEST_METHOD'] == 'POST')
-  {
-    $filename = TSDIR . '/cache/massmail_config.php';
-    if ((!file_exists ($filename) OR !is_writable ($filename)))
-    {
-      stderr ('Error', '<b>' . $filename . '</b> doesn\'t exists or isn\'t writable!', false);
+    // Validate config file
+    if (!file_exists($config_file) || !is_writable($config_file)) {
+        stderr('Error', '<b>' . mm_esc($config_file) . '</b> doesn\'t exist or isn\'t writable!', false);
     }
 
-    $waitbeforeredirect = intval ($_POST['waitbeforeredirect']);
-    $max_results = intval ($_POST['max_results']);
-    $mmusergroups = implode (',', $_POST['usergroup']);
-    $subject = trim ($_POST['subject']);
-    $message = trim ($_POST['message']);
-    $page = 1;
+    $waitbeforeredirect = max(1, (int)($_POST['waitbeforeredirect'] ?? 30));
+    $max_results        = max(1, (int)($_POST['max_results'] ?? 10));
+    $mmusergroups       = implode(',', array_map('intval', (array)($_POST['usergroup'] ?? [])));
+    $subject            = trim((string)($_POST['subject'] ?? ''));
+    $message            = trim((string)($_POST['message'] ?? ''));
+    $page               = 1;
+
     $contents = '<?php
-if (!defined(\'M_VERSION\')) die(\'<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>\');
-
-/** TS Generated Massmail Cache#9 - Do Not Alter
- * Cache Name: massmail_config
- * Generated: ' . gmdate ('r') . '
-*/
-
+if (!defined(\'M_VERSION\')) die(\'Direct initialization not allowed.\');
+// Generated: ' . gmdate('r') . '
 $waitbeforeredirect = ' . $waitbeforeredirect . ';
-$max_results = ' . $max_results . ';
-$mmusergroups = "' . $mmusergroups . '";
-$subject = "' . addslashes ($subject) . '";
-$message = "' . addslashes ($message) . '";
-?>';
-    $save_config = file_put_contents ($filename, $contents);
-    if (!$save_config)
-    {
-      stderr ('Error', 'I can\'t write contents into <b>' . $filename . '</b>! Please check permissions and try again!', false);
+$max_results        = ' . $max_results . ';
+$mmusergroups       = "' . $mmusergroups . '";
+$subject            = "' . addslashes($subject) . '";
+$message            = "' . addslashes($message) . '";
+';
+
+    if (file_put_contents($config_file, $contents) === false) {
+        stderr('Error', 'Cannot write to <b>' . mm_esc($config_file) . '</b>. Check permissions.', false);
     }
 
     $action = 'sent';
-  }
-  else
-  {
-    if (((isset ($_GET['action']) AND $_GET['action'] == 'sent') AND isset ($_GET['page'])))
-    {
-      $action = 'sent';
-      $page = intval ($_GET['page']);
-      include_once TSDIR . '/cache/massmail_config.php';
-    }
-    else
-    {
-      $action = 'start';
-    }
-  }
 
-  $from = $page * $max_results - $max_results;
-  $c = 0;
-  $squery = $db->sql_query ('SELECT gid, title, namestyle FROM usergroups');
-  $scount = 1;
-  $sgids = '
-<fieldset>
-	<legend>Select Usergroup(s)</legend>
-		<table border="0" cellspacing="0" cellpadding="2" width="100%"><tr>';
-  while ($gid = mysqli_fetch_assoc ($squery))
-  {
-    if ($scount % 5 == 1)
-    {
-      $sgids .= '</tr></td>';
+} elseif (isset($_GET['action'], $_GET['page']) && $_GET['action'] === 'sent') {
+
+    $action = 'sent';
+    $page   = max(1, (int)$_GET['page']);
+    include_once $config_file;
+}
+
+// ─── Sending ──────────────────────────────────────────────────────────────────
+
+if ($action === 'sent') {
+
+    $subject      ??= '';
+    $message      ??= '';
+    $mmusergroups ??= '';
+
+    if ($subject === '' || $message === '' || $message === '<br />' || $mmusergroups === '') {
+        $errormessage = 'Subject, Message and Usergroups are all required!';
+        $action       = 'start';
+        goto show_start;
     }
 
-    $sgids .= '	
-	<td class="none"><input type="checkbox" class="form-check-input" name="usergroup[]" value="' . $gid['gid'] . '"></td>
-	<td class="none">' . get_user_color ($gid['title'], $gid['namestyle']) . '</td>';
-    ++$scount;
-  }
+    $ug_sql   = $mmusergroups !== '-'
+        ? 'AND usergroup IN (0,' . $mmusergroups . ')'
+        : '';
+    $base_where = "enabled='yes' AND ustatus='confirmed' {$ug_sql}";
 
-  $sgids .= '
-<td class="none"></td>
-<td class="none"><a href="#" onClick="check(massmail)"><font color="blue" size="1">check all</font></a></td>
-</table>
-</fieldset>';
-  $externalpreview = '<div id=\'loading-layer\' style=\'position: absolute; display:block; left:500px; width:200px;height:50px;background:#FFF;padding:10px;text-align:center;border:1px solid #000\'><div style=\'font-weight:bold\' id=\'loading-layer-text\' class=\'small\'>Sending... Please wait...</div><br /><img src=\'' . $BASEURL . '/' . $pic_base_url . 'await.gif\' border=\'0\' /></div>';
-  if ($action == 'sent')
-  {
-    if (((($subject == '' OR $message == '') OR $message == '<br />') OR empty ($mmusergroups)))
-    {
-      $errormessage = 'Subject or Message or Usergroups field can not be empty!';
-      $action = 'start';
+    $count_row = $db->fetch_field($db->sql_query("SELECT COUNT(email) AS total FROM users WHERE {$base_where}"), 'total');
+    $result    = (int)$count_row;
+
+    if ($result === 0) {
+        $errormessage = 'No email addresses found in the database!';
+        $action       = 'start';
+        goto show_start;
     }
-    else
-    {
-      ($sql = $db->sql_query ('SELECT COUNT(email) FROM users WHERE enabled=\'yes\' AND status=\'confirmed\' ' . ($mmusergroups == '-' ? '' : '' . 'AND usergroup IN (0,' . $mmusergroups . ')')));
-      $counter = mysqli_fetch_row ($sql);
-      $result = number_format ($counter['0']);
-      if (0 < $result)
-      {
-        stdhead (VERSION . ' - SEND');
-		
-		
-		
-        echo '
-		<div class="container mt-3">
-        <div class="card">
-		
-		<tr><td>
-		<p align=center>
-		<b>' . $result . '</b> emails found. We\'ll send <b>' . $max_results . '</b> messages at a time, then sleep for a while (<b>' . $waitbeforeredirect . '</b> sec.), then continue like this sending emails until done. </p>
-		<br /><br /><p align=center>Please wait...<br /><img src=' . $BASEURL . '/' . $pic_base_url . 'loadAnim.gif border=0><br />Sending mail...<br /><a href="' . $_this_script_ . '&do=stop">stop</a>
-		</p>';
-        echo '</div></div>';
-        ($emails = $db->sql_query ('SELECT email FROM users WHERE enabled=\'yes\' AND status=\'confirmed\' ' . ($mmusergroups == '-' ? '' : '' . 'AND usergroup IN (0,' . $mmusergroups . ')') . ('' . ' LIMIT ' . $from . ', ' . $max_results)) OR sqlerr (__FILE__, 197));
-        echo '
-		
-		<div class="container mt-3">
-        <div class="card">
-		<font color=red><b>Sending...</b></font>
-		</div></div>
-		<br />';
-        include_once $rootpath . '/admin/include/staff_languages.php';
-        while ($email = mysqli_fetch_array ($emails))
-        {
-          echo '
-		  
-		  <div class="container mt-3">
-          <div class="card">
-		  Message to: ' . $email['email'] . ' => ';
-          $to = $email['email'];
-          $body = $adminlang['massmail']['header'] . '<br />
-					<hr />
-					<br />
-					' . $message . '<br />
-					<br />
-					<hr /><br />
-					' . $adminlang['massmail']['footer'];
-         // $msendmail = sent_mail ($to, $subject, $body, 'massmail', false);
-		 
-		 $format = "html";
-		 $text_message = "";
-		 $msendmail = my_mail($to, $subject, $body, "", "", "", false, $format, $text_message);
-		  
-		  
-		  
-          $mresult = ($msendmail ? '<font color="green"><b>DONE!</b></font>' : '<font color="red">ERROR!</font>') . '</div></div><br />';
-          echo $mresult;
-          unset ($to);
-          unset ($headers);
-          unset ($msendmail);
-          unset ($mresult);
-          ++$c;
-        }
 
-        $total_results = $db->fetch_field (@$db->sql_query ('SELECT COUNT(*) FROM users WHERE enabled=\'yes\' AND status=\'confirmed\' ' . ($mmusergroups == '-' ? '' : '' . 'AND usergroup IN (0,' . $mmusergroups . ')')), 0);
-        $total_pages = ceil ($total_results / $max_results);
-        if ($page < $total_pages)
-        {
-          $next = $page + 1;
-          echo '<br />
-		  
-		  
-		  <div id="waitmessage">Please wait...</div><br />';
-          $jumpto = $_this_script_ . '&action=sent&page=' . $next;
-          echo '				';
-          echo '<s';
-          echo 'cript language="javascript">
-					x6115=';
-          echo $waitbeforeredirect;
-          echo ';
-					function countdown() 
-					{
-						if ((0 <= 100) || (0 > 0))
-						{
-							x6115--;
-							if(x6115 == 0)
-							{
-								document.getElementById("waitmessage").innerHTML = "';
-          echo $externalpreview;
-          echo '";
-								jumpto(\'';
-          echo $jumpto;
-          echo '\');
-							}
-							if(x6115 > 0)
-							{
-								document.getElementById("waitmessage").innerHTML = \'Please wait <font size="3"><b>\'+x6115+\'</b></font> seconds..\';
-								setTimeout(\'countdown()\',1000);
-							}
-						}
-					}
-					countdown();
-				</script>
-				';
-          stdfoot ();
-          exit ();
-        }
-        else
-        {
-          echo '
-		  
-		  <div class="container mt-3">
-          <div class="card">
-		  <font color=red><b>We coo .... sent ' . $result . ' emails, to ' . $max_results . ' addys at a time</b></font>
-		  </div>
-          </div>
-		  
-		  
-		  ';
-          stdfoot ();
-          exit ();
-        }
+    $from   = ($page - 1) * $max_results;
 
-        stdfoot ();
-      }
-      else
-      {
-        $errormessage = 'No email address found in database!';
-        $action = 'start';
-      }
+    stdhead(VERSION . ' – SEND');
+
+    echo '<div class="container mt-3"><div class="card p-4">';
+    echo '<p class="text-center"><strong>' . $result . '</strong> emails found. '
+       . 'Sending <strong>' . $max_results . '</strong> per batch, '
+       . 'sleeping <strong>' . $waitbeforeredirect . '</strong> s between batches.</p>';
+    echo '<p class="text-center text-muted">Please wait…</p></div></div>';
+
+    $emails = $db->sql_query(
+        "SELECT email FROM users WHERE {$base_where} LIMIT {$from}, {$max_results}"
+    );
+
+    include_once $rootpath . '/admin/include/staff_languages.php';
+
+    echo '<div class="container mt-3"><div class="list-group">';
+
+    while ($row = $db->fetch_array($emails)) {
+        $to   = $row['email'];
+        $body = ($adminlang['massmail']['header'] ?? '')
+              . '<br><hr><br>' . $message . '<br><hr><br>'
+              . ($adminlang['massmail']['footer'] ?? '');
+
+        $ok = my_mail($to, $subject, $body, '', '', '', false, 'html', '');
+
+        echo '<div class="list-group-item d-flex justify-content-between align-items-center">'
+           . mm_esc($to)
+           . ($ok
+               ? '<span class="badge bg-success">Sent</span>'
+               : '<span class="badge bg-danger">Error</span>')
+           . '</div>';
     }
-  }
 
-  if ($action == 'start')
-  {
-    stdhead (VERSION . ' - START', true, '', '');
+    echo '</div></div>';
 
-	
-    show_error ();
-    form ();
-    stdfoot ();
-  }
+    $total_pages = (int)ceil($result / $max_results);
 
-?>
+    if ($page < $total_pages) {
+        $next   = $page + 1;
+        $jumpto = mm_esc($_this_script_ . '&action=sent&page=' . $next);
+
+        echo '<div class="container mt-3 text-center">
+            <div id="waitmessage" class="alert alert-info">
+                Please wait <span id="countdown"><strong>' . $waitbeforeredirect . '</strong></span> seconds…
+            </div>
+        </div>';
+
+        echo '<script>
+        (function() {
+            var sec = ' . (int)$waitbeforeredirect . ';
+            var el  = document.getElementById("countdown");
+            var timer = setInterval(function() {
+                sec--;
+                if (sec <= 0) {
+                    clearInterval(timer);
+                    window.location.href = "' . $jumpto . '";
+                } else {
+                    el.innerHTML = "<strong>" + sec + "</strong>";
+                }
+            }, 1000);
+        })();
+        </script>';
+
+        stdfoot();
+        exit;
+    }
+
+    echo '<div class="container mt-3"><div class="alert alert-success text-center">
+        ✅ Done! Sent to <strong>' . $result . '</strong> addresses.
+    </div></div>';
+
+    stdfoot();
+    exit;
+}
+
+// ─── Start / form ─────────────────────────────────────────────────────────────
+
+show_start:
+stdhead(VERSION . ' – START', true, '', '');
+show_error();
+show_form(build_usergroup_checkboxes());
+stdfoot();

@@ -82,12 +82,12 @@ function handlePostRequest(): void
     global $db, $CURUSER, $mybb, $torrent_dir, $BASEURL, $lang, $cache;
 
     // Проверка прав
-    $q = $db->simple_select('users_perm', 'userid',
-        "userid='" . $db->escape_string($CURUSER['id']) . "' AND canupload='0'"
-    );
-    if ($db->num_rows($q)) {
-        json_exit(false, ['error' => 'Upload permission denied'], 403);
-    }
+    //$q = $db->simple_select('users_perm', 'userid',
+    //    "userid='" . $db->escape_string($CURUSER['id']) . "' AND canupload='0'"
+    //);
+    //if ($db->num_rows($q)) {
+    //    json_exit(false, ['error' => 'Upload permission denied'], 403);
+    //}
 
     // CSRF
     if (($_POST['my_post_key'] ?? '') !== $mybb->post_code) {

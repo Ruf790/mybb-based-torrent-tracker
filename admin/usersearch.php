@@ -20,13 +20,6 @@ require_once INC_PATH . '/functions_multipage.php';
 
 
 
-
-
-
-
-
-
-
 // ---- avatar upload action (place this BEFORE any output/stdhead) ----
 if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') 
 {
@@ -375,7 +368,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
 
 stdhead('User Search', true, 'collapse');
 
-echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />';
+
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
 
 
@@ -386,21 +379,7 @@ echo '<script src="'.$BASEURL.'/admin/scripts/ru.js"></script>';
 echo '<script src="'.$BASEURL.'/scripts/toast.js"></script>';
 
 
-echo '
-<style>
-  .flatpickr-calendar {
-    border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.08);
-  }
-  .flatpickr-day.today {
-    border-color: var(--bs-primary);
-  }
-  .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange {
-    background: var(--bs-primary);
-    border-color: var(--bs-primary);
-  }
-  .input-group-text .bi { opacity: .8; }
-</style>';
+echo '<link rel="stylesheet" href="'.$BASEURL.'/admin/templates/usersearch.css">';
 
 
 
@@ -581,12 +560,27 @@ echo '
 
 
 // Статистика юзеров
-$stat_total   = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users"), 'COUNT(*)');
-$stat_active  = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE enabled='yes'"), 'COUNT(*)');
-$stat_banned  = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE enabled='no'"), 'COUNT(*)');
-$stat_new7    = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE added >= '".(TIMENOW - 604800)."'"), 'COUNT(*)');
-$stat_today   = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE added >= '".(TIMENOW - 86400)."'"), 'COUNT(*)');
-$stat_online  = $db->fetch_field($db->sql_query("SELECT COUNT(*) FROM users WHERE lastactive >= '".(TIMENOW - 900)."'"), 'COUNT(*)');
+// FIX: 6 отдельных COUNT запросов → один
+$_ts_7d  = TIMENOW - 604800;
+$_ts_1d  = TIMENOW - 86400;
+$_ts_15m = TIMENOW - 900;
+$_stat_q = $db->sql_query("
+    SELECT
+        COUNT(*)                       AS total,
+        SUM(enabled = 'yes')           AS active,
+        SUM(enabled = 'no')            AS banned,
+        SUM(added >= {$_ts_7d})        AS new7,
+        SUM(added >= {$_ts_1d})        AS today,
+        SUM(lastactive >= {$_ts_15m})  AS online
+    FROM users
+");
+$_stat      = $db->fetch_array($_stat_q);
+$stat_total  = (int)$_stat['total'];
+$stat_active = (int)$_stat['active'];
+$stat_banned = (int)$_stat['banned'];
+$stat_new7   = (int)$_stat['new7'];
+$stat_today  = (int)$_stat['today'];
+$stat_online = (int)$_stat['online'];
 
 echo '
 <div class="row g-3 mb-4">
@@ -1198,54 +1192,15 @@ echo '</div>';
 
 
 /* ---------- Scripts ---------- */
-//echo '<script src="'.$BASEURL.'/admin/scripts/bootbox.min.js"></script>';
-//echo '<script src="'.$BASEURL.'/admin/scripts/deleteUser.js"></script>';
 
-
-echo "<script>
-function togglePasskey(btn) {
-    const span = btn.closest('div').querySelector('.passkey-text');
-    const icon = btn.querySelector('i');
-    const passkey = span.dataset.passkey;
-
-    if (span.style.filter === 'none') {
-        span.textContent = passkey.substring(0, 8) + '...';
-        span.style.filter = 'blur(4px)';
-        span.style.userSelect = 'none';
-        icon.className = 'bi bi-eye';
-    } else {
-        span.textContent = passkey;
-        span.style.filter = 'none';
-        span.style.userSelect = 'text';
-        icon.className = 'bi bi-eye-slash';
-    }
-}
-
-function copyPasskey(btn) {
-    const span = btn.closest('div').querySelector('.passkey-text');
-    const passkey = span.dataset.passkey;
-
-    navigator.clipboard.writeText(passkey).then(() => {
-        showToast('Passkey copied!', 'success');
-        const icon = btn.querySelector('i');
-        icon.className = 'bi bi-clipboard-check text-success';
-        setTimeout(() => { icon.className = 'bi bi-clipboard'; }, 2000);
-    }).catch(() => {
-        showToast('Failed to copy', 'error');
-    });
-}
-
-</script>";
+// FIX: togglePasskey/copyPasskey вынесены в usersearch.js
 
 
 /* единый скрытый инпут для всей страницы (ставим ДО скрипта) */
 echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*">';
 ?>
 
-<style>
-  td[data-avatar-cell]{ cursor:pointer; }
-</style>
-
+<script src="<?= $BASEURL ?>/admin/scripts/usersearch.js"></script>
 <script src="<?= $BASEURL ?>/admin/scripts/usersearch_bulkActions.js"></script>
 <script src="<?= $BASEURL ?>/admin/scripts/avatarUpload.js"></script>
 <script src="<?= $BASEURL ?>/admin/scripts/datepicker.js"></script>

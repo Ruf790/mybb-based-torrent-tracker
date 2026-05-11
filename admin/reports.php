@@ -334,7 +334,7 @@ function handleDeleteForumPost(int $report_id, array $report): never
     }
 
     $post_id    = (int)$report['reported_id'];
-    $post_check = $db->sql_query_prepared("SELECT pid FROM tsf_posts WHERE pid = ?", [$post_id]);
+    $post_check = $db->sql_query_prepared("SELECT pid FROM posts WHERE pid = ?", [$post_id]);
 
     if (!$post_check || $db->num_rows($post_check) === 0) {
         markReportResolved($report_id);
@@ -366,9 +366,9 @@ function getForumPostData(int $post_id, array $report): ?array
         "SELECT p.*, t.subject AS thread_subject, t.tid AS thread_id,
                 f.name AS forum_name, f.fid AS forum_id,
                 u.username AS author_name, u.id AS author_id
-         FROM tsf_posts p
-         LEFT JOIN tsf_threads t ON p.tid = t.tid
-         LEFT JOIN tsf_forums  f ON p.fid = f.fid
+         FROM posts p
+         LEFT JOIN threads t ON p.tid = t.tid
+         LEFT JOIN forums  f ON p.fid = f.fid
          LEFT JOIN users       u ON p.uid = u.id
          WHERE p.pid = ?",
         [$post_id]
@@ -971,8 +971,8 @@ function showReportDetails(int $report_id): void
          LEFT JOIN users u3     ON r.dealtby = u3.id
          LEFT JOIN torrents t   ON r.type = 'torrent'   AND r.reported_id = t.id
          LEFT JOIN comments c   ON r.type = 'comment'   AND r.reported_id = c.id
-         LEFT JOIN tsf_forums f ON r.type = 'forumpost' AND r.forum_id = f.fid
-         LEFT JOIN tsf_threads th ON r.type = 'forumpost' AND r.thread_id = th.tid
+         LEFT JOIN forums f ON r.type = 'forumpost' AND r.forum_id = f.fid
+         LEFT JOIN threads th ON r.type = 'forumpost' AND r.thread_id = th.tid
          WHERE r.id = ?",
         [$report_id]
     );

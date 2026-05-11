@@ -181,7 +181,11 @@ function show_list(): void
     scr_pagination($count, $perpage, $page, $page_url);
 
     if ($db->num_rows($result) == 0) {
-        echo '<div class="alert alert-info">No screenshots found</div>';
+        echo '
+<div class="text-center py-5">
+    <i class="fas fa-images fa-4x text-muted mb-3"></i>
+    <h5 class="text-muted">No screenshots found.</h5>
+</div>';
     } else {
         
         echo '<form id="massDeleteForm" method="post" action="' . $_this_script_ . '&action=mass_delete">';

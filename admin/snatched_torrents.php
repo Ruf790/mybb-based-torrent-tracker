@@ -308,11 +308,10 @@ function isNumeric(value) {
             
             // Main query
             $sql = "SELECT s.*, t.name, t.size, t.added, u.username as uname, u.id as uid, u.usergroup, u.avatar, u.avatardimensions, 
-                           u.donor, u.enabled, u.warned, u.leechwarn, p.canupload, p.candownload, p.cancomment
+                           u.donor, u.enabled, u.warned, u.leechwarn
                     FROM snatched s 
                     LEFT JOIN torrents t ON (s.torrentid=t.id) 
                     LEFT JOIN users u ON (s.userid=u.id) 
-                    LEFT JOIN users_perm p ON (u.id=p.userid)
                     " . $where_clause . "
                     ORDER BY s.to_go DESC 
                     LIMIT " . $start . ", " . $perpage;

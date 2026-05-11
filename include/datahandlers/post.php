@@ -266,7 +266,7 @@ class PostDataHandler extends DataHandler
 			// If database is mysql or mysqli check field type and set max database limit
 			if(stripos($db->type, 'my') !== false)
 			{
-				$fields = $db->show_fields_from("tsf_posts");
+				$fields = $db->show_fields_from("posts");
 				$type = $fields[array_search('message', array_column($fields, 'Field'))]['Type'];
 				switch(strtolower($type))
 				{
@@ -450,7 +450,7 @@ class PostDataHandler extends DataHandler
 		}
 
 		// Select the lastpost and fid information for this thread
-		$query = $db->simple_select("tsf_threads", "lastpost,fid", "lastposteruid='".$post['uid']."' AND tid='".$post['tid']."'", array('limit' => '1'));
+		$query = $db->simple_select("threads", "lastpost,fid", "lastposteruid='".$post['uid']."' AND tid='".$post['tid']."'", array('limit' => '1'));
 		$thread = $db->fetch_array($query);
 
 		// Check to see if the same author has posted within the merge post time limit
@@ -501,7 +501,7 @@ class PostDataHandler extends DataHandler
 			$user_check = "ipaddress=".$db->escape_binary($session->packedip);
 		}
 
-		$query = $db->simple_select("tsf_posts", "pid,message,visible", "{$user_check} AND tid='".$post['tid']."' AND dateline='".$thread['lastpost']."'", array('order_by' => 'pid', 'order_dir' => 'DESC', 'limit' => 1));
+		$query = $db->simple_select("posts", "pid,message,visible", "{$user_check} AND tid='".$post['tid']."' AND dateline='".$thread['lastpost']."'", array('order_by' => 'pid', 'order_dir' => 'DESC', 'limit' => 1));
 		return $db->fetch_array($query);
 	}
 
@@ -519,7 +519,7 @@ class PostDataHandler extends DataHandler
 		// Check if the post being replied to actually exists in this thread.
 		if($post['replyto'])
 		{
-			$query = $db->simple_select("tsf_posts", "pid", "pid='".(int)$post['replyto']."'");
+			$query = $db->simple_select("posts", "pid", "pid='".(int)$post['replyto']."'");
 			$valid_post = $db->fetch_array($query);
 			if(!$valid_post['pid'])
 			{
@@ -539,7 +539,7 @@ class PostDataHandler extends DataHandler
 				"limit" => 1,
 				"order_by" => "dateline, pid",
 			);
-			$query = $db->simple_select("tsf_posts", "pid", "tid='{$post['tid']}'", $options);
+			$query = $db->simple_select("posts", "pid", "tid='{$post['tid']}'", $options);
 			$reply_to = $db->fetch_array($query);
 			$post['replyto'] = $reply_to['pid'];
 		}
@@ -590,7 +590,7 @@ class PostDataHandler extends DataHandler
 		{
 			if(empty($post['tid']))
 			{
-				$query = $db->simple_select("tsf_posts", "tid", "pid='".(int)$post['pid']."'");
+				$query = $db->simple_select("posts", "tid", "pid='".(int)$post['pid']."'");
 				$post['tid'] = $db->fetch_field($query, "tid");
 			}
 			// Here we determine if we're editing the first post of a thread or not.
@@ -599,7 +599,7 @@ class PostDataHandler extends DataHandler
 				"limit_start" => 0,
 				"order_by" => "dateline, pid",
 			);
-			$query = $db->simple_select("tsf_posts", "pid", "tid='".$post['tid']."'", $options);
+			$query = $db->simple_select("posts", "pid", "tid='".$post['tid']."'", $options);
 			$first_check = $db->fetch_array($query);
 			if($first_check['pid'] == $post['pid'])
 			{
@@ -765,7 +765,7 @@ class PostDataHandler extends DataHandler
 				// Execute moderation options.
 				if($modoptions_update)
 				{
-					$db->update_query('tsf_threads', $modoptions_update, "tid='{$thread['tid']}'");
+					$db->update_query('threads', $modoptions_update, "tid='{$thread['tid']}'");
 				}
 			}
 
@@ -800,7 +800,7 @@ class PostDataHandler extends DataHandler
 
 		if($post['pid'] > 0)
 		{
-			$query = $db->simple_select("tsf_posts", "tid", "pid='{$post['pid']}' AND uid='{$post['uid']}' AND visible='-2'");
+			$query = $db->simple_select("posts", "tid", "pid='{$post['pid']}' AND uid='{$post['uid']}' AND visible='-2'");
 			$draft_check = $db->fetch_field($query, "tid");
 		}
 		else
@@ -830,11 +830,11 @@ class PostDataHandler extends DataHandler
 					);
 					$update_query['edituid'] = (int)$post['uid'];
 					$update_query['edittime'] = TIMENOW;
-					$db->update_query("tsf_posts", $update_query, "pid='".$double_post['pid']."'");
+					$db->update_query("posts", $update_query, "pid='".$double_post['pid']."'");
 					
 					if($draft_check)
 					{
-						$db->delete_query("tsf_posts", "pid='".$post['pid']."'");
+						$db->delete_query("posts", "pid='".$post['pid']."'");
 					}
 					
 					if($post['posthash'])
@@ -908,7 +908,7 @@ class PostDataHandler extends DataHandler
 
 			$plugins->run_hooks("datahandler_post_insert_post", $this);
 
-			$db->update_query("tsf_posts", $this->post_update_data, "pid='{$post['pid']}'");
+			$db->update_query("posts", $this->post_update_data, "pid='{$post['pid']}'");
 			$this->pid = $post['pid'];
 		}
 		else
@@ -929,7 +929,7 @@ class PostDataHandler extends DataHandler
 
 			$plugins->run_hooks("datahandler_post_insert_post", $this);
 
-			$this->pid = $db->insert_query("tsf_posts", $this->post_insert_data);
+			$this->pid = $db->insert_query("posts", $this->post_insert_data);
 			
 			
 			
@@ -990,7 +990,7 @@ class PostDataHandler extends DataHandler
 
             $query = $db->sql_query_prepared(
                "SELECT u.username, u.email, u.id, u.loginkey, u.salt, u.added, s.notification
-                FROM tsf_threadsubscriptions s
+                FROM threadsubscriptions s
                 LEFT JOIN users u ON (u.id = s.uid)
                 WHERE (s.notification = '1' OR s.notification = '2') 
                 AND s.tid = ?
@@ -1271,7 +1271,7 @@ class PostDataHandler extends DataHandler
 		$thread = &$this->data;
 
 		// Fetch the forum this thread is being made in
-		$query = $db->simple_select("tsf_forums", "*", "fid='{$thread['fid']}'");
+		$query = $db->simple_select("forums", "*", "fid='{$thread['fid']}'");
 		$forum = $db->fetch_array($query);
 
 		// This thread is being saved as a draft.
@@ -1304,13 +1304,13 @@ class PostDataHandler extends DataHandler
 		// Have a post ID but not a thread ID - fetch thread ID
 		if(!empty($thread['pid']) && !$thread['tid'])
 		{
-			$query = $db->simple_select("tsf_posts", "tid", "pid='{$thread['pid']}");
+			$query = $db->simple_select("posts", "tid", "pid='{$thread['pid']}");
 			$thread['tid'] = $db->fetch_field($query, "tid");
 		}
 
 		if(isset($thread['pid']) && $thread['pid'] > 0)
 		{
-			$query = $db->simple_select("tsf_posts", "pid", "pid='{$thread['pid']}' AND uid='{$thread['uid']}' AND visible='-2'");
+			$query = $db->simple_select("posts", "pid", "pid='{$thread['pid']}' AND uid='{$thread['uid']}' AND visible='-2'");
 			$draft_check = $db->fetch_field($query, "pid");
 		}
 		else
@@ -1332,7 +1332,7 @@ class PostDataHandler extends DataHandler
 
 			$plugins->run_hooks("datahandler_post_insert_thread", $this);
 
-			$db->update_query("tsf_threads", $this->thread_insert_data, "tid='{$thread['tid']}'");
+			$db->update_query("threads", $this->thread_insert_data, "tid='{$thread['tid']}'");
 
 			$this->post_insert_data = array(
 				"subject" => $db->escape_string($thread['subject']),
@@ -1344,7 +1344,7 @@ class PostDataHandler extends DataHandler
 			);
 			$plugins->run_hooks("datahandler_post_insert_thread_post", $this);
 
-			$db->update_query("tsf_posts", $this->post_insert_data, "pid='{$thread['pid']}'");
+			$db->update_query("posts", $this->post_insert_data, "pid='{$thread['pid']}'");
 			$this->tid = $thread['tid'];
 			$this->pid = $thread['pid'];
 		}
@@ -1369,7 +1369,7 @@ class PostDataHandler extends DataHandler
 
 			$plugins->run_hooks("datahandler_post_insert_thread", $this);
 
-			$this->tid = $db->insert_query("tsf_threads", $this->thread_insert_data);
+			$this->tid = $db->insert_query("threads", $this->thread_insert_data);
 
 			
 
@@ -1389,7 +1389,7 @@ class PostDataHandler extends DataHandler
 
 	
 			
-			$this->pid = $db->insert_query("tsf_posts", $this->post_insert_data);
+			$this->pid = $db->insert_query("posts", $this->post_insert_data);
 			
 			
 			// Привязываем загруженные файлы к этому комментарию
@@ -1416,7 +1416,7 @@ class PostDataHandler extends DataHandler
 
 			// Now that we have the post id for this first post, update the threads table.
 			$firstpostup = array("firstpost" => $this->pid);
-			$db->update_query("tsf_threads", $firstpostup, "tid='{$this->tid}'");
+			$db->update_query("threads", $firstpostup, "tid='{$this->tid}'");
 		}
 
 		// If we're not saving a draft there are some things we need to check now
@@ -1476,7 +1476,7 @@ class PostDataHandler extends DataHandler
 				// Execute moderation options.
 				if($modoptions_update)
 				{
-					$db->update_query('tsf_threads', $modoptions_update, "tid='{$this->tid}'");
+					$db->update_query('threads', $modoptions_update, "tid='{$this->tid}'");
 				}
 			}
 			if($visible == 1)
@@ -1530,7 +1530,7 @@ class PostDataHandler extends DataHandler
 
 				 $query = $db->sql_query_prepared("
                     SELECT u.username, u.email, u.id, u.added
-                    FROM tsf_forumsubscriptions fs
+                    FROM forumsubscriptions fs
                     LEFT JOIN users u ON (u.id = fs.uid)
                     LEFT JOIN usergroups g ON (g.gid = u.usergroup)
                     WHERE fs.fid = ?
@@ -1759,13 +1759,13 @@ class PostDataHandler extends DataHandler
 			{
 				$plugins->run_hooks("datahandler_post_update_thread", $this);
 
-				$db->update_query("tsf_threads", $this->thread_update_data, "tid='".(int)$post['tid']."'");
+				$db->update_query("threads", $this->thread_update_data, "tid='".(int)$post['tid']."'");
 			}
 
 			// Update any moved thread links to have corresponding new subject.
 			if(isset($post['subject']))
 			{
-				$query = $db->simple_select("tsf_threads", "tid, closed", "closed='moved|".$this->tid."'");
+				$query = $db->simple_select("threads", "tid, closed", "closed='moved|".$this->tid."'");
 				if($db->num_rows($query) > 0)
 				{
 					$update_data['subject'] = $db->escape_string($post['subject']);
@@ -1815,7 +1815,7 @@ class PostDataHandler extends DataHandler
 
 		$plugins->run_hooks("datahandler_post_update", $this);
 
-		$db->update_query("tsf_posts", $this->post_update_data, "pid='".(int)$post['pid']."'");
+		$db->update_query("posts", $this->post_update_data, "pid='".(int)$post['pid']."'");
 		
 		
 		if (!empty($_POST['file_ids'])) 
@@ -1860,7 +1860,7 @@ class PostDataHandler extends DataHandler
 		}
 		else
 		{
-			$db->delete_query("tsf_threadsubscriptions", "uid='".(int)$uid."' AND tid='".(int)$post['tid']."'");
+			$db->delete_query("threadsubscriptions", "uid='".(int)$uid."' AND tid='".(int)$post['tid']."'");
 		}
 
 		update_forum_lastpost($post['fid']);

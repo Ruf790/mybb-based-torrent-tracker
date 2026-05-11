@@ -793,10 +793,10 @@ class UserDataHandler extends DataHandler
             $un_update     = ['username'   => $this->user_update_data['username']];
             $poster_update = ['lastposter' => $this->user_update_data['username']];
 
-            $db->update_query('tsf_posts',   $un_update,     "uid='{$user['uid']}'");
-            $db->update_query('tsf_threads', $un_update,     "uid='{$user['uid']}'");
-            $db->update_query('tsf_threads', $poster_update, "lastposteruid='{$user['uid']}'");
-            $db->update_query('tsf_forums',  $poster_update, "lastposteruid='{$user['uid']}'");
+            $db->update_query('posts',   $un_update,     "uid='{$user['uid']}'");
+            $db->update_query('threads', $un_update,     "uid='{$user['uid']}'");
+            $db->update_query('threads', $poster_update, "lastposteruid='{$user['uid']}'");
+            $db->update_query('forums',  $poster_update, "lastposteruid='{$user['uid']}'");
 
             $stats = $cache->read('stats');
             if ($stats['lastuid'] == $user['uid']) {
@@ -835,16 +835,16 @@ class UserDataHandler extends DataHandler
 
         if ($prunecontent === 1) {
             $this->delete_posts();
-            $db->delete_query('tsf_announcements', "uid IN({$this->delete_uids})");
+			$db->delete_query('announcements', "type IN ('forum', 'global') AND uid IN({$this->delete_uids})");
         } else {
-            foreach (['tsf_pollvotes', 'tsf_posts', 'tsf_threads', 'attachments', 'tsf_announcements'] as $t) {
+            foreach (['pollvotes', 'posts', 'threads', 'attachments', 'announcements'] as $t) {
                 $db->update_query($t, ['uid' => 0], "uid IN({$this->delete_uids})");
             }
         }
 
         $db->update_query('privatemessages', ['fromid'       => 0], "fromid IN({$this->delete_uids})");
-        $db->update_query('tsf_forums',      ['lastposteruid' => 0], "lastposteruid IN({$this->delete_uids})");
-        $db->update_query('tsf_threads',     ['lastposteruid' => 0], "lastposteruid IN({$this->delete_uids})");
+        $db->update_query('forums',      ['lastposteruid' => 0], "lastposteruid IN({$this->delete_uids})");
+        $db->update_query('threads',     ['lastposteruid' => 0], "lastposteruid IN({$this->delete_uids})");
 
         update_stats(['numusers' => '-' . $this->deleted_users]);
 
@@ -884,10 +884,10 @@ class UserDataHandler extends DataHandler
             'comments'                 => 'user',
             'bookmarks'                => 'userid',
             'peers'                    => 'userid',
-            'tsf_forumsubscriptions'   => 'uid',
-            'tsf_threadsubscriptions'  => 'uid',
-            'tsf_forumsread'           => 'uid',
-            'tsf_threadsread'          => 'uid',
+            'forumsubscriptions'   => 'uid',
+            'threadsubscriptions'  => 'uid',
+            'forumsread'           => 'uid',
+            'threadsread'          => 'uid',
             'sessions'                 => 'uid',
             'banned'                   => 'uid',
             'awaitingactivation'       => 'uid',
@@ -898,8 +898,8 @@ class UserDataHandler extends DataHandler
         }
 
         $db->delete_query('buddyrequests', "uid IN({$this->delete_uids}) OR touid IN({$this->delete_uids})");
-        $db->delete_query('tsf_posts',    "uid IN({$this->delete_uids}) AND visible = -2");
-        $db->delete_query('tsf_threads',  "uid IN({$this->delete_uids}) AND visible = -2");
+        $db->delete_query('posts',    "uid IN({$this->delete_uids}) AND visible = -2");
+        $db->delete_query('threads',  "uid IN({$this->delete_uids}) AND visible = -2");
 
         require_once INC_PATH . '/functions_upload.php';
         foreach (explode(',', $this->delete_uids) as $uid) {
@@ -925,12 +925,12 @@ class UserDataHandler extends DataHandler
 
         if (empty($this->delete_uids)) return;
 
-        $q = $db->simple_select('tsf_threads', 'tid', "uid IN({$this->delete_uids})");
+        $q = $db->simple_select('threads', 'tid', "uid IN({$this->delete_uids})");
         while ($tid = $db->fetch_field($q, 'tid')) {
             $moderation->delete_thread($tid);
         }
 
-        $q = $db->simple_select('tsf_posts', 'pid', "uid IN({$this->delete_uids})");
+        $q = $db->simple_select('posts', 'pid', "uid IN({$this->delete_uids})");
         while ($pid = $db->fetch_field($q, 'pid')) {
             $moderation->delete_post($pid);
         }

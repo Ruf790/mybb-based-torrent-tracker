@@ -1338,7 +1338,7 @@ function update_last_post($tid)
 
 	$query = $db->sql_query("
 		SELECT u.id, u.username, p.username AS postusername, p.dateline
-		FROM tsf_posts p
+		FROM posts p
 		LEFT JOIN users u ON (u.id=p.uid)
 		WHERE p.tid='$tid' AND p.visible='1'
 		ORDER BY p.dateline DESC, p.pid DESC
@@ -1360,7 +1360,7 @@ function update_last_post($tid)
 	{
 		$query = $db->sql_query("
 			SELECT u.id, u.username, p.pid, p.username AS postusername, p.dateline
-			FROM tsf_posts p
+			FROM posts p
 			LEFT JOIN users u ON (u.id=p.uid)
 			WHERE p.tid='$tid'
 			ORDER BY p.dateline ASC, p.pid ASC
@@ -1380,7 +1380,7 @@ function update_last_post($tid)
 		'lastposter' => $lastpost['username'],
 		'lastposteruid' => (int)$lastpost['id']
 	);
-	$db->update_query("tsf_threads", $update_array, "tid='{$tid}'");
+	$db->update_query("threads", $update_array, "tid='{$tid}'");
 }
 
 
@@ -1398,7 +1398,7 @@ function get_post($pid)
 	}
 	else
 	{
-		$query = $db->simple_select("tsf_posts", "*", "pid='".intval($pid)."'");
+		$query = $db->simple_select("posts", "*", "pid='".intval($pid)."'");
 		$post = $db->fetch_array($query);
 
 		if($post)
@@ -1421,7 +1421,7 @@ function make_parent_list($fid, $navsep=",")
 
 	if(!$pforumcache)
 	{
-		$query = $db->simple_select("tsf_forums", "name, fid, pid", "", array("order_by" => "disporder, pid"));
+		$query = $db->simple_select("forums", "name, fid, pid", "", array("order_by" => "disporder, pid"));
 		while($forum = $db->fetch_array($query))
 		{
 			$pforumcache[$forum['fid']][$forum['pid']] = $forum;
@@ -1468,7 +1468,7 @@ function update_thread_counters($tid, $changes=array())
 	
 	
 	// Fetch above counters for this thread
-	$query = $db->simple_select("tsf_threads", implode(",", $counters), "tid='{$tid}'");
+	$query = $db->simple_select("threads", implode(",", $counters), "tid='{$tid}'");
 	$thread = $db->fetch_array($query);
 
 	foreach($counters as $counter)
@@ -1505,7 +1505,7 @@ function update_thread_counters($tid, $changes=array())
 	// Only update if we're actually doing something
 	if(count($update_query) > 0)
 	{
-		$db->update_query("tsf_threads", $update_query, "tid='{$tid}'");
+		$db->update_query("threads", $update_query, "tid='{$tid}'");
 	}
 }
 
@@ -1524,7 +1524,7 @@ function update_thread_data($tid)
 
 	$query = $db->sql_query("
 		SELECT u.id, u.username, p.username AS postusername, p.dateline
-		FROM tsf_posts p
+		FROM posts p
 		LEFT JOIN users u ON (u.id=p.uid)
 		WHERE p.tid='$tid' AND p.visible='1'
 		ORDER BY p.dateline DESC, p.pid DESC
@@ -1536,7 +1536,7 @@ function update_thread_data($tid)
 
 	$query = $db->sql_query("
 		SELECT u.id, u.username, p.pid, p.username AS postusername, p.dateline
-		FROM tsf_posts p
+		FROM posts p
 		LEFT JOIN users u ON (u.id=p.uid)
 		WHERE p.tid='$tid'
 		ORDER BY p.dateline ASC, p.pid ASC
@@ -1575,7 +1575,7 @@ function update_thread_data($tid)
 		'lastposter' => $lastpost['username'],
 		'lastposteruid' => (int)$lastpost['id'],
 	);
-	$db->update_query("tsf_threads", $update_array, "tid='{$tid}'");
+	$db->update_query("threads", $update_array, "tid='{$tid}'");
 }
 
 
@@ -1754,7 +1754,7 @@ function get_thread($tid, $recache = false)
 	}
 	else
 	{
-		$query = $db->simple_select("tsf_threads", "*", "tid = '{$tid}'");
+		$query = $db->simple_select("threads", "*", "tid = '{$tid}'");
 		$thread = $db->fetch_array($query);
 
 		if($thread)
@@ -1870,7 +1870,7 @@ function update_forum_counters($fid, $changes=array())
 	$counters = array('threads', 'unapprovedthreads', 'posts', 'unapprovedposts');
 
 	// Fetch above counters for this forum
-	$query = $db->simple_select("tsf_forums", implode(",", $counters), "fid='{$fid}'");
+	$query = $db->simple_select("forums", implode(",", $counters), "fid='{$fid}'");
 	$forum = $db->fetch_array($query);
 
 	foreach($counters as $counter)
@@ -1905,7 +1905,7 @@ function update_forum_counters($fid, $changes=array())
 	// Only update if we're actually doing something
 	if(count($update_query) > 0)
 	{
-		$db->update_query("tsf_forums", $update_query, "fid='".(int)$fid."'");
+		$db->update_query("forums", $update_query, "fid='".(int)$fid."'");
 	}
 
 	// Guess we should update the statistics too?
@@ -1979,7 +1979,7 @@ function update_forum_lastpost($fid)
 	// Fetch the last post for this forum
 	$query = $db->sql_query("
 		SELECT tid, lastpost, lastposter, lastposteruid, subject
-		FROM tsf_threads
+		FROM threads
 		WHERE fid='{$fid}' AND visible='1'
 		ORDER BY lastpost DESC
 		LIMIT 0, 1
@@ -2007,7 +2007,7 @@ function update_forum_lastpost($fid)
 		);
 	}
 
-	$db->update_query("tsf_forums", $updated_forum, "fid='{$fid}'");
+	$db->update_query("forums", $updated_forum, "fid='{$fid}'");
 	
 }
 
@@ -2018,7 +2018,7 @@ function delete_attachments ($pid, $tid, $aid = '')
     $delete_files = array ();
     
 	
-	$query = $db->simple_select("tsf_attachments", "a_name", "a_pid='{$pid}' AND a_tid='{$tid}'");
+	$query = $db->simple_select("attachments", "a_name", "a_pid='{$pid}' AND a_tid='{$tid}'");
 	
     if (0 < $db->num_rows ($query))
     {
@@ -2040,7 +2040,7 @@ function delete_attachments ($pid, $tid, $aid = '')
       }
     }
 
-    $db->sql_query ('DELETE FROM tsf_attachments WHERE a_pid = ' . $db->escape_string($pid) . ' AND a_tid = ' . $db->escape_string($tid) . ($aid ? ' AND a_id = ' . $db->escape_string($aid) : ''));
+    $db->sql_query ('DELETE FROM attachments WHERE a_pid = ' . $db->escape_string($pid) . ' AND a_tid = ' . $db->escape_string($tid) . ($aid ? ' AND a_id = ' . $db->escape_string($aid) : ''));
 }
 
 

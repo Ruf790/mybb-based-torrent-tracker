@@ -10,6 +10,30 @@ header("Last-Modified: " . gmdate("D, d M Y H:i:s") . "GMT");
 header("Cache-Control: no-cache, must-revalidate");
 header("Pragma: no-cache");
 
+// Разрешаем OPTIONS и принимаем POST
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+
+/**
+ * Get request data from POST or GET
+ */
+function getRequestData(): array {
+    // Если это POST с JSON
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $input = file_get_contents('php://input');
+        $data = json_decode($input, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
+            return $data;
+        }
+        // Если не JSON, пробуем обычные POST параметры
+        return $_POST;
+    }
+    // GET запрос
+    return $_GET;
+}
+
 /**
  * Process bookmark toggle action
  */
@@ -17,14 +41,23 @@ function processBookmarkToggle(): never
 {
     global $db, $CURUSER;
     
-    // Validate request method
-    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    // Allow both POST and GET
+    if (!in_array($_SERVER['REQUEST_METHOD'], ['GET', 'POST'])) {
         sendJsonResponse(405, ['success' => false, 'message' => 'Method not allowed']);
     }
     
-    // Get and validate torrent ID
-    $torrentid = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-    if ($torrentid === null || $torrentid <= 0) {
+    // Get data from request
+    $requestData = getRequestData();
+    
+    // Get action and torrent ID
+    $action = $requestData['action'] ?? '';
+    $torrentid = filter_var($requestData['id'] ?? 0, FILTER_VALIDATE_INT);
+    
+    if ($action !== 'toggle') {
+        sendJsonResponse(400, ['success' => false, 'message' => 'Invalid action']);
+    }
+    
+    if ($torrentid === false || $torrentid <= 0) {
         sendJsonResponse(400, ['success' => false, 'message' => 'Invalid torrent ID']);
     }
     

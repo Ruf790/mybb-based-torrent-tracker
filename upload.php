@@ -192,12 +192,10 @@ $lang->load('upload');
 
 $is_mod = is_mod($usergroups);
 
-$query = $db->simple_select("users_perm", "userid", "userid='".$db->escape_string($CURUSER['id'])."' AND canupload = '0'");
-
-if ($db->num_rows($query)) 
-{
-    print_no_permission(false, true, $lang->upload["uploaderform"]);
-	  
+$query = $db->simple_select('users', 'canupload', 'id = ' . (int)$CURUSER['id'] . ' LIMIT 1');
+$user  = $db->fetch_array($query);
+if ((int)($user['canupload'] ?? 1) === 0) {
+    stderr($lang->upload['no_upload_permission'] ?? 'You do not have permission to upload.', '', 403, '403upload');
 }
 
 

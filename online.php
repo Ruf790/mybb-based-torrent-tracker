@@ -7,9 +7,6 @@ define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'online.php');
 define("SCRIPTNAME", "online.php");
 
-$templatelist = "online,online_row,online_row_ip,online_today,online_today_row,online_row_ip_lookup,online_refresh,multipage,multipage_end,multipage_start";
-$templatelist .= ",multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage";
-
 
 
 define('IN_FORUM', true);
@@ -93,7 +90,27 @@ if($mybb->get_input('action') == "today")
             $online['profilelink'] = build_profile_link($username, $online['id'] ?? 0);
             $onlinetime = my_datee('normal', $online['lastactive'] ?? TIMENOW);
 
-            eval("\$todayrows .= \"".$templates->get("online_today_row")."\";");
+            $todayrows .= '
+			<div class="col-lg-6 mb-3">
+    <div class="card card-user-online h-100">
+        <div class="card-body d-flex align-items-center p-3">
+            <div class="user-avatar me-3">
+                <img src="'.$online['avatar'].'" alt="'.$online['username'].'" class="rounded-circle" width="60" height="60">
+            </div>
+            <div class="user-info flex-grow-1">
+                <h6 class="mb-1 fw-semibold">'.$online['profilelink'].''.$invisiblemark.'</h6>
+                <p class="text-muted small mb-0">
+                    <i class="bi bi-clock me-1"></i>'.$onlinetime.'
+                </p>
+            </div>
+        </div>
+    </div>
+</div>';
+			
+			
+			
+			
+			
         }
     }
 
@@ -129,7 +146,33 @@ if($mybb->get_input('action') == "today")
     
     build_breadcrumb();
     
-    eval("\$today = \"".$templates->get("online_today")."\";");
+    $today = '
+	
+	<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->online['online_today'].'</title>
+
+</head>
+<body>
+	<div class="container-md">
+		<div class="card border-0 mb-4">
+	
+		<div class="row g-2">
+		'.$todayrows.'
+		</div>
+			
+		</div>
+		
+		'.$multipage.'
+	</div>
+</body>
+</html>';
+	
+	
+	
+	
+	
+	
     
     echo $today;
     
@@ -283,7 +326,13 @@ else
     {
         $refresh_time = (int)$refreshwol * 60;
         
-        eval("\$refresh = \"".$templates->get("online_refresh")."\";");
+        $refresh = '
+		
+		<meta http-equiv="refresh" content="'.$refresh_time.';URL=online.php'.$refresh_string.'" />
+		
+		';
+		
+		
     }
 
     $plugins->run_hooks("online_end");
@@ -292,7 +341,68 @@ else
     
     build_breadcrumb();
     
-    eval("\$online = \"".$templates->get("online")."\";");
+     $online = '
+	 
+	 <html>
+<head>
+<title>'.$SITENAME.' - '.$lang->online['users_online'].'</title>
+
+'.$refresh.'
+</head>
+<body>
+
+	
+	<div class="container-md">
+		
+<div class="card bg-nav border-0 mb-2">
+<div class="card-body text-center">
+	
+	<div class="row">
+		<div class="col-4 text-lg-start">
+            <a href="online.php?sortby=username"><i class="fa-solid fa-user"></i> &nbsp;'.$lang->online['on_username'].'</a>
+		</div>
+		<div class="col-4 text-lg-center">
+			<a href="online.php?sortby=time"><i class="fa-solid fa-clock"></i> &nbsp;'.$lang->online['time'].'</a>
+		</div>
+		<div class="col-4 text-lg-end">
+			</a><a href="online.php?sortby=location"><i class="fa-solid fa-location-dot"></i> &nbsp;'.$lang->online['location'].'</a>	
+		</div></div>
+		</div></div>
+	
+	<div class="card border-0">
+		
+	
+	
+	
+		<div class="row g-2">
+		'.$online_rows.'
+	
+	
+			
+	
+		</div>
+		<div class="card-footer border-top-0 rounded text-center">
+			<div class="row g-3">
+				<div class="col-lg-6 text-lg-end">
+		<a href="online.php?action=today" class="links"><i class="fa-solid fa-globe"></i> &nbsp;'.$lang->online['online_today'].'</a>
+				</div>
+				<div class="col-lg-6 text-lg-start">
+					<a href="online.php" class="links"><i class="fa-solid fa-rotate-right"></i> &nbsp;'.$lang->online['refresh_page'].'</a>
+				</div>
+			</div>
+		</div>
+	</div>
+		
+	</div>
+	'.$multipage.'
+	
+	
+</body>
+</html>';
+	 
+	
+	 
+	 
     
     echo $online;
     

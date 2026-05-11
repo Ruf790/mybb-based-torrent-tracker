@@ -8,11 +8,11 @@ RewriteEngine On
 </Files>
 
 
-ErrorDocument 400 /ts_error.php?errorid=400
-ErrorDocument 401 /ts_error.php?errorid=401
-ErrorDocument 403 /ts_error.php?errorid=403
-ErrorDocument 404 /ts_error.php?errorid=404
-ErrorDocument 500 /ts_error.php?errorid=500
+ErrorDocument 400 /error.php?errorid=400
+ErrorDocument 401 /error.php?errorid=401
+ErrorDocument 403 /error.php?errorid=403
+ErrorDocument 404 /error.php?errorid=404
+ErrorDocument 500 /error.php?errorid=500
 
 # //seo_mod_start
 # Uncomment the following and add your tracker path if rewrites arent working properly

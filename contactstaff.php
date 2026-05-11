@@ -1,217 +1,214 @@
 <?php
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+declare(strict_types=1);
 
 require_once 'global.php';
-
 require_once 'cache/smilies.php';
+require_once INC_PATH . '/class_parser.php';
 
-
-require_once(INC_PATH.'/class_parser.php');
-$parser = new postParser;
-
-$parser_options = array(
-    "allow_html" => 1,
-    "allow_mycode" => 1,
-    "allow_smilies" => 1,
-    "allow_imgcode" => 1,
-    "allow_videocode" => 1,
-    "filter_badwords" => 1
-);
+$parser         = new postParser;
+$parser_options = [
+    'allow_html'      => 1, 'allow_mycode'    => 1,
+    'allow_smilies'   => 1, 'allow_imgcode'   => 1,
+    'allow_videocode' => 1, 'filter_badwords' => 1,
+];
 
 gzip();
 maxsysop();
-define ('STF_VERSION', '0.6');
+define('STF_VERSION', '0.6');
 
 $lang->load('contactstaff');
 
-$query = $db->sql_query('SELECT added FROM staffmessages WHERE sender = ' . $db->sqlesc($CURUSER['id']) . ' ORDER by added DESC LIMIT 1');
-if (0 < $db->num_rows($query)) {
-    $Result = mysqli_fetch_assoc($query);
-    $last_staffmsg = $Result["added"];
-    flood_check($lang->contactstaff['floodcomment'], $last_staffmsg);
-}
+$BASE = htmlspecialchars($BASEURL, ENT_QUOTES, 'UTF-8');
 
-$msgtext = trim($_POST['msgtext'] ?? '');
-$subject = trim($_POST['subject'] ?? '');
+// ── AJAX POST ─────────────────────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
+    header('Content-Type: application/json; charset=utf-8');
 
-
-
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) 
-{
-    header('Content-Type: application/json');
+    // FIX: CSRF проверка
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+        echo json_encode(['success' => false, 'message' => $lang->global['invalid_post_code'] ?? 'Invalid request.']);
+        exit;
+    }
 
     $msgtext = trim($_POST['msgtext'] ?? '');
     $subject = trim($_POST['subject'] ?? '');
 
-    if (empty($msgtext) || empty($subject)) 
-	{
-        echo json_encode(["success" => false, "message" => $lang->global['dontleavefieldsblank']]);
+    if ($msgtext === '' || $subject === '') {
+        echo json_encode(['success' => false, 'message' => $lang->global['dontleavefieldsblank'] ?? 'Please fill in all fields.']);
         exit;
     }
 
-    $activationarray = array(
-        "sender" => (int)$CURUSER['id'],
-        "added" => TIMENOW,
-        "msg" => $db->escape_string($msgtext),
-        "subject" => $db->escape_string($subject)
+    // FIX: flood check внутри POST, а не до него
+    $q = $db->sql_query(
+        'SELECT added FROM staffmessages WHERE sender = ' . (int)$CURUSER['id'] . ' ORDER BY added DESC LIMIT 1'
     );
+    if ($db->num_rows($q) > 0) {
+        $row = $db->fetch_array($q);
+        flood_check($lang->contactstaff['floodcomment'] ?? '', (string)$row['added']);
+    }
 
-    $db->insert_query("staffmessages", $activationarray);
+    $db->insert_query('staffmessages', [
+        'sender'  => (int)$CURUSER['id'],
+        'added'   => TIMENOW,
+        'msg'     => $db->escape_string($msgtext),
+        'subject' => $db->escape_string($subject),
+    ]);
 
-    echo json_encode(["success" => true, "message" => $lang->global['msgsend']]);
+    echo json_encode(['success' => true, 'message' => $lang->global['msgsend'] ?? 'Message sent.']);
     exit;
 }
 
-
-
-
-if ((($_GET['subject'] ?? '') == 'invalid_link') && (($_GET['link'] ?? '') && substr($_GET['link'], 0, 7) == 'http://')) {
-    $link = htmlspecialchars_uni($_GET['link']);
-    $link = str_replace('http://referhide.com/?g=', '', $link);
-    $subject = sprintf($lang->contactstaff['invalidlink'], $link);
+// ── Предзаполнение subject из GET ────────────────────────────────────────────
+$subject = '';
+if (($_GET['subject'] ?? '') === 'invalid_link') {
+    $link = $_GET['link'] ?? '';
+    // FIX: проверяем что ссылка — реально URL, а не произвольная строка
+    if (filter_var($link, FILTER_VALIDATE_URL) && str_starts_with($link, 'http')) {
+        $link    = htmlspecialchars_uni(str_replace('http://referhide.com/?g=', '', $link));
+        $subject = sprintf($lang->contactstaff['invalidlink'] ?? 'Invalid link: %s', $link);
+    }
 }
 
-stdhead($lang->contactstaff['contactstaff'], false);
+// ── returnto ─────────────────────────────────────────────────────────────────
+$returnto = isset($_GET['returnto'])
+    ? fix_url($_GET['returnto'])
+    : fix_url($_SERVER['HTTP_REFERER'] ?? '');
 
-echo '<div class="container mt-3">
-        <div class="red_alert mb-3" role="alert">' . $lang->contactstaff['info'] . '</div>
-      </div>';
+// ── Вывод страницы ────────────────────────────────────────────────────────────
+stdhead($lang->contactstaff['contactstaff'] ?? 'Contact Staff');
+;
 
-$returnto = isset($_GET['returnto']) ? fix_url($_GET['returnto']) : fix_url($_SERVER['HTTP_REFERER']);
+$postCode   = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
+$h_subject  = htmlspecialchars($subject, ENT_QUOTES, 'UTF-8');
+$h_returnto = htmlspecialchars($returnto, ENT_QUOTES, 'UTF-8');
+$h_script   = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
+$js_smilies = json_encode($smilies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 ?>
 
-
-
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
-  <div id="formToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body" id="formToastBody">
-        <!-- Message will go here -->
-      </div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+<!-- Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1080">
+    <div id="formToast" class="toast align-items-center text-white border-0" role="alert"
+         aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="formToastBody"></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                    data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
     </div>
-  </div>
 </div>
-
-
-
-
-
-
 
 <div class="container mt-3">
-  <form id="staffForm" method="post" action="<?= htmlspecialchars($_SERVER['SCRIPT_NAME']); ?>">
-    <input type="hidden" name="returnto" value="<?= htmlspecialchars($returnto); ?>">
 
-    <div class="mb-3">
-      <label for="subject" class="form-label"><?= $lang->contactstaff['subject']; ?></label>
-      <input type="text" class="form-control" id="subject" name="subject" value="<?= htmlspecialchars($_POST['subject'] ?? '') ?>" required>
+    <div class="alert alert-warning mb-3" role="alert">
+        <?= $lang->contactstaff['info'] ?? '' ?>
     </div>
 
-    <label class="form-label"><?= $lang->contactstaff['message']; ?></label>
+    <form id="staffForm" method="post" action="<?= $h_script ?>">
+        <input type="hidden" name="my_post_key" value="<?= $postCode ?>">
+        <input type="hidden" name="returnto"    value="<?= $h_returnto ?>">
 
-    <script>
-      const smilies = <?= json_encode($smilies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-    </script>
-    <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/bbcode.css">
-    <script src="<?= $BASEURL ?>/scripts/bbcode_tools.js"></script>
+        <div class="mb-3">
+            <label for="subject" class="form-label fw-semibold">
+                <?= htmlspecialchars($lang->contactstaff['subject'] ?? 'Subject', ENT_QUOTES, 'UTF-8') ?>
+            </label>
+            <input type="text" class="form-control" id="subject" name="subject"
+                   value="<?= $h_subject ?>" maxlength="200" required>
+        </div>
 
-    <div class="mb-2 d-flex flex-wrap gap-1">
-      <!-- BBCode buttons -->
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[b]', '[/b]', 'staffMessage')"><b>B</b></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[i]', '[/i]', 'staffMessage')"><i>I</i></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[u]', '[/u]', 'staffMessage')"><u>U</u></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[s]', '[/s]', 'staffMessage')">S</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[url]', '[/url]', 'staffMessage')">URL</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[img]', '[/img]', 'staffMessage')">IMG</button>
+        <div class="mb-2">
+            <label class="form-label fw-semibold">
+                <?= htmlspecialchars($lang->contactstaff['message'] ?? 'Message', ENT_QUOTES, 'UTF-8') ?>
+            </label>
+        </div>
 
-      <div class="btn-group position-relative">
-        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle bbcode-color-btn" data-textarea="staffMessage">🎨 Color</button>
-        <div class="color-palette d-none"></div>
-      </div>
+        <link rel="stylesheet" href="<?= $BASE ?>/include/templates/default/style/bbcode.css">
+        <script>const smilies = <?= $js_smilies ?>;</script>
+        <script src="<?= $BASE ?>/scripts/bbcode_tools.js"></script>
 
-      <div class="btn-group position-relative">
-        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="smileyBtn5">😊</button>
-        <div class="smiley-panel d-none border p-2 bg-white shadow-sm position-absolute" id="smileyPanel5" style="z-index:1000;"></div>
-      </div>
+        <!-- BBCode toolbar -->
+        <div class="mb-2 d-flex flex-wrap gap-1">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[b]','[/b]','staffMessage')"><b>B</b></button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[i]','[/i]','staffMessage')"><i>I</i></button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[u]','[/u]','staffMessage')"><u>U</u></button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[s]','[/s]','staffMessage')"><s>S</s></button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[url]','[/url]','staffMessage')">URL</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[img]','[/img]','staffMessage')">IMG</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[quote]','[/quote]','staffMessage')">Quote</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[code]','[/code]','staffMessage')">Code</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[spoiler]','[/spoiler]','staffMessage')">Spoiler</button>
+            <div class="btn-group position-relative">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle bbcode-color-btn"
+                        data-textarea="staffMessage">🎨</button>
+                <div class="color-palette d-none"></div>
+            </div>
+            <div class="btn-group position-relative">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="smileyBtn">😊</button>
+                <div class="smiley-panel d-none border p-2 bg-body shadow-sm position-absolute"
+                     id="smileyPanel" style="z-index:1000;"></div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="togglePreviewBtn">Preview</button>
+        </div>
 
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[size=14]', '[/size]', 'staffMessage')">Size</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[font=Arial]', '[/font]', 'staffMessage')">Font</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[quote]', '[/quote]', 'staffMessage')">Quote</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[code]', '[/code]', 'staffMessage')">Code</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[list]\\n[*]Item 1\\n[*]Item 2\\n[/list]', '', 'staffMessage')">List</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[spoiler]', '[/spoiler]', 'staffMessage')">Spoiler</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[video=youtube]', '[/video]', 'staffMessage')">YouTube</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" id="togglePreviewBtn5">Preview</button>
-    </div>
+        <div class="mb-3">
+            <textarea class="form-control" id="staffMessage" name="msgtext"
+                      rows="8" maxlength="1000"
+                      placeholder="<?= htmlspecialchars($lang->contactstaff['write_message'] ?? 'Write your message…', ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($_POST['msgtext'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+            <div id="charCount" class="form-text text-end">0 / 1000</div>
+        </div>
 
-    <div class="mb-3">
-      <textarea class="form-control" id="staffMessage" name="msgtext" rows="8" maxlength="1000" placeholder="Write your message here..."><?= htmlspecialchars($_POST['msgtext'] ?? '') ?></textarea>
-      <div id="charCount5" class="form-text text-end">0 / 1000</div>
-    </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-paper-plane me-2"></i>
+            <?= htmlspecialchars($lang->contactstaff['sendmessage'] ?? 'Send Message', ENT_QUOTES, 'UTF-8') ?>
+        </button>
+    </form>
 
-    <button type="submit" name="submit" class="btn btn-primary"><?= $lang->contactstaff['sendmessage']; ?></button>
-  </form>
-
- 
 </div>
 
-
-
-
-
-
-
-
-
-
-
 <script>
-document.getElementById('staffForm').addEventListener('submit', function(e) {
-    e.preventDefault();
+(function () {
+    'use strict';
 
-    const form = this;
-    const formData = new FormData(form);
-    formData.append('ajax', '1');
+    // ── Счётчик символов ──────────────────────────────────────────────────
+    var textarea  = document.getElementById('staffMessage');
+    var charCount = document.getElementById('charCount');
+    var maxLen    = parseInt(textarea.getAttribute('maxlength'), 10) || 1000;
 
-    fetch(form.action, {
-        method: 'POST',
-        body: formData
-    })
-    .then(res => res.json())
-    .then(data => {
-        showToast(data.message, data.success ? 'success' : 'danger');
-        if (data.success) {
-            form.reset();
-        }
-    })
-    .catch(() => {
-        showToast("Submission failed. Please try again.", 'danger');
+    function updateCount() {
+        var len = textarea.value.length;
+        charCount.textContent = len + ' / ' + maxLen;
+        charCount.classList.toggle('text-danger', len >= maxLen);
+    }
+    textarea.addEventListener('input', updateCount);
+    updateCount();
+
+    // ── AJAX отправка формы ───────────────────────────────────────────────
+    document.getElementById('staffForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var form     = this;
+        var formData = new FormData(form);
+        formData.append('ajax', '1');
+
+        fetch(form.action, { method: 'POST', body: formData })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                showToast(data.message, data.success ? 'success' : 'danger');
+                if (data.success) { form.reset(); updateCount(); }
+            })
+            .catch(function () {
+                showToast('Submission failed. Please try again.', 'danger');
+            });
     });
-});
 
-function showToast(message, type = 'success') {
-    const toastEl = document.getElementById('formToast');
-    const toastBody = document.getElementById('formToastBody');
+    // ── Toast ─────────────────────────────────────────────────────────────
+    function showToast(message, type) {
+        var el   = document.getElementById('formToast');
+        var body = document.getElementById('formToastBody');
+        el.className = 'toast align-items-center text-white bg-' + (type || 'success') + ' border-0';
+        body.textContent = message;
+        new bootstrap.Toast(el).show();
+    }
 
-    toastEl.className = `toast align-items-center text-white bg-${type} border-0`;
-    toastBody.textContent = message;
-
-    const toast = new bootstrap.Toast(toastEl);
-    toast.show();
-}
+}());
 </script>
-
-
-
-
 
 <?php stdfoot(); ?>

@@ -36,10 +36,9 @@ $_dt2 = TIMENOW - $wolcutoffmins * 60;
 
 $_wgo_query = $db->sql_query_prepared("
     SELECT s.uid as id, u.username, u.avatar, u.usergroup, u.enabled, u.invisible, 
-           u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment, u.lastactive
+           u.donor, u.leechwarn, u.warned, u.canupload, u.candownload, u.cancomment, u.lastactive
     FROM sessions s
     LEFT JOIN users u ON (s.uid = u.id)
-    LEFT JOIN users_perm p ON (u.id = p.userid)
     WHERE s.uid != '0' AND s.time > ?
     ORDER BY u.username, u.lastactive
 ", [$_dt2]);
@@ -84,9 +83,8 @@ $timeLimit = TIMENOW - (24 * 60 * 60);
 // Users who logged in during the last 24 hours
 $_wgo_query2 = $db->sql_query_prepared(
     'SELECT u.id, u.username, u.avatar, u.usergroup, u.enabled, u.invisible, 
-            u.donor, u.leechwarn, u.warned, p.canupload, p.candownload, p.cancomment
+            u.donor, u.leechwarn, u.warned, u.canupload, u.candownload, u.cancomment
      FROM users u 
-     LEFT JOIN users_perm p ON u.id = p.userid
      WHERE u.last_login > ?
      ORDER BY u.username, u.last_login',
     [$timeLimit]

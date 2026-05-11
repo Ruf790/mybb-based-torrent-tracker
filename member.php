@@ -1,9 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/***********************************************/
+
 
 define('IN_MYBB', 1);
 define('IGNORE_CLEAN_VARS', 'sid');
@@ -13,17 +11,6 @@ define('ALLOWABLE_PAGE', 'register,do_register,login,do_login,logout,lostpw,do_l
 
 $nosession['avatar'] = 1;
 
-$templatelist  = 'user_profile,torrent_stats,member_register,member_register_hiddencaptcha,member_register_agreement,member_register_customfield,member_register_requiredfields,member_profile_findthreads';
-$templatelist .= ',member_loggedin_notice,member_profile_away,member_register_regimage,member_register_regimage_recaptcha_invisible,member_register_regimage_nocaptcha,post_captcha_hcaptcha_invisible';
-$templatelist .= ',member_profile_email,member_profile_offline,member_profile_customfields_field,member_profile_customfields,member_profile_adminoptions_manageban,member_profile_adminoptions,member_profile';
-$templatelist .= ',member_profile_signature,member_profile_avatar,member_profile_groupimage,member_referrals_link,member_profile_referrals,member_activate,member_lostpw,member_register_additionalfields';
-$templatelist .= ',member_profile_modoptions_manageuser,member_profile_modoptions_editprofile,member_profile_modoptions_banuser,member_profile_modoptions_viewnotes,member_profile_modoptions_editnotes';
-$templatelist .= ',usercp_profile_profilefields_select_option,usercp_profile_profilefields_multiselect,usercp_profile_profilefields_select,usercp_profile_profilefields_textarea,usercp_profile_profilefields_radio,member_viewnotes';
-$templatelist .= ',usercp_options_timezone,usercp_options_timezone_option,usercp_options_language_option,member_profile_customfields_field_multi_item,member_profile_customfields_field_multi';
-$templatelist .= ',member_profile_pm,member_profile_contact_details,member_profile_modoptions_manageban';
-$templatelist .= ',member_profile_banned_remaining,member_profile_addremove,member_emailuser_guest,member_register_day,usercp_options_tppselect_option,postbit_warninglevel_formatted,member_profile_userstar,member_profile_findposts';
-$templatelist .= ',usercp_options_tppselect,usercp_options_pppselect,member_resetpassword,member_login,member_profile_online,usercp_options_pppselect_option,postbit_reputation_formatted,member_emailuser,usercp_profile_profilefields_text';
-$templatelist .= ',member_profile_modoptions_ipaddress,member_profile_modoptions,member_profile_banned,member_register_language,member_resendactivation,usercp_profile_profilefields_checkbox,member_register_password,torrent_stats';
 
 require_once 'global.php';
 
@@ -40,7 +27,6 @@ require_once INC_PATH . '/functions_ratio.php';
 require_once INC_PATH . '/functions_icons.php';
 require_once INC_PATH . '/function_loginattemptcheck.php';
 require_once INC_PATH . '/functions_user.php';
-require_once INC_PATH . '/functions_modcp.php';
 require_once INC_PATH . '/class_parser.php';
 
 $parser = new postParser();
@@ -805,17 +791,37 @@ if ($mybb->input['action'] === 'register') {
             $tppoptions = '';
             foreach (array_map('trim', explode(',', $usertppoptions)) as $val) {
                 $tpp_option = sprintf($lang->member['tpp_option'], $val);
-                eval("\$tppoptions .= \"".$templates->get('usercp_options_tppselect_option')."\";");
+                
+				$tppoptions .= '<option value="'.$val.'"'.$selected.'>'.$tpp_option.'</option>';
             }
-            eval("\$tppselect = \"".$templates->get('usercp_options_tppselect')."\";");
+            
+			$tppselect = '<div class="mb-2 pb-3">
+	<label for="tpp">'.$lang->usercp['tpp'].'</label>
+<select name="tpp" class="form-select form-select-sm border pe-5 w-auto">
+<option value="">'.$lang->usercp['use_default'].'</option>
+'.$tppoptions.'
+</select>
+</div>';
+			
+			
         }
         if ($userpppoptions) {
             $pppoptions = '';
             foreach (array_map('trim', explode(',', $userpppoptions)) as $val) {
                 $ppp_option = sprintf($lang->member['ppp_option'], $val);
-                eval("\$pppoptions .= \"".$templates->get('usercp_options_pppselect_option')."\";");
+                
+				$pppoptions .= '<option value="'.$val.'"'.$selected.'>'.$ppp_option.'</option>';
+				
             }
-            eval("\$pppselect = \"".$templates->get('usercp_options_pppselect')."\";");
+            
+			$pppselect = '<div class="mb-2 pb-3">
+	<label for="ppp">'.$lang->usercp['post_per_page'].'</label>
+<select name="ppp" class="form-select form-select-sm border pe-5 w-auto">
+<option value="">'.$lang->usercp['use_default'].'</option>
+'.$pppoptions.'
+</select>
+</div>';
+
         }
 
        
@@ -842,7 +848,26 @@ if ($mybb->input['action'] === 'register') {
             if ($requirecomplexpasswords == 1) {
                 $lang->member['password'] = $lang->member['complex_password'] = sprintf($lang->member['complex_password'], $minpasswordlength);
             }
-            eval("\$passboxes = \"".$templates->get('member_register_password')."\";");
+            
+			$passboxes = '
+			
+			<div class="py-3 border-bottom">
+	<div class="row g-3">
+		<div class="col-lg-6">
+<label for="password">'.$lang->member['password'].'</label>
+		<input type="password" class="form-control form-control-sm border" name="password" id="password" />
+		</div>
+		<div class="col-lg-6">
+		<label for="password2">'.$lang->member['confirm_password'].'</label>
+		<input type="password" class="form-control form-control-sm border" name="password2" id="password2" style="width: 100%" />			
+		</div>
+		<div class="col" style="display: none" id="password_status">&nbsp;</div>
+	</div>
+</div>';
+			
+			
+			
+			
         }
 
         $invitehash = htmlspecialchars_uni(
@@ -885,7 +910,200 @@ if ($mybb->input['action'] === 'register') {
         </script>' . "\n";
 
         $plugins->run_hooks('member_register_end');
-        eval("\$registration = \"".$templates->get('member_register')."\";");
+        
+		
+		$registration = '
+		
+		<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>'.$SITENAME.' - '.$lang->member['welcome_register'].'</title>
+    
+</head>
+<body>
+
+
+<div class="container mt-3">
+    '.$inline_errors.'
+    '.$member_loggedin_notice.'
+    
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-header bg-primary text-white py-3">
+                    <h4 class="mb-0"><i class="fas fa-user-plus me-2"></i> '.$lang->member['welcome_register'].'</h4>
+                </div>
+                
+                <div class="card-body">
+                    '.$regerrors.'
+                    
+                    <form action="member.php" method="post" id="registration_form">
+                        <input type="text" style="display: none;" value="" name="regcheck1" />
+                        <input type="text" style="display: none;" value="true" name="regcheck2" />
+                        
+                        <!-- Секция данных аккаунта -->
+                        <div class="card-section">
+                            <h5 class="section-title mb-4">
+                                <i class="fas fa-user-circle me-2"></i> '.$lang->member['account_details'].'
+                            </h5>
+                            
+                            <div class="row">
+                                <!-- Имя пользователя -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="username" class="form-label">'.$lang->member['username'].'</label>
+                                    <div class="position-relative">
+                                        <i class="fas fa-user form-icon"></i>
+                                        <input type="text" class="form-control input-with-icon" name="username" id="username" value="'.$username.'" placeholder="Enter username" />
+                                    </div>
+                                </div>
+                                
+                                <!-- Поля пароля -->
+                                '.$passboxes.'
+                                
+                                <!-- Email -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="email" class="form-label">'.$lang->member['email'].'</label>
+                                    <div class="position-relative">
+                                        <i class="fas fa-envelope form-icon"></i>
+                                        <input type="email" class="form-control input-with-icon" name="email" id="email" maxlength="50" value="'.$email.'" placeholder="Your email" />
+                                    </div>
+                                </div>
+                                
+                                <!-- Подтверждение email -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="email2" class="form-label">'.$lang->member['confirm_email'].'</label>
+                                    <div class="position-relative">
+                                        <i class="fas fa-envelope-circle-check form-icon"></i>
+                                        <input type="email" class="form-control input-with-icon" name="email2" id="email2" maxlength="50" value="'.$email2.'" placeholder="Confirm email" />
+                                    </div>
+                                    <div style="display: none;" id="email_status">&nbsp;</div>
+                                </div>
+                                
+                               
+                                
+                                <!-- Код приглашения -->
+                                <div class="col-md-6 mb-3">
+                                    '.$showinvitecode.'
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Секция настроек аккаунта -->
+                        <div class="card-section">
+                            <h5 class="section-title mb-4">
+                                <i class="fas fa-sliders-h me-2"></i> '.$lang->member['account_prefs'].'
+                            </h5>
+                            
+                            <div class="row">
+                                <!-- Часовой пояс -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="timezone" class="form-label">'.$lang->member['time_offset'].'</label>
+                                    <div class="position-relative">
+                                        <i class="fas fa-globe form-icon"></i>
+                                        '.$tzselect.'
+                                    </div>
+                                </div>
+                                
+                                <!-- Коррекция летнего времени -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="dstcorrection" class="form-label">'.$lang->member['dst_correction'].'</label>
+                                    <div class="position-relative">
+                                        <i class="fas fa-clock form-icon"></i>
+                                        <select name="dstcorrection" class="form-select input-with-icon">
+                                            <option value="2" '.$dst_auto_selected.'>'.$lang->member['dst_correction_auto'].'</option>
+                                            <option value="1" '.$dst_enabled_selected.'>'.$lang->member['dst_correction_enabled'].'</option>
+                                            <option value="0" '.$dst_disabled_selected.'>'.$lang->member['dst_correction_disabled'].'</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- Настройки уведомлений -->
+                                <div class="col-12 mb-3">
+                                    <label class="form-label">Настройки уведомлений</label>
+                                    <div class="border rounded p-3">
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" name="allownotices" id="allownotices" value="1" '.$allownoticescheck.'>
+                                            <label class="form-check-label" for="allownotices">
+                                                <i class="fas fa-bell me-1"></i> '.$lang->member['allow_notices'].'
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" name="hideemail" id="hideemail" value="1" '.$hideemailcheck.'>
+                                            <label class="form-check-label" for="hideemail">
+                                                <i class="fas fa-eye-slash me-1"></i> '.$lang->member['hide_email'].'
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" name="receivepms" id="receivepms" value="1" '.$receivepmscheck.'>
+                                            <label class="form-check-label" for="receivepms">
+                                                <i class="fas fa-comments me-1"></i> '.$lang->member['receive_pms'].'
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" name="pmnotice" id="pmnotice" value="1" '.$pmnoticecheck.'>
+                                            <label class="form-check-label" for="pmnotice">
+                                                <i class="fas fa-desktop me-1"></i> '.$lang->member['pm_notice'].'
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" name="pmnotify" id="pmnotify" value="1" '.$pmnotifycheck.'>
+                                            <label class="form-check-label" for="pmnotify">
+                                                <i class="fas fa-envelope me-1"></i> '.$lang->member['email_notify_newpm'].'
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" name="invisible" id="invisible" value="1" '.$invisiblecheck.'>
+                                            <label class="form-check-label" for="invisible">
+                                                <i class="fas fa-user-secret me-1"></i> '.$lang->member['invisible_mode'].'
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Метод подписки -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="subscriptionmethod" class="form-label">'.$lang->member['subscription_method'].'</label>
+                                    <div class="position-relative">
+                                        <i class="fas fa-rss form-icon"></i>
+                                        <select name="subscriptionmethod" id="subscriptionmethod" class="form-select input-with-icon">
+                                            <option value="0" '.$no_auto_subscribe_selected.'>'.$lang->member['no_auto_subscribe'].'</option>
+                                            <option value="1" '.$no_subscribe_selected.'>'.$lang->member['no_subscribe'].'</option>
+                                            <option value="2" '.$instant_email_subscribe_selected.'>'.$lang->member['instant_email_subscribe'].'</option>
+                                            <option value="3" '.$instant_pm_subscribe_selected.'>'.$lang->member['instant_pm_subscribe'].'</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Дополнительные поля -->
+                       
+                        <!-- Кнопка отправки -->
+                        <div class="d-grid gap-2 mt-4">
+                            <input type="hidden" name="regtime" value="'.$time.'" />
+                            <input type="hidden" name="step" value="registration" />
+                            <input type="hidden" name="action" value="do_register" />
+                            <button type="submit" class="btn btn-primary btn-lg" name="regsubmit" value="'.$lang->member['submit_registration'].'">
+                                <i class="fas fa-user-plus me-2"></i> '.$lang->member['submit_registration'].'
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+'.$validator_javascript.'
+<script type="text/javascript" src="'.$BASEURL.'/scripts/regvalidator.js?ver=1823"></script>
+    
+
+</body>
+</html>';
+		
+		
+		
+		
         stdhead();
         build_breadcrumb();
         echo $registration;
@@ -922,10 +1140,11 @@ if ($mybb->input['action'] === 'activate') {
         }
 
         if ($activation['type'] === 'e') {
-            $db->update_query('users', ['email' => $db->escape_string($activation['misc'])], "id='{$user['id']}'");
+			$db->update_query('users', ['email' => $db->escape_string($activation['misc'])], "id='{$user['id']}'");
             $plugins->run_hooks('member_activate_emailupdated');
             redirect('usercp.php', $lang->member['redirect_emailupdated']);
-        } elseif ($activation['type'] === 'b') {
+        } 
+		elseif ($activation['type'] === 'b') {
             $db->update_query('awaitingactivation', ['validated' => 1], "uid='{$user['id']}' AND type='b'");
 			$db->update_query('users', ['ustatus' => 'confirmed'], "id='{$user['id']}' AND ustatus='pending' AND enabled='yes'");
 			$cache->update_awaitingactivation();
@@ -954,7 +1173,46 @@ if ($mybb->input['action'] === 'activate') {
         $plugins->run_hooks('member_activate_form');
         $code = htmlspecialchars_uni($mybb->get_input('code'));
         $user['username'] = htmlspecialchars_uni($user['username'] ?? '');
-        eval("\$activate = \"".$templates->get('member_activate')."\";");
+        
+		$activate = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->member['account_activation'].'</title>
+
+</head>
+<body>
+
+	<div class="container-md">
+
+<form action="member.php" method="post">
+   <div class="card">
+<div class="card-body">
+	
+	
+	<div class="pb-4 border-bottom">
+                 <label for="username">'.$lang->member['username'].'</label>
+                <input type="text" class="form-control border form-control-sm" name="username" value="'.$user['username'].'" />
+	</div>
+	
+	<div class="mt-3">
+                 <label for="email" class="form-label">'.$lang->member['activation_code'].'</label>
+                <input type="text" class="form-control border form-control-sm" name="code" value="'.$code.'" />
+	</div>
+	   </div>
+	
+	<div class="card-footer text-center">
+
+<button type="submit" class="btn btn-primary" name="regsubmit" value="'.$lang->member['activate_account'].'"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->member['activate_account'].'</button>
+</div>
+
+	
+	   </div>
+	</div>
+
+</form>
+</body>
+</html>';
+		
+		
         stdhead('title');
         echo $activate;
     }
@@ -1006,7 +1264,41 @@ if ($mybb->input['action'] === 'resendactivation') {
     $email  = $errors ? htmlspecialchars_uni($mybb->get_input('email')) : '';
 
     $plugins->run_hooks('member_resendactivation_end');
-    eval("\$activate = \"".$templates->get('member_resendactivation')."\";");
+    
+	$activate = '<html>
+<head>
+<title>'.$SITENAME.' - resend_activation</title>
+
+</head>
+<body>
+
+	<div class="container-md">
+'.$errors.'
+<form action="member.php" method="post">
+<div class="card shadow-sm border-0 align-center">
+<div class="card-body p-2 p-sm-2 p-md-2 p-lg-3 p-xl-3 p-xxl-3 border-0 text-start">
+	
+	<div class="legend mb-4">'.$lang->resend_activation.'</div>
+	
+		<div class="mb-3 ps-3 pe-3">
+                 <label for="email" class="form-label">'.$lang->email_address.'</label>
+                <input type="text" class="form-control border form-control-sm" name="email" value="'.$email.'" />
+	</div>
+
+
+</table>
+
+<div class="ps-3 text-start"><input type="submit" class="btn btn-primary mt-2" style="padding-left 40px; padding-right: 40px" name="submit" value="'.$lang->request_activation.'" /></div>
+<input type="hidden" name="action" value="do_resendactivation" />
+</form>
+	</div>
+	</div>
+	</div>
+
+</body>
+</html>';
+	
+	
     output_page($activate);
 }
 
@@ -1041,7 +1333,54 @@ if ($mybb->input['action'] === 'lostpw') {
     $plugins->run_hooks('member_lostpw');
     $errors = (isset($errors) && count($errors) > 0) ? inline_error($errors) : '';
     $email  = $errors ? htmlspecialchars_uni($mybb->get_input('email')) : '';
-    eval("\$lostpw = \"".$templates->get('member_lostpw')."\";");
+    
+	$lostpw = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->member['request_user_pass'].'</title>
+
+</head>
+<body>
+
+	
+	
+	
+	<div class="container-md">
+
+	
+<form action="member.php" method="post">
+    <div class="card">
+		<div class="card-body">
+	
+	'.$errors.'
+           
+                 <label for="email" class="form-label fw-bold">'.$lang->member['email_address'].'</label>
+                <input class="form-control border form-control-sm" type="text" id="email" name="email" value="'.$email.'" placeholder=""/>
+            
+            <div class="row mt-3">
+                <div class="col align-self-center">
+                   
+                </div>
+            </div>
+					
+					
+		</div>
+		<div class="card-footer">
+                         <button name="submit" type="submit" class="btn btn-primary" value="'.$lang->member['request_user_pass'].'" /><i class="fa-solid fa-key"></i> &nbsp;'.$lang->member['request_user_pass'].'</button>
+		</div>
+
+<input type="hidden" name="action" value="do_lostpw" />
+		
+		
+	</div>
+     
+    
+	</div>
+</form>
+
+</body>
+</html>';
+	
+	
     stdhead('title');
     echo $lostpw;
 }
@@ -1088,7 +1427,43 @@ if ($mybb->input['action'] === 'resetpassword') {
         $code           = htmlspecialchars_uni($mybb->get_input('code'));
         $input_username = htmlspecialchars_uni($mybb->get_input('username'));
         stdhead('title');
-        eval("\$activate = \"".$templates->get('member_resetpassword')."\";");
+        
+		$activate = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->member['reset_password'].'</title>
+
+</head>
+<body>
+
+<div class="container-md">
+<form action="member.php" method="post">
+<div class="card shadow-sm border-0 align-center">
+<div class="card-body p-2 p-sm-2 p-md-2 p-lg-3 p-xl-3 p-xxl-3 border-0 text-start">
+	
+	<div class="legend mb-4">'.$lang->member['reset_password'].'</div>
+
+	<div class="mb-3 ps-3 pe-3">
+                 <label for="email" class="form-label">'.$lang->username.'</label>
+                <input type="text" class="form-control border form-control-sm" name="username" value="'.$input_username.'" />
+	</div>
+	
+	<div class="mb-3 ps-3 pe-3">
+                 <label for="email" class="form-label">'.$lang->member['activation_code'].'</label>
+                <input type="text" class="form-control border form-control-sm" name="code" value="'.$code.'" />
+	</div>
+
+
+<div class="ps-3 text-start"><input type="hidden" name="action" value="resetpassword" /><input type="submit" class="btn btn-primary mt-2" style="padding-left 40px; padding-right: 40px" name="regsubmit" value="'.$lang->member['send_password'].'" /></div>
+	</div>
+	</div>
+	</div>
+</form>
+
+</body>
+</html>';
+		
+		
+		
         echo $activate;
     }
 }
@@ -1175,7 +1550,8 @@ if ($mybb->input['action'] === 'login') {
     if (isset($CURUSER) && is_array($CURUSER) && !empty($CURUSER['id'])) {
         $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
         $already_logged_in   = sprintf($lang->member['already_logged_in'], build_profile_link($CURUSER['username'], $CURUSER['id']));
-        eval("\$member_loggedin_notice = \"".$templates->get('member_loggedin_notice')."\";");
+        
+		$member_loggedin_notice = '<div class="rounded p-2 mt-3 mb-3 bg-nav">'.$already_logged_in.'</div>';
     }
 
     login_attempt_check();
@@ -1195,7 +1571,70 @@ if ($mybb->input['action'] === 'login') {
     elseif ($username_method == 2)  { $lang->member['username'] = $lang->member['username2']; }
 
     $plugins->run_hooks('member_login_end');
-    eval("\$login = \"".$templates->get('member_login')."\";");
+   
+    $login = '
+	
+	<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->member['login'].'</title>
+
+</head>
+<body>
+
+<div class="container-md">
+
+<form action="member.php" method="post">
+	
+<div class="card">
+		<div class="card-body">			
+				'.$inline_errors.'
+'.$member_loggedin_notice.'
+			<div class="pb-3 border-bottom">
+  <label for="username" class="form-label fw-bold">'.$lang->member['username'].'</label>
+  <input class="form-control form-control-sm border" name="username" type="text" id="username" value="'.$username.'"/>
+</div>
+			
+			<div class="py-3 border-bottom">
+  <label for="password" class="form-label fw-bold">'.$lang->member['password'].'<br /><a href="'.$BASEURL.'/member.php?action=lostpw" class="fw-normal small">'.$lang->member['lostpw_note'].'</a></label>
+  <input class="form-control form-control-sm border" name="password"  type="password" id="password" value="'.$password.'"/>
+</div>
+            
+	
+					<div class="form-check pt-3">
+  <input class="form-check-input" type="checkbox" name="remember" value="yes" id="flexCheckDefault" checked>
+  <label class="form-check-label" for="flexCheckDefault">
+    '.$lang->member['remember_me'].'
+  </label>
+	</div>
+					
+						
+	'.$lang->member['footer'].'			
+   
+
+	</div>
+<div class="card-footer text-center">
+<button type="submit" class="btn btn-primary" name="submit" value="'.$lang->member['login'].'"><i class="fa-solid fa-right-to-bracket"></i> &nbsp;'.$lang->member['login'].'</button>
+
+	</div>
+		
+		
+<input type="hidden" name="action" value="do_login" />
+<input type="hidden" name="url" value="'.$redirect_url.'" />
+<input name="my_post_key" type="hidden" value="'.$mybb->post_code.'" />
+</form>
+
+
+	</div>
+	</div>
+
+
+
+</body>
+</html>';
+	
+	
+	
+	
     stdhead();
     echo $login;
 }
@@ -1267,6 +1706,7 @@ if ($mybb->input['action'] === 'profile') {
     $IsStaff   = is_mod($usergroups);
 
     if ($memprofile['invisible'] == 1 && !$SameUser && !$IsStaff) { stderr($lang->member['noperm']); }
+	
     if ($memprofile['ustatus'] === 'pending') { stderr($lang->member['pendinguser']); }
 
     $plugins->run_hooks('member_profile_start');
@@ -1301,7 +1741,10 @@ if ($mybb->input['action'] === 'profile') {
     if ($usergroups['cansendemail'] == 1 && $uid != $CURUSER['id'] && $memprofile['hideemail'] != 1
         && (str_contains(',' . $memprofile['ignorelist'] . ',', ',' . $CURUSER['id'] . ',') === false || $usergroups['cansendemailoverride'] != 0)) {
         $bgcolor = alt_trow();
-        eval("\$sendemail = \"".$templates->get('member_profile_email')."\";");
+        
+		$sendemail = '<div class="py-2 border-bottom"><span class="text-muted">'.$lang->member['email'].'</span> <a href="member.php?action=emailuser&amp;id='.$memprofile['id'].'">'.$send_user_email.'</a></div>';
+		
+		
     }
 
     if ($enablepms != 0 && $uid != $CURUSER['id'] && $usergroups['canusepms'] == 1
@@ -1309,23 +1752,62 @@ if ($mybb->input['action'] === 'profile') {
             && str_contains(',' . $memprofile['ignorelist'] . ',', ',' . $CURUSER['id'] . ',') === false)
             || $usergroups['canoverridepm'] == 1)) {
         $bgcolor = alt_trow();
-        eval('$sendpm = "' . $templates->get('member_profile_pm') . '";');
+        
+		$sendpm = '<div class="py-2 border-bottom"><span class="text-muted">'.$lang->member['pm'].'</span> <a href="private.php?action=send&amp;uid='.$memprofile['id'].'">'.$send_pms.'</a></div>';
     }
 
     $any_contact_field = false;
     if ($any_contact_field || $sendemail || $sendpm || $website) {
-        eval('$contact_details = "' . $templates->get('member_profile_contact_details') . '";');
+        
+		$contact_details = '<div class="card-clean mb-4 hov-soft">
+  <div class="p-3 border-bottom text-19 fw-bold d-flex align-items-center gap-2">
+    <i class="bi bi-person-lines-fill"></i>
+    <span>Contact Details</span>
+  </div>
+
+  <div class="p-3">
+    <div class="list-row">
+      <span class="muted d-flex align-items-center gap-2">
+        <i class="bi bi-envelope-fill"></i>
+        <span>Private Message</span>
+      </span>
+      <span>'.$sendpm.'</span>
+    </div>
+
+    <div class="list-row">
+      <span class="muted d-flex align-items-center gap-2">
+        <i class="bi bi-at"></i>
+        <span>Email</span>
+      </span>
+      <span>'.$sendemail.'</span>
+    </div>
+
+  </div>
+</div>';
+		
+		
+		
     }
 
     $signature = '';
     if ($memprofile['signature']) {
         $sig_parser = ['allow_html' => 1, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'me_username' => $me_username, 'filter_badwords' => 1];
         $memprofile['signature'] = $parser->parse_message($memprofile['signature'], $sig_parser);
-        eval("\$signature = \"".$templates->get('member_profile_signature')."\";");
+        
+		$signature = '<div class="card border-0 mb-4">
+	<div class="card-header rounded-bottom text-19 fw-bold">
+		'.$users_signature.'
+	</div>
+	<div class="card-body border-bottom pb-3">
+		'.$memprofile['signature'].'
+	</div>
+</div>';
+		
+		
     }
 
     // User data with permissions
-    $Query = $db->sql_query_prepared("SELECT u.*, p.canupload, p.candownload, p.cancomment FROM users u LEFT JOIN users_perm p ON (u.id=p.userid) WHERE u.id=? LIMIT 1", [$uid]);
+    $Query = $db->sql_query_prepared("SELECT * FROM users WHERE id = ? LIMIT 1", [$uid]);
     if ($Query && $db->num_rows($Query) > 0) {
         $user = $db->fetch_array($Query);
     } else {
@@ -1407,7 +1889,7 @@ if ($mybb->input['action'] === 'profile') {
         $membdayage = '';
     }
 
-    echo '<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
+    
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
 
     $usertitle = $memperms['image'] ?? '';
@@ -1435,13 +1917,17 @@ if ($mybb->input['action'] === 'profile') {
                 $activity      = fetch_wol_activity($session['location'], (bool)$session['nopermission']);
                 $location      = build_friendly_wol_location($activity);
                 $location_time = my_datee($timeformat, $last_seen);
-                eval("\$online_status = \"".$templates->get('member_profile_online')."\";");
+                
+				$online_status = '<a href="online.php"><span class="online" style="font-weight: bold; text-success">'.$lang->global['postbit_status_online'].'</span></a> ('.$location.' @ '.$location_time.')';
             }
         }
     }
 
     if (!isset($online_status)) {
-        eval("\$online_status = \"".$templates->get('member_profile_offline')."\";");
+        
+		$online_status = '<span class="offline" style="font-weight: bold;">'.$lang->global['postbit_status_offline'].'</span>';
+		
+		
     }
 
     // Status dot
@@ -1483,13 +1969,63 @@ if ($mybb->input['action'] === 'profile') {
 
             $timeremaining        = '<span class="' . $banned_class . '">(' . $timeremaining . ' remaining)</span>';
             $memban['adminuser']  = build_profile_link(htmlspecialchars_uni($memban['adminuser']), $memban['admin']);
-            eval('$bannedbit = "' . $templates->get('member_profile_banned') . '";');
-        }
+            
+			$bannedbit = '<div class="card-clean p-3 mb-4" style="border-left:4px solid #dc3545;">
+  <div class="d-flex align-items-start gap-3">
+    <div class="text-danger" style="font-size:1.5rem;">
+      <i class="fa-solid fa-ban" aria-hidden="true"></i>
+    </div>
+
+    <div class="flex-grow-1">
+      <div class="d-flex justify-content-between flex-wrap gap-2">
+        <h5 class="mb-1 text-danger fw-semibold">'.$lang->member['ban_note'].'</h5>
+        <span class="badge-soft" style="background:#ffe6e6;border-color:#ffc9c9;color:#b02a37;">
+          <i class="fa-regular fa-clock me-1"></i> '.$banlength.'
+        </span>
+      </div>
+
+      <div class="mt-2 small muted">
+        <strong>'.$lang->global['banned_warning2'].'</strong>
+      </div>
+
+      <!-- Причина -->
+      <div class="mt-2 p-2 rounded small" style="background:#fff5f5;border:1px solid #f8d7da;">
+        '.$memban['reason'].'
+      </div>
+
+      <!-- Метаданные -->
+      <div class="mt-2 small muted">
+        <span class="me-3">
+          <i class="fa-solid fa-user-shield me-1"></i>
+          <strong>'.$lang->member['ban_by'].'</strong>
+          <span class="links">'.$memban['adminuser'].'</span>
+        </span>
+        <span>
+          <i class="fa-regular fa-hourglass-half me-1"></i>
+          <strong>'.$lang->member['ban_length'].'</strong> '.$banlength.'
+          <span class="ms-1">'.$timeremaining.'</span>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>';
+        
+		}
     }
 
     $memprofile['regip']  = my_inet_ntop($db->unescape_binary($memprofile['regip']));
     $memprofile['lastip'] = my_inet_ntop($db->unescape_binary($memprofile['lastip']));
-    eval("\$ipaddress = \"".$templates->get('member_profile_modoptions_ipaddress')."\";");
+    
+	
+	$ipaddress = '<div class="py-2 border-bottom">
+						<span class="text-muted">Registration IP:</span> '.$memprofile['regip'].'
+					</div>
+					<div class="py-2 border-bottom">
+						<span class="text-muted">Last Known IP:</span> '.$memprofile['lastip'].'
+					</div>';
+	
+	
+	
 
     // Stats
   
@@ -1513,20 +2049,85 @@ if ($mybb->input['action'] === 'profile') {
     $awaybit = $referrals = $groupimage = $userstars = $reputation = '';
 
     if ($memperms['isbannedgroup'] == 1 && $usergroups['canuserdetails'] == 1) {
-        eval("\$manageban = \"".$templates->get('member_profile_modoptions_manageban')."\";");
+        
+		$manageban = '<li><a href="'.$BASEURL.'/modcp.php?action=banuser&amp;uid='.$uid.'">'.$lang->member['edit_ban_in_mcp'].'</a></li>
+        <li><a href="'.$BASEURL.'/modcp.php?action=liftban&amp;uid='.$uid.'&amp;my_post_key='.$mybb->post_code.'">'.$lang->member['lift_ban_in_mcp'].'</a></li>';
+		
+		
     } else {
-        eval("\$banuser = \"".$templates->get('member_profile_modoptions_banuser')."\";");
+        
+		$banuser = '<li><a href="'.$BASEURL.'/modcp.php?action=banuser&amp;uid='.$uid.'">'.$lang->member['ban_in_mcp'].'</a></li>';
+		
+		
     }
-    eval("\$editprofile = \"".$templates->get('member_profile_modoptions_editprofile')."\";");
+    
+	$editprofile = '<li><a href="'.$BASEURL.'/admin/edituser.php?action=edituser&userid='.$uid.'">'.$lang->member['edit_in_mcp'].'</a></li>';
+	
     $manageuser = $editprofile . $banuser . $manageban;
 
     if ($IsStaff) {
-        eval("\$modoptions = \"".$templates->get('member_profile_modoptions')."\";");
+        
+
+$modoptions = '<!-- Moderator Options (compact) -->
+<div class="card-clean mb-4 hov-soft">
+  <div class="p-3 border-bottom text-19 fw-bold d-flex align-items-center gap-2">
+    <i class="bi bi-shield-check"></i><span>Moderator Options</span>
+  </div>
+
+  <div class="p-3">
+    <div class="list-row">
+      <span class="muted d-flex align-items-center gap-2">
+        <i class="bi bi-geo-alt-fill"></i><span>IP Address</span>
+      </span>
+      <span>'.$ipaddress.'</span>
+    </div>
+
+    <div class="mt-3">
+      <div class="muted mb-2 d-flex align-items-center gap-2">
+        <i class="bi bi-tools"></i><span>Quick actions</span>
+      </div>
+
+      
+      <ul id="mod-actions" class="icon-grid m-0 list-unstyled">
+        '.$manageuser.'
+      </ul>
+    </div>
+  </div>
+</div>
+
+<style>
+  .icon-grid{display:flex;flex-wrap:wrap;gap:.5rem}
+  .icon-grid a{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:36px;height:36px;border-radius:10px;
+    border:1px solid #e5e7eb;background:#f9fafb;text-decoration:none;
+  }
+  .icon-grid a:hover{transform:translateY(-2px)}
+  @media (prefers-color-scheme: dark){
+    .icon-grid a{border-color:#1f2a38;background:#0f1720}
+  }
+</style>
+<script type="text/javascript" src="' . $BASEURL . '/scripts/mod-actions.js"></script>';
+
+		
+		
     }
 
     $findposts = $findthreads = '';
-    if (!empty($memprofile['postnum']))  { eval("\$findposts   = \"".$templates->get('member_profile_findposts')."\";"); }
-    if (!empty($memprofile['threadnum'])){ eval("\$findthreads = \"".$templates->get('member_profile_findthreads')."\";"); }
+    if (!empty($memprofile['postnum']))  { 
+	
+	$findposts   = '<a href="search.php?action=finduser&amp;uid='.$uid.'" class="text-decoration-none text-primary">
+    <i class="fa-solid fa-file-lines me-1"></i> '.$lang->member['find_posts'].'
+</a>'; 
+	
+	}
+    if (!empty($memprofile['threadnum']))
+	{ 
+        $findthreads = '<a href="search.php?action=finduserthreads&amp;uid='.$uid.'" class="text-decoration-none text-success">
+                       <i class="fa-solid fa-comments me-1"></i> '.$lang->member['find_threads'].'
+                       </a>'; 
+		
+	}
 
     // Buddy/ignore
     $add_remove_options = [];
@@ -1539,13 +2140,23 @@ if ($mybb->input['action'] === 'profile') {
             ? ['url' => "usercp.php?action=do_editlists&amp;delete={$uid}&amp;my_post_key={$mybb->post_code}", 'class' => 'remove_buddy_button', 'lang' => 'Remove from Buddy List']
             : ['url' => "usercp.php?action=do_editlists&amp;add_username=" . urlencode($memprofile['username']) . "&amp;my_post_key={$mybb->post_code}", 'class' => 'add_buddy_button', 'lang' => 'Add to Buddy List'];
 
-        if (!in_array($uid, $ignore_list)) { eval("\$buddy_options = \"".$templates->get('member_profile_addremove')."\";"); }
+        if (!in_array($uid, $ignore_list)) 
+		{ 
+	        
+			
+			$buddy_options = '<li><a href="'.$add_remove_options['url'].'" class="links">'.$add_remove_options['lang'].'</a></li>'; 
+			
+		}
 
         $add_remove_options = in_array($uid, $ignore_list)
             ? ['url' => "usercp.php?action=do_editlists&amp;manage=ignored&amp;delete={$uid}&amp;my_post_key={$mybb->post_code}", 'class' => 'remove_ignore_button', 'lang' => 'Remove from Ignore List']
             : ['url' => "usercp.php?action=do_editlists&amp;manage=ignored&amp;add_username=" . urlencode($memprofile['username']) . "&amp;my_post_key={$mybb->post_code}", 'class' => 'add_ignore_button', 'lang' => 'Add to Ignore List'];
 
-        if (!in_array($uid, $buddy_list)) { eval("\$ignore_options = \"".$templates->get('member_profile_addremove')."\";"); }
+        if (!in_array($uid, $buddy_list)) 
+		{ 
+	          $ignore_options = '<li><a href="'.$add_remove_options['url'].'" class="links">'.$add_remove_options['lang'].'</a></li>'; 
+			  
+	    }
     }
 
     $plugins->run_hooks('member_profile_end');
@@ -1642,12 +2253,442 @@ if ($mybb->input['action'] === 'profile') {
     if ($memprofile['signature'] && !$signature) {
         $sig_parser = ['allow_html' => 1, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'me_username' => $me_username, 'filter_badwords' => 1];
         $memprofile['signature'] = $parser->parse_message($memprofile['signature'], $sig_parser);
-        eval("\$signature = \"".$templates->get('member_profile_signature')."\";");
+        
+		$signature = '<div class="card border-0 mb-4">
+	<div class="card-header rounded-bottom text-19 fw-bold">
+		'.$users_signature.'
+	</div>
+	<div class="card-body border-bottom pb-3">
+		'.$memprofile['signature'].'
+	</div>
+</div>';
+		
+		
     }
 
     $formattedname = format_name($memprofile['username'], $memprofile['usergroup'], $memprofile['displaygroup']);
 
-    eval("\$profile = \"".$templates->get('member_profile')."\";");
+    $profile = '
+	
+	<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>'.$SITENAME.' - '.$lang->member['profile'].'</title>
+  
+  <script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
+  <script type="text/javascript" src="'.$BASEURL.'/scripts/report_user.js"></script>
+  
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  
+  <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/member_profile.css">
+
+</head>
+<body>
+<div class="container-md my-4">
+  <!-- HERO -->
+  <div class="profile-hero p-3 p-md-4 mb-4 hov-soft">
+    <div class="hero-inner">
+      <div class="row g-3 g-lg-4 align-items-center">
+        
+		
+	
+<div class="col-auto">
+  <div class="avatar-ring position-relative hov-soft"
+       id="avatar-container"
+       data-uid="'.$memprofile['id'].'"
+       data-can-change="'.$can_change_avatar.'"
+       title="Avatar">
+    <div>
+      '.$avatar.'
+      '.$status_dot_html.'
+      <span class="avatar-overlay">Change</span>
+    </div>
+
+    <div id="avatar-progress"><div id="avatar-progress-bar"></div></div>
+  </div>
+</div>
+
+<input type="file" id="avatar-input" accept="image/*" style="display:none;">
+		
+		
+
+
+        <div class="col">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h2 class="mb-0 me-1">'.$formattedname.'</h2> '.$usericons.'
+          </div>
+          <div class="muted mt-1">'.$usertitle.'</div>
+          <div class="mt-2">'.$groupimage.'</div>
+          <div class="mt-2">'.$userstars.'</div>
+
+          <div class="mt-3 d-flex flex-wrap gap-2">
+    <span class="chip"><i class="bi bi-upload me-1 text-success"></i> Seeding: <strong>'.$active_seeds.'</strong></span>
+    <span class="chip"><i class="bi bi-download me-1 text-danger"></i> Leeching: <strong>'.$active_leeches.'</strong></span>
+    <span class="chip"><i class="bi bi-check2-circle me-1 text-primary"></i> Completed: <strong>'.$times_completed_total.'</strong></span>
+    <span class="chip"><i class="bi bi-calendar-check me-1 text-muted"></i> Joined: <strong>'.$memregdate.'</strong></span>
+</div>
+        </div>
+
+        <div class="col-12 col-lg-3">
+          <div class="d-grid gap-2">
+            <a href="private.php?action=send&uid='.$memprofile['id'].'" class="btn btn-primary btn-sm" aria-label="Send private message">
+              <i class="bi bi-envelope me-1"></i> Send PM
+            </a>
+            <a href="misc.php?action=buddy&add='.$memprofile['id'].'" class="btn btn-outline-secondary btn-sm" aria-label="Add to buddy list">
+              <i class="bi bi-person-plus me-1"></i> Add to Buddy
+            </a>
+            '.$report_button.'
+          </div>
+		  
+		   <!-- Мини-статистика под кнопками -->
+    <div class="mt-3 p-3 card-clean text-center">
+        <div class="row g-2">
+            <div class="col-6">
+                <div class="muted" style="font-size:0.7rem;">POSTS</div>
+                <div class="fw-bold">'.$memprofile['postnum'].'</div>
+            </div>
+            <div class="col-6">
+                <div class="muted" style="font-size:0.7rem;">THREADS</div>
+                <div class="fw-bold">'.$memprofile['threadnum'].'</div>
+            </div>
+            <div class="col-6">
+                <div class="muted" style="font-size:0.7rem;">SEEDS</div>
+                <div class="fw-bold text-success">'.$active_seeds.'</div>
+            </div>
+            <div class="col-6">
+                <div class="muted" style="font-size:0.7rem;">LEECHES</div>
+                <div class="fw-bold text-danger">'.$active_leeches.'</div>
+            </div>
+        </div>
+    </div>
+		  
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+<!-- METRICS — замените весь блок -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="metric text-center hov-soft">
+            <div class="label">Ratio</div>
+            <div class="value {$ratio_class}" style="font-size:1.35rem;">'.$ratio.'</div>
+            <div class="mt-2">
+                
+                   '.$ratio_label.'
+				  
+                
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="metric text-center hov-soft">
+            <div class="label"><i class="bi bi-check2-circle me-1"></i>Snatched</div>
+            <div class="value" style="font-size:1.35rem;">'.$times_completed_total.'</div>
+        </div>
+    </div>
+    <div class="col-12 col-md-3">
+        <div class="metric hov-soft">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="label"><i class="bi bi-arrow-up-right text-success me-1"></i>Uploaded</div>
+                <div class="value text-success">'.$uploaded.'</div>
+            </div>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="width:{$uploaded_percent}%;background:linear-gradient(90deg,#4ade80,#22c55e)"></div>
+            </div>
+            <div class="d-flex justify-content-between mt-1">
+                <small class="muted">'.$uploaded_percent.'% of total</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-3">
+        <div class="metric hov-soft">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="label"><i class="bi bi-arrow-down-right text-danger me-1"></i>Downloaded</div>
+                <div class="value text-danger">'.$downloaded.'</div>
+            </div>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="width:'.$downloaded_percent.'%;background:linear-gradient(90deg,#f87171,#ef4444)"></div>
+            </div>
+            <div class="d-flex justify-content-between mt-1">
+                <small class="muted">'.$downloaded_percent.'% of total</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+  <div class="row g-4">
+    <!-- LEFT -->
+    <div class="col-12 col-lg-8">
+      <!-- Tabs -->
+      
+	  
+	 
+	  
+	  
+	  
+	  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-about" type="button">
+            <i class="bi bi-person me-1"></i>About
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-forum" type="button">
+            <i class="bi bi-chat-dots me-1"></i>Forum
+            <span class="badge-soft ms-1" style="font-size:0.7rem;">'.$memprofile['postnum'].'</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-torrents" type="button">
+            <i class="bi bi-collection-play me-1"></i>Torrents
+            <span class="badge-soft ms-1" style="font-size:0.7rem;">'.$times_completed_total.'</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-contact" type="button">
+            <i class="bi bi-envelope me-1"></i>Contact
+        </button>
+    </li>
+</ul>
+	  
+	  
+	  
+	  
+	  
+	  
+
+      <div class="tab-content">
+        <!-- ABOUT -->
+        <div class="tab-pane fade show active" id="tab-about">
+          
+          <!-- красивый бан-блок: сформируй в PHP в переменную новым стилем -->
+          '.$bannedbit.'
+          '.$signature.'
+
+          
+
+          <div class="card-clean p-3 mt-3 hov-soft">
+            <div class="row row-cols-1 row-cols-md-2 g-3">
+              <div class="col">
+                <div class="list-row">
+                  <span class="muted"><i class="bi bi-calendar-event me-1"></i>'.$lang->member['joined'].'</span>
+                  <span>'.$memregdate.'</span>
+                </div>
+                <div class="list-row">
+                  <span class="muted"><i class="bi bi-clock-history me-1"></i>'.$lang->member['lastvisit'].'</span>
+                  <span>'.$memlastvisitdate.'</span>
+                </div>
+                <div class="list-row">
+                  <span class="muted"><i class="bi bi-cake me-1"></i>'.$lang->member['date_of_birth'].'</span>
+                  <span>'.$membday.' '.$membdayage.'</span>
+                </div>
+                <div class="list-row">
+                  <span class="muted"><i class="bi bi-globe2 me-1"></i>'.$lang->member['local_time'].'</span>
+                  <span>'.$localtime.'</span>
+                </div>
+              </div>
+              <div class="col">
+                '.$invs.'
+                <!-- соцсети / доп. факты сюда -->
+              </div>
+            </div>
+          </div>
+
+          
+		  
+		<!-- Status & time -->
+              <div class="card-clean p-0 mt-3 hov-soft">
+                <div class="p-3 border-bottom d-flex align-items-center gap-2">
+                  <i class="bi bi-activity"></i>
+                  <strong>Status</strong>
+                </div>
+                <div class="p-3">
+                  <div class="list-row">
+                    <span class="muted d-flex align-items-center gap-2">
+                      <i class="bi bi-circle-fill" style="font-size:.6rem"></i>
+                      '.$lang->global['postbit_status'].'
+                    </span>
+                    <span>'.$online_status.'</span>
+                  </div>
+                  <div class="list-row">
+                    <span class="muted d-flex align-items-center gap-2">
+                      <i class="bi bi-clock-history"></i>
+                      '.$lang->member['timeonline'].'
+                    </span>
+                    <span>'.$timeonline.'</span>
+                  </div>
+                </div>
+              </div>
+		  
+		  
+		  
+		  
+        </div>
+
+
+
+
+
+<!-- FORUM -->
+<div class="tab-pane fade" id="tab-forum">
+
+    <!-- KPIs постов/тредов -->
+    <div class="card-clean mb-3 hov-soft">
+        <div class="p-3 border-bottom text-19 fw-bold d-flex align-items-center gap-2">
+            <i class="bi bi-chat-dots-fill"></i>
+            <span>'.$users_forum_info.'</span>
+        </div>
+        <div class="p-3">
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <div class="metric hov-soft d-flex align-items-center gap-3">
+                        <div class="rounded-3 bg-light d-flex align-items-center justify-content-center" style="width:42px;height:42px;">
+                            <i class="bi bi-chat-left-text-fill"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="label d-flex justify-content-between align-items-center">
+                                <span>'.$lang->member['total_posts'].'</span>
+                                <span class="badge-soft">'.$ppd_percent_total.'</span>
+                            </div>
+                            <div class="value mt-1">'.$memprofile['postnum'].'</div>
+                        </div>
+                        <div class="ms-2 d-none d-md-block">'.$findposts.'</div>
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div class="metric hov-soft d-flex align-items-center gap-3">
+                        <div class="rounded-3 bg-light d-flex align-items-center justify-content-center" style="width:42px;height:42px;">
+                            <i class="bi bi-journal-text"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="label d-flex justify-content-between align-items-center">
+                                <span>'.$lang->member['total_threads'].'</span>
+                                <span class="badge-soft">'.$tpd_percent_total.'</span>
+                            </div>
+                            <div class="value mt-1">'.$memprofile['threadnum'].'</div>
+                        </div>
+                        <div class="ms-2 d-none d-md-block">'.$findthreads.'</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Последние комментарии -->
+    <div class="card-clean p-0 hov-soft">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="text-19 fw-bold d-flex align-items-center gap-2">
+                <i class="bi bi-chat-left-text-fill"></i>
+                Recent Comments
+            </span>
+            <span class="badge-soft">'.$memprofile['comms'].'</span>
+        </div>
+        <div class="p-3">
+            '.$recent_comments_html.'
+        </div>
+    </div>
+
+</div>
+		
+		
+
+        
+		
+		
+		
+		
+		<!-- TORRENTS -->
+<div class="tab-pane fade" id="tab-torrents">
+    <div class="card-clean p-0 hov-soft mb-3">
+        <div class="p-3 border-bottom text-19 fw-bold">Uploaded torrents</div>
+        <div class="p-3">'.$recent_user_torrents.'</div>
+    </div>
+
+    <!-- Seeding & Leeching в одну колонку -->
+    <div class="card-clean p-0 hov-soft mb-3">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="text-19 fw-bold d-flex align-items-center gap-2">
+                <i class="bi bi-cloud-upload"></i> Seeding now
+            </span>
+            <span class="badge-soft">'.$active_seeds.'</span>
+        </div>
+        <div class="p-3">
+            <!-- Здесь каждый элемент seeding будет на всю ширину -->
+            '.$seeding_now.'
+        </div>
+    </div>
+
+    <div class="card-clean p-0 hov-soft mb-3">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="text-19 fw-bold d-flex align-items-center gap-2">
+                <i class="bi bi-cloud-download"></i> Leeching now
+            </span>
+            <span class="badge-soft">'.$active_leeches.'</span>
+        </div>
+        <div class="p-3">
+            <!-- Здесь каждый элемент leeching будет на всю ширину -->
+            '.$leeching_now.'
+        </div>
+    </div>
+
+    <div class="card-clean p-0 hov-soft">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="text-19 fw-bold d-flex align-items-center gap-2">
+                <i class="bi bi-check-circle-fill"></i> Completed recently
+            </span>
+            <span class="badge-soft">'.$times_completed_total.'</span>
+        </div>
+        <div class="p-3">'.$completed_list.'</div>
+    </div>
+</div>
+		
+		
+		
+		
+		
+
+        <!-- CONTACT -->
+        <div class="tab-pane fade" id="tab-contact">'.$contact_details.'</div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="col-12 col-lg-4">
+      <div class="sticky-col">
+        '.$modoptions.'
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</body>
+</html>';
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
     echo $profile;
     ?>
 
@@ -1809,10 +2850,65 @@ if ($mybb->input['action'] === 'emailuser') {
     }
 
     $from_email = '';
-    if ($CURUSER['id'] == 0) { eval("\$from_email = \"".$templates->get('member_emailuser_guest')."\";"); }
+    if ($CURUSER['id'] == 0) 
+	{ 
+         $from_email = '<div class="pb-4 border-bottom mb-4">
+	<label for="fromname">'.$lang->member['your_name'].'</label>
+		<input type="text" class="form-control border form-control-sm" size="50" name="fromname" value="'.$fromname.'" />
+	</div>
+
+     <div class="pb-4 border-bottom mb-4">
+			<label for="fromemail">'.$lang->member['your_email'].'</label>
+		<input type="text" class="form-control border form-control-sm" size="50" name="fromemail"  value="'.$fromemail.'" />
+	</div>'; 
+		 
+	}
 
     $plugins->run_hooks('member_emailuser_end');
-    eval("\$emailuser = \"".$templates->get('member_emailuser')."\";");
+	
+    $emailuser = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->member['email_user'].'</title>
+
+</head>
+<body>
+
+	<div class="container-md">
+'.$errors.'
+	<div class="card">
+<div class="card-body">
+<form action="member.php" method="post" name="input">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+
+'.$from_email.'
+	
+	<div class="pb-4 border-bottom mb-4">
+		<label for="subject">'.$lang->member['email_subject'].'</label>
+		<input type="text" class="form-control border form-control-sm" size="50" name="subject" value="'.$subject.'" />
+	</div>
+	
+
+		<label for="subject">'.$lang->member['email_message'].'</label>
+		<textarea cols="50" rows="10" class="form-control border form-control-sm" style="resize: none" name="message">'.$message.'</textarea>
+
+
+
+'.$captcha.'
+
+	</div>
+	<div class="card-footer text-center">
+<input type="hidden" name="action" value="do_emailuser" />
+<input type="hidden" name="id" value="'.$to_user['id'].'" />
+<input type="submit" class="btn btn-primary" value="'.$lang->member['send_email'].'" />
+	</div>
+</form>
+	</div>
+		</div>
+
+
+</body>
+</html>';
+	
     stdhead('title');
     echo $emailuser;
     stdfoot();

@@ -72,9 +72,6 @@ if (!empty($CURUSER['id'])) {
     $post_code_string = '&amp;my_post_key=' . $mybb->post_code;
 }
 
-// --- Load templates ---
-$templatelist = ($templatelist ?? '') . ',';
-$templates->cache($db->escape_string($templatelist));
 
 // ====================================================
 // Forum-Specific Initialization (ONLY when in forum context)

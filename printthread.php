@@ -1,308 +1,262 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
+declare(strict_types=1);
 
-define("IN_MYBB", 1);
-define('THIS_SCRIPT', 'printthread.php');
-define("SCRIPTNAME", "printthread.php");
-
-$templatelist = "printthread,printthread_post,printthread_nav,forumdisplay_password_wrongpass,forumdisplay_password,printthread_multipage,printthread_multipage_page,printthread_multipage_page_current";
-
-
-define('IN_FORUM', true);
+define('IN_MYBB',    1);
+define('THIS_SCRIPT','printthread.php');
+define('SCRIPTNAME', 'printthread.php');
+define('IN_FORUM',   true);
 
 require_once 'global.php';
+require_once INC_PATH . '/functions_post.php';
 
-  
+$lang->load('printthread');
 
-require_once INC_PATH."/functions_post.php";
+$plugins->run_hooks('printthread_start');
 
-
-// Load global language phrases
-$lang->load("printthread");
-
-$plugins->run_hooks("printthread_start");
-
+// ── Тред ─────────────────────────────────────────────────────────────────────
 $thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
 
-if(!$thread || $thread['visible'] == -1)
-{
-	stderr('error_invalidthread');
+if (!$thread || $thread['visible'] == -1) {
+    stderr($lang->printthread['error_invalidthread'] ?? 'Invalid thread.', '', 404, '404');
 }
 
-$plugins->run_hooks("printthread_start");
-
+// Префикс треда
 $thread['threadprefix'] = $thread['displaystyle'] = '';
-if($thread['prefix'])
-{
-	$threadprefix = build_prefixes($thread['prefix']);
-	if(!empty($threadprefix))
-	{
-		$thread['threadprefix'] = $threadprefix['prefix'];
-		$thread['displaystyle'] = $threadprefix['displaystyle'];
-	}
+if ($thread['prefix']) {
+    $threadprefix = build_prefixes($thread['prefix']);
+    if (!empty($threadprefix)) {
+        $thread['threadprefix'] = $threadprefix['prefix'];
+        $thread['displaystyle'] = $threadprefix['displaystyle'];
+    }
 }
 
 $thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
+$fid = (int)$thread['fid'];
+$tid = (int)$thread['tid'];
 
-$fid = $thread['fid'];
-$tid = $thread['tid'];
-
-// Is the currently logged in user a moderator of this forum?
-//$ismod = is_moderator($fid);
-
-// Make sure we are looking at a real thread here.
-//if(($thread['visible'] != 1 && $ismod == false) || ($thread['visible'] > 1 && $ismod == true))
-//{
-	//error($lang->error_invalidthread);
-//}
-
-// Get forum info
+// ── Форум ─────────────────────────────────────────────────────────────────────
 $forum = get_forum($fid);
-if(!$forum)
-{
-	stderr('error_invalidforum');
+if (!$forum || $forum['type'] !== 'f') {
+    stderr($lang->printthread['error_invalidforum'] ?? 'Invalid forum.', '', 404, '404');
 }
 
-$breadcrumb = makeprintablenav();
-
-$parentsexp = explode(",", $forum['parentlist']);
-$numparents = count($parentsexp);
-$tdepth = "-";
-for($i = 0; $i < $numparents; ++$i)
-{
-	$tdepth .= "-";
-}
-$forumpermissions = forum_permissions($forum['fid']);
-
-if($forum['type'] != "f")
-{
-	stderr('error_invalidforum');
-}
-if($forumpermissions['canview'] == 0 || $forumpermissions['canviewthreads'] == 0 || (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $thread['uid'] != $CURUSER['id']))
-{
-	print_no_permission();
+$forumpermissions = forum_permissions($fid);
+if (
+    $forumpermissions['canview'] == 0 ||
+    $forumpermissions['canviewthreads'] == 0 ||
+    (isset($forumpermissions['canonlyviewownthreads']) &&
+     $forumpermissions['canonlyviewownthreads'] != 0 &&
+     $thread['uid'] != $CURUSER['id'])
+) {
+    print_no_permission();
 }
 
-// Check if this forum is password protected and we have a valid password
-check_forum_password($forum['fid']);
+check_forum_password($fid);
 
-$page = $mybb->get_input('page', MyBB::INPUT_INT);
+// ── Пагинация ─────────────────────────────────────────────────────────────────
+$f_postsperpage = (int)($f_postsperpage ?? 0);
+$perpage        = $f_postsperpage >= 1 ? $f_postsperpage : 20;
+$postcount      = (int)$thread['replies'] + 1;
+$pages          = (int)ceil($postcount / $perpage);
+$page           = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
 
-// Paginate this thread
-if(!$f_postsperpage || (int)$f_postsperpage < 1)
-{
-	$f_postsperpage = 20;
-}
-$perpage = $f_postsperpage;
-$postcount = (int)$thread['replies']+1;
-$pages = ceil($postcount/$perpage);
+if ($page > $pages) $page = 1;
+$start = ($page - 1) * $perpage;
 
-if($page > $pages)
-{
-	$page = 1;
-}
-if($page > 0)
-{
-	$start = ($page-1) * $perpage;
-}
-else
-{
-	$start = 0;
-	$page = 1;
-}
-
-if($postcount > $perpage)
-{
-	$multipage = printthread_multipage($postcount, $perpage, $page, "printthread.php?tid={$tid}");
-}
-else
-{
-	$multipage = '';
-}
+$multipage = $postcount > $perpage
+    ? printthread_multipage($postcount, $perpage, $page, "printthread.php?tid={$tid}")
+    : '';
 
 $thread['threadlink'] = get_thread_link($tid);
 
-$postrows = '';
-//if(is_moderator($forum['fid'], "canviewunapprove"))
-//{
-	//$visible = "AND (p.visible='0' OR p.visible='1')";
-//}
-//else
-//{
-	$visible = "AND p.visible='1'";
-//}
-
-$postrow_cache = $attachcache = array();
+// ── Посты ─────────────────────────────────────────────────────────────────────
+$postrow_cache = [];
+$attachcache   = [];
 
 $query = $db->sql_query("
-	SELECT u.*, u.username AS userusername, p.*
-	FROM tsf_posts p
-	LEFT JOIN users u ON (u.id=p.uid)
-	WHERE p.tid='$tid' {$visible}
-	ORDER BY p.dateline, p.pid
-	LIMIT {$start}, {$perpage}
+    SELECT u.*, u.username AS userusername, p.*
+    FROM posts p
+    LEFT JOIN users u ON (u.id = p.uid)
+    WHERE p.tid = '{$tid}' AND p.visible = '1'
+    ORDER BY p.dateline, p.pid
+    LIMIT {$start}, {$perpage}
 ");
 
-while($postrow = $db->fetch_array($query))
-{
-	$postrow_cache[$postrow['pid']] = $postrow;
+while ($postrow = $db->fetch_array($query)) {
+    $postrow_cache[$postrow['pid']] = $postrow;
 }
 
 $postrow_cache = array_filter($postrow_cache);
 
-$pids = implode("','", array_keys($postrow_cache));
+if (!empty($postrow_cache)) {
+    $pids = implode("','", array_keys($postrow_cache));
 
-// Get the attachments for all posst.
-
-$enableattachments = "1";
-
-if($enableattachments)
-{
-	$queryAttachments = $db->simple_select("attachments", "*", "pid IN ('{$pids}')");
-
-	while($attachment = $db->fetch_array($queryAttachments))
-	{
-		$attachcache[$attachment['pid']][$attachment['aid']] = $attachment;
-	}
+    $queryAttachments = $db->simple_select('attachments', '*', "pid IN ('{$pids}')");
+    while ($attachment = $db->fetch_array($queryAttachments)) {
+        $attachcache[$attachment['pid']][$attachment['aid']] = $attachment;
+    }
 }
 
-foreach($postrow_cache as $postrow)
-{
-	$parser_options = array(
-		"allow_html" => 1,
-		"allow_mycode" => 1,
-		"allow_smilies" => 1,
-		"allow_imgcode" => 1,
-		"allow_videocode" => 1,
-		"me_username" => $postrow['username'],
-		"shorten_urls" => 0,
-		"filter_badwords" => 1
-	);
-	//if($postrow['smilieoff'] == 1)
-	//{
-		//$parser_options['allow_smilies'] = 0;
-	//}
+// ── Сборка постов ─────────────────────────────────────────────────────────────
+$postrows = '';
 
-	//if($mybb->user['uid'] != 0 && $mybb->user['showimages'] != 1 || $mybb->settings['guestimages'] != 1 && $mybb->user['uid'] == 0)
-	//{
-	//	$parser_options['allow_imgcode'] = 0;
-	//}
+foreach ($postrow_cache as $postrow) {
+    if ($postrow['userusername']) {
+        $postrow['username'] = $postrow['userusername'];
+    }
 
-	//if($mybb->user['uid'] != 0 && $mybb->user['showvideos'] != 1 || $mybb->settings['guestvideos'] != 1 && $mybb->user['uid'] == 0)
-	//{
-	//	$parser_options['allow_videocode'] = 0;
-	//}
+    $postrow['username']    = htmlspecialchars_uni($postrow['username']);
+    $postrow['subject']     = htmlspecialchars_uni($parser->parse_badwords($postrow['subject']));
+    $postrow['date']        = my_datee($dateformat ?? '', $postrow['dateline'], '', 0);
+    $postrow['profilelink'] = build_profile_link($postrow['username'], (int)$postrow['uid']);
 
-	if($postrow['userusername'])
-	{
-		$postrow['username'] = $postrow['userusername'];
-	}
-	$postrow['username'] = htmlspecialchars_uni($postrow['username']);
-	$postrow['subject'] = htmlspecialchars_uni($parser->parse_badwords($postrow['subject']));
-	$postrow['date'] = my_datee($dateformat, $postrow['dateline'], '', 0);
-	$postrow['profilelink'] = build_profile_link($postrow['username'], $postrow['uid']);
+    $parser_options = [
+        'allow_html'      => 1,
+        'allow_mycode'    => 1,
+        'allow_smilies'   => 1,
+        'allow_imgcode'   => 1,
+        'allow_videocode' => 1,
+        'me_username'     => $postrow['username'],
+        'shorten_urls'    => 0,
+        'filter_badwords' => 1,
+    ];
 
-	$postrow['message'] = $parser->parse_message($postrow['message'], $parser_options);
+    $postrow['message'] = $parser->parse_message($postrow['message'], $parser_options);
 
-	//if($mybb->settings['enableattachments'] == 1 && !empty($attachcache[$postrow['pid']]) && $thread['attachmentcount'] > 0 || is_moderator($fid, 'caneditposts'))
-	//{
-		get_post_attachments($postrow['pid'], $postrow);
-	//}
+    get_post_attachments((int)$postrow['pid'], $postrow);
 
-	$plugins->run_hooks("printthread_post");
-	
-	eval("\$postrows .= \"".$templates->get("printthread_post")."\";");
+    $plugins->run_hooks('printthread_post');
+
+    $postrows .= '
+<div class="print-post mb-4 pb-4 border-bottom">
+    <div class="print-post-header mb-2">
+        <strong>' . $postrow['subject'] . '</strong>
+        &mdash; ' . $postrow['profilelink'] . '
+        &mdash; <strong>' . $postrow['date'] . '</strong>
+    </div>
+    <div class="print-post-body">
+        ' . $postrow['message'] . '
+    </div>
+</div>';
 }
 
-$plugins->run_hooks("printthread_end");
+$plugins->run_hooks('printthread_end');
 
+// ── Хлебные крошки и навигация ────────────────────────────────────────────────
+$breadcrumb = makeprintablenav();
 
-eval("\$printable = \"".$templates->get("printthread")."\";");
+$parentsexp = explode(',', $forum['parentlist']);
+$tdepth     = str_repeat('-', count($parentsexp) + 1);
 
+// ── Вывод ─────────────────────────────────────────────────────────────────────
+// FIX: убраны <html><head><body> и таблицы — используем stdhead/stdfoot
+stdhead($thread['threadprefix'] . ' ' . $thread['subject'] . ' — ' . ($lang->printthread['printable_version'] ?? 'Printable Version'));
+?>
+<style>
+@media print {
+    .no-print { display: none !important; }
+    .print-post { page-break-inside: avoid; }
+}
+.print-header { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid #dee2e6; }
+.print-nav    { font-size: .875rem; color: #6c757d; margin-bottom: 1rem; }
+</style>
 
+<div class="container-md py-4">
 
-echo $printable;
+    <div class="print-header">
+        <h4>
+            <?= $thread['displaystyle'] ?>
+            <a href="<?= htmlspecialchars($thread['threadlink'], ENT_QUOTES, 'UTF-8') ?>">
+                <?= $thread['subject'] ?>
+            </a>
+            <small class="text-muted">— <?= htmlspecialchars($lang->printthread['printable_version'] ?? 'Printable Version', ENT_QUOTES, 'UTF-8') ?></small>
+        </h4>
+        <div class="print-nav">
+            +- <?= htmlspecialchars($SITENAME, ENT_QUOTES, 'UTF-8') ?>
+            (<em><?= htmlspecialchars($BASEURL, ENT_QUOTES, 'UTF-8') ?></em>)<br>
+            <?= $breadcrumb ?>
+            +<?= $tdepth ?> <?= htmlspecialchars($lang->printthread['thread'] ?? 'Thread', ENT_QUOTES, 'UTF-8') ?>
+            <?= $thread['displaystyle'] ?> <?= $thread['subject'] ?>
+        </div>
+        <?php if ($multipage): ?>
+        <div class="mb-2"><?= $multipage ?></div>
+        <?php endif; ?>
+    </div>
 
-/**
- * @param int $pid
- * @param string $depth
- *
- * @return string
- */
-function makeprintablenav($pid=0, $depth="--")
+    <?= $postrows ?: '<p class="text-muted">No posts found.</p>' ?>
+
+    <?php if ($multipage): ?>
+    <div class="mt-4"><?= $multipage ?></div>
+    <?php endif; ?>
+
+    <div class="mt-4 no-print">
+        <a href="<?= htmlspecialchars($thread['threadlink'], ENT_QUOTES, 'UTF-8') ?>"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i>
+            <?= htmlspecialchars($lang->printthread['return_to_thread'] ?? 'Return to thread', ENT_QUOTES, 'UTF-8') ?>
+        </a>
+        <button onclick="window.print()" class="btn btn-primary btn-sm ms-2">
+            <i class="fas fa-print me-1"></i>
+            <?= htmlspecialchars($lang->printthread['print'] ?? 'Print', ENT_QUOTES, 'UTF-8') ?>
+        </button>
+    </div>
+
+</div>
+<?php
+stdfoot();
+
+// ── Вспомогательные функции ───────────────────────────────────────────────────
+
+function makeprintablenav(int $pid = 0, string $depth = '--'): string
 {
-	global $mybb, $db, $pforumcache, $fid, $forum, $lang, $templates;
-	if(!is_array($pforumcache))
-	{
-		$parlist = build_parent_list($fid, "fid", "OR", $forum['parentlist']);
-		$query = $db->simple_select("tsf_forums", "name, fid, pid", "$parlist", array('order_by' => 'pid, disporder'));
-		while($forumnav = $db->fetch_array($query))
-		{
-			$pforumcache[$forumnav['pid']][$forumnav['fid']] = $forumnav;
-		}
-		unset($forumnav);
-	}
-	$forums = '';
-	if(is_array($pforumcache[$pid]))
-	{
-		foreach($pforumcache[$pid] as $key => $forumnav)
-		{
-			$forumnav['link'] = get_forum_link($forumnav['fid']);
+    global $db, $fid, $forum, $lang, $BASEURL;
+    static $pforumcache = null;
 
-			eval("\$forums .= \"".$templates->get("printthread_nav")."\";");
-			
+    if ($pforumcache === null) {
+        $pforumcache = [];
+        $parlist     = build_parent_list($fid, 'fid', 'OR', $forum['parentlist']);
+        $query       = $db->simple_select(
+            'forums', 'name, fid, pid',
+            $parlist,
+            ['order_by' => 'pid, disporder']
+        );
+        while ($forumnav = $db->fetch_array($query)) {
+            $pforumcache[$forumnav['pid']][$forumnav['fid']] = $forumnav;
+        }
+    }
 
-			if(!empty($pforumcache[$forumnav['fid']]))
-			{
-				$newdepth = $depth."-";
-				$forums .= makeprintablenav($forumnav['fid'], $newdepth);
-			}
-		}
-	}
-	return $forums;
+    $forums = '';
+    foreach ($pforumcache[$pid] ?? [] as $forumnav) {
+        $link    = htmlspecialchars($BASEURL . '/' . get_forum_link($forumnav['fid']), ENT_QUOTES, 'UTF-8');
+        $name    = htmlspecialchars($forumnav['name'], ENT_QUOTES, 'UTF-8');
+        $forums .= '+' . $depth . ' ' . htmlspecialchars($lang->printthread['forum'] ?? 'Forum', ENT_QUOTES, 'UTF-8')
+                 . ' ' . $name . ' (<em>' . $link . '</em>)<br>';
+
+        if (!empty($pforumcache[$forumnav['fid']])) {
+            $forums .= makeprintablenav((int)$forumnav['fid'], $depth . '-');
+        }
+    }
+
+    return $forums;
 }
 
-/**
- * Output multipage navigation.
- *
- * @param int $count The total number of items.
- * @param int $perpage The items per page.
- * @param int $current_page The current page.
- * @param string $url The URL base.
- *
- * @return string
-*/
-function printthread_multipage($count, $perpage, $current_page, $url)
+function printthread_multipage(int $count, int $perpage, int $current_page, string $url): string
 {
-	global $lang, $templates;
-	$multipage = "";
-	if($count > $perpage)
-	{
-		$pages = $count / $perpage;
-		$pages = ceil($pages);
+    global $lang;
 
-		$mppage = null;
-		for($page = 1; $page <= $pages; ++$page)
-		{
-			if($page == $current_page)
-			{
-				$mppage .= '<strong>'.$page.'</strong>';
-			}
-			else
-			{
-				$mppage .= '<a href="'.$url.'&amp;page='.$page.'">'.$page.'</a>';
-			}
-		}
+    if ($count <= $perpage) return '';
 
-		$multipage = '<div class="multipage">{$lang->pages} <strong>{$lang->archive_pages}</strong> '.$mppage.'</div>';
-	}
-	return $multipage;
+    $pages  = (int)ceil($count / $perpage);
+    $mppage = '';
+
+    for ($p = 1; $p <= $pages; $p++) {
+        $mppage .= $p === $current_page
+            ? '<strong class="mx-1">' . $p . '</strong>'
+            : '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '&amp;page=' . $p . '" class="mx-1">' . $p . '</a>';
+    }
+
+    return '<div class="d-flex align-items-center gap-1 flex-wrap">'
+         . '<span class="text-muted me-1">' . htmlspecialchars($lang->printthread['pages'] ?? 'Pages', ENT_QUOTES, 'UTF-8') . ':</span>'
+         . $mppage
+         . '</div>';
 }
-

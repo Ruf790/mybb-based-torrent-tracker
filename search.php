@@ -15,7 +15,6 @@ $templatelist .= ',multipage,multipage_breadcrumb,multipage_end,multipage_jump_p
 $templatelist .= ',multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start';
 $templatelist .= ',search_results_posts_inlinecheck,search_results_posts_nocheck';
 $templatelist .= ',search_results_threads_inlinecheck,search_results_threads_nocheck';
-$templatelist .= ',search_results_inlinemodcol,search_results_inlinemodcol_empty';
 $templatelist .= ',search_results_posts_inlinemoderation_custom_tool,search_results_posts_inlinemoderation_custom';
 $templatelist .= ',search_results_posts_inlinemoderation,search_results_threads_inlinemoderation_custom_tool';
 $templatelist .= ',search_results_threads_inlinemoderation_custom,search_results_threads_inlinemoderation';
@@ -850,13 +849,28 @@ function build_prefix_select(mixed $fid, mixed $selected_pid = 0, int $multiple 
     foreach ($prefixes as $prefix) {
         $selected = ($prefix['pid'] == $selected_pid) ? ' selected="selected"' : '';
         $prefix['prefix'] = htmlspecialchars_uni($prefix['prefix']);
-        eval("\$prefixselect_prefix .= \"".$templates->get('post_prefixselect_prefix')."\";");
+        $prefixselect_prefix .= '<option value="' . (int)$prefix['pid'] . '"' . $selected . '>' . $prefix['prefix'] . '</option>';
     }
 
     if ($multiple !== 0) {
-        eval("\$prefixselect = \"".$templates->get('post_prefixselect_multiple')."\";");
+        
+		$prefixselect = '<div class="col-auto align-self-center m-0 p-0 me-2">
+	<select class="form-select form-select border mb-3 pe-5" name="threadprefix[]" multiple="multiple" size="5">
+<option value="any"'.$any_selected.'>any_prefix</option>
+<option value="0"'.$default_selected.'>no_prefix</option>
+'.$prefixselect_prefix.'
+</select>
+</div>';
+		
+		
     } else {
-        eval("\$prefixselect = \"".$templates->get('post_prefixselect_single')."\";");
+        
+		$prefixselect = '<div class="col-auto align-self-center m-0 p-0 me-2"><select class="form-select form-select border mb-3 pe-5" name="threadprefix">
+<option value="0"'.$default_selected.'>no_prefix</option>
+'.$prefixselect_prefix.'
+</select>
+		</div>';
+		
     }
     return $prefixselect;
 }
@@ -933,11 +947,11 @@ if ($mybb->input['action'] === 'results') {
     $forumsread = [];
 
     if ($CURUSER['id'] == 0) {
-        $q = $db->sql_query("SELECT fid FROM tsf_forums WHERE active != 0 ORDER BY pid, disporder");
+        $q = $db->sql_query("SELECT fid FROM forums WHERE active != 0 ORDER BY pid, disporder");
         $forumsread = isset($mybb->cookies['mybb']['forumread'])
             ? my_unserialize($mybb->cookies['mybb']['forumread'], false) : [];
     } else {
-        $q = $db->sql_query("SELECT f.fid, fr.dateline AS lastread FROM tsf_forums f LEFT JOIN tsf_forumsread fr ON (fr.fid=f.fid AND fr.uid='{$CURUSER['id']}') WHERE f.active!=0 ORDER BY pid, disporder");
+        $q = $db->sql_query("SELECT f.fid, fr.dateline AS lastread FROM forums f LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid='{$CURUSER['id']}') WHERE f.active!=0 ORDER BY pid, disporder");
     }
     $readforums = [];
     while ($f = $db->fetch_array($q)) {
@@ -945,16 +959,6 @@ if ($mybb->input['action'] === 'results') {
         $readforums[$f['fid']] = $f['lastread'] ?? '';
     }
     $fpermissions = forum_permissions();
-
-    $inlinemodcol = $inlinecookie = '';
-    $is_supermod  = $show_inline_moderation = false;
-    $inlinecount  = 0;
-    if ($usergroups['issupermod']) $is_supermod = true;
-    if ($is_supermod || $is_mod) {
-        $inlinecookie = 'inlinemod_search' . $sid;
-        $is_mod       = true;
-        $return_url   = 'search.php?' . htmlspecialchars_uni($_SERVER['QUERY_STRING']);
-    }
 
     // ── Threads ────────────────────────────────────────────────────────────
     if ($is_threads) {
@@ -964,14 +968,14 @@ if ($mybb->input['action'] === 'results') {
         $threads            = [];
 
         if ($search['querycache'] !== '') {
-            $q = $db->simple_select('tsf_threads t', 't.tid', $search['querycache'] . " AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%' ORDER BY t.lastpost DESC {$limitsql}");
+            $q = $db->simple_select('threads t', 't.tid', $search['querycache'] . " AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%' ORDER BY t.lastpost DESC {$limitsql}");
             while ($t = $db->fetch_array($q)) { $threads[$t['tid']] = $t['tid']; $threadcount++; }
             if (!$threadcount) stderr($lang->search['error_nosearchresults']);
             $search['threads'] = implode(',', $threads);
             $where_conditions  = 't.tid IN (' . $search['threads'] . ')';
         } else {
             $where_conditions = 't.tid IN (' . $search['threads'] . ')';
-            $q     = $db->simple_select('tsf_threads t', 'COUNT(t.tid) AS resultcount', $where_conditions . " AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%' {$limitsql}");
+            $q     = $db->simple_select('threads t', 'COUNT(t.tid) AS resultcount', $where_conditions . " AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%' {$limitsql}");
             $cnt   = $db->fetch_array($q);
             if (!$cnt['resultcount']) stderr($lang->search['error_nosearchresults']);
             $threadcount = $cnt['resultcount'];
@@ -991,9 +995,9 @@ if ($mybb->input['action'] === 'results') {
 
         $q = $db->sql_query("
             SELECT t.*, u.username AS userusername, u.avatar, u.avatardimensions, u.usergroup AS u_usergroup
-            FROM tsf_threads t
+            FROM threads t
             LEFT JOIN users u ON (u.id = t.uid)
-            LEFT JOIN tsf_forums f ON (t.fid = f.fid)
+            LEFT JOIN forums f ON (t.fid = f.fid)
             WHERE $where_conditions AND ({$unapproved_where_t}) {$permsql} AND t.closed NOT LIKE 'moved|%'
             ORDER BY $sortfield $order
             LIMIT $start, $perpage
@@ -1010,27 +1014,14 @@ if ($mybb->input['action'] === 'results') {
         // dot icons
         if ($CURUSER['id'] && $thread_cache) {
             $uwp = str_replace('t.', '', $unapproved_where_t);
-            $q2  = $db->simple_select('tsf_posts', 'DISTINCT tid,uid', "uid='{$CURUSER['id']}' AND tid IN({$thread_ids}) AND ({$uwp})");
+            $q2  = $db->simple_select('posts', 'DISTINCT tid,uid', "uid='{$CURUSER['id']}' AND tid IN({$thread_ids}) AND ({$uwp})");
             while ($t = $db->fetch_array($q2)) $thread_cache[$t['tid']]['dot_icon'] = 1;
         }
         // read threads
         $threadreadcut = 7;
         if ($CURUSER['id'] && $threadreadcut > 0) {
-            $q2 = $db->simple_select('tsf_threadsread', 'tid,dateline', "uid='{$CURUSER['id']}' AND tid IN({$thread_ids})");
+            $q2 = $db->simple_select('threadsread', 'tid,dateline', "uid='{$CURUSER['id']}' AND tid IN({$thread_ids})");
             while ($rt = $db->fetch_array($q2)) $thread_cache[$rt['tid']]['lastread'] = $rt['dateline'];
-        }
-
-        // inline mod prep
-        $show_inline_moderation = false;
-        $inline_mod_items       = [];
-        foreach ($thread_cache as $tid => $_) {
-            $ck = '';
-            if ($is_supermod || $is_mod) {
-                $ck = (isset($mybb->cookies[$inlinecookie]) && my_strpos($mybb->cookies[$inlinecookie], "|{$tid}|") !== false) ? 'checked' : '';
-                if ($ck) $inlinecount++;
-                $show_inline_moderation = true;
-            }
-            $inline_mod_items[$tid] = $ck;
         }
 
         // ── OUTPUT ────────────────────────────────────────────────────────
@@ -1112,11 +1103,6 @@ if ($mybb->input['action'] === 'results') {
             $avatar_html  = sr_avatar($thread['avatar'] ?? '', $thread['avatardimensions'] ?? '', $thread['username']);
 
             // inline mod checkbox
-            $chk_html = '';
-            if ($is_supermod || $is_mod) {
-                $ck = $inline_mod_items[$thread['tid']] ?? '';
-                $chk_html = '<input type="checkbox" name="inlinemod[' . $thread['tid'] . ']" value="' . $thread['tid'] . '" ' . $ck . ' style="margin-right:6px;">';
-            }
 
             echo '<div class="sr-thread-card" onclick="window.location.href=\'' . $thread_link . '\'">';
             echo '<div class="sr-thread-inner">';
@@ -1125,7 +1111,6 @@ if ($mybb->input['action'] === 'results') {
 
             // Subject row
             echo '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
-            echo $chk_html;
             echo '<a href="' . $thread_link . '" class="sr-thread-subject" onclick="event.stopPropagation()">';
             echo htmlspecialchars_uni($thread['threadprefix']) . $thread['subject'];
             echo '</a>';
@@ -1164,25 +1149,6 @@ if ($mybb->input['action'] === 'results') {
         if ($page < $pages) echo '<a href="' . $mp_url . '&amp;page=' . ($page + 1) . '" class="sr-page-btn"><i class="fas fa-chevron-right"></i></a>';
         echo '</div>';
 
-        // Inline mod
-        if ($show_inline_moderation) {
-            $selectall = ''; $inlinemod = '';
-            eval("\$inlinemodcol = \"".$templates->get('search_results_inlinemodcol')."\";");
-            $page_selected = sprintf($lang->search['page_selected'], count($thread_cache));
-            $all_selected  = sprintf($lang->search['all_selected'], (int)$threadcount);
-            $select_all    = sprintf($lang->search['select_all'], (int)$threadcount);
-            eval("\$selectall = \"".$templates->get('search_threads_inlinemoderation_selectall')."\";");
-            $customthreadtools = '';
-            $q3 = $db->simple_select('modtools', 'tid, name', "type='t' AND (CONCAT(',',forums,',') LIKE '%,-1,%' OR forums='')");
-            while ($tool = $db->fetch_array($q3)) {
-                $tool['name'] = htmlspecialchars_uni($tool['name']);
-                eval("\$customthreadtools .= \"".$templates->get('search_results_threads_inlinemoderation_custom_tool')."\";");
-            }
-            if (!empty($customthreadtools)) eval("\$customthreadtools = \"".$templates->get('search_results_threads_inlinemoderation_custom')."\";");
-            eval("\$inlinemod = \"".$templates->get('search_results_threads_inlinemoderation')."\";");
-            echo $inlinemod;
-        }
-
         echo '</div>';
         $plugins->run_hooks('search_results_end');
         stdfoot();
@@ -1202,7 +1168,7 @@ if ($mybb->input['action'] === 'results') {
         }
 
         $tids = []; $pids = [];
-        $q = $db->simple_select('tsf_posts', 'pid, tid', "pid IN(" . $db->escape_string($search['posts']) . ") AND ({$unapproved_where})", $post_cache_options);
+        $q = $db->simple_select('posts', 'pid, tid', "pid IN(" . $db->escape_string($search['posts']) . ") AND ({$unapproved_where})", $post_cache_options);
 		
 
 
@@ -1229,7 +1195,7 @@ if ($mybb->input['action'] === 'results') {
             if ($onlyusfids) $permsql .= ' OR (fid IN(' . implode(',', $onlyusfids) . ") AND uid!={$CURUSER['id']})";
             $uf = get_unsearchable_forums(); if ($uf) $permsql .= " OR fid IN ($uf)";
             $ia = get_inactive_forums();     if ($ia) $permsql .= " OR fid IN ($ia)";
-            $q = $db->simple_select('tsf_threads', 'tid', "tid IN(" . $db->escape_string(implode(',', array_keys($tids))) . ") AND (NOT ({$unapproved_where}){$permsql} OR closed LIKE 'moved|%')");
+            $q = $db->simple_select('threads', 'tid', "tid IN(" . $db->escape_string(implode(',', array_keys($tids))) . ") AND (NOT ({$unapproved_where}){$permsql} OR closed LIKE 'moved|%')");
             while ($t = $db->fetch_array($q)) {
                 foreach ($tids[$t['tid']] as $pid) unset($pids[$pid]);
                 unset($tids[$t['tid']]);
@@ -1252,7 +1218,7 @@ if ($mybb->input['action'] === 'results') {
         $readthreads = [];
         $threadreadcut = 7;
         if ($CURUSER['id'] && $threadreadcut > 0) {
-            $q = $db->simple_select('tsf_threadsread', 'tid, dateline', "uid='{$CURUSER['id']}' AND tid IN(" . $db->escape_string($tids_str) . ")");
+            $q = $db->simple_select('threadsread', 'tid, dateline', "uid='{$CURUSER['id']}' AND tid IN(" . $db->escape_string($tids_str) . ")");
             while ($rt = $db->fetch_array($q)) $readthreads[$rt['tid']] = $rt['dateline'];
         }
 
@@ -1263,10 +1229,10 @@ if ($mybb->input['action'] === 'results') {
             SELECT p.*, u.username AS userusername, u.avatar, u.avatardimensions, u.usergroup AS u_usergroup,
                    t.subject AS thread_subject, t.replies AS thread_replies, t.views AS thread_views,
                    t.lastpost AS thread_lastpost, t.closed AS thread_closed, t.uid AS thread_uid
-            FROM tsf_posts p
-            LEFT JOIN tsf_threads t ON (t.tid = p.tid)
+            FROM posts p
+            LEFT JOIN threads t ON (t.tid = p.tid)
             LEFT JOIN users u ON (u.id = p.uid)
-            LEFT JOIN tsf_forums f ON (t.fid = f.fid)
+            LEFT JOIN forums f ON (t.fid = f.fid)
             WHERE p.pid IN (" . $db->escape_string($search['posts']) . ")
             ORDER BY $sortfield $order
             LIMIT $start, $perpage
@@ -1312,14 +1278,7 @@ if ($mybb->input['action'] === 'results') {
             $profile_url = get_profile_link((int)$post['uid']);
             $avatar_html = sr_avatar($post['avatar'] ?? '', $post['avatardimensions'] ?? '', $post['username']);
 
-            // inline mod
-            $chk_html = '';
-            if ($is_supermod || $is_mod) {
-                $ck = (isset($mybb->cookies[$inlinecookie]) && my_strpos($mybb->cookies[$inlinecookie], "|{$post['pid']}|") !== false) ? 'checked' : '';
-                if ($ck) $inlinecount++;
-                $show_inline_moderation = true;
-                $chk_html = '<input type="checkbox" name="inlinemod[' . $post['pid'] . ']" value="' . $post['pid'] . '" ' . $ck . ' style="margin-right:6px;">';
-            }
+
 
             echo '<div class="sr-post-card">';
             echo '<div class="sr-thread-inner">';
@@ -1327,7 +1286,6 @@ if ($mybb->input['action'] === 'results') {
             echo '<div class="sr-thread-body">';
 
             echo '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
-            echo $chk_html;
             echo '<a href="' . $thread_url . '" class="sr-thread-subject">' . $post['thread_subject'] . '</a>';
             echo '<span class="badge bg-success-subtle text-success-emphasis" style="font-size:.7rem;font-weight:700;">Post</span>';
             echo '</div>';
@@ -1362,22 +1320,6 @@ if ($mybb->input['action'] === 'results') {
         if ($pe2 < $pages) { if ($pe2 < $pages - 1) echo '<span class="sr-page-btn disabled">…</span>'; echo '<a href="' . $mp_url2 . '&amp;page=' . $pages . '" class="sr-page-btn">' . $pages . '</a>'; }
         if ($page < $pages) echo '<a href="' . $mp_url2 . '&amp;page=' . ($page + 1) . '" class="sr-page-btn"><i class="fas fa-chevron-right"></i></a>';
         echo '</div>';
-
-        if ($show_inline_moderation) {
-            eval("\$inlinemodcol = \"".$templates->get('search_results_inlinemodcol')."\";");
-            $num_results   = $db->num_rows($q);
-            $page_selected = sprintf('page_selected', (int)$num_results);
-            $select_all    = sprintf('select_all', (int)$postcount);
-            $all_selected  = sprintf('all_selected', (int)$postcount);
-            eval("\$selectall = \"".$templates->get('search_posts_inlinemoderation_selectall')."\";");
-            $customposttools = '';
-            $q4 = $db->simple_select('modtools', 'tid, name, type', "type='p' AND (CONCAT(',',forums,',') LIKE '%,-1,%' OR forums='')");
-            while ($tool = $db->fetch_array($q4)) eval("\$customposttools .= \"".$templates->get('search_results_posts_inlinemoderation_custom_tool')."\";");
-            if (!empty($customposttools)) eval("\$customposttools = \"".$templates->get('search_results_posts_inlinemoderation_custom')."\";");
-            $inlinemod = '';
-            eval("\$inlinemod = \"".$templates->get('search_results_posts_inlinemoderation')."\";");
-            echo $inlinemod;
-        }
 
         echo '</div>';
         $plugins->run_hooks('search_results_end');
@@ -1431,17 +1373,17 @@ if ($mybb->input['action'] === 'results') {
     $resulttype = 'threads'; $querycache = ''; $pids = ''; $tids = ''; $comma = '';
 
     if (in_array($action, ['finduserthreads','getnew','getdaily'], true)) {
-        $q = $db->simple_select('tsf_threads', 'tid', $where_sql);
+        $q = $db->simple_select('threads', 'tid', $where_sql);
         while ($tid = $db->fetch_field($q, 'tid')) { $tids .= $comma . $tid; $comma = ','; }
         $querycache = $where_sql;
     } else {
         $resulttype = 'posts';
         $opts = ['order_by' => 'dateline DESC, pid DESC'];
         if ($searchhardlimit > 0) $opts['limit'] = $searchhardlimit;
-        $q = $db->simple_select('tsf_posts', 'pid', $where_sql, $opts);
+        $q = $db->simple_select('posts', 'pid', $where_sql, $opts);
         while ($pid = $db->fetch_field($q, 'pid')) { $pids .= $comma . $pid; $comma = ','; }
         $comma = '';
-        $q = $db->simple_select('tsf_threads', 'tid', $where_sql);
+        $q = $db->simple_select('threads', 'tid', $where_sql);
         while ($tid = $db->fetch_field($q, 'tid')) { $tids .= $comma . $tid; $comma = ','; }
     }
 
@@ -1588,7 +1530,35 @@ if ($mybb->input['action'] === 'results') {
     $moderator_options = '';
     if ($is_mod) {
         $rowspan += 2;
-        eval("\$moderator_options = \"".$templates->get('search_moderator_options')."\";");
+        
+		
+		$moderator_options = '<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->search['mod_options'].'</div>
+<div class="row g-3 m-auto pb-4 border-bottom pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->search['mod_options'].'
+</div>
+<div class="col">
+<div class="row">
+	<div class="col-auto align-self-center">
+
+<select name="visible" class="form-select form-select-sm border pe-5 w-auto">
+<option value="">'.$lang->search['display_all'].'</option>
+<option value="1">'.$lang->search['display_only_approved'].'</option>
+<option value="0">'.$lang->search['display_only_unapproved'].'</option>
+<option value="-1">'.$lang->search['display_only_softdeleted'].'</option>
+</select>
+		
+	</div>
+	<div class="col-auto align-self-center">
+
+'.$lang->search['results'].'
+		
+	</div>
+	</div>
+</div>
+</div>';
+
+
     }
     $plugins->run_hooks('search_end');
 

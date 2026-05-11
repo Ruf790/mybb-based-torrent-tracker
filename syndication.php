@@ -1,243 +1,224 @@
 <?php
+declare(strict_types=1);
+
 /**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
+ * Syndication (RSS/Atom feed)
+ * Updated for PHP 8.x
  */
 
-define("IN_MYBB", 1);
-define("IGNORE_CLEAN_VARS", "fid");
-define("NO_ONLINE", 1);
-define('THIS_SCRIPT', 'syndication.php');
-define("SCRIPTNAME", "syndication.php");
-
-$templatelist = "postbit_attachments_attachment";
-
-define('IN_FORUM', true);
+define('IN_MYBB',           1);
+define('IGNORE_CLEAN_VARS', 'fid');
+define('NO_ONLINE',         1);
+define('THIS_SCRIPT',       'syndication.php');
+define('SCRIPTNAME',        'syndication.php');
+define('IN_FORUM',          true);
 
 require_once 'global.php';
 
+$lang->load('syndication');
 
-
-
-
-// Load global language phrases
-$lang->load("syndication");
-
-// Load syndication class.
-require_once INC_PATH."/class_feedgeneration.php";
+require_once INC_PATH . '/class_feedgeneration.php';
 $feedgenerator = new FeedGenerator();
 
-// Load the post parser
-require_once INC_PATH."/class_parser.php";
+require_once INC_PATH . '/class_parser.php';
 $parser = new postParser;
 
-// Find out the thread limit.
-if($mybb->get_input('portal') && $mybb->settings['portal'] != 0)
-{
-	$thread_limit = $mybb->settings['portal_numannouncements'];
-}
-else
-{
-	$thread_limit = $mybb->get_input('limit', MyBB::INPUT_INT);
+// ── Thread limit ──────────────────────────────────────────────────────────────
+$isPortal = $mybb->get_input('portal') && ($mybb->settings['portal'] ?? 0) != 0;
+
+if ($isPortal) {
+    $thread_limit = (int)($mybb->settings['portal_numannouncements'] ?? 15);
+} else {
+    $thread_limit = $mybb->get_input('limit', MyBB::INPUT_INT);
 }
 
-if($thread_limit > 50)
-{
-	$thread_limit = 50;
-}
-else if(!$thread_limit || $thread_limit < 0)
-{
-	$thread_limit = 15;
+$thread_limit = match(true) {
+    $thread_limit > 50       => 50,
+    $thread_limit < 1        => 15,
+    default                  => $thread_limit,
+};
+
+// ── Forum list ────────────────────────────────────────────────────────────────
+$forumlist = [];
+
+if ($isPortal && ($mybb->settings['portal_announcementsfid'] ?? '') !== '-1') {
+    $forumlist = explode(',', $mybb->settings['portal_announcementsfid'] ?? '');
+} elseif ($mybb->get_input('fid')) {
+    $forumlist = explode(',', $mybb->get_input('fid'));
 }
 
-// Syndicate a specific forum or all viewable?
-if($mybb->get_input('portal') && $mybb->settings['portal'] != 0)
-{
-	if($mybb->settings['portal_announcementsfid'] != '-1')
-	{
-		$forumlist = explode(',', $mybb->settings['portal_announcementsfid']);
-	}
-}
-elseif($mybb->get_input('fid'))
-{
-	$forumlist = explode(',', $mybb->get_input('fid'));
-}
-
-// Get the forums the user is not allowed to see.
-//$unviewableforums = get_unviewable_forums(true);
 $inactiveforums = get_inactive_forums();
-
-$unviewable = '';
+$unviewable     = '';
 
 $plugins->run_hooks('syndication_start');
 
-// If there are any, add SQL to exclude them.
-if($unviewableforums)
-{
-	$unviewable .= " AND fid NOT IN($unviewableforums)";
+if ($unviewableforums ?? '') {
+    $unviewable .= " AND fid NOT IN($unviewableforums)";
+}
+if ($inactiveforums) {
+    $unviewable .= " AND fid NOT IN($inactiveforums)";
 }
 
-if($inactiveforums)
-{
-	$unviewable .= " AND fid NOT IN($inactiveforums)";
+// ── Build forum SQL ───────────────────────────────────────────────────────────
+$all_forums  = false;
+$forumlistsql = '';
+
+if (!empty($forumlist)) {
+    $forum_ids = "'-1'";
+    foreach ($forumlist as $fid) {
+        $forum_ids .= ",'" . (int)$fid . "'";
+    }
+    $forumlistsql = "AND fid IN ($forum_ids) $unviewable";
+} else {
+    $forumlistsql = $unviewable;
+    $all_forums   = true;
 }
 
-// If there are no forums to syndicate, syndicate all viewable.
-if(!empty($forumlist))
-{
-	$forum_ids = "'-1'";
-	foreach($forumlist as $fid)
-	{
-		$forum_ids .= ",'".(int)$fid."'";
-	}
-	$forumlist = "AND fid IN ($forum_ids) $unviewable";
-}
-else
-{
-	$forumlist = $unviewable;
-	$all_forums = 1;
+// ── Feed title ────────────────────────────────────────────────────────────────
+$title       = $mybb->settings['bbname'] ?? $SITENAME;
+$forumcache  = [];
+$comma       = ' - ';
+
+$query = $db->simple_select('forums', 'name, fid', '1=1 ' . $forumlistsql);
+while ($forum = $db->fetch_array($query)) {
+    if (!$isPortal) {
+        $title .= $comma . $forum['name'];
+        $comma  = $lang->comma ?? ', ';
+    }
+    $forumcache[$forum['fid']] = $forum;
 }
 
-// Find out which title to add to the feed.
-$title = $mybb->settings['bbname'];
-$query = $db->simple_select("tsf_forums", "name, fid", "1=1 ".$forumlist);
-$comma = " - ";
-while($forum = $db->fetch_array($query))
-{
-	if(!$mybb->get_input('portal') || $mybb->settings['portal'] == 0)
-	{
-		$title .= $comma.$forum['name'];
-		$comma = $lang->comma;
-	}
-	$forumcache[$forum['fid']] = $forum;
+if ($isPortal) {
+    $title .= $comma . ($lang->portal ?? 'Portal');
 }
 
-if($mybb->get_input('portal') && $mybb->settings['portal'] != 0)
-{
-		$title .= $comma.$lang->portal;
+if ($all_forums) {
+    $title = $isPortal
+        ? $SITENAME . ' - ' . ($lang->portal    ?? 'Portal')
+        : $SITENAME . ' - ' . ($lang->all_forums ?? 'All Forums');
 }
 
-// If syndicating all forums then cut the title back to "All Forums"
-if(isset($all_forums))
-{
-	if($mybb->get_input('portal') && $mybb->settings['portal'] != 0)
-	{
-		$title = $SITENAME." - ".$lang->portal;
-	}
-	else
-	{
-		$title = $SITENAME." - ".$lang->all_forums;
-	}
-}
-
-// Set the feed type.
+// ── Feed setup ────────────────────────────────────────────────────────────────
 $feedgenerator->set_feed_format($mybb->get_input('type'));
+$feedgenerator->set_channel([
+    'title'       => $title,
+    'link'        => $BASEURL . '/',
+    'date'        => TIMENOW,
+    'description' => $SITENAME . ' - ' . $BASEURL,
+]);
 
-// Set the channel header.
-$channel = array(
-	"title" => $title,
-	"link" => $BASEURL."/",
-	"date" => TIMENOW,
-	"description" => $SITENAME." - ".$BASEURL
+// ── Permissions ───────────────────────────────────────────────────────────────
+$permsql    = '';
+$onlyusfids = [];
+
+foreach (forum_permissions() as $fid => $fp) {
+    if ((int)($fp['canonlyviewownthreads'] ?? 0) === 1) {
+        $onlyusfids[] = (int)$fid;
+    }
+}
+
+if (!empty($onlyusfids)) {
+    $fids     = implode(',', $onlyusfids);
+    $uid      = (int)($CURUSER['id'] ?? 0);
+    $permsql  = "AND ((fid IN($fids) AND uid='$uid') OR fid NOT IN($fids))";
+}
+
+// ── Threads ───────────────────────────────────────────────────────────────────
+$items      = [];
+$firstposts = [];
+
+$query = $db->simple_select(
+    'threads',
+    'subject, tid, dateline, firstpost',
+    "visible='1' AND closed NOT LIKE 'moved|%' {$permsql} {$forumlistsql}",
+    ['order_by' => 'dateline', 'order_dir' => 'DESC', 'limit' => $thread_limit]
 );
-$feedgenerator->set_channel($channel);
 
-$permsql = "";
-$onlyusfids = array();
-
-// Check group permissions if we can't view threads not started by us
-$group_permissions = forum_permissions();
-foreach($group_permissions as $fid => $forum_permissions)
-{
-	if(isset($forum_permissions['canonlyviewownthreads']) && $forum_permissions['canonlyviewownthreads'] == 1)
-	{
-		$onlyusfids[] = $fid;
-	}
-}
-if(!empty($onlyusfids))
-{
-	$permsql .= "AND ((fid IN(".implode(',', $onlyusfids).") AND uid='{$mybb->user['uid']}') OR fid NOT IN(".implode(',', $onlyusfids)."))";
-}
-
-// Get the threads to syndicate.
-$query = $db->simple_select("tsf_threads", "subject, tid, dateline, firstpost", "visible='1' AND closed NOT LIKE 'moved|%' {$permsql} {$forumlist}", array('order_by' => 'dateline', 'order_dir' => 'DESC', 'limit' => $thread_limit));
-// Loop through all the threads.
-while($thread = $db->fetch_array($query))
-{
-	$items[$thread['tid']] = array(
-		"title" => $parser->parse_badwords($thread['subject']),
-		"link" => $channel['link'].get_thread_link($thread['tid']),
-		"date" => $thread['dateline'],
-	);
-
-	$firstposts[] = $thread['firstpost'];
+while ($thread = $db->fetch_array($query)) {
+    $items[$thread['tid']] = [
+        'title' => $parser->parse_badwords($thread['subject']),
+        'link'  => $BASEURL . '/' . get_thread_link($thread['tid']),
+        'date'  => $thread['dateline'],
+    ];
+    $firstposts[] = (int)$thread['firstpost'];
 }
 
 $plugins->run_hooks('syndication_get_posts');
 
-if(!empty($firstposts))
-{
-	$firstpostlist = "pid IN(".$db->escape_string(implode(',', $firstposts)).")";
+// ── Posts + attachments ───────────────────────────────────────────────────────
+if (!empty($firstposts)) {
+    $firstpostlist = 'pid IN(' . implode(',', $firstposts) . ')';
+    $attachments   = [];
 
-	if($enableattachments == 1)
-	{
-		$attachments = array();
-		$query = $db->simple_select("attachments", "*", $firstpostlist);
-		while($attachment = $db->fetch_array($query))
-		{
-			if(!isset($attachments[$attachment['pid']]))
-			{
-				$attachments[$attachment['pid']] = array();
-			}
-			$attachments[$attachment['pid']][] = $attachment;
-		}
-	}
+    if (($enableattachments ?? 0) == 1) {
+        $query = $db->simple_select('attachments', '*', $firstpostlist);
+        while ($attachment = $db->fetch_array($query)) {
+            $attachments[$attachment['pid']][] = $attachment;
+        }
+    }
 
-	$query = $db->simple_select("tsf_posts", "message, edittime, tid, uid, username, fid, pid", $firstpostlist, array('order_by' => 'dateline DESC, pid DESC'));
-	while($post = $db->fetch_array($query))
-	{
-		$parser_options = array(
-			"allow_html" => $forumcache[$post['fid']]['allowhtml'],
-			"allow_mycode" => $forumcache[$post['fid']]['allowmycode'],
-			"allow_smilies" => $forumcache[$post['fid']]['allowsmilies'],
-			"allow_imgcode" => $forumcache[$post['fid']]['allowimgcode'],
-			"allow_videocode" => $forumcache[$post['fid']]['allowvideocode'],
-			"filter_badwords" => 1,
-			"filter_cdata" => 1
-		);
+    $query = $db->simple_select(
+        'posts',
+        'message, edittime, tid, uid, username, fid, pid',
+        $firstpostlist,
+        ['order_by' => 'dateline DESC, pid DESC']
+    );
 
-		$parsed_message = $parser->parse_message($post['message'], $parser_options);
+    while ($post = $db->fetch_array($query)) {
+        $fid            = $post['fid'];
+        $forumSettings  = $forumcache[$fid] ?? [];
 
-		if($enableattachments == 1 && isset($attachments[$post['pid']]) && is_array($attachments[$post['pid']]))
-		{
-			foreach($attachments[$post['pid']] as $attachment)
-			{
-				$ext = get_extension($attachment['filename']);
-				$attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
-				$attachment['filesize'] = mksize($attachment['filesize']);
-				$attachment['icon'] = get_attachment_icon($ext);
-				eval("\$attbit = \"".$templates->get("postbit_attachments_attachment")."\";");
-				if(stripos($parsed_message, "[attachment=".$attachment['aid']."]") !== false)
-				{
-					$parsed_message = preg_replace("#\[attachment=".$attachment['aid']."]#si", $attbit, $parsed_message);
-				}
-				else
-				{
-					$parsed_message .= "<br />".$attbit;
-				}
-			}
-		}
+        $parser_options = [
+            'allow_html'      => (int)($forumSettings['allowhtml']     ?? 0),
+            'allow_mycode'    => (int)($forumSettings['allowmycode']   ?? 1),
+            'allow_smilies'   => (int)($forumSettings['allowsmilies']  ?? 1),
+            'allow_imgcode'   => (int)($forumSettings['allowimgcode']  ?? 1),
+            'allow_videocode' => (int)($forumSettings['allowvideocode']?? 1),
+            'filter_badwords' => 1,
+            'filter_cdata'    => 1,
+        ];
 
-		$items[$post['tid']]['description'] = $parsed_message;
-		$items[$post['tid']]['updated'] = $post['edittime'];
-		$items[$post['tid']]['author'] = array("uid" => $post['uid'], "name" => $post['username']);
-		$feedgenerator->add_item($items[$post['tid']]);
-	}
+        $parsed_message = $parser->parse_message($post['message'], $parser_options);
+
+        // Вложения
+        foreach ($attachments[$post['pid']] ?? [] as $attachment) {
+            $ext  = get_extension($attachment['filename']);
+            $name = htmlspecialchars_uni($attachment['filename']);
+            $size = mksize($attachment['filesize']);
+            $icon = get_attachment_icon($ext);
+
+            $attbit = '
+<div class="row mt-2 g-1 text-muted">
+    <div class="col-auto align-self-center">' . $icon . '</div>
+    <div class="col align-self-center">
+        <a href="attachment.php?aid=' . (int)$attachment['aid'] . '" target="_blank">' . $name . '</a>
+        (Size: <span class="text-dark">' . $size . '</span>
+        Downloads: <span class="text-dark">' . (int)$attachment['downloads'] . '</span>)
+    </div>
+</div>';
+
+            $aid = (int)$attachment['aid'];
+            if (stripos($parsed_message, "[attachment={$aid}]") !== false) {
+                $parsed_message = preg_replace(
+                    "#\[attachment={$aid}]#si",
+                    $attbit,
+                    $parsed_message
+                );
+            } else {
+                $parsed_message .= '<br>' . $attbit;
+            }
+        }
+
+        if (!isset($items[$post['tid']])) continue;
+
+        $items[$post['tid']]['description'] = $parsed_message;
+        $items[$post['tid']]['updated']     = $post['edittime'];
+        $items[$post['tid']]['author']      = [
+            'uid'  => (int)$post['uid'],
+            'name' => $post['username'],
+        ];
+        $feedgenerator->add_item($items[$post['tid']]);
+    }
 }
 
-// Then output the feed.
 $feedgenerator->output_feed();

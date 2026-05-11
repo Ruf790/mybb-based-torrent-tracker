@@ -328,8 +328,8 @@ function handleGetMultiquoted(): void
         // Выполняем запрос с обработкой ошибок
         $query = $db->sql_query("
             SELECT p.subject, p.message, p.pid, p.tid, p.username, p.dateline, t.fid, t.uid AS thread_uid, p.visible, u.username AS userusername
-            FROM tsf_posts p
-            LEFT JOIN tsf_threads t ON (t.tid=p.tid)
+            FROM posts p
+            LEFT JOIN threads t ON (t.tid=p.tid)
             LEFT JOIN users u ON (u.id=p.uid)
             WHERE {$from_tid}p.pid IN ({$quoted_posts_str}) AND p.visible = 1
             ORDER BY p.dateline, p.pid
@@ -532,7 +532,7 @@ function handleEditSubject(): void
         }
 
         $query_options = ["order_by" => "dateline, pid"];
-        $query = $db->simple_select("tsf_posts", "pid,uid,dateline", "tid='".$thread['tid']."'", $query_options);
+        $query = $db->simple_select("posts", "pid,uid,dateline", "tid='".$thread['tid']."'", $query_options);
         $post = $db->fetch_array($query);
     } else {
         exit;
@@ -810,14 +810,18 @@ function handleQuickComment(): void
         return;
     }
 
-    $query = $db->simple_select("users_perm", "cancomment", "userid='".$CURUSER['id']."'");
-    
-    if ($db->num_rows($query) > 0) {
-        $commentperm = $db->fetch_array($query);
-        if ($commentperm['cancomment'] == '0') {
-            show_msg('nopermission');
-        }
-    }
+
+	
+	$query = $db->simple_select('users', 'cancomment', "id = '{$CURUSER['id']}'");
+$commentperm = $db->fetch_array($query);
+if ((int)($commentperm['cancomment'] ?? 1) === 0) 
+{
+     show_msg('nopermission');
+}
+	
+	
+	
+	
 
     $torrentid = (int)$_POST['id'];
     $lang->load('comment');

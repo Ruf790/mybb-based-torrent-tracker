@@ -30,6 +30,7 @@ function download_error(string $message = ''): never
     exit;
 }
 
+
 /**
  * Отправляет файл браузеру через стандартные HTTP-заголовки.
  */
@@ -189,14 +190,10 @@ if (!is_readable($fn)) {
 // Проверка прав на скачивание
 // ---------------------------------------------------------------------------
 
-$perm_query = $db->sql_query(
-    'SELECT candownload FROM users_perm WHERE userid = ' . (int)$CURUSER['id']
-);
-if ($db->num_rows($perm_query) > 0) {
-    $downperm = $db->fetch_array($perm_query);
-    if ($downperm['candownload'] === '0') {
-        download_error();
-    }
+$perm_query = $db->simple_select('users', 'candownload', 'id = ' . (int)$CURUSER['id']);
+$downperm = $db->fetch_array($perm_query);
+if ((int)($downperm['candownload'] ?? 1) === 0) {
+    download_error();
 }
 
 // ---------------------------------------------------------------------------

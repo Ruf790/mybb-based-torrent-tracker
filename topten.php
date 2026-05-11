@@ -67,7 +67,7 @@ echo '<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
+    
     <link href="'.$BASEURL.'/include/templates/default/style/topten.css" rel="stylesheet">
    
 </head>
@@ -561,8 +561,8 @@ $sql = "
            f.name AS forum_name,
            u.avatar,
            (t.replies + t.views) AS activity_score
-    FROM tsf_threads t 
-    LEFT JOIN tsf_forums f ON t.fid = f.fid
+    FROM threads t 
+    LEFT JOIN forums f ON t.fid = f.fid
     LEFT JOIN users u ON t.uid = u.id
     WHERE t.visible = 1
     ORDER BY activity_score DESC 

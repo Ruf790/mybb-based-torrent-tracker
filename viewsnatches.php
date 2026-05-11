@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-$templatelist = "browses,browse_table,browse_edit,browse_categories,browse_categories2,multipage,multipage_breadcrumb,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start";
 
 define('IN_MYBB', 1);
 
@@ -754,7 +753,7 @@ stdhead($lang->viewsnatches['headmessage']);
                 <?php
                 $mainParams  = array_merge([$id], array_slice($filterParams, 1));
                 $snatchQuery = "
-                    SELECT u.*, p.canupload, p.candownload, p.cancomment, g.namestyle,
+                    SELECT u.*, g.namestyle,
                            sn.user_sum_uploaded, sn.user_sum_downloaded,
                            sn.last_seedtime, sn.last_leechtime, sn.last_completedat,
                            sn.last_action, sn.seeder, sn.connectable,
@@ -778,7 +777,6 @@ stdhead($lang->viewsnatches['headmessage']);
                         WHERE torrentid = ? AND finished = 'yes'
                         GROUP BY userid
                     ) AS sn ON sn.userid = u.id
-                    LEFT JOIN users_perm p ON u.id = p.userid
                     INNER JOIN usergroups g ON u.usergroup = g.gid
                     WHERE 1=1 {$filterSql}
                     ORDER BY {$orderBy} {$type}

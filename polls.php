@@ -1,1283 +1,824 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
-
 define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'polls.php');
-
-$templatelist = "changeuserbox,loginbox,polls_newpoll_option,polls_newpoll,polls_editpoll_option,polls_editpoll,polls_showresults_resultbit,polls_showresults";
-
 define("SCRIPTNAME", "polls.php");
-
 define('IN_FORUM', true);
+
 require_once 'global.php';
+require_once INC_PATH . "/functions_post.php";
 
-  
-
-
-
-
-require_once INC_PATH."/functions_post.php";
-
-//require_once MYBB_ROOT."inc/class_parser.php";
-//$parser = new postParser;
-
-// Load global language phrases
 $lang->load("polls");
-
 $plugins->run_hooks("polls_start");
 
-//if($mybb->user['uid'] != 0)
-//{
-//	$mybb->user['username'] = htmlspecialchars_uni($mybb->user['username']);
-//	eval("\$loginbox = \"".$templates->get("changeuserbox")."\";");
-//}
-//else
-//{
-//	$username = '';
-//	eval("\$loginbox = \"".$templates->get("loginbox")."\";");
-//}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Unified AJAX / redirect responder.
+ */
+function poll_respond(bool $is_ajax, string $url, string $msg = '', bool $success = true): void
+{
+    if ($is_ajax) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'status'   => $success ? 'success' : 'error',
+            'message'  => $msg,
+            'redirect' => $url,
+        ]);
+        exit;
+    }
+    redirect($url, $msg);
+}
+
+/**
+ * Unified error response.
+ */
+function poll_error(bool $is_ajax, string $msg): void
+{
+    if ($is_ajax) {
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => $msg]);
+        exit;
+    }
+    stderr($msg);
+}
+
+/**
+ * Validate and sanitise poll options array.
+ * Returns clean string values or calls poll_error().
+ *
+ * @return string[]
+ */
+function poll_validate_options(array $raw, bool $is_ajax, int $max = 10): array
+{
+    $clean = [];
+    foreach ($raw as $opt) {
+        $opt = trim($opt);
+        if ($opt === '') {
+            continue;
+        }
+        if (strpos($opt, '||~|~||') !== false) {
+            poll_error($is_ajax, 'Invalid option content');
+        }
+        if (my_strlen($opt) > 250) {
+            poll_error($is_ajax, 'Option too long (max 250 chars)');
+        }
+        $clean[] = $opt;
+    }
+    if (count($clean) < 2) {
+        poll_error($is_ajax, 'At least 2 options required');
+    }
+    if (count($clean) > $max) {
+        poll_error($is_ajax, "Too many options (max {$max})");
+    }
+    return $clean;
+}
+
+/**
+ * Build the "votes" string (all zeros) for a new set of options.
+ */
+function poll_zero_votes(int $count): string
+{
+    return implode('||~|~||', array_fill(0, $count, 0));
+}
+
+/**
+ * Parse postoptions checkboxes.
+ *
+ * @return array{multiple:int, public:int, closed:int}
+ */
+function poll_parse_postoptions(array $raw): array
+{
+    return [
+        'multiple' => !empty($raw['multiple']) ? 1 : 0,
+        'public'   => !empty($raw['public'])   ? 1 : 0,
+        'closed'   => !empty($raw['closed'])   ? 1 : 0,
+    ];
+}
+
+/**
+ * Load poll or die.
+ */
+function poll_get_or_die(int $pid, bool $is_ajax): array
+{
+    global $db;
+    $query = $db->simple_select('polls', '*', "pid='{$pid}'");
+    $poll  = $db->fetch_array($query);
+    if (!$poll) {
+        poll_error($is_ajax, 'Invalid poll');
+    }
+    return $poll;
+}
+
+/**
+ * Load thread or die.
+ */
+function poll_get_thread_or_die(int $tid, bool $is_ajax): array
+{
+    $thread = get_thread($tid);
+    if (!$thread) {
+        poll_error($is_ajax, 'Invalid thread');
+    }
+    return $thread;
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
 
 $mybb->input['action'] = $mybb->get_input('action');
-if(!empty($mybb->input['updateoptions']))
-{
-	if($mybb->input['action'] == "do_editpoll")
-	{
-		$mybb->input['action'] = "editpoll";
-	}
-	else
-	{
-		$mybb->input['action'] = "newpoll";
-	}
+
+// "updateoptions" button re-uses the same action with a flag
+if (!empty($mybb->input['updateoptions'])) {
+    $mybb->input['action'] = ($mybb->input['action'] === 'do_editpoll') ? 'editpoll' : 'newpoll';
 }
-if($mybb->input['action'] == "newpoll")
-{
-	// Form for new poll
-	$tid = $mybb->get_input('tid', MyBB::INPUT_INT);
 
-	$plugins->run_hooks("polls_newpoll_start");
+$action   = $mybb->input['action'];
+$is_ajax  = ($mybb->get_input('ajax') == 1);
+$is_post  = ($mybb->request_method === 'post');
 
-	$thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
-	if(!$thread || $thread['visible'] == -1)
-	{
-		stderr('error_invalidthread');
-	}
+// ─── ACTION: newpoll (show form) ──────────────────────────────────────────────
 
-	// Is the currently logged in user a moderator of this forum?
-	//$ismod = is_moderator($thread['fid']);
+if ($action === 'newpoll') {
 
-	// Make sure we are looking at a real thread here.
-	if(($thread['visible'] != 1 && $ismod == false) || ($thread['visible'] > 1 && $ismod == true))
-	{
-		stderr('error_invalidthread');
-	}
+    $plugins->run_hooks('polls_newpoll_start');
 
-	$fid = $thread['fid'];
-	//$forumpermissions = forum_permissions($fid);
+    $tid    = $mybb->get_input('tid', MyBB::INPUT_INT);
+    $thread = get_thread($tid);
+    if (!$thread || $thread['visible'] == -1) {
+        stderr('error_invalidthread');
+    }
 
-	// Get forum info
-	$forum = get_forum($fid);
-	if(!$forum)
-	{
-		stderr('error_invalidforum');
-	}
-	else
-	{
-		// Is our forum closed?
-		if($forum['open'] == 0 && !is_moderator($fid, "canmanagepolls"))
-		{
-			// Doesn't look like it is
-			stderr('error_closedinvalidforum');
-		}
-	}
-	// Make navigation
-	build_forum_breadcrumb($fid);
-	add_breadcrumb(htmlspecialchars_uni($thread['subject']), get_thread_link($thread['tid']));
-	add_breadcrumb($lang->polls['nav_postpoll']);
-	
-	
+    $fid   = $thread['fid'];
+    $forum = get_forum($fid);
+    if (!$forum) {
+        stderr('error_invalidforum');
+    }
+    if ($forum['open'] == 0 && !is_moderator($fid, 'canmanagepolls')) {
+        stderr('error_closedinvalidforum');
+    }
+    if ($thread['poll']) {
+        stderr('error_pollalready');
+    }
 
-	// No permission if: Not thread author; not moderator; no forum perms to view, post threads, post polls
-	//if(($thread['uid'] != $mybb->user['uid'] && !is_moderator($fid, "canmanagepolls")) || ($forumpermissions['canview'] == 0 || $forumpermissions['canpostthreads'] == 0 || $forumpermissions['canpostpolls'] == 0))
-	//{
-	//	error_no_permission();
-	//}
+    $polltimelimit  = 12;
+    $maxpolloptions = 10;
 
-	if($thread['poll'])
-	{
-		stderr('error_pollalready');
-	}
+    if ($thread['dateline'] < (TIMENOW - $polltimelimit * 3600) && $polltimelimit && !$ismod) {
+        stderr('poll_time_limit');
+    }
 
-	$time = TIMENOW;
-	
-	$polltimelimit = "12";
-	$maxpolloptions = "10";
-	
-	
-	if($thread['dateline'] < ($time-($polltimelimit*60*60)) && $polltimelimit != 0 && $ismod == false)
-	{
-		$lang->poll_time_limit = sprintf('poll_time_limit', $polltimelimit);
-		stderr('poll_time_limit');
-	}
+    build_forum_breadcrumb($fid);
+    add_breadcrumb(htmlspecialchars_uni($thread['subject']), get_thread_link($thread['tid']));
+    add_breadcrumb($lang->polls['nav_postpoll']);
 
-	// Sanitize number of poll options
-	if($mybb->get_input('numpolloptions', MyBB::INPUT_INT) > 0)
-	{
-		$mybb->input['polloptions'] = $mybb->get_input('numpolloptions', MyBB::INPUT_INT);
-	}
-	if($maxpolloptions && $mybb->get_input('polloptions', MyBB::INPUT_INT) > $maxpolloptions)
-	{	// Too big
-		$polloptions = $maxpolloptions;
-	}
-	elseif($mybb->get_input('polloptions', MyBB::INPUT_INT) < 2)
-	{	// Too small
-		$polloptions = 2;
-	}
-	else
-	{	// Just right
-		$polloptions = $mybb->get_input('polloptions', MyBB::INPUT_INT);
-	}
+    $plugins->run_hooks('polls_newpoll_end');
 
-	$question = htmlspecialchars_uni($mybb->get_input('question'));
-
-	$postoptionschecked = array('public' => '', 'multiple' => '');
-	$postoptions = $mybb->get_input('postoptions', MyBB::INPUT_INT);
-	if(isset($postoptions['multiple']) && $postoptions['multiple'] == 1)
-	{
-		$postoptionschecked['multiple'] = 'checked="checked"';
-	}
-	if(isset($postoptions['public']) && $postoptions['public'] == 1)
-	{
-		$postoptionschecked['public'] = 'checked="checked"';
-	}
-
-	$options = $mybb->get_input('options', MyBB::INPUT_ARRAY);
-	$optionbits = '';
-	for($i = 1; $i <= $polloptions; ++$i)
-	{
-		if(!isset($options[$i]))
-		{
-			$options[$i] = '';
-		}
-		$option = $options[$i];
-		$option = htmlspecialchars_uni($option);
-		
-	
-		eval("\$optionbits .= \"".$templates->get("polls_newpoll_option")."\";");
-		
-		
-		$option = "";
-	}
-
-	if($mybb->get_input('timeout', MyBB::INPUT_INT) > 0)
-	{
-		$timeout = $mybb->get_input('timeout', MyBB::INPUT_INT);
-	}
-	else
-	{
-		$timeout = 0;
-	}
-
-	if($mybb->get_input('maxoptions', MyBB::INPUT_INT) > 0 && $mybb->get_input('maxoptions', MyBB::INPUT_INT) < $polloptions)
-	{
-		$maxoptions = $mybb->get_input('maxoptions', MyBB::INPUT_INT);
-	}
-	else
-	{
-		$maxoptions = 0;
-	}
-
-	$plugins->run_hooks("polls_newpoll_end");
-
-    eval("\$newpoll = \"".$templates->get("polls_newpoll")."\";");
-	
     stdhead($lang->polls['post_new_poll']);
 	
-    build_breadcrumb ();
-	 
-	 
-	echo $newpoll;
-	
-	stdfoot();
 	
 	
+	echo '<script src="'.$BASEURL.'/scripts/Sortable.min.js"></script>
+<script src="'.$BASEURL.'/scripts/sweetalert2.min.js"></script>
+<script src="'.$BASEURL.'/scripts/polls.js"></script>';
+	
+	
+    build_breadcrumb();
+    $polloptions = max(2, min($maxpolloptions, $mybb->get_input('polloptions', MyBB::INPUT_INT) ?: 2));
+    echo poll_render_new_form($tid, $mybb->post_code, $polloptions);
+    stdfoot();
+    exit;
 }
 
+// ─── ACTION: do_newpoll (save new poll) ───────────────────────────────────────
 
-if($mybb->input['action'] == "do_newpoll" && $mybb->request_method == "post")
-{
-	// Verify incoming POST request
-	verify_post_check($mybb->get_input('my_post_key'));
+if ($action === 'do_newpoll' && $is_post) {
 
-	$plugins->run_hooks("polls_do_newpoll_start");
+    verify_post_check($mybb->get_input('my_post_key'));
+    $plugins->run_hooks('polls_do_newpoll_start');
 
-	$thread = get_thread($mybb->get_input('tid', MyBB::INPUT_INT));
-	if(!$thread)
-	{
-		stderr('error_invalidthread');
-	}
+    $tid    = $mybb->get_input('tid', MyBB::INPUT_INT);
+    $thread = poll_get_thread_or_die($tid, $is_ajax);
+    $forum  = get_forum($thread['fid']);
+    if (!$forum) {
+        poll_error($is_ajax, 'Invalid forum');
+    }
+    if ($thread['poll']) {
+        poll_error($is_ajax, 'Poll already exists for this thread');
+    }
 
-	$fid = $thread['fid'];
-	//$forumpermissions = forum_permissions($fid);
+    $question = trim($mybb->get_input('question'));
+    if ($question === '') {
+        poll_error($is_ajax, 'Question is required');
+    }
 
-	// Get forum info
-	$forum = get_forum($fid);
-	if(!$forum)
-	{
-		stderr('error_invalidforum');
-	}
-	else
-	{
-		// Is our forum closed?
-		if($forum['open'] == 0 && !is_moderator($fid, "canmanagepolls"))
-		{
-			// Doesn't look like it is
-			stderr('error_closedinvalidforum');
-		}
-	}
+    $clean_options = poll_validate_options(
+        $mybb->get_input('options', MyBB::INPUT_ARRAY),
+        $is_ajax
+    );
+    $opts = poll_parse_postoptions($mybb->get_input('postoptions', MyBB::INPUT_ARRAY));
 
-	// No permission if: Not thread author; not moderator; no forum perms to view, post threads, post polls
-	//if(($thread['uid'] != $mybb->user['uid'] && !is_moderator($fid, "canmanagepolls")) || ($forumpermissions['canview'] == 0 || $forumpermissions['canpostthreads'] == 0 || $forumpermissions['canpostpolls'] == 0))
-	//{
-		//error_no_permission();
-	//}
+    $maxoptions = $mybb->get_input('maxoptions', MyBB::INPUT_INT);
+    $timeout    = max(0, $mybb->get_input('timeout', MyBB::INPUT_INT));
 
-	if($thread['poll'])
-	{
-		stderr('error_pollalready');
-	}
+    $count = count($clean_options);
+    $newpoll = [
+        'tid'        => $thread['tid'],
+        'question'   => $db->escape_string($question),
+        'dateline'   => TIMENOW,
+        'options'    => $db->escape_string(implode('||~|~||', $clean_options)),
+        'votes'      => $db->escape_string(poll_zero_votes($count)),
+        'numoptions' => $count,
+        'numvotes'   => 0,
+        'timeout'    => $timeout,
+        'closed'     => 0,
+        'multiple'   => $opts['multiple'],
+        'public'     => $opts['public'],
+        'maxoptions' => ($opts['multiple'] && $maxoptions > 0 && $maxoptions < $count) ? $maxoptions : 0,
+    ];
 
-	$polloptions = $mybb->get_input('polloptions', MyBB::INPUT_INT);
-	
-	$maxpolloptions = "10";
-	
-	if($maxpolloptions && $polloptions > $maxpolloptions)
-	{
-		$polloptions = $maxpolloptions;
-	}
+    $plugins->run_hooks('polls_do_newpoll_process');
 
-	$postoptions = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
-	if(!isset($postoptions['multiple']) || $postoptions['multiple'] != '1')
-	{
-		$postoptions['multiple'] = 0;
-	}
+    $pid = $db->insert_query('polls', $newpoll);
+    $db->update_query('threads', ['poll' => $pid], "tid='{$thread['tid']}'");
 
-	if(!isset($postoptions['public']) || $postoptions['public'] != '1')
-	{
-		$postoptions['public'] = 0;
-	}
+    $plugins->run_hooks('polls_do_newpoll_end');
 
-	if($polloptions < 2)
-	{
-		$polloptions = "2";
-	}
-	$optioncount = "0";
-	$options = $mybb->get_input('options', MyBB::INPUT_ARRAY);
-
-	for($i = 1; $i <= $polloptions; ++$i)
-	{
-		if(!isset($options[$i]))
-		{
-			$options[$i] = '';
-		}
-
-		
-		$polloptionlimit = "250";
-		
-		if($polloptionlimit != 0 && my_strlen($options[$i]) > $polloptionlimit)
-		{
-			$lengtherror = 1;
-			break;
-		}
-
-		if(strpos($options[$i], '||~|~||') !== false)
-		{
-			$sequenceerror = 1;
-			break;
-		}
-		
-		if(trim($options[$i]) != "")
-		{
-			$optioncount++;
-		}
-	}
-
-	if(isset($lengtherror))
-	{
-		stderr('error_polloptiontoolong');
-	}
-
-	if(isset($sequenceerror))
-	{
-		stderr('error_polloptionsequence');
-	}
-	
-	$mybb->input['question'] = $mybb->get_input('question');
-
-	if(trim($mybb->input['question']) == '' || $optioncount < 2)
-	{
-		stderr('error_noquestionoptions');
-	}
-
-	$optionslist = '';
-	$voteslist = '';
-	for($i = 1; $i <= $polloptions; ++$i)
-	{
-		if(trim($options[$i]) != '')
-		{
-			if($optionslist != '')
-			{
-				$optionslist .= '||~|~||';
-				$voteslist .= '||~|~||';
-			}
-			$optionslist .= trim($options[$i]);
-			$voteslist .= '0';
-		}
-	}
-
-	if($mybb->get_input('timeout', MyBB::INPUT_INT) > 0)
-	{
-		$timeout = $mybb->get_input('timeout', MyBB::INPUT_INT);
-	}
-	else
-	{
-		$timeout = 0;
-	}
-
-	if($mybb->get_input('maxoptions', MyBB::INPUT_INT) > 0 && $mybb->get_input('maxoptions', MyBB::INPUT_INT) < $polloptions)
-	{
-		$maxoptions = $mybb->get_input('maxoptions', MyBB::INPUT_INT);
-	}
-	else
-	{
-		$maxoptions = 0;
-	}
-
-	$newpoll = array(
-		"tid" => $thread['tid'],
-		"question" => $db->escape_string($mybb->input['question']),
-		"dateline" => TIMENOW,
-		"options" => $db->escape_string($optionslist),
-		"votes" => $db->escape_string($voteslist),
-		"numoptions" => (int)$optioncount,
-		"numvotes" => 0,
-		"timeout" => $timeout,
-		"closed" => 0,
-		"multiple" => $postoptions['multiple'],
-		"public" => $postoptions['public'],
-		"maxoptions" => $maxoptions
-	);
-
-	$plugins->run_hooks("polls_do_newpoll_process");
-
-	$pid = $db->insert_query("tsf_polls", $newpoll);
-
-	$db->update_query("tsf_threads", array('poll' => $pid), "tid='".$thread['tid']."'");
-
-	$plugins->run_hooks("polls_do_newpoll_end");
-
-	if($thread['visible'] == 1)
-	{
-		redirect(get_thread_link($thread['tid']), 'redirect_pollposted');
-	}
-	else
-	{
-		redirect(get_forum_link($thread['fid']), 'redirect_pollpostedmoderated');
-	}
+    poll_respond($is_ajax, get_thread_link($thread['tid']), 'Poll created successfully');
 }
 
-if($mybb->input['action'] == "editpoll")
-{
-	$pid = $mybb->get_input('pid', MyBB::INPUT_INT);
+// ─── ACTION: editpoll (show edit form) ────────────────────────────────────────
 
-	$plugins->run_hooks("polls_editpoll_start");
+if ($action === 'editpoll') {
 
-	$query = $db->simple_select("tsf_polls", "*", "pid='$pid'");
-	$poll = $db->fetch_array($query);
+    $plugins->run_hooks('polls_editpoll_start');
 
-	if(!$poll)
-	{
-		stderr('error_invalidpoll');
-	}
+    $pid    = $mybb->get_input('pid', MyBB::INPUT_INT);
+    $poll   = poll_get_or_die($pid, false);
 
-	$query = $db->simple_select("tsf_threads", "*", "poll='$pid'");
-	$thread = $db->fetch_array($query);
-	if(!$thread)
-	{
-		stderr('error_invalidthread');
-	}
+    $query  = $db->simple_select('threads', '*', "poll='{$pid}'");
+    $thread = $db->fetch_array($query);
+    if (!$thread) {
+        stderr('error_invalidthread');
+    }
 
-	$tid = $thread['tid'];
-	$fid = $thread['fid'];
+    $fid   = $thread['fid'];
+    $forum = get_forum($fid);
+    if (!$forum) {
+        stderr('error_invalidforum');
+    }
+    if ($forum['open'] == 0 && !is_moderator($fid, 'canmanagepolls')) {
+        stderr($lang->error_closedinvalidforum);
+    }
 
-	// Make navigation
-	build_forum_breadcrumb($fid);
-	add_breadcrumb(htmlspecialchars_uni($thread['subject']), get_thread_link($thread['tid']));
-	add_breadcrumb($lang->polls['nav_editpoll']);
+    build_forum_breadcrumb($fid);
+    add_breadcrumb(htmlspecialchars_uni($thread['subject']), get_thread_link($thread['tid']));
+    add_breadcrumb($lang->polls['nav_editpoll']);
 
-	//$forumpermissions = forum_permissions($fid);
+    $plugins->run_hooks('polls_editpoll_end');
 
-	// Get forum info
-	$forum = get_forum($fid);
-	if(!$forum)
-	{
-		stderr('error_invalidforum');
-	}
-	else
-	{
-		// Is our forum closed?
-		if($forum['open'] == 0 && !is_moderator($fid, "canmanagepolls"))
-		{
-			// Doesn't look like it is
-			stderr($lang->error_closedinvalidforum);
-		}
-	}
-
-	//if(!is_moderator($fid, "canmanagepolls"))
-	//{
-	//	error_no_permission();
-	//}
-
-	$postoptionschecked = array('closed' => '', 'multiple' => '', 'public' => '');
-
-	$polldate = my_datee($dateformat, $poll['dateline']);
-	if(empty($mybb->input['updateoptions']))
-	{
-		if($poll['closed'] == 1)
-		{
-			$postoptionschecked['closed'] = 'checked="checked"';
-		}
-
-		if($poll['multiple'] == 1)
-		{
-			$postoptionschecked['multiple'] = 'checked="checked"';
-		}
-
-		if($poll['public'] == 1)
-		{
-			$postoptionschecked['public'] = 'checked="checked"';
-		}
-
-		$optionsarray = explode("||~|~||", $poll['options']);
-		$votesarray = explode("||~|~||", $poll['votes']);
-
-		$poll['totvotes'] = 0;
-		for($i = 1; $i <= $poll['numoptions']; ++$i)
-		{
-			$poll['totvotes'] = $poll['totvotes'] + $votesarray[$i-1];
-		}
-
-		$question = htmlspecialchars_uni($poll['question']);
-		$numoptions = $poll['numoptions'];
-		$optionbits = "";
-		for($i = 0; $i < $numoptions; ++$i)
-		{
-			$counter = $i + 1;
-			$option = $optionsarray[$i];
-			$option = htmlspecialchars_uni($option);
-			$optionvotes = (int)$votesarray[$i];
-
-			if(!$optionvotes)
-			{
-				$optionvotes = 0;
-			}
-
-			
-			
-			eval("\$optionbits .= \"".$templates->get("polls_editpoll_option")."\";");
-			
-	
-			$option = "";
-			$optionvotes = "";
-		}
-
-		if(!$poll['timeout'])
-		{
-			$timeout = 0;
-		}
-		else
-		{
-			$timeout = $poll['timeout'];
-		}
-
-		if(!$poll['maxoptions'])
-		{
-			$maxoptions = 0;
-		}
-		else
-		{
-			$maxoptions = $poll['maxoptions'];
-		}
-	}
-	else
-	{
-		
-		$maxpolloptions = "10";
-		
-		if($maxpolloptions && $mybb->get_input('numoptions', MyBB::INPUT_INT) > $maxpolloptions)
-		{
-			$numoptions = $maxpolloptions;
-		}
-		elseif($mybb->get_input('numoptions', MyBB::INPUT_INT) < 2)
-		{
-			$numoptions = 2;
-		}
-		else
-		{
-			$numoptions = $mybb->get_input('numoptions', MyBB::INPUT_INT);
-		}
-		$question = htmlspecialchars_uni($mybb->input['question']);
-
-		$postoptions = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
-		if(isset($postoptions['multiple']) && $postoptions['multiple'] == 1)
-		{
-			$postoptionschecked['multiple'] = 'checked="checked"';
-		}
-
-		if(isset($postoptions['public']) && $postoptions['public'] == 1)
-		{
-			$postoptionschecked['public'] = 'checked="checked"';
-		}
-
-		if(isset($postoptions['closed']) && $postoptions['closed'] == 1)
-		{
-			$postoptionschecked['closed'] = 'checked="checked"';
-		}
-
-		$options = $mybb->get_input('options', MyBB::INPUT_ARRAY);
-		$votes = $mybb->get_input('votes', MyBB::INPUT_ARRAY);
-		$optionbits = '';
-		for($i = 1; $i <= $numoptions; ++$i)
-		{
-			$counter = $i;
-			if(!isset($options[$i]))
-			{
-				$options[$i] = '';
-			}
-			$option = htmlspecialchars_uni($options[$i]);
-			if(!isset($votes[$i]))
-			{
-				$votes[$i] = 0;
-			}
-			$optionvotes = (int)$votes[$i];
-
-			if(!$optionvotes)
-			{
-				$optionvotes = 0;
-			}
-
-		    eval("\$optionbits .= \"".$templates->get("polls_editpoll_option")."\";");
-			$option = "";
-		}
-
-		if($mybb->get_input('timeout', MyBB::INPUT_INT) > 0)
-		{
-			$timeout = $mybb->get_input('timeout', MyBB::INPUT_INT);
-		}
-		else
-		{
-			$timeout = 0;
-		}
-
-		if(!$poll['maxoptions'])
-		{
-			$maxoptions = 0;
-		}
-		else
-		{
-			$maxoptions = $poll['maxoptions'];
-		}
-	}
-
-	$plugins->run_hooks("polls_editpoll_end");
-
-
-	eval("\$editpoll = \"".$templates->get("polls_editpoll")."\";");
-	
-
-	stdhead ($lang->polls['edit_poll']);
+    stdhead($lang->polls['edit_poll']);
 	
 	
-	build_breadcrumb ();
+	echo '<script src="'.$BASEURL.'/scripts/Sortable.min.js"></script>
+<script src="'.$BASEURL.'/scripts/sweetalert2.min.js"></script>
+<script src="'.$BASEURL.'/scripts/polls.js"></script>';
 	
-	echo $editpoll;
 	
-	stdfoot();
-	
+    build_breadcrumb();
+    echo poll_render_edit_form($poll, $mybb->post_code, $lang);
+    stdfoot();
+    exit;
 }
 
-if($mybb->input['action'] == "do_editpoll" && $mybb->request_method == "post")
-{
-	// Verify incoming POST request
-	verify_post_check($mybb->get_input('my_post_key'));
+// ─── ACTION: do_editpoll (save edits) ─────────────────────────────────────────
 
-	$plugins->run_hooks("polls_do_editpoll_start");
+if ($action === 'do_editpoll' && $is_post) {
 
-	$query = $db->simple_select("tsf_polls", "*", "pid='".$mybb->get_input('pid', MyBB::INPUT_INT)."'");
-	$poll = $db->fetch_array($query);
+    verify_post_check($mybb->get_input('my_post_key'));
 
-	if(!$poll)
-	{
-		stderr('error_invalidpoll');
-	}
+    $pid  = $mybb->get_input('pid', MyBB::INPUT_INT);
+    $poll = poll_get_or_die($pid, $is_ajax);
 
-	$query = $db->simple_select("tsf_threads", "*", "poll='".$mybb->get_input('pid', MyBB::INPUT_INT)."'");
-	$thread = $db->fetch_array($query);
-	if(!$thread)
-	{
-		stderr('error_invalidthread');
-	}
+    $question = trim($mybb->input['question'] ?? '');
+    if ($question === '') {
+        poll_error($is_ajax, 'Question is empty');
+    }
 
-	//$forumpermissions = forum_permissions($thread['fid']);
+    $raw_options = $mybb->get_input('options', MyBB::INPUT_ARRAY);
+    $raw_votes   = $mybb->get_input('votes',   MyBB::INPUT_ARRAY);
 
-	// Get forum info
-	$forum = get_forum($thread['fid']);
-	$fid = $thread['fid'];
-	if(!$forum)
-	{
-		stderr('error_invalidforum');
-	}
-	else
-	{
-		// Is our forum closed?
-		if($forum['open'] == 0 && !is_moderator($fid, "canmanagepolls"))
-		{
-			// Doesn't look like it is
-			stderr('error_closedinvalidforum');
-		}
-	}
+    $clean_options = poll_validate_options($raw_options, $is_ajax);
 
-	//if(!is_moderator($thread['fid'], "canmanagepolls"))
-	//{
-	//	error_no_permission();
-	//}
+    // Re-map votes to match filtered options (skip empty slots)
+    $clean_votes = [];
+    $vote_keys   = array_keys(array_filter(
+        array_map('trim', $raw_options),
+        fn($v) => $v !== ''
+    ));
+    foreach ($vote_keys as $k) {
+        $clean_votes[] = max(0, (int)($raw_votes[$k] ?? 0));
+    }
 
-	$maxpolloptions = "10";
-	
-	if($maxpolloptions && $mybb->get_input('numoptions', MyBB::INPUT_INT) > $maxpolloptions)
-	{
-		$numoptions = $maxpolloptions;
-	}
-	elseif($mybb->get_input('numoptions', MyBB::INPUT_INT) < 2)
-	{
-		$numoptions = 2;
-	}
-	else
-	{
-		$numoptions = $mybb->get_input('numoptions', MyBB::INPUT_INT);
-	}
+    $opts       = poll_parse_postoptions($mybb->get_input('postoptions', MyBB::INPUT_ARRAY));
+    $timeout    = max(0, $mybb->get_input('timeout',    MyBB::INPUT_INT));
+    $maxoptions = max(0, $mybb->get_input('maxoptions', MyBB::INPUT_INT));
+    $count      = count($clean_options);
 
-	$postoptions = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
-	if(!isset($postoptions['multiple']) || $postoptions['multiple'] != '1')
-	{
-		$postoptions['multiple'] = 0;
-	}
+    $db->update_query('polls', [
+        'question'   => $db->escape_string($question),
+        'options'    => $db->escape_string(implode('||~|~||', $clean_options)),
+        'votes'      => $db->escape_string(implode('||~|~||', $clean_votes)),
+        'numoptions' => $count,
+        'multiple'   => $opts['multiple'],
+        'public'     => $opts['public'],
+        'closed'     => $opts['closed'],
+        'timeout'    => $timeout,
+        'maxoptions' => $maxoptions,
+    ], "pid='{$pid}'");
 
-	if(!isset($postoptions['public']) || $postoptions['public'] != '1')
-	{
-		$postoptions['public'] = 0;
-	}
-
-	if(!isset($postoptions['closed']) || $postoptions['closed'] != '1')
-	{
-		$postoptions['closed'] = 0;
-	}
-	$optioncount = "0";
-	$options = $mybb->input['options'];
-
-	for($i = 1; $i <= $numoptions; ++$i)
-	{
-		if(!isset($options[$i]))
-		{
-			$options[$i] = '';
-		}
-
-		$polloptionlimit = "250";
-		
-		if($polloptionlimit != 0 && my_strlen($options[$i]) > $polloptionlimit)
-		{
-			$lengtherror = 1;
-			break;
-		}
-
-		if(strpos($options[$i], '||~|~||') !== false)
-		{
-			$sequenceerror = 1;
-			break;
-		}
-		
-		if(trim($options[$i]) != "")
-		{
-			$optioncount++;
-		}
-	}
-
-	if(isset($lengtherror))
-	{
-		stderr('error_polloptiontoolong');
-	}
-	
-	if(isset($sequenceerror))
-	{
-		stderr('error_polloptionsequence');
-	}
-
-	$mybb->input['question'] = $mybb->get_input('question');
-	if(trim($mybb->input['question']) == '' || $optioncount < 2)
-	{
-		stderr('error_noquestionoptions');
-	}
-
-	$optionslist = '';
-	$voteslist = '';
-	$numvotes = '';
-	$votes = $mybb->input['votes'];
-	for($i = 1; $i <= $numoptions; ++$i)
-	{
-		if(trim($options[$i]) != '')
-		{
-			if($optionslist != '')
-			{
-				$optionslist .= "||~|~||";
-				$voteslist .= "||~|~||";
-			}
-
-			$optionslist .= trim($options[$i]);
-			if(!isset($votes[$i]) || (int)$votes[$i] <= 0)
-			{
-				$votes[$i] = "0";
-			}
-			$voteslist .= (int)$votes[$i];
-			$numvotes = (int)$numvotes + (int)$votes[$i];
-		}
-	}
-
-	if($mybb->get_input('timeout', MyBB::INPUT_INT) > 0)
-	{
-		$timeout = $mybb->get_input('timeout', MyBB::INPUT_INT);
-	}
-	else
-	{
-		$timeout = 0;
-	}
-
-	if($mybb->get_input('maxoptions', MyBB::INPUT_INT) > 0 && $mybb->get_input('maxoptions', MyBB::INPUT_INT) < $numoptions)
-	{
-		$maxoptions = $mybb->get_input('maxoptions', MyBB::INPUT_INT);
-	}
-	else
-	{
-		$maxoptions = 0;
-	}
-
-	$updatedpoll = array(
-		"question" => $db->escape_string($mybb->input['question']),
-		"options" => $db->escape_string($optionslist),
-		"votes" => $db->escape_string($voteslist),
-		"numoptions" => (int)$optioncount,
-		"numvotes" => $numvotes,
-		"timeout" => $timeout,
-		"closed" => $postoptions['closed'],
-		"multiple" => $postoptions['multiple'],
-		"public" => $postoptions['public'],
-		"maxoptions" => $maxoptions
-	);
-
-	$plugins->run_hooks("polls_do_editpoll_process");
-
-	$db->update_query("tsf_polls", $updatedpoll, "pid='".$mybb->get_input('pid', MyBB::INPUT_INT)."'");
-
-	$plugins->run_hooks("polls_do_editpoll_end");
-
-	$modlogdata['fid'] = $thread['fid'];
-	$modlogdata['tid'] = $thread['tid'];
-	//log_moderator_action($modlogdata, $lang->poll_edited);
-
-	redirect(get_thread_link($thread['tid']), 'redirect_pollupdated');
+    $thread = poll_get_thread_or_die($poll['tid'], $is_ajax);
+    poll_respond($is_ajax, get_thread_link($thread['tid']), 'Poll updated successfully');
 }
 
-if($mybb->input['action'] == "showresults")
-{
-	$query = $db->simple_select("tsf_polls", "*", "pid='".$mybb->get_input('pid', MyBB::INPUT_INT)."'");
-	$poll = $db->fetch_array($query);
+// ─── ACTION: showresults ──────────────────────────────────────────────────────
 
-	if(!$poll)
-	{
-		stderr('error_invalidpoll');
-	}
+if ($action === 'showresults') {
 
-	$tid = $poll['tid'];
-	$thread = get_thread($tid);
-	if(!$thread || ($thread['visible'] != 1 && ($thread['visible'] == 0 && !is_moderator($thread['fid'], "canviewunapprove")) || ($thread['visible'] == -1 && !is_moderator($thread['fid'], "canviewdeleted"))))
-	{
-		stderr('error_invalidthread');
-	}
+    $pid  = $mybb->get_input('pid', MyBB::INPUT_INT);
+    $poll = poll_get_or_die($pid, false);
 
-	$fid = $thread['fid'];
+    $thread = get_thread($poll['tid']);
+    if (!$thread || $thread['visible'] != 1) {
+        stderr('error_invalidthread');
+    }
 
-	// Get forum info
-	$forum = get_forum($fid);
-	if(!$forum)
-	{
-		stderr('error_invalidforum');
-	}
+    $fid              = $thread['fid'];
+    $forum            = get_forum($fid);
+    $forumpermissions = forum_permissions($fid);
 
-	$forumpermissions = forum_permissions($forum['fid']);
+    if (!$forum) {
+        stderr('error_invalidforum');
+    }
+    if ($forumpermissions['canviewthreads'] == 0 || $forumpermissions['canview'] == 0) {
+        print_no_permission();
+    }
 
-	$plugins->run_hooks("polls_showresults_start");
+    $plugins->run_hooks('polls_showresults_start');
 
-	if($forumpermissions['canviewthreads'] == 0 || $forumpermissions['canview'] == 0 || (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] != 0 && $thread['uid'] != $CURUSER['id']))
-	{
-		print_no_permission();
-	}
+    build_forum_breadcrumb($fid);
+    add_breadcrumb(htmlspecialchars_uni($thread['subject']), get_thread_link($thread['tid']));
+    add_breadcrumb('nav_pollresults');
 
-	// Make navigation
-	build_forum_breadcrumb($fid);
-	add_breadcrumb(htmlspecialchars_uni($thread['subject']), get_thread_link($thread['tid']));
-	add_breadcrumb('nav_pollresults');
+    // Gather voter data
+    $voters = $votedfor = $guest_voters = [];
+    $query  = $db->sql_query("
+        SELECT v.*, u.username
+        FROM pollvotes v
+        LEFT JOIN users u ON (u.id = v.uid)
+        WHERE v.pid = '{$poll['pid']}'
+        ORDER BY u.username
+    ");
+    while ($voter = $db->fetch_array($query)) {
+        $cur_uid = (int)($CURUSER['id'] ?? 0);
+        if ($cur_uid && $cur_uid == $voter['uid']) {
+            $votedfor[$voter['voteoption']] = 1;
+        }
+        if (empty($voter['uid']) || $voter['username'] === '') {
+            $guest_voters[$voter['voteoption']] = ($guest_voters[$voter['voteoption']] ?? 0) + 1;
+        } else {
+            $voters[$voter['voteoption']][$voter['uid']] = htmlspecialchars_uni($voter['username']);
+        }
+    }
 
-	$voters = $votedfor = $guest_voters = array();
+    $plugins->run_hooks('polls_showresults_end');
 
-	// Calculate votes
-	$query = $db->sql_query("
-		SELECT v.*, u.username
-		FROM tsf_pollvotes v
-		LEFT JOIN users u ON (u.id=v.uid)
-		WHERE v.pid='{$poll['pid']}'
-		ORDER BY u.username
-	");
-	while($voter = $db->fetch_array($query))
-	{
-		// Mark for current user's vote
-		if($CURUSER['id'] == $voter['id'] && $CURUSER['id'])
-		{
-			$votedfor[$voter['voteoption']] = 1;
-		}
+    $poll['question'] = htmlspecialchars_uni($poll['question']);
 
-		// Count number of guests and users without a username (assumes they've been deleted)
-		if($voter['uid'] == 0 || $voter['username'] == '')
-		{
-			// Add one to the number of voters for guests
-			if(isset($guest_voters[$voter['voteoption']]))
-			{
-				++$guest_voters[$voter['voteoption']];
-			}
-			else
-			{
-				$guest_voters[$voter['voteoption']] = 1;
-			}
-		}
-		else
-		{
-			$voters[$voter['voteoption']][$voter['uid']] = htmlspecialchars_uni($voter['username']);
-		}
-	}
-
-	$optionsarray = explode("||~|~||", $poll['options']);
-	$votesarray = explode("||~|~||", $poll['votes']);
-	$poll['totvotes'] = 0;
-	for($i = 1; $i <= $poll['numoptions']; ++$i)
-	{
-		$poll['totvotes'] = $poll['totvotes'] + $votesarray[$i-1];
-	}
-
-	$polloptions = '';
-	for($i = 1; $i <= $poll['numoptions']; ++$i)
-	{
-		$parser_options = array(
-			"allow_html" => 1,
-			"allow_mycode" => 1,
-			"allow_smilies" => 1,
-			"allow_imgcode" => 1,
-			"allow_videocode" => 1,
-			"filter_badwords" => 1
-		);
-		$option = $parser->parse_message($optionsarray[$i-1], $parser_options);
-
-		$votes = $votesarray[$i-1];
-		$number = $i;
-		// Make the mark for current user's voted option
-		if(!empty($votedfor[$number]))
-		{
-			$optionbg = 'trow2';
-			$votestar = '*';
-		}
-		else
-		{
-			$optionbg = 'trow1';
-			$votestar = '';
-		}
-
-		if($votes == 0)
-		{
-			$percent = 0;
-		}
-		else
-		{
-			$percent = number_format($votes / $poll['totvotes'] * 100, 2);
-		}
-
-		$imagewidth = round($percent);
-		$comma = '';
-		$guest_comma = '';
-		$userlist = '';
-		$guest_count = 0;
-		if($poll['public'] == 1 || is_moderator($fid, "canmanagepolls"))
-		{
-			if(isset($voters[$number]) && is_array($voters[$number]))
-			{
-				foreach($voters[$number] as $uid => $username)
-				{
-					$userlist .= $comma.build_profile_link($username, $uid);
-					$comma = $guest_comma = $lang->comma;
-				}
-			}
-
-			if(isset($guest_voters[$number]) && $guest_voters[$number] > 0)
-			{
-				if($guest_voters[$number] == 1)
-				{
-					$userlist .= $guest_comma.$lang->guest_count;
-				}
-				else
-				{
-					$userlist .= $guest_comma.sprintf('guest_count_multiple', $guest_voters[$number]);
-				}
-			}
-		}
-		eval("\$polloptions .= \"".$templates->get("polls_showresults_resultbit")."\";");
-		
-	}
-
-	if($poll['totvotes'])
-	{
-		$totpercent = '100%';
-	}
-	else
-	{
-		$totpercent = '0%';
-	}
-
-	$plugins->run_hooks("polls_showresults_end");
-
-	$poll['question'] = htmlspecialchars_uni($poll['question']);
+    stdhead('Poll Result');
 	
-
-    eval("\$showresults = \"".$templates->get("polls_showresults")."\";");
-    
-	stdhead('Poll Result');
 	
-	echo $showresults;
-	
-	stdfoot();
+    echo poll_render_results($poll, $voters, $guest_voters, $votedfor, $fid, $lang, $parser);
+    stdfoot();
+    exit;
 }
 
-if($mybb->input['action'] == "vote" && $mybb->request_method == "post")
-{
-	// Verify incoming POST request
-	verify_post_check($mybb->get_input('my_post_key'));
+// ─── ACTION: vote ─────────────────────────────────────────────────────────────
 
-	$query = $db->simple_select("tsf_polls", "*", "pid='".$mybb->get_input('pid')."'");
-	$poll = $db->fetch_array($query);
+if ($action === 'vote' && $is_post) {
 
-	if(!$poll)
-	{
-		stderr('error_invalidpoll');
-	}
+    verify_post_check($mybb->get_input('my_post_key'));
 
-	$plugins->run_hooks("polls_vote_start");
+    $pid  = $mybb->get_input('pid');
+    $poll = poll_get_or_die((int)$pid, false);
 
-	$poll['timeout'] = $poll['timeout']*60*60*24;
+    $plugins->run_hooks('polls_vote_start');
 
-	$thread = get_thread($poll['tid']);
+    $thread = get_thread($poll['tid']);
+    if (!$thread || $thread['visible'] != 1) {
+        stderr('error_invalidthread');
+    }
 
-	if(!$thread || ($thread['visible'] != 1 && ($thread['visible'] == 0 && !is_moderator($thread['fid'], "canviewunapprove")) || ($thread['visible'] == -1 && !is_moderator($thread['fid'], "canviewdeleted"))))
-	{
-		stderr('error_invalidthread');
-	}
+    $fid              = $thread['fid'];
+    $forumpermissions = forum_permissions($fid);
+    $forum            = get_forum($fid);
 
-	$fid = $thread['fid'];
-	$forumpermissions = forum_permissions($fid);
-	if($forumpermissions['canvotepolls'] == 0)
-	{
-		print_no_permission();
-	}
+    if ($forumpermissions['canvotepolls'] == 0) {
+        print_no_permission();
+    }
+    if (!$forum || $forum['open'] == 0) {
+        stderr('error_closedinvalidforum');
+    }
 
-	// Get forum info
-	$forum = get_forum($fid);
-	if(!$forum)
-	{
-		stderr('error_invalidforum');
-	}
-	else
-	{
-		// Is our forum closed?
-		if($forum['open'] == 0)
-		{
-			// Doesn't look like it is
-			stderr('error_closedinvalidforum');
-		}
-	}
+    $expire = $poll['dateline'] + $poll['timeout'] * 86400;
+    if ($poll['closed'] == 1 || $thread['closed'] == 1 || ($poll['timeout'] && $expire < TIMENOW)) {
+        stderr('error_pollclosed');
+    }
 
-	$expiretime = $poll['dateline'] + $poll['timeout'];
-	$now = TIMENOW;
-	if($poll['closed'] == 1 || $thread['closed'] == 1 || ($expiretime < $now && $poll['timeout']))
-	{
-		stderr('error_pollclosed');
-	}
+    if (!isset($mybb->input['option'])) {
+        stderr('error_nopolloptions');
+    }
 
-	if(!isset($mybb->input['option']))
-	{
-		stderr('error_nopolloptions');
-	}
+    // Duplicate-vote check
+    $cur_uid   = (int)($CURUSER['id'] ?? 0);
+    $uid_check = $cur_uid
+        ? "uid='{$cur_uid}'"
+        : "ipaddress=" . $db->escape_binary($session->packedip);
 
-	// Check if the user has voted before...
-	if($CURUSER['id'])
-	{
-		$user_check = "uid='{$CURUSER['id']}'";
-	}
-	else
-	{
-		$user_check = "ipaddress=".$db->escape_binary($session->packedip);
-	}
+    $votecheck = $db->fetch_array($db->simple_select('pollvotes', '*', "{$uid_check} AND pid='{$poll['pid']}'"));
+    if ($votecheck) {
+        stderr('error_alreadyvoted');
+    }
 
-	$query = $db->simple_select("tsf_pollvotes", "*", "{$user_check} AND pid='".$poll['pid']."'");
-	$votecheck = $db->fetch_array($query);
+    $votesarray = explode('||~|~||', $poll['votes']);
+    $option     = $mybb->input['option'];
+    $numvotes   = (int)$poll['numvotes'];
+    $votesql    = [];
 
-	if($votecheck)
-	{
-		stderr('error_alreadyvoted');
-	}
+    if ($poll['multiple'] == 1) {
+        if (!is_array($option)) {
+            stderr('error_nopolloptions');
+        }
+        $total = 0;
+        foreach ($option as $voteoption => $vote) {
+            if ($vote == 1 && isset($votesarray[$voteoption - 1])) {
+                $votesql[] = [
+                    'pid'        => $poll['pid'],
+                    'uid'        => $cur_uid,
+                    'voteoption' => $db->escape_string($voteoption),
+                    'dateline'   => TIMENOW,
+                    'ipaddress'  => $db->escape_binary($session->packedip),
+                ];
+                $votesarray[$voteoption - 1]++;
+                $numvotes++;
+                $total++;
+            }
+        }
+        if ($poll['maxoptions'] > 0 && $total > $poll['maxoptions']) {
+            stderr(sprintf('error_maxpolloptions', $poll['maxoptions']));
+        }
+    } else {
+        if (is_array($option) || !isset($votesarray[$option - 1])) {
+            stderr('error_nopolloptions');
+        }
+        $votesql = [
+            'pid'        => $poll['pid'],
+            'uid'        => $cur_uid,
+            'voteoption' => $db->escape_string($option),
+            'dateline'   => TIMENOW,
+            'ipaddress'  => $db->escape_binary($session->packedip),
+        ];
+        $votesarray[$option - 1]++;
+        $numvotes++;
+    }
 
-	$votesql = array();
-	$votesarray = explode("||~|~||", $poll['votes']);
-	$option = $mybb->input['option'];
-	$numvotes = (int)$poll['numvotes'];
-	if($poll['multiple'] == 1)
-	{
-		if(is_array($option))
-		{
-			$total_options = 0;
+    if (!$votesql) {
+        stderr('error_nopolloptions');
+    }
 
-			foreach($option as $voteoption => $vote)
-			{
-				if($vote == 1 && isset($votesarray[$voteoption-1]))
-				{
-					$votesql[] = array(
-						"pid" => $poll['pid'],
-						"uid" => (int)$CURUSER['id'],
-						"voteoption" => $db->escape_string($voteoption),
-						"dateline" => TIMENOW,
-						"ipaddress" => $db->escape_binary($session->packedip)
-					);
+    $plugins->run_hooks('polls_vote_process');
 
-					$votesarray[$voteoption-1]++;
-					$numvotes = $numvotes+1;
-					$total_options++;
-				}
-			}
+    $poll['multiple'] == 1
+        ? $db->insert_query_multiple('pollvotes', $votesql)
+        : $db->insert_query('pollvotes', $votesql);
 
-			if($total_options > $poll['maxoptions'] && $poll['maxoptions'] != 0)
-			{
-				stderr(sprintf('error_maxpolloptions', $poll['maxoptions']));
-			}
-		}
-	}
-	else
-	{
-		if(is_array($option) || !isset($votesarray[$option-1]))
-		{
-			stderr('error_nopolloptions');
-		}
+    $voteslist = implode('||~|~||', $votesarray);
+    $db->update_query('polls', [
+        'votes'    => $db->escape_string($voteslist),
+        'numvotes' => $numvotes,
+    ], "pid='{$poll['pid']}'");
 
-		$votesql = array(
-			"pid" => $poll['pid'],
-			"uid" => (int)$CURUSER['id'],
-			"voteoption" => $db->escape_string($option),
-			"dateline" => TIMENOW,
-			"ipaddress" => $db->escape_binary($session->packedip)
-		);
+    $plugins->run_hooks('polls_vote_end');
 
-		$votesarray[$option-1]++;
-		$numvotes = $numvotes+1;
-	}
-
-	if(!$votesql)
-	{
-		stderr('error_nopolloptions');
-	}
-
-	if($poll['multiple'] == 1)
-	{
-		$db->insert_query_multiple("tsf_pollvotes", $votesql);
-	}
-	else
-	{
-		$db->insert_query("tsf_pollvotes", $votesql);
-	}
-
-	$voteslist = '';
-	for($i = 1; $i <= $poll['numoptions']; ++$i)
-	{
-		if($i > 1)
-		{
-			$voteslist .= "||~|~||";
-		}
-		$voteslist .= $votesarray[$i-1];
-	}
-	$updatedpoll = array(
-		"votes" => $db->escape_string($voteslist),
-		"numvotes" => (int)$numvotes,
-	);
-
-	$plugins->run_hooks("polls_vote_process");
-
-	$db->update_query("tsf_polls", $updatedpoll, "pid='".$poll['pid']."'");
-
-	$plugins->run_hooks("polls_vote_end");
-
-	redirect(get_thread_link($poll['tid']), 'redirect_votethanks');
+    redirect(get_thread_link($poll['tid']), 'redirect_votethanks');
 }
 
-if($mybb->input['action'] == "do_undovote")
+// ─── ACTION: do_undovote ──────────────────────────────────────────────────────
+
+if ($action === 'do_undovote') {
+
+    verify_post_check($mybb->get_input('my_post_key'));
+
+    $pid  = $mybb->get_input('pid', MyBB::INPUT_INT);
+    $poll = poll_get_or_die($pid, false);
+
+    $plugins->run_hooks('polls_do_undovote_start');
+
+    $thread = get_thread($poll['tid']);
+    if (!$thread || $thread['visible'] != 1) {
+        stderr('error_invalidthread');
+    }
+
+    $fid   = $thread['fid'];
+    $forum = get_forum($fid);
+    if (!$forum || $forum['open'] == 0) {
+        stderr('error_closedinvalidforum');
+    }
+
+    $expire = $poll['dateline'] + $poll['timeout'] * 86400;
+    if ($poll['closed'] == 1 || $thread['closed'] == 1 || ($poll['timeout'] && $expire < TIMENOW)) {
+        stderr('error_pollclosed');
+    }
+
+    $cur_uid   = (int)($CURUSER['id'] ?? 0);
+    $uid_check = $cur_uid
+        ? "uid='{$cur_uid}'"
+        : "uid='0' AND ipaddress=" . $db->escape_binary($session->packedip);
+
+    $vote_options = [];
+    $query = $db->simple_select('pollvotes', 'vid,voteoption', "{$uid_check} AND pid='{$poll['pid']}'");
+    while ($row = $db->fetch_array($query)) {
+        $vote_options[$row['vid']] = $row['voteoption'];
+    }
+    if (empty($vote_options)) {
+        stderr('error_notvoted');
+    }
+
+    $votesarray = array_slice(explode('||~|~||', $poll['votes']), 0, $poll['numoptions']);
+    $numvotes   = (int)$poll['numvotes'];
+
+    if ($poll['multiple'] == 1) {
+        foreach ($vote_options as $vote) {
+            if (isset($votesarray[$vote - 1])) {
+                $votesarray[$vote - 1]--;
+                $numvotes--;
+            }
+        }
+    } else {
+        $vote = reset($vote_options);
+        if (isset($votesarray[$vote - 1])) {
+            $votesarray[$vote - 1]--;
+            $numvotes--;
+        }
+    }
+
+    // Clamp negatives
+    $numvotes   = max(0, $numvotes);
+    $votesarray = array_map(fn($v) => max(0, $v), $votesarray);
+
+    $plugins->run_hooks('polls_do_undovote_process');
+
+    $db->delete_query('pollvotes', "{$uid_check} AND pid='{$poll['pid']}'");
+    $db->update_query('polls', [
+        'votes'    => $db->escape_string(implode('||~|~||', $votesarray)),
+        'numvotes' => $numvotes,
+    ], "pid='{$poll['pid']}'");
+
+    $plugins->run_hooks('polls_do_undovote_end');
+
+    redirect(get_thread_link($poll['tid']), 'redirect_unvoted');
+}
+
+// ─── Template functions ───────────────────────────────────────────────────────
+
+function poll_render_new_form(int $tid, string $post_code, int $polloptions = 2): string
 {
-	verify_post_check($mybb->get_input('my_post_key'));
+    $count_js = '<script>window.__POLL_COUNT__ = ' . $polloptions . ';</script>';
+    return $count_js . <<<HTML
+<div class="container py-4">
+<div class="card shadow border-0 rounded-4">
+    <div class="card-header bg-dark text-white fw-bold">
+        <i class="fa-solid fa-chart-simple me-2"></i> Create Poll
+    </div>
+    <div class="card-body">
+        <form id="pollForm">
+            <input type="hidden" name="my_post_key" value="{$post_code}" />
+            <input type="hidden" name="action"      value="do_newpoll" />
+            <input type="hidden" name="tid"         value="{$tid}" />
+            <input type="hidden" name="ajax"        value="1" />
 
-	//if($mybb->usergroup['canundovotes'] != 1)
-	//{
-	//	error_no_permission();
-	//}
+            <div class="mb-4">
+                <label class="form-label fw-semibold">Question</label>
+                <input type="text" name="question" class="form-control form-control-lg" required
+                       placeholder="For example: Which tracker is the best?" />
+            </div>
 
-	$query = $db->simple_select("tsf_polls", "*", "pid='".$mybb->get_input('pid', MyBB::INPUT_INT)."'");
-	$poll = $db->fetch_array($query);
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="fw-semibold">Answer Options</label>
+                    <button type="button" id="addOption" class="btn btn-sm btn-primary">
+                        <i class="fa fa-plus"></i> Add Option
+                    </button>
+                </div>
+                <div id="optionsList"></div>
+            </div>
 
-	if(!$poll)
-	{
-		stderr('error_invalidpoll');
-	}
+            <div class="mb-4">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="multiVote" name="postoptions[multiple]" value="1">
+                    <label class="form-check-label">Allow multiple answers</label>
+                </div>
+                <div id="maxOptionsBlock" class="mt-2" style="display:none;">
+                    <input type="number" name="maxoptions" class="form-control w-auto" placeholder="Max selections">
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="postoptions[public]" value="1">
+                    <label class="form-check-label">Show who voted</label>
+                </div>
+            </div>
 
-	$plugins->run_hooks("polls_do_undovote_start");
+            <div class="mb-4">
+                <label class="form-label fw-semibold">Duration (days)</label>
+                <input type="number" name="timeout" class="form-control w-auto" value="0">
+            </div>
 
-	$poll['numvotes'] = (int)$poll['numvotes'];
+            <div class="mb-4">
+                <label class="fw-semibold">Preview</label>
+                <div id="previewBox" class="border rounded p-3 bg-light small">No options yet</div>
+            </div>
 
-	// We do not have $forum_cache available here since no forums permissions are checked in undo vote
-	// Get thread ID and then get forum info
-	$thread = get_thread($poll['tid']);
-	if(!$thread || ($thread['visible'] != 1 && ($thread['visible'] == 0 && !is_moderator($thread['fid'], "canviewunapprove")) || ($thread['visible'] == -1 && !is_moderator($thread['fid'], "canviewdeleted"))))
-	{
-		stderr('error_invalidthread');
-	}
+            <div class="text-center">
+                <button type="submit" class="btn btn-success px-4">
+                    <i class="fa fa-check"></i> Create Poll
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+HTML;
+}
 
-	$fid = $thread['fid'];
+function poll_render_edit_form(array $poll, string $post_code, object $lang): string
+{
+    $pid      = (int)$poll['pid'];
+    $question = htmlspecialchars_uni($poll['question']);
+    $timeout  = (int)$poll['timeout'];
+    $maxopts  = (int)$poll['maxoptions'];
 
-	// Get forum info
-	$forum = get_forum($fid);
-	if(!$forum)
-	{
-		stderr('error_invalidforum');
-	}
-	else
-	{
-		// Is our forum closed?
-		if($forum['open'] == 0)
-		{
-			// Doesn't look like it is
-			stderr('error_closedinvalidforum');
-		}
-	}
+    $chk_multiple = $poll['multiple'] ? 'checked' : '';
+    $chk_public   = $poll['public']   ? 'checked' : '';
+    $chk_closed   = $poll['closed']   ? 'checked' : '';
 
-	$poll['timeout'] = $poll['timeout']*60*60*24;
+    // Build initial option rows as JSON for JS
+    $options_arr = explode('||~|~||', $poll['options']);
+    $votes_arr   = explode('||~|~||', $poll['votes']);
+    $initial     = [];
+    foreach ($options_arr as $i => $opt) {
+        $initial[] = [
+            'text'  => htmlspecialchars_uni($opt),
+            'votes' => (int)($votes_arr[$i] ?? 0),
+        ];
+    }
+    $initial_json = json_encode($initial, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP);
 
+    $label_edit   = htmlspecialchars_uni($lang->polls['edit_poll']   ?? 'Edit Poll');
+    $label_opts   = htmlspecialchars_uni($lang->polls['poll_options'] ?? 'Options');
+    $label_multi  = htmlspecialchars_uni($lang->polls['option_multiple'] ?? 'Allow multiple answers');
+    $label_public = htmlspecialchars_uni($lang->polls['option_public']   ?? 'Show who voted');
+    $label_closed = htmlspecialchars_uni($lang->polls['option_closed']   ?? 'Close poll');
+    $label_tout   = htmlspecialchars_uni($lang->polls['poll_timeout']    ?? 'Duration (days)');
+    $label_update = htmlspecialchars_uni($lang->polls['update_poll']     ?? 'Update Poll');
 
-	$expiretime = $poll['dateline'] + $poll['timeout'];
-	if($poll['closed'] == 1 || $thread['closed'] == 1 || ($expiretime < TIMENOW && $poll['timeout']))
-	{
-		stderr('error_pollclosed');
-	}
+    return <<<HTML
+<div class="container py-4">
+<div class="card shadow border-0 rounded-4">
+    <div class="card-header bg-dark text-white fw-bold">
+        <i class="fa-solid fa-pen me-2"></i> {$label_edit}
+    </div>
+    <div class="card-body">
+        <form id="pollForm">
+            <input type="hidden" name="my_post_key" value="{$post_code}" />
+            <input type="hidden" name="action"      value="do_editpoll" />
+            <input type="hidden" name="pid"         value="{$pid}" />
+            <input type="hidden" name="ajax"        value="1" />
 
-	// Check if the user has voted before...
-	$vote_options = array();
+            <div class="mb-4">
+                <label class="form-label fw-semibold">Question</label>
+                <input type="text" name="question" class="form-control form-control-lg" value="{$question}">
+            </div>
 
-	if($CURUSER['id'])
-	{
-		$user_check = "uid='{$CURUSER['id']}'";
-	}
-	else
-	{
-		$user_check = "uid='0' AND ipaddress=".$db->escape_binary($session->packedip);
-	}
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="fw-semibold">{$label_opts}</label>
+                    <button type="button" id="addOption" class="btn btn-sm btn-primary">
+                        <i class="fa fa-plus"></i> Add
+                    </button>
+                </div>
+                <div id="optionsList"></div>
+            </div>
 
-	$query = $db->simple_select("tsf_pollvotes", "vid,voteoption", "{$user_check} AND pid='".$poll['pid']."'");
-	while($voteoption = $db->fetch_array($query))
-	{
-		$vote_options[$voteoption['vid']] = $voteoption['voteoption'];
-	}
+            <div class="mb-4">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="multiVote"
+                           name="postoptions[multiple]" value="1" {$chk_multiple}>
+                    <label class="form-check-label">{$label_multi}</label>
+                </div>
+                <div id="maxOptionsBlock" class="mt-2" style="display:none;">
+                    <input type="number" name="maxoptions" class="form-control w-auto" value="{$maxopts}">
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="postoptions[public]" value="1" {$chk_public}>
+                    <label class="form-check-label">{$label_public}</label>
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="postoptions[closed]" value="1" {$chk_closed}>
+                    <label class="form-check-label">{$label_closed}</label>
+                </div>
+            </div>
 
-	if(empty($vote_options))
-	{
-		stderr('error_notvoted');
-	}
+            <div class="mb-4">
+                <label class="form-label fw-semibold">{$label_tout}</label>
+                <input type="number" name="timeout" class="form-control w-auto" value="{$timeout}">
+            </div>
 
-	// Note, this is not thread safe!
-	$votesarray = explode("||~|~||", $poll['votes']);
-	if(count($votesarray) > $poll['numoptions'])
-	{
-		$votesarray = array_slice($votesarray, 0, $poll['numoptions']);
-	}
+            <div class="mb-4">
+                <label class="fw-semibold">Preview</label>
+                <div id="previewBox" class="border rounded p-3 bg-light small">No options</div>
+            </div>
 
-	if($poll['multiple'] == 1)
-	{
-		foreach($vote_options as $vote)
-		{
-			if(isset($votesarray[$vote-1]))
-			{
-				--$votesarray[$vote-1];
-				--$poll['numvotes'];
-			}
-		}
-	}
-	else
-	{
-		$voteoption = reset($vote_options);
-		if(isset($votesarray[$voteoption-1]))
-		{
-			--$votesarray[$voteoption-1];
-			--$poll['numvotes'];
-		}
-	}
+            <div class="text-center">
+                <button type="submit" class="btn btn-success px-4">
+                    <i class="fa fa-check"></i> {$label_update}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
+<script>window.__POLL_INITIAL__ = {$initial_json};</script>
+HTML;
+}
 
-	// check if anything < 0 - possible if Guest vote undoing is allowed (generally Guest unvoting should be disabled >_>)
-	if($poll['numvotes'] < 0)
-	{
-		$poll['numvotes'] = 0;
-	}
+function poll_render_results(
+    array $poll, array $voters, array $guest_voters, array $votedfor,
+    int $fid, object $lang, object $parser
+): string {
+    $options_arr = explode('||~|~||', $poll['options']);
+    $votes_arr   = explode('||~|~||', $poll['votes']);
+    $totvotes    = array_sum($votes_arr);
 
-	foreach($votesarray as $i => $votes)
-	{
-		if($votes < 0)
-		{
-			$votesarray[$i] = 0;
-		}
-	}
+    $rows = '';
+    foreach ($options_arr as $i => $option_raw) {
+        $num    = $i + 1;
+        $votes  = (int)($votes_arr[$i] ?? 0);
+        $option = $parser->parse_message($option_raw, [
+            'allow_html' => 1, 'allow_mycode' => 1, 'allow_smilies' => 1,
+            'allow_imgcode' => 1, 'allow_videocode' => 1, 'filter_badwords' => 1,
+        ]);
+        $pct    = $totvotes > 0 ? number_format($votes / $totvotes * 100, 2) : 0;
+        $star   = !empty($votedfor[$num]) ? ' *' : '';
 
-	$voteslist = implode("||~|~||", $votesarray);
-	$updatedpoll = array(
-		"votes" => $db->escape_string($voteslist),
-		"numvotes" => (int)$poll['numvotes'],
-	);
+        // Build voter list
+        $userlist = '';
+        //if ($poll['public'] == 1 || is_moderator($fid, 'canmanagepolls')) {
+            $comma = '';
+            if (!empty($voters[$num]) && is_array($voters[$num])) {
+                foreach ($voters[$num] as $uid => $uname) {
+                    $userlist .= $comma . build_profile_link($uname, $uid);
+                    $comma     = $lang->comma;
+                }
+            }
+            if (!empty($guest_voters[$num])) {
+                $gc        = $guest_voters[$num];
+                $userlist .= ($comma ?: '') . ($gc === 1 ? $lang->guest_count : sprintf('guest_count_multiple', $gc));
+            }
+        //}
 
-	$plugins->run_hooks("polls_do_undovote_process");
+        $rows .= <<<HTML
+<div class="row pt-3 border-top">
+    <div class="col">{$option}{$star}</div>
+    <div class="col-auto text-end">{$votes} ({$pct}%)</div>
+</div>
+<div class="row pb-3">
+    <div class="col">
+        <div class="progress mb-1" style="height:25px">
+            <div class="progress-bar" role="progressbar" style="width:{$pct}%"
+                 aria-valuenow="{$pct}" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <div class="mt-1">{$userlist}</div>
+    </div>
+</div>
+HTML;
+    }
 
-	$db->delete_query("tsf_pollvotes", "{$user_check} AND pid='".$poll['pid']."'");
-	$db->update_query("tsf_polls", $updatedpoll, "pid='".$poll['pid']."'");
-
-	$plugins->run_hooks("polls_do_undovote_end");
-
-	redirect(get_thread_link($poll['tid']), 'redirect_unvoted');
+    $totpct = $totvotes ? '100%' : '0%';
+    return <<<HTML
+<div class="container-md">
+<div class="card mb-4">
+    <div class="card-header bg-white fw-bold mt-2 pb-0">{$poll['question']}</div>
+    <div class="card-body">{$rows}</div>
+    <div class="card-footer text-center">
+        Total: {$poll['numvotes']} votes — {$totpct}
+    </div>
+</div>
+</div>
+HTML;
 }

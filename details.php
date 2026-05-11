@@ -8,7 +8,6 @@ declare(strict_types=1);
 define("SCRIPTNAME", "details.php");
 
 
-$templatelist = "imdb_table,peers_table,similartorrents_table,comment_posturl,postbit_online,postbit_offline,postbit_signature,postbit_avatar,commentstable,comment_editreason,comment_edit,comment_quickdelete,multipage,multipage_breadcrumb,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start";
 
 
 require_once('global.php');
@@ -179,15 +178,14 @@ $id = $Torrent['id'];
 $query = $db->sql_query_prepared("
     SELECT t.name, t.banned, t.owner, n.nfo, c.name AS categoryname,
            c.pid, c.type, c.id AS categoryid, c.icon,
-           p.canupload, p.candownload, p.cancomment,
            u.id, u.username, u.usergroup, u.enabled, u.donor, u.warned, u.leechwarn,
+           u.canupload, u.candownload, u.cancomment,
            (SELECT ROUND(AVG(r.rating), 1) FROM torrent_ratings r WHERE r.torrent_id = t.id) AS rating_avg,
            (SELECT COUNT(r.id) FROM torrent_ratings r WHERE r.torrent_id = t.id) AS rating_count
     FROM torrents t
     LEFT JOIN torrents_nfo n ON (t.id = n.torrent_id)
     LEFT JOIN categories c ON (t.category = c.id)
     LEFT JOIN users u ON (t.owner = u.id)
-    LEFT JOIN users_perm p ON (u.id = p.userid)
     WHERE t.id = ?
 ", [$id]);
 
@@ -318,8 +316,55 @@ if ($query_result && $db->num_rows($query_result) > 0)
     }
 
     if ($FoundSMTQ) {
-        eval("\$SimilarTorrents = \"".$templates->get("similartorrents_table")."\";");
-    }
+        
+		$SimilarTorrents = '
+		
+		
+		<div class="container mt-4">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="bi bi-collection me-2"></i>'.$lang->details['smililartorrents'].'</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                '.$FoundSMTQ.'
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+/* Similar Torrents Cards */
+.similar-torrent-card {
+    border-radius: 10px;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.similar-torrent-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15) !important;
+}
+
+.similar-overlay {
+    background: rgba(0,0,0,0.3);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.similar-torrent-card:hover .similar-overlay {
+    opacity: 1;
+}
+
+.similar-torrent-card:hover img {
+    transform: scale(1.05);
+}
+</style>
+<br>
+		
+		';
+    
+	
+	}
 }
 
 
@@ -949,7 +994,27 @@ if (!empty($Torrent['t_link']))
 
     $refresh = !empty($is_mod) ? ($lang->global['refresh'] ?? '') : '';
 
-    eval("\$ShowTLINK = \"".$templates->get("imdb_table")."\";");
+    $ShowTLINK = '
+	
+	<div class="container mt-3">
+  <div class="card">
+    <div class="card-header rounded-bottom text-19 fw-bold">
+	<span style="float: right;">
+		<div id="imdbupdatebutton" name="imdbupdatebutton">
+		<a href="#" onclick="TS_IMDB('.$id.'); return false;"><b><u><i>'.$refresh.'</i></u></b></a></div></span>'.$lang->details['t_link'].'
+
+     </div>
+	 
+    <div class="card-body"><div id="imdbdetails" name="imdbdetails">'.$Torrent['t_link'].'</div></div> 
+   
+  </div>
+</div>
+	
+	<br />
+	
+	';
+
+
 }
 
 		
@@ -1138,7 +1203,7 @@ function renderAccordion($tree, $parentId = 'root', $level = 0)
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="heading-' . $accordionId . '">
                         <button class="accordion-button ' . $buttonCollapsed . '" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-' . $accordionId . '" aria-expanded="' . $ariaExpanded . '" aria-controls="collapse-' . $accordionId . '">
-                        📁 ' . htmlspecialchars($name) . '
+                        📁 ' . htmlspecialchars((string)$name) . '
                         </button>
                     </h2>
                     <div id="collapse-' . $accordionId . '" class="accordion-collapse collapse ' . $showClass . '" aria-labelledby="heading-' . $accordionId . '" data-bs-parent="#accordion-' . $parentId . '">
@@ -1182,7 +1247,7 @@ if (is_file(TSDIR . "/" . $torrent_dir . "/" . $id . ".torrent") && ($Data = fil
 
 foreach ($files as $file) 
 {
-    $path = str_replace('\\', '/', implode('/', $file->path)); // ✅ тут исправлено
+    $path = str_replace('\\', '/', implode('/', array_values((array)$file->path)));
     $size = $file->length;
     $parts = explode('/', $path);
     $current = &$tree;

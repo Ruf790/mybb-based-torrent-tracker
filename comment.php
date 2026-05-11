@@ -37,24 +37,33 @@ $parser_options = [
 
 gzip();
 maxsysop();
-include_once INC_PATH . '/readconfig.php';
+
+
+
+
 
 if (!isset($CURUSER)) {
     print_no_permission();
     exit;
 }
 
-$query = $db->simple_select('users_perm', 'cancomment', "userid = '{$CURUSER['id']}'");
+$lang->load('comment');
 
-if ($db->num_rows($query) > 0) {
-    $commentperm = $db->fetch_array($query);
-    if ($commentperm['cancomment'] == '0') {
-        error_no_permission();
-        exit;
-    }
+
+$query = $db->simple_select('users', 'cancomment', "id = '{$CURUSER['id']}'");
+$commentperm = $db->fetch_array($query);
+if ((int)($commentperm['cancomment'] ?? 1) === 0) {
+    stderr(
+        $lang->comment['no_comment_permission'] ?? 'You do not have permission to post comments. Contact staff if you believe this is a mistake.',
+        '',
+        403,
+        '403'
+    );
 }
 
-$lang->load('comment');
+
+
+
 require INC_PATH . '/commenttable.php';
 
 $is_mod = is_mod($usergroups);

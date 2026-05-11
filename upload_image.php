@@ -1,93 +1,134 @@
 <?php
-define("SCRIPTNAME", "upload_image.php");
-require_once 'global.php'; // Подключаем общие зависимости
+declare(strict_types=1);
+
+define('SCRIPTNAME', 'upload_image.php');
+require_once 'global.php';
 
 header('Content-Type: application/json');
 
-if (isset($_POST['upload_type']) && $_POST['upload_type'] === 'editor_image') 
+/* ── Constants ───────────────────────────────────────────────────── */
+
+const ALLOWED_MIME   = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
+const ALLOWED_EXT    = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+const MAX_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB
+const UPLOAD_SUBDIR  = '/uploads/';
+
+/* ── Helpers ─────────────────────────────────────────────────────── */
+
+function json_out(bool $ok, array $data = []): never
 {
-    header('Content-Type: application/json');
-    
-    $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/uploads/';
-    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
-    $maxSize = 200 * 1024 * 1024; // 200MB
+    echo json_encode(['success' => $ok] + $data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
-    try {
-        if (!isset($_FILES['image'])) {
-            throw new Exception('Файл не был загружен');
-        }
+function upload_error_msg(int $code): string
+{
+    return match ($code) {
+        UPLOAD_ERR_INI_SIZE,
+        UPLOAD_ERR_FORM_SIZE => 'Файл превышает допустимый размер.',
+        UPLOAD_ERR_PARTIAL   => 'Файл загружен частично.',
+        UPLOAD_ERR_NO_FILE   => 'Файл не выбран.',
+        UPLOAD_ERR_NO_TMP_DIR=> 'Отсутствует временная директория.',
+        UPLOAD_ERR_CANT_WRITE=> 'Ошибка записи на диск.',
+        UPLOAD_ERR_EXTENSION => 'Загрузка заблокирована расширением PHP.',
+        default              => 'Неизвестная ошибка загрузки.',
+    };
+}
 
-        $file = $_FILES['image'];
+/* ── Route guard ─────────────────────────────────────────────────── */
 
-        // Проверки безопасности
-        if ($file['error'] !== UPLOAD_ERR_OK) {
-            throw new Exception(getUploadError($file['error']));
-        }
-        if (!in_array($file['type'], $allowedTypes)) {
-            throw new Exception('Недопустимый тип файла');
-        }
-        if ($file['size'] > $maxSize) {
-            throw new Exception('Файл слишком большой (макс. 200MB)');
-        }
+if (($_POST['upload_type'] ?? '') !== 'editor_image') {
+    json_out(false, ['error' => 'Неизвестный тип загрузки.']);
+}
 
-        // Создаем папку если не существует
-        if (!file_exists($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
-        }
+if (empty($CURUSER['id'])) {
+    json_out(false, ['error' => 'Необходима авторизация.']);
+}
 
-        // Генерируем уникальное имя
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $filename = uniqid() . '.' . $ext;
-        $destination = $uploadDir . $filename;
+/* ── Main ────────────────────────────────────────────────────────── */
 
-        // Сохраняем файл
-        if (!move_uploaded_file($file['tmp_name'], $destination)) {
-            throw new Exception('Ошибка сохранения файла');
-        }
-
-        // URL
-        $url = (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') 
-               . $_SERVER['HTTP_HOST'] 
-               . '/uploads/' . $filename;
-
-        // Сохраняем данные в БД
-        $user_id = isset($CURUSER['id']) ? (int)$CURUSER['id'] : null;
-        $comment_id = isset($_POST['comment_id']) ? (int)$_POST['comment_id'] : null;
-		$news_id = isset($_POST['news_id']) ? (int)$_POST['news_id'] : null;
-		$t_id = isset($_POST['torrent_id']) ? (int)$_POST['torrent_id'] : null;
-		
-
-        $sql = "INSERT INTO comment_files 
-                (comment_id, news_id, torrent_id, user_id, file_name, file_path, file_url, file_type, file_size, uploaded_at)
-                VALUES 
-                (" . ($comment_id ?: 'NULL') . ",
-				 " . ($news_id ?: 'NULL') . ", 
-				 " . ($t_id ?: 'NULL') . ", 
-                 " . ($user_id ?: 'NULL') . ", 
-                 " . $db->sqlesc($file['name']) . ", 
-                 " . $db->sqlesc($destination) . ", 
-                 " . $db->sqlesc($url) . ", 
-                 " . $db->sqlesc($file['type']) . ", 
-                 " . (int)$file['size'] . ", 
-                 NOW())";
-
-        $db->sql_query($sql);
-        $insert_id = $db->insert_id();
-
-        echo json_encode([
-            'success' => true,
-            'url' => $url,
-            'file_id' => $insert_id,
-            'type' => 'editor_image'
-        ]);
-        exit;
-
-    } catch (Exception $e) {
-        echo json_encode([
-            'success' => false,
-            'error' => $e->getMessage(),
-            'type' => 'editor_image'
-        ]);
-        exit;
+try {
+    if (empty($_FILES['image'])) {
+        throw new RuntimeException('Файл не был передан.');
     }
+
+    $file = $_FILES['image'];
+
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new RuntimeException(upload_error_msg($file['error']));
+    }
+
+    if ($file['size'] > MAX_SIZE_BYTES) {
+        throw new RuntimeException('Файл слишком большой (макс. 200 МБ).');
+    }
+
+    // MIME по содержимому — не доверяем заголовку клиента
+    $realMime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+    if (!in_array($realMime, ALLOWED_MIME, true)) {
+        throw new RuntimeException('Недопустимый тип файла: ' . $realMime);
+    }
+
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ALLOWED_EXT, true)) {
+        throw new RuntimeException('Недопустимое расширение файла.');
+    }
+
+    // Upload dir
+    $uploadDir = rtrim($_SERVER['DOCUMENT_ROOT'], '/') . UPLOAD_SUBDIR;
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
+        throw new RuntimeException('Не удалось создать директорию загрузки.');
+    }
+
+    // Save
+    $filename    = bin2hex(random_bytes(16)) . '.' . $ext;
+    $destination = $uploadDir . $filename;
+
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        throw new RuntimeException('Ошибка сохранения файла.');
+    }
+
+    // URL
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $url    = $scheme . '://' . $_SERVER['HTTP_HOST'] . UPLOAD_SUBDIR . $filename;
+
+    // DB insert через sql_query_prepared
+    $user_id    = (int) $CURUSER['id'];
+    $comment_id = isset($_POST['comment_id'])  ? (int) $_POST['comment_id']  : null;
+    $news_id    = isset($_POST['news_id'])      ? (int) $_POST['news_id']     : null;
+    $torrent_id = isset($_POST['torrent_id'])   ? (int) $_POST['torrent_id']  : null;
+
+    $result = $db->sql_query_prepared(
+        'INSERT INTO comment_files
+             (comment_id, news_id, torrent_id, user_id, file_name, file_path, file_url, file_type, file_size, uploaded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+        [
+            $comment_id,     // int|null → 'i' в bind (null передаётся как string 's' — ОК для NULL)
+            $news_id,
+            $torrent_id,
+            $user_id,
+            $file['name'],
+            $destination,
+            $url,
+            $realMime,       // используем проверенный MIME, не от клиента
+            $file['size'],
+        ]
+    );
+
+    if (!$result) {
+        throw new RuntimeException('Ошибка записи в БД.');
+    }
+
+    $insert_id = $db->insert_id();
+
+    json_out(true, [
+        'url'     => $url,
+        'file_id' => $insert_id,
+        'type'    => 'editor_image',
+    ]);
+
+} catch (RuntimeException $e) {
+    json_out(false, [
+        'error' => $e->getMessage(),
+        'type'  => 'editor_image',
+    ]);
 }

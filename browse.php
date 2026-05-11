@@ -7,7 +7,6 @@ define('THIS_SCRIPT', 'browse.php');
 define('B_VERSION', '6.6.3');
 define("SCRIPTNAME", "browse.php");
 
-$templatelist = "browses,browse_table,browse_edit,browse_categories,browse_categories2,multipage,multipage_breadcrumb,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start";
 
 require './global.php';
 require_once INC_PATH . '/functions_multipage.php';
@@ -175,7 +174,33 @@ if (count($_categoriesS) > 0) {
 }
 
 $count = 0;
-eval("\$categories = \"" . $templates->get("browse_categories") . "\";");
+
+$categories = '
+
+<div class="container mt-3">
+ 
+  <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:hidden;">
+  
+<table>
+<tbody>
+	<tr>
+	<div class="card-header bg-gradient bg-primary text-white py-2 px-3">
+            
+        <i class="fas fa-th-large me-2"></i>'.$lang->browse['tcategory'].'
+            
+        </div>			
+	</tr>
+	
+	<tr>
+		<td align="center">
+			<table border="0" cellspacing="0" cellpadding="0" align="left">
+				<tr class="none">';
+
+
+
+
+
+
 
 if (($rows = count($_categoriesC)) > 0) {
     foreach ($_categoriesC as $c) {
@@ -232,7 +257,17 @@ $categories .= '
     unset($_categoriesC);
 }
 
-eval("\$categories .= \"" . $templates->get("browse_categories2") . "\";");
+$categories .= '
+</tr>
+			</table>
+		</td>
+	</tr>
+</tbody>
+</table>
+ </div>
+</div>
+
+';
 
 
 
@@ -1039,7 +1074,6 @@ $ListTorrentsss = '
     </tr>';
 }
 
-//eval("\$bedit = \"" . $templates->get("browse_edit") . "\";");
 
 
 
@@ -1216,7 +1250,136 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
 
 $actionns = $is_mod ? $lang->browse['acction'] : '';
 
-eval("\$table = \"" . $templates->get("browse_table") . "\";");
+$table = '
+
+<div class="container mt-3">          
+  <table class="table table-hover">
+    '.$multipage.'
+    <thead>
+      <tr>
+        <th>
+            <i class="bi bi-tag-fill me-1"></i>
+            '.$lang->browse['type'].'
+        </th>
+        <th>
+            <i class="bi bi-file-earmark-text me-1"></i>
+            '.$lang->browse['t_name'].'
+        </th>
+        <th>
+            <i class="bi bi-hdd me-1"></i>
+            '.$lang->browse['sortby6'].'
+        </th>
+        <th>
+            <i class="bi bi-download me-1"></i>
+            '.$lang->browse['sortby7'].'
+        </th>
+        <th>
+            <i class="bi bi-arrow-up-circle me-1"></i>
+            '.$lang->browse['sortby4'].'
+        </th>
+        <th>
+            <i class="bi bi-arrow-down-circle me-1"></i>
+            '.$lang->browse['sortby5'].'
+        </th>
+        <th>
+            <i class="bi bi-person-circle me-1"></i>
+            '.$lang->browse['sortby8'].'
+        </th>
+        <th>
+            <i class="bi bi-gear me-1"></i>
+            '.$actionns.'
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      '.$ListTorrents.'
+    </tbody>
+<style>
+/* Иконки в таблице */
+.bi {
+    vertical-align: -0.125em;
+}
+
+/* Заголовки таблицы */
+thead th {
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    white-space: nowrap;
+}
+
+thead th i {
+    opacity: 0.7;
+    color: #6c757d;
+}
+
+/* Строки таблицы */
+.torrent-row:hover {
+    background-color: rgba(0, 123, 255, 0.04);
+}
+
+/* Бейджи */
+.size-badge, .snatched-badge, .seeders-badge, .leechers-badge {
+    transition: all 0.2s ease;
+    min-width: 60px;
+    text-align: center;
+}
+
+.size-badge:hover, .snatched-badge:hover, .seeders-badge:hover, .leechers-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Теги */
+td div .badge {
+    margin-right: 4px;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
+}
+
+/* Ссылки */
+a:hover {
+    text-decoration: none;
+}
+
+a strong:hover {
+    color: #0d6efd;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    thead th span {
+        display: none;
+    }
+    
+    thead th i {
+        font-size: 1.1rem;
+        margin-right: 0;
+    }
+    
+    .size-badge, .snatched-badge, .seeders-badge, .leechers-badge {
+        padding: 2px 6px;
+        font-size: 0.8rem;
+        min-width: 50px;
+    }
+    
+    td div {
+        font-size: 0.85rem;
+    }
+}
+</style>
+  </table>
+</div>
+
+
+<div class="container mt-3">
+    '.$multipage.'
+</div>
+
+';
+
+
+
 
 echo '
 ' . $___notice . '

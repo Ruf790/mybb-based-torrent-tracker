@@ -1,514 +1,585 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
+declare(strict_types=1);
 
-define("IN_MYBB", 1);
+define('IN_MYBB', 1);
 define('THIS_SCRIPT', 'memberlist.php');
-define("SCRIPTNAME", "memberlist.php");
-
-$templatelist = "memberlist,memberlist_search,memberlist_user,memberlist_user_groupimage,memberlist_user_avatar,memberlist_user_userstar,memberlist_search_contact_field,memberlist_referrals_bit";
-$templatelist .= ",multipage,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start,memberlist_error,memberlist_orderarrow";
-
-
+define('SCRIPTNAME', 'memberlist.php');
+define('FORUM_ACTIVE', true);
+define('FORUM_SECURE', true);
 
 require_once 'global.php';
 
-define('FORUM_ACTIVE', true);
-define('FORUM_SECURE', true);
-require_once INC_PATH . '/tsf_functions.php';
 
 
 require_once INC_PATH . '/functions_multipage.php';
 
+$lang->load('memberlist');
+$plugins->run_hooks('memberlist_start');
 
 
-// Load global language phrases
-$lang->load("memberlist");
+/* ═══════════════════════════════════════════════════════════════════
+ *  HELPER FUNCTIONS
+ * ═══════════════════════════════════════════════════════════════════ */
 
-
-
-
-$plugins->run_hooks("memberlist_start");
-
-add_breadcrumb($lang->memberlist['nav_memberlist'], "memberlist.php");
-
-
-
-$orderarrow = $sort_selected = array(
-	'regdate' => '',
-	'lastvisit' => '',
-	'reputation' => '',
-	'postnum' => '',
-	'threadnum' => '',
-	'referrals' => '',
-	'username' => ''
-);
-
-// Showing advanced search page?
-if($mybb->get_input('action') == "search")
-{
-	$plugins->run_hooks("memberlist_search");
-	add_breadcrumb($lang->memberlist['nav_memberlist_search']);
-
-	if(isset($usergroups['usergroup']))
-	{
-		$usergroup = $usergroups['usergroup'];
-	}
-	else
-	{
-		$usergroup = '';
-	}
-	if(isset($usergroups['additionalgroups']))
-	{
-		$additionalgroups = $usergroups['additionalgroups'];
-	}
-	else
-	{
-		$additionalgroups = '';
-	}
-
-	$contact_fields = array();
-	foreach(array('skype', 'google', 'icq') as $field)
-	{
-		$contact_fields[$field] = '';
-		$settingkey = 'allow'.$field.'field';
-
-		if($mybb->settings[$settingkey] != '' && is_member($mybb->settings[$settingkey], array('usergroup' => $usergroup, 'additionalgroups' => $additionalgroups)))
-		{
-			$tmpl = 'memberlist_search_'.$field;
-
-			$lang_string = 'search_'.$field;
-			$lang_string = $lang->{$lang_string};
-
-			$bgcolors[$field] = alt_trow();
-			eval('$contact_fields[\''.$field.'\'] = "'.$templates->get('memberlist_search_contact_field').'";');
-		}
-	}
-
-	$referrals_option = '';
-	
-	
-
-	stdhead('title');
-	
-	eval("\$search_page = \"".$templates->get("memberlist_search")."\";");
-	
-	echo $search_page;
-	
-	stdfoot();
-	
+function render_header(string $title): void {
+    global $SITENAME;
+    
+    stdhead('5555555555');
+    
+    echo '<!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>' . htmlspecialchars($SITENAME) . ' - ' . htmlspecialchars($title) . '</title>
+       
+        <style>
+            :root {
+                --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            
+            .user-card {
+                border: none;
+                border-radius: 16px;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                background: white;
+                border: 1px solid #e9ecef;
+            }
+            
+            .user-card:hover {
+                transform: translateY(-5px);
+                border-color: #667eea;
+            }
+            
+            .alphabet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+    gap: 8px;
+    max-width: 800px;
+    margin: 0 auto;
 }
-else
-{
-	$colspan = 6;
-	$search_url = '';
 
-	// Incoming sort field?
-	if(isset($mybb->input['sort']))
-	{
-		$mybb->input['sort'] = strtolower($mybb->get_input('sort'));
-	}
-	else
-	{
-		$default_memberlist_sortby = "regdate";
-		$mybb->input['sort'] = $default_memberlist_sortby;
-	}
-
-	switch($mybb->input['sort'])
-	{
-		case "added":
-			$sort_field = "u.added";
-			break;
-		case "lastvisit":
-			$sort_field = "u.lastactive";
-			break;
-		case "reputation":
-			$sort_field = "u.reputation";
-			break;
-		case "postnum":
-			$sort_field = "u.postnum";
-			break;
-		case "threadnum":
-			$sort_field = "u.threadnum";
-			break;
-		case "referrals":
-			if($usereferrals == 1)
-			{
-				$sort_field = "u.referrals";
-			}
-			else
-			{
-				$sort_field = "u.username";
-			}
-			break;
-		default:
-			$sort_field = "u.username";
-			$mybb->input['sort'] = 'username';
-			break;
-	}
-	$sort_selected[$mybb->input['sort']] = " selected=\"selected\"";
-
-	// Incoming sort order?
-	if(isset($mybb->input['order']))
-	{
-		$mybb->input['order'] = strtolower($mybb->input['order']);
-	}
-	else
-	{
-		$default_memberlist_order = "ascending";
-		$mybb->input['order'] = strtolower($default_memberlist_order);
-	}
-
-	$order_check = array('ascending' => '', 'descending' => '');
-	if($mybb->input['order'] == "ascending" || (!$mybb->input['order'] && $mybb->input['sort'] == 'username'))
-	{
-		$sort_order = "ASC";
-		$sortordernow = "ascending";
-		$oppsort = $lang->memberlist['desc'];
-		$oppsortnext = "descending";
-		$mybb->input['order'] = "ascending";
-	}
-	else
-	{
-		$sort_order = "DESC";
-		$sortordernow = "descending";
-		$oppsort = $lang->memberlist['asc'];
-		$oppsortnext = "ascending";
-		$mybb->input['order'] = "descending";
-	}
-	$order_check[$mybb->input['order']] = " checked=\"checked\"";
-
-	if($sort_field == 'u.lastactive' && $mybb->usergroup['canviewwolinvis'] == 0)
-	{
-		$sort_field = "u.invisible ASC, CASE WHEN u.invisible = 1 THEN u.added ELSE u.lastactive END";
-	}
-
-	// Incoming results per page?
-	$mybb->input['perpage'] = $mybb->get_input('perpage', MyBB::INPUT_INT);
-	if($mybb->input['perpage'] > 0 && $mybb->input['perpage'] <= 500)
-	{
-		$per_page = $mybb->input['perpage'];
-	}
-	else if($ts_perpage)
-	{
-		$per_page = $mybb->input['perpage'] = (int)$ts_perpage;
-	}
-	else
-	{
-		$per_page = $mybb->input['perpage'] = 20;
-	}
-
-	$search_query = '1=1';
-	$search_url = "";
-
-	switch($db->type)
-	{
-		// PostgreSQL's LIKE is case sensitive
-		case "pgsql":
-			$like = "ILIKE";
-			break;
-		default:
-			$like = "LIKE";
-	}
-
-	// Limiting results to a certain letter
-	if(isset($mybb->input['letter']))
-	{
-		$letter = chr(ord($mybb->get_input('letter')));
-		if($mybb->input['letter'] == -1)
-		{
-			$search_query .= " AND u.username NOT REGEXP('[a-zA-Z]')";
-		}
-		else if(strlen($letter) == 1)
-		{
-			$search_query .= " AND u.username {$like} '".$db->escape_string_like($letter)."%'";
-		}
-		$search_url .= "&letter={$letter}";
-	}
-
-	// Searching for a matching username
-	$search_username = htmlspecialchars_uni(trim($mybb->get_input('username')));
-	if($search_username != '')
-	{
-		$username_like_query = $db->escape_string_like($search_username);
-
-		// Name begins with
-		if($mybb->get_input('username_match') == "begins")
-		{
-			$search_query .= " AND u.username {$like} '".$username_like_query."%'";
-			$search_url .= "&username_match=begins";
-		}
-		// Just contains
-		else if($mybb->get_input('username_match') == "contains")
-		{
-			$search_query .= " AND u.username {$like} '%".$username_like_query."%'";
-			$search_url .= "&username_match=contains";
-		}
-		// Exact
-		else
-		{
-			$username_esc = $db->escape_string(my_strtolower($search_username));
-			$search_query .= " AND LOWER(u.username)='{$username_esc}'";
-		}
-
-		$search_url .= "&username=".urlencode($search_username);
-	}
-
-	// Website contains
-	$mybb->input['website'] = trim($mybb->get_input('website'));
-	$search_website = htmlspecialchars_uni($mybb->input['website']);
-	if(trim($mybb->input['website']))
-	{
-		$search_query .= " AND u.website {$like} '%".$db->escape_string_like($mybb->input['website'])."%'";
-		$search_url .= "&website=".urlencode($mybb->input['website']);
-	}
-
-	// Search by contact field input
-	foreach(array('icq', 'google', 'skype') as $cfield)
-	{
-		$csetting = 'allow'.$cfield.'field';
-		$mybb->input[$cfield] = trim($mybb->get_input($cfield));
-		if($mybb->input[$cfield] && $mybb->settings[$csetting] != '')
-		{
-			if($mybb->settings[$csetting] != -1)
-			{
-				$gids = explode(',', (string)$mybb->settings[$csetting]);
-
-				$search_query .= " AND (";
-				$or = '';
-				foreach($gids as $gid)
-				{
-					$gid = (int)$gid;
-					$search_query .= $or.'u.usergroup=\''.$gid.'\'';
-					switch($db->type)
-					{
-						case 'pgsql':
-						case 'sqlite':
-							$search_query .= " OR ','||u.additionalgroups||',' LIKE '%,{$gid},%'";
-							break;
-						default:
-							$search_query .= " OR CONCAT(',',u.additionalgroups,',') LIKE '%,{$gid},%'";
-							break;
-					}
-					$or = ' OR ';
-				}
-				$search_query .= ")";
-			}
-			if($cfield == 'icq')
-			{
-				$search_query .= " AND u.{$cfield} LIKE '%".(int)$mybb->input[$cfield]."%'";
-			}
-			else
-			{
-				$search_query .= " AND u.{$cfield} {$like} '%".$db->escape_string_like($mybb->input[$cfield])."%'";
-			}
-			$search_url .= "&{$cfield}=".urlencode($mybb->input[$cfield]);
-		}
-	}
-
-	$usergroups_cache = $cache->read('usergroups');
-
-	$group = array();
-	foreach($usergroups_cache as $gid => $groupcache)
-	{
-		//if($groupcache['showmemberlist'] == 0)
-		//{
-		//	$group[] = (int)$gid;
-		//}
-	}
-
-	if(is_array($group) && !empty($group))
-	{
-		$hiddengroup = implode(',', $group);
-
-		$search_query .= " AND u.usergroup NOT IN ({$hiddengroup})";
-
-		foreach($group as $hidegid)
-		{
-			switch($db->type)
-			{
-				case "pgsql":
-				case "sqlite":
-					$search_query .= " AND ','||u.additionalgroups||',' NOT LIKE '%,{$hidegid},%'";
-					break;
-				default:
-					$search_query .= " AND CONCAT(',',u.additionalgroups,',') NOT LIKE '%,{$hidegid},%'";
-					break;
-			}
-		}
-	}
-  
-	$sorturl = htmlspecialchars_uni("memberlist.php?perpage={$mybb->input['perpage']}{$search_url}");
-	$search_url = htmlspecialchars_uni("memberlist.php?sort={$mybb->input['sort']}&order={$mybb->input['order']}&perpage={$mybb->input['perpage']}{$search_url}");
-
-	$plugins->run_hooks('memberlist_intermediate');
-
-	$query = $db->simple_select("users u", "COUNT(*) AS users", "{$search_query}");
-	$num_users = $db->fetch_field($query, "users");
-
-	$page = $mybb->get_input('page', MyBB::INPUT_INT);
-	if($page && $page > 0)
-	{
-		$start = ($page - 1) * $per_page;
-		$pages = ceil($num_users / $per_page);
-		if($page > $pages)
-		{
-			$start = 0;
-			$page = 1;
-		}
-	}
-	else
-	{
-		$start = 0;
-		$page = 1;
-	}
-
-	$sort = htmlspecialchars_uni($mybb->input['sort']);
-	eval("\$orderarrow['{$sort}'] = \"".$templates->get("memberlist_orderarrow")."\";");
-
-	$referral_header = '';
-
-	
-	
-	
-	
-
-	$multipage = multipage($num_users, $per_page, $page, $search_url);
-
-	// Cache a few things
-	$usertitles = $cache->read('usertitles');
-	$usertitles_cache = array();
-	foreach($usertitles as $usertitle)
-	{
-		$usertitles_cache[$usertitle['posts']] = $usertitle;
-	}
-	$users = '';
-	$query = $db->sql_query("
-		SELECT u.*
-		FROM users u
-		WHERE {$search_query}
-		ORDER BY {$sort_field} {$sort_order}
-		LIMIT {$start}, {$per_page}
-	");
-	while($user = $db->fetch_array($query))
-	{
-		$user = $plugins->run_hooks("memberlist_user", $user);
-
-		$alt_bg = alt_trow();
-
-		$user['username'] = format_name(htmlspecialchars_uni($user['username']), $user['usergroup'], $user['displaygroup']);
-
-		$user['profilelink'] = build_profile_link($user['username'], $user['id']);
-
-		// Get the display usergroup
-		if($user['usergroup'])
-		{
-			$usergroup = usergroup_permissions($user['usergroup']);
-		}
-		else
-		{
-			$usergroup = usergroup_permissions(1);
-		}
-
-		//$displaygroupfields = array("title", "description", "namestyle", "usertitle", "stars", "starimage", "image");
-		$displaygroupfields = array("title", "description", "namestyle", "usertitle", "image");
-
-		if(!$user['displaygroup'])
-		{
-			$user['displaygroup'] = $user['usergroup'];
-		}
-
-		$display_group = usergroup_displaygroup($user['displaygroup']);
-		if(is_array($display_group))
-		{
-			$usergroup = array_merge($usergroup, $display_group);
-		}
-
-		$referral_bit = '';
-
-		
-
-
-		
-		// User has group title
-        $user['usertitle'] = '';
-		$usertitle = '';
-		
-		$usertitle = $usergroup['title'];
-		$usertitle = htmlspecialchars_uni($usertitle);
-		$user['usertitle'] = $usertitle;
-		
-		
-
-		// Show avatar
-		
-		$memberlistmaxavatarsize = "70x70";
-				
-		$useravatar = format_avatar($user['avatar'], $user['avatardimensions'], my_strtolower($memberlistmaxavatarsize));
-
-        // Определяем, нужно ли использовать <img> или выводить SVG напрямую
-        if (strpos($useravatar['image'], '<svg') === 0) 
-		{
-             // Это SVG-заглушка - выводим как есть с дополнительными классами
-            $user['avatar'] = '';
-        } 
-		else 
-		{
-            // Это обычный аватар - используем <img> с заданными параметрами
-            $user['avatar'] = '<img src="'.$useravatar['image'].'" alt="" class="rounded" style="width: 70px;" />';
-        }
-		
-	
-
-		$last_seen = max(array($user['lastactive'], $user['lastvisit']));
-		if(empty($last_seen))
-		{
-			$user['lastvisit'] = $lang->memberlist['lastvisit_never'];
-		}
-		else
-		{
-			// We have some stamp here
-	
-			if($user['invisible'] == 1 && $usergroups['canviewwolinvis'] != 1 && $user['uid'] != $CURUSER['id'])
-			{
-				$user['lastvisit'] = $lang->memberlist['lastvisit_hidden'];
-			}
-			else
-			{
-				$user['lastvisit'] = my_datee('relative', $last_seen);
-			}
-		}
-
-		$user['added'] = my_datee('relative', $user['added']);
-		$user['postnum'] = ts_nf($user['postnum']);
-		$user['threadnum'] = ts_nf($user['threadnum']);
-		eval("\$users .= \"".$templates->get("memberlist_user")."\";");
-	}
-
-	// Do we have no results?
-	if(!$users)
-	{
-		eval("\$users = \"".$templates->get("memberlist_error")."\";");
-	}
-
-	$referrals_option = '';
-	
-
-	$plugins->run_hooks("memberlist_end");
-
-	stdhead($lang->memberlist['member_list']);
-	
-	build_breadcrumb();
-	
-	eval("\$memberlist = \"".$templates->get("memberlist")."\";");
-	
-	echo $memberlist;
-	
-	stdfoot();
+.alphabet-letter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: white;
+    text-decoration: none;
+    background: var(--bs-primary);
+    transition: all 0.2s ease;
+    text-transform: uppercase;
 }
+
+.alphabet-letter:hover {
+    transform: translateY(-2px);
+    background: var(--bs-primary-dark, #0b5ed7);
+    color: white;
+}
+            
+            .stat-badge {
+                background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 0.85rem;
+            }
+            
+            .avatar-wrapper {
+                width: 70px;
+                height: 70px;
+                border-radius: 12px;
+                overflow: hidden;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .avatar-wrapper img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+            
+            .avatar-placeholder {
+                width: 70px;
+                height: 70px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 2rem;
+                color: white;
+            }
+            
+            .card {
+                border: 1px solid #e9ecef;
+                border-radius: 16px;
+            }
+            
+            .card-header {
+                background: transparent;
+            }
+            
+            @media (max-width: 768px) {
+                .alphabet-grid { grid-template-columns: repeat(7, 1fr); gap: 5px; }
+                .alphabet-letter { height: 38px; font-size: 0.9rem; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container py-4">';
+}
+
+function render_footer(): void {
+    echo '</div>
+    </body>
+    </html>
+    ' . stdfoot() . '
+    ';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  ACTION: search page
+ * ═══════════════════════════════════════════════════════════════════ */
+
+if ($mybb->get_input('action') === 'search') {
+    $plugins->run_hooks('memberlist_search');
+    
+    render_header($lang->memberlist['member_list']);
+    
+    ?>
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card border rounded-4">
+                <div class="card-header bg-transparent border-0 pt-4">
+                    <h3 class="text-center mb-0">
+                        <i class="fas fa-search text-primary me-2"></i>
+                        <?= $lang->memberlist['search_members'] ?>
+                    </h3>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" action="memberlist.php">
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold"><?= $lang->memberlist['username'] ?></label>
+                            <input type="text" class="form-control form-control-lg rounded-3" 
+                                   name="username" placeholder="Enter username...">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">Match type</label>
+                            <div class="d-flex gap-3 flex-wrap">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="username_match" 
+                                           id="m_exact" value="exact" checked>
+                                    <label class="form-check-label" for="m_exact">
+                                        <i class="fas fa-equals me-1"></i>Exact match
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="username_match" 
+                                           id="m_begins" value="begins">
+                                    <label class="form-check-label" for="m_begins">
+                                        <i class="fas fa-arrow-right me-1"></i>Begins with
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="username_match" 
+                                           id="m_contains" value="contains">
+                                    <label class="form-check-label" for="m_contains">
+                                        <i class="fas fa-asterisk me-1"></i>Contains
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold"><?= $lang->memberlist['website'] ?></label>
+                            <input type="text" class="form-control form-control-lg rounded-3" 
+                                   name="website" placeholder="Enter website...">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary btn-lg w-100 rounded-3">
+                            <i class="fas fa-search me-2"></i><?= $lang->memberlist['search'] ?>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php
+    render_footer();
+    exit;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  MAIN LIST
+ * ═══════════════════════════════════════════════════════════════════ */
+
+// Sort handling
+$sort_options = [
+    'username' => 'u.username',
+    'added' => 'u.added',
+    'lastvisit' => 'u.lastactive',
+    'postnum' => 'u.postnum',
+    'threadnum' => 'u.threadnum'
+];
+
+$sort_input = strtolower($mybb->get_input('sort') ?: 'username');
+$sort_field = $sort_options[$sort_input] ?? 'u.username';
+$sort_display = $sort_input === 'added' ? 'regdate' : $sort_input;
+
+$order_input = strtolower($mybb->get_input('order') ?: 'ascending');
+$sort_order = $order_input === 'descending' ? 'DESC' : 'ASC';
+
+$per_page = $mybb->get_input('perpage', MyBB::INPUT_INT);
+if ($per_page <= 0 || $per_page > 500) $per_page = 20;
+
+// Search query building
+$search_conditions = ['1=1'];
+$search_url_params = [];
+
+// Letter filter
+if (isset($mybb->input['letter'])) {
+    $letter = $mybb->get_input('letter');
+    if ($letter == -1) {
+        $search_conditions[] = "u.username NOT REGEXP('[a-zA-Z]')";
+        $search_url_params['letter'] = -1;
+    } elseif (strlen($letter) == 1) {
+        $search_conditions[] = "u.username LIKE '" . $db->escape_string_like($letter) . "%'";
+        $search_url_params['letter'] = $letter;
+    }
+}
+
+// Username filter
+$search_username = htmlspecialchars_uni(trim($mybb->get_input('username')));
+if ($search_username !== '') {
+    $ulike = $db->escape_string_like($search_username);
+    $match = $mybb->get_input('username_match');
+    $search_url_params['username'] = $search_username;
+    
+    if ($match === 'begins') {
+        $search_conditions[] = "u.username LIKE '{$ulike}%'";
+        $search_url_params['username_match'] = 'begins';
+    } elseif ($match === 'contains') {
+        $search_conditions[] = "u.username LIKE '%{$ulike}%'";
+        $search_url_params['username_match'] = 'contains';
+    } else {
+        $esc = $db->escape_string(my_strtolower($search_username));
+        $search_conditions[] = "LOWER(u.username)='{$esc}'";
+    }
+}
+
+// Website filter
+$search_website = htmlspecialchars_uni(trim($mybb->get_input('website')));
+if ($search_website !== '') {
+    $search_conditions[] = "u.website LIKE '%" . $db->escape_string_like($search_website) . "%'";
+    $search_url_params['website'] = $search_website;
+}
+
+$search_query = implode(' AND ', $search_conditions);
+
+// Pagination
+$num_users = (int)$db->fetch_field(
+    $db->simple_select('users u', 'COUNT(*) AS users', $search_query), 'users');
+
+$page = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
+$pages = (int)ceil($num_users / $per_page);
+if ($page > $pages) $page = 1;
+$start = ($page - 1) * $per_page;
+
+$base_url = "memberlist.php?sort={$sort_input}&order={$order_input}&perpage={$per_page}";
+foreach ($search_url_params as $key => $value) {
+    $base_url .= "&{$key}=" . urlencode($value);
+}
+$multipage = multipage($num_users, $per_page, $page, htmlspecialchars_uni($base_url));
+
+// Fetch users
+$usertitles = $cache->read('usertitles');
+$usertitles_cache = [];
+foreach ((array)$usertitles as $ut) {
+    $usertitles_cache[$ut['posts']] = $ut;
+}
+
+$users_html = '';
+$query = $db->sql_query("
+    SELECT u.*
+    FROM users u
+    WHERE {$search_query}
+    ORDER BY {$sort_field} {$sort_order}
+    LIMIT {$start}, {$per_page}
+");
+
+while ($user = $db->fetch_array($query)) {
+    $user = $plugins->run_hooks('memberlist_user', $user);
+    
+    // Format user data
+    $username_plain = htmlspecialchars_uni($user['username']);
+    $username_formatted = format_name($username_plain, $user['usergroup'], $user['displaygroup']);
+    $profile_link = build_profile_link($username_formatted, $user['id']);
+    
+    // Usergroup and usertitle
+    $usergroup = usergroup_permissions($user['usergroup'] ?: 1);
+    if (!$user['displaygroup']) $user['displaygroup'] = $user['usergroup'];
+    $display_group = usergroup_displaygroup((int)$user['displaygroup']);
+    if (is_array($display_group)) $usergroup = array_merge($usergroup, $display_group);
+    
+    $usertitle = htmlspecialchars_uni($usergroup['title'] ?? $lang->memberlist['member']);
+    
+    // Avatar
+    $avatar_html = '';
+    $memberlistmaxavatarsize = '70x70';
+    $useravatar = format_avatar($user['avatar'], $user['avatardimensions'], 
+        my_strtolower($memberlistmaxavatarsize));
+    
+    if (strpos($useravatar['image'], '<svg') !== 0) {
+        $avatar_html = '<img src="' . htmlspecialchars($useravatar['image']) 
+                     . '" alt="' . $username_plain . '" class="avatar-img">';
+    } else {
+        $avatar_html = '<i class="fas fa-user fa-2x"></i>';
+    }
+    
+    // Last visit
+    $last_seen = max($user['lastactive'], $user['lastvisit']);
+    if (!$last_seen) {
+        $lastvisit = '<span class="text-muted"><i class="far fa-clock me-1"></i>' . $lang->memberlist['lastvisit_never'] . '</span>';
+    } elseif ($user['invisible'] == 1 && $usergroups['canviewwolinvis'] != 1 && $user['id'] != $CURUSER['id']) {
+        $lastvisit = '<span class="text-muted"><i class="fas fa-eye-slash me-1"></i>' . $lang->memberlist['lastvisit_hidden'] . '</span>';
+    } else {
+        $lastvisit = '<span><i class="fas fa-circle text-success me-1" style="font-size: 0.7rem;"></i>' . my_datee('relative', $last_seen) . '</span>';
+    }
+    
+    $added = my_datee('relative', $user['added']);
+    $postnum = ts_nf($user['postnum']);
+    $threadnum = ts_nf($user['threadnum']);
+    
+    $users_html .= <<<HTML
+    <div class="col-lg-6 col-md-6 col-12">
+        <div class="user-card p-3">
+            <div class="d-flex gap-3">
+                <div class="avatar-wrapper flex-shrink-0">
+                    <div class="avatar-placeholder">{$avatar_html}</div>
+                </div>
+                <div class="flex-grow-1">
+                    <h5 class="mb-1">{$profile_link}</h5>
+                    <div class="text-muted small mb-2">{$usertitle}</div>
+                    <div class="d-flex gap-2 mb-2 flex-wrap">
+                        <span class="stat-badge">
+                            <i class="fas fa-comment me-1"></i>{$postnum} {$lang->memberlist['posts']}
+                        </span>
+                        <span class="stat-badge">
+                            <i class="fas fa-file-alt me-1"></i>{$threadnum} {$lang->memberlist['threads']}
+                        </span>
+                    </div>
+                    <div class="small text-muted">
+                        <div><i class="fas fa-calendar-alt me-1"></i>{$lang->memberlist['joined']}: {$added}</div>
+                        <div class="mt-1">{$lastvisit}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+HTML;
+}
+
+if (!$users_html) {
+    $users_html = '<div class="col-12">
+		<div class="text-center py-5">
+                <i class="fa-solid fa-users fa-4x text-muted mb-3"></i>
+                <h5 class="text-muted">' . ($lang->memberlist['no_members'] ?? 'No members found.') . '</h5>
+              </div>
+    </div>';
+}
+
+$plugins->run_hooks('memberlist_end');
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  OUTPUT
+ * ═══════════════════════════════════════════════════════════════════ */
+
+render_header($lang->memberlist['member_list']);
+
+?>
+
+<div class="row">
+    <div class="col-12">
+        
+        <!-- Stats summary -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3 col-6">
+                <div class="card border rounded-4 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-users fa-2x text-primary mb-2"></i>
+                        <h3 class="mb-0"><?= ts_nf($num_users) ?></h3>
+                        <small class="text-muted">Total Members</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="card border rounded-4 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-calendar-week fa-2x text-success mb-2"></i>
+                        <h3 class="mb-0"><?= ts_nf($pages) ?></h3>
+                        <small class="text-muted">Total Pages</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="card border rounded-4 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-eye fa-2x text-info mb-2"></i>
+                        <h3 class="mb-0"><?= $per_page ?></h3>
+                        <small class="text-muted">Per Page</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="card border rounded-4 text-center">
+                    <div class="card-body">
+                        <i class="fas fa-sort-amount-down fa-2x text-warning mb-2"></i>
+                        <h6 class="mb-0 mt-2"><?= ucfirst($sort_input) ?></h6>
+                        <small class="text-muted">Sorted by</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pagination top -->
+        <?php if ($multipage): ?>
+            <div class="mb-4"><?= $multipage ?></div>
+        <?php endif; ?>
+        
+        <!-- Alphabet navigation -->
+        <div class="card border rounded-4 mb-4 overflow-hidden">
+            <div class="card-header bg-transparent border-0 pt-3">
+                <h6 class="mb-0 text-center">
+                    <i class="fas fa-filter me-2"></i>Browse by letter
+                </h6>
+            </div>
+            <div class="card-body pt-0 pb-3">
+                <div class="alphabet-grid">
+                    <a href="memberlist.php?letter=-1" class="alphabet-letter" title="Special characters">
+                        <i class="fas fa-hashtag"></i>
+                    </a>
+                    <?php foreach (range('a', 'z') as $letter): ?>
+                        <a href="memberlist.php?username_match=begins&username=<?= $letter ?>" 
+                           class="alphabet-letter"><?= strtoupper($letter) ?></a>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Users grid -->
+        <div class="row g-3 mb-4">
+            <?= $users_html ?>
+        </div>
+        
+        <!-- Pagination bottom -->
+        <?php if ($multipage): ?>
+            <div class="mb-4"><?= $multipage ?></div>
+        <?php endif; ?>
+        
+        <!-- Search/Sort panel -->
+        <div class="card border rounded-4">
+            <div class="card-header bg-transparent border-0 pt-3">
+                <h6 class="mb-0">
+                    <i class="fas fa-search me-2 text-primary"></i>
+                    <?= $lang->memberlist['search_members'] ?>
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="post" action="memberlist.php" class="needs-validation">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold">
+                                <i class="fas fa-user me-1"></i><?= $lang->memberlist['username'] ?>
+                            </label>
+                            <input type="text" class="form-control rounded-3" name="username" 
+                                   value="<?= htmlspecialchars($search_username) ?>"
+                                   placeholder="Enter username...">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold">
+                                <i class="fas fa-filter me-1"></i>Match
+                            </label>
+                            <select name="username_match" class="form-select rounded-3">
+                                <option value="exact">Exact match</option>
+                                <option value="begins">Begins with</option>
+                                <option value="contains">Contains</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold">
+                                <i class="fas fa-globe me-1"></i><?= $lang->memberlist['website'] ?>
+                            </label>
+                            <input type="text" class="form-control rounded-3" name="website"
+                                   value="<?= htmlspecialchars($search_website) ?>"
+                                   placeholder="Website...">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold">
+                                <i class="fas fa-eye me-1"></i>Per page
+                            </label>
+                            <input type="number" class="form-control rounded-3" name="perpage"
+                                   value="<?= (int)$per_page ?>" min="5" max="500">
+                        </div>
+                    </div>
+                    
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold">
+                                <i class="fas fa-sort me-1"></i><?= $lang->memberlist['sort_by'] ?>
+                            </label>
+                            <select name="sort" class="form-select rounded-3">
+                                <option value="username"<?= $sort_display === 'username' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_username'] ?></option>
+                                <option value="added"<?= $sort_display === 'regdate' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_regdate'] ?></option>
+                                <option value="lastvisit"<?= $sort_display === 'lastvisit' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_lastvisit'] ?></option>
+                                <option value="postnum"<?= $sort_display === 'postnum' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_posts'] ?></option>
+                                <option value="threadnum"<?= $sort_display === 'threadnum' ? ' selected' : '' ?>><?= $lang->memberlist['sort_by_threads'] ?></option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold">
+                                <i class="fas fa-arrow-up me-1"></i>Order
+                            </label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="order" 
+                                           id="o_asc" value="ascending"<?= $order_input === 'ascending' ? ' checked' : '' ?>>
+                                    <label class="form-check-label" for="o_asc">
+                                        <i class="fas fa-arrow-up me-1"></i>Ascending
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="order" 
+                                           id="o_desc" value="descending"<?= $order_input === 'descending' ? ' checked' : '' ?>>
+                                    <label class="form-check-label" for="o_desc">
+                                        <i class="fas fa-arrow-down me-1"></i>Descending
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-5 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100 rounded-3">
+                                <i class="fas fa-search me-2"></i><?= $lang->memberlist['search'] ?>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="text-end mt-3">
+                        <a href="memberlist.php?action=search" class="text-decoration-none small">
+                            <i class="fas fa-sliders-h me-1"></i><?= $lang->memberlist['advanced_search'] ?>
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+    </div>
+</div>
+
+<?php
+render_footer();
+?>

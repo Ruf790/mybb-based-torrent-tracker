@@ -1,12 +1,4 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
 
 
 define('IN_FORUM', true);
@@ -132,7 +124,12 @@ $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
 
 
 
-eval("\$loginbox = \"".$templates->get("changeuserbox")."\";");
+$loginbox = '<div class="alert bg-nav p-2 mb-3">
+	
+
+<i class="fa-solid fa-user"></i> '.$CURUSER['username'].' &mdash; <a href="member.php?action=logout&amp;logoutkey='.$mybb->user['logoutkey'].'" class="links">'.$lang->global['change_user'].'</a>
+	
+</div>';
 
 $allowable_moderation_actions = array("getip", "getpmip", "cancel_delayedmoderation", "delayedmoderation", "threadnotes", "purgespammer", "viewthreadnotes");
 
@@ -250,7 +247,8 @@ switch($mybb->input['action'])
 						$checked = "checked=\"checked\"";
 					}
 
-					eval("\$customthreadtools .= \"".$templates->get("moderation_delayedmoderation_custommodtool")."\";");
+					$customthreadtools .= '<input type="radio" name="type" class="form-check-input" value="modtool_'.$tool['tid'].'" '.$checked.' id="type_modtool_'.$tool['tid'].'" onclick="toggleType();" /> 
+					<label for="type_modtool_'.$tool['tid'].'" class="form-check-label">'.$tool['name'].' <small>(custom})</small></label>';
 				}
 			}
 		
@@ -479,7 +477,7 @@ switch($mybb->input['action'])
 				SELECT d.*, u.username, f.name AS fname
 				FROM delayedmoderation d
 				LEFT JOIN users u ON (u.id=d.uid)
-				LEFT JOIN tsf_forums f ON (f.fid=d.fid)
+				LEFT JOIN forums f ON (f.fid=d.fid)
 				WHERE ".$where_statement."
 				ORDER BY d.dateline DESC
 				LIMIT  0, 20
@@ -495,7 +493,7 @@ switch($mybb->input['action'])
 						SELECT d.*, u.username, f.name AS fname
 						FROM delayedmoderation d
 						LEFT JOIN users u ON (u.id=d.uid)
-						LEFT JOIN tsf_forums f ON (f.fid=d.fid)
+						LEFT JOIN forums f ON (f.fid=d.fid)
 						WHERE ','||d.tids||',' LIKE '%,{$tid},%'
 						ORDER BY d.dateline DESC
 						LIMIT  0, 20
@@ -506,7 +504,7 @@ switch($mybb->input['action'])
 						SELECT d.*, u.username, f.name AS fname
 						FROM delayedmoderation d
 						LEFT JOIN users u ON (u.id=d.uid)
-						LEFT JOIN tsf_forums f ON (f.fid=d.fid)
+						LEFT JOIN forums f ON (f.fid=d.fid)
 						WHERE CONCAT(',',d.tids,',') LIKE '%,{$tid},%'
 						ORDER BY d.dateline DESC
 						LIMIT  0, 20
@@ -526,18 +524,20 @@ switch($mybb->input['action'])
 				$delayed_thread = get_thread($delayedmod['tids']);
 				$delayed_thread['link'] = get_thread_link($delayed_thread['tid']);
 				$delayed_thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($delayed_thread['subject']));
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_thread_single")."\";");
+				
+				$info .= '<strong>'.$lang->moderation['thread'].'</strong> <a href="'.$delayed_thread['link'].'">'.$delayed_thread['subject'].'</a><br />';
 			}
 			else
 			{
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_thread_multiple")."\";");
+				$info .= '<strong>'.$lang->moderation['thread'].'</strong>multiple_threads<br />';
 			}
 
 			if($delayedmod['fname'])
 			{
 				$delayedmod['link'] = get_forum_link($delayedmod['fid']);
 				$delayedmod['fname'] = htmlspecialchars_uni($delayedmod['fname']);
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_forum")."\";");
+				
+				$info .= '<strong>'.$lang->moderation['forum'].'</strong> <a href="'.$delayedmod['link'].'">'.$delayedmod['fname'].'</a><br />';
 			}
 			$delayedmod['inputs'] = my_unserialize($delayedmod['inputs']);
 
@@ -545,7 +545,8 @@ switch($mybb->input['action'])
 			{
 				$delayedmod['link'] = get_forum_link($delayedmod['inputs']['new_forum']);
 				$delayedmod['name'] = htmlspecialchars_uni($forum_cache[$delayedmod['inputs']['new_forum']]['name']);
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_new_forum")."\";");
+				
+				$info .= '<strong>'.$lang->moderation['new_forum'].'</strong> <a href="'.$delayedmod['link'].'">'.$delayedmod['name'].'</a><br />';
 
 				if($delayedmod['inputs']['method'] == "redirect")
 				{
@@ -558,23 +559,36 @@ switch($mybb->input['action'])
 						$redirect_expire_bit = (int)$delayedmod['inputs']['redirect_expire']." {$lang->days}";
 					}
 
-					eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_redirect")."\";");
+					//$info .= \"".$templates->get("moderation_delayedmodaction_notes_redirect")."\";");
 				}
 			}
 			elseif($delayedmod['type'] == 'merge')
 			{
 				$delayedmod['subject'] = htmlspecialchars_uni($delayedmod['inputs']['subject']);
 				$delayedmod['threadurl'] = htmlspecialchars_uni($delayedmod['inputs']['threadurl']);
-				eval("\$info .= \"".$templates->get("moderation_delayedmodaction_notes_merge")."\";");
+				
+				
+				//$info .= \"".$templates->get("moderation_delayedmodaction_notes_merge")."\";");
+				
+				
 			}
 
-			eval("\$delayedmods .= \"".$templates->get("moderation_delayedmodaction_notes")."\";");
+			$delayedmods .= ''.$delayedmod['profilelink'].'</div>
+    <div class="col-lg align-self-center">'.$delayedmod['dateline'].'</div>
+    <div class="col-lg align-self-center">'.$delayedmod['action'].'</div>
+    <div class="col-lg align-self-center">'.$info.'</div>
+    <div class="col-lg align-self-center"><a href="moderation.php?action=cancel_delayedmoderation&amp;tid='.$tid.'&amp;fid='.$fid.'&amp;did='.$delayedmod['did'].'&amp;my_post_key='.$mybb->post_code.'">Cancel</a></div>
+</div>';
+			
+			
 			$trow = alt_trow();
 		}
 		if(!$delayedmods)
 		{
 			$cols = 5;
-			eval("\$delayedmods = \"".$templates->get("moderation_delayedmodaction_error")."\";");
+		    
+			
+			$delayedmods = '<div class="py-2 border-top">no_delayed_mods</div>';
 		}
 
 		$url = '';
@@ -584,8 +598,18 @@ switch($mybb->input['action'])
 			$thread['link'] = get_thread_link($tid);
 			$delayedmoderation_subject = $mybb->input['delayedmoderation']['subject'];
 			$delayedmoderation_threadurl = $mybb->input['delayedmoderation']['threadurl'];
-			eval("\$threads = \"".$templates->get("moderation_delayedmoderation_thread")."\";");
-			eval("\$moderation_delayedmoderation_merge = \"".$templates->get("moderation_delayedmoderation_merge")."\";");
+			
+			$threads = '<div class="p-3 mt-3 mb-3 border rounded bg-light"><a href="'.$thread['link'].'">'.$thread['subject'].'</a></div>';
+			
+			
+			$moderation_delayedmoderation_merge = '<input type="radio" name="type" class="form-check-input" value="merge" '.$type_selected['merge'].' id="type_merge" onclick="toggleType();" /> <label for="type_merge"  class="form-check-label">'.$lang->moderation['merge_threads'].'</label><br />
+<dd style="margin-top: 4px; width: 100%;" id="type_merge_expanded">
+	'.$lang->moderation['new_subject'].'<br />
+	<input type="text" class="form-control border form-control-sm" name="delayedmoderation[subject]" value="'.$delayedmoderation_subject.'" size="40" /><br />
+	'.$lang->moderation['thread_to_merge_with'].'<br />
+	<input type="text" class="form-control border form-control-sm" name="delayedmoderation[threadurl]" value="'.$delayedmoderation_threadurl.'" size="40" />
+	<br /><span class="text-muted">'.$lang->moderation['merge_with_note'].'</span>';
+			
 		}
 		else
 		{
@@ -607,7 +631,12 @@ switch($mybb->input['action'])
 			$moderation_delayedmoderation_merge = '';
 		}
 		$redirect_expire = $mybb->get_input('redirect_expire');
-		eval("\$moderation_delayedmoderation_move = \"".$templates->get("moderation_delayedmoderation_move")."\";");
+		
+		$moderation_delayedmoderation_move = '<br />
+'.$lang->moderation['method'].'<br />
+<label  class="form-check-label"><input type="radio" class="form-check-input" name="delayedmoderation[method]" value="move" '.$method_selected['move'].' /> '.$lang->moderation['method_move'].'</label><br />
+<label class="form-check-label"><input type="radio" class="form-check-input" name="delayedmoderation[method]" value="redirect" '.$method_selected['redirect'].' /> '.$lang->moderation['method_move_redirect'].'</label> <input type="text" class="form-control border form-control-sm mt-2" style="width: 200px" name="delayedmoderation[redirect_expire]" value="'.$redirect_expire.'" size="3" /> '.$lang->moderation['redirect_expire_note'].'<br /><br />
+<label class="form-check-label"><input type="radio" class="form-check-input" name="delayedmoderation[method]" value="copy" '.$method_selected['copy'].' /> '.$lang->moderation['method_copy'].'</label><br />';
 
 		// Generate form elements for date form
 		$dateday = '';
@@ -618,7 +647,8 @@ switch($mybb->input['action'])
 			{
 				$selected = ' selected="selected"';
 			}
-			eval('$dateday .= "'.$templates->get('moderation_delayedmoderation_date_day').'";');
+			
+			$dateday .= '<option value="'.$day.'"'.$selected.'>'.$day.'</option>';
 		}
 
 		$datemonth = array();
@@ -632,40 +662,243 @@ switch($mybb->input['action'])
 		}
 		
 
-		eval('$datemonth = "'.$templates->get('moderation_delayedmoderation_date_month').'";');
+	    $datemonth = '<option value="01" '.$datemonth['01'].'>'.$lang->moderation['january'].'</option>
+<option value="02" '.$datemonth['02'].'>'.$lang->moderation['february'].'</option>
+<option value="03" '.$datemonth['03'].'>'.$lang->moderation['march'].'</option>
+<option value="04" '.$datemonth['04'].'>'.$lang->moderation['april'].'</option>
+<option value="05" '.$datemonth['05'].'>'.$lang->moderation['may'].'</option>
+<option value="06" '.$datemonth['06'].'>'.$lang->moderation['june'].'</option>
+<option value="07" '.$datemonth['07'].'>'.$lang->moderation['july'].'</option>
+<option value="08" '.$datemonth['08'].'>'.$lang->moderation['august'].'</option>
+<option value="09" '.$datemonth['09'].'>'.$lang->moderation['september'].'</option>
+<option value="10" '.$datemonth['10'].'>'.$lang->moderation['october'].'</option>
+<option value="11" '.$datemonth['11'].'>'.$lang->moderation['november'].'</option>
+<option value="12" '.$datemonth['12'].'>'.$lang->moderation['december'].'</option>';
 
 		$dateyear = gmdate('Y', TIMENOW  + $localized_time_offset);
 		$datetime = gmdate($timeformat, TIMENOW + $localized_time_offset);
 
 		$openclosethread = '';
-		//if(is_moderator($fid, "canopenclosethreads"))
-		//{
-			eval('$openclosethread = "'.$templates->get('moderation_delayedmoderation_openclose').'";');
-		//}
+		
+		$openclosethread = '<input type="radio" name="type" class="form-check-input" value="openclosethread" '.$type_selected['openclosethread'].' id="type_openclosethread" onclick="toggleType();" /> 
+		<label for="type_openclosethread" class="form-check-label">'.$lang->moderation['open_close_thread'].'</label> <br />';
+		
 
 	
 
 		$deletethread = '';
-		//if(is_moderator($fid, "candeletethreads"))
-		//{
-			eval('$deletethread = "'.$templates->get('moderation_delayedmoderation_delete').'";');
-		//}
+		
+	    $deletethread = '<input type="radio" name="type" class="form-check-input" value="deletethread" '.$type_selected['deletethread'].' id="type_deletethread" onclick="toggleType();" /> 
+		<label for="type_deletethread" class="form-check-label">'.$lang->moderation['delete_thread'].'</label><br />';
+		
 
 		$stickunstickthread = '';
-		//if(is_moderator($fid, "canstickunstickthreads"))
-		//{
-			eval('$stickunstickthread = "'.$templates->get('moderation_delayedmoderation_stick').'";');
-		//}
+		
+		$stickunstickthread = '<input type="radio" name="type" class="form-check-input" value="stick" '.$type_selected['stick'].' id="type_stick_unstick_thread" />
+        <label for="type_stick_unstick_thread" class="form-check-label">'.$lang->moderation['stick_unstick_thread'].'</label><br />';
+		
 
 		$approveunapprovethread = '';
-		//if(is_moderator($fid, "canapproveunapprovethreads"))
-		//{
-			eval('$approveunapprovethread = "'.$templates->get('moderation_delayedmoderation_approve').'";');
-		//} 
+		
+		$approveunapprovethread = '<input type="radio" name="type" class="form-check-input" value="approveunapprovethread" '.$type_selected['approveunapprovethread'].' id="type_approveunapprovethread" onclick="toggleType();" /> 
+		<label for="type_approveunapprovethread" class="form-check-label">'.$lang->moderation['approve_unapprove_thread'].'</label>';
+		
 
 		$plugins->run_hooks("moderation_delayedmoderation");
 
-		eval("\$delayedmoderation = \"".$templates->get("moderation_delayedmoderation")."\";");
+
+
+		$delayedmoderation = '
+		
+		<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>'.$SITENAME.' - '.$lang->delayed_moderation.' | Moderation Center</title>
+    
+   
+    
+    <!-- Google Fonts: Inter & Space Grotesk for modern look -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/mod2.css">
+	
+</head>
+<body>
+<div class="container fade-in">
+    '.$display_errors.'
+    
+    <!-- Current Delayed Moderation Queue (elevated) -->
+    <div class="glass-card mb-4 overflow-hidden">
+        <div class="premium-header">
+            <i class="fas fa-clock fa-fw"></i>
+            <div>
+                <h3>'.$lang->moderation['delayed_mod_queue'].'</h3>
+                <p>Scheduled actions * Pending approval</p>
+            </div>
+            <i class="fas fa-calendar-week ms-auto opacity-50"></i>
+        </div>
+        
+        <div class="p-3 p-md-4">
+            <!-- responsive table header -->
+            <div class="d-none d-lg-flex row-header-custom align-items-center">
+                <div class="col-3"><i class="fas fa-user-shield me-2"></i> '.$lang->mod_username.'</div>
+                <div class="col-3"><i class="fas fa-hourglass-half me-2"></i> '.$lang->time_to_perform_action.'</div>
+                <div class="col-2"><i class="fas fa-tasks me-2"></i> '.$lang->mod_actions.'</div>
+                <div class="col-2"><i class="fas fa-info-circle me-2"></i> '.$lang->mod_information.'</div>
+                <div class="col-2"><i class="fas fa-edit me-2"></i> '.$lang->actions.'</div>
+            </div>
+            <div id="delayedQueueWrapper">
+                '.$delayedmods.'
+            </div>
+            <div class="text-muted small text-center mt-2" style="font-size: 0.75rem;">
+                <i class="fas fa-database"></i> Queued moderation tasks
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add New Delayed Moderation Form - redesigned -->
+    <form action="moderation.php" method="post" id="delayedModForm">
+        <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+        <input type="hidden" name="action" value="do_delayedmoderation" />
+        <input type="hidden" name="url" value="'.$url.'" />
+        <input type="hidden" name="tid" value="'.$tid.'" />
+        <input type="hidden" name="fid" value="'.$fid.'" />
+        
+        <!-- Scheduling card -->
+        <div class="glass-card mb-4">
+            <div class="premium-header">
+                <i class="fas fa-calendar-alt fa-fw"></i>
+                <div>
+                    <h3>'.$lang->moderation['delayed_moderation'].'</h3>
+                    <p>Set a precise date & time for automation</p>
+                </div>
+                <i class="fas fa-hourglass-start ms-auto opacity-60"></i>
+            </div>
+            <div class="p-4">
+                <div class="mb-4" style="background: #eef3fa; border-radius: 24px; padding: 12px 20px;">
+                    <i class="fas fa-info-circle me-2" style="color:#0d6efd;"></i> 
+                    '.$lang->moderation['delayed_moderation_desc'].'
+                </div>
+                
+                '.$loginbox.'
+                <div class="mt-3 fw-semibold">'.$threads.'</div>
+                
+                <div class="mt-4">
+                    <label class="form-label fw-semibold mb-2"><i class="fas fa-stopwatch me-1"></i> '.$lang->moderation['run_moderation_time'].'</label>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-3 col-sm-6">
+                            <div class="form-modern">
+                                <select name="date_day" class="form-select form-select-clean w-100">
+                                    '.$dateday.'
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="form-modern">
+                                <select name="date_month" class="form-select form-select-clean w-100">
+                                    '.$datemonth.'
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="form-modern">
+                                <input type="text" name="date_year" value="'.$dateyear.'" size="4" maxlength="4" class="form-control-clean w-100" placeholder="2026" />
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="form-modern">
+                                <input type="text" name="date_time" value="'.$datetime.'" class="form-control-clean w-100" placeholder="14:30" />
+                            </div>
+                        </div>
+                        <div class="col-12 mt-2">
+                            <small class="text-muted"><i class="far fa-clock"></i> Example: 15 12 2025 14:30 (24h format)</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Moderation Action Selection - elegant radio cards -->
+        <div class="glass-card mb-4">
+            <div class="premium-header">
+                <i class="fas fa-gavel fa-fw"></i>
+                <div>
+                    <h3>'.$lang->moderation['moderation_action'].'</h3>
+                    <p>Choose what happens on scheduled date</p>
+                </div>
+                <i class="fas fa-bolt ms-auto opacity-70"></i>
+            </div>
+            <div class="p-4">
+               <script type="text/javascript" src="' . $BASEURL . '/scripts/toggle-type.js"></script>
+                
+                <div class="row g-3">
+                    <div class="col-12">
+                        <!-- dynamic moderation options -->
+                        <div class="mb-3">
+                            '.$openclosethread.'
+                            '.$deletethread.'
+                            '.$stickunstickthread.'
+                        </div>
+                        
+                        <!-- Move/Copy Thread Option (radio card style) -->
+                        <div class="radio-card">
+                            <input type="radio" name="type" class="form-check-input-large" value="move" '.$type_selected['move'].' id="type_movecopythread" />
+                            <label for="type_movecopythread" class="fw-semibold flex-grow-1">'.$lang->moderation['move_copy_thread'].'</label>
+                            <i class="fas fa-arrows-alt text-secondary"></i>
+                        </div>
+                        
+                        <div id="type_movecopythread_expanded" style="display: none;">
+                            <div class="expandable-panel">
+                                <label class="form-label fw-semibold"><i class="fas fa-folder-open me-1"></i> '.$lang->moderation['new_forum'].'</label>
+                                '.$forumselect.'
+                                <div class="mt-2">'.$moderation_delayedmoderation_move.'</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Merge Threads exists -->
+                        '.$moderation_delayedmoderation_merge.'
+                        
+                        <!-- Remove Redirects -->
+                        <div class="radio-card mt-2">
+                            <input type="radio" name="type" class="form-check-input-large" value="removeredirects" '.$type_selected['removeredirects'].' id="type_removeredirects" />
+                            <label for="type_removeredirects" class="fw-semibold flex-grow-1">'.$lang->moderation['remove_redirects'].'</label>
+                            <i class="fas fa-link-slash text-secondary"></i>
+                        </div>
+                        
+                        <div class="radio-card">
+                            <input type="radio" name="type" class="form-check-input-large" value="removesubscriptions" '.$type_selected['removesubscriptions'].' id="type_removesubscriptions" />
+                            <label for="type_removesubscriptions" class="fw-semibold flex-grow-1">'.$lang->moderation['remove_subscriptions'].'</label>
+                            <i class="fas fa-bell-slash text-secondary"></i>
+                        </div>
+                        
+                        '.$approveunapprovethread.'
+                        '.$customthreadtools.'
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer text-center border-0 bg-transparent pb-4">
+                <button type="submit" class="btn-gradient px-5 py-3">
+                    <i class="fas fa-calendar-check me-2"></i> '.$lang->moderation['save_delayed_moderation'].'
+                </button>
+                <div class="footer-note">
+                    <i class="fas fa-shield-alt me-1"></i> Actions are irreversible after execution * Ensure correct date
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script type="text/javascript" src="' . $BASEURL . '/scripts/form-validation2.js"></script>
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/mod.css">
+</body>
+</html>';
+		
+		
+		
+		
+		
 		
 		stdhead('aaaaaaaa');
 		echo $delayedmoderation;
@@ -820,7 +1053,7 @@ switch($mybb->input['action'])
 
 		$plugins->run_hooks("moderation_deletepoll");
 
-		$query = $db->simple_select("tsf_polls", "pid", "tid='$tid'");
+		$query = $db->simple_select("polls", "pid", "tid='$tid'");
 		$poll = $db->fetch_array($query);
 		if(!$poll)
 		{
@@ -968,7 +1201,7 @@ HTML;
 		//		error_no_permission();
 		//	}
 		//}
-		$query = $db->simple_select("tsf_polls", "pid", "tid = $tid");
+		$query = $db->simple_select("polls", "pid", "tid = $tid");
 		$poll = $db->fetch_array($query);
 		if(!$poll)
 		{
@@ -1237,7 +1470,7 @@ HTML;
 
 		$query = $db->sql_query("
 			SELECT p.*, u.*
-			FROM tsf_posts p
+			FROM posts p
 			LEFT JOIN users u ON (p.uid=u.id)
 			WHERE tid='$tid'
 			ORDER BY dateline ASC, pid ASC
@@ -1369,7 +1602,7 @@ New Forum:
 		{
 			stderr('error_nosplitposts');
 		}
-		$query = $db->simple_select("tsf_posts", "COUNT(*) AS totalposts", "tid='{$tid}'");
+		$query = $db->simple_select("posts", "COUNT(*) AS totalposts", "tid='{$tid}'");
 		$count = $db->fetch_array($query);
 
 		if($count['totalposts'] == 1)
@@ -1400,7 +1633,7 @@ New Forum:
 		$pids = array();
 
 		// move the selected posts over
-		$query = $db->simple_select("tsf_posts", "pid", "tid='$tid'");
+		$query = $db->simple_select("posts", "pid", "tid='$tid'");
 		while($post = $db->fetch_array($query))
 		{
 			if(isset($mybb->input['splitpost'][$post['pid']]) && $mybb->input['splitpost'][$post['pid']] == 1)
@@ -2265,7 +2498,7 @@ HTML;
 		$tids = array();
 		if($pids)
 		{
-			$query = $db->simple_select("tsf_threads", "tid", "firstpost IN({$pids})");
+			$query = $db->simple_select("threads", "tid", "firstpost IN({$pids})");
 			while($threadid = $db->fetch_field($query, "tid"))
 			{
 				$tids[] = $threadid;
@@ -2294,7 +2527,7 @@ HTML;
 		// Otherwise we're just deleting from showthread.php
 		else
 		{
-			$query = $db->simple_select("tsf_posts", "pid", "tid = $tid");
+			$query = $db->simple_select("posts", "pid", "tid = $tid");
 			$numposts = $db->num_rows($query);
 			if(!$numposts)
 			{
@@ -2316,7 +2549,7 @@ HTML;
 
 	// Merge posts - Inline moderation
 	case "multimergeposts":
-		add_breadcrumb($lang->nav_multi_mergeposts);
+		add_breadcrumb($lang->moderation['nav_multi_mergeposts']);
 
 		if($mybb->get_input('inlinetype') == 'search')
 		{
@@ -2360,7 +2593,7 @@ HTML;
 		$postlist = "";
 		$query = $db->sql_query("
 			SELECT p.*, u.*
-			FROM tsf_posts p
+			FROM posts p
 			LEFT JOIN users u ON (p.uid=u.id)
 			WHERE pid IN (".implode(",", $posts).")
 			ORDER BY dateline ASC, pid ASC
@@ -2775,8 +3008,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		// Select number of posts in each thread that the splitted post is in
 		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM tsf_posts p
-			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
+			FROM posts p
+			LEFT JOIN posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2794,8 +3027,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		// The query does not return a row when the count is 0, so find if some threads are missing (i.e. 0 posts after removal)
 		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM tsf_posts p
-			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
+			FROM posts p
+			LEFT JOIN posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2827,7 +3060,164 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		$return_url = htmlspecialchars_uni($mybb->get_input('url'));
 
 		
-		eval("\$splitposts = \"".$templates->get("moderation_inline_splitposts")."\";");
+		$splitposts = '
+		
+		<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$SITENAME.' - '.$lang->moderation['split_thread'].'</title>
+    
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/split.css">
+
+</head>
+<body>
+    <div class="container mt-3">
+        <div class="split-card">
+            <!-- Header -->
+            <div class="split-header">
+                <div class="split-icon">
+                    <i class="fas fa-arrows-split-up-and-left"></i>
+                </div>
+                <h1 class="h3 mb-2">'.$lang->split_thread.'</h1>
+                <p class="mb-0 opacity-75">Create a new thread from selected posts</p>
+                
+                <!-- Posts Count -->
+                <div class="mt-4">
+                    <div class="post-count">
+                        <i class="fas fa-comments"></i>
+                        <span id="postsCount">0</span>
+                    </div>
+                    <p class="text-white opacity-75 mb-0">Posts Selected for Split</p>
+                </div>
+            </div>
+            
+            <!-- Form -->
+            <form action="moderation.php" method="post" id="splitThreadForm">
+                <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+                <input type="hidden" name="action" value="do_multisplitposts" />
+                <input type="hidden" name="tid" value="'.$tid.'" />
+                <input type="hidden" name="posts" value="'.$inlineids.'" />
+                <input type="hidden" name="url" value="'.$return_url.'" />
+                
+                <div class="card-body p-4">
+                    <!-- Security Verification -->
+                    <div class="security-box">
+                        <h5 class="fw-bold mb-3"><i class="fas fa-shield-alt me-2 text-primary"></i>Security Verification</h5>
+                        <div class="mb-0">'.$loginbox.'</div>
+                    </div>
+                    
+                    <!-- Information Box -->
+                    <div class="info-box">
+                        <div class="d-flex">
+                            <i class="fas fa-info-circle fa-2x me-3 mt-1 text-primary"></i>
+                            <div>
+                                <h6 class="mb-2">Split Operation Information</h6>
+                                <p class="mb-0 small">Selected posts will be moved from the current thread to create a new separate thread.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Original Thread Info -->
+                    <div class="original-thread">
+                        <h6 class="fw-bold mb-2"><i class="fas fa-file-alt me-2 text-primary"></i>Original Thread</h6>
+                        <div class="info-item">
+                            <div class="info-icon">
+                                <i class="fas fa-hashtag"></i>
+                            </div>
+                            <div>
+                                <div class="small text-muted">Thread ID</div>
+                                <div class="fw-bold">#'.$tid.'</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- New Thread Information -->
+                    <div class="mb-4">
+                        <h5 class="fw-bold mb-3"><i class="fas fa-plus-circle me-2 text-primary"></i>'.$lang->moderation['new_thread_info'].'</h5>
+                        
+                        <!-- New Subject -->
+                        <div class="input-group-custom">
+                            <i class="fas fa-heading input-icon text-primary"></i>
+                            <label class="form-label fw-bold text-primary">'.$lang->new_subject.'</label>
+                            <input type="text" 
+                                   class="form-control form-control-custom" 
+                                   name="newsubject" 
+                                   value="'.$lang->moderation['split_thread_subject'].' '.$thread['subject'].'"
+                                   placeholder="Enter new thread title"
+                                   required>
+                            <div class="form-text">This will be the title of your new thread.</div>
+                        </div>
+                        
+                        <!-- Destination Forum -->
+                        <div class="input-group-custom">
+                            <i class="fas fa-folder input-icon text-primary"></i>
+                            <label class="form-label fw-bold text-primary">'.$lang->new_forum.'</label>
+                            <div class="form-select-container">
+                                '.$forumselect.'
+                            </div>
+                            <div class="form-text">Select the forum where the new thread will be created.</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Important Notes -->
+                    <div class="alert alert-warning">
+                        <div class="d-flex">
+                            <i class="fas fa-exclamation-triangle fa-lg me-3 mt-1 text-warning"></i>
+                            <div>
+                                <h6 class="alert-heading mb-2">Important Notes</h6>
+                                <ul class="mb-0 small">
+                                    <li>Selected posts will be moved to the new thread</li>
+                                    <li>Original thread will retain remaining posts</li>
+                                    <li>Post order and timestamps will be preserved</li>
+                                    <li>Ensure you have proper permissions for the destination forum</li>
+                                    <li>This operation affects <strong id="postsCount2">0</strong> post(s)</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="card-footer bg-light py-4">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
+                        <div class="mb-3 mb-md-0">
+                            <a href="'.$return_url.'" class="btn btn-cancel text-white">
+                                <i class="fas fa-arrow-left me-2"></i>
+                                Cancel & Return
+                            </a>
+                        </div>
+                        
+                        <div>
+                            <button type="submit" class="btn btn-split text-white" name="submit" value="'.$lang->moderation['split_thread'].'">
+                                <i class="fas fa-arrows-split-up-and-left me-2"></i>
+                                '.$lang->moderation['split_thread'].'
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Progress bar (hidden by default) -->
+                    <div class="progress mt-4" style="height: 6px; display: none;" id="progressBar">
+                        <div class="progress-bar progress-bar-split progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+<script type="text/javascript" src="' . $BASEURL . '/scripts/split-thread.js"></script>
+</body>
+</html>';
+
+		
+		
+		
+		
+		
+		
 		
 		
 		stdhead('ddddd');
@@ -2862,7 +3252,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		$posts = array();
 		if(!empty($plist))
 		{
-			$query = $db->simple_select('tsf_posts', 'pid', 'pid IN ('.implode(',', $plist).')');
+			$query = $db->simple_select('posts', 'pid', 'pid IN ('.implode(',', $plist).')');
 			while($pid = $db->fetch_field($query, 'pid'))
 			{
 				$posts[] = $pid;
@@ -2880,8 +3270,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		// Select number of posts in each thread that the splitted post is in
 		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM tsf_posts p
-			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
+			FROM posts p
+			LEFT JOIN posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2899,8 +3289,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		// The query does not return a row when the count is 0, so find if some threads are missing (i.e. 0 posts after removal)
 		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM tsf_posts p
-			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
+			FROM posts p
+			LEFT JOIN posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2972,8 +3362,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		// Select number of posts in each thread that the moved post is in
 		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM tsf_posts p
-			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
+			FROM posts p
+			LEFT JOIN posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -2991,8 +3381,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		// The query does not return a row when the count is 0, so find if some threads are missing (i.e. 0 posts after removal)
 		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM tsf_posts p
-			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
+			FROM posts p
+			LEFT JOIN posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -3517,7 +3907,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		$posts = array();
 		if(!empty($plist))
 		{
-			$query = $db->simple_select('tsf_posts', 'pid', 'pid IN ('.implode(',', $plist).')');
+			$query = $db->simple_select('posts', 'pid', 'pid IN ('.implode(',', $plist).')');
 			while($pid = $db->fetch_field($query, 'pid'))
 			{
 				$posts[] = $pid;
@@ -3535,8 +3925,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		// Select number of posts in each thread that the moved post is in
 		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM tsf_posts p
-			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
+			FROM posts p
+			LEFT JOIN posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -3554,8 +3944,8 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		// The query does not return a row when the count is 0, so find if some threads are missing (i.e. 0 posts after removal)
 		$query = $db->sql_query("
 			SELECT DISTINCT p.tid, COUNT(q.pid) as count
-			FROM tsf_posts p
-			LEFT JOIN tsf_posts q ON (p.tid=q.tid)
+			FROM posts p
+			LEFT JOIN posts q ON (p.tid=q.tid)
 			WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin)
 			GROUP BY p.tid, p.pid
 		");
@@ -3598,7 +3988,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		}
 		if(count($posts) < 1)
 		{
-			stderr($lang->moderation['error_inline_nopostsselected'], $lang->error);
+			stderr($lang->moderation['error_inline_nopostsselected'], 'error');
 		}
 
 		if(!is_moderator_by_pids($posts, "canapproveunapproveposts"))
@@ -3643,7 +4033,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		if(count($posts) < 1)
 		{
-			error($lang->error_inline_nopostsselected, $lang->error);
+			error($lang->moderation['error_inline_nopostsselected'], 'error');
 		}
 		$pids = array();
 
@@ -3658,7 +4048,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 
 		$moderation->unapprove_posts($pids);
 
-		log_moderator_action($modlogdata, $lang->multi_unapprove_posts);
+		log_moderator_action($modlogdata, $lang->moderation['multi_unapprove_posts']);
 		if($mybb->get_input('inlinetype') == 'search')
 		{
 			clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
@@ -3667,7 +4057,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 		{
 			clearinline($tid, 'thread');
 		}
-		moderation_redirect(get_thread_link($thread['tid']), $lang->redirect_inline_postsunapproved);
+		moderation_redirect(get_thread_link($thread['tid']), $lang->moderation['redirect_inline_postsunapproved']);
 		break;
 
 
@@ -3799,7 +4189,7 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 			{
 				$lang->purgespammer_purge_desc = $lang->sprintf($lang->purgespammer_purge_desc, $lang->purgespammer_delete);				
 			}
-			eval("\$purgespammer = \"".$templates->get('moderation_purgespammer')."\";");
+			//eval("\$purgespammer = \"".$templates->get('moderation_purgespammer')."\";");
 			output_page($purgespammer);
 		}
 		break;
@@ -3837,9 +4227,50 @@ Posted by '.$post['username'].' <span class="text-muted">'.$postdate.'</span> <i
 				$url = htmlspecialchars_uni($mybb->get_input('url'));
 				$plugins->run_hooks('moderation_confirmation');
 
-				eval('$page = "'.$templates->get('moderation_confirmation').'";');
+				$page = '
+				
+				<html>
+<head>
+<title>'.$SIENAME.' - confirm_execute_tool</title>
 
-				output_page($page);
+</head>
+<body>
+
+<form action="moderation.php" method="post">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<input type="hidden" name="action" value="'.$action.'" />
+<input type="hidden" name="modtype" value="'.$modtype.'" />
+<input type="hidden" name="tid" value="'.$tid.'" />
+<input type="hidden" name="pid" value="'.$pid.'" />
+<input type="hidden" name="fid" value="'.$fid.'" />
+<input type="hidden" name="pmid" value="'.$pmid.'" />
+<input type="hidden" name="confirm" value="1" />
+<input type="hidden" name="inlinetype" value="'.$inlinetype.'" />
+<input type="hidden" name="searchid" value="'.$searchid.'" />
+<input type="hidden" name="url" value="'.$url.'" />
+	<div class="container-md">
+<div class="card">
+<div class="card-body">
+	<div class="legend mb-4">'.$thread['subject'].' - confirm_execute_too</div>
+	<div class="ps-3 pe-3">
+'.$loginbox.'
+	<div class="mt-3 text-muted">
+		confirm_execute_tool_desc</div>
+
+<div class="text-end mt-3"><input type="submit" class="btn btn-primary" name="submit" value="confirm_execute_tool" /></div>
+		</div>
+</div>
+</div>
+</div>
+</form>
+
+</body>
+</html>';
+				
+				
+
+				echo $page;
+				
 				exit;
 			}
 
@@ -4050,7 +4481,7 @@ function getallids($id, $type)
 	// "Select all Threads in this forum" only supported by forumdisplay and search
 	if($type == 'forum')
 	{
-		$query = $db->simple_select("tsf_threads", "tid", "fid='".(int)$id."'");
+		$query = $db->simple_select("threads", "tid", "fid='".(int)$id."'");
 		while($tid = $db->fetch_field($query, "tid"))
 		{
 			if(in_array($tid, $removed_ids))
@@ -4142,7 +4573,7 @@ function is_moderator_by_pids($posts, $permission='')
 	$posts[] = 0;
 	// Get forums
 	$posts_string = implode(',', $posts);
-	$query = $db->simple_select("tsf_posts", "DISTINCT fid", "pid IN ($posts_string)");
+	$query = $db->simple_select("posts", "DISTINCT fid", "pid IN ($posts_string)");
 	while($forum = $db->fetch_array($query))
 	{
 		if(!is_moderator($forum['fid'], $permission))

@@ -1,405 +1,328 @@
 <?php
+declare(strict_types=1);
+
 require_once 'global.php';
 
-// Get min and max user registration dates (UNIX timestamps)
-$res = $db->sql_query("SELECT MIN(added) AS min_added, MAX(added) AS max_added FROM users");
+// ── Валидация параметров ──────────────────────────────────────────────────────
+// FIX: $group из $_GET попадал напрямую в SQL через $format — SQL injection
+$allowed_groups = ['day' => '%Y-%m-%d', 'month' => '%Y-%m', 'year' => '%Y'];
+$group  = isset($_GET['group']) && array_key_exists($_GET['group'], $allowed_groups)
+    ? $_GET['group'] : 'month';
+$format = $allowed_groups[$group];
+
+$titles = ['day' => 'by Day', 'month' => 'by Month', 'year' => 'by Year'];
+$xlabels = ['day' => 'Date', 'month' => 'Month', 'year' => 'Year'];
+$title  = 'User Registrations — ' . $titles[$group];
+$xlabel = $xlabels[$group];
+
+// ── Диапазон дат из БД ────────────────────────────────────────────────────────
+$res = $db->sql_query('SELECT MIN(added) AS min_added, MAX(added) AS max_added FROM users');
 $row = $db->fetch_array($res);
-$minDate = $row && $row['min_added'] ? date('Y-m-d', $row['min_added']) : date('Y-m-d');
-$maxDate = $row && $row['max_added'] ? date('Y-m-d', $row['max_added']) : date('Y-m-d');
+$minDate = $row && $row['min_added'] ? date('Y-m-d', (int)$row['min_added']) : date('Y-m-d');
+$maxDate = $row && $row['max_added'] ? date('Y-m-d', (int)$row['max_added']) : date('Y-m-d');
 
-// Get & sanitize GET parameters with fallback defaults
-$group = $_GET['group'] ?? 'month';
-$fromDate = $_GET['from'] ?? $minDate;
-$toDate = $_GET['to'] ?? $maxDate;
+function sanitize_date(string $s): bool {
+    $d = DateTime::createFromFormat('Y-m-d', $s);
+    return $d && $d->format('Y-m-d') === $s;
+}
 
-// Clamp date inputs to valid range
-if ($fromDate < $minDate) $fromDate = $minDate;
-if ($toDate > $maxDate) $toDate = $maxDate;
+$fromDate = (isset($_GET['from']) && sanitize_date($_GET['from'])) ? $_GET['from'] : $minDate;
+$toDate   = (isset($_GET['to'])   && sanitize_date($_GET['to']))   ? $_GET['to']   : $maxDate;
+
+// Зажимаем в допустимый диапазон
+$fromDate = max($fromDate, $minDate);
+$toDate   = min($toDate,   $maxDate);
 if ($toDate < $fromDate) $toDate = $fromDate;
 
-// Convert to timestamps (start and end of days)
-$fromTimestamp = strtotime($fromDate . ' 00:00:00');
-$toTimestamp = strtotime($toDate . ' 23:59:59');
+$fromTs = (int)strtotime($fromDate . ' 00:00:00');
+$toTs   = (int)strtotime($toDate   . ' 23:59:59');
 
-// Determine grouping format for SQL and labels
-switch ($group) {
-    case 'year':
-        $format = '%Y';
-        $title = 'User Registrations (Grouped by Year)';
-        $xlabel = 'Year';
-        break;
-    case 'day':
-        $format = '%Y-%m-%d';
-        $title = 'User Registrations (Grouped by Day)';
-        $xlabel = 'Date';
-        break;
-    case 'month':
-    default:
-        $group = 'month';
-        $format = '%Y-%m';
-        $title = 'User Registrations (Grouped by Month)';
-        $xlabel = 'Month';
-        break;
-}
+// ── Статистика ────────────────────────────────────────────────────────────────
+$res         = $db->sql_query("SELECT COUNT(*) AS total FROM users WHERE added BETWEEN {$fromTs} AND {$toTs}");
+$total_users = (int)($db->fetch_array($res)['total'] ?? 0);
 
-// Fetch total users count in range
-$totalSql = "SELECT COUNT(*) AS total FROM users WHERE added BETWEEN $fromTimestamp AND $toTimestamp";
-$res = $db->sql_query($totalSql);
-$total_users = 0;
-if ($row = $db->fetch_array($res)) {
-    $total_users = $row['total'];
-}
-
-// Fetch registration stats grouped and filtered by date range
-$sql = "
-    SELECT 
-        FROM_UNIXTIME(added, '$format') AS reg_group,
-        COUNT(*) AS count
+$result = $db->sql_query("
+    SELECT FROM_UNIXTIME(added, '{$format}') AS reg_group, COUNT(*) AS count
     FROM users
-    WHERE added BETWEEN $fromTimestamp AND $toTimestamp
+    WHERE added BETWEEN {$fromTs} AND {$toTs}
     GROUP BY reg_group
     ORDER BY reg_group ASC
-";
-
-$result = $db->sql_query($sql);
-$labels = [];
-$counts = [];
+");
+$labels = $counts = [];
 while ($row = $db->fetch_array($result)) {
     $labels[] = $row['reg_group'];
     $counts[] = (int)$row['count'];
 }
 
-// New users this week/month
-$lastWeek = strtotime('-7 days 00:00:00');
-$lastMonth = strtotime('-1 month 00:00:00');
+$lastWeekTs  = (int)strtotime('-7 days 00:00:00');
+$lastMonthTs = (int)strtotime('-1 month 00:00:00');
 
-$res = $db->sql_query("SELECT COUNT(*) AS week_count FROM users WHERE added >= $lastWeek");
-$weekCount = ($row = $db->fetch_array($res)) ? $row['week_count'] : 0;
+$res        = $db->sql_query("SELECT COUNT(*) AS c FROM users WHERE added >= {$lastWeekTs}");
+$weekCount  = (int)($db->fetch_array($res)['c'] ?? 0);
+$res        = $db->sql_query("SELECT COUNT(*) AS c FROM users WHERE added >= {$lastMonthTs}");
+$monthCount = (int)($db->fetch_array($res)['c'] ?? 0);
 
-$res = $db->sql_query("SELECT COUNT(*) AS month_count FROM users WHERE added >= $lastMonth");
-$monthCount = ($row = $db->fetch_array($res)) ? $row['month_count'] : 0;
-
-// Last registered user
-$res = $db->sql_query("SELECT username, added FROM users ORDER BY added DESC LIMIT 1");
+$res      = $db->sql_query('SELECT username, added FROM users ORDER BY added DESC LIMIT 1');
 $lastUser = $db->fetch_array($res);
 
-$maxReg = count($counts) ? max($counts) : 0;
-$avgReg = count($counts) ? round(array_sum($counts) / count($counts), 2) : 0;
+$maxReg = $counts ? max($counts) : 0;
+$avgReg = $counts ? round(array_sum($counts) / count($counts), 2) : 0;
 
-stdhead("Registration Stats");
+// ── JS данные ─────────────────────────────────────────────────────────────────
+$js_labels = json_encode($labels, JSON_UNESCAPED_UNICODE);
+$js_counts = json_encode($counts, JSON_UNESCAPED_UNICODE);
+$js_xlabel = json_encode($xlabel);
+$h_group   = htmlspecialchars($group, ENT_QUOTES, 'UTF-8');
+$h_from    = htmlspecialchars($fromDate, ENT_QUOTES, 'UTF-8');
+$h_to      = htmlspecialchars($toDate, ENT_QUOTES, 'UTF-8');
+$h_min     = htmlspecialchars($minDate, ENT_QUOTES, 'UTF-8');
+$h_max     = htmlspecialchars($maxDate, ENT_QUOTES, 'UTF-8');
+
+// FIX: stdhead() вызывается ДО HTML, <title> отдельно не нужен
+stdhead($title);
+
 ?>
-
-
-
-<title><?= htmlspecialchars($title) ?></title>
-
 <div class="container mt-4">
 
-  <!-- Date Range Presets -->
-  <div class="d-flex justify-content-center gap-2 mb-4 flex-wrap">
-    <a href="?from=<?=date('Y-m-d', strtotime('-6 days'))?>&to=<?=date('Y-m-d')?>&group=day" class="btn btn-outline-primary btn-sm">Last 7 Days</a>
-    <a href="?from=<?=date('Y-m-d', strtotime('-29 days'))?>&to=<?=date('Y-m-d')?>&group=day" class="btn btn-outline-primary btn-sm">Last 30 Days</a>
-    <a href="?from=<?=date('Y-01-01')?>&to=<?=date('Y-m-d')?>&group=month" class="btn btn-outline-primary btn-sm">This Year</a>
-    <a href="?from=<?=htmlspecialchars($minDate)?>&to=<?=htmlspecialchars($maxDate)?>&group=month" class="btn btn-outline-secondary btn-sm">All Time</a>
-  </div>
-
-  <!-- Total Users Badge -->
-  <div class="text-center mb-2">
-    <span class="badge bg-primary fs-5">
-      <i class="fas fa-user me-2"></i> Total Users in Range: <?= number_format($total_users) ?>
-    </span>
-  </div>
-
-  <!-- New users this week/month -->
-  <div class="d-flex justify-content-center gap-3 mb-3 flex-wrap">
-    <span class="badge bg-success fs-6">
-      <i class="fas fa-calendar-week me-1"></i> New This Week: <?= number_format($weekCount) ?>
-    </span>
-    <span class="badge bg-info fs-6">
-      <i class="fas fa-calendar-alt me-1"></i> New This Month: <?= number_format($monthCount) ?>
-    </span>
-  </div>
-
-  <!-- Last registered user -->
-  <div class="text-center mb-3">
-    <small>
-      <i class="fas fa-user-clock me-1"></i> Last Registered User: 
-      <strong><?= htmlspecialchars($lastUser['username']) ?></strong> 
-      (<?= date('Y-m-d', $lastUser['added']) ?>)
-    </small>
-  </div>
-
-  <!-- Summary Cards -->
-  <div class="d-flex justify-content-center gap-3 mb-4 flex-wrap">
-    <div class="card text-center" style="width: 12rem;">
-      <div class="card-body">
-        <h6 class="card-title">Average per <?=htmlspecialchars($group)?></h6>
-        <p class="card-text fs-4 fw-bold"><?= number_format($avgReg) ?></p>
-      </div>
-    </div>
-    <div class="card text-center" style="width: 12rem;">
-      <div class="card-body">
-        <h6 class="card-title">Max per <?=htmlspecialchars($group)?></h6>
-        <p class="card-text fs-4 fw-bold"><?= number_format($maxReg) ?></p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Filters Form -->
-  <form method="get" class="row g-3 align-items-center justify-content-center mb-4" id="filterForm">
-
-    <div class="col-auto">
-      <label for="from" class="col-form-label fw-bold">From:</label>
-      <input
-        type="date"
-        id="from"
-        name="from"
-        class="form-control"
-        value="<?= htmlspecialchars($fromDate) ?>"
-        min="<?= $minDate ?>"
-        max="<?= $maxDate ?>"
-        required
-      >
+    <!-- Пресеты -->
+    <div class="d-flex justify-content-center gap-2 mb-4 flex-wrap">
+        <a href="?from=<?= date('Y-m-d', strtotime('-6 days')) ?>&to=<?= date('Y-m-d') ?>&group=day"
+           class="btn btn-outline-primary btn-sm">Last 7 Days</a>
+        <a href="?from=<?= date('Y-m-d', strtotime('-29 days')) ?>&to=<?= date('Y-m-d') ?>&group=day"
+           class="btn btn-outline-primary btn-sm">Last 30 Days</a>
+        <a href="?from=<?= date('Y-01-01') ?>&to=<?= date('Y-m-d') ?>&group=month"
+           class="btn btn-outline-primary btn-sm">This Year</a>
+        <a href="?from=<?= $h_min ?>&to=<?= $h_max ?>&group=month"
+           class="btn btn-outline-secondary btn-sm">All Time</a>
     </div>
 
-    <div class="col-auto">
-      <label for="to" class="col-form-label fw-bold">To:</label>
-      <input
-        type="date"
-        id="to"
-        name="to"
-        class="form-control"
-        value="<?= htmlspecialchars($toDate) ?>"
-        min="<?= $minDate ?>"
-        max="<?= $maxDate ?>"
-        required
-      >
+    <!-- Сводка -->
+    <div class="row g-3 mb-4 justify-content-center text-center">
+        <div class="col-auto">
+            <span class="badge bg-primary fs-6">
+                <i class="fas fa-users me-1"></i>In range: <?= number_format($total_users) ?>
+            </span>
+        </div>
+        <div class="col-auto">
+            <span class="badge bg-success fs-6">
+                <i class="fas fa-calendar-week me-1"></i>This week: <?= number_format($weekCount) ?>
+            </span>
+        </div>
+        <div class="col-auto">
+            <span class="badge bg-info fs-6">
+                <i class="fas fa-calendar-alt me-1"></i>This month: <?= number_format($monthCount) ?>
+            </span>
+        </div>
     </div>
 
-    <div class="col-auto">
-      <label for="group" class="col-form-label fw-bold">Group By:</label>
-      <select
-        name="group"
-        id="group"
-        class="form-select"
-        onchange="this.form.submit()"
-      >
-        <option value="day" <?= $group === 'day' ? 'selected' : '' ?>>Day</option>
-        <option value="month" <?= $group === 'month' ? 'selected' : '' ?>>Month</option>
-        <option value="year" <?= $group === 'year' ? 'selected' : '' ?>>Year</option>
-      </select>
+    <?php if ($lastUser): ?>
+    <p class="text-center text-muted small mb-3">
+        <i class="fas fa-user-clock me-1"></i>Last registered:
+        <strong><?= htmlspecialchars($lastUser['username'], ENT_QUOTES, 'UTF-8') ?></strong>
+        (<?= date('Y-m-d', (int)$lastUser['added']) ?>)
+    </p>
+    <?php endif; ?>
+
+    <!-- Мини-карточки -->
+    <div class="d-flex justify-content-center gap-3 mb-4 flex-wrap">
+        <div class="card text-center" style="min-width:11rem;">
+            <div class="card-body">
+                <div class="text-muted small">Avg per <?= $h_group ?></div>
+                <div class="fs-4 fw-bold"><?= number_format($avgReg) ?></div>
+            </div>
+        </div>
+        <div class="card text-center" style="min-width:11rem;">
+            <div class="card-body">
+                <div class="text-muted small">Max per <?= $h_group ?></div>
+                <div class="fs-4 fw-bold"><?= number_format($maxReg) ?></div>
+            </div>
+        </div>
     </div>
 
-    <div class="col-auto align-self-end">
-      <button type="submit" class="btn btn-primary">Filter</button>
+    <!-- Фильтр -->
+    <form method="get" class="row g-3 align-items-center justify-content-center mb-4" id="filterForm">
+        <div class="col-auto">
+            <label for="from" class="col-form-label fw-semibold">From</label>
+        </div>
+        <div class="col-auto">
+            <input type="date" id="from" name="from" class="form-control"
+                   value="<?= $h_from ?>" min="<?= $h_min ?>" max="<?= $h_max ?>">
+        </div>
+        <div class="col-auto">
+            <label for="to" class="col-form-label fw-semibold">To</label>
+        </div>
+        <div class="col-auto">
+            <input type="date" id="to" name="to" class="form-control"
+                   value="<?= $h_to ?>" min="<?= $h_min ?>" max="<?= $h_max ?>">
+        </div>
+        <div class="col-auto">
+            <select name="group" id="groupSel" class="form-select">
+                <option value="day"   <?= $group === 'day'   ? 'selected' : '' ?>>Day</option>
+                <option value="month" <?= $group === 'month' ? 'selected' : '' ?>>Month</option>
+                <option value="year"  <?= $group === 'year'  ? 'selected' : '' ?>>Year</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-filter me-1"></i>Filter
+            </button>
+        </div>
+    </form>
+
+    <!-- Управление графиком -->
+    <div class="d-flex justify-content-center align-items-center gap-3 mb-3 flex-wrap">
+        <div class="form-check form-check-inline mb-0">
+            <input class="form-check-input" type="radio" name="chartType" id="ctBar" value="bar" checked>
+            <label class="form-check-label" for="ctBar">Bar</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+            <input class="form-check-input" type="radio" name="chartType" id="ctLine" value="line">
+            <label class="form-check-label" for="ctLine">Line</label>
+        </div>
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="cumulativeToggle" role="switch">
+            <label class="form-check-label" for="cumulativeToggle">Cumulative</label>
+        </div>
+        <button id="exportCsvBtn" class="btn btn-outline-success btn-sm">
+            <i class="fas fa-file-csv me-1"></i>CSV
+        </button>
+        <button id="exportPngBtn" class="btn btn-outline-info btn-sm">
+            <i class="fas fa-image me-1"></i>PNG
+        </button>
     </div>
 
-  </form>
-
-  <!-- Chart Type Toggle + Cumulative + Dark Mode -->
-  <div class="text-center mb-4 d-flex justify-content-center align-items-center gap-3 flex-wrap">
-
-    <div>
-      <label class="me-3">
-        <input type="radio" name="chartType" value="bar" checked> Bar Chart
-      </label>
-      <label>
-        <input type="radio" name="chartType" value="line"> Line Chart
-      </label>
+    <!-- График -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <canvas id="regChart" height="100"></canvas>
+        </div>
     </div>
 
-    <label class="ms-3">
-      <input type="checkbox" id="cumulativeToggle"> Show Cumulative Total
-    </label>
-
-    <button id="darkModeToggle" class="btn btn-outline-secondary btn-sm ms-3">Toggle Dark Mode</button>
-
-  </div>
-
-  <!-- Export buttons -->
-  <div class="text-center mb-4">
-    <button id="exportCsvBtn" class="btn btn-outline-secondary btn-sm me-2">Export Data CSV</button>
-    <button id="exportPngBtn" class="btn btn-outline-secondary btn-sm">Export Chart PNG</button>
-  </div>
-
-  <!-- Chart canvas -->
-  <canvas id="regChart" height="100"></canvas>
 </div>
 
-<!-- Chart.js CDN -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
-  const labels = <?= json_encode($labels) ?>;
-  const values = <?= json_encode($counts) ?>;
-  const originalValues = [...values];
+(function () {
+    'use strict';
 
-  // Color thresholds for bars/lines
-  const getColors = vals => vals.map(v => {
-    if (v < 5) return 'rgba(75, 192, 192, 0.6)';       // low = teal
-    if (v < 20) return 'rgba(255, 206, 86, 0.6)';      // medium = yellow
-    return 'rgba(255, 99, 132, 0.6)';                  // high = red
-  });
-  const getBorderColors = vals => vals.map(v => {
-    if (v < 5) return 'rgba(75, 192, 192, 1)';
-    if (v < 20) return 'rgba(255, 206, 86, 1)';
-    return 'rgba(255, 99, 132, 1)';
-  });
+    var labels         = <?= $js_labels ?>;
+    var originalValues = <?= $js_counts ?>;
+    var xlabel         = <?= $js_xlabel ?>;
 
-  let chartType = 'bar';
+    var getColors = function (vals) {
+        return vals.map(function (v) {
+            return v < 5  ? 'rgba(75,192,192,0.6)'  :
+                   v < 20 ? 'rgba(255,206,86,0.6)'  :
+                            'rgba(255,99,132,0.6)';
+        });
+    };
+    var getBorders = function (vals) {
+        return vals.map(function (v) {
+            return v < 5  ? 'rgba(75,192,192,1)'  :
+                   v < 20 ? 'rgba(255,206,86,1)'  :
+                            'rgba(255,99,132,1)';
+        });
+    };
 
-  const ctx = document.getElementById('regChart').getContext('2d');
+    var ctx       = document.getElementById('regChart').getContext('2d');
+    var chartType = 'bar';
+    var chart;
 
-  const createChartConfig = (type, dataVals) => ({
-    type,
-    data: {
-      labels,
-      datasets: [{
-        label: 'Registrations',
-        data: dataVals,
-        backgroundColor: type === 'bar' ? getColors(dataVals) : 'transparent',
-        borderColor: getBorderColors(dataVals),
-        borderWidth: 2,
-        fill: type === 'line',
-        tension: 0.3,
-        pointRadius: 5,
-        pointHoverRadius: 7,
-      }]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: { precision: 0 },
-          title: { display: true, text: 'User Count', color: window.isDarkMode ? '#eee' : '#000' }
-        },
-        x: {
-          ticks: {
-            autoSkip: true,
-            maxRotation: 90,
-            minRotation: 45,
-            color: window.isDarkMode ? '#eee' : '#000',
-          },
-          title: { display: true, text: '<?= $xlabel ?>', color: window.isDarkMode ? '#eee' : '#000' }
-        }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: window.isDarkMode ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.7)',
-          titleColor: window.isDarkMode ? '#000' : '#fff',
-          bodyColor: window.isDarkMode ? '#000' : '#fff',
-          callbacks: {
-            label: ctx => {
-              const curr = ctx.parsed.y;
-              const prev = ctx.dataIndex > 0 ? ctx.dataset.data[ctx.dataIndex - 1] : null;
-              let pct = '';
-              if (prev !== null && prev > 0) {
-                pct = ` (${((curr - prev) / prev * 100).toFixed(1)}%)`;
-              }
-              return `${curr} users${pct}`;
-            }
-          }
-        }
-      }
-    }
-  });
-
-  let chart = new Chart(ctx, createChartConfig(chartType, values));
-
-  // Chart type toggle handler
-  document.querySelectorAll('input[name="chartType"]').forEach(el => {
-    el.addEventListener('change', e => {
-      chartType = e.target.value;
-      updateChart();
-    });
-  });
-
-  // Cumulative toggle handler
-  document.getElementById('cumulativeToggle').addEventListener('change', (e) => {
-    updateChart();
-  });
-
-  function updateChart() {
-    let dataVals;
-    const cumulative = document.getElementById('cumulativeToggle').checked;
-
-    if (cumulative) {
-      dataVals = [];
-      originalValues.reduce((a, b, i) => dataVals[i] = a + b, 0);
-    } else {
-      dataVals = [...originalValues];
+    function buildConfig(type, dataVals) {
+        return {
+            type: type,
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Registrations',
+                    data: dataVals,
+                    backgroundColor: type === 'bar' ? getColors(dataVals) : 'rgba(54,162,235,0.2)',
+                    borderColor:     type === 'bar' ? getBorders(dataVals) : 'rgba(54,162,235,1)',
+                    borderWidth: 2,
+                    fill: type === 'line',
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                }],
+            },
+            options: {
+                responsive: true,
+                animation: { duration: 600 },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (c) {
+                                var curr = c.parsed.y;
+                                var prev = c.dataIndex > 0 ? c.dataset.data[c.dataIndex - 1] : null;
+                                var pct  = (prev && prev > 0)
+                                    ? ' (' + ((curr - prev) / prev * 100).toFixed(1) + '%)'
+                                    : '';
+                                return curr + ' users' + pct;
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Users' } },
+                    x: { ticks: { autoSkip: true, maxRotation: 60 }, title: { display: true, text: xlabel } },
+                },
+            },
+        };
     }
 
-    chart.destroy();
-    chart = new Chart(ctx, createChartConfig(chartType, dataVals));
-  }
+    function getValues() {
+        if (!document.getElementById('cumulativeToggle').checked) {
+            return originalValues.slice();
+        }
+        var cum = [], acc = 0;
+        originalValues.forEach(function (v) { acc += v; cum.push(acc); });
+        return cum;
+    }
 
-  // Export CSV functionality
-  document.getElementById('exportCsvBtn').addEventListener('click', () => {
-    let csv = 'Date,Registrations\n';
-    labels.forEach((label, i) => {
-      csv += `${label},${originalValues[i]}\n`;
+    function renderChart() {
+        if (chart) chart.destroy();
+        chart = new Chart(ctx, buildConfig(chartType, getValues()));
+    }
+
+    renderChart();
+
+    // Chart type
+    document.querySelectorAll('input[name="chartType"]').forEach(function (el) {
+        el.addEventListener('change', function () { chartType = el.value; renderChart(); });
     });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'registration_stats.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  });
 
-  // Export Chart PNG
-  document.getElementById('exportPngBtn').addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.href = chart.toBase64Image();
-    link.download = 'registration_chart.png';
-    link.click();
-  });
+    // Cumulative
+    document.getElementById('cumulativeToggle').addEventListener('change', renderChart);
 
-  // Dark Mode toggle
-  window.isDarkMode = false;
-  const body = document.body;
-  const darkBtn = document.getElementById('darkModeToggle');
+    // Group select — auto-submit on change
+    document.getElementById('groupSel').addEventListener('change', function () {
+        document.getElementById('filterForm').submit();
+    });
 
-  darkBtn.addEventListener('click', () => {
-    window.isDarkMode = !window.isDarkMode;
-    body.classList.toggle('dark-mode');
+    // Export CSV
+    document.getElementById('exportCsvBtn').addEventListener('click', function () {
+        var csv = 'Date,Registrations\n';
+        labels.forEach(function (l, i) { csv += l + ',' + originalValues[i] + '\n'; });
+        var url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+        var a   = Object.assign(document.createElement('a'), { href: url, download: 'reg_stats.csv' });
+        a.click(); URL.revokeObjectURL(url);
+    });
 
-    // Update chart colors
-    updateChart();
-  });
+    // Export PNG
+    document.getElementById('exportPngBtn').addEventListener('click', function () {
+        var a = Object.assign(document.createElement('a'), { href: chart.toBase64Image(), download: 'reg_chart.png' });
+        a.click();
+    });
 
-  // Fade out on filter submit for smooth transition
-  document.getElementById('filterForm').addEventListener('submit', e => {
-    const canvas = document.getElementById('regChart');
-    canvas.style.opacity = 0;
-    setTimeout(() => e.target.submit(), 300);
-    e.preventDefault();
-  });
+    // Fade on form submit
+    document.getElementById('filterForm').addEventListener('submit', function (e) {
+        document.getElementById('regChart').style.opacity = '0';
+        setTimeout(function () { e.target.submit(); }, 250);
+        e.preventDefault();
+    });
 
+}());
 </script>
-
-<style>
-  /* Dark mode styles */
-  .dark-mode {
-    background-color: #121212;
-    color: #eee;
-  }
-  .dark-mode .badge, 
-  .dark-mode .btn,
-  .dark-mode .form-control,
-  .dark-mode .form-select,
-  .dark-mode .card {
-    background-color: #333 !important;
-    color: #eee !important;
-  }
-
-  #regChart {
-    transition: opacity 0.3s ease;
-  }
-</style>
 
 <?php stdfoot(); ?>

@@ -8,13 +8,6 @@ define("IN_MYBB", 1);
 define('THIS_SCRIPT', 'editpost.php');
 define("SCRIPTNAME", "editpost.php");
 
-$templatelist = "editpost,previewpost,changeuserbox,codebuttons,post_attachments_attachment_postinsert,post_attachments_attachment_mod_unapprove,postbit_attachments_thumbnails,postbit_profilefield_multiselect_value";
-$templatelist .= ",editpost_delete,forumdisplay_password_wrongpass,forumdisplay_password,editpost_reason,post_attachments_attachment_remove,post_attachments_update,post_subscription_method,postbit_profilefield_multiselect";
-$templatelist .= ",postbit_avatar,postbit_find,postbit_pm,postbit_rep_button,postbit_www,postbit_email,postbit_reputation,postbit_warn,postbit_warninglevel,postbit_author_user,posticons";
-$templatelist .= ",postbit_signature,postbit_classic,postbit,postbit_attachments_thumbnails_thumbnail,postbit_attachments_images_image,postbit_attachments_attachment,postbit_attachments_attachment_unapproved";
-$templatelist .= ",posticons_icon,post_prefixselect_prefix,post_prefixselect_single,newthread_postpoll,editpost_disablesmilies,post_attachments_attachment_mod_approve,post_attachments_attachment_unapproved";
-$templatelist .= ",postbit_warninglevel_formatted,postbit_reputation_formatted_link,editpost_signature,attachment_icon,post_attachments_attachment,post_attachments_add,post_attachments,editpost_postoptions,post_attachments_viewlink";
-$templatelist .= ",postbit_attachments_images,global_moderation_notice,post_attachments_new,postbit_attachments,postbit_online,postbit_away,postbit_offline,postbit_gotopost,postbit_userstar,postbit_icon";
 
 
 define('IN_FORUM', true);
@@ -180,10 +173,45 @@ if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_
             
             // Moderating options
             $attach_mod_options = '';
-            eval("\$attach_mod_options = \"".$templates->get("post_attachments_attachment_mod_unapprove")."\";");
             
-            eval("\$attach_rem_options = \"".$templates->get("post_attachments_attachment_remove")."\";");
-            eval("\$attemplate = \"".$templates->get("post_attachments_attachment")."\";");
+			$attach_mod_options = '
+			
+			<input type="submit" class="btn btn-page" name="unapproveattach_'.$attachment['aid'].'" value="'.$lang->editpost['unapprove_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"unapprove");" />
+			';
+			
+			
+			
+            
+            $attach_rem_options = '
+			
+			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->editpost['remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
+			
+			';
+			
+			
+			
+            $attemplate = '
+			
+			
+			<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'">
+<div class="row g-1">
+<div class="col-lg-8 text-start align-self-center">
+		
+	'.$attachment['icon'].' '.$attachment['filename'].' / <strong>'.$attachment['size'].'</strong> 
+		
+	</div>
+	<div class="col-lg-4 text-lg-end">
+		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
+	</div>
+</div>
+</div>';
+			
+			
+			
+			
+		
+			
+			
             
             $ret['template'] = $attemplate;
 
@@ -224,11 +252,11 @@ if ($enableattachments == 1 && $mybb->get_input('attachmentaid', MyBB::INPUT_INT
     } elseif ($mybb->get_input('attachmentact') == "approve" && $is_mod) {
         $update_sql = ["visible" => 1];
         $db->update_query("attachments", $update_sql, "aid='{$mybb->input['attachmentaid']}'");
-        update_thread_counters($post['tid'], ['attachmentcount' => "+1"]);
+        update_thread_counters((int)$post['tid'], ['attachmentcount' => "+1"]);
     } elseif ($mybb->get_input('attachmentact') == "unapprove" && $is_mod) {
         $update_sql = ["visible" => 0];
         $db->update_query("attachments", $update_sql, "aid='{$mybb->input['attachmentaid']}'");
-        update_thread_counters($post['tid'], ['attachmentcount' => "-1"]);
+        update_thread_counters((int)$post['tid'], ['attachmentcount' => "-1"]);
     }
 
     if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) {
@@ -252,7 +280,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
     $plugins->run_hooks("editpost_deletepost");
 
     if ($mybb->get_input('delete', MyBB::INPUT_INT) == 1) {
-        $query = $db->simple_select("tsf_posts", "pid", "tid='{$tid}'", ["limit" => 1, "order_by" => "dateline, pid"]);
+        $query = $db->simple_select("posts", "pid", "tid='{$tid}'", ["limit" => 1, "order_by" => "dateline, pid"]);
         $firstcheck = $db->fetch_array($query);
         if ($firstcheck['pid'] == $pid) {
             $firstpost = 1;
@@ -266,7 +294,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
             require_once INC_PATH."/class_moderation.php";
             $moderation = new Moderation;
 
-            $moderation->delete_thread($tid);
+            $moderation->delete_thread((int)$tid);
            
             write_log('Thread (' . $tid . ' - ' . $thread['subject'] . ') has been deleted by ' . $CURUSER['username']);
 
@@ -289,7 +317,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
 		 
             write_log('Post (' . $pid . ' - ' . $thread['subject'] . ') has been deleted by ' . $CURUSER['username']);
 
-            $query = $db->simple_select("tsf_posts", "pid", "tid='{$tid}' AND dateline <= '{$post['dateline']}'", ["limit" => 1, "order_by" => "dateline DESC, pid DESC"]);
+            $query = $db->simple_select("posts", "pid", "tid='{$tid}' AND dateline <= '{$post['dateline']}'", ["limit" => 1, "order_by" => "dateline DESC, pid DESC"]);
             $next_post = $db->fetch_array($query);
             if ($next_post['pid']) {
                 $redirect = get_post_link($next_post['pid'], $tid)."#pid{$next_post['pid']}";
@@ -475,7 +503,42 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
 	
     
     if (isset($post['visible']) && $post['visible'] != -1 && (($thread['firstpost'] == $pid && $is_mod || $forumpermissions['candeletethreads'] == 1 && $CURUSER['id'] == $post['uid'])) || ($thread['firstpost'] != $pid && ($is_mod || $forumpermissions['candeleteposts'] == 1 && $CURUSER['id'] == $post['uid']))) {	
-        eval("\$deletebox = \"".$templates->get("editpost_delete")."\";");
+        
+		
+		$deletebox = '
+		
+		<form action="editpost.php" method="post" name="editpost">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+	
+<div class="card border-0 mb-4">
+	<div class="card-header rounded-bottom text-19 fw-bold">
+		'.$lang->editpost['edit_post'].'
+	</div>
+	<div class="card-body">
+		
+		<div class="row g-2 pb-3 border-bottom">
+			<div class="col-lg-auto align-self-center border-end pe-3 me-3">
+		
+		<input type="checkbox" class="form-check-input" name="delete" value="1" tabindex="9" /> '.$lang->editpost['delete_q'].'
+				
+			</div>
+			<div class="col-lg align-self-center">
+		<i class="fa-solid fa-circle-exclamation text-danger"></i> '.$lang->editpost['delete_2'].'
+			</div>
+			<div class="col-lg-auto text-end align-self-center">
+<input type="submit" class="btn btn-danger" name="submit" value="'.$lang->editpost['delete_now'].'" tabindex="10" />
+				<input type="hidden" name="action" value="deletepost" />
+<input type="hidden" name="pid" value="'.$pid.'" />
+			</div>
+		</div>
+		</div></div>
+</form>';
+		
+		
+		
+		
+		
+		
     }
     
     $bgcolor = "trow1";
@@ -508,19 +571,82 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
             $attach_mod_options = '';
             if ($is_mod) {
                 if ($attachment['visible'] == 1) {
-                    eval("\$attach_mod_options = \"".$templates->get("post_attachments_attachment_mod_unapprove")."\";");
+                    
+					$attach_mod_options = '
+					
+					
+					<input type="submit" class="btn btn-page" name="unapproveattach_'.$attachment['aid'].'" value="'.$lang->editpost['unapprove_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"unapprove");" />
+					
+					';
+
+					
                 } else {
-                    eval("\$attach_mod_options = \"".$templates->get("post_attachments_attachment_mod_approve")."\";");
+                    
+					$attach_mod_options = '
+					
+					<input type="submit" class="btn btn-page" name="approveattach_'.$attachment['aid'].'" value="'.$lang->editpost['approve_attachment'].'" onclick="return Post.attachmentAction('.$attachment['aid'].',"approve");" />
+					
+					';
+					
+					
+					
                 }
             }
 
             // Remove Attachment
-            eval("\$attach_rem_options = \"".$templates->get("post_attachments_attachment_remove")."\";");
+            $attach_rem_options = '
+			
+			
+			<input type="submit" class="btn btn-page" name="rem_'.$attachment['aid'].'" value="'.$lang->editpost['remove_attachment'].'" onclick="return Post.removeAttachment('.$attachment['aid'].');" />
+			
+			
+			
+			';
+			
+			
             
             if ($attachment['visible'] != 1) {
-                eval("\$attachments .= \"".$templates->get("post_attachments_attachment_unapproved")."\";");
+                
+				
+				$attachments .= '
+				
+				<div class="alert bg-danger border-0 mt-2" id="attachment_'.$attachment['aid'].'">
+<div class="row">
+<div class="col-8 text-start">
+		
+		'.$attachment['icon'].' <a href="attachment.php?aid='.$attachment['aid'].'" target="_blank">'.$attachment['filename'].'</a> ('.$attachment['size'].') 
+		
+	</div>
+	<div class="col-4 text-end">
+		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
+	</div>
+</div>
+</div>
+				
+				
+				';
+				
+				
+				
             } else {
-                eval("\$attachments .= \"".$templates->get("post_attachments_attachment")."\";");
+                
+				
+				$attachments .= '
+
+				<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'">
+<div class="row g-1">
+<div class="col-lg-8 text-start align-self-center">
+		
+	'.$attachment['icon'].' '.$attachment['filename'].' / <strong>'.$attachment['size'].'</strong> 
+		
+	</div>
+	<div class="col-lg-4 text-lg-end">
+		'.$attach_mod_options.' '.$attach_rem_options.' '.$postinsert.'
+	</div>
+</div>
+</div>';
+					
+				
             }
             $attachcount++;
         }
@@ -547,7 +673,10 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
         if ($usage['ausage'] !== null) {
             $friendlyusage = mksize($usage['ausage']);
             $attach_usage = sprintf($lang->editpost['attach_usage'] ?? 'Attachment usage: %s', $friendlyusage);
-            eval("\$link_viewattachments = \"".$templates->get("post_attachments_viewlink")."\";");
+            
+			$link_viewattachments = '<a href="usercp.php?action=attachments">'.$lang->global['view_attachments'].'</a>';
+			
+			
         } else {
             $attach_usage = "";
         }
@@ -556,18 +685,70 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
         $maxattachments = "5";
         
         if ($maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments) && !$noshowattach) {
-            eval("\$attach_add_options = \"".$templates->get("post_attachments_add")."\";");
+            
+			$attach_add_options = '
+			
+			<button type="submit" class="btn btn-primary" name="newattachment" value="'.$lang->editpost['add_attachment'].'" tabindex="13"><i class="fa-solid fa-upload"></i> &nbsp;'.$lang->editpost['add_attachment'].'</button>
+			
+			';
+			
+			
         }
 
         if ($attachcount > 0) {
-            eval("\$attach_update_options = \"".$templates->get("post_attachments_update")."\";");	
+            
+			$attach_update_options = '
+			
+			<button type="submit" class="btn btn-primary" name="updateattachment" value="'.$lang->editpost['update_attachment'].'" tabindex="12"><i class="fa-solid fa-check"></i> &nbsp;'.$lang->editpost['update_attachment'].'&nbsp;</button>
+			
+			
+			';	
+			
+			
         }
 
         if ($attach_add_options || $attach_update_options) {
-            eval("\$newattach = \"".$templates->get("post_attachments_new")."\";");
+            
+			
+			$newattach = '
+			
+			<div class="row mb-2">
+	<div class="col-12">
+
+		<div id="upload_bar" style="background: #0066A2; height: 5px; width: 0%;"></div>
+		<div id="dropzone" style="padding: 30px 0; background: #f0faf6; cursor: pointer; border-radius: 5px; text-align: center; width:100%">
+			<img src="pic/paperclip.png" alt="" />
+			<div style="pointer-events: none;"></div>
+			
+		</div>
+	</div>
+</div>
+
+<label for="attachments[]">'.$lang->editpost['new_attachment'].'</label>
+<div class="alert bg-nav mb-0">
+<input type="file" name="attachments[]" size="30" class="form-control" multiple="multiple" />
+</div>
+<div class="mt-2">
+'.$attach_add_options.' &nbsp;'.$attach_update_options.'
+</div>';
+			
+			
+			
         }
         
-        eval("\$attachbox = \"".$templates->get("post_attachments")."\";");
+        $attachbox = '
+		
+		<div class="card border-0">
+<div class="pb-3 border-bottom text-muted mb-3">'.$attach_quota.'</div>
+'.$newattach.'
+'.$attachments.'
+</div>';
+		
+		
+		
+		
+		
+		
     } else {
         $attachbox = '';
     }
@@ -656,13 +837,13 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
 
     if (!empty($mybb->input['previewpost'])) {
         if (!$post['uid']) {
-            $query = $db->simple_select('tsf_posts', 'username, dateline', "pid='{$pid}'");
+            $query = $db->simple_select('posts', 'username, dateline', "pid='{$pid}'");
             $postinfo = $db->fetch_array($query);
         } else {
             $sql = "
                SELECT u.*, p.dateline
                FROM users u
-               LEFT JOIN tsf_posts p ON (p.uid = u.id)
+               LEFT JOIN posts p ON (p.uid = u.id)
                WHERE u.id = ? AND p.pid = ? LIMIT 1";
 
             $params = [
@@ -704,7 +885,7 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
             $postoptionschecked['disablesmilies'] = " checked=\"checked\"";
         }
 
-        $subscription_method = get_subscription_method($tid, $postoptions);
+        $subscription_method = get_subscription_method((int)$tid, $postoptions);
         ${$subscription_method.'subscribe'} = "checked=\"checked\" ";
     }
 
@@ -721,7 +902,14 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
     $alloweditreason = "1";
     
     if ($alloweditreason == 1) {
-        eval("\$editreason = \"".$templates->get("editpost_reason")."\";");
+        
+		$editreason = '
+		
+		<input type="text" class="form-control border mb-3" name="editreason" size="40" placeholder="'.$lang->editpost['editreason'].'" maxlength="150" value="'.$reason.'" tabindex="5" />
+		
+		';
+		
+		
         $bgcolor = "trow2";
         $bgcolor2 = "trow1";
     } else {
@@ -730,9 +918,32 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
     }
 
     // Fetch subscription select box
-    eval("\$subscriptionmethod = \"".$templates->get("post_subscription_method")."\";");
+    $subscriptionmethod = '
+	
+	
+	<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->global['thread_subscription_method'].'</div>
+<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->global['thread_subscription_method'].'
+</div>
+<div class="col">
+	<div class="text-desc mb-3">'.$lang->global['thread_subscription_method_desc'].'</div>
+	<label class="form-check-label"><input type="radio" class="form-check-input" name="postoptions[subscriptionmethod]" '.$subscribe.'value="" /> '.$lang->global['no_subscribe'].'</label><br />
+	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$nonesubscribe.'value="none" /> '.$lang->global['no_subscribe_notification'].'</label><br />
+	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$emailsubscribe.'value="email"/> '.$lang->global['instant_email_subscribe'].'</label><br />
+	<label class="form-check-label"><input type="radio" class="form-check-input mt-1"  name="postoptions[subscriptionmethod]" '.$pmsubscribe.'value="pm" /> '.$lang->global['instant_pm_subscribe'].'</label>
+</div>
+</div>';
+	
+	
+	
+	
+	
+	
+	
+	
 
-    $query = $db->simple_select("tsf_posts", "*", "tid='{$tid}'", ["limit" => 1, "order_by" => "dateline, pid"]);
+    $query = $db->simple_select("posts", "*", "tid='{$tid}'", ["limit" => 1, "order_by" => "dateline, pid"]);
     $firstcheck = $db->fetch_array($query);
 
     $time = TIMENOW;
@@ -752,7 +963,18 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
             $postpollchecked = 'checked="checked"';
         }
         
-        eval("\$pollbox = \"".$templates->get("newthread_postpoll")."\";");
+        $pollbox = '
+		
+		
+		&nbsp;&nbsp;<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-pollop" role="button"><i class="fa-solid fa-circle-plus"></i> &nbsp;'.$lang->newthread['poll'].'</a>&nbsp;&nbsp;
+		
+		
+		
+		
+		';
+		
+		
+		
     } else {
         $pollbox = '';
     }
@@ -761,7 +983,14 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
     $disablesmilies = '';
 
     $postoptions = '';
-    eval("\$postoptions = \"".$templates->get("editpost_postoptions")."\";");
+    
+	$postoptions = '
+	
+	<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-postop" role="button"><i class="fa-solid fa-gear"></i> &nbsp;'.$lang->editpost['post_options'].'</a>
+	
+	';
+	
+	
 
     $moderation_notice = '';
 
@@ -770,14 +999,181 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
     
     $maxattachments = "5";
     
-    eval("\$post_javascript = \"".$templates->get("post_javascript")."\";");		
+    $post_javascript = '
+	
+	<script type="text/javascript">
+				lang.add_attachment = "Add Attachment";
+				lang.update_attachment = "Update Attachment";
+				lang.update_confirm = "The following file(s) are already attached and will be updated / replaced with the newly selected one(s). {1} Are you sure?";
+				lang.attachment_missing = "Please select one or more files before attempting to attach.";
+				lang.attachment_too_many_files = "You can upload a maximum of {1} files at once.";
+				lang.attachment_too_big_upload = "You can upload a maximum of {1} MB at once.";
+				lang.attachment_max_allowed_files = "You can attach {1} more file(s) to this post.";
+				lang.error_maxattachpost = "Sorry but you cannot attach this file because you have reached the maximum number of attachments allowed per post of {1}";
+				lang.drop_files = "Click or drop some files here to upload...";
+				lang.upload_initiate = "Release to initiate upload...";
+				php_max_upload_size = '.$php_max_upload_size.';
+				php_max_file_uploads = '.$php_max_file_uploads.';
+				mybb_max_file_uploads = '.$maxattachments.';
+			</script>
+			<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>
+			<script type="text/javascript" src="'.$BASEURL.'/scripts/post.js?ver=1832"></script>';	
+	
+	
+
+	
             
     $plugins->run_hooks("editpost_end");
 
     $forum['name'] = strip_tags($forum['name']);
 
-    eval("\$editpost = \"".$templates->get("editpost")."\";");
+    $editpost = '
+	
+	
+	<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->editpost['edit_post'].'</title>
+
+'.$post_javascript.'
+		
+</head>
+<body>
+
+	
+	<div class="container-md">
+		
+'.$preview.'
+'.$post_errors.'
+'.$attacherror.'
+'.$moderation_notice.'
+'.$deletebox.'
+<form id="editpost" action="editpost.php?pid='.$pid.'&amp;processed=1" method="post" enctype="multipart/form-data" name="input">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div id="fileIdsContainer"></div>
+	
+	
+
+		<div class="row m-0 mb-3 p-0 pb-2 border-bottom">
+			<div class="col align-self-center m-0 p-0">
+'.$editreason.'
+			</div>
+	</div>
+	
+	<div class="row m-0 mb-3 p-0 pb-2 border-bottom">
+'.$prefixselect.'
+			 <div class="col align-self-center m-0 p-0">
+			 <input type="text" class="form-control border mb-3" name="subject" maxlength="85" value="'.$subject.'" tabindex="1" />
+		</div>
+	</div>
+		'.$codebuttons.' 
+<div class="row">
+	<div class="col">
+<textarea id="message" name="message" class="form-control form-control-sm border" style="height: 400px" rows="20" cols="70" tabindex="2" >'.$message.'</textarea>
+		</div>
+
+	</div>
+	
+	
+
+<div class="mt-2 mb-3">
+'.$postoptions.'		
+<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-attach" role="button"><i class="fa-solid fa-paperclip"></i> &nbsp;'.$lang->editpost['attachments'].'</a>		
+'.$pollbox.'
+<button type="submit" class="btn-thread" name="previewpost" value="'.$lang->editpost['preview_post'].'" tabindex="5"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->editpost['preview_post'].'</button>
+
+		
+
+<!-- pollop -->
+<div id="collapse-pollop" class="collapse mt-4">
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['poll'].'</div>
+<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->editpost['poll'].'
+</div>
+<div class="col">
+<div class="text-desc mb-3">'.$lang->editpost['poll_desc'].'</div>
+<label><input type="checkbox" class="form-check-input" name="postpoll" value="1" '.$postpollchecked.' />&nbsp; '.$lang->editpost['poll_check'].'</label>	
+<div class="mt-3">'.$lang->editpost['num_options'].'<input type="text" class="form-control border form-control-sm border" style="width: 250px" name="numpolloptions" value="'.$numpolloptions.'" size="10" /> &nbsp;'.$lang->editpost['max_options'].'
+</div>	
+</div>
+</div>
+</div>
+<!-- pollop -->	
+ <!-- attach -->
+<div id="collapse-attach" class="collapse mt-4">
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['attachments'].'</div>
+<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->editpost['attachments'].'
+</div>
+<div class="col">
+'.$attachbox.'
+</div>
+</div>
+</div>
+<!-- attach -->
+ <!-- modop -->
+<div id="collapse-modop" class="collapse mt-4">
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->mod_options.'</div>
+<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->mod_options.'
+</div>
+<div class="col">
+'.$closeoption.'
+'.$stickoption.'
+</div>
+</div>
+</div>
+<!-- modop -->	
+<!-- postop -->
+<div id="collapse-postop" class="collapse mt-4">
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['post_options'].'</div>
+<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->editpost['post_options'].'
+</div>
+<div class="col">
+'.$signature.'
+
+</div>
+</div>
+'.$subscriptionmethod.'		
+</div>
+<!-- postop -->		
+			
+        </div>
+	</div>
+
+	<div class="card-footer text-center">
+		<button type="submit" class="btn btn-primary lift" name="submitbutton" value="'.$lang->editpost['update_post'].'" tabindex="3" accesskey="s"><i class="fa-solid fa-pen"></i> &nbsp;'.$lang->editpost['update_post'].'</button>
+	</div>
+		
+<input type="hidden" name="action" value="do_editpost" />
+<input type="hidden" name="attachmentaid" value="" />
+<input type="hidden" name="attachmentact" value="" />
+</form>
+	</div></div>
+
+<script>
+document.addEventListener(\'DOMContentLoaded\', function() {
+    // Показываем родительский элемент fileInput
+    if (Post.fileInput && Post.fileInput.parentElement && Post.fileInput.parentElement.parentElement) {
+        Post.fileInput.parentElement.parentElement.style.display = \'\';
+    }
     
+    // Скрываем родительский элемент dropZone
+    if (Post.dropZone && Post.dropZone.parentElement && Post.dropZone.parentElement.parentElement) {
+        Post.dropZone.parentElement.parentElement.style.display = \'none\';
+    }
+});
+</script>	
+</body>
+</html>';
+	
+	
+	
+	
     stdhead();
     build_breadcrumb();
     echo $editpost;

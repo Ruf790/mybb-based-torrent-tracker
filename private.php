@@ -1,28 +1,9 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
+
 
 define("IN_MYBB", 1);
 define("IGNORE_CLEAN_VARS", "sid");
 define('SCRIPTNAME', 'private.php');
-
-$templatelist = "private_send,private_send_buddyselect,private_tracking,private_tracking_readmessage,private_tracking_unreadmessage,usercp_nav_attachments,usercp_nav_messenger_compose,private_tracking_readmessage_stop";
-$templatelist .= ",private_folders,private_folders_folder,private_folders_folder_unremovable,private,usercp_nav,private_empty_folder,private_archive_txt,private_archive_csv,private_archive_html,private_tracking_unreadmessage_stop";
-$templatelist .= ",usercp_nav_messenger,usercp_nav_changename,multipage,multipage_end,multipage_jump_page,multipage_nextpage,multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start";
-$templatelist .= ",private_messagebit,codebuttons,posticons,private_send_autocomplete,private_messagebit_denyreceipt,postbit_warninglevel_formatted,private_emptyexportlink,postbit_purgespammer,postbit_gotopost,private_read";
-$templatelist .= ",postbit_delete_pm,postbit,private_tracking_nomessage,private_nomessages,postbit_author_guest,private_multiple_recipients_user,private_multiple_recipients_bcc,private_multiple_recipients,usercp_nav_messenger_folder";
-$templatelist .= ",private_search_messagebit,private_search_results_nomessages,private_search_results,private_advanced_search,previewpost,private_send_tracking,private_send_signature,private_read_bcc,private_composelink";
-$templatelist .= ",private_archive,private_quickreply,private_pmspace,private_limitwarning,postbit_groupimage,postbit_offline,postbit_www,postbit_replyall_pm,postbit_signature,postbit_classic,postbit_reputation_formatted_link";
-$templatelist .= ",private_archive_folders_folder,private_archive_folders,postbit_warninglevel,postbit_author_user,postbit_forward_pm,private_messagebit_icon,private_jump_folders_folder,private_advanced_search_folders,usercp_nav_home";
-$templatelist .= ",private_jump_folders,postbit_avatar,postbit_warn,postbit_rep_button,postbit_email,postbit_reputation,private_move,private_read_action,postbit_away,postbit_pm,usercp_nav_messenger_tracking,postbit_find";
-$templatelist .= ",usercp_nav_editsignature,posticons_icon,postbit_icon,postbit_iplogged_hiden,usercp_nav_profile,usercp_nav_misc,postbit_userstar,private_read_to,postbit_online,private_empty,private_orderarrow,postbit_reply_pm";
-
 
 
 
@@ -55,7 +36,7 @@ $lang->load("private");
 
 if($enablepms == 0)
 {
-	error($lang->pms_disabled);
+	error($lang->private['pms_disabled']);
 }
 
 
@@ -90,7 +71,7 @@ foreach($foldersexploded as $key => $folders)
 	$folder_id = $folderinfo[0];
 	$folder_name = $folderinfo[1];
 
-	eval("\$folderjump_folder .= \"".$templates->get("private_jump_folders_folder")."\";");
+	$folderjump_folder .= '<option value="'.$folder_id.'"'.$sel.'>'.$folder_name.'</option>';
 
 	// Manipulate search folder selection & move selector to omit "Unread"
 	if($folder_id != 1)
@@ -99,16 +80,24 @@ foreach($foldersexploded as $key => $folders)
 		{
 			$folder_id = 1;
 		}
-		eval("\$folderoplist_folder .= \"".$templates->get("private_jump_folders_folder")."\";");
-		eval("\$foldersearch_folder .= \"".$templates->get("private_jump_folders_folder")."\";");
+		$folderoplist_folder .= '<option value="'.$folder_id.'"'.$sel.'>'.$folder_name.'</option>';
+		$foldersearch_folder .= '<option value="'.$folder_id.'"'.$sel.'>'.$folder_name.'</option>';
 	}
 }
 
 $from_fid = $mybb->input['fid'];
 
-eval("\$folderjump = \"".$templates->get("private_jump_folders")."\";");
-eval("\$folderoplist = \"".$templates->get("private_move")."\";");
-eval("\$foldersearch = \"".$templates->get("private_advanced_search_folders")."\";");
+$folderjump = '<select name="jumpto" class="form-select form-select-sm border">
+'.$folderjump_folder.'
+</select>';
+$folderoplist = '<input type="hidden" value="'.$from_fid.'" name="fromfid" />
+<select name="fid" class="form-select form-select-sm border w-auto pe-5">
+'.$folderoplist_folder.'
+</select>';
+$foldersearch = '<select name="folder[]" id="folder" class="form-select form-select-sm border w-auto pe-5">
+<option selected="selected">'.$lang->private['all_folders'].'</option>
+'.$foldersearch_folder.'
+</select>';
 
 usercp_menu();
 
@@ -343,7 +332,7 @@ if($mybb->input['action'] == "results")
 	$multipage = multipage($pmscount, $perpage, $page, "private.php?action=results&amp;sid=".htmlspecialchars_uni($mybb->get_input('sid'))."&amp;sortby={$sortby}&amp;order={$order}");
 	$messagelist = '';
 
-	$icon_cache = $cache->read("posticons");
+	
 
 	// Cache users in multiple recipients for sent & drafts folder
 	// Get all recipients into an array
@@ -458,22 +447,28 @@ else if ($message['status'] == 4) {
 					$user = $cached_users[$uid];
 					$user['username'] = htmlspecialchars_uni($user['username']);
 					$username = format_name($user['username'], $user['usergroup'], $user['displaygroup']);
-					eval("\$to_users .= \"".$templates->get("private_multiple_recipients_user")."\";");
+					$to_users .= '<div class="popup_item_container"><a href="'.$profilelink.'" class="popup_item">'.$username.'</a></div>';
 				}
 				if(isset($recipients['bcc']) && is_array($recipients['bcc']) && count($recipients['bcc']))
 				{
-					eval("\$bcc_users = \"".$templates->get("private_multiple_recipients_bcc")."\";");
+					$bcc_users = '<div class="tcat"><strong>'.$lang->private['bcc'].'</strong></div>';
 					foreach($recipients['bcc'] as $uid)
 					{
 						$profilelink = get_profile_link($uid);
 						$user = $cached_users[$uid];
 						$user['username'] = htmlspecialchars_uni($user['username']);
 						$username = format_name($user['username'], $user['usergroup'], $user['displaygroup']);
-						eval("\$bcc_users .= \"".$templates->get("private_multiple_recipients_user")."\";");
+						$bcc_users .= '<div class="popup_item_container"><a href="'.$profilelink.'" class="popup_item">'.$username.'</a></div>';
 					}
 				}
 
-				eval("\$tofromusername = \"".$templates->get("private_multiple_recipients")."\";");
+				$tofromusername = '<a href="private.php?action=read&amp;pmid='.$message['pmid'].'" id="private_message_'.$message['pmid'].'">'.$lang->private['multiple_recipients'].'</a>
+		<div id="private_message_'.$message['pmid'].'_popup" class="popup_menu" style="display: none;"><div class="tcat"><strong>'.$lang->private['to'].'</strong></div>'.$to_users.''.$bcc_users.'</div>
+<script type="text/javascript">
+<!--
+	$("#private_message_'.$message['pmid'].'").popupMenu();
+// -->
+</script>';
 			}
 			else if($message['toid'])
 			{
@@ -499,18 +494,7 @@ else if ($message['status'] == 4) {
 
 		$denyreceipt = '';
 
-		if($message['icon'] > 0 && $icon_cache[$message['icon']])
-		{
-			$icon = $icon_cache[$message['icon']];
-			$icon['path'] = str_replace("{theme}", $theme['imgdir'], $icon['path']);
-			$icon['path'] = htmlspecialchars_uni($icon['path']);
-			$icon['name'] = htmlspecialchars_uni($icon['name']);
-			eval("\$icon = \"".$templates->get("private_messagebit_icon")."\";");
-		}
-		else
-		{
-			$icon = '&#009;';
-		}
+		
 
 		if(!trim($message['subject']))
 		{
@@ -558,17 +542,123 @@ else if ($message['status'] == 4) {
 			$message['message'] = my_substr($message['message'], 0, 200)."...";
 		}
 
-		eval("\$messagelist .= \"".$templates->get("private_search_messagebit")."\";");
+		$messagelist .= '<div class="card mb-0 border-0">
+	<div class="card-body pt-0 inline_row">
+	<div class="row g-2 pb-3 border-bottom mb-0">
+		<div class="col-auto col-sm-auto col-md-auto col-lg-1 col-xl-1 col-xxl-1 align-self-center">
+			<avatarep_uid_['.$tofromuid.']>
+				</div>
+			<div class="col align-self-center">
+				<h6 class="mb-0 text-forum"><a class="'.$msgstatus.'" href="private.php?action=read&amp;pmid='.$message['pmid'].'">'.$message['subject'].'</a>'.$denyreceipt.'</h6>
+				<i class="fa-regular fa-folder-open small text-desc"></i> &nbsp;<a href="private.php?fid='.$message['folder'].'" class="links small">'.$foldername.'</a> &mdash; <span class="links small">'.$tofromusername.'</span>
+			</div>
+			<div class="col-auto d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block align-self-center">
+				'.$icon.' <img src="'.$theme['imgdir'].'/'.$msgstatus.'.png" alt="'.$msgalt.'" title="'.$msgalt.'" /> 
+			</div>
+			<div class="col-lg-3 text-muted align-self-center">
+				'.$senddate.'
+				<span class="float-end">
+					<input type="checkbox" class="form-check-input" name="check['.$message['pmid'].']" value="1" />
+				</span>
+			</div>
+		</div>
+	</div>
+	</div>';
 	}
 
 	if($db->num_rows($query) == 0)
 	{
-		eval("\$messagelist = \"".$templates->get("private_search_results_nomessages")."\";");
+		$messagelist = '<tr>
+<td colspan="7" class="trow1">'.$lang->private['nomessages'].'</td>
+</tr>';
+
+
+
+
+
 	}
 
 	$plugins->run_hooks("private_results_end");
 
-	eval("\$results = \"".$templates->get("private_search_results")."\";");
+	$results = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->private['private_messaging'].'</title>
+
+</head>
+<body>
+
+	<form action="private.php" method="post" name="pmForm">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="container-md">
+<div class="row">
+<div class="col-lg-3">
+
+'.$usercpnav.'
+				
+</div>
+<div class="col">
+	
+<div class="card border-0 mb-3">
+<div class="card-header py-3 bg-nav rounded border-bottom-0">
+		
+		<div class="row g-2 text-forum">
+			<div class="col-1">
+				&nbsp;
+			</div>
+			<div class="col align-self-center">
+				'.$lang->private['message'].'</a> &mdash; '.$lang->private['sender'].'
+			</div>
+			<div class="col-3 align-self-center">
+				<span class="d-none d-sm-none d-md-none d-lg-inline-block d-xl-inline-block d-xxl-inline-block">'.$lang->private['date_sent'].'</span>
+				<span class="float-end"><input name="allbox" title="'.$lang->private['check_all'].'" type="checkbox" class="form-check-input checkall" value="'.$lang->private['check_all'].'" /></span>
+			</div>
+	</div>
+	
+	</div>
+	</div>	
+	
+'.$messagelist.'
+	
+	
+	
+	
+	
+	
+	
+	<div class="card border-0 mt-3">
+<div class="card-header py-3 bg-nav rounded border-bottom-0">
+		
+		<div class="row g-1">
+			<div class="col">
+				&nbsp;
+			</div>
+						<div class="col-auto">
+				<input type="submit" class="btn btn-primary btn-sm" name="moveto" value="'.$lang->private['move_to'].'" />&nbsp; <i class="fa-solid fa-arrow-right"></i>&nbsp;  
+			</div>
+			<div class="col-auto">
+	'.$folderoplist.' 
+			</div>
+			<div class="col-auto">
+				&nbsp;'.$lang->private['or'].'&nbsp; <input type="submit" class="btn btn-primary btn-sm" name="delete" value="'.$lang->private['delete'].'" />
+			</div>
+			<div class="col">
+				&nbsp;
+			</div>
+	</div>
+		</div>
+	</div>	
+
+<input type="hidden" name="action" value="do_stuff" />
+</form>
+
+'.$multipage.'
+</div></div>
+</div>
+</div>
+</div>
+
+</body>
+</html>';
 	
 	echo $results;
 }
@@ -577,7 +667,162 @@ if($mybb->input['action'] == "advanced_search")
 {
 	$plugins->run_hooks("private_advanced_search");
 
-	eval("\$advanced_search = \"".$templates->get("private_advanced_search")."\";");
+	$advanced_search = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->private['advanced_private_message_search'].'</title>
+
+</head>
+<body>
+
+<form action="private.php" method="post" name="pmForm">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<input type="hidden" name="action" value="do_search" />
+<div class="container-md">
+<div class="row">
+<div class="col-lg-3">
+
+'.$usercpnav.'
+				
+</div>
+<div class="col">
+				
+<div class="card">
+<div class="card-body">
+	
+	
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->private['keywords'].'</div>
+<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->private['keywords'].'
+</div>
+<div class="col">
+<label for="keywords">'.$lang->private['keywords'].'</label>
+<input type="text" class="form-control form-control-sm border" name="keywords" id="keywords" maxlength="250" />
+	<div class="form-check form-check-inline mt-1">
+  <input type="checkbox" class="form-check-input" name="subject" checked="checked" value="1" />
+  <label class="form-check-label" for="inlineCheckbox1">'.$lang->private['search_in_subject'].'</label>
+</div>
+	<div class="form-check form-check-inline mt-1">
+  <input type="checkbox" class="form-check-input" name="message" checked="checked" value="1" />
+  <label class="form-check-label" for="inlineCheckbox1">'.$lang->private['search_in_message'].'</label>
+</div>	
+</div>
+</div>
+	
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->sender.'</div>
+<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->private['sender'].'
+</div>
+<div class="col">
+	<label for="keywords">'.$lang->private['sender'].'</label>
+			<input type="text" class="form-control form-control-sm border border" name="sender" id="sender" maxlength="250" />	
+</div>
+</div>	
+	
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->private['message_status'].'</div>
+<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->private['message_status'].'
+</div>
+<div class="col">
+ <input type="checkbox" name="status[new]" class="form-check-input" checked="checked" value="1" /> '.$lang->private['message_status_new'].'
+	<br />
+<input type="checkbox" class="form-check-input" name="status[replied]" checked="checked" value="1" /> '.$lang->private['message_status_replied_to'].'	
+	<br />
+<input type="checkbox" class="form-check-input" name="status[forwarded]" checked="checked" value="1" /> '.$lang->private['message_status_forwarded'].'
+	<br />
+<input type="checkbox" class="form-check-input" name="status[read]" checked="checked" value="1" /> '.$lang->private['message_status_read'].'
+	
+</div>
+</div>	
+	
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->private['folder'].'</div>
+<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->private['folder'].'
+</div>
+<div class="col">
+'.$foldersearch.'
+</div>
+</div>		
+	
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->private['search_options'].'</div>
+<div class="row g-3 m-auto pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->private['search_options'].'
+</div>
+<div class="col">
+	<div class="pb-3 mb-3 border-bottom">
+<label>'.$lang->private['sort_by'].'</label>
+		<select name="sort" id="sort" class="form-select form-select-sm border w-auto pe-5">
+				<option value="subject">'.$lang->private['sort_by_subject'].'</option>
+				<option value="sender">'.$lang->private['sort_by_sender'].'</option>
+				<option value="dateline" selected="selected">'.$lang->private['sort_by_date'].'</option>
+			</select>
+	</div>
+		<div class="radio-toolbar mt-2">
+  <input type="radio" name="sortordr" id="order_asc" value="asc" />
+  <label for="order_asc">'.$lang->private['ascending_order'].'</label>
+
+  <input type="radio" name="sortordr" checked="checked" id="order_desc" value="desc" />
+  <label for="order_desc">'.$lang->private['descending_order'].'</label>
+</div>
+	
+</div>
+</div>		
+
+	</div>
+				
+<div class="card-footer text-center">
+<button type="submit" value="'.$lang->private['search_private_messages'].'" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> &nbsp;'.$lang->private['search_private_messages'].'</button></div>
+</div>
+</form>
+</div></div>
+</div>
+</div>
+</div>
+
+<link rel="stylesheet" href="'.$BASEURL.'/scripts/select2/select2-2.css?ver=1807" />
+<script type="text/javascript" src="'.$BASEURL.'/scripts/select2/select2.min.js?ver=1806"></script>
+
+<script type="text/javascript">
+<!--
+
+	MyBB.select2();
+	$("#sender").select2({
+		placeholder: "{Search for a user}",
+		minimumInputLength: 2,
+		multiple: false,
+		allowClear: true,
+		ajax: { // instead of writing the function to execute the request we use Select2\'s convenient helper
+			url: "xmlhttp.php?action=get_users",
+			dataType: \'json\',
+			data: function (term, page) {
+				return {
+					query: term, // search term
+				};
+			},
+			results: function (data, page) { // parse the results into the format expected by Select2.
+				// since we are using custom formatting functions we do not need to alter remote JSON data
+				return {results: data};
+			}
+		},
+		initSelection: function(element, callback) {
+			var value = $(element).val();
+			if (value !== "") {
+				callback({
+					id: value,
+					text: value
+				});
+			}
+		}
+	});
+
+// -->
+</script>
+</body>
+</html>';
 
 	stdhead($lang->private['advanced_private_message_search']);
 	
@@ -837,7 +1082,8 @@ $codebuttons ='
 		}
 
 		$postbit = build_postbit($post, 2);
-		eval("\$preview = \"".$templates->get("previewpost")."\";");
+		
+		$preview = ''.$postbit.'';
 	}
 	else if(!$send_errors)
 	{
@@ -997,7 +1243,317 @@ $codebuttons ='
 	}
 
 	// Load the auto complete javascript if it is enabled.
-	eval("\$autocompletejs = \"".$templates->get("private_send_autocomplete")."\";");
+	$autocompletejs = '<script type="text/javascript">
+document.addEventListener("DOMContentLoaded", function() {
+    var container = document.getElementById(\'to-container\');
+    var toInput = document.getElementById(\'to\');
+    
+    if (!container || !toInput) return;
+    
+    var maxRecipients = parseInt(toInput.getAttribute(\'data-max-recipients\')) || 5;
+    var input = container.querySelector(\'.select2-tags-input\');
+    if (!input) return;
+    
+    var recipients = [];
+    var debounceTimer = null;
+    
+    // Инициализация существующих значений
+    if (toInput.value) {
+        var values = toInput.value.split(\',\')
+            .map(function(v) { return v.trim(); })
+            .filter(function(v) { return v !== \'\'; });
+        
+        values.forEach(function(value) {
+            addRecipient(value, true);
+        });
+    }
+    
+    // Dropdown для автодополнения
+    var dropdown = document.createElement(\'div\');
+    dropdown.className = \'select2-dropdown\';
+    dropdown.style.cssText = \'position: absolute; background: white; border: 1px solid #ddd; border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: none;\';
+    document.body.appendChild(dropdown);
+
+    // Создаем элемент для отображения ошибки
+    var errorDisplay = document.createElement(\'div\');
+    errorDisplay.className = \'recipient-limit-error\';
+    errorDisplay.style.cssText = \'color: #dc3545; font-size: 12px; margin-top: 5px; display: none;\';
+    container.parentNode.insertBefore(errorDisplay, container.nextSibling);
+    
+    // Функция добавления получателя
+    function addRecipient(username, skipDuplicateCheck) {
+        console.log(\'Adding recipient:\', username, \'Current:\', recipients.length, \'Max:\', maxRecipients);
+        
+        // Проверка лимита
+        if (recipients.length >= maxRecipients) {
+            showLimitMessage();
+            return;
+        }
+        
+        if (!skipDuplicateCheck && recipients.includes(username)) {
+            return;
+        }
+        
+        recipients.push(username);
+        
+        // Создаем тег
+        var tag = document.createElement(\'div\');
+        tag.style.cssText = \'display: inline-flex; align-items: center; background: #e9ecef; border-radius: 16px; padding: 4px 8px; font-size: 14px; color: #495057; margin: 2px;\';
+        
+        var textSpan = document.createElement(\'span\');
+        textSpan.textContent = username;
+        textSpan.style.cssText = \'margin-right: 6px;\';
+        tag.appendChild(textSpan);
+        
+        var removeBtn = document.createElement(\'button\');
+        removeBtn.textContent = \'×\';
+        removeBtn.style.cssText = \'background: none; border: none; color: #6c757d; font-size: 16px; cursor: pointer; padding: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;\';
+        removeBtn.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            removeRecipient(username);
+        };
+        tag.appendChild(removeBtn);
+        
+        container.insertBefore(tag, input);
+        
+        // Обновляем оригинальное поле
+        toInput.value = recipients.join(\', \');
+        
+        // Очищаем поле ввода
+        input.value = \'\';
+        
+        // Включаем поле если оно было отключено
+        enableInput();
+        
+        // Скрываем dropdown
+        dropdown.style.display = \'none\';
+        
+        // Проверяем лимит после добавления
+        if (recipients.length >= maxRecipients) {
+            showLimitMessage();
+        }
+    }
+    
+    // Функция удаления получателя
+    function removeRecipient(username) {
+        var index = recipients.indexOf(username);
+        if (index > -1) {
+            recipients.splice(index, 1);
+            toInput.value = recipients.join(\', \');
+            redrawTags();
+            enableInput(); // Включаем поле при удалении
+        }
+    }
+    
+    // Функция перерисовки тегов
+    function redrawTags() {
+        // Удаляем все существующие теги
+        var tags = container.querySelectorAll(\'div\');
+        for (var i = 0; i < tags.length; i++) {
+            if (tags[i] !== input && !tags[i].classList.contains(\'select2-tags-input\')) {
+                container.removeChild(tags[i]);
+            }
+        }
+        
+        // Создаем теги заново
+        recipients.forEach(function(username) {
+            var tag = document.createElement(\'div\');
+            tag.style.cssText = \'display: inline-flex; align-items: center; background: #e9ecef; border-radius: 16px; padding: 4px 8px; font-size: 14px; color: #495057; margin: 2px;\';
+            
+            var textSpan = document.createElement(\'span\');
+            textSpan.textContent = username;
+            textSpan.style.cssText = \'margin-right: 6px;\';
+            tag.appendChild(textSpan);
+            
+            var removeBtn = document.createElement(\'button\');
+            removeBtn.textContent = \'×\';
+            removeBtn.style.cssText = \'background: none; border: none; color: #6c757d; font-size: 16px; cursor: pointer; padding: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;\';
+            removeBtn.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                removeRecipient(username);
+            };
+            tag.appendChild(removeBtn);
+            
+            container.insertBefore(tag, input);
+        });
+    }
+    
+    // Показать сообщение о лимите
+    function showLimitMessage() {
+        var message = \'You are only allowed to send messages to \' + maxRecipients + \' users at a time\';
+        showMessage(message);
+        disableInput();
+        
+        // Показываем ошибку под полем
+        errorDisplay.textContent = message;
+        errorDisplay.style.display = \'block\';
+    }
+    
+    // Включить поле ввода
+    function enableInput() {
+        input.disabled = false;
+        input.placeholder = \'Search for users\';
+        container.style.opacity = \'1\';
+        container.style.borderColor = \'#ddd\';
+        errorDisplay.style.display = \'none\';
+    }
+    
+    // Отключить поле ввода
+    function disableInput() {
+        input.disabled = true;
+        input.placeholder = \'Maximum recipients reached (\' + maxRecipients + \')\';
+        container.style.opacity = \'0.7\';
+        container.style.borderColor = \'#dc3545\';
+    }
+    
+    // Поиск пользователей
+    function searchUsers(query) {
+        if (query.length < 2) {
+            dropdown.style.display = \'none\';
+            return;
+        }
+        
+        fetch("xmlhttp.php?action=get_users&query=" + encodeURIComponent(query))
+            .then(function(response) {
+                return response.json();
+            })
+            .then(function(users) {
+                displayResults(users);
+            })
+            .catch(function(error) {
+                console.error(\'Error:\', error);
+                dropdown.style.display = \'none\';
+            });
+    }
+    
+    // Отображение результатов
+    function displayResults(users) {
+        dropdown.innerHTML = \'\';
+        
+        if (!users || users.length === 0) {
+            showMessage(\'No matches found\');
+            return;
+        }
+        
+        users.forEach(function(user) {
+            var username = user.username || user.text || user.name || user.label || "";
+            var item = document.createElement(\'div\');
+            item.textContent = username;
+            item.style.cssText = \'padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 14px; background: white; color: black;\';
+            item.onmouseover = function() { 
+                this.style.background = \'#007bff\'; 
+                this.style.color = \'white\';
+            };
+            item.onmouseout = function() { 
+                this.style.background = \'white\'; 
+                this.style.color = \'black\';
+            };
+            item.onclick = function() { 
+                addRecipient(username); 
+            };
+            dropdown.appendChild(item);
+        });
+        
+        dropdown.style.display = \'block\';
+        updateDropdownPosition();
+    }
+    
+    // Показать сообщение
+    function showMessage(message) {
+        dropdown.innerHTML = \'<div style="padding: 8px 12px; color: #666; font-style: italic; font-size: 14px;">\' + message + \'</div>\';
+        dropdown.style.display = \'block\';
+        updateDropdownPosition();
+    }
+    
+    // Обновление позиции dropdown
+    function updateDropdownPosition() {
+        var rect = container.getBoundingClientRect();
+        dropdown.style.top = (rect.bottom + window.scrollY) + \'px\';
+        dropdown.style.left = (rect.left + window.scrollX) + \'px\';
+        dropdown.style.width = rect.width + \'px\';
+    }
+    
+    // Обработчики событий
+    input.addEventListener(\'focus\', function() {
+        container.style.borderColor = recipients.length >= maxRecipients ? \'#dc3545\' : \'#007bff\';
+        container.style.boxShadow = \'0 0 0 2px rgba(0, 123, 255, 0.25)\';
+        if (input.value.trim().length >= 2) {
+            searchUsers(input.value.trim());
+        }
+    });
+    
+    input.addEventListener(\'blur\', function() {
+        setTimeout(function() {
+            container.style.borderColor = recipients.length >= maxRecipients ? \'#dc3545\' : \'#ddd\';
+            container.style.boxShadow = \'none\';
+            dropdown.style.display = \'none\';
+        }, 200);
+    });
+    
+    input.addEventListener(\'input\', function(e) {
+        var query = e.target.value.trim();
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function() {
+            searchUsers(query);
+        }, 300);
+    });
+    
+    input.addEventListener(\'keydown\', function(e) {
+        if (e.key === \'Enter\' && input.value.trim().length >= 2) {
+            e.preventDefault();
+            addRecipient(input.value.trim());
+        } else if (e.key === \'Backspace\' && input.value === \'\' && recipients.length > 0) {
+            e.preventDefault();
+            removeRecipient(recipients[recipients.length - 1]);
+        }
+    });
+    
+    window.addEventListener(\'resize\', updateDropdownPosition);
+    
+    document.addEventListener(\'click\', function(e) {
+        if (!container.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.style.display = \'none\';
+        }
+    });
+    
+    // Показываем счетчик получателей
+    var counterDisplay = document.createElement(\'div\');
+    counterDisplay.className = \'recipient-counter\';
+    counterDisplay.style.cssText = \'font-size: 12px; color: #6c757d; margin-top: 5px;\';
+    container.parentNode.insertBefore(counterDisplay, container.nextSibling);
+    
+    function updateCounter() {
+        counterDisplay.textContent = \'Recipients: \' + recipients.length + \'/\' + maxRecipients;
+        if (recipients.length >= maxRecipients) {
+            counterDisplay.style.color = \'#dc3545\';
+            counterDisplay.style.fontWeight = \'bold\';
+        } else {
+            counterDisplay.style.color = \'#6c757d\';
+            counterDisplay.style.fontWeight = \'normal\';
+        }
+    }
+    
+    // Обновляем счетчик при изменениях
+    var originalAddRecipient = addRecipient;
+    addRecipient = function(username, skipDuplicateCheck) {
+        originalAddRecipient(username, skipDuplicateCheck);
+        updateCounter();
+    };
+    
+    var originalRemoveRecipient = removeRecipient;
+    removeRecipient = function(username) {
+        originalRemoveRecipient(username);
+        updateCounter();
+    };
+    
+    // Инициализируем счетчик
+    updateCounter();
+    
+    console.log(\'Select2 tags initialized with limit:\', maxRecipients);
+});
+</script>';
 
 	$pmid = $mybb->get_input('pmid', MyBB::INPUT_INT);
 	$do = $mybb->get_input('do');
@@ -1011,9 +1567,13 @@ $codebuttons ='
 	if($CURUSER['buddylist'] != '' && $use_xmlhttprequest == 1)
 	{
 		$buddy_select = 'to';
-		eval("\$buddy_select_to = \"".$templates->get("private_send_buddyselect")."\";");
+		$buddy_select_to = '<script type="text/javascript"><!--
+document.write(\'<br /><span class="smalltext"><a href="javascript:void(0)" onclick="UserCP.openBuddySelect(\\\''.$buddy_select.'\\\'); return false;"><img src="pic/buddies.png" alt="" style="vertical-align: middle;" alt="" title="'.$lang->private['select_from_buddies'].'" /> '.$lang->private['select_from_buddies'].'</a></span>\');
+// --></script>';
 		$buddy_select = 'bcc';
-		eval("\$buddy_select_bcc = \"".$templates->get("private_send_buddyselect")."\";");
+		$buddy_select_bcc = '<script type="text/javascript"><!--
+document.write(\'<br /><span class="smalltext"><a href="javascript:void(0)" onclick="UserCP.openBuddySelect(\\\''.$buddy_select.'\\\'); return false;"><img src="pic/buddies.png" alt="" style="vertical-align: middle;" alt="" title="'.$lang->private['select_from_buddies'].'" /> '.$lang->private['select_from_buddies'].'</a></span>\');
+// --></script>';
 	}
 
 	
@@ -1021,7 +1581,7 @@ $codebuttons ='
 	$private_send_tracking = '';
 	if($usergroups['cantrackpms'])
 	{
-		eval("\$private_send_tracking = \"".$templates->get("private_send_tracking")."\";");
+		$private_send_tracking = '<input type="checkbox" class="form-check-input" name="options[readreceipt]" value="1" tabindex="8" '.$optionschecked['readreceipt'].' /> '.$options_read_receipt.'';
 	}
 
 
@@ -1035,7 +1595,137 @@ $codebuttons ='
 
 	$plugins->run_hooks("private_send_end");
 
-	eval("\$send = \"".$templates->get("private_send")."\";");
+	$send = '<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.$lang->private['compose_pm'].'</title>
+ 
+    <link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/private.css">
+
+    
+    <script type="text/javascript" src="'.$BASEURL.'/scripts/usercp.js?ver=1827"></script>
+</head>
+<body>
+
+
+<form action="private.php" method="post" name="input">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div id="fileIdsContainer"></div>
+
+<div class="container-md py-4">
+<div class="row g-4">
+    <div class="col-lg-3">
+        '.$usercpnav.'
+    </div>
+    <div class="col-lg-9">
+        
+        '.$preview.'
+        '.$send_errors.'
+        
+        <div class="card">
+            <div class="card-body">
+                
+                <!-- Recipients Section -->
+                <div class="mb-4 pb-3 border-bottom">
+                    <label class="fw-semibold mb-2">
+                        <i class="fas fa-users text-primary me-2"></i> Recipients
+                    </label>
+                    <input name="to" id="to" value="'.$to.'" tabindex="1" class="form-control border" placeholder="Search for users" style="display: none;">
+                    <div id="to-container"></div>
+                    <div class="select2-counter" id="recipientCounter">
+                        <i class="fas fa-user-plus me-1"></i> Recipients: 0/5
+                    </div>
+                    <div class="select2-error" id="recipientError">
+                        <i class="fas fa-exclamation-triangle"></i> You are only allowed to send messages to 5 users at a time
+                    </div>
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i> Click to search and select users (minimum 2 characters)
+                    </small>
+                </div>
+                
+                <!-- Subject Section -->
+                <div class="mb-4 pb-3 border-bottom">
+                    <label class="fw-semibold mb-2">
+                        <i class="fas fa-heading text-primary me-2"></i> Subject
+                    </label>
+                    <input type="text" class="form-control" name="subject" maxlength="85" value="'.$subject.'" tabindex="3" placeholder="Enter message subject..." />
+                </div>
+                
+                <!-- Message Editor -->
+                <div class="mb-3">
+                    <label class="fw-semibold mb-2">
+                        <i class="fas fa-pen-fancy text-primary me-2"></i> Message
+                    </label>
+                    '.$codebuttons.'
+                    <textarea name="message" id="message" class="form-control" style="width: 100%; height: 350px" tabindex="4" placeholder="Write your message here...">'.$message.'</textarea>
+                </div>
+                
+                <!-- Options Toggle -->
+                <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
+                    <a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-pmop" href="#collapse-pmop" role="button">
+                        <i class="fas fa-cog"></i> Options
+                    </a>
+                    <button type="submit" class="btn-thread" name="preview" value="Preview" tabindex="11">
+                        <i class="fas fa-eye"></i> Preview
+                    </button>
+                </div>
+                
+                <!-- Collapsible Options -->
+                <div id="collapse-pmop" class="collapse">
+                    <div class="mt-3 pt-2">
+                        <div class="bg-nav p-2 rounded text-16 d-block d-lg-none mb-3">
+                            <i class="fas fa-sliders-h me-2"></i> Options
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-lg-3 d-none d-lg-block">
+                                <div class="section-title-left text-center p-3">
+                                    <i class="fas fa-sliders-h section-icon-large"></i>
+                                    <div class="fw-bold mt-2">Options</div>
+                                    <small class="text-muted">Message settings</small>
+                                </div>
+                            </div>
+                            <div class="col-lg-9">
+                                <div class="form-check mb-2">
+                                    <input type="checkbox" class="form-check-input" name="options[savecopy]" value="1" tabindex="7" '.$optionschecked['savecopy'].' id="savecopy" />
+                                    <label class="form-check-label" for="savecopy">
+                                        <i class="fas fa-save text-success me-1"></i> Save a copy in my Sent Items folder
+                                    </label>
+                                </div>
+                                '.$private_send_tracking.'
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <input type="hidden" name="action" value="do_send" />
+                <input type="hidden" name="pmid" value="'.$pmid.'" />
+                <input type="hidden" name="do" value="'.$do.'" />
+                
+            </div> <!-- card-body -->
+            
+            <div class="card-footer text-center">
+                <button type="submit" class="btn btn-primary" name="submit" value="Send Message" tabindex="9" accesskey="s">
+                    <i class="fas fa-paper-plane"></i> Send Message
+                </button>
+            </div>
+        </div> <!-- card -->
+        
+    </div> <!-- col -->
+</div> <!-- row -->
+</div> <!-- container -->
+</form>
+
+
+<script>
+    window.maxRecipients = '.$usergroups['maxpmrecipients'].';
+</script>
+<script src="'.$BASEURL.'/scripts/select2-field.js"></script>
+
+
+</body>
+</html>';
 	
 	stdhead ('title');
 	
@@ -1138,7 +1828,9 @@ if($mybb->input['action'] == "read")
 		}
 
 		$actioned_on = sprintf($reply_string, $reply_date);
-		eval("\$action_time = \"".$templates->get("private_read_action")."\";");
+		$action_time = '<div class="mb-4 alert bg-success text-white border-0 little">
+	<i class="fa-solid fa-check"></i> &nbsp;'.$actioned_on.'
+</div>';
 	}
 	else if($pm['status'] == 4 && $pm['statustime'])
 	{
@@ -1151,7 +1843,9 @@ if($mybb->input['action'] == "read")
 		}
 
 		$actioned_on = sprintf($forward_string, $forward_date);
-		eval("\$action_time = \"".$templates->get("private_read_action")."\";");
+		$action_time = '<div class="mb-4 alert bg-success text-white border-0 little">
+	<i class="fa-solid fa-check"></i> &nbsp;'.$actioned_on.'
+</div>';
 	}
 
 	$pm['userusername'] = $pm['username'];
@@ -1214,7 +1908,7 @@ if($mybb->input['action'] == "read")
 	{
 		$bcc_recipients = implode(', ', $bcc_recipients);
 		$bcc_form_val = implode(',', $bcc_form_val);
-		eval("\$bcc = \"".$templates->get("private_read_bcc")."\";");
+		$bcc = '<br />'.$lang->private['bcc'].' '.$bcc_recipients.'';
 	}
 	else
 	{
@@ -1236,7 +1930,9 @@ if($mybb->input['action'] == "read")
 		$to_recipients = $lang->private['nobody'];
 	}
 
-	eval("\$pm['subject_extra'] = \"".$templates->get("private_read_to")."\";");
+	$pm['subject_extra'] = '<br />
+'.$lang->private['to'].' '.$to_recipients.'
+'.$bcc.'';
 
 	add_breadcrumb($pm['subject']);
 	$message = build_postbit($pm, 2);
@@ -1287,7 +1983,7 @@ if($mybb->input['action'] == "read")
 		
 		$options_read_receipt = $lang->private['quickreply_read_receipt'];
 
-		eval("\$private_send_tracking = \"".$templates->get("private_send_tracking")."\";");
+		$private_send_tracking = '<input type="checkbox" class="form-check-input" name="options[readreceipt]" value="1" tabindex="8" '.$optionschecked['readreceipt'].' /> '.$options_read_receipt.'';
 		
 
 		$postoptionschecked = $optionschecked; // Backwards compatability instead of correcting variable used in template
@@ -1306,7 +2002,39 @@ if($mybb->input['action'] == "read")
 		}
 
 		$expaltext = (in_array("quickreply", $collapse)) ? '+' : '-';
-		eval("\$quickreply = \"".$templates->get("private_quickreply")."\";");
+		$quickreply = '<form action="private.php" method="post" name="input">
+	<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+	<input type="hidden" name="to" value="'.$to.'" />
+	<input type="hidden" name="bcc" value="'.$bcc_form_val.'" />
+	<input type="hidden" name="subject" value="Re: '.$subject.'" />
+	<input type="hidden" name="action" value="do_send" />
+	<input type="hidden" name="pmid" value="'.$pmid.'" />
+	<input type="hidden" name="do" value="reply" />
+	
+			
+			<div class="row d-flex g-2 mb-4 mt-5">
+    <div class="col-auto d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block"><img src="'.$CURUSER['avatar'].'" class="rounded d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block img-fluid" style="width: 100px;"></div>
+    <div class="col">
+		
+        <div class="card">
+            <div class="card-body">
+				<h6 class="mb-2">'.$CURUSER['username'].'</h6>
+		<textarea class="form-control form-control-sm border-0 p-0" style="resize: none; height: 150px;"  name="message" id="message" tabindex="1">'.$quoted_message.'</textarea>
+			
+	<div id="collapse-reply" class="collapse bg-nav mt-3 p-2">
+       
+  <input type="checkbox" class="form-check-input" name="options[savecopy]" value="1"'.$optionschecked['savecopy'].' /> '.$lang->private['quickreply_save_copy'].' <br />
+'.$private_send_tracking.'
+
+    </div>
+				</div>
+				<div class="card-footer border-top-0">
+					<input type="submit" class="btn btn-primary" value="'.$lang->private['send_message'].'" tabindex="2" accesskey="s" /> <a class="btn btn-thread ms-3 me-3" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-reply" role="button"><i class="fa-solid fa-gear"></i></a> <input type="submit" class="btn btn-thread" name="preview" value="'.$lang->private['preview'].'" tabindex="3" />
+				</div>
+			</div>
+	</div>
+	</div>
+</form>';
 	}
 
 	$plugins->run_hooks("private_read_end");
@@ -1314,7 +2042,32 @@ if($mybb->input['action'] == "read")
 	
 	stdhead('title');
 	
-	eval("\$read = \"".$templates->get("private_read")."\";");
+	$read = '<html>
+<head>
+<title>'.$lang->private['viewing_pm'].' '.$pm['subject'].'</title>
+
+</head>
+<body>
+
+<div class="container-md">
+<div class="row">
+<div class="col-lg-3">
+
+'.$usercpnav.'
+				
+</div>
+<div class="col">
+'.$action_time.'	
+<div id="posts">
+'.$message.'
+</div>	
+'.$quickreply.'
+</div>
+</div>
+</div>
+
+</body>
+</html>';
 	
 	
 	echo $read;
@@ -1367,7 +2120,7 @@ if($mybb->input['action'] == "tracking")
 
 	$read_multipage = multipage($postcount, $perpage, $page, "private.php?action=tracking&amp;read_page={page}");
 
-	$query = $db->query("
+	$query = $db->sql_query("
 		SELECT pm.pmid, pm.subject, pm.toid, pm.readtime, u.username as tousername
 		FROM privatemessages pm
 		LEFT JOIN users u ON (u.id=pm.toid)
@@ -1381,18 +2134,39 @@ if($mybb->input['action'] == "tracking")
 		$readmessage['tousername'] = htmlspecialchars_uni($readmessage['tousername']);
 		$readmessage['profilelink'] = build_profile_link($readmessage['tousername'], $readmessage['toid']);
 		$readdate = my_datee('relative', $readmessage['readtime']);
-		eval("\$readmessages .= \"".$templates->get("private_tracking_readmessage")."\";");
+		$readmessages .= '<div class="card mb-0 border-0">
+	<div class="card-body pt-0 inline_row">
+	<div class="row g-2 pb-3 border-bottom mb-0">
+		<div class="col-auto col-sm-auto col-md-auto col-lg-1 col-xl-1 col-xxl-1 align-self-center">
+			<avatarep_uid_['.$readmessage['toid'].']>
+				</div>
+			<div class="col align-self-center">
+				<h6 class="mb-0 text-forum">'.$readmessage['subject'].'</h6>
+				<span class="links small">'.$readmessage['profilelink'].'</span>
+			</div>
+			<div class="col-auto d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block align-self-center">
+				'.$icon.' <img src="'.$theme['imgdir'].'/old_pm.png" alt="" />
+			</div>
+			<div class="col-lg-3 text-muted align-self-center">
+				'.$readdate.'
+				<span class="float-end">
+					<input type="checkbox" class="form-check-input" name="readcheck['.$readmessage['pmid'].']" value="1" />
+				</span>
+			</div>
+		</div>
+	</div>
+	</div>';
 	}
 
 	$stoptrackingread = '';
 	if(!empty($readmessages))
 	{
-		eval("\$stoptrackingread = \"".$templates->get("private_tracking_readmessage_stop")."\";");
+		$stoptrackingread = '<div class="text-center"><button type="submit" class="btn btn-primary btn-sm" name="stoptracking" value="'.$lang->private['stop_tracking'].'"><i class="fa-solid fa-xmark"></i> &nbsp;'.$lang->private['stop_tracking'].'</button> &nbsp; <a href="private.php?action=stopalltracking&amp;my_post_key='.$mybb->post_code.'" class="btn btn-primary btn-sm" style="color: #ffffff!important;"><i class="fa-solid fa-xmark"></i> &nbsp;'.$lang->private['stop_tracking_all'].'</a></div>';
 	}
 
 	if(!$readmessages)
 	{
-		eval("\$readmessages = \"".$templates->get("private_tracking_nomessage")."\";");
+		$readmessages = '<div class="ps-3 pe-3 pb-3">'.$no_readmessages.'</div>';
 	}
 
 	$query = $db->simple_select("privatemessages", "COUNT(pmid) as unreadpms", "receipt='1' AND folder!='3' AND status='0' AND fromid='".$CURUSER['id']."'");
@@ -1465,24 +2239,136 @@ $query = $db->sql_query_prepared($sql, [$fromid, $start, $perpage]);
 		$unreadmessage['tousername'] = htmlspecialchars_uni($unreadmessage['tousername']);
 		$unreadmessage['profilelink'] = build_profile_link($unreadmessage['tousername'], $unreadmessage['toid']);
 		$senddate = my_datee('relative', $unreadmessage['dateline']);
-		eval("\$unreadmessages .= \"".$templates->get("private_tracking_unreadmessage")."\";");
+		$unreadmessages .= '<div class="card mb-0 border-0">
+	<div class="card-body pt-0 inline_row">
+	<div class="row g-2 pb-3 border-bottom mb-0">
+		<div class="col-auto col-sm-auto col-md-auto col-lg-1 col-xl-1 col-xxl-1 align-self-center">
+			<avatarep_uid_['.$unreadmessage['toid'].']>
+				</div>
+			<div class="col align-self-center">
+				<h6 class="mb-0 text-forum">'.$unreadmessage['subject'].'</h6>
+				<span class="links small">'.$unreadmessage['profilelink'].'</span>
+			</div>
+			<div class="col-auto d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block align-self-center">
+				'.$icon.' <img src="'.$theme['imgdir'].'/new_pm.png" alt="" />
+			</div>
+			<div class="col-lg-3 text-muted align-self-center">
+				'.$senddate.'
+				<span class="float-end">
+					<input type="checkbox" class="form-check-input" name="unreadcheck['.$unreadmessage['pmid'].']" value="1" />
+				</span>
+			</div>
+		</div>
+	</div>
+	</div>';
 	}
 
 	$stoptrackingunread = '';
 	if(!empty($unreadmessages))
 	{
-		eval("\$stoptrackingunread = \"".$templates->get("private_tracking_unreadmessage_stop")."\";");
+		$stoptrackingunread = '<div class="text-center">
+	<button type="submit" class="btn btn-primary btn-sm" name="stoptrackingunread" value="'.$lang->private['stop_tracking'].'"><i class="fa-solid fa-xmark"></i> &nbsp;'.$lang->private['stop_tracking'].'</button> &nbsp; <button type="submit" class="btn btn-primary btn-sm" name="cancel" value="'.$lang->private['delete'].'"><i class="fa-solid fa-xmark"></i> &nbsp;'.$lang->private['delete'].'</button>
+</div>';
 	}
 
 	if(!$unreadmessages)
 	{
 		$no_readmessages = $lang->private['no_unreadmessages'];
-		eval("\$unreadmessages = \"".$templates->get("private_tracking_nomessage")."\";");
+		$unreadmessages = '<div class="ps-3 pe-3 pb-3">'.$no_readmessages.'</div>';
 	}
 
 	$plugins->run_hooks("private_tracking_end");
 
-	eval("\$tracking = \"".$templates->get("private_tracking")."\";");
+	$tracking = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->private['pm_tracking'].'</title>
+
+</head>
+<body>
+
+<div class="container-md">
+<div class="row">
+<div class="col-lg-3">
+
+'.$usercpnav.'
+				
+</div>
+<div class="col">
+
+	
+	<form action="private.php" method="post">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<input type="hidden" name="action" value="do_tracking" />
+		
+		<div class="card border-0 mb-4">
+<div class="card-header py-3 bg-nav rounded border-bottom-0">
+		
+		<div class="row g-2 text-forum">
+			<div class="col-1">
+				&nbsp;
+			</div>
+			<div class="col align-self-center">
+				'.$lang->private['message_title'].' &mdash; '.$lang->private['sentto'].'
+			</div>
+			<div class="col-3 align-self-center">
+				<span class="d-none d-sm-none d-md-none d-lg-inline-block d-xl-inline-block d-xxl-inline-block">'.$lang->private['dateread'].'</span>
+				<span class="float-end"><input type="checkbox" class="form-check-input checkall" name="allbox" /></span>
+			</div>
+	</div>
+		
+			</div>
+		</div>
+
+'.$readmessages.'
+
+	<div class="card border-0 mb-4">
+<div class="card-header py-3 bg-nav rounded border-bottom-0">
+'.$stoptrackingread.'
+</form>
+		</div>
+		</div>
+
+
+	'.$unread_multipage.'
+		
+<form action="private.php" method="post">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<input type="hidden" name="action" value="do_tracking" />
+	
+	<div class="card border-0 mb-4">
+<div class="card-header py-3 bg-nav rounded border-bottom-0">
+		
+		<div class="row g-2 text-forum">
+			<div class="col-1">
+				&nbsp;
+			</div>
+			<div class="col align-self-center">
+				'.$lang->private['message_title'].' &mdash; '.$lang->private['sentto'].'
+			</div>
+			<div class="col-3 align-self-center">
+				<span class="d-none d-sm-none d-md-none d-lg-inline-block d-xl-inline-block d-xxl-inline-block">'.$lang->private['datesent'].'</span>
+				<span class="float-end"><input type="checkbox" class="form-check-input checkall" name="allbox" /></span>
+			</div>
+	</div>
+		
+			</div>
+		</div>
+	
+		
+'.$unreadmessages.'
+
+	<div class="card border-0 mb-4">
+<div class="card-header py-3 bg-nav rounded border-bottom-0">
+'.$stoptrackingunread.'
+	</div>
+	</div>
+</form>
+</div></div>
+	</div>
+
+
+</body>
+</html>';
 	
 	stdhead($lang->private['pm_tracking']);
 	
@@ -1591,12 +2477,17 @@ if($mybb->input['action'] == "folders")
 		if((int)$folderinfo[0] < 5)
 		{
 			$foldername2 = get_pm_folder_name($fid);
-			eval("\$folderlist .= \"".$templates->get("private_folders_folder_unremovable")."\";");
+			$folderlist .= '<div class="mb-3 pb-3 border-bottom">
+		<input type="text" class="form-control form-control-sm border" name="folder['.$fid.']" value="'.$foldername.'" maxlength="30" />
+	<span class="small text-desc">('.$foldername2.' - '.$lang->private['cannot_be_removed'].')</span>
+</div>';
 			unset($name);
 		}
 		else
 		{
-			eval("\$folderlist .= \"".$templates->get("private_folders_folder")."\";");
+			$folderlist .= '<div class="mb-3 pb-3 border-bottom">
+<input type="text" class="form-control form-control-sm border mb-3" name="folder['.$fid.']" value="'.$foldername.'" maxlength="30" />
+</div>';
 		}
 	}
 
@@ -1605,12 +2496,75 @@ if($mybb->input['action'] == "folders")
 	{
 		$fid = "new$i";
 		$foldername = '';
-		eval("\$newfolders .= \"".$templates->get("private_folders_folder")."\";");
+		$newfolders .= '<div class="mb-3 pb-3 border-bottom">
+<input type="text" class="form-control form-control-sm border mb-3" name="folder['.$fid.']" value="'.$foldername.'" maxlength="30" />
+</div>';
 	}
 
 	$plugins->run_hooks("private_folders_end");
 
-	eval("\$folders = \"".$templates->get("private_folders")."\";");
+	$folders = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->private['pm_folders'].'</title>
+
+</head>
+<body>
+
+<form action="private.php" method="post">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="container-md">
+<div class="row">
+<div class="col-lg-3">
+
+'.$usercpnav.'
+				
+</div>
+<div class="col">
+				
+<div class="card">
+<div class="card-body">
+	
+	<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->private['existing_folders'].'</div>
+<div class="row g-3 m-auto border-bottom pb-4 pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->private['existing_folders'].'
+</div>
+<div class="col">
+	<div class="mb-3 border-bottom pb-3">
+		'.$lang->private['edit_folder_note'].'
+	</div>
+'.$folderlist.'
+</div>
+</div>
+	
+		<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->private['new_folders'].'</div>
+<div class="row g-3 m-auto pt-0 mt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->private['new_folders'].'
+</div>
+<div class="col">
+	<div class="mb-3 border-bottom pb-3">
+		'.$lang->private['add_folders_note'].'
+	</div>
+'.$newfolders.'
+</div>
+</div>
+	
+	</div>
+	<div class="card-footer text-center">
+		<input type="hidden" name="action" value="do_folders" />
+<button type="submit" class="btn btn-primary" name="submit" value="'.$lang->private['update_folders'].'"><i class="fa-solid fa-folder-open"></i> &nbsp;'.$lang->private['update_folders'].'</button>
+	</div>
+	</div>
+	</div>
+	</div>
+	</div>
+
+</form>
+
+
+</body>
+</html>';
 	
 	stdhead('title');
 	
@@ -1728,12 +2682,56 @@ if($mybb->input['action'] == "empty")
 		$query = $db->simple_select("privatemessages", "COUNT(*) AS pmsinfolder", " folder='$fid'$unread AND uid='".$CURUSER['id']."'");
 		$thing = $db->fetch_array($query);
 		$foldercount = ts_nf($thing['pmsinfolder']);
-		eval("\$folderlist .= \"".$templates->get("private_empty_folder")."\";");
+		$folderlist .= '<div class="py-2">
+<input type="checkbox" class="form-check-input" name="empty['.$fid.']" value="1" /> &nbsp;&nbsp;'.$foldername.' &nbsp;<span class="fw-bold">'.$foldercount.'</span>
+</div>';
 	}
 
 	$plugins->run_hooks("private_empty_end");
 
-	eval("\$folders = \"".$templates->get("private_empty")."\";");
+	$folders = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->private['empty_folders'].'</title>
+
+</head>
+<body>
+
+<form action="private.php" method="post">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="container-md">
+<div class="row">
+<div class="col-lg-3">
+
+'.$usercpnav.'
+				
+</div>
+<div class="col">
+				
+<div class="card">
+<div class="card-body">
+	
+	<div class="border-bottom pb-3 mb-3">'.$lang->private['empty_note'].'</div>
+
+	<strong>'.$lang->private['empty_q'].'</strong>
+	<div class="py-2">
+'.$folderlist.'
+	</div>
+
+	<div class="border-top py-3"><input type="checkbox" class="form-check-input" name="keepunread" value="1" checked="checked" /> '.$lang->private['keep_unread'].'</div>
+
+	</div>
+	<div class="card-footer text-center">
+<input type="hidden" name="action" value="do_empty" />
+<button type="submit" class="btn btn-primary" name="submit" value="'.$lang->private['delete'].'"><i class="fa-solid fa-trash"></i> &nbsp;'.$lang->private['delete'].'</button>
+	</div></div>
+	</div>
+
+</form>
+	</div></div>
+
+
+</body>
+</html>';
 	
 	stdhead($lang->private['empty_folders']);
 	
@@ -1906,329 +2904,562 @@ if($mybb->input['action'] == "delete")
 	redirect("private.php", $lang->private['redirect_pmsdeleted']);
 }
 
-if($mybb->input['action'] == "export")
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ========================
+// СТРАНИЦА ВЫБОРА ПАРАМЕТРОВ
+// ========================
+if ($mybb->input['action'] == "export")
 {
-	if($CURUSER['totalpms'] == 0)
-	{
-		error($lang->error_nopms);
-	}
+    if ($CURUSER['totalpms'] == 0) {
+        error($lang->error_nopms);
+    }
 
-	$plugins->run_hooks("private_export_start");
+    $plugins->run_hooks("private_export_start");
 
-	$foldersexploded = explode("$%%$", $CURUSER['pmfolders']);
-	$folderlist_folder = '';
-	foreach($foldersexploded as $key => $folders)
-	{
-		$folderinfo = explode("**", $folders, 2);
-		$folderinfo[1] = get_pm_folder_name($folderinfo[0], $folderinfo[1]);
+    // Строим список папок
+    $foldersexploded = explode("$%%$", $CURUSER['pmfolders']);
+    $folderlist_folder = '';
+    foreach ($foldersexploded as $folders)
+    {
+        $folderinfo = explode("**", $folders, 2);
+        $folderinfo[1] = get_pm_folder_name($folderinfo[0], $folderinfo[1]);
+        $folder_id   = (int)$folderinfo[0];
+        $folder_name = htmlspecialchars_uni($folderinfo[1]);
+        $folderlist_folder .= '<option value="'.$folder_id.'">'.$folder_name.'</option>';
+    }
 
-		$folder_id = $folderinfo[0];
-		$folder_name = $folderinfo[1];
+    $folderlist = '
+<select name="exportfolders[]" multiple="multiple" class="form-select form-select-sm border">
+  <option value="all" selected="selected">'.$lang->private['all_folders'].'</option>
+  '.$folderlist_folder.'
+</select>';
 
-		eval("\$folderlist_folder .= \"".$templates->get("private_archive_folders_folder")."\";");
-	}
+    $plugins->run_hooks("private_export_end");
 
-	eval("\$folderlist = \"".$templates->get("private_archive_folders")."\";");
+    stdhead($lang->private['archive_messages']);
 
-	$plugins->run_hooks("private_export_end");
 
-	stdhead('title');
+
+echo '
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>'.htmlspecialchars_uni($SITENAME).' - '.htmlspecialchars_uni($lang->private['archive_messages']).'</title>
+    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/pm-export.css"> 
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="col-lg-3">
+            <div class="user-cp-nav">
+                '.$usercpnav.'
+            </div>
+        </div>
+        <div class="col">
+            <div class="card">
+                <div class="card-header">
+                    <h2>
+                        <i class="fas fa-envelope-open-text"></i>
+                        '.htmlspecialchars_uni($lang->private['archive_messages']).'
+                    </h2>
+                </div>
+                
+                <form action="private.php" method="post" id="exportForm">
+                    <input type="hidden" name="my_post_key" value="'.htmlspecialchars_uni($mybb->post_code).'" />
+                    
+                    <div class="card-body">
+                        <div class="alert">
+                            <i class="fas fa-info-circle"></i> 
+                            '.htmlspecialchars_uni($lang->private['archive_note']).'
+                        </div>
+                        
+                        <!-- Select Folders -->
+                        <div class="form-section">
+                            <div class="form-label">
+                                <i class="fas fa-folder"></i>
+                                '.htmlspecialchars_uni($lang->folders).'
+                            </div>
+                            '.$folderlist.'
+                            <small class="badge" style="margin-top: 0.5rem; display: inline-block;">
+                                <i class="fas fa-info-circle"></i> Hold Ctrl (Cmd) key to select multiple folders
+                            </small>
+                        </div>
+                        
+                        <!-- Date Filter -->
+                        <div class="form-section">
+                            <div class="form-label">
+                                <i class="fas fa-calendar-alt"></i>
+                                '.htmlspecialchars_uni($lang->private['date_limit']).'
+                            </div>
+                            <div class="date-group">
+                                <div>
+                                    <select name="dayway" class="form-select">
+                                        <option value="older">📅 '.htmlspecialchars_uni($lang->private['date_limit_older']).'</option>
+                                        <option value="newer">📅 '.htmlspecialchars_uni($lang->private['date_limit_newer']).'</option>
+                                        <option value="disregard" selected>♾️ '.htmlspecialchars_uni($lang->private['date_limit_disregard']).'</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <input type="number" class="form-control" name="daycut" value="30" size="3" maxlength="4" placeholder="Number of days" min="1" max="3650" />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Unread Only -->
+                        <div class="form-section">
+                            <label class="checkbox-group">
+                                <input type="checkbox" class="form-check-input" name="exportunread" value="1" />
+                                <div>
+                                    <strong><i class="fas fa-envelope"></i> Unread messages only</strong>
+                                    <small>Export only messages that you havent read yet</small>
+                                </div>
+                            </label>
+                        </div>
+                        
+                        <!-- Delete After Export -->
+                        <div class="form-section">
+                            <label class="checkbox-group">
+                                <input type="checkbox" class="form-check-input" name="deletepms" value="1" />
+                                <div>
+                                    <strong><i class="fas fa-trash-alt"></i> '.htmlspecialchars_uni($lang->private['delete_archived']).'</strong>
+                                    <small>⚠️ '.htmlspecialchars_uni($lang->private['delete_archived_note']).'</small>
+                                </div>
+                            </label>
+                        </div>
+                        
+                        <!-- Export Format -->
+                        <div class="form-section">
+                            <div class="form-label">
+                                <i class="fas fa-file-alt"></i>
+                                '.htmlspecialchars_uni($lang->private['export_format']).'
+                            </div>
+                            <div class="format-options">
+                                <label class="format-card" data-format="html">
+                                    <input type="radio" name="exporttype" value="html" checked="checked" />
+                                    <div class="format-icon">🌐</div>
+                                    <div><strong>HTML</strong></div>
+                                    <small>Web page with formatting preserved</small>
+                                </label>
+                                <label class="format-card" data-format="txt">
+                                    <input type="radio" name="exporttype" value="txt" />
+                                    <div class="format-icon">📄</div>
+                                    <div><strong>TXT</strong></div>
+                                    <small>Plain text file</small>
+                                </label>
+                                <label class="format-card" data-format="csv">
+                                    <input type="radio" name="exporttype" value="csv" />
+                                    <div class="format-icon">📊</div>
+                                    <div><strong>CSV</strong></div>
+                                    <small>For Excel, Google Sheets and other spreadsheets</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card-footer">
+                        <input type="hidden" name="action" value="do_export" />
+                        <button type="submit" class="btn btn-primary" name="submit">
+                            <i class="fas fa-download"></i>
+                            Export Messages
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript" src="' . $BASEURL . '/scripts/pm-export.js"></script>
+
+</body>
+</html>';
+
+stdfoot();
+
+
+            
+
+
+
+
 	
-	
-	eval("\$archive = \"".$templates->get("private_archive")."\";");
-
-	echo $archive;
-	
-	stdfoot();
 }
 
-if($mybb->input['action'] == "do_export" && $mybb->request_method == "post")
+
+// ========================
+// ОБРАБОТКА ЭКСПОРТА
+// ========================
+if ($mybb->input['action'] == "do_export" && $mybb->request_method == "post")
 {
-	// Verify incoming POST request
-	verify_post_check($mybb->get_input('my_post_key'));
+    verify_post_check($mybb->get_input('my_post_key'));
 
-	$plugins->run_hooks("private_do_export_start");
+    $plugins->run_hooks("private_do_export_start");
 
-	$private_messages_for = sprintf($lang->private['private_messages_for'], htmlspecialchars_uni($CURUSER['username']));
-	$exdate = my_datee($dateformat, TIMENOW, 0, 0);
-	$extime = my_datee($timeformat, TIMENOW, 0, 0);
-	$exported_date = sprintf($lang->private['exported_date'], $exdate, $extime);
-	$foldersexploded = explode("$%%$", $CURUSER['pmfolders']);
-	foreach($foldersexploded as $key => $folders)
-	{
-		$folderinfo = explode("**", $folders, 2);
-		$folderinfo[1] = get_pm_folder_name($folderinfo[0], $folderinfo[1]);
-		$foldersexploded[$key] = implode("**", $folderinfo);
-	}
+    $exporttype = $mybb->get_input('exporttype');
+    if (!in_array($exporttype, ['html', 'txt', 'csv'])) {
+        $exporttype = 'html';
+    }
 
-	if($mybb->get_input('pmid', MyBB::INPUT_INT))
-	{
-		$wsql = "pmid='".$mybb->get_input('pmid', MyBB::INPUT_INT)."' AND uid='".$CURUSER['id']."'";
-	}
-	else
-	{
-		if($mybb->get_input('daycut', MyBB::INPUT_INT) && ($mybb->get_input('dayway') != "disregard"))
-		{
-			$datecut = TIMENOW-($mybb->get_input('daycut', MyBB::INPUT_INT) * 86400);
-			$wsql = "pm.dateline";
-			if($mybb->get_input('dayway') == "older")
-			{
-				$wsql .= "<=";
-			}
-			else
-			{
-				$wsql .= ">=";
-			}
-			$wsql .= "'$datecut'";
-		}
-		else
-		{
-			$wsql = "1=1";
-		}
+    // Папки пользователя
+    $foldersexploded = explode("$%%$", $CURUSER['pmfolders']);
+    $folderMap = []; // folder_id => folder_name
+    foreach ($foldersexploded as $folders)
+    {
+        $folderinfo = explode("**", $folders, 2);
+        $folderinfo[1] = get_pm_folder_name($folderinfo[0], $folderinfo[1]);
+        $folderMap[(int)$folderinfo[0]] = $folderinfo[1];
+    }
 
-		$mybb->input['exportfolders'] = $mybb->get_input('exportfolders', MyBB::INPUT_ARRAY);
-		if(!empty($mybb->input['exportfolders']))
-		{
-			$folderlst = '';
-			foreach($mybb->input['exportfolders'] as $key => $val)
-			{
-				$val = $db->escape_string($val);
-				if($val == "all")
-				{
-					$folderlst = '';
-					break;
-				}
-				else
-				{
-					if(!$folderlst)
-					{
-						$folderlst = " AND pm.folder IN ('$val'";
-					}
-					else
-					{
-						$folderlst .= ",'$val'";
-					}
-				}
-			}
-			if($folderlst)
-			{
-				$folderlst .= ")";
-			}
-			$wsql .= "$folderlst";
-		}
-		else
-		{
-			error($lang->error_pmnoarchivefolders);
-		}
+    // ---- Формируем WHERE ----
+    $where_parts = [];
+    $params       = [(int)$CURUSER['id']];
 
-		if($mybb->get_input('exportunread', MyBB::INPUT_INT) != 1)
-		{
-			$wsql .= " AND pm.status!='0'";
-		}
-	}
-	
+    if ($mybb->get_input('pmid', MyBB::INPUT_INT)) {
+        $where_parts[] = "pm.pmid = ?";
+        $params[] = $mybb->get_input('pmid', MyBB::INPUT_INT);
+    } else {
+        $daycut = $mybb->get_input('daycut', MyBB::INPUT_INT);
+        $dayway = $mybb->get_input('dayway');
+        if ($daycut && $dayway !== 'disregard') {
+            $datecut = TIMENOW - ($daycut * 86400);
+            if ($dayway === 'older') {
+                $where_parts[] = "pm.dateline <= ?";
+            } else {
+                $where_parts[] = "pm.dateline >= ?";
+            }
+            $params[] = $datecut;
+        }
+
+        // Папки
+        $exportfolders = $mybb->get_input('exportfolders', MyBB::INPUT_ARRAY);
+        if (empty($exportfolders)) {
+            error($lang->error_pmnoarchivefolders);
+        }
+
+        $hasAll = false;
+        $folderIds = [];
+        foreach ($exportfolders as $val) {
+            if ($val === 'all') { $hasAll = true; break; }
+            $folderIds[] = (int)$val;
+        }
+
+        if (!$hasAll && !empty($folderIds)) {
+            $placeholders = implode(',', array_fill(0, count($folderIds), '?'));
+            $where_parts[] = "pm.folder IN ($placeholders)";
+            foreach ($folderIds as $fid) {
+                $params[] = $fid;
+            }
+        }
+
+        // Только прочитанные
+        if ($mybb->get_input('exportunread', MyBB::INPUT_INT) != 1) {
+            $where_parts[] = "pm.status != '0'";
+        }
+    }
+
+    $where_parts[] = "pm.uid = ?"; // уже первый $params[0], но дублируем через AND
+    // Примечание: uid уже передаётся как первый параметр до where_parts,
+    // поэтому собираем итоговый WHERE без него и добавляем uid отдельно:
+
+    // Пересобираем: uid идёт последним параметром
+    array_shift($params); // убираем uid из начала, добавим в конец
+    $params[] = (int)$CURUSER['id'];
+
+    $where_sql = empty($where_parts) ? "1=1" : implode(" AND ", $where_parts);
 
     $sql = "
-    SELECT pm.*, fu.username AS fromusername, tu.username AS tousername
-    FROM privatemessages pm
-    LEFT JOIN users fu ON fu.id = pm.fromid
-    LEFT JOIN users tu ON tu.id = pm.toid
-    WHERE $wsql AND pm.uid = ?
-    ORDER BY pm.folder ASC, pm.dateline DESC";
+        SELECT pm.*, fu.username AS fromusername, tu.username AS tousername
+        FROM privatemessages pm
+        LEFT JOIN users fu ON fu.id = pm.fromid
+        LEFT JOIN users tu ON tu.id = pm.toid
+        WHERE $where_sql
+        ORDER BY pm.folder ASC, pm.dateline DESC
+    ";
 
-    // Передаем только CURUSER['id'] как параметр
-    $query = $db->sql_query_prepared($sql, [(int)$CURUSER['id']]);
+    $query = $db->sql_query_prepared($sql, $params);
 
+    if (!$db->num_rows($query)) {
+        error($lang->private['error_nopmsarchive']);
+    }
 
+    // ---- Рендеринг сообщений ----
+    $exdate = my_datee($dateformat, TIMENOW, 0, 0);
+    $extime = my_datee($timeformat, TIMENOW, 0, 0);
+    $exported_date       = sprintf($lang->private['exported_date'], $exdate, $extime);
+    $private_messages_for = sprintf($lang->private['private_messages_for'], htmlspecialchars_uni($CURUSER['username']));
 
+    // Для HTML — получаем глобальный CSS
+    $css = '';
 
-	$numpms = $db->num_rows($query);
-	if(!$numpms)
-	{
-		stderr($lang->private['error_nopmsarchive']);
-	}
+    $allMessages   = [];  // сгруппированные по папкам
+    $pmIdsToDelete = [];
 
-	$mybb->input['exporttype'] = $mybb->get_input('exporttype');
+    while ($message = $db->fetch_array($query))
+    {
+        $pmIdsToDelete[] = (int)$message['pmid'];
+        $folder_id = (int)$message['folder'];
 
-	$pmsdownload = $ids = '';
-	while($message = $db->fetch_array($query))
-	{
-		if($message['folder'] == 2 || $message['folder'] == 3)
-		{ // Sent Items or Drafts Folder Check
-			if($message['toid'])
-			{
-				$tofromuid = $message['toid'];
-				if($mybb->input['exporttype'] == "txt")
-				{
-					$tofromusername = $message['tousername'];
-				}
-				else
-				{
-					$tofromusername = build_profile_link($message['tousername'], $tofromuid);
-				}
-			}
-			else
-			{
-				$tofromusername = $lang->not_sent;
-			}
-			$tofrom = $lang->to;
-		}
-		else
-		{
-			$tofromuid = $message['fromid'];
-			if($mybb->input['exporttype'] == "txt")
-			{
-				$tofromusername = $message['fromusername'];
-			}
-			else
-			{
-				$tofromusername = build_profile_link($message['fromusername'], $tofromuid);
-			}
+        // Кому/от кого
+        if ($folder_id == 2 || $folder_id == 3) {
+            // Исходящие / Черновики
+            $tofrom    = $lang->to;
+            $tofromuid = (int)$message['toid'];
+            if ($tofromuid) {
+                $tofromusername = ($exporttype === 'txt')
+                    ? $message['tousername']
+                    : build_profile_link($message['tousername'], $tofromuid);
+            } else {
+                $tofromusername = $lang->not_sent;
+            }
+        } else {
+            // Входящие
+            $tofrom    = $lang->from;
+            $tofromuid = (int)$message['fromid'];
+            $tofromusername = ($exporttype === 'txt')
+                ? $message['fromusername']
+                : build_profile_link($message['fromusername'], $tofromuid);
 
-			if($tofromuid == 0)
-			{
-				$tofromusername = 'Ruff Tracker Engine';
-			}
-			$tofrom = $lang->from;
-		}
-		
-		
-		
+            if ($tofromuid === 0) {
+                $tofromusername = 'Ruff Tracker Engine';
+            }
+        }
 
-		if($tofromuid == 0)
-		{
-			$message['fromusername'] = 'Ruff Tracker Engine';
-		}
+        if ($tofromuid === 0) {
+            $message['fromusername'] = 'Ruff Tracker Engine';
+        }
+        if (!$message['toid'] && $folder_id === 3) {
+            $message['tousername'] = $lang->not_sent;
+        }
 
-		if(!$message['toid'] && $message['folder'] == 3)
-		{
-			$message['tousername'] = $lang->not_sent;
-		}
-		
+        // Дата отправки
+        if ($folder_id !== 3) {
+            $senddate  = my_datee($dateformat, $message['dateline'], "", false);
+            $sendtime  = my_datee($timeformat, $message['dateline'], "", false);
+            $senddate .= " ".$lang->at." ".$sendtime;
+        } else {
+            $senddate = $lang->not_sent;
+        }
 
-		$message['subject'] = $parser->parse_badwords($message['subject']);
-		if($message['folder'] != "3")
-		{
-			$senddate = my_datee($dateformat, $message['dateline'], "", false);
-			$sendtime = my_datee($timeformat, $message['dateline'], "", false);
-			$senddate .= " $lang->at $sendtime";
-		}
-		else
-		{
-			$senddate = $lang->not_sent;
-		}
+        $subject = $parser->parse_badwords($message['subject']);
 
-		if($mybb->input['exporttype'] == "html")
-		{
-			$parser_options = array(
-				"allow_html" => 1,
-				"allow_mycode" => 1,
-				"allow_smilies" => 0,
-				"allow_imgcode" => 1,
-				"allow_videocode" => 1,
-				"me_username" => $CURUSER['username'],
-				"filter_badwords" => 1
-			);
+        // Форматируем тело сообщения
+        if ($exporttype === 'html') {
+            $parser_options = [
+                "allow_html"      => 1,
+                "allow_mycode"    => 1,
+                "allow_smilies"   => 0,
+                "allow_imgcode"   => 1,
+                "allow_videocode" => 1,
+                "me_username"     => $CURUSER['username'],
+                "filter_badwords" => 1,
+            ];
+            $body    = $parser->parse_message($message['message'], $parser_options);
+            $subject = htmlspecialchars_uni($subject);
+        } else {
+            $body = str_replace(["\r\n", "\n"], ["\n", "\r\n"], $message['message']);
+        }
 
-			$message['message'] = $parser->parse_message($message['message'], $parser_options);
-			$message['subject'] = htmlspecialchars_uni($message['subject']);
-		}
+        if ($exporttype === 'csv') {
+            $body                    = my_escape_csv($body);
+            $subject                 = my_escape_csv($subject);
+            $message['tousername']   = my_escape_csv($message['tousername']);
+            $message['fromusername'] = my_escape_csv($message['fromusername']);
+            $tofromusername          = my_escape_csv($tofromusername);
+        }
 
-		if($mybb->input['exporttype'] == "txt" || $mybb->input['exporttype'] == "csv")
-		{
-			$message['message'] = str_replace("\r\n", "\n", $message['message']);
-			$message['message'] = str_replace("\n", "\r\n", $message['message']);
-		}
+        $allMessages[$folder_id][] = [
+            'subject'        => $subject,
+            'body'           => $body,
+            'senddate'       => $senddate,
+            'tofrom'         => $tofrom,
+            'tofromusername' => $tofromusername,
+            'fromusername'   => $message['fromusername'],
+            'tousername'     => $message['tousername'],
+            'folder_id'      => $folder_id,
+        ];
+    }
 
-		if($mybb->input['exporttype'] == "csv")
-		{
-			$message['message'] = my_escape_csv($message['message']);
-			$message['subject'] = my_escape_csv($message['subject']);
-			$message['tousername'] = my_escape_csv($message['tousername']);
-			$message['fromusername'] = my_escape_csv($message['fromusername']);
-		}
-		
-		
-		
+    // ---- Сборка итогового файла ----
+    $output = '';
 
-		if(empty($donefolder[$message['folder']]))
-		{
-			reset($foldersexploded);
-			foreach($foldersexploded as $key => $val)
-			{
-				$folderinfo = explode("**", $val, 2);
-				if($folderinfo[0] == $message['folder'])
-				{
-					$foldername = $folderinfo[1];
-					if($mybb->input['exporttype'] != "csv")
-					{
-						if($mybb->input['exporttype'] != "html")
-						{
-							$mybb->input['exporttype'] == "txt";
-						}
-						eval("\$pmsdownload .= \"".$templates->get("private_archive_".$mybb->input['exporttype']."_folderhead", 1, 0)."\";");
-					}
-					else
-					{
-						$foldername = my_escape_csv($folderinfo[1]);
-					}
-					$donefolder[$message['folder']] = 1;
-				}
-			}
-		}
+    if ($exporttype === 'html') {
+        $output = pm_export_build_html($allMessages, $folderMap, $private_messages_for, $exported_date, $css);
+    } elseif ($exporttype === 'txt') {
+        $output = pm_export_build_txt($allMessages, $folderMap, $private_messages_for, $exported_date);
+    } elseif ($exporttype === 'csv') {
+        $output = pm_export_build_csv($allMessages, $folderMap);
+    }
 
-		eval("\$pmsdownload .= \"".$templates->get("private_archive_".$mybb->input['exporttype']."_message", 1, 0)."\";");
-		$ids .= ",'{$message['pmid']}'";
-	}
+    $plugins->run_hooks("private_do_export_end");
 
-	if($mybb->input['exporttype'] == "html")
-	{
-		// Gather global stylesheet for HTML
-		$css_tid = empty($theme['tid']) ? '' : "'". (int)$theme['tid'] ."',";
-		$query = $db->simple_select("themestylesheets", "stylesheet", "tid in ({$css_tid}'2','1') AND name = 'global.css'", array('order_by' => 'tid', 'order_dir' => 'DESC', 'limit' => 1));
-		$css = $db->fetch_field($query, "stylesheet");
-	}
+    // Удаление если нужно
+    if ($mybb->get_input('deletepms', MyBB::INPUT_INT) == 1 && !empty($pmIdsToDelete)) {
+        $idList = implode(',', $pmIdsToDelete);
+        $db->delete_query("privatemessages", "pmid IN ($idList)");
+        update_pm_count();
+    }
 
-	$plugins->run_hooks("private_do_export_end");
+    // Отдаём файл
+    switch ($exporttype) {
+        case 'html':
+            $filename    = 'pm-archive.html';
+            $contenttype = 'text/html; charset=utf-8';
+            break;
+        case 'csv':
+            $filename    = 'pm-archive.csv';
+            $contenttype = 'application/octet-stream';
+            break;
+        default:
+            $filename    = 'pm-archive.txt';
+            $contenttype = 'text/plain; charset=utf-8';
+    }
 
-	eval("\$archived = \"".$templates->get("private_archive_".$mybb->input['exporttype'], 1, 0)."\";");
-	if($mybb->get_input('deletepms', MyBB::INPUT_INT) == 1)
-	{ // delete the archived pms
-		$db->delete_query("privatemessages", "pmid IN ('0'$ids)");
-		// Update PM count
-		update_pm_count();
-	}
+    header("Content-Disposition: attachment; filename=\"$filename\"");
+    header("Content-Type: $contenttype");
 
-	if($mybb->input['exporttype'] == "html")
-	{
-		$filename = "pm-archive.html";
-		$contenttype = "text/html";
-	}
-	elseif($mybb->input['exporttype'] == "csv")
-	{
-		$filename = "pm-archive.csv";
-		$contenttype = "application/octet-stream";
-	}
-	else
-	{
-		$filename = "pm-archive.txt";
-		$contenttype = "text/plain";
-	}
-
-	$archived = str_replace("\\\'","'",$archived);
-	header("Content-disposition: filename=$filename");
-	header("Content-type: ".$contenttype);
-
-	if($mybb->input['exporttype'] == "html")
-	{
-		echo $archived;
-	}
-	else
-	{
-		echo "\xEF\xBB\xBF"; // UTF-8 BOM
-		echo $archived;
-	}
+    if ($exporttype !== 'html') {
+        echo "\xEF\xBB\xBF"; // UTF-8 BOM
+    }
+    echo $output;
+    exit;
 }
+
+
+// ========================
+// ФУНКЦИИ РЕНДЕРИНГА
+// ========================
+
+/**
+ * HTML-экспорт
+ */
+function pm_export_build_html(array $allMessages, array $folderMap, string $title, string $exported_date, string $css): string
+{
+    $body = '';
+    foreach ($allMessages as $folder_id => $messages)
+    {
+        $foldername = htmlspecialchars_uni($folderMap[$folder_id] ?? 'Folder #'.$folder_id);
+        $body .= '<h2 class="pm-folder">'.$foldername.'</h2>'."\n";
+
+        foreach ($messages as $m)
+        {
+            $body .= '
+<div class="pm-message">
+  <div class="pm-meta">
+    <span class="pm-subject"><strong>'.htmlspecialchars_uni($m['subject']).'</strong></span>
+    &nbsp;|&nbsp;
+    <span class="pm-tofrom">'.htmlspecialchars_uni($m['tofrom']).': '.$m['tofromusername'].'</span>
+    &nbsp;|&nbsp;
+    <span class="pm-date">'.htmlspecialchars_uni($m['senddate']).'</span>
+  </div>
+  <div class="pm-body">'.$m['body'].'</div>
+</div>
+';
+        }
+    }
+
+    return '<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>'.htmlspecialchars_uni($title).'</title>
+  <style>
+    '.$css.'
+    body { font-family: sans-serif; padding: 20px; }
+    .pm-folder { border-bottom: 2px solid #aaa; padding-bottom: 4px; margin-top: 30px; }
+    .pm-message { border: 1px solid #ddd; border-radius: 4px; margin-bottom: 14px; padding: 10px 14px; }
+    .pm-meta { font-size: 0.85em; color: #555; margin-bottom: 8px; }
+    .pm-body { font-size: 0.95em; }
+  </style>
+</head>
+<body>
+  <h1>'.htmlspecialchars_uni($title).'</h1>
+  <p>'.htmlspecialchars_uni($exported_date).'</p>
+  '.$body.'
+</body>
+</html>';
+}
+
+/**
+ * TXT-экспорт
+ */
+function pm_export_build_txt(array $allMessages, array $folderMap, string $title, string $exported_date): string
+{
+    $lines = [];
+    $lines[] = $title;
+    $lines[] = $exported_date;
+    $lines[] = str_repeat('=', 60);
+
+    foreach ($allMessages as $folder_id => $messages)
+    {
+        $foldername = $folderMap[$folder_id] ?? 'Folder #'.$folder_id;
+        $lines[] = '';
+        $lines[] = '*** '.$foldername.' ***';
+        $lines[] = str_repeat('-', 60);
+
+        foreach ($messages as $m)
+        {
+            $lines[] = 'Subject : '.$m['subject'];
+            $lines[] = $m['tofrom'].'     : '.$m['tofromusername'];
+            $lines[] = 'Date    : '.$m['senddate'];
+            $lines[] = '';
+            $lines[] = $m['body'];
+            $lines[] = str_repeat('-', 60);
+        }
+    }
+
+    return implode("\r\n", $lines);
+}
+
+/**
+ * CSV-экспорт
+ */
+function pm_export_build_csv(array $allMessages, array $folderMap): string
+{
+    $rows = [];
+    // Заголовок
+    $rows[] = '"Folder","Subject","From","To","Date","Message"';
+
+    foreach ($allMessages as $folder_id => $messages)
+    {
+        $foldername = my_escape_csv($folderMap[$folder_id] ?? 'Folder #'.$folder_id);
+        foreach ($messages as $m)
+        {
+            $rows[] = implode(',', [
+                '"'.$foldername.'"',
+                '"'.$m['subject'].'"',
+                '"'.$m['fromusername'].'"',
+                '"'.$m['tousername'].'"',
+                '"'.$m['senddate'].'"',
+                '"'.$m['body'].'"',
+            ]);
+        }
+    }
+
+    return implode("\r\n", $rows);
+}
+
+
+
+
+
+
+
+
+
 
 if(!$mybb->input['action'])
 {
@@ -2289,7 +3520,7 @@ if(!$mybb->input['action'])
 	$orderarrow = $sortsel = array('subject' => '', 'username' => '', 'dateline' => '');
 	$sortsel[$sortby] = "selected=\"selected\"";
 
-	eval("\$orderarrow['$sortby'] = \"".$templates->get("private_orderarrow")."\";");
+	$orderarrow['$sortby'] = '<span class="smalltext">[<a href="private.php?fid='.$fid.'&amp;sortby='.$sortby.'&amp;order='.$oppsortnext.'">'.$oppsort.'</a>]</span>';
 
 	// Do Multi Pages
 	$selective = "";
@@ -2346,7 +3577,7 @@ if(!$mybb->input['action'])
 	$multipage = multipage($pmscount, $perpage, $page, $page_url);
 	$selective = $messagelist = '';
 
-	$icon_cache = $cache->read("posticons");
+	
 
 	// Cache users in multiple recipients for sent & drafts folder
 	if($folder == 2 || $folder == 3)
@@ -2523,11 +3754,11 @@ else if($message['status'] == 4)
 						{
 							$username = $lang->na;
 						}
-						eval("\$to_users .= \"".$templates->get("private_multiple_recipients_user")."\";");
+						$to_users .= '<div class="popup_item_container"><a href="'.$profilelink.'" class="popup_item">'.$username.'</a></div>';
 					}
 					if(isset($recipients['bcc']) && is_array($recipients['bcc']) && count($recipients['bcc']))
 					{
-						eval("\$bcc_users = \"".$templates->get("private_multiple_recipients_bcc")."\";");
+						$bcc_users = '<div class="tcat"><strong>'.$lang->private['bcc'].'</strong></div>';
 						foreach($recipients['bcc'] as $uid)
 						{
 							if(!isset($cached_users[$uid]))
@@ -2542,11 +3773,17 @@ else if($message['status'] == 4)
 							{
 								$username = $lang->na;
 							}
-							eval("\$bcc_users .= \"".$templates->get("private_multiple_recipients_user")."\";");
+							$bcc_users .= '<div class="popup_item_container"><a href="'.$profilelink.'" class="popup_item">'.$username.'</a></div>';
 						}
 					}
 
-					eval("\$tofromusername = \"".$templates->get("private_multiple_recipients")."\";");
+					$tofromusername = '<a href="private.php?action=read&amp;pmid='.$message['pmid'].'" id="private_message_'.$message['pmid'].'">'.$lang->private['multiple_recipients'].'</a>
+		<div id="private_message_'.$message['pmid'].'_popup" class="popup_menu" style="display: none;"><div class="tcat"><strong>'.$lang->private['to'].'</strong></div>'.$to_users.''.$bcc_users.'</div>
+<script type="text/javascript">
+<!--
+	$("#private_message_'.$message['pmid'].'").popupMenu();
+// -->
+</script>';
 				}
 				else if($message['toid'])
 				{
@@ -2608,25 +3845,14 @@ else if($message['status'] == 4)
 			if($usergroups['candenypmreceipts'] == 1 && $message['receipt'] == '1' && $message['folder'] != '3' && $message['folder'] != 2)
 			
 			{
-				eval("\$denyreceipt = \"".$templates->get("private_messagebit_denyreceipt")."\";");
+				$denyreceipt = '<span class="smalltext"><a href="private.php?action=read&amp;pmid='.$message['pmid'].'&amp;denyreceipt=1">'.$lang->private['deny_receipt'].'</a></span>';
 			}
 			else
 			{
 				$denyreceipt = '';
 			}
 
-			if($message['icon'] > 0 && $icon_cache[$message['icon']])
-			{
-				$icon = $icon_cache[$message['icon']];
-				$icon['path'] = str_replace("{theme}", $theme['imgdir'], $icon['path']);
-				$icon['path'] = htmlspecialchars_uni($icon['path']);
-				$icon['name'] = htmlspecialchars_uni($icon['name']);
-				eval("\$icon = \"".$templates->get("private_messagebit_icon")."\";");
-			}
-			else
-			{
-				$icon = '&#009;';
-			}
+			
 
 			if(!trim($message['subject']))
 			{
@@ -2645,13 +3871,388 @@ else if($message['status'] == 4)
 
 			$plugins->run_hooks("private_message");
 
-			eval("\$messagelist .= \"".$templates->get("private_messagebit")."\";");
+			$messagelist .= '<div class="card message-card shadow-sm border-0 mb-3">
+    <div class="card-body p-4">
+        <div class="row align-items-center g-3">
+            <!-- Аватар -->
+           
+		   <div class="col-auto">
+    
+        '.$ava_img.'
+    
+</div>
+		   
+		   
+		   
+            
+            <!-- Основной контент -->
+            <div class="col">
+                <div class="d-flex flex-column">
+                    <h6 class="mb-1">
+                        <a href="private.php?action=read&amp;pmid='.$message['pmid'].'" 
+                           class="message-title '.$msgstatus.' text-decoration-none fw-semibold">
+                            '.$message['subject'].'
+                        </a>
+                        '.$denyreceipt.'
+                    </h6>
+                    <span class="text-muted small">
+                        <i class="fas fa-user me-1"></i>'.$tofromusername.'
+                    </span>
+                </div>
+            </div>
+            
+			
+			
+          
+		<!-- Статус сообщения с Bootstrap Popover -->
+<div class="col-auto d-none d-lg-block">
+    <div class="message-status">
+        <span class="status-badge '.$badge_class.'"
+              data-bs-toggle="popover"
+              data-bs-trigger="hover focus"
+              data-bs-placement="top"
+              data-bs-title="'.$popover_title.'"
+              data-bs-content="'.$popover_content.'"
+              data-bs-html="true"
+              data-bs-container="body"
+              title="'.$msgalt.'">
+            '.$fa_icon_html.'
+        </span>
+    </div>
+</div>
+			
+			
+            
+           <!-- Дата и выбор сообщения -->
+<div class="col-lg-3">
+    <div class="d-flex align-items-center justify-content-end gap-3">
+        <!-- Дата -->
+        <span class="text-muted small text-nowrap">
+            <i class="far fa-clock me-1"></i>
+            '.$senddate.'
+        </span>
+        
+        <!-- Свитч выбора сообщения -->
+        <div class="form-check form-switch message-select-switch">
+            <input type="checkbox" 
+                   class="form-check-input message-select-toggle" 
+                   name="check['.$message['pmid'].']" 
+                   value="1"
+                   id="select-'.$message['pmid'].'"
+                   data-pmid="'.$message['pmid'].'">
+            <label class="form-check-label" for="select-'.$message['pmid'].'">
+                <span class="select-text"></span>
+            </label>
+        </div>
+    </div>
+</div>
+        </div>
+    </div>
+</div>
+
+
+<style>
+
+/* Базовые стили для бейджа статуса */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    cursor: default;
+    border: 1px solid transparent;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+}
+
+.status-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.12);
+}
+
+/* Новое сообщение */
+.status-badge.status-new {
+    background: linear-gradient(135deg, rgba(231, 76, 60, 0.15) 0%, rgba(231, 76, 60, 0.08) 100%);
+    color: #e74c3c;
+    border-color: rgba(231, 76, 60, 0.2);
+}
+
+/* Прочитанное */
+.status-badge.status-read {
+    background: linear-gradient(135deg, rgba(149, 165, 166, 0.15) 0%, rgba(149, 165, 166, 0.08) 100%);
+    color: #95a5a6;
+    border-color: rgba(149, 165, 166, 0.2);
+}
+
+/* Ответ */
+.status-badge.status-reply {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.15) 0%, rgba(52, 152, 219, 0.08) 100%);
+    color: #3498db;
+    border-color: rgba(52, 152, 219, 0.2);
+}
+
+/* Пересланное */
+.status-badge.status-forward {
+    background: linear-gradient(135deg, rgba(39, 174, 96, 0.15) 0%, rgba(39, 174, 96, 0.08) 100%);
+    color: #27ae60;
+    border-color: rgba(39, 174, 96, 0.2);
+}
+
+/* По умолчанию */
+.status-badge.status-default {
+    background: linear-gradient(135deg, rgba(127, 140, 141, 0.15) 0%, rgba(127, 140, 141, 0.08) 100%);
+    color: #7f8c8d;
+    border-color: rgba(127, 140, 141, 0.2);
+}
+
+/* Анимация пульсации для новых сообщений */
+@keyframes pulse-glow {
+    0% {
+        box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 8px rgba(231, 76, 60, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
+    }
+}
+
+.status-badge.status-new {
+    animation: pulse-glow 2s infinite;
+}
+
+/* Мобильная версия */
+@media (max-width: 992px) {
+    .status-badge {
+        width: 36px;
+        height: 36px;
+        font-size: 14px;
+        border-radius: 8px;
+    }
+}
+
+
+
+.message-card {
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+}
+
+.message-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
+}
+
+
+.nav-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 6px;
+            border: 1px solid #ccc;
+        }
+
+.user-avatar { 
+    width: 44px; 
+    height: 44px; 
+    border-radius: 50%; 
+    object-fit: cover; 
+    margin-right: 0.75rem; 
+    border: 2px solid #e9ecef; 
+    transition: border-color 0.3s ease;
+}
+.user-avatar:hover {
+    border-color: #007bff;
+}
+
+.avatar-wrapper {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 3px solid #fff;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.message-title {
+    color: #2c3e50;
+    transition: color 0.2s ease;
+}
+
+.message-title:hover {
+    color: #3498db;
+}
+
+.message-title.unread {
+    color: #e74c3c;
+    font-weight: 700;
+}
+
+.message-title.replied {
+    color: #27ae60;
+}
+
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #f8f9fa;
+    padding: 6px;
+}
+
+.status-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.message-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    border: 2px solid #dee2e6;
+}
+
+.message-checkbox:checked {
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+@media (max-width: 992px) {
+    .card-body {
+        padding: 1.5rem !important;
+    }
+}
+</style>
+<script>
+// Добавьте этот код в конец страницы
+document.addEventListener(\'DOMContentLoaded\', function() {
+    // Обработчики для свитчей выбора сообщений
+    const messageToggles = document.querySelectorAll(\'.message-select-toggle\');
+    
+    messageToggles.forEach(toggle => {
+        toggle.addEventListener(\'change\', function() {
+            const pmid = this.getAttribute(\'data-pmid\');
+            const card = this.closest(\'.message-card\');
+            const labelText = this.parentElement.querySelector(\'.select-text\');
+            
+            if(this.checked) {
+                // Добавляем класс выделения
+                if(card) card.classList.add(\'selected\');
+                if(labelText) labelText.textContent = \'Selected\';
+            } else {
+                // Убираем выделение
+                if(card) card.classList.remove(\'selected\');
+                if(labelText) labelText.textContent = \'Select\';
+            }
+            
+            // Обновляем состояние главного свитча "Выбрать все"
+            updateSelectAllSwitch();
+        });
+        
+        // Инициализируем начальное состояние
+        if(toggle.checked) {
+            const card = toggle.closest(\'.message-card\');
+            const labelText = toggle.parentElement.querySelector(\'.select-text\');
+            if(card) card.classList.add(\'selected\');
+            if(labelText) labelText.textContent = \'Selected\';
+        }
+    });
+    
+    // Функция обновления главного свитча "Выбрать все"
+    function updateSelectAllSwitch() {
+        const selectAllSwitch = document.getElementById(\'selectAllSwitch\');
+        if(!selectAllSwitch) return;
+        
+        const checkedToggles = document.querySelectorAll(\'.message-select-toggle:checked\');
+        const totalToggles = messageToggles.length;
+        
+        if(checkedToggles.length === totalToggles) {
+            selectAllSwitch.checked = true;
+            selectAllSwitch.indeterminate = false;
+        } else if(checkedToggles.length > 0) {
+            selectAllSwitch.checked = false;
+            selectAllSwitch.indeterminate = true;
+        } else {
+            selectAllSwitch.checked = false;
+            selectAllSwitch.indeterminate = false;
+        }
+    }
+    
+    // Обработчик для главного свитча "Выбрать все"
+    const selectAllSwitch = document.getElementById(\'selectAllSwitch\');
+    if(selectAllSwitch) {
+        selectAllSwitch.addEventListener(\'change\', function() {
+            const isChecked = this.checked;
+            
+            messageToggles.forEach(toggle => {
+                toggle.checked = isChecked;
+                
+                // Триггерим событие change для каждого свитча
+                toggle.dispatchEvent(new Event(\'change\'));
+            });
+        });
+    }
+    
+    // Клик по карточке также переключает свитч
+    const messageCards = document.querySelectorAll(\'.message-card\');
+    messageCards.forEach(card => {
+        card.addEventListener(\'click\', function(e) {
+            // Не переключаем если кликнули на ссылку или сам свитч
+            if(e.target.tagName === \'A\' || e.target.closest(\'a\') || 
+               e.target.classList.contains(\'message-select-toggle\') ||
+               e.target.closest(\'.message-select-toggle\')) {
+                return;
+            }
+            
+            const toggle = this.querySelector(\'.message-select-toggle\');
+            if(toggle) {
+                toggle.checked = !toggle.checked;
+                toggle.dispatchEvent(new Event(\'change\'));
+            }
+        });
+        
+        // Курсор указателя для всей карточки
+        card.style.cursor = \'pointer\';
+    });
+});
+</script>';
 			$bgcolor = alt_trow();
 		}
 	}
 	else
 	{
-		eval("\$messagelist .= \"".$templates->get("private_nomessages")."\";");
+		
+		
+		
+		$messagelist .= '
+<tr>
+    <td colspan="7" class="trow1">
+        <div style="text-align: center; padding: 60px 20px;">
+            <div style="font-size: 64px; color: #cbd5e0; margin-bottom: 20px;">
+                <i class="fas fa-inbox"></i>
+            </div>
+            <div style="font-size: 18px; color: #4a5568; margin-bottom: 10px;">
+                <strong>' . $lang->private['nomessages'] . '</strong>
+            </div>
+            <div style="font-size: 14px; color: #718096;">
+                <i class="fas fa-envelope-open-text"></i> Your mailbox is empty
+            </div>
+        </div>
+    </td>
+</tr>';
+		
+		
+		
+		
 	}
 
 	$pmspacebar = '';
@@ -2703,29 +4304,161 @@ else if($message['status'] == 4)
 			$spaceused2 = 0;
 		}
 
-		eval("\$pmspacebar = \"".$templates->get("private_pmspace")."\";");
+		$pmspacebar = '<div class="progress mt-3" style="height: 40px">
+  <div class="progress-bar" role="progressbar" aria-label="Basic example" aria-valuenow="0" style="width:'.$spaceused.'%;" aria-valuemin="0" aria-valuemax="100"></div>
+</div>
+<div class="mt-1">'.$spaceused.'% '.$lang->private['pmspaceused'].'</div>';
 	}
 
 	$composelink = '';
 	
-	eval("\$composelink = \"".$templates->get("private_composelink")."\";");
+	$composelink = '| <a href="private.php?action=send">'.$lang->private['compose_message2'].'</a>';
 	
 
 	$emptyexportlink = '';
 	if($CURUSER['totalpms'] > 0)
 	{
-		eval("\$emptyexportlink = \"".$templates->get("private_emptyexportlink")."\";");
+		$emptyexportlink = '<div class="col-lg-auto">
+<a href="private.php?action=empty" class="links"><i class="fa-solid fa-trash"></i> &nbsp;'.$lang->private['empty_folders2'].'</a>
+</div>
+<div class="col-lg-auto">
+<a href="private.php?action=export" class="links"><i class="fa-solid fa-download"></i> &nbsp;'.$lang->private['export_messages2'].'</a>
+</div>';
 	}
 
 	$limitwarning = '';
 	if($usergroups['pmquota'] != 0 && $pmscount['total'] >= $usergroups['pmquota'])
 	{
-		eval("\$limitwarning = \"".$templates->get("private_limitwarning")."\";");
+		$limitwarning = '<div class="progress mt-3">
+  <div class="progress-bar" role="progressbar" aria-label="Basic example" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">'.$lang->private['reached_warning'].'</div>
+</div>';
 	}
 
 	$plugins->run_hooks("private_end");
 
-	eval("\$folder = \"".$templates->get("private")."\";");
+	$folder = '<html>
+<head>
+<title>'.$SITENAME.' - '.$lang->private['private_messaging'].'</title>
+</head>
+<body>
+
+<div class="container-md">
+<div class="row">
+<div class="col-lg-3">
+
+'.$usercpnav.'
+				
+</div>
+				
+<div class="col">
+
+	'.$limitwarning.' 
+	<form action="private.php" method="post" name="pmForm">
+<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+<div class="row g-2 mb-2">
+	<div class="col-lg-5 align-self-center">
+
+			<div class="input-group">
+  <input type="text" name="keywords" value="'.$lang->private['enter_keywords'].'" onfocus="if(this.value == \''.$lang->private['enter_keywords'].'\') { this.value = \'\'; }" onblur="if(this.value==\'\') { this.value=\''.$lang->private['enter_keywords'].'\'; }" class="form-control form-control-sm border rounded" size="25" />&nbsp;&nbsp;
+				<button class="btn btn-primary btn-sm rounded" type="submit" name="quick_search"><i class="fa-solid fa-magnifying-glass"></i> &nbsp;'.$lang->private['search_pms'].'</button>
+			</div>
+		</div>
+		<div class="col-lg text-lg-end align-self-center">
+			<a href="private.php?action=advanced_search" class="links"><i class="fa-solid fa-gear"></i> &nbsp;'.$lang->private['advanced_search'].'</a>
+		</div>
+	</div>
+	
+<div class="card border-0 mb-3">
+<div class="card-header py-3 bg-nav rounded border-bottom-0">
+		
+		<div class="row g-2 text-forum">
+			<div class="col-1">
+				&nbsp;
+			</div>
+			<div class="col align-self-center">
+				<a href="private.php?fid='.$fid.'&amp;sortby=subject&amp;order=asc">'.$lang->private['message_title'].'</a> &mdash; <a href="private.php?fid='.$fid.'&amp;sortby=username&amp;order=asc">'.$sender.'</a>
+			</div>
+			
+			<div class="col-3 align-self-center">
+    <div class="d-flex align-items-center justify-content-end gap-2">
+        <!-- Дата -->
+        <a href="private.php?fid='.$fid.'&amp;sortby=dateline&amp;order=desc" 
+           class="d-none d-sm-none d-md-none d-lg-inline-block d-xl-inline-block d-xxl-inline-block text-decoration-none">
+            '.$lang->private['date_sent'].'
+        </a>
+        
+        <!-- Свитч для выбора всех -->
+        <div class="form-check form-switch ms-auto">
+            <input class="form-check-input select-all-switch" 
+                   type="checkbox" 
+                   role="switch"
+                   id="selectAllSwitch"
+                   title="'.$lang->private['check_all'].'">
+            <label class="form-check-label small ms-2" for="selectAllSwitch">
+                '.$lang->private['check_all'].'
+            </label>
+        </div>
+    </div>
+</div>
+	</div>
+	
+	</div>
+	</div>
+	
+
+'.$messagelist.'
+'.$multipage.' 
+	<div class="card border-0 mt-3">
+<div class="card-header py-3 bg-nav rounded border-bottom-0">
+		
+		<div class="row g-1">
+			<div class="col">
+				&nbsp;
+			</div>
+						<div class="col-auto">
+				<button type="submit" class="btn btn-primary btn-sm" name="moveto" value="'.$lang->private['move_to'].'">'.$lang->private['move_to'].' &nbsp;<i class="fa-solid fa-arrow-right"></i></button>  
+			</div>
+			<div class="col-auto">
+	'.$folderoplist.' 
+			</div>
+			<div class="col-auto">
+				&nbsp;'.$lang->private['or'].'&nbsp; <button type="submit" class="btn btn-primary btn-sm" name="delete" value="'.$lang->private['delete'].'"><i class="fa-solid fa-xmark"></i> &nbsp;'.$lang->private['delete'].'</button>
+			</div>
+			<div class="col">
+				&nbsp;
+			</div>
+	</div>
+		</div>
+	</div>
+	
+<div class="row g-3 mt-2 text-start">
+	<div class="col d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block">
+		&nbsp;
+	</div>
+	<div class="col-lg-auto">
+<a  href="private.php?action=folders" class="links"><i class="fa-solid fa-folder-open"></i> &nbsp;'.$lang->private['manage_folders'].'</a>
+	</div>
+   '.$emptyexportlink.'
+	</div>
+	
+	
+	'.$pmspacebar.'
+
+			
+<input type="hidden" name="action" value="do_stuff" />
+</form>
+	</div>
+	</div>
+	
+	</div>
+	
+</div>
+</div>
+
+
+
+</body>
+</html>';
 	
 	stdhead('title');
 	

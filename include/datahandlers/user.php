@@ -879,7 +879,6 @@ class UserDataHandler extends DataHandler
         $tables = [
             'privatemessages'          => 'uid',
             'snatched'                 => 'userid',
-            'users_perm'               => 'userid',
             'inactivity'               => 'userid',
             'comments'                 => 'user',
             'bookmarks'                => 'userid',

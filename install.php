@@ -234,18 +234,27 @@ CREATE TABLE IF NOT EXISTS `{$p}announce_actions` (
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
+
 CREATE TABLE IF NOT EXISTS `{$p}announcements` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `subject` varchar(85) NOT NULL,
+  `subject` varchar(120) NOT NULL DEFAULT '',
   `message` text NOT NULL,
-  `by` varchar(64) NOT NULL DEFAULT 'Admin',
-  `added` int unsigned NOT NULL DEFAULT '0',
-  `updated` int unsigned NOT NULL DEFAULT '0',
+  `uid` int UNSIGNED NOT NULL DEFAULT '0',
+  `added` int UNSIGNED NOT NULL DEFAULT '0',
+  `updated` int UNSIGNED NOT NULL DEFAULT '0',
+  `views` int UNSIGNED NOT NULL DEFAULT '0',
+  `startdate` int UNSIGNED NOT NULL DEFAULT '0',
+  `enddate` int UNSIGNED NOT NULL DEFAULT '0',
   `minclassread` tinyint NOT NULL DEFAULT '1',
-  `views` int unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`),
-  KEY `idx_updated` (`updated`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+  `fid` int NOT NULL DEFAULT '0',
+  `type` enum('tracker','forum','global') NOT NULL DEFAULT 'tracker',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+
+
 
 CREATE TABLE IF NOT EXISTS `{$p}attachments` (
   `aid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -862,18 +871,6 @@ CREATE TABLE IF NOT EXISTS `{$p}stats` (
   PRIMARY KEY (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}templates` (
-  `tid` int unsigned NOT NULL AUTO_INCREMENT,
-  `title` varchar(120) NOT NULL DEFAULT '',
-  `template` text NOT NULL,
-  `sid` smallint NOT NULL DEFAULT '0',
-  `version` varchar(20) NOT NULL DEFAULT '0',
-  `status` varchar(10) NOT NULL DEFAULT '',
-  `dateline` int unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`tid`),
-  KEY `sid` (`sid`,`title`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
-
 CREATE TABLE IF NOT EXISTS `{$p}torrents` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `info_hash` varchar(40) NOT NULL,
@@ -939,19 +936,9 @@ CREATE TABLE IF NOT EXISTS `{$p}torrent_ratings` (
   UNIQUE KEY `unique_vote` (`torrent_id`, `user_id`)
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_announcements` (
-  `aid` int unsigned NOT NULL AUTO_INCREMENT,
-  `fid` int NOT NULL DEFAULT '0',
-  `uid` int unsigned NOT NULL DEFAULT '0',
-  `subject` varchar(120) NOT NULL DEFAULT '',
-  `message` text NOT NULL,
-  `startdate` int unsigned NOT NULL DEFAULT '0',
-  `enddate` int unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`aid`),
-  KEY `fid` (`fid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_forums` (
+
+CREATE TABLE IF NOT EXISTS `{$p}forums` (
   `fid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(120) NOT NULL DEFAULT '',
   `description` text NOT NULL,
@@ -982,7 +969,7 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_forums` (
   KEY `type` (`type`,`pid`,`disporder`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_forumsread` (
+CREATE TABLE IF NOT EXISTS `{$p}forumsread` (
   `fid` int unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
   `dateline` int unsigned NOT NULL DEFAULT '0',
@@ -990,7 +977,7 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_forumsread` (
   KEY `dateline` (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_forumsubscriptions` (
+CREATE TABLE IF NOT EXISTS `{$p}forumsubscriptions` (
   `fsid` int unsigned NOT NULL AUTO_INCREMENT,
   `fid` smallint unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
@@ -998,15 +985,8 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_forumsubscriptions` (
   KEY `uid` (`uid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_moderators` (
-  `moderatorid` smallint unsigned NOT NULL AUTO_INCREMENT,
-  `userid` int unsigned NOT NULL DEFAULT '0',
-  `forumid` smallint NOT NULL DEFAULT '0',
-  PRIMARY KEY (`moderatorid`),
-  KEY `userid` (`userid`,`forumid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_polls` (
+CREATE TABLE IF NOT EXISTS `{$p}polls` (
   `pid` int unsigned NOT NULL AUTO_INCREMENT,
   `tid` int unsigned NOT NULL DEFAULT '0',
   `question` varchar(200) NOT NULL DEFAULT '',
@@ -1024,7 +1004,7 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_polls` (
   KEY `tid` (`tid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_pollvotes` (
+CREATE TABLE IF NOT EXISTS `{$p}pollvotes` (
   `vid` int unsigned NOT NULL AUTO_INCREMENT,
   `pid` int unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
@@ -1035,7 +1015,7 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_pollvotes` (
   KEY `pid` (`pid`,`uid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_posts` (
+CREATE TABLE IF NOT EXISTS `{$p}posts` (
   `pid` int unsigned NOT NULL AUTO_INCREMENT,
   `tid` int unsigned NOT NULL DEFAULT '0',
   `replyto` int unsigned NOT NULL DEFAULT '0',
@@ -1056,7 +1036,7 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_posts` (
   KEY `dateline` (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_threads` (
+CREATE TABLE IF NOT EXISTS `{$p}threads` (
   `tid` int unsigned NOT NULL AUTO_INCREMENT,
   `fid` smallint unsigned NOT NULL DEFAULT '0',
   `subject` varchar(120) NOT NULL DEFAULT '',
@@ -1087,7 +1067,7 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_threads` (
   KEY `uid` (`uid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_threadsread` (
+CREATE TABLE IF NOT EXISTS `{$p}threadsread` (
   `tid` int unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
   `dateline` int unsigned NOT NULL DEFAULT '0',
@@ -1095,7 +1075,7 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_threadsread` (
   KEY `dateline` (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_threadsubscriptions` (
+CREATE TABLE IF NOT EXISTS `{$p}threadsubscriptions` (
   `sid` int unsigned NOT NULL AUTO_INCREMENT,
   `uid` int unsigned NOT NULL DEFAULT '0',
   `tid` int unsigned NOT NULL DEFAULT '0',
@@ -1106,7 +1086,7 @@ CREATE TABLE IF NOT EXISTS `{$p}tsf_threadsubscriptions` (
   KEY `tid` (`tid`,`notification`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}tsf_threadviews` (
+CREATE TABLE IF NOT EXISTS `{$p}threadviews` (
   `tid` int unsigned NOT NULL DEFAULT '0',
   KEY `tid` (`tid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
@@ -1264,6 +1244,9 @@ CREATE TABLE IF NOT EXISTS `{$p}users` (
   `allownotices` tinyint(1) NOT NULL DEFAULT '0',
   `receivefrombuddy` tinyint(1) NOT NULL DEFAULT '0',
   `threadmode` varchar(8) NOT NULL DEFAULT '',
+  `canupload` tinyint UNSIGNED NOT NULL DEFAULT '1',
+  `candownload` tinyint UNSIGNED NOT NULL DEFAULT '1',
+  `cancomment` tinyint UNSIGNED NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   KEY `passkey` (`passkey`),
@@ -1272,13 +1255,7 @@ CREATE TABLE IF NOT EXISTS `{$p}users` (
   KEY `usergroup` (`usergroup`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}users_perm` (
-  `userid` int unsigned NOT NULL DEFAULT '0',
-  `canupload` tinyint unsigned NOT NULL DEFAULT '1',
-  `candownload` tinyint unsigned NOT NULL DEFAULT '1',
-  `cancomment` tinyint unsigned NOT NULL DEFAULT '1',
-  PRIMARY KEY (`userid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+
 
 CREATE TABLE IF NOT EXISTS `{$p}bonus` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -1310,40 +1287,6 @@ CREATE TABLE IF NOT EXISTS `{$p}delayedmoderation` (
   `dateline` int unsigned NOT NULL DEFAULT '0',
   `inputs` text NOT NULL,
   PRIMARY KEY (`did`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
-
-CREATE TABLE IF NOT EXISTS `{$p}helpdocs` (
-  `hid` smallint unsigned NOT NULL AUTO_INCREMENT,
-  `sid` smallint unsigned NOT NULL DEFAULT '0',
-  `name` varchar(120) NOT NULL DEFAULT '',
-  `description` text NOT NULL,
-  `document` text NOT NULL,
-  `usetranslation` tinyint(1) NOT NULL DEFAULT '0',
-  `enabled` tinyint(1) NOT NULL DEFAULT '0',
-  `disporder` smallint unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`hid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
-
-CREATE TABLE IF NOT EXISTS `{$p}helpsections` (
-  `sid` smallint unsigned NOT NULL AUTO_INCREMENT,
-  `name` varchar(120) NOT NULL DEFAULT '',
-  `description` text NOT NULL,
-  `usetranslation` tinyint(1) NOT NULL DEFAULT '0',
-  `enabled` tinyint(1) NOT NULL DEFAULT '0',
-  `disporder` smallint unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`sid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
-
-CREATE TABLE IF NOT EXISTS `{$p}modtools` (
-  `tid` smallint unsigned NOT NULL AUTO_INCREMENT,
-  `name` varchar(200) NOT NULL,
-  `description` text NOT NULL,
-  `forums` text NOT NULL,
-  `groups` text NOT NULL,
-  `type` char(1) NOT NULL DEFAULT '',
-  `postoptions` text NOT NULL,
-  `threadoptions` text NOT NULL,
-  PRIMARY KEY (`tid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
 CREATE TABLE IF NOT EXISTS `{$p}notconnectablepmlog` (
@@ -1396,6 +1339,8 @@ SQL;
         ['id' => 1, 'name' => 'Unknown', 'flagpic' => 'unknown.gif'],
         true
     );
+	
+	
 
     // ── Создаём admin пользователя ────────────────────────────────────────────
     $salt      = random_str();
@@ -1441,14 +1386,20 @@ SQL;
         'title'  => 'Welcome!',
     ]);
 
+
     $db->insert_query('announcements', [
-        'subject'      => 'Welcome to ' . $site['name'],
-        'message'      => '<p>The tracker is now online and ready to use!</p>',
-        'by'           => $admin['username'],
-        'added'        => $now,
-        'updated'      => $now,
-        'minclassread' => 0,
+    'subject'      => 'Welcome to ' . $site['name'],
+    'message'      => '<p>The tracker is now online and ready to use!</p>',
+    'uid'          => $admin_id,   // ← правильное поле
+    'added'        => $now,
+    'updated'      => $now,
+    'startdate'    => $now,
+    'enddate'      => 0,
+    'minclassread' => 0,
+    'type'         => 'tracker',
     ]);
+	
+	
 
     // ── Инициализация кэша и обновление новостей ──────────────────────────────
     $GLOBALS['db'] = $db;
@@ -1605,17 +1556,6 @@ SQL;
         foreach (array_filter(array_map('trim', explode("\n", $usergroups_sql))) as $sql) {
             if (stripos($sql, 'INSERT') !== 0) continue;
             try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
-        }
-    }
-
-    $templates_sql = @file_get_contents(__DIR__ . '/sql/templates.sql');
-    if ($templates_sql) {
-        $templates_sql = str_replace("\r\n", "\n", $templates_sql);
-        foreach (explode("');\n", $templates_sql) as $sql) {
-            $sql = trim($sql);
-            if (empty($sql)) continue;
-            if (stripos($sql, 'INSERT') !== 0) continue;
-            try { $db->sql_query($sql . "');"); } catch (Throwable) {}
         }
     }
 

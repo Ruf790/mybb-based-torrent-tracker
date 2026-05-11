@@ -143,7 +143,7 @@ $cron_code = '';
 if (!defined('SKIP_CRON_JOBS') && isset($GLOBALS['ts_cron_image'])) {
     $cron_code = '
 <!-- TS Auto Cronjobs code -->
-    <img src="' . $BASEURL . '/ts_cron.php?rand=' . TIMENOW . '" alt="" width="1" height="1" border="0">
+    <img src="' . $BASEURL . '/cron.php?rand=' . TIMENOW . '" alt="" width="1" height="1" border="0">
 <!-- TS Auto Cronjobs code -->';
 }
 

@@ -117,6 +117,7 @@ if (!defined('IN_TRACKER')) {
 
     <title><?= htmlspecialchars($title ?? 'Ruff Tracker', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></title>
     <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/include/templates/default/style/bootstrap.min.css" type="text/css" media="screen" />
+	<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />
     <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/include/templates/default/style/all.min.css" type="text/css" media="screen" />
 
     <style>    
@@ -164,7 +165,7 @@ if (!defined('IN_TRACKER')) {
 
 <?php
 // Prepare the main templates for use
-$admincplink = $modcplink = $usercplink = '';
+$admincplink = $usercplink = '';
 
 $pms_unread = isset($CURUSER['pms_unread']) ? ts_nf((int)$CURUSER['pms_unread']) : ts_nf(0);
 $pms_total = isset($CURUSER['pms_total']) ? ts_nf((int)$CURUSER['pms_total']) : ts_nf(0);
@@ -198,10 +199,6 @@ if (is_array($usergroups) &&
         <i class="fa-solid fa-gears"></i> &nbsp;Admin CP
     </a>';
 
-    $modcplink = '
-    <a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/modcp.php" class="dropdown-item ms-0 ps-0">
-        <i class="fa-solid fa-screwdriver-wrench"></i> &nbsp;&nbsp;Mod CP
-    </a>';
 }
 
 // Set the logout key for this user
@@ -219,8 +216,10 @@ echo '<br><br>';
 
 // Get user seeding/leeching information
 $uid = (int)($CURUSER['id'] ?? 0);
-$seedtorrentscount = tsrowcount('id', 'peers', "seeder='yes' AND userid={$uid}");
-$leechingtorrentscount = tsrowcount('id', 'peers', "seeder='no' AND userid={$uid}");
+$q = $db->sql_query("SELECT SUM(seeder='yes') AS seeding, SUM(seeder='no') AS leeching FROM peers WHERE userid={$uid}");
+$pr = $db->fetch_array($q);
+$seedtorrentscount     = (int)($pr['seeding']  ?? 0);
+$leechingtorrentscount = (int)($pr['leeching'] ?? 0);
 
 if ($seedtorrentscount > 0) {
     $seederOrLeecher = '<span class="badge bg-success"><i class="fas fa-arrow-up me-1"></i> Seeder</span>';
@@ -269,9 +268,8 @@ if (isset($CURUSER)): ?>
                     <div class="row p-2">
                         <div class="col align-self-center">
                             <?= $usercplink ?>
-                            <?= $modcplink ?>
                             <?= $admincplink ?>
-                            <button type="button" class="dropdown-item ms-0 ps-0" data-bs-toggle="modal" data-bs-target="#logoutModal">
+                            <button type="button" class="dropdown-item text-danger ps-0" data-bs-toggle="modal" data-bs-target="#logoutModal">
                                 <i class="fa-solid fa-right-from-bracket"></i> &nbsp;&nbsp;Log Out
                             </button>
                         </div>
@@ -620,7 +618,6 @@ if (is_array($usergroups) &&
         }
 
         $awaitingusers = '
-        <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
         <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/errorss.css" rel="stylesheet">
         <div class="container mt-3">
             <div class="card error-card222">
@@ -658,7 +655,107 @@ if (is_array($usergroups) && isset($usergroups['isbannedgroup']) && (int)($userg
 
     $reason = !empty($mybb->user['banreason']) ? htmlspecialchars_uni($mybb->user['banreason']) : ($lang->global['unknown2'] ?? '');
 
-    eval('$bannedwarning = "' . $templates->get('global_bannedwarning') . '";');
+    $bannedwarning = '<html>
+<head>
+    <title>'.$title.'</title>
+    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/banned.css">
+    
+</head>
+<body>
+
+    <div class="ban-container">
+        <div class="ban-card">
+            <!-- Анимированный фон -->
+            <div class="ban-bg-pattern"></div>
+            
+            <!-- Неоновая линия -->
+            <div class="ban-glow-line"></div>
+            
+            <!-- Хедер -->
+            <div class="ban-header">
+                <div class="ban-icon-wrapper">
+                    <div class="ban-icon-circle">
+                        <i class="bi bi-shield-lock-fill ban-icon"></i>
+                    </div>
+                    <div class="ban-header-text">
+                        <h1>'.$lang->global['banned_warning'].'</h1>
+                        <p>'.$lang->global['banned_warning'].' - Access Restricted</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Тело карточки -->
+            <div class="ban-body">
+                <!-- Бейдж -->
+                <div class="ban-badge">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    ACCOUNT SUSPENDED
+                </div>
+                
+                <!-- Сообщение о бане -->
+                <div class="ban-message">
+                    <div class="ban-message-content">
+                        <div class="ban-message-icon">
+                            <i class="bi bi-shield-exclamation"></i>
+                        </div>
+                        <div class="ban-message-text">
+                            <strong>'.$lang->global['banned_warning'].'</strong>
+                            <p class="mb-0 text-muted">'.$lang->global['banned_warning2'].':</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Детали бана -->
+                <div class="ban-details">
+                    <div class="ban-detail-item">
+                        <i class="bi bi-chat-quote-fill"></i>
+                        <h6>'.$lang->global['banned_warning2'].'</h6>
+                        <div class="ban-value">'.$reason.'</div>
+                    </div>
+                    
+                    <div class="ban-detail-item">
+                        <i class="bi bi-calendar-event-fill"></i>
+                        <h6>'.$lang->global['banned_warning3'].'</h6>
+                        <div class="ban-value">'.$banlift.'</div>
+                    </div>
+                </div>
+                
+                <!-- Дополнительная информация -->
+                <div class="alert alert-warning d-flex align-items-center" role="alert" style="border-radius: 15px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.2);">
+                    <i class="bi bi-info-circle-fill me-3" style="color: #ffc107; font-size: 1.5rem;"></i>
+                    <div>
+                        <strong>Important:</strong> If you believe this is a mistake, please contact the administrator for assistance.
+                    </div>
+                </div>
+                
+                <!-- Кнопки действий -->
+                <div class="ban-actions">
+                    <button onclick="history.back()" class="ban-btn ban-btn-secondary">
+                        <i class="bi bi-arrow-left"></i>
+                        Go Back
+                    </button>
+                    <a href="'.$BASEURL.'/" class="ban-btn ban-btn-primary">
+                        <i class="bi bi-house-door"></i>
+                        Home Page
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="ban-footer">
+                <small>
+                    <i class="bi bi-envelope me-1"></i>
+                    Need help? Contact 
+                    <a href="'.$BASEURL.'/contact.php">Support Team</a>
+                </small>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>';
+	
+	
 }
 
 echo $bannedwarning;
@@ -684,7 +781,15 @@ if (($mybb->usergroup['canview'] ?? 0) != 1) {
         if (!$mybb->get_input('modal')) {
             error_no_permission();
         } else {
-            eval('$output = "' . $templates->get('global_no_permission_modal', 1, 0) . '";');
+            
+			$output = '<div class="modal p-0 m-0">
+		<div class="card border" style="overflow-y: auto; max-height: 500px;">
+			<div class="card-header text-19 fw-bold border-0 py-3">'.$SITENAME.'</div>
+			<div class="card-body">You do not have permission to access this page</div>
+	</div>
+</div>';
+			
+			
             echo $output;
             exit;
         }
@@ -708,7 +813,6 @@ $infomessages = [];
 // Tracker offline message
 if ($offlinemsg ?? false) {
     $warnmessages[] = '
-    <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
     <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/errorss.css" rel="stylesheet">
     <div class="card error-card">
         <div class="card-header22">
@@ -728,11 +832,10 @@ if ($offlinemsg ?? false) {
 
 // Leech warning
 if ((isset($CURUSER) && ($CURUSER['id'] ?? 0) > 0 && ($CURUSER['downloaded'] ?? 0) > 0 && ($CURUSER['leechwarn'] ?? '') === 'yes' && ($CURUSER['leechwarnuntil'] ?? 0) > TIMENOW)) {
-    include_once INC_PATH . '/readconfig_cleanup.php';
+    //include_once INC_PATH . '/readconfig_cleanup.php';
     require_once INC_PATH . '/functions_mkprettytime.php';
     
     $warnmessages[] = '
-    <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
     <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/errorss.css" rel="stylesheet">
     <div class="card error-card222">
         <div class="card-header22">
@@ -753,7 +856,13 @@ if ((isset($CURUSER) && ($CURUSER['id'] ?? 0) > 0 && ($CURUSER['downloaded'] ?? 
 // Announcements
 if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no') 
 {
-    $res = $db->sql_query('SELECT id, subject, message, added, `by` FROM announcements WHERE minclassread IN (0,' . (int)($CURUSER['usergroup'] ?? 0) . ') ORDER by added DESC LIMIT 1');
+   $res = $db->sql_query('SELECT a.id, a.subject, a.message, a.added, COALESCE(u.username, \'Admin\') AS `by`
+    FROM announcements a
+    LEFT JOIN users u ON u.id = a.uid
+    WHERE a.type = \'tracker\'
+      AND a.minclassread IN (0,' . (int)($CURUSER['usergroup'] ?? 0) . ')
+    ORDER BY a.added DESC LIMIT 1');
+	
     if ($db->num_rows($res) > 0) 
 	{
         $arr = $db->fetch_array($res);
@@ -844,191 +953,8 @@ if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no')
             </div>
         </div>
 		
-
+        <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/announcement.css">';
 		
-
-        <style>
-        .announcement-floating {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 1060;
-        }
-        
-        .announcement-btn {
-            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-            border: none;
-            border-radius: 16px;
-            padding: 16px 20px;
-            color: white;
-            font-weight: 600;
-            box-shadow: 0 8px 30px rgba(59, 130, 246, 0.4);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
-            animation: pulse 2s infinite;
-        }
-        
-        .announcement-btn:hover {
-            transform: translateY(-3px) scale(1.05);
-            box-shadow: 0 12px 40px rgba(59, 130, 246, 0.6);
-        }
-        
-        .btn-content {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .btn-icon {
-            width: 40px;
-            height: 40px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2em;
-        }
-        
-        .btn-text {
-            text-align: left;
-            line-height: 1.3;
-        }
-        
-        .badge {
-            background: #ef4444;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 8px;
-            font-size: 0.7em;
-            font-weight: 700;
-            margin-right: 6px;
-            animation: blink 2s infinite;
-        }
-        
-        .bg-gradient-primary {
-            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-        }
-        
-        .header-icon {
-            width: 50px;
-            height: 50px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5em;
-        }
-        
-        .modal-content {
-            border: none;
-            overflow: hidden;
-        }
-        
-        .announcement-content {
-            background: #ffffff;
-            min-height: 300px;
-            max-height: 60vh;
-            overflow-y: auto;
-        }
-        
-        .content-wrapper {
-            line-height: 1.6;
-            font-size: 1.05em;
-        }
-        
-        .content-wrapper img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-        }
-        
-        .announcement-meta {
-            font-size: 0.9em;
-            opacity: 0.9;
-        }
-        
-        .btn {
-            border-radius: 10px;
-            font-weight: 500;
-            padding: 10px 20px;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-success {
-            background: linear-gradient(135deg, #10b981, #059669);
-            border: none;
-        }
-        
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
-        }
-        
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 8px 30px rgba(59, 130, 246, 0.4);
-            }
-            50% {
-                box-shadow: 0 8px 30px rgba(59, 130, 246, 0.8);
-            }
-            100% {
-                box-shadow: 0 8px 30px rgba(59, 130, 246, 0.4);
-            }
-        }
-        
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        
-        /* Анимация появления модалки */
-        .modal.fade .modal-dialog {
-            transform: scale(0.8);
-            transition: transform 0.3s ease;
-        }
-        
-        .modal.show .modal-dialog {
-            transform: scale(1);
-        }
-        
-        /* Адаптивность */
-        @media (max-width: 768px) {
-            .announcement-floating {
-                bottom: 20px;
-                right: 20px;
-                left: 20px;
-            }
-            
-            .announcement-btn {
-                width: 100%;
-                padding: 14px 18px;
-            }
-            
-            .btn-content {
-                justify-content: center;
-            }
-            
-            .modal-dialog {
-                margin: 20px;
-            }
-            
-            .modal-footer .d-flex {
-                flex-direction: column;
-                gap: 12px;
-            }
-            
-            .btn-group {
-                width: 100%;
-            }
-            
-            .btn-group .btn {
-                flex: 1;
-            }
-        }
-        </style>';
-
         $infomessages[] = $zz;
     }      
 }

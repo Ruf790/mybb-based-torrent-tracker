@@ -12,7 +12,7 @@ if (!defined('IN_CRON')) {
 }
 
 $query = $db->simple_select(
-    'tsf_threadviews',
+    'threadviews',
     'tid, COUNT(tid) AS views',
     '',
     ['group_by' => 'tid']
@@ -28,7 +28,7 @@ while ($threadView = $db->fetch_array($query)) {
 
     if ($tid > 0 && $views > 0) {
         $db->update_query(
-            'tsf_threads',
+            'threads',
             ['views' => "views+{$views}"],
             "tid='{$tid}'",
             '1',
@@ -39,7 +39,7 @@ while ($threadView = $db->fetch_array($query)) {
     }
 }
 
-$db->write_query('TRUNCATE TABLE tsf_threadviews');
+$db->write_query('TRUNCATE TABLE threadviews');
 ++$CQueryCount;
 
 if (isset($plugins) && is_object($plugins)) {

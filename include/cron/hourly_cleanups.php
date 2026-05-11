@@ -17,8 +17,6 @@ if (!defined('IN_CRON')) {
 $db->sql_query("DELETE FROM loginattempts WHERE banned='no' AND added < '" . (TIMENOW - DAY_IN_SECONDS) . "'");
 $CQueryCount++;
 
-//$db->sql_query("DELETE FROM invites WHERE time_invited < '" . (TIMENOW - 2 * DAY_IN_SECONDS) . "'");
-//$CQueryCount++;
 
 // ======= Очистка пиров =======
 $deadtime = deadtime();
@@ -51,9 +49,9 @@ $CQueryCount++;
 
 
 // Удаление старых прочитанных тем
-$db->delete_query("tsf_threadsread", "dateline < '" . (int)$time_limits['threadreadcut'] . "'");
+$db->delete_query("threadsread", "dateline < '" . (int)$time_limits['threadreadcut'] . "'");
 $CQueryCount++;
-$db->delete_query("tsf_forumsread", "dateline < '" . (int)$time_limits['threadreadcut'] . "'");
+$db->delete_query("forumsread", "dateline < '" . (int)$time_limits['threadreadcut'] . "'");
 $CQueryCount++;
 
 // ======= Очистка логов модераторов =======

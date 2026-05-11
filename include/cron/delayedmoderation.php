@@ -66,7 +66,7 @@ function handleOpenCloseThread(Moderation $moderation, string $threadIds, object
 {
     $closedTids = $openTids = [];
     
-    $query = $db->simple_select("tsf_threads", "tid,closed", "tid IN({$threadIds})");
+    $query = $db->simple_select("threads", "tid,closed", "tid IN({$threadIds})");
 	
 
 	
@@ -119,7 +119,7 @@ function handleStickThread(Moderation $moderation, string $threadIds, object $db
 {
     $unstuckTids = $stuckTids = [];
     
-    $query = $db->simple_select("tsf_threads", "tid,sticky", "tid IN({$threadIds})");
+    $query = $db->simple_select("threads", "tid,sticky", "tid IN({$threadIds})");
 	
     
     while ($thread = $db->fetch_array($query)) {
@@ -169,7 +169,7 @@ function handleMergeThread(Moderation $moderation, string $threadIds, array $inp
 
     // If no subject provided, get from source thread
     if (empty($subject)) {
-        $query = $db->simple_select("tsf_threads", "subject", "tid='{$sourceTid}'");
+        $query = $db->simple_select("threads", "subject", "tid='{$sourceTid}'");
 		
 		
         $subject = $db->fetch_field($query, "subject") ?? '';
@@ -246,7 +246,7 @@ function handleApproveThread(Moderation $moderation, string $threadIds, object $
 {
     $approvedTids = $unapprovedTids = [];
     
-    $query = $db->simple_select("tsf_threads", "tid,visible", "tid IN({$threadIds})");
+    $query = $db->simple_select("threads", "tid,visible", "tid IN({$threadIds})");
 	
 	
     

@@ -672,13 +672,13 @@ class datacache
         }
 
         // Mod tools
-        $query = $db->simple_select('modtools', 'forums,tid', '', ['order_by' => 'tid']);
-        while ($tool = $db->fetch_array($query)) {
-            foreach (explode(',', $tool['forums']) as $fid) {
-                $fid = $fid !== '' ? (int)$fid : -1;
-                $fd[$fid]['modtools'] ??= 1;
-            }
-        }
+        //$query = $db->simple_select('modtools', 'forums,tid', '', ['order_by' => 'tid']);
+        //while ($tool = $db->fetch_array($query)) {
+        //    foreach (explode(',', $tool['forums']) as $fid) {
+        //       $fid = $fid !== '' ? (int)$fid : -1;
+        ///       $fd[$fid]['modtools'] ??= 1;
+        //    }
+        //}
 
         $this->update('forumsdisplay', $fd);
     }

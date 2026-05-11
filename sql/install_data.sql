@@ -121,20 +121,6 @@ INSERT IGNORE INTO `cron` (`cronid`, `nextrun`, `minutes`, `filename`, `descript
 (33, 0, 1260, 'logcleanup.php', 'Automatically cleans up old log files.', 1, 1),
 (34, 0, 3600 ,'weekly_cleanups.php','This script performs various cleanup tasks once per week', 1, 1);
 
--- helpsections
-INSERT IGNORE INTO `helpsections` (`sid`, `name`, `description`, `usetranslation`, `enabled`, `disporder`) VALUES
-(1, 'User Maintenance', 'Basic instructions for maintaining a forum account.', 1, 1, 1),
-(2, 'Posting', 'Posting, replying, and basic usage of forum.', 1, 1, 2);
-
--- helpdocs
-INSERT IGNORE INTO `helpdocs` (`hid`, `sid`, `name`, `description`, `document`, `usetranslation`, `enabled`, `disporder`) VALUES
-(1, 1, 'User Registration', 'Perks and privileges to user registration.', 'Registration is free and takes a few minutes to complete.', 1, 1, 1),
-(2, 1, 'Updating Profile', 'Changing your data currently on record.', 'You may change information from your user control panel.', 1, 1, 2),
-(3, 1, 'Use of Cookies', 'myBB uses cookies to store certain information about your registration.', 'Cookies are small text documents stored on your computer.', 1, 1, 3),
-(4, 1, 'Logging In and Out', 'How to login and log out.', 'When you login, you set a cookie on your machine.', 1, 1, 4),
-(5, 2, 'Posting a New Topic', 'Starting a new thread in a forum.', 'Choose the New topic button at the top of the forum.', 1, 1, 1),
-(6, 2, 'Posting a Reply', 'Replying to a topic within a forum.', 'Click the Post reply button at the bottom of the thread.', 1, 1, 2),
-(7, 2, 'MyCode', 'Learn how to use MyCode to enhance your posts.', 'You can use MyCode, a simplified version of HTML, in your posts.', 1, 1, 3);
 
 -- spiders
 INSERT IGNORE INTO `spiders` (`sid`, `name`, `theme`, `language`, `usergroup`, `useragent`, `lastvisit`) VALUES
@@ -265,8 +251,8 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (1, 'adduser', 'Add New User', 'adduser.php', '[5],[6],[8]'),
 (4, 'allagents', 'Show ALL Agents', 'allagents.php', '[5],[6],[8]'),
 (5, 'amountbonus', 'Send Bonus Points', 'amountbonus.php', '[8],[8]'),
-(6, 'announcements', 'Manage Announcements', 'announcements.php', '[8],[6]'),
-(8, 'bonuspoints', 'Manage Karma Point System', 'bonuspoints.php', '[8],[6]'),
+(6, 'announcements', 'Manage Announcements', 'announcements.php', '[6],[7],[8]'),
+(8, 'bonuspoints', 'Manage Karma Point System', 'bonuspoints.php', '[6],[7],[8]'),
 (9, 'category', 'Manage Tracker Categories', 'category.php', '[8],[6]'),
 (10, 'changemail', 'Change Email', 'changemail.php', '[8],[8],[6]'),
 (11, 'changeusername', 'Change Username', 'changeusername.php', '[8],[8],[6]'),
@@ -327,19 +313,22 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (101, 'awaiting_activation', 'Manage Awaiting Activation', 'awaiting_activation.php', '[8],[6],[5]'),
 (102, 'management', 'Forum Management', 'management.php', '[8],[6],[5]'),
 (103, 'groups', 'Manage User Groups', 'groups.php', '[8]'),
-(104, 'banning', 'Banned Accounts', 'banning.php', '[5],[6],[8]'),
+(104, 'banning', 'Banned Accounts', 'banning.php', '[6],[7],[8]'),
 (105, 'attachments', 'Manage Attachments', 'attachments.php', '[5],[6],[8]'),
 (106, 'attachment_types', 'Attachment Types', 'attachment_types.php', '[5],[6],[8]'),
 (107, 'view_error_logs', 'View Error Logs', 'view_error_logs.php', '[5],[6],[8]'),
 (108, 'csseditor', 'Manage CSS Styles', 'csseditor.php', '[5],[6],[8]'),
 (109, 'smilies', 'Manage Smiles', 'smilies.php', '[5],[6],[8]'),
 (111, 'torrentstats', 'Torrent Stats', 'torrentstats.php', '[5],[6],[8]'),
-(112, 'manage_screenshots', 'Manage Screenshots', 'manage_screenshots.php', '[5],[6],[8]'),
-(113, 'manage_uploads', 'Manage Uploaded Images', 'manage_uploads.php', '[5],[6],[8]'),
+(112, 'manage_screenshots', 'Manage Screenshots', 'manage_screenshots.php', '[6],[7],[8]'),
+(113, 'manage_uploads', 'Manage Uploaded Images', 'manage_uploads.php', '[6],[7],[8]'),
 (114, 'execute_sql_query', 'Run SQL Query Tool', 'execute_sql_query.php', '[8]'),
 (115, 'cronjobs', 'Manage Cronjobs', 'cronjobs.php', '[8]'),
 (116, 'torrents_promo', 'Torrent Promotional', 'torrents_promo.php', '[5],[6],[8]'),
 (117, 'batch_upload', 'Multi Torrents Uploads', 'batch_upload.php', '[5],[6],[8]'),
 (118, 'seedbonus_settings', 'configure seedbonus', 'seedbonus_settings.php', '[8]'),
 (119, 'manage_invites', 'Manage Invites', 'manage_invites.php', '[8]'),
-(120, 'phpeditor', 'Edit php files', 'phpeditor.php', '[8]');
+(120, 'phpeditor', 'Edit php files', 'phpeditor.php', '[8]'),
+(121, 'announcements_forum', 'Manage Forum Announcements', 'announcements_forum.php', '[6],[7],[8]'),
+(122, 'modcp', 'Threads and Posts Awaiting Moderation', 'modcp.php', '[6],[7],[8]'),
+(123, 'manage_polls', 'Manage Polls', 'manage_polls.php', '[6],[7],[8]');

@@ -496,7 +496,7 @@ if (!empty($user_ids_from_data)) {
 
 if (!empty($thread_ids)) {
     $thread_ids_str = implode(',', array_keys($thread_ids));
-    $result = $db->sql_query("SELECT tid, subject FROM tsf_threads WHERE tid IN ($thread_ids_str)");
+    $result = $db->sql_query("SELECT tid, subject FROM threads WHERE tid IN ($thread_ids_str)");
     while ($row = $db->fetch_array($result)) {
         $threads_data[$row['tid']] = $row;
     }
@@ -504,7 +504,7 @@ if (!empty($thread_ids)) {
 
 if (!empty($forum_ids)) {
     $forum_ids_str = implode(',', array_keys($forum_ids));
-    $result = $db->sql_query("SELECT fid, name FROM tsf_forums WHERE fid IN ($forum_ids_str)");
+    $result = $db->sql_query("SELECT fid, name FROM forums WHERE fid IN ($forum_ids_str)");
     while ($row = $db->fetch_array($result)) {
         $forums_data[$row['fid']] = $row;
     }
@@ -512,7 +512,7 @@ if (!empty($forum_ids)) {
 
 if (!empty($post_ids)) {
     $post_ids_str = implode(',', array_keys($post_ids));
-    $result = $db->sql_query("SELECT pid, subject FROM tsf_posts WHERE pid IN ($post_ids_str)");
+    $result = $db->sql_query("SELECT pid, subject FROM posts WHERE pid IN ($post_ids_str)");
     while ($row = $db->fetch_array($result)) {
         $posts_data[$row['pid']] = $row;
     }

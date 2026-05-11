@@ -1,27 +1,11 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
 
-/**
- * Checks if a user with uid $uid exists in the database.
- *
- * @param int $uid The uid to check for.
- * @return boolean True when exists, false when not.
- */
  
 // work out which items the user has collapsed
 $collapse = $collapsed = $collapsedimg = $collapsedthead = array();
-
 if(!empty($mybb->cookies['collapsed']))
 {
 	$colcookie = $mybb->cookies['collapsed'];
-
 	// Preserve and don't unset $collapse, will be needed globally throughout many pages
 	$collapse = explode("|", $colcookie);
 	foreach($collapse as $val)
@@ -345,7 +329,7 @@ function add_subscribed_thread($tid, $notification=1, $uid=0)
 		return false;
 	}
 
-	$query = $db->simple_select("tsf_threadsubscriptions", "*", "tid='".(int)$tid."' AND uid='".(int)$uid."'");
+	$query = $db->simple_select("threadsubscriptions", "*", "tid='".(int)$tid."' AND uid='".(int)$uid."'");
 	$subscription = $db->fetch_array($query);
 	if(!$subscription)
 	{
@@ -355,7 +339,7 @@ function add_subscribed_thread($tid, $notification=1, $uid=0)
 			'notification' => (int)$notification,
 			'dateline' => TIMENOW
 		);
-		$db->insert_query("tsf_threadsubscriptions", $insert_array);
+		$db->insert_query("threadsubscriptions", $insert_array);
 	}
 	else
 	{
@@ -363,7 +347,7 @@ function add_subscribed_thread($tid, $notification=1, $uid=0)
 		$update_array = array(
 			"notification" => (int)$notification
 		);
-		$db->update_query("tsf_threadsubscriptions", $update_array, "uid='{$uid}' AND tid='{$tid}'");
+		$db->update_query("threadsubscriptions", $update_array, "uid='{$uid}' AND tid='{$tid}'");
 	}
 	return true;
 }
@@ -389,7 +373,7 @@ function remove_subscribed_thread($tid, $uid=0)
 	{
 		return false;
 	}
-	$db->delete_query("tsf_threadsubscriptions", "tid='".$tid."' AND uid='{$uid}'");
+	$db->delete_query("threadsubscriptions", "tid='".$tid."' AND uid='{$uid}'");
 
 	return true;
 }
@@ -419,7 +403,7 @@ function add_subscribed_forum($fid, $uid=0)
 	$fid = (int)$fid;
 	$uid = (int)$uid;
 
-	$query = $db->simple_select("tsf_forumsubscriptions", "*", "fid='".$fid."' AND uid='{$uid}'", array('limit' => 1));
+	$query = $db->simple_select("forumsubscriptions", "*", "fid='".$fid."' AND uid='{$uid}'", array('limit' => 1));
 	$fsubscription = $db->fetch_array($query);
 	if(!$fsubscription)
 	{
@@ -427,7 +411,7 @@ function add_subscribed_forum($fid, $uid=0)
 			'fid' => $fid,
 			'uid' => $uid
 		);
-		$db->insert_query("tsf_forumsubscriptions", $insert_array);
+		$db->insert_query("forumsubscriptions", $insert_array);
 	}
 
 	return true;
@@ -454,7 +438,7 @@ function remove_subscribed_forum($fid, $uid=0)
 	{
 		return false;
 	}
-	$db->delete_query("tsf_forumsubscriptions", "fid='".$fid."' AND uid='{$uid}'");
+	$db->delete_query("forumsubscriptions", "fid='".$fid."' AND uid='{$uid}'");
 
 	return true;
 }
@@ -465,7 +449,7 @@ function remove_subscribed_forum($fid, $uid=0)
  */
 function usercp_menu()
 {
-	global $mybb, $templates, $theme, $plugins, $lang, $usercpnav, $usercpmenu, $enablepms, $usergroups;
+	global $mybb, $theme, $plugins, $lang, $usercpnav, $usercpmenu, $enablepms, $usergroups;
 
 	$lang->load("usercpnav");
 
@@ -484,10 +468,24 @@ function usercp_menu()
 	$plugins->run_hooks("usercp_menu");
 	global $usercpmenu;
 
-	eval("\$ucp_nav_home = \"".$templates->get("usercp_nav_home")."\";");
+	$ucp_nav_home = '
+	
+	<a href="usercp.php" class="btn btn-menu"><i class="fa-solid fa-house me-2"></i>'.$lang->usercpnav['ucp_nav_home'].'</a>';
 	
 
-    eval("\$usercpnav = \"".$templates->get("usercp_nav")."\";");
+
+    $usercpnav = '
+	
+	<div class="card mb-4 border-0">
+	<div class="card-body m-0 p-0">
+		'.$ucp_nav_home.'
+'.$usercpmenu.'
+	</div>
+</div>';
+	
+	
+	
+	
 
 	$plugins->run_hooks("usercp_menu_built");
 }
@@ -498,68 +496,50 @@ function usercp_menu()
  */
 function usercp_menu_messenger()
 {
-	global $db, $mybb, $templates, $CURUSER, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
+    global $db, $mybb, $CURUSER, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
 
-	$lang->load("usercpnav");
-	
-	$expaltext = (in_array("usercppms", $collapse)) ? '[+]' : '[-]';
-	
-	$usercp_nav_messenger = $templates->get("usercp_nav_messenger");
-	
-	// Hide tracking link if no permission
-	$tracking = '';
-	//if($mybb->usergroup['cantrackpms'])
-	//{
-		$tracking = $templates->get("usercp_nav_messenger_tracking");
-	//}
-	eval("\$ucp_nav_tracking = \"". $tracking ."\";");
+    $lang->load("usercpnav");
 
-	// Hide compose link if no permission
-	$ucp_nav_compose = '';
-	//if($mybb->usergroup['cansendpms'] == 1)
-	//{
-		eval("\$ucp_nav_compose = \"".$templates->get("usercp_nav_messenger_compose")."\";");
-	//}
+    // 1. Сначала собираем tracking
+    $ucp_nav_tracking = '<a href="private.php?action=tracking" class="btn btn-menu-coll"><i class="fa-solid fa-flag ms-2"></i> &nbsp;&nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_tracking'].'</a>';
 
-	$folderlinks = $folder_id = $folder_name = '';
-	$foldersexploded = explode("$%%$", $CURUSER['pmfolders']);
-	foreach($foldersexploded as $key => $folders)
-	{
-		$folderinfo = explode("**", $folders, 2);
-		$folderinfo[1] = get_pm_folder_name($folderinfo[0], $folderinfo[1]);
-		if($folderinfo[0] == 4)
-		{
-			$class = "usercp_nav_trash_pmfolder";
-		}
-		else if($folderlinks)
-		{
-			$class = "usercp_nav_sub_pmfolder";
-		}
-		else
-		{
-			$class = "usercp_nav_pmfolder";
-		}
+    // 2. Потом compose
+    $ucp_nav_compose = '<a href="private.php?action=send" class="btn btn-menu-coll"><i class="fa-solid fa-marker ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_compose'].'</a>';
 
-		$folder_id = $folderinfo[0];
-		$folder_name = $folderinfo[1];
+    // 3. Потом папки
+    $folderlinks = $folder_id = $folder_name = '';
+    $foldersexploded = explode("$%%$", $CURUSER['pmfolders']);
+    foreach($foldersexploded as $key => $folders)
+    {
+        $folderinfo = explode("**", $folders, 2);
+        $folderinfo[1] = get_pm_folder_name($folderinfo[0], $folderinfo[1]);
+        $folder_id = $folderinfo[0];
+        $folder_name = $folderinfo[1];
+        $folderlinks .= '<a href="private.php?fid='.$folder_id.'" class="btn btn-menu-coll"><i class="fa-regular fa-folder-open ms-2"></i> &nbsp;&nbsp; '.$folder_name.'</a>';
+    }
 
-		
-		eval("\$folderlinks .= \"".$templates->get("usercp_nav_messenger_folder")."\";");
-	}
+    if(!isset($collapsedimg['usercppms'])) { $collapsedimg['usercppms'] = ''; }
+    if(!isset($collapsed['usercppms_e'])) { $collapsed['usercppms_e'] = ''; }
 
-	if(!isset($collapsedimg['usercppms']))
-	{
-		$collapsedimg['usercppms'] = '';
-	}
+    // 4. Только теперь собираем итоговый HTML — все переменные уже готовы
+    $usercp_nav_messenger = '
+    <div>
+        <a class="btn btn-menu" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-modu2" role="button">
+            <i class="fa-solid fa-envelope-open-text me-2"></i>'.$lang->usercpnav['ucp_nav_messenger'].'
+        </a>
+        <div id="collapse-modu2" class="collapse bg-transparent">
+            <ul class="list-group list-group-flush ms-0">
+                '.$ucp_nav_compose.'
+                '.$folderlinks.'
+                '.$ucp_nav_tracking.'
+                <a href="private.php?action=folders" class="btn btn-menu-coll"><i class="fa-solid fa-gear ms-2"></i> &nbsp;&nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_folders'].'</a>
+            </ul>
+        </div>
+    </div>';
 
-	if(!isset($collapsed['usercppms_e']))
-	{
-		$collapsed['usercppms_e'] = '';
-	}
-
-	//$usercpmenu .= $usercp_nav_messenger;
-	eval("\$usercpmenu .= \"".$usercp_nav_messenger."\";");
+    $usercpmenu .= $usercp_nav_messenger;
 }
+
 
 /**
  * Constructs the usercp profile menu.
@@ -567,21 +547,14 @@ function usercp_menu_messenger()
  */
 function usercp_menu_profile()
 {
-	global $db, $mybb, $templates, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
+	global $db, $mybb, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
 
 	$lang->load("usercpnav");
 	
 	
 	$changenameop = '';
-	//if($mybb->usergroup['canchangename'] != 0)
-	//{
-		$changenameop = '
-		
-		<a href="usercp.php?action=changename" class="btn btn-menu-coll"><i class="fa-solid fa-user ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_username'].'</a>
-		
-		';
-	//}
-
+	
+	$changenameop = '<a href="usercp.php?action=changename" class="btn btn-menu-coll"><i class="fa-solid fa-user ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_username'].'</a>';
 	
 	$changesigop ='<a href="usercp.php?action=editsig" class="btn btn-menu-coll"><i class="fa-solid fa-signature ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_sig'].'</a>';
 	
@@ -597,7 +570,30 @@ function usercp_menu_profile()
 	}
 
 	$expaltext = (in_array("usercpprofile", $collapse)) ? '[+]' : '[-]';
-    eval("\$usercpmenu .= \"".$templates->get("usercp_nav_profile")."\";");
+    
+	
+	$usercpmenu .= '
+	
+	
+	<div>
+<a class="btn btn-menu"data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-modu" role="button"><i class="fa-solid fa-gears me-2"></i>'.$lang->usercpnav['ucp_nav_profile'].'</a>
+								
+<div id="collapse-modu" class="collapse bg-transparent">
+<ul class="list-group list-group-flush">
+<a href="usercp.php?action=profile" class="btn btn-menu-coll"><i class="fa-solid fa-user-pen ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_profile'].'</a>
+'.$changenameop.'
+<a href="usercp.php?action=password" class="btn btn-menu-coll"><i class="fa-solid fa-key ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_pass'].'</a>
+<a href="usercp.php?action=email" class="btn btn-menu-coll"><i class="fa-solid fa-at ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_email'].'</a>     
+<a href="usercp.php?action=avatar" class="btn btn-menu-coll"><i class="fa-solid fa-image ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_avatar'].'</a>	
+'.$changesigop.'
+<a href="usercp.php?action=options" class="btn btn-menu-coll"><i class="fa-solid fa-gears ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_options'].'</a>
+</ul>
+	
+</div>
+</div>';
+	
+	
+	
 
 
 }
@@ -608,7 +604,7 @@ function usercp_menu_profile()
  */
 function usercp_menu_misc()
 {
-	global $db, $mybb, $CURUSER, $templates, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
+	global $db, $mybb, $CURUSER, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
 
 	$lang->load("usercpnav");
 	
@@ -617,7 +613,7 @@ function usercp_menu_misc()
 
 	
 	
-	$query = $db->simple_select("tsf_posts", "COUNT(pid) AS draftcount", "visible = '-2' AND uid = '{$CURUSER['id']}'");
+	$query = $db->simple_select("posts", "COUNT(pid) AS draftcount", "visible = '-2' AND uid = '{$CURUSER['id']}'");
 	$count = $db->fetch_field($query, 'draftcount');
 
 	if($count > 0)
@@ -641,7 +637,118 @@ function usercp_menu_misc()
 
 	$profile_link = get_profile_link($CURUSER['id']);
 	$expaltext = (in_array("usercpmisc", $collapse)) ? '[+]' : '[-]';
-	eval("\$usercpmenu .= \"".$templates->get("usercp_nav_misc")."\";");
+	
+	
+	$usercpmenu .= '
+	
+	
+	
+	<div class="user-cp-nav d-flex flex-column gap-2">
+  
+    <div class="nav-section">
+       
+        <a href="usercp.php?action=editlists" class="btn btn-menu d-flex align-items-center">
+            <i class="fa-solid fa-user-group fa-fw me-2"></i>
+            <span>'.$lang->usercpnav['ucp_nav_editlists'].'</span>
+        </a>
+    </div>
+
+    
+   
+    <div class="nav-section">
+        '.$attachmentop.'
+    </div>
+    
+
+    <!-- Контент и подписки -->
+    <div class="nav-section">
+        <a href="usercp.php?action=drafts" class="btn btn-menu d-flex align-items-center">
+            <i class="fa-solid fa-pen-ruler fa-fw me-2"></i>
+            <span class="badge bg-secondary ms-auto">'.$draftcount.'</span>
+        </a>
+        <a href="usercp.php?action=subscriptions" class="btn btn-menu d-flex align-items-center">
+            <i class="fa-solid fa-comment fa-fw me-2"></i>
+            <span>'.$lang->usercpnav['ucp_nav_subscribed_threads'].'</span>
+        </a>
+        <a href="usercp.php?action=forumsubscriptions" class="btn btn-menu d-flex align-items-center">
+            <i class="fa-solid fa-eye fa-fw me-2"></i>
+            <span>'.$lang->usercpnav['ucp_nav_forum_subscriptions'].'</span>
+        </a>
+    </div>
+
+    <!-- Закладки и файлы -->
+    <div class="nav-section">
+        <a href="usercp.php?action=bookmarks" class="btn btn-menu d-flex align-items-center">
+            <i class="fa-solid fa-bookmark fa-fw me-2"></i>
+            <span>'.$lang->usercpnav['ucp_nav_book'].'</span>
+        </a>
+        <a href="usercp.php?action=manage_files" class="btn btn-menu d-flex align-items-center">
+            <i class="fa-solid fa-folder-open fa-fw me-2"></i>
+            <span>My Files</span>
+        </a>
+    </div>
+
+    <!-- Профиль -->
+    <div class="nav-section mt-3">
+        <a href="'.$profile_link.'" class="btn btn-menu btn-profile d-flex align-items-center">
+            <i class="fa-solid fa-id-card-clip fa-fw me-2"></i>
+            <span>'.$lang->usercpnav['ucp_nav_view_profile'].'</span>
+            <i class="fa-solid fa-arrow-up-right-from-square ms-auto text-muted small"></i>
+        </a>
+    </div>
+</div>
+
+<style>
+.user-cp-nav {
+    padding: 1rem;
+}
+
+.nav-section {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.nav-section:last-child {
+    border-bottom: none;
+}
+
+.btn-menu {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    color: #495057;
+    background: #f8f9fa;
+    border: 1px solid transparent;
+    margin-bottom: 0.25rem;
+}
+
+.btn-menu:hover {
+    background: #e9ecef;
+    border-color: #dee2e6;
+    color: #0d6efd;
+    transform: translateX(3px);
+}
+
+.btn-menu .badge {
+    font-size: 0.75em;
+    padding: 0.25em 0.5em;
+}
+
+.btn-profile {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+}
+
+.btn-profile:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #dde1e6 100%);
+    border-color: #0d6efd;
+}
+</style>';
+	
+	
+	
+	
 
 }
 
@@ -768,28 +875,4 @@ function get_pm_folder_name($fid, $name="")
 		default:
 			return 'folder_untitled';
 	}
-}
-
-
-
-/**
- * Check whether we can show the Purge Spammer Feature
- *
- * @param int $post_count The users post count
- * @param int $usergroup The usergroup of our user
- * @param int $uid The uid of our user
- * @return boolean Whether or not to show the feature
- */
-function purgespammer_show($post_count, $usergroup, $uid)
-{
-		global $mybb, $cache;
-
-		// only show this if the current user has permission to use it and the user has less than the post limit for using this tool
-		$bangroup = $mybb->settings['purgespammerbangroup'];
-		$usergroups = $cache->read('usergroups');
-
-		return ($mybb->user['uid'] != $uid && is_member($mybb->settings['purgespammergroups']) && !is_super_admin($uid)
-			&& !$usergroups[$usergroup]['cancp'] && !$usergroups[$usergroup]['canmodcp'] && !$usergroups[$usergroup]['issupermod']
-			&& (str_replace($mybb->settings['thousandssep'], '', $post_count) <= $mybb->settings['purgespammerpostlimit'] || $mybb->settings['purgespammerpostlimit'] == 0)
-			&& !is_member($bangroup, $uid) && !$usergroups[$usergroup]['isbannedgroup']);
 }

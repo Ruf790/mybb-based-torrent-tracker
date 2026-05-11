@@ -9,7 +9,7 @@ declare(strict_types=1);
 // --- Security: Prevent GLOBALS overwrite attacks ---
 if (isset($_REQUEST['GLOBALS']) || isset($_FILES['GLOBALS'])) {
     define('errorid', 1);
-    include_once TSDIR . '/ts_error.php';
+    include_once TSDIR . '/error.php';
     exit();
 }
 
@@ -28,9 +28,6 @@ if (!function_exists('json_encode') || !function_exists('json_decode')) {
 }
 
 // --- Load core classes ---
-require_once INC_PATH . "/class_templates.php";
-$templates = new templates();
-
 require_once INC_PATH . '/functions.php';
 require_once INC_PATH . '/functions_tsseo.php';
 

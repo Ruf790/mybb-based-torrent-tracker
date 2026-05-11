@@ -18,7 +18,7 @@ function mark_thread_read(int $tid, int $fid): void
         {
             case "pgsql":
             case "sqlite":
-                $GLOBALS['db']->replace_query("tsf_threadsread", [
+                $GLOBALS['db']->replace_query("threadsread", [
                     'tid' => $tid,
                     'uid' => $CURUSER['id'],
                     'dateline' => TIMENOW
@@ -26,7 +26,7 @@ function mark_thread_read(int $tid, int $fid): void
                 break;
             default:
                 $GLOBALS['db']->write_query("
-                    REPLACE INTO tsf_threadsread (tid, uid, dateline)
+                    REPLACE INTO threadsread (tid, uid, dateline)
                     VALUES('{$tid}', '{$CURUSER['id']}', '".TIMENOW."')
                 ");
         }
@@ -116,7 +116,7 @@ function fetch_unread_count($fid)
         {
             $count = 0;
             $query = $GLOBALS['db']->simple_select(
-                "tsf_threads",
+                "threads",
                 "lastpost, tid, fid",
                 "visible=1 AND closed NOT LIKE 'moved|%' AND {$where} AND lastpost > '{$cutoff}'",
                 ["limit" => 100]
@@ -142,9 +142,9 @@ function fetch_unread_count($fid)
         $uid = (int)$CURUSER['id'];
         $query = $db->sql_query("
             SELECT COUNT(t.tid) AS unread_count
-            FROM tsf_threads t
-            LEFT JOIN tsf_threadsread tr ON (tr.tid=t.tid AND tr.uid='{$uid}')
-            LEFT JOIN tsf_forumsread fr ON (fr.fid=t.fid AND fr.uid='{$uid}')
+            FROM threads t
+            LEFT JOIN threadsread tr ON (tr.tid=t.tid AND tr.uid='{$uid}')
+            LEFT JOIN forumsread fr ON (fr.fid=t.fid AND fr.uid='{$uid}')
             WHERE t.visible=1 AND t.closed NOT LIKE 'moved|%' AND {$where2} 
               AND t.lastpost > IFNULL(tr.dateline,{$cutoff}) 
               AND t.lastpost > IFNULL(fr.dateline,{$cutoff}) 
@@ -166,7 +166,7 @@ function mark_forum_read(int $fid): void
     {
         $db = $GLOBALS['db'];
         $db->shutdown_query("
-            REPLACE INTO tsf_forumsread (fid, uid, dateline)
+            REPLACE INTO forumsread (fid, uid, dateline)
             VALUES('{$fid}', '{$CURUSER['id']}', '".TIMENOW."')
         ");
     }
@@ -231,7 +231,7 @@ function mark_all_forums_read(): void
                     }
                     else
                     {
-                        $db->shutdown_query("REPLACE INTO tsf_forumsread (fid, uid, dateline) VALUES {$mark_query}");
+                        $db->shutdown_query("REPLACE INTO forumsread (fid, uid, dateline) VALUES {$mark_query}");
                         $mark_query = '';
                     }
                 }
@@ -249,7 +249,7 @@ function mark_all_forums_read(): void
                 }
                 else
                 {
-                    $db->shutdown_query("REPLACE INTO tsf_forumsread (fid, uid, dateline) VALUES {$mark_query}");
+                    $db->shutdown_query("REPLACE INTO forumsread (fid, uid, dateline) VALUES {$mark_query}");
                 }
             }
         }

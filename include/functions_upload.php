@@ -552,7 +552,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
     } else {
         $aid = $db->insert_query('attachments', $attacharray);
         if ($pid) {
-            update_thread_counters($tid, ['attachmentcount' => '+1']);
+            update_thread_counters((int)$tid, ['attachmentcount' => '+1']);
         }
     }
 
@@ -585,7 +585,7 @@ function remove_attachment(int $pid, string $posthash, int $aid): void
 
     if ($attachment['visible'] == 1 && $pid) {
         $post = get_post($pid);
-        update_thread_counters($post['tid'], ['attachmentcount' => '-1']);
+        update_thread_counters((int)$post['tid'], ['attachmentcount' => '-1']);
     }
 }
 
@@ -616,7 +616,7 @@ function remove_attachments(int $pid, string $posthash = ''): void
     }
 
     if (!empty($post['tid'])) {
-        update_thread_counters($post['tid'], ['attachmentcount' => "-{$num_attachments}"]);
+        update_thread_counters((int)$post['tid'], ['attachmentcount' => "-{$num_attachments}"]);
     }
 }
 

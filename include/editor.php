@@ -67,8 +67,64 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[code]', '[/code]', '<?php echo $textarea_id; ?>')">Code</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[spoiler]', '[/spoiler]', '<?php echo $textarea_id; ?>')">Spoiler</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[video=youtube]', '[/video]', '<?php echo $textarea_id; ?>')">YouTube</button>
+		
+		<button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#videoModal">
+    🎬 Video
+</button>
+		
         <button type="button" class="btn btn-sm btn-outline-secondary" id="togglePreviewBtn<?php echo $suffix; ?>">Preview</button>
     </div>
+	
+	
+	
+<div class="modal fade" id="videoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">Insert Video</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+
+                <!-- URL -->
+                <div class="mb-3">
+                    <label class="form-label">Video URL</label>
+                    <input type="text" class="form-control" id="videoUrl" placeholder="https://...">
+                </div>
+
+                <!-- TYPE -->
+                <div class="mb-3">
+                    <label class="form-label">Type</label>
+                    <select class="form-select" id="videoType">
+                        <option value="auto">Auto Detect</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="mp4">MP4 / WebM</option>
+                    </select>
+                </div>
+
+                <!-- PREVIEW -->
+                <div id="videoPreview" class="text-center"></div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary" id="insertVideoBtn">Insert</button>
+            </div>
+
+        </div>
+    </div>
+</div>	
+	
+	
+	
+	
+	
+	
+	
+	
 <?php
     $toolbar_output = ob_get_clean();
 
@@ -81,14 +137,14 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Insert Image</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" tabindex="-1"></button>
                 </div>
                 <ul class="nav nav-tabs px-3">
                     <li class="nav-item">
-                        <a class="nav-link active" data-bs-toggle="tab" href="#tab-url">By URL</a>
+                        <a class="nav-link active" data-bs-toggle="tab" href="#tab-url" tabindex="-1">By URL</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-bs-toggle="tab" href="#tab-upload">Upload</a>
+                        <a class="nav-link" data-bs-toggle="tab" href="#tab-upload" tabindex="-1">Upload</a>
                     </li>
                 </ul>
                 <div class="modal-body tab-content">
@@ -121,7 +177,7 @@ function insert_bbcode_editor($smilies = [], $BASEURL = '', $textarea_id = 'comm
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="insertImageBtn" onclick="insertImage('<?php echo $textarea_id; ?>')">Insert</button>
+                    <button type="button" class="btn btn-primary" id="insertImageBtn">Insert</button>
                 </div>
             </div>
         </div>

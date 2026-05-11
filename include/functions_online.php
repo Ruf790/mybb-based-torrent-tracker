@@ -265,13 +265,13 @@ function preload_wol_data(UserActivity $activity): void
 
     // Threads
     if ($activity->tid && !isset($threads[$activity->tid])) {
-        $thread = $db->fetch_array($db->simple_select('tsf_threads', 'tid, subject', "tid = " . (int)$activity->tid));
+        $thread = $db->fetch_array($db->simple_select('threads', 'tid, subject', "tid = " . (int)$activity->tid));
         if ($thread) $threads[$thread['tid']] = htmlspecialchars_uni($thread['subject']);
     }
 
     // Forums
     if ($activity->fid && !isset($forums[$activity->fid])) {
-        $forum = $db->fetch_array($db->simple_select('tsf_forums', 'fid, name', "fid = " . (int)$activity->fid));
+        $forum = $db->fetch_array($db->simple_select('forums', 'fid, name', "fid = " . (int)$activity->fid));
         if ($forum) $forums[$forum['fid']] = htmlspecialchars_uni($forum['name']);
     }
 
@@ -283,7 +283,7 @@ function preload_wol_data(UserActivity $activity): void
 
     // Announcements
     if ($activity->aid && !isset($announcements[$activity->aid])) {
-        $ann = $db->fetch_array($db->simple_select('tsf_announcements', 'aid, subject', "aid = " . (int)$activity->aid));
+        $ann = $db->fetch_array($db->simple_select('announcements', 'aid, subject', "aid = " . (int)$activity->aid));
         if ($ann) $announcements[$ann['aid']] = htmlspecialchars_uni($ann['subject']);
     }
 
@@ -307,7 +307,7 @@ if ($activity->activity === WolActivity::ATTACHMENT && $activity->aid) {
     if (isset($attachments[$aid])) {
         $pid = (int)$attachments[$aid];
         if (!isset($posts[$pid])) {
-            $post = $db->fetch_array($db->simple_select('tsf_posts', 'tid', "pid = " . $pid));
+            $post = $db->fetch_array($db->simple_select('posts', 'tid', "pid = " . $pid));
             if ($post) {
                 $posts[$pid] = (int)$post['tid'];
             }
@@ -318,7 +318,7 @@ if ($activity->activity === WolActivity::ATTACHMENT && $activity->aid) {
     if (isset($posts[$pid])) {
         $tid = (int)$posts[$pid];
         if (!isset($threads[$tid])) {
-            $thread = $db->fetch_array($db->simple_select('tsf_threads', 'subject', "tid = " . $tid));
+            $thread = $db->fetch_array($db->simple_select('threads', 'subject', "tid = " . $tid));
             if ($thread) {
                 $threads[$tid] = ['subject' => $thread['subject']];
             }

@@ -127,7 +127,7 @@ function fetch_timezone(string $offset = 'all'): array|string
  */
 function build_timezone_select(string $name, int|string $selected = 0, bool $short = false): string
 {
-    global $lang, $templates, $timeformat;
+    global $lang, $timeformat;
 
     $timezones = get_supported_timezones();
     $selected  = str_replace('+', '', (string)$selected);
@@ -140,10 +140,16 @@ function build_timezone_select(string $name, int|string $selected = 0, bool $sho
             $label = _build_short_timezone_label((string)$timezone, $timeformat);
         }
 
-        eval('$timezone_option .= "' . $templates->get('usercp_options_timezone_option') . '";');
+        $timezone_option .= '<option value="'.$timezone.'"'.$selected_add.'>'.$label.'</option>';
     }
 
-    eval('$select = "' . $templates->get('usercp_options_timezone') . '";');
+    $select = '<div class="mb-3 pb-4 border-bottom">
+
+<select name="'.$name.'" id="'.$name.'" class="form-select form-select-sm border w-100 pe-5">
+'.$timezone_option.'
+</select>
+	<span class="text-desc small mt-1">'.$lang->usercp['time_offset_desc'].'</span>
+</div>';
 
     return $select;
 }

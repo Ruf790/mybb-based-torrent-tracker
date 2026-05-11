@@ -274,7 +274,7 @@ class postParser
         $videoMethod = !empty($this->options['allow_videocode'])
             ? 'mycode_parse_video_callback'
             : 'mycode_parse_video_disabled_callback';
-        $message = preg_replace_callback('#\[video=(.*?)\](.*?)\[/video\]#i', [$this, $videoMethod], $message);
+        $message = preg_replace_callback('#\[video(?:=(.*?))?\](.*?)\[/video\]#i',[$this, $videoMethod],$message);
 
         $message = str_replace('$', '&#36;', $message);
 
@@ -758,32 +758,56 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
     // ── Video ─────────────────────────────────────────────
 
     public function mycode_parse_video(string $video, string $url): string
-    {
-        global $BASEURL;
-
-        if (empty($video) || empty($url)) return "[video={$video}]{$url}[/video]";
-        if (!filter_var($url, FILTER_VALIDATE_URL)) return "[video={$video}]{$url}[/video]";
-
-        $parsed = @parse_url(urldecode($url));
-        if ($parsed === false) return "[video={$video}]{$url}[/video]";
-
-        $queries  = [];
-        foreach (explode('&', $parsed['query'] ?? '') as $q) {
-            $pair = explode('=', $q);
-            if (count($pair) === 2) {
-                $queries[str_replace('amp;', '', $pair[0])] = $pair[1];
-            }
-        }
-
-        $fragments = !empty($parsed['fragment']) ? explode('&', $parsed['fragment']) : [];
-        $path      = !empty($parsed['path']) ? explode('/', $parsed['path']) : [];
-
-        $id = $this->resolveVideoId($video, $path, $queries, $fragments, $parsed);
-
-        if (empty($id)) return "[video={$video}]{$url}[/video]";
-
-        return '<iframe width="660" height="515" src="//www.youtube-nocookie.com/embed/' . $this->encode_url($id) . '" frameborder="0" allowfullscreen="true"></iframe>';
+{
+    if (empty($url)) {
+        return "[video={$video}]{$url}[/video]";
     }
+
+    $url = trim($url);
+
+    // Проверка URL
+    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        return "[video={$video}]{$url}[/video]";
+    }
+
+    // 🎬 MP4 / WEBM / OGG поддержка
+    $ext = strtolower(pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+
+    if (in_array($ext, ['mp4', 'webm', 'ogg'])) {
+        $url = $this->encode_url($url);
+
+        return '
+        <video controls preload="metadata" class="mycode_video rounded" style="max-width:100%; height:auto;">
+            <source src="' . $url . '" type="video/' . $ext . '">
+            Your browser does not support the video tag.
+        </video>';
+    }
+
+    // 👉 fallback на старую систему (YouTube и др.)
+    $parsed = @parse_url(urldecode($url));
+    if ($parsed === false) {
+        return "[video={$video}]{$url}[/video]";
+    }
+
+    $queries = [];
+    foreach (explode('&', $parsed['query'] ?? '') as $q) {
+        $pair = explode('=', $q);
+        if (count($pair) === 2) {
+            $queries[str_replace('amp;', '', $pair[0])] = $pair[1];
+        }
+    }
+
+    $fragments = !empty($parsed['fragment']) ? explode('&', $parsed['fragment']) : [];
+    $path      = !empty($parsed['path']) ? explode('/', $parsed['path']) : [];
+
+    $id = $this->resolveVideoId($video, $path, $queries, $fragments, $parsed);
+
+    if (empty($id)) {
+        return "[video={$video}]{$url}[/video]";
+    }
+
+    return '<iframe width="660" height="515" src="//www.youtube-nocookie.com/embed/' . $this->encode_url($id) . '" frameborder="0" allowfullscreen="true"></iframe>';
+}
 
     private function resolveVideoId(string $video, array $path, array $queries, array $fragments, array $parsed): string
     {

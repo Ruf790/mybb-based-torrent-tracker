@@ -7,7 +7,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     global $CURUSER, $BASEURL, $rootpath, $pic_base_url, $lang, $usergroups;
     global $timeformat, $dateformat, $useajax, $Torrent, $regdateformat;
     global $parser, $plugins, $db, $postcounter, $wolcutoffmins;
-    global $mybb, $templates, $templatelist;
+    global $mybb;
 
     $is_mod = is_mod($usergroups);
     
@@ -92,7 +92,12 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         ];
         
         $post['signature'] = $signatureRaw !== '' ? $parser->parse_message($signatureRaw, $sig_parser) : '';
-        eval("\$post['signature'] = \"" . $templates->get("postbit_signature") . "\";");
+        
+		
+		$post['signature'] = '<div class="signature scaleimages mt-4">
+	<hr />
+	'.$post['signature'].'
+</div>';
 
         // User data
         $post['username'] = $row['username'];
@@ -105,7 +110,23 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         $post['useravatar'] = '';
         if (isset($CURUSER['showavatars']) && $CURUSER['showavatars'] != 0 || $CURUSER['id'] == 0) {
             $useravatar = format_avatar($row['useravatar'], $row['avatardimensions']);
-            eval("\$post['useravatar'] = \"" . $templates->get("postbit_avatar") . "\";");
+            
+			
+			$post['useravatar'] = '
+			
+			
+			<div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
+<div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="rounded img-fluid" style="width: 100px; padding: 0px;" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' /></a></div>
+</div>
+
+<div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none">
+<div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="rounded img-fluid" style="width: 30px; height: 30px; padding: 0px;" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' /></a></div>
+</div>';
+			
+			
+			
+			
+			
         }
 
         // Initialize empty post elements
@@ -135,10 +156,22 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
                 $editreason = 'Edit Reason: ' . $post['editreason'];
             }
             
-            $post['editedmsg'] = '<div class="mt-3"><span class="small">' . $post['editnote'] . ' ' . $post['editedprofilelink'] . '' . $editreason . '</span></div>';
+            $post['editedmsg'] = '<div class="mt-3"><i class="fa-regular fa-pen-to-square me-1"></i><span class="small">' . $post['editnote'] . ' ' . $post['editedprofilelink'] . '' . $editreason . '</span></div>';
         }
 
-        eval("\$post['input_editreason'] = \"" . $templates->get("comment_editreason") . "\";");
+        $post['input_editreason'] = '
+		
+		
+		<div class="editreason" id="editreason_'.$pid.'_original" style="display: none;">
+	        <input type="text" class="form-control border mb-2" style="margin: 6px 0;" name="editreason" size="40" maxlength="150" id="quickedit_'.$pid.'_editreason_original" placeholder="'.$lang->global['postbit_editreason'].'..." value="'.$post['editreason'].'" />
+	        </div>
+		
+		';
+		
+		
+		
+		
+		
 
         // Edit button
         if ($row['user'] == $CURUSER['id'] || $moderator) {
@@ -185,18 +218,143 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         $post_number = ts_nf($postcounter);
        
         
-        eval("\$post['posturl'] = \"" . $templates->get("comment_posturl") . "\";");
+        $post['posturl'] = '
+		
+		
+		<a name="pid'.$row['id'].'" id="pid'.$row['id'].'"></a>
+<a href="'.$postlink.'#pid'.$pid.'" title="'.$torrent_name.'">#'.$post_number.'</a>
+
+<div class="form-check form-check-inline ms-2">
+    <input class="form-check-input comment-checkbox" type="checkbox" 
+           name="comment_ids[]" 
+           value="'.$row['id'].'" 
+           data-tid="'.$row['torrentid'].'" 
+           onchange="toggleMassDeleteButton()"
+           id="comment-checkbox-'.$row['id'].'">
+    <label class="form-check-label small" for="comment-checkbox-'.$row['id'].'">
+       
+    </label>
+</div>';
+		
+		
+		
+		
+		
+		
 
         // Online status
         $timecut = TIMENOW - (int)$wolcutoffmins;
         if ($row['lastactive'] > $timecut && ($row['invisible'] != 1 || $moderator) && $row['lastvisit'] != $row['lastactive']) {
-            eval("\$post['onlinestatus'] = \"" . $templates->get("postbit_online") . "\";");
+            
+			$post['onlinestatus'] = '
+			
+			<a href="online.php" title="'.$lang->global['postbit_status_online'].'"><i class="fa-solid fa-circle-dot smaller" style="vertical-align: 0.115em; padding-left: 4px; color: #68c000"></i></a>
+			
+			';
+			
+			
         } else {
-            eval("\$post['onlinestatus'] = \"" . $templates->get("postbit_offline") . "\";");
+            
+			
+			$post['onlinestatus'] = '
+			
+			<i class="fa-solid fa-circle-dot smaller" title="'.$lang->global['postbit_status_offline'].'" style="vertical-align: 0.115em; padding-left: 4px; color: #ccc"></i>
+			
+			';
+			
+			
         }
 
         $post_visibility = '';
-        eval("\$post['commentstables'] = \"" . $templates->get("commentstable") . "\";");
+        
+        
+		
+		$post['commentstables'] = '
+		
+		<div class="container mt-3">	
+<!-- begin new layout -->
+	
+
+<a name="pid'.$pid.'" id="pid'.$post['pid'].'"></a>
+<div class="row g-2 mb-4" style="'.$post_visibility.'" id="post_'.$pid.'">
+<div class="col-auto d-none d-sm-none d-md-none d-lg-block d-xl-block d-xxl-block">'.$post['useravatar'].'</div>
+<div class="col">
+<div class="card">
+<div class="card-body inline_row">
+				
+<div class="row m-0 p-0 mb-3 mb-sm-3 mb-md-3 mb-lg-0 mb-xl-0 mb-xxl-0">
+<div class="col-auto d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none m-0 p-0 me-2 me-sm-2 me-md-2 me-lg-0 me-xl-0 me-xxl-0 align-self-center">
+'.$post['useravatar'].'
+</div>
+<div class="col m-0 p-0 align-self-center">
+<h6 class="card-title mb-0 mb-sm-0 mb-md-0 mb-lg-3 mb-xl-3 mb-xxl-3"><span style="font-weight: 700">'.$post['profilelink'].'</span> '.$post['onlinestatus'].' &nbsp;&nbsp;<span class="text-uppercase text-desc small fw-normal">'.$post['postdate'].'</span></span></h6>
+</div>
+<div class="col-auto m-0 p-0 align-self-center text-end text-14">
+'.$post['posturl'].'
+</div>
+</div>
+		
+
+<div  class="post_body scaleimages" id="pid_'.$pid.'">
+'.$post['message'].'
+
+</div>	
+
+
+
+
+
+<span class="post_edit" id="edited_by_'.$post['pid'].'">'.$post['editedmsg'].'</span>			
+'.$post['signature'].'
+'.$post['poststatus'].'	'.$post['input_editreason'].' '.$post['iplogged'].'			
+</div>
+<div class="card-footer border-top-0 py-2 my-0">
+			
+			<!-- hidden -->
+<div class="row mt-0 pt-0 mb-0 pb-0">
+<div class="col-auto align-self-center small text-start pe-0 me-0">
+'.$post['button_multiquote'].'</div>	
+
+<div class="col-auto align-self-center small text-start pe-0 me-0">
+'.$post['button_rep'].'</div>	
+
+<div class="col align-self-center small text-end">
+'.$post['button_edit'].'
+</div>
+
+<div class="col-auto text-end align-self-center">
+<div class="hidden-text"><div class="dropdown d-flex justify-content-end align-self-center"><a class="bg-transparent border-0 text-muted" aria-expanded="true" data-bs-toggle="dropdown" role="button">&nbsp;<i class="fa-solid fa-ellipsis-vertical"></i>&nbsp;</a>
+<div class="dropdown-menu border">
+'.$post['button_quote'].'
+'.$post['button_quickdelete'].'
+'.$post['button_quickrestore'].'
+'.$post['button_report'].'
+'.$post['button_warn'].'
+'.$post['button_reply_pm'].'
+'.$post['button_replyall_pm'].'
+'.$post['button_forward_pm'].'
+'.$post['button_delete_pm'].'
+</div>
+</div>
+</div>
+</div>
+<!-- /hidden -->
+</div>		
+</div>
+</div>
+</div>
+</div>
+
+</div>';
+
+
+
+
+
+
+
+		
+		
 
         // Build comment table
         $showcommentstable .= '<br />' .

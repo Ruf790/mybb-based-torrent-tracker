@@ -466,7 +466,7 @@ class datacache
         $exclude = ['threads', 'posts', 'lastpost', 'lastposter', 'lastposttid', 'lastposteruid', 'lastpostsubject'];
         $forums  = [];
 
-        $query = $db->simple_select('tsf_forums', '*', '', ['order_by' => 'pid,disporder']);
+        $query = $db->simple_select('forums', '*', '', ['order_by' => 'pid,disporder']);
         while ($forum = $db->fetch_array($query)) {
             foreach ($exclude as $key) {
                 unset($forum[$key]);
@@ -501,7 +501,7 @@ class datacache
 
         $query = $db->sql_query("
             SELECT u.id, u.username, COUNT(*) AS poststoday
-            FROM tsf_posts p
+            FROM posts p
             LEFT JOIN users u ON p.uid = u.id
             WHERE p.dateline > {$since} AND p.visible = 1
             GROUP BY u.id, u.username
@@ -661,11 +661,12 @@ class datacache
 
         // Active announcements
         $query = $db->simple_select(
-            'tsf_announcements',
-            'fid',
-            "enddate = '0' OR enddate > '" . TIMENOW . "'",
-            ['order_by' => 'aid']
+          'announcements',
+          'fid',
+          "type IN ('forum', 'global') AND (enddate = '0' OR enddate > '" . TIMENOW . "')",
+          ['order_by' => 'id']
         );
+		
         while ($row = $db->fetch_array($query)) {
             $fd[$row['fid']]['announcements'] ??= 1;
         }
@@ -768,7 +769,7 @@ class datacache
         global $db;
 
         $threads = [];
-        $query   = $db->simple_select('tsf_threads', $fields, "visible='1'", [
+        $query   = $db->simple_select('threads', $fields, "visible='1'", [
             'order_by'    => $order_by,
             'order_dir'   => 'DESC',
             'limit_start' => 0,

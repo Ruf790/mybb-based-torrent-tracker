@@ -15,7 +15,7 @@ $pid     = (int)$pid;
 
 
     if (!is_array($pforumcache)) {
-        $q = $db->simple_select('tsf_forums', 'pid,disporder,fid,password,name',
+        $q = $db->simple_select('forums', 'pid,disporder,fid,password,name',
             "linkto='' AND active!=0", ['order_by' => 'pid, disporder']);
         while ($f = $db->fetch_array($q)) {
             $pforumcache[$f['pid']][$f['disporder']][$f['fid']] = $f;
@@ -40,7 +40,14 @@ $pid     = (int)$pid;
                         $optionselected = '';
                         $selecteddone   = '0';
                     }
-                    eval("\$forumlistbits .= \"".$templates->get('search_forumlist_forum')."\";");
+                    
+					$forumlistbits .= '
+					
+					<option value="'.$forum['fid'].'">'.$depth.' '.$forum['name'].'</option>
+					
+					';
+					
+					
 
                     if (!empty($pforumcache[$forum['fid']])) {
                         $newdepth      = $depth . '&nbsp;&nbsp;&nbsp;&nbsp;';
@@ -52,7 +59,26 @@ $pid     = (int)$pid;
     }
 
     if ($addselect) {
-        eval("\$forumlist = \"".$templates->get('search_forumlist')."\";");
+        
+		$forumlist = '
+<select name="forums[]" id="select" class="form-select form-select-sm border mb-4" multiple="multiple">
+    <option value="all" selected="selected">' . $lang->search['search_all_forums'] . '</option>
+    <option value="all">----------------------</option>
+    ' . $forumlistbits . '
+</select>
+
+<script>
+    var select = document.getElementById(\'select\');
+    select.size = select.length;
+</script>';
+		
+		
+		
+		
+		
+		
+		
+		
     }
 
     return $forumlist ?? '';
@@ -486,7 +512,7 @@ function perform_search_mysql(array $search): array
         if (empty($search['tid'])) {
             $q = $db->sql_query("
                 SELECT t.tid, t.firstpost
-                FROM tsf_threads t
+                FROM threads t
                 WHERE 1=1 {$thread_datecut} {$thread_replycut} {$thread_prefixcut}
                       {$forumin} {$thread_usersql} {$permsql} {$visiblesql}
                       AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%'
@@ -500,8 +526,8 @@ function perform_search_mysql(array $search): array
 
         $q = $db->sql_query("
             SELECT p.pid, p.tid
-            FROM tsf_posts p
-            LEFT JOIN tsf_threads t ON (t.tid = p.tid)
+            FROM posts p
+            LEFT JOIN threads t ON (t.tid = p.tid)
             WHERE 1=1 {$post_datecut} {$thread_replycut} {$thread_prefixcut}
                   {$forumin} {$post_usersql} {$permsql} {$tidsql}
                   {$visiblesql} {$post_visiblesql}
@@ -524,7 +550,7 @@ function perform_search_mysql(array $search): array
         // Только subject
         $q = $db->sql_query("
             SELECT t.tid, t.firstpost
-            FROM tsf_threads t
+            FROM threads t
             WHERE 1=1 {$thread_datecut} {$thread_replycut} {$thread_prefixcut}
                   {$forumin} {$thread_usersql} {$permsql} {$visiblesql}
                   {$subject_lookin} {$limitsql}
@@ -540,7 +566,7 @@ function perform_search_mysql(array $search): array
         $firstposts = implode(',', $firstposts);
 
         if ($firstposts) {
-            $q = $db->simple_select('tsf_posts', 'pid', "pid IN ({$firstposts}) {$plain_post_visiblesql} {$limitsql}");
+            $q = $db->simple_select('posts', 'pid', "pid IN ({$firstposts}) {$plain_post_visiblesql} {$limitsql}");
             while ($p = $db->fetch_array($q)) $posts[$p['pid']] = $p['pid'];
             $posts = implode(',', $posts);
         }
@@ -716,7 +742,7 @@ function perform_search_mysql_ft(array $search): array
         if (empty($search['tid'])) {
             $q = $db->sql_query("
                 SELECT t.tid, t.firstpost
-                FROM tsf_threads t
+                FROM threads t
                 WHERE 1=1 {$thread_datecut} {$thread_replycut} {$thread_prefixcut}
                       {$forumin} {$thread_usersql} {$permsql} {$visiblesql}
                       AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%'
@@ -730,8 +756,8 @@ function perform_search_mysql_ft(array $search): array
 
         $q = $db->sql_query("
             SELECT p.pid, p.tid
-            FROM tsf_posts p
-            LEFT JOIN tsf_threads t ON (t.tid = p.tid)
+            FROM posts p
+            LEFT JOIN threads t ON (t.tid = p.tid)
             WHERE 1=1 {$post_datecut} {$thread_replycut} {$thread_prefixcut}
                   {$forumin} {$post_usersql} {$permsql} {$tidsql}
                   {$post_visiblesql} {$visiblesql}
@@ -751,7 +777,7 @@ function perform_search_mysql_ft(array $search): array
     } else {
         $q = $db->sql_query("
             SELECT t.tid, t.firstpost
-            FROM tsf_threads t
+            FROM threads t
             WHERE 1=1 {$thread_datecut} {$thread_replycut} {$thread_prefixcut}
                   {$forumin} {$thread_usersql} {$permsql} {$visiblesql}
                   {$subject_lookin} {$limitsql}
@@ -768,7 +794,7 @@ function perform_search_mysql_ft(array $search): array
         $firstposts = implode(',', $firstposts);
 
         if ($firstposts) {
-            $q = $db->simple_select('tsf_posts', 'pid', "pid IN ({$firstposts}) {$plain_post_visiblesql} {$limitsql}");
+            $q = $db->simple_select('posts', 'pid', "pid IN ({$firstposts}) {$plain_post_visiblesql} {$limitsql}");
             while ($p = $db->fetch_array($q)) $posts[$p['pid']] = $p['pid'];
             $posts = implode(',', $posts);
         }

@@ -1,39 +1,53 @@
 <?php
+declare(strict_types=1);
 
-if(!defined('IN_TRACKER'))
-	die("<font face='verdana' size='2' color='darkred'><b>Error!</b> Direct initialization of this file is not allowed.</font>");
-# Function get_user_ratio v.0.2
-function get_user_ratio($uploaded,$downloaded,$white=false) 
-{
-	if ($downloaded > 0)
-	{
-		$ratio = $uploaded / $downloaded;
-		$ratio = number_format($ratio, 2);
-		$color = get_ratio_color($ratio);
-		if ($color && $ratio < 1)
-			$ratio = '<font color=\''.$color.'\'>'.$ratio.'</font>';
-		else
-			$ratio = '<font color=\''.($white ? '#ffffff' :'#000000').'\'>'.$ratio.'</font>';
-	}
-	elseif ($uploaded > 0)
-		$ratio = '<font color=\'#9f040b\'>Inf.</font>';
-	else
-		$ratio = '<font color=\'#9f040b\'>--</font>';
-	return $ratio;
+if (!defined('IN_TRACKER')) {
+    die('Direct initialization of this file is not allowed.');
 }
-# Function get_ratio_color v.0.2
-function get_ratio_color($ratio)
+
+/**
+ * Возвращает отформатированное соотношение upload/download с цветовой индикацией.
+ *
+ * @param int|float $uploaded
+ * @param int|float $downloaded
+ * @return string  HTML-строка с цветовым индикатором
+ */
+function get_user_ratio(int|float $uploaded, int|float $downloaded): string
 {
-	if ($ratio < 0.1) return "#ff0000";
-	if ($ratio < 0.2) return "#ee0000";
-	if ($ratio < 0.3) return "#dd0000";
-	if ($ratio < 0.4) return "#cc0000";
-	if ($ratio < 0.5) return "#bb0000";
-	if ($ratio < 0.6) return "#aa0000";
-	if ($ratio < 0.7) return "#990000";
-	if ($ratio < 0.8) return "#880000";
-	if ($ratio < 0.9) return "#770000";
-	if ($ratio < 1) return "#660000";
-	return "green";
+    // FIX: убран параметр $white — цвет текста управляется CSS/темой
+    // FIX: <font> теги заменены на <span> с CSS-переменными Bootstrap
+
+    if ($downloaded > 0) {
+        $ratio = $uploaded / $downloaded;
+        $ratio = number_format($ratio, 2);
+        $color = get_ratio_color((float)$ratio);
+
+        return '<span style="color:' . $color . ';font-weight:600">' . $ratio . '</span>';
+    }
+
+    if ($uploaded > 0) {
+        return '<span style="color:var(--bs-success);font-weight:600">&#x221E;</span>'; // ∞
+    }
+
+    return '<span class="text-muted">—</span>';
 }
-?>
+
+/**
+ * Возвращает цвет для отображения соотношения.
+ * Градиент от красного (< 0.1) до зелёного (>= 1.0).
+ *
+ * @param float $ratio
+ * @return string  CSS-цвет
+ */
+function get_ratio_color(float $ratio): string
+{
+    // Используем CSS-переменные Bootstrap где возможно,
+    // для промежуточных значений — явные hex
+    return match(true) {
+        $ratio < 0.5 => '#dc3545',           // bs-danger
+        $ratio < 0.7 => '#fd7e14',           // bs-orange
+        $ratio < 0.9 => '#ffc107',           // bs-warning
+        $ratio < 1.0 => '#6f9e00',           // желтовато-зелёный
+        default      => 'var(--bs-success)', // >= 1.0
+    };
+}

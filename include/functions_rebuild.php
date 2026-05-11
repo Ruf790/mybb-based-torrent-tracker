@@ -9,7 +9,7 @@ function rebuild_stats(): void
     global $db;
 
     $query = $db->simple_select(
-        "tsf_forums",
+        "forums",
         "SUM(threads) AS numthreads, SUM(posts) AS numposts, SUM(unapprovedthreads) AS numunapprovedthreads, SUM(unapprovedposts) AS numunapprovedposts"
     );
     $stats = $db->fetch_array($query);
@@ -29,7 +29,7 @@ function rebuild_forum_counters(int $fid): void
 
     // Approved threads/posts
     $query = $db->simple_select(
-        'tsf_threads',
+        'threads',
         'COUNT(tid) AS threads, SUM(replies) AS replies, SUM(unapprovedposts) AS unapprovedposts',
         "fid='{$fid}' AND visible='1'"
     );
@@ -41,7 +41,7 @@ function rebuild_forum_counters(int $fid): void
 
     // Unapproved threads/posts
     $query = $db->simple_select(
-        'tsf_threads',
+        'threads',
         'COUNT(tid) AS threads, SUM(replies)+SUM(unapprovedposts) AS impliedunapproved',
         "fid='{$fid}' AND visible='0'"
     );
@@ -69,7 +69,7 @@ function rebuild_thread_counters(int $tid): void
 
     // Approved replies
     $query = $db->simple_select(
-        "tsf_posts",
+        "posts",
         "COUNT(pid) AS replies",
         "tid='{$tid}' AND pid!='{$thread['firstpost']}' AND visible='1'"
     );
@@ -77,7 +77,7 @@ function rebuild_thread_counters(int $tid): void
 
     // Unapproved replies
     $query = $db->simple_select(
-        "tsf_posts",
+        "posts",
         "COUNT(pid) AS unapprovedposts",
         "tid='{$tid}' AND pid!='{$thread['firstpost']}' AND visible='0'"
     );
@@ -87,7 +87,7 @@ function rebuild_thread_counters(int $tid): void
     $query = $db->sql_query("
         SELECT COUNT(aid) AS attachment_count
         FROM attachments a
-        LEFT JOIN tsf_posts p ON a.pid=p.pid
+        LEFT JOIN posts p ON a.pid=p.pid
         WHERE p.tid='{$tid}' AND a.visible=1
     ");
     $count['attachmentcount'] = (int) $db->fetch_field($query, "attachment_count");
@@ -103,7 +103,7 @@ function rebuild_poll_counters(int $pid): void
 {
     global $db;
 
-    $query = $db->simple_select("tsf_polls", "pid, numoptions", "pid='{$pid}'");
+    $query = $db->simple_select("polls", "pid, numoptions", "pid='{$pid}'");
     $poll = $db->fetch_array($query);
     if (!$poll) {
         return;
@@ -111,7 +111,7 @@ function rebuild_poll_counters(int $pid): void
 
     $votes = [];
     $query = $db->simple_select(
-        "tsf_pollvotes",
+        "pollvotes",
         "voteoption, COUNT(vid) AS vote_count",
         "pid='{$poll['pid']}'",
         ['group_by' => 'voteoption']
@@ -131,6 +131,6 @@ function rebuild_poll_counters(int $pid): void
         "votes" => $db->escape_string(implode('||~|~||', $votesList)),
         "numvotes" => $numVotes
     ];
-    $db->update_query("tsf_polls", $updatedPoll, "pid='{$poll['pid']}'");
+    $db->update_query("polls", $updatedPoll, "pid='{$poll['pid']}'");
 }
 

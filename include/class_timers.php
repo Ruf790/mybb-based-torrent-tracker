@@ -1,61 +1,53 @@
 <?php
+declare(strict_types=1);
 
 class Timer
 {
-    public ?string $name = null;
-    public ?float $start = null;
-    public ?float $end = null;
-    public ?float $totaltime = null;
-    public ?string $formatted = null;
+    public ?string $name      = null;
+    private ?float $start     = null;
+    private ?float $end       = null;
+    public  ?float $totaltime = null;  // public — используется в footer.php
+    private ?string $formatted = null;
 
     public function __construct()
     {
-        $this->add();
+        $this->start = microtime(true);
     }
 
-    public function add(): void
+    // Текущее время с момента старта (не останавливает таймер)
+    public function getTime(): string
     {
-        if (!$this->start) {
-            $this->start = microtime(true);
-        }
+        if ($this->start === null) return '';
+
+        $time = $this->end !== null
+            ? $this->totaltime
+            : microtime(true) - $this->start;
+
+        return $this->format((float)$time);
     }
 
-    public function getTime(): ?string
-    {
-        if ($this->end !== null) {
-            return $this->formatted ?? null;
-        }
-
-        if ($this->start !== null) {
-            $totaltime = microtime(true) - $this->start;
-            return $this->format($totaltime);
-        }
-
-        return null;
-    }
-
+    // Остановить и вернуть итоговое время
     public function stop(): string
     {
-        if ($this->start !== null) {
-            $this->end = microtime(true);
-            $this->totaltime = $this->end - $this->start;
-            $this->formatted = $this->format($this->totaltime);
-            return $this->formatted;
-        }
+        if ($this->start === null) return '';
+        if ($this->end !== null)   return $this->formatted ?? '';
 
-        return '';
+        $this->end       = microtime(true);
+        $this->totaltime = $this->end - $this->start;
+        $this->formatted = $this->format($this->totaltime);
+
+        return $this->formatted;
     }
 
-    public function remove(): void
+    public function reset(): void
     {
-        $this->name = null;
-        $this->start = null;
-        $this->end = null;
+        $this->start     = microtime(true);
+        $this->end       = null;
         $this->totaltime = null;
         $this->formatted = null;
     }
 
-    public function format(float $time): string
+    private function format(float $time): string
     {
         return number_format($time, 7);
     }

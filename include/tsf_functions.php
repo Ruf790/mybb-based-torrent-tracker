@@ -507,7 +507,7 @@ function get_subscription_method(int $tid = 0, array $postoptions = []): string
         return in_array($m, $methods, true) ? $m : '';
     }
 
-    $query        = $db->simple_select('tsf_threadsubscriptions', 'tid, notification', "tid='{$tid}' AND uid='{$CURUSER['id']}'", ['limit' => 1]);
+    $query        = $db->simple_select('threadsubscriptions', 'tid, notification', "tid='{$tid}' AND uid='{$CURUSER['id']}'", ['limit' => 1]);
     $subscription = $db->fetch_array($query);
 
     if ($subscription) {
@@ -708,14 +708,14 @@ function update_thread_data(int $tid): void
 
     $last = $db->fetch_array($db->sql_query("
         SELECT u.id, u.username, p.username AS postusername, p.dateline
-        FROM tsf_posts p LEFT JOIN users u ON u.id = p.uid
+        FROM posts p LEFT JOIN users u ON u.id = p.uid
         WHERE p.tid = '{$tid}' AND p.visible = '1'
         ORDER BY p.dateline DESC, p.pid DESC LIMIT 1
     "));
 
     $first = $db->fetch_array($db->sql_query("
         SELECT u.id, u.username, p.pid, p.username AS postusername, p.dateline
-        FROM tsf_posts p LEFT JOIN users u ON u.id = p.uid
+        FROM posts p LEFT JOIN users u ON u.id = p.uid
         WHERE p.tid = '{$tid}'
         ORDER BY p.dateline ASC, p.pid ASC LIMIT 1
     "));
@@ -729,7 +729,7 @@ function update_thread_data(int $tid): void
         $last['dateline'] = $first['dateline'];
     }
 
-    $db->update_query('tsf_threads', [
+    $db->update_query('threads', [
         'firstpost'    => (int)$first['pid'],
         'username'     => $first['username'],
         'uid'          => (int)$first['id'],
@@ -747,12 +747,12 @@ function update_first_post(int $tid): void
 
     $first = $db->fetch_array($db->sql_query("
         SELECT u.id, u.username, p.pid, p.username AS postusername, p.dateline
-        FROM tsf_posts p LEFT JOIN users u ON u.id = p.uid
+        FROM posts p LEFT JOIN users u ON u.id = p.uid
         WHERE p.tid = '{$tid}'
         ORDER BY p.dateline ASC, p.pid ASC LIMIT 1
     "));
 
-    $db->update_query('tsf_threads', [
+    $db->update_query('threads', [
         'firstpost' => (int)$first['pid'],
         'username'  => $db->escape_string($first['username'] ?: $first['postusername']),
         'uid'       => (int)$first['id'],
@@ -807,7 +807,7 @@ function update_last_post(int $tid): bool
 
     $last = $db->fetch_array($db->sql_query("
         SELECT u.id, u.username, p.username AS postusername, p.dateline
-        FROM tsf_posts p LEFT JOIN users u ON u.id = p.uid
+        FROM posts p LEFT JOIN users u ON u.id = p.uid
         WHERE p.tid = '{$tid}' AND p.visible = '1'
         ORDER BY p.dateline DESC, p.pid DESC LIMIT 1
     "));
@@ -821,7 +821,7 @@ function update_last_post(int $tid): bool
     if (empty($last['dateline'])) {
         $first = $db->fetch_array($db->sql_query("
             SELECT u.id, u.username, p.username AS postusername, p.dateline
-            FROM tsf_posts p LEFT JOIN users u ON u.id = p.uid
+            FROM posts p LEFT JOIN users u ON u.id = p.uid
             WHERE p.tid = '{$tid}'
             ORDER BY p.dateline ASC, p.pid ASC LIMIT 1
         "));
@@ -830,7 +830,7 @@ function update_last_post(int $tid): bool
         $last['dateline'] = $first['dateline'];
     }
 
-    $db->update_query('tsf_threads', [
+    $db->update_query('threads', [
         'lastpost'     => (int)$last['dateline'],
         'lastposter'   => $db->escape_string($last['username']),
         'lastposteruid'=> (int)$last['id'],
@@ -845,7 +845,7 @@ function update_thread_counters(int $tid, array $changes = []): void
     global $db;
 
     $counters = ['replies', 'unapprovedposts', 'attachmentcount'];
-    $query    = $db->simple_select('tsf_threads', implode(',', $counters), "tid='{$tid}'");
+    $query    = $db->simple_select('threads', implode(',', $counters), "tid='{$tid}'");
     $thread   = $db->fetch_array($query);
     $update   = [];
 
@@ -868,7 +868,7 @@ function update_thread_counters(int $tid, array $changes = []): void
     }
 
     if (!empty($update)) {
-        $db->update_query('tsf_threads', $update, "tid='{$tid}'");
+        $db->update_query('threads', $update, "tid='{$tid}'");
     }
 }
 
@@ -880,7 +880,7 @@ function update_forum_counters(int|string $fid, array $changes = []): void
     $fid = (int)$fid;
 	
 	$counters = ['threads', 'unapprovedthreads', 'posts', 'unapprovedposts'];
-    $query    = $db->simple_select('tsf_forums', implode(',', $counters), "fid='{$fid}'");
+    $query    = $db->simple_select('forums', implode(',', $counters), "fid='{$fid}'");
     $forum    = $db->fetch_array($query);
     $update   = [];
 
@@ -903,7 +903,7 @@ function update_forum_counters(int|string $fid, array $changes = []): void
     }
 
     if (!empty($update)) {
-        $db->update_query('tsf_forums', $update, "fid='{$fid}'");
+        $db->update_query('forums', $update, "fid='{$fid}'");
     }
 
     // Обновляем глобальную статистику
@@ -935,7 +935,7 @@ function update_forum_lastpost(int $fid): void
 
     $query = $db->sql_query("
         SELECT tid, lastpost, lastposter, lastposteruid, subject
-        FROM tsf_threads
+        FROM threads
         WHERE fid = '{$fid}' AND visible = '1' AND closed NOT LIKE 'moved|%'
         ORDER BY lastpost DESC LIMIT 1
     ");
@@ -956,7 +956,7 @@ function update_forum_lastpost(int $fid): void
         ];
     }
 
-    $db->update_query('tsf_forums', $updated, "fid='{$fid}'");
+    $db->update_query('forums', $updated, "fid='{$fid}'");
 }
 
 // ── get_post_link ─────────────────────────────────────────────────────────────
@@ -1113,7 +1113,7 @@ function get_thread(int|string $tid, bool $recache = false): array|false
         return $thread_cache[$tid];
     }
 
-    $thread = $db->fetch_array($db->simple_select('tsf_threads', '*', "tid='{$tid}'"));
+    $thread = $db->fetch_array($db->simple_select('threads', '*', "tid='{$tid}'"));
     $thread_cache[$tid] = $thread ?: false;
 
     return $thread_cache[$tid];
@@ -1129,7 +1129,7 @@ function get_post(int $pid): array|false
         return $post_cache[$pid];
     }
 
-    $post = $db->fetch_array($db->simple_select('tsf_posts', '*', "pid='{$pid}'"));
+    $post = $db->fetch_array($db->simple_select('posts', '*', "pid='{$pid}'"));
     $post_cache[$pid] = $post ?: false;
 
     return $post_cache[$pid];

@@ -527,7 +527,6 @@ function stdok(string $message = "", string $title = "Success", string $subtitle
     $date = date('Y-m-d');
 
     $okpage = '
-<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
 <link href="' . $BASEURL . '/include/templates/default/style/errorss.css" rel="stylesheet">
 
 <div class="container">
@@ -3402,7 +3401,43 @@ function error(string $error = "", string $title = ""): void
     $current_date = date('Y-m-d');
 	
     
-    eval("\$errorpage = \"".$templates->get("error")."\";");
+    $errorpage = '<html>
+<head>
+  <title>{$title}</title>
+  
+  <link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
+
+</head>
+<body>
+    <div class="container mt-3">
+	
+	<div class="card error-card222">
+      <div class="card-header22">
+        <i class="bi bi-exclamation-triangle-fill error-icon2"></i>
+        <div>
+          <h2 class="mb-0">Error</h2>
+          <p class="mb-0 opacity-75">A problem occurred while processing your request</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-danger" role="alert">
+          '.$error.'
+        </div>
+
+        <div class="d-flex flex-column flex-sm-row gap-3">
+          <button onclick="history.back()" class="btn btn-outline-danger flex-grow-1">
+            <i class="bi bi-arrow-left me-2"></i> Go Back
+          </button>
+          <a href="'.$BASEURL.'/" class="btn btn-danger flex-grow-1">
+            <i class="bi bi-house me-2"></i> Home Page
+          </a>
+        </div>
+      </div>
+    </div>
+	 </div>
+</body>
+</html>';
+
     
     echo $errorpage;
     exit;
@@ -3432,7 +3467,19 @@ function error_no_permission(): void
     if (!empty($CURUSER['id'] ?? 0)) 
 	{
         $error_nopermission_user_username = sprintf('You are currently logged in with the username: '.htmlspecialchars_uni($CURUSER['username'] ?? '').'');
-        eval("\$errorpage = \"".$templates->get("error_nopermission_loggedin")."\";");
+        
+		
+		$errorpage = ''.$lang->global['error_nopermission_user_1'].'
+<ol>
+	<li>'.$lang->global['error_nopermission_user_2'].'</li>
+	<li>'.$lang->global['error_nopermission_user_3'].'</li>
+	<li>'.$lang->global['error_nopermission_user_4'].' (<a href="member.php?action=resendactivation">'.$lang->global['error_nopermission_user_resendactivation'].'</a>)</li>
+	<li>'.$lang->global['error_nopermission_user_5'].'</li>
+</ol>
+<br />
+'.$error_nopermission_user_username.'';
+		
+		
     } else {
         $redirect_url = $_SERVER['PHP_SELF'] ?? '';
         if($_SERVER['QUERY_STRING'] ?? '') {
@@ -3457,7 +3504,17 @@ function error_no_permission(): void
                 $lang_username = 'username';
                 break;
         }
-        eval("\$errorpage = \"".$templates->get("error_nopermission")."\";");
+        
+		
+		$errorpage = ''.$lang->global['error_nopermission_guest_1'].'<br /><br />
+<ol>
+<li class="mb-2">'.$lang->global['error_nopermission_guest_2'].'</li>
+<li class="mb-2">'.$lang->global['error_nopermission_guest_3'].'</li>
+<li class="mb-2">'.$lang->global['error_nopermission_guest_4'].'</li>
+<li class="mb-2">'.$lang->global['error_nopermission_guest_5'].'</li>
+</ol>';
+		
+		
     }
 
     
@@ -4094,7 +4151,7 @@ function get_thread3333(int|string $tid, bool $recache = false): array|false
     if(isset($thread_cache[$tid]) && !$recache) {
         return $thread_cache[$tid];
     } else {
-        $query = $db->simple_select("tsf_threads", "*", "tid = '{$tid}'");
+        $query = $db->simple_select("threads", "*", "tid = '{$tid}'");
         $thread = $db->fetch_array($query);
 
         if($thread) {

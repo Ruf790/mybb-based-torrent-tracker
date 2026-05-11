@@ -294,8 +294,8 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
                    
 <?php if ($file['post_id']): ?>
     <?php 
-    // Получаем tid из таблицы tsf_posts
-    $post_result = $db->sql_query("SELECT tid FROM tsf_posts WHERE pid = " . (int)$file['post_id']);
+    // Получаем tid из таблицы posts
+    $post_result = $db->sql_query("SELECT tid FROM posts WHERE pid = " . (int)$file['post_id']);
     $post_row = $db->fetch_array($post_result);
     $tid = $post_row['tid'] ?? 0;
     

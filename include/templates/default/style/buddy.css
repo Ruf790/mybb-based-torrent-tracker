@@ -1,0 +1,274 @@
+
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --success-color: #2ecc71;
+            --danger-color: #e74c3c;
+            --light-bg: #f8f9fa;
+            --border-color: #dee2e6;
+        }
+        
+        
+        
+        
+        
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--secondary-color);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .form-label {
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #444;
+        }
+        
+        .help-text {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border: none;
+            padding: 8px 18px;
+            font-weight: 500;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        
+        .btn-success {
+            background-color: var(--success-color);
+            border: none;
+            padding: 8px 18px;
+            font-weight: 500;
+        }
+        
+        .btn-danger {
+            background-color: var(--danger-color);
+            border: none;
+            padding: 8px 18px;
+            font-weight: 500;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: #6c757d;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: #ced4da;
+        }
+        
+        .select2-user-result {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+        }
+        
+        .select2-user-selection {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .select2-user-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        
+        .select2-user-avatar-sm {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        
+        .select2-user-name {
+            font-weight: 500;
+        }
+        
+        .select2-container--default .select2-selection--multiple {
+            min-height: 42px;
+            border: 1px solid #dcdfe6;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        
+        .select2-container--default.select2-container--focus .select2-selection--multiple {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+        
+        .select2-container--default .select2-selection--multiple .select2-selection__choice {
+            background-color: #409eff;
+            border-color: #409eff;
+            color: white;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 13px;
+        }
+        
+        .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+            color: white;
+            margin-right: 4px;
+        }
+        
+        .user-list-container {
+            margin-top: 20px;
+        }
+        
+        .user-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.2s;
+        }
+        
+        .user-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .user-item:last-child {
+            border-bottom: none;
+        }
+        
+     
+        
+        /* Улучшения для мобильной версии */
+        .bg-nav {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+        
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        @media (min-width: 992px) {
+            .input-group {
+                flex-direction: row;
+                align-items: end;
+            }
+            
+            .input-group .form-control {
+                flex: 1;
+            }
+        }
+        
+        /* Стили для ограниченного placeholder */
+        .select2-selection__placeholder {
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: block;
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+
+        .select2-container--default .select2-selection--multiple .select2-selection__placeholder {
+            margin-left: 8px;
+            margin-top: 5px;
+        }
+
+        /* Для поля поиска внутри select2 */
+        .select2-search__field::placeholder {
+            font-size: 0.875rem;
+            color: #6c757d;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+   
+ 
+ 
+ 
+ 
+.user-select {
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    padding: 6px;
+    min-height: 42px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    cursor: text;
+    position: relative;
+}
+
+.user-select input {
+    border: none;
+    outline: none;
+    flex: 1;
+    min-width: 120px;
+}
+
+.user-tag {
+    background: #409eff;
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.user-tag img {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+}
+
+.user-tag span {
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.user-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #dcdfe6;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 10;
+}
+
+.user-option {
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.user-option:hover {
+    background: #f5f7fa;
+}
+
+.user-option img {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+}

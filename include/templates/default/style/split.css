@@ -1,0 +1,218 @@
+        .split-card {
+            max-width: 600px;
+            width: 100%;
+            margin: 0 auto;
+            border: none;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(13, 110, 253, 0.2);
+            transition: transform 0.3s ease;
+        }
+        
+        .split-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .split-header {
+            background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .split-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+           
+            background: rgba(255, 255, 255, 0.1);
+            transform: rotate(45deg);
+        }
+        
+        .split-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .post-count {
+            font-size: 3rem;
+            font-weight: 700;
+            color: white;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .info-box {
+            background: linear-gradient(135deg, #e7f1ff 0%, #d0e3ff 100%);
+            border-left: 4px solid #0d6efd;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .input-group-custom {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        
+        .input-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #0d6efd;
+            z-index: 3;
+        }
+        
+        .form-control-custom {
+            padding-left: 45px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            height: 52px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control-custom:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .form-select-custom {
+            padding-left: 45px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            height: 52px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%230d6efd' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+        }
+        
+        .form-select-custom:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .btn-split {
+            background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+            border: none;
+            padding: 14px 35px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-split:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(13, 110, 253, 0.3);
+        }
+        
+        .btn-split:active {
+            transform: translateY(0);
+        }
+        
+        .btn-split:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .btn-cancel {
+            background: #6c757d;
+            border: none;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-cancel:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.3);
+        }
+        
+        .security-box {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            border-left: 4px solid #0d6efd;
+        }
+        
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.6);
+            transform: scale(0);
+            animation: ripple-animation 0.6s linear;
+        }
+        
+        @keyframes ripple-animation {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+        
+        .thread-info {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .info-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .info-icon {
+            width: 36px;
+            height: 36px;
+            background: #f0f0f0;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            color: #0d6efd;
+        }
+        
+        .progress-bar-split {
+            background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+        }
+        
+        .original-thread {
+            background: linear-gradient(135deg, #e7f1ff 0%, #d0e3ff 100%);
+            border-left: 4px solid #0d6efd;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-warning {
+            border-left: 4px solid #ffc107;
+        }
+        
+        .alert-info {
+            border-left: 4px solid #0dcaf0;
+        }
+        
+        .card-footer {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }

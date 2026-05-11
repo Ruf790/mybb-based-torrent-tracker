@@ -1,0 +1,201 @@
+
+        /* ========= THEME SUPPORT VIA DATA-BS-THEME ========= */
+        :root,
+        [data-bs-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-nav: linear-gradient(135deg, #f0f5fa 0%, #e9eef3 100%);
+            --text-primary: #1e293b;
+            --text-secondary: #2c3e4e;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --border-light: #e0edf5;
+            --input-bg: #fefefe;
+            --input-border: #cfdfed;
+            --shadow: 0 8px 20px rgba(0,0,0,0.05);
+            --shadow-hover: 0 12px 28px rgba(0,0,0,0.1);
+            --card-footer-bg: #ffffff;
+            --btn-primary: #2c7da0;
+            --btn-primary-hover: #1f5e7a;
+            --icon-primary: #2c7da0;
+            --icon-secondary: #64748b;
+            --icon-success: #10b981;
+            --icon-warning: #f59e0b;
+            --icon-danger: #ef4444;
+            --icon-info: #3b82f6;
+            --info-bg: #f0f9ff;
+        }
+        
+        [data-bs-theme="dark"] {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #1e293b;
+            --bg-nav: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --border-light: #2d3a4e;
+            --input-bg: #0f172a;
+            --input-border: #334155;
+            --shadow: 0 8px 20px rgba(0,0,0,0.3);
+            --shadow-hover: 0 12px 28px rgba(0,0,0,0.4);
+            --card-footer-bg: #1e293b;
+            --btn-primary: #3b82f6;
+            --btn-primary-hover: #2563eb;
+            --icon-primary: #3b82f6;
+            --icon-secondary: #94a3b8;
+            --icon-success: #34d399;
+            --icon-warning: #fbbf24;
+            --icon-danger: #f87171;
+            --icon-info: #60a5fa;
+            --info-bg: #1e2a3a;
+        }
+        
+      
+        
+        .card {
+            background: var(--bg-card);
+            border: none;
+            border-radius: 1.25rem;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            box-shadow: var(--shadow-hover);
+        }
+        
+        .card-body {
+            padding: 1.8rem;
+        }
+        
+        .card-footer {
+            background: var(--card-footer-bg);
+            border-top: 1px solid var(--border-color);
+            padding: 1.2rem;
+        }
+        
+        .bg-nav {
+            background: var(--bg-nav);
+            font-weight: 600;
+            color: var(--text-primary);
+            border-left: 4px solid var(--btn-primary);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .border-bottom {
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        
+        .border-end {
+            border-right: 2px solid var(--border-light) !important;
+        }
+        
+        label, .form-label {
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        label i, .form-label i {
+            width: 1.6rem;
+            font-size: 1.1rem;
+            color: var(--icon-primary);
+        }
+        
+        .form-control, .form-select {
+            border-radius: 0.75rem;
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+            padding: 0.6rem 1rem;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--btn-primary);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+            outline: none;
+        }
+        
+        .form-control:hover, .form-select:hover {
+            border-color: var(--btn-primary);
+        }
+        
+        .form-group {
+            transition: transform 0.2s ease;
+        }
+        
+        .form-group:hover {
+            transform: translateX(4px);
+        }
+        
+        
+       
+        
+        .text-primary { color: var(--icon-primary) !important; }
+        .text-secondary { color: var(--icon-secondary) !important; }
+        .text-success { color: var(--icon-success) !important; }
+        .text-warning { color: var(--icon-warning) !important; }
+        .text-danger { color: var(--icon-danger) !important; }
+        .text-info { color: var(--icon-info) !important; }
+        
+        .info-hint {
+            background: var(--info-bg);
+            border-left: 3px solid var(--btn-primary);
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .alert.bg-nav {
+            background: var(--bg-nav) !important;
+            border: none;
+            border-radius: 0.75rem;
+        }
+        
+        .text-desc {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            color: var(--text-muted);
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        
+        hr {
+            border-color: var(--border-color);
+            margin: 1rem 0;
+        }
+        
+        * {
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+        }
+        
+        @media (max-width: 768px) {
+            .card-body {
+                padding: 1.2rem;
+            }
+        }
+        
+        .section-title-left {
+            background: linear-gradient(135deg, var(--bg-nav));
+            border-radius: 1rem;
+            padding: 1rem;
+        }
+        
+        .section-icon-large {
+            font-size: 2.5rem;
+            color: var(--icon-primary);
+            margin-bottom: 0.5rem;
+        }
+   

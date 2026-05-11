@@ -1,0 +1,115 @@
+
+    /* ---------- THEME ---------- */
+    :root{
+      --bg:#f6f8fb; --card:#ffffff; --muted:#6c7a87; --border:rgba(0,0,0,.06);
+      --ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
+      --radius:16px; --radius-sm:12px; --radius-lg:22px;
+      --title:#0f172a; --text:#1f2937;
+      --success:#12b76a; --warning:#f59e0b; --danger:#ef4444;
+    }
+    html{background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", sans-serif;}
+    .container-md{max-width:1050px;}
+
+    /* ---------- UTILITIES ---------- */
+    .text-19{font-size:1.125rem}
+    .muted{color:var(--muted)}
+    .hov-soft{transition:transform .2s ease, box-shadow .2s ease}
+    .hov-soft:hover{transform:translateY(-2px); box-shadow:0 10px 22px rgba(16,24,40,.08)}
+    .shadow-soft{box-shadow:var(--shadow)}
+    .rounded-xl{border-radius:var(--radius)}
+    .rounded-2xl{border-radius:var(--radius-lg)}
+
+    /* ---------- CARDS ---------- */
+    .card-clean{border-radius:var(--radius); background:var(--card); border:1px solid var(--border); box-shadow:var(--shadow)}
+
+    /* ---------- HERO ---------- */
+    .profile-hero{ position:relative; border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; }
+    .profile-hero::before{ content:""; position:absolute; inset:0; background:
+      radial-gradient(1200px 300px at -10% -40%, rgba(59,130,246,.08), transparent 60%),
+      radial-gradient(1000px 260px at 110% -30%, rgba(99,102,241,.08), transparent 60%),
+      linear-gradient(180deg, rgba(255,255,255,.86), rgba(255,255,255,.86));
+      pointer-events:none;
+    }
+    .profile-hero > .hero-inner{ position:relative; z-index:1 }
+
+    /* Keep Bootstrap blues out only inside HERO */
+    .profile-hero{ --bs-primary:#6c757d; --bs-primary-rgb:108,117,125; --bs-link-color:inherit; --bs-link-hover-color:inherit; --bs-focus-ring-color:rgba(108,117,125,.25) }
+    .profile-hero .text-primary, .profile-hero .link-primary{ color:inherit!important }
+    .profile-hero .bg-primary{ background-color:transparent!important }
+
+    /* ---------- AVATAR RING + STATUS DOT ---------- */
+    .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
+      conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
+    .avatar-ring>*{display:block; border-radius:50%}
+    .status-dot{ position:absolute; right:4px; bottom:4px; width:14px; height:14px; border-radius:50%; border:2px solid #fff; background:var(--success); box-shadow:0 0 0 2px #fff }
+    .status-away{ background:var(--warning) }
+    .status-off{ background:var(--muted) }
+
+    /* ---------- CHIPS / BADGES ---------- */
+    .chip{display:inline-flex; align-items:center; gap:.45rem; padding:.42rem .7rem; border-radius:999px;
+      font-weight:600; background:#f1f4f9; border:1px solid #e6ebf3; color:#445365; font-size:.8rem}
+    .badge-soft{display:inline-block; padding:.35rem .6rem; border-radius:.6rem; background:#f1f4f9; border:1px solid #e6ebf3; font-weight:600; font-size:.8rem; color:#5b6b7b}
+
+    /* ---------- METRICS ---------- */
+    .metric{border:1px solid var(--border); border-radius:12px; background:var(--card); padding:.85rem 1rem; box-shadow:var(--shadow)}
+    .metric .label{font-size:.8rem; color:var(--muted)}
+    .metric .value{font-weight:800; letter-spacing:.2px}
+    .ratio-ok{color:var(--success)} .ratio-warn{color:var(--warning)} .ratio-bad{color:var(--danger)}
+
+    /* ---------- LISTS ---------- */
+    .list-row{display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.72rem 0; border-bottom:1px dashed #e8ecf3}
+    .list-row:last-child{border-bottom:0}
+    .list-row:hover .muted{color:#2f3b46}
+
+    /* ---------- PROGRESS ---------- */
+    .progress{background:#eef2f7; border-radius:999px; overflow:hidden; height:6px}
+    .progress-bar{background:linear-gradient(90deg,#60a5fa,#3b82f6)}
+
+    /* ---------- TABS ---------- */
+    .nav-tabs{ gap:.35rem; border-bottom:1px solid var(--border) }
+    .nav-tabs .nav-link{border:none; background:transparent; color:#64748b; font-weight:700; border-radius:10px; padding:.55rem .8rem}
+    .nav-tabs .nav-link:hover{background:rgba(59,130,246,.08)}
+    .nav-tabs .nav-link.active{color:var(--title); background:#eef4ff}
+
+    /* ---------- STICKY SIDEBAR ---------- */
+    .sticky-col{ position:sticky; top:1rem }
+
+    /* ---------- DARK MODE ---------- */
+    @media (prefers-color-scheme: dark){
+      :root{--bg:#0b0f14; --card:#10161d; --muted:#99a6b4; --border:#1b2430; --ring:#253044; --accent:#6ea8fe; --shadow:none; --title:#e7ebf2; --text:#e6e8ea}
+      .chip{background:#16202c; border-color:#1f2a38; color:#a9c1ff}
+      .badge-soft{background:#1b2230; color:#70a1ff; border-color:#2a3442}
+      .list-row{border-bottom-color:#223042}
+      .progress{background:#17202a} .progress-bar{background:linear-gradient(90deg,#84b5ff,#6ea8fe)}
+      .nav-tabs .nav-link{color:#9aa3ac}
+      .nav-tabs .nav-link.active{color:#fff}
+    }
+	
+	
+	
+	
+
+/* Hover-подсказка */
+.avatar-overlay{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.35); color:#fff; font-weight:700; opacity:0; transition:.2s;
+}
+#avatar-container:hover .avatar-overlay{ opacity:1; }
+/* Прогресс */
+#avatar-progress{ position:absolute; left:50%; transform:translateX(-50%); bottom:-10px;
+  width:140px; height:6px; background:#eef2f7; border-radius:999px; overflow:hidden; display:none; }
+#avatar-progress-bar{ width:0%; height:100%; background:linear-gradient(90deg,#60a5fa,#3b82f6); }
+
+	
+	
+	
+#avatar-container[data-can-change="0"] { cursor: default !important; }
+#avatar-container[data-can-change="0"] .avatar-overlay { display: none !important; }
+#avatar-container[data-can-change="1"] { cursor: pointer; }
+	
+
+
+	
+
+    /* ---------- ACCESSIBILITY ---------- */
+    @media (prefers-reduced-motion: reduce){ .hov-soft, .nav-tabs .nav-link{ transition:none } }

@@ -1,0 +1,244 @@
+/* ========= ПОДДЕРЖКА ТЕМ ЧЕРЕЗ DATA-BS-THEME ========= */
+        /* Светлая тема (по умолчанию) */
+        :root,
+        [data-bs-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-nav: linear-gradient(135deg, #f0f5fa 0%, #e9eef3 100%);
+            --text-primary: #1e293b;
+            --text-secondary: #2c3e4e;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --border-light: #e0edf5;
+            --input-bg: #fefefe;
+            --input-border: #cfdfed;
+            --shadow: 0 8px 20px rgba(0,0,0,0.05);
+            --shadow-hover: 0 12px 28px rgba(0,0,0,0.1);
+            --category-bg: #fafdff;
+            --category-border: #e9f0f5;
+            --info-bg: #f0f9ff;
+            --card-footer-bg: #ffffff;
+            --btn-primary: #2c7da0;
+            --btn-primary-hover: #1f5e7a;
+            --icon-primary: #2c7da0;
+            --icon-secondary: #64748b;
+            --icon-success: #10b981;
+            --icon-warning: #f59e0b;
+            --icon-danger: #ef4444;
+            --icon-info: #3b82f6;
+        }
+        
+        /* Темная тема */
+        [data-bs-theme="dark"] {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #1e293b;
+            --bg-nav: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --border-light: #2d3a4e;
+            --input-bg: #0f172a;
+            --input-border: #334155;
+            --shadow: 0 8px 20px rgba(0,0,0,0.3);
+            --shadow-hover: 0 12px 28px rgba(0,0,0,0.4);
+            --category-bg: #0f172a;
+            --category-border: #334155;
+            --info-bg: #1e2a3a;
+            --card-footer-bg: #1e293b;
+            --btn-primary: #3b82f6;
+            --btn-primary-hover: #2563eb;
+            --icon-primary: #3b82f6;
+            --icon-secondary: #94a3b8;
+            --icon-success: #34d399;
+            --icon-warning: #fbbf24;
+            --icon-danger: #f87171;
+            --icon-info: #60a5fa;
+        }
+        
+        
+        .card {
+            background: var(--bg-card);
+            border: none;
+            border-radius: 1.25rem;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            box-shadow: var(--shadow-hover);
+        }
+        
+        .card-body {
+            padding: 1.8rem;
+        }
+        
+        .card-footer {
+            background: var(--card-footer-bg);
+            border-top: 1px solid var(--border-color);
+            padding: 1.2rem;
+        }
+        
+        .bg-nav {
+            background: var(--bg-nav);
+            font-weight: 600;
+            color: var(--text-primary);
+            border-left: 4px solid var(--btn-primary);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .border-bottom {
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        
+        .form-check-label, label {
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
+        }
+        
+        .form-check-input {
+            background-color: var(--input-bg);
+            border-color: var(--input-border);
+            transition: all 0.2s ease;
+        }
+        
+        
+        
+        .form-select, .form-select-sm {
+            border-radius: 0.75rem;
+            background-color: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+        }
+        
+        .form-select:hover, .form-select:focus {
+            border-color: var(--btn-primary);
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+        }
+        
+        .text-muted {
+            color: var(--text-muted) !important;
+        }
+        
+        .col-lg-3.border-end {
+            border-right: 2px solid var(--border-light) !important;
+        }
+        
+        .category-grid {
+            max-height: 240px;
+            overflow-y: auto;
+            background: var(--category-bg);
+            padding: 0.75rem;
+            border-radius: 1rem;
+            border: 1px solid var(--category-border);
+            transition: all 0.3s ease;
+        }
+        
+        /* Кастомный скроллбар для темной темы */
+        .category-grid::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .category-grid::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+        }
+        
+        .category-grid::-webkit-scrollbar-thumb {
+            background: var(--text-muted);
+            border-radius: 10px;
+        }
+        
+        .category-grid::-webkit-scrollbar-thumb:hover {
+            background: var(--btn-primary);
+        }
+        
+        /* Инфо-блоки */
+        .info-hint {
+            background: var(--info-bg);
+            border-left: 3px solid var(--btn-primary);
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+        }
+        
+        /* Анимация для чекбоксов */
+        .form-check {
+            transition: transform 0.2s ease;
+        }
+        
+        .form-check:hover {
+            transform: translateX(4px);
+        }
+        
+   
+        
+        /* Иконки с динамическими цветами */
+        .text-primary {
+            color: var(--icon-primary) !important;
+        }
+        
+        .text-secondary {
+            color: var(--icon-secondary) !important;
+        }
+        
+        .text-success {
+            color: var(--icon-success) !important;
+        }
+        
+        .text-warning {
+            color: var(--icon-warning) !important;
+        }
+        
+        .text-danger {
+            color: var(--icon-danger) !important;
+        }
+        
+        .text-info {
+            color: var(--icon-info) !important;
+        }
+        
+        /* Иконки в селектах */
+        select option {
+            background: var(--input-bg);
+            color: var(--text-primary);
+        }
+        
+        /* Адаптация ссылок */
+        a {
+            color: var(--btn-primary);
+        }
+        
+        /* Стили для кастомных элементов */
+        .icon-md {
+            width: 1.8rem;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .section-icon {
+            font-size: 1.25rem;
+            width: 2rem;
+            display: inline-block;
+        }
+        
+        hr {
+            border-color: var(--border-color);
+        }
+        
+        /* Плавные переходы для всех элементов */
+        * {
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+        }
+        
+        /* Адаптация для мобильных */
+        @media (max-width: 768px) {
+            .card-body {
+                padding: 1.2rem;
+            }
+        }

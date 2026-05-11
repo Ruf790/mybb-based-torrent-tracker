@@ -1,0 +1,25 @@
+/* ─── Username feedback ───────────────────────────────────────────────────── */
+.username-feedback {
+    font-size: .8rem;
+    margin-top: .5rem;
+}
+
+.username-feedback.valid   { color: #10b981; }
+.username-feedback.invalid { color: #ef4444; }
+.username-feedback.warning { color: #f59e0b; }
+
+/* ─── Character counter ───────────────────────────────────────────────────── */
+.char-counter {
+    font-size: .75rem;
+    color: var(--bs-secondary-color);
+    margin-top: .25rem;
+}
+
+.char-counter.warning { color: var(--bs-warning); }
+.char-counter.danger  { color: var(--bs-danger);  }
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .card-body   { padding: 1.2rem; }
+    .btn-primary { padding: .5rem 1rem; font-size: .9rem; }
+}

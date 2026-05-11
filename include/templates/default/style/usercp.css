@@ -1,0 +1,93 @@
+       .user-stats-card {
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            color: #2c3e50;
+        }
+        
+        .user-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #ffffff;
+        }
+        
+        .stat-item {
+            transition: all 0.3s ease;
+            padding: 12px 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .stat-item:hover {
+            background-color: rgba(0,0,0,0.03);
+            padding-left: 15px;
+            border-radius: 8px;
+        }
+        
+        .username-display {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .stat-label {
+            color: #6c757d;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .stat-value {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        .border-custom {
+            border-color: #e9ecef !important;
+        }
+        
+        .badge-status {
+            background: #28a745;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+        }
+        
+        .icon-wrapper {
+            width: 20px;
+            text-align: center;
+            color: #667eea;
+        }
+        
+        .icon-user {
+            color: #667eea;
+        }
+        
+        .icon-post {
+            color: #4CAF50;
+        }
+        
+        .icon-comment {
+            color: #2196F3;
+        }
+        
+        .icon-bonus {
+            color: #FF9800;
+        }
+        
+        .icon-email {
+            color: #9C27B0;
+        }
+        
+        .icon-date {
+            color: #607D8B;
+        }
+        
+        .icon-group {
+            color: #E91E63;
+        }

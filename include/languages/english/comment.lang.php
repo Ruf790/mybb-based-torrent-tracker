@@ -44,5 +44,7 @@ $language['comment'] = array
 	'editcomment'			=>'Edit Comment',
 	'floodcomment'	=>'comments',
 	'closed'=>'Sorry this torrent has been closed for comment posting!',//Added v4.1
+	
+	'no_comment_permission' => 'You do not have permission to post comments. Contact staff if you believe this is a mistake.',
 );
 ?>

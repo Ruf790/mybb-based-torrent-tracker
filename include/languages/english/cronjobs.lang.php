@@ -77,6 +77,20 @@ All torrents must be seeded at least [b]{6}[/b] hour(s) after finished otherwise
 Please note: Once your total warnings will be reached the global limit (default 7), your account will be suspended.
 
 Thank you for your understanding and support.
-Have a great day.'//Added in v5.5
+Have a great day.',
+
+
+
+'hr_final_subject' => 'FINAL Hit and Run Warning!',
+'hr_final_message' => '[b]{1}[/b],
+This is your FINAL WARNING for Hit & Run on:
+[b]{2}[/b]
+You have seeded [b]{3}[/b] hour(s) but must seed [b]{4}[/b] hour(s).
+You still need [b]{6}[/b] more hour(s).
+[b]{5}[/b]
+Your account will be BANNED if you do not resume seeding immediately.',
+
+
+
 );
 ?>

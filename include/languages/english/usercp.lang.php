@@ -14,6 +14,33 @@ $language['usercp'] = array
 
 
 
+'email_changeemail' => "{1},
+
+We have received a request on {2} to change your email address (see details below).
+
+Old Email Address: {3}
+New Email Address: {4}
+
+If these changes are correct, please complete the validation process on {2} by going to the following URL in your web browser.
+
+{5}/member.php?action=activate&id={8}&code={6}
+
+If the above link does not work correctly, go to
+
+{5}/member.php?action=activate
+
+You will need to enter the following:
+Username: {7}
+Activation Code: {6}
+
+If you choose not to validate your new email address your profile will not be updated and will still contain your existing email address.
+
+Thank you,
+{2} Staff
+{5}",
+
+
+
 'e_pass8'	=>	 'Your question and secret answer',
 	'e_pass9'	=>	 'If you forget your password, we\'ll ask for your secret answer.',
 	'e_pass10'	=>	 '<b>Question:</b>',

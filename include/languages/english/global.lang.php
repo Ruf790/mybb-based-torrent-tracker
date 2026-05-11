@@ -28,6 +28,9 @@ $language['global'] = array
 (
 
 
+'postbit_attachments' => "Attached Files",
+
+
 'change_user' => "change user",
 
 'please_correct_errors' => "Please correct the following errors before continuing:",
@@ -134,7 +137,7 @@ Thank you,
 'lastvisit_hidden' => "(Hidden)",
 
 
-'banned_warning' => "Your forum account is currently banned.",
+'banned_warning' => "Your tracker account is currently banned.",
 'banned_warning2' => "Ban Reason",
 'banned_warning3' => "Ban will be lifted",
 'banned_lifted_never' => "Never",

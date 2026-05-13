@@ -342,7 +342,7 @@ function handle_attachments_search(): void {
     $query = $db->sql_query("
         SELECT COUNT(a.aid) AS num_results
         FROM attachments a
-        LEFT JOIN tsf_posts p ON (p.pid=a.pid)
+        LEFT JOIN posts p ON (p.pid=a.pid)
         WHERE {$search_sql}
     ");
     $num_results = (int)$db->fetch_field($query, "num_results");
@@ -400,8 +400,8 @@ function handle_attachments_search(): void {
     $query = $db->sql_query("
         SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
         FROM attachments a
-        LEFT JOIN tsf_posts p ON (p.pid=a.pid)
-        LEFT JOIN tsf_threads t ON (t.tid=p.tid)
+        LEFT JOIN posts p ON (p.pid=a.pid)
+        LEFT JOIN threads t ON (t.tid=p.tid)
         LEFT JOIN users u ON (u.id=a.uid)
         WHERE {$search_sql}
         ORDER BY {$sort_field} {$order}
@@ -553,8 +553,8 @@ function render_top_attachments_section(string $title, string $order, string $te
     $query = $db->sql_query("
         SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
         FROM attachments a
-        LEFT JOIN tsf_posts p ON (p.pid=a.pid)
-        LEFT JOIN tsf_threads t ON (t.tid=p.tid)
+        LEFT JOIN posts p ON (p.pid=a.pid)
+        LEFT JOIN threads t ON (t.tid=p.tid)
         LEFT JOIN users u ON (u.id=a.uid)
         ORDER BY {$order}
         LIMIT 5

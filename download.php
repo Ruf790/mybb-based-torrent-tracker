@@ -275,7 +275,7 @@ $db->update_query('torrents', ['hits' => 'hits+1'], "id='{$id}'", '1', true);
 
 if (!$external) {
     $torrentFileObj->setAnnounce(
-        ts_seo($CURUSER['passkey'], $row['filename'], 'a')
+        ts_seo($CURUSER['passkey'] ?? '', $row['filename'], 'a')
     );
 }
 

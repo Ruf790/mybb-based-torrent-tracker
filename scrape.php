@@ -1,7 +1,7 @@
 <?
 
 
-  if (!($db = mysqli_connect ('localhost', 'root', 'megarave1995','tracker')))
+  if (!($db = mysqli_connect ('')))
   {
       exit ('Error: Mysql Connection!');
       ;

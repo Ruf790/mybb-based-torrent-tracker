@@ -29,12 +29,13 @@ $category = (int)($_POST['category'] ?? $_GET['category'] ?? 0);
 $keywords = $_POST['keywords'] ?? $_GET['keywords'] ?? '';
 $search_type = trim($_POST['search_type'] ?? $_GET['search_type'] ?? '');
 
-$special_search = TS_Global('special_search');
+$special_search        = trim($_GET['special_search']        ?? $_POST['special_search']        ?? '');
+$sort      = trim($_GET['sort']      ?? $_POST['sort']      ?? '');
+$order     = trim($_GET['order']     ?? $_POST['order']     ?? '');
+$daysprune = trim($_GET['daysprune'] ?? $_POST['daysprune'] ?? '');
+$include_dead_torrents = trim($_GET['include_dead_torrents'] ?? $_POST['include_dead_torrents'] ?? '');
 
-$sort = TS_Global('sort');
-$order = TS_Global('order');
-$daysprune = TS_Global('daysprune');
-$include_dead_torrents = TS_Global('include_dead_torrents');
+
 $Links = [];
 require_once INC_PATH . '/functions_mkprettytime.php';
 
@@ -70,7 +71,6 @@ if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
             </div>';
 
             $_freelechmod = true;
-            echo '<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
             echo '<link href="' . $BASEURL . '/include/templates/default/style/messagess.css" rel="stylesheet">';
             break;
 
@@ -92,7 +92,7 @@ if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
             </div>';
 
             $_silverleechmod = true;
-            echo '<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
+            
             echo '<link href="' . $BASEURL . '/include/templates/default/style/messagess.css" rel="stylesheet">';
             break;
 
@@ -114,13 +114,13 @@ if ($__F_START < get_date_time() && $__F_END > get_date_time()) {
             </div>';
 
             $_x2mod = true;
-            echo '<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
+            
             echo '<link href="' . $BASEURL . '/include/templates/default/style/messagess.css" rel="stylesheet">';
             break;
     }
 } elseif ($bdayreward === 'yes' && $bdayrewardtype) {
-    $curuserbday = explode('-', $CURUSER['birthday']);
-    if (date('j-n') === $curuserbday[0] . '-' . $curuserbday[1]) {
+    $curuserbday = !empty($CURUSER['birthday']) ? explode('-', $CURUSER['birthday']) : [];
+    if (isset($curuserbday[0], $curuserbday[1]) && date('j-n') === $curuserbday[0] . '-' . $curuserbday[1]) {
         switch ($bdayrewardtype) {
             case 'freeleech':
                 $___notice = '
@@ -1239,7 +1239,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"><
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/autocomplete.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/category-highlight.js"></script>';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/autocomplete.css">';
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css">';
+
 
 
 

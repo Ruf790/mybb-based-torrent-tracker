@@ -65,6 +65,7 @@ if ((int)($commentperm['cancomment'] ?? 1) === 0) {
 
 
 require INC_PATH . '/commenttable.php';
+require_once INC_PATH . '/functions_comment_attachments.php';
 
 $is_mod = is_mod($usergroups);
 $action = $_GET['action'] ?? '';
@@ -214,14 +215,10 @@ function processAddComment(int $torrentid): void
         $db->insert_query("comments", $comment_insert_data);
         $newid = $db->insert_id();
 
-        // Attach uploaded files
-        if (!empty($_POST['file_ids'])) {
-            $file_ids = array_map('intval', (array)$_POST['file_ids']);
-            $id_list = implode(',', $file_ids);
-
-            if (!empty($id_list)) {
-                $db->sql_query("UPDATE comment_files SET comment_id = " . $newid . " WHERE id IN ($id_list)");
-            }
+        // Attach uploaded files via posthash
+        $posthash = trim($_POST['posthash'] ?? '');
+        if ($posthash) {
+            attach_to_comment($posthash, $newid, (int)$CURUSER['id']);
         }
 
         // Update counters
@@ -271,10 +268,14 @@ function displayAddCommentForm(int $torrentid): void
     }
 
     stdhead(sprintf($lang->comment['addcomment'], $arr['name']), true, 'supernote');
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
     require_once INC_PATH . '/editor.php';
     
     $editor = insert_bbcode_editor($smilies, $BASEURL, 'commentText');
-	
+
+    $posthash = bin2hex(random_bytes(16));
+    $uploader = render_attachment_uploader($posthash, (int)$CURUSER['id']);
+
 	$titlez = sprintf($lang->comment['addcomment'], htmlspecialchars_uni($arr['name']));
 	
 	
@@ -296,6 +297,7 @@ if (!empty($_GET['quote'])) {
             <div id="charCount" class="form-text text-end">0 / 500</div>
         </div>
 
+        {$uploader}
         <input type="hidden" name="ctype" value="quickcomment">
         <input type="hidden" name="submit" value="1">
         <div id="fileIdsContainer"></div>
@@ -454,13 +456,10 @@ function processEditComment(int $commentid, array $commentData): void
 
     $db->update_query("comments", $update_comment, "id='" . $commentid . "'");
 
-    if (!empty($_POST['file_ids'])) {
-        $file_ids = array_map('intval', (array)$_POST['file_ids']);
-        $id_list = implode(',', $file_ids);
-
-        if (!empty($id_list)) {
-            $db->sql_query("UPDATE comment_files SET comment_id = " . $commentid . " WHERE id IN ($id_list)");
-        }
+    // Attach new uploads via posthash
+    $posthash = trim($_POST['posthash'] ?? '');
+    if ($posthash) {
+        attach_to_comment($posthash, $commentid, (int)$CURUSER['id']);
     }
 
     $page = (int)($_GET['page'] ?? 0);
@@ -472,16 +471,22 @@ function processEditComment(int $commentid, array $commentData): void
 
 function displayEditCommentForm(int $commentid, array $commentData): void
 {
-    global $BASEURL, $lang, $smilies;
+    global $BASEURL, $CURUSER, $lang, $smilies;
 
     $page = (int)($_GET['page'] ?? 0);
     $actionUrl = htmlspecialchars($_SERVER['SCRIPT_NAME']) . '?action=edit&pid=' . $commentid . ($page ? '&page='.$page : '');
     $returnto = get_comment_link($commentid, $commentData['torrentid']) . "#pid{$commentid}";
 
     stdhead(sprintf($lang->comment['adit'], $commentData['name']));
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
     require_once INC_PATH . '/editor.php';
     
     $editor = insert_bbcode_editor($smilies, $BASEURL, 'commentText');
+
+    // Load existing attachments for this comment
+    $existing_atts = get_comment_attachments($commentid);
+    $posthash = bin2hex(random_bytes(16));
+    $uploader = render_attachment_uploader($posthash, (int)$CURUSER['id'], $existing_atts);
 
     echo <<<HTML
 <div class="container my-4">
@@ -494,7 +499,7 @@ function displayEditCommentForm(int $commentid, array $commentData): void
             <label for="commentText" class="form-label">Comment Text</label>
             <textarea class="form-control" id="commentText" name="msgtext" rows="8">{$commentData['text']}</textarea>
         </div>
-        <div id="fileIdsContainer"></div>
+        {$uploader}
         <button type="submit" name="submit" class="btn btn-primary">Save Changes</button>
     </form>
     
@@ -639,7 +644,10 @@ function handleDeleteAction(): void
     $torrentid = $arr['torrent'];
     $userpostid = $arr['user'];
 
-    // Delete attached files
+    // Delete attached files from attachments table
+    delete_comment_attachments($commentid);
+	
+	// Delete attached files
     $files = $db->simple_select("comment_files", "*", "comment_id = " . $commentid);
     while ($file = $db->fetch_array($files)) {
         if (is_file($file['file_path'])) {
@@ -647,6 +655,7 @@ function handleDeleteAction(): void
         }
     }
     $db->delete_query("comment_files", "comment_id = " . $commentid);
+	
 
     // Delete comment
     $db->delete_query("comments", "id='$commentid'");
@@ -719,7 +728,11 @@ function handleMassDeleteAction(): void
 
         $user_id = $comment['user'];
 
-        // Delete files
+        // Delete attached files from attachments table
+        delete_comment_attachments($comment_id);
+		
+		
+		// Delete files
         $files = $db->simple_select("comment_files", "*", "comment_id = " . $comment_id);
         while ($file = $db->fetch_array($files)) {
             if (is_file($file['file_path'])) {
@@ -727,6 +740,7 @@ function handleMassDeleteAction(): void
             }
         }
         $db->delete_query("comment_files", "comment_id = " . $comment_id);
+		
 
         // Delete comment
         $db->delete_query("comments", "id = '$comment_id'");

@@ -90,7 +90,7 @@ $_wgo_query2 = $db->sql_query_prepared(
     [$timeLimit]
 );
 
-$_most_ever = $db->num_rows($_wgo_query2) + $_guests;
+$_most_ever = $db->num_rows($_wgo_query2) + (int)$_guests;
 
 if (file_exists(TSDIR . '/cache/onlinestats.php')) {
     include_once TSDIR . '/cache/onlinestats.php';
@@ -508,7 +508,7 @@ document.addEventListener("DOMContentLoaded", function () {
       <span class="badge bg-success fs-6"><i class="fa-solid fa-user-check me-1"></i> Visible Members: <?= $_active_members2 ?></span>
       <span class="badge bg-secondary fs-6"><i class="fa-solid fa-user-secret me-1"></i> Hidden Members: <?= $_hidden_members2 ?></span>
       <span class="badge bg-warning text-dark fs-6"><i class="fa-solid fa-users me-1"></i> Guests: <?= $_guests ?></span>
-      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> Total Users: <?= $_active_members2 + $_hidden_members2 + $_guests ?></span>
+      <span class="badge bg-info text-dark fs-6"><i class="fa-solid fa-users-line me-1"></i> Total Users: <?= (int)$_active_members2 + (int)$_hidden_members2 + (int)$_guests ?></span>
     </div>
     <div class="user-list d-flex flex-wrap gap-3">
       <?php foreach ($_usernames2 as $user_html2): ?>

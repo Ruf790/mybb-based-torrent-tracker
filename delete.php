@@ -57,7 +57,8 @@ if ($is_mod || $CURUSER['id'] === (int)$row['owner']) {
     deletetorrent($id, true);
 
    
-    $logMessage = $CURUSER['anonymous'] === 'yes' && $is_mod
+	
+	$logMessage = (isset($CURUSER['invisible']) && $CURUSER['invisible'] == 1) && $is_mod
         ? sprintf($lang->delete['logmsg1'], $id, $row['name'], htmlspecialchars($reasonstr))
         : sprintf($lang->delete['logmsg2'], $id, $row['name'], $CURUSER['username'], htmlspecialchars($reasonstr));
     

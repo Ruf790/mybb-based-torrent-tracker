@@ -837,7 +837,96 @@ lang.restore_thread            = "Restore Thread";
 <?php
 
 build_breadcrumb();
-echo render_showthread($thread, $multipage, $addremovesubscription, $newreply, $pollbox, $posts, $quickreply, $search_thread, $next_oldest_link, $next_newest_link, $addpoll, $printthread, $sendthread, $moderationoptions, $usersbrowsing, $lang, $BASEURL, $tid, $thread_deleted);
+
+
+
+
+
+// ── Rating block for showthread.php ──────────────────────────────────────────
+// Place this block before render_showthread() call
+// Replace $ratingform with $rating_html in render_showthread() call
+
+// Rating data from threads table
+$rating_data = [
+    'avg'         => $thread['numratings'] > 0
+                     ? round($thread['totalratings'] / $thread['numratings'], 1)
+                     : 0,
+    'count'       => (int)($thread['numratings'] ?? 0),
+    'user_rating' => 0,
+];
+
+// Current user's rating
+if ($CURUSER['id']) {
+    $q2 = $db->sql_query(
+        "SELECT rating FROM threadratings 
+         WHERE tid = {$tid} AND user_id = {$CURUSER['id']} LIMIT 1"
+    );
+    if ($ur = $db->fetch_array($q2)) {
+        $rating_data['user_rating'] = (int)$ur['rating'];
+    }
+}
+
+// Avg stars
+$avg_stars_html = '';
+for ($i = 1; $i <= 10; $i++) {
+    $filled = $rating_data['avg'] >= $i;
+    $half   = !$filled && $rating_data['avg'] >= $i - 0.5;
+    if ($filled)       $avg_stars_html .= '<i class="bi bi-star-fill rating-star-filled"></i>';
+    elseif ($half)     $avg_stars_html .= '<i class="bi bi-star-half rating-star-filled"></i>';
+    else               $avg_stars_html .= '<i class="bi bi-star rating-star-empty"></i>';
+}
+
+// User stars
+$user_stars_html = '';
+if ($CURUSER['id']) {
+    for ($i = 1; $i <= 10; $i++) {
+        $active           = $rating_data['user_rating'] >= $i ? 'active' : '';
+        $user_stars_html .= '<i class="bi bi-star-fill user-star ' . $active . '" data-value="' . $i . '" onclick="rateThread(' . $i . ')"></i>';
+    }
+    $user_section = '
+        <div class="d-flex align-items-center gap-2">
+            <div class="user-stars d-flex gap-1" id="user-stars">' . $user_stars_html . '</div>
+            <span class="small text-muted" id="rating-hint">'
+                . ($rating_data['user_rating'] ? $rating_data['user_rating'] . '/10' : 'rate')
+            . '</span>
+        </div>';
+} else {
+    $user_section = '<a href="' . $BASEURL . '/member.php?action=login" class="btn btn-sm btn-outline-primary rounded-pill">Login to rate</a>';
+}
+
+$rating_html = '
+<style>
+.rating-modern { background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:all 0.2s; }
+.rating-modern:hover { box-shadow:0 4px 16px rgba(0,0,0,0.1); }
+.rating-score { font-size:2.2rem; font-weight:800; color:#1a1a2e; line-height:1; }
+.rating-stars { display:flex; gap:4px; font-size:1rem; }
+.rating-star-filled { color:#f59e0b; }
+.rating-star-empty { color:#e9ecef; }
+.user-star { font-size:1.5rem; cursor:pointer; transition:0.15s; color:#dee2e6; }
+.user-star:hover { transform:scale(1.15); color:#f59e0b !important; }
+.user-star.active { color:#f59e0b; }
+@media(max-width:768px) { .rating-score { font-size:1.8rem; } .user-star { font-size:1.2rem; } }
+</style>
+<div class="rating-modern">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="text-center">
+                <div class="rating-score">' . ($rating_data['count'] > 0 ? $rating_data['avg'] : '—') . '</div>
+                <div class="small text-muted">' . number_format($rating_data['count']) . ' votes</div>
+            </div>
+            <div class="rating-stars" id="rating-display">' . $avg_stars_html . '</div>
+        </div>
+        ' . $user_section . '
+    </div>
+</div>
+<script src="' . $BASEURL . '/scripts/rating.js"></script>
+<script>ratingInit(' . $rating_data['user_rating'] . ', ' . $tid . ', "' . $BASEURL . '", "thread");</script>';
+
+
+
+
+
+echo render_showthread($thread, $multipage, $addremovesubscription, $newreply, $pollbox, $rating_html, $posts, $quickreply, $search_thread, $next_oldest_link, $next_newest_link, $addpoll, $printthread, $sendthread, $moderationoptions, $usersbrowsing, $lang, $BASEURL, $tid, $thread_deleted);
 echo render_report_modal((int)$CURUSER['id']);
 stdfoot();
 
@@ -1219,7 +1308,7 @@ function render_moderation_options(int $tid, string $standardthreadtools, string
     HTML;
 }
 
-function render_showthread(array $thread, string $multipage, string $addremovesubscription, string $newreply, string $pollbox, string $posts, string $quickreply, string $search_thread, string $next_oldest_link, string $next_newest_link, string $addpoll, string $printthread, string $sendthread, string $moderationoptions, string $usersbrowsing, object $lang, string $baseurl, int $tid, int $thread_deleted): string
+function render_showthread(array $thread, string $multipage, string $addremovesubscription, string $newreply, string $pollbox, string $rating_html, string $posts, string $quickreply, string $search_thread, string $next_oldest_link, string $next_newest_link, string $addpoll, string $printthread, string $sendthread, string $moderationoptions, string $usersbrowsing, object $lang, string $baseurl, int $tid, int $thread_deleted): string
 {
     return <<<HTML
     <div class="container-md">
@@ -1232,7 +1321,7 @@ function render_showthread(array $thread, string $multipage, string $addremovesu
                 {$addremovesubscription} {$newreply}
             </div>
         </div>
-
+        {$rating_html}
         {$pollbox}
 
         <div id="posts">{$posts}</div>

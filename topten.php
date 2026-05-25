@@ -661,7 +661,7 @@ $ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$us
                         ".$ava22."
                         <div>
                             <a href='" . get_profile_link($a["userid"]) . "' class='text-decoration-none'>
-                                <strong>" . get_user_color($a["username"], $a["namestyle"]) . "</strong>
+                                <strong>" . format_name($a["username"], $a["usergroup"]) . "</strong>
                             </a>
                         </div>
                     </div>

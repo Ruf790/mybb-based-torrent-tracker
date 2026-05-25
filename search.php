@@ -8,21 +8,7 @@ define('SCRIPTNAME',               'search.php');
 define('TSF_FORUMS_TSSEv56',       true);
 define('TSF_FORUMS_GLOBAL_TSSEv56',true);
 
-$templatelist  = 'search,forumdisplay_thread_gotounread,search_results_threads_thread,search_results_threads';
-$templatelist .= ',search_results_posts,search_results_posts_post,search_results_icon';
-$templatelist .= ',search_forumlist_forum,search_forumlist';
-$templatelist .= ',multipage,multipage_breadcrumb,multipage_end,multipage_jump_page,multipage_nextpage';
-$templatelist .= ',multipage_page,multipage_page_current,multipage_page_link_current,multipage_prevpage,multipage_start';
-$templatelist .= ',search_results_posts_inlinecheck,search_results_posts_nocheck';
-$templatelist .= ',search_results_threads_inlinecheck,search_results_threads_nocheck';
-$templatelist .= ',search_results_posts_inlinemoderation_custom_tool,search_results_posts_inlinemoderation_custom';
-$templatelist .= ',search_results_posts_inlinemoderation,search_results_threads_inlinemoderation_custom_tool';
-$templatelist .= ',search_results_threads_inlinemoderation_custom,search_results_threads_inlinemoderation';
-$templatelist .= ',forumdisplay_thread_attachment_count,search_threads_inlinemoderation_selectall';
-$templatelist .= ',search_posts_inlinemoderation_selectall,post_prefixselect_prefix,post_prefixselect_multiple';
-$templatelist .= ',search_orderarrow,search_results_posts_forumlink,search_results_threads_forumlink';
-$templatelist .= ',forumdisplay_thread_multipage_more,forumdisplay_thread_multipage_page,forumdisplay_thread_multipage';
-$templatelist .= ',search_moderator_options';
+
 
 define('IN_FORUM', true);
 require_once 'global.php';

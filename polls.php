@@ -783,7 +783,7 @@ function poll_render_results(
             if (!empty($voters[$num]) && is_array($voters[$num])) {
                 foreach ($voters[$num] as $uid => $uname) {
                     $userlist .= $comma . build_profile_link($uname, $uid);
-                    $comma     = $lang->comma;
+                    $comma     = $lang->global['comma'];
                 }
             }
             if (!empty($guest_voters[$num])) {

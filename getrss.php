@@ -55,33 +55,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['showall'])) {
         $queries[] = 'categories=all';
     } else {
-        $selected_categories = [];
+		
+		$cats_raw = trim($_POST['categories_selected'] ?? '');
+    if (empty($cats_raw)) {
+        $queries[] = 'categories=all';
+    } else {
+        $ids = array_filter(array_map('intval', explode(',', $cats_raw)));
+        $queries[] = !empty($ids) ? 'categories=' . implode(',', $ids) : 'categories=all';
+    }
         
-        // Get all category IDs
-        $sqlquery = $db->sql_query('SELECT id FROM categories WHERE type = \'c\'');
-        while ($res = $db->fetch_array($sqlquery)) {
-            $cat_id = (string)($res['id'] ?? '');
-            if (($_POST['cat' . $cat_id] ?? '') === 'yes') {
-                $selected_categories[] = $cat_id;
-            }
-        }
-
-        // Also check for array-based category selection (backward compatibility)
-        $post_cats = $_POST['cat'] ?? [];
-        if (is_array($post_cats)) {
-            foreach ($post_cats as $cat_id) {
-                $cat_id = (string)$cat_id;
-                if (!in_array($cat_id, $selected_categories, true)) {
-                    $selected_categories[] = $cat_id;
-                }
-            }
-        }
-
-        if (!empty($selected_categories)) {
-            $queries[] = 'categories=' . implode(',', $selected_categories);
-        } else {
-            $queries[] = 'categories=all';
-        }
     }
 
     // Build final URL
@@ -160,48 +142,120 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Display the form
 stdhead($lang->getrss['title'] ?? 'Get RSS Feed');
 
-// Добавляем ВСЕ JavaScript функции в начале вывода
-echo '
-<script>
-// Функции для выбора/снятия всех категорий
-function select_deselectAll(source, formName) {
-    const form = document.forms[formName] || document.querySelector(\'form[name="\' + formName + \'"]\');
-    if (!form) return;
-    
-    const checkboxes = form.querySelectorAll(\'input[type="checkbox"]\');
-    checkboxes.forEach(function(checkbox) {
-        if (checkbox.name !== source.name && checkbox.name !== "showall") {
-            checkbox.checked = source.checked;
-        }
-    });
-}
 
-function toggleCategorySelection(selectAll) {
-    const form = document.forms["rss"] || document.querySelector(\'form[name="rss"]\');
-    if (!form) return;
-    
-    const checkboxes = form.querySelectorAll(\'input[name^="cat"]\');
-    checkboxes.forEach(function(checkbox) {
-        checkbox.checked = selectAll;
-    });
+
+
+?>
+<script>
+// Мульти-выбор категорий
+const selectedCats = new Set();
+
+function toggleCategory(btn) {
+    const id = btn.dataset.id;
+    if (selectedCats.has(id)) {
+        selectedCats.delete(id);
+        btn.classList.remove('active');
+    } else {
+        selectedCats.add(id);
+        btn.classList.add('active');
+    }
+    document.getElementById('categoriesSelected').value = [...selectedCats].join(',');
+    const count = selectedCats.size;
+    document.getElementById('catLabel').innerHTML = count > 0
+        ? '<i class="fas fa-check-circle text-success me-1"></i><strong>' + count + ' categor' + (count === 1 ? 'y' : 'ies') + ' selected</strong>'
+        : '<i class="fas fa-hand-pointer me-1"></i>Click to select / deselect categories';
 }
 
 function selectAllCategories() {
-    toggleCategorySelection(true);
+    document.querySelectorAll('.cat-pick-btn').forEach(btn => {
+        selectedCats.add(btn.dataset.id);
+        btn.classList.add('active');
+    });
+    document.getElementById('categoriesSelected').value = [...selectedCats].join(',');
+    document.getElementById('catLabel').innerHTML = '<i class="fas fa-check-circle text-success me-1"></i><strong>All categories selected</strong>';
 }
 
 function deselectAllCategories() {
-    toggleCategorySelection(false);
+    selectedCats.clear();
+    document.querySelectorAll('.cat-pick-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('categoriesSelected').value = '';
+    document.getElementById('catLabel').innerHTML = '<i class="fas fa-hand-pointer me-1"></i>Click to select / deselect categories';
+}
+</script>
+
+<?
+
+
+
+// Добавляем ВСЕ JavaScript функции в начале вывода
+echo '
+
+
+
+<style>
+.category-icon-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
-// Функция для обработки "Select All" checkbox
-function handleSelectAll(source) {
-    const checkboxes = document.querySelectorAll(\'input[name^="cat"]\');
-    checkboxes.forEach(function(checkbox) {
-        checkbox.checked = source.checked;
-    });
+.cat-pick-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 18px;
+    min-width: 90px;
+    border: 1.5px solid #dee2e6;
+    border-radius: 14px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #6c757d;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: center;
 }
 
+.cat-pick-btn i {
+    font-size: 1.8rem;
+    transition: transform 0.2s ease;
+}
+
+.cat-pick-btn:hover {
+    border-color: #0d6efd;
+    color: #0d6efd;
+    background: #f0f5ff;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(13,110,253,0.15);
+}
+
+.cat-pick-btn:hover i {
+    transform: scale(1.2);
+}
+
+.cat-pick-btn.active {
+    border-color: #0d6efd;
+    border-width: 2px;
+    background: #e7f1ff;
+    color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13,110,253,0.12);
+    transform: translateY(-2px);
+}
+
+.cat-pick-btn.active span {
+    font-weight: 700;
+}
+
+
+</style>
+
+
+
+
+<script>
 // Функция копирования RSS ссылки
 function copyRssLink() {
     const copyText = document.getElementById("rssLink");
@@ -247,8 +301,9 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>';
 
-include_once INC_PATH . '/functions_category2.php';
-$catoptions = ts_category_list2(2, 'rss');
+if (!isset($_categoriesC) || !is_array($_categoriesC)) {
+    require_once TSDIR . '/cache/categories.php';
+}
 
 // Timezone options array for cleaner code
 $timezone_options = [
@@ -286,7 +341,35 @@ $timezone_options = [
 
 echo '
 <form method="post" action="/getrss.php" name="rss" class="needs-validation" novalidate>
-    ' . $catoptions . '
+    
+	
+<div class="container mt-4 mb-0">
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white fw-bold">
+            <i class="fas fa-th-large me-2"></i>Categories
+        </div>
+        <div class="card-body">
+            <input type="hidden" name="categories_selected" id="categoriesSelected" value="">
+            <div class="category-icon-picker" id="catPicker">';
+
+foreach ($_categoriesC as $cat) {
+    echo '<button type="button"
+            class="cat-pick-btn"
+            data-id="' . (int)$cat['id'] . '"
+            title="' . htmlspecialchars($cat['name']) . '"
+            onclick="toggleCategory(this)">
+        <i class="' . htmlspecialchars($cat['icon'] ?? 'fas fa-folder') . '"></i>
+        <span>' . htmlspecialchars($cat['name']) . '</span>
+    </button>';
+}
+
+echo '</div>
+            <div class="mt-2 small text-muted" id="catLabel">
+                <i class="fas fa-hand-pointer me-1"></i>Click to select / deselect categories
+            </div>
+        </div>
+    </div>
+</div>
 
     <div class="container my-4">
         <!-- Quick Selection Buttons -->

@@ -11,7 +11,6 @@ define('RULES_VERSION', '0.6');
  * Include required files
  */
 require_once __DIR__ . '/global.php';
-//require_once INC_PATH . '/functions_security.php';
 require_once INC_PATH . '/class_parser.php';
 
 /**

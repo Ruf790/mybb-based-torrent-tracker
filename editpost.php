@@ -830,7 +830,7 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
                 $postoptionschecked['disablesmilies'] = " checked=\"checked\"";
             }
             
-            $subscription_method = get_subscription_method($tid, $postoptions);
+            $subscription_method = get_subscription_method((int)$tid, $postoptions);
             ${$subscription_method.'subscribe'} = "checked=\"checked\" ";
         }
     }

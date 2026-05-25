@@ -256,7 +256,7 @@ function saveFile($file, $targetDir, $allowedTypes)
 
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mime = finfo_file($finfo, $file['tmp_name']);
-    finfo_close($finfo);
+    //finfo_close($finfo);
 
     if (!in_array($mime, $allowedTypes)) 
 	{
@@ -426,11 +426,23 @@ if (!empty($_FILES['nfoFile']['tmp_name']))
 
 
 
+$max_screenshots ??= (int)($usergroups['max_screenshots'] ?? 3);
+
 // Screenshots
 $screenshotFilenames = [];
 if (!empty($_FILES['screenshotsUpload']['tmp_name'][0])) 
 {
-    foreach ($_FILES['screenshotsUpload']['tmp_name'] as $index => $tmpName) 
+    
+	$uploaded_count = count(array_filter($_FILES['screenshotsUpload']['tmp_name']));
+
+    if ($uploaded_count > $max_screenshots) {
+        $errors[] = sprintf('Your group allows maximum %d screenshots. You tried to upload %d.', $max_screenshots, $uploaded_count);
+    } 
+	
+	
+	else {
+		
+	foreach ($_FILES['screenshotsUpload']['tmp_name'] as $index => $tmpName) 
 	{
         $file = [
             'name' => $_FILES['screenshotsUpload']['name'][$index],
@@ -445,6 +457,8 @@ if (!empty($_FILES['screenshotsUpload']['tmp_name'][0]))
             $screenshotFilenames[] = $filename;
         }
     }
+	
+	}
 }
 
 
@@ -1212,6 +1226,17 @@ exit;
 
 
 stdhead($lang->upload['head']);
+
+
+
+
+$max_screenshots = (int)($usergroups['max_screenshots'] ?? 3);
+
+
+
+
+
+
 
 
 $torrent = [];
@@ -2630,11 +2655,48 @@ function copyAnnounceUrl() {
                            id="screenshotsUpload"
                            name="screenshotsUpload[]"
                            multiple
-                           accept="image/*">
+                           accept="image/*"
+						   data-max="<?= (int)$max_screenshots ?>">
                 </div>
                 <!-- Preview ВНУТРИ screenshotFileGroup -->
                 <div id="screenshotsPreview" class="preview-container"></div>
             </div>
+			
+			<!-- Лимит скринов -->
+
+<!-- Модалка превью скринов -->
+<div class="modal fade" id="screenshotPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-images me-2"></i>Screenshots Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalPreviewGrid" class="row g-2"></div>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <span class="text-muted small" id="modalPreviewCount"></span>
+                <div>
+                    <button type="button" class="btn btn-outline-danger btn-sm me-2" onclick="clearScreenshots()">
+                        <i class="fas fa-times me-1"></i>Clear All
+                    </button>
+                    
+					<button type="button" class="btn btn-primary btn-sm" 
+        data-bs-dismiss="modal"
+        onclick="showSelectedPreviews()">
+    <i class="fas fa-check me-1"></i>Confirm
+</button>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+			
+			
 
             <!-- Bulk URL -->
             <div id="screenshotUrlGroup" class="d-none">

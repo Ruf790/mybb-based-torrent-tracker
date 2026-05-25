@@ -17,7 +17,7 @@ gzip();
 define('VS_VERSION', '1.3.9');
 
 // ── Авторизация ───────────────────────────────────────────
-$is_mod = is_mod($usergroups);
+$is_mod = is_mod($mybb->usergroup);
 if ($snatchmod == 'no' && !$is_mod) {
     stderr($lang->global['notavailable']);
 }

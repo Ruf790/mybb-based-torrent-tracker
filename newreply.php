@@ -114,6 +114,8 @@ $errors = [];
 // ── Attachments ───────────────────────────────────────────────────────────────
 $attachbox = '';
 
+$maximageserror = $attacherror = '';
+
 if ($enableattachments == 1
     && ($mybb->get_input('newattachment')
         || $mybb->get_input('updateattachment')

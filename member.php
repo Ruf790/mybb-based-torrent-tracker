@@ -537,7 +537,9 @@ if (isset($breadcrumb_map[$mybb->input['action']])) {
 }
 
 // ── Registration guard ─────────────────────────────────────────────────────
-if (in_array($mybb->input['action'], ['register', 'do_register'], true) && $mybb->usergroup['cancp'] != 1) {
+//if (in_array($mybb->input['action'], ['register', 'do_register'], true) && $mybb->usergroup['cancp'] != 1) {
+if (in_array($mybb->input['action'], ['register', 'do_register'], true)) {	
+	
     if ($disableregs == 1) { stderr($lang->member['registrations_disabled']); }
 
     if ((int)$maxusers > 0) {
@@ -545,7 +547,9 @@ if (in_array($mybb->input['action'], ['register', 'do_register'], true) && $mybb
         if ($maxusers <= $count) { stderr($lang->global['signuplimitreached']); }
     }
 
-    if ($CURUSER['id'] != 0) { stderr($lang->member['error_alreadyregistered']); }
+    if (($CURUSER['id'] ?? 0) != 0) {
+        stderr($lang->member['error_alreadyregistered']);
+    }
 
     if ($betweenregstime && $maxregsbetweentime) {
         $datecut = TIMENOW - (60 * 60 * $betweenregstime);
@@ -679,10 +683,10 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
             
 			 
 			stdok(
-    message: sprintf($lang->member['redirect_registered_activation'], $SITENAME, htmlspecialchars_uni($user_info['username'])),
-    title:   'Registration successful',
-    subtitle: 'Your account has been created.'
-); 
+              message: sprintf($lang->member['redirect_registered_activation'], $SITENAME, htmlspecialchars_uni($user_info['username'])),
+              title:   'Registration successful',
+              subtitle: 'Your account has been created.'
+            ); 
 			 
 			 
 
@@ -2866,48 +2870,49 @@ if ($mybb->input['action'] === 'emailuser') {
 
     $plugins->run_hooks('member_emailuser_end');
 	
-    $emailuser = '<html>
-<head>
-<title>'.$SITENAME.' - '.$lang->member['email_user'].'</title>
 
-</head>
-<body>
+$emailuser = '
+<div class="container-md mt-4">
+    ' . $errors . '
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0">
+                <i class="fas fa-envelope me-2"></i>' . $lang->member['email_user'] . '
+            </h5>
+        </div>
+        <form action="member.php" method="post">
+            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
+            <input type="hidden" name="action" value="do_emailuser">
+            <input type="hidden" name="id" value="' . (int)$to_user['id'] . '">
+            <div class="card-body">
+                ' . $from_email . '
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        <i class="fas fa-heading me-1 text-muted"></i>' . $lang->member['email_subject'] . '
+                    </label>
+                    <input type="text" class="form-control" name="subject" value="' . htmlspecialchars_uni($subject) . '">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        <i class="fas fa-align-left me-1 text-muted"></i>' . $lang->member['email_message'] . '
+                    </label>
+                    <textarea class="form-control" name="message" rows="10" style="resize:vertical">' . htmlspecialchars_uni($message) . '</textarea>
+                </div>
+            </div>
+            <div class="card-footer bg-light text-center py-3">
+                <button type="submit" class="btn btn-primary px-4">
+                    <i class="fas fa-paper-plane me-2"></i>' . $lang->member['send_email'] . '
+                </button>
+                <a href="javascript:history.back()" class="btn btn-outline-secondary ms-2 px-4">
+                    <i class="fas fa-times me-2"></i>' . $lang->member['cans'] . '
+                </a>
+            </div>
+        </form>
+    </div>
+</div>';
 
-	<div class="container-md">
-'.$errors.'
-	<div class="card">
-<div class="card-body">
-<form action="member.php" method="post" name="input">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-
-'.$from_email.'
-	
-	<div class="pb-4 border-bottom mb-4">
-		<label for="subject">'.$lang->member['email_subject'].'</label>
-		<input type="text" class="form-control border form-control-sm" size="50" name="subject" value="'.$subject.'" />
-	</div>
-	
-
-		<label for="subject">'.$lang->member['email_message'].'</label>
-		<textarea cols="50" rows="10" class="form-control border form-control-sm" style="resize: none" name="message">'.$message.'</textarea>
 
 
-
-'.$captcha.'
-
-	</div>
-	<div class="card-footer text-center">
-<input type="hidden" name="action" value="do_emailuser" />
-<input type="hidden" name="id" value="'.$to_user['id'].'" />
-<input type="submit" class="btn btn-primary" value="'.$lang->member['send_email'].'" />
-	</div>
-</form>
-	</div>
-		</div>
-
-
-</body>
-</html>';
 	
     stdhead('title');
     echo $emailuser;

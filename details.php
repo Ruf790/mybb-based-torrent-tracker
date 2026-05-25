@@ -38,6 +38,8 @@ require_once INC_PATH . '/functions_multipage.php';
 
 require_once INC_PATH . '/functions_getagent.php';
 
+require_once INC_PATH . '/functions_comment_attachments.php';
+
 
 
 
@@ -425,27 +427,16 @@ else
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 $HEAD = sprintf($lang->details['detailsfor'], $Torrent['name']);
 stdhead($HEAD);
 
 require_once INC_PATH . '/functions_bookmark.php';
 
 
-echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css">';
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/details.css">';
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/animate.min.css">';
+
+echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/comment_attachments.css">';
 
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>';
@@ -773,8 +764,22 @@ if ($subres && isset($subres))
     $db->free_result($subres);
 }
 
-
-
+// ── Bulk-load attachments for all comments (one query) ───────────────────────
+$all_attachments = [];
+if (!empty($allrows)) {
+    $comment_ids = array_map(fn($r) => (int)$r['id'], $allrows);
+    $ids_sql     = implode(',', $comment_ids);
+    $att_res = $db->sql_query(
+        "SELECT * FROM attachments
+         WHERE comment_id IN ($ids_sql) AND visible = 1
+         ORDER BY comment_id, dateuploaded ASC"
+    );
+    while ($att = $db->fetch_array($att_res)) {
+        $all_attachments[(int)$att['comment_id']][] = $att;
+    }
+}
+// Pass to commenttable via global
+$GLOBALS['all_attachments'] = $all_attachments;
 
 
 
@@ -928,16 +933,21 @@ $editor = insert_bbcode_editor($smilies, $BASEURL, 'message');
 
 			
 // Формирование HTML
+$posthash = bin2hex(random_bytes(16));
+$uploader = render_attachment_uploader($posthash, (int)$CURUSER['id']);
+ 
+// ── Формирование HTML ────────────────────────────────────────────────────────
 $showcommenttable .= '
 <br />
 <div class="container mt-4">
     <h2 class="mb-3">Quick Comment</h2>
     '.(!empty($cerror) ? '<div class="error">'.$cerror.'</div>' : '').'
-	' . ($useajax == 'yes' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js"></script>' : '') . '
+    ' . ($useajax == 'yes' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js"></script>' : '') . '
     ' . $editor['toolbar'] . '
     <form name="comment" id="comment" method="post" action="comment.php?action=add&tid=' . $id . '" novalidate>
         <input type="hidden" name="ctype" value="quickcomment">
         <input type="hidden" name="page" value="' . intval($page ?? ($_GET['page'] ?? 1)) . '">
+        <input type="hidden" name="posthash" value="' . htmlspecialchars($posthash) . '">
         <div id="fileIdsContainer"></div>
         <div class="mb-3">
             <label for="message" class="form-label">Your Comment <small class="text-muted">(макс. 500 символов)</small></label>
@@ -945,11 +955,12 @@ $showcommenttable .= '
             <div id="charCount" class="form-text text-end">0 / 500</div>
         </div>
         <div id="message_preview" class="form-control mt-3 d-none"></div>
+        ' . $uploader . '
         ' . ($useajax == 'yes' ? '
         <div class="d-flex align-items-center justify-content-center mb-3">
             <i id="loading-layer" class="fa-solid fa-circle-notch fa-spin" aria-label="Loading..." style="display:none; color: #0b59e0; width:24px; height:24px; margin-right: 10px;"></i>
             <button type="button" class="btn btn-primary me-2" id="quickcomment" onclick="TSajaxquickcomment(\'' . $id . '\');">' . $lang->global['buttonsubmit'] . '</button>
-            <a href="comment.php?action=add&tid='.$id.'" class="btn btn-secondary">' . $lang->global['advancedbutton'] . '</a>	
+            <a href="comment.php?action=add&tid='.$id.'" class="btn btn-secondary">' . $lang->global['advancedbutton'] . '</a>
         </div>' : '
         <div class="d-flex gap-2 justify-content-center mb-3">
             <button type="submit" name="submit" class="btn btn-primary">' . $lang->global['buttonsubmit'] . '</button>
@@ -1693,6 +1704,16 @@ $details = '
                         <i class="bi bi-people me-2"></i>Peers ('.ts_nf($Torrent['seeders'] + $Torrent['leechers']).')
                     </button>
                 </li>
+				
+				' . ((int)$Torrent['seeders'] === 0 && $CURUSER ? '
+                <li class="nav-item align-self-center ms-2">
+                    <a href="' . $BASEURL . '/takereseed.php?reseedid=' . (int)$Torrent['id'] . '"
+                    class="btn btn-sm btn-outline-warning"
+                    onclick="return confirm(\'Send reseed request to all previous downloaders?\')">
+                <i class="bi bi-megaphone me-1"></i> Request Reseed
+                    </a>
+                 </li>' : '') . '
+
             </ul>
         </div>
 

@@ -587,11 +587,13 @@ if ($has_announcements) {
 $tids        = [];
 $threadcache = [];
 
+
+
 if ($fpermissions['canviewthreads'] != 0) {
     $plugins->run_hooks('forumdisplay_get_threads');
 
     $query = $db->sql_query("
-        SELECT t.*, {$ratingadd}t.username AS threadusername, u.username
+        SELECT t.*, t.username AS threadusername, u.username
         FROM threads t
         LEFT JOIN users u ON (u.id = t.uid)
         WHERE t.fid = '$fid' $tuseronly $tvisibleonly $datecutsql2 $prefixsql2
@@ -736,7 +738,28 @@ if (!empty($threadcache) && is_array($threadcache)) {
             $shownormalsep = false;
         }
 
+        // ── Thread rating display ──────────────────────────────────────────
         $rating = '';
+        if (!empty($thread['numratings']) && $thread['numratings'] > 0) {
+            $rating_avg = $thread['totalratings'] / $thread['numratings'];
+            $avg_stars  = '';
+            for ($ri = 1; $ri <= 10; $ri++) {
+                if ($rating_avg >= $ri)           $avg_stars .= '<i class="bi bi-star-fill rating-star-filled"></i>';
+                elseif ($rating_avg >= $ri - 0.5) $avg_stars .= '<i class="bi bi-star-half rating-star-filled"></i>';
+                else                              $avg_stars .= '<i class="bi bi-star rating-star-empty"></i>';
+            }
+            
+			
+			
+			$rating = '<div class="d-flex align-items-center gap-1 ms-2">
+    <div class="d-flex gap-0" style="color:#f59e0b;font-size:1rem;">' . $avg_stars . '</div>
+    <span class="text-muted ms-1" style="font-size:0.75rem;">'
+        . round($rating_avg, 1) . ' <span class="opacity-50">(' . ts_nf($thread['numratings']) . ')</span>
+    </span>
+</div>';
+        
+		}
+
 
         // ─ Многостраничность треда ───────────────────────────────────────────
         $thread['pages']     = 0;
@@ -902,8 +925,10 @@ if (!empty($threadcache) && is_array($threadcache)) {
 		<div class="col align-self-center ms-2">
 			
 			
-	<h6 class="mb-0 text-forum"><a href="'.$thread['threadlink'].'">'.$thread['threadprefix'].'<span class="'.$inline_edit_class.' '.$new_class.'" id="tid_'.$inline_edit_tid.'">'.$thread['subject'].'</span></h6>
-		<div class="links small">'.$lang->forumdisplay['by'].' '.$thread['profilelink'].'</div>
+        <h6 class="mb-0 text-forum"><a href="'.$thread['threadlink'].'">'.$thread['threadprefix'].'<span class="'.$inline_edit_class.' '.$new_class.'" id="tid_'.$inline_edit_tid.'">'.$thread['subject'].'</span></h6>
+		<div class="links small">'.$lang->forumdisplay['by'].' '.$thread['profilelink'].''.$rating.'</div>
+
+
 		
 		<div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none mt-1">
 			<span class="'.$thread_type_class.'"></span>'.$attachment_count.'<span class="thread_status '.$folder.'" title="'.$folder_label.'"></span>
@@ -1364,7 +1389,7 @@ if ($foruminfo['type'] !== 'c') {
 					<option value="lastpost"'.$sortsel['lastpost'].'>'.$lang->forumdisplay['sort_by_lastpost'].'</option>
 					<option value="starter"'.$sortsel['starter'].'>'.$lang->forumdisplay['sort_by_starter'].'</option>
 					<option value="started"'.$sortsel['started'].'>'.$lang->forumdisplay['sort_by_started'].'</option>
-					'.$ratingsort.'
+					
 					<option value="replies"'.$sortsel['replies'].'>'.$lang->forumdisplay['sort_by_replies'].'</option>
 					<option value="views"'.$sortsel['views'].'>'.$lang->forumdisplay['sort_by_views'].'</option>
 				</select>
@@ -1509,6 +1534,8 @@ $forums = '<html>
 	'.$moderatedby.'
 '.$subforums.'
 '.$threadslist.'
+
+
 	
 '.$usersbrowsing.'
 

@@ -296,12 +296,7 @@ foreach ($search_url_params as $key => $value) {
 }
 $multipage = multipage($num_users, $per_page, $page, htmlspecialchars_uni($base_url));
 
-// Fetch users
-$usertitles = $cache->read('usertitles');
-$usertitles_cache = [];
-foreach ((array)$usertitles as $ut) {
-    $usertitles_cache[$ut['posts']] = $ut;
-}
+
 
 $users_html = '';
 $query = $db->sql_query("

@@ -37,15 +37,15 @@ if($mybb->get_input('action') == "today")
     $query = $db->simple_select("users", "COUNT(id) AS users", "lastactive > '{$threshold}' AND invisible = '1'");
     $invis_count = (int)$db->fetch_field($query, "users");
 
-    $wolusersperpage = "20";
     
-    if(!$wolusersperpage || (int)$wolusersperpage < 1)
+    
+    if(!$ts_perpage || (int)$ts_perpage < 1)
     {
-        $wolusersperpage = 20;
+        $ts_perpage = 20;
     }
 
     // Add pagination
-    $perpage = (int)$wolusersperpage;
+    $perpage = (int)$ts_perpage;
 
     if($mybb->get_input('page', MyBB::INPUT_INT) > 0)
     {

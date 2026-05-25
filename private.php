@@ -1777,7 +1777,7 @@ if($mybb->input['action'] == "read")
 
 	if($pm['receipt'] == 1)
 	{
-		if($usergroups['candenypmreceipts'] == 1 && $mybb->get_input('denyreceipt', MyBB::INPUT_INT) == 1)
+		if($mybb->usergroup['candenypmreceipts'] == 1 && $mybb->get_input('denyreceipt', MyBB::INPUT_INT) == 1)
 		{
 			$receiptadd = 0;
 		}

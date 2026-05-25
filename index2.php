@@ -19,7 +19,7 @@ $plugins->run_hooks('index_start');
 
 /* ── Logout link ─────────────────────────────────────────────────────── */
 $logoutlink = '';
-if ($CURUSER['id'] != 0) {
+if (($CURUSER['id'] ?? 0) != 0) {
     
      $logoutlink = '<a class="float-left" href="member.php?action=logout&amp;logoutkey='.$CURUSER['logoutkey'].'"><i class="bi bi-box-arrow-right"></i> '.$lang->global['index_logout'].'</a>';
 }
@@ -412,7 +412,7 @@ $boardstats = '<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
 
 
 /* ── Forum list ──────────────────────────────────────────────────────── */
-if ($CURUSER['id'] == 0) {
+if (($CURUSER['id'] ?? 0) == 0) {
     $q = $db->simple_select('forums', '*', 'active!=0', ['order_by' => 'pid, disporder']);
     $forumsread = [];
     if (isset($mybb->cookies['mybb']['forumread'])) {
@@ -431,7 +431,7 @@ if ($CURUSER['id'] == 0) {
 $fcache = [];
 
 while ($forum = $db->fetch_array($q)) {
-    if ($CURUSER['id'] == 0 && !empty($forumsread[$forum['fid']])) {
+    if (($CURUSER['id'] ?? 0) == 0 && !empty($forumsread[$forum['fid']])) {
         $forum['lastread'] = $forumsread[$forum['fid']];
     }
     $fcache[$forum['pid']][$forum['disporder']][$forum['fid']] = $forum;

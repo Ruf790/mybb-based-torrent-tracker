@@ -98,6 +98,7 @@ function handleXmlHttpAction(): void
         'quick_comment' => handleQuickComment(),
 		'edit_torrent' => handleEditTorrent(),
 		'rate_torrent' => handleRateTorrent(),
+		'rate_thread' => handleRateThread(),
         default => handleUnknownAction()
     };
 }
@@ -206,6 +207,60 @@ function handleRateTorrent(): void
         'success' => true,
         'avg'     => (float)$row['avg'],
         'count'   => (int)$row['cnt'],
+    ]);
+    exit;
+}
+
+
+
+
+function handleRateThread(): void
+{
+    global $db, $CURUSER, $charset;
+    header("Content-Type: application/json; charset={$charset}");
+
+    if (!$CURUSER) {
+        echo json_encode(['success' => false, 'error' => 'Not logged in']);
+        exit;
+    }
+
+    $tid    = (int)($_POST['tid'] ?? 0);
+    $rating = max(1, min(10, (int)($_POST['rating'] ?? 0)));
+
+    if (!$tid || !$rating) {
+        echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
+        exit;
+    }
+
+    // Insert or update user's rating
+    $db->sql_query("
+        INSERT INTO threadratings (tid, user_id, rating, added)
+        VALUES ({$tid}, {$CURUSER['id']}, {$rating}, " . TIMENOW . ")
+        ON DUPLICATE KEY UPDATE rating = {$rating}, added = " . TIMENOW
+    );
+
+    // Recalculate avg and count
+    $q = $db->sql_query(
+        "SELECT ROUND(AVG(rating), 1) AS avg, COUNT(id) AS cnt 
+         FROM threadratings WHERE tid = {$tid}"
+    );
+    $row = $db->fetch_array($q);
+
+    $avg   = (float)($row['avg'] ?? 0);
+    $count = (int)($row['cnt'] ?? 0);
+
+    // Update threads table cache
+    $db->sql_query(
+        "UPDATE threads SET 
+            numratings   = {$count},
+            totalratings = " . (int)round($avg * $count) . "
+         WHERE tid = {$tid}"
+    );
+
+    echo json_encode([
+        'success' => true,
+        'avg'     => $avg,
+        'count'   => $count,
     ]);
     exit;
 }
@@ -805,23 +860,20 @@ function handleSearchTorrents(): void
 function handleQuickComment(): void
 {
     global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins, $ts_perpage;
-    
-    if (!isset($_POST['ajax_quick_comment']) || !isset($_POST['id']) || !isset($_POST['text']) || !$CURUSER) {
+
+	if (!isset($_POST['ajax_quick_comment']) || !isset($_POST['id']) || !isset($_POST['text']) || !$CURUSER) {
         return;
     }
 
-
 	
 	$query = $db->simple_select('users', 'cancomment', "id = '{$CURUSER['id']}'");
-$commentperm = $db->fetch_array($query);
-if ((int)($commentperm['cancomment'] ?? 1) === 0) 
-{
-     show_msg('nopermission');
-}
+    $commentperm = $db->fetch_array($query);
+    if ((int)($commentperm['cancomment'] ?? 1) === 0) 
+    {
+       show_msg('nopermission');
+    }
 	
-	
-	
-	
+
 
     $torrentid = (int)$_POST['id'];
     $lang->load('comment');
@@ -931,6 +983,16 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
                 $db->sql_query("UPDATE comment_files SET comment_id = " . $cid . " WHERE id IN ($id_list)");
             }
         }
+		
+		
+		// Привязать вложения из attachments через posthash
+        $posthash = trim($_POST['posthash'] ?? '');
+        if ($posthash) {
+        require_once INC_PATH . '/functions_comment_attachments.php';
+          attach_to_comment($posthash, $cid, (int)$CURUSER['id']);
+        }	
+		
+		
 
         $db->update_query("torrents", ['comments' => 'comments+1'], "id='{$torrentid}'", "1", true);
         $db->update_query("users", ['comms' => 'comms+1'], "id='{$CURUSER['id']}'", "1", true);

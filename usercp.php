@@ -394,13 +394,13 @@ if ($mybb->input['action'] === 'do_options' && $mybb->request_method === 'post')
         'usergroup'         => $CURUSER['usergroup'],
         'additionalgroups'  => $CURUSER['additionalgroups'],
         'options'           => [
-            'subscriptionmethod' => $mybb->get_input('subscriptionmethod', MyBB::INPUT_INT),
+            
+			'allownotices' => $mybb->get_input('allownotices', MyBB::INPUT_INT),
+		    'hideemail' => $mybb->get_input('hideemail', MyBB::INPUT_INT),
+			'subscriptionmethod' => $mybb->get_input('subscriptionmethod', MyBB::INPUT_INT),
             'invisible'          => $mybb->get_input('invisible', MyBB::INPUT_INT),
             'dstcorrection'      => $mybb->get_input('dstcorrection', MyBB::INPUT_INT),
-            'threadmode'         => $mybb->get_input('threadmode'),
-            'showsigs'           => $mybb->get_input('showsigs', MyBB::INPUT_INT),
-            'showavatars'        => $mybb->get_input('showavatars', MyBB::INPUT_INT),
-            'showredirect'       => $mybb->get_input('showredirect', MyBB::INPUT_INT),
+            'threadmode'         => $mybb->get_input('threadmode'),                       
             'commentpm'          => $mybb->get_input('commentpm', MyBB::INPUT_INT),
             'torrentsperpage'    => $mybb->get_input('tp', MyBB::INPUT_INT),
             'daysprune'          => $mybb->get_input('daysprune', MyBB::INPUT_INT),
@@ -444,17 +444,15 @@ if ($mybb->input['action'] === 'options') {
     $allowcommentpm      = $opt($CURUSER['commentpm'] ?? null);
     $invisiblecheck      = $opt($user['invisible'] ?? null);
     $hideemailcheck      = $opt($user['hideemail'] ?? null);
-    $showsigscheck       = $opt($CURUSER['showsigs'] ?? null);
-    $showavatarscheck    = $opt($CURUSER['showavatars'] ?? null);
     $receivepmscheck     = $opt($user['receivepms'] ?? null);
     $receivefrombuddycheck = $opt($user['receivefrombuddy'] ?? null);
+	$allownoticescheck = isset($user['allownotices']) && $user['allownotices'] >= 1 ? ' checked="checked"' : '';
     $pmnoticecheck       = isset($user['pmnotice']) && $user['pmnotice'] >= 1 ? ' checked="checked"' : '';
     $pmnotifycheck       = $opt($user['pmnotify'] ?? null, 0) === '' ? 'checked="checked"' : '';
     $buddyrequestspmcheck   = $opt($user['buddyrequestspm'] ?? null, 0) === '' ? 'checked="checked"' : '';
     $buddyrequestsautocheck = $opt($user['buddyrequestsauto'] ?? null, 0) === '' ? 'checked="checked"' : '';
     $showcodebuttonscheck   = $opt($user['showcodebuttons'] ?? null);
     $sourcemodecheck        = $opt($user['sourceeditor'] ?? null);
-    $showredirectcheck      = isset($user['showredirect']) && $user['showredirect'] != 0 ? 'checked="checked"' : '';
     $classicpostbitcheck    = $opt($user['classicpostbit'] ?? null);
 
     // pmnotify / buddyrequests need proper logic (re-check original):
@@ -926,46 +924,14 @@ $current_cats = implode('', $cat_matches[0]);
                     <i class="fas fa-eye me-2 text-primary"></i> '.$lang->usercp['thread_view_options'].'
                 </div>
                 <div class="col">
-                    <!-- Show signatures & avatars -->
-                    <div class="mb-3 pb-2">
-                        <div class="form-check mb-2">
-                            <input type="checkbox" class="form-check-input" name="showsigs" id="showsigs" value="1" '.$showsigscheck.' />
-                            <label class="form-check-label" for="showsigs">
-                                <i class="fas fa-signature text-secondary"></i> '.$lang->usercp['show_sigs'].'
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input" name="showavatars" id="showavatars" value="1" '.$showavatarscheck.' />
-                            <label class="form-check-label" for="showavatars">
-                                <i class="fas fa-user-circle text-info"></i> '.$lang->usercp['show_avatars'].'
-                            </label>
-                        </div>
-                    </div>
+                    
                     <!-- Posts per page (ppp) -->
                     '.$pppselect.'
                     '.$pppselect2.'
                 </div>
             </div>
             
-            <!-- ========= OTHER OPTIONS ========= -->
-            <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3 mt-3">
-                <i class="fas fa-ellipsis-h me-2"></i> '.$lang->usercp['other_options'].'
-            </div>
-            <div class="row g-3 m-auto pb-0 pt-0 mb-2">
-                <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-                    <i class="fas fa-cog me-2 text-muted"></i> '.$lang->usercp['other_options'].'
-                </div>
-                <div class="col">
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input" name="showredirect" id="showredirect" value="1" '.$showredirectcheck.' />
-                            <label class="form-check-label" for="showredirect">
-                                <i class="fas fa-share-square text-success"></i> '.$lang->usercp['show_redirect'].'
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            
         
         </div> <!-- card-body -->
         
@@ -5086,23 +5052,7 @@ if ($mybb->input['action'] === 'profile') {
                             </div>
                         </div>
                     </div>
-                
-                    
-                    <!-- ========= WEBSITE ========= -->
-                    '.$website.'
-                    
-                    <!-- ========= CUSTOM FIELDS ========= -->
-                    '.$customfields.'
-                    
-                    <!-- ========= CUSTOM TITLE ========= -->
-                    '.$customtitle.'
-                    
-                    <!-- ========= CONTACT FIELDS ========= -->
-                    '.$contactfields.'
-                    
-                    <!-- ========= AWAY SECTION ========= -->
-                    '.$awaysection.'
-                    
+  
                 </div> <!-- card-body -->
                 
                 <div class="card-footer text-center">

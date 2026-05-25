@@ -32,12 +32,19 @@ function extractAmountFromMessage(message) {
 
 // Загружаем активность при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
-    loadRecentActivity();
+    // Wait for download_add.js to define loadRecentActivity
+    if (typeof loadRecentActivity === 'function') {
+        loadRecentActivity();
+    } else {
+        window.addEventListener('load', function() {
+            if (typeof loadRecentActivity === 'function') loadRecentActivity();
+        });
+    }
 });
 
 // Функция для обновления (обертка для onclick)
 function refreshActivity() {
-    loadRecentActivity();
+    if (typeof loadRecentActivity === 'function') loadRecentActivity();
 }
 
 
@@ -296,13 +303,13 @@ function displayGroupResults(users, groupName) {
 // Функция для получения названия группы по ID
 function getGroupName(groupId) {
     const groupMap = {
-        6: '👑 Administrator',
-        5: '🛡️ Moderator',
-        4: '📤 Uploader',
-        3: '⭐ VIP',
-        2: '⚡ Power User',
-        1: '👤 User',
-        7: '💻 Sysop',
+        7: '👑 Administrator',
+        6: '🛡️ Moderator',
+        5: '📤 Uploader',
+        4: '⭐ VIP',
+        3: '⚡ Power User',
+        2: '👤 User',
+        8: '💻 Sysop',
         9: '🚫 Banned'
     };
     return groupMap[groupId] || `Group ${groupId}`;

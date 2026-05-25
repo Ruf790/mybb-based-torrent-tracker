@@ -3,7 +3,7 @@ const CONFIG = {
     maxIndividual: 1000,
     maxBulk: 50,
     minGB: 1,
-    apiEndpoint: 'index.php?act=downloadadd', // Убедитесь что это правильный URL
+    apiEndpoint: 'index.php?act=downloadadd&ajax=1',  // ← запятая нужна
     currentUser: 'Admin'
 };
 
@@ -436,7 +436,7 @@ let warningMessage = `
             userInfo.style.display = 'none';
             
             try {
-                const response = await fetch(`${CONFIG.apiEndpoint}?action=check_user&username=${encodeURIComponent(username)}`);
+                const response = await fetch(`${CONFIG.apiEndpoint}&action=check_user&username=${encodeURIComponent(username)}`);
                 const data = await response.json();
                 
                 if (data.exists) {
@@ -530,7 +530,7 @@ let warningMessage = `
        // Group functions
         async function loadGroupStats(groupId) {
             try {
-                const response = await fetch(`${CONFIG.apiEndpoint}?action=group_stats&group_id=${groupId}`);
+                const response = await fetch(`${CONFIG.apiEndpoint}&action=group_stats&group_id=${groupId}`);
                 const data = await response.json();
                 
                 if (!data.error) {
@@ -625,18 +625,20 @@ let warningMessage = `
         function getGroupName(groupId) {
             // Simple mapping - можно расширить
             const groups = {
-                1: 'Administrator',
-                2: 'Moderator',
-                3: 'VIP',
-                4: 'Member',
-                5: 'User'
+                8: 'SysOp',
+				7: 'Administrator',
+                6: 'Moderator',
+				5: 'Uploader',
+                4: 'VIP',
+				3: 'Power User',
+                2: 'User'
             };
             return groups[groupId] || `Group ${groupId}`;
         }
 
         // Activity functions
 // Функция для загрузки активности
-function loadRecentActivity() {
+window.loadRecentActivity = function loadRecentActivity() {
     const activityBody = document.getElementById('activityBody');
     const activitySpinner = document.getElementById('activitySpinner');
     
@@ -736,7 +738,7 @@ function loadRecentActivity() {
                 </tr>
             `;
         });
-}
+};
 
         function extractTargetFromMessage(message) {
             const userMatch = message.match(/user:\s*([a-zA-Z0-9_\-\.]+)/i);
@@ -853,4 +855,3 @@ function loadRecentActivity() {
                 }, false)
             })
         })()
-      

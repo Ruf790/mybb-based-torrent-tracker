@@ -12,11 +12,10 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
 }
 
 define('AU_VERSION', '1.1 by xam');
-define("IN_MYBB", 1);
+
 
 
 $lang->load('adduser');
-$lang->load("signup");
 $lang->load("member");
 
 
@@ -96,13 +95,13 @@ class UserRegistrationHandler
         global $lang, $db;
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $this->errors[] = $lang->signup['invalidemail'];
+            $this->errors[] = $lang->adduser['invalidemail'];
             return false;
         }
 
         // Проверка бана email с подготовленным запросом
         if (is_banned_email($email, true)) {
-            $this->errors[] = $lang->signup['banned_email'];
+            $this->errors[] = $lang->adduser['banned_email'];
             return false;
         }
 
@@ -113,7 +112,7 @@ class UserRegistrationHandler
         );
         
         if ($db->num_rows($query) > 0) {
-            $this->errors[] = $lang->signup['invalidemail3'];
+            $this->errors[] = $lang->adduser['invalidemail3'];
             return false;
         }
 
@@ -125,7 +124,7 @@ class UserRegistrationHandler
         global $lang, $minpasswordlength, $maxpasswordlength, $requirecomplexpasswords;
 
         if ($password !== $confirm_password) {
-            $this->errors[] = $lang->signup['passe1'];
+            $this->errors[] = $lang->adduser['passe1'];
             return false;
         }
 
@@ -140,7 +139,7 @@ class UserRegistrationHandler
         }
 
         if ($password === $username) {
-            $this->errors[] = $lang->signup['passe4'];
+            $this->errors[] = $lang->adduser['passe4'];
             return false;
         }
 
@@ -277,7 +276,7 @@ class UserRegistrationHandler
 
     public function processRegistration(array $post_data): bool
     {
-        global $db, $lang, $BASEURL, $SITENAME, $CURUSER, $cache;
+        global $db, $lang, $BASEURL, $SITENAME, $CURUSER, $cache, $username_method;
 
         // Очистка и валидация данных
         $username = trim($post_data['username'] ?? '');
@@ -343,9 +342,6 @@ class UserRegistrationHandler
             '0|0',   
             "upload",
             '1',
-            '1',
-            '1',
-            '1',
             '',
             '',
             "0**$%%$1**$%%$2**$%%$3**$%%$4**"
@@ -354,7 +350,7 @@ class UserRegistrationHandler
         $placeholders = str_repeat('?,', count($user_insert_data) - 1) . '?';
         $sql = "INSERT INTO users (username, password, salt, loginkey, added, ustatus, email, usergroup, 
                 additionalgroups, modcomment, seedbonus, invites, uploaded, downloaded, timezone, avatar, 
-                avatardimensions, avatartype, invisible, showsigs, showavatars, showredirect, ignorelist, 
+                avatardimensions, avatartype, invisible, ignorelist, 
                 buddylist, pmfolders) VALUES ({$placeholders})";
 
         $result = $db->sql_query_prepared($sql, $user_insert_data);
@@ -398,8 +394,8 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
         require_once INC_PATH . '/functions_pm.php';
         
         $pm = [
-            'subject' => sprintf($lang->signup['welcomepmsubject'], $SITENAME),
-            'message' => sprintf($lang->signup['welcomepmbody'], htmlspecialchars_uni($username), $SITENAME, $BASEURL),
+            'subject' => sprintf($lang->adduser['welcomepmsubject'], $SITENAME),
+            'message' => sprintf($lang->adduser['welcomepmbody'], htmlspecialchars_uni($username), $SITENAME, $BASEURL),
             'touid' => $user_id
         ];
         
@@ -408,15 +404,32 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
 
         // Подтверждение email
         if ($confirm === 'yes') {
-            $editsecret = mksecret();
-            $db->sql_query_prepared(
-                "REPLACE INTO ts_user_validation (editsecret, userid) VALUES (?, ?)",
-                [$editsecret, $user_id]
-            );
-            
-            $psecret = md5($editsecret);
-            $body = sprintf($lang->signup['verifiyemailbody'], $username, $BASEURL, $user_id, $psecret, $SITENAME);
-            sent_mail($email, sprintf($lang->signup['verifiyemailsubject'], $SITENAME), $body, 'signup', false);
+           
+		   $db->sql_query_prepared(
+    "UPDATE users SET ustatus = 'pending' WHERE id = ?",
+    [$user_id]
+);
+		   
+		   
+		   $activationcode = random_str();
+           $db->insert_query('awaitingactivation', [
+                   'uid'      => $user_id,
+                   'dateline' => TIMENOW,
+                   'code'     => $activationcode,
+                   'type'     => 'r'
+           ]);
+		   
+		   $cache->update_awaitingactivation();
+		   
+           $emailsubject = sprintf($lang->member['emailsubject_activateaccount'], $SITENAME);
+           //$emailmessage = sprintf($lang->member['email_activateaccount'], $username, $SITENAME, $BASEURL, $user_id, $activationcode);
+		   
+		   $emailmessage = sprintf($lang->member['email_activateaccount' . ($username_method ?: '')], $username, $SITENAME, $BASEURL, $user_id, $activationcode);
+		   
+           my_mail($email, $emailsubject, $emailmessage); 
+
+		   
+		   
         }
 
         // Логирование

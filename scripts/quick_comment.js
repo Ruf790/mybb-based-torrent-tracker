@@ -22,7 +22,6 @@ function urlencode(str) {
 }
 
 function showModalError(message) {
-    // Load animate.css dynamically if not already loaded
     if (!document.querySelector('link[href*="animate.min.css"]')) {
         let animateCSS = document.createElement('link');
         animateCSS.rel = 'stylesheet';
@@ -30,7 +29,6 @@ function showModalError(message) {
         document.head.appendChild(animateCSS);
     }
 
-    // Build the modal HTML
     var modalHTML = `
         <div class="modal fade" id="errorModal" tabindex="-1">
             <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -53,49 +51,46 @@ function showModalError(message) {
             </div>
         </div>`;
 
-    // Append modal to the body
     document.body.insertAdjacentHTML('beforeend', modalHTML);
 
     var modalElement = document.getElementById('errorModal');
     var modalContent = modalElement.querySelector('.modal-content');
-
-    // Initialize Bootstrap modal
     var modalInstance = new bootstrap.Modal(modalElement);
     modalInstance.show();
 
-    // Auto close modal after 5 seconds with fadeOut animation
     setTimeout(function () {
         modalContent.classList.remove('animate__zoomIn');
         modalContent.classList.add('animate__fadeOut');
-
-        // Wait for animation to finish before hiding modal
         setTimeout(function () {
             modalInstance.hide();
-        }, 800); // match fadeOut animation duration
+        }, 800);
     }, 5000);
 
-    // Remove modal from DOM after hiding
     modalElement.addEventListener('hidden.bs.modal', function () {
         this.remove();
     });
 }
 
-// ЗАМЕНА JQUERY НА ЧИСТЫЙ JAVASCRIPT
 function TSajaxquickcomment(TorrentID) {
     var messageElement = document.getElementById('message');
     var message = messageElement ? messageElement.value : '';
-    
-   var pageInput = document.querySelector('input[name="page"]');
-var currentPage = pageInput ? parseInt(pageInput.value) || 1 : 1;
 
-var pars = {
-    ajax_quick_comment: 1,
-    id: intval(TorrentID),
-    text: urlencode(message),
-    page: currentPage
-};
+    var pageInput = document.querySelector('input[name="page"]');
+    var currentPage = pageInput ? parseInt(pageInput.value) || 1 : 1;
 
-    // Добавляем каждый file_ids[] в запрос, если они существуют
+    var form = document.getElementById('comment');
+    var posthashInput = form ? form.querySelector('input[name="posthash"]') : null;
+    var posthashValue = posthashInput ? posthashInput.value : '';
+
+    var pars = {
+        ajax_quick_comment: 1,
+        id: intval(TorrentID),
+        text: urlencode(message),
+        page: currentPage,
+        posthash: posthashValue
+    };
+
+    // file_ids
     const fileInputs = document.querySelectorAll('#fileIdsContainer input[name="file_ids[]"]');
     fileInputs.forEach((input, index) => {
         pars['file_ids[' + index + ']'] = input.value;
@@ -104,14 +99,12 @@ var pars = {
     // Показываем loading
     var loadingLayer = document.getElementById('loading-layer');
     if (loadingLayer) loadingLayer.style.display = 'block';
-    
-    // Отключаем кнопку
+
     var quickCommentButtons = document.querySelectorAll('#comment [name="quickcomment"]');
     quickCommentButtons.forEach(function(button) {
         button.disabled = true;
     });
 
-    // Создаем FormData для отправки
     var formData = new FormData();
     for (var key in pars) {
         if (pars.hasOwnProperty(key)) {
@@ -119,64 +112,62 @@ var pars = {
         }
     }
 
-    // Отправляем запрос через fetch
     fetch(baseurl + "/xmlhttp.php?action=quick_comment", {
         method: "POST",
         body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
     .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
+        if (!response.ok) throw new Error('Network response was not ok');
         return response.text();
     })
-    
-	
-	
-	.then(result => {
-    var match = result.match(/<error>(.*)<\/error>/);
-    if (match) {
-        var errorMessage = match[1] || l_ajaxerror;
-        showModalError(l_updateerror + errorMessage);
-    } else {
-        // Проверяем редирект
-        var redirectMatch = result.match(/<redirect>(.*?)<\/redirect>/);
-        if (redirectMatch) {
-            window.location.href = redirectMatch[1];
-            return;
-        }
+    .then(result => {
+        var match = result.match(/<error>(.*)<\/error>/);
+        if (match) {
+            showModalError(l_updateerror + (match[1] || l_ajaxerror));
+        } else {
+            var redirectMatch = result.match(/<redirect>(.*?)<\/redirect>/);
+            if (redirectMatch) {
+                window.location.href = redirectMatch[1];
+                return;
+            }
 
-        var ajaxCommentPreview = document.getElementById('ajax_comment_preview');
-        if (ajaxCommentPreview) {
-            var newDiv = document.createElement('div');
-            newDiv.id = 'PostedReply';
-            newDiv.innerHTML = result;
-            ajaxCommentPreview.appendChild(newDiv);
+            var ajaxCommentPreview = document.getElementById('ajax_comment_preview');
+            if (ajaxCommentPreview) {
+                var newDiv = document.createElement('div');
+                newDiv.id = 'PostedReply';
+                newDiv.innerHTML = result;
+                ajaxCommentPreview.appendChild(newDiv);
+            }
+
+            // Очищаем текст
+            if (messageElement) messageElement.value = '';
+
+            // Очищаем file_ids
+            var fileIdsContainer = document.getElementById('fileIdsContainer');
+            if (fileIdsContainer) fileIdsContainer.innerHTML = '';
+
+            // Очищаем превью вложений
+            var oldPosthash = posthashInput ? posthashInput.value : '';
+            var attList = document.getElementById('attPreviewList-' + oldPosthash);
+            if (attList) attList.innerHTML = '';
+
+            // Генерируем новый posthash
+            if (posthashInput) {
+                var newHash = [...crypto.getRandomValues(new Uint8Array(16))]
+                    .map(b => b.toString(16).padStart(2, '0')).join('');
+                posthashInput.value = newHash;
+                // Обновляем data-posthash на виджете
+                var uploader = document.querySelector('.comment-attachments-uploader');
+                if (uploader) uploader.dataset.posthash = newHash;
+            }
         }
-        
-        // Очищаем поля
-        if (messageElement) messageElement.value = '';
-        
-        var fileIdsContainer = document.getElementById('fileIdsContainer');
-        if (fileIdsContainer) fileIdsContainer.innerHTML = '';
-    }
-})
-	
-	
-	
-	
-	
-	
+    })
     .catch(error => {
         showModalError(l_ajaxerror + "\n\n" + error.message);
     })
     .finally(() => {
-        // Скрываем loading и включаем кнопку
         if (loadingLayer) loadingLayer.style.display = 'none';
-        
         quickCommentButtons.forEach(function(button) {
             button.disabled = false;
         });

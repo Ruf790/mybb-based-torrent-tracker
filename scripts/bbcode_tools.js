@@ -150,8 +150,10 @@ function initViewSource(textareaId, btnId) {
         
         // Специальные теги
         .replace(/\[spoiler\]\s*(.*?)\s*\[\/spoiler\]/gis, '<details><summary>Spoiler</summary>$1</details>')
-        .replace(/\[video=youtube\]\s*(.*?)\s*\[\/video\]/gi, '<iframe width="300" height="200" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen></iframe>');
-      
+        .replace(/\[video=youtube\]\s*(.*?)\s*\[\/video\]/gi, '<iframe width="300" height="200" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen></iframe>')
+		
+        .replace(/\[video=mp4\](.*?)\[\/video\]/gi, '<video src="$1" controls style="max-width:400px;"></video>')
+		
       // Обработка смайликов
       if (typeof smilies !== "undefined") {
         for (const code in smilies) {
@@ -498,13 +500,23 @@ document.addEventListener("DOMContentLoaded", function () {
 	
     
     // Закрытие модального окна
-    const modal = bootstrap.Modal.getInstance(document.getElementById('imageUploadModal'));
-    if (modal) modal.hide();
-    
-    // Очистка полей
-    urlInput.value = '';
-    widthInput.value = '';
-    heightInput.value = '';
+const modal = bootstrap.Modal.getInstance(document.getElementById('imageUploadModal'));
+if (modal) {
+    modal.hide();
+    document.getElementById('imageUploadModal').addEventListener('hidden.bs.modal', function () {
+        const textarea = document.getElementById('commentText')
+                      || document.getElementById('description')
+                      || document.getElementById('message')
+                      || document.getElementById('newsMessage');
+        if (textarea) textarea.focus();
+    }, { once: true }); // once: true — сработает только один раз
+}
+
+// Очистка полей
+urlInput.value = '';
+widthInput.value = '';
+heightInput.value = '';
+
   }
 
   /**
@@ -617,4 +629,129 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   // ========== Конец кода для загрузки изображений ==========
+  
+  
+  // Убираем фокус перед скрытием модалки (fix aria-hidden warning)
+  const imageUploadModal = document.getElementById('imageUploadModal');
+  if (imageUploadModal) {
+      imageUploadModal.addEventListener('hide.bs.modal', function () {
+          if (document.activeElement && this.contains(document.activeElement)) {
+              document.activeElement.blur();
+          }
+      });
+  }
+  
+  
+  
+});
+
+
+
+// ===== VIDEO TOOL =====
+
+function getYouTubeId(url) {
+  const regExp = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
+  const match = url.match(regExp);
+  return match ? match[1] : null;
+}
+
+function detectVideoType(url) {
+  if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
+  if (url.match(/\.(mp4|webm|ogg|mov|m4v)(\?|$)/i)) return "mp4";
+  return "auto";
+}
+
+function renderVideoPreview(url, type) {
+  const preview = document.getElementById("videoPreview");
+  if (!preview) return;
+
+  preview.innerHTML = "";
+
+  if (type === "youtube" && url) {
+    const id = getYouTubeId(url);
+    if (id) {
+      preview.innerHTML = `<iframe width="100%" height="200" src="https://www.youtube.com/embed/${id}" frameborder="0" allowfullscreen></iframe>`;
+    }
+  }
+
+  if (type === "mp4" && url) {
+    preview.innerHTML = `<video src="${url}" controls style="max-width:100%; max-height:200px;"></video>`;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+
+  const urlInput = document.getElementById("videoUrl");
+  const typeSelect = document.getElementById("videoType");
+  const insertBtn = document.getElementById("insertVideoBtn");
+
+  function updatePreview() {
+    let url = urlInput ? urlInput.value.trim() : '';
+    let type = typeSelect ? typeSelect.value : 'auto';
+
+    if (type === "auto") {
+      type = detectVideoType(url);
+    }
+
+    renderVideoPreview(url, type);
+  }
+
+  if (urlInput) urlInput.addEventListener("input", updatePreview);
+  if (typeSelect) typeSelect.addEventListener("change", updatePreview);
+
+  if (insertBtn) {
+    // Убираем все предыдущие обработчики
+    const newInsertBtn = insertBtn.cloneNode(true);
+    insertBtn.parentNode.replaceChild(newInsertBtn, insertBtn);
+    
+    newInsertBtn.addEventListener("click", function (e) {
+      e.preventDefault();      // Останавливаем сабмит формы
+      e.stopPropagation();     // Останавливаем всплытие
+      
+      let url = urlInput ? urlInput.value.trim() : '';
+      let type = typeSelect ? typeSelect.value : 'auto';
+
+      if (!url) {
+        alert("Enter video URL");
+        return;
+      }
+
+      if (type === "auto") {
+        type = detectVideoType(url);
+      }
+
+      let bbcode = "";
+
+      if (type === "youtube") {
+        const id = getYouTubeId(url);
+        if (!id) {
+          alert("Invalid YouTube URL");
+          return;
+        }
+        bbcode = `[video=youtube]${id}[/video]`;
+      } else if (type === "mp4") {
+        bbcode = `[video]${url}[/video]`;
+      } else {
+        bbcode = `[video]${url}[/video]`;
+      }
+
+      // Вставка во все поля
+      if (typeof insertBBCode === 'function') {
+        insertBBCode(bbcode, '', 'commentText');
+        insertBBCode(bbcode, '', 'description');
+        insertBBCode(bbcode, '', 'message');
+        insertBBCode(bbcode, '', 'newsMessage');
+      }
+
+      // Закрываем модалку
+      const modal = bootstrap.Modal.getInstance(document.getElementById('videoModal'));
+      if (modal) modal.hide();
+
+      // Очищаем поля
+      if (urlInput) urlInput.value = "";
+      const preview = document.getElementById("videoPreview");
+      if (preview) preview.innerHTML = "";
+    });
+  }
+
 });

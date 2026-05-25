@@ -499,45 +499,100 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Preview images for Screenshots Upload
+
+
+
 document.addEventListener('DOMContentLoaded', function() {
-    const screenshotsUpload  = document.getElementById('screenshotsUpload');
-    const screenshotsPreview = document.getElementById('screenshotsPreview');
+    const uploadEl = document.getElementById('screenshotsUpload');
+    if (!uploadEl) return;
 
-    if (!screenshotsUpload || !screenshotsPreview) return;
+    const maxScreenshots = parseInt(uploadEl.dataset.max || '3');
 
-    screenshotsUpload.addEventListener('change', function() {
-        screenshotsPreview.innerHTML = '';
+    uploadEl.addEventListener('change', function() {
+        if (this.files.length === 0) return;
 
-        Array.from(this.files).forEach(function(file, index) {
-            if (!file.type.startsWith('image/')) return;
+        const selectedCount = this.files.length;
+        const grid       = document.getElementById('modalPreviewGrid');
+        const count      = document.getElementById('modalPreviewCount');
+        const confirmBtn = document.querySelector('#screenshotPreviewModal .btn-primary');
 
-            var reader = new FileReader();
-            reader.onload = function(e) {
-                var item = document.createElement('div');
-                item.className = 'screenshot-item';
+        grid.innerHTML = '';
 
-                var img = document.createElement('img');
-                img.src = e.target.result;
-                img.className = 'preview-screenshot';
-                img.alt = 'Screenshot ' + (index + 1);
-
-                var badge = document.createElement('div');
-                badge.className = 'screenshot-order-badge position-absolute bottom-0 start-0 badge bg-dark bg-opacity-75 m-1';
-                badge.style.fontSize = '10px';
-                badge.style.pointerEvents = 'none';
-                badge.textContent = '#' + (index + 1);
-
-                item.style.position = 'relative';
-                item.appendChild(img);
-                item.appendChild(badge);
-                screenshotsPreview.appendChild(item);
+        // Превью всех файлов
+        Array.from(this.files).forEach((file, i) => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const col = document.createElement('div');
+                col.className = 'col-6 col-md-4 col-lg-3';
+                col.innerHTML = `
+                    <div class="position-relative">
+                        <img src="${e.target.result}" class="img-fluid rounded" style="aspect-ratio:16/9;object-fit:cover;width:100%">
+                        <span class="position-absolute top-0 start-0 badge bg-dark m-1">${i + 1}</span>
+                        <span class="position-absolute bottom-0 end-0 badge bg-secondary m-1" style="font-size:.65rem">
+                            ${(file.size / 1024).toFixed(0)} KB
+                        </span>
+                    </div>
+                    <p class="text-muted small text-truncate mt-1 mb-0">${file.name}</p>`;
+                grid.appendChild(col);
             };
             reader.readAsDataURL(file);
         });
+
+        // Проверка лимита
+        if (selectedCount > maxScreenshots) {
+            count.innerHTML = `<span class="text-danger">
+                <i class="fas fa-exclamation-circle me-1"></i>
+                Too many! Max <strong>${maxScreenshots}</strong>, selected <strong>${selectedCount}</strong>.
+            </span>`;
+            confirmBtn.disabled = true;
+        } else {
+            count.textContent = selectedCount + ' / ' + maxScreenshots + ' screenshots';
+            confirmBtn.disabled = false;
+        }
+
+        new bootstrap.Modal(document.getElementById('screenshotPreviewModal')).show();
     });
 });
 
+function clearScreenshots() {
+    const uploadEl = document.getElementById('screenshotsUpload');
+    if (uploadEl) uploadEl.value = '';
+
+    const preview = document.getElementById('screenshotsPreview');
+    if (preview) preview.innerHTML = '';
+
+    const grid = document.getElementById('modalPreviewGrid');
+    if (grid) grid.innerHTML = '';
+
+    const confirmBtn = document.querySelector('#screenshotPreviewModal .btn-primary');
+    if (confirmBtn) confirmBtn.disabled = false;
+
+    const modal = bootstrap.Modal.getInstance(document.getElementById('screenshotPreviewModal'));
+    if (modal) modal.hide();
+}
+
+
+function showSelectedPreviews() {
+    const uploadEl  = document.getElementById('screenshotsUpload');
+    const preview   = document.getElementById('screenshotsPreview');
+    if (!uploadEl || !preview) return;
+
+    preview.innerHTML = '';
+
+    Array.from(uploadEl.files).forEach((file, i) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const item = document.createElement('div');
+            item.className = 'screenshot-item';
+            item.style.position = 'relative';
+            item.innerHTML = `
+                <img src="${e.target.result}" class="preview-screenshot" alt="Screenshot ${i + 1}">
+                <div class="screenshot-order-badge position-absolute bottom-0 start-0 badge bg-dark bg-opacity-75 m-1" style="font-size:10px;pointer-events:none">#${i + 1}</div>`;
+            preview.appendChild(item);
+        };
+        reader.readAsDataURL(file);
+    });
+}
 
 
 

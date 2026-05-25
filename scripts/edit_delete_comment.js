@@ -1,489 +1,316 @@
-document.addEventListener('DOMContentLoaded', function () {
-  let commentToEditId = null;
-  let commentToDeleteId = null;
-  let torrentId = null;
+'use strict';
 
-  const editBtn        = document.getElementById('confirmEditComment');
-  const deleteBtn      = document.getElementById('confirmDeleteComment');
-  const editModalEl    = document.getElementById('editCommentModal');
-  const deleteModalEl  = document.getElementById('deleteCommentModal');
-  const editTextarea   = document.getElementById('editCommentText');
+/* ══════════════════════════════════════════════════════════
+   BBCode helpers (доступны глобально до DOMContentLoaded)
+   ══════════════════════════════════════════════════════════ */
 
-  
-
-  const editModal = new bootstrap.Modal(editModalEl,   { backdrop: 'static', keyboard: false });
-  const deleteModal = new bootstrap.Modal(deleteModalEl,{ backdrop: 'static', keyboard: false });
-
-  // === Делегирование кликов (чтобы работало после замены DOM) ===
-  document.addEventListener('click', function (e) {
-    // Открыть модалку редактирования
-    const editBtnEl = e.target.closest('.edit-comment-btn');
-    if (editBtnEl) {
-      e.preventDefault();
-      commentToEditId = editBtnEl.getAttribute('data-commentid');
-      torrentId       = editBtnEl.getAttribute('data-torrentid');
-      const existingText = editBtnEl.getAttribute('data-commenttext') || '';
-      editTextarea.value = existingText;
-      updatePreview();
-      editModal.show();
-      return;
-    }
-
-    // Триггер удаления (именно кнопка удаления)
-   const delBtnEl = e.target.closest('.postbit_qdelete');
-if (delBtnEl) {
-    commentToDeleteId = delBtnEl.getAttribute('data-commentid');
-    torrentId         = delBtnEl.getAttribute('data-torrentid');
-
-    // Заполняем превью
-    document.getElementById('commentPreviewAuthor').textContent = delBtnEl.getAttribute('data-author')  || 'Unknown';
-    document.getElementById('commentPreviewDate').textContent   = delBtnEl.getAttribute('data-date')    || '';
-    document.getElementById('commentPreviewId').textContent     = 'CID: ' + (commentToDeleteId || '');
-    document.getElementById('commentPreviewText').innerHTML = parseBBCode(
-    delBtnEl.getAttribute('data-preview') || 'No content'
-);
+function parseBBCode(text) {
+    return String(text)
+        .replace(/\[b\](.*?)\[\/b\]/gi,   '<strong>$1</strong>')
+        .replace(/\[i\](.*?)\[\/i\]/gi,   '<em>$1</em>')
+        .replace(/\[u\](.*?)\[\/u\]/gi,   '<u>$1</u>')
+        .replace(/\[s\](.*?)\[\/s\]/gi,   '<s>$1</s>')
+        .replace(/\[left\](.*?)\[\/left\]/gis,    '<div style="text-align:left">$1</div>')
+        .replace(/\[center\](.*?)\[\/center\]/gis,'<div style="text-align:center">$1</div>')
+        .replace(/\[right\](.*?)\[\/right\]/gis,  '<div style="text-align:right">$1</div>')
+        .replace(/\[color=(#[\da-fA-F]+|[a-zA-Z]+)\](.*?)\[\/color\]/gi,'<span style="color:$1">$2</span>')
+        .replace(/\[size=(\d+)\](.*?)\[\/size\]/gi,'<span style="font-size:$1px">$2</span>')
+        .replace(/\[url\](.*?)\[\/url\]/gi,'<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+        .replace(/\[img\](.*?)\[\/img\]/gi,'<img src="$1" alt="" class="rounded" style="max-width:400px">')
+        .replace(/\[video\](.*?)\[\/video\]/gi,'<video controls style="max-width:100%"><source src="$1" type="video/mp4"></video>')
+        .replace(/\[youtube\](.*?)\[\/youtube\]/gi,'<iframe width="100%" height="315" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen referrerpolicy="no-referrer"></iframe>')
+        .replace(/\[quote\](.*?)\[\/quote\]/gis,'<blockquote>$1</blockquote>')
+        .replace(/\[code\](.*?)\[\/code\]/gis,  '<pre><code>$1</code></pre>')
+        .replace(/\[list\](.*?)\[\/list\]/gis,   (_, c) => '<ul>'  + c.replace(/\[\*\](.*)/g,'<li>$1</li>') + '</ul>')
+        .replace(/\[list=1\](.*?)\[\/list\]/gis, (_, c) => '<ol>'  + c.replace(/\[\*\](.*)/g,'<li>$1</li>') + '</ol>')
+        .replace(/\n/g, '<br>');
 }
-   
-   
-   
-  });
 
-  // === Сохранить изменения (AJAX) ===
-  editBtn.addEventListener('click', function () {
-    if (!commentToEditId || !torrentId) return;
-
-    const newCommentText = editTextarea.value.trim();
-    if (!newCommentText) {
-      showToast('Comment text cannot be empty.', 'warning');
-      return;
-    }
-
-    editBtn.disabled = true;
-    const originalText = editBtn.innerHTML;
-    editBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Saving...`;
-
-    fetch('comment.php?action=edit2', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      credentials: 'same-origin',
-      body: JSON.stringify({ pid: commentToEditId, tid: torrentId, text: newCommentText })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (!data || !data.success) {
-        showToast((data && data.error) || 'Failed to update comment.', 'danger');
-        return;
-      }
-
-      // Полностью заменяем HTML узла комментария
-      const container = document.getElementById('comment-' + data.pid);
-      if (container && data.html) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = data.html;
-
-        const fresh = tmp.querySelector('#comment-' + data.pid) || tmp.firstElementChild;
-        if (fresh) container.replaceWith(fresh);
-      }
-
-      editModal.hide();
-      showToast('Comment updated successfully.', 'success');
-    })
-    .catch(() => {
-      showToast('Request failed. Please try again.', 'danger');
-    })
-    .finally(() => {
-      editBtn.disabled = false;
-      editBtn.innerHTML = originalText;
-    });
-  });
-
-  // === Подтвердить удаление (AJAX) ===
-  deleteBtn.addEventListener('click', function () {
-    if (!commentToDeleteId || !torrentId) return;
-
-    deleteBtn.disabled = true;
-    const originalText = deleteBtn.innerHTML;
-    deleteBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Deleting...`;
-
-    fetch('comment.php?action=delete', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      credentials: 'same-origin',
-      body: JSON.stringify({ pid: commentToDeleteId, tid: torrentId })
-    })
-    .then(res => res.json())
-    
-	
-	.then(data => {
-    if (!data || !data.success) {
-        showToast((data && data.error) || 'Failed to delete comment.', 'danger');
-        return;
-    }
-
-    deleteModal.hide();
-    showToast('Comment deleted successfully.', 'success');
-
-    const totalOnPage = document.querySelectorAll('.closest[id^="comment-"]').length;
-
-    if (totalOnPage <= 1) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const currentPage = parseInt(urlParams.get('page') || '1');
-
-        setTimeout(() => {
-            if (currentPage > 1) {
-                urlParams.set('page', currentPage - 1);
-                window.location.search = urlParams.toString();
-            } else {
-                window.location.reload();
-            }
-        }, 800);
-    } else {
-        const container = document.getElementById('comment-' + commentToDeleteId);
-        if (container) {
-            container.style.opacity = '0';
-            container.style.transition = 'opacity 0.3s ease';
-            setTimeout(() => container.remove(), 300);
-        }
-    }
-})
-
-	
-    .catch(() => {
-      showToast('Request failed. Please try again.', 'danger');
-    })
-    .finally(() => {
-      deleteBtn.disabled = false;
-      deleteBtn.innerHTML = originalText;
-    });
-  });
-
-
-});
-
-
-// ====== BBCode инструменты для превью в модалке ======
 function wrapBBCode(openTag, closeTag) {
-  const textarea = document.getElementById("editCommentText");
-  if (!textarea) return;
-  const start = textarea.selectionStart || 0;
-  const end   = textarea.selectionEnd   || 0;
-  const selectedText = textarea.value.substring(start, end);
-  const before = textarea.value.substring(0, start);
-  const after  = textarea.value.substring(end);
-  textarea.value = before + openTag + selectedText + closeTag + after;
-  textarea.focus();
-  textarea.setSelectionRange(start + openTag.length, end + openTag.length);
-  updatePreview();
+    const ta = document.getElementById('editCommentText');
+    if (!ta) return;
+    const s    = ta.selectionStart;
+    const e    = ta.selectionEnd;
+    const sel  = ta.value.substring(s, e);
+    ta.value   = ta.value.substring(0, s) + openTag + sel + closeTag + ta.value.substring(e);
+    ta.focus();
+    ta.setSelectionRange(s + openTag.length, e + openTag.length);
+    updatePreview();
 }
 
 function updatePreview() {
-  const input = (document.getElementById("editCommentText") || {}).value || '';
-  const parsed = parseBBCode(input);
-  const preview = document.getElementById("bbcodePreview");
-  if (preview) preview.innerHTML = parsed;
+    const ta      = document.getElementById('editCommentText');
+    const preview = document.getElementById('bbcodePreview');
+    if (ta && preview) preview.innerHTML = parseBBCode(ta.value);
 }
 
-function parseBBCode(text) {
-  return String(text)
-    .replace(/\[b\](.*?)\[\/b\]/gi, '<strong>$1</strong>')
-    .replace(/\[i\](.*?)\[\/i\]/gi, '<em>$1</em>')
-    .replace(/\[u\](.*?)\[\/u\]/gi, '<u>$1</u>')
-    .replace(/\[s\](.*?)\[\/s\]/gi, '<s>$1</s>')
+/* ══════════════════════════════════════════════════════════
+   Mass delete — глобальные переменные
+   ══════════════════════════════════════════════════════════ */
 
-    .replace(/\[left\](.*?)\[\/left\]/gis,   '<div style="text-align:left;">$1</div>')
-    .replace(/\[center\](.*?)\[\/center\]/gis,'<div style="text-align:center;">$1</div>')
-    .replace(/\[right\](.*?)\[\/right\]/gis, '<div style="text-align:right;">$1</div>')
+window.selectedCommentIds = [];
+window.selectedTorrentIds = [];
 
-    .replace(/\[color=(#[a-zA-Z0-9]+|[a-zA-Z]+)\](.*?)\[\/color\]/gi, '<span style="color:$1;">$2</span>')
-    .replace(/\[size=(\d+)\](.*?)\[\/size\]/gi, '<span style="font-size:$1px;">$2</span>')
-
-    .replace(/\[url\](.*?)\[\/url\]/gi, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-    
-	.replace(/\[img\](.*?)\[\/img\]/gi, '<img src="$1" alt="Image" class="rounded" style="max-width: 400px;">')
-	
-	
-    .replace(/\[video\](.*?)\[\/video\]/gi, '<video controls style="max-width:100%;"><source src="$1" type="video/mp4"></video>')
-    .replace(/\[youtube\](.*?)\[\/youtube\]/gi, '<iframe width="100%" height="315" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen referrerpolicy="no-referrer"></iframe>')
-
-    .replace(/\[quote\](.*?)\[\/quote\]/gis, '<blockquote>$1</blockquote>')
-    .replace(/\[code\](.*?)\[\/code\]/gis, '<pre><code>$1</code></pre>')
-
-    .replace(/\[list\](.*?)\[\/list\]/gis, (_, c) => '<ul>' + c.replace(/\[\*\](.*)/g, '<li>$1</li>') + '</ul>')
-    .replace(/\[list=1\](.*?)\[\/list\]/gis,(_, c) => '<ol>' + c.replace(/\[\*\](.*)/g, '<li>$1</li>') + '</ol>')
-
-    .replace(/\n/g, "<br>");
+function toggleSelectAll(source) {
+    document.querySelectorAll('.comment-checkbox').forEach(cb => { cb.checked = source.checked; });
+    toggleMassDeleteButton();
 }
 
-// Живое превью
-document.addEventListener("DOMContentLoaded", function () {
-  const textarea = document.getElementById("editCommentText");
-  if (textarea) textarea.addEventListener("input", updatePreview);
-});
-
-
-
-
-
-
-
-// ====== МАССОВОЕ УДАЛЕНИЕ КОММЕНТАРИЕВ ======
-// Глобальные переменные для хранения выбранных комментариев
-if (typeof window.selectedCommentIds === 'undefined') {
-    window.selectedCommentIds = [];
+function toggleMassDeleteButton() {
+    const checked = document.querySelectorAll('.comment-checkbox:checked');
+    const btn     = document.getElementById('massDeleteButton');
+    if (!btn) return;
+    if (checked.length > 0) {
+        btn.classList.remove('d-none');
+        btn.innerHTML = `<i class="fa-solid fa-trash"></i> Delete Selected (${checked.length})`;
+    } else {
+        btn.classList.add('d-none');
+    }
 }
-if (typeof window.selectedTorrentIds === 'undefined') {
-    window.selectedTorrentIds = [];
-}
-
-
-
 
 function massDeleteComments() {
-    const selectedCheckboxes = document.querySelectorAll('.comment-checkbox:checked');
-
-    if (selectedCheckboxes.length === 0) {
-        showToast('Please select at least one comment to delete.', 'warning');
-        return;
-    }
+    const checked = document.querySelectorAll('.comment-checkbox:checked');
+    if (!checked.length) { showToast('Please select at least one comment.', 'warning'); return; }
 
     window.selectedCommentIds = [];
     window.selectedTorrentIds = [];
+    let previewHTML = '';
 
-    var previewHTML = '';
-
-    selectedCheckboxes.forEach(function(checkbox) {
-        window.selectedCommentIds.push(checkbox.value);
-        window.selectedTorrentIds.push(checkbox.dataset.tid);
-
-        var cid       = checkbox.value;
-        var deleteBtn = document.querySelector('.postbit_qdelete[data-commentid="' + cid + '"]');
-        var author    = deleteBtn ? (deleteBtn.getAttribute('data-author')  || 'Unknown') : 'Unknown';
-        var date      = deleteBtn ? (deleteBtn.getAttribute('data-date')    || '')        : '';
-        var preview   = deleteBtn ? (deleteBtn.getAttribute('data-preview') || '')        : '';
-
-        previewHTML +=
-            '<div class="card mb-2 border-danger border-opacity-25">' +
-                '<div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">' +
-                    '<span class="small fw-bold text-danger">' +
-                        '<i class="fas fa-user me-1"></i>' + author +
-                    '</span>' +
-                    '<div class="d-flex gap-2 align-items-center">' +
-                        '<span class="text-muted small">' + date + '</span>' +
-                        '<span class="badge bg-secondary">CID: ' + cid + '</span>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="card-body py-2 px-3 small">' +
-                    (preview ? parseBBCode(preview) : '<span class="text-muted">No content</span>') +
-                '</div>' +
-            '</div>';
+    checked.forEach(cb => {
+        const cid     = cb.value;
+        const delBtn  = document.querySelector(`.postbit_qdelete[data-commentid="${cid}"]`);
+        window.selectedCommentIds.push(cid);
+        window.selectedTorrentIds.push(cb.dataset.tid);
+        const author  = delBtn?.getAttribute('data-author')  || 'Unknown';
+        const date    = delBtn?.getAttribute('data-date')    || '';
+        const preview = delBtn?.getAttribute('data-preview') || '';
+        previewHTML += `
+        <div class="card mb-2 border-danger border-opacity-25">
+            <div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">
+                <span class="small fw-bold text-danger"><i class="fas fa-user me-1"></i>${author}</span>
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="text-muted small">${date}</span>
+                    <span class="badge bg-secondary">CID: ${cid}</span>
+                </div>
+            </div>
+            <div class="card-body py-2 px-3 small">
+                ${preview ? parseBBCode(preview) : '<span class="text-muted">No content</span>'}
+            </div>
+        </div>`;
     });
 
-    var selectedCountElement = document.getElementById('selectedCommentsCount');
-    if (selectedCountElement) {
-        selectedCountElement.textContent = window.selectedCommentIds.length;
-    }
+    const countEl = document.getElementById('selectedCommentsCount');
+    if (countEl) countEl.textContent = window.selectedCommentIds.length;
 
-    var previewList = document.getElementById('massDeletePreviewList');
-    if (previewList) {
-        previewList.innerHTML = previewHTML;
-    }
+    const listEl = document.getElementById('massDeletePreviewList');
+    if (listEl) listEl.innerHTML = previewHTML;
 
-    const massDeleteModal = new bootstrap.Modal(document.getElementById('massDeleteConfirmModal'));
-    massDeleteModal.show();
+    // Используем getInstance чтобы не создавать дубли
+    const modalEl = document.getElementById('massDeleteConfirmModal');
+    if (!modalEl) return;
+    (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).show();
 }
 
-// Функция для выполнения удаления после подтверждения
 function executeMassDelete() {
-    // Показываем индикатор загрузки в модалке
-    const confirmButton = document.getElementById('confirmMassDelete');
-    const originalText = confirmButton.innerHTML;
-    confirmButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting...';
-    confirmButton.disabled = true;
+    const confirmBtn = document.getElementById('confirmMassDelete');
+    if (!confirmBtn) return;
+    const originalHTML = confirmBtn.innerHTML;
+    confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+    confirmBtn.disabled  = true;
 
-    // Создаем FormData для отправки
     const formData = new FormData();
     formData.append('comment_ids', window.selectedCommentIds.join(','));
     formData.append('torrent_ids', window.selectedTorrentIds.join(','));
 
-    // Отправляем AJAX запрос
-    fetch('comment.php?action=massdelete', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            return response.text().then(text => {
-                console.error('Non-JSON response:', text);
-                throw new Error('Server returned non-JSON response');
-            });
-        }
-        return response.json();
-    })
-    .then(data => {
-        // Закрываем модалку
-        const massDeleteModal = bootstrap.Modal.getInstance(document.getElementById('massDeleteConfirmModal'));
-        if (massDeleteModal) {
-            massDeleteModal.hide();
-        }
+    fetch('comment.php?action=massdelete', { method: 'POST', body: formData })
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        })
+        .then(data => {
+            const modalEl = document.getElementById('massDeleteConfirmModal');
+            bootstrap.Modal.getInstance(modalEl)?.hide();
 
-    
+            if (!data?.success) {
+                showToast('Error: ' + (data?.error || 'Failed to delete comments'), 'danger');
+                return;
+            }
 
+            const deleted      = data.deleted || window.selectedCommentIds.length;
+            const totalOnPage  = document.querySelectorAll('[id^="comment-"]').length;
+            const willBeEmpty  = totalOnPage <= window.selectedCommentIds.length;
 
+            showToast(`Successfully deleted ${deleted} comment(s)!`, 'success');
 
-if (data.success) {
-    const deletedCount = data.deleted || window.selectedCommentIds.length;
-    
-    // Считаем сколько останется после удаления
-    const totalOnPage = document.querySelectorAll('.closest[id^="comment-"]').length;
-    const willBeEmpty = totalOnPage <= window.selectedCommentIds.length;
-
-    if (willBeEmpty) {
-        // Страница будет пустой — сразу редиректим без анимации
-        showToast(`Successfully deleted ${deletedCount} comments!`, 'success');
-        
-        const urlParams = new URLSearchParams(window.location.search);
-        const currentPage = parseInt(urlParams.get('page') || '1');
-
-        setTimeout(() => {
-            if (currentPage > 1) {
-                urlParams.set('page', currentPage - 1);
-                window.location.search = urlParams.toString();
+            if (willBeEmpty) {
+                const params = new URLSearchParams(window.location.search);
+                const page   = parseInt(params.get('page') || '1');
+                setTimeout(() => {
+                    if (page > 1) { params.set('page', page - 1); window.location.search = params.toString(); }
+                    else window.location.reload();
+                }, 800);
             } else {
-                window.location.reload();
+                window.selectedCommentIds.forEach(id => {
+                    const el = document.getElementById('comment-' + id);
+                    if (!el) return;
+                    el.style.transition = 'opacity 0.3s';
+                    el.style.opacity    = '0';
+                    setTimeout(() => el.remove(), 300);
+                });
+                updateCommentCounters(deleted);
             }
-        }, 800); // Даём время показать toast
-    } else {
-        // Остаются комментарии — анимируем удаление
-        window.selectedCommentIds.forEach(commentId => {
-            const commentElement = document.getElementById('comment-' + commentId);
-            if (commentElement) {
-                commentElement.style.opacity = '0';
-                commentElement.style.transition = 'opacity 0.3s ease';
-                setTimeout(() => commentElement.remove(), 300);
-            }
+        })
+        .catch(err => {
+            console.error(err);
+            showToast('Network error. Please try again.', 'danger');
+        })
+        .finally(() => {
+            confirmBtn.innerHTML = originalHTML;
+            confirmBtn.disabled  = false;
+            document.querySelectorAll('.comment-checkbox').forEach(cb => { cb.checked = false; });
+            const selectAll = document.getElementById('selectAllCheckbox');
+            if (selectAll) selectAll.checked = false;
+            toggleMassDeleteButton();
+            window.selectedCommentIds = [];
+            window.selectedTorrentIds = [];
         });
-
-        updateCommentCounters(deletedCount);
-        showToast(`Successfully deleted ${deletedCount} comments!`, 'success');
-    }
 }
 
-		
-		else {
-            // Показываем ошибку
-            showToast('Error: ' + (data.error || 'Failed to delete comments'), 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showToast('Network error occurred. Please check console for details.', 'error');
-    })
-    .finally(() => {
-        // Восстанавливаем кнопку подтверждения
-        if (confirmButton) {
-            confirmButton.innerHTML = originalText;
-            confirmButton.disabled = false;
-        }
-        
-        // Сбрасываем кнопку массового удаления
-        const massDeleteButton = document.getElementById('massDeleteButton');
-        if (massDeleteButton) {
-            massDeleteButton.classList.add('d-none');
-        }
-        
-        // Снимаем выделение со всех чекбоксов
-        document.querySelectorAll('.comment-checkbox').forEach(checkbox => {
-            checkbox.checked = false;
-        });
-        
-        // Обновляем чекбокс "Выделить все"
-        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-        if (selectAllCheckbox) {
-            selectAllCheckbox.checked = false;
-        }
-        
-        // Очищаем массивы
-        window.selectedCommentIds = [];
-        window.selectedTorrentIds = [];
-    });
-}
-
-// Обработчик для кнопки подтверждения в модалке
-if (document.getElementById('confirmMassDelete')) {
-    document.getElementById('confirmMassDelete').addEventListener('click', executeMassDelete);
-}
-
-// Функция для показа/скрытия кнопки массового удаления
-function toggleMassDeleteButton() {
-    const checkboxes = document.querySelectorAll('.comment-checkbox:checked');
-    const massDeleteButton = document.getElementById('massDeleteButton');
-    
-    if (massDeleteButton && checkboxes.length > 0) {
-        massDeleteButton.classList.remove('d-none');
-        massDeleteButton.innerHTML = `<i class="fa-solid fa-trash"></i> Delete Selected (${checkboxes.length})`;
-    } else if (massDeleteButton) {
-        massDeleteButton.classList.add('d-none');
-    }
-}
-
-// Функция "Выделить все"/"Снять выделение"
-function toggleSelectAll(source) {
-    const checkboxes = document.querySelectorAll('.comment-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = source.checked;
-    });
-    toggleMassDeleteButton();
-}
-
-// Простая функция обновления счетчиков
 function updateCommentCounters(deletedCount) {
-    // Ищем все элементы с счетчиками комментариев
-    const counterElements = document.querySelectorAll('[class*="comment"], [id*="comment"]');
-    
-    counterElements.forEach(element => {
-        const text = element.textContent || '';
-        const match = text.match(/(\d+)\s*comment/i);
-        
-        if (match) {
-            const currentCount = parseInt(match[1]);
-            const newCount = Math.max(0, currentCount - deletedCount);
-            element.textContent = text.replace(match[0], newCount + ' comment' + (newCount !== 1 ? 's' : ''));
-        }
+    document.querySelectorAll('[class*="comment-count"], [id*="comment-count"]').forEach(el => {
+        const n = parseInt(el.textContent);
+        if (!isNaN(n)) el.textContent = Math.max(0, n - deletedCount);
     });
-    
-    // Обновляем badge с количеством
-    const badgeElements = document.querySelectorAll('.badge');
-    badgeElements.forEach(badge => {
-        const badgeText = badge.textContent;
-        if (/^\d+$/.test(badgeText)) {
-            const currentCount = parseInt(badgeText);
-            const newCount = Math.max(0, currentCount - deletedCount);
-            badge.textContent = newCount;
-        }
-    });
-    
-    // Если удалили все комментарии, показываем сообщение
-    const remainingComments = document.querySelectorAll('.closest').length;
-    if (remainingComments === 0) {
-        const commentsContainer = document.querySelector('.container-md') || document.querySelector('body');
-        const noCommentsMessage = document.createElement('div');
-        noCommentsMessage.className = 'alert alert-info mt-3';
-        noCommentsMessage.innerHTML = '<i class="fa-solid fa-info-circle"></i> No comments yet. Be the first to comment!';
-        if (commentsContainer) {
-            commentsContainer.appendChild(noCommentsMessage);
-        }
-    }
 }
 
-// ====== КОНЕЦ МАССОВОГО УДАЛЕНИЯ ======
+/* ══════════════════════════════════════════════════════════
+   DOMContentLoaded — инициализация модалок
+   ══════════════════════════════════════════════════════════ */
+
+document.addEventListener('DOMContentLoaded', function () {
+    /* ── Элементы ──────────────────────────────────────────── */
+    const editModalEl   = document.getElementById('editCommentModal');
+    const deleteModalEl = document.getElementById('deleteCommentModal');
+    const editBtn       = document.getElementById('confirmEditComment');
+    const deleteBtn     = document.getElementById('confirmDeleteComment');
+    const editTextarea  = document.getElementById('editCommentText');
+
+    // Защита: если модалок нет на странице — выходим
+    if (!editModalEl || !deleteModalEl) return;
+
+    const MODAL_OPTS  = { backdrop: 'static', keyboard: false };
+    const editModal   = new bootstrap.Modal(editModalEl,   MODAL_OPTS);
+    const deleteModal = new bootstrap.Modal(deleteModalEl, MODAL_OPTS);
+
+    let commentToEditId   = null;
+    let commentToDeleteId = null;
+    let torrentId         = null;
+
+    /* ── Live preview textarea ─────────────────────────────── */
+    if (editTextarea) editTextarea.addEventListener('input', updatePreview);
+
+    /* ── Делегирование кликов ──────────────────────────────── */
+    document.addEventListener('click', function (e) {
+        // Редактировать
+        const editTrigger = e.target.closest('.edit-comment-btn');
+        if (editTrigger) {
+            e.preventDefault();
+            commentToEditId = editTrigger.dataset.commentid;
+            torrentId       = editTrigger.dataset.torrentid;
+            if (editTextarea) editTextarea.value = editTrigger.getAttribute('data-commenttext') || '';
+            updatePreview();
+            editModal.show();
+            return;
+        }
+
+        // Удалить
+        const delTrigger = e.target.closest('.postbit_qdelete');
+        if (delTrigger) {
+            commentToDeleteId = delTrigger.dataset.commentid;
+            torrentId         = delTrigger.dataset.torrentid;
+            const safe = id => document.getElementById(id);
+            if (safe('commentPreviewAuthor')) safe('commentPreviewAuthor').textContent = delTrigger.getAttribute('data-author')  || 'Unknown';
+            if (safe('commentPreviewDate'))   safe('commentPreviewDate').textContent   = delTrigger.getAttribute('data-date')    || '';
+            if (safe('commentPreviewId'))     safe('commentPreviewId').textContent     = 'CID: ' + (commentToDeleteId || '');
+            if (safe('commentPreviewText'))   safe('commentPreviewText').innerHTML     = parseBBCode(delTrigger.getAttribute('data-preview') || '');
+            deleteModal.show();
+        }
+    });
+
+    /* ── Сохранить редактирование ──────────────────────────── */
+    editBtn?.addEventListener('click', function () {
+        if (!commentToEditId || !torrentId) return;
+        const text = editTextarea?.value.trim();
+        if (!text) { showToast('Comment text cannot be empty.', 'warning'); return; }
+
+        const origHTML  = editBtn.innerHTML;
+        editBtn.disabled = true;
+        editBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+
+        fetch('comment.php?action=edit2', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ pid: commentToEditId, tid: torrentId, text }),
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (!data?.success) { showToast(data?.error || 'Failed to update comment.', 'danger'); return; }
+            const container = document.getElementById('comment-' + data.pid);
+            if (container && data.html) {
+                const tmp   = document.createElement('div');
+                tmp.innerHTML = data.html;
+                const fresh = tmp.querySelector('#comment-' + data.pid) || tmp.firstElementChild;
+                if (fresh) container.replaceWith(fresh);
+            }
+            editModal.hide();
+            showToast('Comment updated successfully.', 'success');
+        })
+        .catch(() => showToast('Request failed. Please try again.', 'danger'))
+        .finally(() => { editBtn.disabled = false; editBtn.innerHTML = origHTML; });
+    });
+
+    /* ── Подтвердить удаление ──────────────────────────────── */
+    deleteBtn?.addEventListener('click', function () {
+        if (!commentToDeleteId || !torrentId) return;
+
+        const origHTML    = deleteBtn.innerHTML;
+        deleteBtn.disabled = true;
+        deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+
+        fetch('comment.php?action=delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ pid: commentToDeleteId, tid: torrentId }),
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (!data?.success) { showToast(data?.error || 'Failed to delete comment.', 'danger'); return; }
+            deleteModal.hide();
+            showToast('Comment deleted successfully.', 'success');
+
+            const totalOnPage = document.querySelectorAll('[id^="comment-"]').length;
+            if (totalOnPage <= 1) {
+                const params = new URLSearchParams(window.location.search);
+                const page   = parseInt(params.get('page') || '1');
+                setTimeout(() => {
+                    if (page > 1) { params.set('page', page - 1); window.location.search = params.toString(); }
+                    else window.location.reload();
+                }, 800);
+            } else {
+                const el = document.getElementById('comment-' + commentToDeleteId);
+                if (el) {
+                    el.style.transition = 'opacity 0.3s';
+                    el.style.opacity    = '0';
+                    setTimeout(() => el.remove(), 300);
+                }
+            }
+        })
+        .catch(() => showToast('Request failed. Please try again.', 'danger'))
+        .finally(() => { deleteBtn.disabled = false; deleteBtn.innerHTML = origHTML; });
+    });
+
+    /* ── Mass delete confirm btn ───────────────────────────── */
+    document.getElementById('confirmMassDelete')?.addEventListener('click', executeMassDelete);
+});

@@ -31,7 +31,7 @@ function ts_seo(int|string $id, string $text, string $type = 'u', string $ext = 
 
   if ((!defined ('APP_INITIALIZED') AND !defined ('IN_CRON')))
   {
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+    exit('<div style="color:darkred;font-family:verdana;font-size:12px"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
   }
 
 ?>

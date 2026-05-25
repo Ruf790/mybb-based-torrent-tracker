@@ -700,7 +700,7 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
     } else {
         $user_html = '<div class="d-flex align-items-center flex-wrap gap-1">'
                    . '<a href="' . get_profile_link($e['userid'] ?? 0) . '" class="text-decoration-none fw-bold text-dark">'
-                   . get_user_color($e['username'], $e['namestyle'] ?? '')
+                   . format_name($e['username'], $e['usergroup'] ?? '')
                    . '</a>'
                    . $age_badge
                    . '</div>'

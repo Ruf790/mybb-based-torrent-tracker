@@ -19,6 +19,13 @@ class trackerlanguage
     public $contactstaff;
     public $contactus;
     public $cronjobs;
+	
+	public $datahandler_login;
+    public $datahandler_pm;
+    public $datahandler_post;
+    public $datahandler_user;
+	
+	
     public $delete;
     public $details;
     public $download;
@@ -114,7 +121,7 @@ class trackerlanguage
             require_once $lfile;
         } else {
             define('errorid', 3);
-            include_once TSDIR . '/ts_error.php';
+            include_once TSDIR . '/error.php';
             exit();
         }
 

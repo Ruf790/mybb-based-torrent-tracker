@@ -10,6 +10,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     global $mybb;
 
     $is_mod = is_mod($usergroups);
+
     
     require_once(INC_PATH . '/class_parser.php');
     $parser = new postParser;
@@ -38,6 +39,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 ?>
 
 
+<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/comment_attachments.css">
 <script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/edit_delete_comment.js"></script>
 
 
@@ -80,6 +82,25 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         $tid = (int)$row['torrentid'];
         $postlink = get_comment_link($pid, $tid);
 
+        // Attachments from bulk pre-fetched array (no extra DB query)
+       
+$comment_attachments_html = '';
+$att_bulk = $GLOBALS['all_attachments'] ?? [];
+if (!empty($att_bulk[$pid])) {
+    $atts_html = render_comment_attachments_from_array($att_bulk[$pid]);
+    $comment_attachments_html = '
+    <div class="att-section mt-3 pt-2 border-top border-opacity-25">
+        <div class="att-section-header text-muted small mb-2">
+            <i class="fas fa-paperclip me-1"></i>
+            <strong>' . $lang->global['postbit_attachments'] . '</strong>
+        </div>
+        ' . $atts_html . '
+    </div>';
+}
+		
+		
+		
+
         // Process signature
         $signatureRaw = isset($row['signature']) && is_string($row['signature']) ? $row['signature'] : '';
         $sig_parser = [
@@ -108,26 +129,23 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 
         // Avatar
         $post['useravatar'] = '';
-        if (isset($CURUSER['showavatars']) && $CURUSER['showavatars'] != 0 || $CURUSER['id'] == 0) {
-            $useravatar = format_avatar($row['useravatar'], $row['avatardimensions']);
+        
+        $useravatar = format_avatar($row['useravatar'], $row['avatardimensions']);
             
 			
-			$post['useravatar'] = '
-			
-			
-			<div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
-<div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="rounded img-fluid" style="width: 100px; padding: 0px;" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' /></a></div>
-</div>
-
-<div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none">
-<div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="rounded img-fluid" style="width: 30px; height: 30px; padding: 0px;" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' /></a></div>
-</div>';
+	    $post['useravatar'] = '
+	    <div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
+                <div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="rounded img-fluid" style="width: 100px; padding: 0px;" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' /></a></div>
+        </div>
+        <div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none">
+                <div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="rounded img-fluid" style="width: 30px; height: 30px; padding: 0px;" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' /></a></div>
+        </div>';
 			
 			
 			
 			
 			
-        }
+        
 
         // Initialize empty post elements
         $emptyElements = [
@@ -298,7 +316,8 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 <div  class="post_body scaleimages" id="pid_'.$pid.'">
 '.$post['message'].'
 
-</div>	
+</div>
+'.$comment_attachments_html.'	
 
 
 

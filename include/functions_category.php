@@ -1,12 +1,4 @@
 <?
-/***********************************************/
-/*                                             */
-/*    E-mail          : mrdecoder@hotmail.com  */
-/*                                             */
-/*              FearlesS-Releases              */
-/*             One Name, One Legend            */
-/*                                             */
-/***********************************************/
 
 
 if (!defined("IN_TRACKER")) 

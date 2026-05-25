@@ -159,7 +159,7 @@ function generate_thumbnail(
     $thumb        = _create_canvas($scaled->width, $scaled->height, $usedFallback);
 
     if (!$thumb instanceof \GdImage) {
-        imagedestroy($source);
+        //imagedestroy($source);
         return ['code' => 3];
     }
 
@@ -171,12 +171,12 @@ function generate_thumbnail(
         @imagecopyresampled($thumb, $source, 0, 0, 0, 0, $scaled->width, $scaled->height, $dims->width, $dims->height);
     }
 
-    imagedestroy($source);
+    //imagedestroy($source);
 
     $dest = $path . '/' . $filename;
     $type->save($thumb, $dest);
     @my_chmod($dest, '0644');
-    imagedestroy($thumb);
+    //imagedestroy($thumb);
 
     return ['code' => 1, 'filename' => $filename];
 }

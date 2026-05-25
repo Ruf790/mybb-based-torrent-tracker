@@ -1,8 +1,5 @@
 <?php
-/**
- * MyBB 1.8 — Moderation Class
- * Rewritten for PHP 8.5 compatibility
- */
+
 
 declare(strict_types=1);
 
@@ -577,7 +574,10 @@ class Moderation
             $db->delete_query('comment_files', "post_id IN ({$pids_str})");
         }
 
-        $db->delete_query('threads',            "tid='{$tid}'");
+        // Delete thread ratings
+        $db->delete_query('threadratings', "tid='{$tid}'");
+		
+		$db->delete_query('threads',            "tid='{$tid}'");
         $db->delete_query('threadsubscriptions', "tid='{$tid}'");
         $db->delete_query('polls',              "tid='{$tid}'");
         $db->delete_query('pollvotes',          "pid='{$thread['poll']}'");

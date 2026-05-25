@@ -26,7 +26,13 @@ function notify_upload_subscribers(int $catid, int $torrent_id, string $torrent_
 
     
 
-	$subject = "New torrent in {$cat_name}: " . $torrent_name;
+	$row      = $db->fetch_array($db->simple_select('categories', 'name', "id='{$catid}'"));
+    $cat_name = $row['name'] ?? 'Unknown Category';
+
+    $subject = "New torrent in {$cat_name}: " . $torrent_name;
+	
+	require_once INC_PATH . '/functions_pm.php';
+	
 
 
     $body_pm  = "A new torrent has been uploaded in your subscribed category:\n\n"
@@ -45,7 +51,7 @@ function notify_upload_subscribers(int $catid, int $torrent_id, string $torrent_
         // PM уведомление
         if (strpos($user['notifs'], '[pm]') !== false) {
             
-			require_once INC_PATH . '/functions_pm.php';
+			
 			
 			$pm = [
                 'subject' => $subject,

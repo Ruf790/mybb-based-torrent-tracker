@@ -201,86 +201,52 @@ function my_validate_url(string $url, bool $relative_path = false, bool $allow_l
 
 
 
-function redirect(string $url, string $message = "", string $title = "", bool $force_redirect = false): void
+
+
+
+
+
+function redirect(string $url, string $message = '', string $title = '', bool $force_redirect = false): void
 {
-    global $header, $footer, $mybb, $theme, $headerinclude, $templates, $lang, $plugins, $redirects, $charset, $CURUSER, $BASEURL, $SITENAME;
+    global $mybb, $plugins, $charset, $BASEURL;
 
     $redirect_args = ['url' => &$url, 'message' => &$message, 'title' => &$title];
-    $plugins->run_hooks("redirect", $redirect_args);
+    $plugins->run_hooks('redirect', $redirect_args);
 
-    if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
-        $data = "<script type=\"text/javascript\">\n";
-        if($message != "") {
-            $data .=  'alert("'.addslashes($message).'");';
+    // AJAX редирект
+    if ($mybb->get_input('ajax', MyBB::INPUT_INT)) {
+        $data = '<script type="text/javascript">' . "\n";
+        if ($message !== '') {
+            $data .= 'alert("' . addslashes($message) . '");';
         }
-        $url = str_replace("#", "&#", $url);
-        $url = htmlspecialchars_decode($url);
-        $url = str_replace(["\n","\r",";"], "", $url);
-        $data .=  'window.location = "'.addslashes($url).'";'."\n";
+        $url   = str_replace(["\n", "\r", ";", "#"], ["", "", "", "&#"], $url);
+        $url   = htmlspecialchars_decode($url);
+        $data .= 'window.location = "' . addslashes($url) . '";' . "\n";
         $data .= "</script>\n";
-
-        @header("Content-type: application/json; charset={$charset}");
-        echo json_encode(["data" => $data]);
+        header("Content-type: application/json; charset={$charset}");
+        echo json_encode(['data' => $data]);
         exit;
     }
 
-    if(!$message) {
-        $message = 'You will now be redirected';
-    }
+    // Обычный редирект
+    $url = htmlspecialchars_decode($url);
+    $url = str_replace(["\n", "\r", ";"], '', $url);
+    run_shutdown();
 
-    $time = TIMENOW;
-    $timenow = my_datee('relative', $time);
-
-    if(!$title) {
-        $title = $SITENAME;
-    }
-
-    if ($force_redirect === true || 
-        ($redirects == 1 && 
-        (!isset($CURUSER['id']) || 
-        (isset($CURUSER['showredirect']) && $CURUSER['showredirect'] == 1)))
-    ) {
-        $url = str_replace("&amp;", "&", $url);
-        $url = htmlspecialchars_uni($url);
-
-        $redirectpage = '
-<html>
-<head>
-<title>' . $title . '</title>
-<meta http-equiv="refresh" content="2;URL=' . $url . '" />
-<link rel="stylesheet" type="text/css" href="' . $BASEURL . '/include/templates/default/style/bootstrap.min.css" />
-</head>
-<body>
-<div class="container-md pt-5">
-<div class="card pt-5 border-0" style="max-width: 100%">
-<div class="card-body pt-5">
-    <div class="text-dark"><h3 class="mb-0 fw-bold">' . $title . '</h3></div>
-    <div class="alert bg-nav mt-2 mb-2" style="font-size: 16px">
-        ' . $message . ' </div>
-    <div class="text-center" style="font-size: 16px">
-        <a href="' . $url . '">Click here if you don\'t want to wait any longer</a>
-    </div>
-</div>
-</div>
-</body>
-</html>';
-        
-        echo $redirectpage;
+    if (!my_validate_url($url, true, true)) {
+        header("Location: {$BASEURL}/{$url}");
     } else {
-        $url = htmlspecialchars_decode($url);
-        $url = str_replace(["\n","\r",";"], "", $url);
-
-        run_shutdown();
-
-        if(!my_validate_url($url, true, true)) {
-            header("Location: {$BASEURL}/{$url}");
-        } else {
-            header("Location: {$url}");
-        }
+        header("Location: {$url}");
     }
-
     exit;
 }
+
+
+
+
+
+
+
 
 function stdmsg(string $heading = '', string $text = '', bool $htmlstrip = true, string $div = 'error'): void
 {
@@ -1242,7 +1208,7 @@ function user_permissions(?int $uid = null): array
 
     // If no user id is specified, assume it is the current user
     if($uid === null) {
-        $uid = $CURUSER['id'];
+       $uid = $CURUSER['id'] ?? 0;
     }
 
     // Its a guest. Return the group permissions directly from cache
@@ -1251,7 +1217,7 @@ function user_permissions(?int $uid = null): array
     }
 
     // User id does not match current user, fetch permissions
-    if($uid != $CURUSER['id']) {
+    if($uid != ($CURUSER['id'] ?? 0)) {
         // We've already cached permissions for this user, return them.
         if(!empty($user_cache[$uid]['permissions'])) {
             return $user_cache[$uid]['permissions'];
@@ -3121,25 +3087,17 @@ function getip(): string
     return htmlspecialchars($alt_ip);
 }
 
-function securehash(?string $var = null): string
-{
-    global $SITENAME, $securehash;
-    return md5(md5($var ?? '') . getip() . md5($securehash . $SITENAME));
-}
+
 
 function generate_passkey(string $username, string $loginkey): string|false
-{ 
-    global $securehash, $SITENAME;
-
+{
     if (empty($username) || empty($loginkey)) {
         return false;
     }
-
-    // Формируем ключ без IP, чтобы он оставался стабильным
-    $passkey = md5($username . TIMENOW . $loginkey . md5($securehash . $SITENAME));
-
-    return $passkey;
+    return md5($username . TIMENOW . $loginkey);
 }
+
+
 
 function gzip(bool $use = false): void
 {
@@ -3278,23 +3236,30 @@ function highlight(string $search, string $subject, string $hlstart = '<b><font 
     return $subject;
 }
 
-function get_user_color(string $username, string $namestyle, bool $white = false): string
-{
-    if ($white) {
-        $new_username = '<font color="#ffffff">' . $username . '</font>';
-    } else {
-        $new_username = str_replace('{username}', $username, $namestyle);
-    }
+//function get_user_color(string $username, string $namestyle, bool $white = false): string
+//{
+    //if ($white) {
+     //   $new_username = '<font color="#ffffff">' . $username . '</font>';
+    //} else {
+    //    $new_username = str_replace('{username}', $username, $namestyle);
+    //}
 
-    return $new_username;
-}
+    //return $new_username;
+//}
 
 function int_check(mixed $value, bool $stdhead = false, bool $stdfood = true, bool $die = true, bool $log = true): ?bool
 {
     global $CURUSER, $BASEURL, $lang, $db;
     
-    $msg = sprintf($lang->global['invalididlogmsg'], htmlspecialchars_uni($_SERVER['REQUEST_URI'] ?? ''), '<a href="' . $BASEURL . '/userdetails.php?id=' . $CURUSER['id'] . '">' . $CURUSER['username'] . '</a>', get_ip(), get_date_time());
     
+	$msg = sprintf($lang->global['invalididlogmsg'],
+    htmlspecialchars_uni($_SERVER['REQUEST_URI'] ?? ''),
+    '<a href="' . $BASEURL . '/userdetails.php?id=' . ($CURUSER['id'] ?? 0) . '">' . htmlspecialchars_uni($CURUSER['username'] ?? 'Guest') . '</a>',
+    get_ip(),
+    get_date_time()
+);
+	
+	
     if (is_array($value)) {
         foreach ($value as $val) {
             int_check($val, $stdhead, $stdfood, $die, $log);
@@ -3531,7 +3496,18 @@ function print_no_permission(bool $log = false, bool $stdhead = true, string $ex
     if ($log) {
         $page = htmlspecialchars_uni($_SERVER['SCRIPT_NAME'] ?? '');
         $query = htmlspecialchars_uni($_SERVER['QUERY_STRING'] ?? '');
-        $message = sprintf($lang->global['permissionlogmessage'], $page, $query, '<a href="' . $BASEURL . '/userdetails.php?id=' . $CURUSER['id'] . '">' . $CURUSER['username'] . '</a>', $CURUSER['ip'] ?? '');
+        //$message = sprintf($lang->global['permissionlogmessage'], $page, $query, '<a href="' . $BASEURL . '/userdetails.php?id=' . $CURUSER['id'] . '">' . $CURUSER['username'] . '</a>', $CURUSER['ip'] ?? '');
+		
+		
+		$message = sprintf($lang->global['permissionlogmessage'],
+          $page,
+          $query,
+          '<a href="' . $BASEURL . '/userdetails.php?id=' . ($CURUSER['id'] ?? 0) . '">' . htmlspecialchars_uni($CURUSER['username'] ?? 'Guest') . '</a>',
+          $CURUSER['ip'] ?? get_ip()
+        );
+		
+		
+		
         write_log($message);
     }
 

@@ -368,7 +368,7 @@ function build_postbit($post, $post_type = 0)
         }
 
         $post['useravatar'] = '';
-        if (isset($CURUSER['showavatars']) && $CURUSER['showavatars'] != 0 || $CURUSER['id'] == 0) {
+        if (true) {
             $useravatar = format_avatar($post['avatar'], $post['avatardimensions']);
             $post['useravatar'] =
                 '<div class="d-none d-lg-block">'
@@ -581,7 +581,8 @@ function build_postbit($post, $post_type = 0)
     if ($enableattachments != 0) get_post_attachments($id, $post);
 
     /* ── Signature ───────────────────────────────────────────────── */
-    if ($post['username'] && $post['signature'] != "" && ($CURUSER['id'] == 0 || $CURUSER['showsigs'] != 0)) {
+    //if ($post['username'] && $post['signature'] != "" && ($CURUSER['id'] == 0 || $CURUSER['showsigs'] != 0)) {
+	if ($post['username'] && $post['signature'] != "") {
         $post['signature'] = $parser->parse_message($post['signature'], [
             'allow_html'=>1,'allow_mycode'=>1,'allow_smilies'=>1,
             'allow_imgcode'=>1,'me_username'=>1,'filter_badwords'=>1,

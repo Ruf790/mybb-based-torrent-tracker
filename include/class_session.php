@@ -93,7 +93,7 @@ class Session
      */
     public function load_user(int $uid, string $loginkey = ''): bool
     {
-        global $mybb, $db, $lang, $mybbgroups, $cache, $timeformat, $dateformat, $f_postsperpage, $f_threadsperpage, $securehash, $SITENAME;
+        global $mybb, $db, $lang, $mybbgroups, $cache, $timeformat, $dateformat, $f_postsperpage, $f_threadsperpage, $SITENAME;
 
         $query = $db->sql_query_prepared("
             SELECT u.*
@@ -101,7 +101,8 @@ class Session
             WHERE u.id = ?
             LIMIT 1", [$uid]);
 
-        $mybb->user = $db->fetch_array($query->result);
+        //$mybb->user = $db->fetch_array($query->result);
+		$mybb->user = $db->fetch_array($query->result) ?: [];
 
         // Check the password if we're not using a session
         if (!$mybb->user || empty($loginkey) || $loginkey !== ($mybb->user['loginkey'] ?? '')) {

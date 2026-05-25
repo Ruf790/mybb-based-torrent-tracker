@@ -64,14 +64,15 @@ function GlobalErrorHandler(int $errno, string $errstr, string $errfile, int $er
     $referer = isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '-';
 
     // Script detection for older PHP
-    $script = 'unknown.php';
-    if (isset($_SERVER['SCRIPT_NAME'])) {
-        $script = basename($_SERVER['SCRIPT_NAME']);
-    } elseif (isset($_SERVER['PHP_SELF'])) {
-        $script = basename($_SERVER['PHP_SELF']);
-    } elseif (PHP_SAPI === 'cli' && isset($_SERVER['argv'][0])) {
-        $script = basename($_SERVER['argv'][0]);
-    }
+    //$script = 'unknown.php';
+    //if (isset($_SERVER['SCRIPT_NAME'])) {
+    //    $script = basename($_SERVER['SCRIPT_NAME']);
+    //} elseif (isset($_SERVER['PHP_SELF'])) {
+    //    $script = basename($_SERVER['PHP_SELF']);
+    //} elseif (PHP_SAPI === 'cli' && isset($_SERVER['argv'][0])) {
+    //    $script = basename($_SERVER['argv'][0]);
+    //}
+	$script = $errfile !== 'Unknown file' ? basename($errfile) : 'unknown.php';
 
     $memoryUsage = number_format(memory_get_usage(true));
     $phpVersion = PHP_VERSION;

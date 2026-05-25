@@ -1,236 +1,110 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- *
- */
+declare(strict_types=1);
 
 /**
- * Base data handler class.
- *
+ * Base data handler class — rewritten for PHP 8.5
  */
 class DataHandler
 {
-	/**
-	 * The data being managed by the data handler
-	 *
-	 * @var array Data being handled by the data handler.
-	 */
-	public $data = array();
+    public array  $data           = [];
+    public bool   $is_validated   = false;
+    public array  $errors         = [];
+    public bool   $admin_override = false;
+    public $method         = 'insert';
+    public $language_prefix = '';
+    public $language_file   = '';
 
-	/**
-	 * Whether or not the data has been validated. Note: "validated" != "valid".
-	 *
-	 * @var boolean True when validated, false when not validated.
-	 */
-	public $is_validated = false;
-
-	/**
-	 * The errors that occurred when handling data.
-	 *
-	 * @var array
-	 */
-	public $errors = array();
-
-	/**
-	 * The status of administrator override powers.
-	 *
-	 * @var boolean
-	 */
-	public $admin_override = false;
-
-	/**
-	 * Defines if we're performing an update or an insert.
-	 *
-	 * @var string
-	 */
-	public $method;
-
-	/**
-	* The prefix for the language variables used in the data handler.
-	*
-	* @var string
-	*/
-	public $language_prefix = '';
-
-
-	/**
-	 * Constructor for the data handler.
-	 *
-	 * @param string $method The method we're performing with this object.
-	 */
-	function __construct($method="insert")
-	{
-		if($method != "update" && $method != "insert" && $method != "get" && $method != "delete")
-		{
-			die("A valid method was not supplied to the data handler.");
-		}
-		$this->method = $method;
-	}
-
-	/**
-	 * Sets the data to be used for the data handler
-	 *
-	 * @param array $data The data.
-	 * @return bool
-	 */
-	function set_data($data)
-	{
-		if(!is_array($data))
-		{
-			return false;
-		}
-		$this->data = $data;
-		return true;
-	}
-
-	/**
-	 * Add an error to the error array.
-	 *
-	 * @param string $error The error name.
-	 * @param string $data
-	 */
-	function set_error($error, $data='')
-	{
-		$this->errors[$error] = array(
-			"error_code" => $error,
-			"data" => $data
-		);
-	}
-
-	/**
-	 * Returns the error(s) that occurred when handling data.
-	 *
-	 * @return array An array of errors.
-	 */
-	function get_errors()
-	{
-		return $this->errors;
-	}
-
-	/**
-	 * Returns the error(s) that occurred when handling data
-	 * in a format that MyBB can handle.
-	 *
-	 * @return array An array of errors in a MyBB format.
-	 */
-	
-function get_friendly_errors()
-{
-    global $lang;
-
-    // Load the language pack we need
-    if($this->language_file)
+    public function __construct(string $method = 'insert')
     {
-        $lang->load($this->language_file);
+        if (!in_array($method, ['insert', 'update', 'get', 'delete'], true)) {
+            die('A valid method was not supplied to the data handler.');
+        }
+        $this->method = $method;
     }
-    
-    // Prefix all the error codes with the language prefix.
-    $errors = array();
-    foreach($this->errors as $error)
+
+    public function set_data(array $data): bool
     {
-        $lang_key = $this->language_prefix . '_' . $error['error_code'];
-        $error_message = null;
-        
-        // Проверяем прямой доступ к переменной
-        if(isset($lang->$lang_key))
-        {
-            $error_message = $lang->$lang_key;
-        }
-        // Проверяем в массиве $lang->{$this->language_file}
-        elseif(isset($lang->{$this->language_file}) && isset($lang->{$this->language_file}[$lang_key]))
-        {
-            $error_message = $lang->{$this->language_file}[$lang_key];
-        }
-        // Проверяем без префикса
-        elseif(isset($lang->{$this->language_file}) && isset($lang->{$this->language_file}[$error['error_code']]))
-        {
-            $error_message = $lang->{$this->language_file}[$error['error_code']];
-        }
-        
-        if($error_message === null)
-        {
-            $errors[] = $error['error_code'];
-            continue;
+        $this->data = $data;
+        return true;
+    }
+
+    public function set_error(string $error, string|array $data = ''): void
+    {
+        $this->errors[$error] = [
+            'error_code' => $error,
+            'data'       => $data,
+        ];
+    }
+
+    public function get_errors(): array
+    {
+        return $this->errors;
+    }
+
+    public function get_friendly_errors(): array
+    {
+        global $lang;
+
+        if ($this->language_file) {
+            $lang->load($this->language_file);
         }
 
-        if(!empty($error['data']) && !is_array($error['data']))
-        {
-            $error['data'] = array($error['data']);
+        $errors = [];
+
+        foreach ($this->errors as $error) {
+            $lang_key      = $this->language_prefix . '_' . $error['error_code'];
+            $error_message = null;
+
+            if (isset($lang->$lang_key)) {
+                $error_message = $lang->$lang_key;
+            } elseif (isset($lang->{$this->language_file}[$lang_key])) {
+                $error_message = $lang->{$this->language_file}[$lang_key];
+            } elseif (isset($lang->{$this->language_file}[$error['error_code']])) {
+                $error_message = $lang->{$this->language_file}[$error['error_code']];
+            }
+
+            if ($error_message === null) {
+                $errors[] = $error['error_code'];
+                continue;
+            }
+
+            $data = !is_array($error['data']) && $error['data'] !== ''
+                ? [$error['data']]
+                : $error['data'];
+
+            $errors[] = !empty($data)
+                ? vsprintf($error_message, $data)
+                : $error_message;
         }
 
-        if(is_array($error['data']) && !empty($error['data']))
-        {
-            $errors[] = vsprintf($error_message, $error['data']);
+        return $errors;
+    }
+
+    public function set_validated(bool $validated = true): void
+    {
+        $this->is_validated = $validated;
+    }
+
+    public function get_validated(): bool
+    {
+        return $this->is_validated;
+    }
+
+    public function verify_yesno_option(array &$options, string $option, int $default = 1): void
+    {
+        if ($this->method !== 'insert' && !array_key_exists($option, $options)) {
+            return;
         }
-        else
-        {
-            $errors[] = $error_message;
+
+        if (!isset($options[$option]) || $options[$option] === '') {
+            $options[$option] = array_key_exists($option, $options) ? 0 : $default;
+            return;
+        }
+
+        if ($options[$option] != $default) {
+            $options[$option] = $default === 1 ? 0 : 1;
+        } else {
+            $options[$option] = $default;
         }
     }
-    return $errors;
-}
-
-	/**
-	 * Sets whether or not we are done validating.
-	 *
-	 * @param boolean True when done, false when not done.
-	 */
-	function set_validated($validated = true)
-	{
-		$this->is_validated = $validated;
-	}
-
-	/**
-	 * Returns whether or not we are done validating.
-	 *
-	 * @return boolean True when done, false when not done.
-	 */
-	function get_validated()
-	{
-		if($this->is_validated == true)
-		{
-			return true;
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-	/**
-	* Verifies if yes/no options haven't been modified.
-	*
-	* @param array $options The user options array.
-	* @param string $option The specific option to check.
-	* @param int|bool $default Optionally specify if the default should be used.
-	*/
-	function verify_yesno_option(&$options, $option, $default=1)
-	{
-		if($this->method == "insert" || array_key_exists($option, $options))
-		{
-			if(isset($options[$option]) && $options[$option] != $default && $options[$option] != "")
-			{
-				if($default == 1)
-				{
-					$options[$option] = 0;
-				}
-				else
-				{
-					$options[$option] = 1;
-				}
-			}
-			else if(@array_key_exists($option, $options) && $options[$option] == '')
-			{
-				$options[$option] = 0;
-			}
-			else
-			{
-				$options[$option] = $default;
-			}
-		}
-	}
 }

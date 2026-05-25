@@ -155,7 +155,71 @@ function delete_all_torrent_comment_files(int $torrent_id): void
     
     // 2. Delete files attached to comments of this torrent (comment_id)
     delete_comment_files_by_torrent_comments($torrent_id);
+	
+	// 3. Delete attachments from attachments table (наша новая система)
+    delete_attachments_by_torrent_comments($torrent_id);
 }
+
+
+
+/**
+ * Delete attachments (attachments table) for all comments of a torrent
+ */
+function delete_attachments_by_torrent_comments(int $torrent_id): void
+{
+    global $db;
+
+    require_once INC_PATH . '/functions_upload.php';
+
+    $uploadDir  = TSDIR . '/uploads/attachments/';
+    $batch_size = 100;
+    $offset     = 0;
+
+    // Получаем comment_ids батчами
+    do {
+        $comments = $db->sql_query(
+            "SELECT id FROM comments WHERE torrent = {$torrent_id}
+             LIMIT {$batch_size} OFFSET {$offset}"
+        );
+
+        $comment_ids = [];
+        while ($row = $db->fetch_array($comments)) {
+            $comment_ids[] = (int)$row['id'];
+        }
+
+        if (empty($comment_ids)) break;
+
+        $ids_sql = implode(',', $comment_ids);
+
+        // Удаляем файлы батчами
+        $att_offset = 0;
+        do {
+            $result = $db->sql_query(
+                "SELECT attachname, thumbnail FROM attachments
+                 WHERE comment_id IN ($ids_sql)
+                 LIMIT {$batch_size} OFFSET {$att_offset}"
+            );
+
+            $count = 0;
+            while ($row = $db->fetch_array($result)) {
+                delete_uploaded_file($uploadDir . $row['attachname']);
+                if (!empty($row['thumbnail']) && $row['thumbnail'] !== 'SMALL') {
+                    delete_uploaded_file($uploadDir . $row['thumbnail']);
+                }
+                $count++;
+            }
+            $att_offset += $batch_size;
+        } while ($count === $batch_size);
+
+        $db->sql_query("DELETE FROM attachments WHERE comment_id IN ($ids_sql)");
+
+        $offset += $batch_size;
+
+    } while (count($comment_ids) === $batch_size);
+}
+
+
+
 
 /**
  * Delete files attached directly to torrent (torrent_id)

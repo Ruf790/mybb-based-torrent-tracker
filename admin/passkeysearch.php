@@ -1,14 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+
 
 // Access check
 if (!defined('STAFF_PANEL_TSSEv56')) {
@@ -31,7 +24,7 @@ $title = 'Search Results: ';
 // Page header
 stdhead('Passkey Search');
 
-echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />';
+
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
 
 // Handle actions
@@ -126,7 +119,7 @@ function displayUserDetails(array $user): void
     // Format dates
     $lastseen = formatDateTime($user['lastactive'] ?? '0000-00-00 00:00:00');
     $joindate = formatDateTime($user['added'] ?? '0000-00-00 00:00:00');
-    $ratio = get_user_ratio($user['uploaded'] ?? 0, $user['downloaded'] ?? 0);
+    $ratio = get_user_ratio((float)($user['uploaded'] ?? 0), (float)($user['downloaded'] ?? 0));
     
     // Format avatar
     $avatar_html = '<i class="fas fa-user fa-4x text-primary bg-light p-4 rounded-circle"></i>';

@@ -1,15 +1,8 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- */
+
 
 declare(strict_types=1);
 
-define("IN_MYBB", 1);
 
 // Disallow direct access to this file for security reasons
 if (!defined("IN_MYBB")) {

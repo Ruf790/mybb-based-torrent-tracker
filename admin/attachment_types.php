@@ -5,8 +5,9 @@
 
 declare(strict_types=1);
 
-define('IN_MYBB', 1);
-define('IN_ADMINCP', 1);
+
+require_once INC_PATH . '/functions_multipage.php';
+
 
 global $mybb, $db, $plugins, $cache, $lang;
 
@@ -506,9 +507,11 @@ function handle_list_action(): void
 
     if ($pages > 1) {
         echo '<div class="container mt-3">'
-           . draw_admin_pagination($page, $per_page, $total_rows, "index.php?act=attachment_types&amp;page={page}")
+           . multipage($total_rows, $per_page, $page, "index.php?act=attachment_types&amp;page={page}")
            . '</div>';
     }
+	
+	
 
     stdfoot();
 }

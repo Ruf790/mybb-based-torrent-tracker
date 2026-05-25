@@ -1,17 +1,33 @@
 <?php
 
-define ('IN_ADMIN_PANEL', true);
-define ('STAFF_PANEL_TSSEv56', true);
-define ('SKIP_CRON_JOBS', true);
-define ('SKIP_LOCATION_SAVE', true);
-define("IN_MYBB", 1);
-define("IN_ADMINCP", 1);
-
-
-
 
 
 require_once(INC_PATH.'/functions_mkprettytime.php');
+
+
+
+
+function calc_cron_time(int $stamp): array
+{
+    $intervals = [
+        'years'   => 365 * 24 * 3600,
+        'months'  => 31  * 24 * 3600,
+        'weeks'   => 7   * 24 * 3600,
+        'days'    =>       24 * 3600,
+        'hours'   =>            3600,
+        'minutes' =>              60,
+    ];
+
+    $result = [];
+    foreach ($intervals as $key => $secs) {
+        $result[$key] = (int)floor($stamp / $secs);
+        $stamp        %= $secs;
+    }
+
+    return $result;
+}
+
+
 
 
 

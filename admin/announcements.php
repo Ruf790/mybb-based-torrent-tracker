@@ -1,11 +1,6 @@
 <?php
 
-/**
- * Announcements Management Panel
- * TS Special Edition v.5.6
- *
- * @version v.0.6
- */
+
 
 declare(strict_types=1);
 
@@ -185,7 +180,7 @@ function renderDeleteModal(string $scriptName): void
  */
 function handleShowAction(): void
 {
-    global $db;
+    global $db, $_this_script_;
 
     stdhead('Announcements ' . B_VERSION);
 
@@ -206,7 +201,7 @@ function handleShowAction(): void
      
 		<div class="d-flex justify-content-between align-items-center mb-4">
             <h3 class="mb-0"><i class="fas fa-bullhorn me-2 text-primary"></i>Tracker Announcements</h3>
-            <a href="<?= $script ?>?act=announcements&action=add" class="btn btn-primary">
+            <a href="<?= $_this_script_ ?>&action=add" class="btn btn-primary">
                 <i class="fas fa-plus me-1"></i> New Announcement
             </a>
         </div>
@@ -290,7 +285,7 @@ function renderAnnouncementRow(array $row): void
             </div>
         </td>
         <td class="text-center">
-            <span class="badge bg-info"><?= get_user_class_name((int) $row['minclassread']) ?></span>
+            <span class="badge bg-info"><?= get_user_class_name((string) $row['minclassread']) ?></span>
         </td>
         <td class="text-center">
             <div class="btn-group btn-group-sm" role="group">
@@ -632,7 +627,7 @@ function renderSeeTabContent(
                                 <dt class="col-sm-4">Target:</dt>
                                 <dd class="col-sm-8">
                                     <span class="badge bg-info">
-                                        <?= get_user_class_name((int) $current['minclassread']) ?>
+                                        <?= get_user_class_name((string) $current['minclassread']) ?>
                                     </span>
                                 </dd>
 
@@ -848,7 +843,7 @@ function renderSeePreviewCard(array $current, int $viewCount, string $parsedMess
 
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <span class="badge bg-info me-1"><?= get_user_class_name((int) $current['minclassread']) ?></span>
+                        <span class="badge bg-info me-1"><?= get_user_class_name((string) $current['minclassread']) ?></span>
                         <span class="badge bg-secondary">#<?= $id ?></span>
                         <span class="badge bg-danger ms-1"><?= $viewCount ?> views</span>
                     </div>
@@ -910,12 +905,17 @@ function renderSeeScripts(
     int    $viewCount,
     string $scriptName
 ): void {
+	
+	global $BASEURL;
+	
     $base        = htmlspecialchars($scriptName . '?act=announcements');
     $prevId      = $prev ? (int) $prev['id'] : 'null';
     $nextId      = $next ? (int) $next['id'] : 'null';
     $subject     = addslashes(htmlspecialchars($current['subject']));
+	
+	$author      = 'Staff'; // нет поля автора в таблице
     
-    $targetClass = addslashes(get_user_class_name((int) $current['minclassread']));
+    $targetClass = addslashes(get_user_class_name((string) $current['minclassread']));
     $rawText     = addslashes(strip_tags($current['message']));
     $parsedMsg   = $current['message']; // for HTML export — already stored in PHP
     $id          = (int) $current['id'];
@@ -1382,7 +1382,7 @@ function respondDuplicate(
  */
 function renderAnnouncementForm(string $mode, array $data = []): void
 {
-    global $smilies, $BASEURL;
+    global $smilies, $_this_script_, $BASEURL;
 
     $isEdit = ($mode === 'edit');
     $title  = $isEdit ? 'Edit Announcement' : 'New Announcement';
@@ -1404,7 +1404,7 @@ function renderAnnouncementForm(string $mode, array $data = []): void
 	
 	
 	<div class="d-flex align-items-center gap-2 mb-4">
-            <a href="<?= $script ?>?act=announcements" class="btn btn-outline-secondary btn-sm">
+            <a href="<?= $_this_script_ ?>?act=announcements" class="btn btn-outline-secondary btn-sm">
                 <i class="fas fa-arrow-left"></i>
             </a>
             <h4 class="mb-0"><i class="fas fa-bullhorn me-2 text-primary"></i><?= $title ?></h4>
@@ -1471,7 +1471,7 @@ function renderAnnouncementForm(string $mode, array $data = []): void
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Minimum User Class</label>
-                            <?= _selectbox_(null, 'minclassread', true, 'All users', $data['minclassread'] ?? 0) ?>
+                           <?= _selectbox_('', 'minclassread', true, 'All users', $data['minclassread'] ?? 0) ?>
                         </div>
                     </div>
                

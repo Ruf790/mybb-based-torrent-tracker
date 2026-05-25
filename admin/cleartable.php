@@ -2,20 +2,13 @@
 
 declare(strict_types=1);
 
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="alert alert-danger fade-in" role="alert"><i class="fas fa-exclamation-triangle me-2"></i><strong>Error!</strong> Direct access to this file is not allowed.</div>');
 }
 
-define('CT_VERSION', '0.5 by xam');
+define('CT_VERSION', '1.0');
 
 /**
  * MySQL Tables Truncation Manager Class

@@ -1,12 +1,5 @@
 <?php
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+
 
 declare(strict_types=1);
 
@@ -15,8 +8,11 @@ if (!defined('IN_ADMIN_PANEL'))
     exit('<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> <strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-define('M_AVATARS', 'v.2.0 by xam');
+define('M_AVATARS', 'v.3.0');
 define('AVATARS_PER_PAGE', 24);
+
+
+
 
 /**
  * Scan image for malicious code
@@ -71,6 +67,31 @@ function format_file_size(int $bytes): string
 $_adir = TSDIR . '/uploads/avatars/';
 $_filetypes = ['gif', 'jpg', 'png', 'jpeg', 'webp'];
 $_avatars = [];
+
+
+
+
+$show_swal      = false;
+$ok             = [];
+$skipped_shared = [];
+$not_found      = [];
+$unlink_failed  = [];
+$action_type    = '';
+
+if (!empty($_SESSION['swal_result'])) {
+    $show_swal      = true;
+    $data           = $_SESSION['swal_result'];
+    $action_type    = $data['type']           ?? '';
+    $ok             = $data['ok']             ?? [];
+    $skipped_shared = $data['skipped_shared'] ?? [];
+    $not_found      = $data['not_found']      ?? [];
+    $unlink_failed  = $data['unlink_failed']  ?? [];
+    unset($_SESSION['swal_result']);
+}
+
+
+
+
 
 // Process POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_array($_POST['action_type'] ?? '', ['resize', 'delete'], true)) {
@@ -143,6 +164,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_arr
         }
         
         $show_swal = !empty($ok) || !empty($unlink_failed) || !empty($skipped_shared) || !empty($not_found);
+		
+		
+       $_SESSION['swal_result'] = [
+            'type'           => 'delete',
+            'ok'             => $ok,
+            'skipped_shared' => $skipped_shared,
+            'not_found'      => $not_found,
+            'unlink_failed'  => $unlink_failed,
+        ];
+        admin_redirect($_this_script_ . '&p=' . $page);
+    
+		
+		
+		
+		
+		
     } 
     elseif ($action_type === 'resize') {
         require INC_PATH . '/readconfig_forumcp.php';
@@ -203,8 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_arr
             $image_data = ob_get_clean();
             
             file_put_contents($filepath, $image_data);
-            imagedestroy($image_p);
-            imagedestroy($image);
+            
         }
         
         $show_swal = true;
@@ -255,8 +291,10 @@ $to = min($offset + $per_page, $total);
 // Page header
 stdhead('Manage Avatars - ' . M_AVATARS);
 
-echo '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>';
+require_once INC_PATH . '/modals_images.php';
+
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/details_modal.js"></script>';
+echo '<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>';
 
 ?>
 
@@ -267,10 +305,7 @@ echo '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-a
     --gradient-danger: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
 }
 
-/* Увеличенные базовые шрифты */
-body {
-    font-size: 16px;
-}
+
 
 .fade-in-up {
     animation: fadeInUp 0.5s ease-out;
@@ -648,17 +683,20 @@ Swal.fire({
                 <div class="col">
                     <div class="avatar-card" id="<?= $cardId ?>" onclick="toggleCard('<?= $cardId ?>', '<?= md5($avatar) ?>')">
                         <div class="avatar-image-wrapper">
-                            <img src="<?= htmlspecialchars($BASEURL . '/uploads/avatars/' . $avatar) ?>" 
-                                 class="avatar-image" 
-                                 alt="Avatar" 
-                                 onerror="this.src='<?= $BASEURL ?>/images/default_avatar.png'">
-                            <div class="avatar-badge">
-                                <input type="checkbox" name="avatars[]" id="cb_<?= md5($avatar) ?>" 
-                                       value="<?= htmlspecialchars($avatar) ?>" class="form-check-input" 
-                                       style="width: 22px; height: 22px; cursor: pointer;" 
-                                       onclick="event.stopPropagation(); updateSelectedCount()">
-                            </div>
-                        </div>
+    <img src="<?= htmlspecialchars($BASEURL . '/uploads/avatars/' . $avatar) ?>"
+         class="avatar-image"
+         alt="Avatar"
+         data-bs-toggle="modal"
+         data-bs-target="#universalImageModal"
+         data-img-src="<?= htmlspecialchars($BASEURL . '/uploads/avatars/' . $avatar) ?>"
+         onerror="this.src='<?= $BASEURL ?>/images/default_avatar.png'">
+    <div class="avatar-badge">
+        <input type="checkbox" name="avatars[]" id="cb_<?= md5($avatar) ?>"
+               value="<?= htmlspecialchars($avatar) ?>" class="form-check-input"
+               style="width:22px;height:22px;cursor:pointer;"
+               onclick="event.stopPropagation(); updateSelectedCount()">
+    </div>
+</div>
                         <div class="avatar-info">
                             <div class="avatar-filename text-truncate" title="<?= htmlspecialchars($avatar) ?>">
                                 <i class="fas fa-file-alt me-1"></i><?= htmlspecialchars($avatar) ?>
@@ -736,25 +774,8 @@ Swal.fire({
 </nav>
 <?php endif; ?>
 
-<!-- Image Preview Modal -->
-<div class="modal fade" id="imageModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content border-0 rounded-4">
-            <div class="modal-header bg-gradient-primary text-white border-0 py-3">
-                <h5 class="modal-title fs-4"><i class="fas fa-image me-2"></i>Avatar Preview</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body text-center p-4">
-                <img id="previewImage" src="" alt="Preview" class="img-fluid rounded-3 shadow-sm" style="max-height: 70vh;">
-            </div>
-            <div class="modal-footer border-0 py-3">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-2"></i>Close
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+
+
 
 <script>
 let selectedCards = new Set();
@@ -802,25 +823,14 @@ function updateSelectedCount() {
     }
 }
 
-function showPreview(imageUrl, title) {
-    const modal = new bootstrap.Modal(document.getElementById('imageModal'));
-    const img = document.getElementById('previewImage');
-    img.src = imageUrl;
-    modal.show();
-}
+
 
 // Initialize tooltips
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
     new bootstrap.Tooltip(el);
 });
 
-// Preview on image click
-document.querySelectorAll('.avatar-image').forEach(img => {
-    img.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showPreview(img.src, 'Avatar Preview');
-    });
-});
+
 
 // Initialize selected count
 updateSelectedCount();

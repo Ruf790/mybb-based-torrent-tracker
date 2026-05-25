@@ -1,9 +1,6 @@
 <?php
 declare(strict_types=1);
 
-define('IN_MYBB', 1);
-
-
 
 $action = $_GET['action'] ?? 'list';
 $page   = max(1, (int)($_GET['page'] ?? 1));

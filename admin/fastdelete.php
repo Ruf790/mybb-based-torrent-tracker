@@ -1,12 +1,5 @@
 <?
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+
 
 
   if (!defined ('STAFF_PANEL_TSSEv56'))
@@ -14,9 +7,9 @@
     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
   }
 
-  define ('FD_VERSION', '1.0 by xam');
-  define("IN_MYBB", 1);
-  
+  define ('FD_VERSION', '2.0');
+
+
   // Include our base data handler class
   require_once INC_PATH . '/datahandler.php';
   

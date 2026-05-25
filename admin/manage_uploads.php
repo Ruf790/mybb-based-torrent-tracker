@@ -2,6 +2,9 @@
 
 $rootpath = './../';
 require_once $rootpath . 'global.php';
+
+
+
 require_once INC_PATH . '/functions_multipage.php';
 
 // ── Single delete (AJAX GET) ─────────────────────────────
@@ -17,7 +20,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
         LEFT JOIN comments c ON c.id = cf.comment_id
         LEFT JOIN news n ON n.id = cf.news_id
         LEFT JOIN torrents t ON t.id = cf.torrent_id
-        LEFT JOIN tsf_posts p ON p.pid = cf.post_id
+        LEFT JOIN posts p ON p.pid = cf.post_id
         LEFT JOIN privatemessages pm ON pm.pmid = cf.messages_id
         WHERE cf.id = $file_id
     ");
@@ -32,7 +35,7 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
             ['comment_id', 'comments',       'text',    'comment_text'],
             ['news_id',    'news',            'body',    'news_text'],
             ['torrent_id', 'torrents',        'descr',   'torrent_description'],
-            ['post_id',    'tsf_posts',       'message', 'post_message'],
+            ['post_id',    'posts',       'message', 'post_message'],
             ['messages_id','privatemessages', 'message', 'pm_message'],
         ];
         $pk = ['comment_id'=>'id','news_id'=>'id','torrent_id'=>'id','post_id'=>'pid','messages_id'=>'pmid'];
@@ -77,16 +80,16 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
         LEFT JOIN comments c ON c.id=cf.comment_id
         LEFT JOIN news n ON n.id=cf.news_id
         LEFT JOIN torrents t ON t.id=cf.torrent_id
-        LEFT JOIN tsf_posts p ON p.pid=cf.post_id
+        LEFT JOIN posts p ON p.pid=cf.post_id
         LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
         WHERE cf.id IN ($ids_str)
     ");
 
-    $affected = ['comments'=>[],'news'=>[],'torrents'=>[],'tsf_posts'=>[],'privatemessages'=>[]];
-    $pk_map   = ['comments'=>'id','news'=>'id','torrents'=>'id','tsf_posts'=>'pid','privatemessages'=>'pmid'];
-    $col_map  = ['comments'=>'text','news'=>'body','torrents'=>'descr','tsf_posts'=>'message','privatemessages'=>'message'];
-    $fk_map   = ['comments'=>'comment_id','news'=>'news_id','torrents'=>'torrent_id','tsf_posts'=>'post_id','privatemessages'=>'messages_id'];
-    $txt_map  = ['comments'=>'comment_text','news'=>'news_text','torrents'=>'torrent_description','tsf_posts'=>'post_message','privatemessages'=>'pm_message'];
+    $affected = ['comments'=>[],'news'=>[],'torrents'=>[],'posts'=>[],'privatemessages'=>[]];
+    $pk_map   = ['comments'=>'id','news'=>'id','torrents'=>'id','posts'=>'pid','privatemessages'=>'pmid'];
+    $col_map  = ['comments'=>'text','news'=>'body','torrents'=>'descr','posts'=>'message','privatemessages'=>'message'];
+    $fk_map   = ['comments'=>'comment_id','news'=>'news_id','torrents'=>'torrent_id','posts'=>'post_id','privatemessages'=>'messages_id'];
+    $txt_map  = ['comments'=>'comment_text','news'=>'news_text','torrents'=>'torrent_description','posts'=>'post_message','privatemessages'=>'pm_message'];
     $deleted_ids = [];
 
     while ($file = $db->fetch_array($res)) {
@@ -121,7 +124,7 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
 
 // ── List page setup ──────────────────────────────────────
 $is_ajax   = isset($_GET['ajax_search']) && $_GET['ajax_search'] == '1';
-$per_page  = 15;
+$per_page  = $ts_perpage;
 $page      = max(1, (int)($_GET['page'] ?? 1));
 $offset    = ($page - 1) * $per_page;
 $search    = isset($_GET['search'])     ? $db->escape_string($_GET['search'])     : '';
@@ -179,7 +182,7 @@ function getFileDimensions($file_path) {
 stdhead();
 ?>
 
-<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/bootstrap-icons.css">
+
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/manage_uploads.css">
 
 <div class="container py-5">
@@ -292,7 +295,7 @@ stdhead();
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="<?= $this_script_ ?>">
+            <form method="POST" action="<?= $_this_script_ ?>">
                 <input type="hidden" name="id" id="editId">
                 <input type="hidden" name="update" value="1">
                 <div class="modal-body">

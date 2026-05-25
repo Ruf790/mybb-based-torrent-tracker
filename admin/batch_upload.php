@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-define('SCRIPTNAME', 'batch_upload.php');
 
 ini_set('memory_limit', '512M');
 set_time_limit(600);
@@ -375,7 +374,7 @@ function findCSVData(array $csvData, string $filename): ?array
 
 function showForm(): void
 {
-    global $mybb, $db, $_this_script_;
+    global $BASEURL, $mybb, $db, $_this_script_;
 
     stdhead('Batch Torrent Upload');
 

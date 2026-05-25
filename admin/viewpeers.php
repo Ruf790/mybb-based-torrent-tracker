@@ -243,7 +243,9 @@ stdfoot();
  */
 function render_peer_row(array $row): string
 {
-    $username = htmlspecialchars_uni($row['username'] ?? '');
+    global $BASEURL, $dateformat, $timeformat;
+	
+	$username = htmlspecialchars_uni($row['username'] ?? '');
     $formatted_name = format_name($username, $row['usergroup'] ?? 0, $row['displaygroup'] ?? 0);
     $profile_link = $BASEURL . '/' . get_profile_link($row['userid'] ?? 0);
     

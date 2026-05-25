@@ -203,7 +203,15 @@ if (!empty($delete)) {
     </div>';
     echo '<a href="https://ruff-tracker.eu/admin/index.php?act=delundeletedtorrents&sure=yes" class="btn btn-danger mt-3" onclick="return confirm(\'Are you sure you want to permanently delete these files?\')">Delete All</a>';
 } elseif (empty($deleted_ids)) {
-    echo '<p class="text-success">There are no undeleted torrents found. Everything is clean!</p>';
+    
+	echo '
+<div class="text-center py-5">
+    <i class="fas fa-check-circle fa-4x text-success mb-3 d-block"></i>
+    <h5 class="text-success mb-1">All Clean!</h5>
+    <p class="text-muted">There are no undeleted torrents found. Everything is clean!</p>
+</div>';
+	
+	
 }
 
 echo '</div>

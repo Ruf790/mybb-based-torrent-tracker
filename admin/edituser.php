@@ -1615,7 +1615,7 @@ function renderAccountSettingsTab(): string
         <div class="col-md-6">
             <h5 class="mb-4"><i class="fas fa-bell me-2 text-warning"></i>Notification Settings</h5>
             
-            ' . yesno('Alert with notice when new private message is received', 'pmnotice', (string)(int)$userdata['pmnotice']).'
+            ' . yesno('Alert with notice when new private message is received', 'pmnotice', $userdata['pmnotice'] ? '1' : '0') . '
             
             ' . yesno('Notify by email when new private message is received', 'pmnotify', $userdata['pmnotify'] ? '1' : '0') . '
             
@@ -4777,11 +4777,11 @@ function processUserUpdateData(): array
     }
 
     // Process warnings
-    if ($_POST['warned'] == 'no' && $userdata['warned'] == 'yes') {
+    if (($_POST['warned'] ?? '') == 'no' && $userdata['warned'] == 'yes') {
         $updateData['warned'] = 'no';
         $updateData['warneduntil'] = '0';
         $modcomment = modcomment("Warning removed");
-    } elseif (is_valid_id($_POST['warnlength']) && $userdata['warned'] == 'no') {
+    } elseif (isset($_POST['warnlength']) && is_valid_id($_POST['warnlength']) && $userdata['warned'] == 'no') {
         $warnpm = $_POST['warnpm'] ?: 'No Reason Given.';
         if ($_POST['warnlength'] == 255) {
             $updateData['warneduntil'] = '0000-00-00 00:00:00';
@@ -4900,9 +4900,9 @@ function updateUserPermissions(): void
     
      global $db, $userid, $userdata, $modcomment, $CURUSER;
     $fields = [
-        'cancomment'  => (int)($_POST['cancomment']  === 'yes'),
-        'canupload'   => (int)($_POST['canupload']   === 'yes'),
-        'candownload' => (int)($_POST['candownload'] === 'yes'),
+        'cancomment'  => (int)(($_POST['cancomment']  ?? '') === 'yes'),
+        'canupload'   => (int)(($_POST['canupload']   ?? '') === 'yes'),
+        'candownload' => (int)(($_POST['candownload'] ?? '') === 'yes'),
     ];
 
     foreach ($fields as $field => $newVal) {

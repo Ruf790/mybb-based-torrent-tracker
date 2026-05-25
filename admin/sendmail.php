@@ -1,21 +1,5 @@
 <?php
-/**
- * ====================================================
- * TS Special Edition v5.6 - Enhanced Mail Sender
- * ====================================================
- * 
- * @package     TSSE_Mailer
- * @version     5.6
- * @author      xam (Modified for PHP 8.5)
- * @copyright   Special Coders Network
- * 
- * Special Thanks:
- * - DrNet       (wWw.SpecialCoders.CoM)
- * - Vinson      (wWw.Decode4u.CoM)
- * - MrDecoder   (wWw.Fearless-Releases.CoM)
- * - Fynnon      (wWw.BvList.CoM)
- * ====================================================
- */
+
 
 declare(strict_types=1);
 
@@ -60,8 +44,8 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
 }
 
 // Constants
-define('SM_VERSION', '0.4 by xam');
-define('IN_MYBB', 1);
+define('SM_VERSION', '0.4');
+;
 
 // Initialization
 $error = '';

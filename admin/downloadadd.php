@@ -659,7 +659,9 @@ private function displaySuccess(int $amountGB, ?int $groupId = null): void
      */
     private function displayInterface(): void
     {
-        // Используем существующую функцию stdhead
+        global $BASEURL, $_this_script_;
+		
+		// Используем существующую функцию stdhead
         if (function_exists('stdhead')) {
             stdhead('Download Amount Manager ' . self::VERSION);
         } else {
@@ -795,30 +797,30 @@ private function displaySuccess(int $amountGB, ?int $groupId = null): void
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <div class="d-flex flex-wrap gap-2">
-                            <button class="btn btn-sm btn-outline-primary" onclick="searchByGroup(1)">
+                            <button class="btn btn-sm btn-outline-primary" onclick="searchByGroup(2)">
                                 <i class="fas fa-users me-1"></i> All Users
                             </button>
 							
-							<button class="btn btn-sm btn-outline-purple" onclick="searchByGroup(2)">
+							<button class="btn btn-sm btn-outline-purple" onclick="searchByGroup(3)">
         <i class="fas fa-bolt me-1"></i> Power Users
     </button>
 							
-                            <button class="btn btn-sm btn-outline-info" onclick="searchByGroup(3)">
+                            <button class="btn btn-sm btn-outline-info" onclick="searchByGroup(4)">
                                 <i class="fas fa-star me-1"></i> VIP
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="searchByGroup(6)">
+                            <button class="btn btn-sm btn-outline-danger" onclick="searchByGroup(7)">
                                 <i class="fas fa-crown me-1"></i> Admins
                             </button>
 							
-							<button class="btn btn-sm btn-outline-dark" onclick="searchByGroup(7)">
+							<button class="btn btn-sm btn-outline-dark" onclick="searchByGroup(8)">
         <i class="fas fa-terminal me-1"></i> SysOp
     </button>
 							
 							
-                            <button class="btn btn-sm btn-outline-warning" onclick="searchByGroup(5)">
+                            <button class="btn btn-sm btn-outline-warning" onclick="searchByGroup(6)">
                                 <i class="fas fa-user-shield me-1"></i> Moderators
                             </button>
-                            <button class="btn btn-sm btn-outline-success" onclick="searchByGroup(4)">
+                            <button class="btn btn-sm btn-outline-success" onclick="searchByGroup(5)">
                                 <i class="fas fa-cloud-upload-alt me-1"></i> Uploaders
                             </button>
                            

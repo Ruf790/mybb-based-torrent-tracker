@@ -1,14 +1,7 @@
 <?php
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
 
-define("IN_MYBB", 1);
+
+
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/datahandler.php';
 
@@ -18,72 +11,58 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-define('AA_VERSION', '0.7 by xam');
+define('AA_VERSION', '0.9');
 $eol = PHP_EOL;
 
-if ($_POST['do'] == 'apply') {
-    if (is_array($_POST['ban'])) {
-        $modcomment = gmdate('Y-m-d') . ' - Banned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . $eol;
-        $db->sql_query('UPDATE users SET enabled = \'no\', passkey=\'\', modcomment=CONCAT(' . $db->sqlesc($modcomment . '') . ', modcomment) WHERE id IN (' . implode(', ', $_POST['ban']) . ')');
+
+$do  = $_POST['do'] ?? '';
+$fid = (int)($_GET['fid'] ?? 0);
+
+if ($do === 'apply') {
+    if (!empty($_POST['ban']) && is_array($_POST['ban'])) {
+        $ids        = implode(',', array_map('intval', $_POST['ban']));
+        $modcomment = gmdate('Y-m-d') . ' - Banned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . PHP_EOL;
+        $db->sql_query("UPDATE users SET enabled='no', passkey='', modcomment=CONCAT(" . $db->sqlesc($modcomment) . ", modcomment) WHERE id IN ({$ids})");
         $aa_message = 'Users have been banned';
     }
 
-    if (is_array($_POST['warn'])) {
-        $warnlength2 = '1';
-        $warneduntil = TIMENOW + $warnlength2 * 604800;
-        $lastwarned = TIMENOW;
-        
-        $query = 'warned = \'yes\', timeswarned = timeswarned + 1, lastwarned = ' . $lastwarned . ', warnedby = ' . $CURUSER['id'] . ', warneduntil = ' . $db->sqlesc($warneduntil);
-        $modcomment = gmdate('Y-m-d') . ' - Warned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . $eol;
-        $db->sql_query('UPDATE users SET ' . $query . ', modcomment=CONCAT(' . $db->sqlesc($modcomment . '') . ', modcomment) WHERE id IN (' . implode(', ', $_POST['warn']) . ')');
-        
-        $res = $db->sql_query('SELECT id FROM users WHERE id IN (' . implode(', ', $_POST['warn']) . ')');
+    if (!empty($_POST['warn']) && is_array($_POST['warn'])) {
+        $ids         = implode(',', array_map('intval', $_POST['warn']));
+        $warneduntil = TIMENOW + 604800;
+        $modcomment  = gmdate('Y-m-d') . ' - Warned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . PHP_EOL;
+        $db->sql_query("UPDATE users SET warned='yes', timeswarned=timeswarned+1, lastwarned=" . TIMENOW . ", warnedby=" . (int)$CURUSER['id'] . ", warneduntil={$warneduntil}, modcomment=CONCAT(" . $db->sqlesc($modcomment) . ", modcomment) WHERE id IN ({$ids})");
+
         require_once INC_PATH . '/functions_pm.php';
-        
-        while ($arr = mysqli_fetch_assoc($res)) {
-            $pm = array(
-                'subject' => 'You have been warned!',
-                'message' => 'You have been warned for 1 week because of Possible Cheat Attempt!',
-                'touid' => $arr['id']
-            );
-            $pm['sender']['uid'] = -1;
-            send_pm($pm, -1, true);
+        $res = $db->sql_query("SELECT id FROM users WHERE id IN ({$ids})");
+        while ($arr = $db->fetch_array($res)) {
+            send_pm(['subject' => 'You have been warned!', 'message' => 'You have been warned for 1 week because of Possible Cheat Attempt!', 'touid' => (int)$arr['id'], 'sender' => ['uid' => -1]], -1, true);
         }
         $aa_message = 'Users have been warned';
     }
 
-    if (is_array($_POST['delete'])) {
-        $db->sql_query('DELETE FROM announce_actions WHERE id IN (' . implode(', ', $_POST['delete']) . ')');
+    if (!empty($_POST['delete']) && is_array($_POST['delete'])) {
+        $ids = implode(',', array_map('intval', $_POST['delete']));
+        $db->sql_query("DELETE FROM announce_actions WHERE id IN ({$ids})");
         $aa_message = 'Announce Actions have been deleted!';
     }
 }
 
-$res = $db->sql_query('SELECT COUNT(*) FROM announce_actions');
-$row = mysqli_fetch_row($res);
-$count = $row[0];
+$row   = $db->fetch_array($db->sql_query('SELECT COUNT(*) AS cnt FROM announce_actions'));
+$count = (int)($row['cnt'] ?? 0);
 
-if(!$torrentsperpage || (int)$torrentsperpage < 1) {
-    $torrentsperpage = 20;
-}
+$perpage = max(1, (int)($ts_perpage ?? 20));
+$page    = max(1, (int)($mybb->input['page'] ?? 1));
+$pages   = (int)ceil($count / $perpage);
+if ($page > $pages) $page = 1;
+$start = ($page - 1) * $perpage;
 
-$perpage = $torrentsperpage;
-
-if($mybb->input['page'] > 0) {
-    $page = $mybb->input['page'];
-    $start = ($page-1) * $perpage;
-    $pages = ceil($count / $perpage);
-    
-    if($page > $pages || $page <= 0) {
-        $start = 0;
-        $page = 1;
-    }
-} else {
-    $start = 0;
-    $page = 1;
-}
-
-$page_url = str_replace("{fid}", $fid, $_this_script_ . '');
+$page_url  = $_this_script_ ?? '';
 $multipage = multipage($count, $perpage, $page, $page_url);
+
+
+
+
+
 
 stdhead('Announce Actions');
 ?>

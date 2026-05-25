@@ -6,7 +6,7 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
 }
 
 define('M_VERSION', 'Mass Mail v.3.0');
-define('IN_MYBB', 1);
+
 
 set_time_limit(0);
 

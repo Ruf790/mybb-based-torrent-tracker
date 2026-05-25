@@ -130,7 +130,6 @@ stdhead();
 
   <title>Admin: Private Messages</title>
 
-  <link rel="stylesheet" href="<?php echo $BASEURL; ?>/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />
   
   <style>
     .avatar-sm {

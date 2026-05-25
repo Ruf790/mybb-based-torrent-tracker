@@ -9,13 +9,11 @@
 
 declare(strict_types=1);
 
-define("IN_MYBB", 1);
-define("IN_ADMINCP", 1);
-define('TSF_FORUMS_TSSEv56', true);
-define('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define('TSF_VERSION', 'v1.5 by xam');
+;
 
 require_once INC_PATH . '/functions_multipage.php';
+
+
 
 // Disallow direct access to this file for security reasons
 if (!defined("IN_MYBB")) {
@@ -50,6 +48,11 @@ $sub_tabs = [
         'title' => 'Attachment Statistics',
         'link' => "index.php?act=attachments&action=stats",
         'description' => 'Below are some general statistics for the attachments currently on your forum'
+    ],
+    'comment_attachments' => [
+        'title' => 'Comment Attachments',
+        'link' => "index.php?act=attachments&action=comment_attachments",
+        'description' => 'View and manage attachments uploaded to torrent comments.'
     ]
 ];
 
@@ -71,16 +74,32 @@ if ($mybb->input['action'] === "delete") {
     if ($mybb->request_method === "post") {
         require_once INC_PATH . "/functions_upload.php";
 
-        $query = $db->simple_select("attachments", "aid,pid,posthash,filename", "aid IN (" . implode(",", $aids) . ")");
-        while ($attachment = $db->fetch_array($query)) {
-            if (!$attachment['pid']) {
-                remove_attachment(null, $attachment['posthash'], $attachment['aid']);
-                log_admin_action($attachment['aid'], $attachment['filename']);
-            } else {
-                remove_attachment($attachment['pid'], null, $attachment['aid']);
-                log_admin_action($attachment['aid'], $attachment['filename'], $attachment['pid']);
-            }
+        
+		$query = $db->simple_select("attachments", 
+    "aid, pid, posthash, filename, attachname, thumbnail, comment_id", 
+    "aid IN (" . implode(",", $aids) . ")"
+);
+while ($attachment = $db->fetch_array($query)) {
+    if ((int)($attachment['comment_id'] ?? 0) > 0) {
+        // Комментарий — удаляем только этот файл
+        $uploadDir = TSDIR . '/uploads/attachments/';
+        delete_uploaded_file($uploadDir . $attachment['attachname']);
+        if (!empty($attachment['thumbnail']) && $attachment['thumbnail'] !== 'SMALL') {
+            delete_uploaded_file($uploadDir . $attachment['thumbnail']);
         }
+        $db->delete_query('attachments', "aid='" . (int)$attachment['aid'] . "'");
+        log_admin_action($attachment['aid'], $attachment['filename']);
+    } elseif (!(int)$attachment['pid']) {
+        // Форум — черновик
+        remove_attachment(0, $attachment['posthash'], (int)$attachment['aid']);
+        log_admin_action($attachment['aid'], $attachment['filename']);
+    } else {
+        // Форум — с постом
+        remove_attachment((int)$attachment['pid'], '', (int)$attachment['aid']);
+        log_admin_action($attachment['aid'], $attachment['filename'], $attachment['pid']);
+    }
+}
+
 
         $plugins->run_hooks("admin_forum_attachments_delete_commit");
         flash_message('Selected attachments have been deleted successfully', 'success');
@@ -263,6 +282,13 @@ if ($mybb->input['action'] === "orphans") {
 }
 
 /**
+ * Comment attachments page
+ */
+if ($mybb->input['action'] === 'comment_attachments') {
+    handle_comment_attachments();
+}
+
+/**
  * Main attachments search page
  */
 if (!$mybb->input['action']) {
@@ -273,6 +299,175 @@ if (!$mybb->input['action']) {
     } else {
         render_search_form();
     }
+}
+
+/**
+ * Handle comment attachments view
+ */
+function handle_comment_attachments(): void {
+    global $mybb, $db, $perpage, $BASEURL;
+
+    $search_sql = 'a.comment_id > 0';
+
+    // Filename filter
+    if ($mybb->get_input('filename')) {
+        $search_sql .= " AND a.filename LIKE '%" . $db->escape_string_like($mybb->input['filename']) . "%'";
+    }
+
+    // Username filter
+    if (!empty($mybb->input['username'])) {
+        $user = get_user_by_username($mybb->input['username']);
+        if ($user) {
+            $search_sql .= " AND a.uid = " . (int)$user['id'];
+        }
+    }
+
+    // MIME type filter
+    if ($mybb->get_input('mimetype')) {
+        $search_sql .= " AND a.filetype LIKE '%" . $db->escape_string_like($mybb->input['mimetype']) . "%'";
+    }
+
+    // Count
+    $query = $db->sql_query("
+        SELECT COUNT(a.aid) AS num_results
+        FROM attachments a
+        WHERE {$search_sql}
+    ");
+    $num_results = (int)$db->fetch_field($query, 'num_results');
+
+    render_header('Attachments - Comment Attachments');
+    output_nav_tabs($GLOBALS['sub_tabs'], 'comment_attachments');
+
+    // Search form
+    echo '
+    <div class="container mt-4 mb-3">
+        <div class="card shadow-sm">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filter Comment Attachments</h5>
+            </div>
+            <div class="card-body">
+                <form method="get" action="index.php" class="row g-3">
+                    <input type="hidden" name="act" value="attachments">
+                    <input type="hidden" name="action" value="comment_attachments">
+                    <div class="col-md-4">
+                        <label class="form-label">Filename</label>
+                        <input type="text" class="form-control" name="filename" value="' . htmlspecialchars_uni($mybb->input['filename'] ?? '') . '">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" name="username" value="' . htmlspecialchars_uni($mybb->input['username'] ?? '') . '">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">MIME Type</label>
+                        <input type="text" class="form-control" name="mimetype" placeholder="e.g. image/" value="' . htmlspecialchars_uni($mybb->input['mimetype'] ?? '') . '">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Search</button>
+                        <a href="index.php?act=attachments&action=comment_attachments" class="btn btn-secondary ms-2">Reset</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>';
+
+    if ($num_results === 0) {
+        output_inline_error(['No comment attachments found.']);
+        stdfoot();
+        exit;
+    }
+
+    $page  = $mybb->get_input('page', MyBB::INPUT_INT) ?: 1;
+    $start = ($page - 1) * $perpage;
+
+    echo '
+    <form action="index.php?act=attachments&amp;action=delete" method="post">
+        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
+        <div class="container">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-paperclip me-2"></i>Comment Attachments — ' . ts_nf($num_results) . ' found</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="30"><input type="checkbox" class="form-check-input" onclick="checkAll(this)"></th>
+                                    <th>File</th>
+                                    <th class="text-center">Size</th>
+                                    <th class="text-center">Type</th>
+                                    <th class="text-center">Uploaded By</th>
+                                    <th class="text-center">Comment</th>
+                                    <th class="text-center">Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>';
+
+    $query = $db->sql_query("
+        SELECT a.*, u.username AS user_username,
+               c.torrent AS torrent_id, t.name AS torrent_name
+        FROM attachments a
+        LEFT JOIN users u ON (u.id = a.uid)
+        LEFT JOIN comments c ON (c.id = a.comment_id)
+        LEFT JOIN torrents t ON (t.id = c.torrent)
+        WHERE {$search_sql}
+        ORDER BY a.dateuploaded DESC
+        LIMIT {$start}, {$perpage}
+    ");
+
+    while ($att = $db->fetch_array($query)) {
+        $date      = $att['dateuploaded'] > 0 ? my_datee('relative', $att['dateuploaded']) : 'Unknown';
+        $username  = $att['user_username'] ?: 'Guest';
+        $user_link = $att['uid'] ? build_profile_link(htmlspecialchars_uni($username), $att['uid'], '_blank') : htmlspecialchars_uni($username);
+        $size      = mksize((float)$att['filesize']);
+        $icon      = get_attachment_icon(get_extension($att['filename']));
+        $file_link = '<a href="../uploads/attachments/' . htmlspecialchars_uni($att['attachname']) . '" target="_blank">' . htmlspecialchars_uni($att['filename']) . '</a>';
+        $mime      = '<span class="badge bg-light text-dark border">' . htmlspecialchars_uni($att['filetype']) . '</span>';
+
+        // Comment link
+        if ($att['comment_id'] && $att['torrent_id']) {
+            $comment_link = '<a href="../details.php?id=' . (int)$att['torrent_id'] . '#pid' . (int)$att['comment_id'] . '" target="_blank" class="text-decoration-none">'
+                . htmlspecialchars_uni($att['torrent_name'] ?? 'Torrent #' . $att['torrent_id'])
+                . '</a>';
+        } else {
+            $comment_link = '<span class="text-muted">—</span>';
+        }
+
+        echo '
+                                <tr>
+                                    <td><input type="checkbox" name="aids[]" value="' . $att['aid'] . '" class="form-check-input"></td>
+                                    <td>' . $icon . ' ' . $file_link . '</td>
+                                    <td class="text-center"><span class="badge bg-secondary">' . $size . '</span></td>
+                                    <td class="text-center">' . $mime . '</td>
+                                    <td class="text-center">' . $user_link . '</td>
+                                    <td class="text-center">' . $comment_link . '</td>
+                                    <td class="text-center"><small class="text-muted">' . $date . '</small></td>
+                                </tr>';
+    }
+
+    echo '
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <button type="submit" class="btn btn-danger"><i class="fas fa-trash me-2"></i>Delete Selected</button>
+                </div>
+            </div>
+        </div>
+    </form>';
+
+    if ($num_results > $perpage) {
+        $search_url = "index.php?act=attachments&amp;action=comment_attachments";
+        foreach (['filename','username','mimetype'] as $p) {
+            if ($mybb->get_input($p)) $search_url .= "&amp;{$p}=" . urlencode($mybb->input[$p]);
+        }
+        $pagination = multipage($num_results, $perpage, $page, $search_url . "&amp;page={page}");
+        echo '<div class="container mt-3"><div class="card"><div class="card-body text-center">' . $pagination . '</div></div></div>';
+    }
+
+    stdfoot();
+    exit;
 }
 
 /**

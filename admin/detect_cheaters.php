@@ -114,7 +114,7 @@ function calculateUserRatio(int $downloaded, int $uploaded): string {
  * Get user popover information
  */
 function getUserPopover(array $user): array {
-    global $lang;
+    global $lang, $dateformat, $timeformat;
     
     $downloaded = mksize((int)($user['user_current_download'] ?? 0));
     $uploaded = mksize((int)($user['user_current_upload'] ?? 0));

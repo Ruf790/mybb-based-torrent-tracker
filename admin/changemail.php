@@ -7,7 +7,7 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="error-message">❌ Error! Direct initialization of this file is not allowed.</div>');
 }
 
-define('CE_VERSION', '0.4 by xam');
+define('CE_VERSION', '0.5');
 
 // Check if form was submitted
 $formSubmitted = false;
@@ -171,7 +171,9 @@ stdfoot();
 // Helper functions
 function showEmailChangeForm(string $username = '', string $email = ''): void
 {
-    $scriptUrl = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '');
+    global $_this_script_;
+	
+	$scriptUrl = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '');
     $usernameValue = htmlspecialchars($username);
     $emailValue = htmlspecialchars($email);
     ?>

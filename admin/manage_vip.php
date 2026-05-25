@@ -12,7 +12,7 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
 require_once INC_PATH . '/functions_multipage.php';
 
 // Constants
-const M_VIP_VERSION = 'v0.4 by xam';
+const M_VIP_VERSION = 'v0.5';
 const VIP_USERGROUP_ID = 4;
 const DEFAULT_PER_PAGE = 20;
 const ALLOWED_SORT_FIELDS = ['username', 'seedbonus', 'invites'];

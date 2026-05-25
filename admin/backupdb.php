@@ -1,7 +1,6 @@
 <?php
 
 
-define("IN_MYBB", 1);
 
 // Disallow direct access to this file for security reasons
 if(!defined("IN_MYBB"))

@@ -1,7 +1,7 @@
 <?php
 
 
-define('IN_MYBB', 1);
+
 require_once INC_PATH . '/functions_multipage.php';
 
 

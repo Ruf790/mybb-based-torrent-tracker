@@ -3,11 +3,7 @@
 
 declare(strict_types=1);
 
-define("IN_MYBB", 1);
-define("IN_ADMINCP", 1);
-define('TSF_FORUMS_TSSEv56', true);
-define('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define('TSF_VERSION', 'v1.5 by xam');
+
 
 // Disallow direct access to this file for security reasons
 if (!defined("IN_MYBB")) {
@@ -196,7 +192,7 @@ function render_page_header(): void
                                 <i class="fas fa-users-cog me-2"></i>
                                 Unconfirmed User Accounts
                             </h4>
-                            <span class="badge bg-light text-primary fs-6">' . $lang->user_awaiting_activation['title'] . '</span>
+                            <span class="badge bg-light text-primary fs-6">' . $lang->user_awaiting_activation['manage_awaiting_activation'] . '</span>
                         </div>
                     </div>
                     <div class="card-body">
@@ -239,7 +235,7 @@ function render_pagination_top(string $multipage): void
  */
 function render_user_table(int $start, int $perpage, int $user_count): void
 {
-    global $db, $lang, $_this_script_;
+    global $db, $lang, $_this_script_, $mybb;
 
     $query = $db->sql_query("
         SELECT u.id, u.username, u.added, u.regip, u.lastactive, u.email,

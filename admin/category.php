@@ -1,20 +1,13 @@
 <?php
 declare(strict_types=1);
 
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
+
 
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-define('C_VERSION', '1.0 by xam');
+define('C_VERSION', '2.0');
 
 /**
  * Category Management Module
@@ -51,7 +44,7 @@ class CategoryManager
         
         $cacheContent = '<?php
 /**
- * TS Generated Cache#7 - Do Not Alter
+ * Generated Cache#7 - Do Not Alter
  * Cache Name: Categories
  * Generated: ' . gmdate('r') . '
  */
@@ -179,8 +172,6 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         return [
             'name' => trim(htmlspecialchars($input['name'] ?? '', ENT_QUOTES)),
             'icon' => trim(htmlspecialchars($input['icon'] ?? '', ENT_QUOTES)),
-            'cat_desc' => trim(htmlspecialchars($input['cat_desc'] ?? '', ENT_QUOTES)),
-            'minclassread' => max(0, (int)($input['minclassread'] ?? 0)),
             'type' => !empty($input['cid']) ? 's' : 'c',
             'pid' => max(0, (int)($input['cid'] ?? 0))
         ];
@@ -198,20 +189,16 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         
         if ($id === null) {
             // Insert new category
-            $sql = "INSERT INTO categories (name, icon, cat_desc, minclassread, type, pid) 
+            $sql = "INSERT INTO categories (name, icon, type, pid) 
                     VALUES (" . $this->db->sqlesc($data['name']) . ", 
-                            " . $this->db->sqlesc($data['icon']) . ", 
-                            " . $this->db->sqlesc($data['cat_desc']) . ", 
-                            " . (int)$data['minclassread'] . ", 
+                            " . $this->db->sqlesc($data['icon']) . ",                         
                             " . $this->db->sqlesc($data['type']) . ", 
                             " . (int)$data['pid'] . ")";
         } else {
             // Update existing category
             $sql = "UPDATE categories SET 
                     name = " . $this->db->sqlesc($data['name']) . ", 
-                    icon = " . $this->db->sqlesc($data['icon']) . ", 
-                    cat_desc = " . $this->db->sqlesc($data['cat_desc']) . ", 
-                    minclassread = " . (int)$data['minclassread'] . ", 
+                    icon = " . $this->db->sqlesc($data['icon']) . ",              
                     type = " . $this->db->sqlesc($data['type']) . ", 
                     pid = " . (int)$data['pid'] . " 
                     WHERE id = " . (int)$id;
@@ -421,8 +408,6 @@ document.addEventListener("DOMContentLoaded", function () {
         $data = $category ?? [
             'name' => '',
             'icon' => '',
-            'cat_desc' => '',
-            'minclassread' => 0,
             'type' => 'c',
             'pid' => 0
         ];
@@ -607,10 +592,7 @@ document.addEventListener("DOMContentLoaded", function () {
                                         <input type="text" class="form-control" id="modal_name" name="name" required>
                                     </div>
                                     
-                                    <div class="col-md-6">
-                                        <label for="modal_minclassread" class="form-label">Min. Read Class</label>
-                                        <input type="number" class="form-control" id="modal_minclassread" name="minclassread" value="0" min="0">
-                                    </div>
+                                    
                                     
                                     <div class="col-12">
                                         <label for="modal_cat_desc" class="form-label">Category Description</label>
@@ -700,10 +682,7 @@ document.addEventListener("DOMContentLoaded", function () {
                                         <input type="text" class="form-control" id="sub_name" name="name" required>
                                     </div>
                                     
-                                    <div class="col-md-6">
-                                        <label for="sub_minclassread" class="form-label">Min. Read Class</label>
-                                        <input type="number" class="form-control" id="sub_minclassread" name="minclassread" value="0" min="0">
-                                    </div>
+                                   
                                     
                                     <div class="col-12">
                                         <label for="sub_cat_desc" class="form-label">Subcategory Description</label>
@@ -922,10 +901,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                 <label class="form-label">Category Name *</label>
                                 <input type="text" class="form-control" name="name" value="${escapeHtml(data.name)}" required>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Min. Read Class</label>
-                                <input type="number" class="form-control" name="minclassread" value="${parseInt(data.minclassread) || 0}" min="0">
-                            </div>
+                            
                             <div class="col-12">
                                 <label class="form-label">Category Description</label>
                                 <textarea class="form-control" name="cat_desc" rows="2">${escapeHtml(data.cat_desc || '')}</textarea>

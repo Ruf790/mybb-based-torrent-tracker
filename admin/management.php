@@ -5,9 +5,6 @@
  * PHP 8.1+
  */
 
-define('TSF_FORUMS_TSSEv56',        true);
-define('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define('TSF_VERSION',               'v1.5 by xam');
 
 if (!defined('IN_MYBB')) {
     die('Direct initialization of this file is not allowed.');

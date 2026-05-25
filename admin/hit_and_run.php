@@ -4,8 +4,8 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="alert alert-light border" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-define("IN_MYBB", 1);
-define('TSHRD_TOOL', 'v1.2 by xam');
+
+define('TSHRD_TOOL', 'v1.3');
 
 require_once INC_PATH . '/datahandler.php';
 include_once $rootpath . '/admin/include/global_config.php';
@@ -303,8 +303,8 @@ $pagerbottom = $pagertop;
 
 // Основной запрос
 $main_query = 'SELECT s.torrentid, s.seedtime, s.leechtime, s.userid, s.downloaded, s.uploaded, 
-t.name, t.seeders, t.leechers, u.timeswarned, u.username, u.enabled, u.donor, u.leechwarn, u.warned, 
-g.namestyle 
+t.name, t.seeders, t.leechers, u.timeswarned, u.username, u.usergroup, u.enabled, u.donor, u.leechwarn, u.warned, 
+g.namestyle, g.title
 FROM snatched s 
 INNER JOIN users u ON (s.userid=u.id) 
 LEFT JOIN torrents t ON (s.torrentid=t.id) 
@@ -497,7 +497,9 @@ if ($db->num_rows($query) > 0) {
             $warnClass = '';
         }
 
-        $user_icons = get_user_icons($user);
+        $label2 = format_name($user['username'], (int)$user['usergroup']);
+		
+		$user_icons = get_user_icons($user);
         $downloaded = (float)$user['downloaded'];
         $ratio = $downloaded > 0 ? number_format((float)$user['uploaded'] / $downloaded, 2) : '∞';
         $ratioClass = ($downloaded > 0 && (float)$user['uploaded'] / $downloaded < 1) ? 'text-danger fw-bold' : 'text-success fw-bold';
@@ -505,7 +507,7 @@ if ($db->num_rows($query) > 0) {
 
         echo '
                                 <tr>
-                                    <td><a href="' . $_this_script_ . '&show_by_userid=' . $userid . '" class="text-decoration-none fw-semibold">' . get_user_color($user['username'], $user['namestyle']) . '</a> ' . $user_icons . '</td>
+                                    <td><a href="' . $_this_script_ . '&show_by_userid=' . $userid . '" class="text-decoration-none fw-semibold">' . $label2 . '</a> ' . $user_icons . '</td>
                                     <td><a href="' . $_this_script_ . '&torrentid=' . $torrentid . '" class="text-decoration-none">' . cutename($user['name'], 60) . '</a></td>
                                     <td><span class="fw-semibold">' . mksize($user['uploaded']) . '</span><br><small class="text-muted"><i class="fas fa-clock me-1"></i>' . mkprettytime((int)$user['seedtime']) . '</small></td>
                                     <td><span class="fw-semibold">' . mksize($user['downloaded']) . '</span><br><small class="text-muted"><i class="fas fa-clock me-1"></i>' . mkprettytime((int)$user['leechtime']) . '</small></td>

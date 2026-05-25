@@ -8,7 +8,7 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<div class="alert alert-danger"><b>Error!</b> Direct access to this file is not allowed.</div>');
 }
 
-define('IN_MYBB', 1);
+
 define('MR_VERSION', 'v0.4 by xam');
 
 require_once INC_PATH . '/datahandler.php';

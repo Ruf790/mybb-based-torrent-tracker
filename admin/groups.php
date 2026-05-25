@@ -26,13 +26,10 @@ $usergroup_permissions = [
     'cansearch'            => 1, 'showforumteam'        => 0,
     'attachquota'          => 5000,'canstaffpanel'      => 0,
     'canoverridepm'        => 0, 'maxposts'             => 0,
+	'max_screenshots' => 3,
 ];
 
-define('IN_MYBB',              1);
-define('IN_ADMINCP',           1);
-define('TSF_FORUMS_TSSEv56',        true);
-define('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define('TSF_VERSION',               'v1.5 by xam');
+
 
 if (!defined('IN_MYBB')) {
     die('Direct initialization of this file is not allowed.');
@@ -346,6 +343,7 @@ if ($mybb->input['action'] === 'edit') {
                 'canstaffpanel'         => $g('canstaffpanel'),
                 'canoverridepm'         => $g('canoverridepm'),
                 'maxposts'              => $g('maxposts'),
+				'max_screenshots' => max(0, (int)$mybb->input['max_screenshots']),
             ];
 
             $plugins->run_hooks('admin_user_groups_edit_commit');
@@ -472,6 +470,15 @@ if ($mybb->input['action'] === 'edit') {
     echo '<div class="form-text mb-1">0 for unlimited</div>';
     echo $form->generate_numeric_field('attachquota', $mybb->input['attachquota'], ['class' => 'form-control']);
     echo '</div>';
+	
+	
+	echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-camera me-2"></i>Screenshots</h6>';
+    echo '<div class="mb-3"><label class="form-label fw-semibold">Max Screenshots per Upload</label>';
+    echo '<div class="form-text mb-1">Maximum number of screenshots a user can upload per torrent. 0 = not allowed.</div>';
+    echo $form->generate_numeric_field('max_screenshots', $mybb->input['max_screenshots'] ?? 3, ['class' => 'form-control', 'min' => 0, 'max' => 299]);
+    echo '</div>';
+	
+	
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-poll me-2"></i>Poll Options</h6>';
     ug_switch($form, 'canpostpolls', 'Can post new polls?',      $mybb->input['canpostpolls']);
     ug_switch($form, 'canvotepolls', 'Can vote on polls?',       $mybb->input['canvotepolls']);

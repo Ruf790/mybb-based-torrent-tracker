@@ -459,7 +459,7 @@ function af_handle_view(int $id): void
 
 function af_handle_add(string $do): void
 {
-    global $db, $CURUSER;
+    global $db, $CURUSER, $cache;
 
     if ($do === 'save') {
         $subject  = trim($_POST['subject'] ?? '');
@@ -487,7 +487,10 @@ function af_handle_add(string $do): void
                 'fid'       => $fid,
                 'type'      => $type,
             ]);
-            af_redirect('Announcement added successfully.');
+            
+			$cache->update_forumsdisplay();
+			
+			af_redirect('Announcement added successfully.');
         }
 
         // Show form again with errors
@@ -504,7 +507,7 @@ function af_handle_add(string $do): void
 
 function af_handle_edit(int $id, string $do): void
 {
-    global $db, $CURUSER;
+    global $db, $CURUSER, $cache;
 
     if ($id <= 0) af_redirect('Invalid ID.');
     $row = af_get_announcement($id);
@@ -533,7 +536,10 @@ function af_handle_edit(int $id, string $do): void
                 'fid'       => $fid,
                 'type'      => $type,
             ], "id = {$id}");
-            af_redirect('Announcement updated successfully.');
+            
+			$cache->update_forumsdisplay();
+			
+			af_redirect('Announcement updated successfully.');
         }
 
         af_render_form('edit', $row, $errors);
@@ -549,14 +555,17 @@ function af_handle_edit(int $id, string $do): void
 
 function af_handle_delete(int $id): void
 {
-    global $db;
+    global $db, $cache;
 
     if ($id <= 0 || ($_GET['sure'] ?? '') !== 'yes') {
         af_redirect('Deletion cancelled.');
     }
 
     $db->sql_query("DELETE FROM announcements WHERE id = {$id} AND type IN ('forum','global')");
-    af_redirect('Announcement deleted.');
+    
+	$cache->update_forumsdisplay();
+	
+	af_redirect('Announcement deleted.');
 }
 
 /* ═══════════════════════════════════════════════════════════════════

@@ -154,17 +154,20 @@ HTML;
 
 function render_stafftools_page(): void
 {
-    stdhead('Staff Tools');
+    global $thispath;
+	
+	require_once $thispath . 'include/stafftoolsfunctions.php';
+   
+	
+	stdhead('Staff Tools');
     enqueue_staff_assets();
     menu('stafftools');
-    echo '<div class="container mt-3">'
-       . '<table width="100%" cellpadding="6" cellspacing="0" border="0"><tbody>'
-       . '<tr><td colspan="4" align="center"><strong>Staff Tools</strong></td></tr>'
-       . '<tr><td colspan="4" align="center">Tool Name — Description</td></tr>';
-    get_list();
-    echo '</tbody></table></div>';
+	
+    echo '<div class="container mt-3">';
+      get_list();
     echo '</div>';
-    close_menu();
+	
+    echo '</td></tr></table>';
     stdfoot();
 }
 
@@ -176,7 +179,10 @@ function render_stafftools_page(): void
 function handle_managestafftools(): void
 {
     global $_this_script_, $_this_script_no_act, $db, $thispath;
-    _access_check_();
+    
+	require_once $thispath . 'include/stafftoolsfunctions.php';
+	
+	_access_check_();
 
     $do = $_GET['do'] ?? '';
     $id = (isset($_GET['id']) && is_valid_id($_GET['id'])) ? (int) $_GET['id'] : null;
@@ -187,7 +193,10 @@ function handle_managestafftools(): void
     if ($do === 'edit'     && $id !== null) { render_tool_form('edit', fetch_tool($id)); return; }
     if ($do === 'savetool' && $id !== null) { save_tool('edit', $id);                   return; }
 
-    // Список инструментов
+  
+    
+
+   // Список инструментов
     stdhead('Manage Staff Tools');
     enqueue_staff_assets();
     menu('managestafftools');
@@ -261,7 +270,9 @@ function delete_tool(int $id): void
 
 function render_tool_form(string $mode, ?array $tool = null): void
 {
-    global $_this_script_, $_this_script_no_act, $db;
+    global $_this_script_, $_this_script_no_act, $db, $thispath;
+	
+	require_once $thispath . 'include/stafftoolsfunctions.php';
 
     $is_edit     = $mode === 'edit';
     $title       = $is_edit ? 'Edit Tool'   : 'Create New Tool';
@@ -281,6 +292,9 @@ function render_tool_form(string $mode, ?array $tool = null): void
 
     stdhead($title);
     enqueue_staff_assets();
+	
+	
+	
     echo "<style>:root{--staff-accent:{$accent};--staff-accent-hover:{$accent_hov};}</style>\n";
     menu('managestafftools');
 
@@ -325,7 +339,10 @@ HTML;
         $checked = ($is_edit
             ? in_array('[' . $g['gid'] . ']', $tool_groups)
             : $g['gid'] == UC_SYSOP) ? 'checked' : '';
-        $label   = get_user_color($g['title'], $g['namestyle']);
+        //$label   = get_user_color($g['title'], $g['namestyle']);
+		
+		$label = str_replace('{username}', $g['title'], $g['namestyle']);
+		
         $default = (!$is_edit && $g['gid'] == UC_SYSOP)
             ? ' <span class="badge bg-primary ms-1" style="font-size:.7em">Default</span>' : '';
         echo <<<HTML
@@ -383,7 +400,7 @@ HTML;
 HTML;
 
     echo '</div>';
-    close_menu();
+    echo '</td></tr></table>';
     stdfoot();
 }
 
@@ -396,14 +413,19 @@ function handle_securitycheck(): void
 {
     global $db, $BASEURL, $iv, $securelogin, $bannedclientdetect, $maxloginattempts,
            $privatetrackerpatch, $disablerightclick, $securehash, $trackerlog,
-           $accountlockout, $disallowjavascript, $SITEURL, $check__10;
+           $thispath, $accountlockout, $disallowjavascript, $SITEURL, $check__10;
 
-    _access_check_();
+    require_once $thispath . 'include/stafftoolsfunctions.php';
+	
+	_access_check_();
     stdhead('Security Console');
+	
+	
+	
     enqueue_staff_assets();
     menu('securitycheck');
 
-    //require INC_PATH . '/readconfig_announce.php';
+    
 
     // ── Проверки ──────────────────────────────────────────────────
     $cfg_dir  = @file_get_contents($BASEURL . '/config/DATABASE', 'r');
@@ -603,7 +625,9 @@ HTML;
 
 function render_dashboard(): void
 {
-    global $db, $CURUSER, $SITENAME;
+    global $db, $CURUSER, $SITENAME, $thispath, $BASEURL;
+	
+	require_once $thispath . 'include/stafftoolsfunctions.php';
 
     $cut  = TIMENOW - 86400;
     $esc  = fn($v) => $db->escape_string($v);
@@ -661,6 +685,9 @@ HTML;
     $col_ul       = $sc('fa-upload text-success',         'Uploaded',     $ul_disp,               'text-success');
     $col_dl       = $sc('fa-download text-danger',        'Downloaded',   $dl_disp,               'text-danger');
     $col_ratio    = $sc('fa-balance-scale text-warning',  'Ratio',        $ratio,                 'text-warning');
+	
+
+
 
     stdhead('Staff Panel Dashboard');
     enqueue_staff_assets();
@@ -791,12 +818,20 @@ HTML;
     </div>
   </div>
 
+
 </div>
 HTML;
 
     echo '</div></td></tr></table>';
-    stdfoot();
+    
+	stdfoot();
 }
+
+
+
+
+
+
 
 
 /* ═══════════════════════════════════════════════════════════════════

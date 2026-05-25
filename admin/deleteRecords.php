@@ -46,8 +46,7 @@ if($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['empid']))
         }
 
         // Log the deletion
-        require_once INC_PATH . '/function_log_user_deletion.php';
-        log_user_deletion('Following user has been deleted by ' . $CURUSER['username'] . ' (latest_users tool - Staff Panel): Userid: ' . $empid);
+		write_log('Following user has been deleted by ' . $CURUSER['username'] . ' (latest_users tool - Staff Panel): Userid: ' . $empid);
         
         // Return success response
         echo json_encode([

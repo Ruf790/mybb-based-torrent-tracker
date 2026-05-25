@@ -11,7 +11,7 @@ declare(strict_types=1);
 if (!defined('STAFF_PANEL_TSSEv56')) {
     exit('<b>Error!</b> Direct initialization of this file is not allowed.');
 }
-define("IN_ADMINCP", 1);
+
 
 require_once INC_PATH . '/datahandler.php';
 
@@ -495,21 +495,25 @@ if (!empty($_GET) && !isset($_GET['latest'])) {
 
     // Ratio - к сожалению, плейсхолдеры нельзя использовать для выражений, только для значений.
     // Это безопасно, так как мы приводим к float, но это не идеально с точки зрения абстракции.
-    if ($_GET['min_ratio'] !== '' && $_GET['min_ratio'] !== null) {
-        $r = (float)$_GET['min_ratio'];
-        $where_clauses[] = "uploaded >= {$r} * GREATEST(downloaded,1)";
-        // Параметры не добавляем, так значение встроено в строку (но оно приведено к float)
-    }
-    if ($_GET['max_ratio'] !== '' && $_GET['max_ratio'] !== null) {
-        $r = (float)$_GET['max_ratio'];
-        $where_clauses[] = "uploaded <= {$r} * GREATEST(downloaded,1)";
-    }
+    
+	if (!empty($_GET['min_ratio'] ?? '')) {
+    $r = (float)$_GET['min_ratio'];
+    $where_clauses[] = "uploaded >= {$r} * GREATEST(downloaded,1)";
+}
 
-    if (!empty($_GET['warnings'])) {
-        $where_clauses[] = "timeswarned = ?";
-        $params[] = (int)$_GET['warnings'];
-        $param_types .= 'i';
-    }
+if (!empty($_GET['max_ratio'] ?? '')) {
+    $r = (float)$_GET['max_ratio'];
+    $where_clauses[] = "uploaded <= {$r} * GREATEST(downloaded,1)";
+}
+
+if (!empty($_GET['warnings'])) {
+    $where_clauses[] = "timeswarned = ?";
+    $params[] = (int)$_GET['warnings'];
+    $param_types .= 'i';
+}
+
+	
+	
 }
 
 // Формируем окончательное условие WHERE

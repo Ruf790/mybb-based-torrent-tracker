@@ -1,5 +1,8 @@
 <?php
 
+if(!defined('IN_TRACKER'))
+  die('Hacking attempt!');
+
 $language['upload'] = [
 
     // ── Заголовки страницы ──────────────────────────────────────────────────

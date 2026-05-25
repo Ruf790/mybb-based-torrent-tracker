@@ -12,6 +12,8 @@ $language['private'] = array
 (
 
 
+'postbit_button_reply_pm' => 'Reply',
+
 'nobody' => "Nobody",
 
 'comma' => ", ",

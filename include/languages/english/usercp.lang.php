@@ -13,6 +13,8 @@ $language['usercp'] = array
 (
 
 
+'confirm_deletion'	=>	 'Confirm Delete',
+
 
 'email_changeemail' => "{1},
 
@@ -143,6 +145,10 @@ Thank you,
 'month_10' => 'October',
 'month_11' => 'November',
 'month_12' => 'December',
+
+'month' => "Month",
+'year' => "Year",
+'day' => "Day",
 
 
 

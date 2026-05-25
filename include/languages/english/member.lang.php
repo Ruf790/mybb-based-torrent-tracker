@@ -1,13 +1,10 @@
 <?php
-/**
- * MyBB 1.8 English Language Pack
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- */
+
+
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
-// ts_watch_list.php
+
 $language['member'] = array 
 (
 
@@ -33,6 +30,8 @@ $language['member'] = array
 'kps' => '<b>Bonus Points:</b>',
 
 'iby' => 'Invited By: {1}',
+
+'cans' => 'Cancel',
 
 
 'torrentstats'	=> 'Torrent Statistics',
@@ -402,6 +401,9 @@ Thank you,
 'nav_emailuser' => "Email User",
 'nav_referrals' => "Users Referred by {1}",
 'nav_profile' => "Profile of {1}",
+
+
+
 
 'referrals' => 'Referrals',
 'referral_date' => 'Referral Date:',

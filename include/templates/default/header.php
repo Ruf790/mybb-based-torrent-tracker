@@ -506,6 +506,38 @@ if (isset($CURUSER)): ?>
                             <i class="fa-solid fa-gear"></i>
                         </a>
                     </li>
+					
+					
+					
+					<!-- Language Switcher -->
+<?php
+$current_lang = $_COOKIE['ts_language'] ?? $defaultlanguage ?? 'english';
+$languages = [
+    'english' => ['flag' => '🇬🇧', 'code' => 'EN'],
+    'russian' => ['flag' => '🇷🇺', 'code' => 'RU'],
+];
+?>
+<li class="nav-item ms-2">
+    <div style="display:inline-flex; border:0.5px solid rgba(128,128,128,0.3); border-radius:999px; overflow:hidden; background:rgba(128,128,128,0.07);">
+        <?php foreach ($languages as $key => $langItem): ?>
+        <a href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/language.php?lang=<?= $key ?>&amp;redirect=<?= urlencode($_SERVER['REQUEST_URI'] ?? '/') ?>"
+           style="display:flex; align-items:center; gap:5px; padding:5px 11px; border-radius:999px; font-size:12px; font-weight:<?= $current_lang === $key ? '500' : '400' ?>; text-decoration:none;
+                  background:<?= $current_lang === $key ? '#378ADD' : 'transparent' ?>;
+                  color:<?= $current_lang === $key ? '#fff' : 'inherit' ?>; transition:all 0.2s; white-space:nowrap;">
+            <span style="font-size:14px; line-height:1;"><?= $langItem['flag'] ?></span><?= $langItem['code'] ?>
+        </a>
+        <?php endforeach; ?>
+    </div>
+</li>
+					
+					
+					
+					
+					
+					
+					
+					
+					
                     
                     <!-- Dark Mode Switch -->
                     <li class="nav-item">
@@ -1013,17 +1045,10 @@ else
 
 
 
-
-
-
-	
-	
-	
 	
 
     $pm_notice = '
     <script type="text/javascript" src="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/scripts/dismisspm.js"></script>
-    <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
     <link href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/include/templates/default/style/messagess.css" rel="stylesheet">
 
     <div class="card error-card4 fade show" id="pm_notice">

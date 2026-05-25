@@ -1,0 +1,284 @@
+/* =============================================
+   Comment Attachments Widget
+   ============================================= */
+
+/* ── Drop Zone ────────────────────────────── */
+.comment-attachments-uploader {
+    font-size: 0.875rem;
+}
+
+.att-dropzone {
+    border: 2px dashed #ced4da;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    background: #f8f9fa;
+}
+
+.att-dropzone:hover,
+.att-dropzone--active {
+    border-color: #0d6efd;
+    background: rgba(13, 110, 253, .04);
+}
+
+.att-dropzone-inner {
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: #6c757d;
+}
+
+.att-dropzone-icon {
+    font-size: 1.8rem;
+    color: #adb5bd;
+}
+
+.att-dropzone-text {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.att-dropzone-text strong {
+    color: #495057;
+}
+
+.att-dropzone-hint {
+    font-size: 0.78rem;
+    color: #adb5bd;
+}
+
+.att-browse-label {
+    color: #0d6efd;
+    cursor: pointer;
+    pointer-events: all;
+    text-decoration: underline;
+}
+
+.att-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ── Preview List ─────────────────────────── */
+.att-preview-list,
+.att-display-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+/* ── Single Item ──────────────────────────── */
+.att-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+    min-width: 200px;
+    max-width: 280px;
+    flex: 1 1 200px;
+    position: relative;
+    transition: box-shadow .2s, border-color .2s;
+}
+
+.att-item:hover {
+    border-color: #adb5bd;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+
+.att-item--uploading {
+    opacity: .8;
+}
+
+.att-item--error {
+    border-color: #dc3545;
+    background: #fff5f5;
+}
+
+/* ── Thumbnail ───────────────────────────── */
+.att-item-thumb {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #f1f3f5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.att-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.att-thumb-link {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.att-thumb-icon {
+    font-size: 1.4rem;
+    color: #adb5bd;
+}
+
+.att-item-thumb--loading {
+    background: #e9ecef;
+}
+
+/* ── Info ─────────────────────────────────── */
+.att-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.att-item-name {
+    font-weight: 500;
+    color: #212529;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.83rem;
+}
+
+.att-item-name a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.att-item-name a:hover {
+    color: #0d6efd;
+    text-decoration: underline;
+}
+
+.att-item-size {
+    font-size: 0.76rem;
+    color: #6c757d;
+    margin-top: 2px;
+}
+
+/* ── Progress bar ─────────────────────────── */
+.att-progress {
+    height: 4px;
+    background: #e9ecef;
+    border-radius: 2px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+
+.att-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #0d6efd, #0b5ed7);
+    border-radius: 2px;
+    transition: width .2s;
+}
+
+/* ── Spinner ──────────────────────────────── */
+.att-spinner {
+    width: 22px;
+    height: 22px;
+    border: 3px solid #dee2e6;
+    border-top-color: #0d6efd;
+    border-radius: 50%;
+    animation: att-spin .8s linear infinite;
+}
+
+@keyframes att-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Delete button ────────────────────────── */
+.att-delete-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: rgba(0,0,0,.06);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s, background .15s;
+    font-size: 0.65rem;
+    color: #6c757d;
+    padding: 0;
+    line-height: 1;
+}
+
+.att-item:hover .att-delete-btn {
+    opacity: 1;
+}
+
+.att-delete-btn:hover {
+    background: #dc3545;
+    color: #fff;
+}
+
+
+
+.att-section-header {
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+
+
+
+/* ── Dark mode ────────────────────────────── */
+[data-bs-theme="dark"] .att-dropzone {
+    background: rgba(255,255,255,.03);
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .att-dropzone:hover,
+[data-bs-theme="dark"] .att-dropzone--active {
+    background: rgba(13,110,253,.08);
+    border-color: #0d6efd;
+}
+
+[data-bs-theme="dark"] .att-item {
+    background: #2b2d42;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .att-item-thumb {
+    background: #343a40;
+}
+
+[data-bs-theme="dark"] .att-item-name {
+    color: #e9ecef;
+}
+
+/* ── Responsive ───────────────────────────── */
+@media (max-width: 480px) {
+    .att-preview-list,
+    .att-display-list {
+        flex-direction: column;
+    }
+
+    .att-item {
+        max-width: 100%;
+    }
+}

@@ -318,8 +318,8 @@ class UserDataHandler extends DataHandler
             'allownotices'       => 1, 'hideemail'         => 0, 'receivepms'        => 1,
             'receivefrombuddy'   => 0, 'pmnotice'          => 1, 'pmnotify'          => 1,
             'invisible'          => 0, 'showimages'        => 1, 'showvideos'        => 1,
-            'showsigs'           => 1, 'showavatars'       => 1, 'showquickreply'    => 1,
-            'showredirect'       => 1, 'showcodebuttons'   => 1, 'sourceeditor'      => 0,
+            'showquickreply'    => 1,
+            'showcodebuttons'   => 1, 'sourceeditor'      => 0,
             'buddyrequestspm'    => 1, 'buddyrequestsauto' => 0,
         ];
 
@@ -637,10 +637,7 @@ class UserDataHandler extends DataHandler
             'receivepms'         => (int)$user['options']['receivepms'],
             'receivefrombuddy'   => (int)$user['options']['receivefrombuddy'],
             'pmnotice'           => (int)$user['options']['pmnotice'],
-            'pmnotify'           => (int)$user['options']['pmnotify'],
-            'showsigs'           => (int)$user['options']['showsigs'],
-            'showavatars'        => (int)$user['options']['showavatars'],
-            'showredirect'       => (int)$user['options']['showredirect'],
+            'pmnotify'           => (int)$user['options']['pmnotify'],         
             'invisible'          => (int)$user['options']['invisible'],
             'timezone'           => $db->escape_string($user['timezone']),
             'dstcorrection'      => (int)$user['options']['dstcorrection'],
@@ -904,7 +901,16 @@ class UserDataHandler extends DataHandler
         foreach (explode(',', $this->delete_uids) as $uid) {
             remove_avatars((int)$uid);
         }
+		
+		// Delete thread ratings
+        $db->delete_query('threadratings', "user_id IN({$this->delete_uids})");
+        // Delete torrent ratings
+        $db->delete_query('torrent_ratings', "user_id IN({$this->delete_uids})");
+
     }
+	
+	
+	
 
     public function delete_posts(array|bool $delete_uids = false): void
     {

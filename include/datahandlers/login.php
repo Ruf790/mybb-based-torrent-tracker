@@ -13,7 +13,7 @@ if (!defined("IN_MYBB")) {
 class LoginDataHandler extends DataHandler
 {
     
-    public string $language_file = 'datahandler_login';
+    public $language_file = 'datahandler_login';
 
     public $language_prefix = 'logindata';
 

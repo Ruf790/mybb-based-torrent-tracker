@@ -115,7 +115,7 @@ stdhead('Cheat Attempts');
                                 $res = $db->sql_query("
                                     SELECT c.*, u.id AS userid, u.username, u.usergroup,
                                            u.uploaded, u.enabled, u.donor, u.leechwarn, u.warned,
-                                           t.name, t.added
+                                           t.name
                                     FROM cheat_attempts c
                                     LEFT JOIN users u    ON c.uid      = u.id
                                     LEFT JOIN torrents t ON c.torrentid = t.id

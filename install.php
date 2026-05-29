@@ -259,6 +259,7 @@ CREATE TABLE IF NOT EXISTS `{$p}announcements` (
 CREATE TABLE IF NOT EXISTS `{$p}attachments` (
   `aid` int unsigned NOT NULL AUTO_INCREMENT,
   `pid` int unsigned NOT NULL DEFAULT '0',
+  `comment_id` int unsigned NOT NULL DEFAULT '0',
   `posthash` varchar(50) NOT NULL DEFAULT '',
   `uid` int unsigned NOT NULL DEFAULT '0',
   `filename` varchar(255) NOT NULL DEFAULT '',
@@ -271,7 +272,9 @@ CREATE TABLE IF NOT EXISTS `{$p}attachments` (
   `thumbnail` varchar(120) NOT NULL DEFAULT '',
   PRIMARY KEY (`aid`),
   KEY `pid` (`pid`,`visible`),
-  KEY `uid` (`uid`)
+  KEY `uid` (`uid`),
+  KEY `comment_id` (`comment_id`),
+  KEY `posthash` (`posthash`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
 CREATE TABLE IF NOT EXISTS `{$p}attachtypes` (
@@ -356,6 +359,9 @@ CREATE TABLE IF NOT EXISTS `{$p}cheat_attempts` (
   `upthis` bigint unsigned NOT NULL DEFAULT '0',
   `timediff` int unsigned NOT NULL DEFAULT '0',
   `ip` char(15) NOT NULL DEFAULT '',
+  `reason` varchar(64) NOT NULL DEFAULT '',
+  `detail` varchar(512) NOT NULL DEFAULT '',
+  `severity` enum('low','medium','high') NOT NULL DEFAULT 'medium',
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
@@ -938,6 +944,22 @@ CREATE TABLE IF NOT EXISTS `{$p}torrent_ratings` (
 
 
 
+CREATE TABLE IF NOT EXISTS `{$p}threadratings` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tid` int UNSIGNED NOT NULL,
+  `user_id` int UNSIGNED NOT NULL,
+  `rating` tinyint UNSIGNED NOT NULL DEFAULT '0',
+  `added` int UNSIGNED NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_vote` (`tid`, `user_id`),
+  KEY `tid` (`tid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+
+
+
+
 CREATE TABLE IF NOT EXISTS `{$p}forums` (
   `fid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(120) NOT NULL DEFAULT '',
@@ -1145,6 +1167,7 @@ CREATE TABLE IF NOT EXISTS `{$p}usergroups` (
   `canviewboardclosed` tinyint(1) NOT NULL DEFAULT '0',
   `canpostattachments` tinyint(1) NOT NULL DEFAULT '0',
   `canratethreads` tinyint(1) NOT NULL DEFAULT '0',
+  `max_screenshots` tinyint UNSIGNED NOT NULL DEFAULT '5',
   `caneditattachments` tinyint(1) NOT NULL DEFAULT '0',
   `canviewdeletionnotice` tinyint(1) NOT NULL DEFAULT '0',
   `modposts` tinyint(1) NOT NULL DEFAULT '0',
@@ -1222,8 +1245,6 @@ CREATE TABLE IF NOT EXISTS `{$p}users` (
   `threadnum` int unsigned NOT NULL DEFAULT '0',
   `comms` int unsigned NOT NULL DEFAULT '0',
   `invisible` tinyint(1) NOT NULL DEFAULT '0',
-  `showavatars` tinyint(1) NOT NULL DEFAULT '0',
-  `showsigs` tinyint(1) NOT NULL DEFAULT '0',
   `commentpm` tinyint(1) NOT NULL DEFAULT '1',
   `showredirect` tinyint(1) NOT NULL DEFAULT '0',
   `subscriptionmethod` tinyint(1) NOT NULL DEFAULT '0',

@@ -892,6 +892,10 @@ function handle_avatar_update(): void
 
     if (!isset($_POST['avatar'])) return;
     $new_avatar = trim($_POST['avatar'] ?? '');
+	
+	// Если аватар не менялся — пропускаем
+    if (($_POST['avatar_changed'] ?? '0') !== '1') return;
+	
 
     $current_user_id = (int)($userdata['id'] ?? $_POST['userid'] ?? 0);
     if ($current_user_id <= 0) {
@@ -2415,15 +2419,16 @@ function buildChartData(int $uid, $db): array
 
     // Активность по дням (последние 30 дней из sitelog)
     $q2 = $db->sql_query("
-        SELECT
-            DATE(FROM_UNIXTIME(added)) AS day,
-            COUNT(*)                   AS events
-        FROM sitelog
-        WHERE uid = {$uid}
-          AND added >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 30 DAY))
-        GROUP BY day
-        ORDER BY day ASC
-    ");
+    SELECT
+        DATE(FROM_UNIXTIME(completedat)) AS day,
+        COUNT(*) AS events
+    FROM snatched
+    WHERE userid = {$uid}
+      AND completedat >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 30 DAY))
+      AND completedat > 0
+    GROUP BY day
+    ORDER BY day ASC
+");
 
     $days = $day_data = [];
     while ($row = $db->fetch_array($q2)) {
@@ -4421,251 +4426,28 @@ echo '
 }
 </style>
 	
-
-    
-	<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-	<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        // Initialize Select2
-        $(".select2-enable").each(function() {
-            const isSearchable = $(this).data("search") === true;
-            $(this).select2({
-                theme: "bootstrap-5",
-                width: "100%",
-                templateResult: formatOption,
-                templateSelection: formatOption,
-                minimumResultsForSearch: isSearchable ? 0 : -1
-            });
-        });
-        
-       
-        function formatOption(option) {
-            if (!option.id) return option.text;
-            const icon = $(option.element).data("icon");
-            if (icon) {
-                return $("<span><i class=\'fas " + icon + " me-2\'></i>" + option.text + "</span>");
-            }
-            return option.text;
-        }
-        
-        // Animate form elements on scroll
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.style.animation = "fadeInUp 0.6s ease-out forwards";
-                }
-            });
-        }, { threshold: 0.1 });
-        
-        document.querySelectorAll(".form-floating, .stat-card").forEach(el => {
-            el.style.opacity = "0";
-            el.style.transform = "translateY(30px)";
-            observer.observe(el);
-        });
-        
-        // Real-time form validation
-        const form = document.getElementById("userEditForm");
-        form.addEventListener("input", function(e) {
-            const input = e.target;
-            if (input.checkValidity()) {
-                input.classList.add("is-valid");
-                input.classList.remove("is-invalid");
-            } else {
-                input.classList.add("is-invalid");
-                input.classList.remove("is-valid");
-            }
-        });
-        
-        // Tab persistence
-        const activeTab = localStorage.getItem("activeUserTab");
-        if (activeTab) {
-            const tab = document.querySelector(`[data-bs-target="${activeTab}"]`);
-            if (tab) {
-                new bootstrap.Tab(tab).show();
-            }
-        }
-        
-        document.querySelectorAll(\'[data-bs-toggle="tab"]\').forEach(tab => {
-            tab.addEventListener("shown.bs.tab", function(e) {
-                localStorage.setItem("activeUserTab", e.target.getAttribute("data-bs-target"));
-            });
-        });
-    });
-    
-    
+<script src="'.$BASEURL.'/admin/scripts/edituser.js"></script>';
 	
-	 function testAvatar() 
-	 {
-        const avatarInputs = document.querySelectorAll(\'input[name="avatar"]\');
-        if (avatarInputs.length === 0) {
-            alert("Avatar field not found!");
-            return;
-        }
-        
-        const avatarUrl = avatarInputs[0].value.trim();
-        
-        if (!avatarUrl) {
-            alert("Please enter an avatar URL first.");
-            return;
-        }
-        
-        const button = document.querySelector(\'button[onclick="testAvatar()"]\');
-        const originalHtml = button.innerHTML;
-        button.disabled = true;
-        button.innerHTML = \'<i class="fas fa-spinner fa-spin me-1"></i>Testing...\';
-        
-        const img = new Image();
-        const timeout = setTimeout(function() {
-            img.onload = img.onerror = null;
-            button.disabled = false;
-            button.innerHTML = originalHtml;
-            alert("⏰ Avatar test timed out. The image might be too large or the server is slow to respond.");
-        }, 10000);
-        
-        img.onload = function() {
-            clearTimeout(timeout);
-            button.disabled = false;
-            button.innerHTML = originalHtml;
-            alert("✓ Avatar URL is valid and image loads successfully!\\\\n\\\\nDimensions: " + img.naturalWidth + "×" + img.naturalHeight + "px");
-        };
-        
-        img.onerror = function() {
-            clearTimeout(timeout);
-            button.disabled = false;
-            button.innerHTML = originalHtml;
-            alert("✗ Avatar URL is invalid or image cannot be loaded!\\\\n\\\\nPlease check:\\\\n• URL is correct\\\\n• Image is accessible\\\\n• Supported format (JPG, PNG, GIF, WebP)");
-        };
-        
-        const separator = avatarUrl.includes(\'?\') ? \'&\' : \'?\';
-        img.src = avatarUrl + separator + \'t=\' + new Date().getTime();
-    }
 
 
 
+$chartData   = buildChartData((int)$userdata['id'], $db);
+$js_months   = json_encode($chartData['months'],   JSON_UNESCAPED_UNICODE);
+$js_dl       = json_encode($chartData['dl_data'],  JSON_UNESCAPED_UNICODE);
+$js_ul       = json_encode($chartData['ul_data'],  JSON_UNESCAPED_UNICODE);
+$js_days     = json_encode($chartData['days'],     JSON_UNESCAPED_UNICODE);
+$js_day_data = json_encode($chartData['day_data'], JSON_UNESCAPED_UNICODE);
 
-
-function securityAction(action, uid, postKey, script) {
-    if (!confirm("Are you sure?")) return;
-    var data = new FormData();
-    data.append("action", "updateuser");
-    data.append("userid", uid);
-    data.append("my_post_key", postKey);
-    data.append(action, "1");
-    fetch(script, { method: "POST", body: data })
-        .then(function() { location.reload(); })
-        .catch(function(e) { alert("Error: " + e); });
-}
-
-function sendPMajax(uid, postKey, script) {
-    var subject = document.getElementById("pmSubject").value.trim();
-    var message = document.getElementById("pmMessage").value.trim();
-    if (!subject || !message) { alert("Subject and message are required."); return; }
-    var data = new FormData();
-    data.append("action", "updateuser");
-    data.append("userid", uid);
-    data.append("my_post_key", postKey);
-    data.append("send_pm", "1");
-    data.append("pm_subject", subject);
-    data.append("pm_message", message);
-    fetch(script, { method: "POST", body: data })
-        .then(function() {
-            bootstrap.Modal.getInstance(document.getElementById("sendPMModal")).hide();
-            alert("PM sent successfully!");
-        });
-}
-
-	
-	
-    </script>';
-
-    
-
-
-global $db;
-    // Chart.js для Statistics tab
-    $chartData = buildChartData((int)$userdata['id'], $db);
-    $js_months   = json_encode($chartData['months'],   JSON_UNESCAPED_UNICODE);
-    $js_dl       = json_encode($chartData['dl_data'],  JSON_UNESCAPED_UNICODE);
-    $js_ul       = json_encode($chartData['ul_data'],  JSON_UNESCAPED_UNICODE);
-    $js_days     = json_encode($chartData['days'],     JSON_UNESCAPED_UNICODE);
-    $js_day_data = json_encode($chartData['day_data'], JSON_UNESCAPED_UNICODE);
-
-    echo '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>';
-    echo '<script>
-document.addEventListener("DOMContentLoaded", function() {
-
-    // ── Traffic chart ─────────────────────────────────────────────────────────
-    var trafficEl = document.getElementById("trafficChart");
-    if (trafficEl) {
-        new Chart(trafficEl.getContext("2d"), {
-            type: "line",
-            data: {
-                labels: ' . $js_months . ',
-                datasets: [
-                    {
-                        label: "Downloaded (GB)",
-                        data: ' . $js_dl . ',
-                        borderColor: "rgba(220,53,69,0.8)",
-                        backgroundColor: "rgba(220,53,69,0.1)",
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        tension: 0.4,
-                        fill: true,
-                        yAxisID: "y"
-                    },
-                    {
-                        label: "Uploaded (GB)",
-                        data: ' . $js_ul . ',
-                        borderColor: "rgba(25,135,84,0.8)",
-                        backgroundColor: "rgba(25,135,84,0.1)",
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        tension: 0.4,
-                        fill: true,
-                        yAxisID: "y"
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                interaction: { mode: "index", intersect: false },
-                plugins: { legend: { position: "top" } },
-                scales: {
-                    y: { beginAtZero: true, ticks: { callback: function(v){ return v + " GB"; } } }
-                }
-            }
-        });
-    }
-
-    // ── Activity chart ────────────────────────────────────────────────────────
-    var activityEl = document.getElementById("activityChart");
-    if (activityEl) {
-        new Chart(activityEl.getContext("2d"), {
-            type: "bar",
-            data: {
-                labels: ' . $js_days . ',
-                datasets: [{
-                    label: "Site Events",
-                    data: ' . $js_day_data . ',
-                    backgroundColor: "rgba(13,110,253,0.6)",
-                    borderColor: "rgba(13,110,253,1)",
-                    borderWidth: 1,
-                    borderRadius: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { beginAtZero: true, ticks: { precision: 0 } }
-                }
-            }
-        });
-    }
-});
+echo '<script src="' . $BASEURL . '/admin/scripts/chart.umd.min.js"></script>';
+echo '<script>
+window.CHART_MONTHS   = ' . ($js_months   ?? '[]') . ';
+window.CHART_DL       = ' . ($js_dl       ?? '[]') . ';
+window.CHART_UL       = ' . ($js_ul       ?? '[]') . ';
+window.CHART_DAYS     = ' . ($js_days     ?? '[]') . ';
+window.CHART_DAY_DATA = ' . ($js_day_data ?? '[]') . ';
 </script>';
+echo '<script src="' . $BASEURL . '/admin/scripts/charts.js"></script>';
     
-
 
     stdfoot();
 }

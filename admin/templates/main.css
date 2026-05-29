@@ -680,17 +680,26 @@ input.radio_input {
 }
 
 .alert {
-	margin: 10px 0;
-	padding: 10px 10px 10px 32px;
-	border: #FC6 1px solid;
-	border-radius: 5px;
-	-moz-border-radius: 5px;
-	-webkit-border-radius: 5px;
-	background: #ffc url('images/icons/warning.png') no-repeat 10px 8px;
-	color: #C00;
-	font-style: normal;
-	font-weight: bold;
-	display: block;
+    margin: 10px 0;
+    padding: 10px 10px 10px 38px;
+    border: 1px solid #ffc107;
+    border-radius: 5px;
+    background: #fff3cd;
+    color: #856404;
+    font-style: normal;
+    font-weight: bold;
+    display: block;
+    position: relative;
+}
+
+.alert::before {
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    content: "\f071";
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    color: #ffc107;
 }
 
 div.error, div.success {
@@ -728,13 +737,31 @@ div.error p em, div.success p em {
 }
 
 div.error p em {
-	color: #C00;
-	background: url('images/icons/error.png') no-repeat;
+    color: #C00;
+    padding-left: 22px;
+    position: relative;
+}
+div.error p em::before {
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    content: "\f057"; /* fa-circle-xmark */
+    position: absolute;
+    left: 0;
+    color: #C00;
 }
 
 div.success p em {
-	color: #080;
-	background: url('images/icons/success.png') no-repeat;
+    color: #080;
+    padding-left: 22px;
+    position: relative;
+}
+div.success p em::before {
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    content: "\f058"; /* fa-circle-check */
+    position: absolute;
+    left: 0;
+    color: #080;
 }
 
 div.success ul, div.error.ul {
@@ -1053,16 +1080,26 @@ input.image_button {
 }
 
 input.search_button {
-	background: #fff url(images/icons/search.png) no-repeat;
-	background-position: 4px 7px;
-	border: 0px;
-	padding: 4px;
-	padding-left: 23px;
-	font-size: 14px;
-	font-family: 'Lucida Grande', 'Trebuchet MS', Verdana, Sans-Serif;
-	color: #6F6F6F;
-	font-weight: bold;
-	height: 30px;
+    border: 0;
+    padding: 4px 4px 4px 28px;
+    font-size: 14px;
+    font-family: 'Lucida Grande', 'Trebuchet MS', Verdana, Sans-Serif;
+    color: #6F6F6F;
+    font-weight: bold;
+    height: 30px;
+    position: relative;
+    background: #fff;
+}
+
+input.search_button::before {
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    content: "\f002"; /* fa-magnifying-glass */
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6F6F6F;
 }
 
 .smalltext {

@@ -327,7 +327,7 @@ class UserDataHandler extends DataHandler
             $this->verify_yesno_option($options, $key, $default);
         }
 
-        $this->verify_yesno_option($options, 'classicpostbit', $mybb->settings['postlayout'] === 'classic' ? 1 : 0);
+        //$this->verify_yesno_option($options, 'classicpostbit', $mybb->settings['postlayout'] === 'classic' ? 1 : 0);
 
         if (array_key_exists('subscriptionmethod', $options)) {
             $options['subscriptionmethod'] = (int)$options['subscriptionmethod'];

@@ -1,811 +1,722 @@
 <?php
 declare(strict_types=1);
 
-function checkconnect(string $host, int $port): string
-{
-    global $checkconnectable;
-    
-    if (!$checkconnectable || $checkconnectable === 'no') {
-        return 'yes';
-    }
+// Буферизуем вывод на случай случайного вывода
+ob_start();
 
-    $fp = @fsockopen($host, $port, $errno, $errstr, 5);
-    if ($fp) {
-        fclose($fp);
-        return 'yes';
-    }
+// ── Константы ─────────────────────────────────────────────
 
-    return 'no';
-}
+define('IN_ANNOUNCE', true);
+define('TIMENOW',     time());
+define('TSDIR',       dirname(__FILE__));
+
+const BANNED_PORTS = [
+    21, 22, 411, 412, 413,
+    1214, 4662, 6346, 6347, 6699,
+    6881, 6882, 6883, 6884, 6885,
+    6886, 6887, 6889, 65535,
+];
+
+// ── Функции ───────────────────────────────────────────────
 
 function stop(string $msg): never
 {
-    global $db;
-    
-    if ($db) 
-	{
-        mysqli_close($db);
-    }
-
+    ob_end_clean();
     header('Content-Type: text/plain');
     header('Pragma: no-cache');
     exit('d14:failure reason' . strlen($msg) . ':' . $msg . 'e');
 }
 
-function send_action(string $actionmessage, bool $resetpasskey = false): void
+function checkconnect(string $host, int $port): string
 {
-    global $announce_actions, $Tid, $Result, $ip, $passkey, $db;
-    
-    if ($announce_actions !== 'yes') 
-	{
-        return;
+    global $checkconnectable;
+    if (!$checkconnectable || $checkconnectable === 'no') return 'yes';
+    $fp = @fsockopen($host, $port, $errno, $errstr, 5);
+    if ($fp) { fclose($fp); return 'yes'; }
+    return 'no';
+}
+
+function apply_freeleech_mode(string $type, array &$Result): void
+{
+    match($type) {
+        'freeleech'    => ($Result['free'] = $Result['canfreeleech'] = 'yes'),
+        'silverleech'  => ($Result['silver']      = 'yes'),
+        'doubleupload' => ($Result['doubleupload'] = 'yes'),
+        default        => null,
+    };
+}
+
+// ── Конфигурация ──────────────────────────────────────────
+
+require TSDIR . '/include/config_announce.php';
+
+$langFile = TSDIR . '/include/languages/english/announce.lang.php';
+if (file_exists($langFile)) require $langFile;
+if (!isset($l) || !is_array($l)) {
+    $l = [
+        'error'         => 'Invalid request',
+        'registerfirst' => 'Please register at ',
+        'cerror'        => 'Database error',
+        'sqlerror'      => 'SQL error',
+        'tuerror'       => 'Torrent or user not found',
+        'qerror1'       => 'Download forbidden',
+        'invalidip'     => 'Invalid IP',
+        'invalidagent'  => 'Invalid client',
+        'bannedclient'  => 'Client not allowed',
+        'invalidport'   => 'Invalid port',
+        'conerror'      => 'Not connectable',
+        'antispam'      => 'Please wait before re-announcing.',
+    ];
+}
+
+// ── Входные параметры ─────────────────────────────────────
+
+$compact  = isset($_GET['compact']) ? (int)$_GET['compact'] : 0;
+$peer_id  = $_GET['peer_id'] ?? '';
+$port     = isset($_GET['port'])       ? (int)$_GET['port']       : 0;
+$event    = $_GET['event'] ?? '';
+$downloaded = isset($_GET['downloaded']) ? (int)$_GET['downloaded'] : 0;
+$uploaded   = isset($_GET['uploaded'])   ? (int)$_GET['uploaded']   : 0;
+$left       = isset($_GET['left'])       ? (int)$_GET['left']       : 0;
+$numwant    = min((int)($_GET['numwant'] ?? $_GET['num_want'] ?? 50), 50);
+
+if (isset($_GET['passkey']) && str_contains($_GET['passkey'], '?')) {
+    [$_GET['passkey'], $rest] = explode('?', $_GET['passkey'], 2);
+    $parts = explode('=', $rest, 2);
+    if (count($parts) === 2) $_GET['info_hash'] = $parts[1];
+}
+
+$passkey    = $_GET['passkey']   ?? '';
+$info_hash  = $_GET['info_hash'] ?? '';
+$info_hash2 = bin2hex($info_hash);
+$ip         = trim($_SERVER['REMOTE_ADDR'] ?? '');
+$agent      = substr(trim($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 128);
+$seeder     = ($left === 0 ? 'yes' : 'no');
+
+// ── Базовые проверки ──────────────────────────────────────
+
+if (!(strlen($passkey) === 32 && strlen($info_hash) === 20 && strlen($peer_id) === 20
+      && $port > 0 && $port < 65535)) {
+    stop($l['error']);
+}
+
+if ($passkey === 'tssespecialtorrentv1byxamsep2007') {
+    stop(($l['registerfirst']) . ($BASEURL ?? '') . '/signup.php');
+}
+
+// ── Подключение к БД (прямое mysqli — как в оригинале) ────
+
+$db = @mysqli_connect($mysql_host, $mysql_user, $mysql_pass, $mysql_db);
+if (!$db) stop($l['cerror']);
+mysqli_set_charset($db, 'utf8mb4');
+
+// ── Загрузка торрента и пользователя ─────────────────────
+
+$stmt = mysqli_prepare($db,
+    'SELECT t.id AS tid, t.visible, t.banned, t.free, t.silver, t.doubleupload,
+            t.seeders, t.leechers, t.times_completed,
+            u.id AS userid, u.enabled, u.uploaded, u.downloaded,
+            u.usergroup, u.birthday, u.regip,
+            g.isbannedgroup, g.canfreeleech
+     FROM torrents t
+     INNER JOIN users      u ON u.passkey   = ?
+     INNER JOIN usergroups g ON u.usergroup = g.gid
+     WHERE (t.info_hash = ? OR t.info_hash = ?)
+     LIMIT 1'
+);
+if (!$stmt) stop($l['sqlerror'] . ' TU1');
+
+mysqli_stmt_bind_param($stmt, 'sss', $passkey, $info_hash2, $info_hash);
+mysqli_stmt_execute($stmt);
+$Result = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+mysqli_stmt_close($stmt);
+
+if (!$Result || !($Result['tid'] ?? null) || ($Result['enabled'] ?? '') !== 'yes') {
+    stop($l['tuerror']);
+}
+if ((int)($Result['isbannedgroup'] ?? 0) === 1) stop($l['qerror1']);
+
+$Tid    = (int)$Result['tid'];
+$userId = (int)$Result['userid'];
+
+// ── Проверки клиента ──────────────────────────────────────
+
+if (($checkip ?? '') === 'yes' && ($Result['regip'] ?? '') !== $ip) {
+    stop($l['invalidip']);
+}
+
+if (($bannedclientdetect ?? '') === 'yes') {
+    $accept     = $_SERVER['HTTP_ACCEPT']          ?? '';
+    $connection = $_SERVER['HTTP_CONNECTION']      ?? '';
+    $encoding   = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
+    $isBanned   =
+        $accept === 'text/html, */*' ||
+        ($connection === 'Close' && $encoding !== 'gzip, deflate') ||
+        ($accept === 'text/html, */*' && $encoding === 'identity') ||
+        !in_array(substr($peer_id, 0, 8), explode(',', $allowed_clients ?? ''), true);
+    if ($isBanned) stop($l['bannedclient']);
+}
+
+// ── Загрузка пиров ────────────────────────────────────────
+
+$fields    = 'seeder, peer_id, ip, port, uploaded, downloaded, userid, last_action,
+              (' . TIMENOW . ' - last_action) AS announcetime,
+              last_action AS ts, prev_action AS prevts, connectable';
+$gp_eq     = (($nc ?? '') === 'yes' ? " AND connectable = 'yes'" : '');
+$wantseeds = ($seeder === 'yes' ? " AND seeder = 'no'" : '');
+
+$stmt_peers = mysqli_prepare($db,
+    "SELECT {$fields} FROM peers WHERE torrent = ?{$gp_eq}{$wantseeds} ORDER BY last_action DESC LIMIT ?"
+);
+
+$self = null;
+
+// ── Строим ответ ──────────────────────────────────────────
+
+$resp = 'd8:completei'      . ($Result['seeders']         ?? 0)
+      . 'e10:downloadedi'   . ($Result['times_completed'] ?? 0)
+      . 'e10:incompletei'   . ($Result['leechers']        ?? 0)
+      . 'e8:intervali'      . ($announce_interval         ?? 1800)
+      . 'e12:min intervali' . ($announce_interval         ?? 1800)
+      . (($privatetrackerpatch ?? '') === 'yes' && $compact !== 1 ? 'e7:privatei1' : '')
+      . 'e5:peers'          . ($compact !== 1 ? 'l' : '');
+
+$compactPeers = [];
+
+if ($stmt_peers) {
+    mysqli_stmt_bind_param($stmt_peers, 'ii', $Tid, $numwant);
+    mysqli_stmt_execute($stmt_peers);
+    $query_peers = mysqli_stmt_get_result($stmt_peers);
+    mysqli_stmt_close($stmt_peers);
+
+    while ($peer = mysqli_fetch_assoc($query_peers)) {
+        if ((int)($peer['userid'] ?? 0) === $userId) {
+            $self = $peer;
+            continue;
+        }
+        if ($compact !== 1) {
+            $resp .= 'd2:ip' . strlen($peer['ip']) . ':' . $peer['ip'] . '4:porti' . (int)$peer['port'] . 'ee';
+        } else {
+            $parts = explode('.', $peer['ip']);
+            if (count($parts) === 4) {
+                $compactPeers[] = pack('C4n', ...[...$parts, (int)$peer['port']]);
+            }
+        }
+    }
+}
+
+if ($compact !== 1) {
+    $resp .= 'e';
+} else {
+    $packed = implode('', $compactPeers);
+    $resp  .= strlen($packed) . ':' . $packed . 'e';
+}
+
+// Себя не нашли — отдельный запрос
+if ($self === null) {
+    $stmt_self = mysqli_prepare($db,
+        "SELECT {$fields} FROM peers WHERE torrent = ? AND userid = ? LIMIT 1"
+    );
+    if ($stmt_self) {
+        mysqli_stmt_bind_param($stmt_self, 'ii', $Tid, $userId);
+        mysqli_stmt_execute($stmt_self);
+        $res_self = mysqli_stmt_get_result($stmt_self);
+        if (mysqli_num_rows($res_self) > 0) $self = mysqli_fetch_assoc($res_self);
+        mysqli_stmt_close($stmt_self);
+    }
+}
+
+// ── Антиспам ─────────────────────────────────────────────
+
+if ($self && (int)($announce_wait ?? 0) > 0 && $event !== 'started' && $event !== 'stopped') {
+    $last_announce = (int)($self['ts'] ?? 0);
+    $time_since    = (int)$_SERVER['REQUEST_TIME'] - $last_announce;
+    if ($last_announce > 0 && $time_since < (int)$announce_wait) {
+        $wait_more = (int)$announce_wait - $time_since;
+        stop($l['antispam'] . ' ' . $wait_more . 's');
+    }
+}
+
+// ── Freeleech / Birthday ──────────────────────────────────
+
+@require_once TSDIR . '/cache/freeleech.php';
+
+if (isset($__F_START, $__F_END, $__FLSTYPE)) {
+    $flStart = is_numeric($__F_START) ? (int)$__F_START : strtotime((string)$__F_START);
+    $flEnd   = is_numeric($__F_END)   ? (int)$__F_END   : strtotime((string)$__F_END);
+    if (TIMENOW >= $flStart && TIMENOW <= $flEnd) {
+        apply_freeleech_mode($__FLSTYPE, $Result);
+    }
+}
+
+if (($bdayreward ?? '') === 'yes' && !empty($bdayrewardtype) && !empty($Result['birthday'])) {
+    $bday = explode('-', (string)$Result['birthday']);
+    if (count($bday) >= 3 && date('j-n') === ((int)$bday[2]) . '-' . ((int)$bday[1])) {
+        apply_freeleech_mode($bdayrewardtype, $Result);
+    }
+}
+
+// ── Дельты трафика ────────────────────────────────────────
+
+$update_user    = [];
+$update_torrent = [];
+$realupload     = 0;
+$downthis       = 0;
+
+if ($self) {
+    $realupload   = max(0, $uploaded   - (int)($self['uploaded']   ?? 0));
+    $downthis     = max(0, $downloaded - (int)($self['downloaded'] ?? 0));
+    $announce_time = max(1, (int)($self['announcetime'] ?? 1));
+    $upthis       = ($Result['doubleupload'] ?? '') === 'yes' ? $realupload * 2 : $realupload;
+
+    if ($upthis > 0) $update_user[] = 'uploaded = uploaded + ' . $upthis;
+
+    $dled = ($Result['silver'] ?? '') === 'yes' ? (int)($downthis / 2) : $downthis;
+    if ($dled > 0 && ($Result['free'] ?? '') !== 'yes' && ($Result['canfreeleech'] ?? '') !== 'yes') {
+        $update_user[] = 'downloaded = downloaded + ' . $dled;
+    }
+}
+
+// ── Античит проверки ─────────────────────────────────────
+// Только математически точные — без ложных срабатываний
+
+if ($self) {
+
+    $announce_time_cheat = max(1, (int)($self['announcetime'] ?? 1));
+
+    // Функция записи в cheat_attempts
+    $write_cheat = function(string $reason, string $detail) use ($db, $Result, $Tid, $ip, $agent): void {
+        $added      = TIMENOW;
+        $uid        = (int)$Result['userid'];
+        $torrentid  = (int)$Tid;
+        $agent_str  = (string)$agent;
+        $ip_str     = (string)$ip;
+        $reason_str = substr($reason, 0, 64);
+        $detail_str = substr($detail, 0, 512);
+        $severity   = 'high';
+
+        // Не дублировать одинаковую причину за последние 60 секунд
+        $check = mysqli_prepare($db,
+            'SELECT id FROM cheat_attempts WHERE uid=? AND torrentid=? AND reason=? AND added>? LIMIT 1'
+        );
+        if ($check) {
+            $since = TIMENOW - 60;
+            mysqli_stmt_bind_param($check, 'iisi', $uid, $torrentid, $reason_str, $since);
+            mysqli_stmt_execute($check);
+            $exists = mysqli_stmt_get_result($check)->num_rows > 0;
+            mysqli_stmt_close($check);
+            if ($exists) return;
+        }
+
+        $stmt = mysqli_prepare($db,
+            'INSERT INTO cheat_attempts
+             (added, uid, agent, ip, torrentid, reason, detail, severity)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, 'isssssss',
+                $added, $uid, $agent_str, $ip_str,
+                $torrentid, $reason_str, $detail_str, $severity
+            );
+            mysqli_stmt_execute($stmt);
+            mysqli_stmt_close($stmt);
+        }
+    };
+
+    // Проверка 1: completed + left > 0 — физически невозможно
+    if ($event === 'completed' && $left > 0) {
+        $write_cheat(
+            'fake_completed_event',
+            "Sent 'completed' but left={$left} bytes remaining"
+        );
     }
 
-    
-    $stmt = mysqli_prepare($db, 'INSERT DELAYED INTO announce_actions (torrentid, userid, ip, passkey, actionmessage, actiontime) VALUES (?, ?, ?, ?, ?, ?)');
+    // Проверка 2: completed без реального скачивания (< 90% размера торрента)
+    // Только если знаем размер торрента
+    if ($event === 'completed' && !empty($Result['size']) && (int)$Result['size'] > 0) {
+        $torrentSize = (int)$Result['size'];
+        if ($downloaded < ($torrentSize * 0.90)) {
+            $write_cheat(
+                'completed_without_download',
+                "downloaded={$downloaded} but torrent_size={$torrentSize} (< 90%)"
+            );
+        }
+    }
+
+    // Проверка 3: seeder=yes но left > 0 — сидирует файл которого нет
+    if ($seeder === 'yes' && $left > 0) {
+        $write_cheat(
+            'fake_seeding',
+            "seeder=yes but left={$left} bytes"
+        );
+    }
+
+    // Проверка 4: peer_id изменился — возможная подмена клиента
+    if (!empty($self['peer_id']) && $self['peer_id'] !== $peer_id) {
+        $write_cheat(
+            'peer_id_changed',
+            "old=" . substr($self['peer_id'], 0, 12) . " new=" . substr($peer_id, 0, 12)
+        );
+    }
+
+    // Проверка 5: подозрительный peer_id (тестовые/фейковые значения)
+    if (preg_match('/^(AAAA{4}|0{8}|test|fake)/i', $peer_id)) {
+        $write_cheat(
+            'suspicious_peer_id',
+            "peer_id=" . substr($peer_id, 0, 20)
+        );
+    }
+
+    // Проверка 6: отрицательные значения (эксплойт клиента)
+    // Проверяем сырые GET параметры — int cast скроет отрицательные
+    $raw_up   = isset($_GET['uploaded'])   ? (float)$_GET['uploaded']   : 0;
+    $raw_down = isset($_GET['downloaded']) ? (float)$_GET['downloaded'] : 0;
+    $raw_left = isset($_GET['left'])       ? (float)$_GET['left']       : 0;
+    if ($raw_up < 0 || $raw_down < 0 || $raw_left < 0) {
+        $write_cheat(
+            'negative_values',
+            "uploaded={$raw_up} downloaded={$raw_down} left={$raw_left}"
+        );
+    }
+
+    // Проверка 7: мгновенный stop после complete
+    if ($event === 'stopped' && isset($self['finishedat']) && (int)$self['finishedat'] > 0) {
+        $time_as_seed = TIMENOW - (int)$self['finishedat'];
+        if ($time_as_seed > 0 && $time_as_seed < 5) {
+            $write_cheat(
+                'instant_stop_after_complete',
+                "Stopped seeding after only {$time_as_seed}s"
+            );
+        }
+    }
+
+    // Проверка 8: невозможный ratio на новом торренте
+    if ($downthis > 0 && $realupload > 0 && !empty($Result['added'])) {
+        $torrent_age = TIMENOW - (int)strtotime((string)$Result['added']);
+        $ratio       = $realupload / $downthis;
+
+        if ($torrent_age < 3600 && $ratio > 3) {
+            $write_cheat(
+                'impossible_ratio_new_torrent',
+                "ratio={$ratio} on torrent {$torrent_age}s old"
+            );
+        }
+
+        if ($ratio > 100) {
+            $write_cheat(
+                'extreme_ratio',
+                "ratio={$ratio} (up={$realupload} down={$downthis})"
+            );
+        }
+    }
+
+    // Проверка 9: пустой User-Agent
+    if (empty($agent) && ($bannedclientdetect ?? '') === 'yes') {
+        $write_cheat('empty_user_agent', 'No User-Agent header');
+        stop($l['invalidagent']);
+    }
+
+    // Проверка 10: seeder с left > 0
+    if ($seeder === 'yes' && $left > 0) {
+        $write_cheat(
+            'seed_with_left',
+            "left={$left} bytes (should be 0 for seeder)"
+        );
+    }
+
+    // Проверка 11: fake_completed без данных
+    if ($event === 'completed' && $downthis < 1024 && $left > 0) {
+        $write_cheat(
+            'fake_completed_no_data',
+            "downloaded_delta={$downthis} left={$left}"
+        );
+    }
+
+    // Проверка 12: один peer_id с разных IP
+    $stmt_multi = mysqli_prepare($db,
+        'SELECT COUNT(DISTINCT ip) FROM peers WHERE peer_id = ? AND userid != ? AND last_action > ?'
+    );
+    if ($stmt_multi) {
+        $time_ago_multi = TIMENOW - 300;
+        mysqli_stmt_bind_param($stmt_multi, 'sii', $peer_id, $userId, $time_ago_multi);
+        mysqli_stmt_execute($stmt_multi);
+        mysqli_stmt_bind_result($stmt_multi, $multi_ip_count);
+        mysqli_stmt_fetch($stmt_multi);
+        mysqli_stmt_close($stmt_multi);
+
+        if ($multi_ip_count >= 2) {
+            $write_cheat(
+                'multi_ip_same_peer_id',
+                "Same peer_id from {$multi_ip_count} different IPs"
+            );
+        }
+    }
+
+    // Проверка 13: читерские клиенты по User-Agent
+    $cheat_agents = ['mRatio', 'Ratio Faker', 'RatioMaster', 'shuMod'];
+    foreach ($cheat_agents as $bad_agent) {
+        if (stripos($agent, $bad_agent) !== false) {
+            $write_cheat('banned_cheat_client', "agent={$agent}");
+            stop($l['bannedclient']);
+        }
+    }
+
+    // Проверка 14: анонс слишком часто (< 10 сек)
+    if ($event !== 'started' && $event !== 'stopped') {
+        $time_since_last = TIMENOW - (int)($self['ts'] ?? 0);
+        if ($time_since_last > 0 && $time_since_last < 10) {
+            $write_cheat(
+                'announce_spam',
+                "Only {$time_since_last}s between announces"
+            );
+        }
+    }
+}
+
+// ── Событие stopped ───────────────────────────────────────
+
+if ($event === 'stopped' && $self) {
+
+    $stmt = mysqli_prepare($db, 'DELETE FROM peers WHERE torrent = ? AND userid = ?');
     if ($stmt) {
-        mysqli_stmt_bind_param($stmt, "iisssi", $Tid, $Result['userid'], $ip, $passkey, $actionmessage, $_SERVER['REQUEST_TIME']);
+        mysqli_stmt_bind_param($stmt, 'ii', $Tid, $userId);
         mysqli_stmt_execute($stmt);
+        $affected = mysqli_stmt_affected_rows($stmt);
         mysqli_stmt_close($stmt);
+
+        if ($affected > 0) {
+            $col   = ($self['seeder'] ?? '') === 'yes' ? 'seeders' : 'leechers';
+            $stmt2 = mysqli_prepare($db,
+                "UPDATE torrents SET {$col} = GREATEST({$col} - 1, 0) WHERE id = ? AND {$col} > 0"
+            );
+            if ($stmt2) {
+                mysqli_stmt_bind_param($stmt2, 'i', $Tid);
+                mysqli_stmt_execute($stmt2);
+                mysqli_stmt_close($stmt2);
+            }
+        }
     }
 
-    if ($resetpasskey) 
-	{
-        $stmt = mysqli_prepare($db, 'UPDATE users SET passkey = \'\' WHERE id = ? AND passkey = ?');
-        if ($stmt) 
-		{
-            mysqli_stmt_bind_param($stmt, "is", $Result['userid'], $passkey);
+    if (($snatchmod ?? '') === 'yes') {
+        $stmt = mysqli_prepare($db, "UPDATE snatched SET seeder = 'no' WHERE torrentid = ? AND userid = ?");
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, 'ii', $Tid, $userId);
+            mysqli_stmt_execute($stmt);
+            mysqli_stmt_close($stmt);
+        }
+    }
+
+} else {
+
+// ── Существующий или новый пир ────────────────────────────
+
+    $torrent_id = $Tid;
+    $user_id    = $userId;
+
+    if ($event === 'completed') {
+        $update_torrent[] = 'times_completed = times_completed + 1';
+        if (($snatchmod ?? '') === 'yes') {
+            $update_snatched_fixed = ['finished' => 'yes', 'completedat' => TIMENOW];
+        }
+    }
+
+    if ($self) {
+
+        // UPDATE peers
+        $connectable = ($self['connectable'] === 'yes') ? 'yes' : checkconnect($ip, $port);
+        $prev_action  = (int)($self['ts'] ?? TIMENOW);
+        $was_seeder   = $self['seeder'] ?? null;
+        $became_seeder = ($seeder === 'yes' && $was_seeder !== $seeder);
+
+        $p_timenow = TIMENOW;
+        $q      = 'UPDATE peers SET uploaded=?, downloaded=?, to_go=?, last_action=?, prev_action=?, seeder=?';
+        $params = [$uploaded, $downloaded, $left, $p_timenow, $prev_action, $seeder];
+        $types  = 'iiiiss';
+
+        if ($became_seeder) { $q .= ', finishedat=?'; $params[] = (int)$_SERVER['REQUEST_TIME']; $types .= 'i'; }
+        $q .= ' WHERE torrent=? AND userid=?';
+        $params[] = $torrent_id; $params[] = $user_id; $types .= 'ii';
+
+        $stmt = mysqli_prepare($db, $q);
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, $types, ...$params);
+            mysqli_stmt_execute($stmt);
+            $affected = mysqli_stmt_affected_rows($stmt);
+            mysqli_stmt_close($stmt);
+
+            if ($affected > 0 && $was_seeder !== $seeder) {
+                if ($seeder === 'yes') {
+                    $update_torrent[] = 'seeders = seeders + 1';
+                    $update_torrent[] = 'leechers = GREATEST(leechers - 1, 0)';
+                } else {
+                    $update_torrent[] = 'leechers = leechers + 1';
+                    $update_torrent[] = 'seeders = GREATEST(seeders - 1, 0)';
+                }
+            }
+        }
+
+        // UPDATE snatched
+        if (($snatchmod ?? '') === 'yes') {
+            $interval = (int)($announce_interval ?? 1800);
+            if (isset($self['announcetime']) && $self['announcetime'] > 0 && $self['announcetime'] < 3600) {
+                $interval = (int)$self['announcetime'];
+            }
+
+            $update_snatched_fixed = array_merge($update_snatched_fixed ?? [], [
+                'seeder'      => $seeder,
+                'connectable' => $connectable,
+                'last_action' => TIMENOW,
+                'port'        => $port,
+                'agent'       => $agent,
+                'ip'          => $ip,
+                'uploaded'    => $realupload,
+                'downloaded'  => $downthis,
+                'to_go'       => $left,
+            ]);
+
+            $fields2  = [];
+            $types_s  = '';
+            $params_s = [];
+
+            $fields2[]  = ($self['seeder'] ?? 'no') === 'yes' ? 'seedtime = seedtime + ?' : 'leechtime = leechtime + ?';
+            $types_s   .= 'i';
+            $params_s[] = $interval;
+
+            $sum_fields    = ['uploaded', 'downloaded', 'to_go'];
+            $int_fields    = ['completedat', 'last_action', 'port'];
+
+            foreach ($update_snatched_fixed as $key => $value) {
+                if (in_array($key, $sum_fields, true)) {
+                    $fields2[]  = "{$key} = {$key} + ?";
+                    $types_s   .= 'i';
+                } elseif (in_array($key, $int_fields, true)) {
+                    $fields2[]  = "{$key} = ?";
+                    $types_s   .= 'i';
+                } else {
+                    $fields2[]  = "{$key} = ?";
+                    $types_s   .= 's';
+                }
+                $params_s[] = $value;
+            }
+
+            $types_s   .= 'ii';
+            $params_s[] = $torrent_id;
+            $params_s[] = $user_id;
+
+            $stmt = mysqli_prepare($db,
+                'UPDATE snatched SET ' . implode(', ', $fields2) . ' WHERE torrentid = ? AND userid = ?'
+            );
+            if ($stmt) {
+                mysqli_stmt_bind_param($stmt, $types_s, ...$params_s);
+                mysqli_stmt_execute($stmt);
+                mysqli_stmt_close($stmt);
+            }
+        }
+
+    } else {
+
+        // Новый пир
+        if (in_array($port, BANNED_PORTS, true)) stop($l['invalidport']);
+
+        $connectable = checkconnect($ip, $port);
+        if ($connectable === 'no' && ($nc ?? '') === 'yes') stop($l['conerror']);
+
+        // INSERT snatched
+        if (($snatchmod ?? '') === 'yes') {
+            $stmt = mysqli_prepare($db, 'SELECT 1 FROM snatched WHERE torrentid = ? AND userid = ? LIMIT 1');
+            if ($stmt) {
+                mysqli_stmt_bind_param($stmt, 'ii', $torrent_id, $user_id);
+                mysqli_stmt_execute($stmt);
+                $res_check = mysqli_stmt_get_result($stmt);
+                mysqli_stmt_close($stmt);
+
+                if (mysqli_num_rows($res_check) === 0) {
+                    $stmt2 = mysqli_prepare($db,
+                        'INSERT INTO snatched (torrentid, userid, port, startdat, last_action, agent, ip)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)'
+                    );
+                    if ($stmt2) {
+                         $p_snatch_now = TIMENOW;
+                    mysqli_stmt_bind_param($stmt2, 'iiiiiss',
+                        $torrent_id, $user_id, $port, $p_snatch_now, $p_snatch_now, $agent, $ip
+                    );
+                        mysqli_stmt_execute($stmt2);
+                        mysqli_stmt_close($stmt2);
+                    }
+                }
+            }
+        }
+
+        // INSERT peers
+        $stmt = mysqli_prepare($db,
+            'INSERT INTO peers
+             (connectable, torrent, peer_id, ip, port, uploaded, downloaded, to_go,
+              started, last_action, seeder, userid, agent, uploadoffset, downloadoffset, passkey)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        if ($stmt) {
+            $p_now     = TIMENOW;
+            $p_up_off  = $uploaded;
+            $p_dl_off  = $downloaded;
+            mysqli_stmt_bind_param($stmt, 'sisssiiiiisissss',
+                $connectable, $torrent_id, $peer_id, $ip, $port,
+                $uploaded, $downloaded, $left,
+                $p_now, $p_now, $seeder, $user_id, $agent,
+                $p_up_off, $p_dl_off, $passkey
+            );
+            if (mysqli_stmt_execute($stmt)) {
+                $update_torrent[] = ($seeder === 'yes' ? 'seeders = seeders + 1' : 'leechers = leechers + 1');
+            }
+            mysqli_stmt_close($stmt);
+        }
+    }
+
+    // UPDATE torrents
+    if ($seeder === 'yes') {
+        if (($Result['banned'] ?? '') !== 'yes' && ($Result['visible'] ?? '') === 'no') {
+            $update_torrent[] = "visible = 'yes'";
+        }
+        $update_torrent[] = 'last_action = ' . TIMENOW;
+        $update_torrent[] = 'mtime = '       . (int)$_SERVER['REQUEST_TIME'];
+    }
+
+    if (!empty($update_torrent)) {
+        $stmt = mysqli_prepare($db, 'UPDATE torrents SET ' . implode(',', $update_torrent) . ' WHERE id = ?');
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, 'i', $torrent_id);
+            mysqli_stmt_execute($stmt);
+            mysqli_stmt_close($stmt);
+        }
+    }
+
+    // UPDATE users
+    if (!empty($update_user)) {
+        $stmt = mysqli_prepare($db, 'UPDATE users SET ' . implode(',', $update_user) . ' WHERE id = ?');
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, 'i', $user_id);
             mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
         }
     }
 }
 
-define('IN_ANNOUNCE', true);
-define('TIMENOW', time());
-define('TSDIR', dirname(__FILE__));
+// ── Ответ клиенту ─────────────────────────────────────────
 
-require TSDIR . '/include/config_announce.php';
-require TSDIR . '/include/languages/english/announce.lang.php';
+ob_end_clean();
 
-$compact = isset($_GET['compact']) ? (int)$_GET['compact'] : 0;
-$peer_id = $_GET['peer_id'] ?? '';
-$port = isset($_GET['port']) ? (int)$_GET['port'] : 0;
-$event = $_GET['event'] ?? '';
-$downloaded = isset($_GET['downloaded']) ? (int)$_GET['downloaded'] : 0;
-$uploaded = isset($_GET['uploaded']) ? (int)$_GET['uploaded'] : 0;
-$left = isset($_GET['left']) ? (int)$_GET['left'] : 0;
-
-$numwant = min(
-    (int)($_GET['numwant'] ?? $_GET['num_want'] ?? $_GET['num want'] ?? 50),
-    50
-);
-
-$update_user = $update_torrent = $update_snatched = [];
-
-if (isset($_GET['passkey']) && str_contains($_GET['passkey'], '?')) {
-    $parts = explode('?', $_GET['passkey'], 2);
-    $_GET['passkey'] = $parts[0];
-    
-    if (isset($parts[1])) {
-        $hashParts = explode('=', $parts[1], 2);
-        if (count($hashParts) === 2) {
-            $_GET['info_hash'] = $hashParts[1];
-        }
-    }
-}
-
-$passkey = $_GET['passkey'] ?? '';
-$info_hash = $_GET['info_hash'] ?? '';
-$info_hash2 = bin2hex($info_hash);
-
-$ip = htmlspecialchars($_SERVER['REMOTE_ADDR']);
-$agent = htmlspecialchars($_SERVER['HTTP_USER_AGENT'] ?? '');
-$seeder = ($left === 0 ? 'yes' : 'no');
-
-if (!((strlen($passkey) === 32 && strlen($info_hash) === 20 && strlen($peer_id) === 20 && $port > 0 && $port < 65535))) 
-{
-    stop($l['error'] ?? 'Invalid parameters');
-}
-
-if ($passkey === 'tssespecialtorrentv1byxamsep2007') {
-    stop(($l['registerfirst'] ?? 'Please register first') . ($BASEURL ?? '') . '/signup.php');
-}
-
-$db = @mysqli_connect($mysql_host, $mysql_user, $mysql_pass, $mysql_db);
-if (!$db) {
-    stop($l['cerror'] ?? 'Database connection error');
-}
-
-
-mysqli_set_charset($db, 'utf8mb4');
-
-
-$stmt = mysqli_prepare($db, '
-    SELECT t.id as tid, t.name, t.size, t.added, t.visible, t.banned, t.free, t.silver, t.doubleupload, 
-           t.seeders, t.leechers, t.times_completed,
-           u.id as userid, u.enabled, u.uploaded, u.downloaded, u.usergroup, u.birthday, u.regip,
-           g.isbannedgroup, g.isvipgroup, g.canfreeleech
-    FROM torrents t
-    INNER JOIN users u ON (u.passkey = ?)
-    INNER JOIN usergroups g ON (u.usergroup = g.gid)
-    WHERE (t.info_hash = ? OR t.info_hash = ?)
-    LIMIT 1');
-
-if (!$stmt) {
-    stop(($l['sqlerror'] ?? 'SQL error') . ' TU1');
-}
-
-
-
-
-mysqli_stmt_bind_param($stmt, "sss", $passkey, $info_hash2, $info_hash);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$Result = mysqli_fetch_assoc($result);
-mysqli_stmt_close($stmt);
-
-
-
-
-if ((int)($Result['isbannedgroup'] ?? 0) === 1) 
-{
-    stop($l['qerror1'] ?? 'Download forbidden');
-}
-
-
-$Tid = $Result['tid'] ?? null;
-$user_id22 = $Result['userid'] ?? null;
-
-if (!$Result || !$Tid || ($Result['enabled'] ?? '') !== 'yes' || !$user_id22) 
-{
-    stop($l['tuerror'] ?? 'Torrent or user error');
-}
-
-
-
-if (($checkip ?? '') === 'yes' && ($Result['regip'] ?? '') !== $ip) {
-    stop($l['invalidip'] ?? 'Invalid IP');
-}
-
-if (($detectbrowsercheats ?? '') === 'yes' && 
-    isset($_SERVER['HTTP_COOKIE'], $_SERVER['HTTP_ACCEPT_LANGUAGE'], $_SERVER['HTTP_ACCEPT_CHARSET'])) {
-    send_action('This user tried to cheat with a browser!', true);
-    stop($l['invalidagent'] ?? 'Invalid agent');
-}
-
-if (($bannedclientdetect ?? '') === 'yes') {
-    $Stop = false;
-    
-    if (($_SERVER['HTTP_ACCEPT'] ?? '') === 'text/html, */*' || 
-        (($_SERVER['HTTP_CONNECTION'] ?? '') === 'Close' && ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '') !== 'gzip, deflate')) {
-        $Stop = true;
-    } elseif (($_SERVER['HTTP_ACCEPT'] ?? '') === 'text/html, */*' && ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '') === 'identity') {
-        $Stop = true;
-    } else {
-        $userclient = substr($peer_id, 0, 8);
-        $allowed_clients = explode(',', $allowed_clients ?? '');
-        if (!in_array($userclient, $allowed_clients)) {
-            $Stop = true;
-        }
-    }
-
-    if ($Stop) {
-        stop($l['bannedclient'] ?? 'Banned client');
-    }
-}
-
-$fields = 'seeder, peer_id, ip, port, uploaded, downloaded, userid, last_action, ('.TIMENOW.' - last_action) AS announcetime, last_action AS ts, '.TIMENOW.' AS nowts, prev_action AS prevts, connectable';
-
-
-$gp_eq = (($nc ?? '') === 'yes' ? ' AND connectable = \'yes\'' : '');
-$wantseeds = ($seeder === 'yes' ? ' AND seeder = \'no\'' : '');
-
-$resp = "d8:completei" . ($Result["seeders"] ?? 0) . "e10:downloadedi" . ($Result["times_completed"] ?? 0) . "e10:incompletei" . ($Result["leechers"] ?? 0) . "e8:intervali" . ($announce_interval ?? 1800) . "e12:min intervali" . ($announce_interval ?? 1800) . (($privatetrackerpatch ?? '') === "yes" && $compact !== 1 ? "e7:privatei1" : "") . "e5:peers" . ($compact !== 1 ? "l" : "");
-
-$peer = [];
-$peer_num = 0;
-
-
-$peer_query = 'SELECT ' . $fields . ' FROM peers WHERE torrent = ?' . $gp_eq . $wantseeds . ' ORDER BY last_action DESC LIMIT ?';
-$stmt_peers = mysqli_prepare($db, $peer_query);
-if ($stmt_peers) {
-    mysqli_stmt_bind_param($stmt_peers, "ii", $Tid, $numwant);
-    mysqli_stmt_execute($stmt_peers);
-    $query_peers = mysqli_stmt_get_result($stmt_peers);
-    mysqli_stmt_close($stmt_peers);
-} else {
-    // Fallback на обычный запрос
-    $query_peers = @mysqli_query($db, 'SELECT ' . $fields . ' FROM peers WHERE torrent = ' . $Tid . $gp_eq . $wantseeds . ' ORDER BY last_action DESC LIMIT ' . $numwant);
-}
-
-if ($compact !== 1) {
-    while ($result_peers = mysqli_fetch_assoc($query_peers)) {
-        if (($result_peers['userid'] ?? null) === $Result['userid']) {
-            $self = $result_peers;
-            continue;
-        }
-        $resp .= 'd2:ip' . strlen($result_peers['ip']) . ':' . $result_peers['ip'] . '4:porti' . $result_peers['port'] . 'ee';
-    }
-    $resp .= 'ee';
-} else {
-    while ($result_peers = mysqli_fetch_assoc($query_peers)) {
-        $peer_ip = explode('.', $result_peers['ip']);
-        $peer_ip = pack('C*', (int)$peer_ip[0], (int)$peer_ip[1], (int)$peer_ip[2], (int)$peer_ip[3]);
-        $peer_port = pack('n*', (int)$result_peers['port']);
-        $time = intval(time() % 7680 / 60);
-        if ($left === 0) {
-            $time += 128;
-        }
-        $peer[] = pack('C', $time) . $peer_ip . $peer_port;
-        ++$peer_num;
-    }
-
-    $o = '';
-    foreach ($peer as $p) {
-        $o .= substr($p, 1, 6);
-    }
-    $resp .= strlen($o) . ':' . $o . 'e';
-    unset($peer);
-}
-
-
-if (!isset($self)) {
-    $stmt_self = mysqli_prepare($db, 'SELECT ' . $fields . ' FROM peers WHERE torrent = ? AND userid = ? LIMIT 1');
-    if ($stmt_self) {
-        mysqli_stmt_bind_param($stmt_self, "ii", $Tid, $Result['userid']);
-        mysqli_stmt_execute($stmt_self);
-        $result_self = mysqli_stmt_get_result($stmt_self);
-        if (mysqli_num_rows($result_self)) {
-            $self = mysqli_fetch_assoc($result_self);
-        }
-        mysqli_stmt_close($stmt_self);
-    }
-}
-
-if (isset($self) && ($announce_wait ?? 0) > 0 && $_SERVER['REQUEST_TIME'] - $announce_wait < ($self['prevts'] ?? 0)) {
-    stop(($l['antispam'] ?? 'Please wait') . ' ' . $announce_wait);
-}
-
-@require_once TSDIR . '/cache/freeleech.php';
-$TIMENOW = date('Y-m-d H:i:s');
-
-if (isset($__F_START, $__F_END, $__FLSTYPE) && $__F_START < $TIMENOW && $TIMENOW < $__F_END) {
-    switch ($__FLSTYPE) {
-        case 'freeleech':
-            $Result['free'] = 'yes';
-            $Result['canfreeleech'] = 'yes';
-            break;
-        case 'silverleech':
-            $Result['silver'] = 'yes';
-            break;
-        case 'doubleupload':
-            $Result['doubleupload'] = 'yes';
-            break;
-    }
-}
-
-if (($bdayreward ?? '') === 'yes' && !empty($bdayrewardtype) && !empty($Result['birthday'])) {
-    $curuserbday = explode('-', $Result['birthday']);
-    if (date('j-n') === $curuserbday[1] . '-' . $curuserbday[2]) {
-        switch ($bdayrewardtype) {
-            case 'freeleech':
-                $Result['free'] = 'yes';
-                $Result['canfreeleech'] = 'yes';
-                break;
-            case 'silverleech':
-                $Result['silver'] = 'yes';
-                break;
-            case 'doubleupload':
-                $Result['doubleupload'] = 'yes';
-                break;
-        }
-    }
-}
-
-if (isset($self)) {
-    $realupload = max(0, $uploaded - ($self['uploaded'] ?? 0));
-    $upthis = (($Result['doubleupload'] ?? '') === 'yes' ? $realupload * 2 : $realupload);
-    $downthis = max(0, $downloaded - ($self['downloaded'] ?? 0));
-    
-    $announce_time = max(1, ($self['announcetime'] ?? 1));
-    $upspeed = $realupload > 0 ? $realupload / $announce_time : 0;
-    $downspeed = $downthis > 0 ? $downthis / $announce_time : 0;
-    
-    $safe_announcetime = min($self['announcetime'] ?? 0, 31536000);
-    
-    //$announcetime_sql = (($self['seeder'] ?? 'no') === 'yes'
-        //? "seedtime = seedtime + " . $safe_announcetime
-        //: "leechtime = leechtime + " . $safe_announcetime);
-		
-	//$announcetime_sql = ($self['seeder'] ?? 'no') === 'yes'
-    //? "seedtime = seedtime + " . ($self['announcetime'] ?? 0)
-    //: "leechtime = leechtime + " . ($self['announcetime'] ?? 0);
-		
-		
-		
-
-    if ($upthis > 0 || $downthis > 0) {
-        if ($realupload > 536870912 && ($aggressivecheat ?? '') === 'yes') {
-            send_action('There was no Leecher on this torrent however this user uploaded ' . $realupload . ' bytes, which might be a cheat attempt with a cheat software such as Ratio Maker, Ratio Faker etc..');
-        }
-
-        $dled = (($Result['silver'] ?? '') === 'yes' ? $downthis / 2 : $downthis);
-        
-        if ($upthis > 0) {
-            $update_user[] = 'uploaded = uploaded + ' . $upthis;
-        }
-
-        if ($dled > 0 && ($Result['free'] ?? '') !== 'yes' && ($Result['canfreeleech'] ?? '') !== 'yes') {
-            $update_user[] = 'downloaded = downloaded + ' . $dled;
-        }
-    }
-
-   
-   
-   
-   
-   
-
-
-
-
-if (($max_rate ?? 0) < $upspeed) 
-{
-    $added = TIMENOW;
-    $uid = (int)$Result['userid'];
-    $transfer_rate = (int)$upspeed;
-    $beforeup = (int)$Result['uploaded'];
-    $upthis = (int)$realupload;
-    $timediff = (int)($self['announcetime'] ?? 0);
-    $ip_addr = (string)$ip;
-    $torrentid = (int)$Tid;
-    $agent = (string)$agent;
-
-    $stmt_cheat = mysqli_prepare($db, '
-        INSERT INTO cheat_attempts 
-        (added, uid, agent, transfer_rate, beforeup, upthis, timediff, ip, torrentid) 
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ');
-
-    if ($stmt_cheat) 
-    {
-        mysqli_stmt_bind_param($stmt_cheat, "iisiiiisi", 
-            $added,
-            $uid,
-            $agent,
-            $transfer_rate,
-            $beforeup,
-            $upthis,
-            $timediff,
-            $ip_addr,
-            $torrentid
-        );
-        mysqli_stmt_execute($stmt_cheat);
-        mysqli_stmt_close($stmt_cheat);
-    }
-}
-
-
-
-   
-   
-   
-   
-   
-   
-}
-
-
-
-
-
-
-
-
-
-
-if ($event === 'stopped' && isset($self)) 
-{
-    
-    
-    $stmt_delete = mysqli_prepare($db, 'DELETE FROM peers WHERE torrent = ? AND userid = ?');
-    if ($stmt_delete) 
-	{
-        mysqli_stmt_bind_param($stmt_delete, "ii", $Tid, $Result['userid']);
-        mysqli_stmt_execute($stmt_delete);
-        $affected_rows = mysqli_stmt_affected_rows($stmt_delete);
-        mysqli_stmt_close($stmt_delete);
-        
-        if ($affected_rows > 0) 
-		{
-           
-            if (($self['seeder'] ?? '') === 'yes') 
-			{
-               
-                $stmt_update = mysqli_prepare($db, 
-                    'UPDATE torrents SET seeders = GREATEST(seeders - 1, 0) WHERE id = ? AND seeders > 0'
-                );
-            } 
-			else 
-			{
-                $stmt_update = mysqli_prepare($db, 
-                    'UPDATE torrents SET leechers = GREATEST(leechers - 1, 0) WHERE id = ? AND leechers > 0'
-                );
-            }
-            
-            if ($stmt_update) 
-			{
-                mysqli_stmt_bind_param($stmt_update, "i", $Tid);
-                mysqli_stmt_execute($stmt_update);
-                mysqli_stmt_close($stmt_update);
-            }
-        }
-    }
-
-    
-    if (($snatchmod ?? '') === 'yes') 
-	{
-        $stmt_snatch = mysqli_prepare($db, 'UPDATE snatched SET seeder = \'no\' WHERE torrentid = ? AND userid = ?');
-        if ($stmt_snatch) 
-		{
-            mysqli_stmt_bind_param($stmt_snatch, "ii", $Tid, $Result['userid']);
-            mysqli_stmt_execute($stmt_snatch);
-            mysqli_stmt_close($stmt_snatch);
-        }
-    }
-}
-
-
-
-
-
-
-
- 
-
-
-
-else 
-{
-  
-        $torrent_id = (int)$Tid;
-        $user_id = (int)$Result['userid'];
-        
-        if ($event === 'completed') 
-		{
-           
-            if (($snatchmod ?? '') === 'yes') 
-			{
-                $update_snatched_fixed = [
-                    'finished'    => 'yes',
-                    'completedat' => TIMENOW
-                ];
-            }
-
-            $update_torrent[] = 'times_completed = times_completed + 1';
-        }
-
-        
-        if (isset($self)) 
-		{
-            $connectable = (isset($self['connectable']) && $self['connectable'] === 'yes') ? 'yes' : checkconnect($ip, $port);
-
-            if (($snatchmod ?? '') === 'yes') 
-			{
-                
-                $update_snatched_fixed = array_merge($update_snatched_fixed ?? [], [
-                    'seeder'      => $seeder,
-                    'connectable' => $connectable,
-                    'last_action' => TIMENOW,
-                    'port'        => $port,
-                    'agent'       => $agent,
-                    'ip'          => $ip,
-                    'uploaded'    => $realupload,
-                    'downloaded'  => $downthis,
-                    'to_go'       => $left
-                ]);
-				
-				
-				
-                if ($upspeed > 0) 
-				{
-                   $update_snatched_fixed['upspeed'] = $upspeed;
-                }
-                if ($downspeed > 0) 
-				{
-                   $update_snatched_fixed['downspeed'] = $downspeed;
-                }
-				
-
-                $fields2 = [];
-                $types_snatched = '';
-                $params_snatched = [];
-
-                
-                $announce_interval = (int)$announce_interval;
-                if (isset($self['announcetime']) && $self['announcetime'] > 0 && $self['announcetime'] < 3600) {
-                    $announce_interval = $self['announcetime'];
-                } 
-
-                if (($self['seeder'] ?? 'no') === 'yes') {
-                    $fields2[] = "seedtime = seedtime + ?";
-                } else {
-                    $fields2[] = "leechtime = leechtime + ?";
-                }
-                $types_snatched .= 'i';
-                $params_snatched[] = $announce_interval;
-
-                
-                foreach ($update_snatched_fixed as $key => $value) 
-				{
-                  $sum_fields = ['uploaded', 'downloaded', 'to_go'];
-                  $int_fields = ['completedat', 'last_action']; 
-                  $bigint_fields = ['upspeed', 'downspeed'];
-
-                  if (in_array($key, $sum_fields, true)) 
-				  {
-                     $fields2[] = "$key = $key + ?";
-                     $types_snatched .= 'i';
-                  }  
-	              elseif (in_array($key, $int_fields, true)) 
-				  {
-                     $fields2[] = "$key = ?";
-                     $types_snatched .= 'i';
-                  } 
-				  elseif (in_array($key, $bigint_fields, true)) 
-				  {
-                     $fields2[] = "$key = ?";
-                     $types_snatched .= 's';
-                  } 
-				  else 
-				  {
-                     $fields2[] = "$key = ?";
-                     $types_snatched .= 's';
-                  }
-
-                  $params_snatched[] = $value;
-				  
-                }
-				
-				
-				
-				
-				
-				
-				
-				
-				
-
-                // WHERE
-                $types_snatched .= 'ii';
-                $params_snatched[] = $torrent_id;
-                $params_snatched[] = $user_id;
-            }
-
-            
-			
-            $prev_action = $self['ts'] ?? TIMENOW;
-            $was_seeder = $self['seeder'] ?? null;
-            $became_seeder = ($seeder === 'yes' && $was_seeder !== $seeder);
-
-            $query = 'UPDATE peers SET uploaded = ?, downloaded = ?, to_go = ?, last_action = ?, prev_action = ?, seeder = ?';
-            $params_peers = [$uploaded, $downloaded, $left, TIMENOW, $prev_action, $seeder];
-            $types_peers = 'iiiiss';
-
-            if ($became_seeder) {
-                $query .= ', finishedat = ?';
-                $params_peers[] = $_SERVER['REQUEST_TIME'];
-                $types_peers .= 'i';
-            }
-
-            $query .= ' WHERE torrent = ? AND userid = ?';
-            $params_peers[] = $torrent_id;
-            $params_peers[] = $user_id;
-            $types_peers .= 'ii';
-
-            $stmt_update = mysqli_prepare($db, $query);
-            if (!$stmt_update) {
-                throw new Exception('Ошибка подготовки запроса peers: ' . mysqli_error($db));
-            }
-
-            mysqli_stmt_bind_param($stmt_update, $types_peers, ...$params_peers);
-
-            if (!mysqli_stmt_execute($stmt_update)) {
-                throw new Exception('Ошибка выполнения запроса peers: ' . mysqli_stmt_error($stmt_update));
-            }
-
-            $affected = mysqli_stmt_affected_rows($stmt_update);
-            mysqli_stmt_close($stmt_update);
-
-           
-            if ($affected > 0 && $was_seeder !== $seeder) 
-			{
-                if ($seeder === 'yes') 
-				{
-                    $update_torrent[] = 'seeders = seeders + 1';
-                    $update_torrent[] = 'leechers = GREATEST(leechers - 1, 0)';
-                } 
-				else 
-				{
-                    $update_torrent[] = 'leechers = leechers + 1';
-                    $update_torrent[] = 'seeders = GREATEST(seeders - 1, 0)';
-                }
-            }
-
-        
-        } else {
-            
-		   $port = (int)$port;
-
-           $banned_ports = [21, 22, 411, 412, 413, 6881, 6882, 6883, 6884, 6885, 6886, 6887, 6889, 1214, 6346, 6347, 4662, 6699, 65535];
-
-           if (in_array($port, $banned_ports, true)) 
-		   { 
-              stop($l['invalidport'] ?? 'Invalid port');
-           }
-
-            
-            $connectable = checkconnect($ip, $port);
-            if ($connectable === 'no' && ($nc ?? '') === 'yes') {
-                throw new Exception($l['conerror'] ?? 'Connection error');
-            }
-
-            // Добавление в snatched если включен snatchmod (InnoDB)
-            if (($snatchmod ?? '') === 'yes') 
-			{
-                
-				
-				$startdat = TIMENOW;
-                $last_action = TIMENOW;
-				
-				$stmt_check = mysqli_prepare($db, 'SELECT 1 FROM snatched WHERE torrentid = ? AND userid = ?');
-                if ($stmt_check) {
-                    mysqli_stmt_bind_param($stmt_check, "ii", $torrent_id, $user_id);
-                    mysqli_stmt_execute($stmt_check);
-                    $result_check = mysqli_stmt_get_result($stmt_check);
-                    if (mysqli_num_rows($result_check) === 0) {
-                        $stmt_insert = mysqli_prepare($db, 'INSERT INTO snatched (torrentid, userid, port, startdat, last_action, agent, ip) VALUES (?, ?, ?, ?, ?, ?, ?)');
-                        if ($stmt_insert) {
-                            mysqli_stmt_bind_param(
-                                $stmt_insert, 
-                                "iiiiiss", 
-                                $torrent_id, 
-                                $user_id,
-                                $port, 
-                                $startdat,
-                                $last_action,
-                                $agent, 
-                                $ip
-                            );
-                            if (!mysqli_stmt_execute($stmt_insert)) {
-                                throw new Exception('Ошибка вставки snatched: ' . mysqli_stmt_error($stmt_insert));
-                            }
-                            mysqli_stmt_close($stmt_insert);
-                        }
-                    }
-                    mysqli_stmt_close($stmt_check);
-                }
-            }
-
-            // Добавление нового пира (InnoDB)
-            $started = TIMENOW;
-            $last_action = TIMENOW;
-            $port_int = (int)$port;
-            $uploaded_int = (int)$uploaded;
-            $downloaded_int = (int)$downloaded;
-            $to_go = (int)$left;
-
-            $stmt_insert_peer = mysqli_prepare($db, '
-                INSERT INTO peers (connectable, torrent, peer_id, ip, port, uploaded, downloaded, to_go, started, last_action, seeder, userid, agent, uploadoffset, downloadoffset, passkey) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ');
-
-            if ($stmt_insert_peer) {
-                mysqli_stmt_bind_param(
-                    $stmt_insert_peer,
-                    "sisssiiisisissis",
-                    $connectable,
-                    $torrent_id,
-                    $peer_id,
-                    $ip,
-                    $port_int,
-                    $uploaded_int,
-                    $downloaded_int,
-                    $to_go,
-                    $started,
-                    $last_action,
-                    $seeder,
-                    $user_id,
-                    $agent,
-                    $uploaded_int,
-                    $downloaded_int,
-                    $passkey
-                );
-
-                if (!mysqli_stmt_execute($stmt_insert_peer)) {
-                    throw new Exception('Ошибка вставки peer: ' . mysqli_stmt_error($stmt_insert_peer));
-                }
-                mysqli_stmt_close($stmt_insert_peer);
-
-                // Обновление счетчиков торрента (MyISAM - вне транзакции)
-                $update_torrent[] = ($seeder === 'yes' ? 'seeders = seeders + 1' : 'leechers = leechers + 1');
-            }
-        }
-
-      
-        if (!empty($fields2)) 
-		{
-            $stmt_snatched = mysqli_prepare($db, 
-                'UPDATE snatched SET ' . implode(', ', $fields2) . ' WHERE torrentid = ? AND userid = ?'
-            );
-
-            if (!$stmt_snatched) {
-                throw new Exception('Ошибка подготовки запроса snatched: ' . mysqli_error($db));
-            }
-
-            mysqli_stmt_bind_param($stmt_snatched, $types_snatched, ...$params_snatched);
-
-            if (!mysqli_stmt_execute($stmt_snatched)) {
-                throw new Exception('Ошибка выполнения запроса snatched: ' . mysqli_stmt_error($stmt_snatched));
-            }
-
-            mysqli_stmt_close($stmt_snatched);
-        }
-
-        
-
-
-    // Обновления для сидеров (torrents - MyISAM)
-    if ($seeder === 'yes') {
-        if (($Result['banned'] ?? '') !== 'yes' && ($Result['visible'] ?? '') === 'no') {
-            $update_torrent[] = 'visible = \'yes\'';
-        }
-        $update_torrent[] = 'last_action = ' . TIMENOW;
-        $update_torrent[] = 'mtime = ' . $_SERVER['REQUEST_TIME'];
-    }
-
-    // Обновление торрента (MyISAM)
-    if (!empty($update_torrent)) {
-        $stmt_torrent = mysqli_prepare($db, 'UPDATE torrents SET ' . implode(',', $update_torrent) . ' WHERE id = ?');
-        if ($stmt_torrent) {
-            mysqli_stmt_bind_param($stmt_torrent, "i", $torrent_id);
-            mysqli_stmt_execute($stmt_torrent);
-            mysqli_stmt_close($stmt_torrent);
-        }
-    }
-
-    // Обновление пользователя (MyISAM)
-    if (!empty($update_user)) {
-        $stmt_user = mysqli_prepare($db, 'UPDATE users SET ' . implode(',', $update_user) . ' WHERE id = ?');
-        if ($stmt_user) {
-            mysqli_stmt_bind_param($stmt_user, "i", $user_id);
-            mysqli_stmt_execute($stmt_user);
-            mysqli_stmt_close($stmt_user);
-        }
-    }
-}
-
-// ----------------------------
-// ВЫВОД РЕЗУЛЬТАТА
-// ----------------------------
 header('Expires: Sat, 1 Jan 2000 01:00:00 GMT');
 header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
 header('Cache-Control: no-cache, must-revalidate');
 header('Pragma: no-cache');
-header('Content-type: text/html; charset=' . ($charset ?? 'utf-8'));
+// Бинарный ответ — без charset, иначе PHP портит compact peers данные
+header('Content-Type: text/plain');
 
-if ($compact !== 1 && ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '') === 'gzip' && ($gzipcompress ?? '') === 'yes') {
+$acceptGzip = ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '') === 'gzip';
+if ($compact !== 1 && $acceptGzip && ($gzipcompress ?? '') === 'yes') {
     header('Content-Encoding: gzip');
     echo gzencode($resp, 9, FORCE_GZIP);
 } else {
-    if ($compact) {
-        header('Content-Type: text/plain');
-    }
     echo $resp;
 }
 
 @mysqli_close($db);
-exit();
-
-?>

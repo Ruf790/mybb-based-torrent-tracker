@@ -4408,11 +4408,11 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
     
     <script type="text/javascript" src="'.$BASEURL.'/scripts/usercp.js?ver=1827"></script>
     <script type="text/javascript">
-        lang.remove_buddy = '.$lang->usercp['confirm_remove_buddy'].';
-        lang.remove_ignored = '.$lang->usercp['confirm_remove_ignored'].';
-        lang.adding_buddy = '.$lang->usercp['adding_buddy'].';
-        lang.adding_ignored = '.$lang->usercp['adding_ignored'].';
-        lang.buddylist_error = '.$lang->usercp['buddylist_error'].';
+       lang.remove_buddy = "' . addslashes($lang->usercp['confirm_remove_buddy']) . '";
+       lang.remove_ignored = "' . addslashes($lang->usercp['confirm_remove_ignored']) . '";
+       lang.adding_buddy = "' . addslashes($lang->usercp['adding_buddy']) . '";
+       lang.adding_ignored = "' . addslashes($lang->usercp['adding_ignored']) . '";
+       lang.buddylist_error = "' . addslashes($lang->usercp['buddylist_error']) . '";
     </script>
 
   

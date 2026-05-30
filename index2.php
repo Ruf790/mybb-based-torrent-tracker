@@ -446,7 +446,12 @@ $bgcolor          = 'trow1';
 $showdepth        = '2' != '0' ? 3 : 2;   // subforumsindex = "2"
 
 $forum_list = build_forumbits();
-$forums     = $forum_list['forum_list'];
+$forums = (!empty($forum_list) && isset($forum_list['forum_list']))
+    ? $forum_list['forum_list']
+    : '<div class="text-center py-5">
+        <i class="fa-regular fa-comments fa-4x text-muted mb-4"></i>
+        <h4 class="text-muted">No forums found</h4>
+      </div>';
 
 
 $plugins->run_hooks('index_end');

@@ -1955,7 +1955,7 @@ if ($mybb->input['action'] === 'profile') {
             $memban['reason'] = $memban['reason'] ? htmlspecialchars_uni($parser->parse_badwords($memban['reason'])) : $lang->na;
 
             if (in_array($memban['lifted'], ['perm', ''], true) || in_array($memban['bantime'], ['perm', '---'], true)) {
-                $banlength     = 'permanent';
+                $banlength     = $lang->member['permanent'];
                 $timeremaining = 'na';
                 $banned_class  = 'normal_banned';
             } else {

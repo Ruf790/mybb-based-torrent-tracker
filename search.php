@@ -869,7 +869,7 @@ add_breadcrumb($lang->search['nav_search'], 'search.php');
 
 $mybb->input['action'] = $mybb->get_input('action');
 if ($mybb->input['action'] === 'results') add_breadcrumb($lang->search['nav_results']);
-if ($usergroups['cansearch'] == 0) print_no_permission();
+if (empty($usergroups) || $usergroups['cansearch'] == 0) print_no_permission();
 
 $now             = TIMENOW;
 $mybb->input['keywords'] = trim($mybb->get_input('keywords'));

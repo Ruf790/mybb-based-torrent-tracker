@@ -117,7 +117,10 @@ stdhead($pageTitle);
 
     <!-- Комментарии -->
     <?php if (!$db->num_rows($result)): ?>
-    <div class="alert alert-info">No comments found.</div>
+    <div class="text-center py-5">
+            <i class="fa-regular fa-comments fa-4x text-muted mb-4"></i>
+            <h4 class="text-muted">No comments found</h4>
+        </div>
     <?php else: ?>
     <?php while ($Comment = $db->fetch_array($result)): ?>
     <?php

@@ -1892,7 +1892,7 @@ if ($mybb->input['action'] === 'addsubscription') {
 
         $referrer = $server_http_referer ?: '';
         $thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
-        $lang->subscribe_to_thread = sprintf('subscribe_to_thread', $thread['subject']);
+        $subscribe_to_thread = sprintf($lang->usercp['subscribe_to_thread'], $thread['subject']);
 
         $notification_none_checked = $notification_email_checked = $notification_pm_checked = '';
         match ($CURUSER['subscriptionmethod']) {
@@ -2546,7 +2546,7 @@ if ($mybb->input['action'] === 'subscriptions') {
                 $folder_label .= $lang->icon_new;
                 $new_class    = 'subject_new';
                 $thread['newpostlink'] = get_thread_link($thread['tid'], 0, 'newpost');
-                $gotounread   = '<a href="' . $thread['newpostlink'] . '"><img src="pic/jump.png" alt="Go to first unread post" title="Go to first unread post" /></a>';
+                $gotounread   = '<a href="' . $thread['newpostlink'] . '"><i class="fas fa-chevron-right text-primary" title="Go to first unread post"></i></a>';
             } else {
                 $folder_label .= 'icon_no_new';
                 $new_class    = 'subject_old';
@@ -3249,7 +3249,7 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
 
 <div class="row">
 	<div class="col-auto align-self-center">
-		<avatarep_uid_['.$lastpost_data['lastposteruid'].']>
+		<avatarep_uid_['.$forum['lastposteruid'].']>
 			</div>
 		<div class="col align-self-center">
 
@@ -3276,7 +3276,7 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
 			
 		</div>
 		<div class="col-auto align-self-center">
-		<avatarep_uid_['.$lastpost_data['lastposteruid'].']>
+		<avatarep_uid_['.$forum['lastposteruid'].']>
 			</div>
 	</div>
 	
@@ -3286,6 +3286,8 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
 
         $showdescriptions = '1';
         if ($showdescriptions == 0) { $forum['description'] = ''; }
+		
+		$forum_url = get_forum_link($forum['fid']);
 
         $forums .= '<div class="row py-2 border-bottom">
 	<div class="col-lg-7 align-self-center">
@@ -3332,26 +3334,23 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
     stdhead($lang->usercp['forum_subscriptions']);
     build_breadcrumb();
     
-	$_tpl_out = '
+	
+	
+$_tpl_out = '
     
 	<html>
 <head>
 <title>'.$SITENAME.' - '.$lang->usercp['forum_subscriptions'].'</title>
-
 </head>
 <body>
-
-
 	<div class="container-md">
 <div class="row">
 <div class="col-lg-3">
-
 '.$usercpnav.'
 				
 </div>
 <div class="col">
 			
-
 <div class="card mb-4">
 	<div class="card-header bg-white text-dark border-bottom-0 text-19 fw-bold mt-2 pb-0">
 		'.$lang->usercp['forum_subscriptions'].'
@@ -3363,7 +3362,6 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
 	</div>
 		</div>
 	</div>
-
 </body>
 </html>';
  

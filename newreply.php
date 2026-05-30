@@ -697,7 +697,7 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
 
 		<div id="upload_bar" style="background: #0066A2; height: 5px; width: 0%;"></div>
 		<div id="dropzone" style="padding: 30px 0; background: #f0faf6; cursor: pointer; border-radius: 5px; text-align: center; width:100%">
-			<img src="pic/paperclip.png" alt="" />
+			<i class="fas fa-paperclip"></i>
 			<div style="pointer-events: none;"></div>
 			
 		</div>

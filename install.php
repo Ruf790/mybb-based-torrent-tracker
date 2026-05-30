@@ -223,17 +223,6 @@ CREATE TABLE IF NOT EXISTS `{$p}adminlog` (
   KEY `uid` (`uid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}announce_actions` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `torrentid` int unsigned NOT NULL DEFAULT '0',
-  `userid` int unsigned NOT NULL DEFAULT '0',
-  `ip` char(15) NOT NULL DEFAULT '',
-  `passkey` char(32) NOT NULL DEFAULT '',
-  `actionmessage` tinytext NOT NULL,
-  `actiontime` int unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
-
 
 CREATE TABLE IF NOT EXISTS `{$p}announcements` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,

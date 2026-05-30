@@ -38,6 +38,17 @@ function wrapBBCode(openTag, closeTag) {
     updatePreview();
 }
 
+function wrapBBCodeNear(btn, openTag, closeTag) {
+    const ta = btn.closest('.modal-body, .card-body, .bb-editor')?.querySelector('textarea');
+    if (!ta) return;
+    const s   = ta.selectionStart;
+    const e   = ta.selectionEnd;
+    const sel = ta.value.substring(s, e);
+    ta.value  = ta.value.substring(0, s) + openTag + sel + closeTag + ta.value.substring(e);
+    ta.focus();
+    ta.setSelectionRange(s + openTag.length, e + openTag.length);
+}
+
 function updatePreview() {
     const ta      = document.getElementById('editCommentText');
     const preview = document.getElementById('bbcodePreview');

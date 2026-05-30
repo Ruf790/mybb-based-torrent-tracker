@@ -1,6 +1,19 @@
 document.addEventListener('DOMContentLoaded', function() {
 
-    // ── Анимация при скролле ─────────────────────────────────────────────────
+    
+	// ── Live preview для textarea ─────────────────────────────────────────────
+    document.addEventListener('input', function(e) {
+        if (e.target.tagName !== 'TEXTAREA') return;
+        const container = e.target.closest('.modal-body, .card-body, .bb-editor');
+        const preview   = container?.querySelector('[data-bb-preview]');
+        if (preview && typeof parseBBCode === 'function') {
+            preview.innerHTML = parseBBCode(e.target.value);
+        }
+    });
+	
+	
+	
+	// ── Анимация при скролле ─────────────────────────────────────────────────
     const observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {

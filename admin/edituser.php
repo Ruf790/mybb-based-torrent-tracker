@@ -1948,46 +1948,64 @@ function renderSecurityTab(): string
  */
 function renderSendPMModal(): string
 {
-    global $userdata, $mybb;
+    global $userdata, $mybb, $BASEURL;
     $uid      = (int)$userdata['id'];
     $username = htmlspecialchars_uni($userdata['username']);
     $postCode = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
     $h_script = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
 
     return '
-    <!-- Send PM Modal -->
-    <div class="modal fade" id="sendPMModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="fas fa-paper-plane me-2"></i>Send PM to ' . $username . '</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="post" action="' . $h_script . '">
-                    <input type="hidden" name="action"      value="updateuser">
-                    <input type="hidden" name="userid"      value="' . $uid . '">
-                    <input type="hidden" name="my_post_key" value="' . $postCode . '">
-                    <input type="hidden" name="send_pm"     value="1">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Subject</label>
-                            <input type="text" name="pm_subject" class="form-control" required placeholder="PM subject…">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Message</label>
-                            <textarea name="pm_message" class="form-control" rows="6" required placeholder="Your message…"></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-paper-plane me-1"></i>Send PM
-                        </button>
-                    </div>
-                </form>
-            </div>
+<script src="' . $BASEURL . '/scripts/edit_delete_comment.js"></script>
+<div class="modal fade" id="sendPMModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">Send PM to ' . $username . '</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+	  <form method="post" action="' . $h_script . '">
+        <input type="hidden" name="action"      value="updateuser">
+        <input type="hidden" name="userid"      value="' . $uid . '">
+        <input type="hidden" name="my_post_key" value="' . $postCode . '">
+        <input type="hidden" name="send_pm"     value="1">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Subject</label>
+            <input type="text" name="pm_subject" class="form-control" required placeholder="PM subject…">
+          </div>
+          <div class="mb-2">
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[b]\',\'[/b]\')"><b>B</b></button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[i]\',\'[/i]\')"><i>I</i></button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[u]\',\'[/u]\')"><u>U</u></button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[s]\',\'[/s]\')"><s>S</s></button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[left]\',\'[/left]\')">Left</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[center]\',\'[/center]\')">Center</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[right]\',\'[/right]\')">Right</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[color=red]\',\'[/color]\')">Red</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[size=18]\',\'[/size]\')">Size</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[url]\',\'[/url]\')">URL</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[img]\',\'[/img]\')">IMG</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[video]\',\'[/video]\')">Video</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[youtube]\',\'[/youtube]\')">YouTube</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[quote]\',\'[/quote]\')">Quote</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[code]\',\'[/code]\')">Code</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[list]\n[*]\',\'\n[/list]\')">List</button>
+            <button class="btn btn-sm btn-light" type="button" onclick="wrapBBCodeNear(this,\'[list=1]\n[*]\',\'\n[/list]\')">#List</button>
+          </div>
+          <textarea name="pm_message" class="form-control mb-3" rows="6" required placeholder="Your message…"></textarea>
+          <h6>Live Preview</h6>
+          <div data-bb-preview class="border p-2 bg-light rounded" style="min-height:100px;"></div>
         </div>
-    </div>';
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-paper-plane me-1"></i>Send PM
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>';
 }
 
 
@@ -2447,64 +2465,70 @@ function buildChartData(int $uid, $db): array
 /**
  * Quick Ban modal
  */
-function renderQuickBanModal(): string
+function renderQuickBanModal(bool $is_banned = false): string
 {
-    global $userdata, $mybb, $db;
-
+    global $userdata, $mybb, $db, $memperms;
     $uid       = (int)$userdata['id'];
     $username  = htmlspecialchars_uni($userdata['username']);
     $postCode  = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
     $h_script  = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
 
-    // Используем стандартную функцию трекера
+
+    // Загружаем текущий бан если забанен
+    $current_ban = null;
+    if ($is_banned) {
+        $q = $db->simple_select('banned', '*', "uid='{$uid}'", ['limit' => 1]);
+        $current_ban = $db->fetch_array($q) ?: null;
+    }
+
     $ban_times = fetch_ban_times();
     $options   = '';
     foreach ($ban_times as $val => $label) {
-        $sel      = $val === '---' ? " selected" : '';
+        $sel = ($current_ban && $current_ban['bantime'] === $val) || (!$current_ban && $val === '---')
+            ? ' selected' : '';
         $options .= "<option value='" . htmlspecialchars($val, ENT_QUOTES, 'UTF-8') . "'{$sel}>"
                   . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . "</option>";
     }
 
-    // Получаем группу Banned из БД
     $q = $db->sql_query("SELECT gid, title FROM usergroups WHERE title LIKE '%banned%' OR title LIKE '%Banned%' LIMIT 1");
     $banned_group = $db->fetch_array($q);
     $banned_gid   = $banned_group ? (int)$banned_group['gid'] : 0;
+
+    $modal_title  = $is_banned ? 'Edit Ban: ' : 'Ban User: ';
+    $header_class = $is_banned ? 'bg-warning text-dark' : 'bg-danger text-white';
+    $btn_class    = $is_banned ? 'btn-warning' : 'btn-danger';
+    $btn_label    = $is_banned ? 'Update Ban' : 'Ban User';
+    $btn_icon     = $is_banned ? 'fa-edit' : 'fa-ban';
+    $current_reason = htmlspecialchars_uni($current_ban['reason'] ?? '');
 
     return "
     <div class='modal fade' id='quickBanModal' tabindex='-1' aria-hidden='true'>
         <div class='modal-dialog modal-dialog-centered'>
             <div class='modal-content border-0 shadow'>
-                <div class='modal-header bg-danger text-white'>
+                <div class='modal-header {$header_class}'>
                     <h5 class='modal-title'>
-                        <i class='fas fa-ban me-2'></i>Ban User: {$username}
+                        <i class='fas {$btn_icon} me-2'></i>{$modal_title}{$username}
                     </h5>
-                    <button type='button' class='btn-close btn-close-white' data-bs-dismiss='modal'></button>
+                    <button type='button' class='btn-close' data-bs-dismiss='modal'></button>
                 </div>
                 <div class='modal-body'>
-                    <div class='alert alert-warning d-flex gap-2 py-2'>
-                        <i class='fas fa-exclamation-triangle mt-1 flex-shrink-0'></i>
-                        <small>User will be moved to Banned group, receive a PM and modcomment will be updated.</small>
-                    </div>
-
                     <div class='mb-3'>
                         <label class='form-label fw-semibold'>Ban Duration</label>
                         <select id='banDuration' class='form-select'>
                             {$options}
                         </select>
                     </div>
-
                     <div class='mb-3'>
                         <label class='form-label fw-semibold'>Reason <span class='text-danger'>*</span></label>
                         <textarea id='banReason' class='form-control' rows='3'
-                                  placeholder='Reason for ban...' required></textarea>
+                                  placeholder='Reason for ban...' required>{$current_reason}</textarea>
                         <div id='banReasonError' class='text-danger small mt-1 d-none'>
                             Please provide a reason.
                         </div>
                     </div>
-
                     <div class='mb-3'>
                         <div class='form-check'>
-                            <input class='form-check-input' type='checkbox' id='banSendPM' checked>
+                            <input class='form-check-input' type='checkbox' id='banSendPM' " . (!$is_banned ? 'checked' : '') . ">
                             <label class='form-check-label' for='banSendPM'>
                                 Send ban notification PM to user
                             </label>
@@ -2515,9 +2539,9 @@ function renderQuickBanModal(): string
                     <button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>
                         <i class='fas fa-times me-1'></i>Cancel
                     </button>
-                    <button type='button' class='btn btn-danger' id='quickBanSubmit'
+                    <button type='button' class='btn {$btn_class}' id='quickBanSubmit'
                             onclick=\"quickBan({$uid}, {$banned_gid}, '{$postCode}', '{$h_script}')\">
-                        <i class='fas fa-ban me-2'></i>Ban User
+                        <i class='fas {$btn_icon} me-2'></i>{$btn_label}
                     </button>
                 </div>
             </div>
@@ -3703,8 +3727,15 @@ function handleEditUser(): void
         </div>
     </div>
 ';
-    echo renderSendPMModal();
-	echo renderQuickBanModal();
+    
+	echo renderSendPMModal();
+	
+	$uid_check = (int)$userdata['id'];
+    $q = $db->simple_select('banned', 'uid', "uid='{$uid_check}'", ['limit' => 1]);
+    $is_user_banned = $db->num_rows($q) > 0;
+    echo renderQuickBanModal($is_user_banned);
+	
+
 
     // User header with stats
     echo '
@@ -4141,18 +4172,38 @@ function processUserUpdateData(): array
     }
 	
 	
-	// ── Quick Ban ─────────────────────────────────────────────────────────────
-    if (!empty($_POST['quick_ban'])) {
-        $ban_reason   = trim($_POST['ban_reason']   ?? 'No reason given.');
-        $ban_duration = trim($_POST['ban_duration'] ?? '');
-        $banned_gid   = (int)($_POST['banned_gid']  ?? 0);
-        $send_pm_ban  = !empty($_POST['ban_send_pm']);
+// ── Quick Ban ─────────────────────────────────────────────────────────────
+if (!empty($_POST['quick_ban'])) {
+    $ban_reason   = trim($_POST['ban_reason']   ?? 'No reason given.');
+    $ban_duration = trim($_POST['ban_duration'] ?? '');
+    $banned_gid   = (int)($_POST['banned_gid']  ?? 0);
+    $send_pm_ban  = !empty($_POST['ban_send_pm']);
 
-        if ($banned_gid > 0) {
-            // Используем стандартную функцию трекера для вычисления срока
-            $lifted = ($ban_duration !== '---' && $ban_duration !== '')
-                ? ban_date2timestamp($ban_duration)
-                : 0; // 0 = permanent
+    if ($banned_gid > 0) {
+        $lifted = ($ban_duration !== '---' && $ban_duration !== '')
+            ? ban_date2timestamp($ban_duration)
+            : 0;
+
+        $ban_times_map = fetch_ban_times();
+        $dur_label = ($ban_duration === '---' || $ban_duration === '')
+            ? 'Permanently'
+            : ($ban_times_map[$ban_duration] ?? $ban_duration);
+
+        // Проверяем существующий бан
+        $existing = $db->simple_select('banned', 'uid', "uid='" . (int)$userdata['id'] . "'", ['limit' => 1]);
+
+        if ($db->num_rows($existing) > 0) {
+            // UPDATE — обновляем бан
+            $db->update_query('banned', [
+                'bantime'  => $db->escape_string($ban_duration === '---' ? '---' : $ban_duration),
+                'lifted'   => (string)$lifted,
+                'reason'   => $db->escape_string($ban_reason),
+                'admin'    => (int)$CURUSER['id'],
+                'dateline' => TIMENOW,
+            ], "uid='" . (int)$userdata['id'] . "'");
+            modcomment("Ban updated ({$dur_label}). Reason: {$ban_reason}");
+        } else {
+            // INSERT — новый бан
             $db->insert_query('banned', [
                 'uid'                 => (int)$userdata['id'],
                 'gid'                 => $banned_gid,
@@ -4161,31 +4212,17 @@ function processUserUpdateData(): array
                 'olddisplaygroup'     => (int)$userdata['displaygroup'],
                 'admin'               => (int)$CURUSER['id'],
                 'dateline'            => TIMENOW,
-                'bantime'             => $db->escape_string($ban_duration === '---' ? '' : $ban_duration),
-                'lifted'              => $db->escape_string((string)$lifted),
+                'bantime'             => $db->escape_string($ban_duration === '---' ? '---' : $ban_duration),
+                'lifted'              => (string)$lifted,
                 'reason'              => $db->escape_string($ban_reason),
             ]);
-
             $updateData['usergroup'] = $banned_gid;
-
-            $ban_times_map = fetch_ban_times();
-            $dur_label     = ($ban_duration === '---' || $ban_duration === '')
-                ? 'Permanently'
-                : ($ban_times_map[$ban_duration] ?? $ban_duration);
-
             modcomment("Banned ({$dur_label}). Reason: {$ban_reason}");
-            $updateData['modcomment'] = $modcomment;
-
-            //if ($send_pm_ban) {
-            //   require_once INC_PATH . '/functions_pm.php';
-            //    send_pm([
-            //        'touid'   => (int)$userdata['id'],
-            //        'subject' => 'Your account has been banned',
-            //        'message' => "Your account has been banned.\n\nDuration: {$dur_label}\nReason: {$ban_reason}\n\nIf you believe this is a mistake, please contact staff.",
-            //    ], (int)$CURUSER['id'], true);
-            //}
         }
+
+        $updateData['modcomment'] = $modcomment;
     }
+}
 	
 	
 	
@@ -4224,10 +4261,16 @@ function processUserUpdateData(): array
 /**
  * Update user permissions
  */
+
 function updateUserPermissions(): void
 {
-    
-     global $db, $userid, $userdata, $modcomment, $CURUSER;
+    global $db, $userid, $userdata, $modcomment, $CURUSER;
+
+    // Не обновляем если поля не переданы (например при отправке ЛС)
+    if (!isset($_POST['cancomment']) && !isset($_POST['canupload']) && !isset($_POST['candownload'])) {
+        return;
+    }
+
     $fields = [
         'cancomment'  => (int)(($_POST['cancomment']  ?? '') === 'yes'),
         'canupload'   => (int)(($_POST['canupload']   ?? '') === 'yes'),
@@ -4238,11 +4281,14 @@ function updateUserPermissions(): void
         $oldVal = (int)($userdata[$field] ?? 1);
         if ($newVal !== $oldVal) {
             modcomment(ucfirst($field) . " changed from '{$oldVal}' to '{$newVal}'");
-
         }
     }
     $db->update_query('users', $fields, 'id = ' . (int)$userid);
 }
+
+
+
+
 
 /**
  * Handle account deletion

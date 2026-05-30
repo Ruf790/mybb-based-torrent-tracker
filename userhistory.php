@@ -8,6 +8,8 @@ require './global.php';
 require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/functions_multipage.php';
 
+require_once INC_PATH . '/functions_comment_attachments.php';
+
 $parser         = new postParser;
 $parser_options = [
     'allow_html'      => 1, 'allow_mycode'    => 1,
@@ -115,7 +117,11 @@ stdhead($pageTitle);
     <div class="mb-4"><?= $multipage ?></div>
     <?php endif; ?>
 
-    <!-- Комментарии -->
+    <?
+	    echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/comment_attachments.css">';
+	?>
+	
+	<!-- Комментарии -->
     <?php if (!$db->num_rows($result)): ?>
     <div class="text-center py-5">
             <i class="fa-regular fa-comments fa-4x text-muted mb-4"></i>
@@ -130,6 +136,12 @@ stdhead($pageTitle);
         $torrentName = htmlspecialchars_uni($Comment['name'] ?: '[Deleted Torrent]');
         $commentDate = my_datee(($dateformat ?? 'Y-m-d') . ' - ' . ($timeformat ?? 'H:i:s'), (int)$Comment['dateline']);
         $parsedText  = $parser->parse_message($Comment['text'] ?? '', $parser_options);
+		
+		$attachments = render_comment_attachments($pid);
+		
+		
+		
+		
     ?>
     <div class="card mb-3 shadow-sm comment-card">
         <div class="card-body">
@@ -152,6 +164,16 @@ stdhead($pageTitle);
             </div>
             <hr class="my-2">
             <div class="comment-body"><?= $parsedText ?></div>
+			
+			
+			<?php if ($attachments): ?>
+            <div class="mt-2"><?= $attachments ?></div>
+            <?php endif; ?>
+			
+			
+			
+			
+			
         </div>
     </div>
     <?php endwhile; ?>

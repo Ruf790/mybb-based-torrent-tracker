@@ -214,14 +214,7 @@ class postParser
         // Nestable callback MyCode
         $nestable_callback['font'] = ['regex' => '#\[font=\s*("?)([a-z0-9 ,\-_\'"]+)\1\s*\](.*?)\[/font\]#si', 'replacement' => [$this, 'mycode_parse_font_callback']];
 
-        // Кастомный MyCode
-        $custom = $cache->read('mycode');
-        if (is_array($custom)) {
-            foreach ($custom as $key => $mc) {
-                $mc['regex']     = str_replace("\x0", '', $mc['regex']);
-                $standard[$key]  = ['regex' => '#' . $mc['regex'] . '#si', 'replacement' => $mc['replacement']];
-            }
-        }
+       
 
         // Заполняем кеш
         foreach ($standard as $code) {

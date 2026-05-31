@@ -1135,18 +1135,6 @@ function get_post(int $pid): array|false
     return $post_cache[$pid];
 }
 
-// ── is_forum_mod ──────────────────────────────────────────────────────────────
-function is_forum_mod(int $forumid = 0, int $userid = 0): bool
-{
-    global $db;
-
-    if (!$forumid || !$userid) {
-        return false;
-    }
-
-    $query = $db->sql_query('SELECT userid FROM ' . TSF_PREFIX . "moderators WHERE forumid={$forumid} AND userid={$userid}");
-    return $db->num_rows($query) > 0;
-}
 
 // ── add_breadcrumb ────────────────────────────────────────────────────────────
 function add_breadcrumb(string $name, string $url = ''): void
@@ -1177,18 +1165,7 @@ function reset_breadcrumb(): void
     $GLOBALS['navbits'] = [$first];
 }
 
-// ── show_forum_images ─────────────────────────────────────────────────────────
-function show_forum_images(string $type): string
-{
-    global $lang;
 
-    return match($type) {
-        'offlock' => '<img src="pic/offlock.gif" title="' . $lang->tsf_forums['forum_locked'] . '" alt="' . $lang->tsf_forums['forum_locked'] . '" class="inlineimg">',
-        'off'     => '<img src="pic/off.gif" title="'     . $lang->tsf_forums['no_new_posts'] . '" alt="' . $lang->tsf_forums['no_new_posts'] . '" class="inlineimg">',
-        'on'      => '<img src="pic/on.gif" title="'      . $lang->tsf_forums['new_posts']    . '" alt="' . $lang->tsf_forums['new_posts']    . '" class="inlineimg">',
-        default   => '',
-    };
-}
 
 // ── build_forum_jump ──────────────────────────────────────────────────────────
 function build_forum_jump(

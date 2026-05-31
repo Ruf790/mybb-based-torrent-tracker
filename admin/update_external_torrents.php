@@ -18,7 +18,8 @@ if (!empty($updated_ids)) {
 if ($do == 1) {
     stdhead('Update External Torrents');
 
-    $count = tsrowcount('id', 'torrents', "ts_external = 'yes'");
+    $res   = $db->sql_query("SELECT COUNT(id) AS cnt FROM torrents WHERE ts_external = 'yes'");
+    $count = (int) ($db->fetch_array($res)['cnt'] ?? 0);
 
     echo '<div class="container mt-4">';
     echo '<div class="card shadow-sm">';
@@ -26,7 +27,40 @@ if ($do == 1) {
     echo '<div class="card-body">';
 
     if ($count < 1) {
-        echo '<div class="alert alert-warning text-center">There is no external torrent to update!</div>';
+        echo '
+		
+		<div class="card border-0 rounded-4 overflow-hidden" style="background: #fff; box-shadow: 0 5px 20px rgba(0,0,0,0.05);">
+    <div class="card-body p-0">
+        <div class="bg-light p-4 text-center border-bottom">
+            <i class="fas fa-sync-alt fa-spin fa-2x text-info opacity-50"></i>
+            <i class="fas fa-times-circle fa-2x text-secondary opacity-25 ms-2"></i>
+        </div>
+        <div class="p-4 text-center">
+            <div class="mb-3">
+                <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-2">
+                    <i class="fas fa-check-circle me-1"></i> Up to Date
+                </span>
+                <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-3 py-2 ms-2">
+                    <i class="fas fa-magnet me-1"></i> 0 Pending
+                </span>
+            </div>
+            <h5 class="fw-normal text-dark mb-2">No External Torrent to Update</h5>
+            <p class="text-muted small mb-3">
+                All external sources are synchronized with your library
+            </p>
+            <hr class="my-3 opacity-25">
+            <div class="d-flex justify-content-center gap-3 small text-muted">
+                <span><i class="fas fa-database me-1"></i> Total: 0</span>
+                <span><i class="fas fa-clock me-1"></i> Auto-check enabled</span>
+            </div>
+        </div>
+    </div>
+</div>
+		
+		';
+		
+		
+		
     } else {
         echo '<p class="mb-3">Click <strong>UPDATE</strong> to start updating all external torrents one by one.</p>';
         echo '<form method="post" action="' . $_SERVER['SCRIPT_NAME'] . '">

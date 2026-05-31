@@ -463,24 +463,6 @@ function get_thread_link(int|string $tid, int|string $page = 0, string $action =
     return htmlspecialchars_uni($link);
 }
 
-// ── get_thread ────────────────────────────────────────────────────────────────
-function get_thread(int|string $tid, bool $recache = false): array|false
-{
-    global $db;
-    static $thread_cache;
-	
-	$tid = (int)$tid;
-
-    if (isset($thread_cache[$tid]) && !$recache) {
-        return $thread_cache[$tid];
-    }
-
-    $thread = $db->fetch_array($db->simple_select('threads', '*', "tid='{$tid}'"));
-    $thread_cache[$tid] = $thread ?: false;
-
-    return $thread_cache[$tid];
-}
-
 
 
 
@@ -642,51 +624,6 @@ function get_attachment_icon(string $ext): string
 
     return "<i class=\"fas fa-file\" title=\"{$name}\" style=\"font-size:16px;color:#ccc;\"></i>";
 }
-
-
-
- 
-
-
-
-
-// ── get_user_by_username ──────────────────────────────────────────────────────
-function get_user_by_username(string $username, array $options = []): array|bool
-{
-    global $db;
-
-    $username = $db->escape_string(my_strtolower($username));
-    $method   = (int)($options['username_method'] ?? 0);
-
-    $field  = match($db->type) {
-        'mysql', 'mysqli' => 'username',
-        default           => 'LOWER(username)',
-    };
-    $efield = match($db->type) {
-        'mysql', 'mysqli' => 'email',
-        default           => 'LOWER(email)',
-    };
-
-    $sqlwhere = match($method) {
-        1       => "{$efield}='{$username}'",
-        2       => "{$field}='{$username}' OR {$efield}='{$username}'",
-        default => "{$field}='{$username}'",
-    };
-
-    $fields = array_unique(array_merge(['id'], (array)($options['fields'] ?? [])));
-    $query  = $db->simple_select('users', implode(',', $fields), $sqlwhere, ['limit' => 1]);
-
-    if (isset($options['exists'])) {
-        return (bool)$db->num_rows($query);
-    }
-
-    return $db->fetch_array($query) ?: false;
-}
-
-
-
-
-
 
 
 

@@ -47,7 +47,7 @@ preg_match("@<a href='(.*)'@U", $oldt_link, $imdblink);
 $t_link = $imdblink[1] ?? '';
 
 if ($t_link) {
-    include_once INC_PATH . '/ts_imdb.php';
+    include_once INC_PATH . '/imdb_parser.php';
     $db->sql_query_prepared('UPDATE torrents SET t_link = ? WHERE id = ?', [$t_link, $id]);
     show_msg($t_link);
 }

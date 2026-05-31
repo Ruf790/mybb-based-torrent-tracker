@@ -525,12 +525,12 @@ if (!empty($t_link))
             $t_link = $result[0];
 
             // Include script that fetches metadata (like $Genre)
-            include_once(INC_PATH . '/ts_imdb.php');
+            include_once(INC_PATH . '/imdb_parser.php');
 
             // Escape IMDb link
             $t_link = $db->escape_string($t_link);
 
-            // Escape Genre (populated by ts_imdb.php)
+            // Escape Genre (populated by imdb_parser.php)
             $Genre = isset($Genre) ? $db->escape_string($Genre) : '';
         }
     } 

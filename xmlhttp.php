@@ -1389,7 +1389,7 @@ if (empty($t_image_url2))
         if (preg_match('@^https:\/\/www\.imdb\.com\/title\/(.*)\/$@isU', $t_link, $result)) {
             if ($result[0]) {
                 $t_link = $result[0];
-                include_once(INC_PATH . '/ts_imdb.php');
+                include_once(INC_PATH . '/imdb_parser.php');
                 $Update_tlink = array(
                     "t_link" => $db->escape_string($t_link),
                     "tags" => $db->escape_string($Genre ?? '')

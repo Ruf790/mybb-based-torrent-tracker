@@ -43,6 +43,8 @@ require_once INC_PATH."/class_session.php";
 $session = new session;
 $session->init();
 
+require_once INC_PATH . '/flood_check.php';
+
 
 global $CURUSER, $plugins, $usergroups;
 

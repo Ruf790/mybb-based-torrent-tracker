@@ -1,8 +1,9 @@
 <?php
 
 
-
 declare(strict_types=1);
+
+
 
 function allowcomments(int $torrentid = 0): bool
 {
@@ -21,6 +22,9 @@ define("IN_ARCHIVE", true);
 
 require_once 'global.php';
 require_once 'cache/smilies.php';
+
+require_once INC_PATH . '/flood_check.php';
+
 require_once INC_PATH.'/class_parser.php';
 require_once INC_PATH.'/datahandler.php';
 

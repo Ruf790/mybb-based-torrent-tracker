@@ -140,7 +140,8 @@ class LoginDataHandler extends DataHandler
             $options['username_method'] = $this->username_method;
         }
 
-        $this->login_data = get_user_by_username2($user['username'] ?? '', $options);
+        //$this->login_data = get_user_by_username($user['username'] ?? '', $options);
+		$this->login_data = get_user_by_username($user['username'] ?? '', $options) ?: [];
     }
 
     /**

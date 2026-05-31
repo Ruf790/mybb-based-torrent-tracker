@@ -5,7 +5,7 @@ class IMDB {
     protected array $data = [];
 
     // Вставь сюда свой TMDB API ключ
-    private const TMDB_API_KEY = 'e83184074867f8e290402cc1dd71f0d5';
+    private const TMDB_API_KEY = '';
     private const TMDB_BASE    = 'https://api.themoviedb.org/3';
     private const TMDB_IMG     = 'https://image.tmdb.org/t/p/w500';
 

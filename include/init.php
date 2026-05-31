@@ -13,15 +13,6 @@ if (isset($_REQUEST['GLOBALS']) || isset($_FILES['GLOBALS'])) {
     exit();
 }
 
-// --- Referrer check for POST requests ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !defined('SKIP_REFERRER_CHECK')) {
-    $http_host = $_SERVER['HTTP_HOST'] 
-        ?? $_ENV['HTTP_HOST'] 
-        ?? $_SERVER['SERVER_NAME'] 
-        ?? $_ENV['SERVER_NAME'] 
-        ?? '';
-}
-
 
 
 // --- Load core classes ---
@@ -211,14 +202,4 @@ define("USERIPADDRESS", get_ip());
 
 if ($mybb->use_shutdown === true) {
     register_shutdown_function('run_shutdown');
-}
-
-// --- Legacy variable support (for compatibility) ---
-if (!isset($HTTP_POST_VARS) && isset($_POST)) {
-    $HTTP_POST_VARS = $_POST;
-    $HTTP_GET_VARS = $_GET;
-    $HTTP_SERVER_VARS = $_SERVER;
-    $HTTP_COOKIE_VARS = $_COOKIE;
-    $HTTP_ENV_VARS = $_ENV;
-    $HTTP_POST_FILES = $_FILES;
 }

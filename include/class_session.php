@@ -469,14 +469,14 @@ class Session
             if ($tid > 0 && $tid < 4294967296) {
                 $array[2] = $tid;
             } elseif (isset($mybb->input['pid']) && !empty($mybb->input['pid'])) {
-                $query = $db->simple_select("tsf_posts", "tid", "pid=".$mybb->get_input('pid', MyBB::INPUT_INT), ["limit" => 1]);
+                $query = $db->simple_select("posts", "tid", "pid=".$mybb->get_input('pid', MyBB::INPUT_INT), ["limit" => 1]);
                 $post = $db->fetch_array($query);
                 if ($post) {
                     $array[2] = $post['tid'];
                 }
             }
 
-            $thread = get_thread3333($array[2]);
+            $thread = get_thread($array[2]);
             if ($thread) {
                 $array[1] = $thread['fid'];
             }

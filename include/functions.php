@@ -5,56 +5,58 @@ declare(strict_types=1);
 
 
 
-
-function get_user_by_username2(string $username, array $options = []): array
+function get_user_by_username(string $username, array $options = []): array|bool
 {
-    global $mybb, $db;
+    global $db;
 
     $username = $db->escape_string(my_strtolower($username));
-    $username_method = (int)($options['username_method'] ?? 0);
+    $method   = (int) ($options['username_method'] ?? 0);
 
-    // Современный синтаксис match вместо switch
-    [$field, $efield] = match($db->type) {
-        'mysql', 'mysqli' => ['username', 'email'],
-        default => ['LOWER(username)', 'LOWER(email)']
+    $field  = match($db->type) {
+        'mysql', 'mysqli' => 'username',
+        default           => 'LOWER(username)',
+    };
+    $efield = match($db->type) {
+        'mysql', 'mysqli' => 'email',
+        default           => 'LOWER(email)',
     };
 
-    // Современный синтаксис для условий WHERE
-    $sqlwhere = match($username_method) {
-        1 => "{$efield} = '{$username}'",
-        2 => "{$field} = '{$username}' OR {$efield} = '{$username}'",
-        default => "{$field} = '{$username}'"
+    $sqlwhere = match($method) {
+        1       => "{$efield}='{$username}'",
+        2       => "{$field}='{$username}' OR {$efield}='{$username}'",
+        default => "{$field}='{$username}'",
     };
 
-    // Обработка полей
-    $fields = 'id';
-    if (isset($options['fields'])) {
-        if ($options['fields'] === '*') {
-            $fields = '*';
-        } else {
-            $requested_fields = (array)$options['fields'];
-            if (!in_array('id', $requested_fields, true)) {
-                $requested_fields[] = 'id';
-            }
-            $fields = implode(',', array_unique($requested_fields));
-        }
-    }
+    $fields = ($options['fields'] ?? null) === '*'
+        ? '*'
+        : implode(',', array_unique(array_merge(['id'], (array) ($options['fields'] ?? []))));
 
     $query = $db->simple_select('users', $fields, $sqlwhere, ['limit' => 1]);
 
-    // Проблема: нельзя вернуть bool при объявленном array
-    if (isset($options['exists']) && $options['exists']) {
-        // Для проверки существования нужна отдельная функция
-        throw new InvalidArgumentException('Option "exists" is not supported. Use user_exists_by_username() instead.');
+    if (isset($options['exists'])) {
+        return (bool) $db->num_rows($query);
     }
 
-    $result = $db->fetch_array($query);
-    
-    return is_array($result) ? $result : [];
+    return $db->fetch_array($query) ?: false;
 }
 
 
+function get_thread(int|string $tid, bool $recache = false): array|false
+{
+    global $db;
+    static $thread_cache;
+	
+	$tid = (int)$tid;
 
+    if (isset($thread_cache[$tid]) && !$recache) {
+        return $thread_cache[$tid];
+    }
+
+    $thread = $db->fetch_array($db->simple_select('threads', '*', "tid='{$tid}'"));
+    $thread_cache[$tid] = $thread ?: false;
+
+    return $thread_cache[$tid];
+}
 
 
 
@@ -174,16 +176,7 @@ function jumpbutton(array|string $where): string
     return $str;
 }
 
-function tr(string $x, string $y, bool $noesc = false, string $relation = ''): void
-{
-    if ($noesc) {
-        $a = $y;
-    } else {
-        $a = htmlspecialchars_uni($y);
-        $a = str_replace("\n", "<br />\n", $a);
-    }
-    echo "<tr".($relation ? " relation = \"$relation\"" : "")."><td class=\"heading\" valign=\"top\" align=\"right\" width=\"20%\">$x</td><td valign=\"top\" align=\"left\" width=\"80%\">$a</td></tr>\n";
-}
+
 
 function my_validate_url(string $url, bool $relative_path = false, bool $allow_local = false): bool
 {
@@ -240,25 +233,6 @@ function redirect(string $url, string $message = '', string $title = '', bool $f
     }
     exit;
 }
-
-
-
-
-
-
-
-
-function stdmsg(string $heading = '', string $text = '', bool $htmlstrip = true, string $div = 'error'): void
-{
-    if ($htmlstrip) {
-        $heading = htmlspecialchars_uni($heading);
-        $text = htmlspecialchars_uni($text);
-    }
-    echo show_notice($text, ($div == 'error'), $heading);
-}
-
-
-
 
 
 
@@ -1023,7 +997,9 @@ function update_stats(array $changes = [], bool $force = false): void
     }
 
     // Подсчёты
-    $torrents = tsrowcount('id', 'torrents');
+    $res      = $db->sql_query("SELECT COUNT(id) AS cnt FROM torrents");
+    $row      = $db->fetch_array($res);
+    $torrents = (int) ($row['cnt'] ?? 0);
 
     $query = $db->sql_query("SELECT COUNT(id) as totalseeders FROM peers WHERE seeder = 'yes'");
     $Result = $db->fetch_array($query);
@@ -2765,62 +2741,6 @@ function format_name(string $username, int|string $usergroup, int|string|null $d
 
 
 
-function TS_Match(string $string, string $find): bool
-{
-    return str_contains($string, $find);
-}
-
-function TS_Global(string $name = ""): string|array
-{
-    return isset($_GET[$name]) ? 
-        (!is_array($_GET[$name]) ? trim($_GET[$name]) : $_GET[$name]) : 
-        (isset($_POST[$name]) ? 
-            (!is_array($_POST[$name]) ? trim($_POST[$name]) : $_POST[$name]) : 
-            "");
-}
-
-function show_notice(string $notice = '', bool $iserror = false, string $title = '', string $BR = '<br />'): string
-{
-    global $BASEURL, $lang;
-    
-    $imagepath = $BASEURL . '/include/templates/default/images/';
-    $lastword = $iserror ? 'e' : 'n';
-    $uniqeid = md5((string)time());
-    
-    return '
-    <script type="text/javascript">
-        function ts_show_tag(id, status)
-        {
-            if (TSGetID(id)) {
-                if (status === true || status === false) {
-                    TSGetID(id).style.display = status ? "none" : "";
-                } else {
-                    TSGetID(id).style.display = TSGetID(id).style.display === "" ? "none" : "";
-                }
-            }
-        }
-    </script>
-    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/notification.css" type="text/css" media="screen" />
-    <div class="notification-border-' . $lastword . '" id="notification_' . $uniqeid . '" align="center">
-        <table class="notification-th-' . $lastword . '" border="0" cellpadding="2" cellspacing="0">
-            <tbody>
-                <tr>
-                    <td align="left" width="100%" class="none">
-                    &nbsp;<img src="' . $imagepath . 'notification_' . $lastword . '.gif" alt="" align="top" border="0" height="14" width="14" />&nbsp;<span class="notification-title-' . $lastword . '" />' . ($title ?: $lang->global['sys_message']) . '</span>
-                    </td>
-                    <td class="none"><img src="' . $imagepath . 'notification_close.gif" alt="" onclick="ts_show_tag(\'notification_' . $uniqeid . '\', true);" class="hand" border="0" height="13" width="13" /></td>
-                </tr>
-            </tbody>
-        </table>
-        <div class="notification-body">
-            ' . $notice . '
-        </div>
-    </div>
-    ' . $BR;
-}
-
-
-
 
 function maxsysop(): void
 {
@@ -2866,15 +2786,6 @@ function maxsysop(): void
 }
 
 
-
-
-
-function fix_url(string $url): string
-{
-    $url = htmlspecialchars($url);
-    return str_replace(['&amp;', ' '], ['&', '&nbsp;'], $url);
-}
-
 function htmlspecialchars_uni(?string $message): string
 {
     $message = $message ?? '';
@@ -2883,41 +2794,6 @@ function htmlspecialchars_uni(?string $message): string
     $message = str_replace(">", "&gt;", $message);
     $message = str_replace("\"", "&quot;", $message);
     return $message;
-}
-
-function tsrowcount(string $column, string $table, string|array $where = ''): int
-{
-    global $db;
-
-    // Очистка имени колонки и таблицы
-    $column = preg_replace('/[^a-zA-Z0-9_*]/', '', $column);
-    $table  = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
-
-    $sql = "SELECT COUNT($column) AS cnt FROM $table";
-
-    // Если условия переданы массивом, строим безопасный WHERE
-    if (is_array($where) && !empty($where)) {
-        $conds = [];
-        foreach ($where as $key => $value) {
-            $key = preg_replace('/[^a-zA-Z0-9_]/', '', $key); // чистим имя колонки
-            if (is_int($value)) {
-                $conds[] = "$key=$value";
-            } else {
-                $conds[] = "$key='" . $db->sql_escape($value) . "'";
-            }
-        }
-        $sql .= " WHERE " . implode(' AND ', $conds);
-    }
-    // Если строка передана напрямую, используем как есть (должна быть безопасной!)
-    elseif (is_string($where) && $where !== '') {
-        $sql .= " WHERE $where";
-    }
-
-    $res = $db->sql_query($sql);
-    if (!$res) return 0;
-
-    $row = $db->fetch_array($res);
-    return (int)($row['cnt'] ?? 0);
 }
 
 
@@ -2981,17 +2857,6 @@ function write_log(string $Text, string $category = '', int $level = 0): void
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 function kps(string $Type = '+', float|string|int $Points = 1.0, int|string $ID = 0): void
 {
     global $bonus, $cache, $db;
@@ -3004,16 +2869,6 @@ function kps(string $Type = '+', float|string|int $Points = 1.0, int|string $ID 
         $ID = (int)$ID;
         $db->sql_query('UPDATE users SET seedbonus = seedbonus ' . $Type . ' \'' . $Points . '\' WHERE id = \'' . $ID . '\'');
     }
-}
-
-
-
-
-
-
-function isvalidip(string $IP): bool
-{
-    return (bool)preg_match('/^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$/', $IP);
 }
 
 
@@ -3047,47 +2902,6 @@ function mksize(float|string|int $bytes = 0): string
 
 
 
-function mksecret(int $length = 20, bool $UseNumbers = true): string
-{
-    if ($UseNumbers) {
-        $set = ["a", "A", "b", "B", "c", "C", "d", "D", "e", "E", "f", "F", "g", "G", "h", "H", "i", "I", "j", "J", "k", "K", "l", "L", "m", "M", "n", "N", "o", "O", "p", "P", "q", "Q", "r", "R", "s", "S", "t", "T", "u", "U", "v", "V", "w", "W", "x", "X", "y", "Y", "z", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
-    } else {
-        $set = ["a", "A", "b", "B", "c", "C", "d", "D", "e", "E", "f", "F", "g", "G", "h", "H", "i", "I", "j", "J", "k", "K", "l", "L", "m", "M", "n", "N", "o", "O", "p", "P", "q", "Q", "r", "R", "s", "S", "t", "T", "u", "U", "v", "V", "w", "W", "x", "X", "y", "Y", "z", "Z"];
-    }
-    
-    $str = "";
-    for ($i = 1; $i <= $length; $i++) {
-        $ch = my_rand(0, count($set) - 1);
-        $str .= $set[$ch];
-    }
-    return $str;
-}
-
-function getip(): string
-{
-    $alt_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-    
-    if (isset($_SERVER['HTTP_CLIENT_IP'])) {
-        $alt_ip = $_SERVER['HTTP_CLIENT_IP'];
-    } else {
-        if ((isset($_SERVER['HTTP_X_FORWARDED_FOR']) && preg_match_all('#\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}#s', $_SERVER['HTTP_X_FORWARDED_FOR'], $matches))) {
-            foreach ($matches[0] as $ip) {
-                if (!preg_match('#^(10|172\\.16|192\\.168)\\.#', $ip)) {
-                    $alt_ip = $ip;
-                    break;
-                }
-            }
-        } else {
-            if (isset($_SERVER['HTTP_FROM'])) {
-                $alt_ip = $_SERVER['HTTP_FROM'];
-            }
-        }
-    }
-
-    return htmlspecialchars($alt_ip);
-}
-
-
 
 function generate_passkey(string $username, string $loginkey): string|false
 {
@@ -3113,31 +2927,6 @@ function gzip(bool $use = false): void
     }
 }
 
-function warn_donor(int $s, int $warnday = 3): bool
-{
-    if ($s < 0) {
-        $s = 0;
-    }
-
-    $t = [];
-    foreach (['60:sec', '60:min', '24:hour', '0:day'] as $x) {
-        $y = explode(':', $x);
-        if (1 < $y[0]) {
-            $v = $s % (int)$y[0];
-            $s = floor($s / (int)$y[0]);
-        } else {
-            $v = $s;
-        }
-
-        $t[$y[1]] = $v;
-    }
-
-    if ($t['day'] < $warnday) {
-        return true;
-    }
-
-    return false;
-}
 
 
 
@@ -3149,50 +2938,11 @@ function cutename(string $name, int $max = 35): string
 
 
 
-
-function cutename2(string $name, int $max = 25): string
-{
-    return htmlspecialchars_uni($max < strlen($name) ? substr($name, 0, $max) . '...' : $name);
-}
-
-
 function get_extension(string $filename): string
 {
     $pos = strrpos($filename, '.');
     return $pos !== false ? strtolower(substr($filename, $pos + 1)) : '';
 }
-
-
-
-function dir_list(string $dir): array
-{
-    $dl = [];
-    
-    if (!file_exists($dir)) {
-        error('Directory not found');
-    }
-
-    if ($hd = opendir($dir)) {
-        while ($sz = readdir($hd)) {
-            $ext = get_extension($sz);
-            if ((!str_starts_with($sz, '.') && $ext != 'php')) {
-                $dl[] = $sz;
-                continue;
-            }
-        }
-
-        closedir($hd);
-        asort($dl);
-        return $dl;
-    }
-
-    error('', 'Couldn\'t open storage folder! Please check the path.');
-    return [];
-}
-
-
-
-
 
 
 
@@ -3236,16 +2986,7 @@ function highlight(string $search, string $subject, string $hlstart = '<b><font 
     return $subject;
 }
 
-//function get_user_color(string $username, string $namestyle, bool $white = false): string
-//{
-    //if ($white) {
-     //   $new_username = '<font color="#ffffff">' . $username . '</font>';
-    //} else {
-    //    $new_username = str_replace('{username}', $username, $namestyle);
-    //}
 
-    //return $new_username;
-//}
 
 function int_check(mixed $value, bool $stdhead = false, bool $stdfood = true, bool $die = true, bool $log = true): ?bool
 {
@@ -3297,46 +3038,6 @@ function is_valid_id(mixed $id): bool
 {
     return is_numeric($id) && $id > 0 && floor((float)$id) == $id;
 }
-
-
-
-
-
-function flood_check(string $type = '', ?string $last = null, bool $shoutbox = false): ?string
-{
-    global $lang, $usergroups, $CURUSER;
-    
-    // Преобразуем floodlimit в integer
-    $floodlimit = (int)($usergroups['floodlimit'] ?? 0);
-    $timecut = TIMENOW - $floodlimit;
-    
-    // Обрабатываем случай когда $last = null
-    if ($last === null) {
-        $last = '';
-    }
-    
-    if (str_contains($last, '-')) {
-        $last = strtotime($last);
-    }
-
-    if (($timecut <= $last && $floodlimit != 0)) {
-        $remaining_time = $floodlimit - (TIMENOW - $last);
-        if (!$shoutbox) {
-            stderr(sprintf($lang->global['flooderror'], $floodlimit, $type, $remaining_time), false);
-            return null;
-        }
-
-        $msg = '<font color="#9f040b" size="2">' . sprintf($lang->global['flooderror'], $floodlimit, $type, $remaining_time) . '</font>';
-        return $msg;
-    }
-
-    return null;
-}
-
-
-
-
-
 
 
 
@@ -3622,27 +3323,6 @@ function inline_error(array|string $errors, string $title = '', array $json_data
     </div>
     HTML;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -4113,34 +3793,6 @@ function format_avatar(
         'is_html'       => false,
     ];
 }
-
-
-
-
-function get_thread3333(int|string $tid, bool $recache = false): array|false
-{
-    global $db;
-    static $thread_cache = [];
-
-    $tid = (int)$tid;
-
-    if(isset($thread_cache[$tid]) && !$recache) {
-        return $thread_cache[$tid];
-    } else {
-        $query = $db->simple_select("threads", "*", "tid = '{$tid}'");
-        $thread = $db->fetch_array($query);
-
-        if($thread) {
-            $thread_cache[$tid] = $thread;
-            return $thread;
-        } else {
-            $thread_cache[$tid] = false;
-            return false;
-        }
-    }
-}
-
-
 
 
 

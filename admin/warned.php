@@ -39,11 +39,8 @@ if ($action === 'showlist') {
     stdhead('Warned Users');
     
     // Get total count of warned users
-    $countrows = ts_nf(tsrowcount(
-        'id', 
-        'users', 
-        "enabled = 'yes' AND usergroup != '" . UC_BANNED . "' AND (warned = 'yes' OR leechwarn = 'yes')"
-    ));
+    $res       = $db->sql_query("SELECT COUNT(id) AS cnt FROM users WHERE enabled = 'yes' AND usergroup != '" . UC_BANNED . "' AND (warned = 'yes' OR leechwarn = 'yes')");
+    $countrows = ts_nf((int) ($db->fetch_array($res)['cnt'] ?? 0));
 
     // Pagination setup
     $ts_perpage = $ts_perpage ?: 20;

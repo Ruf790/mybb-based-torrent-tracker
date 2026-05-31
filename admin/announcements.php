@@ -184,7 +184,10 @@ function handleShowAction(): void
 
     stdhead('Announcements ' . B_VERSION);
 
-    $total   = (int) tsrowcount('id', 'announcements');
+	
+	$res   = $db->sql_query("SELECT COUNT(id) AS cnt FROM announcements");
+    $total = (int) ($db->fetch_array($res)['cnt'] ?? 0);
+	
     $page    = max(0, (int) ($_GET['page'] ?? 0));
     $offset  = $page * ANNOUNCEMENTS_PER_PAGE;
     $perPage = ANNOUNCEMENTS_PER_PAGE;

@@ -22,10 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !defined('SKIP_REFERRER_CHECK')) {
         ?? '';
 }
 
-// --- JSON fallback for older PHP versions ---
-if (!function_exists('json_encode') || !function_exists('json_decode')) {
-    require_once INC_PATH . '/3rdparty/json/json.php';
-}
+
 
 // --- Load core classes ---
 require_once INC_PATH . '/functions.php';

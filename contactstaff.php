@@ -22,17 +22,6 @@ $BASE = htmlspecialchars($BASEURL, ENT_QUOTES, 'UTF-8');
 
 
 
-
-function fix_url(string $url): string
-{
-    $url = htmlspecialchars($url);
-    return str_replace(['&amp;', ' '], ['&', '&nbsp;'], $url);
-}
-
-
-
-
-
 // ── AJAX POST ─────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
     header('Content-Type: application/json; charset=utf-8');

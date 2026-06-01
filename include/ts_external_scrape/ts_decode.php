@@ -1,154 +1,160 @@
 <?php
-/*
- * @ https://EasyToYou.eu - IonCube v11 Decoder Online
- * @ PHP 7.2 & 7.3
- * @ Decoder version: 1.0.6
- * @ Release: 10/08/2022
- */
+declare(strict_types=1);
 
 class BDecode
 {
-    public function numberdecode($wholefile, $start)
+    public function numberdecode(string $wholefile, int $start): array
     {
-        $ret[0] = 0;
+        $len    = strlen($wholefile);
+        $ret    = [0, 0];
         $offset = $start;
+
+        if ($offset >= $len) return [false];
+
         $negative = false;
-        if ($wholefile[$offset] == "-") {
+        if ($wholefile[$offset] === '-') {
             $negative = true;
             $offset++;
         }
-        if ($wholefile[$offset] == "0") {
+
+        if ($offset >= $len) return [false];
+
+        if ($wholefile[$offset] === '0') {
             $offset++;
-            if ($negative) {
-                return [false];
-            }
-            if ($wholefile[$offset] == ":" || $wholefile[$offset] == "e") {
-                $offset++;
+            if ($negative) return [false];
+            if ($offset >= $len) return [false];
+            if ($wholefile[$offset] === ':' || $wholefile[$offset] === 'e') {
                 $ret[0] = 0;
-                $ret[1] = $offset;
+                $ret[1] = $offset + 1;
                 return $ret;
             }
             return [false];
         }
+
         while (true) {
-            if ("0" <= $wholefile[$offset] && $wholefile[$offset] <= "9") {
-                $ret[0] *= 10;
-                $ret[0] += ord($wholefile[$offset]) - ord("0");
+            if ($offset >= $len) return [false];
+            $c = $wholefile[$offset];
+            if ($c >= '0' && $c <= '9') {
+                $ret[0] = $ret[0] * 10 + ord($c) - 48;
                 $offset++;
-            } else {
-                if ($wholefile[$offset] == "e" || $wholefile[$offset] == ":") {
-                    $ret[1] = $offset + 1;
-                    if ($negative) {
-                        if ($ret[0] == 0) {
-                            return [false];
-                        }
-                        $ret[0] = -1 * $ret[0];
-                    }
-                    return $ret;
+            } elseif ($c === 'e' || $c === ':') {
+                $ret[1] = $offset + 1;
+                if ($negative) {
+                    if ($ret[0] === 0) return [false];
+                    $ret[0] = -$ret[0];
                 }
+                return $ret;
+            } else {
                 return [false];
             }
         }
     }
-    public function decodeEntry($wholefile, $offset = 0)
+
+    public function decodeEntry(string $wholefile, int $offset = 0): array
     {
-        if ($wholefile[$offset] == "d") {
-            return $this->decodeDict($wholefile, $offset);
+        $len = strlen($wholefile);
+        if ($offset >= $len) return [false];
+
+        $c = $wholefile[$offset];
+
+        if ($c === 'd') return $this->decodeDict($wholefile, $offset);
+        if ($c === 'l') return $this->decodeList($wholefile, $offset);
+
+        if ($c === 'i') {
+            return $this->numberdecode($wholefile, $offset + 1);
         }
-        if ($wholefile[$offset] == "l") {
-            return $this->decodelist($wholefile, $offset);
-        }
-        if ($wholefile[$offset] == "i") {
-            $offset++;
-            return $this->numberdecode($wholefile, $offset);
-        }
+
         $info = $this->numberdecode($wholefile, $offset);
-        if ($info[0] === false) {
-            return [false];
-        }
-        $ret[0] = substr($wholefile, $info[1], $info[0]);
-        $ret[1] = $info[1] + strlen($ret[0]);
+        if ($info[0] === false) return [false];
+
+        $str    = substr($wholefile, $info[1], $info[0]);
+        $ret[0] = $str;
+        $ret[1] = $info[1] + strlen($str);
         return $ret;
     }
-    public function decodeList($wholefile, $start)
+
+    public function decodeList(string $wholefile, int $start): array
     {
+        $len = strlen($wholefile);
+        if ($start >= $len || $wholefile[$start] !== 'l') return [false];
+
         $offset = $start + 1;
-        $i = 0;
-        if ($wholefile[$start] != "l") {
-            return [false];
-        }
-        $ret = [];
+        $ret    = [];
+        $i      = 0;
+
         while (true) {
-            if ($wholefile[$offset] != "e") {
-                $value = $this->decodeEntry($wholefile, $offset);
-                if ($value[0] === false) {
-                    return [false];
-                }
-                list($ret[$i], $offset) = $value;
-                $i++;
+            if ($offset >= $len) return [false];
+            if ($wholefile[$offset] === 'e') {
+                break;
             }
+            $value = $this->decodeEntry($wholefile, $offset);
+            if ($value[0] === false) return [false];
+            [$ret[$i], $offset] = $value;
+            $i++;
         }
-        $final[0] = $ret;
-        $final[1] = $offset + 1;
-        return $final;
+
+        return [$ret, $offset + 1];
     }
-    public function decodeDict($wholefile, $start = 0)
+
+    public function decodeDict(string $wholefile, int $start = 0): array|false
     {
+        $len    = strlen($wholefile);
         $offset = $start;
-        if ($wholefile[$offset] == "l") {
+
+        if ($offset >= $len) return false;
+
+        if ($wholefile[$offset] === 'l') {
             return $this->decodeList($wholefile, $start);
         }
-        if ($wholefile[$offset] != "d") {
-            return false;
-        }
+
+        if ($wholefile[$offset] !== 'd') return false;
+
         $ret = [];
         $offset++;
+
         while (true) {
-            if ($wholefile[$offset] == "e") {
+            if ($offset >= $len) return false;
+
+            if ($wholefile[$offset] === 'e') {
                 $offset++;
+                break;
+            }
+
+            $left = $this->decodeEntry($wholefile, $offset);
+            if (!$left[0]) return false;
+
+            $offset = $left[1];
+            if ($offset >= $len) return false;
+
+            $key = addslashes($left[0]);
+            $c   = $wholefile[$offset];
+
+            if ($c === 'd') {
+                $value = $this->decodeDict($wholefile, $offset);
+                if ($value === false || !$value[0]) return false;
+                [$ret[$key], $offset] = $value;
+
+            } elseif ($c === 'l') {
+                $value = $this->decodeList($wholefile, $offset);
+                if ($value[0] === false) return false;
+                [$ret[$key], $offset] = $value;
+
             } else {
-                $left = $this->decodeEntry($wholefile, $offset);
-                if (!$left[0]) {
-                    return false;
-                }
-                $offset = $left[1];
-                if ($wholefile[$offset] == "d") {
-                    $value = $this->decodedict($wholefile, $offset);
-                    if (!$value[0]) {
-                        return false;
-                    }
-                    list($ret[addslashes($left[0])], $offset) = $value;
-                } else {
-                    if ($wholefile[$offset] == "l") {
-                        $value = $this->decodeList($wholefile, $offset);
-                        if (!$value[0] && is_bool($value[0])) {
-                            return false;
-                        }
-                        list($ret[addslashes($left[0])], $offset) = $value;
-                    } else {
-                        $value = $this->decodeEntry($wholefile, $offset);
-                        if ($value[0] === false) {
-                            return false;
-                        }
-                        list($ret[addslashes($left[0])], $offset) = $value;
-                    }
-                }
+                $value = $this->decodeEntry($wholefile, $offset);
+                if ($value[0] === false) return false;
+                [$ret[$key], $offset] = $value;
             }
         }
-        if (empty($ret)) {
-            $final[0] = true;
-        } else {
-            $final[0] = $ret;
-        }
+
+        $final[0] = empty($ret) ? true : $ret;
         $final[1] = $offset;
         return $final;
     }
 }
-function BDecode($wholefile)
+
+function BDecode(string $wholefile): mixed
 {
     $decoder = new BDecode();
-    $return = $decoder->decodeEntry($wholefile);
+    $return  = $decoder->decodeEntry($wholefile);
     return $return[0];
 }
-
-?>

@@ -38,6 +38,8 @@ if (!$db->num_rows($query)) {
 $Result                 = $db->fetch_array($query);
 $ts_external_lastupdate = $Result['ts_external_lastupdate'];
 
+$is_mod = is_mod($usergroups);
+
 if (!$is_mod && TIMENOW - $ts_external_lastupdate < 3600) {
     if (!$ajax) {
         redirect($returnto, $lang->global['recentlyupdated']);

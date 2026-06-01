@@ -4,6 +4,12 @@
 declare(strict_types=1);
 
 
+function fix_url(string $url): string
+{
+    $url = htmlspecialchars($url);
+    return str_replace(['&amp;', ' '], ['&', '&nbsp;'], $url);
+}
+
 
 function get_user_by_username(string $username, array $options = []): array|bool
 {

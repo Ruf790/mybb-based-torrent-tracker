@@ -24,6 +24,113 @@ const MAX_IMAGE_SIZE  = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_IMAGES  = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
 const IMAGE_EXTENSIONS = ['image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif', 'image/webp' => 'webp'];
 
+// ── Проверка файла торрента на дубликат ─────────────────
+if (isset($_GET['action']) && $_GET['action'] === 'check_torrent_file' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    while (ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (($_POST['my_post_key'] ?? '') !== $mybb->post_code) {
+        echo json_encode(['exists' => false, 'error' => 'Invalid token']);
+        exit;
+    }
+
+    $file = $_FILES['torrentFile'] ?? null;
+    if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
+        echo json_encode(['exists' => false, 'error' => 'No file']);
+        exit;
+    }
+
+    try {
+        $torrentObj = TorrentFile::load($file['tmp_name']);
+        $infoHash   = (string) $torrentObj->v1()->getInfoHash();
+        $escaped    = $db->escape_string($infoHash);
+        $query      = $db->simple_select('torrents', 'id, name, added', "info_hash='{$escaped}'", ['limit' => 1]);
+        $torrent    = $db->fetch_array($query);
+
+        if ($torrent) {
+            echo json_encode([
+                'exists' => true,
+                'id'     => (int) $torrent['id'],
+                'name'   => htmlspecialchars_uni($torrent['name']),
+                'link'   => $BASEURL . '/' . get_torrent_link($torrent['id']),
+                'added'  => strip_tags(my_datee('relative', $torrent['added'])),
+            ]);
+        } else {
+            echo json_encode(['exists' => false]);
+        }
+    } catch (Exception $e) {
+        echo json_encode(['exists' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ── BBCode Preview ────────────────────────────────────────
+if (isset($_GET['action']) && $_GET['action'] === 'bbcode_preview' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    while (ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (($_POST['my_post_key'] ?? '') !== $mybb->post_code) {
+        echo json_encode(['html' => '']);
+        exit;
+    }
+
+    $text = $_POST['text'] ?? '';
+    require_once INC_PATH . '/class_parser.php';
+    $parser  = new postParser();
+    $options = [
+        'allow_html'      => 0,
+        'allow_mycode'    => 1,
+        'allow_smilies'   => 1,
+        'allow_imgcode'   => 1,
+        'allow_videocode' => 1,
+        'filter_badwords' => 1,
+    ];
+    echo json_encode(['html' => $parser->parse_message($text, $options)]);
+    exit;
+}
+
+// ── IMDb данные ───────────────────────────────────────────
+if (isset($_GET['action']) && $_GET['action'] === 'get_imdb_data' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    while (ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+
+    $imdb_url = trim($_GET['imdb_url'] ?? '');
+    if (empty($imdb_url)) {
+        echo json_encode(['success' => false, 'error' => 'No URL provided']);
+        exit;
+    }
+    if (!preg_match('@^https?://www\.imdb\.com/title/tt\d+/@i', $imdb_url)) {
+        echo json_encode(['success' => false, 'error' => 'Invalid IMDb URL']);
+        exit;
+    }
+    if (!str_ends_with($imdb_url, '/')) $imdb_url .= '/';
+
+    try {
+        include_once INC_PATH . '/IMDB.php';
+        $imdbObj = new IMDB($imdb_url);
+        $data    = $imdbObj->parse();
+        $poster  = $data['poster'] ?? '';
+        if ($poster) {
+            $poster = preg_replace('#\._V1_.*?\.(jpg|png|jpeg)$#i', '.$1', $poster);
+        }
+        while (ob_get_level()) ob_end_clean();
+        echo json_encode([
+            'success' => true,
+            'poster'  => $poster,
+            'title'   => $data['title']   ?? '',
+            'year'    => $data['year']    ?? '',
+            'plot'    => $data['plot']    ?? '',
+            'rating'  => $data['rating']  ?? '',
+            'genre'   => !empty($data['genres'])    ? implode(', ', $data['genres'])    : '',
+            'country' => !empty($data['countries']) ? implode(', ', $data['countries']) : '',
+        ]);
+    } catch (Exception $e) {
+        while (ob_get_level()) ob_end_clean();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     handlePostRequest();
 } else {
@@ -231,7 +338,22 @@ function processTorrent(
     } else {
         $category    = (int)($_POST['batch_categories'][$index] ?? $_POST['batch_category'] ?? 1);
         $description = $db->escape_string($_POST['descriptions'][$index] ?? $_POST['batch_description'] ?? '');
-        $customName  = $db->escape_string($baseName);
+        $inputName   = trim($_POST['torrent_names'][$index] ?? '');
+        $customName  = $db->escape_string(!empty($inputName) ? substr($inputName, 0, 255) : $baseName);
+    }
+
+    // IMDb
+    $t_link   = trim($_POST['imdb_urls'][$index] ?? '');
+    if (!empty($t_link)) {
+        if (!str_ends_with($t_link, '/')) $t_link .= '/';
+        if (preg_match('@^https?://www\.imdb\.com/title/tt\d+/@i', $t_link)) {
+            try {
+                include INC_PATH . '/imdb_parser.php';
+            } catch (Throwable) {}
+            $t_link = $db->escape_string($t_link);
+        } else {
+            $t_link = '';
+        }
     }
 
     $dbData = [
@@ -245,7 +367,7 @@ function processTorrent(
         'category'        => $category,
         'descr'           => $description,
         'anonymous'       => isset($_POST['batch_anonymous']) ? 'yes' : 'no',
-        't_link'          => '',
+        't_link'          => $t_link,
         'visible'         => 'yes',
         'ts_external_url' => $db->escape_string($torrentObj->getAnnounce() ?? ''),
         'ts_external'     => 'yes',
@@ -302,7 +424,7 @@ function saveTorrentFile(array $file, string $targetDir): array
 
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mime  = finfo_file($finfo, $file['tmp_name']);
-    finfo_close($finfo);
+    //finfo_close($finfo);
 
     if ($mime !== 'application/x-bittorrent') {
         return ['error' => 'Invalid file type: ' . $mime];
@@ -548,6 +670,106 @@ const BATCH_CONFIG = {
 </script>
 <script src="<?= $BASEURL ?>/admin/scripts/batch_upload.js"></script>
 
+<!-- Floating BBCode Toolbar -->
+<div id="bbToolbar" class="card shadow border-0 d-none"
+     style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9990;min-width:560px;">
+  <div class="card-body p-2 d-flex flex-wrap gap-1 align-items-center">
+    <small class="text-muted me-1"><i class="fas fa-edit"></i></small>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[b]','[/b]')"><strong>B</strong></button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[i]','[/i]')"><em>I</em></button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[u]','[/u]')"><u>U</u></button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[s]','[/s]')">S</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[url]','[/url]')">URL</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[img]','[/img]')"><i class="fas fa-image"></i></button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[center]','[/center]')">Center</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[left]','[/left]')">Left</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[right]','[/right]')">Right</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[quote]','[/quote]')">Quote</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[code]','[/code]')">Code</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[spoiler]','[/spoiler]')">Spoiler</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[video=youtube]','[/video]')">YouTube</button>
+    <button type="button" class="btn btn-sm btn-outline-warning" onclick="batchPreview()"><i class="fas fa-eye"></i> Preview</button>
+    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" onclick="hideBBToolbar()"><i class="fas fa-times"></i></button>
+  </div>
+</div>
+
+<!-- BBCode Preview Modal -->
+<div class="modal fade" id="batchPreviewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-eye me-2"></i>Description Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="batchPreviewBody">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let _batchActiveTextarea = null;
+
+document.addEventListener('focusin', function(e) {
+    if (!e.target.matches('textarea[name="descriptions[]"]')) return;
+    _batchActiveTextarea = e.target;
+    document.getElementById('bbToolbar').classList.remove('d-none');
+});
+
+document.addEventListener('focusout', function(e) {
+    if (!e.target.matches('textarea[name="descriptions[]"]')) return;
+    setTimeout(() => {
+        if (!document.activeElement?.closest('#bbToolbar') &&
+            !document.activeElement?.matches('textarea[name="descriptions[]"]')) {
+            document.getElementById('bbToolbar').classList.add('d-none');
+        }
+    }, 200);
+});
+
+function hideBBToolbar() {
+    document.getElementById('bbToolbar').classList.add('d-none');
+    _batchActiveTextarea = null;
+}
+
+function batchBB(open, close) {
+    const ta = _batchActiveTextarea;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end   = ta.selectionEnd;
+    const sel   = ta.value.substring(start, end);
+    ta.value    = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
+    ta.selectionStart = start + open.length;
+    ta.selectionEnd   = start + open.length + sel.length;
+    ta.focus();
+}
+
+function batchPreview() {
+    const ta = _batchActiveTextarea;
+    if (!ta) return;
+    const modal = new bootstrap.Modal(document.getElementById('batchPreviewModal'));
+    document.getElementById('batchPreviewBody').innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i></div>';
+    modal.show();
+
+    fetch('<?= htmlspecialchars($scriptUrl ?? '') ?>&action=bbcode_preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'text=' + encodeURIComponent(ta.value) + '&my_post_key=<?= $mybb->post_code ?>'
+    })
+    .then(r => r.text())
+    .then(text => {
+        const match = text.match(/\{[\s\S]*\}/);
+        if (match) {
+            const data = JSON.parse(match[0]);
+            document.getElementById('batchPreviewBody').innerHTML = data.html || ta.value;
+        } else {
+            document.getElementById('batchPreviewBody').innerHTML = '<pre>' + escapeHtml(ta.value) + '</pre>';
+        }
+    })
+    .catch(() => {
+        document.getElementById('batchPreviewBody').innerHTML = '<pre>' + escapeHtml(ta.value) + '</pre>';
+    });
+}
+</script>
+
 <?php
     stdfoot();
 }
@@ -574,12 +796,56 @@ function torrentItemHtml(int $idx): string
     </div>
     <div class="row mt-2">
       <div class="col-md-6">
+        <label class="form-label">Torrent Name <span class="text-muted fw-normal small">(Optional — uses filename if empty)</span></label>
+        <input type="text" class="form-control torrent-name-input" name="torrent_names[]" placeholder="Leave empty to use filename...">
+      </div>
+      <div class="col-md-6">
         <label class="form-label">Category</label>
         <?= ts_category_list('batch_categories[]', 0) ?>
       </div>
-      <div class="col-md-6">
+    </div>
+    <div class="row mt-2">
+      <div class="col-md-12">
         <label class="form-label">Description</label>
-        <textarea class="form-control" name="descriptions[]" rows="2" placeholder="Description..."></textarea>
+        <textarea class="form-control batch-desc" name="descriptions[]" rows="5" placeholder="Description..."></textarea>
+      </div>
+    </div>
+    <div class="row mt-2">
+      <div class="col-md-12">
+        <label class="form-label fw-bold">
+          <i class="fab fa-imdb text-warning me-1"></i>IMDb URL
+          <span class="text-muted fw-normal small">(Optional)</span>
+        </label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fas fa-link"></i></span>
+          <input type="url" class="form-control imdb-url-input" name="imdb_urls[]"
+                 placeholder="https://www.imdb.com/title/tt0000000/">
+          <button type="button" class="btn btn-warning btn-fetch-imdb">
+            <i class="fab fa-imdb me-1"></i>Fetch Info
+          </button>
+        </div>
+        <div class="imdb-preview mt-2" style="display:none;">
+          <div class="card border-0 bg-light">
+            <div class="card-body p-2">
+              <div class="d-flex gap-2 align-items-start">
+                <img class="imdb-poster" src="" alt="Poster"
+                     style="width:50px;height:75px;object-fit:cover;border-radius:4px;display:none;">
+                <div class="flex-grow-1">
+                  <div class="fw-bold imdb-title small">—</div>
+                  <div class="d-flex gap-1 mt-1 flex-wrap">
+                    <span class="badge bg-warning text-dark imdb-year" style="display:none;"></span>
+                    <span class="badge bg-secondary imdb-genre" style="display:none;"></span>
+                    <span class="badge bg-success imdb-rating" style="display:none;"></span>
+                  </div>
+                  <p class="small text-muted mt-1 mb-1 imdb-plot"></p>
+                  <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 btn-imdb-apply-desc">
+                    <i class="fas fa-paste me-1"></i>Add to Description
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <?php

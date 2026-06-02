@@ -38,12 +38,56 @@ function buildTorrentItemHtml(idx, fileName = '') {
     </div>
     <div class="row mt-2">
       <div class="col-md-6">
+        <label class="form-label">Torrent Name <span class="text-muted fw-normal small">(Optional — uses filename if empty)</span></label>
+        <input type="text" class="form-control torrent-name-input" name="torrent_names[]" placeholder="Leave empty to use filename...">
+      </div>
+      <div class="col-md-6">
         <label class="form-label">Category</label>
         ${getCategoryHtml('batch_categories', idx)}
       </div>
-      <div class="col-md-6">
+    </div>
+    <div class="row mt-2">
+      <div class="col-md-12">
         <label class="form-label">Description</label>
-        <textarea class="form-control" name="descriptions[]" rows="2" placeholder="Description..."></textarea>
+        <textarea class="form-control batch-desc" name="descriptions[]" rows="5" placeholder="Description..."></textarea>
+      </div>
+    </div>
+    <div class="row mt-2">
+      <div class="col-md-12">
+        <label class="form-label fw-bold">
+          <i class="fab fa-imdb text-warning me-1"></i>IMDb URL
+          <span class="text-muted fw-normal small">(Optional)</span>
+        </label>
+        <div class="input-group">
+          <span class="input-group-text bg-light"><i class="fas fa-link"></i></span>
+          <input type="url" class="form-control imdb-url-input" name="imdb_urls[]"
+                 placeholder="https://www.imdb.com/title/tt0000000/">
+          <button type="button" class="btn btn-warning btn-fetch-imdb">
+            <i class="fab fa-imdb me-1"></i>Fetch Info
+          </button>
+        </div>
+        <div class="imdb-preview mt-2" style="display:none;">
+          <div class="card border-0 bg-light">
+            <div class="card-body p-2">
+              <div class="d-flex gap-2 align-items-start">
+                <img class="imdb-poster" src="" alt="Poster"
+                     style="width:50px;height:75px;object-fit:cover;border-radius:4px;display:none;">
+                <div class="flex-grow-1">
+                  <div class="fw-bold imdb-title small">—</div>
+                  <div class="d-flex gap-1 mt-1 flex-wrap">
+                    <span class="badge bg-warning text-dark imdb-year" style="display:none;"></span>
+                    <span class="badge bg-secondary imdb-genre" style="display:none;"></span>
+                    <span class="badge bg-success imdb-rating" style="display:none;"></span>
+                  </div>
+                  <p class="small text-muted mt-1 mb-1 imdb-plot"></p>
+                  <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 btn-imdb-apply-desc">
+                    <i class="fas fa-paste me-1"></i>Add to Description
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -133,6 +177,127 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!file || !validateImage(file)) { e.target.value = ''; return; }
         showImagePreview(e.target, file);
     });
+
+    // ── Проверка дубликата при выборе торрента ───────────
+    document.addEventListener('change', e => {
+        if (!e.target.matches('input[name="torrentFiles[]"]')) return;
+        const file = e.target.files[0];
+        if (!file) return;
+        const item = e.target.closest('.torrent-item');
+
+        // Автозаполняем имя из имени файла если поле пустое
+        const nameInput = item?.querySelector('input[name="torrent_names[]"]');
+        if (nameInput && !nameInput.value.trim()) {
+            nameInput.value = file.name.replace(/\.torrent$/i, '');
+        }
+
+        checkDuplicate(file, item);
+    });
+
+    function checkDuplicate(file, item) {
+        const fd = new FormData();
+        fd.append('torrentFile', file);
+        fd.append('my_post_key', document.querySelector('[name="my_post_key"]').value);
+
+        fetch(BATCH_CONFIG.scriptUrl + '&action=check_torrent_file', { method: 'POST', body: fd })
+            .then(r => r.text())
+            .then(text => {
+                const match = text.match(/\{[\s\S]*\}/);
+                if (!match) return;
+                showDuplicateWarning(item, JSON.parse(match[0]));
+            })
+            .catch(() => {});
+    }
+
+    function showDuplicateWarning(item, data) {
+        item.querySelector('.duplicate-warning')?.remove();
+        if (!data.exists) return;
+        const warn = document.createElement('div');
+        warn.className = 'duplicate-warning alert alert-warning d-flex align-items-start gap-2 mt-2 mb-0 py-2';
+        warn.innerHTML = '<i class="fas fa-exclamation-triangle mt-1 flex-shrink-0"></i>'
+            + '<div><strong>Duplicate detected!</strong> A torrent with the same info_hash already exists: '
+            + '<a href="' + escapeHtml(data.link) + '" target="_blank">' + escapeHtml(data.name) + '</a>'
+            + ' uploaded ' + escapeHtml(data.added) + '.</div>';
+        item.appendChild(warn);
+    }
+
+    // ── IMDb Fetch ────────────────────────────────────────
+    document.addEventListener('click', e => {
+        const fetchBtn = e.target.closest('.btn-fetch-imdb');
+        if (fetchBtn) { handleImdbFetch(fetchBtn); return; }
+
+        const applyBtn = e.target.closest('.btn-imdb-apply-desc');
+        if (applyBtn) { handleImdbApply(applyBtn); }
+    });
+
+    function handleImdbFetch(btn) {
+        const col     = btn.closest('.col-md-12');
+        const input   = col.querySelector('.imdb-url-input');
+        const preview = col.querySelector('.imdb-preview');
+        const url     = input?.value?.trim();
+
+        if (!url) { alert('Please enter an IMDb URL first.'); return; }
+        if (!/^https?:\/\/www\.imdb\.com\/title\/tt\d+/i.test(url)) {
+            alert('Invalid IMDb URL. Example: https://www.imdb.com/title/tt0000000/');
+            return;
+        }
+
+        btn.disabled  = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Fetching...';
+
+        fetch(BATCH_CONFIG.scriptUrl + '&action=get_imdb_data&imdb_url=' + encodeURIComponent(url))
+            .then(r => r.text())
+            .then(text => {
+                btn.disabled  = false;
+                btn.innerHTML = '<i class="fab fa-imdb me-1"></i>Fetch Info';
+                const match = text.match(/\{[\s\S]*\}/);
+                if (!match) throw new Error('No JSON in response');
+                const data = JSON.parse(match[0]);
+                if (!data.success) { alert('IMDb Error: ' + (data.error || 'Unknown')); return; }
+
+                preview.style.display = '';
+                const poster = preview.querySelector('.imdb-poster');
+                const title  = preview.querySelector('.imdb-title');
+                const year   = preview.querySelector('.imdb-year');
+                const genre  = preview.querySelector('.imdb-genre');
+                const rating = preview.querySelector('.imdb-rating');
+                const plot   = preview.querySelector('.imdb-plot');
+
+                title.textContent = data.title || '—';
+                if (data.poster) { poster.src = data.poster; poster.style.display = ''; }
+                if (data.year)   { year.textContent   = data.year;          year.style.display   = ''; }
+                if (data.genre)  { genre.textContent  = data.genre;         genre.style.display  = ''; }
+                if (data.rating) { rating.textContent = '★ ' + data.rating; rating.style.display = ''; }
+                plot.textContent = data.plot || '';
+            })
+            .catch(() => {
+                btn.disabled  = false;
+                btn.innerHTML = '<i class="fab fa-imdb me-1"></i>Fetch Info';
+                alert('Failed to fetch IMDb data. Please try again.');
+            });
+    }
+
+    function handleImdbApply(btn) {
+        const torrentItem = btn.closest('.torrent-item');
+        const textarea    = torrentItem?.querySelector('textarea[name="descriptions[]"]');
+        const preview     = btn.closest('.imdb-preview');
+        if (!textarea || !preview) return;
+
+        const parts = [];
+        const title  = preview.querySelector('.imdb-title')?.textContent;
+        const year   = preview.querySelector('.imdb-year')?.textContent;
+        const genre  = preview.querySelector('.imdb-genre')?.textContent;
+        const rating = preview.querySelector('.imdb-rating')?.textContent;
+        const plot   = preview.querySelector('.imdb-plot')?.textContent;
+
+        if (title && title !== '—') parts.push('[b]' + title + '[/b]');
+        if (year)   parts.push('Year: '         + year);
+        if (genre)  parts.push('Genre: '        + genre);
+        if (rating) parts.push('IMDb Rating: '  + rating);
+        if (plot)   parts.push('\n' + plot);
+        textarea.value = parts.join('\n');
+        textarea.focus();
+    }
 
     // Отправка формы
     form?.addEventListener('submit', e => {
@@ -328,6 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
                       </div>
                       <div>
                         ${r.has_poster ? '<span class="badge bg-info me-2"><i class="fas fa-image"></i></span>' : ''}
+                        ${r.has_imdb   ? '<span class="badge bg-warning text-dark me-2"><i class="fab fa-imdb"></i></span>' : ''}
                         <a href="${escapeHtml(r.link)}" target="_blank" class="btn btn-sm btn-outline-primary">View</a>
                       </div>
                     </div>`;

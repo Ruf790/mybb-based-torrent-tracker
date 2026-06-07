@@ -51,18 +51,6 @@ var MyBB = {
         return text;
     },
 
-    changeLanguage: function() {
-        var form = document.getElementById("lang_select");
-        if(!form) return false;
-        form.dispatchEvent(new Event('submit'));
-    },
-
-    changeTheme: function() {
-        var form = document.getElementById("theme_select");
-        if(!form) return false;
-        form.dispatchEvent(new Event('submit'));
-    },
-
     
 };
 

@@ -465,9 +465,54 @@ document.querySelectorAll('.upload-zone-sm').forEach(zone => {
 // ========== Остальной существующий код ==========
 
 function showErrorModal(message) {
-    document.getElementById('errorModalBody').textContent = message;
-    const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
-    errorModal.show();
+    // Принудительно закрываем uploadModal
+    const uModal = document.getElementById('uploadModal');
+    if (uModal) {
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+        uModal.classList.remove('show');
+        uModal.style.display = 'none';
+        uModal.setAttribute('aria-hidden', 'true');
+    }
+
+    const body = document.getElementById('errorModalBody');
+    if (body) {
+        body.innerHTML = String(message)
+            .split('\n')
+            .map(line => {
+                let s = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                s = s.replace(/(SQL Error|Unknown column|Failed Query|Error)/gi, '<strong style="color:#b91c1c">$1</strong>');
+                return `<div class="error-line">${s}</div>`;
+            })
+            .join('');
+        body.scrollTop = 0;
+    }
+
+    // Кнопка Copy
+    const copyBtn = document.getElementById('copyErrorBtn');
+    if (copyBtn) {
+        copyBtn.onclick = () => {
+            const text = body ? (body.innerText || body.textContent) : '';
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text.trim()).then(() => {
+                    const orig = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                    copyBtn.classList.replace('btn-danger', 'btn-success');
+                    setTimeout(() => {
+                        copyBtn.innerHTML = orig;
+                        copyBtn.classList.replace('btn-success', 'btn-danger');
+                    }, 2000);
+                }).catch(() => {});
+            }
+        };
+    }
+
+    setTimeout(() => {
+        const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+        errorModal.show();
+    }, 100);
 }
 
 // Создаем глобальные переменные для модальных окон
@@ -728,8 +773,9 @@ document.getElementById("torrent-upload-form").addEventListener("submit", async 
         return;
     }
 
-    // Проверяем, не открыто ли уже модальное окно
-    if (!uploadModalEl.classList.contains('show')) {
+    // При редактировании — не показываем модалку загрузки
+    const isEditMode = document.querySelector('input[name="EditTorrent"]') !== null;
+    if (!isEditMode && !uploadModalEl.classList.contains('show')) {
         uploadModal.show();
         startUploadTimer();
     }
@@ -739,81 +785,462 @@ document.getElementById("torrent-upload-form").addEventListener("submit", async 
 
     try {
         const response = await fetch("upload.php", { method: "POST", body: formData });
-        const data = await response.json();
+        const rawText = await response.text();
+        let data;
+        try {
+            data = JSON.parse(rawText);
+        } catch (e) {
+            // Ответ не JSON — парсим HTML ошибку
+            const tmp = document.createElement('div');
+            tmp.innerHTML = rawText;
+            const errorText = (tmp.querySelector('.alert-danger, code, .card-body') || tmp).textContent.trim().slice(0, 400);
+            stopUploadTimer();
+            uploadModal.hide();
+            showErrorModal('Server Error:\n' + errorText);
+            return;
+        }
 
-        // Ждём, пока модал скроется
-        uploadModalEl.addEventListener("hidden.bs.modal", () => {
-            if (data.success && data.id) {
-                if (data.hash_changed) {
-                    // Приватный торрент
-                    const oldModal = document.getElementById("uploadSuccessModal");
-                    if (oldModal) oldModal.remove();
+               // При редактировании — показываем модалку сразу без ожидания uploadModal
 
-                    const modalHtml = `
-                        <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-labelledby="uploadSuccessModalLabel" aria-hidden="true">
-                            <div class="modal-dialog modal-dialog-centered">
-                                <div class="modal-content shadow">
-                                    <div class="modal-header bg-primary text-white">
-                                        <h5 class="modal-title" id="uploadSuccessModalLabel">Upload Completed</h5>
-                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                                    </div>
-                                    <div class="modal-body text-center">
-                                        <p>Your torrent has been successfully uploaded and updated with a private flag.</p>
-                                        <p id="countdown-text" class="fw-bold">Redirecting in <span id="countdown">10</span> seconds...</p>
-                                        <div class="progress" style="height: 20px;">
-                                            <div id="progress-bar" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                                        </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <a href="${data.download}" class="btn btn-primary"><i class="fa fa-download me-1"></i> Download Torrent</a>
-                                        <a href="${data.link}" class="btn btn-outline-primary"><i class="fa fa-info-circle me-1"></i> View Details</a>
+
+if (isEditMode && data.success && data.id) {
+    stopUploadTimer();
+    if (data.hash_changed) {
+        // Новый торрент файл загружен
+        const oldModal = document.getElementById("uploadSuccessModal");
+        if (oldModal) oldModal.remove();
+        
+        const modalHtml = `
+            <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-labelledby="uploadSuccessModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content shadow">
+                        <div class="modal-header bg-primary text-white">
+                            <div class="d-flex align-items-center w-100">
+                                <i class="fas fa-cloud-upload-alt fa-2x me-3"></i>
+                                <h5 class="modal-title mb-0" id="uploadSuccessModalLabel">Upload Completed</h5>
+                            </div>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <div class="success-animation mb-3">
+                                <i class="fas fa-check-circle text-primary" style="font-size: 3.5rem;"></i>
+                            </div>
+                            <p class="mb-2">Your torrent has been successfully uploaded and updated with a private flag.</p>
+                            <div class="redirect-timer mt-3">
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    <span class="text-muted">Redirecting in</span>
+                                    <span id="editCountdownHash" class="badge bg-primary fs-5 px-3 py-2 rounded-pill">10</span>
+                                    <span class="text-muted">seconds</span>
+                                </div>
+                                <div class="progress mt-3 mx-auto" style="height: 4px; max-width: 200px;">
+                                    <div id="redirectProgressHash" class="progress-bar bg-primary" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer border-0 justify-content-center pb-4">
+                            <a href="${data.download}" class="btn btn-primary me-2">
+                                <i class="fa fa-download me-2"></i> Download Torrent
+                            </a>
+                            <a href="${data.link}" class="btn btn-outline-primary">
+                                <i class="fa fa-info-circle me-2"></i> View Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        const successModal = new bootstrap.Modal(document.getElementById('uploadSuccessModal'));
+        
+        // Запускаем таймер и прогресс после показа модалки
+        successModal._element.addEventListener('shown.bs.modal', function onShown() {
+            let s = 10;
+            const countdownEl = document.getElementById('editCountdownHash');
+            const progressBar = document.getElementById('redirectProgressHash');
+            
+            if (!countdownEl || !progressBar) {
+                console.error('Elements not found!');
+                return;
+            }
+            
+            // Инициализация
+            countdownEl.textContent = s;
+            progressBar.style.width = '0%';
+            progressBar.style.transition = 'width 1s linear';
+            
+            // Исправленный интервал - 1000 мс
+            const iv = setInterval(() => {
+                s--;
+                
+                // Обновляем текст
+                countdownEl.textContent = s;
+                
+                // Эффект пульсации
+                countdownEl.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    if (countdownEl) countdownEl.style.transform = 'scale(1)';
+                }, 200);
+                
+                // Обновляем прогресс-бар (от 0% до 100% за 10 секунд)
+                const percent = ((10 - s) / 10) * 100;
+                progressBar.style.width = percent + '%';
+                progressBar.setAttribute('aria-valuenow', percent);
+                
+                if (s <= 0) {
+                    clearInterval(iv);
+                }
+            }, 1000); // ← ИСПРАВЛЕНО: 1000 мс (было 10000)
+            
+            const redirectTimeout = setTimeout(() => {
+                window.location.href = data.link;
+            }, 10000);
+            
+            // Очищаем таймеры при закрытии модалки
+            successModal._element.addEventListener('hidden.bs.modal', function() {
+                clearInterval(iv);
+                clearTimeout(redirectTimeout);
+            }, { once: true });
+            
+            // Удаляем обработчик, чтобы не запускался повторно
+            successModal._element.removeEventListener('shown.bs.modal', onShown);
+        });
+        
+        successModal.show();
+        
+    } else {
+        // Редактирование без нового файла - ЭТОТ КОД УЖЕ ХОРОШИЙ
+        const oldModal = document.getElementById("uploadSuccessModal");
+        if (oldModal) oldModal.remove();
+        
+        const modalHtml = `
+            <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content shadow-lg border-0">
+                        <div class="modal-header bg-success text-white border-0">
+                            <div class="d-flex align-items-center w-100">
+                                <i class="fas fa-check-circle fa-2x me-3"></i>
+                                <h5 class="modal-title mb-0">Changes Saved</h5>
+                            </div>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <div class="success-animation mb-3">
+                                <i class="fas fa-check-circle text-success" style="font-size: 3.5rem;"></i>
+                            </div>
+                            <h4 class="text-success mb-2">Success!</h4>
+                            <p class="text-muted mb-1">Your torrent has been updated successfully.</p>
+                            <div class="redirect-timer mt-3">
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    <span class="text-muted">Redirecting in</span>
+                                    <span id="editCountdown" class="badge bg-success fs-5 px-3 py-2 rounded-pill">3</span>
+                                    <span class="text-muted">seconds</span>
+                                </div>
+                                <div class="progress mt-3 mx-auto" style="height: 4px; max-width: 200px;">
+                                    <div id="redirectProgress" class="progress-bar bg-success" style="width: 0%; transition: width 3s linear;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer border-0 justify-content-center pb-4">
+                            <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">
+                                <i class="fas fa-times me-2"></i>Stay Here
+                            </button>
+                            <button type="button" class="btn btn-success" onclick="window.location.href='${data.link}'">
+                                <i class="fas fa-eye me-2"></i>View Torrent
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        const successModal = new bootstrap.Modal(document.getElementById('uploadSuccessModal'));
+        
+        // Запускаем таймер после показа модалки
+        successModal._element.addEventListener('shown.bs.modal', function onShown() {
+            let s = 3;
+            const countdownEl = document.getElementById('editCountdown');
+            const progressBar = document.getElementById('redirectProgress');
+            
+            if (countdownEl && progressBar) {
+                countdownEl.textContent = s;
+                progressBar.style.width = '0%';
+                
+                const iv = setInterval(() => {
+                    s--;
+                    countdownEl.textContent = s;
+                    
+                    // Эффект пульсации
+                    countdownEl.style.transform = 'scale(1.1)';
+                    setTimeout(() => {
+                        if (countdownEl) countdownEl.style.transform = 'scale(1)';
+                    }, 200);
+                    
+                    // Обновляем прогресс-бар
+                    const percent = ((3 - s) / 3) * 100;
+                    progressBar.style.width = percent + '%';
+                    
+                    if (s <= 0) clearInterval(iv);
+                }, 1000);
+                
+                const redirectTimeout = setTimeout(() => {
+                    window.location.href = data.link;
+                }, 3000);
+                
+                successModal._element.addEventListener('hidden.bs.modal', function() {
+                    clearInterval(iv);
+                    clearTimeout(redirectTimeout);
+                }, { once: true });
+            }
+            
+            successModal._element.removeEventListener('shown.bs.modal', onShown);
+        });
+        
+        successModal.show();
+    }
+    return;
+}
+
+
+
+
+
+// Ждём, пока модал скроется
+// Ждём, пока модал скроется
+uploadModalEl.addEventListener("hidden.bs.modal", () => {
+    if (data.success && data.id) {
+        if (data.hash_changed) {
+            // Приватный торрент
+            const oldModal = document.getElementById("uploadSuccessModal");
+            if (oldModal) oldModal.remove();
+
+            const modalHtml = `
+                <div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-labelledby="uploadSuccessModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content shadow">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="uploadSuccessModalLabel">Upload Completed</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body text-center">
+                                <p>Your torrent has been successfully uploaded and updated with a private flag3333333.</p>
+                                <p id="countdown-text" class="fw-bold">Redirecting in <span id="countdown">10</span> seconds...</p>
+                                <div class="progress" style="height: 20px;">
+                                    <div id="progress-bar" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <a href="${data.download}" class="btn btn-primary"><i class="fa fa-download me-1"></i> Download Torrent</a>
+                                <a href="${data.link}" class="btn btn-outline-primary"><i class="fa fa-info-circle me-1"></i> View Details</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+            const uploadSuccessModalEl = document.getElementById("uploadSuccessModal");
+            const uploadSuccessModal = new bootstrap.Modal(uploadSuccessModalEl);
+
+            uploadSuccessModal.show();
+
+            // Обновляем прогресс синхронно с таймером
+            let secondsLeft = 10;
+            const countdownEl = document.getElementById("countdown");
+            const progressBar = document.getElementById("progress-bar");
+            
+            // Начальный сброс
+            if (progressBar) {
+                progressBar.style.width = "0%";
+            }
+            
+            const countdownInterval = setInterval(() => {
+                secondsLeft--;
+                
+                // Обновляем текст
+                if (countdownEl) {
+                    countdownEl.textContent = secondsLeft;
+                }
+                
+                // Обновляем прогресс-бар (от 0% до 100% за 10 секунд)
+                if (progressBar) {
+                    const progressPercent = ((10 - secondsLeft) / 10) * 100;
+                    progressBar.style.width = progressPercent + "%";
+                    progressBar.setAttribute('aria-valuenow', progressPercent);
+                }
+                
+                if (secondsLeft <= 0) {
+                    clearInterval(countdownInterval);
+                }
+            }, 1000);
+            
+            // Редирект через 10 секунд
+            const redirectTimeout = setTimeout(() => {
+                window.location.href = data.link;
+            }, 10000);
+            
+            // Отмена редиректа при закрытии модалки
+            uploadSuccessModalEl.addEventListener('hidden.bs.modal', () => {
+                clearTimeout(redirectTimeout);
+                clearInterval(countdownInterval);
+            }, { once: true });
+
+        } else {
+            // Обычный торрент
+            const completeModalEl = new bootstrap.Modal(document.getElementById('uploadCompleteModal'));
+            completeModalEl.show();
+            setTimeout(() => {
+                window.location.href = data.link;
+            }, 3000);
+        }
+    } else {
+        showErrorModal(
+                    data.error
+                        ? data.error
+                        : data.errors
+                            ? data.errors.join("\n")
+                            : "Upload failed (no details)"
+                );
+    }
+}, { once: true });
+
+
+
+
+
+
+
+
+      
+	  
+	  
+// Скрываем модал + fallback если hidden.bs.modal не сработал
+stopUploadTimer();
+let _done = false;
+const _finish = () => { if (!_done) { _done = true; } };
+uploadModalEl.addEventListener('hidden.bs.modal', _finish, { once: true });
+setTimeout(() => {
+    if (!_done) {
+        _done = true;
+        // Принудительно закрываем
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+        uploadModalEl.classList.remove('show');
+        uploadModalEl.style.display = 'none';
+        uploadModalEl.setAttribute('aria-hidden', 'true');
+        // Показываем результат вручную
+        if (data?.success && data?.id) {
+            if (data.hash_changed) {
+                const oldM = document.getElementById('uploadSuccessModal');
+                if (oldM) oldM.remove();
+                
+                document.body.insertAdjacentHTML('beforeend', `<div class="modal fade" id="uploadSuccessModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content shadow">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>Upload Completed</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body text-center">
+                                <div class="mb-3">
+                                    <i class="fas fa-cloud-upload-alt text-primary" style="font-size: 3rem;"></i>
+                                </div>
+                                <p>Your torrent has been successfully uploaded and updated with a private flag222.</p>
+                                <div class="redirect-info mt-3">
+                                    <p class="fw-bold mb-2">Redirecting in <span id="countdown2" class="badge bg-primary fs-5 px-3 py-2 rounded-pill">10</span> seconds...</p>
+                                    <div class="progress mx-auto" style="height: 10px; max-width: 80%; border-radius: 10px;">
+                                        <div id="progressBar2" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" 
+                                             role="progressbar" style="width: 0%; border-radius: 10px;"></div>
                                     </div>
                                 </div>
                             </div>
-                        </div>`;
-                    document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-                    const uploadSuccessModalEl = document.getElementById("uploadSuccessModal");
-                    const uploadSuccessModal = new bootstrap.Modal(uploadSuccessModalEl);
-
-                    uploadSuccessModalEl.addEventListener("shown.bs.modal", () => {
-                        const progressBar = document.getElementById("progress-bar");
-                        progressBar.style.transition = "width 10s linear";
-                        requestAnimationFrame(() => {
-                            progressBar.style.width = "100%";
-                        });
-                    });
-
-                    uploadSuccessModal.show();
-
-                    let secondsLeft = 10;
-                    const countdownEl = document.getElementById("countdown");
-                    const countdownInterval = setInterval(() => {
-                        secondsLeft--;
-                        countdownEl.textContent = secondsLeft;
-                        if (secondsLeft <= 0) clearInterval(countdownInterval);
+                            <div class="modal-footer justify-content-center">
+                                <a href="${data.download}" class="btn btn-primary">
+                                    <i class="fa fa-download me-1"></i> Download Torrent
+                                </a>
+                                <a href="${data.link}" class="btn btn-outline-primary">
+                                    <i class="fa fa-info-circle me-1"></i> View Details
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>`);
+                
+                const successModal = new bootstrap.Modal(document.getElementById('uploadSuccessModal'));
+                
+                // Запускаем таймер ПОСЛЕ того как модалка полностью откроется
+                successModal._element.addEventListener('shown.bs.modal', function onShown() {
+                    // Прогресс и таймер
+                    let s = 10;
+                    const progressBar = document.getElementById('progressBar2');
+                    const countdownEl = document.getElementById('countdown2');
+                    
+                    console.log('Таймер запущен, s=', s); // Для отладки
+                    
+                    const iv = setInterval(() => {
+                        s--;
+                        
+                        console.log('Тик таймера, s=', s); // Для отладки
+                        
+                        if (countdownEl) {
+                            countdownEl.textContent = s;
+                            // Эффект пульсации
+                            countdownEl.style.transform = 'scale(1.1)';
+                            setTimeout(() => {
+                                if (countdownEl) countdownEl.style.transform = 'scale(1)';
+                            }, 200);
+                        } else {
+                            console.error('countdown2 элемент не найден!');
+                        }
+                        
+                        if (progressBar) {
+                            const percent = ((10 - s) / 10) * 100;
+                            progressBar.style.width = percent + '%';
+                            progressBar.setAttribute('aria-valuenow', percent);
+                        } else {
+                            console.error('progressBar2 элемент не найден!');
+                        }
+                        
+                        if (s <= 0) {
+                            clearInterval(iv);
+                            console.log('Таймер завершен, редирект...');
+                        }
                     }, 1000);
-
-                    setTimeout(() => {
+                    
+                    // Редирект через 10 секунд
+                    const redirectTimeout = setTimeout(() => {
                         window.location.href = data.link;
                     }, 10000);
-
-                } else {
-                    // Обычный торрент
-                    const completeModalEl = new bootstrap.Modal(document.getElementById('uploadCompleteModal'));
-                    completeModalEl.show();
-                    setTimeout(() => {
-                        window.location.href = data.link;
-                    }, 3000);
-                }
+                    
+                    // Очищаем таймеры при закрытии модалки
+                    successModal._element.addEventListener('hidden.bs.modal', function() {
+                        clearInterval(iv);
+                        clearTimeout(redirectTimeout);
+                    }, { once: true });
+                    
+                    // Удаляем этот обработчик, чтобы не запускался повторно
+                    successModal._element.removeEventListener('shown.bs.modal', onShown);
+                });
+                
+                successModal.show();
+                
             } else {
-                showErrorModal("Upload failed: " + (data.errors ? data.errors.join(", ") : "Missing ID."));
+                const m = new bootstrap.Modal(document.getElementById('uploadCompleteModal'));
+                m.show();
+                setTimeout(() => {
+                    window.location.href = data.link;
+                }, 3000);
             }
-        }, { once: true });
-
-        // Сразу скрываем модал
-        uploadModal.hide();
-        stopUploadTimer();
+        }
+    }
+}, 700);
+uploadModal.hide();
+	  
+	  
+	  
+	  
 
     } catch (error) {
         uploadModal.hide();

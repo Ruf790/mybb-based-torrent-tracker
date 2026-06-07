@@ -339,6 +339,8 @@ elseif ($isEdit)
     }
 }
 
+
+
 // ✅ Загружаем объект
 $torrentObj = TorrentFile::load($torrentPath);
 
@@ -1360,23 +1362,56 @@ function copyAnnounceUrl() {
 
 
 
-<!-- Error Modal -->
+<!-- Modern Error Modal -->
 <div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="errorModalLabel"><?= $lang->upload['error_title'] ?></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="errorModalBody">
-        <!-- Error message will be inserted here -->
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $lang->upload['error_close'] ?></button>
-      </div>
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header" style="background:linear-gradient(135deg,#dc2626 0%,#b91c1c 100%);border:none;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle bg-white bg-opacity-20 p-1">
+                        <i class="fas fa-exclamation-triangle text-white" style="font-size:1.2rem;"></i>
+                    </div>
+                    <h5 class="modal-title text-white fw-semibold" id="errorModalLabel"><?= $lang->upload['error_title'] ?></h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="bg-light bg-opacity-25 p-3 border-bottom border-danger border-opacity-25">
+                    <div class="d-flex align-items-center gap-2 text-danger">
+                        <i class="fas fa-bug"></i>
+                        <span class="small fw-semibold">Error Details</span>
+                    </div>
+                </div>
+                <div id="errorModalBody"
+                     style="max-height:500px;overflow-y:auto;padding:1.25rem;
+                            font-family:'SF Mono','Monaco','Cascadia Code',monospace;
+                            font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;
+                            background:linear-gradient(145deg,#fef2f2 0%,#fee2e2 100%);
+                            color:#991b1b;"></div>
+            </div>
+            <div class="modal-footer border-0 bg-light bg-opacity-50">
+                <div class="d-flex justify-content-between align-items-center w-100">
+                    <div class="text-muted small"><i class="fas fa-info-circle me-1"></i>Check your input and try again</div>
+                    <div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+                            <i class="fas fa-times me-1"></i><?= $lang->upload['error_close'] ?>
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm ms-2" id="copyErrorBtn">
+                            <i class="fas fa-copy me-1"></i>Copy Error
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 </div>
+<style>
+.error-line{transition:all .2s;padding:2px 0 2px 8px;border-left:3px solid transparent}
+.error-line:hover{background:rgba(220,38,38,.1);border-left-color:#dc2626;transform:translateX(2px)}
+#errorModalBody::-webkit-scrollbar{width:8px}
+#errorModalBody::-webkit-scrollbar-track{background:#fecaca;border-radius:4px}
+#errorModalBody::-webkit-scrollbar-thumb{background:#dc2626;border-radius:4px}
+</style>
 
 
 
@@ -1644,7 +1679,6 @@ function copyAnnounceUrl() {
         </small>
     </div>
 </div>
-
 
 
   

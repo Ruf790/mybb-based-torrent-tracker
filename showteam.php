@@ -3,9 +3,6 @@
 
 define('IN_MYBB',    1);
 define('THIS_SCRIPT', 'showteam.php');
-define('TSF_FORUMS_TSSEv56',        true);
-define('TSF_FORUMS_GLOBAL_TSSEv56', true);
-define('TSF_VERSION', 'v1.5 by xam');
 define('IN_FORUM', true);
 
 require_once 'global.php';

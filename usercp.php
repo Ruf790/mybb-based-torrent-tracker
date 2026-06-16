@@ -106,6 +106,8 @@ $breadcrumb_map = [
     'usergroups'        => $lang->usercpnav['ucp_nav_usergroups'],
     'attachments'       => $lang->usercpnav['ucp_nav_attachments'],
     'bookmarks'         => $lang->usercpnav['ucp_nav_book'],
+	'2fa'               => 'Two-Factor Authentication',
+    'do_2fa'            => 'Two-Factor Authentication',
 ];
 
 if (isset($breadcrumb_map[$mybb->input['action']])) {
@@ -5092,14 +5094,27 @@ if ($mybb->input['action'] === 'do_attachments' && $mybb->request_method === 'po
     $f_perm_sql       = '';
     $unviewable_forums = get_unviewable_forums(true);
     $inactiveforums   = get_inactive_forums();
-    if ($unviewable_forums) { $f_perm_sql  = " AND p.fid NOT IN ({$unviewable_forums})"; }
-    if ($inactiveforums)    { $f_perm_sql .= " AND p.fid NOT IN ({$inactiveforums})"; }
+    if ($unviewable_forums) { $f_perm_sql  = " AND (p.fid IS NULL OR p.fid NOT IN ({$unviewable_forums}))"; }
+    if ($inactiveforums)    { $f_perm_sql .= " AND (p.fid IS NULL OR p.fid NOT IN ({$inactiveforums}))"; }
 
     $aids  = implode(',', array_map('intval', $mybb->input['attachments']));
     $query = $db->sql_query("SELECT a.*, p.fid FROM attachments a LEFT JOIN posts p ON (a.pid=p.pid) WHERE aid IN ({$aids}) AND a.uid={$CURUSER['id']} {$f_perm_sql}");
 
     while ($attachment = $db->fetch_array($query)) {
-        remove_attachment((int)$attachment['pid'], '', (int)$attachment['aid']);
+        if ((int)$attachment['pid'] > 0) {
+            remove_attachment((int)$attachment['pid'], '', (int)$attachment['aid']);
+        } else {
+            // Comment-based attachment — delete directly (no post to update)
+            require_once INC_PATH . '/functions_upload.php';
+            $uploadDir = TSDIR . '/uploads/attachments/';
+
+            delete_uploaded_file($uploadDir . $attachment['attachname']);
+            if (!empty($attachment['thumbnail']) && $attachment['thumbnail'] !== 'SMALL') {
+                delete_uploaded_file($uploadDir . $attachment['thumbnail']);
+            }
+
+            $db->delete_query('attachments', "aid='" . (int)$attachment['aid'] . "'");
+        }
     }
 
     $plugins->run_hooks('usercp_do_attachments_end');
@@ -5119,38 +5134,92 @@ if ($mybb->input['action'] === 'attachments') {
     $f_perm_sql       = '';
     $unviewable_forums = get_unviewable_forums(true);
     $inactiveforums   = get_inactive_forums();
-    if ($unviewable_forums) { $f_perm_sql  = " AND t.fid NOT IN ({$unviewable_forums})"; }
-    if ($inactiveforums)    { $f_perm_sql .= " AND t.fid NOT IN ({$inactiveforums})"; }
+    if ($unviewable_forums) { $f_perm_sql  = " AND (t.fid IS NULL OR t.fid NOT IN ({$unviewable_forums}))"; }
+    if ($inactiveforums)    { $f_perm_sql .= " AND (t.fid IS NULL OR t.fid NOT IN ({$inactiveforums}))"; }
 
     $perpage = ($f_threadsperpage && (int) $f_threadsperpage >= 1) ? (int) $f_threadsperpage : 20;
     $page    = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
     $start   = ($page - 1) * $perpage;
 
     $query = $db->sql_query_prepared("
-        SELECT a.*, p.subject, p.dateline, t.tid, t.subject AS threadsubject, u.username AS username
+        SELECT a.*, p.subject, p.dateline, t.tid, t.subject AS threadsubject, u.username AS username,
+               c.id AS cmt_id, c.torrent AS cmt_torrentid
         FROM attachments a
         LEFT JOIN posts p ON (a.pid=p.pid)
         LEFT JOIN threads t ON (t.tid=p.tid)
 		LEFT JOIN users u ON (u.id=p.uid)
+        LEFT JOIN comments c ON (c.id=a.comment_id)
         WHERE a.uid=? {$f_perm_sql}
-        ORDER BY p.dateline DESC, p.pid DESC LIMIT ?,?", [(int) $CURUSER['id'], $start, $perpage]);
+        ORDER BY a.dateuploaded DESC, a.aid DESC LIMIT ?,?", [(int) $CURUSER['id'], $start, $perpage]);
 
     $attachments  = '';
     $bandwidth = $totaldownloads = $totalusage = $totalattachments = $processedattachments = 0;
 
     while ($attachment = $db->fetch_array($query)) {
-        if ($attachment['dateline'] && $attachment['tid']) {
-            $attachment['subject']       = htmlspecialchars_uni($parser->parse_badwords($attachment['subject']));
-            $attachment['postlink']      = get_post_link($attachment['pid'], $attachment['tid']);
-            $attachment['threadlink']    = get_thread_link($attachment['tid']);
-            $attachment['threadsubject'] = htmlspecialchars_uni($parser->parse_badwords($attachment['threadsubject']));
+        $is_post_attachment    = (int)$attachment['pid'] > 0 && $attachment['dateline'] && $attachment['tid'];
+        $is_comment_attachment = (int)$attachment['comment_id'] > 0 && $attachment['cmt_id'];
+
+        if ($is_post_attachment || $is_comment_attachment) {
+
+            if ($is_post_attachment) {
+                $attachment['subject']       = htmlspecialchars_uni($parser->parse_badwords($attachment['subject']));
+                $attachment['postlink']      = get_post_link($attachment['pid'], $attachment['tid']);
+                $attachment['threadlink']    = get_thread_link($attachment['tid']);
+                $attachment['threadsubject'] = htmlspecialchars_uni($parser->parse_badwords($attachment['threadsubject']));
+
+                $location_badge = '<span class="badge text-primary bg-primary bg-opacity-10 border border-primary border-opacity-25">
+                    <i class="fas fa-comment me-1"></i>
+                    ' . $lang->usercp['attachments_post'] . '
+                </span>
+                <a href="' . $attachment['postlink'] . '#pid' . $attachment['pid'] . '"
+                   class="text-truncate text-decoration-none text-secondary hover-primary">
+                    ' . $attachment['subject'] . '
+                </a>';
+            } else {
+                $comment_link = get_comment_link((int)$attachment['comment_id'], (int)$attachment['cmt_torrentid']);
+                $location_badge = '<span class="badge text-success bg-success bg-opacity-10 border border-success border-opacity-25">
+                    <i class="fas fa-comments me-1"></i>
+                    Comment
+                </span>
+                <a href="' . $comment_link . '#pid' . $attachment['comment_id'] . '"
+                   class="text-truncate text-decoration-none text-secondary hover-primary">
+                    Comment #' . (int)$attachment['comment_id'] . '
+                </a>';
+            }
 
             $size           = mksize($attachment['filesize']);
             $icon           = get_attachment_icon(get_extension($attachment['filename']));
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
             $sizedownloads  = '(' . $size . ', ' . $attachment['downloads'] . ' Downloads)';
-            $attachdate     = my_datee('relative', $attachment['dateline']);
+            $attachdate     = my_datee('relative', (int)$attachment['dateuploaded']);
             $altbg          = alt_trow();
+
+            if ($is_comment_attachment) {
+                $view_url     = $BASEURL . '/uploads/attachments/' . rawurlencode($attachment['attachname']);
+                $download_url = $view_url;
+            } else {
+                $view_url     = 'attachment.php?aid=' . (int)$attachment['aid'];
+                $download_url = 'attachment.php?aid=' . (int)$attachment['aid'] . '&action=download';
+            }
+
+            // Image preview thumbnail
+            $is_image = str_starts_with((string)($attachment['filetype'] ?? ''), 'image/');
+            if ($is_image) {
+                if ($is_comment_attachment) {
+                    $thumb_url = (!empty($attachment['thumbnail']) && $attachment['thumbnail'] !== 'SMALL')
+                        ? $BASEURL . '/uploads/attachments/' . rawurlencode($attachment['thumbnail'])
+                        : $view_url;
+                } else {
+                    // Post attachments: use attachment.php?thumbnail=AID
+                    $thumb_url = 'attachment.php?thumbnail=' . (int)$attachment['aid'];
+                }
+                $icon_html = '<a href="' . $view_url . '" target="_blank" class="attachment-thumb-link">
+                    <img src="' . $thumb_url . '" class="attachment-thumb" alt="' . $attachment['filename'] . '" loading="lazy"
+                         onerror="this.closest(\'.attachment-icon\').innerHTML=\'' . addslashes($icon) . '\'">
+                </a>';
+            } else {
+                $icon_html = $icon;
+            }
             
 			
 			$attachments .= '<div class="attachment-item border rounded-3 mb-3 p-3 bg-white hover-shadow transition-all">
@@ -5169,14 +5238,15 @@ if ($mybb->input['action'] === 'attachments') {
                 </div>
                 
                 <!-- Информация о файле -->
-                <div class="d-flex align-items-center gap-2 flex-grow-1">
+                <div class="d-flex align-items-center gap-2 flex-grow-1" style="min-width:0;">
                     <div class="attachment-icon">
-                        '.$icon.'
+                        '.$icon_html.'
                     </div>
-                    <div class="attachment-details">
-                        <a href="attachment.php?aid='.$attachment['aid'].'" 
+                    <div class="attachment-details" style="min-width:0;overflow:hidden;">
+                        <a href="'.$view_url.'" 
                            target="_blank" 
-                           class="fw-semibold text-decoration-none text-dark hover-primary">
+                           class="fw-semibold text-decoration-none text-dark hover-primary d-block text-truncate"
+                           title="'.$attachment['filename'].'">
                             '.$attachment['filename'].'
                         </a>
                         <div class="text-muted small mt-1">
@@ -5187,17 +5257,10 @@ if ($mybb->input['action'] === 'attachments') {
             </div>
         </div>
 
-        <!-- Информация о посте -->
+        <!-- Информация о посте / комментарии -->
         <div class="col-lg-4 col-md-6">
             <div class="d-flex align-items-center gap-2">
-                <span class="badge bg-light text-dark border">
-                    <i class="fas fa-comment me-1"></i>
-                    '.$lang->usercp['attachments_post'].'
-                </span>
-                <a href="'.$attachment['postlink'].'#pid'.$attachment['pid'].'" 
-                   class="text-truncate text-decoration-none text-secondary hover-primary">
-                    '.$attachment['subject'].'
-                </a>
+                '.$location_badge.'
             </div>
         </div>
 
@@ -5213,7 +5276,7 @@ if ($mybb->input['action'] === 'attachments') {
                 <!-- Дополнительные кнопки действий -->
                 <div class="d-flex gap-2">
                     <!-- Кнопка предпросмотра -->
-                    <a href="attachment.php?aid='.$attachment['aid'].'" 
+                    <a href="'.$view_url.'" 
                        target="_blank" 
                        class="btn btn-sm btn-outline-primary" 
                        title="Предпросмотр">
@@ -5221,7 +5284,7 @@ if ($mybb->input['action'] === 'attachments') {
                     </a>
                     
                     <!-- Кнопка скачивания -->
-                    <a href="attachment.php?aid='.$attachment['aid'].'&action=download" 
+                    <a href="'.$download_url.'" 
                        class="btn btn-sm btn-outline-success" 
                        title="Скачать">
                         <i class="fas fa-download"></i>
@@ -5297,14 +5360,34 @@ if ($mybb->input['action'] === 'attachments') {
     }
     
     .attachment-icon {
-        width: 40px;
-        height: 40px;
+        width: 48px;
+        height: 48px;
         display: flex;
         align-items: center;
         justify-content: center;
         background: #f8f9fa;
         border-radius: 8px;
         border: 1px solid #dee2e6;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .attachment-thumb-link {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    .attachment-thumb {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        transition: transform .2s ease;
+    }
+
+    .attachment-thumb-link:hover .attachment-thumb {
+        transform: scale(1.08);
     }
     
     .additional-info {
@@ -5370,9 +5453,8 @@ if ($mybb->input['action'] === 'attachments') {
 
     $bandwidth     = mksize($bandwidth);
     
-	
-	$delete_button = '<input type="hidden" name="action" value="do_attachments" />
-<button type="submit" class="btn btn-primary btn-sm" value="'.$lang->usercp['delete_attachments'].'"><i class="fa-solid fa-trash"></i> &nbsp;'.$lang->usercp['delete_attachments'].'</button>';
+	$attachments_present = !empty($attachments);
+	$delete_button = '<input type="hidden" name="action" value="do_attachments" />';
 
     if (!$attachments) {
         
@@ -5399,97 +5481,169 @@ if ($mybb->input['action'] === 'attachments') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>'.$SITENAME.' - '.$lang->usercp['attachments_manager'].'</title>
-	
-	  <style>
-        /* Стили для переключателей */
+
+    <style>
+        .att-page-header {
+            background: linear-gradient(135deg, #0d6efd 0%, #0a4fc4 100%);
+            border-radius: 16px;
+            padding: 1.75rem 2rem;
+            color: #fff;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 24px rgba(13,110,253,.25);
+        }
+        .att-page-header h2 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .att-page-header h2 i {
+            margin-right: .5rem;
+            opacity: .9;
+        }
+        .att-page-header p {
+            margin: .35rem 0 0;
+            opacity: .85;
+            font-size: .9rem;
+        }
+
+        .att-stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+            margin-bottom: 1.5rem;
+        }
+        .att-stat-card {
+            background: #fff;
+            border: 1px solid #eef0f2;
+            border-radius: 14px;
+            padding: 1.1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .att-stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 24px rgba(0,0,0,.07);
+        }
+        .att-stat-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            flex-shrink: 0;
+        }
+        .att-stat-icon.is-primary { background: rgba(13,110,253,.1); color: #0d6efd; }
+        .att-stat-icon.is-success { background: rgba(25,135,84,.1);  color: #198754; }
+        .att-stat-icon.is-info    { background: rgba(13,202,240,.12); color: #0aa2c0; }
+        .att-stat-icon.is-warning { background: rgba(255,193,7,.12);  color: #cc9a06; }
+        .att-stat-icon.is-danger  { background: rgba(220,53,69,.1);   color: #dc3545; }
+        .att-stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1.1;
+            color: #212529;
+        }
+        .att-stat-label {
+            font-size: .78rem;
+            color: #8a8f98;
+            margin-top: 2px;
+        }
+
+        .att-card {
+            background: #fff;
+            border: 1px solid #eef0f2;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .att-card-header {
+            padding: 1.1rem 1.5rem;
+            border-bottom: 1px solid #f1f2f4;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .att-card-header h5 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: #212529;
+        }
+        .att-card-header h5 i {
+            color: #0d6efd;
+            margin-right: .5rem;
+        }
+        .att-card-body { padding: 1.25rem 1.5rem; }
+
+        .att-usage-note {
+            background: #f0f6ff;
+            border: 1px solid #d6e7ff;
+            border-radius: 10px;
+            padding: .75rem 1.1rem;
+            font-size: .88rem;
+            color: #0a4fc4;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+        }
+
+        /* Toggle switch */
         .form-switch-custom {
             position: relative;
             display: inline-block;
-            width: 60px;
-            height: 34px;
+            width: 50px;
+            height: 28px;
         }
-        
-        .form-switch-custom input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        
+        .form-switch-custom input { opacity: 0; width: 0; height: 0; }
         .switch-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 34px;
+            position: absolute; cursor: pointer; inset: 0;
+            background-color: #dadfe4;
+            transition: .25s;
+            border-radius: 28px;
         }
-        
         .switch-slider:before {
-            position: absolute;
-            content: "";
-            height: 26px;
-            width: 26px;
-            left: 4px;
-            bottom: 4px;
-            background-color: white;
-            transition: .4s;
+            position: absolute; content: "";
+            height: 21px; width: 21px; left: 3.5px; bottom: 3.5px;
+            background-color: #fff;
+            transition: .25s;
             border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,.2);
         }
-        
-        .form-switch-custom input:checked + .switch-slider {
-            background-color: #0d6efd;
+        .form-switch-custom input:checked + .switch-slider { background-color: #0d6efd; }
+        .form-switch-custom input:checked + .switch-slider:before { transform: translateX(22px); }
+
+        .att-footer {
+            padding: 1.1rem 1.5rem;
+            border-top: 1px solid #f1f2f4;
+            text-align: center;
+            background: #fafbfc;
         }
-        
-        .form-switch-custom input:checked + .switch-slider:before {
-            transform: translateX(26px);
+        .att-delete-btn {
+            border: none;
+            border-radius: 10px;
+            padding: .65rem 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #dc3545 0%, #b02a37 100%);
+            color: #fff;
+            transition: transform .15s ease, box-shadow .15s ease;
         }
-        
-        /* Стили для карточек с вложениями */
-        .attachment-item {
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 10px;
-            background-color: #f8f9fa;
+        .att-delete-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(220,53,69,.35);
         }
-        
-        .attachment-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .attachment-thumb {
-            width: 80px;
-            height: 80px;
-            object-fit: cover;
-            border-radius: 6px;
-        }
-        
-        .attachment-details {
-            flex: 1;
-        }
-        
-        /* Адаптивность */
+
         @media (max-width: 768px) {
-            .attachment-info {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 10px;
-            }
-            
-            .attachment-thumb {
-                width: 100%;
-                height: auto;
-                max-height: 200px;
-            }
+            .att-page-header { padding: 1.25rem 1.5rem; }
+            .att-card-body, .att-card-header { padding: 1rem; }
         }
     </style>
-    
-    
+
 </head>
 <body>
     <div class="container-md py-4">
@@ -5498,116 +5652,92 @@ if ($mybb->input['action'] === 'attachments') {
             <div class="col-lg-3 mb-4 mb-lg-0">
                 '.$usercpnav.'
             </div>
-            
+
             <!-- Основной контент -->
             <div class="col-lg-9">
+
+                <div class="att-page-header">
+                    <h2><i class="fas fa-paperclip"></i>'.$lang->usercp['attachments_manager'].'</h2>
+                    <p>'.$totalattachments.' attachments &bull; '.$friendlyusage.' used</p>
+                </div>
+
+                <div class="att-stats-row">
+                    <div class="att-stat-card">
+                        <div class="att-stat-icon is-primary"><i class="fas fa-file"></i></div>
+                        <div>
+                            <div class="att-stat-value">'.$totalattachments.'</div>
+                            <div class="att-stat-label">'.$lang->usercp['attachstats_attachs'].'</div>
+                        </div>
+                    </div>
+                    <div class="att-stat-card">
+                        <div class="att-stat-icon is-success"><i class="fas fa-hdd"></i></div>
+                        <div>
+                            <div class="att-stat-value">'.$friendlyusage.'</div>
+                            <div class="att-stat-label">'.$lang->usercp['attachstats_spaceused'].'</div>
+                        </div>
+                    </div>
+                    <div class="att-stat-card">
+                        <div class="att-stat-icon is-info"><i class="fas fa-tachometer-alt"></i></div>
+                        <div>
+                            <div class="att-stat-value">'.$attachquota.'</div>
+                            <div class="att-stat-label">'.$lang->usercp['attachstats_quota'].'</div>
+                        </div>
+                    </div>
+                    <div class="att-stat-card">
+                        <div class="att-stat-icon is-warning"><i class="fas fa-download"></i></div>
+                        <div>
+                            <div class="att-stat-value">'.$totaldownloads.'</div>
+                            <div class="att-stat-label">'.$lang->usercp['attachstats_totaldl'].'</div>
+                        </div>
+                    </div>
+                    <div class="att-stat-card">
+                        <div class="att-stat-icon is-danger"><i class="fas fa-network-wired"></i></div>
+                        <div>
+                            <div class="att-stat-value">'.$bandwidth.'</div>
+                            <div class="att-stat-label">'.$lang->usercp['attachstats_bandwidth'].'</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Форма управления вложениями -->
                 <form action="usercp.php" method="post" name="attachmentsmanager">
                     <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-                    
-                    <!-- Карточка с вложениями -->
-                    <div class="card mb-4 shadow-sm">
-                        <div class="card-header bg-white border-bottom py-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <h5 class="card-title mb-0 fw-bold text-primary">
-                                    <i class="fas fa-paperclip me-2"></i>
-                                    '.$lang->usercp['attachments_manager'].'
-                                </h5>
-                                <div class="d-flex align-items-center">
-                                    <span class="me-2 text-muted small">Select All</span>
-                                    <label class="form-switch-custom">
-                                        <input type="checkbox" name="allbox" class="checkall">
-                                        <span class="switch-slider"></span>
-                                    </label>
-                                </div>
+
+                    <div class="att-card">
+                        <div class="att-card-header">
+                            <h5><i class="fas fa-list"></i>'.$lang->usercp['attachments_manager'].'</h5>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="text-muted small">Select All</span>
+                                <label class="form-switch-custom">
+                                    <input type="checkbox" name="allbox" class="checkall">
+                                    <span class="switch-slider"></span>
+                                </label>
                             </div>
                         </div>
-                        
-                        <div class="card-body">
-                            <!-- Уведомление об использовании -->
-                            <div class="alert alert-info mb-4">
-                                <i class="fas fa-info-circle me-2"></i>
-                                '.$usagenote.'
-                            </div>
-                            
-                            <!-- Список вложений -->
+
+                        <div class="att-card-body">
+                            '.($usagenote ? '<div class="att-usage-note"><i class="fas fa-info-circle"></i>'.$usagenote.'</div>' : '').'
+
                             <div class="attachments-container">
                                 '.$attachments.'
                             </div>
                         </div>
-                        
-                        <div class="card-footer text-center bg-light py-3">
-                            <button type="submit" class="btn btn-danger px-4 py-2" name="delete" onclick="return confirm('.$lang->usercp['confirm_deletion'].')">
-                                <i class="fas fa-trash-alt me-2"></i>
-                                '.$delete_button.'
+
+                        '.$delete_button.'
+                        '.(!empty($attachments_present) ? '<div class="att-footer">
+                            <button type="submit" class="att-delete-btn" name="delete" onclick="return confirm('.$lang->usercp['confirm_deletion'].')">
+                                <i class="fas fa-trash-alt me-2"></i>'.$lang->usercp['delete_attachments'].'
                             </button>
-                        </div>
+                        </div>' : '').'
                     </div>
                 </form>
-                
-                <!-- Пагинация -->
-                <div class="mb-4 d-flex justify-content-center">
-                    '.$multipage.'
-                </div>
-                
-                <!-- Статистика -->
-                <div class="card shadow-sm">
-                    <div class="card-header bg-white border-bottom py-3">
-                        <h5 class="card-title mb-0 fw-bold text-primary">
-                            <i class="fas fa-chart-bar me-2"></i>
-                            '.$lang->usercp['attachments_stats'].'
-                        </h5>
-                    </div>
-                    
-                    <div class="card-body">
-                        <div class="list-group list-group-flush">
-                            <div class="list-group-item border-0 px-0 py-3 d-flex justify-content-between">
-                                <div>
-                                    <i class="fas fa-file me-2 text-muted"></i>
-                                    <span class="text-muted">'.$lang->usercp['attachstats_attachs'].'</span>
-                                </div>
-                                <span class="fw-bold text-primary">'.$totalattachments.'</span>
-                            </div>
-                            
-                            <div class="list-group-item border-0 px-0 py-3 d-flex justify-content-between">
-                                <div>
-                                    <i class="fas fa-hdd me-2 text-muted"></i>
-                                    <span class="text-muted">'.$lang->usercp['attachstats_spaceused'].'</span>
-                                </div>
-                                <span class="fw-bold text-success">'.$friendlyusage.'</span>
-                            </div>
-                            
-                            <div class="list-group-item border-0 px-0 py-3 d-flex justify-content-between">
-                                <div>
-                                    <i class="fas fa-tachometer-alt me-2 text-muted"></i>
-                                    <span class="text-muted">'.$lang->usercp['attachstats_quota'].'</span>
-                                </div>
-                                <span class="fw-bold text-info">'.$attachquota.'</span>
-                            </div>
-                            
-                            <div class="list-group-item border-0 px-0 py-3 d-flex justify-content-between">
-                                <div>
-                                    <i class="fas fa-download me-2 text-muted"></i>
-                                    <span class="text-muted">'.$lang->usercp['attachstats_totaldl'].'</span>
-                                </div>
-                                <span class="fw-bold text-warning">'.$totaldownloads.'</span>
-                            </div>
-                            
-                            <div class="list-group-item border-0 px-0 py-3 d-flex justify-content-between">
-                                <div>
-                                    <i class="fas fa-network-wired me-2 text-muted"></i>
-                                    <span class="text-muted">'.$lang->usercp['attachstats_bandwidth'].'</span>
-                                </div>
-                                <span class="fw-bold text-danger">'.$bandwidth.'</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
+                '.($multipage ? '<div class="mt-4 d-flex justify-content-center">'.$multipage.'</div>' : '').'
+
             </div>
         </div>
     </div>
 <script type="text/javascript" src="' . $BASEURL . '/scripts/attachments.js"></script>
-    
 </body>
 </html>';
 	
@@ -5776,5 +5906,530 @@ if (!$mybb->input['action']) {
 	
 	echo $_tpl_out;
 }
+
+
+
+
+
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// ACTION: do_2fa — enable / disable / confirm 2FA
+// ══════════════════════════════════════════════════════════════════════════
+if ($mybb->input['action'] === 'do_2fa' && $mybb->request_method === 'post') {
+    verify_post_check($mybb->get_input('my_post_key'));
+    require_once INC_PATH . '/functions_2fa.php';
+    require_once INC_PATH . '/function_loginattemptcheck.php';
+
+    $uid  = (int)$CURUSER['id'];
+    $mode = $mybb->get_input('mode'); // 'enable' | 'disable' | 'confirm'
+
+    // ── Notify the account owner of a 2FA status change ─────────────────────
+    $notify_2fa_change = function (int $uid, bool $enabled) use ($db, $SITENAME): void {
+        $user = $db->fetch_array(
+            $db->simple_select('users', 'username, email', "id='{$uid}'", ['limit' => 1])
+        );
+
+        if (empty($user['email'])) {
+            return;
+        }
+
+        $ip   = get_ip();
+        $geo  = geo_by_ip($ip);
+        $time = date('Y-m-d H:i:s');
+
+        $action  = $enabled ? 'enabled' : 'disabled';
+        $subject = '[' . $SITENAME . '] Two-factor authentication ' . $action;
+
+        $message = "Two-factor authentication on your account has just been {$action}.\n\n"
+                 . "IP       : {$ip}\n"
+                 . "Location : " . $geo['country'] . ' / ' . $geo['city'] . "\n"
+                 . "Time     : {$time}\n\n"
+                 . ($enabled
+                    ? "Your account now requires a 6-digit code from your authenticator app at login."
+                    : "Your account no longer requires a 2FA code at login. ")
+                 . "\n\nIf you didn't make this change, your account may be compromised. "
+                 . "Please change your password immediately and review your active session.";
+
+        my_mail($user['email'], $subject, $message);
+    };
+
+    if ($mode === 'disable') {
+        totp_disable($uid);
+        $notify_2fa_change($uid, false);
+        redirect('usercp.php?action=2fa', 'Two-factor authentication has been disabled.');
+
+    } elseif ($mode === 'confirm') {
+        $secret = $mybb->get_input('secret');
+        $code   = preg_replace('/\D/', '', $mybb->get_input('totp_code'));
+
+        if (empty($secret)) {
+            redirect('usercp.php?action=2fa', 'Invalid secret. Please try again.');
+        }
+
+        if (!totp_verify($secret, $code)) {
+            $mybb->input['action']    = '2fa';
+            $mybb->input['2fa_error'] = 'Invalid code. Please scan the QR code again and try once more.';
+            $mybb->input['2fa_secret'] = $secret;
+        } else {
+            totp_enable($uid, $secret);
+            $notify_2fa_change($uid, true);
+            redirect('usercp.php?action=2fa', 'Two-factor authentication has been enabled successfully!');
+        }
+
+    } elseif ($mode === 'enable') {
+        $mybb->input['action'] = '2fa';
+        $mybb->input['2fa_new'] = '1';
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ACTION: 2fa — show 2FA settings page
+// ══════════════════════════════════════════════════════════════════════════
+if ($mybb->input['action'] === '2fa') {
+    require_once INC_PATH . '/functions_2fa.php';
+
+    $uid      = (int)$CURUSER['id'];
+    $BASE     = htmlspecialchars($BASEURL, ENT_QUOTES, 'UTF-8');
+    $postCode = htmlspecialchars($mybb->post_code, ENT_QUOTES, 'UTF-8');
+    $enabled  = totp_is_enabled($uid);
+
+    // Generate new secret if entering setup flow
+    if (!empty($mybb->input['2fa_new']) || !empty($mybb->input['2fa_secret'])) {
+        $secret   = !empty($mybb->input['2fa_secret'])
+            ? htmlspecialchars($mybb->input['2fa_secret'], ENT_QUOTES, 'UTF-8')
+            : totp_generate_secret();
+        $qr_url   = totp_qr_url($secret, htmlspecialchars($CURUSER['username'], ENT_QUOTES), $SITENAME);
+        $error    = htmlspecialchars($mybb->input['2fa_error'] ?? '', ENT_QUOTES, 'UTF-8');
+        $setup_mode = true;
+    } else {
+        $setup_mode = false;
+        $secret = $qr_url = $error = '';
+    }
+
+    stdhead('Two-Factor Authentication');
+    build_breadcrumb();
+
+    echo '<link rel="stylesheet" href="' . $BASE . '/include/templates/default/style/usercp_profile.css">';
+
+    echo '
+<div class="container-md py-4">
+<div class="row g-4">
+
+    <div class="col-lg-3">
+        ' . $usercpnav . '
+    </div>
+
+    <div class="col-lg-9">';
+
+    // ── Enabled state ─────────────────────────────────────────────────────
+    if ($enabled && !$setup_mode) {
+        echo '
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-lg-3 d-none d-lg-flex">
+                        <div class="text-center p-3 border-end w-100">
+                            <i class="fas fa-shield-halved fa-3x mb-3 text-success"></i>
+                            <div class="fw-bold mt-2">Two-Factor Auth</div>
+                            <small class="text-muted">Account protected</small>
+                        </div>
+                    </div>
+                    <div class="col-lg-9">
+                        <div class="alert alert-success d-flex align-items-center gap-3 mb-4">
+                            <i class="fas fa-check-circle fa-2x"></i>
+                            <div>
+                                <strong>2FA is enabled!</strong><br>
+                                <small>Your account is protected with two-factor authentication.</small>
+                            </div>
+                        </div>
+                        <p class="text-muted">
+                            When you log in, you will be asked for a 6-digit code from your authenticator app
+                            (Google Authenticator, Authy, or similar).
+                        </p>
+                        <hr>
+                        <form method="post" action="usercp.php">
+                            <input type="hidden" name="action" value="do_2fa" />
+                            <input type="hidden" name="mode" value="disable" />
+                            <input type="hidden" name="my_post_key" value="' . $postCode . '" />
+                            <button type="submit" class="btn btn-danger"
+                                onclick="return confirm(\'Disable two-factor authentication? Your account will be less secure.\')">
+                                <i class="fas fa-shield-xmark me-2"></i>Disable 2FA
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>';
+
+    // ── Setup / confirm flow ──────────────────────────────────────────────
+    } elseif ($setup_mode) {
+        echo '
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-lg-3 d-none d-lg-flex">
+                        <div class="text-center p-3 border-end w-100">
+                            <i class="fas fa-qrcode fa-3x mb-3 text-primary"></i>
+                            <div class="fw-bold mt-2">Setup 2FA</div>
+                            <small class="text-muted">Scan & confirm</small>
+                        </div>
+                    </div>
+                    <div class="col-lg-9">
+                        ' . (!empty($error) ? '<div class="alert alert-danger"><i class="fas fa-triangle-exclamation me-2"></i>' . $error . '</div>' : '') . '
+
+                        <div class="info-hint mb-4">
+                            <i class="fas fa-info-circle me-2 text-info"></i>
+                            <strong>Step 1:</strong> Install an authenticator app —
+                            <a href="https://googleauthenticator.net/" target="_blank">Google Authenticator</a>,
+                            <a href="https://authy.com/" target="_blank">Authy</a>, or similar.<br>
+                            <strong>Step 2:</strong> Scan the QR code below.<br>
+                            <strong>Step 3:</strong> Enter the 6-digit code to confirm.
+                        </div>
+
+                        <div class="text-center mb-4">
+                            <img src="' . $qr_url . '" alt="2FA QR Code"
+                                 class="border rounded p-2" width="200" height="200">
+                            <div class="mt-2">
+                                <small class="text-muted">Manual entry key:</small><br>
+                                <code class="user-select-all fs-6 fw-bold">' . $secret . '</code>
+                            </div>
+                        </div>
+
+                        <form method="post" action="usercp.php">
+                            <input type="hidden" name="action" value="do_2fa" />
+                            <input type="hidden" name="mode" value="confirm" />
+                            <input type="hidden" name="secret" value="' . $secret . '" />
+                            <input type="hidden" name="my_post_key" value="' . $postCode . '" />
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-mobile-screen me-1"></i>
+                                    Enter the 6-digit code from your app
+                                </label>
+                                <input type="text" name="totp_code"
+                                       class="form-control form-control-lg text-center fw-bold"
+                                       placeholder="000000" maxlength="6"
+                                       autocomplete="one-time-code" autofocus
+                                       inputmode="numeric" pattern="[0-9]{6}">
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-check me-2"></i>Confirm & Enable 2FA
+                                </button>
+                                <a href="usercp.php?action=2fa" class="btn btn-outline-secondary">
+                                    Cancel
+                                </a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>';
+
+    // ── Disabled state ────────────────────────────────────────────────────
+    } else {
+        echo '
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-lg-3 d-none d-lg-flex">
+                        <div class="text-center p-3 border-end w-100">
+                            <i class="fas fa-shield-halved fa-3x mb-3 text-muted"></i>
+                            <div class="fw-bold mt-2">Two-Factor Auth</div>
+                            <small class="text-muted">Not enabled</small>
+                        </div>
+                    </div>
+                    <div class="col-lg-9">
+                        <div class="alert alert-warning d-flex align-items-center gap-3 mb-4">
+                            <i class="fas fa-triangle-exclamation fa-2x"></i>
+                            <div>
+                                <strong>2FA is not enabled.</strong><br>
+                                <small>Add an extra layer of security to your account.</small>
+                            </div>
+                        </div>
+                        <p class="text-muted">
+                            Two-factor authentication adds a second verification step when you log in.
+                            Even if someone gets your password, they cannot access your account
+                            without the code from your phone.
+                        </p>
+                        <hr>
+                        <form method="post" action="usercp.php">
+                            <input type="hidden" name="action" value="do_2fa" />
+                            <input type="hidden" name="mode" value="enable" />
+                            <input type="hidden" name="my_post_key" value="' . $postCode . '" />
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-shield-halved me-2"></i>Enable Two-Factor Authentication
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>';
+    }
+
+    echo '
+    </div><!-- col-lg-9 -->
+</div><!-- row -->
+</div><!-- container -->';
+
+    stdfoot();
+    exit;
+}
+
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// ACTION: do_sessions — log out everywhere (reset current session)
+// ══════════════════════════════════════════════════════════════════════════
+if ($mybb->input['action'] === 'do_sessions' && $mybb->request_method === 'post') {
+    verify_post_check($mybb->get_input('my_post_key'));
+
+    $uid  = (int)$CURUSER['id'];
+    $mode = $mybb->get_input('mode');
+
+    // ── Remove a specific known device ────────────────────────────────────
+    if ($mode === 'remove_device') {
+        $device_id = (int)$mybb->get_input('device_id');
+        if ($device_id > 0) {
+            $db->delete_query('user_devices', "id='{$device_id}' AND uid='{$uid}'");
+        }
+        redirect('usercp.php?action=sessions', 'Device removed from your known devices list.');
+    }
+
+    // ── Log out everywhere ────────────────────────────────────────────────
+    $db->delete_query('sessions', "uid='{$uid}'");
+    update_loginkey($uid);
+
+    my_unsetcookie('mybbuser');
+    my_unsetcookie('sid');
+
+    redirect('member.php?action=login', 'You have been logged out of all sessions. Please log in again.');
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// ACTION: sessions — show active session info
+// ══════════════════════════════════════════════════════════════════════════
+if ($mybb->input['action'] === 'sessions') {
+
+    $uid      = (int)$CURUSER['id'];
+    $postCode = htmlspecialchars($mybb->post_code, ENT_QUOTES, 'UTF-8');
+
+    $session_row = $db->fetch_array(
+        $db->simple_select('sessions', '*', "uid='{$uid}'", ['limit' => 1])
+    );
+
+    // ── Parse user agent into a friendly browser / OS label ────────────────
+    $ua = $session_row['useragent'] ?? '';
+
+    $browser = 'Unknown browser';
+    if (preg_match('/Edg\/([\d.]+)/i', $ua, $m))        { $browser = 'Microsoft Edge ' . $m[1]; }
+    elseif (preg_match('/OPR\/([\d.]+)/i', $ua, $m))    { $browser = 'Opera ' . $m[1]; }
+    elseif (preg_match('/Firefox\/([\d.]+)/i', $ua, $m)){ $browser = 'Firefox ' . $m[1]; }
+    elseif (preg_match('/Chrome\/([\d.]+)/i', $ua, $m)) { $browser = 'Chrome ' . $m[1]; }
+    elseif (preg_match('/Version\/([\d.]+).*Safari/i', $ua, $m)) { $browser = 'Safari ' . $m[1]; }
+    elseif (preg_match('/Safari\/([\d.]+)/i', $ua, $m)) { $browser = 'Safari ' . $m[1]; }
+
+    $os = 'Unknown OS';
+    if (str_contains($ua, 'Windows NT 10.0'))      { $os = 'Windows 10/11'; }
+    elseif (str_contains($ua, 'Windows NT 6.3'))   { $os = 'Windows 8.1'; }
+    elseif (str_contains($ua, 'Windows NT 6.1'))   { $os = 'Windows 7'; }
+    elseif (str_contains($ua, 'Windows'))          { $os = 'Windows'; }
+    elseif (str_contains($ua, 'Android'))          { $os = 'Android'; }
+    elseif (preg_match('/iPhone|iPad|iPod/', $ua)) { $os = 'iOS'; }
+    elseif (str_contains($ua, 'Mac OS X'))         { $os = 'macOS'; }
+    elseif (str_contains($ua, 'Linux'))            { $os = 'Linux'; }
+
+    $device_icon = match (true) {
+        $os === 'Android' || $os === 'iOS' => 'fa-mobile-screen',
+        default => 'fa-desktop',
+    };
+
+    // ── IP + geolocation ────────────────────────────────────────────────────
+    require_once INC_PATH . '/function_loginattemptcheck.php';
+
+    $ip = '';
+    if (!empty($session_row['ip'])) {
+        // ip column is varbinary — convert back to readable string
+        $ip = inet_ntop($session_row['ip']) ?: '';
+    }
+
+    $geo      = $ip ? geo_by_ip($ip) : ['country' => '', 'city' => ''];
+    $location = trim(($geo['city'] ?? '') . (($geo['city'] && $geo['country']) ? ', ' : '') . ($geo['country'] ?? ''));
+    if ($location === '') {
+        $location = 'Unknown location';
+    }
+
+    $last_active = !empty($session_row['time'])
+        ? my_datee('relative', (int)$session_row['time'])
+        : 'Unknown';
+
+    // Current cookie sid vs stored sid — should always match for the active session
+    $current_sid = $mybb->cookies['sid'] ?? '';
+    $is_current   = !empty($session_row['sid']) && $session_row['sid'] === $current_sid;
+
+    stdhead('Active Session');
+    build_breadcrumb();
+
+    echo '
+<div class="container-md py-4">
+<div class="row g-4">
+
+    <div class="col-lg-3">
+        ' . $usercpnav . '
+    </div>
+
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-lg-3 d-none d-lg-flex">
+                        <div class="text-center p-3 border-end w-100">
+                            <i class="fas fa-shield-halved fa-3x mb-3 text-primary"></i>
+                            <div class="fw-bold mt-2">Session Security</div>
+                            <small class="text-muted">Your current login</small>
+                        </div>
+                    </div>
+                    <div class="col-lg-9">
+
+                        <div class="alert alert-info d-flex align-items-center gap-3 mb-4">
+                            <i class="fas fa-circle-info fa-2x"></i>
+                            <div>
+                                <strong>One active session per account.</strong><br>
+                                <small>Logging in on a new device automatically replaces this session.
+                                If you don\'t recognize the details below, log out everywhere and change your password immediately.</small>
+                            </div>
+                        </div>
+
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex align-items-start gap-3">
+                                    <div class="text-primary" style="font-size:2.25rem;">
+                                        <i class="fas ' . $device_icon . '"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-bold fs-5">
+                                            ' . htmlspecialchars($browser) . ' on ' . htmlspecialchars($os) . '
+                                            ' . ($is_current ? '<span class="badge bg-success ms-2"><i class="fas fa-check-circle me-1"></i>This device</span>' : '') . '
+                                        </div>
+                                        <div class="text-muted small mt-1">
+                                            <i class="fas fa-location-dot me-1"></i>' . htmlspecialchars($location) . '
+                                            &nbsp;&bull;&nbsp;
+                                            <i class="fas fa-network-wired me-1"></i>' . htmlspecialchars($ip ?: 'Unknown IP') . '
+                                        </div>
+                                        <div class="text-muted small mt-1">
+                                            <i class="fas fa-clock me-1"></i>Last active: ' . $last_active . '
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Known Devices -->
+                        <h6 class="fw-bold mb-3"><i class="fas fa-list me-2 text-secondary"></i>Known Devices</h6>';
+
+    // Load known devices
+    $devices_query = $db->simple_select('user_devices', '*', "uid='{$uid}'", [
+        'order_by'  => 'last_seen',
+        'order_dir' => 'DESC',
+    ]);
+
+    $devices_html = '';
+    while ($dev = $db->fetch_array($devices_query)) {
+        $dev_ua = $dev['user_agent'];
+
+        $dev_browser = 'Unknown browser';
+        if (preg_match('/Edg\/([\d.]+)/i', $dev_ua, $m))        { $dev_browser = 'Microsoft Edge ' . $m[1]; }
+        elseif (preg_match('/OPR\/([\d.]+)/i', $dev_ua, $m))    { $dev_browser = 'Opera ' . $m[1]; }
+        elseif (preg_match('/Firefox\/([\d.]+)/i', $dev_ua, $m)){ $dev_browser = 'Firefox ' . $m[1]; }
+        elseif (preg_match('/Chrome\/([\d.]+)/i', $dev_ua, $m)) { $dev_browser = 'Chrome ' . $m[1]; }
+        elseif (preg_match('/Version\/([\d.]+).*Safari/i', $dev_ua, $m)) { $dev_browser = 'Safari ' . $m[1]; }
+        elseif (preg_match('/Safari\/([\d.]+)/i', $dev_ua, $m)) { $dev_browser = 'Safari ' . $m[1]; }
+
+        $dev_os = 'Unknown OS';
+        if (str_contains($dev_ua, 'Windows NT 10.0'))      { $dev_os = 'Windows 10/11'; }
+        elseif (str_contains($dev_ua, 'Windows NT 6.3'))   { $dev_os = 'Windows 8.1'; }
+        elseif (str_contains($dev_ua, 'Windows NT 6.1'))   { $dev_os = 'Windows 7'; }
+        elseif (str_contains($dev_ua, 'Windows'))          { $dev_os = 'Windows'; }
+        elseif (str_contains($dev_ua, 'Android'))          { $dev_os = 'Android'; }
+        elseif (preg_match('/iPhone|iPad|iPod/', $dev_ua)) { $dev_os = 'iOS'; }
+        elseif (str_contains($dev_ua, 'Mac OS X'))         { $dev_os = 'macOS'; }
+        elseif (str_contains($dev_ua, 'Linux'))            { $dev_os = 'Linux'; }
+
+        $dev_icon = match(true) {
+            $dev_os === 'Android' || $dev_os === 'iOS' => 'fa-mobile-screen',
+            default => 'fa-desktop',
+        };
+
+        $first_seen = my_datee('relative', (int)$dev['first_seen']);
+        $last_seen  = my_datee('relative', (int)$dev['last_seen']);
+
+        $devices_html .= '
+        <div class="d-flex align-items-center gap-3 py-2 border-bottom">
+            <div class="text-secondary" style="font-size:1.4rem;width:28px;text-align:center;">
+                <i class="fas ' . $dev_icon . '"></i>
+            </div>
+            <div class="flex-grow-1">
+                <div class="fw-semibold small">' . htmlspecialchars($dev_browser) . ' on ' . htmlspecialchars($dev_os) . '</div>
+                <div class="text-muted" style="font-size:.78rem;">
+                    First seen: ' . $first_seen . '
+                    &nbsp;&bull;&nbsp;
+                    Last used: ' . $last_seen . '
+                </div>
+            </div>
+            <form method="post" action="usercp.php" class="mb-0">
+                <input type="hidden" name="action" value="do_sessions" />
+                <input type="hidden" name="mode" value="remove_device" />
+                <input type="hidden" name="device_id" value="' . (int)$dev['id'] . '" />
+                <input type="hidden" name="my_post_key" value="' . $postCode . '" />
+                <button type="submit" class="btn btn-sm btn-outline-danger"
+                    onclick="return confirm(\'Remove this device from your known devices list?\')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </form>
+        </div>';
+    }
+
+    echo ($devices_html ?: '<p class="text-muted small">No known devices yet. They will appear here after your next login.</p>');
+
+    echo '
+                        <hr class="mt-3">
+
+                        <p class="text-muted">
+                            If you suspect someone else has access to your account, you can immediately
+                            log out of this session everywhere. This will also invalidate any
+                            "remember me" cookies, requiring a fresh login (and 2FA code, if enabled).
+                        </p>
+
+                        <form method="post" action="usercp.php">
+                            <input type="hidden" name="action" value="do_sessions" />
+                            <input type="hidden" name="my_post_key" value="' . $postCode . '" />
+                            <button type="submit" class="btn btn-danger"
+                                onclick="return confirm(\'This will log you out everywhere and require you to sign in again. Continue?\')">
+                                <i class="fas fa-right-from-bracket me-2"></i>Log Out Everywhere
+                            </button>
+                        </form>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- col-lg-9 -->
+</div><!-- row -->
+</div><!-- container -->';
+
+    stdfoot();
+    exit;
+}
+
+
+
+
+
+
+
+
 
 stdfoot();

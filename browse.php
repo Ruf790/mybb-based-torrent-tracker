@@ -42,9 +42,6 @@ require_once INC_PATH . '/functions_mkprettytime.php';
 
 
 
-
-
-
 $_freelechmod = $_silverleechmod = $_x2mod = false;
 $___notice = '';
 include TSDIR . '/cache/freeleech.php';
@@ -420,7 +417,9 @@ if ($keywords && $search_type) {
     $Links[] = 'keywords=' . htmlspecialchars_uni($keywords);
     $Links[] = 'search_type=' . htmlspecialchars_uni($search_type);
     
-    if ($fulltextsearch === 'yes') {
+    $fulltextsearch = 'no';
+	
+	if ($fulltextsearch === 'yes') {
         require INC_PATH . '/function_search_clean.php';
         $keywords = clean_keywords_ft($keywords);
     }

@@ -231,7 +231,7 @@ if ($act === 3) {
     $token_hash = hash('sha256', $token_plain);
 
     $res = $db->sql_query(
-        "SELECT t.userid, t.expires_at, u.username, u.ustatus, u.enabled
+        "SELECT t.userid, t.expires_at, u.username, u.email, u.ustatus, u.enabled
          FROM password_reset_tokens t
          JOIN users u ON u.id = t.userid
          WHERE t.token_hash = " . $db->sqlesc($token_hash) . "
@@ -307,6 +307,25 @@ if ($act === 3) {
         my_setcookie('mybbuser', $row['userid'] . '_' . $userhandler->data['loginkey'], null, true, 'lax');
 
         $db->delete_query("password_reset_tokens", "userid = '" . intval($row['userid']) . "'");
+
+        // ── Log + notify account owner ─────────────────────────────────────
+        require_once INC_PATH . '/function_loginattemptcheck.php';
+        log_login((int)$row['userid'], 'success', 'recover');
+
+        $reset_ip   = get_ip();
+        $reset_time = date('Y-m-d H:i:s');
+        $reset_geo  = geo_by_ip($reset_ip);
+
+        my_mail(
+            $row['email'],
+            '[' . $SITENAME . '] Your password was changed',
+            "Your password was just reset using the password recovery link.\n\n"
+            . "IP       : {$reset_ip}\n"
+            . "Location : " . $reset_geo['country'] . ' / ' . $reset_geo['city'] . "\n"
+            . "Time     : {$reset_time}\n\n"
+            . "If this wasn't you, please contact support immediately and change "
+            . "your password again."
+        );
 
         $_SESSION['password_generated'] = 1;
         unset($_SESSION['csrf_token_recover']);

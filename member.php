@@ -7,7 +7,7 @@ define('IN_MYBB', 1);
 define('IGNORE_CLEAN_VARS', 'sid');
 define('THIS_SCRIPT', 'member.php');
 define('SCRIPTNAME', 'member.php');
-define('ALLOWABLE_PAGE', 'register,do_register,login,do_login,logout,lostpw,do_lostpw,activate,resendactivation,do_resendactivation,resetpassword,viewnotes');
+define('ALLOWABLE_PAGE', 'verify_2fa,register,do_register,login,do_login,logout,lostpw,do_lostpw,activate,resendactivation,do_resendactivation,resetpassword,viewnotes');
 
 $nosession['avatar'] = 1;
 
@@ -1509,6 +1509,7 @@ if ($mybb->input['action'] === 'do_login' && $mybb->request_method === 'post') {
         $user['loginattempts']   = (int)($loginhandler->login_data['loginattempts'] ?? 0);
 
         login_attempt_check($login_user_uid);
+		
         $db->update_query('users', ['loginattempts' => 'loginattempts+1'], "id='{$login_user_uid}'", '1', true);
         
 		$username = $mybb->get_input('username');
@@ -1521,10 +1522,23 @@ if ($mybb->input['action'] === 'do_login' && $mybb->request_method === 'post') {
 		failedlogins('login', false, true, true, $login_user_uid);
         $errors = $loginhandler->get_friendly_errors();
     } else {
-        
-        $loginhandler->complete_login();
-        $plugins->run_hooks('member_do_login_end');
 
+        $login_uid = (int)($loginhandler->login_data['id'] ?? 0);
+
+        require_once INC_PATH . '/functions_2fa.php';
+        if (totp_is_enabled($login_uid)) {
+            // Password OK but 2FA required — store pending and redirect
+            $remember = $mybb->get_input('remember');
+            $url      = $mybb->get_input('url');
+            totp_create_pending($login_uid, $remember, $url);
+            redirect('member.php?action=verify_2fa', '');
+        }
+
+        $loginhandler->complete_login();
+		
+		log_login((int)($loginhandler->login_data['id'] ?? 0), 'success');
+       
+        $plugins->run_hooks('member_do_login_end');
         $url = $mybb->get_input('url');
         if (!empty($url) && !str_contains(basename($url), 'member.php') && !preg_match('#^javascript:#i', $url)) {
             if ((str_contains(basename($url), 'newthread.php') || str_contains(basename($url), 'newreply.php')) && str_contains($url, '&processed=1')) {
@@ -1540,16 +1554,132 @@ if ($mybb->input['action'] === 'do_login' && $mybb->request_method === 'post') {
             redirect('index.php', $lang->member['redirect_loggedin']);
         }
     }
-
     $plugins->run_hooks('member_do_login_end');
 }
+
+
+
+
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// ACTION: verify_2fa
+// ══════════════════════════════════════════════════════════════════════════
+if ($mybb->input['action'] === 'verify_2fa') {
+    
+	
+	
+	require_once INC_PATH . '/functions_2fa.php';
+
+    $pending = totp_get_pending();
+    if ($pending === null) {
+        redirect('member.php?action=login', '');
+    }
+
+    $uid   = (int)$pending['uid'];
+    $error = '';
+
+    if ($mybb->request_method === 'post') {
+        $code   = preg_replace('/\D/', '', $mybb->get_input('totp_code'));
+        $secret = totp_get_secret($uid);
+
+        if ($secret && totp_verify($secret, $code)) {
+            totp_clear_pending($pending['token']);
+
+            require_once INC_PATH . '/datahandlers/login.php';
+            $loginhandler             = new LoginDataHandler('get');
+            $loginhandler->login_data = get_user($uid);
+            $mybb->input['remember'] = $pending['remember'];
+            $loginhandler->complete_login();
+			
+			log_login($uid, 'success');
+           
+
+            $url = $pending['url'];
+            if (!empty($url) && !str_contains(basename($url), 'member.php')) {
+                redirect($url, $lang->member['redirect_loggedin']);
+            } else {
+                redirect('index.php', $lang->member['redirect_loggedin']);
+            }
+        } else {
+            log_login($uid, 'fail');
+			
+			// Warn account owner — password is correct but 2FA code is wrong
+            require_once INC_PATH . '/functions_pm.php';
+            $user_data = get_user($uid);
+            $pm = [
+              'subject' => '⚠️ Failed two-factor authentication attempt',
+              'message' => "Someone entered your correct password but failed the 2FA code check.\n\n"
+                   . "IP: " . get_ip() . "\n"
+                   . "Time: " . date('Y-m-d H:i:s') . "\n\n"
+                   . "If this wasn't you, your password may be compromised. "
+                   . "Consider changing it immediately.",
+              'touid'  => $uid,
+              'sender' => ['uid' => -1],
+            ];
+            send_pm($pm, -1, true);
+			
+			
+			$error = '<div class="alert alert-danger mt-3">
+                <i class="fa-solid fa-triangle-exclamation me-2"></i>
+                Invalid or expired code. Please try again.
+            </div>';
+        }
+    }
+
+    stdhead($SITENAME . ' - Two-Factor Authentication');
+    echo '
+    <div class="container-md mt-5" style="max-width:420px">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white text-center">
+                <h5 class="mb-0">
+                    <i class="fa-solid fa-shield-halved me-2"></i>
+                    Two-Factor Authentication
+                </h5>
+            </div>
+            <div class="card-body">
+                ' . $error . '
+                <p class="text-muted small mb-3">
+                    Enter the 6-digit code from your authenticator app.
+                </p>
+                <form method="post" action="member.php?action=verify_2fa">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Authentication Code</label>
+                        <input type="text" name="totp_code"
+                               class="form-control form-control-lg text-center fw-bold letter-spacing-3"
+                               placeholder="000 000" maxlength="6"
+                               autocomplete="one-time-code" autofocus
+                               inputmode="numeric" pattern="[0-9]{6}">
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fa-solid fa-right-to-bracket me-2"></i>Verify & Login
+                        </button>
+                    </div>
+                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+                </form>
+            </div>
+            <div class="card-footer text-center">
+                <a href="member.php?action=login" class="small text-muted">
+                    <i class="fa-solid fa-arrow-left me-1"></i>Back to login
+                </a>
+            </div>
+        </div>
+    </div>';
+    stdfoot();
+    exit;
+}
+
+
+
+
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: login
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'login') {
     $plugins->run_hooks('member_login');
-
     $member_loggedin_notice = '';
     if (isset($CURUSER) && is_array($CURUSER) && !empty($CURUSER['id'])) {
         $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
@@ -1557,23 +1687,17 @@ if ($mybb->input['action'] === 'login') {
         
 		$member_loggedin_notice = '<div class="rounded p-2 mt-3 mb-3 bg-nav">'.$already_logged_in.'</div>';
     }
-
     login_attempt_check();
-
     $redirect_url = '';
     if (isset($_SERVER['HTTP_REFERER']) && !str_contains($_SERVER['HTTP_REFERER'], 'action=login')) {
         $redirect_url = htmlentities($_SERVER['HTTP_REFERER']);
     }
-
     $username = $password = '';
     if (isset($mybb->input['username']) && $mybb->request_method === 'post') { $username = htmlspecialchars_uni($mybb->get_input('username')); }
     if (isset($mybb->input['password']) && $mybb->request_method === 'post') { $password = htmlspecialchars_uni($mybb->get_input('password')); }
-
     if (!empty($errors)) { $inline_errors = inline_error($errors); }
-
     if ($username_method == 1)      { $lang->member['username'] = $lang->member['username1']; }
     elseif ($username_method == 2)  { $lang->member['username'] = $lang->member['username2']; }
-
     $plugins->run_hooks('member_login_end');
    
     $login = '
@@ -1581,12 +1705,9 @@ if ($mybb->input['action'] === 'login') {
 	<html>
 <head>
 <title>'.$SITENAME.' - '.$lang->member['login'].'</title>
-
 </head>
 <body>
-
 <div class="container-md">
-
 <form action="member.php" method="post">
 	
 <div class="card">
@@ -1614,11 +1735,9 @@ if ($mybb->input['action'] === 'login') {
 						
 	'.$lang->member['footer'].'			
    
-
 	</div>
 <div class="card-footer text-center">
 <button type="submit" class="btn btn-primary" name="submit" value="'.$lang->member['login'].'"><i class="fa-solid fa-right-to-bracket"></i> &nbsp;'.$lang->member['login'].'</button>
-
 	</div>
 		
 		
@@ -1626,13 +1745,8 @@ if ($mybb->input['action'] === 'login') {
 <input type="hidden" name="url" value="'.$redirect_url.'" />
 <input name="my_post_key" type="hidden" value="'.$mybb->post_code.'" />
 </form>
-
-
 	</div>
 	</div>
-
-
-
 </body>
 </html>';
 	
@@ -1642,6 +1756,18 @@ if ($mybb->input['action'] === 'login') {
     stdhead();
     echo $login;
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: logout

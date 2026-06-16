@@ -119,12 +119,6 @@ HTML,
     
     7 => 'Prefetching is not allowed due to the various privacy issues that arise.',
     
-    8 => <<<HTML
-Script Error! (SE-I). TS SE is not installed correctly. Please contact us to fix this issue.
-<a href="https://templateshares.net/special/supportdesk.php?act=submitticket">
-    https://templateshares.net/special/supportdesk.php?act=submitticket
-</a>
-HTML,
     
     9 => 'Your account has either been suspended or you have been banned from accessing this tracker.',
     
@@ -144,7 +138,7 @@ area of the web site space.
 HTML,
     
     403 => <<<HTML
-<strong>403 Forbidden</strong> -- "You are not allowed to access this page." 
+<strong>403 Forbidden22222</strong> -- "You are not allowed to access this page." 
 (This error refers to pages that the server is finding, i.e., they do exist, but the 
 permissions on the file are not sufficient to allow the webserver to "serve" the page 
 to any end user with or without a password.)

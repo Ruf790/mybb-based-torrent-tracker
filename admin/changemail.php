@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="error-message">❌ Error! Direct initialization of this file is not allowed.</div>');
 }
 

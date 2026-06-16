@@ -43,33 +43,25 @@ function mk_path_abs(string $path, string $base = TSDIR): string
 function output_auto_redirect(string $form, string $prompt): void
 {
     global $lang;
-
     echo <<<HTML
 <div class="container mt-3">
     <p>{$prompt}</p>
     <br />
-    <script type="text/javascript">
-        $(function() { 
-            var button = $("#proceed_button"); 
-            if (button.length > 0) {
-                var textElement = $('<div/>').html('Automatically Redirecting&hellip;');
-            
-                button.val(textElement.text());
-                button.attr("disabled", true);
-                button.css("color", "#aaa");
-                button.css("borderColor", "#aaa");
-                
-                var parent_form = button.closest('form');
-
-                if (parent_form.length > 0) {
-                    parent_form.submit();
-                }
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const button = document.getElementById('proceed_button');
+            if (button) {
+                button.value = 'Automatically Redirecting\u2026';
+                button.disabled = true;
+                button.style.color = '#aaa';
+                button.style.borderColor = '#aaa';
+                const form = button.closest('form');
+                if (form) form.submit();
             }
         });
     </script>
-    
-    <button class="btn btn-primary" type="button" value="Automatically Redirecting…" id="proceed_button" disabled>
-        Automatically Redirecting…
+    <button class="btn btn-primary" type="button" id="proceed_button" disabled>
+        Automatically Redirecting&hellip;
     </button>
 </div>
 HTML;
@@ -467,7 +459,7 @@ function acp_recount_user_comments(): void
  */
 function acp_rebuild_attachment_thumbnails(): void
 {
-    global $db, $mybb, $lang, $plugins;
+    global $db, $mybb, $lang, $plugins, $uploadspath, $attachthumbh, $attachthumbw;
 
     $plugins->run_hooks("admin_tools_recount_rebuild_attachment_thumbs");
 
@@ -480,11 +472,9 @@ function acp_rebuild_attachment_thumbnails(): void
     $start = ($page - 1) * $per_page;
     $end = $start + $per_page;
     
-    $uploadspath = "./uploads";
-    $attachthumbh = 96;
-    $attachthumbw = 96;
-    
-    $uploadspath_abs = mk_path_abs($uploadspath);
+	
+	$uploadspath_abs = TSDIR . '/uploads';
+	
     require_once INC_PATH . "/functions_image.php";
 
     $query = $db->simple_select(
@@ -506,6 +496,7 @@ function acp_rebuild_attachment_thumbnails(): void
         
         if (in_array($ext, $imageExtensions, true)) {
             $thumbname = str_replace(".attach", "_thumb.{$ext}", $attachment['attachname']);
+			
             $thumbnail = generate_thumbnail(
                 $uploadspath_abs . "/" . $attachment['attachname'], 
                 $uploadspath_abs, 
@@ -538,6 +529,90 @@ function acp_rebuild_attachment_thumbnails(): void
         $message
     );
 }
+
+
+
+
+
+
+
+
+function acp_rebuild_comment_attachment_thumbnails(): void
+{
+    global $db, $mybb, $lang, $plugins, $attachthumbh, $attachthumbw;
+
+    $plugins->run_hooks('admin_tools_recount_rebuild_comment_attachment_thumbs');
+
+    $query = $db->simple_select('attachments', 'COUNT(aid) as num_attachments', "comment_id > 0");
+    $num_attachments = (int)$db->fetch_field($query, 'num_attachments');
+
+    $page     = $mybb->get_input('page', MyBB::INPUT_INT);
+    $per_page = $mybb->get_input('commentattachmentthumbs', MyBB::INPUT_INT);
+    $start    = ($page - 1) * $per_page;
+    $end      = $start + $per_page;
+
+    $uploadspath_abs = TSDIR . '/uploads/attachments';
+
+    require_once INC_PATH . '/functions_image.php';
+
+    $query = $db->simple_select('attachments', '*', 'comment_id > 0', [
+        'order_by'    => 'aid',
+        'order_dir'   => 'asc',
+        'limit_start' => $start,
+        'limit'       => $per_page,
+    ]);
+
+    $imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'webp'];
+
+    while ($attachment = $db->fetch_array($query)) {
+        $ext = strtolower(pathinfo($attachment['filename'], PATHINFO_EXTENSION));
+
+        if (in_array($ext, $imageExtensions, true)) {
+            $thumbname = 'thumb_' . $attachment['attachname'];
+            $thumbnail = generate_thumbnail(
+                $uploadspath_abs . '/' . $attachment['attachname'],
+                $uploadspath_abs,
+                $thumbname,
+                $attachthumbh,
+                $attachthumbw
+            );
+
+            if ($thumbnail['code'] == 4) {
+                $thumbnail['filename'] = 'SMALL';
+            }
+
+            if (isset($thumbnail['filename'])) {
+                $db->update_query(
+                    'attachments',
+                    ['thumbnail' => $thumbnail['filename']],
+                    "aid = '{$attachment['aid']}'"
+                );
+            }
+        }
+    }
+
+    $message = $lang->success_rebuilt_comment_attachment_thumbnails ?? 'The comment attachment thumbnails have been rebuilt successfully';
+
+    check_proceed(
+        $num_attachments,
+        $end,
+        ++$page,
+        $per_page,
+        'commentattachmentthumbs',
+        'do_rebuildcommentattachmentthumbs',
+        $message
+    );
+}
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -623,6 +698,14 @@ if (!$mybb->input['action']) {
                 'default' => 20,
                 'function' => 'acp_rebuild_attachment_thumbnails'
             ],
+			
+			'do_rebuildcommentattachmentthumbs' => [
+    'hook'     => 'admin_tools_recount_rebuild_comment_attachment_thumbs',
+    'input'    => 'commentattachmentthumbs',
+    'default'  => 20,
+    'function' => 'acp_rebuild_comment_attachment_thumbnails'
+],
+			
             'do_recountprivatemessages' => [
                 'hook' => "admin_tools_recount_recount_private_messages",
                 'input' => 'privatemessages',
@@ -847,6 +930,28 @@ if (!$mybb->input['action']) {
                                     </div>
                                 </div>
                             </div>
+							
+							
+							<!-- Rebuild Comment Attachment Thumbnails -->
+<div class="col-md-6 mb-4">
+    <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title text-primary">
+                <i class="fas fa-comments me-2"></i>Rebuild Comment Attachment Thumbnails
+            </h5>
+            <p class="card-text text-muted small">This will rebuild comment attachment thumbnails to ensure they're using the current width and height dimensions.</p>
+            <div class="d-flex align-items-center mt-3">
+                <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="commentattachmentthumbs" value="20" min="1">
+                <button type="submit" name="do_rebuildcommentattachmentthumbs" class="btn btn-primary btn-sm">Run</button>
+            </div>
+        </div>
+    </div>
+</div>
+							
+							
+							
+							
+							
                             
                             <!-- Recount Statistics -->
                             <div class="col-md-6 mb-4">

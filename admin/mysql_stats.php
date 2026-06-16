@@ -54,13 +54,14 @@ class SystemStats {
         return $components ? implode(', ', $components) : '0 seconds';
     }
     
-    public static function getLocalizedDate(int $timestamp = null, string $format = 'F j, Y \a\t g:i A'): string {
-        $timestamp ??= time();
-        return date($format, $timestamp);
+    public static function getLocalizedDate(?int $timestamp = null, string $format = 'F j, Y \a\t g:i A'): string {
+    $timestamp ??= time();
+    return date($format, $timestamp);
     }
+
 }
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger text-center"><i class="bi bi-shield-exclamation"></i> Direct initialization of this file is not allowed.</div>');
 }

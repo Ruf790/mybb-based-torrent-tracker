@@ -4,7 +4,7 @@
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_icons.php';
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-light border m-3"><i class="fas fa-exclamation-triangle me-2 text-warning"></i><b class="text-dark">Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 

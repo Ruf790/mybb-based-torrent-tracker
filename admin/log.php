@@ -8,7 +8,7 @@ require_once(INC_PATH . '/functions_multipage.php');
 
 
 
-if (!defined('STAFF_PANEL_TSSEv56')) 
+if (!defined('STAFF_PANEL')) 
 {
     define('STAFF_PANEL_TSSEv56', true);
     echo '<div class="alert alert-warning">Warning: STAFF_PANEL_TSSEv56 was not defined. Defined for testing.</div>';

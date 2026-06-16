@@ -1,15 +1,8 @@
 <?php
-/**
- * MyBB 1.8
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- * Website: http://www.mybb.com
- * License: http://www.mybb.com/about/license
- */
+
 
 declare(strict_types=1);
 
-;
 
 require_once INC_PATH . '/functions_multipage.php';
 
@@ -335,8 +328,63 @@ function handle_comment_attachments(): void {
     ");
     $num_results = (int)$db->fetch_field($query, 'num_results');
 
+    // Aggregate stats (across full comment-attachment set, ignoring search filters)
+    $stats_query = $db->sql_query("
+        SELECT
+            COUNT(aid)              AS total_count,
+            SUM(filesize)           AS total_size,
+            SUM(downloads)          AS total_downloads,
+            AVG(filesize)           AS avg_size
+        FROM attachments
+        WHERE comment_id > 0
+    ");
+    $stats          = $db->fetch_array($stats_query);
+    $stat_count     = (int)($stats['total_count'] ?? 0);
+    $stat_size      = mksize((float)($stats['total_size'] ?? 0));
+    $stat_downloads = (int)($stats['total_downloads'] ?? 0);
+    $stat_avg       = mksize((float)($stats['avg_size'] ?? 0));
+
     render_header('Attachments - Comment Attachments');
     output_nav_tabs($GLOBALS['sub_tabs'], 'comment_attachments');
+
+    // Stats header + row (usercp-style)
+    echo '
+    <div class="container mt-4">
+        <div class="att-page-header">
+            <h2><i class="fas fa-paperclip"></i> Comment Attachments</h2>
+            <p>' . ts_nf($stat_count) . ' attachments &bull; ' . $stat_size . ' used</p>
+        </div>
+        <div class="att-stats-row">
+            <div class="att-stat-card">
+                <div class="att-stat-icon is-primary"><i class="fas fa-file"></i></div>
+                <div>
+                    <div class="att-stat-value">' . ts_nf($stat_count) . '</div>
+                    <div class="att-stat-label">Comment Attachments</div>
+                </div>
+            </div>
+            <div class="att-stat-card">
+                <div class="att-stat-icon is-success"><i class="fas fa-hdd"></i></div>
+                <div>
+                    <div class="att-stat-value">' . $stat_size . '</div>
+                    <div class="att-stat-label">Space Used</div>
+                </div>
+            </div>
+            <div class="att-stat-card">
+                <div class="att-stat-icon is-info"><i class="fas fa-download"></i></div>
+                <div>
+                    <div class="att-stat-value">' . ts_nf($stat_downloads) . '</div>
+                    <div class="att-stat-label">Total Downloads</div>
+                </div>
+            </div>
+            <div class="att-stat-card">
+                <div class="att-stat-icon is-warning"><i class="fas fa-chart-line"></i></div>
+                <div>
+                    <div class="att-stat-value">' . $stat_avg . '</div>
+                    <div class="att-stat-label">Average Size</div>
+                </div>
+            </div>
+        </div>
+    </div>';
 
     // Search form
     echo '
@@ -392,7 +440,7 @@ function handle_comment_attachments(): void {
                         <table class="table table-hover table-striped mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th width="30"><input type="checkbox" class="form-check-input" onclick="checkAll(this)"></th>
+                                    <th width="50"><label class="form-switch-custom"><input type="checkbox" class="checkall" onclick="checkAll(this)"><span class="switch-slider"></span></label></th>
                                     <th>File</th>
                                     <th class="text-center">Size</th>
                                     <th class="text-center">Type</th>
@@ -404,7 +452,7 @@ function handle_comment_attachments(): void {
                             <tbody>';
 
     $query = $db->sql_query("
-        SELECT a.*, u.username AS user_username,
+        SELECT a.*, u.username AS user_username, u.id, u.enabled, u.donor, u.warned, u.leechwarn, u.usergroup, u.canupload, u.candownload, u.cancomment,
                c.torrent AS torrent_id, t.name AS torrent_name
         FROM attachments a
         LEFT JOIN users u ON (u.id = a.uid)
@@ -418,11 +466,32 @@ function handle_comment_attachments(): void {
     while ($att = $db->fetch_array($query)) {
         $date      = $att['dateuploaded'] > 0 ? my_datee('relative', $att['dateuploaded']) : 'Unknown';
         $username  = $att['user_username'] ?: 'Guest';
-        $user_link = $att['uid'] ? build_profile_link(htmlspecialchars_uni($username), $att['uid'], '_blank') : htmlspecialchars_uni($username);
+		$group  = $att['usergroup'] ?: 'Guest';
+       
+		
+		$profile_url = get_profile_link((int)$att['id']);
+        $display_name = format_name($username, $group);
+        $user_link = '<a href="' . $BASEURL . '/' . $profile_url . '">' . $display_name . '</a>' . get_user_icons($att);
+		
         $size      = mksize((float)$att['filesize']);
         $icon      = get_attachment_icon(get_extension($att['filename']));
-        $file_link = '<a href="../uploads/attachments/' . htmlspecialchars_uni($att['attachname']) . '" target="_blank">' . htmlspecialchars_uni($att['filename']) . '</a>';
+        $att_url   = '../uploads/attachments/' . rawurlencode($att['attachname']);
+        $file_link = '<a href="' . $att_url . '" target="_blank">' . htmlspecialchars_uni($att['filename']) . '</a>';
         $mime      = '<span class="badge bg-light text-dark border">' . htmlspecialchars_uni($att['filetype']) . '</span>';
+
+        // Image preview thumbnail
+        $is_image = str_starts_with((string)($att['filetype'] ?? ''), 'image/');
+        if ($is_image) {
+            $thumb_url = (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL')
+                ? '../uploads/attachments/' . rawurlencode($att['thumbnail'])
+                : $att_url;
+            $file_icon_html = '<a href="' . $att_url . '" target="_blank" class="ca-thumb-link">
+                <img src="' . $thumb_url . '" class="ca-thumb" alt="" loading="lazy"
+                     onerror="this.closest(\'.ca-thumb-link\').outerHTML=\'' . addslashes($icon) . '\'">
+            </a>';
+        } else {
+            $file_icon_html = $icon;
+        }
 
         // Comment link
         if ($att['comment_id'] && $att['torrent_id']) {
@@ -435,8 +504,8 @@ function handle_comment_attachments(): void {
 
         echo '
                                 <tr>
-                                    <td><input type="checkbox" name="aids[]" value="' . $att['aid'] . '" class="form-check-input"></td>
-                                    <td>' . $icon . ' ' . $file_link . '</td>
+                                    <td><label class="form-switch-custom"><input type="checkbox" name="aids[]" value="' . $att['aid'] . '"><span class="switch-slider"></span></label></td>
+                                    <td>' . $file_icon_html . ' ' . $file_link . '</td>
                                     <td class="text-center"><span class="badge bg-secondary">' . $size . '</span></td>
                                     <td class="text-center">' . $mime . '</td>
                                     <td class="text-center">' . $user_link . '</td>
@@ -917,6 +986,129 @@ function render_header(string $title): void {
         .checkall {
             cursor: pointer;
         }
+        .ca-thumb-link {
+            display: inline-block;
+            width: 36px;
+            height: 36px;
+            vertical-align: middle;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #dee2e6;
+            margin-right: 4px;
+        }
+        .ca-thumb {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform .2s ease;
+        }
+        .ca-thumb-link:hover .ca-thumb {
+            transform: scale(1.15);
+        }
+
+        /* Page header (gradient) */
+        .att-page-header {
+            background: linear-gradient(135deg, #0d6efd 0%, #0a4fc4 100%);
+            border-radius: 16px;
+            padding: 1.75rem 2rem;
+            color: #fff;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 24px rgba(13,110,253,.25);
+        }
+        .att-page-header h2 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .att-page-header h2 i {
+            margin-right: .5rem;
+            opacity: .9;
+        }
+        .att-page-header p {
+            margin: .35rem 0 0;
+            opacity: .85;
+            font-size: .9rem;
+        }
+
+        /* Stats row */
+        .att-stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+            margin-bottom: 1.5rem;
+        }
+        .att-stat-card {
+            background: #fff;
+            border: 1px solid #eef0f2;
+            border-radius: 14px;
+            padding: 1.1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .att-stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 24px rgba(0,0,0,.07);
+        }
+        .att-stat-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            flex-shrink: 0;
+        }
+        .att-stat-icon.is-primary { background: rgba(13,110,253,.1); color: #0d6efd; }
+        .att-stat-icon.is-success { background: rgba(25,135,84,.1);  color: #198754; }
+        .att-stat-icon.is-info    { background: rgba(13,202,240,.12); color: #0aa2c0; }
+        .att-stat-icon.is-warning { background: rgba(255,193,7,.12);  color: #cc9a06; }
+        .att-stat-icon.is-danger  { background: rgba(220,53,69,.1);   color: #dc3545; }
+        .att-stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1.1;
+            color: #212529;
+        }
+        .att-stat-label {
+            font-size: .78rem;
+            color: #8a8f98;
+            margin-top: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .att-page-header { padding: 1.25rem 1.5rem; }
+        }
+
+        /* Toggle switch (replaces checkboxes) */
+        .form-switch-custom {
+            position: relative;
+            display: inline-block;
+            width: 42px;
+            height: 24px;
+            margin: 0;
+            cursor: pointer;
+        }
+        .form-switch-custom input { opacity: 0; width: 0; height: 0; }
+        .switch-slider {
+            position: absolute; inset: 0;
+            background-color: #dadfe4;
+            transition: .25s;
+            border-radius: 24px;
+        }
+        .switch-slider:before {
+            position: absolute; content: "";
+            height: 18px; width: 18px; left: 3px; bottom: 3px;
+            background-color: #fff;
+            transition: .25s;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,.2);
+        }
+        .form-switch-custom input:checked + .switch-slider { background-color: #0d6efd; }
+        .form-switch-custom input:checked + .switch-slider:before { transform: translateX(18px); }
     </style>
     <script>
         function checkAll(source) {

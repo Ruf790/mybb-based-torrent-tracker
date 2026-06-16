@@ -1,9 +1,9 @@
 <?php
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
-define('TUET_VERSION', '0.3 by xam');
+define('TUET_VERSION', '0.3');
 
 $do = isset($_POST['do']) ? htmlspecialchars($_POST['do']) : (isset($_GET['do']) ? htmlspecialchars($_GET['do']) : 1);
 $wait = isset($_POST['wait']) ? intval($_POST['wait']) : (isset($_GET['wait']) ? intval($_GET['wait']) : 30);

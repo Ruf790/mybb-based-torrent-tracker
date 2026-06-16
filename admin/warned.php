@@ -3,11 +3,11 @@
 
 declare(strict_types=1);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-define('W_VERSION', '0.8 by xam');
+define('W_VERSION', '0.8');
 
 include_once INC_PATH . '/functions_ratio.php';
 require_once INC_PATH . '/functions_multipage.php';

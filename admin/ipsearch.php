@@ -2,20 +2,13 @@
 
 declare(strict_types=1);
 
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+
+if (!defined('STAFF_PANEL')) {
     exit('<div class="error-message">❌ Error! Direct initialization of this file is not allowed.</div>');
 }
 
-define('IPS_VERSION', 'v0.2 by xam');
+define('IPS_VERSION', 'v0.2');
 
 /**
  * IP Search Manager with varbinary(16) support

@@ -1,5 +1,5 @@
 <?php
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger">Direct initialization of this file is not allowed.</div>');
 }
 

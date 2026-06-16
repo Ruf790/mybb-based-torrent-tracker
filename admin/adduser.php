@@ -7,7 +7,7 @@ require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_user.php';
 
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 

@@ -7,7 +7,7 @@ header('Content-Type: application/json');
 $rootpath = './../';
 $thispath = './';
 define ('IN_ADMIN_PANEL', true);
-define ('STAFF_PANEL_TSSEv56', true);
+define ('STAFF_PANEL', true);
 define ('SKIP_CRON_JOBS', true);
 define ('SKIP_LOCATION_SAVE', true);
 define("IN_MYBB", 1);

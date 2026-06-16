@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<b>Error!</b> Direct initialization of this file is not allowed.');
 }
 

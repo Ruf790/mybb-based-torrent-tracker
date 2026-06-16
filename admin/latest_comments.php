@@ -4,7 +4,7 @@ declare(strict_types=1);
 define('IN_ARCHIVE', true);
 require_once INC_PATH . '/class_parser.php';
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
@@ -461,24 +461,27 @@ if ($action === 'save') {
     json_exit(['success' => true]);
 }
 
+
+
+
+
+
+
+
 // ── delete (одиночный) ───────────────────────────────────────────────────────
 if ($action === 'delete') {
     require_post();
     require_csrf();
-
     $id      = max(0, (int)($_POST['id'] ?? 0));
     $comment = $db->fetch_array($db->sql_query(
         'SELECT user, torrent FROM comments WHERE id = ' . $id
     ));
-
     if (!$comment) {
         json_exit(['success' => false, 'error' => 'Comment not found'], 404);
     }
-
     $user_id    = (int)$comment['user'];
     $torrent_id = (int)$comment['torrent'];
-
-    // Удаляем прикреплённые файлы
+    // Удаляем прикреплённые файлы (comment_files)
     $files = $db->simple_select('comment_files', '*', 'comment_id = ' . $id);
     while ($file = $db->fetch_array($files)) {
         if (!empty($file['file_path']) && is_file($file['file_path'])) {
@@ -486,13 +489,19 @@ if ($action === 'delete') {
         }
     }
     $db->delete_query('comment_files', 'comment_id = ' . $id);
+    // Удаляем вложения (attachments)
+    $uploadDir = TSDIR . '/uploads/attachments/';
+    $atts = $db->simple_select('attachments', 'attachname, thumbnail', 'comment_id = ' . $id);
+    while ($att = $db->fetch_array($atts)) {
+        if (!empty($att['attachname'])) @unlink($uploadDir . $att['attachname']);
+        if (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL') @unlink($uploadDir . $att['thumbnail']);
+    }
+    $db->delete_query('attachments', 'comment_id = ' . $id);
     $db->delete_query('comments', 'id = ' . $id);
-
-    // Пересчёт счётчиков (единая функция — нет дублирования)
+    // Пересчёт счётчиков
     sync_torrent_comment_count($torrent_id);
     sync_user_comment_count($user_id);
     deduct_kps_for_comments([$user_id]);
-
     write_log(sprintf(
         'User %s (UID %d) deleted comment #%d from torrent #%d',
         htmlspecialchars($CURUSER['username']),
@@ -500,18 +509,14 @@ if ($action === 'delete') {
         $id,
         $torrent_id
     ));
-
     json_exit(['success' => true]);
 }
-
 // ── bulk_delete ───────────────────────────────────────────────────────────────
 if ($action === 'bulk_delete') {
     require_post();
     require_csrf();
-
     $ids     = decode_comment_ids($_POST['ids'] ?? []);
     $ids_str = ids_to_sql($ids);
-
     // Получаем данные перед удалением
     $user_ids    = [];
     $torrent_ids = [];
@@ -520,20 +525,25 @@ if ($action === 'bulk_delete') {
         $user_ids[]    = (int)$row['user'];
         $torrent_ids[] = (int)$row['torrent'];
     }
-
-    // Удаляем файлы
+    // Удаляем файлы (comment_files)
     $files = $db->sql_query("SELECT file_path FROM comment_files WHERE comment_id IN ({$ids_str})");
     while ($file = $db->fetch_array($files)) {
         if (!empty($file['file_path']) && file_exists($file['file_path'])) {
             @unlink($file['file_path']);
         }
     }
-
     $db->sql_query("DELETE FROM comment_files WHERE comment_id IN ({$ids_str})");
+    // Удаляем вложения (attachments)
+    $uploadDir = TSDIR . '/uploads/attachments/';
+    $atts = $db->sql_query("SELECT attachname, thumbnail FROM attachments WHERE comment_id IN ({$ids_str})");
+    while ($att = $db->fetch_array($atts)) {
+        if (!empty($att['attachname'])) @unlink($uploadDir . $att['attachname']);
+        if (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL') @unlink($uploadDir . $att['thumbnail']);
+    }
+    $db->sql_query("DELETE FROM attachments WHERE comment_id IN ({$ids_str})");
     $db->sql_query("DELETE FROM comments WHERE id IN ({$ids_str})");
     $deleted = (int)$db->affected_rows();
-
-    // Пересчёт через sync_ — не IF(comments>0...) — точные данные из БД
+    // Пересчёт через sync_
     foreach (array_unique($torrent_ids) as $tid) {
         sync_torrent_comment_count($tid);
     }
@@ -541,7 +551,6 @@ if ($action === 'bulk_delete') {
         sync_user_comment_count($uid);
     }
     deduct_kps_for_comments($user_ids);
-
     write_log(sprintf(
         'User %s (UID %d) bulk-deleted %d comment(s): [%s]',
         htmlspecialchars($CURUSER['username']),
@@ -549,9 +558,16 @@ if ($action === 'bulk_delete') {
         $deleted,
         $ids_str
     ));
-
     json_exit(['success' => true, 'deleted' => $deleted]);
 }
+
+
+
+
+
+
+
+
 
 // ── move_comments ─────────────────────────────────────────────────────────────
 if ($action === 'move_comments') {

@@ -9,10 +9,12 @@ declare(strict_types=1);
  ******************************************************************************/
 
 // Security check
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger" role="alert"><b>Access Denied:</b> Direct access not permitted.</div>');
 }
+
+
 
 class LoginAttemptsManager
 {
@@ -54,6 +56,19 @@ class LoginAttemptsManager
         $this->orderType = $this->getRequest('otype') === 'DESC' ? 'ASC' : 'DESC';
     }
     
+    /**
+     * Render only the inner content (filters + table) without stdhead/stdfoot.
+     * Used by the tabbed layout.
+     */
+    public function executeInner(): void
+    {
+        echo $this->includeJavaScriptLibraries();
+        echo $this->renderFiltersAndSearch();
+        echo '<div id="attempts-table-container">';
+        echo $this->renderTableContent();
+        echo '</div>';
+    }
+
     public function execute(): void
     {
         // AJAX обработчики
@@ -552,7 +567,7 @@ class LoginAttemptsManager
         global $db;
         
         $output = <<<HTML
-        <div class="table-responsive">
+        <div class="container mt-3">
             <table class="table table-hover table-striped align-middle">
                 <thead class="table-dark">
                     <tr>
@@ -1625,10 +1640,693 @@ private function includeJavaScriptLibraries(): string
     }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// LOGIN LOG MANAGER — login_log table viewer
+// ══════════════════════════════════════════════════════════════════════════════
+
+class LoginLogManager
+{
+    private const PER_PAGE = 25;
+
+    private int    $page;
+    private string $filterStatus;
+    private string $filterSuspicious;
+    private string $searchIp;
+    private string $orderBy;
+    private string $orderType;
+    private string $action;
+
+    public function __construct()
+    {
+        $this->action           = $this->req('action', 'showlist');
+        $this->page             = max(1, (int)($_REQUEST['lpage'] ?? 1));
+        $this->filterStatus     = $this->req('filter_status', 'all');
+        $this->filterSuspicious = $this->req('filter_suspicious', 'all');
+        $this->searchIp         = $this->req('search_log_ip', '');
+        $order                  = $this->req('lorder', 'datetime');
+        $this->orderBy          = match($order) {
+            'id','uid','ip','country','city','datetime','status','suspicious','banned','type' => $order,
+            default => 'datetime'
+        };
+        $this->orderType = $this->req('lotype') === 'ASC' ? 'ASC' : 'DESC';
+    }
+
+    private function req(string $key, string $default = ''): string
+    {
+        return htmlspecialchars($_REQUEST[$key] ?? $default, ENT_QUOTES, 'UTF-8');
+    }
+
+    public function renderTab(): void
+    {
+        if (str_starts_with($this->action, 'log_ajax_')) {
+            $this->handleAjax();
+            return;
+        }
+        if ($this->action === 'log_delete') {
+            $this->handleDelete();
+            return;
+        }
+        $this->showList();
+    }
+
+    // ── AJAX ──────────────────────────────────────────────────────────────────
+
+    private function handleAjax(): void
+    {
+        header('Content-Type: application/json');
+        try {
+            match($this->action) {
+                'log_ajax_get_page'  => $this->ajaxGetPage(),
+                'log_ajax_get_count' => $this->ajaxGetCount(),
+                'log_ajax_delete'     => $this->ajaxDelete(),
+                'log_ajax_delete_all' => $this->ajaxDeleteAll(),
+                default              => throw new Exception('Unknown action')
+            };
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    private function ajaxGetPage(): void
+    {
+        $this->page             = max(1, (int)($_POST['lpage'] ?? 1));
+        $this->filterStatus     = htmlspecialchars($_POST['filter_status']     ?? 'all', ENT_QUOTES, 'UTF-8');
+        $this->filterSuspicious = htmlspecialchars($_POST['filter_suspicious'] ?? 'all', ENT_QUOTES, 'UTF-8');
+        $this->searchIp         = htmlspecialchars($_POST['search_log_ip']     ?? '',    ENT_QUOTES, 'UTF-8');
+        $this->orderBy          = htmlspecialchars($_POST['lorder']  ?? 'datetime', ENT_QUOTES, 'UTF-8');
+        $this->orderType        = ($_POST['lotype'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
+
+        echo json_encode(['success' => true, 'html' => $this->renderTableContent()]);
+    }
+
+    private function ajaxGetCount(): void
+    {
+        global $db;
+        $where = $this->buildWhere();
+        $row   = $db->fetch_array($db->sql_query("SELECT COUNT(*) AS c FROM login_log $where"));
+        echo json_encode(['success' => true, 'count' => (int)$row['c']]);
+    }
+
+    private function ajaxDelete(): void
+    {
+        global $db;
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) throw new Exception('Invalid ID');
+        $row = $db->fetch_array($db->sql_query("SELECT ip FROM login_log WHERE id=$id"));
+        $db->sql_query("DELETE FROM login_log WHERE id=$id");
+        echo json_encode(['success' => true, 'message' => "Log entry #{$id} ({$row['ip']}) deleted.", 'id' => $id]);
+    }
+
+    private function ajaxDeleteAll(): void
+    {
+        global $db;
+        $scope = $_POST['scope'] ?? 'all';
+
+        $where = match($scope) {
+            'fail'       => "WHERE status = 'fail'",
+            'success'    => "WHERE status = 'success'",
+            'suspicious' => "WHERE suspicious = 'yes'",
+            default      => '',
+        };
+
+        $count = (int)$db->fetch_field($db->sql_query("SELECT COUNT(*) FROM login_log $where"), 'COUNT(*)');
+        $db->sql_query("DELETE FROM login_log $where");
+
+        echo json_encode(['success' => true, 'message' => "{$count} records deleted.", 'count' => $count]);
+    }
+
+    private function handleDelete(): void
+    {
+        global $db;
+        $id = (int)($_GET['id'] ?? 0);
+        if ($id > 0) $db->sql_query("DELETE FROM login_log WHERE id=$id");
+        redirect($_SERVER['PHP_SELF'] . '?act=maxlogin&tab=log&update=Delete');
+    }
+
+    // ── Main render ───────────────────────────────────────────────────────────
+
+    private function showList(): void
+    {
+        echo $this->renderLogJS();
+        echo $this->renderLogHeader();
+        echo $this->renderLogFilters(); // opens <div id="log-table-container">
+        echo $this->renderTableContent();
+        echo '</div>'; // close log-table-container
+    }
+
+    private function renderTableContent(): string
+    {
+        global $db;
+
+        $where = $this->buildWhere();
+        $total = (int)$db->fetch_field($db->sql_query("SELECT COUNT(*) AS c FROM login_log $where"), 'c');
+
+        if ($total === 0) {
+            return $this->renderEmpty();
+        }
+
+        $totalPages  = (int)ceil($total / self::PER_PAGE);
+        $currentPage = max(1, min($this->page, $totalPages));
+        $offset      = ($currentPage - 1) * self::PER_PAGE;
+
+        $result = $db->sql_query(
+            "SELECT l.*, u.username FROM login_log l
+             LEFT JOIN users u ON u.id = l.uid
+             $where
+             ORDER BY l.{$this->orderBy} {$this->orderType}
+             LIMIT $offset, " . self::PER_PAGE
+        );
+
+        $rows = '';
+        while ($row = $db->fetch_array($result)) {
+            $rows .= $this->renderRow($row);
+        }
+
+        return $this->renderTable($rows) . $this->renderPager($currentPage, $totalPages, $total);
+    }
+
+    private function buildWhere(): string
+    {
+        global $db;
+        $parts = [];
+
+        if (!empty($this->searchIp)) {
+            $parts[] = "ip LIKE '%" . $db->escape_string($this->searchIp) . "%'";
+        }
+        if ($this->filterStatus !== 'all' && $this->filterStatus !== '') {
+            $parts[] = "status = '" . $db->escape_string($this->filterStatus) . "'";
+        }
+        if ($this->filterSuspicious !== 'all' && $this->filterSuspicious !== '') {
+            $parts[] = "suspicious = '" . $db->escape_string($this->filterSuspicious) . "'";
+        }
+
+        return empty($parts) ? '' : 'WHERE ' . implode(' AND ', $parts);
+    }
+
+    private function renderTable(string $rows): string
+    {
+        return <<<HTML
+        <div class="container mt-3">
+            <table class="table table-hover table-striped align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width:4%"><a href="#" class="text-white text-decoration-none log-sort" data-order="id">ID <i class="fas fa-sort"></i></a></th>
+                        <th style="width:10%"><a href="#" class="text-white text-decoration-none log-sort" data-order="uid">User <i class="fas fa-sort"></i></a></th>
+                        <th style="width:13%"><a href="#" class="text-white text-decoration-none log-sort" data-order="ip">IP <i class="fas fa-sort"></i></a></th>
+                        <th style="width:13%"><a href="#" class="text-white text-decoration-none log-sort" data-order="country">Location <i class="fas fa-sort"></i></a></th>
+                        <th style="width:17%">User-Agent</th>
+                        <th style="width:13%"><a href="#" class="text-white text-decoration-none log-sort" data-order="datetime">Time <i class="fas fa-sort"></i></a></th>
+                        <th style="width:8%"><a href="#" class="text-white text-decoration-none log-sort" data-order="type">Type <i class="fas fa-sort"></i></a></th>
+                        <th style="width:8%"><a href="#" class="text-white text-decoration-none log-sort" data-order="status">Status <i class="fas fa-sort"></i></a></th>
+                        <th style="width:8%"><a href="#" class="text-white text-decoration-none log-sort" data-order="suspicious">Suspicious <i class="fas fa-sort"></i></a></th>
+                        <th style="width:6%" class="text-center">Del</th>
+                    </tr>
+                </thead>
+                <tbody>{$rows}</tbody>
+            </table>
+        </div>
+        HTML;
+    }
+
+    private function renderRow(array $r): string
+    {
+        global $dateformat, $timeformat, $BASEURL;
+
+        $ip       = htmlspecialchars($r['ip'],       ENT_QUOTES);
+        $country  = htmlspecialchars($r['country'],  ENT_QUOTES);
+        $city     = htmlspecialchars($r['city'],     ENT_QUOTES);
+        $ua       = htmlspecialchars(substr($r['user_agent'] ?? '', 0, 60), ENT_QUOTES);
+        $uaFull   = htmlspecialchars($r['user_agent'] ?? '', ENT_QUOTES);
+        $date     = my_datee($dateformat, $r['datetime']);
+        $time     = my_datee($timeformat, $r['datetime']);
+        $username = $r['username'] ? htmlspecialchars($r['username'], ENT_QUOTES) : '<span class="text-muted">—</span>';
+        $uid      = (int)$r['uid'];
+
+        // Status badge
+        $statusBadge = $r['status'] === 'success'
+            ? '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Success</span>'
+            : '<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Fail</span>';
+
+        // Suspicious badge
+        $suspBadge = $r['suspicious'] === 'yes'
+            ? '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle me-1"></i>Yes</span>'
+            : '<span class="badge bg-secondary">No</span>';
+
+        // Type badge
+        $typeBadge = $r['type'] === 'recover'
+            ? '<span class="badge bg-info text-dark">Recover</span>'
+            : '<span class="badge bg-primary">Login</span>';
+
+        // Location
+        $location = $country
+            ? "<i class='fas fa-map-marker-alt me-1 text-muted'></i>{$country}" . ($city ? ", {$city}" : '')
+            : '<span class="text-muted">—</span>';
+
+        // User profile link
+        $userCell = $uid > 0
+            ? "<a href='{$BASEURL}/member.php?action=profile&uid={$uid}'>{$username}</a>"
+            : $username;
+
+        return <<<HTML
+        <tr id="log-row-{$r['id']}">
+            <td class="fw-bold text-muted">#{$r['id']}</td>
+            <td>{$userCell}</td>
+            <td>
+                <div class="d-flex justify-content-between align-items-center gap-1">
+                    <code class="text-dark">{$ip}</code>
+                    <a href="{$BASEURL}/admin/index.php?act=ipsearch&do=1&ip={$ip}" target="_blank"
+                       class="btn btn-sm btn-outline-info py-0 px-1" title="IP Search">
+                        <i class="fas fa-search"></i>
+                    </a>
+                </div>
+            </td>
+            <td><small>{$location}</small></td>
+            <td><small title="{$uaFull}" style="cursor:help">{$ua}…</small></td>
+            <td>
+                <small>
+                    <i class="fas fa-calendar-alt me-1 text-muted"></i>{$date}<br>
+                    <i class="fas fa-clock me-1 text-muted"></i>{$time}
+                </small>
+            </td>
+            <td>{$typeBadge}</td>
+            <td>{$statusBadge}</td>
+            <td>{$suspBadge}</td>
+            <td class="text-center">
+                <button class="btn btn-sm btn-outline-danger log-delete-btn"
+                        data-id="{$r['id']}" data-ip="{$ip}" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+        HTML;
+    }
+
+    private function renderPager(int $current, int $total, int $totalRows): string
+    {
+        $fmt = number_format($totalRows);
+        if ($total <= 1) {
+            return "<div class='text-center text-muted mt-3'>Total records: {$fmt}</div>";
+        }
+
+        $pages = '';
+        $start = max(1, $current - 2);
+        $end   = min($total, $current + 2);
+        for ($i = $start; $i <= $end; $i++) {
+            $active  = $i === $current ? 'active' : '';
+            $pages  .= "<li class='page-item {$active}'><a class='page-link log-page' href='#' data-page='{$i}'>{$i}</a></li>";
+        }
+
+        $prevDis = $current === 1      ? 'disabled' : '';
+        $nextDis = $current === $total ? 'disabled' : '';
+        $prev    = max(1, $current - 1);
+        $next    = min($total, $current + 1);
+
+        return <<<HTML
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <div class="text-muted">Page {$current} of {$total} &nbsp;·&nbsp; {$fmt} records</div>
+            <nav><ul class="pagination mb-0">
+                <li class="page-item {$prevDis}"><a class="page-link log-page" href="#" data-page="{$prev}">&laquo;</a></li>
+                {$pages}
+                <li class="page-item {$nextDis}"><a class="page-link log-page" href="#" data-page="{$next}">&raquo;</a></li>
+            </ul></nav>
+        </div>
+        HTML;
+    }
+
+    private function renderEmpty(): string
+    {
+        return <<<HTML
+        <div class="text-center py-5">
+            <i class="fas fa-history fa-4x text-muted mb-3"></i>
+            <h4 class="text-muted">No login history yet</h4>
+            <p class="text-muted">Entries will appear here after users log in.</p>
+        </div>
+        HTML;
+    }
+
+    private function renderLogHeader(): string
+    {
+        return <<<HTML
+        <div class="container mt-3">
+            <div class="card-header bg-dark text-white rounded-top">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="fas fa-history me-2"></i>Login History Log
+                        </h5>
+                        <small class="text-white-50">All login attempts with geolocation — success &amp; failed</small>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="spinner-border spinner-border-sm text-white d-none" id="log-spinner" role="status"></div>
+                        <span class="badge bg-light text-dark" id="log-total-count">Loading…</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+        HTML;
+    }
+
+    private function renderLogFilters(): string
+    {
+        $statusSel = $this->filterStatus;
+        $suspSel   = $this->filterSuspicious;
+        $searchVal = $this->searchIp;
+
+        $selAll = fn(string $v, string $c) => $v === $c ? 'selected' : '';
+
+        return <<<HTML
+        <div class="row g-2 mb-3">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    <input type="text" class="form-control" id="log-search" placeholder="Search by IP…"
+                           value="{$searchVal}" autocomplete="off">
+                    <button class="btn btn-outline-secondary" id="log-clear-search" type="button">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" id="log-filter-status">
+                    <option value="all"     {$selAll($statusSel,'all')}>All Status</option>
+                    <option value="success" {$selAll($statusSel,'success')}>✅ Success</option>
+                    <option value="fail"    {$selAll($statusSel,'fail')}>❌ Failed</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" id="log-filter-suspicious">
+                    <option value="all" {$selAll($suspSel,'all')}>All</option>
+                    <option value="yes" {$selAll($suspSel,'yes')}>⚠️ Suspicious</option>
+                    <option value="no"  {$selAll($suspSel,'no')}>Normal</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button class="btn btn-outline-primary btn-sm w-50" id="log-refresh">
+                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                </button>
+                <button class="btn btn-outline-danger btn-sm w-50" id="log-clear-filters">
+                    <i class="fas fa-filter-circle-xmark"></i>
+                </button>
+            </div>
+            <div class="col-md-2">
+                <div class="dropdown">
+                    <button class="btn btn-danger btn-sm w-100 dropdown-toggle" type="button" id="log-delete-all-btn" data-bs-toggle="dropdown">
+                        <i class="fas fa-trash me-1"></i>Delete All
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item log-delete-all" href="#" data-scope="all"><i class="fas fa-trash-alt me-2 text-danger"></i>All records</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item log-delete-all" href="#" data-scope="fail"><i class="fas fa-times me-2 text-danger"></i>Failed only</a></li>
+                        <li><a class="dropdown-item log-delete-all" href="#" data-scope="success"><i class="fas fa-check me-2 text-success"></i>Success only</a></li>
+                        <li><a class="dropdown-item log-delete-all" href="#" data-scope="suspicious"><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Suspicious only</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        </div><!-- /card-body -->
+        </div><!-- /card -->
+
+        <div id="log-table-container">
+        HTML;
+    }
+
+    private function renderLogJS(): string
+    {
+        $orderBy   = addslashes($this->orderBy);
+        $orderType = addslashes($this->orderType);
+
+        return <<<HTML
+        <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            let logPage      = 1;
+            let logOrder     = '{$orderBy}';
+            let logOrderType = '{$orderType}';
+            let logSearch    = '';
+            let logStatus    = 'all';
+            let logSuspicious = 'all';
+            let logTimeout;
+
+            const logContainer = document.getElementById('log-table-container');
+            const logSpinner   = document.getElementById('log-spinner');
+            const logCount     = document.getElementById('log-total-count');
+
+            function logReq(action, extra) {
+                const params = new URLSearchParams({
+                    action,
+                    lpage:              logPage,
+                    lorder:             logOrder,
+                    lotype:             logOrderType,
+                    filter_status:      logStatus,
+                    filter_suspicious:  logSuspicious,
+                    search_log_ip:      logSearch,
+                    ...extra
+                });
+                if (logSpinner) logSpinner.classList.remove('d-none');
+                if (logContainer) logContainer.style.opacity = '0.5';
+
+                return fetch('?act=maxlogin', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: params
+                })
+                .then(r => r.json())
+                .catch(() => ({success: false, error: 'Request failed'}))
+                .finally(() => {
+                    if (logSpinner) logSpinner.classList.add('d-none');
+                    if (logContainer) logContainer.style.opacity = '1';
+                });
+            }
+
+            function logUpdate() {
+                logReq('log_ajax_get_page').then(res => {
+                    if (res.success && logContainer) {
+                        logContainer.innerHTML = res.html;
+                    } else if (!res.success) {
+                        Swal.fire('Error', res.error || 'Failed to load', 'error');
+                    }
+                    logUpdateCount();
+                });
+            }
+
+            function logUpdateCount(n) {
+                if (!logCount) return;
+                if (n !== undefined) { logCount.textContent = n + ' records'; return; }
+                logReq('log_ajax_get_count').then(res => {
+                    if (res.success) logCount.textContent = res.count + ' records';
+                });
+            }
+
+            // Search
+            const logSearchEl = document.getElementById('log-search');
+            if (logSearchEl) {
+                logSearchEl.addEventListener('input', function () {
+                    clearTimeout(logTimeout);
+                    const v = this.value;
+                    logTimeout = setTimeout(() => { logSearch = v; logPage = 1; logUpdate(); }, 350);
+                });
+            }
+            document.getElementById('log-clear-search')?.addEventListener('click', () => {
+                if (logSearchEl) logSearchEl.value = '';
+                logSearch = ''; logPage = 1; logUpdate();
+            });
+
+            // Filters
+            document.getElementById('log-filter-status')?.addEventListener('change', function () {
+                logStatus = this.value; logPage = 1; logUpdate();
+            });
+            document.getElementById('log-filter-suspicious')?.addEventListener('change', function () {
+                logSuspicious = this.value; logPage = 1; logUpdate();
+            });
+            document.getElementById('log-refresh')?.addEventListener('click', () => { logPage = 1; logUpdate(); });
+            document.getElementById('log-clear-filters')?.addEventListener('click', () => {
+                logStatus = 'all'; logSuspicious = 'all'; logSearch = ''; logPage = 1;
+                if (logSearchEl) logSearchEl.value = '';
+                const ss = document.getElementById('log-filter-status');
+                const sp = document.getElementById('log-filter-suspicious');
+                if (ss) ss.value = 'all';
+                if (sp) sp.value = 'all';
+                logUpdate();
+            });
+
+            // Delete All
+            document.addEventListener('click', function(e) {
+                const delAll = e.target.closest('.log-delete-all');
+                if (!delAll) return;
+                e.preventDefault();
+                const scope = delAll.dataset.scope;
+                const labels = {all: 'ALL records', fail: 'all FAILED records', success: 'all SUCCESS records', suspicious: 'all SUSPICIOUS records'};
+                Swal.fire({
+                    title: 'Delete ' + labels[scope] + '?',
+                    html: 'This action <strong>cannot be undone</strong>.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    confirmButtonText: 'Yes, delete',
+                    reverseButtons: true
+                }).then(result => {
+                    if (!result.isConfirmed) return;
+                    logReq('log_ajax_delete_all', {scope}).then(res => {
+                        if (res.success) {
+                            logPage = 1;
+                            logUpdate();
+                            Swal.fire({icon: 'success', title: 'Deleted!', text: res.message, timer: 2000, showConfirmButton: false});
+                        } else {
+                            Swal.fire('Error', res.error || 'Delete failed', 'error');
+                        }
+                    });
+                });
+            });
+
+            // Delegation: sort, pagination, delete
+            document.addEventListener('click', function (e) {
+                // Sort
+                const sortHdr = e.target.closest('.log-sort');
+                if (sortHdr) {
+                    e.preventDefault();
+                    const ord = sortHdr.dataset.order;
+                    logOrderType = logOrder === ord ? (logOrderType === 'DESC' ? 'ASC' : 'DESC') : 'DESC';
+                    logOrder = ord;
+                    document.querySelectorAll('.log-sort i').forEach(i => {
+                        i.className = 'fas fa-sort';
+                    });
+                    const icon = sortHdr.querySelector('i');
+                    if (icon) icon.className = 'fas fa-sort-' + (logOrderType === 'ASC' ? 'up' : 'down');
+                    logPage = 1; logUpdate();
+                }
+
+                // Pagination
+                const pageLink = e.target.closest('.log-page');
+                if (pageLink) {
+                    e.preventDefault();
+                    logPage = parseInt(pageLink.dataset.page);
+                    logUpdate();
+                    logContainer?.scrollIntoView({behavior: 'smooth', block: 'start'});
+                }
+
+                // Delete
+                const delBtn = e.target.closest('.log-delete-btn');
+                if (delBtn) {
+                    e.preventDefault();
+                    const id = delBtn.dataset.id;
+                    const ip = delBtn.dataset.ip;
+                    Swal.fire({
+                        title: 'Delete log entry?',
+                        html: 'Remove record <strong>#' + id + '</strong> from IP <code>' + ip + '</code>?',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#d33',
+                        confirmButtonText: 'Yes, delete',
+                        reverseButtons: true
+                    }).then(result => {
+                        if (!result.isConfirmed) return;
+                        logReq('log_ajax_delete', {id}).then(res => {
+                            if (res.success) {
+                                const row = document.getElementById('log-row-' + id);
+                                if (row) {
+                                    row.style.transition = 'opacity 0.3s';
+                                    row.style.opacity = '0';
+                                    setTimeout(() => { row.remove(); logUpdateCount(); }, 300);
+                                }
+                                Swal.fire({icon:'success', title:'Deleted!', text: res.message, timer:2000, showConfirmButton:false});
+                            } else {
+                                Swal.fire('Error', res.error || 'Delete failed', 'error');
+                            }
+                        });
+                    });
+                }
+            });
+
+            // Init
+            setTimeout(() => { logUpdate(); logUpdateCount(); }, 150);
+        });
+        </script>
+        HTML;
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TABS ROUTER
+// ══════════════════════════════════════════════════════════════════════════════
+
+function maxlogin_render_tabs(): void
+{
+    $tab = htmlspecialchars($_REQUEST['tab'] ?? 'attempts', ENT_QUOTES, 'UTF-8');
+    $update = htmlspecialchars($_REQUEST['update'] ?? '', ENT_QUOTES, 'UTF-8');
+
+    stdhead('Login Security Manager');
+
+    // SweetAlert2 (нужен для обоих вкладок)
+    echo '<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>';
+
+    if ($update) {
+        echo '<div class="alert alert-success alert-dismissible fade show mx-3 mt-3" role="alert">'
+           . '<i class="fas fa-check-circle me-2"></i><strong>Success!</strong> Operation "' . $update . '" completed.'
+           . '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    }
+
+    $tab_attempts_active = $tab === 'attempts' ? 'active' : '';
+    $tab_log_active      = $tab === 'log'      ? 'active' : '';
+
+    echo <<<HTML
+    <div class="container-fluid mt-3">
+        <ul class="nav nav-tabs mb-4" id="loginTabs">
+            <li class="nav-item">
+                <a class="nav-link {$tab_attempts_active}" href="?act=maxlogin&tab=attempts">
+                    <i class="fas fa-ban me-1"></i> Failed Attempts
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {$tab_log_active}" href="?act=maxlogin&tab=log">
+                    <i class="fas fa-history me-1"></i> Login History
+                </a>
+            </li>
+        </ul>
+    HTML;
+
+    if ($tab === 'log') {
+        $logMgr = new LoginLogManager();
+        $logMgr->renderTab();
+        echo '</div>'; // close container-fluid
+    } else {
+        // Render existing attempts table (reuse LoginAttemptsManager internals via output buffer)
+        $mgr = new LoginAttemptsManager();
+        $mgr->executeInner();
+        echo '</div>'; // close container-fluid
+    }
+
+    stdfoot();
+}
+
 // Initialize and execute the manager
 try {
-    $manager = new LoginAttemptsManager();
-    $manager->execute();
+    // Check if we handle an AJAX request for the log tab — bypass tab wrapper
+    $rawAction = $_REQUEST['action'] ?? '';
+    if (str_starts_with($rawAction, 'log_ajax_')) {
+        $logMgr = new LoginLogManager();
+        $logMgr->renderTab();
+        exit;
+    }
+
+    // Check if LoginAttemptsManager AJAX
+    $ajaxActions = ['ajax_ban','ajax_unban','ajax_delete','ajax_search','ajax_get_page','ajax_get_count'];
+    if (in_array($rawAction, $ajaxActions, true)) {
+        $manager = new LoginAttemptsManager();
+        $manager->execute();
+        exit;
+    }
+
+    // Check if non-list actions (edit/save/ban/unban/delete for attempts)
+    $nonListActions = ['ban','unban','delete','edit','save','searchip'];
+    if (in_array($rawAction, $nonListActions, true)) {
+        $manager = new LoginAttemptsManager();
+        $manager->execute();
+        exit;
+    }
+
+    // Full tabbed page
+    maxlogin_render_tabs();
+
 } catch (Exception $e) {
     stderr('System Error', 'An unexpected error occurred: ' . htmlspecialchars($e->getMessage()));
 }

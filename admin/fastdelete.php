@@ -2,7 +2,7 @@
 
 
 
-  if (!defined ('STAFF_PANEL_TSSEv56'))
+  if (!defined ('STAFF_PANEL'))
   {
     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
   }
@@ -17,7 +17,7 @@
   
   
   
-  if ((is_mod($usergroups) OR ($usergroups['candeletetorrent'] == '1' AND $CURUSER['id'] == $row['owner'])))
+  if ((is_mod($mybb->usergroup) OR ($mybb->usergroup['candeletetorrent'] == '1' AND $CURUSER['id'] == $row['owner'])))
   {
     $lang->load('delete');
 

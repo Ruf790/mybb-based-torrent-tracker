@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3"><strong>Error!</strong> Direct access not allowed.</div>');
 }
 

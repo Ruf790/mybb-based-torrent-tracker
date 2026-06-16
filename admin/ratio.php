@@ -1,16 +1,9 @@
 <?php
 declare(strict_types=1);
 
-/******************************************************************/
-/*==========[ TS Special Edition v.5.6 - Modernized ]============*/
-/*====================[ Special Thanks To ]======================*/
-/*        DrNet - wWw.SpecialCoders.CoM                         */
-/*        Vinson - wWw.Decode4u.CoM                             */
-/*    MrDecoder - wWw.Fearless-Releases.CoM                     */
-/*        Fynnon - wWw.BvList.CoM                               */
-/*****************************************************************/
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+
+if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger m-3" role="alert">
             <h4 class="alert-heading"><i class="fas fa-ban me-2"></i>Access Denied</h4>

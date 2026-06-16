@@ -534,7 +534,7 @@ function render_deep_analysis_result(int $id, string $sql, string $analysis, str
 
 function explain_select_query(mysqli $link, string $sqlClean, string $sql, string $timeHtml, int $id): string
 {
-    $result = mysqli_query($link, "EXPLAIN $sqlClean");
+    $result = mysqli_query($link, "EXPLAIN FORMAT=TRADITIONAL $sqlClean");
     
     if ($result === false) {
         return render_read_query($id, $sql, $timeHtml, mysqli_error($link));

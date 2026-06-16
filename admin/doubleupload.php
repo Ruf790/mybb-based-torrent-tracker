@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @author TSSpecial Edition v5.6
  */
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger" role="alert">
             <i class="fas fa-ban me-2"></i>

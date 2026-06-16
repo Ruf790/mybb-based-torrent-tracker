@@ -1,11 +1,9 @@
 <?php
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/***********************************************/
+
 
 declare(strict_types=1);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger text-center"><i class="fa-solid fa-circle-exclamation"></i> <b>Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 

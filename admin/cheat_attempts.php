@@ -6,7 +6,7 @@ require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_mkprettytime.php';
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger">Direct initialization not allowed.</div>');
 }
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization is not allowed.</div>');
 }
 
@@ -108,7 +108,7 @@ class MassInviteManager
         global $BASEURL;
 		
 		stdhead('Mass Invite Management');
-        $selectBox = _selectbox_(null, 'usergroup');
+        $selectBox = _selectbox_('', 'usergroup');
         ?>
         
         <!-- Дополнительные стили для красоты -->

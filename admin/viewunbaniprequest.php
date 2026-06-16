@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><b>Error!</b> Direct access to this file is not allowed.</div>');
 }
 
-define('UL_VERSION', 'by xam v.0.8');
+define('UL_VERSION', '0.9');
 
 // ── Helpers ───────────────────────────────────────────────────
 

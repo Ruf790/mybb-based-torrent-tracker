@@ -100,7 +100,7 @@ class TorrentManager
 // Initialize torrent manager
 $torrentManager = new TorrentManager();
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('
     <div class="alert-modern alert-modern-danger text-center">
         <i class="fas fa-exclamation-triangle me-2"></i>

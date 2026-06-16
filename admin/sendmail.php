@@ -37,7 +37,7 @@ function html2txt(string $document): string
 }
 
 // Security check
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert">
         <strong>Error!</strong> Direct initialization of this file is not allowed.
     </div>');

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger m-3" role="alert">
             <h4 class="alert-heading"><i class="fas fa-ban me-2"></i>Access Denied</h4>

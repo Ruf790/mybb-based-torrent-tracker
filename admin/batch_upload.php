@@ -5,7 +5,7 @@ declare(strict_types=1);
 ini_set('memory_limit', '512M');
 set_time_limit(600);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization not allowed.</div>');
 }
 

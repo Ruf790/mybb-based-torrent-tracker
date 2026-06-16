@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger text-center mt-4">Direct initialization not allowed.</div>');
 }
 
@@ -186,9 +186,23 @@ $h_site   = htmlspecialchars($SITENAME, ENT_QUOTES, 'UTF-8');
     <?php endif; ?>
 
     <?php if (empty($uploaderRows)): ?>
-    <div class="alert alert-info text-center py-5">
-        <i class="fas fa-inbox fa-3x mb-3 d-block opacity-50"></i>No uploaders found.
+    
+	<div class="card border-0 rounded-4 overflow-hidden" style="background: #fff;">
+    <div class="card-body p-5 text-center">
+        <div class="empty-state-icon mb-4">
+            <i class="fas fa-folder-open fa-5x text-primary" style="opacity: 0.2;"></i>
+            <i class="fas fa-user-slash fa-2x text-danger position-absolute" style="margin-top: -60px; margin-left: -10px; opacity: 0.6;"></i>
+        </div>
+        <h3 class="fw-light text-dark mb-2">No Uploaders Found</h3>
+        <p class="text-muted mb-4">Looks like there are no uploaders in this section yet</p>
+        <div class="d-flex justify-content-center gap-2">
+            <span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2 rounded-pill">
+                <i class="fas fa-clock me-1"></i> Check back later
+            </span>
+        </div>
     </div>
+</div>
+
     <?php else: ?>
 
     <div class="uploaders-grid">

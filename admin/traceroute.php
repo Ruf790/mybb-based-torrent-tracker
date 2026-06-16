@@ -3,7 +3,7 @@
  * Traceroute Utility v3.0 (AJAX Live)
  */
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('Access denied');
 }

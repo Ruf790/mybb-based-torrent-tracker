@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger fade-in" role="alert"><i class="fas fa-exclamation-triangle me-2"></i><strong>Error!</strong> Direct access to this file is not allowed.</div>');
 }
 
-define('CT_VERSION', '1.0');
+//define('CT_VERSION', '1.0');
 
 /**
  * MySQL Tables Truncation Manager Class

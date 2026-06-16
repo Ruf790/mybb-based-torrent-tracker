@@ -11,7 +11,7 @@ declare(strict_types=1);
  */
 
 // Security check
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3"><i class="fas fa-exclamation-triangle me-2"></i><strong>Error!</strong> Direct access is not permitted.</div>');
 }
 

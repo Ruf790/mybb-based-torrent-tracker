@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger"><i class="fas fa-exclamation-triangle me-2"></i>Direct initialization not allowed.</div>');
 }
 

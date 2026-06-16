@@ -6,7 +6,7 @@ require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/functions_multipage.php';
 
 // Access check
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger" role="alert">
         <i class="fas fa-exclamation-triangle"></i> <strong>Error!</strong> Direct initialization of this file is not allowed.

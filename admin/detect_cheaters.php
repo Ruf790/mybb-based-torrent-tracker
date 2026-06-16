@@ -1,18 +1,11 @@
 <?php
 declare(strict_types=1);
 
-/******************************************************************/
-/*==========[ TS Special Edition v.5.6 - Modernized ]============*/
-/*====================[ Special Thanks To ]======================*/
-/*        DrNet - wWw.SpecialCoders.CoM                         */
-/*        Vinson - wWw.Decode4u.CoM                             */
-/*    MrDecoder - wWw.Fearless-Releases.CoM                     */
-/*        Fynnon - wWw.BvList.CoM                               */
-/*****************************************************************/
+
 
 require_once INC_PATH . '/functions_multipage.php';
 
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     http_response_code(403);
     exit('<div class="alert alert-danger m-3" role="alert">
             <h4 class="alert-heading"><i class="fas fa-ban me-2"></i>Access Denied</h4>
@@ -22,7 +15,7 @@ if (!defined('STAFF_PANEL_TSSEv56')) {
 
 use function htmlspecialchars as e;
 
-const AU_VERSION = '0.6 by xam';
+const AU_VERSION = '0.7';
 const TORRENTS_PER_PAGE = 20;
 const BANNED_GROUP_ID = 9; // UC_BANNED константа
 
@@ -156,9 +149,12 @@ $start = max(0, ($page - 1) * $perPage);
 $countQuery = "SELECT COUNT(*) as total 
                FROM snatched s
                INNER JOIN users u ON (u.id = s.userid)
+               LEFT JOIN torrents t ON (s.torrentid = t.id)
                WHERE s.downloaded = 0 
-                 AND s.uploaded > 0 
-                 AND s.leechtime = 0 
+                 AND s.uploaded > 104857600
+                 AND s.leechtime = 0
+                 AND (t.free IS NULL OR t.free != 'yes')
+                 AND (t.silver IS NULL OR t.silver != 'yes')
                  AND u.enabled = 'yes' 
                  AND u.usergroup != ?";
 
@@ -194,8 +190,10 @@ $sql = "SELECT
         INNER JOIN users u ON (u.id = s.userid)
         LEFT JOIN usergroups g ON (u.usergroup = g.gid)
         WHERE s.downloaded = 0 
-          AND s.uploaded > 0 
-          AND s.leechtime = 0 
+          AND s.uploaded > 104857600
+          AND s.leechtime = 0
+          AND (t.free IS NULL OR t.free != 'yes')
+          AND (t.silver IS NULL OR t.silver != 'yes')
           AND u.enabled = 'yes' 
           AND u.usergroup != " . (int)BANNED_GROUP_ID . "
         ORDER BY u.username 

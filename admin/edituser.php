@@ -702,7 +702,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     // MIME check
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mime  = finfo_file($finfo, $file_tmp);
-    finfo_close($finfo);
+    //finfo_close($finfo);
     if (!in_array($mime, ['image/jpeg','image/png','image/gif','image/webp'], true)) {
         $is_ajax ? $json(['success'=>false,'error'=>'File is not a valid image'], 415) : exit('Error: File is not a valid image.');
     }

@@ -5,14 +5,14 @@ declare(strict_types=1);
 
 class TorrentManager
 {
-    private const VERSION = '0.2 by xam';
+    private const VERSION = '0.2';
     
     public function __construct(
         private object $db,
         private array $currentUser,
         private string $scriptUrl
     ) {
-        if (!defined('STAFF_PANEL_TSSEv56')) {
+        if (!defined('STAFF_PANEL')) {
             $this->showError('Direct initialization of this file is not allowed.');
         }
     }

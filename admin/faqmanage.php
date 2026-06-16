@@ -35,7 +35,7 @@ function show_faq_errors()
 }
 
 // Security check
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3" role="alert">
         <i class="fas fa-ban me-2"></i><b>Error!</b> Direct initialization of this file is not allowed.
     </div>');

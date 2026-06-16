@@ -40,7 +40,6 @@ var Thread = {
                         if(typeof showToast !== 'undefined') {
                             showToast('Select tool', 'warning');
                         } else {
-                            console.log('Please select a tool');
                         }
                         e.preventDefault();
                         return false;
@@ -57,11 +56,9 @@ var Thread = {
     initQuickReply: function() {
         var quickReplyForm = document.getElementById('quick_reply_form');
         if(quickReplyForm && use_xmlhttprequest == 1) {
-            console.log('Initializing quick reply form...');
             
             // Удаляем стандартный обработчик отправки формы
             quickReplyForm.addEventListener('submit', function(e) {
-                console.log('Form submit intercepted');
                 e.preventDefault();
                 e.stopPropagation();
                 return Thread.quickReply(e);
@@ -71,7 +68,6 @@ var Thread = {
             var quickReplySubmit = document.getElementById('quick_reply_submit');
             if(quickReplySubmit) {
                 quickReplySubmit.addEventListener('click', function(e) {
-                    console.log('Submit button clicked');
                     e.preventDefault();
                     e.stopPropagation();
                     return Thread.quickReply(e);
@@ -82,7 +78,6 @@ var Thread = {
 
     // ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ МЕТОД БЫСТРОГО ОТВЕТА
     quickReply: function(e) {
-        console.log('quickReply called');
         
         if(e) {
             e.preventDefault();
@@ -91,12 +86,10 @@ var Thread = {
 
         // Защита от множественных отправок
         if(this.quick_replying) {
-            console.log('Quick reply already in progress, ignoring duplicate');
             return false;
         }
 
         this.quick_replying = true;
-        console.log('Starting quick reply process...');
 
         var quickReplyForm = document.getElementById('quick_reply_form');
         if(!quickReplyForm) {
@@ -131,7 +124,6 @@ var Thread = {
         formData.append('my_post_key', my_post_key);
         formData.append('random_seed', Math.random().toString(36).substring(2, 15));
 
-        console.log('Sending quick reply request...');
 
         // Показываем спиннер
         var qreply_spinner = document.getElementById('quickreply_spinner');
@@ -148,14 +140,12 @@ var Thread = {
             }
         })
         .then(response => {
-            console.log('Response received:', response.status);
             if (!response.ok) {
                 throw new Error('Network response was not ok: ' + response.status);
             }
             return response.json();
         })
         .then(data => {
-            console.log('Quick reply success:', data);
             Thread.quickReplyDone(data);
         })
         .catch(error => {
@@ -181,7 +171,6 @@ var Thread = {
 
     // ИСПРАВЛЕННАЯ ОБРАБОТКА ОТВЕТА
     quickReplyDone: function(json) {
-        console.log('Processing quick reply response:', json);
 
         if(typeof json == 'object' && json.hasOwnProperty("errors")) {
             json.errors.forEach(function(message) {
@@ -203,7 +192,6 @@ var Thread = {
 
         if(json.data && json.data.match(/id="post_([0-9]+)"/)) {
             var pid = json.data.match(/id="post_([0-9]+)"/)[1];
-            console.log('New post created with ID:', pid);
             
             // Добавляем новый пост на страницу
             var postsContainer = document.getElementById('posts');
@@ -214,7 +202,6 @@ var Thread = {
                 while(tempDiv.firstChild) {
                     postsContainer.appendChild(tempDiv.firstChild);
                 }
-                console.log('New post added to page');
             }
 
             // Обновляем счетчик
@@ -235,7 +222,6 @@ var Thread = {
                 var quotedIds = document.getElementById('quoted_ids');
                 if(quotedIds) quotedIds.value = '';
                 
-                console.log('Quick reply form cleared');
             }
             
             // Обновляем lastpid
@@ -270,7 +256,6 @@ var Thread = {
                     var code = script.replace(/<script\b[^>]*>|<\/script>/gi, '');
                     try { 
                         eval(code); 
-                        console.log('Executed script from response');
                     } catch(e) { 
                         console.error('Error executing script:', e); 
                     }
@@ -283,7 +268,6 @@ var Thread = {
 
     // ОБРАБОТКА ССЫЛОК ЦИТИРОВАНИЯ
     handleQuoteLinks: function() {
-        console.log('handleQuoteLinks called');
         
         var quoteLinks = document.querySelectorAll('a[href*="newreply.php"][href*="quotedpid"]');
         quoteLinks.forEach(function(link) {
@@ -306,7 +290,6 @@ var Thread = {
                     e.stopPropagation();
                     e.stopImmediatePropagation();
                     
-                    console.log('Quote clicked for PID:', pid);
                     Thread.handleSingleQuote(pid);
                 }, { once: true });
             }
@@ -315,11 +298,9 @@ var Thread = {
 
     // ОБРАБОТКА ОДИНОЧНОГО ЦИТИРОВАНИЯ
     handleSingleQuote: function(pid) {
-        console.log('Quick reply quote for PID:', pid);
         
         // Защита от множественных вызовов
         if (this.quoting) {
-            console.log('Quote already in progress');
             return;
         }
         
@@ -376,7 +357,6 @@ var Thread = {
             // Удаляем возможные дублирующиеся цитаты
             quoteText = Thread.removeDuplicateQuotes(quoteText);
             
-            console.log('Prepared quote text:', quoteText);
 
             // Если уже есть текст, добавляем переносы
             var currentText = messageElement.value;
@@ -433,7 +413,6 @@ var Thread = {
                 showToast('Quote added to quick reply', 'success');
             }
             
-            console.log('Quote inserted for PID:', pid);
         }
     },
 
@@ -471,7 +450,6 @@ var Thread = {
 
     // MULTIQUOTE
     multiQuote: function(pid) {
-        console.log('multiQuote called with:', pid);
         
         pid = parseInt(pid);
         if(isNaN(pid)) {
@@ -497,7 +475,6 @@ var Thread = {
 
         if(quoted && !deleted) {
             const post_ids = quoted.split("|");
-            console.log('Existing quotes:', post_ids);
 
             post_ids.forEach(post_id => {
                 const numPostId = parseInt(post_id);
@@ -549,11 +526,9 @@ var Thread = {
 
     // ЗАГРУЗКА MULTIQUOTE
     loadMultiQuoted: function() {
-        console.log('Loading multi-quoted posts to quick reply');
         
         // Защита от множественных вызовов
         if (this.loadingMultiQuote) {
-            console.log('Multi-quote already loading');
             return false;
         }
         
@@ -645,7 +620,6 @@ var Thread = {
 
     // ПОКАЗ КНОПОК ЦИТИРОВАНИЯ
     showQuoteButtons: function() {
-        console.log('showQuoteButtons called');
         
         setTimeout(function() {
             var quoteSelectors = [
@@ -698,8 +672,6 @@ var Thread = {
                 button.removeAttribute('hidden');
             });
             
-            console.log('Found quote buttons:', quoteButtons.length);
-            console.log('Found multi-quote buttons:', multiQuoteButtons.length);
             
             // Переинициализируем обработчики
             Thread.handleQuoteLinks();
@@ -741,7 +713,6 @@ var Thread = {
                 el.style.display = 'none';
             });
         } catch(e) {
-            console.log('Error hiding elements:', e);
         }
     },
 

@@ -1320,9 +1320,9 @@ function _get_file_type_(string $file): string
 
 
 
-  if ((!defined ('SETTING_PANEL_TSSEv56') AND !defined ('STAFF_PANEL_TSSEv56')))
+  if ((!defined ('SETTING_PANEL_TSSEv56') AND !defined ('STAFF_PANEL')))
   {
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed22222222.</font>');
   }
 
  

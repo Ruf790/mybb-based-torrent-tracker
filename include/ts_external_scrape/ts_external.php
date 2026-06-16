@@ -59,8 +59,8 @@ $timeout = 2;
 
         foreach ($TrackerList as $TrackerURL) {
             if (isUdp($TrackerURL)) {
-                require_once INC_PATH . "/ts_external_scrape/tscraper.php";
-                require_once INC_PATH . "/ts_external_scrape/udptscraper.php";
+                require_once INC_PATH . "/external_scrape/tscraper.php";
+                require_once INC_PATH . "/external_scrape/udptscraper.php";
 
                 try {
                     $scraper = new udptscraper($timeout);
@@ -73,7 +73,7 @@ $timeout = 2;
                     // Лог или пропуск ошибок
                 }
             } else {
-                require_once INC_PATH . "/ts_external_scrape/ts_decode.php";
+                require_once INC_PATH . "/external_scrape/ts_decode.php";
                 require_once INC_PATH . "/functions_ts_remote_connect.php";
 
                 $TrackerURL = str_replace("announce", "scrape", $TrackerURL);

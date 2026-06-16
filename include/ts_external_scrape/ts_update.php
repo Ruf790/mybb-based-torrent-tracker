@@ -50,7 +50,7 @@ if (!$is_mod && TIMENOW - $ts_external_lastupdate < 3600) {
 
 $externaltorrent = TSDIR . '/' . $torrent_dir . '/' . $id . '.torrent';
 
-require_once INC_PATH . '/ts_external_scrape/ts_external.php';
+require_once INC_PATH . '/external_scrape/ts_external.php';
 
 if (!$ajax) {
     redirect($returnto, $lang->global['externalupdated']);

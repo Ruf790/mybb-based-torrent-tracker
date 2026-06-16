@@ -1,4 +1,4 @@
--- Ruff Tracker — Default Settings
+-- Default Settings
 -- Placeholders replaced by installer at runtime:
 --   {{SITENAME}}        — site name
 --   {{BASEURL}}         — site URL (no trailing slash)

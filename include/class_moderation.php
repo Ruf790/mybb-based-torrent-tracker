@@ -765,7 +765,8 @@ class Moderation
             update_first_post($thread['tid']);
         }
 
-        $plugins->run_hooks('class_moderation_merge_posts', ['pids' => $pids, 'tid' => $tid]);
+       $merge_data = ['pids' => $pids, 'tid' => $tid];
+       $plugins->run_hooks('class_moderation_merge_posts', $merge_data);
 
         foreach ($thread_counters as $tid => $c) {
             update_thread_counters($tid, [
@@ -787,7 +788,7 @@ class Moderation
             ]);
         }
 
-        return $masterpid;
+        return (int)$masterpid;
     }
 
     // ── merge_threads ─────────────────────────────────────────────────────────
@@ -980,7 +981,8 @@ class Moderation
                 break;
 
             case 'copy':
-                $plugins->run_hooks('class_moderation_copy_thread', ['tid' => $tid, 'new_fid' => $new_fid]);
+                $copy_data = ['tid' => $tid, 'new_fid' => $new_fid];
+                $plugins->run_hooks('class_moderation_copy_thread', $copy_data);
 
                 $newtid = $db->insert_query('threads', [
                     'fid'             => $new_fid,
@@ -1248,13 +1250,14 @@ class Moderation
             };
         }
 
-        $plugins->run_hooks('class_moderation_split_posts', [
-            'pids'           => $pids,
-            'tid'            => $tid,
-            'moveto'         => $moveto,
-            'newsubject'     => $newsubject,
-            'destination_tid'=> $destination_tid,
-        ]);
+        $split_data = [
+    'pids'           => $pids,
+    'tid'            => $tid,
+    'moveto'         => $moveto,
+    'newsubject'     => $newsubject,
+    'destination_tid'=> $destination_tid,
+];
+$plugins->run_hooks('class_moderation_split_posts', $split_data);
 
         foreach ($user_counters as $uid => $counters) {
             $update = [];

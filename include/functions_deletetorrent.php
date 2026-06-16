@@ -357,7 +357,7 @@ function delete_torrent_database_records(int $id): void
         "torrents" => "id='$id'",
         "torrents_nfo" => "id='$id'",
 		"reports" => "reported_id='$id'",
-		"announce_actions" => "torrentid='$id'",
+		//"announce_actions" => "torrentid='$id'",
 		"cheat_attempts" => "torrentid='$id'",
 		"hit_and_run" => "torrentid='$id'",
 		"torrent_ratings" => "torrent_id='$id'"

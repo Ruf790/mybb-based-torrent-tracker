@@ -2763,7 +2763,7 @@ function maxsysop(): void
                 require_once INC_PATH . '/functions_pm.php';
 				require_once INC_PATH . '/datahandler.php';
                
-			   $ip = getip();
+			   $ip = get_ip();
 			   $reasons = 'not in STAFFTEAM file';
 				
 				
@@ -2784,7 +2784,7 @@ function maxsysop(): void
 				
 				
 				
-                write_log('Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $CURUSER['id'] . ' - UserIP : ' . getip(), 'Warning: Fake Account Detected!');
+                write_log('Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $CURUSER['id'] . ' - UserIP : ' . get_ip(), 'Warning: Fake Account Detected!');
                 stderr($lang->global['fakeaccount']);
             }
         }

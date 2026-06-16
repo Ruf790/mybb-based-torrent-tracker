@@ -169,7 +169,7 @@ function GetTorrentTags(array $t): string
     // ── External (special — JS onclick) ───────────────────────────────────────
     if ($t['ts_external'] === 'yes' && $ShowImage) {
         $id = (int)$t['id'];
-        $js = "UpdateExternalTorrent('include/ts_external_scrape/ts_update.php','id={$id}&ajax_update=true',{$id})";
+        $js = "UpdateExternalTorrent('include/external_scrape/ts_update.php','id={$id}&ajax_update=true',{$id})";
         $I[] = '<span id="isexternal_' . $id . '">'
              . '<a href="javascript:void(0)" onclick="' . $js . '" class="badge-popover" '
              . $pop('🌐 External Tracker', htmlspecialchars(

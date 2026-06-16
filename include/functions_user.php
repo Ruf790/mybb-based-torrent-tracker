@@ -532,7 +532,6 @@ function usercp_menu_messenger()
                 '.$ucp_nav_compose.'
                 '.$folderlinks.'
                 '.$ucp_nav_tracking.'
-                <a href="private.php?action=folders" class="btn btn-menu-coll"><i class="fa-solid fa-gear ms-2"></i> &nbsp;&nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_folders'].'</a>
             </ul>
         </div>
     </div>';
@@ -569,7 +568,8 @@ function usercp_menu_profile()
 		$collapsed['usercpprofile_e'] = '';
 	}
 
-	$expaltext = (in_array("usercpprofile", $collapse)) ? '[+]' : '[-]';
+	//$expaltext = (in_array("usercpprofile", $collapse)) ? '[+]' : '[-]';
+	$expaltext = (in_array("usercpprofile", $collapse ?? [])) ? '[+]' : '[-]';
     
 	
 	$usercpmenu .= '
@@ -583,6 +583,8 @@ function usercp_menu_profile()
 <a href="usercp.php?action=profile" class="btn btn-menu-coll"><i class="fa-solid fa-user-pen ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_edit_profile'].'</a>
 '.$changenameop.'
 <a href="usercp.php?action=password" class="btn btn-menu-coll"><i class="fa-solid fa-key ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_pass'].'</a>
+<a href="usercp.php?action=2fa" class="btn btn-menu-coll"><i class="fa-solid fa-shield-halved ms-2"></i> &nbsp;&nbsp; Two-Factor Authentication</a>
+<a href="usercp.php?action=sessions" class="btn btn-menu-coll"><i class="fa-solid fa-display ms-2"></i> &nbsp;&nbsp; Active Session</a>
 <a href="usercp.php?action=email" class="btn btn-menu-coll"><i class="fa-solid fa-at ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_email'].'</a>     
 <a href="usercp.php?action=avatar" class="btn btn-menu-coll"><i class="fa-solid fa-image ms-2"></i> &nbsp;&nbsp; '.$lang->usercpnav['ucp_nav_change_avatar'].'</a>	
 '.$changesigop.'

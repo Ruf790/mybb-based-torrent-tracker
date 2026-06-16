@@ -55,18 +55,14 @@ function failedloginscheck(string $type = 'Login'): void
 }
 
 
-
-
-
-
 /**
  * Records a failed login attempt and optionally notifies the account owner.
  *
- * @param string   $type     'login' | 'silent' | any stderr-compatible error key
- * @param bool     $recover  Mark the attempt as a password-recovery attempt
- * @param bool     $head     Pass $head through to stderr()
- * @param bool     $msg      Send a warning PM to the affected user
- * @param int      $uid      UID of the affected user (required when $msg = true)
+ * @param string $type    'login' | 'silent' | any stderr-compatible error key
+ * @param bool   $recover Mark the attempt as a password-recovery attempt
+ * @param bool   $head    Pass $head through to stderr()
+ * @param bool   $msg     Send a warning PM to the affected user
+ * @param int    $uid     UID of the affected user (required when $msg = true)
  */
 function failedlogins(
     string $type    = 'login',
@@ -109,6 +105,9 @@ function failedlogins(
         );
     }
 
+    // ── Write to login_log ─────────────────────────────────
+    log_login($uid, 'fail', $recover ? 'recover' : 'login');
+
     // ── Send warning PM to account owner ─────────────────────
     if ($msg && $uid > 0) {
         require_once INC_PATH . '/functions_pm.php';
@@ -137,7 +136,6 @@ function failedlogins(
 
     stderr($lang->global['error'], $type, false, $head);
 }
-
 
 
 /**
@@ -255,4 +253,245 @@ function login_hms_from_seconds(int $totalSeconds): array
     $seconds = $totalSeconds % 60;
 
     return [$hours, $minutes, $seconds];
+}
+
+
+
+/**
+ * Resolves geolocation for an IP address via ip-api.com (free, no key required).
+ * Returns ['country' => '...', 'city' => '...'].
+ * Local/private addresses return 'Local' without making an HTTP request.
+ */
+function geo_by_ip(string $ip): array
+{
+    if (
+        $ip === ''
+        || str_starts_with($ip, '127.')
+        || str_starts_with($ip, '192.168.')
+        || str_starts_with($ip, '10.')
+        || $ip === '::1'
+    ) {
+        return ['country' => 'Local', 'city' => 'Local'];
+    }
+
+    $url  = 'http://ip-api.com/json/' . urlencode($ip) . '?fields=status,country,city';
+    $ctx  = stream_context_create(['http' => ['timeout' => 3]]);
+    $json = @file_get_contents($url, false, $ctx);
+
+    if ($json === false) {
+        return ['country' => '', 'city' => ''];
+    }
+
+    $data = json_decode($json, true);
+
+    if (!is_array($data) || ($data['status'] ?? '') !== 'success') {
+        return ['country' => '', 'city' => ''];
+    }
+
+    return [
+        'country' => (string)($data['country'] ?? ''),
+        'city'    => (string)($data['city']    ?? ''),
+    ];
+}
+
+/**
+ * Writes a login event (success or failure) to login_log.
+ * For successful logins from a new country, triggers an admin e-mail alert.
+ *
+ * @param int    $uid    User ID (0 for guests / unknown)
+ * @param string $status 'success' | 'fail'
+ * @param string $type   'login'   | 'recover'
+ */
+function log_login(int $uid, string $status = 'fail', string $type = 'login'): void
+{
+    global $db, $mybb;
+
+    $ip         = get_ip();
+    $user_agent = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
+    $now        = (int)TIMENOW;
+
+    // Browser/OS fingerprint — hash of User-Agent + Accept-Language
+    $accept_lang = $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '';
+    $fingerprint = substr(hash('sha256', $user_agent . '|' . $accept_lang), 0, 32);
+
+    // Geolocation
+    $geo     = geo_by_ip($ip);
+    $country = $geo['country'];
+    $city    = $geo['city'];
+
+    // Suspicious? — only for successful logins with a known country
+    $suspicious  = 'no';
+    $fp_mismatch = false;
+
+    if ($status === 'success' && $uid > 0) {
+        if ($country !== '' && $country !== 'Local') {
+            $prev = $db->fetch_field(
+                $db->simple_select(
+                    'login_log',
+                    'country',
+                    "uid='{$uid}' AND status='success' AND suspicious='no' AND country != ''",
+                    ['order_by' => 'datetime', 'order_dir' => 'DESC', 'limit' => 1]
+                ),
+                'country'
+            );
+
+            if ($prev !== null && $prev !== '' && $prev !== $country) {
+                $suspicious = 'yes';
+            }
+        }
+
+        // Fingerprint check — known device list
+        $known = $db->fetch_field(
+            $db->simple_select(
+                'user_devices',
+                'id',
+                "uid='{$uid}' AND fingerprint='" . $db->escape_string($fingerprint) . "'",
+                ['limit' => 1]
+            ),
+            'id'
+        );
+
+        if ($known) {
+            // Known device — just update last_seen
+            $db->update_query('user_devices', ['last_seen' => $now], "id='{$known}'");
+        } else {
+            // New device — add to list and alert user
+            $db->insert_query('user_devices', [
+                'uid'         => $uid,
+                'fingerprint' => $db->escape_string($fingerprint),
+                'user_agent'  => $db->escape_string($user_agent),
+                'first_seen'  => $now,
+                'last_seen'   => $now,
+            ]);
+            $fp_mismatch = true;
+        }
+    }
+
+    // Is the IP currently banned in loginattempts?
+    $banned = 'no';
+    if ($ip !== '') {
+        $ban = $db->fetch_field(
+            $db->simple_select('loginattempts', 'banned', "ip='" . $db->escape_string($ip) . "'", ['limit' => 1]),
+            'banned'
+        );
+        if ($ban === 'yes') {
+            $banned = 'yes';
+        }
+    }
+
+    // Persist the record
+    $db->insert_query('login_log', [
+        'uid'         => $uid,
+        'ip'          => $db->escape_string($ip),
+        'country'     => $db->escape_string($country),
+        'city'        => $db->escape_string($city),
+        'user_agent'  => $db->escape_string($user_agent),
+        'fingerprint' => $fingerprint,
+        'datetime'    => $now,
+        'type'        => $db->escape_string($type),
+        'status'      => $status,
+        'suspicious'  => $suspicious,
+        'banned'      => $banned,
+    ]);
+
+    // Clean up records older than 30 days (runs with 1% probability)
+    if (random_int(1, 100) === 1) {
+        $db->sql_query("DELETE FROM login_log WHERE datetime < " . ($now - 2592000));
+    }
+
+    // Alert admin on suspicious successful login (new country)
+    if ($suspicious === 'yes') {
+        notify_admin_suspicious($uid, $ip, $country, $city, $user_agent, $now);
+    }
+
+    // Soft alert on browser/OS fingerprint mismatch — informational, no logout
+    if ($fp_mismatch) {
+        notify_user_new_device($uid, $ip, $country, $city, $user_agent, $now);
+    }
+}
+
+/**
+ * Sends an e-mail alert to the site admin when a user logs in from a new country.
+ */
+function notify_admin_suspicious(
+    int    $uid,
+    string $ip,
+    string $country,
+    string $city,
+    string $ua,
+    int    $time
+): void {
+    global $db, $REPORTMAIL, $BASEURL;
+
+    if ($uid <= 0) {
+        return;
+    }
+
+    $user = $db->fetch_array(
+        $db->simple_select('users', 'username, email', "id='{$uid}'")
+    );
+
+    if (empty($user['username'])) {
+        return;
+    }
+
+    $site  = defined('SITENAME') ? SITENAME : 'ruff-tracker';
+    $base  = $BASEURL ?? '';
+    $admin = $REPORTMAIL ?? '';
+
+    if (empty($admin)) {
+        return;
+    }
+
+    $date    = date('Y-m-d H:i:s', $time);
+    $subject = "[{$site}] Suspicious login: {$user['username']}";
+
+    $message = "A login from a new country has been detected.\n\n"
+             . "User         : {$user['username']} (uid={$uid})\n"
+             . "Email        : {$user['email']}\n"
+             . "IP           : {$ip}\n"
+             . "Country/City : {$country} / {$city}\n"
+             . "User-Agent   : {$ua}\n"
+             . "Time         : {$date}\n\n"
+             . "Profile      : {$base}/member.php?action=profile&uid={$uid}\n"
+             . "Login log    : {$base}/admin/index.php?module=ts-login_log\n";
+
+    my_mail($admin, $subject, $message);
+}
+
+/**
+ * Sends an informational email to the user when a successful login is
+ * detected from a browser/OS fingerprint not seen before for this account.
+ * Non-blocking — the login proceeds normally.
+ */
+function notify_user_new_device(
+    int    $uid,
+    string $ip,
+    string $country,
+    string $city,
+    string $ua,
+    int    $time
+): void {
+    global $db, $SITENAME;
+
+    if ($uid <= 0) return;
+
+    $user = $db->fetch_array(
+        $db->simple_select('users', 'username, email', "id='{$uid}'", ['limit' => 1])
+    );
+
+    if (empty($user['email'])) return;
+
+    $date    = date('Y-m-d H:i:s', $time);
+    $subject = '[' . $SITENAME . '] New device sign-in';
+
+    $message = "A successful login was just made from a browser or device we haven't seen on your account before.\n\n"
+             . "IP           : {$ip}\n"
+             . "Country/City : {$country} / {$city}\n"
+             . "Browser      : {$ua}\n"
+             . "Time         : {$date}\n\n"
+             . "If this was you, no action is needed.\n"
+             . "If you don't recognize this device, please change your password and review your active session.";
+
+    my_mail($user['email'], $subject, $message);
 }

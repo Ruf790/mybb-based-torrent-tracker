@@ -11,7 +11,7 @@ if (!defined('FORUM_ACTIVE') || !defined('APP_INITIALIZED') || !defined('FORUM_S
 // ── check_forum_password ──────────────────────────────────────────────────────
 function check_forum_password(int|string $fid, int|string $pid = 0, bool $return = false): bool
 {
-    global $mybb, $lang, $templates, $forum_cache, $CURUSER, $BASEURL;
+    global $mybb, $lang, $forum_cache, $CURUSER, $BASEURL;
 
     $showform = true;
 
@@ -43,8 +43,12 @@ function check_forum_password(int|string $fid, int|string $pid = 0, bool $return
                 my_setcookie("forumpass[{$fid}]", md5($CURUSER['id'] . $mybb->get_input('pwverify')), null, true);
                 $showform = false;
             } else {
-                eval('$pwnote = "' . $templates->get('forumdisplay_password_wrongpass') . '";');
-                $showform = true;
+                
+				
+				$pwnote = ''.$lang->global['wrong_forum_password'].'';
+                
+				
+				$showform = true;
             }
         } else {
             $showform = !forum_password_validated($forum_cache[$fid]);
@@ -62,7 +66,56 @@ function check_forum_password(int|string $fid, int|string $pid = 0, bool $return
             header("Location: {$BASEURL}/" . get_forum_link($fid));
         } else {
             $_SERVER['REQUEST_URI'] = htmlspecialchars_uni($_SERVER['REQUEST_URI']);
-            eval('$pwform = "' . $templates->get('forumdisplay_password') . '";');
+            
+			
+			
+			
+$pwform = '
+<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/pw-modal.css">
+<div class="pw-overlay">
+    <form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES, 'UTF-8') . '" method="post">
+        <div class="pw-card">
+            <div class="pw-top-bar"></div>
+            <div class="pw-header">
+                <div class="pw-icon"><i class="bi bi-shield-lock-fill"></i></div>
+                <div>
+                    <p class="pw-title">' . $lang->global['password_required'] . '</p>
+                    <p class="pw-sub">' . htmlspecialchars((string)($SITENAME ?? ''), ENT_QUOTES, 'UTF-8') . '</p>
+                </div>
+            </div>
+            <div class="pw-body">
+                <label class="pw-label" for="pwverify">' . $lang->global['enter_password_below'] . '</label>
+                <span class="pw-note">' . $lang->global['forum_password_note'] . '</span>
+                <div class="pw-input-wrap">
+                    <input type="password" name="pwverify" id="pwverify" placeholder="••••••••" autocomplete="current-password">
+                    <button type="button" class="pw-toggle" onclick="
+                        var i=document.getElementById(\'pwverify\');
+                        var ic=this.querySelector(\'i\');
+                        i.type=i.type===\'password\'?\'text\':\'password\';
+                        ic.className=i.type===\'password\'?\'bi bi-eye\':\'bi bi-eye-slash\';
+                    "><i class="bi bi-eye"></i></button>
+                </div>
+                ' . (!empty($pwnote) ? '<div class="pw-error"><i class="bi bi-exclamation-circle-fill"></i> ' . $pwnote . '</div>' : '') . '
+            </div>
+            <div class="pw-footer">
+                <button type="submit" name="submit" class="pw-btn">
+                    <i class="bi bi-key-fill"></i>
+                    ' . $lang->global['verify_forum_password'] . '
+                </button>
+            </div>
+        </div>
+    </form>
+</div>';
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
             stdhead();
             build_breadcrumb();
             echo $pwform;

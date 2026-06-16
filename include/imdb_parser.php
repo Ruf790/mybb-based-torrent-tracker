@@ -12,18 +12,23 @@ include_once INC_PATH . '/IMDB.php';
 // ── Хелперы ───────────────────────────────────────────────────────────────────
 
 /** Безопасный htmlspecialchars */
+if (!function_exists('h')) {
 function h(string $s): string
 {
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 }
+}
 
 /** Строка из массива через join или '' */
+if (!function_exists('implode_field')) {
 function implode_field(array $data, string $key, string $glue = ', '): string
 {
     return !empty($data[$key]) ? implode($glue, (array)$data[$key]) : '';
 }
+}
 
 /** Строка-поле из массива с fallback */
+if (!function_exists('str_field')) {
 function str_field(array $data, string ...$keys): string
 {
     foreach ($keys as $key) {
@@ -31,29 +36,37 @@ function str_field(array $data, string ...$keys): string
     }
     return '';
 }
+}
 
 /** Условный HTML-блок — возвращает '' если $value пустой */
+if (!function_exists('when')) {
 function when(string $value, string $html): string
 {
     return $value !== '' ? $html : '';
 }
+}
 
 /** Условный section-title + блок */
+if (!function_exists('section')) {
 function section(string $title, string ...$blocks): string
 {
     $content = implode('', $blocks);
     if ($content === '') return '';
     return "<div class='section-title'>{$title}</div>{$content}";
 }
+}
 
 /** Одна info-строка */
+if (!function_exists('info_row')) {
 function info_row(string $icon, string $label, string $value): string
 {
     if ($value === '') return '';
     return "<div><i class='fa {$icon}'></i> <strong>{$label}:</strong> {$value}</div>";
 }
+}
 
 // ── Парсинг runtime ───────────────────────────────────────────────────────────
+if (!function_exists('parse_runtime')) {
 function parse_runtime(string $raw): ?int
 {
     if (preg_match('/(\d+)\s*h(?:ou)?r?s?\s*(\d+)?\s*m(?:in)?s?/i', $raw, $m)) {
@@ -63,6 +76,7 @@ function parse_runtime(string $raw): ?int
         return (int)$m[1];
     }
     return null;
+}
 }
 
 // ── Основная логика ───────────────────────────────────────────────────────────

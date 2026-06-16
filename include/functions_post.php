@@ -239,16 +239,13 @@ function build_postbit($post, $post_type = 0)
 
     $hascustomtitle = 0;
 
-    foreach (['pid','aid','pmid','posturl','button_multiquote','subject_extra','attachments',
-              'button_rep','button_warn','button_purgespammer','button_pm','button_reply_pm',
-              'button_replyall_pm','button_forward_pm','button_delete_pm','replink','warninglevel'] as $f) {
-        if (empty($post[$f])) $post[$f] = '';
-    }
-
-    if (!$parser) {
-        require_once INC_PATH . "/class_parser.php";
-        $parser = new postParser;
-    }
+    foreach (['aid','pmid','posturl','button_multiquote','subject_extra','attachments',
+          'button_rep','button_warn','button_purgespammer','button_pm','button_reply_pm',
+          'button_replyall_pm','button_forward_pm','button_delete_pm','replink','warninglevel'] as $f) {
+    if (empty($post[$f])) $post[$f] = '';
+}
+// pid отдельно — должен быть int, не строка
+if (empty($post['pid'])) $post['pid'] = 0;
 
     /* ── Unapproved shade ─────────────────────────────────────────── */
     $unapproved_shade = '';
@@ -333,14 +330,7 @@ function build_postbit($post, $post_type = 0)
     $displaygroup = usergroup_displaygroup($post['displaygroup']);
     if (is_array($displaygroup)) $usergroup = array_merge($usergroup, $displaygroup);
 
-    if (!is_array($titlescache)) {
-        $cached_titles = $cache->read("usertitles");
-        if (!empty($cached_titles)) {
-            foreach ($cached_titles as $title) $titlescache[$title['posts']] = $title;
-        }
-        if (is_array($titlescache)) krsort($titlescache);
-        unset($title, $cached_titles);
-    }
+
 
     /* ── Registered user vs guest ────────────────────────────────── */
     if ($post['userusername']) {
@@ -384,16 +374,7 @@ function build_postbit($post, $post_type = 0)
         $post['userregdate']  = my_datee($regdateformat, $post['added']);
         $post['user_details'] = '<i class="bi bi-chat-fill"></i> ' . $post['postnum'];
 
-        /* Profile fields */
-        if (!isset($profile_fields)) {
-            $profile_fields = [];
-            $pfcache = $cache->read('profilefields');
-            if (is_array($pfcache)) {
-                foreach ($pfcache as $pf) {
-                    if ($pf['postbit'] == 1) $profile_fields[$pf['fid']] = $pf;
-                }
-            }
-        }
+		
     } else {
         $post['profilelink']  = format_name($post['username'], 1);
         $post['title']        = htmlspecialchars_uni($usergroup['title'] ?: 'guest');
@@ -476,9 +457,10 @@ function build_postbit($post, $post_type = 0)
         }
 
         /* ── Inline mod checkbox ──────────────────────────────────── */
-        if ($is_mod) {
-            $inlinecheck = (isset($mybb->cookies[$inlinecookie]) && my_strpos($mybb->cookies[$inlinecookie], '|' . $post['pid'] . '|') !== false)
-                ? 'checked="checked"' : '';
+       if ($is_mod) {
+    $inlinecheck = (!empty($inlinecookie) && isset($mybb->cookies[$inlinecookie]) && my_strpos($mybb->cookies[$inlinecookie], '|' . $post['pid'] . '|') !== false)
+        ? 'checked="checked"' : '';
+                
 
             $post['inlinecheck'] = '<div class="form-check form-switch d-inline-block">'
                 . '<input type="checkbox" class="form-check-input" name="inlinemod_' . (int)$post['pid'] . '" id="inlinemod_' . (int)$post['pid'] . '" value="1" style="vertical-align:middle;margin-bottom:7px;" ' . $inlinecheck . '>'

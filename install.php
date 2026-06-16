@@ -1,7 +1,7 @@
 <?php
 /**
- * Ruff Tracker — Installer v1.2
- * Переписан под DB-класс (DB_MySQLi / DB_MySQL / DB_PgSQL / DB_SQLite)
+ * Installer v1.2
+ * 
  */
 const IN_TRACKER = true;
 const APP_INITIALIZED = true;
@@ -22,7 +22,7 @@ if (file_exists(LOCK_FILE) && !isset($_GET['force'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔒 Already Installed | Ruff Tracker</title>
+    <title>🔒 Already Installed | Mybb Based Torrent Tracker</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -43,7 +43,7 @@ if (file_exists(LOCK_FILE) && !isset($_GET['force'])) {
                 <div class="lock-icon mb-3"><i class="fas fa-lock-circle fa-4x text-danger"></i></div>
                 <div class="mb-3"><span class="badge bg-danger bg-opacity-10 text-danger px-3 py-2 rounded-pill"><i class="fas fa-shield-alt me-2"></i>Installation Locked</span></div>
                 <h2 class="fw-bold mb-2" style="color:#1a1a2e;">Already Installed</h2>
-                <p class="text-muted mb-1">Ruff Tracker is already installed and configured.</p>
+                <p class="text-muted mb-1">Mybb Based Torrent Tracker is already installed and configured.</p>
                 <p class="text-muted">Delete <code>install.lock</code> to reinstall.</p>
             </div>
             <hr class="my-4">
@@ -78,7 +78,7 @@ $step   = isset($_GET['step']) ? (int)$_GET['step'] : 1;
 $step   = max(1, min(6, $step));
 $errors = [];
 
-// ── Инициализация DB-класса из сессии (начиная со шага 3) ─────────────────────
+// ── Initialize DB class from session (starting at step 3) ─────────────────
 function getDb(): mixed
 {
     $dbSess = $_SESSION['db'] ?? [];
@@ -91,7 +91,6 @@ function getDb(): mixed
             'database'     => $dbSess['database']  ?? '',
             'username'     => $dbSess['username']  ?? '',
             'password'     => $dbSess['password']  ?? '',
-            'table_prefix' => $dbSess['prefix']    ?? '',
             'encoding'     => 'utf8mb4',
         ],
     ];
@@ -110,18 +109,17 @@ function getDb(): mixed
         default  => new DB_MySQL(),
     };
 
-    define('TABLE_PREFIX', $config['database']['table_prefix']);
     $db->connect($config['database']);
-    $db->set_table_prefix(TABLE_PREFIX);
+    $db->set_table_prefix('');
     $db->type = $config['database']['type'];
 
     return $db;
 }
 
-// ── POST обработка ────────────────────────────────────────────────────────────
+// ── POST handling ────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    // ── Шаг 2: проверка соединения ────────────────────────────────────────────
+    // ── Step 2: connection check ────────────────────────────────────────────
     if ($step === 2) {
         $dbType = trim($_POST['db_type'] ?? 'mysqli');
 
@@ -131,12 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'database' => trim($_POST['db_name'] ?? ''),
             'username' => trim($_POST['db_user'] ?? ''),
             'password' => $_POST['db_pass'] ?? '',
-            'prefix'   => trim($_POST['db_prefix'] ?? ''),
         ];
 
         try {
             $db = getDb();
-            // Простой тест: запрос версии
+            // Simple test: version query
             $db->sql_query("SELECT 1");
             header('Location: install.php?step=3'); exit;
         } catch (Throwable $e) {
@@ -144,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // ── Шаг 3: настройки сайта ────────────────────────────────────────────────
+    // ── Step 3: site settings ────────────────────────────────────────────────
     if ($step === 3) {
         $url = rtrim(trim($_POST['site_url'] ?? ''), '/');
         $_SESSION['site'] = [
@@ -166,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$errors) { header('Location: install.php?step=4'); exit; }
     }
 
-    // ── Шаг 4: аккаунт администратора ────────────────────────────────────────
+    // ── Step 4: admin account ────────────────────────────────────────────────
     if ($step === 4) {
         $_SESSION['admin'] = [
             'username' => trim($_POST['admin_user']    ?? ''),
@@ -181,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$errors) { header('Location: install.php?step=5'); exit; }
     }
 
-    // ── Шаг 5: запуск установки ───────────────────────────────────────────────
+    // ── Step 5: run installation ─────────────────────────────────────────────
     if ($step === 5) {
         $result = runInstallation();
         if ($result === true) {
@@ -194,25 +191,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	
 }
 
-// ── Основная функция установки ────────────────────────────────────────────────
+// ── Main installation function ────────────────────────────────────────────────
 function runInstallation(): true|array
 {
     $dbSess = $_SESSION['db']    ?? [];
     $site   = $_SESSION['site']  ?? [];
     $admin  = $_SESSION['admin'] ?? [];
 
-    // --- Подключение через DB-класс ---
+    // --- Connection via DB class ---
     try {
         $db = getDb();
     } catch (Throwable $e) {
         return ['Database connection failed: ' . $e->getMessage()];
     }
 
-    $p = $dbSess['prefix'] ?? '';
-
-    // ── SQL — схема трекера ───────────────────────────────────────────────────
+    // ── SQL — tracker schema ────────────────────────────────────────────────────
     $tables = <<<SQL
-CREATE TABLE IF NOT EXISTS `{$p}adminlog` (
+CREATE TABLE IF NOT EXISTS `2fa` (
+  `uid`        INT UNSIGNED     NOT NULL,
+  `secret`     VARCHAR(64)      NOT NULL DEFAULT '',
+  `enabled`    ENUM('yes','no') NOT NULL DEFAULT 'no',
+  `created_at` INT UNSIGNED     NOT NULL DEFAULT 0,
+  PRIMARY KEY (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `2fa_pending` (
+  `token`      VARCHAR(64)  NOT NULL,
+  `uid`        INT UNSIGNED NOT NULL,
+  `remember`   VARCHAR(8)   NOT NULL DEFAULT '',
+  `url`        VARCHAR(512) NOT NULL DEFAULT '',
+  `created_at` INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`token`),
+  KEY `uid` (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+	
+CREATE TABLE IF NOT EXISTS `adminlog` (
   `uid` int unsigned NOT NULL DEFAULT '0',
   `ipaddress` varbinary(16) NOT NULL DEFAULT '',
   `dateline` int unsigned NOT NULL DEFAULT '0',
@@ -224,7 +237,7 @@ CREATE TABLE IF NOT EXISTS `{$p}adminlog` (
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
 
-CREATE TABLE IF NOT EXISTS `{$p}announcements` (
+CREATE TABLE IF NOT EXISTS `announcements` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `subject` varchar(120) NOT NULL DEFAULT '',
   `message` text NOT NULL,
@@ -245,7 +258,7 @@ CREATE TABLE IF NOT EXISTS `{$p}announcements` (
 
 
 
-CREATE TABLE IF NOT EXISTS `{$p}attachments` (
+CREATE TABLE IF NOT EXISTS `attachments` (
   `aid` int unsigned NOT NULL AUTO_INCREMENT,
   `pid` int unsigned NOT NULL DEFAULT '0',
   `comment_id` int unsigned NOT NULL DEFAULT '0',
@@ -266,7 +279,7 @@ CREATE TABLE IF NOT EXISTS `{$p}attachments` (
   KEY `posthash` (`posthash`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}attachtypes` (
+CREATE TABLE IF NOT EXISTS `attachtypes` (
   `atid` int unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(120) NOT NULL DEFAULT '',
   `mimetype` varchar(120) NOT NULL DEFAULT '',
@@ -281,7 +294,7 @@ CREATE TABLE IF NOT EXISTS `{$p}attachtypes` (
   PRIMARY KEY (`atid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}awaitingactivation` (
+CREATE TABLE IF NOT EXISTS `awaitingactivation` (
   `aid` int unsigned NOT NULL AUTO_INCREMENT,
   `uid` int unsigned NOT NULL DEFAULT '0',
   `dateline` int unsigned NOT NULL DEFAULT '0',
@@ -292,7 +305,7 @@ CREATE TABLE IF NOT EXISTS `{$p}awaitingactivation` (
   PRIMARY KEY (`aid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}banfilters` (
+CREATE TABLE IF NOT EXISTS `banfilters` (
   `fid` int unsigned NOT NULL AUTO_INCREMENT,
   `filter` varchar(200) NOT NULL DEFAULT '',
   `type` tinyint(1) NOT NULL DEFAULT '0',
@@ -302,7 +315,7 @@ CREATE TABLE IF NOT EXISTS `{$p}banfilters` (
   KEY `type` (`type`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}banned` (
+CREATE TABLE IF NOT EXISTS `banned` (
   `uid` int unsigned NOT NULL DEFAULT '0',
   `gid` int unsigned NOT NULL DEFAULT '0',
   `oldgroup` int unsigned NOT NULL DEFAULT '0',
@@ -317,7 +330,7 @@ CREATE TABLE IF NOT EXISTS `{$p}banned` (
   KEY `dateline` (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}bookmarks` (
+CREATE TABLE IF NOT EXISTS `bookmarks` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `userid` int unsigned NOT NULL DEFAULT '0',
   `torrentid` int unsigned NOT NULL DEFAULT '0',
@@ -325,7 +338,7 @@ CREATE TABLE IF NOT EXISTS `{$p}bookmarks` (
   KEY `userid` (`userid`,`torrentid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}categories` (
+CREATE TABLE IF NOT EXISTS `categories` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `name` char(100) NOT NULL DEFAULT '',
   `cat_desc` char(30) NOT NULL DEFAULT '',
@@ -337,7 +350,7 @@ CREATE TABLE IF NOT EXISTS `{$p}categories` (
   KEY `type` (`type`,`name`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}cheat_attempts` (
+CREATE TABLE IF NOT EXISTS `cheat_attempts` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `added` int unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
@@ -354,7 +367,7 @@ CREATE TABLE IF NOT EXISTS `{$p}cheat_attempts` (
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}comment_files` (
+CREATE TABLE IF NOT EXISTS `comment_files` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `comment_id` int unsigned DEFAULT NULL,
   `news_id` int unsigned DEFAULT NULL,
@@ -375,7 +388,7 @@ CREATE TABLE IF NOT EXISTS `{$p}comment_files` (
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}comments` (
+CREATE TABLE IF NOT EXISTS `comments` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `user` int unsigned NOT NULL DEFAULT '0',
   `torrent` int unsigned NOT NULL DEFAULT '0',
@@ -389,7 +402,7 @@ CREATE TABLE IF NOT EXISTS `{$p}comments` (
   KEY `torrent` (`torrent`,`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}countries` (
+CREATE TABLE IF NOT EXISTS `countries` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(50) NOT NULL DEFAULT '',
   `flagpic` char(25) NOT NULL DEFAULT '',
@@ -397,7 +410,7 @@ CREATE TABLE IF NOT EXISTS `{$p}countries` (
   KEY `name` (`name`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}cron` (
+CREATE TABLE IF NOT EXISTS `cron` (
   `cronid` int unsigned NOT NULL AUTO_INCREMENT,
   `nextrun` int unsigned NOT NULL DEFAULT '0',
   `minutes` int unsigned NOT NULL DEFAULT '0',
@@ -410,7 +423,7 @@ CREATE TABLE IF NOT EXISTS `{$p}cron` (
   KEY `active` (`active`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}cron_log` (
+CREATE TABLE IF NOT EXISTS `cron_log` (
   `filename` char(100) NOT NULL DEFAULT '',
   `querycount` smallint unsigned NOT NULL DEFAULT '0',
   `executetime` char(10) NOT NULL DEFAULT '0',
@@ -418,13 +431,13 @@ CREATE TABLE IF NOT EXISTS `{$p}cron_log` (
   UNIQUE KEY `filename` (`filename`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}datacache` (
+CREATE TABLE IF NOT EXISTS `datacache` (
   `title` varchar(50) NOT NULL DEFAULT '',
   `cache` mediumtext NOT NULL,
   PRIMARY KEY (`title`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}faq` (
+CREATE TABLE IF NOT EXISTS `faq` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `type` enum('category','item') NOT NULL DEFAULT 'category',
   `name` varchar(120) NOT NULL DEFAULT '',
@@ -439,7 +452,7 @@ CREATE TABLE IF NOT EXISTS `{$p}faq` (
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}forumpermissions` (
+CREATE TABLE IF NOT EXISTS `forumpermissions` (
   `pid` int unsigned NOT NULL AUTO_INCREMENT,
   `fid` int unsigned NOT NULL DEFAULT '0',
   `gid` int unsigned NOT NULL DEFAULT '0',
@@ -468,7 +481,7 @@ CREATE TABLE IF NOT EXISTS `{$p}forumpermissions` (
   KEY `fid` (`fid`,`gid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}hit_and_run` (
+CREATE TABLE IF NOT EXISTS `hit_and_run` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `userid` int unsigned NOT NULL DEFAULT '0',
   `torrentid` int unsigned NOT NULL DEFAULT '0',
@@ -476,14 +489,14 @@ CREATE TABLE IF NOT EXISTS `{$p}hit_and_run` (
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}inactivity` (
+CREATE TABLE IF NOT EXISTS `inactivity` (
   `userid` int unsigned NOT NULL DEFAULT '0',
   `inactivitytag` int unsigned NOT NULL DEFAULT '0',
   KEY `userid` (`userid`),
   KEY `inactivitytag` (`inactivitytag`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}invites` (
+CREATE TABLE IF NOT EXISTS `invites` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `code` varchar(64) NOT NULL,
   `inviter_id` int unsigned NOT NULL DEFAULT '0',
@@ -503,7 +516,7 @@ CREATE TABLE IF NOT EXISTS `{$p}invites` (
   KEY `expires_at` (`expires_at`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}loginattempts` (
+CREATE TABLE IF NOT EXISTS `loginattempts` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `ip` char(15) NOT NULL DEFAULT '',
   `added` int unsigned NOT NULL DEFAULT '0',
@@ -514,7 +527,27 @@ CREATE TABLE IF NOT EXISTS `{$p}loginattempts` (
   KEY `ip` (`ip`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}mailerrors` (
+
+CREATE TABLE IF NOT EXISTS `login_log` (
+  `id`         INT UNSIGNED    NOT NULL AUTO_INCREMENT,
+  `uid`        INT UNSIGNED    NOT NULL DEFAULT 0,
+  `ip`         VARCHAR(45)     NOT NULL DEFAULT '',
+  `country`    VARCHAR(64)     NOT NULL DEFAULT '',
+  `city`       VARCHAR(64)     NOT NULL DEFAULT '',
+  `user_agent` VARCHAR(255)    NOT NULL DEFAULT '',
+  `fingerprint` VARCHAR(32)    NOT NULL DEFAULT '',
+  `datetime`   INT UNSIGNED    NOT NULL DEFAULT 0,
+  `type`       ENUM('login','recover') NOT NULL DEFAULT 'login',
+  `status`     ENUM('success','fail')  NOT NULL DEFAULT 'fail',
+  `suspicious` ENUM('yes','no')        NOT NULL DEFAULT 'no',
+  `banned`     ENUM('yes','no')        NOT NULL DEFAULT 'no',
+  PRIMARY KEY (`id`),
+  KEY `uid` (`uid`), KEY `ip` (`ip`),
+  KEY `datetime` (`datetime`), KEY `status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE IF NOT EXISTS `mailerrors` (
   `eid` int unsigned NOT NULL AUTO_INCREMENT,
   `subject` varchar(200) NOT NULL DEFAULT '',
   `message` text NOT NULL,
@@ -527,7 +560,7 @@ CREATE TABLE IF NOT EXISTS `{$p}mailerrors` (
   PRIMARY KEY (`eid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}maillogs` (
+CREATE TABLE IF NOT EXISTS `maillogs` (
   `mid` int unsigned NOT NULL AUTO_INCREMENT,
   `subject` varchar(200) NOT NULL DEFAULT '',
   `message` text NOT NULL,
@@ -542,7 +575,7 @@ CREATE TABLE IF NOT EXISTS `{$p}maillogs` (
   PRIMARY KEY (`mid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}mailqueue` (
+CREATE TABLE IF NOT EXISTS `mailqueue` (
   `mid` int unsigned NOT NULL AUTO_INCREMENT,
   `mailto` varchar(200) NOT NULL,
   `mailfrom` varchar(200) NOT NULL,
@@ -552,7 +585,7 @@ CREATE TABLE IF NOT EXISTS `{$p}mailqueue` (
   PRIMARY KEY (`mid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}moderatorlog` (
+CREATE TABLE IF NOT EXISTS `moderatorlog` (
   `uid` int unsigned NOT NULL DEFAULT '0',
   `dateline` int unsigned NOT NULL DEFAULT '0',
   `fid` smallint unsigned NOT NULL DEFAULT '0',
@@ -566,7 +599,7 @@ CREATE TABLE IF NOT EXISTS `{$p}moderatorlog` (
   KEY `tid` (`tid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}moderators` (
+CREATE TABLE IF NOT EXISTS `moderators` (
   `mid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `fid` smallint unsigned NOT NULL DEFAULT '0',
   `id` int unsigned NOT NULL DEFAULT '0',
@@ -598,7 +631,7 @@ CREATE TABLE IF NOT EXISTS `{$p}moderators` (
   KEY `uid` (`id`,`fid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}news` (
+CREATE TABLE IF NOT EXISTS `news` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `userid` int NOT NULL DEFAULT '0',
   `added` int unsigned NOT NULL DEFAULT '0',
@@ -608,7 +641,7 @@ CREATE TABLE IF NOT EXISTS `{$p}news` (
   KEY `added` (`added`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}password_reset_tokens` (
+CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `userid` int unsigned NOT NULL,
   `token_hash` varchar(64) NOT NULL,
@@ -621,7 +654,7 @@ CREATE TABLE IF NOT EXISTS `{$p}password_reset_tokens` (
   KEY `idx_expires` (`expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}peers` (
+CREATE TABLE IF NOT EXISTS `peers` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `torrent` int unsigned NOT NULL DEFAULT '0',
   `peer_id` binary(20) NOT NULL,
@@ -649,7 +682,7 @@ CREATE TABLE IF NOT EXISTS `{$p}peers` (
   KEY `peer_id` (`peer_id`,`seeder`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}privatemessages` (
+CREATE TABLE IF NOT EXISTS `privatemessages` (
   `pmid` int unsigned NOT NULL AUTO_INCREMENT,
   `uid` int unsigned NOT NULL DEFAULT '0',
   `toid` int unsigned NOT NULL DEFAULT '0',
@@ -671,7 +704,7 @@ CREATE TABLE IF NOT EXISTS `{$p}privatemessages` (
   KEY `toid` (`toid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}reports` (
+CREATE TABLE IF NOT EXISTS `reports` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `addedby` int unsigned NOT NULL DEFAULT '0',
   `added` int unsigned NOT NULL DEFAULT '0',
@@ -692,7 +725,7 @@ CREATE TABLE IF NOT EXISTS `{$p}reports` (
   KEY `idx_dealtwith` (`dealtwith`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}rules` (
+CREATE TABLE IF NOT EXISTS `rules` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `title` varchar(255) NOT NULL DEFAULT '',
   `text` text NOT NULL,
@@ -709,7 +742,7 @@ CREATE TABLE IF NOT EXISTS `{$p}rules` (
   KEY `is_active` (`is_active`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}screenshots` (
+CREATE TABLE IF NOT EXISTS `screenshots` (
   `id` int NOT NULL AUTO_INCREMENT,
   `torrent_id` int NOT NULL,
   `filename` varchar(255) NOT NULL,
@@ -718,7 +751,7 @@ CREATE TABLE IF NOT EXISTS `{$p}screenshots` (
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}searchlog` (
+CREATE TABLE IF NOT EXISTS `searchlog` (
   `sid` varchar(32) NOT NULL DEFAULT '',
   `uid` int unsigned NOT NULL DEFAULT '0',
   `dateline` int unsigned NOT NULL DEFAULT '0',
@@ -731,7 +764,7 @@ CREATE TABLE IF NOT EXISTS `{$p}searchlog` (
   PRIMARY KEY (`sid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}seedbonus_settings` (
+CREATE TABLE IF NOT EXISTS `seedbonus_settings` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `setting_key` varchar(100) NOT NULL,
   `setting_value` text NOT NULL,
@@ -744,7 +777,7 @@ CREATE TABLE IF NOT EXISTS `{$p}seedbonus_settings` (
   UNIQUE KEY `setting_key` (`setting_key`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}sessions` (
+CREATE TABLE IF NOT EXISTS `sessions` (
   `sid` varchar(32) NOT NULL DEFAULT '',
   `uid` int unsigned NOT NULL DEFAULT '0',
   `ip` varbinary(16) NOT NULL DEFAULT '',
@@ -760,14 +793,14 @@ CREATE TABLE IF NOT EXISTS `{$p}sessions` (
   KEY `uid` (`uid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}settings` (
+CREATE TABLE IF NOT EXISTS `settings` (
   `sid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(120) NOT NULL DEFAULT '',
   `value` text NOT NULL,
   PRIMARY KEY (`sid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}sitelog` (
+CREATE TABLE IF NOT EXISTS `sitelog` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `uid` int unsigned NOT NULL DEFAULT '0',
   `ipaddress` varbinary(16) NOT NULL DEFAULT '',
@@ -781,7 +814,7 @@ CREATE TABLE IF NOT EXISTS `{$p}sitelog` (
   KEY `added` (`added`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}smilies` (
+CREATE TABLE IF NOT EXISTS `smilies` (
   `sid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `stitle` char(100) NOT NULL DEFAULT '',
   `stext` char(20) NOT NULL DEFAULT '',
@@ -790,7 +823,7 @@ CREATE TABLE IF NOT EXISTS `{$p}smilies` (
   PRIMARY KEY (`sid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}snatched` (
+CREATE TABLE IF NOT EXISTS `snatched` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `torrentid` int unsigned DEFAULT '0',
   `userid` int unsigned DEFAULT '0',
@@ -818,7 +851,7 @@ CREATE TABLE IF NOT EXISTS `{$p}snatched` (
   KEY `finished` (`finished`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}spiders` (
+CREATE TABLE IF NOT EXISTS `spiders` (
   `sid` int unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL DEFAULT '',
   `theme` smallint unsigned NOT NULL DEFAULT '0',
@@ -829,7 +862,7 @@ CREATE TABLE IF NOT EXISTS `{$p}spiders` (
   PRIMARY KEY (`sid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}staffmessages` (
+CREATE TABLE IF NOT EXISTS `staffmessages` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `sender` int unsigned NOT NULL DEFAULT '0',
   `added` int unsigned NOT NULL DEFAULT '0',
@@ -842,7 +875,7 @@ CREATE TABLE IF NOT EXISTS `{$p}staffmessages` (
   KEY `answered` (`answered`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}staffpanel` (
+CREATE TABLE IF NOT EXISTS `staffpanel` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `name` char(32) NOT NULL DEFAULT '',
   `description` varchar(64) NOT NULL DEFAULT '',
@@ -852,7 +885,7 @@ CREATE TABLE IF NOT EXISTS `{$p}staffpanel` (
   KEY `name` (`name`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}stats` (
+CREATE TABLE IF NOT EXISTS `stats` (
   `dateline` int unsigned NOT NULL DEFAULT '0',
   `numusers` int unsigned NOT NULL DEFAULT '0',
   `numthreads` int unsigned NOT NULL DEFAULT '0',
@@ -866,7 +899,7 @@ CREATE TABLE IF NOT EXISTS `{$p}stats` (
   PRIMARY KEY (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}torrents` (
+CREATE TABLE IF NOT EXISTS `torrents` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `info_hash` varchar(40) NOT NULL,
   `name` tinytext,
@@ -912,7 +945,7 @@ CREATE TABLE IF NOT EXISTS `{$p}torrents` (
   KEY `visible` (`visible`,`banned`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}torrents_nfo` (
+CREATE TABLE IF NOT EXISTS `torrents_nfo` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `torrent_id` int unsigned NOT NULL,
   `nfo` longtext NOT NULL,
@@ -921,7 +954,7 @@ CREATE TABLE IF NOT EXISTS `{$p}torrents_nfo` (
   KEY `torrent_id` (`torrent_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}torrent_ratings` (
+CREATE TABLE IF NOT EXISTS `torrent_ratings` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `torrent_id` INT UNSIGNED NOT NULL,
   `user_id` INT UNSIGNED NOT NULL,
@@ -933,7 +966,7 @@ CREATE TABLE IF NOT EXISTS `{$p}torrent_ratings` (
 
 
 
-CREATE TABLE IF NOT EXISTS `{$p}threadratings` (
+CREATE TABLE IF NOT EXISTS `threadratings` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
   `tid` int UNSIGNED NOT NULL,
   `user_id` int UNSIGNED NOT NULL,
@@ -949,7 +982,7 @@ CREATE TABLE IF NOT EXISTS `{$p}threadratings` (
 
 
 
-CREATE TABLE IF NOT EXISTS `{$p}forums` (
+CREATE TABLE IF NOT EXISTS `forums` (
   `fid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(120) NOT NULL DEFAULT '',
   `description` text NOT NULL,
@@ -980,7 +1013,7 @@ CREATE TABLE IF NOT EXISTS `{$p}forums` (
   KEY `type` (`type`,`pid`,`disporder`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}forumsread` (
+CREATE TABLE IF NOT EXISTS `forumsread` (
   `fid` int unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
   `dateline` int unsigned NOT NULL DEFAULT '0',
@@ -988,7 +1021,7 @@ CREATE TABLE IF NOT EXISTS `{$p}forumsread` (
   KEY `dateline` (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}forumsubscriptions` (
+CREATE TABLE IF NOT EXISTS `forumsubscriptions` (
   `fsid` int unsigned NOT NULL AUTO_INCREMENT,
   `fid` smallint unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
@@ -997,7 +1030,7 @@ CREATE TABLE IF NOT EXISTS `{$p}forumsubscriptions` (
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
 
-CREATE TABLE IF NOT EXISTS `{$p}polls` (
+CREATE TABLE IF NOT EXISTS `polls` (
   `pid` int unsigned NOT NULL AUTO_INCREMENT,
   `tid` int unsigned NOT NULL DEFAULT '0',
   `question` varchar(200) NOT NULL DEFAULT '',
@@ -1015,7 +1048,7 @@ CREATE TABLE IF NOT EXISTS `{$p}polls` (
   KEY `tid` (`tid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}pollvotes` (
+CREATE TABLE IF NOT EXISTS `pollvotes` (
   `vid` int unsigned NOT NULL AUTO_INCREMENT,
   `pid` int unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
@@ -1026,7 +1059,7 @@ CREATE TABLE IF NOT EXISTS `{$p}pollvotes` (
   KEY `pid` (`pid`,`uid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}posts` (
+CREATE TABLE IF NOT EXISTS `posts` (
   `pid` int unsigned NOT NULL AUTO_INCREMENT,
   `tid` int unsigned NOT NULL DEFAULT '0',
   `replyto` int unsigned NOT NULL DEFAULT '0',
@@ -1047,7 +1080,7 @@ CREATE TABLE IF NOT EXISTS `{$p}posts` (
   KEY `dateline` (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}threads` (
+CREATE TABLE IF NOT EXISTS `threads` (
   `tid` int unsigned NOT NULL AUTO_INCREMENT,
   `fid` smallint unsigned NOT NULL DEFAULT '0',
   `subject` varchar(120) NOT NULL DEFAULT '',
@@ -1078,7 +1111,7 @@ CREATE TABLE IF NOT EXISTS `{$p}threads` (
   KEY `uid` (`uid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}threadsread` (
+CREATE TABLE IF NOT EXISTS `threadsread` (
   `tid` int unsigned NOT NULL DEFAULT '0',
   `uid` int unsigned NOT NULL DEFAULT '0',
   `dateline` int unsigned NOT NULL DEFAULT '0',
@@ -1086,7 +1119,7 @@ CREATE TABLE IF NOT EXISTS `{$p}threadsread` (
   KEY `dateline` (`dateline`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}threadsubscriptions` (
+CREATE TABLE IF NOT EXISTS `threadsubscriptions` (
   `sid` int unsigned NOT NULL AUTO_INCREMENT,
   `uid` int unsigned NOT NULL DEFAULT '0',
   `tid` int unsigned NOT NULL DEFAULT '0',
@@ -1097,12 +1130,12 @@ CREATE TABLE IF NOT EXISTS `{$p}threadsubscriptions` (
   KEY `tid` (`tid`,`notification`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}threadviews` (
+CREATE TABLE IF NOT EXISTS `threadviews` (
   `tid` int unsigned NOT NULL DEFAULT '0',
   KEY `tid` (`tid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}unbanrequests` (
+CREATE TABLE IF NOT EXISTS `unbanrequests` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `ip` char(15) NOT NULL DEFAULT '',
   `realip` char(15) NOT NULL DEFAULT '',
@@ -1113,7 +1146,7 @@ CREATE TABLE IF NOT EXISTS `{$p}unbanrequests` (
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}usergroups` (
+CREATE TABLE IF NOT EXISTS `usergroups` (
   `gid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `disporder` smallint unsigned NOT NULL DEFAULT '0',
   `type` tinyint unsigned NOT NULL DEFAULT '1',
@@ -1171,7 +1204,7 @@ CREATE TABLE IF NOT EXISTS `{$p}usergroups` (
   KEY `autoinvite` (`autoinvite`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}users` (
+CREATE TABLE IF NOT EXISTS `users` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `username` varchar(120) NOT NULL DEFAULT '',
   `password` varchar(120) NOT NULL DEFAULT '',
@@ -1266,8 +1299,20 @@ CREATE TABLE IF NOT EXISTS `{$p}users` (
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
 
+CREATE TABLE IF NOT EXISTS `user_devices` (
+  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `uid`         INT UNSIGNED NOT NULL,
+  `fingerprint` VARCHAR(32)  NOT NULL,
+  `user_agent`  VARCHAR(255) NOT NULL DEFAULT '',
+  `first_seen`  INT UNSIGNED NOT NULL DEFAULT '0',
+  `last_seen`   INT UNSIGNED NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uid_fp` (`uid`, `fingerprint`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}bonus` (
+
+
+CREATE TABLE IF NOT EXISTS `bonus` (
   `id` int NOT NULL AUTO_INCREMENT,
   `bonusname` char(50) NOT NULL DEFAULT '',
   `points` decimal(5,1) NOT NULL DEFAULT '0.0',
@@ -1277,7 +1322,7 @@ CREATE TABLE IF NOT EXISTS `{$p}bonus` (
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `{$p}buddyrequests` (
+CREATE TABLE IF NOT EXISTS `buddyrequests` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `uid` int unsigned NOT NULL DEFAULT '0',
   `touid` int unsigned NOT NULL DEFAULT '0',
@@ -1287,7 +1332,7 @@ CREATE TABLE IF NOT EXISTS `{$p}buddyrequests` (
   KEY `touid` (`touid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}delayedmoderation` (
+CREATE TABLE IF NOT EXISTS `delayedmoderation` (
   `did` int unsigned NOT NULL AUTO_INCREMENT,
   `type` varchar(30) NOT NULL DEFAULT '',
   `delaydateline` int unsigned NOT NULL DEFAULT '0',
@@ -1299,7 +1344,7 @@ CREATE TABLE IF NOT EXISTS `{$p}delayedmoderation` (
   PRIMARY KEY (`did`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 
-CREATE TABLE IF NOT EXISTS `{$p}notconnectablepmlog` (
+CREATE TABLE IF NOT EXISTS `notconnectablepmlog` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `user` int unsigned NOT NULL DEFAULT '0',
   `date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1307,7 +1352,7 @@ CREATE TABLE IF NOT EXISTS `{$p}notconnectablepmlog` (
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 SQL;
 
-    // ── Выполняем CREATE TABLE через DB-класс ─────────────────────────────────
+    // ── Execute CREATE TABLE via DB class ─────────────────────────────────────
     $statements = array_filter(array_map('trim', explode(";\n", $tables)));
     $sql_errors = [];
     foreach ($statements as $sql) {
@@ -1327,7 +1372,7 @@ SQL;
 
     $now = time();
 
-    // ── Базовые категории ─────────────────────────────────────────────────────
+    // ── Default categories ──────────────────────────────────────────────────────
     $cats = [
         ['1080p',   'fa-solid fa-film fa-shake'],
         ['2160p',   'fa-solid fa-clapperboard'],
@@ -1343,7 +1388,7 @@ SQL;
         );
     }
 
-    // ── Страна по умолчанию ───────────────────────────────────────────────────
+    // ── Default country ─────────────────────────────────────────────────────────
     $db->insert_query(
         'countries',
         ['id' => 1, 'name' => 'Unknown', 'flagpic' => 'unknown.gif'],
@@ -1352,7 +1397,7 @@ SQL;
 	
 	
 
-    // ── Создаём admin пользователя ────────────────────────────────────────────
+    // ── Create admin user ────────────────────────────────────────────────────
     $salt      = random_str();
     $loginkey  = generate_loginkey();
     $pass_hash = md5(md5($salt) . md5($admin['password']));
@@ -1388,7 +1433,7 @@ SQL;
         $errors_out[] = 'Cannot write config/STAFFTEAM — check permissions';
     }
 
-    // ── Новость и объявление ──────────────────────────────────────────────────
+    // ── News post and announcement ──────────────────────────────────────────────
     $db->insert_query('news', [
         'userid' => $admin_id,
         'added'  => $now,
@@ -1400,7 +1445,7 @@ SQL;
     $db->insert_query('announcements', [
     'subject'      => 'Welcome to ' . $site['name'],
     'message'      => '<p>The tracker is now online and ready to use!</p>',
-    'uid'          => $admin_id,   // ← правильное поле
+    'uid'          => $admin_id,   // ← correct field
     'added'        => $now,
     'updated'      => $now,
     'startdate'    => $now,
@@ -1411,14 +1456,14 @@ SQL;
 	
 	
 
-    // ── Инициализация кэша и обновление новостей ──────────────────────────────
+    // ── Initialize cache and refresh news ──────────────────────────────────────
     $GLOBALS['db'] = $db;
     require_once INC_PATH . '/class_datacache.php';
     $cache = new datacache();
     $cache->cache();
     $cache->update_news();
 
-    // ── Генерация файлов конфигурации ─────────────────────────────────────────
+    // ── Generate configuration files ───────────────────────────────────────────
     $securehash  = 'RT__' . preg_replace('#^https?://(www\.)?#', '', $site['url'])
                  . '_' . rand(1,9) . '_' . rand(10,99) . '-' . rand(100,999) . '-' . rand(10,99);
     $cookieDomain = $site['cookie_domain'] ?: ('.' . preg_replace('#^https?://(www\.)?#', '', $site['url']));
@@ -1429,7 +1474,7 @@ SQL;
     $config_php  = "<?php\n";
     $config_php .= "  \$config['database']['type'] = '" . addslashes($db_cfg['type'] ?? 'mysqli') . "';\n";
     $config_php .= "  \$config['database']['database'] = '" . addslashes($db_cfg['database']) . "';\n";
-    $config_php .= "  \$config['database']['table_prefix'] = '" . addslashes($db_cfg['prefix']) . "';\n";
+    $config_php .= "  \$config['database']['table_prefix'] = '';\n";
     $config_php .= "  \$config['database']['hostname'] = '" . addslashes($db_cfg['hostname']) . "';\n";
     $config_php .= "  \$config['database']['username'] = '" . addslashes($db_cfg['username']) . "';\n";
     $config_php .= "  \$config['database']['password'] = '" . addslashes($db_cfg['password']) . "';\n";
@@ -1440,15 +1485,15 @@ SQL;
     $config_php .= "    'admin_logs' => 365,\n    'mod_logs' => 365,\n    'task_logs' => 30,\n";
     $config_php .= "    'mail_logs' => 180,\n    'user_mail_logs' => 180,\n    'promotion_logs' => 180\n  );\n";
 
-    // ── Записываем настройки из sql/default_settings.sql ───────────────────────
-    // Плейсхолдеры вида {{KEY}} заменяются реальными значениями перед выполнением.
+    // ── Insert settings from sql/default_settings.sql ───────────────────────────
+    // Placeholders like {{KEY}} are replaced with real values before execution.
     $settings_sql_file = __DIR__ . '/sql/default_settings.sql';
     if (!file_exists($settings_sql_file)) {
         return ['Missing file: sql/default_settings.sql'];
     }
     $settings_sql = file_get_contents($settings_sql_file);
 
-    // Подставляем все плейсхолдеры
+    // Substitute all placeholders
     $placeholders = [
         '{{SITENAME}}'     => $site['name'],
         '{{BASEURL}}'      => $site['url'],
@@ -1468,31 +1513,26 @@ SQL;
         '{{DB_PASS}}'      => $db_cfg['password'],
         '{{DB_NAME}}'      => $db_cfg['database'],
     ];
-    // Экранируем значения для SQL-строк (одинарные кавычки)
+    // Escape values for SQL strings (single quotes)
     foreach ($placeholders as $key => $val) {
         $settings_sql = str_replace($key, $db->escape_string($val), $settings_sql);
     }
 
-    // Добавляем префикс таблицы если нужен
-    if ($p !== '') {
-        $settings_sql = str_ireplace('INSERT IGNORE INTO `settings`', "INSERT IGNORE INTO `{$p}settings`", $settings_sql);
-    }
-
-    // Выполняем одним запросом
+    // Execute as a single query
     try {
         $db->sql_query($settings_sql);
     } catch (Throwable $e) {
         return ['Failed to insert default settings: ' . $e->getMessage()];
     }
 
-    // ── Генерируем settings.php из таблицы БД ────────────────────────────────
-    // Формат: $VARNAME = "value"; — именно так читает трекер (global.php, my_setcookie и т.д.)
-    // Единый источник истины: БД первична, файл — её кэш.
+    // ── Generate settings.php from the DB table ──────────────────────────────
+    // Format: $VARNAME = "value"; — this is exactly how the tracker reads it (global.php, my_setcookie, etc.)
+    // Single source of truth: the DB is primary, the file is its cache.
     $settings_out = '';
     $q = $db->simple_select('settings', 'name, value');
     while ($row = $db->fetch_array($q)) {
-        $n = $row['name'];                        // имя переменной — как есть
-        $v = addcslashes($row['value'], '\\"$'); // экранируем \, " и $ в значении
+        $n = $row['name'];                        // variable name — as-is
+        $v = addcslashes($row['value'], '\\"$'); // escape \, " and $ in the value
         $settings_out .= "\${$n} = \"{$v}\";\n";
     }
     $s = "<?php\n"
@@ -1521,7 +1561,7 @@ SQL;
     $announce_php .= "\$snatchmod = 'yes';\n\$bonus = 'enable';\n\$kpsseed = '5.0';\n";
     $announce_php .= "\$bdayreward = 'yes';\n\$bdayrewardtype = 'freeleech';\n?>\n";
 
-    // Запись файлов
+    // Write files
     if (@file_put_contents(__DIR__ . '/include/config.php', $config_php) === false) {
         $errors_out[] = 'Cannot write config.php — check permissions';
     }
@@ -1535,7 +1575,7 @@ SQL;
         @mkdir(__DIR__ . '/cache', 0755, true);
     }
 
-    // ── SQL-файлы с базовыми данными ──────────────────────────────────────────
+    // ── SQL files with seed data ──────────────────────────────────────────────
     $data_sql = @file_get_contents(__DIR__ . '/sql/install_data.sql');
     if ($data_sql) {
         $data_sql = str_replace("\r\n", "\n", $data_sql);
@@ -1552,7 +1592,7 @@ SQL;
     $faq_sql = @file_get_contents(__DIR__ . '/sql/faq.sql');
     if ($faq_sql) {
         $faq_sql = str_replace("\r\n", "\n", $faq_sql);
-        $faq_sql = str_ireplace('INSERT INTO faq', 'INSERT IGNORE INTO `' . $p . 'faq`', $faq_sql);
+        $faq_sql = str_ireplace('INSERT INTO faq', 'INSERT IGNORE INTO `faq`', $faq_sql);
         foreach (array_filter(array_map('trim', explode("\n", $faq_sql))) as $sql) {
             if (stripos($sql, 'INSERT') !== 0) continue;
             try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
@@ -1562,7 +1602,7 @@ SQL;
     $usergroups_sql = @file_get_contents(__DIR__ . '/sql/group.sql');
     if ($usergroups_sql) {
         $usergroups_sql = str_replace(["\r\n", '\\"'], ["\n", '"'], $usergroups_sql);
-        $usergroups_sql = str_ireplace('INSERT IGNORE INTO usergroups', 'INSERT IGNORE INTO `' . $p . 'usergroups`', $usergroups_sql);
+        $usergroups_sql = str_ireplace('INSERT IGNORE INTO usergroups', 'INSERT IGNORE INTO `usergroups`', $usergroups_sql);
         foreach (array_filter(array_map('trim', explode("\n", $usergroups_sql))) as $sql) {
             if (stripos($sql, 'INSERT') !== 0) continue;
             try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
@@ -1572,7 +1612,7 @@ SQL;
     return $errors_out ?: true;
 }
 
-// ── Проверка требований ───────────────────────────────────────────────────────
+// ── Requirements check ───────────────────────────────────────────────────────
 function checkRequirements(): array
 {
     return [
@@ -1597,7 +1637,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ruff Tracker — Installer v<?= INSTALLER_VERSION ?></title>
+<title>Mybb Based Torrent Tracker — Installer v<?= INSTALLER_VERSION ?></title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
@@ -1636,7 +1676,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
         <div class="card-header">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <h2 class="mb-1"><i class="fas fa-satellite-dish me-2"></i>Ruff Tracker Installer</h2>
+                    <h2 class="mb-1"><i class="fas fa-satellite-dish me-2"></i>Mybb Based Torrent Tracker Installer</h2>
                     <p class="mb-0 opacity-75">Professional Torrent Tracker Setup</p>
                 </div>
                 <span class="badge bg-light text-dark px-3 py-2 rounded-pill">
@@ -1695,15 +1735,8 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
             <?php elseif ($step === 2): ?>
             <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-database fa-2x me-3"></i><h5 class="mb-0">Database Configuration</h5></div><p class="text-muted small mb-0">Connects via your DB class (db_base.php + driver).</p></div>
             <form method="post" action="install.php?step=2">
+                <input type="hidden" name="db_type" value="mysqli">
                 <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold"><i class="fas fa-plug me-1"></i>Driver Type</label>
-                        <select class="form-select" name="db_type">
-                            <?php foreach (['mysqli','mysql','pgsql','sqlite'] as $t): ?>
-                            <option value="<?= $t ?>" <?= ($_SESSION['db']['type'] ?? 'mysqli') === $t ? 'selected' : '' ?>><?= strtoupper($t) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
                     <div class="col-md-6">
                         <label class="form-label fw-semibold"><i class="fas fa-server me-1"></i>Database Host</label>
                         <input type="text" class="form-control" name="db_host" value="<?= htmlspecialchars($_SESSION['db']['hostname'] ?? 'localhost') ?>" required>
@@ -1719,10 +1752,6 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
                     <div class="col-md-6">
                         <label class="form-label fw-semibold"><i class="fas fa-lock me-1"></i>Password</label>
                         <input type="password" class="form-control" name="db_pass" value="<?= htmlspecialchars($_SESSION['db']['password'] ?? '') ?>">
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label fw-semibold"><i class="fas fa-tag me-1"></i>Table Prefix</label>
-                        <input type="text" class="form-control" name="db_prefix" value="<?= htmlspecialchars($_SESSION['db']['prefix'] ?? '') ?>" placeholder="Optional — leave empty for none">
                     </div>
                 </div>
                 <button type="submit" class="btn btn-primary w-100 mt-4"><i class="fas fa-database me-2"></i>Test Connection & Continue</button>
@@ -1817,14 +1846,14 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
                 <strong>Warning:</strong> This will create all database tables and config files. Cannot be undone.
             </div>
             <form method="post" action="install.php?step=5">
-                <button type="submit" class="btn btn-success w-100 btn-lg"><i class="fas fa-download me-2"></i>Install Ruff Tracker Now!</button>
+                <button type="submit" class="btn btn-success w-100 btn-lg"><i class="fas fa-download me-2"></i>Install Mybb Based Torrent Tracker Now!</button>
             </form>
 
             <?php elseif ($step === 6): ?>
             <div class="text-center py-4">
                 <i class="fas fa-check-circle text-success mb-4" style="font-size:5rem;display:block"></i>
                 <h3 class="text-success fw-bold mb-3">Installation Complete!</h3>
-                <p class="text-muted mb-4">Ruff Tracker has been successfully installed and configured.</p>
+                <p class="text-muted mb-4">Mybb Based Torrent Tracker has been successfully installed and configured.</p>
                 <div class="alert alert-danger text-start mb-4">
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <strong>Security:</strong> Delete <code>install.php</code> from your server immediately!
@@ -1850,7 +1879,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
     </div>
     <div class="text-center mt-3">
         <small class="text-white-50">
-            <i class="fas fa-code me-1"></i> Ruff Tracker Installer v<?= INSTALLER_VERSION ?> |
+            <i class="fas fa-code me-1"></i> Mybb Based Torrent Tracker Installer v<?= INSTALLER_VERSION ?> |
             <a href="install.php?step=1" class="text-white-50 text-decoration-none">Start Over</a>
         </small>
     </div>

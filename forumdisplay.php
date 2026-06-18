@@ -53,7 +53,7 @@ if ($fid < 0) {
 // ─── Информация о форуме ──────────────────────────────────────────────────────
 $foruminfo = get_forum($fid);
 if (!$foruminfo) {
-    stderr($lang->forumdisplay['error_invalidforum']);
+    stderr($lang->forumdisplay['error_invalidforum'], $SITENAME . ' - Forum Not Found', 404, 'forum');
 }
 
 $currentitem = $fid;

@@ -6202,6 +6202,14 @@ if ($mybb->input['action'] === 'do_sessions' && $mybb->request_method === 'post'
 
     my_unsetcookie('mybbuser');
     my_unsetcookie('sid');
+	
+	
+	// This is a full "log out everywhere" — the admin-panel 2FA gate must not
+    // outlive it, otherwise the user could still be logged into /admin/ for
+    // up to 8 hours after believing every session was terminated.
+    unset($_SESSION['admin_2fa_ok_' . $uid]);
+    unset($_SESSION['admin_2fa_fail_count']);
+	
 
     redirect('member.php?action=login', 'You have been logged out of all sessions. Please log in again.');
 }

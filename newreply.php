@@ -62,7 +62,7 @@ add_breadcrumb('Post Reply');
 $forumpermissions = forum_permissions($fid);
 
 if ($forum['open'] == 0 || $forum['type'] !== 'f') {
-    stderr('error_closedinvalidforum');
+    stderr($lang->global['error_closedinvalidforum'], $SITENAME . ' - Access Denied', 403, '403');
 }
 if ($forumpermissions['canview'] == 0 || $forumpermissions['canpostreplys'] == 0) {
     print_no_permission();

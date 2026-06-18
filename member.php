@@ -541,6 +541,7 @@ if (isset($breadcrumb_map[$mybb->input['action']])) {
 if (in_array($mybb->input['action'], ['register', 'do_register'], true)) {	
 	
     if ($disableregs == 1) { stderr($lang->member['registrations_disabled']); }
+	
 
     if ((int)$maxusers > 0) {
         $count = $db->num_rows($db->sql_query('SELECT id FROM users WHERE id > 0'));
@@ -1760,37 +1761,27 @@ if ($mybb->input['action'] === 'login') {
 
 
 
-
-
-
-
-
-
-
-
-
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: logout
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'logout') {
     $plugins->run_hooks('member_logout_start');
-
     if (!$CURUSER['id']) { redirect('index.php', $lang->member['redirect_alreadyloggedout']); }
-
     if (isset($mybb->input['sid']) && $mybb->get_input('sid') !== $session->sid) { stderr($lang->member['error_notloggedout']); }
-
     $logoutkey = md5($CURUSER['loginkey']);
     if ($mybb->get_input('logoutkey') !== $logoutkey) { stderr($lang->member['error_notloggedout']); }
-
     my_unsetcookie('mybbuser');
     my_unsetcookie('sid');
-
     if ($CURUSER['id']) {
         $time = TIMENOW;
         $db->shutdown_query("UPDATE users SET lastvisit='{$time}', lastactive='{$time}' WHERE id='{$CURUSER['id']}'");
         $db->delete_query('sessions', "sid='{$session->sid}'");
-    }
 
+        // Clear the admin-panel 2FA gate so a future login (same browser/session,
+        // possibly a different account) doesn't inherit a stale "verified" state.
+        unset($_SESSION['admin_2fa_ok_' . (int)$CURUSER['id']]);
+        unset($_SESSION['admin_2fa_fail_count']);
+    }
     $plugins->run_hooks('member_logout_end');
     redirect('member.php?action=login', $lang->member['redirect_loggedout']);
 }
@@ -1829,15 +1820,32 @@ if ($mybb->input['action'] === 'profile') {
     $uid = $mybb->get_input('id', MyBB::INPUT_INT);
     $memprofile = $uid ? get_user($uid) : ($CURUSER['id'] ? $CURUSER : false);
 
-    if (!$memprofile) { stderr($lang->member['error_nomember']); }
+    
+	if (!$memprofile) 
+	{ 
+        stderr($lang->member['error_nomember'], $SITENAME . ' - Member Not Found', 404, '404'); 
+	}
 
     $uid       = $memprofile['id'];
     $SameUser  = ($uid === (int)$CURUSER['id']);
     $IsStaff   = is_mod($usergroups);
 
-    if ($memprofile['invisible'] == 1 && !$SameUser && !$IsStaff) { stderr($lang->member['noperm']); }
+    
 	
-    if ($memprofile['ustatus'] === 'pending') { stderr($lang->member['pendinguser']); }
+	if ($memprofile['invisible'] == 1 && !$SameUser && !$IsStaff) 
+	{ 
+        stderr($lang->member['noperm'], $SITENAME . ' - Access Denied', 403, '403'); 
+	}
+	
+   
+	
+	if ($memprofile['ustatus'] === 'pending') 
+	{    
+        stderr($lang->member['pendinguser'], $SITENAME . ' - Access Denied', 403, '403'); 
+	}
+	
+	
+	
 
     $plugins->run_hooks('member_profile_start');
 

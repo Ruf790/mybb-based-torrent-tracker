@@ -41,9 +41,15 @@ if (isset($style) && $style['pid'] == $pid && $style['type'] != 'f') {
     $post = get_post($pid);
 }
 
+
+
 if (!$post || ($post['visible'] == -1 && $mybb->input['action'] != "restorepost")) {
-    error($lang->global['error_invalidpost']);
+	stderr($lang->global['error_invalidpost'], $SITENAME . ' - Post Not Found', 404, '404');
 }
+
+
+
+
 
 // Get thread info
 $tid = $post['tid'];
@@ -68,9 +74,13 @@ if ($thread['visible'] == 0 && !$is_mod || $thread['visible'] == -1 && $is_mod |
     }
 }
 
+
+
 if (!$forum || $forum['type'] != "f") {
-    error($lang->global['error_closedinvalidforum']);
+	stderr($lang->global['error_closedinvalidforum'], $SITENAME . ' - Access Denied', 403, '403');
 }
+
+
 
 if ($forum['open'] == 0 && !$is_mod) {
     print_no_permission();
@@ -543,7 +553,6 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
     
     $bgcolor = "trow1";
     
-    $enableattachments = "1";
     
     if ($enableattachments != 0) {
         // Get a listing of the current attachments, if there are any

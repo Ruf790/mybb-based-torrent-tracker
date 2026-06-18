@@ -50,7 +50,10 @@ if ($mybb->input['action'] === 'editdraft'
 
 // ── Forum validation ──────────────────────────────────────────────────────────
 $forum = get_forum($fid);
-if (!$forum) error('error_invalidforum');
+
+if (!$forum) { stderr($lang->global['error_invalidforum'] ?? 'Invalid forum.', $SITENAME . ' - Forum Not Found', 404, 'forum'); }
+
+
 
 build_forum_breadcrumb($fid);
 add_breadcrumb('New Thread');
@@ -58,7 +61,7 @@ add_breadcrumb('New Thread');
 $forumpermissions = forum_permissions($fid);
 
 if ($forum['open'] == 0 || $forum['type'] !== 'f' || $forum['linkto'] !== '') {
-    error('error_closedinvalidforum');
+    stderr($lang->global['error_closedinvalidforum'], $SITENAME . ' - Access Denied', 403, '403');
 }
 if ($forumpermissions['canview'] == 0 || $forumpermissions['canpostthreads'] == 0) {
     print_no_permission();

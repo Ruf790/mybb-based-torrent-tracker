@@ -4,11 +4,7 @@ declare(strict_types=1);
 define('IN_MYBB',    1);
 define('SCRIPTNAME', 'announcements.php');
 
-//$templatelist  = 'announcement,postbit_groupimage,postbit_reputation,postbit_avatar';
-//$templatelist .= ',postbit_online,postbit_offline,postbit_away,postbit_find,postbit_pm';
-//$templatelist .= ',postbit_email,postbit_author_user,forumdisplay_password_wrongpass';
-//$templatelist .= ',forumdisplay_password,postbit_author_guest,postbit_userstar';
-//$templatelist .= ',announcement_quickdelete,postbit,postbit_classic,postbit_www,announcement_edit';
+
 
 define('IN_FORUM', true);
 require_once 'global.php';
@@ -24,9 +20,13 @@ $announcement = $db->fetch_array($query);
 
 $plugins->run_hooks('announcements_start');
 
-if (!$announcement) {
-    stderr($lang->announcements['error_invalidannouncement']);
+
+
+if (!$announcementarray) {
+    stderr($lang->announcements['error_invalidannouncement'], $SITENAME . ' - Announcement Not Found', 404, '404');
 }
+
+
 
 // ── Forum permissions ────────────────────────────────────────────
 $fid = (int)$announcement['fid'];
@@ -76,6 +76,9 @@ $announcementarray = $db->fetch_array($query);
 if (!$announcementarray) {
     stderr($lang->announcements['error_invalidannouncement']);
 }
+
+
+
 
 
 

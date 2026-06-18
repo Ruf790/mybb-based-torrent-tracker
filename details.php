@@ -163,15 +163,12 @@ $Torrent = get_torrent((int)$mybb->input['id']);
 
 if(!$Torrent)
 {
-	stderr($lang->global['notorrentid']);
+	//stderr($lang->global['notorrentid']);
+	stderr($lang->global['notorrentid'], $SITENAME . ' - Torrent Not Found', 404, 'torrent');
+	
 }
 
 $id = $Torrent['id'];
-
-
-
-
-
 
 
 

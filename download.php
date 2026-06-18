@@ -205,7 +205,6 @@ $ratio  = $CURUSER['downloaded'] > 0
     ? $CURUSER['uploaded'] / $CURUSER['downloaded']
     : PHP_INT_MAX; // нет скачиваний — ratio бесконечный, не ограничиваем
 
-$xbt_active = 'no';
 
 if (
     $ratio        <= $hitrun_ratio
@@ -224,18 +223,21 @@ if (
     ));
 
     if (!$already_finished) {
-        $userlist_url = $BASEURL . '/' . ($xbt_active === 'yes' ? 'mysnatchlist' : 'userdetails') . '.php';
+        $userlist_url = '<a href=' . get_profile_link($CURUSER['id']) . '>' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '</a>';
 
-        stderr(
+		stderr(
             sprintf(
                 $lang->download['downloadwarning'],
                 number_format($ratio, 2),
                 mksize($ratio * 100),
                 $hitrun_ratio,
-                '<a href="' . $userlist_url . '">' . $userlist_url . '</a>'
+                $userlist_url
             ),
-            true
+            $SITENAME . ' - Download Restricted',
+            403,
+            'hitrun'
         );
+			
         stdhead();
         exit;
     }

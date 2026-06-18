@@ -300,6 +300,20 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
             'messageIcon' => 'bi-database-slash',
             'description' => 'The requested torrent could not be found'
         ],
+		'forum' => [
+            'code' => 404,
+            'title' => 'Forum Not Found',
+            'icon' => 'bi-chat-square-text-fill',
+            'messageIcon' => 'bi-database-slash',
+            'description' => 'The requested forum could not be found'
+        ],
+        'hitrun' => [
+            'code' => 403,
+            'title' => 'Download Restricted',
+            'icon' => 'bi-graph-down-arrow',
+            'messageIcon' => 'bi-arrow-down-up',
+            'description' => 'Your upload/download ratio is below the required minimum'
+        ],
         'general' => [
             'code' => $errorCode,
             'title' => 'Error',
@@ -368,7 +382,13 @@ function stderr(string $error = "", string $title = "", int $errorCode = 400, st
                             <div class="flex-grow-1">
                                 <h5 class="mb-2">' . $error . '</h5>
                                 <p class="text-muted mb-0 small">
-                                    ' . ($errorType === '403upload' ? 'You need special permissions to upload torrents.' : 'Please check your input and try again.') . '
+                                    ' . match($errorType) {
+                                        '403upload' => 'You need special permissions to upload torrents.',
+                                        'hitrun'    => 'Seed your completed torrents to raise your ratio above the minimum.',
+                                        'torrent'   => 'Try browsing the torrent list instead.',
+										'forum'     => 'Try browsing the forum list instead.',
+                                        default     => 'Please check your input and try again.',
+                                    } . '
                                 </p>
                             </div>
                         </div>
@@ -2785,7 +2805,8 @@ function maxsysop(): void
 				
 				
                 write_log('Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $CURUSER['id'] . ' - UserIP : ' . get_ip(), 'Warning: Fake Account Detected!');
-                stderr($lang->global['fakeaccount']);
+               
+				stderr($lang->global['fakeaccount'], $SITENAME . ' - Access Denied', 403, '403');
             }
         }
     }
@@ -3228,6 +3249,15 @@ function print_no_permission(bool $log = false, bool $stdhead = true, string $ex
 
     exit();
 }
+
+
+
+
+
+
+
+
+
 
 
 

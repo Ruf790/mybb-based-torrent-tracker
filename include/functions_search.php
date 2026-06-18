@@ -316,7 +316,11 @@ function perform_search_mysql(array $search): array
         $keywords = clean_keywords($search['keywords']);
     }
 
-    if (!$keywords && empty(trim($search['author'] ?? ''))) {
+    if (!$keywords
+        && empty(trim($search['author'] ?? ''))
+        && empty($search['postdate_from'])
+        && empty($search['postdate_to'])
+    ) {
         stderr($lang->search['error_nosearchterms']);
     }
 
@@ -424,6 +428,14 @@ function perform_search_mysql(array $search): array
         $datelimit = TIMENOW - 86400 * (int)$search['postdate'];
         $post_datecut   = " AND p.dateline {$op} '{$datelimit}'";
         $thread_datecut = " AND t.dateline {$op} '{$datelimit}'";
+    }
+    if (!empty($search['postdate_from'])) {
+        $post_datecut   .= " AND p.dateline >= '" . (int)$search['postdate_from'] . "'";
+        $thread_datecut .= " AND t.dateline >= '" . (int)$search['postdate_from'] . "'";
+    }
+    if (!empty($search['postdate_to'])) {
+        $post_datecut   .= " AND p.dateline <= '" . (int)$search['postdate_to'] . "'";
+        $thread_datecut .= " AND t.dateline <= '" . (int)$search['postdate_to'] . "'";
     }
 
     // Replies
@@ -588,7 +600,11 @@ function perform_search_mysql_ft(array $search): array
 
     $keywords = clean_keywords_ft($search['keywords'] ?? '');
 
-    if (!$keywords && empty(trim($search['author'] ?? ''))) {
+    if (!$keywords
+        && empty(trim($search['author'] ?? ''))
+        && empty($search['postdate_from'])
+        && empty($search['postdate_to'])
+    ) {
         stderr($lang->search['error_nosearchterms']);
     }
 
@@ -654,6 +670,14 @@ function perform_search_mysql_ft(array $search): array
         $datelimit = TIMENOW - 86400 * (int)$search['postdate'];
         $post_datecut   = " AND p.dateline {$op} '{$datelimit}'";
         $thread_datecut = " AND t.dateline {$op} '{$datelimit}'";
+    }
+    if (!empty($search['postdate_from'])) {
+        $post_datecut   .= " AND p.dateline >= '" . (int)$search['postdate_from'] . "'";
+        $thread_datecut .= " AND t.dateline >= '" . (int)$search['postdate_from'] . "'";
+    }
+    if (!empty($search['postdate_to'])) {
+        $post_datecut   .= " AND p.dateline <= '" . (int)$search['postdate_to'] . "'";
+        $thread_datecut .= " AND t.dateline <= '" . (int)$search['postdate_to'] . "'";
     }
 
     // Replies

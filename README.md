@@ -63,7 +63,7 @@ Perfect for **private communities**, testing torrent workflows, or learning how 
 ---
 
 ## 📌 Requirements
-- PHP 8.4+
+- PHP 8.5+
 - MySQL 5.7+ / MariaDB 10.3+
 - Composer
 - mod_rewrite (Apache) or equivalent

@@ -33,755 +33,41 @@ $parser_options = array(
 
 $lang->load('search');
 
+
+function highlight_search_term($text, $keyword)
+{
+    if(empty($keyword))
+    {
+        return htmlspecialchars_uni($text);
+    }
+
+    $text = htmlspecialchars_uni($text);
+
+    return preg_replace(
+        '#(' . preg_quote($keyword, '#') . ')#iu',
+        '<mark>$1</mark>',
+        $text
+    );
+}
+
+// Converts a "YYYY-MM-DD" string into a unix timestamp.
+// $end=true anchors to 23:59:59 of that day (range "to"), otherwise 00:00:00 (range "from").
+function to_search_ts(?string $d, bool $end = false): int
+{
+    if (!$d || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+        return 0;
+    }
+    return (int)strtotime($d . ($end ? ' 23:59:59' : ' 00:00:00'));
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CSS / HTML HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 function search_css(): string
 {
-    return <<<'CSS'
-<style>
-/* ============================================
-   PREMIUM MODERN SEARCH DESIGN v2.0
-   ============================================ */
-:root {
-    --gradient-1: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    --gradient-2: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
-    --gradient-3: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);
-    --gradient-4: linear-gradient(135deg, #10b981 0%, #34d399 100%);
-    --gradient-gold: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
-    --gradient-dark: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    
-    --primary: #3b82f6;
-    --primary-dark: #2563eb;
-    --primary-light: #60a5fa;
-    --secondary: #64748b;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --dark: #0f172a;
-    --light: #f8fafc;
-    
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-    --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
-    --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.25);
-    --shadow-glow: 0 0 20px rgba(59,130,246,0.4);
-    
-    --radius-sm: 0.5rem;
-    --radius-md: 0.75rem;
-    --radius-lg: 1rem;
-    --radius-xl: 1.5rem;
-    --radius-2xl: 2rem;
-}
-
-/* Global Background */
-body.search-page {
-    background: linear-gradient(145deg, #f1f5f9 0%, #e2e8f0 100%);
-    min-height: 100vh;
-    position: relative;
-}
-
-body.search-page::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"><path fill="rgba(59,130,246,0.03)" d="M0,96L48,112C96,128,192,160,288,160C384,160,480,128,576,122.7C672,117,768,139,864,154.7C960,171,1056,181,1152,165.3C1248,149,1344,107,1392,85.3L1440,64L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path></svg>') repeat-x bottom;
-    pointer-events: none;
-    opacity: 0.5;
-}
-
-/* Hero Section Premium */
-.sr-hero {
-    text-align: center;
-    margin-bottom: 2rem;
-    padding: 2rem 1rem;
-    background: var(--gradient-1);
-    border-radius: var(--radius-2xl);
-    position: relative;
-    overflow: hidden;
-    box-shadow: var(--shadow-xl);
-}
-
-.sr-hero::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-    animation: shimmer 8s infinite;
-}
-
-@keyframes shimmer {
-    0% { transform: translate(-30%, -30%) rotate(0deg); }
-    100% { transform: translate(30%, 30%) rotate(360deg); }
-}
-
-.sr-hero h1 {
-    font-size: 2.5rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #fff, #bfdbfe);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    margin-bottom: 0.5rem;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    position: relative;
-    z-index: 1;
-}
-
-.sr-hero p {
-    color: rgba(255,255,255,0.95);
-    font-size: 1rem;
-    font-weight: 500;
-    position: relative;
-    z-index: 1;
-}
-
-/* Quick Links Premium */
-.sr-quick-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    justify-content: center;
-    margin-bottom: 1.5rem;
-}
-
-.sr-quick-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1.25rem;
-    background: white;
-    border-radius: 2rem;
-    color: var(--primary);
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.875rem;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--shadow-sm);
-    border: 1px solid transparent;
-}
-
-.sr-quick-link:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-    background: var(--gradient-1);
-    color: white;
-    border-color: transparent;
-}
-
-.sr-quick-link i {
-    transition: transform 0.2s;
-    font-size: 0.875rem;
-}
-
-.sr-quick-link:hover i {
-    transform: scale(1.1);
-}
-
-/* Search Card Premium */
-.sr-card {
-    background: rgba(255,255,255,0.98);
-    backdrop-filter: blur(10px);
-    border-radius: var(--radius-2xl);
-    box-shadow: var(--shadow-2xl);
-    overflow: hidden;
-    margin-bottom: 2rem;
-    border: 1px solid rgba(255,255,255,0.3);
-    transition: transform 0.3s, box-shadow 0.3s;
-}
-
-.sr-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-2xl);
-}
-
-.sr-card-body {
-    padding: 2rem;
-}
-
-/* Main Search Row Premium */
-.sr-main-row {
-    display: flex;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
-    position: relative;
-}
-
-.sr-main-row input {
-    flex: 1;
-    padding: 0.875rem 1.25rem;
-    font-size: 1rem;
-    border: 2px solid #e2e8f0;
-    border-radius: var(--radius-xl);
-    transition: all 0.3s;
-    background: #fefefe;
-    font-weight: 500;
-}
-
-.sr-main-row input:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: var(--shadow-glow);
-    background: white;
-}
-
-.sr-btn {
-    padding: 0.875rem 1.5rem;
-    font-weight: 700;
-    border-radius: var(--radius-xl);
-    font-size: 0.9375rem;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sr-btn-primary {
-    background: var(--gradient-1);
-    color: white;
-    position: relative;
-    overflow: hidden;
-}
-
-.sr-btn-primary::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.3);
-    transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
-}
-
-.sr-btn-primary:hover::before {
-    width: 300px;
-    height: 300px;
-}
-
-.sr-btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-glow);
-}
-
-.sr-btn-ghost {
-    background: #f1f5f9;
-    color: var(--secondary);
-    border: 1px solid #e2e8f0;
-}
-
-.sr-btn-ghost:hover {
-    background: #fee2e2;
-    border-color: #fecaca;
-    color: var(--danger);
-    transform: translateY(-2px);
-}
-
-/* Advanced Toggle Premium */
-.sr-adv-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
-    background: var(--gradient-1);
-    border-radius: 2rem;
-    color: white;
-    font-weight: 600;
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.3s;
-    margin-bottom: 1rem;
-    box-shadow: var(--shadow-sm);
-}
-
-.sr-adv-toggle:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-}
-
-.sr-adv-toggle i {
-    transition: transform 0.3s;
-    font-size: 0.875rem;
-}
-
-.sr-adv-toggle.active i {
-    transform: rotate(180deg);
-}
-
-/* Advanced Panel Premium */
-.sr-adv-panel {
-    background: linear-gradient(135deg, #f9fafb, #ffffff);
-    border-radius: var(--radius-xl);
-    padding: 1.5rem;
-    margin-top: 1rem;
-    border: 1px solid #e2e8f0;
-    box-shadow: var(--shadow-md);
-}
-
-.sr-field-label {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    background: var(--gradient-1);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    margin-bottom: 0.5rem;
-}
-
-.sr-field-ctrl {
-    width: 100%;
-    padding: 0.75rem 1rem;
-    border: 2px solid #e2e8f0;
-    border-radius: var(--radius-md);
-    font-size: 0.9375rem;
-    transition: all 0.3s;
-    background: white;
-}
-
-.sr-field-ctrl:focus {
-    outline: none;
-    border-color: var(--primary);
-    box-shadow: var(--shadow-glow);
-}
-
-/* Results Page Premium */
-.sr-res-wrap {
-    max-width: 1200px;
-    margin: 2rem auto;
-    padding: 0 1rem;
-}
-
-.sr-res-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 2px solid #e2e8f0;
-}
-
-.sr-res-title {
-    font-size: 1.5rem;
-    font-weight: 800;
-    background: var(--gradient-1);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
-
-.sr-res-count {
-    color: var(--secondary);
-    font-size: 0.875rem;
-    font-weight: 500;
-}
-
-/* Sort Bar Premium */
-.sr-sort-bar {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
-
-.sr-sort-btn {
-    padding: 0.5rem 1rem;
-    border-radius: 2rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    text-decoration: none;
-    background: white;
-    border: 1px solid #e2e8f0;
-    color: var(--secondary);
-    transition: all 0.3s;
-}
-
-.sr-sort-btn:hover,
-.sr-sort-btn.active {
-    background: var(--gradient-1);
-    border-color: transparent;
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-/* Thread Card Premium */
-.sr-thread-card {
-    background: white;
-    border-radius: var(--radius-xl);
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1rem;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid #e2e8f0;
-    position: relative;
-    overflow: hidden;
-    cursor: pointer;
-}
-
-.sr-thread-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: var(--gradient-1);
-    transform: scaleX(0);
-    transition: transform 0.4s;
-    transform-origin: left;
-}
-
-.sr-thread-card:hover::before {
-    transform: scaleX(1);
-}
-
-.sr-thread-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-xl);
-    border-color: var(--primary-light);
-}
-
-.sr-thread-inner {
-    display: flex;
-    gap: 1rem;
-    align-items: flex-start;
-}
-
-/* Avatar Premium */
-.sr-avatar img,
-.sr-avatar-placeholder {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    object-fit: cover;
-    transition: transform 0.3s;
-}
-
-.sr-avatar:hover img,
-.sr-avatar:hover .sr-avatar-placeholder {
-    transform: scale(1.1);
-}
-
-.sr-avatar-placeholder {
-    background: var(--gradient-1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: 700;
-    font-size: 1rem;
-}
-
-/* Thread Subject Premium */
-.sr-thread-subject {
-    font-size: 1.0625rem;
-    font-weight: 700;
-    color: var(--dark);
-    text-decoration: none;
-    transition: all 0.3s;
-}
-
-.sr-thread-subject:hover {
-    background: var(--gradient-1);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
-
-/* Badges Premium */
-.sr-new-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem 0.625rem;
-    border-radius: 2rem;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    background: var(--gradient-4);
-    color: #064e3b;
-}
-
-.sr-hot-badge {
-    background: var(--gradient-gold);
-    color: #78350f;
-}
-
-.sr-closed-badge {
-    background: var(--gradient-dark);
-    color: #94a3b8;
-}
-
-/* Meta Info Premium */
-.sr-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    font-size: 0.8125rem;
-    color: var(--secondary);
-    align-items: center;
-    margin-top: 0.5rem;
-}
-
-.sr-meta a {
-    color: var(--secondary);
-    text-decoration: none;
-    transition: color 0.3s;
-}
-
-.sr-meta a:hover {
-    color: var(--primary);
-}
-
-/* Forum Badge Premium */
-.sr-forum-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.3125rem 0.75rem;
-    background: var(--gradient-3);
-    color: white;
-    border-radius: 2rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-decoration: none;
-    transition: all 0.3s;
-}
-
-.sr-forum-badge:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
-    color: white;
-}
-
-/* Action Buttons Premium */
-.sr-thread-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    flex-shrink: 0;
-    align-self: center;
-}
-
-.sr-action-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border-radius: 2rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.3s;
-    white-space: nowrap;
-}
-
-.sr-action-view {
-    border: 2px solid var(--primary);
-    color: var(--primary);
-    background: transparent;
-}
-
-.sr-action-view:hover {
-    background: var(--gradient-1);
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-/* Post Card Premium */
-.sr-post-card {
-    background: white;
-    border-radius: var(--radius-xl);
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1rem;
-    transition: all 0.4s;
-    border: 1px solid #e2e8f0;
-    position: relative;
-    overflow: hidden;
-}
-
-.sr-post-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: var(--gradient-4);
-    transform: scaleX(0);
-    transition: transform 0.4s;
-    transform-origin: left;
-}
-
-.sr-post-card:hover::before {
-    transform: scaleX(1);
-}
-
-.sr-post-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-xl);
-}
-
-/* Snippet Premium */
-.sr-snippet {
-    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
-    border-left: 3px solid var(--primary);
-    border-radius: var(--radius-md);
-    padding: 0.75rem 1rem;
-    margin-top: 0.75rem;
-    font-size: 0.875rem;
-    color: var(--secondary);
-    line-height: 1.6;
-}
-
-/* Pagination Premium */
-.sr-pagination {
-    display: flex;
-    justify-content: center;
-    gap: 0.5rem;
-    margin-top: 2rem;
-    flex-wrap: wrap;
-}
-
-.sr-page-btn {
-    min-width: 2.5rem;
-    height: 2.5rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: var(--radius-md);
-    color: var(--secondary);
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.875rem;
-    transition: all 0.3s;
-}
-
-.sr-page-btn:hover,
-.sr-page-btn.active {
-    background: var(--gradient-1);
-    border-color: transparent;
-    color: white;
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-/* Empty State Premium */
-.sr-empty {
-    text-align: center;
-    padding: 4rem 2rem;
-    background: white;
-    border-radius: var(--radius-xl);
-    border: 1px solid #e2e8f0;
-}
-
-.sr-empty i {
-    font-size: 4rem;
-    background: var(--gradient-1);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    margin-bottom: 1rem;
-    display: block;
-}
-
-.sr-empty h3 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--dark);
-    margin-bottom: 0.5rem;
-}
-
-.sr-empty p {
-    font-size: 0.9375rem;
-    color: var(--secondary);
-}
-
-/* Animations */
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.sr-thread-card,
-.sr-post-card {
-    animation: fadeInUp 0.4s ease-out forwards;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .sr-hero h1 {
-        font-size: 1.75rem;
-    }
-    
-    .sr-card-body {
-        padding: 1rem;
-    }
-    
-    .sr-main-row {
-        flex-direction: column;
-    }
-    
-    .sr-thread-inner {
-        flex-direction: column;
-    }
-    
-    .sr-thread-actions {
-        flex-direction: row;
-        width: 100%;
-    }
-    
-    .sr-action-btn {
-        flex: 1;
-        justify-content: center;
-    }
-    
-    .sr-res-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-}
-
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--gradient-1);
-    border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--gradient-2);
-}
-</style>
-CSS;
+    global $BASEURL;
+    return '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/search.css">';
 }
 
 
@@ -877,6 +163,144 @@ $searchhardlimit = 0;
 $limitsql        = $searchhardlimit > 0 ? "LIMIT {$searchhardlimit}" : '';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ACTION: suggest — lightweight AJAX autocomplete (live dropdown while typing)
+// ─────────────────────────────────────────────────────────────────────────────
+if ($mybb->input['action'] === 'suggest')
+{
+    header('Content-Type: application/json; charset=utf-8');
+
+    $kw = trim($mybb->get_input('q'));
+
+    if(my_strlen($kw) < 2)
+    {
+        echo json_encode(['results' => []]);
+        exit;
+    }
+
+    $kwEsc = $db->escape_string($kw);
+    $results = [];
+
+    /*
+    =====================================================
+    THREADS
+    =====================================================
+    */
+
+    $threads = $db->sql_query("
+        SELECT
+            t.tid,
+            t.subject,
+            t.replies,
+            f.name AS forumname
+        FROM threads t
+        LEFT JOIN forums f ON(f.fid=t.fid)
+        WHERE t.subject LIKE '%{$kwEsc}%'
+        ORDER BY t.lastpost DESC
+        LIMIT 5
+    ");
+
+    while($row = $db->fetch_array($threads))
+    {
+        $results[] = [
+            'type'    => 'thread',
+            'icon'    => 'fa-comments',
+            'title' => highlight_search_term($row['subject'], $kw),
+            'meta'    => htmlspecialchars_uni($row['forumname']).' · '.$row['replies'].' replies',
+            'url'     => get_thread_link($row['tid'])
+        ];
+    }
+
+    /*
+    =====================================================
+    POSTS
+    =====================================================
+    */
+
+    $posts = $db->sql_query("
+        SELECT
+            p.pid,
+            p.subject,
+            LEFT(p.message,120) AS snippet,
+            t.tid
+        FROM posts p
+        LEFT JOIN threads t ON(t.tid=p.tid)
+        WHERE p.message LIKE '%{$kwEsc}%'
+        ORDER BY p.dateline DESC
+        LIMIT 5
+    ");
+
+    while($row = $db->fetch_array($posts))
+    {
+        $results[] = [
+            'type'    => 'post',
+            'icon'    => 'fa-comment',
+            'title' => highlight_search_term($row['subject'], $kw),
+            'meta'  => highlight_search_term($row['snippet'], $kw),
+            'url'     => get_post_link($row['pid'], $row['tid'])
+        ];
+    }
+
+    /*
+    =====================================================
+    USERS
+    =====================================================
+    */
+
+    $users = $db->sql_query("
+        SELECT id, username
+        FROM users
+        WHERE username LIKE '%{$kwEsc}%'
+        ORDER BY username ASC
+        LIMIT 5
+    ");
+
+    while($row = $db->fetch_array($users))
+    {
+        $results[] = [
+            'type'    => 'user',
+            'icon'    => 'fa-user',
+            'title' => highlight_search_term($row['username'], $kw),
+            'meta'    => 'Member',
+            'url'     => 'userdetails.php?id='.(int)$row['id']
+        ];
+    }
+
+    /*
+    =====================================================
+    FORUMS
+    =====================================================
+    */
+
+    $forums = $db->sql_query("
+        SELECT fid,name,description
+        FROM forums
+        WHERE name LIKE '%{$kwEsc}%'
+        ORDER BY disporder ASC
+        LIMIT 5
+    ");
+
+    while($row = $db->fetch_array($forums))
+    {
+        $results[] = [
+            'type'    => 'forum',
+            'icon'    => 'fa-folder',
+           'title' => highlight_search_term($row['name'], $kw),
+'meta'  => highlight_search_term(
+    my_substr($row['description'], 0, 80),
+    $kw
+),
+            'url'     => get_forum_link($row['fid'])
+        ];
+    }
+
+    echo json_encode([
+        'results' => array_slice($results,0,15)
+    ]);
+
+    exit;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ACTION: results
 // ─────────────────────────────────────────────────────────────────────────────
 if ($mybb->input['action'] === 'results') {
@@ -907,6 +331,7 @@ if ($mybb->input['action'] === 'results') {
         'subject' => $is_threads ? 't.subject' : 'p.subject',
         'forum'   => 'f.name',
         'starter' => $is_threads ? 't.username' : 'p.username',
+        'rating'  => $is_threads ? 'avg_rating' : 't.lastpost',
         default   => (function() use (&$sortby, $is_threads): string {
             if ($is_threads) { $sortby = 'lastpost'; return 't.lastpost'; }
             $sortby = 'dateline'; return 'p.dateline';
@@ -980,10 +405,16 @@ if ($mybb->input['action'] === 'results') {
         if ($page > $pages) { $start = 0; $page = 1; }
 
         $q = $db->sql_query("
-            SELECT t.*, u.username AS userusername, u.avatar, u.avatardimensions, u.usergroup AS u_usergroup
+            SELECT t.*, u.username AS userusername, u.avatar, u.avatardimensions, u.usergroup AS u_usergroup,
+                   COALESCE(tr.avg_rating, 0) AS avg_rating
             FROM threads t
             LEFT JOIN users u ON (u.id = t.uid)
             LEFT JOIN forums f ON (t.fid = f.fid)
+            LEFT JOIN (
+                SELECT tid, AVG(rating) AS avg_rating
+                FROM threadratings
+                GROUP BY tid
+            ) tr ON (tr.tid = t.tid)
             WHERE $where_conditions AND ({$unapproved_where_t}) {$permsql} AND t.closed NOT LIKE 'moved|%'
             ORDER BY $sortfield $order
             LIMIT $start, $perpage
@@ -1021,7 +452,7 @@ if ($mybb->input['action'] === 'results') {
         echo '<div><div class="sr-res-title"><i class="fas fa-search me-2" style="color:var(--sr-primary)"></i>Thread Results</div>';
         echo '<div class="sr-res-count">Found <strong>' . ts_nf($threadcount) . '</strong> thread' . ($threadcount !== 1 ? 's' : '') . '</div></div>';
         echo '<div class="sr-sort-bar">';
-        $sort_opts = ['lastpost'=>'Date','replies'=>'Replies','views'=>'Views','subject'=>'Subject','starter'=>'Author','forum'=>'Forum'];
+        $sort_opts = ['lastpost'=>'Date','replies'=>'Replies','views'=>'Views','rating'=>'Rating','subject'=>'Subject','starter'=>'Author','forum'=>'Forum'];
         foreach ($sort_opts as $key => $label) {
             $active = $sortby === $key ? ' active' : '';
             $no     = ($sortby === $key && $order === 'asc') ? 'desc' : 'asc';
@@ -1109,6 +540,9 @@ if ($mybb->input['action'] === 'results') {
             echo '<span><i class="fas fa-user"></i><a href="' . $profile_link . '" onclick="event.stopPropagation()">' . $thread['username'] . '</a></span>';
             echo '<span><i class="fas fa-comments"></i>' . ts_nf($thread['replies']) . ' replies</span>';
             echo '<span><i class="fas fa-eye"></i>' . ts_nf($thread['views']) . ' views</span>';
+            if (!empty($thread['avg_rating']) && (float)$thread['avg_rating'] > 0) {
+                echo '<span class="sr-rating-pill"><i class="fas fa-star"></i>' . number_format((float)$thread['avg_rating'], 1) . '</span>';
+            }
             echo '<span><i class="fas fa-clock"></i>' . $lastpostdate . ' by ' . $lp_link . '</span>';
             echo '</div>';
 
@@ -1271,26 +705,31 @@ if ($mybb->input['action'] === 'results') {
             echo '<div class="sr-avatar"><a href="' . $profile_url . '">' . $avatar_html . '</a></div>';
             echo '<div class="sr-thread-body">';
 
-            echo '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
-            echo '<a href="' . $thread_url . '" class="sr-thread-subject">' . $post['thread_subject'] . '</a>';
-            echo '<span class="badge bg-success-subtle text-success-emphasis" style="font-size:.7rem;font-weight:700;">Post</span>';
+            // Author + timestamp row (who/when, right above what)
+            echo '<div class="sr-post-byline">';
+            echo '<a href="' . $profile_url . '" class="sr-post-author">' . $post['username'] . '</a>';
+            echo '<span class="sr-post-dot">&middot;</span>';
+            echo '<span class="sr-post-time"><i class="fas fa-clock"></i>' . $posted . '</span>';
+            echo '<span class="badge bg-success-subtle text-success-emphasis sr-post-badge">Post</span>';
             echo '</div>';
+
+            // Subject (what)
+            echo '<a href="' . $thread_url . '" class="sr-thread-subject sr-post-subject">' . $post['thread_subject'] . '</a>';
 
             if ($preview) {
                 echo '<div class="sr-snippet"><i class="fas fa-quote-left me-1 opacity-50"></i>' . $preview . '</div>';
             }
 
-            echo '<div class="sr-meta" style="margin-top:10px;">';
+            // Forum (where) - on its own row, visually lighter
+            echo '<div class="sr-meta sr-post-forum-row">';
             echo '<a href="' . $forum_link . '" class="sr-sort-btn active"><i class="fas fa-folder-open"></i>' . $forum_name . '</a>';
-            echo '<span><i class="fas fa-user"></i><a href="' . $profile_url . '">' . $post['username'] . '</a></span>';
-            echo '<span><i class="fas fa-clock"></i>' . $posted . '</span>';
             echo '</div>';
 
             echo '</div>'; // body
 
             echo '<div class="sr-thread-actions">';
             echo '<a href="' . $post_url . '#pid' . $post['pid'] . '" class="sr-action-btn sr-action-view"><i class="fas fa-comment"></i> View post</a>';
-            echo '<a href="' . $thread_url . '" class="sr-action-btn" style="border:1px solid var(--sr-border);color:var(--sr-secondary);" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'\'"><i class="fas fa-list"></i> Thread</a>';
+            echo '<a href="' . $thread_url . '" class="sr-thread-badge-link"><i class="fas fa-list"></i> Thread</a>';
             echo '</div>';
 
             echo '</div></div>';
@@ -1423,8 +862,8 @@ if ($mybb->input['action'] === 'results') {
         'author'        => $mybb->get_input('author'),
         'postthread'    => $mybb->get_input('postthread',    MyBB::INPUT_INT),
         'matchusername' => $mybb->get_input('matchusername', MyBB::INPUT_INT),
-        'postdate'      => $mybb->get_input('postdate',      MyBB::INPUT_INT),
-        'pddir'         => $mybb->get_input('pddir',         MyBB::INPUT_INT),
+        'postdate_from' => to_search_ts($mybb->get_input('postdate_from'), false),
+        'postdate_to'   => to_search_ts($mybb->get_input('postdate_to'),   true),
         'forums'        => $forums,
         'findthreadst'  => $mybb->get_input('findthreadst',  MyBB::INPUT_INT),
         'numreplies'    => $mybb->get_input('numreplies',    MyBB::INPUT_INT),
@@ -1577,9 +1016,10 @@ if ($mybb->input['action'] === 'results') {
             <form action="search.php" method="post" id="srForm">
                 <input type="hidden" name="action" value="do_search">
                 <input type="hidden" name="postcode" value="<?= generate_post_check() ?>">
+                <div class="sr-card-body">
 
                 <!-- Main input -->
-                <div class="sr-main-row">
+                <div class="sr-main-row" style="position:relative;">
                     <input type="text" name="keywords" id="srKeywords"
                            placeholder="Search keywords… (Ctrl+K)"
                            value="<?= $kw_val ?>" autocomplete="off" maxlength="200">
@@ -1589,6 +1029,8 @@ if ($mybb->input['action'] === 'results') {
                     <button type="button" class="sr-btn sr-btn-ghost" id="srClear">
                         <i class="fas fa-times me-1"></i>Clear
                     </button>
+
+                    <div id="srSuggestBox" class="sr-suggest-box" style="display:none;"></div>
                 </div>
 
                 <!-- Show results as -->
@@ -1628,15 +1070,10 @@ if ($mybb->input['action'] === 'results') {
 
                             <div class="col-md-6">
                                 <label class="sr-field-label"><i class="fas fa-search-plus me-1"></i>Search in</label>
-                                 
-								 
-								 
-								 <select name="postthread" class="sr-field-ctrl">
-    <option value="1">Subject &amp; message</option>
-    <option value="0">Subject only</option>
-</select>
-								 
-							  
+                                <select name="postthread" class="sr-field-ctrl">
+                                    <option value="1">Subject &amp; message</option>
+                                    <option value="0">Subject only</option>
+                                </select>
                             </div>
 
                             <div class="col-md-4">
@@ -1660,16 +1097,18 @@ if ($mybb->input['action'] === 'results') {
                                 </select>
                             </div>
 
-                            <div class="col-md-4">
-                                <label class="sr-field-label"><i class="fas fa-calendar me-1"></i>Posted within</label>
-                                <select name="postdate" class="sr-field-ctrl">
-                                    <option value="0">Any time</option>
-                                    <option value="1">Yesterday</option>
-                                    <option value="7">Last week</option>
-                                    <option value="30">Last month</option>
-                                    <option value="90">Last 3 months</option>
-                                    <option value="365">Last year</option>
-                                </select>
+                            <div class="col-md-3">
+                                <label class="sr-field-label"><i class="fas fa-calendar me-1"></i>Posted from</label>
+                                <input type="text" name="postdate_from" id="srDateFrom" class="sr-field-ctrl"
+                                       placeholder="YYYY-MM-DD" autocomplete="off"
+                                       value="<?= htmlspecialchars($mybb->get_input('postdate_from')) ?>">
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="sr-field-label"><i class="fas fa-calendar me-1"></i>Posted to</label>
+                                <input type="text" name="postdate_to" id="srDateTo" class="sr-field-ctrl"
+                                       placeholder="YYYY-MM-DD" autocomplete="off"
+                                       value="<?= htmlspecialchars($mybb->get_input('postdate_to')) ?>">
                             </div>
 
                             <div class="col-md-6">
@@ -1678,9 +1117,8 @@ if ($mybb->input['action'] === 'results') {
                             </div>
 
                             <div class="col-md-6">
-                               
-                                    <?= $srchlist ?>
-                               
+                                <label class="sr-field-label"><i class="fas fa-comments me-1"></i>Forums</label>
+                                <?= $srchlist ?>
                                 <small class="text-muted">Hold Ctrl to select multiple</small>
                             </div>
 
@@ -1693,7 +1131,6 @@ if ($mybb->input['action'] === 'results') {
 
                             <?php if ($moderator_options): ?>
                             <div class="col-12">
-                                <label class="sr-field-label"><i class="fas fa-shield-alt me-1"></i>Moderator options</label>
                                 <?= $moderator_options ?>
                             </div>
                             <?php endif; ?>
@@ -1702,31 +1139,14 @@ if ($mybb->input['action'] === 'results') {
                     </div>
                 </div>
 
+                </div><!-- /.sr-card-body -->
             </form>
         </div>
     </div>
 
-    <script>
-    // Ctrl+K
-    document.addEventListener('keydown', e => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-            e.preventDefault();
-            document.getElementById('srKeywords')?.focus();
-        }
-    });
-    // Clear button
-    document.getElementById('srClear')?.addEventListener('click', () => {
-        document.getElementById('srKeywords').value = '';
-        document.getElementById('srKeywords').focus();
-    });
-    // Chevron rotate on collapse
-    document.getElementById('srAdv')?.addEventListener('show.bs.collapse', () => {
-        document.querySelector('.sr-adv-toggle .fa-chevron-down').style.transform = 'rotate(180deg)';
-    });
-    document.getElementById('srAdv')?.addEventListener('hide.bs.collapse', () => {
-        document.querySelector('.sr-adv-toggle .fa-chevron-down').style.transform = 'rotate(0deg)';
-    });
-    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
+    <script src="<?= $BASEURL ?>/admin/scripts/flatpickr.js"></script>
+    <script src="<?= $BASEURL ?>/scripts/search_page.js"></script>
     <?php
     stdfoot();
 }

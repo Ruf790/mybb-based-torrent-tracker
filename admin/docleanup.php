@@ -7,8 +7,7 @@ declare(strict_types=1);
     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
   }
 
-  define ('DC_VERSION', '0.5 by xam');
-  define ('SKIP_CRON_JOBS', true);
+  define ('DC_VERSION', '0.5');
   define ('RUN_CRONJOBS', true);
   ($db->sql_query ('UPDATE cron SET nextrun = \'0\''));
   $ts_cron_image = '<img src="' . $BASEURL . '/cron.php?rand=' . time () . '&run_cronjobs=true" alt="" width="1" height="1" border="0" />';

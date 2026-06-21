@@ -61,6 +61,7 @@ class TorrentManager
             'sticky' => fn() => $this->toggleField($torrentIdsStr, 'sticky'),
             'free' => fn() => $this->toggleField($torrentIdsStr, 'free'),
             'silver' => fn() => $this->toggleField($torrentIdsStr, 'silver'),
+			'thirtypercent' => fn() => $this->toggleField($torrentIdsStr, 'thirtypercent'),
             'visible' => fn() => $this->toggleField($torrentIdsStr, 'visible'),
             'anonymous' => fn() => $this->toggleField($torrentIdsStr, 'anonymous'),
             'banned' => fn() => $this->toggleField($torrentIdsStr, 'banned'),
@@ -155,9 +156,8 @@ $queryBuilder = new class {
     public function addSearchTypeCondition(string $searchtype): void {
         $conditions = [
             'deadonly' => "(t.visible = 'no' OR (t.seeders=0 AND t.leechers=0))",
-            'internal' => "t.ts_external = 'no'",
-            'external' => "t.ts_external = 'yes'",
             'silver' => "t.silver = 'yes'",
+			'thirtypercent' => "t.thirtypercent = 'yes'",
             'free' => "t.free = 'yes'",
             'recommend' => "t.sticky = 'yes'",
             'doubleuploads' => "t.doubleupload = 'yes'"
@@ -269,10 +269,9 @@ $searchTypeDropdown = '
     <option value="">⚡ All Types</option>
     <option value="free"' . ($searchtype === 'free' ? ' selected' : '') . '>🎁 Free Torrents</option>
     <option value="silver"' . ($searchtype === 'silver' ? ' selected' : '') . '>⭐ Silver Torrents</option>
+    <option value="thirtypercent"' . ($searchtype === 'thirtypercent' ? ' selected' : '') . '>🟣 30% Leech</option>
     <option value="recommend"' . ($searchtype === 'recommend' ? ' selected' : '') . '>📌 Sticky Torrents</option>
     <option value="doubleuploads"' . ($searchtype === 'doubleuploads' ? ' selected' : '') . '>⚡ 2x Upload</option>
-    <option value="internal"' . ($searchtype === 'internal' ? ' selected' : '') . '>🏠 Internal</option>
-    <option value="external"' . ($searchtype === 'external' ? ' selected' : '') . '>🌐 External</option>
     <option value="deadonly"' . ($searchtype === 'deadonly' ? ' selected' : '') . '>💀 Dead Torrents</option>
 </select>';
 
@@ -541,6 +540,7 @@ echo '
                                 <option value="sticky">📌 Toggle Sticky</option>
                                 <option value="free">🎁 Toggle Free</option>
                                 <option value="silver">⭐ Toggle Silver</option>
+								<option value="thirtypercent">🟣 Toggle 30% Leech</option>
                                 <option value="visible">👁️ Toggle Visibility</option>
                                 <option value="anonymous">🕵️ Toggle Anonymous</option>
                                 <option value="banned">🚫 Toggle Ban</option>

@@ -98,7 +98,6 @@ $log        = [];
 $start_time = microtime(true);
 
 $cleanups = [
-    ['announce_actions',    "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
     ['bookmarks',           "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
     ['cheat_attempts',      "uid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})",    'id'],
     ['comments',            "user NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})"],
@@ -175,7 +174,7 @@ foreach ([
 
 // ── Optimize tables ───────────────────────────────────────
 $tables_to_optimize = [
-    'announce_actions', 'bookmarks', 'cheat_attempts', 'comments',
+    'bookmarks', 'cheat_attempts', 'comments',
     'notconnectablepmlog', 'peers', 'reports', 'snatched', 'staffmessages',
     'hit_and_run', 'inactivity', 'comment_files',
     'privatemessages', 'screenshots', 'sessions', 'searchlog', 'loginattempts',

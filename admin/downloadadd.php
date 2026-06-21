@@ -36,7 +36,7 @@ class DownloadAmountManager
      */
     private function validateAccess(): void
     {
-        if (!defined('STAFF_PANEL_TSSEv56')) {
+        if (!defined('STAFF_PANEL')) {
             throw new RuntimeException('Direct initialization of this file is not allowed.');
         }
     }

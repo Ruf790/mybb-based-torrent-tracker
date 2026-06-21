@@ -16,6 +16,7 @@ $rootDir = dirname(__DIR__);
 require_once $rootDir . '/vendor/autoload.php';
 
 use Arokettu\Torrent\TorrentFile;
+use Arokettu\Bencode\Bencode;
 
 $lang->load('upload');
 
@@ -309,9 +310,34 @@ function processTorrent(
     array  $posterFiles,
     array  $csvData
 ): array {
-    global $db, $CURUSER, $BASEURL, $lang;
+    global $db, $CURUSER, $BASEURL, $lang, $privatetrackerpatch, $SITENAME, $announce_urls;
 
     $torrentObj = TorrentFile::load($torrentPath);
+
+    // ── Private-tracker patch ────────────────────────────────────────────────
+    // If the tracker runs in private mode and the uploaded torrent does not
+    // already carry the private flag, set it and re-encode the file so the
+    // info_hash is consistent with what clients will see.
+    if (isset($privatetrackerpatch) && $privatetrackerpatch === 'yes') {
+        $rawContent = file_get_contents($torrentPath);
+        $bencode    = Bencode::decode($rawContent);
+
+        if (!isset($bencode['info']['private']) || $bencode['info']['private'] != 1) {
+            $announceUrl = trim(($announce_urls[0] ?? '') . '?passkey=' . $CURUSER['passkey']);
+
+            $bencode['info']['private']  = 1;
+            $bencode['announce']         = $announceUrl;
+            $bencode['comment']          = $lang->upload['DefaultTorrentComment'] ?? '';
+            $bencode['created by']       = sprintf($lang->upload['CreatedBy'] ?? 'Uploaded by %s', $CURUSER['username']) . ' [' . $SITENAME . ']';
+            $bencode['source']           = $BASEURL;
+            $bencode['creation date']    = TIMENOW;
+
+            file_put_contents($torrentPath, Bencode::encode($bencode));
+            $torrentObj = TorrentFile::load($torrentPath);
+        }
+    }
+    // ── End private-tracker patch ────────────────────────────────────────────
+
     $infoHash   = (string)$torrentObj->v1()->getInfoHash();
     $filesList  = $torrentObj->v1()->getFiles();
     $numFiles   = count($filesList);
@@ -327,7 +353,7 @@ function processTorrent(
         return ['error' => 'Torrent already exists on the tracker'];
     }
 
-    // Метаданные из CSV или формы
+    // Metadata from CSV or form
     $csvMeta    = !empty($csvData) ? findCSVData($csvData, $originalName) : null;
     $baseName   = substr(pathinfo($originalName, PATHINFO_FILENAME), 0, 255);
 
@@ -369,8 +395,6 @@ function processTorrent(
         'anonymous'       => isset($_POST['batch_anonymous']) ? 'yes' : 'no',
         't_link'          => $t_link,
         'visible'         => 'yes',
-        'ts_external_url' => $db->escape_string($torrentObj->getAnnounce() ?? ''),
-        'ts_external'     => 'yes',
     ];
 
     // Вставка в БД
@@ -492,11 +516,11 @@ function findCSVData(array $csvData, string $filename): ?array
     return null;
 }
 
-// ── Форма ─────────────────────────────────────────────────
+// ── Form ─────────────────────────────────────────────────
 
 function showForm(): void
 {
-    global $BASEURL, $mybb, $db, $_this_script_;
+    global $BASEURL, $mybb, $db, $announce_urls, $CURUSER, $_this_script_;
 
     stdhead('Batch Torrent Upload');
 
@@ -523,6 +547,23 @@ function showForm(): void
           <h5 class="mb-0"><i class="fa-solid fa-upload me-2"></i>Upload Multiple Torrents</h5>
         </div>
         <div class="card-body">
+
+          <!-- Announce URL -->
+          <?php
+          $batchAnnounceURL = trim($announce_urls[0] . "?passkey=" . $CURUSER["passkey"]);
+          ?>
+          <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+            <div>
+              <i class="fa-solid fa-satellite-dish me-2"></i>
+              <strong>Your Announce URL:</strong>
+              <code id="batchAnnounceUrl" class="ms-2"><?= $batchAnnounceURL ?></code>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    onclick="navigator.clipboard.writeText(document.getElementById('batchAnnounceUrl').textContent).then(()=>this.textContent='Copied!').catch(()=>{})">
+              <i class="fa-solid fa-copy me-1"></i>Copy
+            </button>
+          </div>
+
           <form id="batchUploadForm" method="post" enctype="multipart/form-data">
             <input type="hidden" name="my_post_key" value="<?= $postKey ?>">
 

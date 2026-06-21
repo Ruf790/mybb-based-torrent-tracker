@@ -12,21 +12,94 @@ if (!defined('STAFF_PANEL')) {
 
 $eol = PHP_EOL;
 
+/**
+ * Fully bans a user: moves them to the banned usergroup, inserts a record
+ * into the `banned` table, clears their passkey and disables the account.
+ * Skips users who are already banned.
+ */
+function cheat_full_ban(int $uid, string $reason, int $banned_by): void
+{
+    global $db, $cache;
+
+    // Already banned? Skip.
+    if ($db->num_rows($db->simple_select('banned', 'uid', "uid='{$uid}'"))) {
+        return;
+    }
+
+    // Find the banned usergroup
+    $banned_gid  = 9; // fallback — gid 9 = Banned group
+    $groupscache = $cache->read('usergroups');
+    if (is_array($groupscache)) {
+        foreach ($groupscache as $group) {
+            if (!empty($group['isbannedgroup'])) {
+                $banned_gid = (int)$group['gid'];
+                break;
+            }
+        }
+    } else {
+        // Cache miss — query directly
+        $gres = $db->simple_select('usergroups', 'gid', "isbannedgroup='1'", ['limit' => 1]);
+        $grow = $db->fetch_array($gres);
+        if ($grow) {
+            $banned_gid = (int)$grow['gid'];
+        }
+    }
+
+    $user = $db->fetch_array($db->simple_select(
+        'users', 'usergroup, additionalgroups, displaygroup', "id='{$uid}'"
+    ));
+    if (!$user) {
+        return;
+    }
+
+    // Insert into banned table
+    $db->insert_query('banned', [
+        'uid'                  => $uid,
+        'gid'                  => $banned_gid,
+        'oldgroup'             => (int)$user['usergroup'],
+        'oldadditionalgroups'  => $db->escape_string($user['additionalgroups']),
+        'olddisplaygroup'      => (int)$user['displaygroup'],
+        'admin'                => $banned_by,
+        'dateline'             => TIMENOW,
+        'bantime'              => '---',
+        'lifted'               => 0,
+        'reason'               => $db->escape_string($reason),
+    ]);
+
+    // Move to banned group and disable account — mirrors banning.php processBanAction()
+    $db->update_query('users', [
+        'usergroup'        => $banned_gid,
+        'displaygroup'     => 0,
+        'additionalgroups' => '',
+        'enabled'          => 'no',
+        'passkey'          => '',
+    ], "id='{$uid}'");
+
+    $db->delete_query('forumsubscriptions',  "uid='{$uid}'");
+    $db->delete_query('threadsubscriptions', "uid='{$uid}'");
+}
+
 // ── POST обработка ────────────────────────────────────────
 
 $ca_message = '';
 
 if (($_POST['do'] ?? '') === 'apply') {
 
+    verify_post_check($mybb->get_input('my_post_key'));
+
     // Бан
     if (!empty($_POST['ban']) && is_array($_POST['ban'])) {
-        $ids = implode(',', array_map('intval', $_POST['ban']));
+        $ids    = array_map('intval', $_POST['ban']);
+        $reason = 'Banned by ' . $CURUSER['username'] . ' via Cheat Attempts panel';
         $modcomment = gmdate('Y-m-d') . ' - Banned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . $eol;
-        $db->sql_query(
-            'UPDATE users SET enabled=\'no\', passkey=\'\',
-             modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment)
-             WHERE id IN (' . $ids . ')'
-        );
+
+        foreach ($ids as $uid) {
+            cheat_full_ban($uid, $reason, (int)$CURUSER['id']);
+            $db->sql_query(
+                'UPDATE users SET modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment)
+                 WHERE id = ' . $uid
+            );
+        }
         $ca_message = 'Users have been banned';
     }
 
@@ -73,13 +146,14 @@ if (($_POST['do'] ?? '') === 'apply') {
              GROUP BY uid
              HAVING cnt >= 5"
         );
-        $banned = 0;
+        $banned  = 0;
+        $modcomment = gmdate('Y-m-d') . ' - Auto-banned by system (5+ cheat violations/hour)' . $eol;
         while ($row = $db->fetch_array($res)) {
-            $modcomment = gmdate('Y-m-d') . ' - Auto-banned by system (5+ cheat violations/hour)' . $eol;
+            $uid = (int)$row['uid'];
+            cheat_full_ban($uid, 'Auto-banned: 5+ high severity cheat violations in one hour', (int)$CURUSER['id']);
             $db->sql_query(
-                "UPDATE users SET enabled='no', passkey='',
-                 modcomment=CONCAT(" . $db->sqlesc($modcomment) . ", modcomment)
-                 WHERE id = " . (int)$row['uid']
+                'UPDATE users SET modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment)
+                 WHERE id = ' . $uid
             );
             $banned++;
         }
@@ -160,6 +234,7 @@ stdhead('Cheat Attempts');
       <?= $multipage ?>
 
       <form method="post" action="<?= htmlspecialchars($_this_script_) ?>">
+        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
         <input type="hidden" name="do" value="apply">
 
         <div class="table-responsive">

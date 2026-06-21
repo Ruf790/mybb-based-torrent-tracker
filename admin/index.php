@@ -5,6 +5,13 @@
 
 /* ─────────────────────────── Bootstrap ──────────────────────────── */
 
+// Prevent the browser (or any intermediate proxy/cache) from ever serving
+// a cached copy of this page. The admin 2FA gate must be re-evaluated by
+// PHP on every single request — a cached page would silently bypass it.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 $rootpath = './../';
 $thispath = './';
 
@@ -27,6 +34,154 @@ if (!is_mod($usergroups)) {
     print_no_permission(true);
     exit();
 }
+
+/* ──────────────────────── Admin 2FA Gateway ─────────────────────── */
+require_once $rootpath . 'include/functions_2fa.php';
+
+$admin_uid     = (int)$CURUSER['id'];
+$admin_2fa_key = 'admin_2fa_ok_' . $admin_uid;
+$admin_2fa_err = '';
+
+
+
+if (totp_is_enabled($admin_uid)) {
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_totp_code'])) {
+        $code   = preg_replace('/\D/', '', $_POST['admin_totp_code'] ?? '');
+        $secret = totp_get_secret($admin_uid);
+
+        if ($secret && totp_verify($secret, $code)) {
+            $_SESSION[$admin_2fa_key] = [
+                'verified_at' => time(),
+                'ip'          => $_SERVER['REMOTE_ADDR'] ?? '',
+            ];
+            unset($_SESSION['admin_2fa_fail_count']);
+        } else {
+            $admin_2fa_err = 'Invalid or expired code. Please try again.';
+
+            $_SESSION['admin_2fa_fail_count'] = ($_SESSION['admin_2fa_fail_count'] ?? 0) + 1;
+
+            write_log(
+                "Failed admin 2FA attempt: Username: {$CURUSER['username']}"
+                . " - UserID: {$admin_uid}"
+                . " - IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown')
+                . " - Attempt #: " . $_SESSION['admin_2fa_fail_count'],
+                'Warning: Admin 2FA Failure'
+            );
+        }
+    }
+
+    $verified = $_SESSION[$admin_2fa_key] ?? null;
+    $ok = $verified
+        && (time() - $verified['verified_at']) < 28800
+        && ($verified['ip'] === ($_SERVER['REMOTE_ADDR'] ?? ''));
+
+    if (!$ok) {
+        $base = rtrim($BASEURL, '/');
+        echo '<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>' . htmlspecialchars($SITENAME) . ' — Admin 2FA</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="bg-light">
+    <div class="container-md mt-5" style="max-width:420px">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white text-center">
+                <h5 class="mb-0">
+                    <i class="fa-solid fa-shield-halved me-2"></i>
+                    Admin Panel — Two-Factor Authentication
+                </h5>
+            </div>
+            <div class="card-body">
+                ' . ($admin_2fa_err ? '<div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation me-2"></i>' . htmlspecialchars($admin_2fa_err) . '</div>' : '') . '
+                <p class="text-muted small mb-3">
+                    Enter the 6-digit code from your authenticator app.
+                </p>
+                <form method="post" action="">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Authentication Code</label>
+                        <input type="text" name="admin_totp_code"
+                               class="form-control form-control-lg text-center fw-bold"
+                               style="letter-spacing:.3rem"
+                               placeholder="000 000" maxlength="6"
+                               autocomplete="one-time-code" autofocus
+                               inputmode="numeric" pattern="[0-9]{6}">
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fa-solid fa-right-to-bracket me-2"></i>Verify & Enter
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div class="card-footer text-center">
+                <a href="' . $base . '/index.php" class="small text-muted">
+                    <i class="fa-solid fa-arrow-left me-1"></i>Back to site
+                </a>
+                &nbsp;&bull;&nbsp;
+                <small class="text-muted">Logged in as <strong>' . htmlspecialchars($CURUSER['username']) . '</strong></small>
+            </div>
+        </div>
+    </div>
+</body>
+</html>';
+        exit();
+    }
+
+} else {
+
+    // 2FA not enabled — mandatory block. Admin cannot access the panel
+    // until 2FA is set up; there is no bypass.
+    $base = rtrim($BASEURL, '/');
+
+    echo '<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>' . htmlspecialchars($SITENAME) . ' — Admin Security Warning</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="bg-light">
+    <div class="container-md mt-5" style="max-width:480px">
+        <div class="card shadow-sm border-danger">
+            <div class="card-header bg-danger text-white text-center">
+                <h5 class="mb-0">
+                    <i class="fa-solid fa-shield-halved me-2"></i>
+                    2FA Required
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    <strong>Two-Factor Authentication is required for admin access.</strong><br>
+                    <small>Your account does not have 2FA enabled. For security reasons, the admin panel cannot be accessed until you set it up.</small>
+                </div>
+                <p class="text-muted small">
+                    Set up 2FA in your
+                    <a href="' . $base . '/usercp.php?action=2fa" target="_blank">
+                        <i class="fa-solid fa-shield-halved me-1"></i>User Control Panel
+                    </a>,
+                    then return to this page.
+                </p>
+                <a href="' . $base . '/usercp.php?action=2fa" class="btn btn-danger w-100">
+                    <i class="fa-solid fa-shield-halved me-2"></i>Enable 2FA Now
+                </a>
+            </div>
+            <div class="card-footer text-center">
+                <small class="text-muted">Logged in as <strong>' . htmlspecialchars($CURUSER['username']) . '</strong></small>
+            </div>
+        </div>
+    </div>
+</body>
+</html>';
+    exit();
+}
+/* ────────────────────────────────────────────────────────────────── */
 
 require_once $thispath . 'include/adminfunctions.php';
 flash_message();

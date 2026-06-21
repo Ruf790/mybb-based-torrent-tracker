@@ -8,8 +8,8 @@ if(!defined("IN_MYBB"))
     die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
 
-define('TSDIR', dirname(__FILE__));
-define('MYBB_ADMIN_DIR', TSDIR.'/admin/');
+
+define('ADMIN_DIR', TSDIR.'/admin/');
 
 foreach(array('action', 'do', 'module') as $input)
 {
@@ -130,7 +130,7 @@ if($mybb->input['action'] == "dlbackup")
     $file = basename($mybb->input['file']);
     $ext = get_extension($file);
 
-    if(file_exists(MYBB_ADMIN_DIR.'backup/'.$file) && filetype(MYBB_ADMIN_DIR.'backup/'.$file) == 'file' && ($ext == 'gz' || $ext == 'sql'))
+    if(file_exists(ADMIN_DIR.'backup/'.$file) && filetype(ADMIN_DIR.'backup/'.$file) == 'file' && ($ext == 'gz' || $ext == 'sql'))
     {
         $plugins->run_hooks("admin_tools_backupdb_dlbackup_commit");
 
@@ -139,9 +139,9 @@ if($mybb->input['action'] == "dlbackup")
 
         header('Content-disposition: attachment; filename='.$file);
         header("Content-type: ".$ext);
-        header("Content-length: ".filesize(MYBB_ADMIN_DIR.'backup/'.$file));
+        header("Content-length: ".filesize(ADMIN_DIR.'backup/'.$file));
 
-        $handle = fopen(MYBB_ADMIN_DIR.'backup/'.$file, 'rb');
+        $handle = fopen(ADMIN_DIR.'backup/'.$file, 'rb');
         while(!feof($handle))
         {
             echo fread($handle, 8192);
@@ -167,7 +167,7 @@ if($mybb->input['action'] == "delete")
     $file = basename($mybb->input['file']);
     $ext = get_extension($file);
 
-    if(!trim($mybb->input['file']) || !file_exists(MYBB_ADMIN_DIR.'backup/'.$file) || filetype(MYBB_ADMIN_DIR.'backup/'.$file) != 'file' || ($ext != 'gz' && $ext != 'sql'))
+    if(!trim($mybb->input['file']) || !file_exists(ADMIN_DIR.'backup/'.$file) || filetype(ADMIN_DIR.'backup/'.$file) != 'file' || ($ext != 'gz' && $ext != 'sql'))
     {
         flash_message('The specified backup does not exist', 'error');
         admin_redirect($_this_script_);
@@ -177,7 +177,7 @@ if($mybb->input['action'] == "delete")
 
     if($mybb->request_method == "post")
     {
-        $delete = @unlink(MYBB_ADMIN_DIR.'backup/'.$file);
+        $delete = @unlink(ADMIN_DIR.'backup/'.$file);
 
         if($delete)
         {
@@ -260,7 +260,7 @@ if($mybb->input['action'] == "backup")
 
         if($mybb->input['method'] == 'disk')
         {
-            $file = MYBB_ADMIN_DIR.'backup/backup_'.date("_Ymd_His_").random_str(16);
+            $file = ADMIN_DIR.'backup/backup_'.date("_Ymd_His_").random_str(16);
 
             if($mybb->input['filetype'] == 'gzip')
             {
@@ -338,7 +338,7 @@ if($mybb->input['action'] == "backup")
             {
                 if($db->engine == 'mysqli')
                 {
-                    $query = mysqli_query($db->read_link, "SELECT * FROM {$db->table_prefix}{$table}", MYSQLI_USE_RESULT);
+                    $query = mysqli_query($db->read_link, "SELECT * FROM {$table}", MYSQLI_USE_RESULT);
                 }
                 else
                 {
@@ -531,7 +531,7 @@ flash_message('
     </div>';
 
     // Check if file is writable
-    if(!is_writable(MYBB_ADMIN_DIR."/backup"))
+    if(!is_writable(ADMIN_DIR."/backup"))
     {
         stderr2('Your backups directory (within the Admin CP directory) is not writable. You cannot save backups on the server');
         $cannot_write = true;
@@ -673,21 +673,21 @@ if(!$mybb->input['action'])
     </div>';
 
     $backups = array();
-    $dir = MYBB_ADMIN_DIR.'backup/';
+    $dir = ADMIN_DIR.'backup/';
     $handle = opendir($dir);
 
     if($handle !== false)
     {
         while(($file = readdir($handle)) !== false)
         {
-            if(filetype(MYBB_ADMIN_DIR.'backup/'.$file) == 'file')
+            if(filetype(ADMIN_DIR.'backup/'.$file) == 'file')
             {
                 $ext = get_extension($file);
                 if($ext == 'gz' || $ext == 'sql')
                 {
-                    $backups[@filemtime(MYBB_ADMIN_DIR.'backup/'.$file)] = array(
+                    $backups[@filemtime(ADMIN_DIR.'backup/'.$file)] = array(
                         "file" => $file,
-                        "time" => @filemtime(MYBB_ADMIN_DIR.'backup/'.$file),
+                        "time" => @filemtime(ADMIN_DIR.'backup/'.$file),
                         "type" => $ext
                     );
                 }
@@ -709,7 +709,7 @@ if(!$mybb->input['action'])
             $time = my_datee('relative', $backup['time']);
         }
 
-        $file_size = ts_nf(filesize(MYBB_ADMIN_DIR.'backup/'.$backup['file']));
+        $file_size = ts_nf(filesize(ADMIN_DIR.'backup/'.$backup['file']));
         
         $show_backup .= '<tr>
             <td>

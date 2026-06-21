@@ -8,7 +8,7 @@ if (!defined('STAFF_PANEL')) {
 
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
-//require_once INC_PATH . '/tsf_functions.php';
+
 
 //require_once INC_PATH . "/functions_modcp.php";
 require_once INC_PATH . '/editor.php';

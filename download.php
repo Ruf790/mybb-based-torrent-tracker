@@ -162,10 +162,10 @@ if (!is_valid_id($id)) {
 // ---------------------------------------------------------------------------
 
 $res = $db->sql_query(
-    'SELECT t.id, t.name, t.filename, t.ts_external, t.size, t.owner, t.free
+    'SELECT t.id, t.name, t.filename, t.size, t.owner, t.free
      FROM torrents t
      LEFT JOIN categories c ON t.category = c.id
-     WHERE t.id = ' . $id  // $id уже (int) — sqlesc не нужен
+     WHERE t.id = ' . $id
 );
 $row = $db->fetch_array($res);
 
@@ -174,9 +174,8 @@ if (!$row) {
     download_error($lang->download['error1']);
 }
 
-$id       = (int)$row['id'];
-$external = ($row['ts_external'] === 'yes');
-$fn       = $torrent_dir . '/' . $id . '.torrent';
+$id = (int)$row['id'];
+$fn = $torrent_dir . '/' . $id . '.torrent';
 
 if (!is_file($fn)) {
     download_error($lang->download['error2']);
@@ -225,7 +224,7 @@ if (
     if (!$already_finished) {
         $userlist_url = '<a href=' . get_profile_link($CURUSER['id']) . '>' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '</a>';
 
-		stderr(
+        stderr(
             sprintf(
                 $lang->download['downloadwarning'],
                 number_format($ratio, 2),
@@ -237,9 +236,6 @@ if (
             403,
             'hitrun'
         );
-			
-        stdhead();
-        exit;
     }
 }
 
@@ -254,14 +250,20 @@ use Arokettu\Torrent\TorrentFile;
 $torrentFileObj = TorrentFile::load($fn);
 
 // ---------------------------------------------------------------------------
-// Magnet-ссылка для внешних торрентов
+// Magnet-ссылка (только для не-приватных торрентов)
 // ---------------------------------------------------------------------------
 
-if ($external && $action_type === 'magnet') {
+if ($action_type === 'magnet') {
+    if ($torrentFileObj->isPrivate()) {
+        download_error($lang->download['error_private_magnet'] ?? 'Magnet links are not available for private torrents.');
+    }
+
+    // Non-private torrents are fully public: no tracker, no passkey — peers
+    // are discovered purely through DHT/PEX. Ratio is not tracked for these.
     send_magnet_link(
         $torrentFileObj->v1()->getInfoHash(),
         $torrentFileObj->getName(),
-        $torrentFileObj->getAnnounceList() ?? []
+        []
     );
 }
 
@@ -272,14 +274,12 @@ if ($external && $action_type === 'magnet') {
 $db->update_query('torrents', ['hits' => 'hits+1'], "id='{$id}'", '1', true);
 
 // ---------------------------------------------------------------------------
-// Подстановка announce URL для приватных торрентов
+// Подстановка announce URL
 // ---------------------------------------------------------------------------
 
-if (!$external) {
-    $torrentFileObj->setAnnounce(
-        ts_seo($CURUSER['passkey'] ?? '', $row['filename'], 'a')
-    );
-}
+$torrentFileObj->setAnnounce(
+    ts_seo($CURUSER['passkey'] ?? '', $row['filename'], 'a')
+);
 
 $torrent_contents = $torrentFileObj->storeToString();
 

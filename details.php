@@ -796,7 +796,7 @@ $showcommenttable .= '<div class="container mt-3">'.$multipage.'</div>'.commentt
 
 $rowspan = 9;
 $reseed = '';
-if ($Torrent['seeders'] == 0 && $Torrent['ts_external'] == 'no')
+if ($Torrent['seeders'] == 0)
 {
 	$reseed = '
 	<tr>
@@ -827,13 +827,7 @@ if (isset($_GET['cerror']))
 	}
 }
 
-if ($Torrent['ts_external'] == 'yes')
-{
-	$peerstable = sprintf($lang->details['peers3'], ts_nf($Torrent['seeders']), ts_nf($Torrent['leechers']), (ts_nf($Torrent['seeders'] + $Torrent['leechers']))).($Torrent['seeders'] == 0 && $Torrent['ts_external'] == 'no' ? '<br />'.sprintf($lang->details['askreseed2'],$id) : '');
-}
-else
-{
-	
+
 	
 
 $seeders = [];
@@ -872,15 +866,6 @@ if ($subres && $db->num_rows($subres) > 0)
 }
 
 
-
-
-
-
-
-
-
-
-
 	function leech_sort($a,$b)
 	{
 		if ( isset( $_GET["usort"] ) ) return seed_sort($a,$b);
@@ -909,7 +894,7 @@ if ($subres && $db->num_rows($subres) > 0)
 	// И исправьте вызовы функций:
 $peerstable = dltable($lang->details['seeders2'], $seeders, $Torrent, true); // true - это сиды
 $peerstable .= dltable($lang->details['leechers2'], $downloaders, $Torrent, false); // false - это личи
-}
+
 
 
 
@@ -1474,7 +1459,11 @@ $act = "<span id=\"bookmark" . $Torrent['id'] . "\">" .
 
 
 
-$magnetButton = ($Torrent['ts_external'] === 'yes') 
+//$magnetButton = ($Torrent['ts_external'] === 'yes') 
+    //? '<li><a class="dropdown-item magnet-btn" href="#" data-magnet-id="' . $id . '"><i class="bi bi-magnet me-2"></i>Magnet Link</a></li>'
+    //: '';
+	
+$magnetButton = (!$TorrentObj->isPrivate())
     ? '<li><a class="dropdown-item magnet-btn" href="#" data-magnet-id="' . $id . '"><i class="bi bi-magnet me-2"></i>Magnet Link</a></li>'
     : '';
 

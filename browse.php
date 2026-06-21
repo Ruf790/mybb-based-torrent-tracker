@@ -942,8 +942,7 @@ $ListTorrentsss = '
 <tr class="torrent-row"
     data-id="' . (int)$Torrent['id'] . '" 
     data-seeders="' . $s . '" 
-    data-leechers="' . $l . '"
-    data-external="' . ($Torrent['ts_external'] === 'yes' ? 'yes' : 'no') . '">	
+    data-leechers="' . $l . '">	
 
 
 <!-- Enhanced Poster Zoom Overlay -->

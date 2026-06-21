@@ -186,6 +186,7 @@ $is_mod   = $is_mod ?? false;
                 $switches_left = [
                     ['free',         $lang->upload['free1']??'Free',         $lang->upload['free2']??''],
                     ['silver',       $lang->upload['silver1']??'Silver',     $lang->upload['silver2']??''],
+                    ['thirtypercent',$lang->upload['thirtypercent1']??'30% Leech', $lang->upload['thirtypercent2']??''],
                     ['doubleupload', $lang->upload['doubleupload1']??'Double Upload', $lang->upload['doubleupload2']??''],
                 ];
                 foreach ($switches_left as [$name, $label, $desc]):

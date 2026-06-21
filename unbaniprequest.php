@@ -23,7 +23,7 @@ $lang->load('unbaniprequest');
 // ── Resolve IP ────────────────────────────────────────────────
 $userip = trim((string)($_POST['ip'] ?? ''));
 if ($userip === '') {
-    $userip = getip();
+    $userip = get_ip();
 }
 
 // ── Check if IP is actually banned ────────────────────────────
@@ -80,7 +80,7 @@ if (is_banned_email($email, true)) {
             "INSERT INTO unbanrequests (ip, realip, email, comment, added)
              VALUES (
                  " . $db->sqlesc($userip) . ",
-                 " . $db->sqlesc(getip()) . ",
+                 " . $db->sqlesc(get_ip()) . ",
                  " . $db->sqlesc($email) . ",
                  " . $db->sqlesc($comment) . ",
                  " . TIMENOW . "

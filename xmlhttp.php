@@ -1162,7 +1162,8 @@ function handleEditTorrent(): void
     $category = intval($_POST['category'] ?? 0);
     $free = isset($_POST['free']) && $_POST['free'] == 'yes' ? 'yes' : 'no';
     $silver = isset($_POST['silver']) && $_POST['silver'] == 'yes' ? 'yes' : 'no';
-    $doubleupload = isset($_POST['doubleupload']) && $_POST['doubleupload'] == 'yes' ? 'yes' : 'no';
+    $thirtypercent = isset($_POST['thirtypercent']) && $_POST['thirtypercent'] == 'yes' ? 'yes' : 'no';
+	$doubleupload = isset($_POST['doubleupload']) && $_POST['doubleupload'] == 'yes' ? 'yes' : 'no';
     $allowcomments = isset($_POST['allowcomments']) && $_POST['allowcomments'] == 'no' ? 'no' : 'yes';
     $sticky = isset($_POST['sticky']) && $_POST['sticky'] == 'yes' ? 'yes' : 'no';
     $isrequest = isset($_POST['isrequest']) && $_POST['isrequest'] == 'yes' ? 'yes' : 'no';
@@ -1175,6 +1176,7 @@ function handleEditTorrent(): void
         'category' => $db->escape_string($category),
         'free' => $free,
         'silver' => $silver,
+		'thirtypercent' => $thirtypercent,
         'doubleupload' => $doubleupload,
         'allowcomments' => $allowcomments,
         'sticky' => $sticky,

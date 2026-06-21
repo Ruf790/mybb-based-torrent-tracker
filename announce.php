@@ -39,10 +39,11 @@ function checkconnect(string $host, int $port): string
 function apply_freeleech_mode(string $type, array &$Result): void
 {
     match($type) {
-        'freeleech'    => ($Result['free'] = $Result['canfreeleech'] = 'yes'),
-        'silverleech'  => ($Result['silver']      = 'yes'),
-        'doubleupload' => ($Result['doubleupload'] = 'yes'),
-        default        => null,
+        'freeleech'           => ($Result['free'] = $Result['canfreeleech'] = 'yes'),
+        'silverleech'         => ($Result['silver']      = 'yes'),
+        'thirtypercentleech'  => ($Result['thirtypercent'] = 'yes'),
+        'doubleupload'        => ($Result['doubleupload'] = 'yes'),
+        default               => null,
     };
 }
 
@@ -113,7 +114,7 @@ mysqli_set_charset($db, 'utf8mb4');
 // ── Загрузка торрента и пользователя ─────────────────────
 
 $stmt = mysqli_prepare($db,
-    'SELECT t.id AS tid, t.visible, t.banned, t.free, t.silver, t.doubleupload,
+    'SELECT t.id AS tid, t.visible, t.banned, t.free, t.silver, t.doubleupload, t.thirtypercent,
             t.seeders, t.leechers, t.times_completed,
             u.id AS userid, u.enabled, u.uploaded, u.downloaded,
             u.usergroup, u.birthday, u.regip,
@@ -271,7 +272,11 @@ if ($self) {
 
     if ($upthis > 0) $update_user[] = 'uploaded = uploaded + ' . $upthis;
 
-    $dled = ($Result['silver'] ?? '') === 'yes' ? (int)($downthis / 2) : $downthis;
+    $dled = match(true) {
+        ($Result['silver'] ?? '') === 'yes'        => (int)($downthis / 2),       // 50% leech
+        ($Result['thirtypercent'] ?? '') === 'yes' => (int)($downthis * 0.3),     // 30% leech
+        default                                     => $downthis,
+    };
     if ($dled > 0 && ($Result['free'] ?? '') !== 'yes' && ($Result['canfreeleech'] ?? '') !== 'yes') {
         $update_user[] = 'downloaded = downloaded + ' . $dled;
     }

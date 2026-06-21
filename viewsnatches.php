@@ -262,7 +262,7 @@ if (isset($_GET['delete']) && ($usergroups['cansettingspanel'] ?? '') == '1') {
 
 // ── Данные торрента ───────────────────────────────────────
 $res         = $db->sql_query_prepared(
-    "SELECT t.name, t.ts_external, t.size, t.category, c.name AS category_name
+    "SELECT t.name, t.size, t.category, c.name AS category_name
      FROM torrents t LEFT JOIN categories c ON t.category = c.id
      WHERE t.id = ?",
     [$id]
@@ -270,7 +270,7 @@ $res         = $db->sql_query_prepared(
 $torrentInfo = $db->fetch_array($res);
 
 if (!$torrentInfo) stderr($lang->global['notavailable'], 'Torrent not found');
-if ($torrentInfo['ts_external'] == 'yes') stderr($lang->viewsnatches['external']);
+
 
 // ── Статистика ────────────────────────────────────────────
 $extStats = getExtendedStats($id);

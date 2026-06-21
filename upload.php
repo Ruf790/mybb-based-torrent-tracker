@@ -131,6 +131,53 @@ if (isset($_GET['action']) && $_GET['action'] === 'check_torrent_hash')
 
 
 
+// Ранняя проверка passkey сразу после выбора файла (до отправки всей формы)
+if (isset($_GET['action']) && $_GET['action'] === 'check_passkey' && $_SERVER['REQUEST_METHOD'] === 'POST')
+{
+    header("Content-type: application/json; charset=utf-8");
+
+    if (empty(trim($CURUSER['passkey'] ?? ''))) {
+        echo json_encode(['valid' => false, 'error' => $lang->upload['error_no_passkey'] ?? 'Your account does not have a passkey. Please contact staff.']);
+        exit;
+    }
+
+    if (empty($_FILES['torrentFile']) || $_FILES['torrentFile']['error'] !== UPLOAD_ERR_OK) {
+        echo json_encode(['valid' => true]); // нет файла — нечего проверять, не блокируем
+        exit;
+    }
+
+    try {
+        $tmpObj       = \Arokettu\Torrent\TorrentFile::load($_FILES['torrentFile']['tmp_name']);
+        $fileAnnounce = (string)($tmpObj->getAnnounce() ?? '');
+
+        if ($fileAnnounce !== '') {
+            $parsed = parse_url($fileAnnounce);
+            parse_str($parsed['query'] ?? '', $qs);
+            $announcePasskey = $qs['passkey'] ?? '';
+
+            if ($announcePasskey !== '' && $announcePasskey !== $CURUSER['passkey']) {
+                write_log(sprintf(
+                    'Security: user %s attempted to upload a torrent file (%s) containing a passkey belonging to another account. Foreign passkey: %s',
+                    '[URL=' . $BASEURL . '/' . get_profile_link($CURUSER['id']) . ']' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '[/URL]',
+                    htmlspecialchars_uni($_FILES['torrentFile']['name'] ?? 'unknown'),
+                    $announcePasskey
+                ));
+
+                echo json_encode(['valid' => false, 'error' => $lang->upload['error_wrong_passkey'] ?? 'This torrent contains a passkey that does not belong to your account.']);
+                exit;
+            }
+        }
+
+        echo json_encode(['valid' => true]);
+    } catch (\Throwable $e) {
+        // Невалидный/повреждённый файл — финальная отправка формы разберётся подробнее
+        echo json_encode(['valid' => true]);
+    }
+    exit;
+}
+
+
+
 // Получение данных IMDb по URL
 if (isset($_GET['action']) && $_GET['action'] === 'get_imdb_data' && $_SERVER['REQUEST_METHOD'] === 'GET')
 {
@@ -296,10 +343,6 @@ if (!$isEdit && (!$torrentFile || $torrentFile['error'] !== UPLOAD_ERR_OK)) {
 
 
 
-// Check if external torrent is being uploaded
-$externalTorrent = isset($_POST['externalTorrent']) && $_POST['externalTorrent'] === 'yes';
-
-
 
 // Save uploaded torrent file
 $torrentFilename = null;
@@ -343,6 +386,43 @@ elseif ($isEdit)
 
 // ✅ Загружаем объект
 $torrentObj = TorrentFile::load($torrentPath);
+
+// ── Passkey & announce validation (server-side safety net; JS does this earlier too) ──
+
+if (empty(trim($CURUSER['passkey'] ?? ''))) {
+    @unlink($torrentPath);
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code(400);
+    echo json_encode(['success' => false, 'errors' => [$lang->upload['error_no_passkey'] ?? 'Your account does not have a passkey. Please contact staff.']]);
+    exit;
+}
+
+$fileAnnounce = (string)($torrentObj->getAnnounce() ?? '');
+if ($fileAnnounce !== '') {
+    $parsed = parse_url($fileAnnounce);
+    parse_str($parsed['query'] ?? '', $qs);
+    $announcePasskey = $qs['passkey'] ?? '';
+
+    if ($announcePasskey !== '' && $announcePasskey !== $CURUSER['passkey']) {
+        write_log(sprintf(
+            'Security: user %s submitted the upload form for a torrent (%s) containing a passkey belonging to another account, bypassing the client-side check. Foreign passkey: %s',
+            '[URL=' . $BASEURL . '/' . get_profile_link($CURUSER['id']) . ']' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '[/URL]',
+            htmlspecialchars_uni($torrentFilename ?? basename($torrentPath)),
+            $announcePasskey
+        ));
+
+        @unlink($torrentPath);
+        while (ob_get_level()) { ob_end_clean(); }
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(400);
+        echo json_encode(['success' => false, 'errors' => [$lang->upload['error_wrong_passkey'] ?? 'This torrent contains a passkey that does not belong to your account.']]);
+        exit;
+    }
+}
+
+// ── End passkey & announce validation ───────────────────────────────────────
+
 
 // ✅ Генерируем новый announce URL
 $AnnounceURL = trim($announce_urls[0] . "?passkey=" . $CURUSER["passkey"]);
@@ -554,6 +634,74 @@ if (!empty($t_link))
 $free = (isset($_POST['free']) && $_POST['free'] === 'yes') ? 'yes' : 'no';
 $silver = (isset($_POST['silver']) && $_POST['silver'] === 'yes') ? 'yes' : 'no';
 $doubleUpload = (isset($_POST['doubleupload']) && $_POST['doubleupload'] === 'yes') ? 'yes' : 'no';
+$thirtypercent = (isset($_POST['thirtypercent']) && $_POST['thirtypercent'] === 'yes') ? 'yes' : 'no';
+
+
+
+
+
+$userPickedPromoManually = ($free === 'yes' || $silver === 'yes' || $doubleUpload === 'yes' || $thirtypercent === 'yes');
+
+if (!$isEdit && !$userPickedPromoManually) {
+    // largepro keys map 1-7 to the same flag combinations as PROMO_TARGETS
+    // in torrentspromo.php (1=normal, 2=free, 3=2x, 4=2x free, 5=50%, 6=2x 50%, 7=30%)
+    $applyPromoType = static function (int $type) use (&$free, &$silver, &$doubleUpload, &$thirtypercent): void {
+        $free = $silver = $doubleUpload = $thirtypercent = 'no';
+        match ($type) {
+            2 => $free = 'yes',
+            3 => $doubleUpload = 'yes',
+            4 => ($free = $doubleUpload = 'yes'),
+            5 => $silver = 'yes',
+            6 => ($silver = $doubleUpload = 'yes'),
+            7 => $thirtypercent = 'yes',
+            default => null,
+        };
+    };
+
+    $largeSizeGb = (float)($largesize ?? 0);
+    $largeSizeBytes = $largeSizeGb * 1024 * 1024 * 1024;
+
+    if ($largeSizeGb > 0 && $size >= $largeSizeBytes) {
+        // Large-size rule takes priority over random chance
+        $applyPromoType((int)($largepro ?? 2));
+    } else {
+        // Random chance, matching original NexusPHP takeupload.php exactly:
+        // ONE roll (1-100), checked against cumulative thresholds in this
+        // specific order (2X Free, 2X, Free, Half Leech, 2X Half Leech, 30%),
+        // falling through to Normal if nothing hit. This is NOT independent
+        // per-rule rolls — each threshold builds on the previous one, so the
+        // order of the elseif chain materially affects the odds.
+        $spId = random_int(1, 100);
+        $probability = (int)($randomtwoupfree ?? 0);
+        if ($spId <= $probability) {
+            $applyPromoType(4); // 2X Free
+        } elseif ($spId <= ($probability += (int)($randomtwoup ?? 0))) {
+            $applyPromoType(3); // 2X
+        } elseif ($spId <= ($probability += (int)($randomfree ?? 0))) {
+            $applyPromoType(2); // Free
+        } elseif ($spId <= ($probability += (int)($randomhalfleech ?? 0))) {
+            $applyPromoType(5); // Half Leech (50%)
+        } elseif ($spId <= ($probability += (int)($randomtwouphalfdown ?? 0))) {
+            $applyPromoType(6); // 2X Half Leech
+        } elseif ($spId <= ($probability += (int)($randomthirtypercentdown ?? 0))) {
+            $applyPromoType(7); // 30% Leech
+        } else {
+            $applyPromoType(1); // Normal — explicit no-op but kept for clarity
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 // For allowcomments checkbox, if it's missing or not 'no', allow comments = 'yes', else 'no'
 $allowComments = (!isset($_POST['allowcomments']) || $_POST['allowcomments'] !== 'no') ? 'yes' : 'no';
@@ -588,6 +736,7 @@ $metadata = array(
     'free' => $db->escape_string($free),
     'silver' => $db->escape_string($silver),
     'doubleupload' => $db->escape_string($doubleUpload),
+	'thirtypercent' => $db->escape_string($thirtypercent),
     'allowcomments' => $db->escape_string($allowComments),
     'sticky' => $db->escape_string($sticky),
     'isnuked' => $db->escape_string($isNuked),
@@ -618,24 +767,6 @@ if ($torrentFilename)
     $metadata['info_hash'] = $db->escape_string($info_hash);
     $metadata['size'] = (int)$size;
     $metadata['numfiles'] = (int)$numfiles;
-}
-
-
-
-
-// Check if it's an external torrent and update accordingly
-if ($externalTorrent) 
-{
-    $metadata['ts_external'] = 'yes';
-    $metadata['ts_external_url'] = $db->escape_string($torrentObj->getAnnounce() ?? '');  // assuming `announce()` returns the correct URL
-    $metadata['visible'] = 'yes';
-} 
-else 
-{
-    $metadata['ts_external'] = 'no';
-    $metadata['ts_external_url'] = '';
-    $metadata['visible'] = 'no';
-    
 }
 
 
@@ -1808,37 +1939,7 @@ function copyAnnounceUrl() {
 
 
 
-    
-<!-- External Torrent Checkbox -->
-<?php if (!isset($privatetrackerpatch) || $privatetrackerpatch !== "yes"): ?>
-<!-- External Torrent Checkbox -->
-<div class="mb-3">
-    <div class="form-check form-switch">
-        <input 
-            class="form-check-input" 
-            type="checkbox" 
-            id="externalTorrent" 
-            name="externalTorrent" 
-            value="yes" 
-            role="switch"
-            <?= isset($torrent['ts_external']) && $torrent['ts_external'] === 'yes' ? 'checked' : '' ?> 
-        />
-        <label class="form-check-label fw-bold text-success" for="externalTorrent">
-            <i class="fas fa-link me-1"></i><?= $lang->upload['external'] ?>
-        </label>
-        <div class="form-text"><?= $lang->upload['external_hint'] ?></div>
-    </div>
-</div>
-<?php endif; ?>
-  
-  
-  
-  
-  
-  
-  
-  
-  
+
 
 <!-- NFO File -->
 <div class="mb-3">
@@ -2364,6 +2465,8 @@ function copyAnnounceUrl() {
 
 
 
+
+
 <table>
 	  
       
@@ -2397,7 +2500,7 @@ function copyAnnounceUrl() {
             name="anonymous" 
             value="yes" 
             role="switch"
-            <?= isset($torrent['anonymous']) && $torrent['anonymous'] === 'yes' ? 'checked' : '' ?> 
+            <?= (isset($torrent['anonymous']) ? $torrent['anonymous'] === 'yes' : (($CURUSER['invisible'] ?? 0) == 1)) ? 'checked' : '' ?> 
         />
         <label class="form-check-label fw-bold" for="anonymous">
             <i class="fas fa-user-secret me-1"></i><?= $lang->upload['anonymous'] ?>
@@ -2536,6 +2639,34 @@ function copyAnnounceUrl() {
    <td class="none">
       
 	  
+	 <!-- 30% Leech checkbox -->
+<div class="switch-container">
+    <div class="form-check form-switch">
+        <input 
+            class="form-check-input" 
+            type="checkbox" 
+            id="thirtypercent" 
+            name="thirtypercent" 
+            value="yes"
+            role="switch"
+            <?= isset($torrent['thirtypercent']) && $torrent['thirtypercent'] === 'yes' ? 'checked' : '' ?> 
+        />
+        <label class="form-check-label fw-bold" style="color:#411749" for="thirtypercent">
+            <i class="fas fa-percent me-1"></i><?= $lang->upload['thirtypercent'] ?? '30% Leech' ?>
+        </label>
+        <div class="form-text"><?= $lang->upload['thirtypercent_hint'] ?? 'Only 30% of downloaded data is counted toward this user\'s download stats.' ?></div>
+    </div>
+</div>
+	  
+	  
+	  
+   </td>
+</tr>
+
+<tr>
+   <td class="none">
+      
+	  
 	 <!-- Disable Comments checkbox -->
 <div class="switch-container">
     <div class="form-check form-switch">
@@ -2558,9 +2689,7 @@ function copyAnnounceUrl() {
 	  
 	  
    </td>
-</tr>
 
-<tr>
    <td class="none">
       
 	  
@@ -2586,7 +2715,9 @@ function copyAnnounceUrl() {
 	  
 	  
    </td>
+</tr>
 
+<tr>
    
    
    
@@ -2647,6 +2778,13 @@ function copyAnnounceUrl() {
 </tr>
 
    </table>
+
+
+
+
+
+
+
 
 
 

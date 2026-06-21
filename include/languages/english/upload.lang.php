@@ -36,6 +36,8 @@ $language['upload'] = [
     'torrent_file_list'     => 'File List',
     'torrent_show'          => 'Show',
     'torrent_hide'          => 'Hide',
+	'error_wrong_passkey'   => 'This torrent contains a passkey that does not belong to your account',
+	'error_no_passkey'      => 'Your account does not have a passkey. Please contact staff.',
 
     // ── Дубликат ────────────────────────────────────────────────────────────
     'duplicate_detected'    => 'Duplicate torrent detected!',

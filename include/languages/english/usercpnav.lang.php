@@ -41,5 +41,6 @@ $language['usercpnav'] = array
 'ucp_nav_home' => "User CP Home",
 'ucp_nav_usergroups' => "Group Memberships",
 'ucp_nav_attachments' => "Manage Attachments",
+'ucp_nav_uploads' => "My Uploads",
 
 );

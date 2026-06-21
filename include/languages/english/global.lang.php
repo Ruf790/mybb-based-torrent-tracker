@@ -9,7 +9,7 @@ if(!defined('IN_TRACKER'))
 $language['global'] = array 
 (
 
-
+'postbit_attachment_downloads' => "Downloads:",
 
 'postbit_attachments' => "Attached Files",
 
@@ -265,7 +265,6 @@ Thank you,
 	
 
 	
-	
 
 	
 	'redirect_width' =>"50%",
@@ -275,6 +274,7 @@ Thank you,
 	'notavailable'				=>'Unfortunately, this feature currently disabled.',
 	'nopermission'				=>'Sorry, permission denied!',
 	'permissionlogmessage'	=>'Unauthorized access detected.<br />To Page: {1},<br /> Query String: {2} <br />Username: {3},<br />IP: {4}.<br />This unwanted access has been successful blocked.',
+	
 	'print_no_permission'		=>'<table border="0" cellspacing="0" cellpadding="4" class="tborder">
 <tr>
 <td class="thead"><span class="smalltext"><strong>{1}</strong></span></td>
@@ -291,6 +291,7 @@ You do not have permission to access this page. This could be because of one of 
 <!-- end: error_nopermission_loggedin --></td>
 </tr>
 </table>',
+
 	'print_no_permission_i' =>'Feel free to contact us about this error message.',
 	'invalidid'					=>'Invalid ID!',
 	'invalididlogged'		=>'Invalid ID! For security reason, we have logged this action!',

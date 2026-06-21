@@ -1,13 +1,10 @@
 <?php
-/**
- * MyBB 1.8 English Language Pack
- * Copyright 2014 MyBB Group, All Rights Reserved
- *
- */
+
+
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
-// ts_watch_list.php
+// private.php
 $language['private'] = array 
 (
 

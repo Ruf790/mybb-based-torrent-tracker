@@ -9,6 +9,9 @@ $language['member'] = array
 (
 
 
+'permanent' => "Permanent",
+
+
 'redirect_loggedin' => "You have successfully been logged in.<br />You will now be taken back to where you came from.",
 
 'invitecode'=>'Invite Code:',

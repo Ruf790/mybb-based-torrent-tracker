@@ -1,0 +1,9 @@
+<?php
+
+
+
+$badwords = array (
+
+);
+
+?>

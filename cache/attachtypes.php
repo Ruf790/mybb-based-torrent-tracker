@@ -1,16 +1,19 @@
 <?php
 
-
+/** Generated Cache - Do Not Alter
+ * Cache Name: attachtypes
+ * Generated: Sat, 23 May 2026 12:14:50 +0000
+*/
 
 $attachtypes = array (
   'zip' => 
   array (
-    'atid' => '37',
-    'name' => 'WordPress Theme',
+    'atid' => '1',
+    'name' => 'ZIP File',
     'mimetype' => 'application/zip',
     'extension' => 'zip',
-    'maxsize' => '10240',
-    'icon' => '<i class="fab fa-wordpress" style="color: #21759b;"></i>',
+    'maxsize' => '1024',
+    'icon' => '<i class="fas fa-file-archive" style="color: #e67e22;"></i>',
     'enabled' => '1',
     'forcedownload' => '0',
     'groups' => '-1',

@@ -1119,6 +1119,7 @@ stopUploadTimer();
 let _done = false;
 const _finish = () => { if (!_done) { _done = true; } };
 uploadModalEl.addEventListener('hidden.bs.modal', _finish, { once: true });
+uploadModal.hide();
 setTimeout(() => {
     if (!_done) {
         _done = true;
@@ -1233,10 +1234,19 @@ setTimeout(() => {
                     window.location.href = data.link;
                 }, 3000);
             }
+        } else {
+            // Upload failed — show the error since hidden.bs.modal may not
+            // have fired (we removed the 'show' class manually above).
+            showErrorModal(
+                data?.error
+                    ? data.error
+                    : data?.errors
+                        ? data.errors.join("\n")
+                        : "Upload failed (no details)"
+            );
         }
     }
 }, 700);
-uploadModal.hide();
 	  
 	  
 	  
@@ -1437,6 +1447,9 @@ function handleTorrentFile(file) {
 
     // Запускаем проверку дубликата + автозаполнение названия
     checkTorrentDuplicate(file);
+
+    // Запускаем раннюю проверку passkey
+    checkTorrentPasskey(file);
 }
 
 function removeTorrentFile() {
@@ -1625,6 +1638,46 @@ function getTorrentName(data) {
 }
 
 // ====== ОСНОВНАЯ ФУНКЦИЯ ПРОВЕРКИ ======
+async function checkTorrentPasskey(file) {
+    const submitBtn = document.querySelector('#torrent-upload-form button[type="submit"]');
+
+    try {
+        const formData = new FormData();
+        formData.append('torrentFile', file);
+
+        const response = await fetch('upload.php?action=check_passkey', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+
+        if (!result.valid) {
+            showTorrentDropError(result.error || 'This torrent does not belong to your account.');
+
+            // Блокируем отправку, как и при обнаружении дубликата
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.dataset.blockedByDuplicate = '1';
+            }
+
+            // Помечаем зону как невалидную
+            var badge = document.querySelector('#torrentFileSelected .badge');
+            if (badge) {
+                badge.className = 'badge bg-danger mt-1';
+                badge.innerHTML = '<i class="fas fa-times-circle me-1"></i>' + (result.error || 'Invalid passkey');
+            }
+            var dropZone = document.getElementById('torrentDropZone');
+            if (dropZone) {
+                dropZone.style.background  = '#fff5f5';
+                dropZone.style.borderColor = '#dc3545';
+            }
+        }
+    } catch (e) {
+        console.error('Passkey check error:', e);
+        // Сетевая ошибка — не блокируем, финальная отправка формы перепроверит на сервере
+    }
+}
+
 async function checkTorrentDuplicate(file) {
     const dropZone   = document.getElementById('torrentDropZone');
     const progressEl = document.getElementById('torrentUploadProgress');

@@ -1,0 +1,45 @@
+.user-cp-nav {
+    padding: 1rem;
+}
+
+.nav-section {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.nav-section:last-child {
+    border-bottom: none;
+}
+
+.btn-menu {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    color: #495057;
+    background: #f8f9fa;
+    border: 1px solid transparent;
+    margin-bottom: 0.25rem;
+}
+
+.btn-menu:hover {
+    background: #e9ecef;
+    border-color: #dee2e6;
+    color: #0d6efd;
+    transform: translateX(3px);
+}
+
+.btn-menu .badge {
+    font-size: 0.75em;
+    padding: 0.25em 0.5em;
+}
+
+.btn-profile {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+}
+
+.btn-profile:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #dde1e6 100%);
+    border-color: #0d6efd;
+}

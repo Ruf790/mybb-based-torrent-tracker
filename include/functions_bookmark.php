@@ -78,7 +78,6 @@ function GetTorrentTags(array $t): string
 {
     global $lang, $is_mod, $CURUSER;
 
-    $ShowImage = (TIMENOW - $t['ts_external_lastupdate'] < 3600) ? $is_mod : true;
 
     // ── Popover builder ───────────────────────────────────────────────────────
     $pop = static function(string $title, string $body): string {
@@ -123,7 +122,16 @@ function GetTorrentTags(array $t): string
                 $benefit('bi-shield',  'secondary', 'Better ratio protection')
             )),
             '<span class="badge-silver" title="silverdownload"><i class="fas fa-star"></i></span>',
-        ],
+        ],		
+		[
+            $t['thirtypercent'] === 'yes',
+            $pop('🟣 30% Leech', $wrap(
+                $benefit('bi-pie-chart-fill', 'secondary', '30% download counted') .
+                $benefit('bi-shield',         'secondary', 'Best ratio protection (besides Free)')
+            )),
+            '<span class="badge bg-secondary bg-opacity-10 border border-secondary border-opacity-25 pulse-badge" style="color:#411749;border-color:#41174966 !important;--pulse-color:65,23,73;">'
+            . '<i class="bi bi-pie-chart-fill me-1"></i>30%</span>',
+        ],		
         [
             $t['isnuked'] === 'yes',
             $pop('⚠️ Nuked Torrent', $wrap(
@@ -166,21 +174,7 @@ function GetTorrentTags(array $t): string
         if ($cond) $I[] = '<a href="#" class="badge-popover" ' . $attrs . '>' . $badge . '</a>';
     }
 
-    // ── External (special — JS onclick) ───────────────────────────────────────
-    if ($t['ts_external'] === 'yes' && $ShowImage) {
-        $id = (int)$t['id'];
-        $js = "UpdateExternalTorrent('include/external_scrape/ts_update.php','id={$id}&ajax_update=true',{$id})";
-        $I[] = '<span id="isexternal_' . $id . '">'
-             . '<a href="javascript:void(0)" onclick="' . $js . '" class="badge-popover" '
-             . $pop('🌐 External Tracker', htmlspecialchars(
-                 '<div class="torrent-feature-popover"><div class="feature-info">'
-               . '<strong>External Source</strong>'
-               . '<p class="mb-2 small">This torrent is tracked from external source</p>'
-               . '<button class="btn btn-outline-primary btn-sm w-100" onclick="' . $js . '">'
-               . '<i class="bi bi-arrow-clockwise me-1"></i>Update Stats</button>'
-               . '</div></div>', ENT_QUOTES))
-             . '><i class="fa-solid fa-circle-notch" style="color:#0b59e0"></i></a></span>';
-    }
+
 
     return $I ? implode(' ', $I) : '';
 }

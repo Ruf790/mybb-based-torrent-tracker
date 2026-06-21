@@ -70,6 +70,7 @@ class trackerlanguage
     public $referrals;
     public $report;
     public $search;
+	public $settings;
     public $showteam;
     public $showthread;
     public $signup;

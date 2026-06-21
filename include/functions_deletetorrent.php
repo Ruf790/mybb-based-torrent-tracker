@@ -252,7 +252,6 @@ function delete_comment_files_by_torrent_id(int $torrent_id): void
     // Delete database records
     $db->delete_query("comment_files", "torrent_id = " . $torrent_id);
     
-    error_log("Deleted {$deleted_files} files with torrent_id {$torrent_id}");
 }
 
 /**
@@ -295,7 +294,6 @@ function delete_comment_files_by_torrent_comments(int $torrent_id): void
     // Delete database records
     $db->delete_query("comment_files", "comment_id IN (" . $comment_ids_str . ")");
     
-    error_log("Deleted {$deleted_files} files from comments of torrent {$torrent_id}");
 }
 
 /**

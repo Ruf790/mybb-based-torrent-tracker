@@ -292,7 +292,6 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (67, 'cheat_attempts', 'Manage Cheat Attempts!', 'cheat_attempts.php', '[5],[6],[8]'),
 (68, 'announce_actions', 'Possible cheat attempts on announce', 'announce_actions.php', '[6],[7],[8]'),
 (69, 'tweak_tracker', 'Tweak Your Tracker', 'tweak_tracker.php', '[8]'),
-(73, 'update_external_torrents', 'Update external torrents', 'update_external_torrents.php', '[5],[6],[8]'),
 (74, 'passkeysearch', 'Search Passkey', 'passkeysearch.php', '[8],[8],[6],[10],[5]'),
 (75, 'iptocountry', 'IP to Country', 'iptocountry.php', '[8],[6],[10],[5]'),
 (77, 'sendmail', 'Send Email to User', 'sendmail.php', '[8],[8],[6],[10],[5]'),

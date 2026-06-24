@@ -80,7 +80,6 @@ $plugins->run_hooks('admin_user_groups_begin');
 function ug_head_assets(): void
 {
     global $BASEURL;
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css">';
     echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css">';
 }
 
@@ -117,7 +116,7 @@ function ug_switch(object $form, string $name, string $label, mixed $checked): v
 // ═══════════════════════════════════════════════════════════
 // ACTION: ADD
 // ═══════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'add') {
+if (($mybb->input['action'] ?? '') === 'add') {
     $plugins->run_hooks('admin_user_groups_add');
 
     if ($mybb->request_method === 'post') {
@@ -260,7 +259,7 @@ if ($mybb->input['action'] === 'add') {
 // ═══════════════════════════════════════════════════════════
 // ACTION: EDIT
 // ═══════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'edit') {
+if (($mybb->input['action'] ?? '') === 'edit') {
     $gid_input = $mybb->get_input('gid', MyBB::INPUT_INT);
     $q = $db->simple_select('usergroups', '*', "gid='{$gid_input}'");
     $usergroup = $db->fetch_array($q);
@@ -557,7 +556,7 @@ if ($mybb->input['action'] === 'edit') {
 // ═══════════════════════════════════════════════════════════
 // ACTION: DELETE
 // ═══════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'delete') {
+if (($mybb->input['action'] ?? '') === 'delete') {
     $q = $db->simple_select('usergroups', '*', "gid='" . $mybb->get_input('gid', MyBB::INPUT_INT) . "'");
     $usergroup = $db->fetch_array($q);
 
@@ -604,7 +603,7 @@ if ($mybb->input['action'] === 'delete') {
 // ═══════════════════════════════════════════════════════════
 // ACTION: DISPORDER
 // ═══════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'disporder' && $mybb->request_method === 'post') {
+if (($mybb->input['action'] ?? '') === 'disporder' && $mybb->request_method === 'post') {
     $plugins->run_hooks('admin_user_groups_disporder');
     foreach ($mybb->input['disporder'] as $gid => $order) {
         $gid = (int)$gid; $order = (int)$order;

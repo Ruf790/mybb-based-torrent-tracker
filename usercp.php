@@ -2453,10 +2453,13 @@ if ($mybb->input['action'] === 'subscriptions') {
     $del_subs     = $subscriptions = [];
 
     $query = $db->sql_query("
-        SELECT s.*, t.*, t.username AS threadusername, u.username
+        SELECT s.*, s.dateline AS subscription_dateline, t.*, t.username AS threadusername,
+               u.username, u.username AS author,
+               f.name AS forumname
         FROM threadsubscriptions s
         LEFT JOIN threads t ON (s.tid=t.tid)
         LEFT JOIN users u ON (u.id=t.uid)
+        LEFT JOIN forums f ON (f.fid=t.fid)
         WHERE {$where}
         ORDER BY t.lastpost DESC
         LIMIT {$start}, {$perpage}
@@ -2513,6 +2516,9 @@ if ($mybb->input['action'] === 'subscriptions') {
         $icon_cache = $cache->read('posticons');
 
         foreach ($subscriptions as $thread) {
+            $subscription_date = !empty($thread['subscription_dateline'])
+                ? date('d.m.Y', (int)$thread['subscription_dateline'])
+                : '—';
             $bgcolor  = alt_trow();
             $prefix   = '';
             $thread['threadprefix'] = '';
@@ -2521,7 +2527,7 @@ if ($mybb->input['action'] === 'subscriptions') {
             $thread['threadlink'] = get_thread_link($thread['tid']);
             $thread['lastpostlink'] = get_thread_link($thread['tid'], 0, 'lastpost');
 
-            $icon = ($thread['icon'] > 0 && ($icon_cache[$thread['icon']] ?? false))
+            $icon = (($thread['icon'] ?? 0) > 0 && ($icon_cache[$thread['icon'] ?? 0] ?? false))
                 ? '<img src="' . htmlspecialchars_uni(str_replace('{theme}', $theme['imgdir'], $icon_cache[$thread['icon']]['path'])) . '" alt="">'
                 : '&nbsp;';
 
@@ -2545,12 +2551,12 @@ if ($mybb->input['action'] === 'subscriptions') {
             $gotounread = '';
             if ($lastread && $lastread < $thread['lastpost']) {
                 $folder      .= 'new';
-                $folder_label .= $lang->icon_new;
+                $folder_label .= $lang->usercp['icon_new'];
                 $new_class    = 'subject_new';
                 $thread['newpostlink'] = get_thread_link($thread['tid'], 0, 'newpost');
                 $gotounread   = '<a href="' . $thread['newpostlink'] . '"><i class="fas fa-chevron-right text-primary" title="Go to first unread post"></i></a>';
             } else {
-                $folder_label .= 'icon_no_new';
+                $folder_label .= $lang->usercp['icon_no_new'];
                 $new_class    = 'subject_old';
             }
 
@@ -2692,12 +2698,12 @@ if ($mybb->input['action'] === 'subscriptions') {
                         <div class="col-md-4">
                             <i class="fas fa-user me-1 text-muted"></i>
                             <span class="text-muted">Автор:</span>
-                            <span class="ms-1">'.$thread['author'].'</span>
+                            <span class="ms-1">'.htmlspecialchars_uni($thread['author'] ?? '—').'</span>
                         </div>
                         <div class="col-md-4">
                             <i class="fas fa-tag me-1 text-muted"></i>
                             <span class="text-muted">Форум:</span>
-                            <span class="ms-1">'.$thread['forumname'].'</span>
+                            <span class="ms-1">'.htmlspecialchars_uni($thread['forumname'] ?? '—').'</span>
                         </div>
                     </div>
                 </div>

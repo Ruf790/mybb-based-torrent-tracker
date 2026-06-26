@@ -7,15 +7,19 @@ require_once $rootpath . 'global.php';
 class SmilieManager
 {
     private string $smilieDir;
+    private string $smilieDirUrl;
     private $db;
     private $cache;
     private string $baseUrl;
     
     public function __construct($db, $cache, $rootpath)
     {
-        $this->db = $db;
+        global $BASEURL, $pic_base_url;
+		
+		$this->db = $db;
         $this->cache = $cache;
-        $this->smilieDir = $rootpath . $pic_base_url . '/pic/smilies';
+		$this->smilieDir    = TSDIR . '/' . $pic_base_url . 'smilies';   // filesystem path
+		$this->smilieDirUrl = $BASEURL . '/' . $pic_base_url . 'smilies';  // URL for img src
         $this->baseUrl = $_SERVER['PHP_SELF'] ?? 'index.php';
     }
     
@@ -251,7 +255,7 @@ class SmilieManager
             : $this->getUrl('add_smilie');
         
         $cancelUrl = $this->getUrl();
-        $previewSrc = $data['spath'] ? $this->smilieDir . '/' . $data['spath'] : $this->smilieDir . '/blank.png';
+        $previewSrc = $data['spath'] ? $this->smilieDirUrl . '/' . $data['spath'] : $this->smilieDirUrl . '/blank.png';
         ?>
         
         <div class="container mt-4">
@@ -382,7 +386,7 @@ class SmilieManager
                                         </label>
                                         <div class="small text-muted">
                                             <?php
-                                            $path = $this->smilieDir . '/' . $data['spath'];
+                                            $path = $this->smilieDirUrl . '/' . $data['spath'];
                                             $size = filesize($path);
                                             $dimensions = getimagesize($path);
                                             ?>
@@ -435,7 +439,7 @@ class SmilieManager
             const preview = document.getElementById('preview');
             const previewText = document.getElementById('previewText');
             
-            preview.src = '<?= $this->smilieDir ?>/' + (path || 'blank.png');
+            preview.src = '<?= $this->smilieDirUrl ?>/' + (path || 'blank.png');
             previewText.textContent = title || 'No title';
         }
         
@@ -531,7 +535,7 @@ class SmilieManager
                      onclick="document.getElementById(\'spath\').value = \'' . addslashes($filename) . '\';
                               updatePreview();
                               bootstrap.Modal.getInstance(document.getElementById(\'fileBrowser\')).hide();">
-                    <img src="' . $this->smilieDir . '/' . $filename . '" 
+                    <img src="' . $this->smilieDirUrl . '/' . $filename . '" 
                          class="img-fluid mb-1" 
                          style="max-height: 50px;">
                     <div class="small text-truncate" title="' . $filename . '">
@@ -695,7 +699,7 @@ class SmilieManager
                                     <div class="card-body text-center p-2">
                                         <!-- Image -->
                                         <div class="mb-2">
-                                            <img src="<?= $this->smilieDir . '/' . $s['spath'] ?>" 
+                                            <img src="<?= $this->smilieDirUrl . '/' . $s['spath'] ?>" 
                                                  alt="<?= htmlspecialchars($s['stitle']) ?>"
                                                  class="img-fluid rounded" 
                                                  style="max-height: 50px;">

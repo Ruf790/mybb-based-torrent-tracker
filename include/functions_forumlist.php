@@ -555,6 +555,15 @@ function _forumbit_render(
 
     // depth=2, type=forum → forumbit_depth2_forum
     if ($depth === 2 && $forumcat === '_forum') {
+        // Pre-compute conditional HTML to avoid complex escaping inside string
+        $badges_html = ($forum_viewers_text
+            ? '<span class="badge bg-primary bg-opacity-10 text-primary"><i class="fa-solid fa-users me-1"></i>' . $forum_viewers_text . '</span>'
+            : '')
+            . ((int)($unapproved['unapproved_threads'] ?? 0) > 0
+            ? '<span class="badge bg-warning bg-opacity-20 text-warning"><i class="fa-solid fa-clock me-1"></i>' . $unapproved['unapproved_threads'] . '</span>'
+            : '');
+        $moderators_html = $modlist ? '<div class="moderators mt-2"><span class="text-muted small"><i class="fa-solid fa-user-shield me-1"></i>Moderators: ' . $modlist . '</span></div>' : '';
+        $subforums_html  = $subforums ? '<div class="subforums-section mt-3"><div class="d-flex align-items-center mb-2"><i class="fa-solid fa-sitemap me-2 text-muted"></i><span class="small text-muted">Sub Forums:</span></div><div class="subforums-grid">' . $subforums . '</div></div>' : '';
         return '
 <div class="forum-item" data-fid="' . $forum['fid'] . '">
     <div class="forum-card p-4 rounded-4 shadow-sm mb-3 border-0">
@@ -596,38 +605,10 @@ function _forumbit_render(
                                 <span class="forum-name">' . $forum['name'] . '</span>
                             </a>
                         </h4>
-                        <div class="forum-badges d-flex gap-2">
-                            <span class="badge bg-primary bg-opacity-10 text-primary"
-                                  data-bs-toggle="popover" data-bs-trigger="hover"
-                                  data-bs-placement="top"
-                                  data-bs-title="<i class=\'fa-solid fa-users me-2\'></i>Online Users">
-                                <i class="fa-solid fa-users me-1"></i>' . $forum_viewers_text . '
-                            </span>
-                            <span class="badge bg-warning bg-opacity-20 text-warning"
-                                  data-bs-toggle="popover" data-bs-trigger="hover"
-                                  data-bs-placement="top"
-                                  data-bs-title="<i class=\'fa-solid fa-clock me-2\'></i>Awaiting Moderation">
-                                <i class="fa-solid fa-clock me-1"></i>' . $unapproved['unapproved_threads'] . '
-                            </span>
-                        </div>
+                        <div class="forum-badges d-flex gap-2">' . $badges_html . '</div>
                     </div>
-                    <div class="forum-description mb-3">
-                        <p class="text-muted mb-2">
-                            <i class="fa-solid fa-info-circle me-2 opacity-75"></i>' . $forum['description'] . '
-                        </p>
-                        <div class="moderators mt-2">
-                            <span class="text-muted small">
-                                <i class="fa-solid fa-user-shield me-1"></i>Moderators: ' . $modlist . '
-                            </span>
-                        </div>
-                    </div>
-                    <div class="subforums-section mt-3">
-                        <div class="d-flex align-items-center mb-2">
-                            <i class="fa-solid fa-sitemap me-2 text-muted"></i>
-                            <span class="small text-muted">Sub Forums:</span>
-                        </div>
-                        <div class="subforums-grid">' . $subforums . '</div>
-                    </div>
+                    <div class="forum-description mb-2">' . $moderators_html . '</div>
+                    ' . $subforums_html . '
                 </div>
             </div>
 

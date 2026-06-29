@@ -22,12 +22,6 @@ $plugins->run_hooks('announcements_start');
 
 
 
-if (!$announcementarray) {
-    stderr($lang->announcements['error_invalidannouncement'], $SITENAME . ' - Announcement Not Found', 404, '404');
-}
-
-
-
 // ── Forum permissions ────────────────────────────────────────────
 $fid = (int)$announcement['fid'];
 

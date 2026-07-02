@@ -574,7 +574,7 @@ if ($action === 'read') {
 
     $pm['userusername'] = $pm['username'];
     $pm['subject']      = htmlspecialchars_uni($parser->parse_badwords($pm['subject']));
-    if ($pm['fromid'] == 0) $pm['username'] = 'Ruff Tracker Engine';
+    if ($pm['fromid'] == 0) $pm['username'] = ''.$SITENAME.' Engine';
     if (!$pm['username'])   $pm['username'] = 'na';
 
     $pm['recipients'] = my_unserialize($pm['recipients']);

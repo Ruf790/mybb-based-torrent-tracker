@@ -32,6 +32,36 @@ register_shutdown_function('FatalErrorHandler');
 
 
 /**
+ * Определяет, можно ли текущему посетителю показывать подробности ошибки
+ * (файл/строка/сообщение/стектрейс). Обычные гости их видеть не должны —
+ * это утечка структуры кода и путей на сервере.
+ *
+ * Специально обёрнуто в try/catch: обработчик ошибок не имеет права
+ * сам упасть с ошибкой при попытке проверить права.
+ */
+function is_staff_error_viewer(): bool
+{
+    try {
+        global $usergroups, $CURUSER;
+
+        if (!empty($usergroups) && is_array($usergroups) && function_exists('is_mod')) {
+            if (is_mod($usergroups)) {
+                return true;
+            }
+        }
+
+        // Резервная проверка, если $usergroups почему-то недоступен на момент фатала
+        if (!empty($CURUSER['id']) && !empty($usergroups['cansettingspanel'])) {
+            return true;
+        }
+    } catch (\Throwable) {
+        // Если проверка сама упала — по умолчанию считаем гостем (безопаснее).
+    }
+
+    return false;
+}
+
+/**
  * Global error handler with PHP 8.5 features and handler detection
  */
 function GlobalErrorHandler(int $errno, string $errstr, string $errfile, int $errline): bool
@@ -172,8 +202,28 @@ function FatalErrorHandler(): void
         header('Content-Type: text/html; charset=UTF-8');
     }
 
+    // Уникальный ID ошибки — можно называть при обращении в поддержку,
+    // не раскрывая гостю сам файл/строку/сообщение.
+    $errorId = strtoupper(substr(md5($errfile . $errline . $errstr), 0, 8));
+
+    $isStaff = is_staff_error_viewer();
+
+    if ($isStaff) {
+        // Стафф видит полную картину — как и раньше.
+        $errorMessage = "File: <strong>{$errfile}</strong><br>Line: <strong>{$errline}</strong><br>Message: <strong>{$errstr}</strong><br><small class='text-muted'>{$handlerInfo}</small>";
+        $alertHeading = 'System Error Detected';
+    } else {
+        // Гость видит только факт ошибки и ID для поддержки — без путей,
+        // текста сообщения и информации об обработчиках.
+        $errorMessage = "Something went wrong on our end. Our team has already been notified.<br>If you need help, please reference Error ID <strong>ERR-{$errorId}</strong> when contacting support.";
+        $alertHeading = 'Something Went Wrong';
+        $handlerInfo = '';
+    }
+
     // Modern HTML with heredoc and variables
-    $errorMessage = "File: <strong>{$errfile}</strong><br>Line: <strong>{$errline}</strong><br>Message: <strong>{$errstr}</strong><br><small class='text-muted'>{$handlerInfo}</small>";
+    $handlerInfoBlock = $handlerInfo !== ''
+        ? "<div class=\"handler-info mt-3\"><i class=\"bi bi-gear me-1\"></i>Current Error Handler: <code>{$handlerInfo}</code></div>"
+        : '';
 
     echo <<<HTML
 <!DOCTYPE html>
@@ -228,7 +278,7 @@ function FatalErrorHandler(): void
                     <div class="d-flex align-items-center">
                         <i class="bi bi-exclamation-circle-fill text-danger me-3 fs-5"></i>
                         <div>
-                            <h3 class="h5 alert-heading text-danger mb-2">System Error Detected</h3>
+                            <h3 class="h5 alert-heading text-danger mb-2">{$alertHeading}</h3>
                             <div>
                                 {$errorMessage}
                             </div>
@@ -236,10 +286,7 @@ function FatalErrorHandler(): void
                     </div>
                 </div>
 
-                <div class="handler-info mt-3">
-                    <i class="bi bi-gear me-1"></i>
-                    Current Error Handler: <code>{$handlerInfo}</code>
-                </div>
+                {$handlerInfoBlock}
 
                 <div class="mt-4 pt-2 border-top">
                     <div class="d-flex flex-column flex-sm-row gap-3">
@@ -266,7 +313,7 @@ function FatalErrorHandler(): void
                 <div class="mt-4 text-center">
                     <small class="text-muted">
                         <i class="bi bi-info-circle me-1"></i>
-                        Error ID: <code>ERR_{$errno}_{$errline}</code> • 
+                        Error ID: <code>ERR-{$errorId}</code> • 
                         PHP: <strong>{$phpVersion}</strong> • 
                         <span id="timestamp"></span>
                     </small>

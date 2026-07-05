@@ -44,17 +44,18 @@ if (!defined('IN_TRACKER')) {
         <!--
         lang.expcol_collapse = "[-]";
         lang.expcol_expand = "[+]";
-        lang.select2_match = "One result is available, press enter to select it.";
-        lang.select2_matches = "{1} results are available, use up and down arrow keys to navigate.";
-        lang.select2_nomatches = "No matches found";
-        lang.select2_inputtooshort_single = "Please enter one or more character";
-        lang.select2_inputtooshort_plural = "Please enter {1} or more characters";
-        lang.select2_inputtoolong_single = "Please delete one character";
-        lang.select2_inputtoolong_plural = "Please delete {1} characters";
-        lang.select2_selectiontoobig_single = "You can only select one item";
-        lang.select2_selectiontoobig_plural = "You can only select {1} items";
-        lang.select2_loadmore = "Loading more results&hellip;";
-        lang.select2_searching = "Searching&hellip;";
+		
+        lang.select2_match = "<?= htmlspecialchars($lang->header['select2_match'] ?? 'One result is available, press enter to select it.', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_matches = "<?= htmlspecialchars($lang->header['select2_matches'] ?? '{1} results are available, use up and down arrow keys to navigate.', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_nomatches = "<?= htmlspecialchars($lang->header['select2_nomatches'] ?? 'No matches found', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_inputtooshort_single = "<?= htmlspecialchars($lang->header['select2_inputtooshort'] ?? 'Please enter one or more character', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_inputtooshort_plural = "<?= htmlspecialchars($lang->header['select2_inputtooshort_plural'] ?? 'Please enter {1} or more characters', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_inputtoolong_single = "<?= htmlspecialchars($lang->header['select2_inputtoolong'] ?? 'Please delete one character', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_inputtoolong_plural = "<?= htmlspecialchars($lang->header['select2_inputtoolong_plural'] ?? 'Please delete {1} characters', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_selectiontoobig_single = "<?= htmlspecialchars($lang->header['select2_toobig'] ?? 'You can only select one item', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_selectiontoobig_plural = "<?= htmlspecialchars($lang->header['select2_toobig_plural'] ?? 'You can only select {1} items', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_loadmore = "<?= htmlspecialchars($lang->header['select2_loadmore'] ?? 'Loading more results...', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
+        lang.select2_searching = "<?= htmlspecialchars($lang->header['select2_searching'] ?? 'Searching...', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
 
         var use_xmlhttprequest = "<?= (int)($use_xmlhttprequest ?? 0) ?>";
         var my_post_key = "<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
@@ -64,7 +65,7 @@ if (!defined('IN_TRACKER')) {
         var cookieSecureFlag = "<?= (int)($cookiesecureflag ?? 0) ?>";
         
         var MyBBEditor = null;
-        var spinner_image = "https://ruff-tracker.eu/pic/spinner.gif";
+        var spinner_image = "<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/pic/spinner.gif";
         var spinner = "<img src='" + spinner_image + "' alt='' />";
         var loading_text = 'Loading. <br />Please Wait&hellip;';
         var saving_changes = 'Saving changes&hellip;';
@@ -319,28 +320,28 @@ if (isset($CURUSER)): ?>
                     <!-- Browse Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link nav-link-card dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-list me-1"></i> Browse
+                            <i class="fas fa-list me-1"></i> <?= htmlspecialchars($lang->header['nav_browse'] ?? 'Browse', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-card">
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php"><i class="fas fa-table-list me-2"></i> Browse Torrents</a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php"><i class="fas fa-table-list me-2"></i> <?= htmlspecialchars($lang->header['nav_browse_torrents'] ?? 'Browse Torrents', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/upload.php"><i class="fas fa-upload me-2"></i> Upload</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=mybookmarks"><i class="fas fa-bookmark me-2"></i> My Bookmarks</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=myreseeds"><i class="fas fa-seedling me-2"></i> My Reseeds</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=weaktorrents"><i class="fas fa-heart-crack me-2"></i> Weak Torrents</a></li>
-                        </ul>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=mybookmarks"><i class="fas fa-bookmark me-2"></i> <?= htmlspecialchars($lang->header['nav_my_bookmarks'] ?? 'My Bookmarks', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=myreseeds"><i class="fas fa-seedling me-2"></i> <?= htmlspecialchars($lang->header['nav_my_reseeds'] ?? 'My Reseeds', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=weaktorrents"><i class="fas fa-heart-crack me-2"></i> <?= htmlspecialchars($lang->header['nav_weak_torrents'] ?? 'Weak Torrents', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>	
+						</ul>
                     </li>
                     
                     <!-- Forums Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link nav-link-card dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-comments me-1"></i> Forums
+                            <i class="fas fa-comments me-1"></i> <?= htmlspecialchars($lang->header['nav_forums'] ?? 'Forums', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-card">
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/index2.php"><i class="fas fa-forumbee me-2"></i> Forums</a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/index2.php"><i class="fas fa-forumbee me-2"></i> <?= htmlspecialchars($lang->header['nav_forums_home'] ?? 'Forums', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php?action=getnew"><i class="fas fa-star me-2"></i> New Posts</a></li>
                             <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php?action=getdaily"><i class="fas fa-calendar-day me-2"></i> Today's Posts</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php"><i class="fas fa-search me-2"></i> Search</a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/search.php"><i class="fas fa-search me-2"></i> <?= htmlspecialchars($lang->header['nav_search'] ?? 'Search', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
                         </ul>
                     </li>
                     
@@ -350,10 +351,10 @@ if (isset($CURUSER)): ?>
                             <i class="fas fa-user me-1"></i> User CP
                         </a>
                         <ul class="dropdown-menu dropdown-menu-card">
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/usercp.php"><i class="fas fa-cog me-2"></i> User CP Home</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/private.php"><i class="fas fa-envelope me-2"></i> Private Messages</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=mytorrents"><i class="fas fa-download me-2"></i> Your Torrents</a></li>
-                        </ul>
+							<li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/usercp.php"><i class="fas fa-cog me-2"></i> <?= htmlspecialchars($lang->header['nav_usercp_home'] ?? 'User CP Home', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/private.php"><i class="fas fa-envelope me-2"></i> <?= htmlspecialchars($lang->header['nav_private_messages'] ?? 'Private Messages', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/browse.php?special_search=mytorrents"><i class="fas fa-download me-2"></i> <?= htmlspecialchars($lang->header['nav_your_torrents'] ?? 'Your Torrents', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>            
+						</ul>
                     </li>
                     
                     <!-- Top 10 Menu -->
@@ -362,11 +363,11 @@ if (isset($CURUSER)): ?>
                             <i class="fas fa-chart-line me-1"></i> Top 10
                         </a>
                         <ul class="dropdown-menu dropdown-menu-card">
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=1"><i class="fas fa-users me-2"></i> Users</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=2"><i class="fas fa-download me-2"></i> Torrents</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=3"><i class="fas fa-globe me-2"></i> Countries</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=4"><i class="fas fa-network-wired me-2"></i> Peers</a></li>
-                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=5"><i class="fas fa-comments me-2"></i> Forums</a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=1"><i class="fas fa-users me-2"></i> <?= htmlspecialchars($lang->header['nav_top_users'] ?? 'Users', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=2"><i class="fas fa-download me-2"></i> <?= htmlspecialchars($lang->header['nav_top_torrents'] ?? 'Torrents', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=3"><i class="fas fa-globe me-2"></i> <?= htmlspecialchars($lang->header['nav_top_countries'] ?? 'Countries', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+                            <li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=4"><i class="fas fa-network-wired me-2"></i> <?= htmlspecialchars($lang->header['nav_top_peers'] ?? 'Peers', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
+							<li><a class="dropdown-item dropdown-item-card" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/topten.php?type=5"><i class="fas fa-comments me-2"></i> <?= htmlspecialchars($lang->header['nav_forums'] ?? 'Forums', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></a></li>
                         </ul>
                     </li>
                     
@@ -378,32 +379,45 @@ if (isset($CURUSER)): ?>
                         <ul class="dropdown-menu">
                             <li>
                                 <a class="dropdown-item" href="<?= htmlspecialchars($profilelink_link, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
-                                    <i class="fas fa-user-circle me-2"></i> Your Profile
+                                    <i class="fas fa-user-circle me-2"></i> <?= htmlspecialchars($lang->header['nav_your_profile'] ?? 'Your Profile', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                                 </a>
                             </li>
                             <li>
                                 <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/memberlist.php">
-                                    <i class="fas fa-users me-2"></i> Members List
+                                    <i class="fas fa-users me-2"></i> <?= htmlspecialchars($lang->header['nav_members_list'] ?? 'Members List', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                                 </a>
                             </li>
                             <li>
                                 <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/getrss.php">
-                                    <i class="fas fa-rss me-2"></i> RSS Feeds
+                                    <i class="fas fa-rss me-2"></i> <?= htmlspecialchars($lang->header['nav_rss_feeds'] ?? 'RSS Feeds', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                                 </a>
                             </li>
                             <li>
                                 <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/invite.php">
-                                    <i class="fas fa-user-plus me-2"></i> Invite Friend
+                                    <i class="fas fa-user-plus me-2"></i> <?= htmlspecialchars($lang->header['nav_invite_friend'] ?? 'Invite Friend', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                                 </a>
                             </li>
                             <li>
                                 <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/mybonus.php">
-                                    <i class="fas fa-coins me-2"></i> Bonus Points
+                                    <i class="fas fa-coins me-2"></i> <?= htmlspecialchars($lang->header['nav_bonus_points'] ?? 'Bonus Points', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                                 </a>
                             </li>
+							
+							<li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/requests.php">
+                                    <i class="fas fa-list-alt me-2"></i> <?= htmlspecialchars($lang->header['nav_requests'] ?? 'Requests', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/offers.php">
+                                    <i class="fas fa-gift me-2"></i> <?= htmlspecialchars($lang->header['nav_offers'] ?? 'Offers', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
+                                </a>
+                            </li>
+							
+							
                         </ul>
                     </li>
-					
 					
 					
 					
@@ -412,21 +426,21 @@ if (isset($CURUSER)): ?>
 					<!--Help Menu -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-ellipsis-h me-1"></i> <?= htmlspecialchars($lang->global['help'] ?? 'Help', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
+                            <i class="fas fa-ellipsis-h me-1"></i> <?= htmlspecialchars($lang->header['nav_help'] ?? 'Help', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                         </a>
                         <ul class="dropdown-menu">
                             
 							
 							<li>
             <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/videoformats.php">
-                <i class="fas fa-video me-2"></i> Video Formats
+                <i class="fas fa-video me-2"></i> <?= htmlspecialchars($lang->header['nav_video_formats'] ?? 'Video Formats', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
             </a>
         </li>
         
         <!-- Links & Resources -->
         <li>
             <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/links.php">
-                <i class="fas fa-link me-2"></i> Torrent Links
+                <i class="fas fa-link me-2"></i> <?= htmlspecialchars($lang->header['nav_torrent_links'] ?? 'Torrent Links', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
             </a>
         </li>
         
@@ -436,12 +450,12 @@ if (isset($CURUSER)): ?>
         <!-- Other Useful Links (optional) -->
         <li>
             <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/faq.php">
-                <i class="fas fa-question-circle me-2"></i> FAQ
+                <i class="fas fa-question-circle me-2"></i> <?= htmlspecialchars($lang->header['nav_faq'] ?? 'FAQ', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
             </a>
         </li>
         <li>
             <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/rules.php">
-                <i class="fas fa-gavel me-2"></i> Rules
+                <i class="fas fa-gavel me-2"></i> <?= htmlspecialchars($lang->header['nav_rules'] ?? 'Rules', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
             </a>
         </li>
 							
@@ -450,11 +464,6 @@ if (isset($CURUSER)): ?>
 							
                         </ul>
                     </li>
-					
-					
-					
-					
-					
 					
 					
 					
@@ -469,12 +478,12 @@ if (isset($CURUSER)): ?>
                         <ul class="dropdown-menu">
                             <li>
                                 <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/showteam.php">
-                                    <i class="fas fa-users-cog me-2"></i> Staff Team
+                                    <i class="fas fa-users-cog me-2"></i> <?= htmlspecialchars($lang->header['nav_staff_team'] ?? 'Staff Team', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                                 </a>
                             </li>
                             <li>
                                 <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/contactstaff.php">
-                                    <i class="fas fa-envelope me-2"></i> Contact Staff
+                                    <i class="fas fa-envelope me-2"></i> <?= htmlspecialchars($lang->header['nav_contact_staff'] ?? 'Contact Staff', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                                 </a>
                             </li>
                         </ul>
@@ -492,7 +501,7 @@ if (isset($CURUSER)): ?>
                                 <input type="hidden" name="search_type" value="t_both" />
                                 <input type="hidden" name="do" value="search" />
                                 <div class="input-group">
-                                    <input class="form-control" type="text" value="" name="keywords" placeholder="Search torrents..." aria-label="Search">
+                                    <input class="form-control" type="text" value="" name="keywords" placeholder="<?= htmlspecialchars($lang->header['nav_search_placeholder'] ?? 'Search torrents...', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" aria-label="Search">
                                     <button class="btn btn-primary" type="submit">
                                         <i class="fas fa-search"></i>
                                     </button>
@@ -562,12 +571,12 @@ $languages = [
         <div class="modal-content shadow-lg border-0 rounded-3">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title">
-                    <i class="fa-solid fa-right-from-bracket me-2"></i> Confirm Logout
+                    <i class="fa-solid fa-right-from-bracket me-2"></i> <?= htmlspecialchars($lang->header['nav_confirm_logout'] ?? 'Confirm Logout', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body text-center">
-                <p class="mb-0 fs-6">Are you sure you want to log out?</p>
+                <p class="mb-0 fs-6"><?= htmlspecialchars($lang->header['logout_confirm_text'] ?? 'Are you sure you want to log out?', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></p>
             </div>
             <div class="modal-footer justify-content-center">
                 <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
@@ -605,12 +614,12 @@ $languages = [
                 </li>
                 <li class="nav-item me-2">
                     <a class="btn btn-outline-primary rounded-pill px-4 fw-semibold shadow-sm hover-shadow" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/member.php?action=login">
-                        <i class="fa-solid fa-right-to-bracket me-1"></i> Login
+                        <i class="fa-solid fa-right-to-bracket me-1"></i> <?= htmlspecialchars($lang->header['nav_login'] ?? 'Login', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="btn btn-primary rounded-pill px-4 fw-semibold shadow-sm hover-shadow" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/member.php?action=register">
-                        <i class="fa-solid fa-user-plus me-1"></i> Register
+                        <i class="fa-solid fa-user-plus me-1"></i> <?= htmlspecialchars($lang->header['nav_register'] ?? 'Register', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                     </a>
                 </li>
             </ul>

@@ -501,9 +501,9 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
         $icon = $post['icon'];
     }
 
-    if ($forum['allowpicons'] != 0) {
-        $posticons = get_post_icons();
-    }
+    //if ($forum['allowpicons'] != 0) {
+    //    $posticons = get_post_icons();
+   // }
 
     $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
 
@@ -886,13 +886,13 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
     } elseif (!$post_errors) {
         $preview = '';
 
-        if ($post['includesig'] != 0) {
-            $postoptionschecked['signature'] = " checked=\"checked\"";
-        }
+        //if ($post['includesig'] != 0) {
+        //    $postoptionschecked['signature'] = " checked=\"checked\"";
+        //}
 
-        if ($post['smilieoff'] == 1) {
-            $postoptionschecked['disablesmilies'] = " checked=\"checked\"";
-        }
+        //if ($post['smilieoff'] == 1) {
+            //$postoptionschecked['disablesmilies'] = " checked=\"checked\"";
+        //}
 
         $subscription_method = get_subscription_method((int)$tid, $postoptions);
         ${$subscription_method.'subscribe'} = "checked=\"checked\" ";
@@ -1123,10 +1123,10 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
 <!-- attach -->
  <!-- modop -->
 <div id="collapse-modop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->mod_options.'</div>
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['mod_options'].'</div>
 <div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
 <div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->mod_options.'
+'.$lang->editpost['mod_options'].'
 </div>
 <div class="col">
 '.$closeoption.'

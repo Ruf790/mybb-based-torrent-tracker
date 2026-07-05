@@ -97,7 +97,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') {
 
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mime  = finfo_file($finfo, $file_tmp);
-    finfo_close($finfo);
+    //finfo_close($finfo);
 
     if (!in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
         $is_ajax ? $json(['ok' => false, 'error' => 'file is not image'], 415) : exit('Error: file is not image.');

@@ -494,7 +494,7 @@ stdhead('My Invites');
                 <td class="small text-muted"><?= $inv['note'] ? htmlspecialchars($inv['note']) : '—' ?></td>
                 <td>
                     <?php if ($inv['invitee_name']): ?>
-                    <a href="userdetails.php?id=<?= $inv['invitee_id'] ?>" class="text-decoration-none">
+                    <a href="<?= get_profile_link($inv['invitee_id']) ?>" class="text-decoration-none">
                         <?= htmlspecialchars($inv['invitee_name']) ?>
                     </a>
                     <?php else: ?>

@@ -260,117 +260,115 @@ function processAddComment(int $torrentid): void
     exit;
 }
 
+
+
+
+
+
+
+
 function displayAddCommentForm(int $torrentid): void
 {
     global $db, $CURUSER, $BASEURL, $lang, $smilies;
 
     $res = $db->simple_select('torrents', 'name, owner', "id = '{$torrentid}'");
     $arr = $db->fetch_array($res);
-    
+
     if (!$arr) {
         stderr($lang->global['notorrentid']);
     }
 
     stdhead(sprintf($lang->comment['addcomment'], $arr['name']), true, 'supernote');
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
-    require_once INC_PATH . '/editor.php';
-    
-    $editor = insert_bbcode_editor($smilies, $BASEURL, 'commentText');
 
+    echo '
+    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">
+    <link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_form.css">
+    <script defer src="' . $BASEURL . '/scripts/comment_form.js"></script>
+    ';
+
+    require_once INC_PATH . '/editor.php';
+
+    $editor   = insert_bbcode_editor($smilies, $BASEURL, 'commentText');
     $posthash = bin2hex(random_bytes(16));
     $uploader = render_attachment_uploader($posthash, (int)$CURUSER['id']);
+    $titlez   = sprintf($lang->comment['addcomment'], htmlspecialchars_uni($arr['name']));
 
-	$titlez = sprintf($lang->comment['addcomment'], htmlspecialchars_uni($arr['name']));
-	
-	
-	$prefill = '';
-if (!empty($_GET['quote'])) {
-    $prefill = htmlspecialchars(urldecode($_GET['quote']));
-}
-	
-    
+    $prefill = '';
+    if (!empty($_GET['quote'])) {
+        $prefill = htmlspecialchars(urldecode($_GET['quote']));
+    }
+
     echo <<<HTML
-<div class="container mt-4">
-    <h3>{$titlez}"</h3>
-    {$editor['toolbar']}
-    
-    <form id="commentForm" method="post" name="compose" action="{$_SERVER['SCRIPT_NAME']}?action=add&tid={$torrentid}" novalidate>
-        <div class="mb-3">
-            <label for="commentText" class="form-label">{$lang->comment['insertcomment']}</label>
-            <textarea class="form-control" id="commentText" name="msgtext" rows="6" placeholder="Write your comment using BBCode..." maxlength="500" aria-describedby="charCount" required>{$prefill}</textarea>
-            <div id="charCount" class="form-text text-end">0 / 500</div>
+    <div class="container mt-3">
+        <div class="comment-form-wrapper">
+
+            <div class="comment-form-title">
+                <i class="fa-regular fa-pen-to-square"></i>
+                {$titlez}
+            </div>
+
+            {$editor['toolbar']}
+
+            <form id="commentForm" method="post" name="compose"
+                  action="{$_SERVER['SCRIPT_NAME']}?action=add&tid={$torrentid}" novalidate>
+
+                <div class="mb-3">
+                    <label for="commentText" class="comment-form-label">
+                        <i class="fa-regular fa-message me-1"></i> {$lang->comment['insertcomment']}
+                    </label>
+                    <textarea class="form-control comment-textarea"
+                              id="commentText"
+                              name="msgtext"
+                              rows="6"
+                              placeholder="Write your comment using BBCode..."
+                              maxlength="500"
+                              aria-describedby="charCount"
+                              required>{$prefill}</textarea>
+                    <div id="charCount" class="comment-char-count">0 / 500</div>
+                </div>
+
+                {$uploader}
+
+                <input type="hidden" name="ctype" value="quickcomment">
+                <input type="hidden" name="submit" value="1">
+                <div id="fileIdsContainer"></div>
+
+                <div class="d-flex flex-wrap gap-3 mt-3 justify-content-end">
+                    <button type="submit" class="btn btn-primary comment-submit-btn">
+                        <i class="fa-regular fa-paper-plane"></i> Save Comment
+                    </button>
+                    <button type="reset" class="btn btn-outline-secondary comment-submit-btn">
+                        <i class="fa-regular fa-rotate-right"></i> Clear
+                    </button>
+                </div>
+
+                <div id="commentText_preview" class="comment-preview-box"></div>
+
+            </form>
+
+            {$editor['modal']}
         </div>
-
-        {$uploader}
-        <input type="hidden" name="ctype" value="quickcomment">
-        <input type="hidden" name="submit" value="1">
-        <div id="fileIdsContainer"></div>
-        <button type="submit" class="btn btn-primary">Save</button>
-
-        <div id="commentText_preview" class="form-control mt-3 d-none"></div>
-    </form>
-    
-    {$editor['modal']}
-</div>
-
-<div id="modalOverlay" style="display:none; position: fixed; top:0; left:0; width:100vw; height:100vh; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 10000;">
-    <div id="modalBox" style="background: white; padding: 1.5em; border-radius: 8px; max-width: 400px; width: 90%; box-shadow: 0 2px 10px rgba(0,0,0,0.3); text-align: center; position: relative;">
-        <div id="modalMessage" style="margin-bottom: 1.5em; font-size: 1.1rem;"></div>
-        <button id="modalCloseBtn" style="padding: 0.5em 1em; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-size: 1rem;">Close</button>
     </div>
-</div>
 
-<script>
-function showModal(message) {
-    const overlay = document.getElementById('modalOverlay');
-    const msg = document.getElementById('modalMessage');
-    msg.textContent = message;
-    overlay.style.display = 'flex';
-}
-
-function hideModal() {
-    const overlay = document.getElementById('modalOverlay');
-    overlay.style.display = 'none';
-}
-
-document.getElementById('modalCloseBtn').addEventListener('click', hideModal);
-document.getElementById('modalOverlay').addEventListener('click', e => {
-    if (e.target === e.currentTarget) hideModal();
-});
-
-document.getElementById('commentForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-
-    fetch(form.action, {
-        method: 'POST',
-        body: formData,
-        credentials: 'same-origin'
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            showModal(data.message || 'Error submitting comment.');
-        } else if (data.redirect) {
-            window.location.href = data.redirect;
-        } else {
-            showModal('Unexpected response from server.');
-        }
-    })
-    .catch(error => {
-        showModal('Failed to submit comment.');
-        console.error('Error:', error);
-    });
-});
-</script>
+    <div id="modalOverlay" class="custom-modal-overlay">
+        <div class="custom-modal-box">
+            <span id="modalIcon" class="modal-icon info">ℹ️</span>
+            <div id="modalMessage" class="modal-message">Loading...</div>
+            <button id="modalCloseBtn" class="modal-close-btn">Got it!</button>
+        </div>
+    </div>
 HTML;
 
-    // Display recent comments
     displayRecentComments($torrentid);
     stdfoot();
     exit;
 }
+
+
+
+
+
+
 
 function displayRecentComments(int $torrentid): void
 {

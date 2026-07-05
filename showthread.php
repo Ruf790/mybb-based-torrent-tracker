@@ -11,6 +11,10 @@ require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_indicators.php';
 
+
+require_once INC_PATH . '/editor.php';
+require_once 'cache/smilies.php';
+
 $lang->load("showthread");
 
 // ─── Resolve pid → tid ────────────────────────────────────────────────────────
@@ -627,7 +631,7 @@ if ($canQuickReply) {
         }
     }
 
-    $quickreply = render_quick_reply($tid, $reply_subject, (int)$last_pid, $posthash, $page, $CURUSER, $mybb->post_code, $closeoption, $moderation_notice, $lang, $BASEURL);
+    $quickreply = render_quick_reply($tid, $reply_subject, (int)$last_pid, $posthash, $page, $CURUSER, $mybb->post_code, $closeoption, $moderation_notice, $lang, $BASEURL, $smilies ?? []);
 }
 
 // ─── Moderation options ───────────────────────────────────────────────────────
@@ -988,8 +992,31 @@ function render_poll_vote_box(array $poll, string $polloptions, string $publicno
 
 
 
-function render_quick_reply(int $tid, string $reply_subject, int $last_pid, string $posthash, int $page, array $curuser, string $post_code, string $closeoption, string $moderation_notice, object $lang, string $baseurl): string
-{
+
+
+
+
+
+
+
+
+function render_quick_reply(
+    int $tid,
+    string $reply_subject,
+    int $last_pid,
+    string $posthash,
+    int $page,
+    array $curuser,
+    string $post_code,
+    string $closeoption,
+    string $moderation_notice,
+    object $lang,
+    string $baseurl,
+    array $smilies = []
+): string {
+    // Тулбар идёт внутри формы (над textarea), модалки — после закрытия формы
+    $editor = insert_bbcode_editor($smilies, $baseurl, 'message');
+
     return <<<HTML
     <div id="quickreply_spinner" class="showthread_spinner" style="display:none">
         <i class="fa-solid fa-circle-notch fa-spin"></i>
@@ -1006,7 +1033,7 @@ function render_quick_reply(int $tid, string $reply_subject, int $last_pid, stri
         <input type="hidden" name="from_page"     value="{$page}" />
         <input type="hidden" name="tid"           value="{$tid}" />
         <input type="hidden" name="method"        value="quickreply" />
-
+        <div id="fileIdsContainer"></div>
         <div class="row d-flex g-2 mb-4 mt-5">
             <div class="col-auto d-none d-lg-block">
                 <img src="{$curuser['avatar']}" class="rounded img-fluid" style="width:100px">
@@ -1021,7 +1048,8 @@ function render_quick_reply(int $tid, string $reply_subject, int $last_pid, stri
                 <div class="card">
                     <div class="card-body">
                         <h6 class="mb-2">{$curuser['username']}</h6>
-                        <textarea class="form-control border-0 p-0" style="resize:none;height:150px"
+                        {$editor['toolbar']}
+                        <textarea class="form-control border-0 p-0" style="resize:vertical;height:150px"
                                   name="message" id="message" tabindex="1"
                                   placeholder="Write a reply to this message..."></textarea>
                         <div id="collapse-reply" class="collapse bg-nav p-2">{$closeoption}</div>
@@ -1041,8 +1069,17 @@ function render_quick_reply(int $tid, string $reply_subject, int $last_pid, stri
             </div>
         </div>
     </form>
+    {$editor['modal']}
     HTML;
 }
+
+
+
+
+
+
+
+
 
 
 

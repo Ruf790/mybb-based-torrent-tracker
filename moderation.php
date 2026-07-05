@@ -124,19 +124,7 @@ function build_month_options(int $selected, array $lang_months): string {
     return $html;
 }
 
-// ── Helper: get allowed modtools for forum ───────────────────────────────────
-function get_forum_modtools(object $db, int $fid): array {
-    $condition = match ($db->type) {
-        'pgsql', 'sqlite' => "(','||forums||',' LIKE '%,{$fid},%' OR ','||forums||',' LIKE '%,-1,%' OR forums='') AND type = 't'",
-        default           => "(CONCAT(',',forums,',') LIKE '%,{$fid},%' OR CONCAT(',',forums,',') LIKE '%,-1,%' OR forums='') AND type = 't'",
-    };
-    $query = $db->simple_select('modtools', 'tid, name, `groups`', $condition);
-    $tools = [];
-    while ($tool = $db->fetch_array($query)) {
-        $tools[] = $tool;
-    }
-    return $tools;
-}
+
 
 // ── Moderation assets (SweetAlert2, toast, moderation JS) ───────────────────
 $_mod_assets = '<link rel="stylesheet" href="' . htmlspecialchars($BASEURL) . '/include/templates/default/style/sweetalert2.min.css">' . PHP_EOL
@@ -195,21 +183,13 @@ switch ($action) {
         add_breadcrumb($lang->moderation['delayed_moderation']);
 
         $errors = [];
-        $customthreadtools = '';
+      
         $allowed_types = [
             'move', 'merge', 'removeredirects', 'removesubscriptions',
             'openclosethread', 'deletethread', 'stick', 'approveunapprovethread',
         ];
 
-        foreach (get_forum_modtools($db, $fid) as $tool) {
-            if (is_member($tool['groups'])) {
-                $allowed_types[] = 'modtool_' . $tool['tid'];
-                $toolName = htmlspecialchars_uni($tool['name']);
-                $checked  = ($mybb->input['type'] ?? '') === 'modtool_' . $tool['tid'] ? 'checked="checked"' : '';
-                $customthreadtools .= '<input type="radio" name="type" class="form-check-input" value="modtool_' . $tool['tid'] . '" ' . $checked . ' id="type_modtool_' . $tool['tid'] . '" onclick="toggleType();" />
-                    <label for="type_modtool_' . $tool['tid'] . '" class="form-check-label">' . $toolName . ' <small>(custom)</small></label>';
-            }
-        }
+       
 
         $mybb->input['delayedmoderation'] = $mybb->get_input('delayedmoderation', MyBB::INPUT_ARRAY);
         $mybb->input['type'] = $mybb->get_input('type');
@@ -340,13 +320,10 @@ switch ($action) {
             'approveunapprovethread' => $lang->moderation['approve_unapprove_thread'],
         ];
 
-        foreach (get_forum_modtools($db, $fid) as $tool) {
-            $actions['modtool_' . $tool['tid']] = htmlspecialchars_uni($tool['name']);
-        }
 
         // ── Delayed mods list ────────────────────────────────────────────────
         $delayedmods = '';
-        $trow = alt_trow(1);
+        $trow = alt_trow(true);
 
         if ($tid === 0) {
             $tids = $mybb->get_input('inlinetype') === 'search'
@@ -593,7 +570,7 @@ switch ($action) {
                     <label for="type_removesubscriptions" class="fw-semibold flex-grow-1">{$lang->moderation['remove_subscriptions']}</label>
                 </div>
                 {$approveunapprovethread}
-                {$customthreadtools}
+               
             </div>
             <div class="card-footer text-center border-0 bg-transparent pb-4">
                 <button type="submit" class="btn-gradient px-5 py-3">

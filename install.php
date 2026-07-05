@@ -1348,6 +1348,91 @@ CREATE TABLE IF NOT EXISTS `notconnectablepmlog` (
   `date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `requests` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` int UNSIGNED NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text,
+  `category_id` int UNSIGNED NOT NULL DEFAULT '0',
+  `year` smallint UNSIGNED DEFAULT NULL,
+  `status` enum('open','filled','cancelled') NOT NULL DEFAULT 'open',
+  `filled_by` int UNSIGNED DEFAULT NULL,
+  `torrent_id` int UNSIGNED DEFAULT NULL,
+  `votes` int UNSIGNED NOT NULL DEFAULT '1',
+  `bounty` decimal(9,1) NOT NULL DEFAULT '0.0',
+  `created_at` int UNSIGNED NOT NULL,
+  `filled_at` int UNSIGNED DEFAULT NULL,
+  `updated_at` int UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_category_id` (`category_id`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `request_votes` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `request_id` int UNSIGNED NOT NULL,
+  `user_id` int UNSIGNED NOT NULL,
+  `bounty` decimal(9,1) NOT NULL DEFAULT '0.0',
+  `created_at` int UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_unique_vote` (`request_id`,`user_id`),
+  KEY `idx_request_id` (`request_id`),
+  KEY `idx_user_id` (`user_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `request_comments` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `request_id` int UNSIGNED NOT NULL,
+  `user_id` int UNSIGNED NOT NULL,
+  `message` text NOT NULL,
+  `created_at` int UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_request_id` (`request_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `offers` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` int UNSIGNED NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text,
+  `category_id` int UNSIGNED NOT NULL DEFAULT '0',
+  `year` smallint UNSIGNED DEFAULT NULL,
+  `status` enum('open','uploaded','cancelled') NOT NULL DEFAULT 'open',
+  `torrent_id` int UNSIGNED DEFAULT NULL,
+  `requests` int UNSIGNED NOT NULL DEFAULT '0',
+  `created_at` int UNSIGNED NOT NULL,
+  `uploaded_at` int UNSIGNED DEFAULT NULL,
+  `updated_at` int UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_category_id` (`category_id`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `offer_votes` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `offer_id` int UNSIGNED NOT NULL,
+  `user_id` int UNSIGNED NOT NULL,
+  `created_at` int UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_unique_vote` (`offer_id`,`user_id`),
+  KEY `idx_offer_id` (`offer_id`),
+  KEY `idx_user_id` (`user_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `offer_comments` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `offer_id` int UNSIGNED NOT NULL,
+  `user_id` int UNSIGNED NOT NULL,
+  `message` text NOT NULL,
+  `created_at` int UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_offer_id` (`offer_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 SQL;
 
     // ── Execute CREATE TABLE via DB class ─────────────────────────────────────

@@ -618,7 +618,7 @@ class DB_MySQLi implements DB_Base
 
     function output_error(int $type, array|string $message, string $file, int $line): never
     {
-        global $SITENAME, $BASEURL, $charset;
+        global $SITENAME, $BASEURL, $charset, $usergroups, $CURUSER;
 
         $title    = "System Error";
         $charset  = $charset ?? 'UTF-8';
@@ -678,7 +678,35 @@ class DB_MySQLi implements DB_Base
             } else {
                 $log_message .= " | Message: " . (is_array($message) ? json_encode($message) : $message);
             }
+            $log_message .= " | Error ID: ERR-{$randomId}";
             write_log($log_message);
+        }
+
+        // Определяем, можно ли показывать подробности (запрос, пути, текст
+        // ошибки MySQL) — это должны видеть только стафф, не гости/юзеры.
+        // Обёрнуто в try/catch: сама проверка не должна уметь упасть.
+        $isStaff = false;
+        try {
+            if (function_exists('is_staff_error_viewer')) {
+                $isStaff = is_staff_error_viewer();
+            } elseif (!empty($usergroups) && is_array($usergroups) && function_exists('is_mod')) {
+                $isStaff = is_mod($usergroups);
+            } elseif (!empty($CURUSER['id']) && !empty($usergroups['cansettingspanel'])) {
+                $isStaff = true;
+            }
+        } catch (\Throwable) {
+            $isStaff = false;
+        }
+
+        if (!$isStaff) {
+            // Гость/обычный юзер — только факт ошибки и ID для поддержки.
+            $error_type    = "System Error";
+            $error_icon    = "bi-tools";
+            $error_details = "
+                <div class='alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25'>
+                    <i class='bi bi-exclamation-triangle-fill me-2'></i>
+                    Something went wrong on our end. Our team has already been notified.
+                </div>";
         }
 
         // Заголовки
@@ -688,6 +716,21 @@ class DB_MySQLi implements DB_Base
             @header('Retry-After: 1800');
             @header("Content-type: text/html; charset={$charset}");
         }
+
+        $locationBlock = $isStaff ? "
+      <div class='mb-4'>
+        <h5 class='mb-2'>Error Location:</h5>
+        <div class='file-path mb-2'>
+          <strong>Called from:</strong> {$caller_file}<br>
+          <strong>Line:</strong> {$caller_line}
+        </div>
+        <div class='file-path'>
+          <strong>DB Layer:</strong> {$file}<br>
+          <strong>Line:</strong> {$line}
+        </div>
+      </div>" : "";
+
+        $headerTitle = $isStaff ? "{$error_type} in {$currentFile}" : $error_type;
 
         echo <<<HTML
 <!DOCTYPE html>
@@ -714,23 +757,13 @@ class DB_MySQLi implements DB_Base
     <div class="card-header">
       <i class="bi {$error_icon} error-icon"></i>
       <div>
-        <h2 class="mb-0">{$error_type} in {$currentFile}</h2>
+        <h2 class="mb-0">{$headerTitle}</h2>
         <p class="mb-0 opacity-75">{$bbname} System Protection</p>
       </div>
     </div>
     <div class="card-body">
       {$error_details}
-      <div class='mb-4'>
-        <h5 class='mb-2'>Error Location:</h5>
-        <div class='file-path mb-2'>
-          <strong>Called from:</strong> {$caller_file}<br>
-          <strong>Line:</strong> {$caller_line}
-        </div>
-        <div class='file-path'>
-          <strong>DB Layer:</strong> {$file}<br>
-          <strong>Line:</strong> {$line}
-        </div>
-      </div>
+      {$locationBlock}
       <div class='d-flex flex-column flex-sm-row gap-3'>
         <button onclick='history.back()' class='btn btn-outline-danger flex-grow-1'>
           <i class='bi bi-arrow-left me-2'></i> Go Back

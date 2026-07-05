@@ -42,6 +42,60 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/comment_attachments.css">
 <script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/edit_delete_comment.js"></script>
 
+<style>
+/* Comment card base transition */
+.closest .card {
+    transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+    border-left: 3px solid transparent !important;
+}
+/* Selected state */
+.comment-selected .card {
+    border-color: var(--bs-danger) !important;
+    border-left: 3px solid var(--bs-danger) !important;
+    background-color: rgba(var(--bs-danger-rgb), 0.035) !important;
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-danger-rgb), 0.12) !important;
+}
+.comment-selected .card-footer {
+    background-color: rgba(var(--bs-danger-rgb), 0.055) !important;
+}
+/* Switch sizing */
+.comment-checkbox {
+    width: 2.2em !important;
+    height: 1.2em !important;
+    cursor: pointer;
+}
+</style>
+
+<script>
+function toggleCommentSelect(checkbox) {
+    const wrapper = document.getElementById('comment-' + checkbox.value);
+    if (wrapper) {
+        wrapper.classList.toggle('comment-selected', checkbox.checked);
+    }
+    toggleMassDeleteButton();
+}
+
+function toggleSelectAll(masterSwitch) {
+    document.querySelectorAll('.comment-checkbox').forEach(cb => {
+        cb.checked = masterSwitch.checked;
+        const wrapper = document.getElementById('comment-' + cb.value);
+        if (wrapper) {
+            wrapper.classList.toggle('comment-selected', masterSwitch.checked);
+        }
+    });
+    toggleMassDeleteButton();
+}
+
+function toggleMassDeleteButton() {
+    const count = document.querySelectorAll('.comment-checkbox:checked').length;
+    const btn = document.getElementById('massDeleteButton');
+    if (btn) {
+        btn.classList.toggle('d-none', count === 0);
+        btn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete Selected (' + count + ')';
+    }
+}
+</script>
+
 
 
 <?php
@@ -237,22 +291,22 @@ if (!empty($att_bulk[$pid])) {
        
         
         $post['posturl'] = '
-		
-		
 		<a name="pid'.$row['id'].'" id="pid'.$row['id'].'"></a>
-<a href="'.$postlink.'#pid'.$pid.'" title="'.$torrent_name.'">#'.$post_number.'</a>
-
-<div class="form-check form-check-inline ms-2">
-    <input class="form-check-input comment-checkbox" type="checkbox" 
-           name="comment_ids[]" 
-           value="'.$row['id'].'" 
-           data-tid="'.$row['torrentid'].'" 
-           onchange="toggleMassDeleteButton()"
-           id="comment-checkbox-'.$row['id'].'">
-    <label class="form-check-label small" for="comment-checkbox-'.$row['id'].'">
-       
-    </label>
-</div>';
+        <div class="d-flex align-items-center gap-2 justify-content-end">
+            <a href="'.$postlink.'#pid'.$pid.'" title="'.$torrent_name.'" class="badge rounded-pill bg-primary text-decoration-none">#'.$post_number.'</a>
+            '.($moderator ? '
+            <div class="form-check form-switch m-0 p-0">
+                <input class="form-check-input comment-checkbox m-0" type="checkbox" role="switch"
+                       name="comment_ids[]"
+                       value="'.$row['id'].'"
+                       data-tid="'.$row['torrentid'].'"
+                       data-post-id="'.$pid.'"
+                       onchange="toggleCommentSelect(this)"
+                       id="comment-checkbox-'.$row['id'].'"
+                       title="Select for deletion"
+                       style="cursor:pointer;">
+            </div>' : '').'
+        </div>';
 		
 		
 		
@@ -470,13 +524,13 @@ function generateDeleteButton(array $row): string
 function generateHeaderSection(string $torrent_name, bool $moderator): string
 {
     $moderator_html = $moderator ? '
-    <div>
-        <div class="form-check form-check-inline me-2">
-            <input class="form-check-input" type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)">
-            <label class="form-check-label small text-black" for="selectAllCheckbox">Select All</label>
+    <div class="d-flex align-items-center gap-3">
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="selectAllCheckbox" onchange="toggleSelectAll(this)" style="cursor:pointer;">
+            <label class="form-check-label small text-black fw-normal" for="selectAllCheckbox">Select All</label>
         </div>
-        <button id="massDeleteButton" class="btn btn-sm btn-outline-light d-none text-dark" onclick="massDeleteComments()">
-            <i class="fa-solid fa-trash"></i> Delete Selected
+        <button id="massDeleteButton" class="btn btn-sm btn-danger d-none" onclick="massDeleteComments()">
+            <i class="fa-solid fa-trash me-1"></i>Delete Selected
         </button>
     </div>' : '';
 

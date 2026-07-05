@@ -7,6 +7,7 @@ if(!defined('IN_TRACKER'))
 $language['editpost'] = array 
 (
 
+'mod_options' => "Moderator Options:",
 
 'attachments' => "Attachments",
 

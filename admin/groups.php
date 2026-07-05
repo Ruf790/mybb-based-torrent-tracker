@@ -515,10 +515,12 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     // ── Misc tab ─────────────────────────────────────────────
     echo '<div class="tab-pane fade" id="tab_misc">';
     echo '<div class="row"><div class="col-md-6">';
-    echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-star me-2"></i>Miscellaneous</h6>';
-    echo '<div class="mb-3"><label class="form-label fw-semibold">Number of Stars</label>';
-    echo $form->generate_numeric_field('stars', $mybb->input['stars'], ['class' => 'form-control']);
-    echo '</div>';
+    //echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-star me-2"></i>Miscellaneous</h6>';
+   
+    //echo '<div class="mb-3"><label class="form-label fw-semibold">Number of Stars</label>';
+    //echo $form->generate_numeric_field('stars', $mybb->input['stars'], ['class' => 'form-control']);
+    //echo '</div>';
+	
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-info-circle me-2"></i>Information Options</h6>';
     ug_switch($form, 'canviewwolinvis',     'Can view invisible users?',  $mybb->get_input('canviewwolinvis', MyBB::INPUT_INT));
     ug_switch($form, 'canviewdeletionnotice','Can view deletion notice?', $mybb->input['canviewdeletionnotice']);

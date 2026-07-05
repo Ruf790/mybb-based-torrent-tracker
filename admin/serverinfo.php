@@ -474,7 +474,7 @@ document.addEventListener(\'DOMContentLoaded\', function() {
 }
 
 // Usage:
-if (!defined('STAFF_PANEL_TSSEv56')) {
+if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger">Error! Direct initialization of this file is not allowed.</div>');
 }
 

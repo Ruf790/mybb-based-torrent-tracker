@@ -115,8 +115,7 @@ class ReseedRequestHandler
             SELECT t.owner, t.name, t.id, u.username
             FROM torrents t
             INNER JOIN users u ON t.owner = u.id
-            WHERE t.id IN ({$idList}) 
-            AND ts_external != 'yes' 
+            WHERE t.id IN ({$idList})  
             AND seeders = 0
             AND t.owner > 0
         ");
@@ -399,8 +398,7 @@ if (isset($_SESSION['error_message'])) {
                    u.username, u.usergroup, u.uploaded, u.downloaded
             FROM torrents t
             LEFT JOIN users u ON t.owner = u.id
-            WHERE t.ts_external != 'yes' 
-            AND t.seeders = 0
+            WHERE t.seeders = 0
             AND t.visible = 'yes'
             ORDER BY t.added DESC
             LIMIT 500

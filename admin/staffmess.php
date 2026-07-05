@@ -135,7 +135,7 @@ while ($gid = $db->fetch_array($query)) {
 
 
 
-    <td style="border: 0">' . format_name($gid['title'], $gid['namestyle']) . '</td>';
+    <td style="border: 0">' . format_name($gid['title'], $gid['gid']) . '</td>';
     ++$count;
 }
 $sgids .= '

@@ -34,7 +34,7 @@ function build_usergroup_checkboxes(): string
     $count  = 0;
 
     while ($row = $db->fetch_array($query)) {
-        $label  = get_user_color($row['title'], $row['namestyle']);
+        $label  = format_name($row['title'], $row['gid']);
         $items .= sprintf(
             '<div class="form-check form-check-inline me-3 mb-2">
                 <input class="form-check-input" type="checkbox" name="usergroup[]" id="ug_%1$d" value="%1$d">

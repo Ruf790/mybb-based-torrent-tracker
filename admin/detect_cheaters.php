@@ -178,7 +178,7 @@ $sql = "SELECT
             s.userid, s.uploaded as snatched_uploaded, s.downloaded as snatched_downloaded, 
             s.torrentid,
             t.name as torrent_name, t.free, t.silver, t.isrequest, t.isnuked, 
-            t.sticky, t.anonymous, t.banned, t.ts_external, t.visible, 
+            t.sticky, t.anonymous, t.banned, t.visible, 
             t.doubleupload, t.allowcomments, t.seeders, t.leechers, 
             u.downloaded as user_current_download, 
             u.uploaded as user_current_upload, 

@@ -2,7 +2,7 @@
 
 /** Generated Cache - Do Not Alter
  * Cache Name: smilies
- * Generated: Fri, 26 Jun 2026 11:17:44 +0000
+ * Generated: Sun, 28 Jun 2026 10:13:11 +0000
 */
 
 $smilies = array (
@@ -151,6 +151,14 @@ $smilies = array (
   ':dice:' => 'emoji_u1f3b2.gif',
   ':mega:' => 'emoji_u1f4e3.gif',
   ':notes:' => 'emoji_u1f3b6.gif',
+  ':selfie:' => 'selfie.gif',
+  ':phone:' => 'socialmedia.gif',
+  ':accordian:' => 'smileyaccordian.gif',
+  ':insta:' => 'instagram.gif',
+  ':welcome:' => 'welcome.gif',
+  ':happymail:' => 'happymail.gif',
+  ':paperguns:' => 'paperguns.gif',
+  ':streams:' => 'StreamofHearts.gif',
 );
 
 ?>

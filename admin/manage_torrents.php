@@ -196,13 +196,23 @@ $queryBuilder->addSearchTypeCondition($searchtype);
 
 // Handle form submission
 if ($do === 'update') {
-    $torrentManager->handleUpdate($_POST);
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        $torrentManager->addError('Security check failed. Please refresh the page and try again.');
+    } else {
+        $torrentManager->handleUpdate($_POST);
+    }
 }
 
 
 
 // Handle quick_edit из модалки
 if ($do === 'quick_edit') {
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        $_SESSION['action_success'] = null;
+        header('Location: ' . $_this_script_ . '');
+        exit;
+    }
+
     $tid  = (int)($_POST['torrent_id'] ?? 0);
     $name = $db->escape_string(htmlspecialchars_uni($_POST['name'] ?? ''));
     $cat  = (int)($_POST['category'] ?? 0);
@@ -374,6 +384,7 @@ echo '
     <form method="post" action="' . $_this_script_ . '" name="update" id="torrentForm">
         <input type="hidden" name="do" value="update">
         <input type="hidden" name="page" value="' . $page . '">
+        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
         
         <div class="torrent-table-container">
             <div class="d-flex justify-content-between align-items-center p-3 bg-light border-bottom">

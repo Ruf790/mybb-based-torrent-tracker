@@ -221,6 +221,14 @@ background:url(../images/png.png) -64px -16px;
 
 
 
+img.smilie {
+    width: 32px;
+    height: 32px;
+    vertical-align: -0.4em;
+    cursor: pointer;
+}
+
+
 
 
 

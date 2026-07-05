@@ -42,9 +42,7 @@ INSERT IGNORE INTO `attachtypes` (`atid`, `name`, `mimetype`, `extension`, `maxs
 (36, 'C++ File', 'text/x-c++', 'cpp', 500, '<i class=\"fas fa-file-code\" style=\"color: #00599c;\"></i>', 1, 0, '-1', '-1', 0),
 (37, 'WordPress Theme', 'application/zip', 'zip', 10240, '<i class=\"fab fa-wordpress\" style=\"color: #21759b;\"></i>', 1, 0, '-1', '-1', 0);
 
--- banfilters
-INSERT IGNORE INTO `banfilters` (`fid`, `filter`, `type`, `lastuse`, `dateline`) VALUES
-(148, 'aaaa@aol.com', 3, 0, 1774539315);
+
 
 -- bonus
 INSERT IGNORE INTO `bonus` (`id`, `bonusname`, `points`, `description`, `art`, `menge`) VALUES
@@ -286,7 +284,15 @@ INSERT IGNORE INTO `smilies` (`sid`, `stitle`, `stext`, `spath`, `sorder`) VALUE
 (202, 'trophy', ':trophy:', 'emoji_u1f3c6.gif', 248),
 (203, 'dice', ':dice:', 'emoji_u1f3b2.gif', 249),
 (204, 'megaphone', ':mega:', 'emoji_u1f4e3.gif', 250),
-(205, 'music_notes', ':notes:', 'emoji_u1f3b6.gif', 251);
+(205, 'music_notes', ':notes:', 'emoji_u1f3b6.gif', 251),
+(206, 'selfie', ':selfie:', 'selfie.gif', 270),
+(207, 'socialmedia', ':phone:', 'socialmedia.gif', 290),
+(208, 'smileyaccordian', ':accordian:', 'smileyaccordian.gif', 310),
+(209, 'instagram', ':insta:', 'instagram.gif', 330),
+(210, 'welcome', ':welcome:', 'welcome.gif', 350),
+(211, 'happymail', ':happymail:', 'happymail.gif', 370),
+(212, 'paperguns', ':paperguns:', 'paperguns.gif', 390),
+(213, 'StreamofHearts', ':streams:', 'StreamofHearts.gif', 410);
 
 
 
@@ -424,4 +430,5 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (120, 'phpeditor', 'Edit php files', 'phpeditor.php', '[8]'),
 (121, 'announcements_forum', 'Manage Forum Announcements', 'announcements_forum.php', '[6],[7],[8]'),
 (122, 'modcp', 'Threads and Posts Awaiting Moderation', 'modcp.php', '[6],[7],[8]'),
-(123, 'manage_polls', 'Manage Polls', 'manage_polls.php', '[6],[7],[8]');
+(123, 'manage_polls', 'Manage Polls', 'manage_polls.php', '[6],[7],[8]'),
+(124, 'requests_offers', 'Manage Requests &amp; Offers', 'requests_offers.php', '[6],[7],[8]');

@@ -63,6 +63,7 @@ $TABLES = [
 
 $cfg = $TABLES[$tab];
 $admin_base = $_this_script_no_act . '?act=requests_offers&tab=' . $tab;
+$post_key = $mybb->post_code; // CSRF-токен для форм и мутирующих ссылок этой страницы
 
 // ── Категории ───────────────────────────────────────────────────────────────
 $cats = [];
@@ -71,6 +72,11 @@ while ($r = $db->fetch_array($q)) $cats[$r['id']] = $r['name'];
 
 // ── Пометить как Filled/Uploaded (модалка с torrent_id) ────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_complete_id'])) {
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
+        exit();
+    }
+
     $cid        = (int)$_POST['ro_complete_id'];
     $torrent_id = (int)($_POST['torrent_id'] ?? 0);
 
@@ -108,6 +114,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_complete_id'])) {
 
 // ── Bulk-действия ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
+        exit();
+    }
+
     $bt  = $TABLES[$tab];
     $ids = array_filter(array_map('intval', $_POST['ids'] ?? []));
     $do  = (string)$_POST['bulk_action'];
@@ -156,7 +167,7 @@ if ($do === 'delete' && $row_id) {
                     <h5>Are you sure you want to delete this <?= htmlspecialchars(rtrim($cfg['label'], 's')) ?>?</h5>
                     <p class="text-muted">ID #<?= $row_id ?> — this action cannot be undone.</p>
                     <div class="mt-3 d-flex justify-content-center gap-2">
-                        <a href="<?= $admin_base ?>&do=delete&id=<?= $row_id ?>&sure=yes" class="btn btn-danger btn-sm rounded-pill px-4">
+                        <a href="<?= $admin_base ?>&do=delete&id=<?= $row_id ?>&sure=yes&my_post_key=<?= urlencode($post_key) ?>" class="btn btn-danger btn-sm rounded-pill px-4">
                             <i class="fas fa-trash me-1"></i>Yes, delete it
                         </a>
                         <a href="<?= $admin_base ?>" class="btn btn-outline-secondary btn-sm rounded-pill px-4">
@@ -170,6 +181,10 @@ if ($do === 'delete' && $row_id) {
         stdfoot();
         exit();
     }
+    if (!isset($_GET['my_post_key']) || !verify_post_check($_GET['my_post_key'])) {
+        ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
+        exit();
+    }
     $db->sql_query("DELETE FROM {$cfg['table']} WHERE id = {$row_id}");
     $db->sql_query("DELETE FROM {$cfg['vote_table']} WHERE {$cfg['vote_fk']} = {$row_id}");
     $db->sql_query("DELETE FROM {$cfg['comment_table']} WHERE {$cfg['comment_fk']} = {$row_id}");
@@ -180,6 +195,10 @@ if ($do === 'delete' && $row_id) {
 
 // ── Одиночная смена статуса ────────────────────────────────────────────────
 if ($do === 'setstatus' && $row_id && isset($_GET['status']) && array_key_exists($_GET['status'], $cfg['statuses'])) {
+    if (!isset($_GET['my_post_key']) || !verify_post_check($_GET['my_post_key'])) {
+        ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
+        exit();
+    }
     $status = $db->escape_string($_GET['status']);
     $db->sql_query("UPDATE {$cfg['table']} SET status = '{$status}', updated_at = '" . TIMENOW . "' WHERE id = {$row_id}");
     write_log("Set status '{$status}' on {$tab} #{$row_id} by " . $CURUSER['username']);
@@ -209,7 +228,7 @@ $total = (int)$db->fetch_field(
 );
 
 $list_q = $db->sql_query("
-    SELECT t.*, u.username, u.usergroup, u.avatar
+    SELECT t.*, u.username, u.avatar
     FROM {$cfg['table']} t
     LEFT JOIN users u ON u.id = t.user_id
     {$where_sql}
@@ -720,6 +739,7 @@ enqueue_staff_assets();
     <!-- Bulk actions + Table -->
     <form method="post" id="ro-bulk-form">
         <input type="hidden" name="table" value="<?= $tab ?>">
+        <input type="hidden" name="my_post_key" value="<?= $post_key ?>">
 
         <div class="ro-card animate-fade-in-up">
         <div class="ro-toolbar d-flex align-items-center gap-2 flex-wrap mb-2 animate-slide-down">
@@ -790,7 +810,7 @@ enqueue_staff_assets();
                                 </div>
                                 <?php endif; ?>
                                 <span class="text-truncate" style="max-width:90px">
-                                    <?= format_name($row['username'], $row['usergroup']) ?>
+                                    <?= htmlspecialchars($row['username'] ?? 'deleted') ?>
                                 </span>
                             </div>
                         </td>
@@ -841,11 +861,11 @@ enqueue_staff_assets();
                                         </button>
                                     </li>
                                     <?php else: ?>
-                                    <li><a class="dropdown-item" href="<?= $admin_base ?>&do=setstatus&id=<?= $row['id'] ?>&status=<?= $val ?>"><i class="fas fa-flag me-2"></i>Mark as <?= $label ?></a></li>
+                                    <li><a class="dropdown-item" href="<?= $admin_base ?>&do=setstatus&id=<?= $row['id'] ?>&status=<?= $val ?>&my_post_key=<?= urlencode($post_key) ?>"><i class="fas fa-flag me-2"></i>Mark as <?= $label ?></a></li>
                                     <?php endif; ?>
                                     <?php endforeach; ?>
                                     <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item text-danger" href="<?= $admin_base ?>&do=delete&id=<?= $row['id'] ?>"><i class="fas fa-trash me-2"></i>Delete</a></li>
+                                    <li><a class="dropdown-item text-danger" href="<?= $admin_base ?>&do=delete&id=<?= $row['id'] ?>&my_post_key=<?= urlencode($post_key) ?>"><i class="fas fa-trash me-2"></i>Delete</a></li>
                                 </ul>
                             </div>
                         </td>
@@ -887,6 +907,7 @@ enqueue_staff_assets();
                     <p class="text-muted small">Enter the torrent ID that was uploaded for this <?= rtrim($cfg['label'], 's') ?>.</p>
                     <form method="post" action="<?= $admin_base ?>">
                         <input type="hidden" name="ro_complete_id" id="roCompleteId" value="">
+                        <input type="hidden" name="my_post_key" value="<?= $post_key ?>">
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Torrent ID</label>
                             <input type="number" class="form-control rounded-3" name="torrent_id" required min="1" placeholder="e.g. 12345">

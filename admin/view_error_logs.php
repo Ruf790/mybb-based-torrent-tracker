@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+if (!defined('STAFF_PANEL')) {
+    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+}
+
 stdhead('View Error Logs');
 
 $logDir = TSDIR . '/error_logs/';
@@ -17,6 +21,10 @@ if ($selectedLog && (!in_array($selectedLog, $logFiles) || !str_starts_with($log
 
 // Handle delete single log
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_log'])) {
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        die('Security check failed. Please refresh the page and try again.');
+    }
+
     $deleteLog = basename($_POST['delete_log']);
     $deletePath = realpath($logDir . $deleteLog);
     
@@ -34,6 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_log'])) {
 
 // Handle delete all logs
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_all'])) {
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        die('Security check failed. Please refresh the page and try again.');
+    }
+
     $deleted = 0;
     foreach ($logFiles as $logFile) {
         $path = realpath($logDir . $logFile);
@@ -186,7 +198,6 @@ if ($selectedLog && is_file($logPath) && is_readable($logPath)) {
                                             <i class="fas fa-trash me-1"></i>Delete
                                         </button>
                                     <?php endif; ?>
-                                    
                                     <?php if (count($logFiles) > 0): ?>
                                         <button type="button" class="btn btn-outline-danger" 
                                                 data-bs-toggle="modal" data-bs-target="#deleteAllModal">
@@ -294,6 +305,7 @@ if ($selectedLog && is_file($logPath) && is_readable($logPath)) {
                     <p class="text-muted small">This action cannot be undone.</p>
                 </div>
                 <div class="modal-footer">
+                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                     <input type="hidden" name="delete_log" value="<?= htmlspecialchars($selectedLog) ?>">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-danger">
@@ -328,6 +340,7 @@ if ($selectedLog && is_file($logPath) && is_readable($logPath)) {
                     <p class="text-muted small mt-3">This action cannot be undone and will remove all log history.</p>
                 </div>
                 <div class="modal-footer">
+                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                     <input type="hidden" name="delete_all" value="1">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-danger">

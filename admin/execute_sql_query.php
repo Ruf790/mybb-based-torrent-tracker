@@ -45,6 +45,13 @@ $exec_time   = null;
 $rows_info   = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execute_sql_query') {
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        stdhead('SQL Query Editor');
+        echo '<div class="container mt-4"><div class="alert alert-danger">Security check failed. Please refresh the page and try again.</div></div>';
+        stdfoot();
+        exit;
+    }
+
     $query = trim($_POST['query'] ?? '');
 
     if (!empty($query)) {
@@ -54,6 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execut
             'timestamp' => time(),
         ]);
         $_SESSION['query_history'] = array_slice($_SESSION['query_history'], 0, 20);
+
+        // Аудит: кто и какой именно SQL выполнил — отдельно от истории в сессии,
+        // которая пропадает вместе с сессией и не видна другим админам.
+        write_log('SQL Query Editor: ' . $CURUSER['username'] . ' executed: ' . str_replace(["\r", "\n"], ' ', $query));
 
         $t0      = microtime(true);
         $result  = $mysqli->query($query);
@@ -428,6 +439,7 @@ stdhead('SQL Query Editor');
             <!-- Form -->
             <form method="post" id="qeForm">
                 <input type="hidden" name="do" value="ts_execute_sql_query">
+                <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
 
                 <div class="qe-editor-wrap">
                     <textarea name="query" id="query"
@@ -612,6 +624,22 @@ document.getElementById('query').addEventListener('keydown', function(e){
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         document.getElementById('qeForm').submit();
+    }
+});
+
+// Подтверждение перед выполнением потенциально деструктивных запросов —
+// один клик по "Execute" иначе может снести данные без права на "отменить".
+document.getElementById('qeForm').addEventListener('submit', function(e){
+    const sql = document.getElementById('query').value.trim();
+    const destructive = /^\s*(DROP|DELETE|TRUNCATE|UPDATE|ALTER)\b/i;
+    if (destructive.test(sql)) {
+        const ok = confirm(
+            'This looks like a destructive query (DROP/DELETE/TRUNCATE/UPDATE/ALTER).\n\n' +
+            'It will run immediately with no undo. Continue?'
+        );
+        if (!ok) {
+            e.preventDefault();
+        }
     }
 });
 </script>

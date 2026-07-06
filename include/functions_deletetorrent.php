@@ -3,6 +3,32 @@
 
 declare(strict_types=1);
 
+
+
+
+function update_users_comment_count_before_delete(int $torrent_id): void
+{
+    global $db;
+
+    $result = $db->sql_query(
+        "SELECT `user`, COUNT(*) AS cnt FROM comments WHERE torrent = {$torrent_id} GROUP BY `user`"
+    );
+
+    while ($row = $db->fetch_array($result)) {
+        $uid = (int)$row['user'];
+        $cnt = (int)$row['cnt'];
+
+        if ($uid <= 0 || $cnt <= 0) {
+            continue;
+        }
+
+        $db->sql_query(
+            "UPDATE users SET comms = GREATEST(comms - {$cnt}, 0) WHERE id = {$uid}"
+        );
+    }
+}
+
+
 /**
  * Delete torrent and all associated files
  */
@@ -23,6 +49,9 @@ function deletetorrent(int $id, bool $permission = false): void
     
     // Delete ALL comment files (both torrent_id and comment_id)
     delete_all_torrent_comment_files($id);
+	
+	
+	update_users_comment_count_before_delete($id);
     
     // Delete associated data from database
     delete_torrent_database_records($id);

@@ -680,6 +680,36 @@ class DB_MySQLi implements DB_Base
             }
             $log_message .= " | Error ID: ERR-{$randomId}";
             write_log($log_message);
+        } else {
+            // Fallback: ошибки подключения (CONNECT_SQL) или ошибки до инициализации БД
+            // не могут писаться через write_log() (она сама зависит от БД), поэтому
+            // пишем напрямую в файл error_logs/connect_errors.log — иначе Error ID,
+            // показанный гостю на экране, невозможно найти ни в одном логе.
+            $fallback_message  = "[" . ($type == CONNECT_SQL ? "CONNECT" : ($type == MYBB_SQL ? "SQL" : "PHP")) . " ERROR]";
+            $fallback_message .= " File: {$caller_file} | Line: {$caller_line}";
+            if (is_array($message)) {
+                $error_no      = $message['error_no'] ?? '';
+                $error_text    = $message['error'] ?? '';
+                $fallback_message .= " | Error #{$error_no}: {$error_text}";
+                if (!empty($message['query'])) {
+                    $clean_query       = preg_replace('/\s+/', ' ', trim((string)$message['query']));
+                    $fallback_message .= " | Query: {$clean_query}";
+                }
+            } else {
+                $fallback_message .= " | Message: {$message}";
+            }
+            $fallback_message .= " | Error ID: ERR-{$randomId}";
+            $fallback_message .= " | Timestamp: " . date('d-m-Y H:i:s');
+
+            $root   = rtrim(dirname(__DIR__), '/\\');
+            $logDir = "{$root}/error_logs";
+
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0777, true);
+            }
+
+            $logFile = "{$logDir}/connect_errors.log";
+            @file_put_contents($logFile, $fallback_message . PHP_EOL, FILE_APPEND | LOCK_EX);
         }
 
         // Определяем, можно ли показывать подробности (запрос, пути, текст

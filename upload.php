@@ -5,6 +5,19 @@ declare(strict_types=1);
 define("IN_MYBB", 1);
 define("SCRIPTNAME", "upload.php");
 require_once 'global.php';
+
+
+if (empty($CURUSER['id'])) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['action'])) {
+        header("Content-type: application/json; charset=utf-8");
+        echo json_encode(['success' => false, 'error' => 'Not logged in']);
+        exit;
+    }
+    print_no_permission();
+}
+
+
+
 require(INC_PATH . '/functions_category.php');
 require_once INC_PATH.'/datahandler.php';
 
@@ -45,7 +58,7 @@ $editor = insert_bbcode_editor($smilies, $BASEURL, 'description');
 if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot') 
 {
     if (empty($_POST['screenshot_id'])) 
-	{
+    {
         echo json_encode(['success' => false, 'error' => 'Invalid ID']);
         exit;
     }
@@ -54,20 +67,32 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
     $row = $db->fetch_array($db->sql_query("SELECT * FROM `screenshots` WHERE id = '{$screenshot_id}'"));
 
     if ($row) 
-	{
+    {
+        // Проверяем, что скриншот принадлежит торренту текущего юзера (или юзер — мод)
+        $torrent_owner = $db->fetch_array(
+            $db->sql_query("SELECT owner FROM torrents WHERE id = " . (int)$row['torrent_id'])
+        );
+
+        $is_mod = is_mod($usergroups);
+
+        if (!$torrent_owner || (!$is_mod && (int)$CURUSER['id'] !== (int)$torrent_owner['owner'])) {
+            echo json_encode(['success' => false, 'error' => 'Access denied']);
+            exit;
+        }
+
         $filePath = $_SERVER['DOCUMENT_ROOT'] . '/torrents/screens/' . $row['filename'];
         if (file_exists($filePath)) 
-		{
+        {
             unlink($filePath);
         }
 
-		$db->delete_query("screenshots", "id='$screenshot_id'");
+        $db->delete_query("screenshots", "id='$screenshot_id'");
 
         echo json_encode(['success' => true]);
         exit;
     } 
-	else 
-	{
+    else 
+    {
         echo json_encode(['success' => false, 'error' => 'Screenshot not found']);
         exit;
     }
@@ -82,10 +107,26 @@ if (isset($_POST['action']) && $_POST['action'] === 'reorder_screenshots')
         exit;
     }
 
-    $order = array_map('intval', $_POST['order']);
+    $order   = array_map('intval', $_POST['order']);
+    $is_mod  = is_mod($usergroups);
 
     foreach ($order as $position => $screenshotId) {
         if ($screenshotId <= 0) continue;
+
+        // Проверка владения для каждого screenshot_id
+        $row = $db->fetch_array(
+            $db->sql_query("SELECT torrent_id FROM `screenshots` WHERE id = " . (int)$screenshotId)
+        );
+        if (!$row) continue;
+
+        $torrent_owner = $db->fetch_array(
+            $db->sql_query("SELECT owner FROM torrents WHERE id = " . (int)$row['torrent_id'])
+        );
+
+        if (!$torrent_owner || (!$is_mod && (int)$CURUSER['id'] !== (int)$torrent_owner['owner'])) {
+            continue; // тихо пропускаем чужие скриншоты, не отдавая их ID в ответе
+        }
+
         $db->update_query(
             "screenshots",
             ['sort_order' => (int)$position],
@@ -895,6 +936,8 @@ if ($torrentFilename)
         $cache->update_torrents();
 		
 		notify_upload_subscribers((int)$category, $NewTID, $torrentName);
+		
+		kps('+', $kpsupload, $CURUSER['id']);
 		
 		
     }

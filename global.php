@@ -23,7 +23,7 @@ if (!defined('DEBUGMODE')) {
 
 // --- Misc constants ---
 const VERSION = '';
-const TS_MESSAGE = 'Powered by Ruff Tracker';
+const TS_MESSAGE = 'Powered by ArtCore Gangsta';
 
 // --- Default Usergroups ---
 const UC_GUEST         = 1;

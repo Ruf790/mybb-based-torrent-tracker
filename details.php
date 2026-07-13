@@ -21,10 +21,9 @@ use Arokettu\Torrent\TorrentFile;
 
 
 
-if(!isset($CURUSER))
+if (empty($CURUSER['id']))
 {
-	
-	stderr('You are not Logged');
+    print_no_permission();
 }
 
 
@@ -48,7 +47,7 @@ $parser = new postParser;
   
   
 $parser_options = array(
-	"allow_html" => 1,
+	"allow_html" => 0,
 	"allow_mycode" => 1,
 	"allow_smilies" => 1,
 	"allow_imgcode" => 1,
@@ -449,7 +448,9 @@ echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/report.js"></scri
 
 require_once INC_PATH . '/modals.php';
 
-require_once 'details_edit.php';
+if ($CURUSER['id'] === $torrent2['owner'] || $is_mod) {
+    require_once 'details_edit.php';
+}
 
 
 
@@ -918,13 +919,16 @@ $editor = insert_bbcode_editor($smilies, $BASEURL, 'message');
 $posthash = bin2hex(random_bytes(16));
 $uploader = render_attachment_uploader($posthash, (int)$CURUSER['id']);
  
+
+
+
 // ── Формирование HTML ────────────────────────────────────────────────────────
 $showcommenttable .= '
 <br />
 <div class="container mt-4">
     <h2 class="mb-3">Quick Comment</h2>
     '.(!empty($cerror) ? '<div class="error">'.$cerror.'</div>' : '').'
-    ' . ($useajax == 'yes' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js"></script>' : '') . '
+    ' . ($use_xmlhttprequest == '1' ? '<script src="' . $BASEURL . '/scripts/quick_comment.js"></script>' : '') . '
     ' . $editor['toolbar'] . '
     <form name="comment" id="comment" method="post" action="comment.php?action=add&tid=' . $id . '" novalidate>
         <input type="hidden" name="ctype" value="quickcomment">
@@ -938,7 +942,7 @@ $showcommenttable .= '
         </div>
         <div id="message_preview" class="form-control mt-3 d-none"></div>
         ' . $uploader . '
-        ' . ($useajax == 'yes' ? '
+        ' . ($use_xmlhttprequest == '1' ? '
         <div class="d-flex align-items-center justify-content-center mb-3">
             <i id="loading-layer" class="fa-solid fa-circle-notch fa-spin" aria-label="Loading..." style="display:none; color: #0b59e0; width:24px; height:24px; margin-right: 10px;"></i>
             <button type="button" class="btn btn-primary me-2" id="quickcomment" onclick="TSajaxquickcomment(\'' . $id . '\');">' . $lang->global['buttonsubmit'] . '</button>

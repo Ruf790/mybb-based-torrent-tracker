@@ -1815,7 +1815,7 @@ if ($mybb->input['action'] === 'profile') {
     gzip();
     maxsysop();
 
-    $parser_options = ['allow_html' => 1, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'allow_videocode' => 1, 'filter_badwords' => 1];
+    $parser_options = ['allow_html' => 0, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'allow_videocode' => 1, 'filter_badwords' => 1];
 
     $uid = $mybb->get_input('id', MyBB::INPUT_INT);
     $memprofile = $uid ? get_user($uid) : ($CURUSER['id'] ? $CURUSER : false);
@@ -1929,7 +1929,7 @@ if ($mybb->input['action'] === 'profile') {
 
     $signature = '';
     if ($memprofile['signature']) {
-        $sig_parser = ['allow_html' => 1, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'me_username' => $me_username, 'filter_badwords' => 1];
+        $sig_parser = ['allow_html' => 0, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'me_username' => $me_username, 'filter_badwords' => 1];
         $memprofile['signature'] = $parser->parse_message($memprofile['signature'], $sig_parser);
         
 		$signature = '<div class="card border-0 mb-4">
@@ -2389,7 +2389,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
 
     // Signature (second pass if needed)
     if ($memprofile['signature'] && !$signature) {
-        $sig_parser = ['allow_html' => 1, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'me_username' => $me_username, 'filter_badwords' => 1];
+        $sig_parser = ['allow_html' => 0, 'allow_mycode' => 1, 'allow_smilies' => 1, 'allow_imgcode' => 1, 'me_username' => $me_username, 'filter_badwords' => 1];
         $memprofile['signature'] = $parser->parse_message($memprofile['signature'], $sig_parser);
         
 		$signature = '<div class="card border-0 mb-4">

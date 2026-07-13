@@ -566,7 +566,9 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
     $bgcolor2 = $postoptions ? 'trow1' : 'trow2';
 
     // ── Mod options ───────────────────────────────────────────────────────────
-    $modoptions = '';
+    $modoptions  = '';
+    $closeoption = '';
+    $stickoption = '';
     $is_mod     = is_mod($usergroups);
 
     if ($is_mod) {

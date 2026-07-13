@@ -14,7 +14,7 @@ require_once INC_PATH . '/class_parser.php';
 
 $parser = new postParser;
 $parser_options = [
-    "allow_html" => 1,
+    "allow_html" => 0,
     "allow_mycode" => 1,
     "allow_smilies" => 1,
     "allow_imgcode" => 1,
@@ -22,7 +22,9 @@ $parser_options = [
     "filter_badwords" => 1
 ];
 
-if (!isset($CURUSER)) stderr('You must be logged in to view offers.');
+if (empty($CURUSER['id'])) print_no_permission();
+
+
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 $is_mod = is_mod($usergroups);

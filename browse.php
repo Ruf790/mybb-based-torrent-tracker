@@ -15,10 +15,10 @@ require_once INC_PATH . '/functions_bookmark.php';
 maxsysop();
 
 
-
-if (!isset($CURUSER)) {
+if (empty($CURUSER['id'])) {
     print_no_permission();
 }
+
 
 $lang->load('browse');
 

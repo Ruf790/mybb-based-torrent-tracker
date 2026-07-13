@@ -38,7 +38,7 @@ function show_flash(): void {
     }
 }
 
-if (!isset($CURUSER)) stderr('You must be logged in to view requests.');
+if (empty($CURUSER['id'])) print_no_permission();
 
 $is_mod = is_mod($usergroups);
 $action = $mybb->get_input('action');

@@ -15,9 +15,11 @@ require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_forumlist.php';
 require_once INC_PATH . '/functions_multipage.php';
 
-if (!isset($CURUSER)) {
+
+if (empty($CURUSER['id'])) {
     print_no_permission();
 }
+
 
 // ─── Инициализация массивов сортировки ───────────────────────────────────────
 $orderarrow = $sortsel = array_fill_keys(

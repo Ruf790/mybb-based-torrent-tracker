@@ -312,7 +312,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
                 header("Content-type: application/json; charset={$charset}");
                 if($is_mod) 
 				{
-                    echo json_encode(["data" => '1', "first" => '1']);
+                    echo json_encode(["data" => '1', "first" => '1', "url" => get_forum_link($fid)]);
                 } else {
                     echo json_encode(["data" => '3', "url" => get_forum_link($fid)]);
                 }
@@ -340,11 +340,11 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
                 header("Content-type: application/json; charset={$charset}");
                 if($is_mod) 
 				{
-                    echo json_encode(["data" => '1', "first" => '0']);
+                    echo json_encode(["data" => '1', "first" => '0', "url" => $redirect]);
                 } 
 				else 
 				{
-                    echo json_encode(["data" => '2']);
+                    echo json_encode(["data" => '2', "url" => $redirect]);
                 }
             } 
 			else 
@@ -515,34 +515,78 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
     if (isset($post['visible']) && $post['visible'] != -1 && (($thread['firstpost'] == $pid && $is_mod || $forumpermissions['candeletethreads'] == 1 && $CURUSER['id'] == $post['uid'])) || ($thread['firstpost'] != $pid && ($is_mod || $forumpermissions['candeleteposts'] == 1 && $CURUSER['id'] == $post['uid']))) {	
         
 		
-		$deletebox = '
-		
-		<form action="editpost.php" method="post" name="editpost">
-<input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-	
+// Подготовка данных для превью поста в модалке (тот же безопасный parser_options, что и везде)
+$modal_username = htmlspecialchars_uni($post['username']);
+$modal_postdate = my_datee(($dateformat ?? 'Y-m-d') . ' - ' . ($timeformat ?? 'H:i:s'), (int)$post['dateline']);
+
+$modal_parser_options = [
+    'allow_html'      => 0, 'allow_mycode'    => 1,
+    'allow_smilies'   => 1, 'allow_imgcode'   => 1,
+    'allow_videocode' => 1, 'filter_badwords' => 1,
+];
+$modal_message2 = $parser->parse_message($post['message'], $modal_parser_options);
+
+$deletebox = '
 <div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-		'.$lang->editpost['edit_post'].'
-	</div>
-	<div class="card-body">
-		
-		<div class="row g-2 pb-3 border-bottom">
-			<div class="col-lg-auto align-self-center border-end pe-3 me-3">
-		
-		<input type="checkbox" class="form-check-input" name="delete" value="1" tabindex="9" /> '.$lang->editpost['delete_q'].'
-				
-			</div>
-			<div class="col-lg align-self-center">
-		<i class="fa-solid fa-circle-exclamation text-danger"></i> '.$lang->editpost['delete_2'].'
-			</div>
-			<div class="col-lg-auto text-end align-self-center">
-<input type="submit" class="btn btn-danger" name="submit" value="'.$lang->editpost['delete_now'].'" tabindex="10" />
-				<input type="hidden" name="action" value="deletepost" />
-<input type="hidden" name="pid" value="'.$pid.'" />
-			</div>
-		</div>
-		</div></div>
-</form>';
+    <div class="card-header rounded-bottom text-19 fw-bold">
+        '.$lang->editpost['edit_post'].'
+    </div>
+    <div class="card-body">
+        <div class="row g-2 pb-3 border-bottom">
+            <div class="col align-self-center">
+                <i class="fa-solid fa-circle-exclamation text-danger"></i> '.$lang->editpost['delete_2'].'
+            </div>
+            <div class="col-auto text-end align-self-center">
+                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deletePostModal'.$pid.'" tabindex="9">
+                    <i class="fa-solid fa-trash-can"></i> '.$lang->editpost['delete_now'].'
+                </button>
+            </div>
+        </div>
+    </div>
+</div>';
+
+$modal_delete = '<div class="modal fade" id="deletePostModal' . $pid . '" tabindex="-1" aria-hidden="true">'
+        . '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">'
+        . '<div class="modal-header bg-danger text-white">'
+        . '<h5 class="modal-title"><i class="fa-solid fa-trash me-2"></i>Delete Post</h5>'
+        . '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>'
+        . '</div>'
+        . '<div class="modal-body">'
+        . '<div class="text-center mb-3">'
+        . '<i class="fa-solid fa-triangle-exclamation text-warning fa-3x mb-3"></i>'
+        . '<h6 class="fw-bold">Are you sure you want to delete this post?</h6>'
+        . '<p class="text-muted mb-0">This action cannot be undone.</p>'
+        . '</div>'
+        . '<div class="card border-danger border-opacity-25 mb-3">'
+        . '<div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">'
+        . '<span class="small fw-bold text-danger"><i class="fas fa-user me-1"></i>' . $modal_username . '</span>'
+        . '<div class="d-flex gap-2 align-items-center">'
+        . '<span class="text-muted small">' . $modal_postdate . '</span>'
+        . '<span class="badge bg-secondary">PID: ' . $pid . '</span>'
+        . '</div>'
+        . '</div>'
+        . '<div class="card-body py-2 px-3">'
+        . '<div class="small" style="max-height:350px;overflow-y:auto;">'
+        . '<style>#deletePostModal' . $pid . ' .post_body img{max-width:100%;height:auto;}'
+        . '#deletePostModal' . $pid . ' .post_body blockquote{font-size:0.8rem;padding:0.5rem;}</style>'
+        . '<div>' . $modal_message2 . '</div>'
+        . '</div>'
+        . '</div>'
+        . '</div>'
+        . '<div id="deleteLoading' . $pid . '" class="text-center mt-3" style="display:none;">'
+        . '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Deleting...</span></div>'
+        . '<p class="mt-2 text-muted">Deleting post...</p>'
+        . '</div>'
+        . '</div>'
+        . '<div class="modal-footer">'
+        . '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">'
+        . '<i class="fa-solid fa-xmark me-1"></i>Cancel</button>'
+        . '<button type="button" class="btn btn-danger" id="confirmDeleteBtn' . $pid . '">'
+        . '<i class="fa-solid fa-trash me-1"></i>Delete Post</button>'
+        . '</div>'
+        . '</div></div></div>';
+
+$deletebox .= $modal_delete;
 		
 		
 		
@@ -1185,6 +1229,13 @@ document.addEventListener(\'DOMContentLoaded\', function() {
 	
     stdhead();
     build_breadcrumb();
+	
+	
+	echo '<script type="text/javascript" src="'.$BASEURL.'/delete_post_editpost.js"></script>';
+	
+	
+	
+	
     echo $editpost;
     stdfoot();
 }

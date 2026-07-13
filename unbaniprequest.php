@@ -57,11 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_email($email)) {
         $errors[] = $lang->unbaniprequest['error3'] ?? 'Invalid email address.';
     }
-
-    //require_once INC_PATH . '/functions_EmailBanned.php';
-   // if (emailbanned($email)) {
-   //     $errors[] = $lang->unbaniprequest['error4'] ?? 'This email address is banned.';
-   // }
 	
 	
 	

@@ -9,17 +9,19 @@ require_once INC_PATH . '/functions_icons.php';
 
 
 
-if (!isset($CURUSER) || !$CURUSER) 
+if (empty($CURUSER['id'])) 
 {
     header('Location: member.php?action=login');
     exit;
 }
 
+
+
 require_once INC_PATH . '/class_parser.php';
 $parser = new postParser();
 
 $parser_options = [
-    "allow_html" => 1,
+    "allow_html" => 0,
     "allow_mycode" => 1,
     "allow_smilies" => 1,
     "allow_imgcode" => 1,

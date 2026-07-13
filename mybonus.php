@@ -14,6 +14,18 @@ if (!$CURUSER || ($CURUSER['id'] ?? 0) == 0) {
 
 $lang->load('mybonus');
 
+
+$is_mod = is_mod($usergroups);
+
+// ── Доступ к магазину бонусов целиком ───────────────────────;
+if (($bonus === 'disable' || $bonus === 'disablesave') && !$is_mod) {
+    stderr($lang->global['error'], $lang->mybonus['disabled']);
+}
+
+
+
+
+
 // ── Загрузка настроек из БД ───────────────────────────────
 function loadSeedbonusSettings(): array
 {
@@ -132,7 +144,7 @@ function handleTitle(int $uid, array $b, bool &$used): void
     $title = trim($_POST['title'] ?? '');
     if (strlen($title) < 2) { $errors[] = 'Title too short!'; return; }
     $db->sql_query_prepared(
-        'UPDATE users SET title = ?, seedbonus = seedbonus - ? WHERE id = ?',
+        'UPDATE users SET usertitle = ?, seedbonus = seedbonus - ? WHERE id = ?',
         [htmlspecialchars_uni($title), (int)$b['points'], $uid]
     );
     if ($db->affected_rows()) { logBonus($uid, $b); $used = true; }
@@ -195,6 +207,31 @@ function handleRatioFix(int $uid, array $b, bool &$used): void
     $db->sql_query("UPDATE snatched SET uploaded = downloaded, seedtime = GREATEST(seedtime, 86400) WHERE torrentid = '{$tid}' AND userid = '{$uid}'");
     $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?', [(int)$b['points'], $uid]);
     if ($db->affected_rows()) { logBonus($uid, $b); $used = true; }
+}
+
+// ── Покупка VIP (временный статус, с автовозвратом через cron_vip_expire.php) ──
+function handleVip(int $uid, array $b, bool &$used): void
+{
+    global $db, $CURUSER;
+
+    $vip_until = TIMENOW + 28 * 86400;
+    $old_gid   = (int)$CURUSER['usergroup'];
+
+    $db->sql_query_prepared(
+        'REPLACE INTO auto_vip (userid, vip_until, old_gid) VALUES (?, ?, ?)',
+        [$uid, $vip_until, $old_gid]
+    );
+
+    if ($db->affected_rows()) {
+        $db->sql_query_prepared(
+            'UPDATE users SET usergroup = ?, seedbonus = seedbonus - ? WHERE id = ?',
+            [UC_VIP, (int)$b['points'], $uid]
+        );
+        if ($db->affected_rows()) {
+            logBonus($uid, $b);
+            $used = true;
+        }
+    }
 }
 
 // ── Формы ─────────────────────────────────────────────────
@@ -292,22 +329,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 purchase($userid, 'uploaded = uploaded + ' . (int)$bonus['menge'], $bonus, $used);
                 break;
             case 'invite':
-                purchase($userid, 'invites = invites + ' . (int)$bonus['menge'], $bonus, $used);
+                if (($kpsinvite ?? 'no') !== 'yes') {
+                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                } else {
+                    purchase($userid, 'invites = invites + ' . (int)$bonus['menge'], $bonus, $used);
+                }
                 break;
             case 'title':
-                isset($_POST['update_title']) ? handleTitle($userid, $bonus, $used) : showTitleForm($bonus);
+                if (($kpstitle ?? 'no') !== 'yes') {
+                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                } else {
+                    isset($_POST['update_title']) ? handleTitle($userid, $bonus, $used) : showTitleForm($bonus);
+                }
                 break;
             case 'gift_1':
-                isset($_POST['send_gift'])    ? handleGift($userid, $bonus, $used)     : showGiftForm($bonus);
+                if (($kpsgift ?? 'no') !== 'yes') {
+                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                } else {
+                    isset($_POST['send_gift']) ? handleGift($userid, $bonus, $used) : showGiftForm($bonus);
+                }
                 break;
             case 'warning':
-                if (($CURUSER['timeswarned'] ?? 0) > 0) {
+                if (($kpswarning ?? 'no') !== 'yes') {
+                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                } elseif (($CURUSER['timeswarned'] ?? 0) > 0) {
                     $menge = (int)$bonus['menge'];
                     purchase($userid, "timeswarned = IF(timeswarned >= {$menge}, timeswarned - {$menge}, 0)", $bonus, $used);
                 }
                 break;
             case 'ratiofix':
-                isset($_POST['ratiofix'])     ? handleRatioFix($userid, $bonus, $used) : showRatioFixForm($bonus);
+                if (($kpsratiofix ?? 'no') !== 'yes') {
+                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                } else {
+                    isset($_POST['ratiofix']) ? handleRatioFix($userid, $bonus, $used) : showRatioFixForm($bonus);
+                }
+                break;
+            case 'class':
+                if (($kpsvip ?? 'no') !== 'yes') {
+                    $errors[] = $lang->mybonus['error3'] ?? 'This item is currently disabled.';
+                } elseif ($is_mod || ($usergroups['isvipgroup'] ?? 'no') === 'yes') {
+                    $errors[] = $lang->mybonus['error11'] ?? 'You are already staff or VIP!';
+                } else {
+                    handleVip($userid, $bonus, $used);
+                }
                 break;
             default:
                 $errors[] = 'Unknown bonus type';
@@ -547,9 +611,24 @@ HTML;
 
 // ── Сборка карточек ───────────────────────────────────────
 
+// Карта: тип товара (art) → соответствующий kps*-флаг, включающий его
+$art_gate_map = [
+    'invite'   => $kpsinvite   ?? 'no',
+    'title'    => $kpstitle    ?? 'no',
+    'class'    => $kpsvip      ?? 'no',
+    'gift_1'   => $kpsgift     ?? 'no',
+    'warning'  => $kpswarning  ?? 'no',
+    'ratiofix' => $kpsratiofix ?? 'no',
+    // 'traffic' сюда не входит — у него нет отдельного kps*-флага, всегда доступен
+];
+
 $res   = $db->simple_select('bonus', '*', '', ['order_by' => 'points']);
 $cards = '';
 while ($b = $db->fetch_array($res)) {
+    // Пропускаем товар, если для его типа есть gate-флаг и он выключен
+    if (isset($art_gate_map[$b['art']]) && $art_gate_map[$b['art']] !== 'yes') {
+        continue;
+    }
     $cards .= renderBonusCard($b, $points);
 }
 

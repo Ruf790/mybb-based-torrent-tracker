@@ -179,7 +179,7 @@ function allowcomments(int $torrentid = 0): bool
 
 function handleRateTorrent(): void
 {
-    global $db, $CURUSER, $charset;
+    global $db, $CURUSER, $charset, $kpsrate;
 
     header("Content-Type: application/json; charset={$charset}");
 
@@ -202,6 +202,11 @@ function handleRateTorrent(): void
         ON DUPLICATE KEY UPDATE rating = {$rating}, added = " . TIMENOW
     );
 
+ 
+    if ($db->affected_rows() === 1) {
+        kps('+', $kpsrate, (int)$CURUSER['id']);
+    }
+
     $q = $db->sql_query("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM torrent_ratings WHERE torrent_id = {$torrent_id}");
     $row = $db->fetch_array($q);
 
@@ -218,7 +223,8 @@ function handleRateTorrent(): void
 
 function handleRateThread(): void
 {
-    global $db, $CURUSER, $charset;
+    global $db, $CURUSER, $charset, $kpsrate;
+
     header("Content-Type: application/json; charset={$charset}");
 
     if (!$CURUSER) {
@@ -240,6 +246,10 @@ function handleRateThread(): void
         VALUES ({$tid}, {$CURUSER['id']}, {$rating}, " . TIMENOW . ")
         ON DUPLICATE KEY UPDATE rating = {$rating}, added = " . TIMENOW
     );
+	
+    if ($db->affected_rows() === 1) {
+        kps('+', $kpsrate, (int)$CURUSER['id']);
+    }
 
     // Recalculate avg and count
     $q = $db->sql_query(
@@ -247,7 +257,6 @@ function handleRateThread(): void
          FROM threadratings WHERE tid = {$tid}"
     );
     $row = $db->fetch_array($q);
-
     $avg   = (float)($row['avg'] ?? 0);
     $count = (int)($row['cnt'] ?? 0);
 
@@ -515,7 +524,7 @@ function handleEditPost(): void
         $parser = new postParser;
 
         $parser_options = [
-            "allow_html" => 1,
+            "allow_html" => 0,
             "allow_mycode" => 1,
             "allow_smilies" => 1,
             "allow_imgcode" => 1,
@@ -861,7 +870,7 @@ function handleSearchTorrents(): void
  */
 function handleQuickComment(): void
 {
-    global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins, $ts_perpage;
+    global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins, $ts_perpage, $kpscomment;
 
 	if (!isset($_POST['ajax_quick_comment']) || !isset($_POST['id']) || !isset($_POST['text']) || !$CURUSER) {
         return;
@@ -976,6 +985,8 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
 
         $db->insert_query("comments", $comment_insert_data);
         $cid = $db->insert_id();
+		
+		kps('+', $kpscomment, $CURUSER['id']);
 
         if (!empty($_POST['file_ids'])) {
             $file_ids = array_map('intval', (array)$_POST['file_ids']);
@@ -1083,7 +1094,7 @@ function handleEditTorrent(): void
     global $db, $CURUSER, $lang, $BASEURL, $torrent_dir, $cache, $is_mod;
     
     // Проверяем авторизацию
-    if (!isset($CURUSER)) {
+    if (empty($CURUSER['id'])) {
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'message' => 'Not logged in']);
         exit;
@@ -1143,11 +1154,11 @@ function handleEditTorrent(): void
     }
 
     // Проверяем, может ли пользователь редактировать этот торрент
-    //if ($CURUSER['id'] !== $torrent['owner'] && !$is_mod) {
-        //header('Content-Type: application/json');
-        //echo json_encode(['success' => false, 'message' => 'Access denied']);
-        //exit;
-    //}
+    if ((int)$CURUSER['id'] !== (int)$torrent['owner'] && !$is_mod) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Access denied']);
+        exit;
+    }
 
     // Basic data
     $name = htmlspecialchars($_POST['name']);

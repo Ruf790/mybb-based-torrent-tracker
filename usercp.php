@@ -2048,7 +2048,7 @@ if ($mybb->input['action'] === 'editsig') {
 $signature = '';
 if ($sig && $heading) {
     $sig_parser = [
-        'allow_html'     => 1, 'allow_mycode'    => 1,
+        'allow_html'     => 0, 'allow_mycode'    => 1,
         'allow_smilies'  => 1, 'allow_imgcode'   => 1,
         'me_username'    => 1, 'filter_badwords' => 1,
     ];
@@ -3833,6 +3833,8 @@ HTML;
 // ACTION: do_remove_files
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'do_remove_files') {
+    verify_post_check($mybb->get_input('my_post_key'));
+
     $deleted = 0;
 
     if (isset($mybb->input['file_ids']) && is_array($mybb->input['file_ids'])) {
@@ -5961,9 +5963,14 @@ if ($mybb->input['action'] === 'do_2fa' && $mybb->request_method === 'post') {
     };
 
     if ($mode === 'disable') {
-        totp_disable($uid);
-        $notify_2fa_change($uid, false);
-        redirect('usercp.php?action=2fa', 'Two-factor authentication has been disabled.');
+        if (!validate_password_from_uid($uid, $mybb->get_input('password'))) {
+            $mybb->input['action']    = '2fa';
+            $mybb->input['2fa_error'] = 'Incorrect password. Please enter your current password to confirm disabling two-factor authentication.';
+        } else {
+            totp_disable($uid);
+            $notify_2fa_change($uid, false);
+            redirect('usercp.php?action=2fa', 'Two-factor authentication has been disabled.');
+        }
 
     } elseif ($mode === 'confirm') {
         $secret = $mybb->get_input('secret');
@@ -6058,6 +6065,11 @@ if ($mybb->input['action'] === '2fa') {
                             <input type="hidden" name="action" value="do_2fa" />
                             <input type="hidden" name="mode" value="disable" />
                             <input type="hidden" name="my_post_key" value="' . $postCode . '" />
+                            ' . (!empty($mybb->input['2fa_error']) ? '<div class="alert alert-danger py-2 mb-3">' . htmlspecialchars($mybb->input['2fa_error']) . '</div>' : '') . '
+                            <div class="mb-3" style="max-width:320px;">
+                                <label class="form-label small text-muted">Confirm your current password to disable 2FA</label>
+                                <input type="password" name="password" class="form-control" required autocomplete="current-password">
+                            </div>
                             <button type="submit" class="btn btn-danger"
                                 onclick="return confirm(\'Disable two-factor authentication? Your account will be less secure.\')">
                                 <i class="fas fa-shield-xmark me-2"></i>Disable 2FA

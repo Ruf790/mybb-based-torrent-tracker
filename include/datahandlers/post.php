@@ -333,7 +333,7 @@ class PostDataHandler extends DataHandler
 
     public function insert_post(): array
     {
-        global $db, $mybb, $plugins, $cache, $lang, $parser, $usergroups, $BASEURL, $CURUSER, $SITENAME;
+        global $db, $mybb, $plugins, $cache, $lang, $parser, $usergroups, $BASEURL, $CURUSER, $SITENAME, $kpscomment;
 
         $post = &$this->data;
 
@@ -571,6 +571,8 @@ class PostDataHandler extends DataHandler
             update_last_post((int)$post['tid']);
             update_forum_counters((int)$post['fid'], ['posts' => '+1']);
             update_forum_lastpost((int)$thread['fid']);
+			
+			kps('+', $kpscomment, (int)$post['uid']);
 
         } elseif ($visible == 0) {
             $thread_update = ['unapprovedposts' => '+1'];
@@ -627,7 +629,7 @@ class PostDataHandler extends DataHandler
 
     public function insert_thread(): array
     {
-        global $db, $plugins, $cache, $lang, $usergroups, $CURUSER, $SITENAME, $BASEURL;
+        global $db, $plugins, $cache, $lang, $usergroups, $CURUSER, $SITENAME, $BASEURL, $kpscomment;
 
         if (!$this->get_validated()) {
             die('The thread needs to be validated before inserting it into the DB.');
@@ -722,6 +724,13 @@ class PostDataHandler extends DataHandler
             $this->attachFileIds($this->pid);
 
             $db->update_query('threads', ['firstpost' => $this->pid], "tid='{$this->tid}'");
+			
+            if ($visible === 1) {
+               kps('+', $kpscomment, (int)($thread['uid'] ?? 0));
+            }
+			
+			
+			
         }
 
         if (empty($thread['savedraft'])) {

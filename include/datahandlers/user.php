@@ -505,65 +505,56 @@ class UserDataHandler extends DataHandler
 
     // ── Main validate ─────────────────────────────────────────────────────────
 
-    public function validate_user(): bool
-    {
-        global $plugins, $regtype;
-
-        $user     = &$this->data;
-        $old_user = !empty($user['uid']) ? get_user($user['uid']) : [];
-
-        if ($this->method === 'insert' || array_key_exists('username', $user)) {
-            if (!isset($old_user['username']) || $user['username'] !== $old_user['username']) {
-                $this->verify_username();
-                if ($regtype === 'invite') {
-                    $this->verify_invitehash();
-                }
-                $this->verify_username_exists();
-            } else {
-                unset($user['username']);
+public function validate_user(): bool
+{
+    global $plugins, $regtype;
+    $user     = &$this->data;
+    $old_user = !empty($user['uid']) ? get_user($user['uid']) : [];
+    if ($this->method === 'insert' || array_key_exists('username', $user)) {
+        if (!isset($old_user['username']) || $user['username'] !== $old_user['username']) {
+            $this->verify_username();
+            if ($this->method === 'insert' && $regtype === 'invite') {
+                $this->verify_invitehash();
             }
+            $this->verify_username_exists();
+        } else {
+            unset($user['username']);
         }
-
-        $checks = [
-            'usertitle'      => 'verify_usertitle',
-            'password'       => 'verify_password',
-            'usergroup'      => 'verify_usergroup',
-            'email'          => 'verify_email',
-            'postnum'        => 'verify_postnum',
-            'threadnum'      => 'verify_threadnum',
-            'options'        => 'verify_options',
-            'regdate'        => 'verify_regdate',
-            'lastvisit'      => 'verify_lastvisit',
-            'lastactive'     => 'verify_lastactive',
-            'timezone'       => 'verify_timezone',
-            'style'          => 'verify_style',
-            'signature'      => 'verify_signature',
-        ];
-
-        foreach ($checks as $key => $method) {
-            if ($this->method === 'insert' || array_key_exists($key, $user)) {
-                $this->$method();
-            }
-        }
-
-        // Birthday needs array check
-        if ($this->method === 'insert' || (isset($user['birthday']) && is_array($user['birthday']))) {
-            $this->verify_birthday();
-        }
-
-        if ($this->method === 'insert' && array_key_exists('regcheck1', $user) && array_key_exists('regcheck2', $user)) {
-            $this->verify_checkfields();
-        }
-
-        if (array_key_exists('birthdayprivacy', $user)) {
-            $this->verify_birthday_privacy();
-        }
-
-        $plugins->run_hooks('datahandler_user_validate', $this);
-
-        $this->set_validated(true);
-        return count($this->get_errors()) === 0;
     }
+    $checks = [
+        'usertitle'      => 'verify_usertitle',
+        'password'       => 'verify_password',
+        'usergroup'      => 'verify_usergroup',
+        'email'          => 'verify_email',
+        'postnum'        => 'verify_postnum',
+        'threadnum'      => 'verify_threadnum',
+        'options'        => 'verify_options',
+        'regdate'        => 'verify_regdate',
+        'lastvisit'      => 'verify_lastvisit',
+        'lastactive'     => 'verify_lastactive',
+        'timezone'       => 'verify_timezone',
+        'style'          => 'verify_style',
+        'signature'      => 'verify_signature',
+    ];
+    foreach ($checks as $key => $method) {
+        if ($this->method === 'insert' || array_key_exists($key, $user)) {
+            $this->$method();
+        }
+    }
+    // Birthday needs array check
+    if ($this->method === 'insert' || (isset($user['birthday']) && is_array($user['birthday']))) {
+        $this->verify_birthday();
+    }
+    if ($this->method === 'insert' && array_key_exists('regcheck1', $user) && array_key_exists('regcheck2', $user)) {
+        $this->verify_checkfields();
+    }
+    if (array_key_exists('birthdayprivacy', $user)) {
+        $this->verify_birthday_privacy();
+    }
+    $plugins->run_hooks('datahandler_user_validate', $this);
+    $this->set_validated(true);
+    return count($this->get_errors()) === 0;
+}
 
     // ── Insert ────────────────────────────────────────────────────────────────
 

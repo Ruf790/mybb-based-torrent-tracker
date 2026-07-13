@@ -181,6 +181,11 @@ class UserRegistrationHandler
             return $avatar_data;
         }
 
+        if (!$this->isUrlSafeForFetch($avatar_url)) {
+            $this->errors[] = "Invalid avatar URL or image not accessible";
+            return $avatar_data;
+        }
+
         $image_info = @getimagesize($avatar_url);
         if (!$image_info) {
             $this->errors[] = "Invalid avatar URL or image not accessible";
@@ -199,6 +204,40 @@ class UserRegistrationHandler
         ];
 
         return $avatar_data;
+    }
+
+    /**
+     * Guards against SSRF: only plain http/https URLs pointing at a public,
+     * non-internal IP address are allowed to be fetched server-side.
+     */
+    private function isUrlSafeForFetch(string $url): bool
+    {
+        $parts = parse_url($url);
+        if (!$parts || empty($parts['host'])) {
+            return false;
+        }
+
+        $scheme = strtolower($parts['scheme'] ?? '');
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return false;
+        }
+
+        $host = $parts['host'];
+
+        // Resolve the hostname to an IP so we can check the *actual*
+        // destination, not just the literal string (defends against
+        // "localhost", DNS rebinding to loopback/private ranges, etc.)
+        $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
+
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return false;
+        }
+
+        return true;
     }
 	
 	
@@ -441,6 +480,12 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
             'confirm' => $confirm
         ];
 
+        // Аккаунт уже создан к этому моменту - ошибки аватара (если есть)
+        // не должны блокировать регистрацию, но админ должен их увидеть.
+        if (!empty($this->errors)) {
+            flash_message('Account created, but: ' . implode('; ', $this->errors), 'warning');
+        }
+
         return true;
     }
 
@@ -464,14 +509,39 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
 $registration_handler = new UserRegistrationHandler();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_post_check($_POST['my_post_key'] ?? '');
+
     if ($registration_handler->processRegistration($_POST)) {
-        $user_data = $registration_handler->getUserData();
-        $redirect_url = $BASEURL . '/' . ($user_data['confirm'] === 'yes' ? 'checkuser' : 'member') . 
-                       '.php?action=profile&id=' . $user_data['id'];
-        redirect($redirect_url);
+        $user_data      = $registration_handler->getUserData();
+        $post_create_err = $registration_handler->getErrors();
+        $profile_url    = $BASEURL . '/' . get_profile_link($user_data['id']);
+
+        // Аккаунт уже создан к этому моменту - ошибки на этом этапе (например,
+        // не удалось привязать аватар) не должны выглядеть как провал
+        // регистрации, но админ обязательно должен их увидеть. Редирект на
+        // member.php/checkuser.php уводит со страниц стафф-панели, где
+        // flash_message() гарантированно рендерится, поэтому в этом случае
+        // остаёмся на adduser.php и показываем предупреждение здесь.
+        if (empty($post_create_err)) {
+            redirect($profile_url);
+            exit();
+        }
+
+        stdhead($lang->adduser['title']);
+        echo '<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
+        echo '<div class="container mt-3">';
+        echo '<div class="alert alert-success"><i class="fas fa-check-circle me-2"></i>Account "'
+            . htmlspecialchars_uni($user_data['username']) . '" was created successfully.</div>';
+        echo inline_error($post_create_err);
+        echo '<a href="' . $profile_url . '" class="btn btn-primary">'
+            . '<i class="fas fa-arrow-right me-2"></i>Go to profile</a>';
+        echo '</div>';
+        stdfoot();
         exit();
     }
 }
+
+
 
 // Отображение формы
 stdhead($lang->adduser['title']);
@@ -504,6 +574,7 @@ echo '
         
         <form method="POST" action="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '" class="needs-validation" novalidate enctype="multipart/form-data">
             <input type="hidden" name="act" value="adduser">
+            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
             
             <div class="card-body">
                 <!-- Basic Information -->

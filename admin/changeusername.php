@@ -11,7 +11,7 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="error-message">❌ Error! Direct initialization of this file is not allowed.</div>');
 }
 
-define('CU_VERSION', '0.3 by xam');
+define('CU_VERSION', '0.4');
 
 // Initialize variables
 $formSubmitted = false;
@@ -26,6 +26,12 @@ $validationErrors = [];
 
 // Check if form was submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act'] === 'changeusername') {
+    if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+        http_response_code(403);
+        echo 'Invalid security token';
+        exit;
+    }
+
     $formSubmitted = true;
     
     $userId = trim($_POST['id'] ?? '');
@@ -234,6 +240,7 @@ if ($formSubmitted) {
                 </div>
                 <form method="post" action="<?= $_this_script_ ?>" class="confirmation-form">
                     <input type="hidden" name="act" value="changeusername">
+                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                     <input type="hidden" name="id" value="<?= htmlspecialchars($userId) ?>">
                     <input type="hidden" name="username" value="<?= htmlspecialchars($newUsername) ?>">
                     <input type="hidden" name="oldusername" value="<?= htmlspecialchars($currentUsername) ?>">
@@ -310,6 +317,8 @@ stdfoot();
 // Helper functions
 function showUsernameChangeForm(string $userId = '', string $username = ''): void
 {
+    global $mybb;
+
     $scriptUrl = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '');
     $userIdValue = htmlspecialchars($userId);
     $usernameValue = htmlspecialchars($username);
@@ -338,6 +347,7 @@ function showUsernameChangeForm(string $userId = '', string $username = ''): voi
         
         <form method="post" action="<?= $scriptUrl ?>" class="change-username-form" id="username-change-form">
             <input type="hidden" name="act" value="changeusername">
+            <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
             
             <div class="form-grid">
                 <div class="form-group">

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 $rootpath = './../';
 $thispath = './';
+define('IN_ADMINCP', 1);
 define('IN_ADMIN_PANEL', true);
-define('STAFF_PANEL', true);
 define('SKIP_CRON_JOBS', true);
 define('SKIP_LOCATION_SAVE', true);
 define("IN_MYBB", 1);
@@ -15,10 +15,25 @@ require_once $rootpath . 'global.php';
 // Set proper content type for JSON responses
 header('Content-Type: application/json; charset=utf-8');
 
+// ── Реальная проверка прав доступа (staff only) ─────────────────────────
+$__usergroups = $mybb->usergroup ?? [];
+if (empty($CURUSER['id']) || !is_mod($__usergroups)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Access denied']);
+    exit;
+}
+
 // Validate request method
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'Method not allowed']);
+    exit;
+}
+
+// ── CSRF-проверка ────────────────────────────────────────────────────────
+if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'], true)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Security check failed. Please refresh the page and try again.']);
     exit;
 }
 
@@ -61,6 +76,8 @@ try {
 
             // Delete the news item
             $db->sql_query_prepared("DELETE FROM news WHERE id = ?", [$newsid]);
+
+            write_log('News item deleted: "' . $newsData['title'] . '" (id=' . $newsid . ')', 'news', 1);
 
             // Update news cache
             if (method_exists($cache, 'update_news')) {
@@ -109,6 +126,8 @@ try {
             if (!$success) {
                 throw new Exception('Failed to update news');
             }
+
+            write_log('News item edited: "' . $title . '" (id=' . $newsid . ')', 'news', 1);
 
             // Update cache
             if (method_exists($cache, 'update_news')) {
@@ -167,6 +186,8 @@ try {
             if ($newsid <= 0) {
                 throw new Exception('Failed to get news ID');
             }
+
+            write_log('News item created: "' . $subject . '" (id=' . $newsid . ')', 'news', 1);
 
             // Link files to news if provided
             if (!empty($_POST['file_ids'])) {

@@ -567,7 +567,7 @@ HTML;
 function handle_securitycheck(): void
 {
     global $db, $BASEURL, $iv, $securelogin, $bannedclientdetect, $maxloginattempts,
-           $privatetrackerpatch, $disablerightclick, $securehash, $trackerlog,
+           $privatetrackerpatch, $disablerightclick, $trackerlog,
            $thispath, $accountlockout, $disallowjavascript, $SITEURL, $check__10;
 
     require_once $thispath . 'include/stafftoolsfunctions.php';
@@ -586,10 +586,7 @@ function handle_securitycheck(): void
     $cfg_dir  = @file_get_contents($BASEURL . '/config/DATABASE', 'r');
     $cfg_file = @file_get_contents($BASEURL . '/include/config.php', 'r');
 
-    $hash_ok = preg_match('/[A-Z]/', $securehash)
-            && preg_match('/[0-9]/', $securehash)
-            && preg_match('/[a-z]/', $securehash)
-            && strlen($securehash) >= 10;
+    
 
     $empty_pw = (int) $db->fetch_array($db->sql_query(
         "SELECT COUNT(*) AS c FROM users WHERE password='' OR password IS NULL"))['c'];
@@ -606,8 +603,6 @@ function handle_securitycheck(): void
         ['Directory Protection (Important Files)', 3,
             $cfg_file === '<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>',
             'Important files are directly accessible.'],
-        ['Secure Hash Strength',                   3, (bool)$hash_ok,
-            'Use ≥10 chars with uppercase, lowercase and digits.'],
         ['Virtual Keyboard',                       2, !empty($check__10),
             'Enable Virtual Keyboard against keyloggers.'],
         ['Image Verification (CAPTCHA)',            2, $iv === 'yes',

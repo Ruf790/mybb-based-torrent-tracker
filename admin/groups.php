@@ -102,7 +102,7 @@ function ug_errors(array $errors): void
 {
     if (!$errors) return;
     echo '<div class="alert alert-danger"><h6 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i>Please correct the following errors:</h6><ul class="mb-0">';
-    foreach ($errors as $e) echo '<li>' . $e . '</li>';
+    foreach ($errors as $e) echo '<li>' . htmlspecialchars_uni($e) . '</li>';
     echo '</ul></div>';
 }
 
@@ -120,10 +120,15 @@ if (($mybb->input['action'] ?? '') === 'add') {
     $plugins->run_hooks('admin_user_groups_add');
 
     if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
+
+        $errors = [];
         if (!trim($mybb->input['title']))
             $errors[] = 'You did not enter a title for this new user group';
         if (my_strpos($mybb->input['namestyle'], '{username}') === false)
             $errors[] = 'The username style must contain {username}';
+        if (preg_match('#<((m[^a])|(b[^diloru>])|(s[^aemptu >]))(\s*[^>]*)>#si', $mybb->input['namestyle']))
+            $errors[] = 'You cant use script, meta or base tags in the username style';
 
         if (!$errors) {
             $new_usergroup = [
@@ -269,6 +274,7 @@ if (($mybb->input['action'] ?? '') === 'edit') {
         admin_redirect('index.php?act=groups');
     }
 
+    $errors = [];
     if (preg_match('#<((m[^a])|(b[^diloru>])|(s[^aemptu >]))(\s*[^>]*)>#si', $mybb->get_input('namestyle'))) {
         $errors[] = 'You cant use script, meta or base tags in the username style';
         $mybb->input['namestyle'] = $usergroup['namestyle'];
@@ -277,6 +283,8 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     $plugins->run_hooks('admin_user_groups_edit');
 
     if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
+
         if (!trim($mybb->get_input('title')))
             $errors[] = 'error_missing_title';
         if (my_strpos($mybb->get_input('namestyle'), '{username}') === false)
@@ -577,6 +585,8 @@ if (($mybb->input['action'] ?? '') === 'delete') {
     $plugins->run_hooks('admin_user_groups_delete');
 
     if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
+
         $updated_users = ['usergroup' => $usergroup['isbannedgroup'] == 1 ? 9 : 1];
         $db->update_query('users', $updated_users, "usergroup='{$usergroup['gid']}'");
         $db->update_query('users', ['displaygroup' => 'usergroup'], "displaygroup='{$usergroup['gid']}'", '', true);
@@ -606,6 +616,8 @@ if (($mybb->input['action'] ?? '') === 'delete') {
 // ACTION: DISPORDER
 // ═══════════════════════════════════════════════════════════
 if (($mybb->input['action'] ?? '') === 'disporder' && $mybb->request_method === 'post') {
+    verify_post_check($mybb->get_input('my_post_key'));
+
     $plugins->run_hooks('admin_user_groups_disporder');
     foreach ($mybb->input['disporder'] as $gid => $order) {
         $gid = (int)$gid; $order = (int)$order;

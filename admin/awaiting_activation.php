@@ -24,6 +24,8 @@ foreach ($input_params as $input) {
 $plugins->run_hooks("admin_user_awaiting_activation_begin");
 
 if ($mybb->input['action'] == "activate" && $mybb->request_method == "post") {
+    verify_post_check($mybb->get_input('my_post_key'));
+
     $plugins->run_hooks("admin_user_awaiting_activation_activate");
 
     $user_ids = process_user_activation();

@@ -72,6 +72,11 @@ class TorrentManager
 
         if (isset($actions[$actionType])) {
             $actions[$actionType]();
+            write_log(
+                'Bulk action "' . $actionType . '" applied to torrent(s): ' . implode(', ', array_map('intval', $torrentIds)),
+                'torrent',
+                1
+            );
             $_SESSION['action_success'] = 'Action completed successfully!';
         }
     }
@@ -214,7 +219,7 @@ if ($do === 'quick_edit') {
     }
 
     $tid  = (int)($_POST['torrent_id'] ?? 0);
-    $name = $db->escape_string(htmlspecialchars_uni($_POST['name'] ?? ''));
+    $name = $db->escape_string($_POST['name'] ?? '');
     $cat  = (int)($_POST['category'] ?? 0);
 
     if ($tid > 0 && $name !== '' && $cat > 0) {
@@ -602,6 +607,31 @@ echo '
             </div>
         </div>
     </div>
+</div>
+
+<!-- Bulk Action Confirm Modal -->
+<div class="modal fade" id="bulkConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-xl rounded-4">
+            <div class="modal-header bg-danger text-white border-0 rounded-top-4">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Confirm Action</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <i class="fas fa-trash-alt fa-3x text-danger mb-3"></i>
+                <h5 id="bulkConfirmTitle" class="mb-2">Are you sure?</h5>
+                <p id="bulkConfirmMessage" class="text-muted mb-0">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-danger" id="bulkConfirmBtn">
+                    <i class="fas fa-check me-2"></i>Confirm
+                </button>
+            </div>
+        </div>
+    </div>
 </div>';
 
 if (isset($_SESSION['action_success'])): ?>
@@ -633,6 +663,63 @@ window.torrentCount = <?= $torrentCount ?>;
 window.totalTorrents = <?= $totalTorrents ?>;
 </script>
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('torrentForm');
+    const actionSelect = document.getElementById('actionType');
+    const confirmModalEl = document.getElementById('bulkConfirmModal');
+    const confirmTitle = document.getElementById('bulkConfirmTitle');
+    const confirmMessage = document.getElementById('bulkConfirmMessage');
+    const confirmBtn = document.getElementById('bulkConfirmBtn');
+    if (!form || !actionSelect || !confirmModalEl) return;
+
+    const confirmModal = new bootstrap.Modal(confirmModalEl);
+
+    // Действия, требующие явного подтверждения перед выполнением
+    const destructiveActions = {
+        delete: {
+            title: 'Delete selected torrents?',
+            message: 'This will permanently delete the torrent file(s), associated images, screenshots, comments and all related data. This action cannot be undone.',
+        },
+        nuke: {
+            title: 'Nuke selected torrents?',
+            message: 'This will mark the torrent(s) as nuked, notifying downloaders of a rule violation.',
+        },
+        banned: {
+            title: 'Toggle ban on selected torrents?',
+            message: 'This will change the banned status of the selected torrent(s).',
+        },
+    };
+
+    let confirmed = false;
+
+    form.addEventListener('submit', function (e) {
+        if (confirmed) {
+            confirmed = false;
+            return; // уже подтверждено — пропускаем реальный сабмит дальше
+        }
+
+        const action = actionSelect.value;
+        if (destructiveActions[action]) {
+            e.preventDefault();
+
+            const count = document.querySelectorAll('.torrent-checkbox:checked').length;
+            const cfg = destructiveActions[action];
+
+            confirmTitle.textContent = cfg.title;
+            confirmMessage.textContent = cfg.message + ' (' + count + ' torrent' + (count === 1 ? '' : 's') + ' selected)';
+
+            confirmModal.show();
+        }
+    });
+
+    confirmBtn.addEventListener('click', function () {
+        confirmed = true;
+        confirmModal.hide();
+        form.requestSubmit();
+    });
+});
+</script>
 
 <script src="<?= $BASEURL ?>/admin/scripts/manage_torrents.js"></script>
 

@@ -9,7 +9,7 @@ require_once INC_PATH . '/class_parser.php';
 $parser = new postParser;
 
 $parser_options = [
-    "allow_html"      => 1,
+    "allow_html"      => 0,
     "allow_mycode"    => 1,
     "allow_smilies"   => 1,
     "allow_imgcode"   => 1,
@@ -275,6 +275,8 @@ try {
 (function () {
 'use strict';
 
+var newsPostKey = <?= json_encode($mybb->post_code ?? '') ?>;
+
 // ── Char counter ──────────────────────────────────────────────────────────────
 var ta  = document.getElementById('newsMessage');
 var cnt = document.getElementById('charCount');
@@ -327,6 +329,7 @@ if (addForm) {
 
         var fd = new FormData(this);
         fd.append('action', 'add');
+        fd.append('my_post_key', newsPostKey);
 
         fetch('news_ajax.php', { method: 'POST', body: new URLSearchParams(fd) })
             .then(function (r) { return r.json(); })
@@ -370,7 +373,7 @@ if (newsList) {
             fetch('news_ajax.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=delete&newsid=' + encodeURIComponent(id)
+                body: 'action=delete&newsid=' + encodeURIComponent(id) + '&my_post_key=' + encodeURIComponent(newsPostKey)
             })
             .then(function (r) { return r.json(); })
             .then(function (d) {
@@ -487,6 +490,7 @@ window.submitNewsEdit = function () {
     fd.append('newsid', id);
     fd.append('title',  title);
     fd.append('body',   body);
+    fd.append('my_post_key', newsPostKey);
 
     fetch('news_ajax.php', { method: 'POST', body: fd })
         .then(function (r) { return r.json(); })

@@ -213,6 +213,115 @@ function acp_rebuild_poll_counters(): void
 }
 
 /**
+ * Recount thread ratings (numratings/totalratings cache columns)
+ */
+function acp_recount_thread_ratings(): void
+{
+    global $db, $mybb, $lang, $plugins;
+
+    $plugins->run_hooks("admin_tools_recount_rebuild_thread_ratings");
+
+    $query = $db->simple_select("threads", "COUNT(*) as num_threads");
+    $num_threads = (int)$db->fetch_field($query, 'num_threads');
+
+    $page = $mybb->get_input('page', MyBB::INPUT_INT);
+    $per_page = $mybb->get_input('threadratings', MyBB::INPUT_INT);
+
+    $start = ($page - 1) * $per_page;
+    $end = $start + $per_page;
+
+    $query = $db->simple_select(
+        "threads",
+        "tid",
+        '',
+        [
+            'order_by' => 'tid',
+            'order_dir' => 'asc',
+            'limit_start' => $start,
+            'limit' => $per_page
+        ]
+    );
+
+    while ($thread = $db->fetch_array($query)) {
+        $tid = (int)$thread['tid'];
+
+        $r = $db->sql_query("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM threadratings WHERE tid = {$tid}");
+        $row = $db->fetch_array($r);
+        $avg   = (float)($row['avg'] ?? 0);
+        $count = (int)($row['cnt'] ?? 0);
+
+        $db->update_query("threads", [
+            'numratings'   => $count,
+            'totalratings' => (int)round($avg * $count),
+        ], "tid='{$tid}'");
+    }
+
+    $message = $lang->success_rebuilt_thread_ratings ?? 'Thread ratings have been recounted successfully';
+
+    check_proceed(
+        $num_threads,
+        $end,
+        ++$page,
+        $per_page,
+        "threadratings",
+        "do_recountthreadratings",
+        $message
+    );
+}
+
+/**
+ * Recount torrent comment counts (torrents.comments cache column)
+ */
+function acp_recount_torrent_comments(): void
+{
+    global $db, $mybb, $lang, $plugins;
+
+    $plugins->run_hooks("admin_tools_recount_rebuild_torrent_comments");
+
+    $query = $db->simple_select("torrents", "COUNT(*) as num_torrents");
+    $num_torrents = (int)$db->fetch_field($query, 'num_torrents');
+
+    $page = $mybb->get_input('page', MyBB::INPUT_INT);
+    $per_page = $mybb->get_input('torrentcomments', MyBB::INPUT_INT);
+
+    $start = ($page - 1) * $per_page;
+    $end = $start + $per_page;
+
+    $query = $db->simple_select(
+        "torrents",
+        "id",
+        '',
+        [
+            'order_by' => 'id',
+            'order_dir' => 'asc',
+            'limit_start' => $start,
+            'limit' => $per_page
+        ]
+    );
+
+    while ($torrent = $db->fetch_array($query)) {
+        $tid = (int)$torrent['id'];
+
+        $r = $db->sql_query("SELECT COUNT(*) AS cnt FROM comments WHERE torrent = {$tid}");
+        $count = (int)($db->fetch_array($r)['cnt'] ?? 0);
+
+        $db->update_query("torrents", ['comments' => $count], "id='{$tid}'");
+    }
+
+    $message = $lang->success_rebuilt_torrent_comments ?? 'Torrent comment counts have been recounted successfully';
+
+    check_proceed(
+        $num_torrents,
+        $end,
+        ++$page,
+        $per_page,
+        "torrentcomments",
+        "do_recounttorrentcomments",
+        $message
+    );
+}
+
+/**
  * Recount user posts
  */
 function acp_recount_user_posts(): void
@@ -723,6 +832,18 @@ if (!$mybb->input['action']) {
                 'input' => 'pollcounters',
                 'default' => 500,
                 'function' => 'acp_rebuild_poll_counters'
+            ],
+            'do_recountthreadratings' => [
+                'hook' => "admin_tools_recount_rebuild_thread_ratings",
+                'input' => 'threadratings',
+                'default' => 500,
+                'function' => 'acp_recount_thread_ratings'
+            ],
+            'do_recounttorrentcomments' => [
+                'hook' => "admin_tools_recount_rebuild_torrent_comments",
+                'input' => 'torrentcomments',
+                'default' => 500,
+                'function' => 'acp_recount_torrent_comments'
             ]
         ];
 
@@ -996,6 +1117,38 @@ if (!$mybb->input['action']) {
                                         <div class="d-flex align-items-center mt-3">
                                             <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="comments" value="500" min="1">
                                             <button type="submit" name="do_comments" class="btn btn-primary btn-sm">Run</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Recount Thread Ratings -->
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100 border-0 shadow-sm">
+                                    <div class="card-body">
+                                        <h5 class="card-title text-primary">
+                                            <i class="fas fa-star me-2"></i>Recount Thread Ratings
+                                        </h5>
+                                        <p class="card-text text-muted small">This will recalculate the average rating and vote count cached on each thread from the actual threadratings records.</p>
+                                        <div class="d-flex align-items-center mt-3">
+                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="threadratings" value="500" min="1">
+                                            <button type="submit" name="do_recountthreadratings" class="btn btn-primary btn-sm">Run</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Recount Torrent Comment Counts -->
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100 border-0 shadow-sm">
+                                    <div class="card-body">
+                                        <h5 class="card-title text-primary">
+                                            <i class="fas fa-magnet me-2"></i>Recount Torrent Comment Counts
+                                        </h5>
+                                        <p class="card-text text-muted small">This will recalculate the comment count cached on each torrent from the actual comments in the database.</p>
+                                        <div class="d-flex align-items-center mt-3">
+                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="torrentcomments" value="500" min="1">
+                                            <button type="submit" name="do_recounttorrentcomments" class="btn btn-primary btn-sm">Run</button>
                                         </div>
                                     </div>
                                 </div>

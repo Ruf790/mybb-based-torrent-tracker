@@ -13,6 +13,11 @@ if (!defined ('STAFF_PANEL'))
 
 // Проверяем отправку формы
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_torrent_settings') {
+    if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+        http_response_code(403);
+        echo 'Invalid security token';
+        exit;
+    }
     save_torrent_settings();
 }
 
@@ -183,6 +188,7 @@ function get_torrent_setting(string $key, $default = '')
                 <div class="card-body">
                     <form method="post" action="">
                         <input type="hidden" name="action" value="save_torrent_settings">
+                        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                         
                         <!-- Правила промо-акций -->
                         <div class="row mb-4">
@@ -610,8 +616,7 @@ function get_torrent_setting(string $key, $default = '')
     </div>
 </div>
 
-<!-- Подключение Bootstrap Icons -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+
 <style>
     .card {
         border-radius: 10px;

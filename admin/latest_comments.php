@@ -10,7 +10,7 @@ if (!defined('STAFF_PANEL')) {
 
 $parser         = new postParser();
 $parser_options = [
-    'allow_html'     => 1,
+    'allow_html'     => 0,
     'allow_mycode'   => 1,
     'allow_smilies'  => 1,
     'allow_imgcode'  => 1,
@@ -413,6 +413,7 @@ if ($action === 'list') {
 // ── preview ───────────────────────────────────────────────────────────────────
 if ($action === 'preview') {
     require_post();
+    require_csrf();
     $text        = (string)($_POST['text'] ?? '');
     $parsed_text = $parser->parse_message($text, $parser_options);
     $parsed_text = preg_replace_callback(

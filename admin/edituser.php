@@ -675,7 +675,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     }
 
     // CSRF
-    if (empty($_POST['my_post_key']) || $_POST['my_post_key'] !== $mybb->post_code) {
+    if (empty($_POST['my_post_key']) || $_POST['my_post_key'] !== generate_post_check()) {
         $is_ajax ? $json(['success'=>false,'error'=>'CSRF check failed'], 403) : exit('Error: CSRF check failed.');
     }
 
@@ -888,14 +888,26 @@ function is_valid_local_avatar(string $avatar): bool
  */
 function handle_avatar_update(): void
 {
-    global $userdata, $db, $modcomment; // ← добавить $modcomment
+    global $userdata, $db, $modcomment, $mybb;
 
     if (!isset($_POST['avatar'])) return;
-    $new_avatar = trim($_POST['avatar'] ?? '');
-	
-	// Если аватар не менялся — пропускаем
+
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        return;
+    }
+
+    // Если аватар не менялся — пропускаем (проверяем ДО подгрузки данных, чтобы не тратить запрос впустую)
     if (($_POST['avatar_changed'] ?? '0') !== '1') return;
-	
+
+    // На этом этапе диспетчер действий ещё не отработал, get_user_data() могла
+    // не успеть заполнить $userdata — подгружаем актуальные данные явно,
+    // иначе $old_avatar всегда будет пустым и функция ошибочно решит,
+    // что аватар изменился, даже когда это не так.
+    if (empty($userdata['id'])) {
+        get_user_data();
+    }
+
+    $new_avatar = trim($_POST['avatar'] ?? '');
 
     $current_user_id = (int)($userdata['id'] ?? $_POST['userid'] ?? 0);
     if ($current_user_id <= 0) {
@@ -1787,7 +1799,7 @@ function renderSecurityTab(): string
 
     $uid      = (int)$userdata['id'];
     $h_script = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
-    $postCode = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
+    $postCode = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
 
     // Активные сессии
     $q = $db->sql_query("SELECT sid, ip, time, location, useragent FROM sessions WHERE uid = {$uid} ORDER BY time DESC LIMIT 10");
@@ -1951,7 +1963,7 @@ function renderSendPMModal(): string
     global $userdata, $mybb, $BASEURL;
     $uid      = (int)$userdata['id'];
     $username = htmlspecialchars_uni($userdata['username']);
-    $postCode = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
+    $postCode = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
     $h_script = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
 
     return '
@@ -2470,7 +2482,7 @@ function renderQuickBanModal(bool $is_banned = false): string
     global $userdata, $mybb, $db, $memperms;
     $uid       = (int)$userdata['id'];
     $username  = htmlspecialchars_uni($userdata['username']);
-    $postCode  = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
+    $postCode  = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
     $h_script  = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
 
 
@@ -2565,7 +2577,7 @@ function renderAuditTab(): string
 
     $raw = (string)($userdata['modcomment'] ?? '');
     //$isSuperMod = ($usergroups['cansettingspanel'] == '1' || $usergroups['issupermod'] == '1');
-    $postCode  = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
+    $postCode  = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
     $h_script  = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
     $uid       = (int)$userdata['id'];
 
@@ -3665,11 +3677,11 @@ function renderInvitesTab(): string
 
 function handleEditUser(): void
 {
-    global $userdata, $BASEURL, $CURUSER, $usergroups, $db;
+    global $userdata, $BASEURL, $CURUSER, $usergroups, $db, $mybb;
     
     get_user_data();
     permission_check();
-    stdhead('Edit User: ' . $userdata['username'] . ' (UID: ' . $userdata['id'] . ')');
+    stdhead('Edit User: ' . htmlspecialchars_uni($userdata['username']) . ' (UID: ' . $userdata['id'] . ')');
 	
 	$user_avatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
 	
@@ -3807,6 +3819,7 @@ echo '
 <form method="post" action="' . $_SERVER['SCRIPT_NAME'] . '" name="updateuser" id="userEditForm">
     <input type="hidden" name="userid" value="' . $userdata['id'] . '">
     <input type="hidden" name="action" value="updateuser">
+    <input type="hidden" name="my_post_key" value="' . generate_post_check() . '">
     
     <div class="container">
         <div class="glass-card">
@@ -4003,7 +4016,7 @@ echo '
     }
 }
 </style>
-	
+<script src="'.$BASEURL.'/scripts/toast.js"></script>
 <script src="'.$BASEURL.'/admin/scripts/edituser.js"></script>';
 	
 
@@ -4038,8 +4051,12 @@ echo '<script src="' . $BASEURL . '/admin/scripts/charts.js"></script>';
  */
 function handleUpdateUser(): void
 {
-    global $userdata, $db, $CURUSER, $lang, $update_array, $modcomment;
-    
+    global $userdata, $db, $CURUSER, $lang, $update_array, $modcomment, $mybb;
+
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        print_no_permission(true);
+    }
+
     get_user_data();
     permission_check();
 	
@@ -4109,23 +4126,76 @@ function processUserUpdateData(): array
 	$updateData = [];
 
     $fields = [
-        'username', 'email', 'usergroup', 'usertitle', 'signature',
-        'donor', 'moderateposts', 'enabled', 'seedbonus', 'invites',
-        'uploaded', 'downloaded', 'allownotices', 'hideemail', 'receivepms',
+        'usertitle', 'signature',
+        'donor', 'moderateposts', 'enabled',
+        'allownotices', 'hideemail', 'receivepms',
         'receivefrombuddy', 'pmnotice', 'pmnotify', 'buddyrequestspm',
         'buddyrequestsauto', 'subscriptionmethod', 'invisible'
     ];
 
-    
-
-    
     foreach ($fields as $field) {
         if (isset($_POST[$field]) && $_POST[$field] != $userdata[$field]) {
             $updateData[$field] = $_POST[$field];
             $modcomment = modcomment(ucfirst($field) . " changed from '{$userdata[$field]}' to '{$_POST[$field]}'");
         }
     }
-	
+
+    // Числовые поля — обязательный каст типа перед записью в БД
+    $numericFields = ['seedbonus' => 'float', 'invites' => 'int', 'uploaded' => 'int', 'downloaded' => 'int'];
+    foreach ($numericFields as $field => $type) {
+        if (isset($_POST[$field])) {
+            $newVal = $type === 'float' ? (float)$_POST[$field] : (int)$_POST[$field];
+            $oldVal = $type === 'float' ? (float)$userdata[$field] : (int)$userdata[$field];
+            if ($newVal !== $oldVal) {
+                $updateData[$field] = $newVal;
+                $modcomment = modcomment(ucfirst($field) . " changed from '{$oldVal}' to '{$newVal}'");
+            }
+        }
+    }
+
+    // Email — валидация формата перед записью
+    if (isset($_POST['email']) && $_POST['email'] !== $userdata['email']) {
+        $newEmail = trim($_POST['email']);
+        if (validate_email_format($newEmail)) {
+            $updateData['email'] = $newEmail;
+            $modcomment = modcomment("Email changed from '{$userdata['email']}' to '{$newEmail}'");
+        }
+    }
+
+    // Username — через ту же валидацию, что использует UserDataHandler
+    if (isset($_POST['username']) && $_POST['username'] !== $userdata['username']) {
+        require_once INC_PATH . '/functions_user.php';
+        $newUsername = trim_blank_chrs($_POST['username']);
+        $hasBadChars = str_contains($newUsername, '<') || str_contains($newUsername, '>')
+            || str_contains($newUsername, '&') || str_contains($newUsername, '\\')
+            || str_contains($newUsername, ';') || str_contains($newUsername, ',');
+        if (!$hasBadChars && $newUsername !== '' && !is_banned_username($newUsername, true)) {
+            $updateData['username'] = $newUsername;
+            $modcomment = modcomment("Username changed from '{$userdata['username']}' to '{$newUsername}'");
+        }
+    }
+
+    // Usergroup — требует отдельного, более высокого уровня прав, чем обычное редактирование юзера
+    if (isset($_POST['usergroup']) && (int)$_POST['usergroup'] !== (int)$userdata['usergroup']) {
+        $newGid = (int)$_POST['usergroup'];
+        $existingGroup = $db->fetch_array($db->simple_select('usergroups', 'gid, cansettingspanel, canstaffpanel, issupermod', "gid = {$newGid}", ['limit' => 1]));
+
+        $isElevatedTarget = $existingGroup && (
+            $existingGroup['cansettingspanel'] == '1' ||
+            $existingGroup['canstaffpanel'] == '1' ||
+            $existingGroup['issupermod'] == '1'
+        );
+
+        if (!$existingGroup) {
+            // Несуществующая группа — игнорируем молча
+        } elseif ($isElevatedTarget && !is_super_admin((int)$CURUSER['id'])) {
+            // Назначение staff-группы разрешено только супер-админам
+            write_log("SECURITY: {$CURUSER['username']} attempted to assign elevated group {$newGid} to user {$userdata['id']} without super admin rights", 'security', 2);
+        } else {
+            $updateData['usergroup'] = $newGid;
+            $modcomment = modcomment("Usergroup changed from '{$userdata['usergroup']}' to '{$newGid}'");
+        }
+    }
 
 
     // Process password
@@ -4142,22 +4212,25 @@ function processUserUpdateData(): array
         $updateData['warneduntil'] = '0';
         $modcomment = modcomment("Warning removed");
     } elseif (isset($_POST['warnlength']) && is_valid_id($_POST['warnlength']) && $userdata['warned'] == 'no') {
-        $warnpm = $_POST['warnpm'] ?: 'No Reason Given.';
-        if ($_POST['warnlength'] == 255) {
+        $warnlength = (int)$_POST['warnlength'];
+        $warnpm = trim((string)($_POST['warnpm'] ?? '')) ?: 'No Reason Given.';
+        if ($warnlength == 255) {
             $updateData['warneduntil'] = '0000-00-00 00:00:00';
         } else {
-            $updateData['warneduntil'] = TIMENOW + $_POST['warnlength'] * 604800;
+            $updateData['warneduntil'] = TIMENOW + $warnlength * 604800;
         }
         $updateData['warned'] = 'yes';
         $updateData['timeswarned'] = $userdata['timeswarned'] + 1;
         $updateData['lastwarned'] = TIMENOW;
         $updateData['warnedby'] = $CURUSER['id'];
-        $modcomment = modcomment("User warned for {$_POST['warnlength']} weeks. Reason: {$warnpm}");
+        $modcomment = modcomment("User warned for {$warnlength} weeks. Reason: {$warnpm}");
     }
 
     // Process additional comment
     if (!empty($_POST['addcomment'])) {
-        $modcomment = gmdate('Y-m-d') . ' - ' . $_POST['addcomment'] . ' - ' . $CURUSER['username'] . "\n" . $modcomment;
+        $addComment = str_replace(["\r", "\n"], ' ', trim((string)$_POST['addcomment']));
+        $addComment = mb_substr($addComment, 0, 500);
+        $modcomment = gmdate('Y-m-d') . ' - ' . $addComment . ' - ' . $CURUSER['username'] . "\n" . $modcomment;
     }
 
     // Process reset times warned
@@ -4174,7 +4247,8 @@ function processUserUpdateData(): array
 	
 // ── Quick Ban ─────────────────────────────────────────────────────────────
 if (!empty($_POST['quick_ban'])) {
-    $ban_reason   = trim($_POST['ban_reason']   ?? 'No reason given.');
+    $ban_reason   = str_replace(["\r", "\n"], ' ', trim($_POST['ban_reason'] ?? 'No reason given.'));
+    $ban_reason   = mb_substr($ban_reason, 0, 500);
     $ban_duration = trim($_POST['ban_duration'] ?? '');
     $banned_gid   = (int)($_POST['banned_gid']  ?? 0);
     $send_pm_ban  = !empty($_POST['ban_send_pm']);
@@ -4324,7 +4398,7 @@ function handleDeleteAccount(): void
                     </div>
                     <p class="text-muted mb-4">This action cannot be undone. All user data will be permanently removed.</p>
                     <div class="d-flex justify-content-center gap-3">
-                        <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=deleteaccount&userid=' . $userid . '&sure=1&my_post_key=' . $mybb->post_code . '" class="btn btn-danger btn-lg">
+                        <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=deleteaccount&userid=' . $userid . '&sure=1&my_post_key=' . generate_post_check() . '" class="btn btn-danger btn-lg">
                             <i class="fas fa-trash me-2"></i>Yes, Delete Account
                         </a>
                         <a href="' . $_SERVER['SCRIPT_NAME'] . '?action=edituser&userid=' . $userid . '" class="btn btn-secondary btn-lg">
@@ -4340,6 +4414,10 @@ function handleDeleteAccount(): void
 
     // Get user data
     $user = get_user((int)$userdata['id']);
+
+    if (!verify_post_check($_GET['my_post_key'] ?? '', true)) {
+        print_no_permission(true);
+    }
 
     require_once INC_PATH . "/datahandlers/user.php";
     $userhandler = new UserDataHandler('delete');
@@ -4378,13 +4456,15 @@ function handleResetPasskey(): void
 
     if (isset($_POST['sure']) && $_POST['sure'] == 1) 
 	{
+        if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+            print_no_permission(true);
+        }
+
         $modcomment = $userdata['modcomment'];
         $old_passkey = $userdata['passkey'];
         $passkey = generate_passkey($userdata['username'], $userdata['loginkey']);
 
-        $modcomment = gmdate('Y-m-d') . ' - Passkey reset by ' . $CURUSER['username'] . 
-              '. Old Passkey: ' . $old_passkey . 
-              ' | New Passkey: ' . $passkey . "\n" . $modcomment;
+        $modcomment = gmdate('Y-m-d') . ' - Passkey reset by ' . $CURUSER['username'] . "\n" . $modcomment;
 
         $msg = sprintf($lang->modtask['passkeymsg'], $CURUSER['username']);
         $subject = $lang->modtask['passkeysubject'];
@@ -4399,7 +4479,7 @@ function handleResetPasskey(): void
         return;
     }
 
-    stdhead('Reset Passkey for: ' . $userdata['username']);
+    stdhead('Reset Passkey for: ' . htmlspecialchars_uni($userdata['username']));
 
     echo '
     <div class="container mt-5">
@@ -4418,7 +4498,7 @@ function handleResetPasskey(): void
                 <form method="post" action="' . $_SERVER['PHP_SELF'] . '?action=resetpasskey&userid=' . $userdata['id'] . '">
                     <input type="hidden" name="userid" value="' . $userdata['id'] . '" />
                     <input type="hidden" name="sure" value="1" />
-                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+                    <input type="hidden" name="my_post_key" value="' . generate_post_check() . '" />
                     <div class="d-flex justify-content-center gap-3">
                         <button type="submit" class="btn btn-warning btn-lg">
                             <i class="fas fa-key me-2"></i>Yes, Reset Passkey

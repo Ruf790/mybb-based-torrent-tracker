@@ -66,6 +66,10 @@ class DownloadAmountManager
      */
     private function handlePostRequest(): void
     {
+        if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+            throw new RuntimeException('Invalid security token. Please refresh the page and try again.');
+        }
+
         if (isset($_POST['doit']) && $_POST['doit'] === 'yes') {
             $this->processBulkAction();
         } else {
@@ -98,7 +102,7 @@ class DownloadAmountManager
     {
         $username = $this->sanitizeUsername($_POST['username'] ?? '');
         $amountGB = $this->validateAmount($_POST['downloaded'] ?? 0, self::MAX_GB_INDIVIDUAL);
-        $adminNote = trim($_POST['admin_note'] ?? '');
+        $adminNote = mb_substr(trim($_POST['admin_note'] ?? ''), 0, 255);
         
         $this->updateUserDownloadAmount($username, $amountGB, $adminNote);
         
@@ -529,7 +533,7 @@ private function searchByGroup(int $groupId): array
         $comment .= " by {$admin}";
         
         if (!empty($adminNote)) {
-            $comment .= " [Note: {$adminNote}]";
+            $comment .= " [Note: " . htmlspecialchars($adminNote, ENT_QUOTES, 'UTF-8') . "]";
         }
         
         $comment .= $this->eol;
@@ -659,7 +663,7 @@ private function displaySuccess(int $amountGB, ?int $groupId = null): void
      */
     private function displayInterface(): void
     {
-        global $BASEURL, $_this_script_;
+        global $BASEURL, $_this_script_, $mybb;
 		
 		// Используем существующую функцию stdhead
         if (function_exists('stdhead')) {
@@ -1098,6 +1102,7 @@ private function displaySuccess(int $amountGB, ?int $groupId = null): void
                         <div class="card-body p-4">
                             <form method="post" action="<?= $_this_script_ ?>" 
                                   id="individualForm" class="needs-validation" novalidate>
+                                <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                                 
                                 <div class="mb-4">
                                     <label class="form-label fw-bold d-flex justify-content-between">
@@ -1219,6 +1224,7 @@ private function displaySuccess(int $amountGB, ?int $groupId = null): void
                         <div class="card-body p-4">
                             <form method="post" action="<?= $_this_script_ ?>" 
                                   id="bulkForm" class="needs-validation" novalidate>
+                                <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                                 <input type="hidden" name="doit" value="yes">
                                 
                                 <div class="mb-4">
@@ -1624,4 +1630,3 @@ try {
     <?php
     exit; // Важно: завершаем выполнение скрипта
 }
-

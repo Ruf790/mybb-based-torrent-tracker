@@ -49,10 +49,12 @@ stdfoot();
  */
 function handlePasskeyReset(): void
 {
-    global $db, $error, $title, $passkey;
-    
+    global $db, $mybb, $error, $title, $passkey;
+
+    verify_post_check($mybb->get_input('my_post_key'));
+
     $title = 'Passkey Reset: ';
-    $passkey = trim(strtolower($_GET['passkey'] ?? ''));
+    $passkey = trim(strtolower($_POST['passkey'] ?? ''));
     
     if (empty($passkey)) {
         $error = 'Please enter passkey!';
@@ -68,6 +70,7 @@ function handlePasskeyReset(): void
     $affected = $db->affected_rows();
     
     if ($affected > 0) {
+        write_log('Passkey reset by staff for passkey: ' . substr($passkey, 0, 8) . '...', 'security', 1);
         $error = '<i class="fas fa-check-circle text-success"></i> Passkey has been successfully reset for the user!';
     } else {
         $error = '<i class="fas fa-exclamation-circle text-warning"></i> No user found with this passkey.';
@@ -112,7 +115,7 @@ function handlePasskeySearch(): void
  */
 function displayUserDetails(array $user): void
 {
-    global $passkey, $BASEURL, $_this_script_;
+    global $passkey, $BASEURL, $_this_script_, $mybb;
     
     include_once INC_PATH . '/functions_ratio.php';
     
@@ -337,11 +340,15 @@ function displayUserDetails(array $user): void
                         <i class="fas fa-info-circle me-2 text-info"></i>Detailed Information
                     </h5>
                     <div class="btn-group">
-                        <a href="' . htmlspecialchars($_this_script_) . '&do=2&passkey=' . htmlspecialchars($passkey) . '" 
-                           class="btn btn-outline-danger btn-sm"
-                           onclick="return confirm(\'⚠️ Are you sure you want to reset this passkey?\\\\n\\\\nThis will:\\\\n• Invalidate current passkey\\\\n• Require user to generate new one\\\\n• Disrupt active downloads\')">
-                           <i class="fas fa-key me-1"></i> Reset Passkey
-                        </a>
+                        <form method="post" action="' . htmlspecialchars($_this_script_) . '" style="display:inline">
+                            <input type="hidden" name="do" value="2">
+                            <input type="hidden" name="passkey" value="' . htmlspecialchars($passkey) . '">
+                            <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
+                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                               onclick="return confirm(\'⚠️ Are you sure you want to reset this passkey?\\\\n\\\\nThis will:\\\\n• Invalidate current passkey\\\\n• Require user to generate new one\\\\n• Disrupt active downloads\')">
+                               <i class="fas fa-key me-1"></i> Reset Passkey
+                            </button>
+                        </form>
                         <button type="button" class="btn btn-outline-primary btn-sm" onclick="copyToClipboard(\'' . 
                         htmlspecialchars($passkey) . '\')">
                             <i class="fas fa-copy me-1"></i> Copy Passkey

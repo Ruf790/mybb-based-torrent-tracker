@@ -20,6 +20,26 @@ require_once INC_PATH . '/functions_multipage.php';
 
 
 
+
+// ── ban_date2timestamp ────────────────────────────────────────────────────────
+function ban_date2timestamp(string $date, int $stamp = 0): int
+{
+    if ($stamp === 0) $stamp = TIMENOW;
+
+    [$days, $months, $years] = array_map('intval', explode('-', $date));
+
+    return mktime(
+        (int)date('G', $stamp),
+        (int)date('i', $stamp),
+        0,
+        (int)date('n', $stamp) + $months,
+        (int)date('j', $stamp) + $days,
+        (int)date('Y', $stamp) + $years
+    );
+}
+
+
+
 // ---- avatar upload action (place this BEFORE any output/stdhead) ----
 if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') 
 {
@@ -59,6 +79,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
         $is_ajax ? $json(['ok'=>false,'error'=>'Файл не загружен'], 400) : exit('Error: file is not uploaded.');
     }
 
+    // CSRF
+    $post_key = $_POST['my_post_key'] ?? '';
+    if ($post_key === '' || !verify_post_check($post_key)) {
+        $is_ajax ? $json(['ok'=>false,'error'=>'Security check failed'], 403) : exit('Error: security check failed.');
+    }
+
     // size & ext checks
     $max_size    = 22 * 1024 * 1024; // 22 MB
     $allowed_ext = ['jpg','jpeg','png','gif','webp'];
@@ -78,7 +104,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     // MIME + exif type
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mime  = finfo_file($finfo, $file_tmp);
-    finfo_close($finfo);
+    //finfo_close($finfo);
     if (!in_array($mime, ['image/jpeg','image/png','image/gif','image/webp'], true)) {
         $is_ajax ? $json(['ok'=>false,'error'=>'Файл не является изображением (MIME)'], 415) : exit('Error: file is not image.');
     }
@@ -199,6 +225,11 @@ $lang->load('usersearch');
 // Bulk actions handler
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !empty($_POST['user_ids'])) {
     header('Content-Type: application/json');
+
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        echo json_encode(['success' => false, 'error' => 'Security check failed. Please refresh the page and try again.']);
+        exit;
+    }
 
     $action   = $_POST['bulk_action'];
     $user_ids = array_map('intval', $_POST['user_ids']);
@@ -343,12 +374,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
         case 'changegroup':
             $gid = (int)($_POST['group_id'] ?? 0);
             if ($gid <= 0) { echo json_encode(['success' => false, 'error' => 'Invalid group']); exit; }
-            $db->sql_query("UPDATE users SET usergroup='{$gid}' WHERE id IN ({$ids_str})");
-            echo json_encode(['success' => true, 'message' => count($user_ids) . ' users moved to group ' . $gid]);
+
+            $safe_ids = array_filter(
+                $user_ids,
+                fn($uid) => !is_super_admin($uid) && $uid !== (int)$CURUSER['id']
+            );
+
+            if (empty($safe_ids)) {
+                echo json_encode(['success' => false, 'error' => 'No eligible users (super admins and your own account are protected)']);
+                exit;
+            }
+
+            $safe_ids_str = implode(',', $safe_ids);
+            $db->sql_query("UPDATE users SET usergroup='{$gid}' WHERE id IN ({$safe_ids_str})");
+
+            log_moderator_action(
+                ['uids' => $safe_ids_str, 'gid' => $gid],
+                'Bulk changed group to ' . $gid . ' for ' . count($safe_ids) . ' user(s)'
+            );
+
+            echo json_encode([
+                'success' => true,
+                'message' => count($safe_ids) . ' user(s) moved to group ' . $gid
+                    . (count($safe_ids) < count($user_ids) ? ' (some were skipped: super admin or your own account)' : '')
+            ]);
             break;
         case 'delete':
-            $db->sql_query("DELETE FROM users WHERE id IN ({$ids_str})");
-            echo json_encode(['success' => true, 'message' => count($user_ids) . ' users deleted']);
+            $had_super_admin = false;
+            foreach ($user_ids as $uid) {
+                if (is_super_admin($uid)) {
+                    $had_super_admin = true;
+                    break;
+                }
+            }
+
+            require_once INC_PATH . '/datahandlers/user.php';
+            $userhandler = new UserDataHandler('delete');
+            $delete_result = $userhandler->delete_user($user_ids, 0);
+
+            log_moderator_action(
+                ['uids' => implode(',', $user_ids)],
+                'Bulk deleted ' . $delete_result['deleted_users'] . ' user(s)'
+            );
+
+            $msg = $delete_result['deleted_users'] . ' user(s) deleted';
+            if ($had_super_admin) {
+                $msg .= ' (you do not have permission to delete a super administrator account)';
+            } elseif ($delete_result['deleted_users'] < count($user_ids)) {
+                $msg .= ' (some were skipped: your own account)';
+            }
+
+            if ($delete_result['deleted_users'] === 0) {
+                // Ничего реально не удалилось — это не "успех", показываем как ошибку
+                echo json_encode(['success' => false, 'error' => $msg]);
+            } else {
+                echo json_encode(['success' => true, 'message' => $msg]);
+            }
             break;
         default:
             echo json_encode(['success' => false, 'error' => 'Unknown action']);
@@ -1204,9 +1285,8 @@ echo '</div>';
 echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*">';
 ?>
 
+<script>window.myPostKey = "<?= $mybb->post_code ?>";</script>
 <script src="<?= $BASEURL ?>/admin/scripts/usersearch.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/usersearch_bulkActions.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/avatarUpload.js"></script>
 <script src="<?= $BASEURL ?>/admin/scripts/datepicker.js"></script>
 
 

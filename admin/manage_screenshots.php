@@ -366,12 +366,14 @@ HTML;
 // ═══════════════════════════════════════════════════════════
 function handle_add(): void
 {
-    global $db, $_this_script_, $CURUSER;
+    global $db, $_this_script_, $CURUSER, $mybb;
 
     $error = null;
     $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        scr_verify_csrf();
+
         $torrent_id = (int)$_POST['torrent_id'];
 
         if (!isset($_FILES['screenshot']) || $_FILES['screenshot']['error'] !== UPLOAD_ERR_OK) {
@@ -380,6 +382,8 @@ function handle_add(): void
             $ext = strtolower(pathinfo($_FILES['screenshot']['name'], PATHINFO_EXTENSION));
             if (!in_array($ext, $allowed_ext)) {
                 $error = 'Invalid format. Allowed: ' . implode(', ', $allowed_ext);
+            } elseif (!($info = getimagesize($_FILES['screenshot']['tmp_name']))) {
+                $error = 'File is not a valid image';
             } else {
                 $num      = get_next_screenshot_number($torrent_id, $db, 3);
                 $filename = $torrent_id . '_' . $num . '.' . $ext;
@@ -389,8 +393,7 @@ function handle_add(): void
                     $error = 'File upload failed';
                 } else {
                     $size   = round(filesize($path) / 1024, 2);
-                    $info   = getimagesize($path);
-                    $dims   = $info ? $info[0] . 'x' . $info[1] : 'unknown';
+                    $dims   = $info[0] . 'x' . $info[1];
                     $db->insert_query('screenshots', [
                         'torrent_id'  => $torrent_id,
                         'filename'    => $filename,
@@ -417,6 +420,7 @@ function handle_add(): void
 
     echo '<div class="card border-0 shadow-sm"><div class="card-body">';
     echo '<form method="post" enctype="multipart/form-data">';
+    echo '<input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">';
     echo '<div class="row g-4 mb-4">';
 
     echo '<div class="col-lg-6">';
@@ -462,7 +466,7 @@ da.addEventListener("drop",e=>{fi.files=e.dataTransfer.files;fi.dispatchEvent(ne
 // ═══════════════════════════════════════════════════════════
 function handle_edit(): void
 {
-    global $db, $_this_script_, $CURUSER;
+    global $db, $_this_script_, $CURUSER, $mybb;
 
     $id  = (int)($_GET['id'] ?? 0);
     $res = $db->sql_query("SELECT * FROM screenshots WHERE id={$id}");
@@ -479,6 +483,8 @@ function handle_edit(): void
     $allowed  = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        scr_verify_csrf();
+
         $torrent_id = (int)$_POST['torrent_id'];
         $changes    = [];
 
@@ -490,6 +496,8 @@ function handle_edit(): void
             $ext = strtolower(pathinfo($_FILES['screenshot']['name'], PATHINFO_EXTENSION));
             if (!in_array($ext, $allowed)) {
                 $error = 'Invalid format. Allowed: ' . implode(', ', $allowed);
+            } elseif (!getimagesize($_FILES['screenshot']['tmp_name'])) {
+                $error = 'File is not a valid image';
             } else {
                 $old = get_upload_path($row['filename']);
                 if (file_exists($old)) unlink($old);
@@ -522,6 +530,7 @@ function handle_edit(): void
 
     echo '<div class="card border-0 shadow-sm"><div class="card-body">';
     echo '<form method="post" enctype="multipart/form-data">';
+    echo '<input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">';
     echo '<div class="row g-4 mb-4">';
 
     echo '<div class="col-lg-6">';

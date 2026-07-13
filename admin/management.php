@@ -484,33 +484,35 @@ function fm_delete_mod_modal(): void
 
 $page->add_breadcrumb_item('Forum Management', "index.php?act=management");
 
-if($mybb->input['action'] == "add" || $mybb->input['action'] == "edit" || $mybb->input['action'] == "copy" || $mybb->input['action'] == "permissions" || !$mybb->input['action'])
+$action = $mybb->get_input('action');
+
+if($action == "add" || $action == "edit" || $action == "copy" || $action == "permissions" || !$action)
 {
-	if(!empty($mybb->input['fid']) && ($mybb->input['action'] == "management" || $mybb->input['action'] == "edit" || $mybb->input['action'] == "copy" || !$mybb->input['action']))
+	if(!empty($mybb->input['fid']) && ($action == "management" || $action == "edit" || $action == "copy" || !$action))
 	{
-	
-		
+		$nav_fid = $mybb->get_input('fid', MyBB::INPUT_INT);
+
 		$sub_tabs['view_forum'] = array(
 			'title' =>'View Forum',
-			'link' => "index.php?act=management&fid=".$mybb->input['fid'],
+			'link' => "index.php?act=management&fid=".$nav_fid,
 			'description' => 'Here you can view sub forums, quickly edit permissions and add moderators to your forum'
 		);
 
 		$sub_tabs['add_child_forum'] = array(
 			'title' => 'Add Child Forum',
-			'link' => "index.php?act=management&action=add&pid=".$mybb->input['fid'],
+			'link' => "index.php?act=management&action=add&pid=".$nav_fid,
 			'description' => 'Here you can view sub forums, quickly edit permissions and add moderators to your forum'
 		);
 
 		$sub_tabs['edit_forum_settings'] = array(
 			'title' => 'Edit Forum Settings',
-			'link' => "index.php?act=management&action=edit&fid=".$mybb->input['fid'],
+			'link' => "index.php?act=management&action=edit&fid=".$nav_fid,
 			'description' => 'Here you can edit an existing forums settings and its permissions'
 		);
 
 		$sub_tabs['copy_forum'] = array(
 			'title' => 'Copy Forum',
-			'link' => "index.php?act=management&action=copy&fid=".$mybb->input['fid'],
+			'link' => "index.php?act=management&action=copy&fid=".$nav_fid,
 			'description' => 'Here you can copy forum settings or permissions from an existing forum to another or to a new forum'
 		);
 	}
@@ -538,10 +540,13 @@ $plugins->run_hooks("admin_forum_management_begin");
 // ═══════════════════════════════════════════════════════════
 // ACTION: COPY
 // ═══════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'copy') {
+if ($action === 'copy') {
     $plugins->run_hooks('admin_forum_management_copy');
 
     if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
+
+        $errors = [];
         $from = $mybb->get_input('from', MyBB::INPUT_INT);
         $to   = $mybb->get_input('to',   MyBB::INPUT_INT);
 
@@ -615,11 +620,12 @@ if ($mybb->input['action'] === 'copy') {
 
     // ── Sub-tabs ──
     if (!empty($mybb->input['fid'])) {
+        $nav_fid = $mybb->get_input('fid', MyBB::INPUT_INT);
         $sub_tabs = [
-            'view_forum'         => ['title'=>'View Forum',         'link'=>"index.php?act=management&fid={$mybb->input['fid']}",                    'description'=>''],
-            'add_child_forum'    => ['title'=>'Add Child Forum',    'link'=>"index.php?act=management&action=add&pid={$mybb->input['fid']}",          'description'=>''],
-            'edit_forum_settings'=> ['title'=>'Edit Forum Settings','link'=>"index.php?act=management&action=edit&fid={$mybb->input['fid']}",         'description'=>''],
-            'copy_forum'         => ['title'=>'Copy Forum',         'link'=>"index.php?act=management&action=copy&fid={$mybb->input['fid']}",         'description'=>''],
+            'view_forum'         => ['title'=>'View Forum',         'link'=>"index.php?act=management&fid={$nav_fid}",                    'description'=>''],
+            'add_child_forum'    => ['title'=>'Add Child Forum',    'link'=>"index.php?act=management&action=add&pid={$nav_fid}",          'description'=>''],
+            'edit_forum_settings'=> ['title'=>'Edit Forum Settings','link'=>"index.php?act=management&action=edit&fid={$nav_fid}",         'description'=>''],
+            'copy_forum'         => ['title'=>'Copy Forum',         'link'=>"index.php?act=management&action=copy&fid={$nav_fid}",         'description'=>''],
         ];
     }
 
@@ -658,7 +664,7 @@ if ($mybb->input['action'] === 'copy') {
                 <div class="row">
                 <div class="col-lg-8">
                 <form method="post" action="index.php?act=management&action=copy" id="copyForumForm">
-                    <?= generate_post_check() ?>
+                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
 
                     <?php fm_step(1, 'info', 'exchange-alt', 'Select Forums'); ?>
                     <div class="row g-4 mb-5">
@@ -799,7 +805,7 @@ if ($mybb->input['action'] === 'copy') {
 }
 
 
-if($mybb->input['action'] == "editmod")
+if($action == "editmod")
 {
 	$query = $db->simple_select("moderators", "*", "mid='".$mybb->get_input('mid', MyBB::INPUT_INT)."'");
 	$mod_data = $db->fetch_array($query);
@@ -823,6 +829,8 @@ if($mybb->input['action'] == "editmod")
 
 	if($mybb->request_method == "post")
 	{
+		verify_post_check($mybb->get_input('my_post_key'));
+
 		$mid = $mybb->get_input('mid', MyBB::INPUT_INT);
 		if(!$mid)
 		{
@@ -830,6 +838,7 @@ if($mybb->input['action'] == "editmod")
 			admin_redirect("index.php?act=management");
 		}
 
+		$errors = [];
 		if(!$errors)
 		{
 			$fid = $mybb->get_input('fid', MyBB::INPUT_INT);
@@ -898,7 +907,7 @@ if($mybb->input['action'] == "editmod")
 
 	$sub_tabs['edit_mod'] = array(
 		'title' => $lang->forum_management['edit_mod'],
-		'link' => "index.php?act=management&action=editmod&mid=".$mybb->input['mid'],
+		'link' => "index.php?act=management&action=editmod&mid=".$mybb->get_input('mid', MyBB::INPUT_INT),
 		'description' => $lang->forum_management['edit_mod_desc']
 	);
 
@@ -1058,7 +1067,7 @@ echo '</div>'; // .container mt-3
 	exit;
 }
 
-if($mybb->input['action'] == "clear_permission")
+if($action == "clear_permission")
 {
 	$pid = $mybb->get_input('pid', MyBB::INPUT_INT);
 	$fid = $mybb->get_input('fid', MyBB::INPUT_INT);
@@ -1074,6 +1083,8 @@ if($mybb->input['action'] == "clear_permission")
 
 	if($mybb->request_method == "post")
 	{
+		verify_post_check($mybb->get_input('my_post_key'));
+
 		if((!$fid || !$gid) && $pid)
 		{
 			$query = $db->simple_select("forumpermissions", "fid, gid", "pid='{$pid}'");
@@ -1114,11 +1125,13 @@ if($mybb->input['action'] == "clear_permission")
 // ============================================================
 // ACTION: PERMISSIONS
 // ============================================================
-if ($mybb->input['action'] === 'permissions') {
+if ($action === 'permissions') {
     $plugins->run_hooks('admin_forum_management_permissions');
 
     // ── POST ─────────────────────────────────────────────────
     if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
+
         $pid   = $mybb->get_input('pid', MyBB::INPUT_INT);
         $fid   = $mybb->get_input('fid', MyBB::INPUT_INT);
         $gid   = $mybb->get_input('gid', MyBB::INPUT_INT);
@@ -1419,9 +1432,9 @@ document.addEventListener("DOMContentLoaded", () => {
                         <div class="card-header ' . $tab_colors[$group] . ' text-white py-3">
                             <h6 class="mb-0">
                                 <i class="fas fa-user me-2"></i>"'
-                                . htmlspecialchars($usergroup['title'])
+                                . htmlspecialchars_uni($usergroup['title'])
                                 . '" Custom Permissions for "'
-                                . htmlspecialchars($forum['name']) . '"
+                                . htmlspecialchars_uni($forum['name']) . '"
                             </h6>
                         </div>
                         <div class="card-body"><div class="row">';
@@ -1441,7 +1454,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 echo '<div class="col-md-6">
                         <div class="form-check form-switch mb-3">
                             ' . $checkbox . '
-                            <label class="form-check-label" for="' . htmlspecialchars($fname) . '">'
+                            <label class="form-check-label" for="' . htmlspecialchars_uni($fname) . '">'
                             . ($l[$label_key] ?? $fname) . '
                             </label>
                         </div>
@@ -1486,10 +1499,13 @@ document.addEventListener("DOMContentLoaded", () => {
 // ═══════════════════════════════════════════════════════════
 // ACTION: ADD
 // ═══════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'add') {
+if ($action === 'add') {
     $plugins->run_hooks('admin_forum_management_add');
 
     if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
+
+        $errors = [];
         if (!trim($mybb->input['title'])) $errors[] = 'You must enter a title';
         $pid  = $mybb->get_input('pid', MyBB::INPUT_INT);
         $type = $mybb->input['type'];
@@ -1522,8 +1538,13 @@ if ($mybb->input['action'] === 'add') {
 
             $inherit = $mybb->input['default_permissions'] ?? [];
             foreach ($mybb->input as $id => $permission) {
-                if (strpos($id, 'fields_') === false) continue;
-                [, $gid] = explode('fields_', $id);
+                if (strpos($id, 'fields_') === false
+                    || strpos($id, 'fields_default_') !== false
+                    || strpos($id, 'fields_inherit_') !== false
+                ) continue;
+                [, $gid] = explode('fields_', $id, 2);
+                $gid = (int)$gid;
+                if ($gid <= 0) continue;
                 if (!is_array($permission)) {
                     $permission = array_fill_keys(explode(',', $permission), 1);
                 }
@@ -1750,7 +1771,7 @@ echo <<<HTML
 // ═══════════════════════════════════════════════════════════
 // ACTION: EDIT
 // ═══════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'edit') {
+if ($action === 'edit') {
     if (!$mybb->input['fid']) {
         flash_message($lang->forum_management['error_invalid_fid'], 'error');
         admin_redirect('index.php?act=management');
@@ -1766,7 +1787,9 @@ if ($mybb->input['action'] === 'edit') {
     $plugins->run_hooks('admin_forum_management_edit');
 
     if ($mybb->request_method === 'post') {	
-		
+		verify_post_check($mybb->get_input('my_post_key'));
+
+        $errors = [];
         if (!trim($mybb->input['title']))    $errors[] = 'You must enter a title';
         $pid = $mybb->get_input('pid', MyBB::INPUT_INT);
         if ($pid === $fid)                   $errors[] = 'The forum parent cannot be the forum itself';
@@ -1820,7 +1843,9 @@ if ($mybb->input['action'] === 'edit') {
             $inherit = $mybb->input['default_permissions'] ?? [];
             foreach ($mybb->input as $id => $permission) {
                 if (strpos($id, 'fields_') === false || strpos($id, 'fields_default_') !== false || strpos($id, 'fields_inherit_') !== false) continue;
-                [, $gid] = explode('fields_', $id);
+                [, $gid] = explode('fields_', $id, 2);
+                $gid = (int)$gid;
+                if ($gid <= 0) continue;
                 if ($mybb->input['fields_default_'.$gid] == $permission && $mybb->input['fields_inherit_'.$gid] == 1) { $inherit[$gid]=1; continue; }
                 $inherit[$gid] = 0;
                 if (!is_array($permission)) $permission = array_fill_keys(explode(',', $permission), 1);
@@ -2048,7 +2073,7 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
 
 
 
-if($mybb->input['action'] == "deletemod")
+if($action == "deletemod")
 {
 	$modid = $mybb->get_input('id', MyBB::INPUT_INT);
 	$isgroup = $mybb->get_input('isgroup', MyBB::INPUT_INT);
@@ -2074,6 +2099,8 @@ if($mybb->input['action'] == "deletemod")
 
 	if($mybb->request_method == "post")
 	{
+		verify_post_check($mybb->get_input('my_post_key'));
+
 		$mid = $mod['mid'];
 		if($mybb->input['isgroup'])
 		{
@@ -2124,7 +2151,7 @@ if($mybb->input['action'] == "deletemod")
 
 
 
-if ($mybb->input['action'] === 'delete')
+if ($action === 'delete')
 {
     // Разрешаем ТОЛЬКО POST
     if ($mybb->request_method !== 'post')
@@ -2284,6 +2311,7 @@ if (!$action) {
 
     // ── POST ─────────────────────────────────────────────────
     if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
 
         if ($mybb->get_input('update') === 'permissions') {
             $inherit     = [];
@@ -2296,6 +2324,8 @@ if (!$action) {
                 ) { continue; }
 
                 [, $gid] = explode('fields_', $id, 2);
+                $gid = (int)$gid;
+                if ($gid <= 0) continue;
 
                 if (($mybb->input['fields_default_' . $gid] ?? null) == $permission
                     && (int)($mybb->input['fields_inherit_' . $gid] ?? 0) === 1
@@ -2422,7 +2452,7 @@ if (!$action) {
                     }
 
                     flash_message($lang->forum_management['success_forum_disporder_updated'], 'success');
-                    admin_redirect('index.php?act=management&fid=' . ($mybb->input['fid'] ?? 0));
+                    admin_redirect('index.php?act=management&fid=' . $mybb->get_input('fid', MyBB::INPUT_INT));
                 }
             }
         }
@@ -2440,10 +2470,10 @@ if (!$action) {
     }
 
     $form_container = $fid && isset($forum_cache[$fid])
-        ? new FormContainer('Forums in ' . htmlspecialchars($forum_cache[$fid]['name']))
+        ? new FormContainer('Forums in ' . htmlspecialchars_uni($forum_cache[$fid]['name']))
         : new FormContainer('Manage Forums');
 
-    $form = new Form('index.php?act=management', 'post', 'management');
+    $form = new Form('index.php?act=management', 'post', 'management', false, '', true);
 
     stdhead('Forum Management');
     //echo $extra_header;
@@ -2459,7 +2489,7 @@ if (!$action) {
     output_nav_tabs($sub_tabs, $fid ? 'view_forum' : 'forum_management');
 
     $forum_name_esc = $fid && isset($forum_cache[$fid])
-        ? htmlspecialchars($forum_cache[$fid]['name'])
+        ? htmlspecialchars_uni($forum_cache[$fid]['name'])
         : '';
 
     echo '
@@ -2556,7 +2586,7 @@ if (!$action) {
 
                 <form method="post" action="index.php?act=management">
                     ' . $form->generate_hidden_field('fid', $fid) . '
-                    ' . generate_post_check() . '
+                    ' . $form->generate_hidden_field('my_post_key', $mybb->post_code) . '
 
                     <div class="table-container">
                         <div class="table-responsive rounded-3 border">
@@ -2660,7 +2690,7 @@ if (!$action) {
                 <form method="post" action="index.php?act=management" id="permissionsForm">
                     <input type="hidden" name="fid" value="' . $fid . '">
                     <input type="hidden" name="update" value="permissions">
-                    ' . generate_post_check() . '
+                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
 
                     <div class="table-responsive rounded-3 border">
                         <table class="table table-hover align-middle mb-0">
@@ -2767,7 +2797,7 @@ if (!$action) {
                                            data-pid=\"{$perms['pid']}\"
                                            data-fid=\"{$fid}\"
                                            data-gid=\"{$gid}\"
-                                           data-group-name=\"" . addslashes(htmlspecialchars($usergroup['title'])) . "\"
+                                           data-group-name=\"" . addslashes(htmlspecialchars_uni($usergroup['title'])) . "\"
                                            data-post-key=\"{$mybb->post_code}\"
                                            data-bs-toggle=\"tooltip\" title=\"Clear Custom Permissions\">
                                             <i class=\"fas fa-trash\"></i>
@@ -2925,7 +2955,7 @@ if (!$action) {
                                     <form method="post" action="index.php?act=management">
                                         <input type="hidden" name="fid" value="' . $fid . '">
                                         <input type="hidden" name="add" value="moderators">
-                                        ' . generate_post_check() . '
+                                        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
                                         <div class="mb-3">
                                             <label class="form-label fw-semibold">Select User Group</label>
                                             <select name="usergroup" class="form-select" required>
@@ -2955,7 +2985,7 @@ if (!$action) {
                                     <form method="post" action="index.php?act=management">
                                         <input type="hidden" name="fid" value="' . $fid . '">
                                         <input type="hidden" name="add" value="moderators">
-                                        ' . generate_post_check() . '
+                                        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
                                         <div class="mb-3">
                                             <label class="form-label fw-semibold">Username</label>
                                             <input type="text" name="username" class="form-control"
@@ -3283,7 +3313,7 @@ function generate_forum_actions($forum)
                     <a class="dropdown-item text-danger delete_employee" 
                        href="javascript:void(0)" 
                        data-emp-id="' . $forum['fid'] . '"
-                       data-forum-name="' . htmlspecialchars($forum['name']) . '">
+                       data-forum-name="' . htmlspecialchars_uni($forum['name']) . '">
                         <i class="fas fa-trash me-2"></i>Delete Forum
                     </a>
                 </li>
@@ -3494,7 +3524,3 @@ if (parentSelect) {
 </script>
 
 <?php
-
-
-
-

@@ -45,6 +45,12 @@ class ReseedRequestHandler
     {
     
 	global $_this_script_;
+
+	if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+		http_response_code(403);
+		echo 'Invalid security token';
+		exit;
+	}
 	
 	$torrentIds = $this->validateTorrentIds($_POST['torrents'] ?? '');
     $subject = trim($_POST['subject'] ?? '');
@@ -54,8 +60,8 @@ class ReseedRequestHandler
     $enableDoubleUpload = ($_POST['doubleupload'] ?? '') === 'yes';
     
     if (empty($torrentIds) || empty($subject) || empty($message)) {
-        $_SESSION['error_message'] = 'Missing required parameters';
-        header('Location: ' . basename($_SERVER['PHP_SELF']));
+        flash_message('Missing required parameters', 'error');
+        admin_redirect($_this_script_);
         exit;
     }
     
@@ -72,8 +78,7 @@ class ReseedRequestHandler
         $this->enableDoubleUpload($torrentIds);
     }
     
-    // Сохраняем сообщение в сессии и делаем редирект
-    $_SESSION['success_message'] = "Reseed requests sent successfully! {$sentCount} messages dispatched.";
+    flash_message("Reseed requests sent successfully! {$sentCount} messages dispatched.", 'success');
     admin_redirect($_this_script_);
     exit;
     }
@@ -181,7 +186,9 @@ class ReseedRequestHandler
     
     private function showReseedForm(): void
     {
-        $torrentIds = $this->validateTorrentIds($_POST['torrents'] ?? []);
+        global $ban_user_limit, $SITENAME, $BASEURL, $CURUSER;
+		
+		$torrentIds = $this->validateTorrentIds($_POST['torrents'] ?? []);
         
         if (empty($torrentIds)) {
             $this->showError('No torrents selected');
@@ -205,6 +212,8 @@ class ReseedRequestHandler
     
     private function renderReseedForm(array $torrentIds, array $languageData): void
     {
+        global $mybb, $_this_script_;
+
         $idList = implode(',', $torrentIds);
         $script = $_SERVER['PHP_SELF'] ?? 'index.php';
         
@@ -246,6 +255,7 @@ class ReseedRequestHandler
                 
                 <div class="card-body p-4">
                     <form method="post" action="<?= $_this_script_ ?>" id="reseedForm" class="needs-validation" novalidate>
+                        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                         <input type="hidden" name="do" value="request_reseed_final">
                         <input type="hidden" name="torrents" value="<?= htmlspecialchars($idList) ?>">
                         
@@ -365,27 +375,8 @@ class ReseedRequestHandler
     
     private function renderWeakTorrentsTable(): void
     {
-        
-		
-		// В начале метода showWeakTorrents() или renderWeakTorrentsTable()
-if (isset($_SESSION['success_message'])) {
-    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="fas fa-check-circle me-2"></i>
-            ' . htmlspecialchars($_SESSION['success_message']) . '
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>';
-    unset($_SESSION['success_message']);
-}
-
-if (isset($_SESSION['error_message'])) {
-    echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="fas fa-exclamation-circle me-2"></i>
-            ' . htmlspecialchars($_SESSION['error_message']) . '
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>';
-    unset($_SESSION['error_message']);
-}
-		
+      
+      	global $_this_script_;  
 		
 		
 		

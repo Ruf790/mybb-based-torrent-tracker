@@ -39,7 +39,7 @@ class SeedbonusSettings
     private function prepareValue(mixed $value, string $type): string
     {
         return match ($type) {
-            'boolean'          => $value ? 'yes' : 'no',
+            'boolean'          => in_array($value, ['yes', 'true', '1', 'on', true], true) ? 'yes' : 'no',
             'integer', 'float' => (string)$value,
             'array'            => json_encode($value, JSON_UNESCAPED_UNICODE),
             default            => (string)$value,
@@ -333,6 +333,34 @@ stdhead('Seedbonus System Settings');
                 <div class="tab-pane fade show active" id="basic">
                     <form id="basicForm">
                         <div class="row">
+						
+						
+						     <!-- Master Switch -->
+<div class="col-12 mb-4">
+    <div class="card border-<?= $seedbonus->getSetting('enabled', true) ? 'success' : 'danger' ?>">
+        <div class="card-header bg-<?= $seedbonus->getSetting('enabled', true) ? 'success' : 'danger' ?> text-white">
+            <i class="bi bi-power me-2"></i>System Master Switch
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">Enable or disable the entire seedbonus cron. When disabled, no bonus points are awarded at all, regardless of other settings.</p>
+            <div class="form-check form-switch">
+                <input type="hidden" name="seedbonus_enabled" value="no">
+                <input class="form-check-input" type="checkbox" id="systemEnabled"
+                       name="seedbonus_enabled" value="yes"
+                       <?= $seedbonus->getSetting('enabled', true) ? 'checked' : '' ?>>
+                <label class="form-check-label fw-bold" for="systemEnabled">
+                    Seedbonus System Enabled
+                </label>
+            </div>
+        </div>
+    </div>
+</div>
+						
+						
+						
+						
+						
+						
                             <!-- Base Bonus -->
                             <div class="col-md-6 mb-4">
                                 <div class="card">

@@ -995,27 +995,30 @@ if ($entry_type === 'site') {
     }
 
     // Category badge
-    if (!empty($arr['category'])) {
-        $cat_colors = [
-            'screenshot' => ['#e8f4fd', '#1a7fc1'],
-            'torrent'    => ['#e8f9f0', '#1a8a4a'],
-            'cron'       => ['#f4f0fd', '#6a3fc1'],
-            'error'      => ['#fdecea', '#c0392b'],
-            'security'   => ['#fdecea', '#c0392b'],
-            'settings'   => ['#fff8e6', '#c07800'],
-            'ban'        => ['#fdecea', '#c0392b'],
-            'deletion'   => ['#fdecea', '#c0392b'],
-            'mail'       => ['#e8f4fd', '#1a7fc1'],
-            'warning'    => ['#fff8e6', '#c07800'],
-            'general'    => ['#f0f2fa', '#8a8ea8'],
-        ];
-        $cat = $arr['category'];
-        [$bg, $cl] = $cat_colors[$cat] ?? ['#f0f2fa', '#8a8ea8'];
-        $information = '<span style="background:' . $bg . ';color:' . $cl . ';padding:2px 8px;'
-                     . 'border-radius:6px;font-size:11px;font-weight:700">'
-                     . htmlspecialchars(ucfirst($cat))
-                     . '</span>';
-    }
+    $cat_badges = [
+        'general'    => ['#f0f2fa', '#6c7293', 'fa-circle-info',        'General'],
+        'news'       => ['#eaf6ff', '#0a6ebd', 'fa-newspaper',          'News'],
+        'screenshot' => ['#e8f4fd', '#1a7fc1', 'fa-image',              'Screenshot'],
+        'torrent'    => ['#e8f9f0', '#1a8a4a', 'fa-magnet',             'Torrent'],
+        'cron'       => ['#f4f0fd', '#6a3fc1', 'fa-robot',              'Cron'],
+        'error'      => ['#fdecea', '#c0392b', 'fa-triangle-exclamation', 'Error'],
+        'security'   => ['#fdecea', '#8e1a1a', 'fa-shield-halved',      'Security'],
+        'settings'   => ['#fff8e6', '#c07800', 'fa-gear',               'Settings'],
+        'ban'        => ['#fdecea', '#c0392b', 'fa-ban',                'Ban'],
+        'deletion'   => ['#fdecea', '#c0392b', 'fa-trash',              'Deletion'],
+        'mail'       => ['#e8f4fd', '#1a7fc1', 'fa-envelope',           'Mail'],
+        'warning'    => ['#fff8e6', '#c07800', 'fa-triangle-exclamation', 'Warning'],
+    ];
+
+    $cat = !empty($arr['category']) ? $arr['category'] : 'general';
+    [$bg, $cl, $icon, $label] = $cat_badges[$cat] ?? $cat_badges['general'];
+
+    $information = '<span style="background:' . $bg . ';color:' . $cl . ';padding:3px 9px;'
+                 . 'border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;'
+                 . 'display:inline-flex;align-items:center;gap:4px">'
+                 . '<i class="fas ' . $icon . '" style="font-size:10px"></i>'
+                 . htmlspecialchars($label)
+                 . '</span>';
 }
 
   
@@ -1568,5 +1571,3 @@ document.addEventListener('DOMContentLoaded', function() {
 stdfoot();
 
 ?>
-
-

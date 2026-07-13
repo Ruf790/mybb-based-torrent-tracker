@@ -38,13 +38,6 @@ function deep_delete(int $id): void
     $screens_dir = TSDIR . '/' . $torrent_dir . '/screens/';
     $screens = scandir($screens_dir);
 
-    // Get all torrent IDs from database
-    $torrent_ids = [];
-    $sql = $db->sql_query('SELECT id FROM torrents');
-    while ($torrent = $db->fetch_array($sql)) {
-        $torrent_ids[] = (int)$torrent['id'];
-    }
-
     // Delete files that don't match torrent IDs
     foreach ($screens as $screenshot) {
         if ($screenshot === '.' || $screenshot === '..') {
@@ -52,7 +45,7 @@ function deep_delete(int $id): void
         }
 
         $filename = pathinfo($screenshot, PATHINFO_FILENAME);
-        $check = $db->simple_select("screenshots", "filename", "filename = '{$screenshot}'");
+        $check = $db->simple_select("screenshots", "filename", "filename = '" . $db->escape_string($screenshot) . "'");
 
         if (!$db->num_rows($check)) {
             $screenshot_file = $screens_dir . $screenshot;
@@ -127,13 +120,23 @@ foreach ($files as $file) {
 }
 
 $deleted_ids = [];
+$batch_limit = 200;
 
 if (isset($_GET['sure']) && $_GET['sure'] === 'yes') {
-    foreach ($delete as $file) {
-        deep_delete($file);
-        $deleted_ids[] = $file;
+    if (empty($_GET['my_post_key']) || !verify_post_check($_GET['my_post_key'], true)) {
+        echo '<div class="alert alert-danger">Security check failed. Please try again from the page.</div>';
+    } else {
+        $batch = array_slice($delete, 0, $batch_limit);
+        foreach ($batch as $file) {
+            deep_delete($file);
+            $deleted_ids[] = $file;
+        }
+        $delete = array_slice($delete, $batch_limit);
+
+        if (!empty($deleted_ids)) {
+            write_log('Deleted ' . count($deleted_ids) . ' orphaned torrent file(s): ' . implode(', ', $deleted_ids), 'torrent', 1);
+        }
     }
-    $delete = [];
 }
 
 stdhead('Delete Undeleted Torrent Files');
@@ -181,6 +184,9 @@ if (!empty($deleted_ids)) {
 
 if (!empty($delete)) {
     echo '<p>Total <b>' . count($delete) . '</b> orphaned .torrent files found in <code>' . $torrent_dir . '</code> folder.</p>';
+    if (count($delete) > $batch_limit) {
+        echo '<p class="text-muted small">Processing in batches of ' . $batch_limit . ' — click "Delete All" repeatedly until the list is empty.</p>';
+    }
     echo '<div class="table-responsive">
         <table class="table table-bordered table-striped table-hover">
             <thead class="table-dark">
@@ -201,7 +207,7 @@ if (!empty($delete)) {
     echo '</tbody>
         </table>
     </div>';
-    echo '<a href="https://ruff-tracker.eu/admin/index.php?act=delundeletedtorrents&sure=yes" class="btn btn-danger mt-3" onclick="return confirm(\'Are you sure you want to permanently delete these files?\')">Delete All</a>';
+    echo '<a href="' . $BASEURL . '/admin/index.php?act=delundeletedtorrents&sure=yes&my_post_key=' . urlencode($mybb->post_code ?? '') . '" class="btn btn-danger mt-3" onclick="return confirm(\'Are you sure you want to permanently delete these files?\')">Delete All</a>';
 } elseif (empty($deleted_ids)) {
     
 	echo '

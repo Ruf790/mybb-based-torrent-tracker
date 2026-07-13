@@ -94,8 +94,13 @@ if (!empty($_SESSION['swal_result'])) {
 
 
 // Process POST requests
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_array($_POST['action_type'] ?? '', ['resize', 'delete'], true)) {
-    
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_array($_POST['action_type'] ?? '', ['delete'], true)) {
+    if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+        http_response_code(403);
+        echo 'Invalid security token';
+        exit;
+    }
+
     $action_avatars = $_POST['avatars'] ?? [];
     $action_type    = $_POST['action_type'] ?? '';
     
@@ -181,71 +186,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_arr
 		
 		
     } 
-    elseif ($action_type === 'resize') {
-        require INC_PATH . '/readconfig_forumcp.php';
-        $width = $f_avatar_maxwidth ?? 100;
-        $height = $f_avatar_maxheight ?? 100;
-        
-        foreach ($action_avatars as $filename) {
-            $ext = get_extension($filename);
-            $filepath = $_adir . $filename;
-            
-            if (!file_exists($filepath)) {
-                continue;
-            }
-            
-            list($width_orig, $height_orig) = getimagesize($filepath);
-            $ratio_orig = $width_orig / $height_orig;
-            
-            if ($ratio_orig < $width / $height) {
-                $new_width = $height * $ratio_orig;
-                $new_height = $height;
-            } else {
-                $new_width = $width;
-                $new_height = $width / $ratio_orig;
-            }
-            
-            $image_p = imagecreatetruecolor((int)$new_width, (int)$new_height);
-            
-            switch ($ext) {
-                case 'jpg':
-                case 'jpeg':
-                    $image = imagecreatefromjpeg($filepath);
-                    break;
-                case 'gif':
-                    $image = imagecreatefromgif($filepath);
-                    break;
-                case 'png':
-                    $image = imagecreatefrompng($filepath);
-                    break;
-                default:
-                    continue 2;
-            }
-            
-            imagecopyresampled($image_p, $image, 0, 0, 0, 0, (int)$new_width, (int)$new_height, $width_orig, $height_orig);
-            
-            ob_start();
-            switch ($ext) {
-                case 'jpg':
-                case 'jpeg':
-                    imagejpeg($image_p, null, 90);
-                    break;
-                case 'gif':
-                    imagegif($image_p);
-                    break;
-                case 'png':
-                    imagepng($image_p, null, 9);
-                    break;
-            }
-            $image_data = ob_get_clean();
-            
-            file_put_contents($filepath, $image_data);
-            
-        }
-        
-        $show_swal = true;
-        $ok = $action_avatars;
-    }
 }
 
 // Load avatar files
@@ -637,6 +577,7 @@ Swal.fire({
     </div>
     
     <form method="post" action="<?= htmlspecialchars($_this_script_ . '&p=' . $page) ?>" id="avatarForm">
+        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
         <div class="card-body">
             <div class="selection-toolbar mb-4">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -656,7 +597,6 @@ Swal.fire({
                     <div class="d-flex gap-2">
                         <select name="action_type" class="form-select" style="width: auto; font-size: 14px;" required>
                             <option value="" disabled selected>Choose action</option>
-                            <option value="resize"><i class="fas fa-expand-alt me-2"></i>Resize Selected</option>
                             <option value="delete"><i class="fas fa-trash-alt me-2"></i>Delete Selected</option>
                         </select>
                         <button type="submit" class="btn btn-primary">

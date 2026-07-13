@@ -39,8 +39,8 @@ function render_status_badge(bool $active, string $type = 'status'): string
     return "<span class='badge bg-{$class}'><i class='fas {$icon} me-1'></i>{$text}</span>";
 }
 
-$act2   = isset($_GET['act2'])   ? $_GET['act2']        : '';
-$cronid = isset($_GET['cronid']) ? (int)$_GET['cronid'] : 0;
+$act2   = $_GET['act2']   ?? $_POST['act2']   ?? '';
+$cronid = (int)($_GET['cronid'] ?? $_POST['cronid'] ?? 0);
 
 // ── AJAX: load cron data for modal ────────────────────────────────────
 if ($act2 === 'get_cron_data' && is_valid_id($cronid)) {
@@ -67,7 +67,20 @@ if ($act2 === 'get_cron_data' && is_valid_id($cronid)) {
 // === POST ===
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($act2 === 'save' || $act2 === 'save_new') && (is_valid_id($cronid) || $act2 === 'save_new')) {
-        $filename    = isset($_POST['filename'])    ? $db->sqlesc(trim($_POST['filename']))    : "''";
+        if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+            http_response_code(403);
+            echo 'Invalid security token';
+            exit;
+        }
+
+        $rawFilename = trim($_POST['filename'] ?? '');
+        if (!preg_match('/^[a-zA-Z0-9_\-]+\.php$/', $rawFilename)) {
+            flash_message("Invalid filename. Only letters, numbers, underscore, hyphen and a .php extension are allowed (no paths).", "error");
+            admin_redirect($_this_script_);
+            exit();
+        }
+
+        $filename    = $db->sqlesc($rawFilename);
         $description = isset($_POST['description']) ? $db->sqlesc(trim($_POST['description'])) : "''";
 
         $mosecs = 31*24*60*60; $wsecs = 7*24*60*60; $dsecs = 24*60*60; $hsecs = 60*60; $msecs = 60;
@@ -95,8 +108,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// === GET actions ===
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+// === POST actions (run / activate / disable / delete) ===
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($act2, ['run', 'active', 'disable', 'delete'], true)) {
+    if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+        http_response_code(403);
+        echo 'Invalid security token';
+        exit;
+    }
+
     if ($act2 === 'run' && is_valid_id($cronid)) {
         $db->sql_query("UPDATE cron SET nextrun='0' WHERE cronid='$cronid'");
 
@@ -244,25 +263,37 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
                         <td><?= render_status_badge((bool)$cron['active'], 'status') ?></td>
                         <td>
                             <div class="btn-group btn-group-sm">
-                                <a href="<?= $_this_script_ ?>&act2=run&cronid=<?= $cron['cronid'] ?>"
-                                   class="btn btn-outline-primary" title="Run Now" data-bs-toggle="tooltip">
-                                    <i class="fas fa-play"></i>
-                                </a>
+                                <form method="post" action="<?= $_this_script_ ?>" class="d-inline">
+                                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
+                                    <input type="hidden" name="act2" value="run">
+                                    <input type="hidden" name="cronid" value="<?= (int)$cron['cronid'] ?>">
+                                    <button type="submit" class="btn btn-outline-primary" title="Run Now" data-bs-toggle="tooltip">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                </form>
                                 <button type="button" class="btn btn-outline-secondary"
                                         title="Edit" data-bs-toggle="tooltip"
                                         onclick="openEditModal(<?= (int)$cron['cronid'] ?>)">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <a href="<?= $_this_script_ ?>&act2=<?= $cron['active'] ? 'disable' : 'active' ?>&cronid=<?= $cron['cronid'] ?>"
-                                   class="btn btn-outline-<?= $cron['active'] ? 'warning' : 'success' ?>"
-                                   title="<?= $cron['active'] ? 'Disable' : 'Enable' ?>" data-bs-toggle="tooltip">
-                                    <i class="fas fa-power-off"></i>
-                                </a>
-                                <a href="<?= $_this_script_ ?>&act2=delete&cronid=<?= $cron['cronid'] ?>"
-                                   class="btn btn-outline-danger" title="Delete" data-bs-toggle="tooltip"
-                                   onclick="return confirm('Delete cron job: <?= addslashes(htmlspecialchars($cron['filename'])) ?>?')">
-                                    <i class="fas fa-trash-alt"></i>
-                                </a>
+                                <form method="post" action="<?= $_this_script_ ?>" class="d-inline">
+                                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
+                                    <input type="hidden" name="act2" value="<?= $cron['active'] ? 'disable' : 'active' ?>">
+                                    <input type="hidden" name="cronid" value="<?= (int)$cron['cronid'] ?>">
+                                    <button type="submit" class="btn btn-outline-<?= $cron['active'] ? 'warning' : 'success' ?>"
+                                            title="<?= $cron['active'] ? 'Disable' : 'Enable' ?>" data-bs-toggle="tooltip">
+                                        <i class="fas fa-power-off"></i>
+                                    </button>
+                                </form>
+                                <form method="post" action="<?= $_this_script_ ?>" class="d-inline"
+                                      onsubmit="return confirm('Delete cron job: <?= addslashes(htmlspecialchars($cron['filename'])) ?>?')">
+                                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
+                                    <input type="hidden" name="act2" value="delete">
+                                    <input type="hidden" name="cronid" value="<?= (int)$cron['cronid'] ?>">
+                                    <button type="submit" class="btn btn-outline-danger" title="Delete" data-bs-toggle="tooltip">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </form>
                             </div>
                         </td>
                     </tr>
@@ -363,6 +394,7 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
                 </div>
 
                 <form id="cronForm" method="POST" action="">
+                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                     <input type="hidden" id="formCronId" name="cronid" value="999">
 
                     <div class="row g-3 mb-3">

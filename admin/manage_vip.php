@@ -131,24 +131,9 @@ function getVipUserPopoverContent(array $user): string
     $content .= '</div>';
     $content .= '</div>';
     
-    // Донат информация
-    $content .= '<div class="border-top pt-3 mt-3">';
-    $content .= '<h6 class="mb-2"><i class="fas fa-donate me-1"></i>Donation Info</h6>';
-    $content .= '<div class="row g-2">';
-    
-    // Текущий донат
-    $content .= '<div class="col-6">';
-    $content .= '<small class="text-muted">Current</small>';
-    $content .= '<div class="fw-semibold text-info">$' . number_format((float) ($user['donated'] ?? 0), 2) . '</div>';
-    $content .= '</div>';
-    
-    // Всего донатов
-    $content .= '<div class="col-6">';
-    $content .= '<small class="text-muted">Total</small>';
-    $content .= '<div class="fw-semibold text-success">$' . number_format((float) ($user['total_donated'] ?? 0), 2) . '</div>';
-    $content .= '</div>';
-    
     // Приглашения
+    $content .= '<div class="border-top pt-3 mt-3">';
+    $content .= '<div class="row g-2">';
     $content .= '<div class="col-12">';
     $content .= '<small class="text-muted"><i class="fas fa-envelope me-1"></i>Invites</small>';
     $content .= '<div class="fw-semibold">' . ts_nf($user['invites'] ?? 0) . ' available</div>';
@@ -184,22 +169,17 @@ function getAvatarForTable(array $user): string
     }
 }
 
-function getVipUntilDisplay(?string $donorUntil): string
+function getVipUntilDisplay(?int $vipUntil): string
 {
-    if (empty($donorUntil) || $donorUntil === '0000-00-00 00:00:00' || $donorUntil === '0000-00-00') {
+    if (empty($vipUntil)) {
         return '<span class="badge bg-success"><i class="fas fa-infinity me-1"></i>Unlimited</span>';
     }
-    
+
     global $dateformat, $timeformat;
-    $donorTime = strtotime($donorUntil);
-    
-    if ($donorTime === false) {
-        return '<span class="badge bg-warning"><i class="fas fa-exclamation-triangle me-1"></i>Invalid date</span>';
-    }
-    
-    $timeLeft = $donorTime - time();
+
+    $timeLeft = $vipUntil - TIMENOW;
     $daysLeft = floor($timeLeft / (60 * 60 * 24));
-    
+
     // Определяем цвет в зависимости от оставшегося времени
     if ($daysLeft <= 0) {
         $badgeClass = 'bg-danger';
@@ -210,28 +190,12 @@ function getVipUntilDisplay(?string $donorUntil): string
     } else {
         $badgeClass = 'bg-primary';
     }
-    
+
     return '<span class="badge ' . $badgeClass . '">
                 <i class="fas fa-clock me-1"></i>' . 
-                my_datee($dateformat, $donorUntil) . '<br>
-                <small>' . mkprettytime(max(0, $timeLeft)) . ' left</small>
+                my_datee($dateformat, $vipUntil) . '<br>
+                <small>' . ($daysLeft > 0 ? mkprettytime(max(0, $timeLeft)) . ' left' : 'Expired (pending cron)') . '</small>
             </span>';
-}
-
-function formatDonatedAmount(?float $amount): string
-{
-    if ($amount === null || $amount == 0) {
-        return '<span class="badge bg-secondary"><i class="fas fa-dollar-sign me-1"></i>0.00</span>';
-    }
-    return '<span class="badge bg-info"><i class="fas fa-dollar-sign me-1"></i>' . number_format($amount, 2) . '</span>';
-}
-
-function formatTotalDonatedAmount(?float $amount): string
-{
-    if ($amount === null || $amount == 0) {
-        return '<span class="badge bg-secondary"><i class="fas fa-chart-line me-1"></i>0.00</span>';
-    }
-    return '<span class="badge bg-success"><i class="fas fa-chart-line me-1"></i>' . number_format($amount, 2) . '</span>';
 }
 
 // Main processing
@@ -239,30 +203,69 @@ $action = trim($_GET['do'] ?? $_POST['do'] ?? '');
 
 // Handle update action
 if ($action === 'update') {
+    verify_post_check($mybb->get_input('my_post_key'));
+
     $addType = trim($_POST['add'] ?? '');
     $limit = (int) ($_POST['limit'] ?? 0);
     $userIds = array_filter($_POST['userids'] ?? [], 'is_numeric');
     $page = (int) ($_POST['page'] ?? 1);
     
-    if (!empty($userIds) && $limit > 0) {
-        $userIdsList = implode(',', array_map('intval', $userIds));
-        
+    if (!empty($userIds) && ($limit > 0 || $addType === 'remove_vip')) {
+        $userIds = array_map('intval', $userIds);
+
         switch ($addType) {
             case 'donoruntil':
-                $donorLengthAdd = $limit * 7;
-                $sql = "UPDATE users SET donoruntil = IF(donoruntil IS NULL OR donoruntil='0000-00-00 00:00:00', 
-                        ADDDATE(NOW(), INTERVAL ? DAY), 
-                        ADDDATE(donoruntil, INTERVAL ? DAY)) 
-                        WHERE id IN (0, $userIdsList)";
-                $db->sql_query_prepared($sql, [$donorLengthAdd, $donorLengthAdd]) or sqlerr(__FILE__, 35);
+                $extendSeconds = $limit * 7 * 86400;
+
+                foreach ($userIds as $uid) {
+                    $existing = $db->fetch_array($db->sql_query_prepared(
+                        'SELECT vip_until, old_gid FROM auto_vip WHERE userid = ?',
+                        [$uid]
+                    ));
+
+                    if ($existing) {
+                        $newUntil = max((int)$existing['vip_until'], TIMENOW) + $extendSeconds;
+                        $db->sql_query_prepared('UPDATE auto_vip SET vip_until = ? WHERE userid = ?', [$newUntil, $uid]);
+                    } else {
+                        $currentGroup = $db->fetch_array($db->sql_query_prepared('SELECT usergroup FROM users WHERE id = ?', [$uid]));
+                        $oldGid = ((int)($currentGroup['usergroup'] ?? 0) === VIP_USERGROUP_ID)
+                            ? UC_USER
+                            : (int)($currentGroup['usergroup'] ?? UC_USER);
+
+                        $db->sql_query_prepared(
+                            'INSERT INTO auto_vip (userid, vip_until, old_gid) VALUES (?, ?, ?)',
+                            [$uid, TIMENOW + $extendSeconds, $oldGid]
+                        );
+                    }
+
+                    $db->sql_query_prepared('UPDATE users SET usergroup = ? WHERE id = ?', [VIP_USERGROUP_ID, $uid]);
+                }
+
+                write_log('VIP time extended by ' . $limit . ' week(s) for users: ' . implode(', ', $userIds), 'general', 1);
                 break;
                 
             case 'seedbonus':
-                $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id IN (0, $userIdsList)", [$limit]);
+                $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+                $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id IN ({$placeholders})", [$limit, ...$userIds]);
+                write_log('Gave ' . $limit . ' bonus points to users: ' . implode(', ', $userIds), 'general', 1);
                 break;
                 
             case 'invites':
-                $db->sql_query_prepared("UPDATE users SET invites = invites + ? WHERE id IN (0, $userIdsList)", [$limit]);
+                $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+                $db->sql_query_prepared("UPDATE users SET invites = invites + ? WHERE id IN ({$placeholders})", [$limit, ...$userIds]);
+                write_log('Gave ' . $limit . ' invite(s) to users: ' . implode(', ', $userIds), 'general', 1);
+                break;
+
+            case 'remove_vip':
+                foreach ($userIds as $uid) {
+                    $existing = $db->fetch_array($db->sql_query_prepared('SELECT old_gid FROM auto_vip WHERE userid = ?', [$uid]));
+                    $newGid = ($existing && (int)$existing['old_gid'] > 0) ? (int)$existing['old_gid'] : UC_USER;
+
+                    $db->sql_query_prepared('UPDATE users SET usergroup = ? WHERE id = ?', [$newGid, $uid]);
+                    $db->sql_query_prepared('DELETE FROM auto_vip WHERE userid = ?', [$uid]);
+                }
+
+                write_log('VIP status manually removed by staff for users: ' . implode(', ', $userIds), 'general', 1);
                 break;
         }
     }
@@ -286,9 +289,9 @@ $sql = "SELECT COUNT(*) as total
         FROM users u 
         LEFT JOIN usergroups g ON u.usergroup = g.gid 
         WHERE u.usergroup = ? 
-        AND g.cansettingspanel = 'no' 
-        AND g.canstaffpanel = 'no' 
-        AND g.issupermod = 'no' 
+        AND g.cansettingspanel = '0' 
+        AND g.canstaffpanel = '0' 
+        AND g.issupermod = '0' 
         {$searchConditions}";
 
 $params = [VIP_USERGROUP_ID];
@@ -318,13 +321,14 @@ $sortOrder = ($_GET['type'] ?? 'ASC') === 'DESC' ? 'ASC' : 'DESC';
 $sortIcon = $sortOrder === 'ASC' ? '↑' : '↓';
 
 // Build main query using prepared statement
-$mainQuery = "SELECT u.*, g.namestyle, g.title 
+$mainQuery = "SELECT u.*, g.namestyle, g.title, av.vip_until, av.old_gid
               FROM users u 
               LEFT JOIN usergroups g ON u.usergroup = g.gid 
+              LEFT JOIN auto_vip av ON av.userid = u.id
               WHERE u.usergroup = ? 
-              AND g.cansettingspanel = 'no' 
-              AND g.canstaffpanel = 'no' 
-              AND g.issupermod = 'no' 
+              AND g.cansettingspanel = '0' 
+              AND g.canstaffpanel = '0' 
+              AND g.issupermod = '0' 
               {$searchConditions} 
               ORDER BY u.{$sortField} {$sortOrder} 
               LIMIT ?, ?";
@@ -431,6 +435,7 @@ stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts foun
     <!-- VIP Users Table -->
     <form method="post" action="<?= $_this_script_ ?>" name="update">
         <input type="hidden" name="do" value="update">
+        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
         <input type="hidden" name="page" value="<?= $currentPage ?>">
         
         <div class="row">
@@ -457,8 +462,6 @@ stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts foun
                                             </a>
                                         </th>
                                         <th>VIP Status</th>
-                                        <th>Current Donation</th>
-                                        <th>Total Donated</th>
                                         <th>
                                             <a href="<?= $_this_script_ ?>&amp;sortby=seedbonus&amp;type=<?= $sortField === 'seedbonus' ? $sortOrder : 'ASC' ?>"
                                                class="text-decoration-none text-dark d-flex align-items-center">
@@ -508,13 +511,7 @@ stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts foun
                                                     <i class="fas fa-info-circle text-info ms-2" style="font-size: 0.8em;"></i>
                                                 </a>
                                             </td>
-                                            <td><?= getVipUntilDisplay($vip['donoruntil'] ?? null) ?></td>
-                                            <td class="text-center">
-                                                <?= formatDonatedAmount($vip['donated'] ?? null) ?>
-                                            </td>
-                                            <td class="text-center">
-                                                <?= formatTotalDonatedAmount($vip['total_donated'] ?? null) ?>
-                                            </td>
+                                            <td><?= getVipUntilDisplay(isset($vip['vip_until']) ? (int)$vip['vip_until'] : null) ?></td>
                                             <td class="text-center">
                                                 <span class="badge bg-warning text-dark">
                                                     <i class="fas fa-coins me-1"></i><?= ts_nf($vip['seedbonus'] ?? 0) ?>
@@ -529,7 +526,7 @@ stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts foun
                                         <?php endwhile; ?>
                                     <?php else: ?>
                                     <tr>
-                                        <td colspan="7" class="text-center py-5">
+                                        <td colspan="5" class="text-center py-5">
                                             <div class="text-muted">
                                                 <i class="fas fa-users fa-3x mb-3 opacity-50"></i>
                                                 <h5 class="mb-2">No VIP users found</h5>
@@ -556,7 +553,7 @@ stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts foun
                     </div>
                     <div class="card-body">
                         <div class="row g-3 align-items-center">
-                            <div class="col-md-3">
+                            <div class="col-md-3" id="limitFormGroup">
                                 <label for="limit" class="form-label fw-semibold">
                                     <i class="fas fa-hashtag me-1"></i>Amount:
                                 </label>
@@ -565,7 +562,6 @@ stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts foun
                                        id="limit" 
                                        name="limit" 
                                        min="1" 
-                                       required
                                        placeholder="Enter amount">
                             </div>
                             
@@ -573,16 +569,25 @@ stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts foun
                                 <label for="add" class="form-label fw-semibold">
                                     <i class="fas fa-cog me-1"></i>Action:
                                 </label>
-                                <select class="form-select" id="add" name="add">
+                                <select class="form-select" id="add" name="add" onchange="
+                                    var isRemove = this.value === 'remove_vip';
+                                    document.getElementById('limitFormGroup').style.display = isRemove ? 'none' : '';
+                                    document.getElementById('limit').required = !isRemove;
+                                ">
                                     <option value="donoruntil"><i class="fas fa-calendar-plus me-1"></i>Add Extra Donor Time (weeks)</option>
                                     <option value="seedbonus"><i class="fas fa-coins me-1"></i>Give Extra Karma Points</option>
                                     <option value="invites"><i class="fas fa-envelope me-1"></i>Give Extra Invites</option>
+                                    <option value="remove_vip"><i class="fas fa-user-slash me-1"></i>Remove VIP Now</option>
                                 </select>
                             </div>
                             
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold invisible">Submit</label>
-                                <button type="submit" class="btn btn-primary w-100">
+                                <button type="submit" class="btn btn-primary w-100" onclick="
+                                    if (document.getElementById('add').value === 'remove_vip') {
+                                        return confirm('Remove VIP status from all selected users immediately? This cannot be undone.');
+                                    }
+                                ">
                                     <i class="fas fa-sync-alt me-1"></i>Update Selected Accounts
                                 </button>
                             </div>

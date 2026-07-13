@@ -170,8 +170,8 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
     private function sanitizeInput(array $input): array
     {
         return [
-            'name' => trim(htmlspecialchars($input['name'] ?? '', ENT_QUOTES)),
-            'icon' => trim(htmlspecialchars($input['icon'] ?? '', ENT_QUOTES)),
+            'name' => trim((string)($input['name'] ?? '')),
+            'icon' => trim((string)($input['icon'] ?? '')),
             'type' => !empty($input['cid']) ? 's' : 'c',
             'pid' => max(0, (int)($input['cid'] ?? 0))
         ];
@@ -223,7 +223,15 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         $what = $_GET['what'] ?? $_POST['what'] ?? '';
         $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
         $cid = (int)($_GET['cid'] ?? $_POST['cid'] ?? 0);
-        
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+                http_response_code(403);
+                echo 'Invalid security token';
+                exit;
+            }
+        }
+
         switch ($action) {
             case 'new':
                 $this->handleNew($what);
@@ -308,12 +316,14 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
      */
     private function handleDelete(string $what, int $id): void
     {
+        global $mybb;
+
         if (!$this->validateCategoryId($id)) {
             stderr('Error', 'Category with this ID was not found!');
             return;
         }
         
-        if ($what === 'sure') {
+        if ($what === 'sure' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $this->db->sql_query("DELETE FROM categories WHERE id = " . (int)$id . " LIMIT 1");
             $this->updateCategoriesCache();
             redirect('admin/index.php?act=category', 'Category has been successfully deleted!');
@@ -337,16 +347,21 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
                                 <p>Are you sure you want to delete the category:</p>
                                 <div class="alert alert-light">
                                     <h6 class="mb-1"><i class="' . htmlspecialchars($category['icon']) . ' me-2"></i>' . htmlspecialchars($category['name']) . '</h6>
-                                    <p class="mb-0 text-muted small">' . htmlspecialchars($category['cat_desc']) . '</p>
                                 </div>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                                     <i class="fas fa-times me-1"></i>Cancel
                                 </button>
-                                <a href="' . $this->baseScript . '&do=delete&id=' . $id . '&what=sure" class="btn btn-danger">
-                                    <i class="fas fa-trash me-1"></i>Delete
-                                </a>
+                                <form method="post" action="' . $this->baseScript . '" class="d-inline">
+                                    <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
+                                    <input type="hidden" name="do" value="delete">
+                                    <input type="hidden" name="id" value="' . (int)$id . '">
+                                    <input type="hidden" name="what" value="sure">
+                                    <button type="submit" class="btn btn-danger">
+                                        <i class="fas fa-trash me-1"></i>Delete
+                                    </button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -402,7 +417,7 @@ document.addEventListener("DOMContentLoaded", function () {
      */
     private function showCategoryForm(string $title, array $category = null): void
     {
-        global $lang;
+        global $lang, $mybb;
         
         $isEdit = ($category !== null);
         $data = $category ?? [
@@ -436,6 +451,7 @@ document.addEventListener("DOMContentLoaded", function () {
         echo '<div class="card shadow-sm">
                 <div class="card-body">
                     <form method="post" action="' . $this->baseScript . '" novalidate>
+                        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
                         <input type="hidden" name="do" value="' . ($isEdit ? 'edit' : 'new') . '">
                         <input type="hidden" name="what" value="save">';
         
@@ -449,18 +465,6 @@ document.addEventListener("DOMContentLoaded", function () {
                                 <input type="text" class="form-control" id="name" name="name" 
                                        value="' . htmlspecialchars($data['name']) . '" required>
                                 <div class="invalid-feedback">Please enter category name</div>
-                            </div>
-                            
-                            <div class="col-md-6">
-                                <label for="minclassread" class="form-label">Minimum Read Class</label>
-                                <input type="number" class="form-control" id="minclassread" name="minclassread" 
-                                       value="' . (int)$data['minclassread'] . '" min="0" max="255">
-                            </div>
-                            
-                            <div class="col-12">
-                                <label for="cat_desc" class="form-label">Category Description</label>
-                                <textarea class="form-control" id="cat_desc" name="cat_desc" 
-                                          rows="2">' . htmlspecialchars($data['cat_desc']) . '</textarea>
                             </div>';
         
         if ($isEdit || !$data['pid']) {
@@ -501,6 +505,8 @@ document.addEventListener("DOMContentLoaded", function () {
      */
     private function showSubcategoryForm(array $parentCategory): void
     {
+        global $mybb;
+
         stdhead('Add Subcategory');
         
         echo '<div class="container mt-4">
@@ -523,6 +529,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $this->showErrors();
         
         echo '<form method="post" action="' . $this->baseScript . '">
+                        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
                         <input type="hidden" name="do" value="add_subcategory">
                         <input type="hidden" name="what" value="save">
                         <input type="hidden" name="cid" value="' . (int)$parentCategory['id'] . '">
@@ -530,16 +537,6 @@ document.addEventListener("DOMContentLoaded", function () {
                         <div class="mb-3">
                             <label for="name" class="form-label">Subcategory Name *</label>
                             <input type="text" class="form-control" id="name" name="name" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="cat_desc" class="form-label">Description</label>
-                            <input type="text" class="form-control" id="cat_desc" name="cat_desc">
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="minclassread" class="form-label">Minimum Read Class</label>
-                            <input type="number" class="form-control" id="minclassread" name="minclassread" value="0" min="0">
                         </div>
                         
                         <div class="mb-3">
@@ -567,7 +564,7 @@ document.addEventListener("DOMContentLoaded", function () {
      */
     private function showCategoryList(): void
     {
-        global $BASEURL;
+        global $BASEURL, $mybb;
         
         stdhead('Manage Tracker Categories');
         
@@ -583,6 +580,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         </div>
                         <form method="post" action="' . $this->baseScript . '">
                             <div class="modal-body">
+                                <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
                                 <input type="hidden" name="do" value="new">
                                 <input type="hidden" name="what" value="save">
                                 
@@ -590,13 +588,6 @@ document.addEventListener("DOMContentLoaded", function () {
                                     <div class="col-md-6">
                                         <label for="modal_name" class="form-label">Category Name *</label>
                                         <input type="text" class="form-control" id="modal_name" name="name" required>
-                                    </div>
-                                    
-                                    
-                                    
-                                    <div class="col-12">
-                                        <label for="modal_cat_desc" class="form-label">Category Description</label>
-                                        <textarea class="form-control" id="modal_cat_desc" name="cat_desc" rows="2"></textarea>
                                     </div>
                                     
                                     <div class="col-md-6">
@@ -634,6 +625,7 @@ document.addEventListener("DOMContentLoaded", function () {
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <form method="post" action="' . $this->baseScript . '" id="editCategoryForm">
+                            <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
                             <div class="modal-body" id="editCategoryModalBody">
                                 <div class="text-center py-5">
                                     <div class="spinner-border text-primary" role="status">
@@ -667,6 +659,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         </div>
                         <form method="post" action="' . $this->baseScript . '" id="addSubcategoryForm">
                             <div class="modal-body">
+                                <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
                                 <input type="hidden" name="do" value="add_subcategory">
                                 <input type="hidden" name="what" value="save">
                                 <input type="hidden" name="cid" id="parentCategoryId" value="">
@@ -680,13 +673,6 @@ document.addEventListener("DOMContentLoaded", function () {
                                     <div class="col-md-6">
                                         <label for="sub_name" class="form-label">Subcategory Name *</label>
                                         <input type="text" class="form-control" id="sub_name" name="name" required>
-                                    </div>
-                                    
-                                   
-                                    
-                                    <div class="col-12">
-                                        <label for="sub_cat_desc" class="form-label">Subcategory Description</label>
-                                        <textarea class="form-control" id="sub_cat_desc" name="cat_desc" rows="2"></textarea>
                                     </div>
                                     
                                     <div class="col-12">
@@ -779,14 +765,7 @@ document.addEventListener("DOMContentLoaded", function () {
                             </div>
                             
                             <div class="card-body">
-                                <p class="card-text text-muted small mb-3">
-                                    ' . htmlspecialchars($category['cat_desc'] ?: 'No description') . '
-                                </p>
-                                
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <span class="badge bg-secondary">
-                                        <i class="fas fa-user-shield me-1"></i>Class: ' . (int)$category['minclassread'] . '
-                                    </span>
+                                <div class="d-flex justify-content-end align-items-center mb-3">
                                     <button type="button" class="btn btn-sm btn-outline-success add-subcategory-btn" 
                                             data-id="' . (int)$category['id'] . '" data-name="' . htmlspecialchars($category['name'], ENT_QUOTES) . '">
                                         <i class="fas fa-plus me-1"></i>Add Subcategory
@@ -807,8 +786,6 @@ document.addEventListener("DOMContentLoaded", function () {
                                 <div>
                                     <i class="' . htmlspecialchars($sub['icon'] ?? 'fas fa-folder') . ' me-2"></i>
                                     ' . htmlspecialchars($sub['name']) . '
-                                    <br>
-                                    <small class="text-muted">' . htmlspecialchars($sub['cat_desc'] ?: '') . '</small>
                                 </div>
                                 <div class="btn-group btn-group-sm">
                                     <a href="' . $BASEURL . '/browse.php?cat=' . (int)$sub['id'] . '" 
@@ -854,6 +831,11 @@ document.addEventListener("DOMContentLoaded", function () {
         ?>
         <script>
 document.addEventListener('DOMContentLoaded', function () {
+
+    // Safely JSON-encoded from PHP - immune to backticks/${...} that a raw
+    // addslashes() embed into a template literal would NOT have protected against.
+    const _categoryDropdownHtml = <?php echo json_encode($this->getCategoryDropdown(0, 'cid')); ?>;
+    const _iconSelectorHtml = <?php echo json_encode($this->getIconSelector()); ?>;
 
     function escapeHtml(text) {
         if (!text) return '';
@@ -902,17 +884,13 @@ document.addEventListener('DOMContentLoaded', function () {
                                 <input type="text" class="form-control" name="name" value="${escapeHtml(data.name)}" required>
                             </div>
                             
-                            <div class="col-12">
-                                <label class="form-label">Category Description</label>
-                                <textarea class="form-control" name="cat_desc" rows="2">${escapeHtml(data.cat_desc || '')}</textarea>
-                            </div>
                             <div class="col-md-6">
                                 <label class="form-label">Parent Category</label>
-                                <?php echo addslashes($this->getCategoryDropdown(0, 'cid')); ?>
+                                ${_categoryDropdownHtml}
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Category Icon</label>
-                                <?php echo addslashes($this->getIconSelector()); ?>
+                                ${_iconSelectorHtml}
                             </div>
                         </div>
                     `;

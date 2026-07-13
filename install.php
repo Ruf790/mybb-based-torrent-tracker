@@ -154,7 +154,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'smtp_user'     => trim($_POST['smtp_user']      ?? ''),
             'smtp_pass'     => $_POST['smtp_pass']           ?? '',
             'smtp_port'     => trim($_POST['smtp_port']      ?? '587'),
-            'membersonly'   => isset($_POST['membersonly'])  ? 'yes' : 'no',
             'privatepatch'  => isset($_POST['privatepatch']) ? 'yes' : 'no',
         ];
         if (!$_SESSION['site']['name'])  $errors[] = 'Site name is required.';
@@ -293,6 +292,14 @@ CREATE TABLE IF NOT EXISTS `attachtypes` (
   `avatarfile` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`atid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+
+CREATE TABLE IF NOT EXISTS `auto_vip` (
+  `userid` int unsigned NOT NULL DEFAULT '0',
+  `vip_until` int unsigned NOT NULL DEFAULT '0',
+  `old_gid` tinyint unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`userid`),
+  KEY `idx_vip_until` (`vip_until`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `awaitingactivation` (
   `aid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1547,8 +1554,7 @@ SQL;
     $cache->update_news();
 
     // ── Generate configuration files ───────────────────────────────────────────
-    $securehash  = 'RT__' . preg_replace('#^https?://(www\.)?#', '', $site['url'])
-                 . '_' . rand(1,9) . '_' . rand(10,99) . '-' . rand(100,999) . '-' . rand(10,99);
+    		 
     $cookieDomain = $site['cookie_domain'] ?: ('.' . preg_replace('#^https?://(www\.)?#', '', $site['url']));
     $announce_url = $site['url'] . '/announce.php';
     $db_cfg       = $dbSess;
@@ -1576,16 +1582,18 @@ SQL;
     }
     $settings_sql = file_get_contents($settings_sql_file);
 
-    // Substitute all placeholders
+    
+	$encryptionKey = random_str(32);
+	
+	// Substitute all placeholders
     $placeholders = [
         '{{SITENAME}}'     => $site['name'],
         '{{BASEURL}}'      => $site['url'],
         '{{SITEEMAIL}}'    => $site['email'],
-        '{{MEMBERSONLY}}'  => $site['membersonly'],
         '{{PRIVATEPATCH}}' => $site['privatepatch'],
         '{{TIMEZONE}}'     => $site['timezone'],
         '{{COOKIEDOMAIN}}' => $cookieDomain,
-        '{{SECUREHASH}}'   => $securehash,
+		'{{ENCRYPTION_KEY}}'  => $encryptionKey,
         '{{ANNOUNCE_URL}}' => $announce_url,
         '{{SMTP_HOST}}'    => $site['smtp_host'],
         '{{SMTP_USER}}'    => $site['smtp_user'],
@@ -1668,8 +1676,14 @@ SQL;
             $lines = array_filter(explode("\n", $block), fn($l) => strpos(trim($l), '--') !== 0);
             $sql = trim(implode("\n", $lines));
             if (!preg_match('/^INSERT/i', $sql)) continue;
-            try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
+            try {
+                $db->sql_query(rtrim($sql, ';'));
+            } catch (Throwable $e) {
+                $errors_out[] = 'install_data.sql: ' . $e->getMessage();
+            }
         }
+    } else {
+        $errors_out[] = 'Cannot read sql/install_data.sql — file missing or unreadable';
     }
 
     $faq_sql = @file_get_contents(__DIR__ . '/sql/faq.sql');
@@ -1678,8 +1692,14 @@ SQL;
         $faq_sql = str_ireplace('INSERT INTO faq', 'INSERT IGNORE INTO `faq`', $faq_sql);
         foreach (array_filter(array_map('trim', explode("\n", $faq_sql))) as $sql) {
             if (stripos($sql, 'INSERT') !== 0) continue;
-            try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
+            try {
+                $db->sql_query(rtrim($sql, ';'));
+            } catch (Throwable $e) {
+                $errors_out[] = 'faq.sql: ' . $e->getMessage();
+            }
         }
+    } else {
+        $errors_out[] = 'Cannot read sql/faq.sql — file missing or unreadable';
     }
 
     $usergroups_sql = @file_get_contents(__DIR__ . '/sql/group.sql');
@@ -1688,8 +1708,15 @@ SQL;
         $usergroups_sql = str_ireplace('INSERT IGNORE INTO usergroups', 'INSERT IGNORE INTO `usergroups`', $usergroups_sql);
         foreach (array_filter(array_map('trim', explode("\n", $usergroups_sql))) as $sql) {
             if (stripos($sql, 'INSERT') !== 0) continue;
-            try { $db->sql_query(rtrim($sql, ';')); } catch (Throwable) {}
+            try {
+                $db->sql_query(rtrim($sql, ';'));
+            } catch (Throwable $e) {
+                $errors_out[] = 'group.sql: ' . $e->getMessage();
+            }
         }
+    } else {
+        // Отсутствие базовых usergroups критично — без них сломается вся система прав
+        $errors_out[] = 'Cannot read sql/group.sql — default usergroups will be missing, site will not work correctly';
     }
 
     return $errors_out ?: true;
@@ -1865,12 +1892,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
                             <?php endfor; ?>
                         </select>
                     </div>
-                    <div class="col-md-6">
-                        <div class="form-check form-switch mt-2">
-                            <input class="form-check-input" type="checkbox" name="membersonly" id="membersonly" <?= ($_SESSION['site']['membersonly'] ?? 'yes') === 'yes' ? 'checked' : '' ?>>
-                            <label class="form-check-label fw-semibold" for="membersonly"><i class="fas fa-users me-1"></i>Members Only Mode</label>
-                        </div>
-                    </div>
+                   
                     <div class="col-md-6">
                         <div class="form-check form-switch mt-2">
                             <input class="form-check-input" type="checkbox" name="privatepatch" id="privatepatch" <?= ($_SESSION['site']['privatepatch'] ?? 'yes') === 'yes' ? 'checked' : '' ?>>

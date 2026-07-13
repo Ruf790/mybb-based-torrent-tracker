@@ -337,6 +337,8 @@ class Session
                 $this->create_session();
             }
         }
+		
+		$GLOBALS['CURUSER'] = $mybb->user;
     }
 	
 	
@@ -382,6 +384,8 @@ class Session
             $this->sid = "bot=".$spider_id;
             $this->create_session();
         }
+		
+		$GLOBALS['CURUSER'] = $mybb->user; 
     }
 	
 	

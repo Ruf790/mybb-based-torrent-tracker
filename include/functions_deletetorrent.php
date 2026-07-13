@@ -8,7 +8,7 @@ declare(strict_types=1);
 
 function update_users_comment_count_before_delete(int $torrent_id): void
 {
-    global $db;
+    global $db, $kpscomment;
 
     $result = $db->sql_query(
         "SELECT `user`, COUNT(*) AS cnt FROM comments WHERE torrent = {$torrent_id} GROUP BY `user`"
@@ -25,6 +25,9 @@ function update_users_comment_count_before_delete(int $torrent_id): void
         $db->sql_query(
             "UPDATE users SET comms = GREATEST(comms - {$cnt}, 0) WHERE id = {$uid}"
         );
+		
+		kps('-', $kpscomment * $cnt, $uid);
+		
     }
 }
 

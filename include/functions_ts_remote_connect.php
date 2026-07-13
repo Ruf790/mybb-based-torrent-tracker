@@ -11,10 +11,20 @@ $disallowed_remote_hosts = [
 ];
 
 $disallowed_remote_addresses = [
-    '127.0.0.1',
+    '0.0.0.0',
     '10.0.0.0/8',
+    '100.64.0.0/10',
+    '127.0.0.0/8',
+    '169.254.0.0/16',
     '172.16.0.0/12',
     '192.168.0.0/16',
+    '255.255.255.255',
+    '::',
+    '::1',
+    '::ffff:0:0/96',
+    'fc00::/7',
+    'fe80::/10',
+    'ff00::/8',
 ];
 
 function get_ca_bundle_path(): string|false
@@ -168,7 +178,7 @@ function ts_fetch_via_curl(string $url, array $url_components, string $destinati
         $data = $response;
     }
 
-    //curl_close($ch);
+    curl_close($ch);
     return $data;
 }
 

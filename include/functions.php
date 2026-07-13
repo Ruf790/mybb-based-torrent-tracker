@@ -2194,27 +2194,22 @@ function my_strlen(?string $string): int
 
 function generate_post_check(int $rotation_shift = 0): string
 {
-    global $mybb, $session, $CURUSER;
-
+    global $mybb, $session, $CURUSER, $encryption_key;
     $rotation_interval = 6 * 3600;
     $rotation = floor(TIMENOW / $rotation_interval) + $rotation_shift;
-
     $seed = (string)$rotation;
-
-    if (isset($CURUSER) && isset($CURUSER['id'])) {
-        $seed .= $CURUSER['loginkey'].$CURUSER['salt'].$CURUSER['added'];
+    if (!empty($CURUSER['id'])) {
+        $seed .= $CURUSER['loginkey'] . $CURUSER['salt'] . $CURUSER['added'];
     } else {
-       $seed .= $session->sid;
+        $seed .= $session->sid;
     }
-
-    if(defined('IN_ADMINCP')) {
+    if (defined('IN_ADMINCP')) {
         $seed .= 'ADMINCP';
     }
-
-    $seed .= 'i3SenbCqQPM26ZRpoQOQghYaYQFYFn2Z';
-
+    $seed .= $encryption_key;
     return md5($seed);
 }
+
 
 function verify_post_check(string $code, bool $silent = false): bool
 {
@@ -2883,20 +2878,23 @@ function write_log(string $Text, string $category = '', int $level = 0): void
 
 
 
-
 function kps(string $Type = '+', float|string|int $Points = 1.0, int|string $ID = 0): void
 {
-    global $bonus, $cache, $db;
-    
-    $kpscache = $cache->read("KPS");
-    $bonus = $kpscache['bonus'] ?? '';
+    global $bonus, $db;
 
-    if (($bonus == 'enable' || $bonus == 'disablesave')) {
+    if ($bonus === 'enable' || $bonus === 'disablesave') {
         $Points = (float)$Points;
         $ID = (int)$ID;
-        $db->sql_query('UPDATE users SET seedbonus = seedbonus ' . $Type . ' \'' . $Points . '\' WHERE id = \'' . $ID . '\'');
+
+        $operator = $Type === '-' ? '-' : '+';
+
+        $db->sql_query_prepared(
+            "UPDATE users SET seedbonus = seedbonus {$operator} ? WHERE id = ?",
+            [$Points, $ID]
+        );
     }
 }
+
 
 
 

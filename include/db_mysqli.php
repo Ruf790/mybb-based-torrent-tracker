@@ -622,7 +622,7 @@ class DB_MySQLi implements DB_Base
 
         $title    = "System Error";
         $charset  = $charset ?? 'UTF-8';
-        $bbname   = $SITENAME ?? "Ruff Tracker";
+        $bbname   = $SITENAME;
         $randomId = strtoupper(substr(md5(uniqid('', true)), 0, 8));
 
         // Backtrace для лога — ищем реальный caller

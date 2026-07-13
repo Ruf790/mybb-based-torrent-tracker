@@ -513,7 +513,7 @@ class Moderation
 
     public function delete_thread(int $tid): bool
     {
-        global $db;
+        global $db, $kpscomment;
 
         $thread = get_thread($tid);
         if (!$thread) {
@@ -550,6 +550,8 @@ class Moderation
             $update = [];
             if (isset($subtract['num_posts'])) {
                 $update['postnum'] = "-{$subtract['num_posts']}";
+				
+				kps('-', $kpscomment * $subtract['num_posts'], (int)$uid);
             }
             if (isset($subtract['num_threads'])) {
                 $update['threadnum'] = "-{$subtract['num_threads']}";
@@ -615,7 +617,7 @@ class Moderation
 
     public function delete_post(int $pid): bool
     {
-        global $db, $plugins;
+        global $db, $plugins, $kpscomment;
 
         $pid = $plugins->run_hooks('class_moderation_delete_post_start', $pid);
         $pid = (int)$pid;
@@ -632,6 +634,8 @@ class Moderation
         }
 
         update_user_counters($post['uid'], ['postnum' => '-1']);
+		
+		kps('-', $kpscomment, (int)$post['uid']);
 
         if (!function_exists('remove_attachments')) {
             require INC_PATH . '/functions_upload.php';

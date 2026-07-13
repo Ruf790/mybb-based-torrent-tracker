@@ -421,7 +421,7 @@ function notify_admin_suspicious(
     string $ua,
     int    $time
 ): void {
-    global $db, $REPORTMAIL, $BASEURL;
+    global $db, $SITEEMAIL, $BASEURL;
 
     if ($uid <= 0) {
         return;
@@ -437,7 +437,7 @@ function notify_admin_suspicious(
 
     $site  = defined('SITENAME') ? SITENAME : 'ruff-tracker';
     $base  = $BASEURL ?? '';
-    $admin = $REPORTMAIL ?? '';
+    $admin = $SITEEMAIL ?? '';
 
     if (empty($admin)) {
         return;

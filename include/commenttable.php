@@ -5,7 +5,7 @@ declare(strict_types=1);
 function commenttable(array $rows, string $type = '', string $edit = '', bool $lc = false, bool $quote = false, bool $return = false): string
 {
     global $CURUSER, $BASEURL, $rootpath, $pic_base_url, $lang, $usergroups;
-    global $timeformat, $dateformat, $useajax, $Torrent, $regdateformat;
+    global $timeformat, $dateformat, $Torrent, $regdateformat;
     global $parser, $plugins, $db, $postcounter, $wolcutoffmins;
     global $mybb;
 
@@ -16,7 +16,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     $parser = new postParser;
 
     $parser_options = [
-        "allow_html" => 1,
+        "allow_html" => 0,
         "allow_mycode" => 1,
         "allow_smilies" => 1,
         "allow_imgcode" => 1,
@@ -158,7 +158,7 @@ if (!empty($att_bulk[$pid])) {
         // Process signature
         $signatureRaw = isset($row['signature']) && is_string($row['signature']) ? $row['signature'] : '';
         $sig_parser = [
-            "allow_html" => 1,
+            "allow_html" => 0,
             "allow_mycode" => 1,
             "allow_smilies" => 1,
             "allow_imgcode" => 1,

@@ -169,7 +169,7 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
     
 	
 	$parser_options = array(
-	    "allow_html" => 1,
+	    "allow_html" => 0,
 	    "allow_mycode" => 1,
 	    "allow_smilies" => 1,
 	    "allow_imgcode" => 1,
@@ -265,7 +265,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
     switch ($post_type) {
         case 1:
             global $forum;
-            $parser_options = ['allow_html'=>1,'allow_mycode'=>1,'allow_smilies'=>1,
+            $parser_options = ['allow_html'=>0,'allow_mycode'=>1,'allow_smilies'=>1,
                                'allow_imgcode'=>1,'allow_videocode'=>1,
                                'me_username'=>$post['username'],'filter_badwords'=>1];
             $id = 0;
@@ -273,7 +273,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
         case 2:
             global $message, $pmid;
             $idtype = 'pmid';
-            $parser_options = ['allow_html'=>1,'allow_mycode'=>1,'allow_smilies'=>1,
+            $parser_options = ['allow_html'=>0,'allow_mycode'=>1,'allow_smilies'=>1,
                                'allow_imgcode'=>1,'allow_videocode'=>1,
                                'me_username'=>$post['username'],'filter_badwords'=>1];
             $id = $pmid;
@@ -288,7 +288,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
             $oldforum = $forum;
             $id       = (int)$post['pid'];
             $idtype   = 'pid';
-            $parser_options = ['allow_html'=>1,'allow_mycode'=>1,'allow_smilies'=>1,
+            $parser_options = ['allow_html'=>0,'allow_mycode'=>1,'allow_smilies'=>1,
                                'allow_imgcode'=>1,'allow_videocode'=>1,'filter_badwords'=>1];
             break;
     }
@@ -555,7 +555,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
     }
 
     /* ── Parse message ───────────────────────────────────────────── */
-    $parser_options = ['allow_html'=>1,'allow_mycode'=>1,'allow_smilies'=>1,
+    $parser_options = ['allow_html'=>0,'allow_mycode'=>1,'allow_smilies'=>1,
                        'allow_imgcode'=>1,'allow_videocode'=>1,'filter_badwords'=>1];
     $post['message'] = $parser->parse_message($post['message'], $parser_options);
 
@@ -566,8 +566,8 @@ if (empty($post['pid'])) $post['pid'] = 0;
     //if ($post['username'] && $post['signature'] != "" && ($CURUSER['id'] == 0 || $CURUSER['showsigs'] != 0)) {
 	if ($post['username'] && $post['signature'] != "") {
         $post['signature'] = $parser->parse_message($post['signature'], [
-            'allow_html'=>1,'allow_mycode'=>1,'allow_smilies'=>1,
-            'allow_imgcode'=>1,'me_username'=>1,'filter_badwords'=>1,
+            'allow_html'=>0,'allow_mycode'=>1,'allow_smilies'=>1,
+            'allow_imgcode'=>0,'me_username'=>1,'filter_badwords'=>1,
         ]);
         $post['signature'] = '<div class="signature scaleimages mt-4"><hr />' . $post['signature'] . '</div>';
     } else {

@@ -110,7 +110,7 @@ class postParser
             $message = $this->parse_html($message);
             $message = str_replace("&lt;mybb-code&gt;\n", "<mybb-code>\n", $message);
         } else {
-            $message = preg_replace('#<(/?)(base|meta|script|style)([^>]*)>#i', '&lt;$1$2$3&gt;', $message);
+            $message = preg_replace('#<(/?)(base|meta|script|style|iframe|object|embed|form)([^>]*)>#i', '&lt;$1$2$3&gt;', $message);
             $message = $this->fix_javascript($message);
             $message = str_replace(['<br />' . "\n", "<br>\n"], "\n", $message);
         }
@@ -326,7 +326,13 @@ class postParser
 
         foreach ($smilies as $code => $file) {
             $code   = $this->parse_html($code);
-            $tpl    = '<img style="cursor: pointer;" src="' . $BASEURL . '/' . $pic_base_url . 'smilies/' . $file . '" class="smilie" alt="' . $file . '" border="0">';
+           
+		   
+	
+
+$tpl = '<img style="cursor: pointer;" src="' . $BASEURL . '/' . $pic_base_url . 'smilies/' . $file . '" class="smilie" alt="' . $file . '" border="0" />';
+		   
+		   
             $this->smilies_cache[$code] = $tpl;
 
             if ($file[0] === ';') {
@@ -716,7 +722,7 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
 
         $url = $this->encode_url($url);
 
-        return '<img src=' . $url . ' loading="lazy" width="450" alt="' . $alt . '"' . $css_align . ' class="rounded" />';
+        return '<img src="' . $url . '" loading="lazy" width="450" alt="' . $alt . '"' . $css_align . ' class="rounded" />';
     }
 
     public function mycode_parse_img_callback1(array $matches): string { return $this->mycode_parse_img($matches[2]); }

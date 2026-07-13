@@ -61,10 +61,17 @@ document.addEventListener('DOMContentLoaded', function() {
 // ── Test avatar ──────────────────────────────────────────────────────────────
 function testAvatar() {
     const avatarInput = document.querySelector('input[name="avatar"]');
-    if (!avatarInput) { alert('Avatar field not found!'); return; }
+    if (!avatarInput) { showToast('Avatar field not found!', 'error'); return; }
 
-    const avatarUrl = avatarInput.value.trim();
-    if (!avatarUrl) { alert('Please enter an avatar URL first.'); return; }
+    let avatarUrl = avatarInput.value.trim();
+    if (!avatarUrl) { showToast('Please enter an avatar URL first.', 'warning'); return; }
+
+    // Нормализация: если это не полный URL (http/https) и нет ведущего слэша —
+    // добавляем его, иначе браузер резолвит путь относительно текущей папки
+    // (/admin/), а не относительно корня сайта.
+    if (!/^https?:\/\//i.test(avatarUrl) && !avatarUrl.startsWith('/')) {
+        avatarUrl = '/' + avatarUrl;
+    }
 
     const button = document.querySelector('button[onclick="testAvatar()"]');
     const originalHtml = button.innerHTML;
@@ -76,21 +83,21 @@ function testAvatar() {
         img.onload = img.onerror = null;
         button.disabled = false;
         button.innerHTML = originalHtml;
-        alert('Avatar test timed out.');
+        showToast('Avatar test timed out.', 'error');
     }, 10000);
 
     img.onload = function() {
         clearTimeout(timeout);
         button.disabled = false;
         button.innerHTML = originalHtml;
-        alert('✓ Avatar valid! Dimensions: ' + img.naturalWidth + '×' + img.naturalHeight + 'px');
+        showToast('✓ Avatar valid! Dimensions: ' + img.naturalWidth + '×' + img.naturalHeight + 'px', 'success');
     };
 
     img.onerror = function() {
         clearTimeout(timeout);
         button.disabled = false;
         button.innerHTML = originalHtml;
-        alert('✗ Avatar URL invalid or image cannot be loaded.\n\nCheck:\n• URL is correct\n• Image is accessible\n• Supported format (JPG, PNG, GIF, WebP)');
+        showToast('✗ Avatar URL invalid or image cannot be loaded. Check: URL is correct, image is accessible, supported format (JPG, PNG, GIF, WebP).', 'error');
     };
 
     img.src = avatarUrl + (avatarUrl.includes('?') ? '&' : '?') + 't=' + Date.now();

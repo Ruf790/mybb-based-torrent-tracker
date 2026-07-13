@@ -7,6 +7,19 @@ const CONFIG = {
     currentUser: 'Admin'
 };
 
+// Escapes untrusted text before it is inserted via innerHTML or into an HTML attribute
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        switch (ch) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+        }
+    });
+}
+
 // Глобальные функции для быстрых кнопок
 window.setIndividualAmount = function(gb) {
     try {
@@ -149,7 +162,7 @@ async function performUserSearch() {
         const data = await response.json();
         
         if (data.error) {
-            resultsDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            resultsDiv.innerHTML = `<div class="alert alert-danger">${escapeHtml(data.error)}</div>`;
             return;
         }
         
@@ -157,7 +170,7 @@ async function performUserSearch() {
             resultsDiv.innerHTML = `
                 <div class="text-center p-4">
                     <i class="fas fa-user-times fa-2x text-muted mb-3"></i>
-                    <p class="text-muted">No users found for "${query}"</p>
+                    <p class="text-muted">No users found for "${escapeHtml(query)}"</p>
                 </div>
             `;
             return;
@@ -165,12 +178,12 @@ async function performUserSearch() {
         
         // Display results
         const usersHtml = data.users.map(user => `
-            <div class="card mb-2 user-result-item" data-username="${user.username}" style="cursor: pointer;">
+            <div class="card mb-2 user-result-item" data-username="${escapeHtml(user.username)}" style="cursor: pointer;">
                 <div class="card-body p-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="mb-1">${user.username}</h6>
-                            <small class="text-muted">ID: ${user.id} • Group: ${getGroupName(user.group_id)}</small>
+                            <h6 class="mb-1">${escapeHtml(user.username)}</h6>
+                            <small class="text-muted">ID: ${Number(user.id)} • Group: ${escapeHtml(getGroupName(user.group_id))}</small>
                         </div>
                         <div>
                             <button class="btn btn-sm btn-primary select-user-btn">
@@ -195,7 +208,7 @@ async function performUserSearch() {
         
     } catch (error) {
         console.error('Search error:', error);
-        resultsDiv.innerHTML = `<div class="alert alert-danger">Error searching users: ${error.message}</div>`;
+        resultsDiv.innerHTML = `<div class="alert alert-danger">Error searching users: ${escapeHtml(error.message)}</div>`;
     }
 }
 
@@ -309,7 +322,7 @@ let warningMessage = `
                     <div class="alert alert-warning">
                         <div class="d-flex justify-content-between mb-2">
                             <span><strong>Target:</strong></span>
-                            <span class="fw-bold">${groupName}</span>
+                            <span class="fw-bold">${escapeHtml(groupName)}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span><strong>Amount:</strong></span>
@@ -323,7 +336,7 @@ let warningMessage = `
                     
                     <p class="text-muted">
                         <i class="fas fa-info-circle me-1"></i>
-                        This will add ${amountGB} GB to ${userInfo} in ${groupName}
+                        This will add ${amountGB} GB to ${userInfo} in ${escapeHtml(groupName)}
                     </p>
                     ${impactInfo}
 					
@@ -489,14 +502,14 @@ let warningMessage = `
                             <div class="col-md-6">
                                 <h6 class="card-title">
                                     <i class="fas fa-user-circle me-2"></i>
-                                    ${user.username}
+                                    ${escapeHtml(user.username)}
                                 </h6>
                                 <p class="mb-1">
-                                    <small class="text-muted">ID: ${user.id}</small>
+                                    <small class="text-muted">ID: ${Number(user.id)}</small>
                                 </p>
                                 <p class="mb-1">
                                     <i class="fas fa-users me-1"></i>
-                                    Group: ${getGroupName(user.usergroup)}
+                                    Group: ${escapeHtml(getGroupName(user.usergroup))}
                                 </p>
                             </div>
                             <div class="col-md-6">
@@ -683,7 +696,7 @@ window.loadRecentActivity = function loadRecentActivity() {
                     <tr>
                         <td colspan="6" class="text-center text-danger">
                             <i class="fas fa-exclamation-triangle me-2"></i>
-                            ${data.error}
+                            ${escapeHtml(data.error)}
                         </td>
                     </tr>
                 `;
@@ -712,12 +725,12 @@ window.loadRecentActivity = function loadRecentActivity() {
                     <tr>
                         <td>
                             <span class="badge bg-secondary">${activity.added_relative}</span>
-                            <small class="text-muted d-block">${activity.added}</small>
+                            <small class="text-muted d-block">${escapeHtml(activity.added)}</small>
                         </td>
-                        <td>${activity.message}</td>
-                        <td>${activity.username}</td>
-                        <td>${target}</td>
-                        <td>${amount}</td>
+                        <td>${escapeHtml(activity.message)}</td>
+                        <td>${escapeHtml(activity.username)}</td>
+                        <td>${escapeHtml(target)}</td>
+                        <td>${escapeHtml(amount)}</td>
                         <td><span class="badge bg-success">Completed</span></td>
                     </tr>
                 `;
@@ -733,7 +746,7 @@ window.loadRecentActivity = function loadRecentActivity() {
                 <tr>
                     <td colspan="6" class="text-center text-danger">
                         <i class="fas fa-exclamation-triangle me-2"></i>
-                        Error loading activity log: ${error.message}
+                        Error loading activity log: ${escapeHtml(error.message)}
                     </td>
                 </tr>
             `;

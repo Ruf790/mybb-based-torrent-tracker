@@ -102,7 +102,7 @@ async function searchByGroup(groupId) {
             resultsDiv.innerHTML = `
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle me-2"></i>
-                    ${data.error}
+                    ${escapeHtml(data.error)}
                 </div>
             `;
             return;
@@ -136,7 +136,7 @@ async function searchByGroup(groupId) {
                     <i class="fas fa-exclamation-circle fa-2x me-3"></i>
                     <div>
                         <h6 class="alert-heading mb-1">Search Failed</h6>
-                        <p class="mb-0">Error: ${error.message}</p>
+                        <p class="mb-0">Error: ${escapeHtml(error.message)}</p>
                         <small class="text-muted">Check browser console for details</small>
                     </div>
                 </div>
@@ -174,7 +174,7 @@ function displayGroupResults(users, groupName) {
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <i class="fas fa-users me-2"></i>
-                        <strong>${totalUsers}</strong> users in <strong>${groupName}</strong>
+                        <strong>${Number(totalUsers)}</strong> users in <strong>${escapeHtml(groupName)}</strong>
                     </div>
                     <div class="text-end">
                         <small>Total: ${(totalDownloaded).toFixed(2)} GB</small>
@@ -214,26 +214,26 @@ function displayGroupResults(users, groupName) {
         }
         
         resultsHtml += `
-            <tr class="user-result-item" data-username="${user.username}">
+            <tr class="user-result-item" data-username="${escapeHtml(user.username)}">
                 <td>
                     <div class="d-flex align-items-center">
                         <div class="avatar-sm bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center me-3">
-                            <span class="text-primary fw-bold">${user.username.charAt(0).toUpperCase()}</span>
+                            <span class="text-primary fw-bold">${escapeHtml(user.username.charAt(0).toUpperCase())}</span>
                         </div>
                         <div>
                             <div class="fw-medium">${escapeHtml(user.username)}</div>
-                            <small class="text-muted">${getGroupName(user.group_id)}</small>
+                            <small class="text-muted">${escapeHtml(getGroupName(user.group_id))}</small>
                         </div>
                     </div>
                 </td>
                 <td class="text-center">
-                    <span class="badge bg-secondary">${user.id}</span>
+                    <span class="badge bg-secondary">${Number(user.id)}</span>
                 </td>
                 <td class="text-end">
-                    <span class="text-muted">${user.downloaded}</span>
+                    <span class="text-muted">${escapeHtml(user.downloaded)}</span>
                 </td>
                 <td class="text-end">
-                    <span class="text-muted">${user.uploaded}</span>
+                    <span class="text-muted">${escapeHtml(user.uploaded)}</span>
                 </td>
                 <td class="text-center">
                     <span class="badge bg-${ratioClass}">
@@ -243,8 +243,8 @@ function displayGroupResults(users, groupName) {
                 </td>
                 <td class="text-center">
                     <button class="btn btn-sm btn-primary select-user-btn" 
-                            onclick="selectUserFromSearch('${escapeHtml(user.username)}')"
-                            title="Select ${user.username}">
+                            data-username="${escapeHtml(user.username)}"
+                            title="Select ${escapeHtml(user.username)}">
                         <i class="fas fa-check"></i> Select
                     </button>
                 </td>
@@ -278,6 +278,14 @@ function displayGroupResults(users, groupName) {
     
     resultsDiv.innerHTML = resultsHtml;
     
+    // Обработчик клика на кнопку "Select" (заменяет прежний inline onclick)
+    document.querySelectorAll('.select-user-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            selectUserFromSearch(this.dataset.username);
+        });
+    });
+    
     // Добавляем обработчики кликов на строки таблицы
     document.querySelectorAll('.user-result-item').forEach(row => {
         row.addEventListener('click', function(e) {
@@ -300,20 +308,9 @@ function displayGroupResults(users, groupName) {
     });
 }
 
-// Функция для получения названия группы по ID
-function getGroupName(groupId) {
-    const groupMap = {
-        7: '👑 Administrator',
-        6: '🛡️ Moderator',
-        5: '📤 Uploader',
-        4: '⭐ VIP',
-        3: '⚡ Power User',
-        2: '👤 User',
-        8: '💻 Sysop',
-        9: '🚫 Banned'
-    };
-    return groupMap[groupId] || `Group ${groupId}`;
-}
+// getGroupName() lives in download_add.js, which loads after this file on the
+// downloadadd.php page and is the version actually used at runtime; keeping a
+// second definition here was dead code that silently never ran.
 
 
 
@@ -331,11 +328,20 @@ function getGroupName(groupId) {
 
 
 
-// Utility function to escape HTML
+// Utility function to escape HTML - safe for both text nodes and HTML attributes.
+// Kept in sync with the identical implementation in download_add.js; both files
+// are always loaded together on the downloadadd.php page, so this is a harmless
+// redeclaration (last one to load simply wins), not a hidden dependency.
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return String(text ?? '').replace(/[&<>"']/g, function (ch) {
+        switch (ch) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+        }
+    });
 }
 
 
@@ -417,6 +423,20 @@ function toggleSortOrder() {
     }
 }
 
+// Escapes a single value for safe inclusion as a CSV field:
+// - doubles up embedded double quotes per CSV convention
+// - prefixes a leading apostrophe if the value starts with a formula trigger
+//   character (=, +, -, @) to prevent CSV/Excel formula injection when the
+//   exported file is later opened in a spreadsheet application
+function csvField(value) {
+    let str = String(value ?? '');
+    if (/^[=+\-@]/.test(str)) {
+        str = "'" + str;
+    }
+    str = str.replace(/"/g, '""');
+    return `"${str}"`;
+}
+
 // Export search results
 function exportSearchResults() {
     const results = document.querySelectorAll('.user-result-item');
@@ -430,7 +450,12 @@ function exportSearchResults() {
         const username = item.dataset.username;
         const id = item.querySelector('.user-id')?.textContent?.replace('ID: ', '') || '';
         const group = item.querySelector('.user-group')?.textContent || '';
-        csvData.push(`"${username}",${id},"${group}","${new Date().toISOString()}"`);
+        csvData.push([
+            csvField(username),
+            csvField(id),
+            csvField(group),
+            csvField(new Date().toISOString())
+        ].join(','));
     });
     
     const csvContent = csvData.join('\n');

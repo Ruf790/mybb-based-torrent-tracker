@@ -13,7 +13,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function showDeleteConfirmation(empid, parentRow) {
     // Получаем ключ безопасности
-    const myPostKey = document.querySelector('input[name="my_post_key"]').value;
+    const myPostKeyField = document.querySelector('input[name="my_post_key"]');
+    if (!myPostKeyField) {
+        showAlert('Security token not found on page. Please reload the page and try again.');
+        return;
+    }
+    const myPostKey = myPostKeyField.value;
     
     // Создаем модальное окно
     const modalHTML = `
@@ -67,12 +72,12 @@ async function deleteGroup(empid, parentRow, modal, myPostKey) {
         deleteBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Deleting...';
         deleteBtn.disabled = true;
 
-        const response = await fetch(`index.php?act=groups&action=delete&gid=${empid}&my_post_key=${myPostKey}`, {
+        const response = await fetch(`index.php?act=groups&action=delete`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: `gid=${empid}`
+            body: `gid=${encodeURIComponent(empid)}&my_post_key=${encodeURIComponent(myPostKey)}`
         });
 
         if (!response.ok) {
@@ -112,13 +117,19 @@ async function deleteGroup(empid, parentRow, modal, myPostKey) {
     }
 }
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
 function showAlert(message) {
     const alertHTML = `
         <div class="modal fade" id="alertModal" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-body">
-                        <p>${message}</p>
+                        <p>${escapeHtml(message)}</p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>

@@ -117,7 +117,9 @@ INSERT IGNORE INTO `cron` (`cronid`, `nextrun`, `minutes`, `filename`, `descript
 (31, 0, 1200, 'torrentspromo.php', 'Automatically updates torrent promotions and expires old ones.', 1, 1),
 (32, 0, 900, 'seedbonus.php', 'Automatically updates users seedbonus', 1, 1),
 (33, 0, 1260, 'logcleanup.php', 'Automatically cleans up old log files.', 1, 1),
-(34, 0, 3600 ,'weekly_cleanups.php','This script performs various cleanup tasks once per week', 1, 1);
+(34, 0, 3600 ,'weekly_cleanups.php','This script performs various cleanup tasks once per week', 1, 1),
+(36, 0, 3600, 'vipexpire.php', 'Automatically expires VIP status and reverts users to their previous usergroup.', 1, 1);
+
 
 
 -- spiders

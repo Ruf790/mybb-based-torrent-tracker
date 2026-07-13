@@ -1,3 +1,17 @@
+// Escapes raw HTML so it can never be interpreted as real markup.
+// MUST run before any BBCode-to-HTML substitution below.
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        switch (ch) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+        }
+    });
+}
+
 // BBCode functions
 function wrapBBCode(startTag, endTag, pid) {
     const ta = document.getElementById("editPostTextarea" + pid);
@@ -16,8 +30,8 @@ function renderPreview(pid) {
     const preview = document.getElementById("editPostPreview" + pid);
     let content = ta.value;
     
-    // Simple BBCode to HTML conversion for preview
-    content = content
+    // Escape raw HTML first, THEN convert BBCode to HTML for preview
+    content = escapeHtml(content)
         .replace(/\[b\](.*?)\[\/b\]/gi, "<b>$1</b>")
         .replace(/\[i\](.*?)\[\/i\]/gi, "<i>$1</i>")
         .replace(/\[u\](.*?)\[\/u\]/gi, "<u>$1</u>")
@@ -56,7 +70,7 @@ function savePost(pid) {
     saveBtn.disabled = true;
     
     const xhr = new XMLHttpRequest();
-    const url = "xmlhttp.php?action=edit_post&do=update_post&pid=" + pid + "&my_post_key=" + my_post_key;
+    const url = "xmlhttp.php?action=edit_post&do=update_post&pid=" + pid;
     
     xhr.open("POST", url, true);
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -113,8 +127,8 @@ function savePost(pid) {
         showToast("Network error while saving", "error");
     };
     
-    // Include edit reason in the data
-    const data = "value=" + encodeURIComponent(message) + "&editreason=" + encodeURIComponent(editReason);
+    // Include edit reason and CSRF token in the data
+    const data = "value=" + encodeURIComponent(message) + "&editreason=" + encodeURIComponent(editReason) + "&my_post_key=" + encodeURIComponent(my_post_key);
     xhr.send(data);
 }
 

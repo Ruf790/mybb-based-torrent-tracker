@@ -4,8 +4,22 @@
    BBCode helpers (доступны глобально до DOMContentLoaded)
    ══════════════════════════════════════════════════════════ */
 
+// Escapes raw HTML so it can never be interpreted as real markup.
+// MUST run before any BBCode-to-HTML substitution below.
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        switch (ch) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+        }
+    });
+}
+
 function parseBBCode(text) {
-    return String(text)
+    return escapeHtml(text)
         .replace(/\[b\](.*?)\[\/b\]/gi,   '<strong>$1</strong>')
         .replace(/\[i\](.*?)\[\/i\]/gi,   '<em>$1</em>')
         .replace(/\[u\](.*?)\[\/u\]/gi,   '<u>$1</u>')

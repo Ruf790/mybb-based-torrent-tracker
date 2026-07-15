@@ -10,6 +10,11 @@ $offset = ($page - 1) * $limit;
 // ── POST: Admin actions ────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
+    if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+        http_response_code(403);
+        die('Invalid security token');
+    }
+
     if (isset($_POST['admin_revoke'])) {
         $invite_id = (int)$_POST['invite_id'];
         $inv = get_invite_by_id($invite_id);
@@ -671,7 +676,7 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
                     </button>
                 </div>
                 <div class="col-md-2">
-                    <a href="<?= $_SERVER['PHP_SELF'] ?>" class="btn btn-outline-secondary w-100 btn-modern">
+                    <a href="<?= htmlspecialchars($_SERVER['PHP_SELF']) ?>" class="btn btn-outline-secondary w-100 btn-modern">
                         <i class="fas fa-redo-alt me-2"></i>Reset
                     </a>
                 </div>
@@ -681,6 +686,7 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
         <div class="col-md-12 mt-3">
             <hr class="my-2">
             <form method="post" class="row g-3 align-items-end">
+                <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                 <div class="col-md-5">
                     <label class="form-label fw-semibold text-muted">
                         <i class="fas fa-user-plus me-1"></i>Add Invites to User
@@ -745,6 +751,7 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
     <?php else: ?>
     <div class="table-responsive">
         <form id="bulkForm" method="post">
+            <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
             <input type="hidden" name="bulk_action_type" id="bulkActionType">
             <table class="table table-hover mb-0">
                 <thead class="bg-light">

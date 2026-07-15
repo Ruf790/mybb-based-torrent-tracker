@@ -345,7 +345,7 @@ stdhead('Cheat Attempts');
             <tr class="<?= $arr['severity'] === 'high' ? 'table-danger bg-opacity-25' : '' ?>">
               <td>
                 <a href="<?= $profileLink ?>" class="text-decoration-none fw-semibold">
-                  <?= format_name(htmlspecialchars_uni($arr['username'] ?? ''), $arr['usergroup']) ?>
+                  <?= format_name(htmlspecialchars_uni($arr['username'] ?? ''), (string)$arr['usergroup']) ?>
                 </a>
                 <?= get_user_icons($arr) ?>
               </td>

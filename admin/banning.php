@@ -131,6 +131,11 @@ class BanManager
             admin_redirect('index.php?act=banning');
         }
 
+        if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            die('Invalid security token');
+        }
+
         $filter = $this->mybb->get_input('filter');
         $type   = $this->mybb->get_input('type', MyBB::INPUT_INT);
         $errors = $this->validateAdd($filter, $type);
@@ -163,6 +168,11 @@ class BanManager
         }
 
         if ($this->mybb->request_method === 'post') {
+            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
+                http_response_code(403);
+                die('Invalid security token');
+            }
+
             $this->db->delete_query('banfilters', "fid='{$filter['fid']}'");
             $this->plugins->run_hooks('admin_config_banning_delete_commit');
             $this->updateCaches((int)$filter['type']);
@@ -421,11 +431,40 @@ class BannedAccountsManager
     public function handleRequest(): void
     {
         match ($this->mybb->get_input('action')) {
-            'prune'  => $this->handlePrune(),
-            'lift'   => $this->handleLift(),
-            'edit'   => $this->handleEdit(),
-            default  => $this->displayInterface(),
+            'prune'          => $this->handlePrune(),
+            'lift'           => $this->handleLift(),
+            'edit'           => $this->handleEdit(),
+            'search_username' => $this->handleSearchUsername(),
+            default          => $this->displayInterface(),
         };
+    }
+
+    private function handleSearchUsername(): void
+    {
+        $term = trim($this->mybb->get_input('q'));
+
+        header('Content-Type: application/json');
+
+        if (mb_strlen($term) < 2) {
+            echo json_encode([]);
+            exit;
+        }
+
+        $like = $this->db->escape_string_like($term);
+        $q = $this->db->simple_select(
+            'users',
+            'id, username',
+            "username LIKE '%{$like}%'",
+            ['limit' => 10, 'order_by' => 'username', 'order_dir' => 'asc']
+        );
+
+        $results = [];
+        while ($row = $this->db->fetch_array($q)) {
+            $results[] = ['id' => (int)$row['id'], 'username' => $row['username']];
+        }
+
+        echo json_encode($results);
+        exit;
     }
 
     private function handlePrune(): void
@@ -450,6 +489,11 @@ class BannedAccountsManager
         $this->plugins->run_hooks('admin_user_banning_prune');
 
         if ($this->mybb->request_method === 'post') {
+            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
+                http_response_code(403);
+                die('Invalid security token');
+            }
+
             require_once INC_PATH . '/class_moderation.php';
             $mod = new Moderation();
             $q   = $this->db->simple_select('threads', 'tid', "uid='{$user['id']}'");
@@ -493,6 +537,11 @@ class BannedAccountsManager
         $this->plugins->run_hooks('admin_user_banning_lift');
 
         if ($this->mybb->request_method === 'post') {
+            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
+                http_response_code(403);
+                die('Invalid security token');
+            }
+
             $this->db->delete_query('banned', "uid='{$ban['uid']}'");
             $this->db->update_query('users', [
                 'usergroup'        => $ban['oldgroup'],
@@ -530,6 +579,11 @@ class BannedAccountsManager
         $this->plugins->run_hooks('admin_user_banning_edit');
 
         if ($this->mybb->request_method === 'post') {
+            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
+                http_response_code(403);
+                die('Invalid security token');
+            }
+
             if (empty($ban['uid'])) {
                 $errors[] = 'Invalid user';
             } elseif (is_super_admin($ban['uid']) && !$this->canModifySuperAdmin()) {
@@ -576,6 +630,11 @@ class BannedAccountsManager
         $this->plugins->run_hooks('admin_user_banning_start');
 
         if ($this->mybb->request_method === 'post') {
+            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
+                http_response_code(403);
+                die('Invalid security token');
+            }
+
             $errors = $this->processBanAction($bannedGroups);
             if (empty($errors)) return;
         }
@@ -734,11 +793,13 @@ class BannedAccountsManager
               </div>
               <div class="card-body">
                 <div class="row g-3">
-                  <div class="col-12">
+                  <div class="col-12 position-relative">
                     <label class="form-label fw-semibold">Username</label>
-                    <input type="text" name="username" id="username" class="form-control"
+                    <input type="text" name="username" id="username" class="form-control" autocomplete="off"
                            value="<?= htmlspecialchars_uni($this->mybb->get_input('username')) ?>"
                            placeholder="Enter username...">
+                    <div id="usernameSuggestions" class="list-group position-absolute w-100 shadow-sm"
+                         style="z-index:1050; display:none; max-height:220px; overflow-y:auto;"></div>
                   </div>
                   <div class="col-12">
                     <label class="form-label fw-semibold">Reason</label>
@@ -759,11 +820,81 @@ class BannedAccountsManager
               </div>
               <div class="card-footer bg-light text-center py-3">
                 <button type="submit" name="ban" value="1" class="btn btn-danger btn-lg px-4"><i class="fa-solid fa-ban me-2"></i>Ban User</button>
-                <button type="submit" name="search" value="1" class="btn btn-outline-primary btn-lg ms-2"><i class="fa-solid fa-search me-2"></i>Search</button>
               </div>
             </div>
           </div>
         </form>
+        <script>
+        (function () {
+            const input = document.getElementById('username');
+            const box   = document.getElementById('usernameSuggestions');
+            if (!input || !box) return;
+
+            let debounceTimer = null;
+            let activeController = null;
+
+            function hideBox() {
+                box.style.display = 'none';
+                box.innerHTML = '';
+            }
+
+            function escapeHtml(str) {
+                return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+                    switch (ch) {
+                        case '&': return '&amp;';
+                        case '<': return '&lt;';
+                        case '>': return '&gt;';
+                        case '"': return '&quot;';
+                        case "'": return '&#39;';
+                    }
+                });
+            }
+
+            input.addEventListener('input', function () {
+                const term = input.value.trim();
+                clearTimeout(debounceTimer);
+
+                if (term.length < 2) {
+                    hideBox();
+                    return;
+                }
+
+                debounceTimer = setTimeout(function () {
+                    if (activeController) activeController.abort();
+                    activeController = new AbortController();
+
+                    fetch('index.php?act=banning&type=users&action=search_username&q=' + encodeURIComponent(term), {
+                        signal: activeController.signal
+                    })
+                        .then(r => r.json())
+                        .then(users => {
+                            if (!Array.isArray(users) || users.length === 0) {
+                                hideBox();
+                                return;
+                            }
+                            box.innerHTML = users.map(u =>
+                                '<button type="button" class="list-group-item list-group-item-action py-2">'
+                                + escapeHtml(u.username) + '</button>'
+                            ).join('');
+                            box.style.display = 'block';
+                        })
+                        .catch(() => {});
+                }, 250);
+            });
+
+            box.addEventListener('click', function (e) {
+                const btn = e.target.closest('button');
+                if (!btn) return;
+                input.value = btn.textContent;
+                hideBox();
+                input.focus();
+            });
+
+            document.addEventListener('click', function (e) {
+                if (e.target !== input && !box.contains(e.target)) hideBox();
+            });
+        })();
+        </script>
         <?php
         $this->outputBannedUsersList();
         stdfoot();

@@ -44,7 +44,7 @@ $tables = $db->list_tables($config['database']['database']);
 ++$CQueryCount;
 
 $time = date('dS F Y \a\t H:i', TIMENOW);
-$contents = "-- Ruff Tracker Database Backup\n-- Generated: {$time}\n-- -------------------------------------\n\n";
+$contents = "-- {$SITENAME} Database Backup\n-- Generated: {$time}\n-- -------------------------------------\n\n";
 
 
 if (isset($plugins) && is_object($plugins)) {

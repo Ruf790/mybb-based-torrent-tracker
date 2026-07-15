@@ -1406,8 +1406,13 @@ function render_showthread(array $thread, string $multipage, string $addremovesu
     HTML;
 }
 
+
+
 function render_report_modal(int $user_id): string
 {
+    global $mybb;
+    $postKey = htmlspecialchars($mybb->post_code);
+
     return <<<HTML
     <div class="modal fade" id="reportForumPostModal" tabindex="-1" aria-labelledby="reportForumPostModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1420,6 +1425,7 @@ function render_report_modal(int $user_id): string
                 </div>
                 <form id="reportForumPostForm" action="takereport.php" method="POST">
                     <div class="modal-body">
+                        <input type="hidden" name="my_post_key"      value="{$postKey}">
                         <input type="hidden" name="type"             id="forumPostReportType"     value="forumpost">
                         <input type="hidden" name="reported_id"      id="forumPostReportedId"     value="">
                         <input type="hidden" name="addedby"          id="forumPostAddedBy"        value="{$user_id}">
@@ -1528,6 +1534,29 @@ function render_report_modal(int $user_id): string
                             </label>
                             <input type="email" class="form-control" id="forumPostReportEmail"
                                    name="email" placeholder="your@email.com">
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center mb-2">
+                                <label class="form-label fw-medium mb-0">
+                                    <i class="bi bi-shield-check me-1"></i>Security Check
+                                </label>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto"
+                                        id="forumPostRefreshCaptcha">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                            <div class="row g-2 align-items-center">
+                                <div class="col-6">
+                                    <img src="report_captcha.php" alt="Security code" class="border rounded"
+                                         id="forumPostCaptchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
+                                         title="Click to refresh">
+                                </div>
+                                <div class="col-6">
+                                    <input type="text" class="form-control"
+                                           id="forumPostCaptchaInput" name="captcha_response" placeholder="Enter code" autocomplete="off">
+                                </div>
+                            </div>
                         </div>
 
                         <div class="alert alert-warning small">

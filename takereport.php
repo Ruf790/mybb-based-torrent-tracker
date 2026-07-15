@@ -4,20 +4,59 @@ declare(strict_types=1);
 
 require_once 'global.php';
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 // Проверяем метод запроса
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     die(json_encode(['error' => 'Method not allowed']));
 }
 
+// CSRF
+if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+    http_response_code(403);
+    die(json_encode(['error' => 'Invalid security token. Please refresh the page and try again.']));
+}
 
+
+
+/**
+ * Возвращает безопасный URL для редиректа: только относительный путь
+ * или абсолютный URL на том же домене. Никогда не доверяем HTTP_REFERER
+ * напрямую — это заголовок, который полностью контролирует клиент.
+ */
+function safe_redirect_target(?string $url, string $fallback = 'index.php'): string
+{
+    global $BASEURL;
+
+    if (empty($url)) {
+        return $fallback;
+    }
+
+    // Относительный путь (не начинается с схемы/двух слэшей) - безопасен как есть
+    if (!preg_match('#^https?://#i', $url) && !str_starts_with($url, '//')) {
+        return $url;
+    }
+
+    // Абсолютный URL - разрешаем только если хост совпадает с BASEURL
+    $urlHost  = parse_url($url, PHP_URL_HOST);
+    $baseHost = parse_url($BASEURL, PHP_URL_HOST);
+
+    if ($urlHost !== null && $baseHost !== null && strcasecmp($urlHost, $baseHost) === 0) {
+        return $url;
+    }
+
+    return $fallback;
+}
 
 // Получаем и валидируем данные с использованием фильтров PHP 8.5
 $type = filter_input(INPUT_POST, 'type', FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?? 'torrent';
 $reported_id = filter_input(INPUT_POST, 'reported_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?? 0;
 $reported_user_id = filter_input(INPUT_POST, 'reported_user_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]) ?? 0;
-$reason = filter_input(INPUT_POST, 'reason', FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?? '';
-$description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?? '';
+$reason = trim($_POST['reason'] ?? '');
+$description = trim($_POST['description'] ?? '');
 $addedby = filter_input(INPUT_POST, 'addedby', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?? 0;
 
 // Валидация с использованием match (PHP 8.0+)
@@ -58,24 +97,38 @@ if (!empty($errors)) {
     die(json_encode(['errors' => $errors]));
 }
 
-// Проверка капчи для неавторизованных пользователей (если нужно)
-if (empty($CURUSER['id'])) {
-    $captcha = $_POST['captcha'] ?? '';
-    $session_captcha = $_SESSION['report_captcha'] ?? '';
-    
-    if (empty($captcha) || !hash_equals(strtolower($session_captcha), strtolower($captcha))) {
-        http_response_code(400);
-        die(json_encode(['error' => 'Invalid CAPTCHA code']));
+// Проверка CAPTCHA (реальная, серверная - см. report_captcha.php)
+$captcha_response = trim($_POST['captcha_response'] ?? '');
+$session_captcha  = $_SESSION['report_captcha'] ?? null;
+
+// Код одноразовый - удаляем сразу, независимо от результата проверки,
+// чтобы его нельзя было подобрать перебором на одном и том же запросе.
+unset($_SESSION['report_captcha']);
+
+$captcha_valid = false;
+if ($session_captcha !== null && !empty($captcha_response)) {
+    $not_expired = (time() - (int)($session_captcha['created'] ?? 0)) < 600; // 10 минут
+    if ($not_expired && hash_equals(strtoupper($session_captcha['code']), strtoupper($captcha_response))) {
+        $captcha_valid = true;
     }
-    
-    unset($_SESSION['report_captcha']);
 }
 
-// Проверка частоты отправки (анти-спам)
-//if (!can_submit_report($CURUSER['id'])) {
-    //http_response_code(429);
-    //die(json_encode(['error' => 'Too many reports submitted recently. Please wait before submitting another.']));
-//}
+if (!$captcha_valid) {
+    http_response_code(400);
+    die(json_encode(['error' => 'Invalid or expired security code. Please try again.']));
+}
+
+// Примечание: жалобы принимаются только от залогиненных пользователей —
+// это уже гарантирует проверка выше ('You must be logged in to submit a report').
+// Анонимные жалобы через CAPTCHA сейчас не поддерживаются; если это нужно —
+// потребуется отдельно генерировать/показывать капчу в самой форме жалобы.
+
+// Проверка частоты отправки (анти-спам) - не применяется к модераторам и выше
+$is_mod = is_mod($usergroups);
+if (!$is_mod && !can_submit_report((int)$CURUSER['id'])) {
+    http_response_code(429);
+    die(json_encode(['error' => 'Too many reports submitted recently. Please wait before submitting another.']));
+}
 
 // Подготавливаем данные
 $added = time();
@@ -84,8 +137,8 @@ $ip = get_ip();
 
 
 // Получаем дополнительные поля
-$additional_info = filter_input(INPUT_POST, 'additional_info', FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?? '';
-$evidence_links = filter_input(INPUT_POST, 'evidence_links', FILTER_SANITIZE_FULL_SPECIAL_CHARS) ?? '';
+$additional_info = trim($_POST['additional_info'] ?? '');
+$evidence_links = trim($_POST['evidence_links'] ?? '');
 
 
 
@@ -148,9 +201,7 @@ try {
     
     // Логируем успешное создание отчета
     write_log(
-        "Report #{$report_id} created successfully by user #{$addedby} for {$type} #{$reported_id}",
-        'reports',
-        $report_id
+        "Report #{$report_id} created successfully by user #{$addedby} for {$type} #{$reported_id}"
     );
     
     // Отправляем уведомление модераторам
@@ -194,7 +245,9 @@ try {
     
     // Для обычных запросов
     $error_message = urlencode($error_response['error']);
-    header("Location: " . ($_SERVER['HTTP_REFERER'] ?? 'index.php') . "?reporterror=1&msg=" . $error_message);
+    $errorRedirect = safe_redirect_target($_SERVER['HTTP_REFERER'] ?? null);
+    $separator = str_contains($errorRedirect, '?') ? '&' : '?';
+    header("Location: " . $errorRedirect . $separator . "reporterror=1&msg=" . $error_message);
     exit;
 }
 
@@ -207,11 +260,12 @@ function can_submit_report(int $user_id): bool
     global $db;
     
     $time_limit = time() - 3600; // 1 час
-    $query = $db->prepare("SELECT COUNT(*) FROM reports WHERE addedby = ? AND added > ?");
-    $query->bind_param('ii', $user_id, $time_limit);
-    $query->execute();
-    $result = $query->get_result();
-    $count = $result->fetch_row()[0] ?? 0;
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(*) AS cnt FROM reports WHERE addedby = ? AND added > ?",
+        [$user_id, $time_limit]
+    );
+    $row = $db->fetch_array($query);
+    $count = (int)($row['cnt'] ?? 0);
     
     return $count < 5; // максимум 5 отчетов в час
 }
@@ -230,7 +284,7 @@ function is_ajax_request(): bool
  */
 function get_redirect_url(): string
 {
-    $redirect_url = $_SERVER['HTTP_REFERER'] ?? 'index.php';
+    $redirect_url = safe_redirect_target($_SERVER['HTTP_REFERER'] ?? null);
     
     // Убираем существующие параметры success/error
     $redirect_url = preg_replace('/[?&](reportsuccess|reporterror)=\d+/', '', $redirect_url);

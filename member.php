@@ -2828,7 +2828,8 @@ $modoptions = '<!-- Moderator Options (compact) -->
 	
 	
     echo $profile;
-    ?>
+    
+	?>
 
     <div class="modal fade" id="reportUserModal" tabindex="-1" aria-labelledby="reportUserModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -2880,6 +2881,26 @@ $modoptions = '<!-- Moderator Options (compact) -->
                                 <input type="text" class="form-control" id="evidenceLinks" name="evidence_links" placeholder="Paste URLs to screenshots or other evidence...">
                             </div>
                         </div>
+                        <div class="mb-4">
+                            <div class="d-flex align-items-center mb-2">
+                                <h6 class="mb-0"><i class="fa-solid fa-shield-halved me-2"></i>Security Check</h6>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto"
+                                        id="userReportRefreshCaptcha">
+                                    <i class="fa-solid fa-arrows-rotate"></i>
+                                </button>
+                            </div>
+                            <div class="row g-2 align-items-center">
+                                <div class="col-6">
+                                    <img src="report_captcha.php" alt="Security code" class="border rounded"
+                                         id="userReportCaptchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
+                                         title="Click to refresh">
+                                </div>
+                                <div class="col-6">
+                                    <input type="text" class="form-control"
+                                           id="userReportCaptchaInput" name="captcha_response" placeholder="Enter code" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
                         <div class="alert alert-warning">
                             <i class="fa-solid fa-exclamation-triangle me-2"></i>
                             <strong>Important:</strong> False or malicious reports may result in action against your account.
@@ -2894,6 +2915,12 @@ $modoptions = '<!-- Moderator Options (compact) -->
         </div>
     </div>
     <?php
+	
+	
+	
+	
+	
+	
 
     stdfoot();
 }

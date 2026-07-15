@@ -612,7 +612,6 @@ $multipage = multipage($threadcount, $perpage, $page, $page_url);
 
 
 $ListTorrents = '
-<script type="text/javascript" src="' . $BASEURL . '/scripts/ts_update.js"></script>
 ' . ($is_mod ? '
 <script type="text/javascript">
     

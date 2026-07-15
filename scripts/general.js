@@ -1,0 +1,73 @@
+var MyBB = {
+    init: function() {
+        document.addEventListener('DOMContentLoaded', function() {
+            MyBB.pageLoaded();
+        });
+        return true;
+    },
+    pageLoaded: function() {
+		
+        // Initialise "initial focus" field if we have one
+        var initialfocus = document.querySelector(".initial_focus");
+        if(initialfocus) {
+            initialfocus.focus();
+        }
+        
+        if(document.querySelector('.author_avatar')) {
+            document.querySelectorAll(".author_avatar img").forEach(function(img) {
+                function onAvatarError() {
+                    img.removeEventListener('error', onAvatarError);
+                    var avatar = img.closest('.author_avatar');
+                    if(avatar) avatar.remove();
+                }
+                img.addEventListener('error', onAvatarError);
+            });
+        }
+    }
+};
+var Cookie = {
+    get: function(name) {
+        name = cookiePrefix + name;
+        return this.getCookie(name);
+    },
+    set: function(name, value, expires) {
+        name = cookiePrefix + name;
+        if(!expires) {
+            expires = 315360000; // 10*365*24*60*60 => 10 years
+        }
+        var expire = new Date();
+        expire.setTime(expire.getTime() + (expires * 1000));
+        var cookieString = name + "=" + encodeURIComponent(value) + 
+                          "; expires=" + expire.toUTCString() + 
+                          "; path=" + cookiePath;
+        
+        if(cookieDomain) {
+            cookieString += "; domain=" + cookieDomain;
+        }
+        
+        if(cookieSecureFlag) {
+            cookieString += "; secure";
+        }
+        document.cookie = cookieString;
+        return true;
+    },
+    unset: function(name) {
+        name = cookiePrefix + name;
+        document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=" + cookiePath + 
+                         (cookieDomain ? "; domain=" + cookieDomain : "");
+        return true;
+    },
+    getCookie: function(name) {
+        var nameEQ = name + "=";
+        var ca = document.cookie.split(';');
+        for(var i = 0; i < ca.length; i++) {
+            var c = ca[i];
+            while(c.charAt(0) == ' ') c = c.substring(1, c.length);
+            if(c.indexOf(nameEQ) == 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+        }
+        return null;
+    }
+};
+// Lang this!
+var lang = {};
+MyBB.init();

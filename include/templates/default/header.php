@@ -13,7 +13,7 @@ if (!defined('IN_TRACKER')) {
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=<?= htmlspecialchars($charset ?? 'UTF-8', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" />
-    <meta name="generator" content="<?= htmlspecialchars($title ?? 'Ruff Tracker', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" />
+    <meta name="generator" content="<?= htmlspecialchars($title ?? 'ArtCore Gangsta', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" />
     <meta name="revisit-after" content="3 days" />
     <meta name="robots" content="index, follow" />
     <meta name="description" content="<?= htmlspecialchars($metadesc ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" />
@@ -116,7 +116,7 @@ if (!defined('IN_TRACKER')) {
         });
     </script>
 
-    <title><?= htmlspecialchars($title ?? 'Ruff Tracker', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></title>
+    <title><?= htmlspecialchars($title ?? 'ArtCore Gangsta', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></title>
     <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/include/templates/default/style/bootstrap.min.css" type="text/css" media="screen" />
 	<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/include/templates/default/style/bootstrap-icons.css" type="text/css" media="screen" />
     <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/include/templates/default/style/all.min.css" type="text/css" media="screen" />
@@ -246,7 +246,7 @@ if (str_starts_with($useravatar['image'] ?? '', '<')) {
     $avataar = '<img src="' . htmlspecialchars($useravatar['image'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '" style="width: 80px;" class="rounded border" />';
 }
 
-if (isset($CURUSER)): ?>
+if (!empty($CURUSER['id'])): ?>
 <!-- Header with card-style navbar -->
 <header class="sticky-top header-fixed">
     <div class="container-fluid py-1 bg-light border-bottom">
@@ -1018,7 +1018,7 @@ if (isset($CURUSER['pmnotice']) && (int)($CURUSER['pmnotice'] ?? 0) === 2 && ($C
     $pm['subject'] = htmlspecialchars_uni($pm['subject'] ?? '');
 
     if (($pm['fromuid'] ?? 0) === 0) {
-        $pm['fromusername'] = 'Ruff Tracker Engine';
+        $pm['fromusername'] = 'ArtCore Gangsta Engine';
         $user_text = $pm['fromusername'];
     } else {
         $pm['fromusername'] = htmlspecialchars_uni($pm['fromusername'] ?? '');

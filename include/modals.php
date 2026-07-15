@@ -328,6 +328,7 @@ $magnetModal = '
             <form id="reportCommentForm" action="takereport.php" method="POST">
                 <div class="modal-body">
                     <!-- Скрытые поля -->
+                    <input type="hidden" name="my_post_key" value="<?php echo htmlspecialchars($mybb->post_code); ?>">
                     <input type="hidden" name="type" id="commentReportType" value="comment">
                     <input type="hidden" name="reported_id" id="commentReportedId" value="">
                     <input type="hidden" name="addedby" id="commentAddedBy" value="<?php echo $user_id; ?>">
@@ -430,14 +431,15 @@ $magnetModal = '
                                 <i class="bi bi-arrow-clockwise"></i>
                             </button>
                         </div>
-                        <div class="row g-2">
+                        <div class="row g-2 align-items-center">
                             <div class="col-6">
-                                <div class="bg-light border rounded p-2 text-center fw-bold fs-4" 
-                                     id="commentCaptchaDisplay">ABC123</div>
+                                <img src="report_captcha.php" alt="Security code" class="border rounded"
+                                     id="commentCaptchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
+                                     title="Click to refresh">
                             </div>
                             <div class="col-6">
                                 <input type="text" class="form-control" 
-                                       id="commentCaptchaInput" name="captcha_response" placeholder="Enter code">
+                                       id="commentCaptchaInput" name="captcha_response" placeholder="Enter code" autocomplete="off">
                             </div>
                         </div>
                     </div>
@@ -571,6 +573,7 @@ $magnetModal = '
             <form id="reportForm" action="takereport.php" method="POST">
                 <div class="modal-body">
                     <!-- Скрытое поле ID торрента -->
+                    <input type="hidden" name="my_post_key" value="<?php echo htmlspecialchars($mybb->post_code); ?>">
                      <input type="hidden" name="type" id="reportType" value="torrent">
                     <input type="hidden" name="reported_id" id="reportedId" value="">
                     <input type="hidden" name="addedby" id="addedBy" value="<?php echo $user_id; ?>">
@@ -635,14 +638,15 @@ $magnetModal = '
                                 <i class="bi bi-arrow-clockwise"></i>
                             </button>
                         </div>
-                        <div class="row g-2">
+                        <div class="row g-2 align-items-center">
                             <div class="col-6">
-                                <div class="bg-light border rounded p-2 text-center fw-bold fs-4" 
-                                     id="captchaDisplay">1234</div>
+                                <img src="report_captcha.php" alt="Security code" class="border rounded"
+                                     id="captchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
+                                     title="Click to refresh">
                             </div>
                             <div class="col-6">
                                 <input type="text" class="form-control" 
-                                       id="captchaInput" placeholder="Enter code">
+                                       id="captchaInput" name="captcha_response" placeholder="Enter code" autocomplete="off">
                             </div>
                         </div>
                     </div>
@@ -661,5 +665,3 @@ $magnetModal = '
         </div>
     </div>
 </div>
-
-

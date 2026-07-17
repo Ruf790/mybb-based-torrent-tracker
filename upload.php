@@ -300,6 +300,12 @@ if (strtoupper($_SERVER["REQUEST_METHOD"]) == "POST")
 
 header('Content-Type: application/json');
 
+if (!verify_post_check($mybb->get_input('my_post_key'))) {
+    http_response_code(403);
+    echo json_encode(["success" => false, "error" => "Invalid security token. Please refresh the page and try again."]);
+    exit;
+}
+
 
 
  // ← ЧИТАЕМ NFO СРАЗУ пока tmp файл ещё существует
@@ -351,7 +357,12 @@ function saveFile($file, $targetDir, $allowedTypes)
         return false;
     }
 
-    $filename = basename($file['name']);
+    // Случайное имя на диске - чтобы одновременная загрузка двух файлов
+    // с одинаковым исходным именем не перезаписала друг друга. Оригинальное
+    // имя (для отображения/БД) сохраняется вызывающим кодом отдельно.
+    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $ext = $ext !== '' ? '.' . preg_replace('/[^a-zA-Z0-9]/', '', $ext) : '';
+    $filename = bin2hex(random_bytes(16)) . $ext;
     $targetPath = rtrim($targetDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $filename;
 
     if (move_uploaded_file($file['tmp_name'], $targetPath)) 
@@ -398,6 +409,7 @@ $numfiles = 0;
 if (!$isEdit || ($torrentFile && $torrentFile['error'] === UPLOAD_ERR_OK)) 
 {
     // Загружен новый файл
+    $originalTorrentFilename = basename($torrentFile['name']); // оригинальное имя для БД/отображения
     $torrentFilename = saveFile($torrentFile, $torrentDir, ['application/x-bittorrent']);
     if (!$torrentFilename) 
 	{
@@ -405,7 +417,6 @@ if (!$isEdit || ($torrentFile && $torrentFile['error'] === UPLOAD_ERR_OK))
         echo json_encode(["success" => false, "error" => "Invalid or unsupported torrent file format."]);
         exit;
     }
-    $originalTorrentFilename = $torrentFilename; // ✅ сохраняем оригинальное имя
     $torrentPath = $torrentDir . $torrentFilename;
 } 
 elseif ($isEdit) 
@@ -429,9 +440,14 @@ elseif ($isEdit)
 $torrentObj = TorrentFile::load($torrentPath);
 
 // ── Passkey & announce validation (server-side safety net; JS does this earlier too) ──
+// Модераторы освобождены от этой проверки ТОЛЬКО при редактировании уже
+// существующего чужого торрента ($isEdit=true): в файле по праву зашит
+// passkey оригинального аплоадера, а не мода - это не мошенничество.
+// При создании НОВОГО торрента (даже модератором) проверка применяется
+// как обычно.
 
-if (empty(trim($CURUSER['passkey'] ?? ''))) {
-    @unlink($torrentPath);
+if (!($is_mod && $isEdit) && empty(trim($CURUSER['passkey'] ?? ''))) {
+    if ($newFileUploaded) { @unlink($torrentPath); }
     while (ob_get_level()) { ob_end_clean(); }
     header('Content-Type: application/json; charset=utf-8');
     http_response_code(400);
@@ -439,26 +455,31 @@ if (empty(trim($CURUSER['passkey'] ?? ''))) {
     exit;
 }
 
-$fileAnnounce = (string)($torrentObj->getAnnounce() ?? '');
-if ($fileAnnounce !== '') {
-    $parsed = parse_url($fileAnnounce);
-    parse_str($parsed['query'] ?? '', $qs);
-    $announcePasskey = $qs['passkey'] ?? '';
+if (!($is_mod && $isEdit)) {
+    $fileAnnounce = (string)($torrentObj->getAnnounce() ?? '');
+    if ($fileAnnounce !== '') {
+        $parsed = parse_url($fileAnnounce);
+        parse_str($parsed['query'] ?? '', $qs);
+        $announcePasskey = $qs['passkey'] ?? '';
 
-    if ($announcePasskey !== '' && $announcePasskey !== $CURUSER['passkey']) {
-        write_log(sprintf(
-            'Security: user %s submitted the upload form for a torrent (%s) containing a passkey belonging to another account, bypassing the client-side check. Foreign passkey: %s',
-            '[URL=' . $BASEURL . '/' . get_profile_link($CURUSER['id']) . ']' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '[/URL]',
-            htmlspecialchars_uni($torrentFilename ?? basename($torrentPath)),
-            $announcePasskey
-        ));
+        if ($announcePasskey !== '' && $announcePasskey !== $CURUSER['passkey']) {
+            write_log(sprintf(
+                'Security: user %s submitted the upload form for a torrent (%s) containing a passkey belonging to another account, bypassing the client-side check. Foreign passkey: %s',
+                '[URL=' . $BASEURL . '/' . get_profile_link($CURUSER['id']) . ']' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '[/URL]',
+                htmlspecialchars_uni($torrentFilename ?? basename($torrentPath)),
+                $announcePasskey
+            ));
 
-        @unlink($torrentPath);
-        while (ob_get_level()) { ob_end_clean(); }
-        header('Content-Type: application/json; charset=utf-8');
-        http_response_code(400);
-        echo json_encode(['success' => false, 'errors' => [$lang->upload['error_wrong_passkey'] ?? 'This torrent contains a passkey that does not belong to your account.']]);
-        exit;
+            // Удаляем файл ТОЛЬКО если это временный, только что загруженный файл.
+            // Если это Edit без нового файла - $torrentPath указывает на уже
+            // существующий, боевой .torrent файл раздачи - его удалять нельзя.
+            if ($newFileUploaded) { @unlink($torrentPath); }
+            while (ob_get_level()) { ob_end_clean(); }
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(400);
+            echo json_encode(['success' => false, 'errors' => [$lang->upload['error_wrong_passkey'] ?? 'This torrent contains a passkey that does not belong to your account.']]);
+            exit;
+        }
     }
 }
 
@@ -822,6 +843,25 @@ if ($torrentFilename)
 	{
         $EditTorrentID = (int)$_POST['EditTorrentID'];
 
+        // Проверка владельца: сохранять может только владелец торрента или модератор.
+        // Никогда не доверяем данным из POST для этой проверки - берём владельца
+        // напрямую из базы.
+        $ownerCheck = $db->fetch_array(
+            $db->sql_query("SELECT owner FROM torrents WHERE id = " . $EditTorrentID)
+        );
+        if (!$ownerCheck || (!$is_mod && (int)$CURUSER['id'] !== (int)$ownerCheck['owner'])) {
+            write_log(sprintf(
+                'Security: user %s attempted to edit torrent #%d without permission (not the owner, not a moderator). Actual owner id: %s',
+                '[URL=' . $BASEURL . '/' . get_profile_link($CURUSER['id']) . ']' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '[/URL]',
+                $EditTorrentID,
+                $ownerCheck ? (string)$ownerCheck['owner'] : 'unknown (torrent not found)'
+            ));
+
+            http_response_code(403);
+            echo json_encode(["success" => false, "error" => "You do not have permission to edit this torrent."]);
+            exit;
+        }
+
         // Update database entry
         $db->update_query("torrents", $metadata, "id='{$EditTorrentID}'");
         $NewTID = $EditTorrentID;
@@ -1048,21 +1088,22 @@ if (($newFileUploaded || !$isEdit) && $torrentFilename && file_exists($originalT
 $imageFilename = null;
 if (!empty($_FILES['imagesUpload']['tmp_name'])) 
 {
-    $allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     $imageFile = $_FILES['imagesUpload'];
 
-    if ($imageFile['error'] === 0 && in_array($imageFile['type'], $allowedMimeTypes, true)) 
+    // Не доверяем $imageFile['type'] (заголовок от браузера, легко подделать) -
+    // проверяем реальное содержимое файла через getimagesize().
+    $imageInfo = ($imageFile['error'] === 0) ? @getimagesize($imageFile['tmp_name']) : false;
+
+    if ($imageInfo !== false) 
     {
-        // Get image extension from MIME type
-        $mimeToExt = [
-            'image/jpeg' => 'jpg',
-            'image/jpg'  => 'jpg',
-            'image/png'  => 'png',
-            'image/gif'  => 'gif',
-            'image/webp' => 'webp'
+        $extByType = [
+            IMAGETYPE_JPEG => 'jpg',
+            IMAGETYPE_PNG  => 'png',
+            IMAGETYPE_GIF  => 'gif',
+            IMAGETYPE_WEBP => 'webp',
         ];
 
-        $ext = isset($mimeToExt[$imageFile['type']]) ? $mimeToExt[$imageFile['type']] : null;
+        $ext = $extByType[$imageInfo[2]] ?? null;
 
         if ($ext !== null) 
         {
@@ -1112,21 +1153,20 @@ if (!empty($_FILES['imagesUpload']['tmp_name']))
 $imageFilename2 = null;
 if (!empty($_FILES['imagesUpload2']['tmp_name'])) 
 {
-    $allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     $imageFile = $_FILES['imagesUpload2'];
 
-    if ($imageFile['error'] === 0 && in_array($imageFile['type'], $allowedMimeTypes, true)) 
+    $imageInfo = ($imageFile['error'] === 0) ? @getimagesize($imageFile['tmp_name']) : false;
+
+    if ($imageInfo !== false) 
     {
-        // Get image extension from MIME type
-        $mimeToExt = [
-            'image/jpeg' => 'jpg',
-            'image/jpg'  => 'jpg',
-            'image/png'  => 'png',
-            'image/gif'  => 'gif',
-            'image/webp' => 'webp'
+        $extByType = [
+            IMAGETYPE_JPEG => 'jpg',
+            IMAGETYPE_PNG  => 'png',
+            IMAGETYPE_GIF  => 'gif',
+            IMAGETYPE_WEBP => 'webp',
         ];
 
-        $ext = isset($mimeToExt[$imageFile['type']]) ? $mimeToExt[$imageFile['type']] : null;
+        $ext = $extByType[$imageInfo[2]] ?? null;
 
         if ($ext !== null) 
         {
@@ -1430,6 +1470,18 @@ if (isset($_GET['id']) && is_numeric($_GET['id']))
 
     // Fetch the result as an associative array
     $torrent = $db->fetch_array($result);
+
+    // Проверка владельца: редактировать может только владелец торрента или модератор
+    if (!$torrent || (!$is_mod && (int)$CURUSER['id'] !== (int)$torrent['owner'])) {
+        write_log(sprintf(
+            'Security: user %s attempted to open the edit form for torrent #%d without permission (not the owner, not a moderator). Actual owner id: %s',
+            '[URL=' . $BASEURL . '/' . get_profile_link($CURUSER['id']) . ']' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '[/URL]',
+            $EditTorrentID,
+            $torrent ? (string)$torrent['owner'] : 'unknown (torrent not found)'
+        ));
+
+        stderr($lang->upload['no_permission_edit'], '', 403, '403editupload');
+    }
 	
 	
 	

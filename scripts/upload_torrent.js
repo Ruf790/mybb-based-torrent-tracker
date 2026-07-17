@@ -1,4 +1,14 @@
-const BASEURL = "https://ruff-tracker.eu"; // change to your domain or root
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        switch (ch) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+        }
+    });
+}
 
 let deleteId = null;
 let deleteImageSrc = null;
@@ -39,7 +49,7 @@ function openDeleteModal(id, filename, imageSrc) {
   }
   
   if (filenameElement) {
-    filenameElement.innerHTML = '<strong>"' + filename + '"</strong>';
+    filenameElement.innerHTML = '<strong>"' + escapeHtml(filename) + '"</strong>';
   } else {
     console.warn('Element deleteScreenshotFilename not found');
   }
@@ -577,7 +587,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             ${(file.size / 1024).toFixed(0)} KB
                         </span>
                     </div>
-                    <p class="text-muted small text-truncate mt-1 mb-0">${file.name}</p>`;
+                    <p class="text-muted small text-truncate mt-1 mb-0">${escapeHtml(file.name)}</p>`;
                 grid.appendChild(col);
             };
             reader.readAsDataURL(file);
@@ -2163,8 +2173,8 @@ function renderTorrentMeta(files, infoHash) {
 
             files.forEach(function(file, index) {
                 var parts    = file.path.split('/');
-                var filename = parts[parts.length - 1];
-                var folder   = parts.length > 1 ? parts.slice(0, -1).join('/') + '/' : '';
+                var filename = escapeHtml(parts[parts.length - 1]);
+                var folder   = parts.length > 1 ? escapeHtml(parts.slice(0, -1).join('/') + '/') : '';
 
                 html +=
                     '<tr>' +

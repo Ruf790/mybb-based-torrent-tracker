@@ -81,6 +81,9 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('attachthumbh',          '96'),
 ('attachthumbw',          '96'),
 ('attachthumbnails',      'yes'),
+('maxattachments',      '5'),
+
+
 
 -- ── Forum ─────────────────────────────────────────────────────────────────────
 ('f_postsperpage',        '10'),

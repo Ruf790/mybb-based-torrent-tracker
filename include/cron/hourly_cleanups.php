@@ -9,6 +9,10 @@ if (!defined('IN_CRON')) {
 }
 
 
+require_once INC_PATH . '/class_moderation.php';
+$moderation = new Moderation();
+
+
 
 // ======= Cleanup of stale data =======
 $db->sql_query("DELETE FROM loginattempts WHERE banned='no' AND added < '" . (TIMENOW - DAY_IN_SECONDS) . "'");
@@ -32,8 +36,22 @@ $CQueryCount++;
 $time_limits = [
     'sessionstime' => TIMENOW - DAY_IN_SECONDS,
     'threadreadcut' => TIMENOW - 7 * DAY_IN_SECONDS, // 7 days
-    'searchlog' => TIMENOW - DAY_IN_SECONDS
+    'searchlog' => TIMENOW - DAY_IN_SECONDS,
+	'threads'       => TIMENOW
 ];
+
+
+
+// Delete moved threads with expired redirects
+$query = $db->simple_select('threads', 'tid', "deletetime != '0' AND deletetime < '" . (int)$time_limits['threads'] . "'");
+$CQueryCount++;
+
+while ($tid = $db->fetch_field($query, 'tid')) {
+    $moderation->delete_thread((int)$tid);
+}
+
+
+
 
 // Remove old search log entries
 $db->delete_query("searchlog", "dateline < '" . (int)$time_limits['searchlog'] . "'");

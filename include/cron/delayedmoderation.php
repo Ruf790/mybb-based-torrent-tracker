@@ -9,7 +9,7 @@ if (!defined('IN_CRON')) {
 
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
-require_once INC_PATH . "/tsf_functions.php";
+require_once INC_PATH . "/functions_forum.php";
 
 
 require_once INC_PATH . "/class_moderation.php";

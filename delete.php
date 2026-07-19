@@ -9,15 +9,19 @@ define('D_VERSION', '0.7');
 
 $lang->load('delete');
 
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $valid_referer = strpos($_SERVER['HTTP_REFERER'] ?? '', $BASEURL) === 0;
-    if (!$valid_referer) {
-        stderr("Error", "Invalid request source");
-    }
+// Удаление торрента - только POST с валидным CSRF-токеном. Раньше ID
+// можно было передать через GET, и удаление проходило по одной ссылке,
+// без всякой защиты - Referer-проверка применялась только для POST, а
+// GET-путь её вообще обходил стороной.
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    stderr($lang->global['error'], 'Invalid request method');
 }
 
-$id = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
+if (!verify_post_check($mybb->get_input('my_post_key'))) {
+    stderr($lang->global['error'], 'Invalid security token. Please refresh the page and try again.');
+}
+
+$id = (int)($_POST['id'] ?? 0);
 int_check($id, true);
 
 $res = $db->sql_query('SELECT name, owner FROM torrents WHERE id = ' . $db->sqlesc($id));
@@ -29,7 +33,7 @@ if (!$row) {
 
 $is_mod = is_mod($usergroups);
 
-if ($is_mod || $CURUSER['id'] === (int)$row['owner']) {
+if ($is_mod || (int)$CURUSER['id'] === (int)$row['owner']) {
     $rt = (int)($_POST['reasontype'] ?? 5);
     
     if ($rt < 1 || $rt > 5) {

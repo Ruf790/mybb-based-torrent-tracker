@@ -17,7 +17,7 @@ require_once 'global.php';
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
 
-require_once INC_PATH . '/tsf_functions.php';
+require_once INC_PATH . '/functions_forum.php';
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_timezone.php';

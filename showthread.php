@@ -19,22 +19,17 @@ $lang->load("showthread");
 
 // ─── Resolve pid → tid ────────────────────────────────────────────────────────
 
-if (!empty($mybb->input['pid']) && !$mybb->input['tid']) {
-    if (isset($style) && $style['pid'] === $mybb->get_input('pid', MyBB::INPUT_INT) && $style['tid']) {
-        $mybb->input['tid'] = $style['tid'];
-        unset($style['tid']);
-    } else {
-        $query = $db->simple_select(
-            "posts", "fid,tid,visible",
-            "pid=" . $mybb->get_input('pid', MyBB::INPUT_INT),
-            ["limit" => 1]
-        );
-        $post = $db->fetch_array($query);
-        if (empty($post)) {
-            stderr($lang->tsf_forums['invalid_post']);
-        }
-        $mybb->input['tid'] = $post['tid'];
+if (!empty($mybb->input['pid']) && empty($mybb->input['tid'])) {
+    $query = $db->simple_select(
+        "posts", "fid,tid,visible",
+        "pid=" . $mybb->get_input('pid', MyBB::INPUT_INT),
+        ["limit" => 1]
+    );
+    $post = $db->fetch_array($query);
+    if (empty($post)) {
+        stderr($lang->showthread['invalid_post']);
     }
+    $mybb->input['tid'] = $post['tid'];
 }
 
 // ─── Load thread ──────────────────────────────────────────────────────────────
@@ -515,7 +510,7 @@ if (!empty($mybb->input['pid'])) {
         ($post['visible'] == -1 && !is_moderator($post['fid'], 'canviewdeleted') && $forumpermissions['canviewdeletionnotice'] == 0)
     );
     if (!$postVisible) {
-        $footer .= '<script>$(function(){$.jGrowl(\'' . $lang->error_invalidpost . '\',{theme:\'jgrowl_error\'});})</script>';
+        $footer .= '<script>$(function(){$.jGrowl(\'' . $lang->global['error_invalidpost'] . '\',{theme:\'jgrowl_error\'});})</script>';
     } else {
         $query  = $db->sql_query_prepared("SELECT COUNT(p.dateline) AS count FROM posts p WHERE p.tid = ? AND p.dateline <= ? {$visibleonly_p}", [(int)$tid, (int)$post['dateline']]);
         $result = (int)$db->fetch_field($query, "count");
@@ -659,7 +654,7 @@ foreach ($gids as $gid) {
 //}
 
 $inlinemoddelete  = '<option value="multideleteposts">Delete Posts Permanently</option>';
-$inlinemodmanage  = '<option value="multimergeposts">' . $lang->tsf_forums["mergeposts"] . '</option>'
+$inlinemodmanage  = '<option value="multimergeposts">' . $lang->showthread["mergeposts"] . '</option>'
     . '<option value="multisplitposts">' . $lang->showthread['inline_split_posts'] . '</option>'
     . '<option value="multimoveposts">' . $lang->showthread['inline_move_posts'] . '</option>';
 $inlinemodapprove = '<option value="multiapproveposts">' . $lang->showthread['inline_approve_posts'] . '</option>'

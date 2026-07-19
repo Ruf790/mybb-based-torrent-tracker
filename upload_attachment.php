@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * upload_attachment.php
  * AJAX обработчик загрузки вложений для комментариев

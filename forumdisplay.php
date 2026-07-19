@@ -823,6 +823,10 @@ if (!empty($threadcache) && is_array($threadcache)) {
             $thread['views']   = '-';
         }
 
+        $moved_badge = ($prefix === 'moved_prefix')
+            ? '<span class="badge bg-secondary me-1"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i>Moved</span>'
+            : '';
+
         $thread['threadlink']   = get_thread_link($thread['tid']);
         $thread['lastpostlink'] = get_thread_link($thread['tid'], 0, 'lastpost');
 
@@ -924,10 +928,10 @@ if (!empty($threadcache) && is_array($threadcache)) {
 		$threads .= '<div class="card border-bottom border-0 rounded-0">
 	<div class="card-body py-0 px-1 inline_row '.$bgcolor.'">
 <div class="row py-2">
-		<div class="col align-self-center ms-2">
+		<div class="col align-self-center ms-2" style="min-width:0;">
 			
 			
-        <h6 class="mb-0 text-forum"><a href="'.$thread['threadlink'].'">'.$thread['threadprefix'].'<span class="'.$inline_edit_class.' '.$new_class.'" id="tid_'.$inline_edit_tid.'">'.$thread['subject'].'</span></h6>
+        <h6 class="mb-0 text-forum" style="overflow-wrap:anywhere;"><a href="'.$thread['threadlink'].'">'.$moved_badge.$thread['threadprefix'].'<span class="'.$inline_edit_class.' '.$new_class.'" id="tid_'.$inline_edit_tid.'">'.$thread['subject'].'</span></h6>
 		<div class="links small">'.$lang->forumdisplay['by'].' '.$thread['profilelink'].''.$rating.'</div>
 
 

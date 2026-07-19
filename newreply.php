@@ -663,7 +663,7 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
 			';
         }
 
-        $maxattachments     = '5';
+       
         $attach_add_options = '';
         if ($maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments && !$noshowattach)) {
             
@@ -894,7 +894,7 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
 
     $php_max_upload_size  = get_php_upload_limit();
     $php_max_file_uploads = (int)ini_get('max_file_uploads');
-    $maxattachments       = '12';
+  
 
     $post_javascript = '
 <script type="text/javascript">

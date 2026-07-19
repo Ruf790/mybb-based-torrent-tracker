@@ -104,7 +104,7 @@ if ($mybb->request_method !== 'post' && !in_array($action, $allowable_moderation
 }
 
 $parser_options_default = [
-    'allow_html'      => 1,
+    'allow_html'      => 0,
     'allow_mycode'    => 1,
     'allow_smilies'   => 1,
     'allow_imgcode'   => 1,
@@ -330,23 +330,25 @@ switch ($action) {
                 ? getids($mybb->get_input('searchid'), 'search')
                 : getids($fid, 'forum');
 
-            $where_array = [];
+            $where_array  = [];
+            $where_params = [];
             foreach ($tids as $like) {
-                $esc = $db->escape_string($like);
                 $where_array[] = match ($db->type) {
-                    'pgsql', 'sqlite' => "','||d.tids||',' LIKE '%,{$esc},%'",
-                    default           => "CONCAT(',',d.tids,',') LIKE '%,{$esc},%'",
+                    'pgsql', 'sqlite' => "','||d.tids||',' LIKE ?",
+                    default           => "CONCAT(',',d.tids,',') LIKE ?",
                 };
+                $where_params[] = '%,' . $like . ',%';
             }
             $where_statement = implode(' OR ', $where_array);
         } else {
             $where_statement = match ($db->type) {
-                'pgsql', 'sqlite' => "','||d.tids||',' LIKE '%,{$tid},%'",
-                default           => "CONCAT(',',d.tids,',') LIKE '%,{$tid},%'",
+                'pgsql', 'sqlite' => "','||d.tids||',' LIKE ?",
+                default           => "CONCAT(',',d.tids,',') LIKE ?",
             };
+            $where_params = ['%,' . $tid . ',%'];
         }
 
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT d.*, u.username, f.name AS fname
             FROM delayedmoderation d
             LEFT JOIN users u ON (u.id = d.uid)
@@ -354,7 +356,7 @@ switch ($action) {
             WHERE {$where_statement}
             ORDER BY d.dateline DESC
             LIMIT 0, 20
-        ");
+        ", $where_params);
 
         while ($delayedmod = $db->fetch_array($query)) {
             $delayedmod['dateline']    = my_datee('normal', $delayedmod['delaydateline'], '', 2);
@@ -594,6 +596,8 @@ stdfoot();
 
     // ── Open / close thread ──────────────────────────────────────────────────
     case 'openclosethread':
+        verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) stderr('error_thread_deleted');
 
         if ($thread['closed'] == 1) {
@@ -612,6 +616,8 @@ stdfoot();
 
     // ── Stick / unstick thread ───────────────────────────────────────────────
     case 'stick':
+        verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) stderr('error_thread_deleted');
 
         $plugins->run_hooks('moderation_stick');
@@ -633,7 +639,7 @@ stdfoot();
     // ── Remove redirects ─────────────────────────────────────────────────────
     case 'removeredirects':
         verify_post_check($mybb->get_input('my_post_key'));
-        if (!is_moderator($fid, 'canmanagethreads')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
 
         $plugins->run_hooks('moderation_removeredirects');
@@ -645,6 +651,7 @@ stdfoot();
     // ── Delete thread ────────────────────────────────────────────────────────
     case 'do_deletethread':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
         $plugins->run_hooks('moderation_do_deletethread');
 
         $modlogdata['thread_subject'] = $thread['subject'];
@@ -736,6 +743,7 @@ stdfoot();
     // ── Approve thread ───────────────────────────────────────────────────────
     case 'approvethread':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
 
         $thread = get_thread($tid);
@@ -748,6 +756,7 @@ stdfoot();
     // ── Unapprove thread ─────────────────────────────────────────────────────
     case 'unapprovethread':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
 
         $thread = get_thread($tid);
@@ -760,6 +769,7 @@ stdfoot();
     // ── Move thread ──────────────────────────────────────────────────────────
     case 'do_move':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moveto = $mybb->get_input('moveto', MyBB::INPUT_INT);
         $method = $mybb->get_input('method');
@@ -794,6 +804,7 @@ stdfoot();
     // ── Merge threads ────────────────────────────────────────────────────────
     case 'do_merge':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) stderr('error_thread_deleted');
 
         $plugins->run_hooks('moderation_do_merge');
@@ -835,15 +846,16 @@ stdfoot();
     // ── Split thread ─────────────────────────────────────────────────────────
     case 'split':
         add_breadcrumb('nav_split');
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) stderr('error_thread_deleted');
 
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT p.*, u.*
             FROM posts p
             LEFT JOIN users u ON (p.uid = u.id)
-            WHERE tid = '$tid'
+            WHERE tid = ?
             ORDER BY dateline ASC, pid ASC
-        ");
+        ", [$tid]);
 
         if ($db->num_rows($query) <= 1) stderr('error_cantsplitonepost');
 
@@ -888,6 +900,7 @@ stdfoot();
     // ── Do split ─────────────────────────────────────────────────────────────
     case 'do_split':
         verify_post_check($mybb->get_input('my_post_key'));
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) stderr('error_thread_deleted');
 
         $plugins->run_hooks('moderation_do_split');
@@ -918,7 +931,7 @@ stdfoot();
     // ── Remove subscriptions ─────────────────────────────────────────────────
     case 'removesubscriptions':
         verify_post_check($mybb->get_input('my_post_key'));
-        if (!is_moderator($fid, 'canmanagethreads')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
         if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
 
         $plugins->run_hooks('moderation_removesubscriptions');
@@ -937,9 +950,11 @@ stdfoot();
         $threadlist    = str_contains($threads_input, ',')
             ? explode(',', $threads_input)
             : explode('|', $threads_input);
+        $threadlist    = array_map('intval', $threadlist);
+
+        if (!is_mod($usergroups)) error_no_permission();
 
         foreach ($threadlist as $t) {
-            $t = (int)$t;
             $moderation->delete_thread($t);
         }
 
@@ -961,6 +976,7 @@ stdfoot();
             : getids($fid, 'forum');
 
         if (count($threads) < 1) error($lang->error_inline_nothreadsselected, $lang->error);
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->open_threads($threads);
         log_moderator_action($modlogdata, $lang->moderation['multi_opened_threads']);
@@ -979,6 +995,7 @@ stdfoot();
             : getids($fid, 'forum');
 
         if (count($threads) < 1) error($lang->error_inline_nothreadsselected, $lang->error);
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->close_threads($threads);
         log_moderator_action($modlogdata, $lang->moderation['multi_closed_threads']);
@@ -997,6 +1014,7 @@ stdfoot();
             : getids($fid, 'forum');
 
         if (count($threads) < 1) error($lang->error_inline_nothreadsselected, $lang->error);
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->approve_threads($threads, $fid);
         log_moderator_action($modlogdata, $lang->moderation['multi_approved_threads']);
@@ -1016,6 +1034,7 @@ stdfoot();
             : getids($fid, 'forum');
 
         if (count($threads) < 1) error('error_inline_nothreadsselected', $lang->error);
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unapprove_threads($threads, $fid);
         log_moderator_action($modlogdata, $lang->moderation['multi_unapproved_threads']);
@@ -1035,6 +1054,7 @@ stdfoot();
             : getids($fid, 'forum');
 
         if (count($threads) < 1) error('error_inline_nothreadsselected', $lang->error);
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->stick_threads($threads);
         log_moderator_action($modlogdata, $lang->moderation['multi_stuck_threads']);
@@ -1053,6 +1073,7 @@ stdfoot();
             : getids($fid, 'forum');
 
         if (count($threads) < 1) error($lang->error_inline_nothreadsselected, $lang->error);
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unstick_threads($threads);
         log_moderator_action($modlogdata, $lang->moderation['multi_unstuck_threads']);
@@ -1179,9 +1200,9 @@ stdfoot();
 </div>
 <script>
 function selectMethod(method) {
-    document.querySelectorAll('.method-option').forEach(o => { o.classList.remove('selected'); o.querySelector('input').checked = false; });
-    const opt = [...document.querySelectorAll('.method-option')].find(o => o.querySelector('input').value === method);
-    if (opt) { opt.classList.add('selected'); opt.querySelector('input').checked = true; }
+    document.querySelectorAll('.method-option').forEach(o => { o.classList.remove('selected'); o.querySelector('input[type="radio"]').checked = false; });
+    const opt = [...document.querySelectorAll('.method-option')].find(o => o.querySelector('input[type="radio"]').value === method);
+    if (opt) { opt.classList.add('selected'); opt.querySelector('input[type="radio"]').checked = true; }
 }
 selectMethod('redirect');
 </script>
@@ -1203,7 +1224,7 @@ stdfoot();
         $method     = $mybb->get_input('method');
         $threadlist = explode('|', $mybb->get_input('threads'));
 
-        if (!is_moderator_by_tids($threadlist, 'canmanagethreads')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
 
         $tids = array_map('intval', $threadlist);
 
@@ -1229,7 +1250,7 @@ stdfoot();
         verify_post_check($mybb->get_input('my_post_key'));
 
         $postlist = array_map('intval', explode(',', $mybb->get_input('posts')));
-        if (!is_moderator_by_pids($postlist, 'candeleteposts')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
 
         $pids = implode(',', $postlist);
         $tids = [];
@@ -1249,7 +1270,7 @@ stdfoot();
 
         if (!empty($tids)) {
             foreach ($tids as $t) {
-                $moderation->delete_thread($t);
+                $moderation->delete_thread((int)$t);
             }
             $url = get_forum_link($fid);
         } else {
@@ -1290,13 +1311,14 @@ stdfoot();
         }
 
         $postlist = '';
-        $query = $db->sql_query('
+        $placeholders = implode(',', array_fill(0, count($posts), '?'));
+        $query = $db->sql_query_prepared("
             SELECT p.*, u.*
             FROM posts p
             LEFT JOIN users u ON (p.uid = u.id)
-            WHERE pid IN (' . implode(',', $posts) . ')
+            WHERE pid IN ({$placeholders})
             ORDER BY dateline ASC, pid ASC
-        ');
+        ", $posts);
 
         while ($post = $db->fetch_array($query)) {
             $postdate = my_datee('relative', $post['dateline']);
@@ -1318,7 +1340,7 @@ stdfoot();
         $return_url = htmlspecialchars_uni($mybb->get_input('url'));
 
         stdhead('Merge Posts');
-        echo <<<HTML
+               echo <<<HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1326,28 +1348,43 @@ stdfoot();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{$SITENAME} - Merge Posts</title>
     <style>
-        .merge-header { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%) !important; color:white; border-radius:10px 10px 0 0; }
-        .merge-icon { width:80px; height:80px; background:rgba(255,255,255,.2); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; }
-        .option-card { border:2px solid #e9ecef; border-radius:10px; transition:all .3s; cursor:pointer; margin-bottom:15px; }
-        .option-card:hover { border-color:var(--bs-primary); transform:translateY(-2px); }
-        .option-card.selected { border-color:var(--bs-primary); background:rgba(13,110,253,.05); }
-        .option-icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-right:15px; }
+        .merge-header { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%) !important; color:white; border-radius:10px 10px 0 0; position:relative; overflow:hidden; }
+        .merge-header::after { content:''; position:absolute; inset:0; background:radial-gradient(circle at 85% -20%, rgba(255,255,255,.18), transparent 60%); }
+        .merge-icon { width:80px; height:80px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 20px; }
+
+        .step-badge { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:var(--bs-primary); color:white; font-size:.8rem; font-weight:700; margin-right:10px; flex-shrink:0; }
+        .step-title { display:flex; align-items:center; }
+
+        .option-card { border:2px solid #e9ecef; border-radius:12px; transition:all .2s ease; cursor:pointer; margin-bottom:15px; position:relative; }
+        .option-card:hover { border-color:#b6d4fe; transform:translateY(-2px); box-shadow:0 6px 16px rgba(13,110,253,.08); }
+        .option-card.selected { border-color:var(--bs-primary); background:rgba(13,110,253,.05); box-shadow:0 6px 16px rgba(13,110,253,.12); }
+        .option-check { position:absolute; top:12px; right:12px; width:22px; height:22px; border-radius:50%; background:var(--bs-primary); color:white; display:none; align-items:center; justify-content:center; font-size:.7rem; }
+        .option-card.selected .option-check { display:flex; }
+        .option-icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-right:15px; flex-shrink:0; }
         .hr-option .option-icon { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%); color:white; }
         .newline-option .option-icon { background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%); color:white; }
-        .btn-merge { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%); border:none; padding:12px 30px; font-weight:600; font-size:1.1rem; transition:all .3s; }
-        .btn-merge:hover { transform:translateY(-2px); box-shadow:0 5px 20px rgba(13,110,253,.3); }
-        .preview-area { background:#f8f9fa; border:2px dashed #dee2e6; border-radius:10px; padding:20px; margin-top:20px; min-height:100px; }
-        .separator-preview { border-top:2px solid var(--bs-primary); margin:20px 0; opacity:.7; }
-        .newline-preview { background:var(--bs-primary); color:white; padding:3px 10px; border-radius:4px; display:inline-block; font-size:.8rem; margin:10px 0; }
+
+        .btn-merge { background:linear-gradient(135deg,var(--bs-primary) 0%,#0d6efd 100%); border:none; padding:12px 30px; font-weight:600; font-size:1.1rem; transition:all .2s ease; }
+        .btn-merge:hover { transform:translateY(-2px); box-shadow:0 8px 22px rgba(13,110,253,.35); }
+
+        .preview-area { background:#f8f9fa; border:1px solid #e9ecef; border-radius:12px; padding:24px; margin-top:16px; }
+        .preview-label { color:#6c757d; font-size:.78rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; font-weight:600; }
+        .preview-post { display:flex; gap:12px; align-items:flex-start; }
+        .preview-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--bs-primary),#6ea8fe); flex-shrink:0; }
+        .preview-bubble { background:white; border:1px solid #e9ecef; border-radius:10px; padding:10px 14px; font-size:.9rem; color:#495057; flex:1; }
+        .separator-preview { border-top:2px dashed var(--bs-primary); margin:18px 0 18px 46px; opacity:.6; }
+        .newline-preview { color:var(--bs-primary); font-size:.78rem; font-weight:600; margin:14px 0 14px 46px; }
+
+        .posts-count-pill { font-size:.85rem; padding:.4rem .8rem; }
     </style>
 </head>
 <body>
 <div class="container mt-3">
-    <div class="card">
+    <div class="card border-0 shadow-sm">
         <div class="merge-header p-5">
-            <div class="text-center">
+            <div class="text-center position-relative">
                 <div class="merge-icon"><i class="fas fa-shuffle fa-2x"></i></div>
-                <h1 class="h3 mb-2">Merge Posts</h1>
+                <h1 class="h3 mb-2 fw-bold">Merge Posts</h1>
                 <p class="mb-0 opacity-75">Combine selected posts into a single message</p>
             </div>
         </div>
@@ -1365,11 +1402,13 @@ stdfoot();
                         </div>
                     </div>
                 </div>
+
                 <div class="mb-5">
-                    <h5 class="h6 mb-4"><i class="fas fa-grip-lines me-2 text-primary"></i>Select Post Separator</h5>
+                    <h5 class="h6 mb-4 step-title"><span class="step-badge">1</span>Select Post Separator</h5>
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <div class="option-card hr-option p-4" onclick="selectOption('hr')">
+                            <div class="option-card hr-option selected p-4" onclick="selectOption('hr')">
+                                <div class="option-check"><i class="fas fa-check"></i></div>
                                 <div class="d-flex align-items-center">
                                     <div class="option-icon"><i class="fas fa-minus fa-lg"></i></div>
                                     <div><h6 class="mb-1 fw-bold">Horizontal Rule</h6><p class="mb-0 text-muted small">Posts separated by a visible line</p></div>
@@ -1379,6 +1418,7 @@ stdfoot();
                         </div>
                         <div class="col-md-6">
                             <div class="option-card newline-option p-4" onclick="selectOption('new_line')">
+                                <div class="option-check"><i class="fas fa-check"></i></div>
                                 <div class="d-flex align-items-center">
                                     <div class="option-icon"><i class="fas fa-arrow-down fa-lg"></i></div>
                                     <div><h6 class="mb-1 fw-bold">New Line</h6><p class="mb-0 text-muted small">Posts separated by line breaks</p></div>
@@ -1387,21 +1427,29 @@ stdfoot();
                             </div>
                         </div>
                     </div>
-                    <div class="preview-area mt-4">
-                        <div style="color:#6c757d;font-size:.9rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Preview</div>
-                        <div class="post-content">First post content...</div>
+
+                    <div class="preview-area">
+                        <div class="preview-label">Preview</div>
+                        <div class="preview-post">
+                            <div class="preview-avatar"></div>
+                            <div class="preview-bubble">First post content...</div>
+                        </div>
                         <div class="separator-preview" id="hrPreview"></div>
-                        <div class="newline-preview d-none" id="newlinePreview">[New Post]</div>
-                        <div class="post-content">Second post content...</div>
+                        <div class="newline-preview d-none" id="newlinePreview"><i class="fas fa-arrow-down me-1"></i>Merged as new paragraph</div>
+                        <div class="preview-post">
+                            <div class="preview-avatar"></div>
+                            <div class="preview-bubble">Second post content...</div>
+                        </div>
                     </div>
                 </div>
-                <div class="mb-5">
-                    <h5 class="h6 mb-4">
-                        <i class="fas fa-list-check me-2 text-primary"></i>Posts to Merge
-                        <span class="badge bg-primary ms-2">{$post_count} posts selected</span>
+
+                <div class="mb-3">
+                    <h5 class="h6 mb-4 step-title">
+                        <span class="step-badge">2</span>Posts to Merge
+                        <span class="badge bg-primary posts-count-pill ms-2">{$post_count} posts selected</span>
                     </h5>
                     {$postlist}
-                    <div class="alert alert-info mt-3">
+                    <div class="alert alert-info mt-3 mb-0">
                         <i class="fas fa-info-circle me-2"></i>Posts will be merged in chronological order.
                     </div>
                 </div>
@@ -1417,6 +1465,21 @@ stdfoot();
         </form>
     </div>
 </div>
+<script>
+function selectOption(sep) {
+    document.querySelectorAll('.option-card').forEach(function (card) {
+        card.classList.remove('selected');
+        card.querySelector('input[type="radio"]').checked = false;
+    });
+
+    const card = document.querySelector(sep === 'hr' ? '.hr-option' : '.newline-option');
+    card.classList.add('selected');
+    card.querySelector('input[type="radio"]').checked = true;
+
+    document.getElementById('hrPreview').classList.toggle('d-none', sep !== 'hr');
+    document.getElementById('newlinePreview').classList.toggle('d-none', sep !== 'new_line');
+}
+</script>
 </body>
 </html>
 HTML;
@@ -1445,17 +1508,17 @@ HTML;
             : getids($tid, 'thread');
 
         if (count($posts) < 1) stderr($lang->moderation['error_inline_nopostsselected']);
-        if (!is_moderator_by_pids($posts, 'canmanagethreads')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
 
         $posts  = array_map('intval', $posts);
-        $pidin  = implode(',', $posts);
+        $placeholders = implode(',', array_fill(0, count($posts), '?'));
 
         // Validate: no single-post threads
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT DISTINCT p.tid, COUNT(q.pid) as count
             FROM posts p LEFT JOIN posts q ON (p.tid=q.tid)
-            WHERE p.pid IN ($pidin) GROUP BY p.tid, p.pid
-        ");
+            WHERE p.pid IN ({$placeholders}) GROUP BY p.tid, p.pid
+        ", $posts);
         $pcheck = [];
         while ($tcheck = $db->fetch_array($query)) {
             if ((int)$tcheck['count'] <= 1) stderr($lang->moderation['error_cantsplitonepost']);
@@ -1463,11 +1526,11 @@ HTML;
         }
 
         // Validate: not splitting all posts
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT DISTINCT p.tid, COUNT(q.pid) as count
             FROM posts p LEFT JOIN posts q ON (p.tid=q.tid)
-            WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin) GROUP BY p.tid, p.pid
-        ");
+            WHERE p.pid IN ({$placeholders}) AND q.pid NOT IN ({$placeholders}) GROUP BY p.tid, p.pid
+        ", [...$posts, ...$posts]);
         $pcheck2 = [];
         while ($tcheck = $db->fetch_array($query)) {
             if ($tcheck['count'] > 0) $pcheck2[] = $tcheck['tid'];
@@ -1574,7 +1637,7 @@ stdfoot();
         verify_post_check($mybb->get_input('my_post_key'));
 
         $plist = array_map('intval', explode('|', $mybb->get_input('posts')));
-        if (!is_moderator_by_pids($plist, 'canmanagethreads')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
 
         $posts = [];
         if (!empty($plist)) {
@@ -1583,16 +1646,16 @@ stdfoot();
         }
         if (empty($posts)) error($lang->error_inline_nopostsselected, $lang->error);
 
-        $pidin = implode(',', $posts);
+        $placeholders = implode(',', array_fill(0, count($posts), '?'));
 
-        $query  = $db->sql_query("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ($pidin) GROUP BY p.tid, p.pid");
+        $query  = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) GROUP BY p.tid, p.pid", $posts);
         $pcheck = [];
         while ($tcheck = $db->fetch_array($query)) {
             if ((int)$tcheck['count'] <= 1) error($lang->error_cantsplitonepost, $lang->error);
             $pcheck[] = $tcheck['tid'];
         }
 
-        $query   = $db->sql_query("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin) GROUP BY p.tid, p.pid");
+        $query   = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) AND q.pid NOT IN ({$placeholders}) GROUP BY p.tid, p.pid", [...$posts, ...$posts]);
         $pcheck2 = [];
         while ($tcheck = $db->fetch_array($query)) {
             if ($tcheck['count'] > 0) $pcheck2[] = $tcheck['tid'];
@@ -1617,19 +1680,19 @@ stdfoot();
             : getids($tid, 'thread');
 
         if (count($posts) < 1) stderr($lang->moderation['error_inline_nopostsselected']);
-        if (!is_moderator_by_pids($posts, 'canmanagethreads')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
 
         $posts  = array_map('intval', $posts);
-        $pidin  = implode(',', $posts);
+        $placeholders = implode(',', array_fill(0, count($posts), '?'));
 
-        $query  = $db->sql_query("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ($pidin) GROUP BY p.tid, p.pid");
+        $query  = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) GROUP BY p.tid, p.pid", $posts);
         $pcheck = [];
         while ($tcheck = $db->fetch_array($query)) {
             if ((int)$tcheck['count'] <= 1) error($lang->moderation['error_cantsplitonepost'], $lang->error);
             $pcheck[] = $tcheck['tid'];
         }
 
-        $query   = $db->sql_query("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin) GROUP BY p.tid, p.pid");
+        $query   = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) AND q.pid NOT IN ({$placeholders}) GROUP BY p.tid, p.pid", [...$posts, ...$posts]);
         $pcheck2 = [];
         while ($tcheck = $db->fetch_array($query)) {
             if ($tcheck['count'] > 0) $pcheck2[] = $tcheck['tid'];
@@ -1838,7 +1901,7 @@ stdfoot();
         if ($newtid === $tid) stderr($lang->moderation['error_movetoself']);
 
         $plist = array_map('intval', explode('|', $mybb->get_input('posts')));
-        if (!is_moderator_by_pids($plist, 'canmanagethreads')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
 
         $posts = [];
         if (!empty($plist)) {
@@ -1847,15 +1910,15 @@ stdfoot();
         }
         if (empty($posts)) stderr($lang->moderation['error_inline_nopostsselected']);
 
-        $pidin  = implode(',', $posts);
-        $query  = $db->sql_query("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ($pidin) GROUP BY p.tid, p.pid");
+        $placeholders = implode(',', array_fill(0, count($posts), '?'));
+        $query  = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) GROUP BY p.tid, p.pid", $posts);
         $pcheck = [];
         while ($tcheck = $db->fetch_array($query)) {
             if ((int)$tcheck['count'] <= 1) stderr($lang->moderation['error_cantsplitonepost']);
             $pcheck[] = $tcheck['tid'];
         }
 
-        $query   = $db->sql_query("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ($pidin) AND q.pid NOT IN ($pidin) GROUP BY p.tid, p.pid");
+        $query   = $db->sql_query_prepared("SELECT DISTINCT p.tid, COUNT(q.pid) as count FROM posts p LEFT JOIN posts q ON (p.tid=q.tid) WHERE p.pid IN ({$placeholders}) AND q.pid NOT IN ({$placeholders}) GROUP BY p.tid, p.pid", [...$posts, ...$posts]);
         $pcheck2 = [];
         while ($tcheck = $db->fetch_array($query)) {
             if ($tcheck['count'] > 0) $pcheck2[] = $tcheck['tid'];
@@ -1876,7 +1939,7 @@ stdfoot();
             : getids($tid, 'thread');
 
         if (count($posts) < 1) stderr($lang->moderation['error_inline_nopostsselected']);
-        if (!is_moderator_by_pids($posts, 'canapproveunapproveposts')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->approve_posts(array_map('intval', $posts));
         log_moderator_action($modlogdata, $lang->moderation['multi_approve_posts']);
@@ -1895,7 +1958,7 @@ stdfoot();
             : getids($tid, 'thread');
 
         if (count($posts) < 1) error($lang->moderation['error_inline_nopostsselected'], 'error');
-        if (!is_moderator_by_pids($posts, 'canapproveunapproveposts')) error_no_permission();
+        if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unapprove_posts(array_map('intval', $posts));
         log_moderator_action($modlogdata, $lang->moderation['multi_unapprove_posts']);
@@ -2052,7 +2115,7 @@ stdfoot();
                 : getids($fid, 'forum');
 
             if (count($tids) < 1) error($lang->error_inline_nopostsselected, $lang->error);
-            if (!is_moderator_by_tids($tids, 'canusecustomtools')) error_no_permission();
+            if (!is_mod($usergroups)) error_no_permission();
 
             $thread_options = my_unserialize($tool['threadoptions']);
             if ($thread_options['movethread'] && $forum_cache[$thread_options['movethread']]['type'] !== 'f') {
@@ -2071,7 +2134,7 @@ stdfoot();
             }
 
         } elseif ($tool['type'] === 't' && $modtype_input === 'thread') {
-            if (!is_moderator_by_tids($tid, 'canusecustomtools')) error_no_permission();
+            if (!is_mod($usergroups)) error_no_permission();
 
             $thread_options = my_unserialize($tool['threadoptions']);
             if ($thread_options['movethread'] && $forum_cache[$thread_options['movethread']]['type'] !== 'f') {
@@ -2091,7 +2154,7 @@ stdfoot();
                 : getids($tid, 'thread');
 
             if (count($pids) < 1) error($lang->error_inline_nopostsselected, $lang->error);
-            if (!is_moderator_by_pids($pids, 'canusecustomtools')) error_no_permission();
+            if (!is_mod($usergroups)) error_no_permission();
 
             $query = $db->simple_select('posts', 'DISTINCT tid, dateline', 'pid IN (' . implode(',', $pids) . ')', ['order_by' => 'dateline, pid']);
             $tids  = [];
@@ -2183,44 +2246,6 @@ function extendinline(string|int $id, string $type): void
 {
     my_setcookie("inlinemod_{$type}{$id}",         '', TIMENOW + 3600);
     my_setcookie("inlinemod_{$type}{$id}_removed", '', TIMENOW + 3600);
-}
-
-function is_moderator_by_pids(array|int $posts, string $permission = ''): bool
-{
-    global $db, $mybb;
-
-    if ($mybb->usergroup['issupermod']) return true;
-    if (!$mybb->user['uid'])            return false;
-
-    if (!is_array($posts)) $posts = [$posts];
-
-    $posts   = array_map('intval', $posts);
-    $posts[] = 0;
-    $query   = $db->simple_select('posts', 'DISTINCT fid', 'pid IN (' . implode(',', $posts) . ')');
-
-    while ($forum = $db->fetch_array($query)) {
-        if (!is_moderator($forum['fid'], $permission)) return false;
-    }
-    return true;
-}
-
-function is_moderator_by_tids(array|int $threads, string $permission = ''): bool
-{
-    global $db, $mybb;
-
-    if ($mybb->usergroup['issupermod']) return true;
-    if (!$mybb->user['uid'])            return false;
-
-    if (!is_array($threads)) $threads = [$threads];
-
-    $threads   = array_map('intval', $threads);
-    $threads[] = 0;
-    $query     = $db->simple_select('threads', 'DISTINCT fid', 'tid IN (' . implode(',', $threads) . ')');
-
-    while ($forum = $db->fetch_array($query)) {
-        if (!is_moderator($forum['fid'], $permission)) return false;
-    }
-    return true;
 }
 
 function moderation_redirect(string $url, string $message = '', string $title = ''): void

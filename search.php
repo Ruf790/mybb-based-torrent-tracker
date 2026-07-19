@@ -22,7 +22,7 @@ $parser = new postParser;
   
   
 $parser_options = array(
-	"allow_html" => 1,
+	"allow_html" => 0,
 	"allow_mycode" => 1,
 	"allow_smilies" => 1,
 	"allow_imgcode" => 1,
@@ -834,12 +834,15 @@ if ($mybb->input['action'] === 'results') {
 	
 	
 	 
+    if (!verify_post_check($mybb->get_input('postcode'))) {
+        stderr($lang->search['error_invalidsearch']);
+    }
 
     $plugins->run_hooks('search_do_search_start');
 
     $searchfloodtime = 30;
     if ($searchfloodtime > 0 && $usergroups['cansearch'] != 1) {
-        $cond    = $CURUSER['id'] ? "uid='{$CURUSER['id']}'" : "uid='0' AND ipaddress=" . $CURUSER['ip'];
+        $cond    = $CURUSER['id'] ? "uid='{$CURUSER['id']}'" : "uid='0' AND ipaddress=" . $db->escape_binary($session->packedip);
         $timecut = TIMENOW - $searchfloodtime;
         $q       = $db->simple_select('searchlog', '*', "$cond AND dateline > '$timecut'", ['order_by'=>'dateline','order_dir'=>'DESC']);
         $ls      = $db->fetch_array($q);

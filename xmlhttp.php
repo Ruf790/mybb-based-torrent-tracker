@@ -18,7 +18,7 @@ define ('TIMENOW', time ());
 define ('TSDIR', dirname (__FILE__));
 define ('INC_PATH', TSDIR . '/include');
 
-
+require_once INC_PATH . '/error_handler.php';
 require_once INC_PATH.'/init.php';
 
 $shutdown_queries = $shutdown_functions = array();
@@ -51,7 +51,7 @@ global $CURUSER, $plugins, $usergroups;
 
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
-require_once INC_PATH . '/tsf_functions.php';
+require_once INC_PATH . '/functions_forum.php';
 
 
 require_once INC_PATH . '/datahandler.php';

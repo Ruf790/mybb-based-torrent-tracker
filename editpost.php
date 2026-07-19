@@ -43,7 +43,7 @@ if (isset($style) && $style['pid'] == $pid && $style['type'] != 'f') {
 
 
 
-if (!$post || ($post['visible'] == -1 && $mybb->input['action'] != "restorepost")) {
+if (!$post || $post['visible'] == -1) {
 	stderr($lang->global['error_invalidpost'], $SITENAME . ' - Post Not Found', 404, '404');
 }
 
@@ -116,30 +116,27 @@ if (!$mybb->input['action'] || isset($mybb->input['previewpost'])) {
 }
 
 if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
-    if (!$is_mod && $pid != $thread['firstpost'] && $pid == $thread['firstpost']) {
-        if ($thread['closed'] == 1) {
-            error('redirect_threadclosed');
-        }
-        if ($forumpermissions['candeleteposts'] == 0 && $pid != $thread['firstpost'] || $forumpermissions['candeletethreads'] == 0 && $pid == $thread['firstpost']) {
-            print_no_permission();
-        }
-        if ($CURUSER['id'] != $post['uid']) {
-            print_no_permission();
-        }
-        // User can't delete unapproved post unless allowed for own
-        if ($post['visible'] == 0 && !($showownunapproved && $post['uid'] == $CURUSER['id'])) {
-            print_no_permission();
-        }
-    }
-    
-    $soft_delete = "0";
-    
-    if ($post['visible'] == -1 && $soft_delete == 1) {
-        error('error_already_deleted');
-    }
-} elseif ($mybb->input['action'] == "restorepost" && $mybb->request_method == "post") {
-    if (!is_moderator($fid, "canrestoreposts") && $pid != $thread['firstpost'] || !is_moderator($fid, "canrestorethreads") && $pid == $thread['firstpost'] || $post['visible'] != -1) {
+    $firstpost = ($pid == $thread['firstpost']);
+
+    $can_delete = $is_mod
+        || ($firstpost && $forumpermissions['candeletethreads'] == 1 && $CURUSER['id'] == $post['uid'])
+        || (!$firstpost && $forumpermissions['candeleteposts'] == 1 && $CURUSER['id'] == $post['uid']);
+
+    if (!$can_delete) {
         print_no_permission();
+    }
+
+    if (!$is_mod && $thread['closed'] == 1) {
+        error($lang->global['redirect_threadclosed'] ?? 'Thread is closed');
+    }
+
+    // User can't delete unapproved post unless allowed for own
+    if ($post['visible'] == 0 && !($showownunapproved && $post['uid'] == $CURUSER['id'])) {
+        print_no_permission();
+    }
+
+    if ($post['visible'] == -1) {
+        error($lang->editpost['error_already_deleted'] ?? 'Already deleted');
     }
 }
 
@@ -287,17 +284,30 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
     // Verify incoming POST request
     verify_post_check($mybb->get_input('my_post_key'));
 
+    $firstpost = ($pid == $thread['firstpost']);
+
+    // ── Реальная проверка прав перед удалением ──
+    $can_delete = $is_mod
+        || ($firstpost && $forumpermissions['candeletethreads'] == 1 && $CURUSER['id'] == $post['uid'])
+        || (!$firstpost && $forumpermissions['candeleteposts'] == 1 && $CURUSER['id'] == $post['uid']);
+
+    if (!$can_delete) {
+        print_no_permission();
+    }
+    if (!$is_mod && $thread['closed'] == 1) {
+        error($lang->global['redirect_threadclosed'] ?? 'Thread is closed');
+    }
+    if (!$is_mod && $post['visible'] == 0 && !($showownunapproved && $post['uid'] == $CURUSER['id'])) {
+        print_no_permission();
+    }
+    if ($post['visible'] == -1) {
+        error($lang->editpost['error_already_deleted'] ?? 'Already deleted');
+    }
+    // ── конец проверки ──
+
     $plugins->run_hooks("editpost_deletepost");
 
     if ($mybb->get_input('delete', MyBB::INPUT_INT) == 1) {
-        $query = $db->simple_select("posts", "pid", "tid='{$tid}'", ["limit" => 1, "order_by" => "dateline, pid"]);
-        $firstcheck = $db->fetch_array($query);
-        if ($firstcheck['pid'] == $pid) {
-            $firstpost = 1;
-        } else {
-            $firstpost = 0;
-        }
-
         $modlogdata['fid'] = $fid;
         $modlogdata['tid'] = $tid;
         if ($firstpost) {
@@ -305,17 +315,12 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
             $moderation = new Moderation;
 
             $moderation->delete_thread((int)$tid);
-           
+
             write_log('Thread (' . $tid . ' - ' . $thread['subject'] . ') has been deleted by ' . $CURUSER['username']);
 
             if ($mybb->input['ajax'] == 1) {
                 header("Content-type: application/json; charset={$charset}");
-                if($is_mod) 
-				{
-                    echo json_encode(["data" => '1', "first" => '1', "url" => get_forum_link($fid)]);
-                } else {
-                    echo json_encode(["data" => '3', "url" => get_forum_link($fid)]);
-                }
+                echo json_encode(["data" => '1', "first" => '1', "url" => get_forum_link($fid)]);
             } else {
                 redirect(get_forum_link($fid), 'Thank you, the thread has been deleted.<br />You will now be returned to the forum');
             }
@@ -324,7 +329,7 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
             $moderation = new Moderation;
 
             $moderation->delete_post($pid);
-		 
+
             write_log('Post (' . $pid . ' - ' . $thread['subject'] . ') has been deleted by ' . $CURUSER['username']);
 
             $query = $db->simple_select("posts", "pid", "tid='{$tid}' AND dateline <= '{$post['dateline']}'", ["limit" => 1, "order_by" => "dateline DESC, pid DESC"]);
@@ -335,81 +340,15 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
                 $redirect = get_thread_link($tid);
             }
 
-            if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) 
-			{
+            if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) {
                 header("Content-type: application/json; charset={$charset}");
-                if($is_mod) 
-				{
-                    echo json_encode(["data" => '1', "first" => '0', "url" => $redirect]);
-                } 
-				else 
-				{
-                    echo json_encode(["data" => '2', "url" => $redirect]);
-                }
-            } 
-			else 
-			{
+                echo json_encode(["data" => '1', "first" => '0', "url" => $redirect]);
+            } else {
                 redirect($redirect, 'Thank you, the post has been deleted.<br />You will now be returned to the thread');
             }
         }
     } else {
         error($lang->editpost['redirect_nodelete'] ?? 'Delete cancelled');
-    }
-}
-
-if ($mybb->input['action'] == "restorepost" && $mybb->request_method == "post") {
-    // Verify incoming POST request
-    verify_post_check($mybb->get_input('my_post_key'));
-
-    $plugins->run_hooks("editpost_restorepost");
-
-    if ($mybb->get_input('restore', MyBB::INPUT_INT) == 1) {
-        $query = $db->simple_select("posts", "pid", "tid='{$tid}'", ["limit" => 1, "order_by" => "dateline, pid"]);
-        $firstcheck = $db->fetch_array($query);
-        if ($firstcheck['pid'] == $pid) {
-            $firstpost = 1;
-        } else {
-            $firstpost = 0;
-        }
-
-        $modlogdata['fid'] = $fid;
-        $modlogdata['tid'] = $tid;
-        $modlogdata['pid'] = $pid;
-        if ($firstpost) {
-            if (is_moderator($fid, "canrestorethreads")) {
-                require_once MYBB_ROOT."inc/class_moderation.php";
-                $moderation = new Moderation;
-                $moderation->restore_threads([$tid]);
-                log_moderator_action($modlogdata, $lang->thread_restored ?? 'Thread restored');
-                if ($mybb->input['ajax'] == 1) {
-                    header("Content-type: application/json; charset={$lang->settings['charset']}");
-                    echo json_encode(["data" => '1', "first" => '1']);
-                } else {
-                    redirect(get_forum_link($fid), $lang->redirect_threadrestored ?? 'Thread restored');
-                }
-            } else {
-                print_no_permission();
-            }
-        } else {
-            if (is_moderator($fid, "canrestoreposts")) {
-                require_once MYBB_ROOT."inc/class_moderation.php";
-                $moderation = new Moderation;
-                $moderation->restore_posts([$pid]);
-                log_moderator_action($modlogdata, $lang->post_restored ?? 'Post restored');
-                $redirect = get_post_link($pid, $tid)."#pid{$pid}";
-
-                if ($mybb->input['ajax'] == 1) {
-                    header("Content-type: application/json; charset={$lang->settings['charset']}");
-                    echo json_encode(["data" => '1', "first" => '0']);
-                } else {
-                    redirect($redirect, $lang->redirect_postrestored ?? 'Post restored');
-                }
-            } else {
-                print_no_permission();
-            }
-        }
-    } else {
-        error($lang->redirect_norestore ?? 'Restore cancelled');
     }
 }
 
@@ -735,7 +674,6 @@ $deletebox .= $modal_delete;
         }
 
         $attach_update_options = '';
-        $maxattachments = "5";
         
         if ($maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments) && !$noshowattach) {
             
@@ -1050,7 +988,6 @@ $deletebox .= $modal_delete;
     $php_max_upload_size = get_php_upload_limit();
     $php_max_file_uploads = (int)ini_get('max_file_uploads');
     
-    $maxattachments = "5";
     
     $post_javascript = '
 	

@@ -9,7 +9,7 @@ define('ALLOWABLE_PAGE', 1);
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
 
-require_once INC_PATH . '/tsf_functions.php';
+require_once INC_PATH . '/functions_forum.php';
 
 require_once INC_PATH . '/datahandler.php';
 

@@ -255,9 +255,9 @@ $newestmember = !empty($stats['lastusername'])
     ? build_profile_link($stats['lastusername'], $stats['lastuid'])
     : 'nobody';
 
-$stats_posts_threads = sprintf($lang->tsf_forums['stats_posts_threads'], ts_nf($stats['numposts']), ts_nf($stats['numthreads']));
-$stats_numusers      = sprintf($lang->tsf_forums['stats_numusers'],      ts_nf($stats['numusers']));
-$stats_newestuser    = sprintf($lang->tsf_forums['stats_newestuser'],    $newestmember);
+$stats_posts_threads = sprintf($lang->index['stats_posts_threads'], ts_nf($stats['numposts']), ts_nf($stats['numthreads']));
+$stats_numusers      = sprintf($lang->index['stats_numusers'],      ts_nf($stats['numusers']));
+$stats_newestuser    = sprintf($lang->index['stats_newestuser'],    $newestmember);
 
 $onlinestats = [];
 if (file_exists(TSDIR . '/cache/onlinestats.php')) {

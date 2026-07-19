@@ -83,14 +83,14 @@ if (defined('IN_FORUM') && IN_FORUM === true) {
     define('FORUM_SECURE', true);
     
     // Load forum-specific files ONLY in forum context
-    require_once INC_PATH . '/tsf_functions.php';        
+    require_once INC_PATH . '/functions_forum.php';        
     //include_once INC_PATH . '/functions_multipage.php';            
     include_once INC_PATH . '/class_parser.php';         
     
     // Initialize parser (forum only)
     $parser = new postParser();
     $parser_options = [
-        "allow_html" => 1,
+        "allow_html" => 0,
         "allow_mycode" => 1,
         "allow_smilies" => 1,
         "allow_imgcode" => 1,
@@ -103,7 +103,7 @@ if (defined('IN_FORUM') && IN_FORUM === true) {
     maxsysop();
     
     // Load forum language ONLY in forum
-    $lang->load('tsf_forums');
+    //$lang->load('tsf_forums');
     
     // MB string encoding (forum only)
     if (function_exists('mb_internal_encoding') && !empty($charset)) {

@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * functions_comment_attachments.php
  * Функции для работы с вложениями в комментариях

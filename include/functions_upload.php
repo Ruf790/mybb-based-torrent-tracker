@@ -421,7 +421,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
 {
     global $mybb, $db, $lang, $plugins, $cache, $usergroups,
            $uploadspath, $attachthumbh, $attachthumbw,
-           $posthash, $pid, $tid, $forum, $CURUSER;
+           $posthash, $pid, $tid, $forum, $maxattachments, $CURUSER;
 
     $posthash = $db->escape_string($mybb->get_input('posthash'));
     $pid      = (int)$pid;
@@ -468,7 +468,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
     }
 
     // Максимум аттачментов на пост
-    $maxattachments = 5;
+  
     if ($maxattachments > 0 && !$update_attachment) {
         $query       = $db->simple_select('attachments', 'COUNT(aid) AS numattachs', $uploaded_query);
         $attachcount = (int)$db->fetch_field($query, 'numattachs');

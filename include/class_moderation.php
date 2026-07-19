@@ -117,7 +117,7 @@ class Moderation
                 'deletedthreads'    => "-{$c['num_deletedthreads']}",
                 'deletedposts'      => "-{$c['num_deletedposts']}",
             ]);
-            update_forum_lastpost($fid);
+            update_forum_lastpost((int)$fid);
         }
 
         foreach ($user_counters as $uid => $c) {
@@ -210,7 +210,7 @@ class Moderation
                 'posts'           => "+{$c['num_posts']}",
                 'unapprovedposts' => "-{$c['num_posts']}",
             ]);
-            update_forum_lastpost($fid);
+            update_forum_lastpost((int)$fid);
         }
 
         foreach ($user_counters as $uid => $count) {
@@ -310,7 +310,7 @@ class Moderation
                 'posts'           => "-{$c['num_posts']}",
                 'unapprovedposts' => "+{$c['num_unapproved_posts']}",
             ]);
-            update_forum_lastpost($fid);
+            update_forum_lastpost((int)$fid);
         }
 
         foreach ($user_counters as $uid => $count) {
@@ -404,7 +404,7 @@ class Moderation
                 'posts'             => "+{$c['num_posts']}",
                 'unapprovedposts'   => "-{$c['num_unapproved_posts']}",
             ]);
-            update_forum_lastpost($fid);
+            update_forum_lastpost((int)$fid);
         }
 
         foreach ($user_counters as $uid => $c) {
@@ -435,6 +435,64 @@ class Moderation
 
         return true;
     }
+	
+	
+	
+	// ── remove_thread_subscriptions ─────────────────────────────────────────────
+
+    public function remove_thread_subscriptions(array|int $tids, bool $all = true, int $fid = 0): bool
+    {
+        global $db, $plugins;
+
+        $tids = $this->normalizeIds($tids);
+        if (empty($tids)) {
+            return false;
+        }
+
+        $tids_csv = implode(',', $tids);
+
+        if (!$all) {
+            // Delete only subscriptions from users who no longer have permission to read the thread.
+            $forum_parentlist = get_parent_list($fid);
+            $query = $db->simple_select('forumpermissions', 'gid', "fid IN ({$forum_parentlist}) AND (canview=0 OR canviewthreads=0)");
+
+            $groups = [];
+            $additional_groups = '';
+            while ($group = $db->fetch_array($query)) {
+                $groups[] = $group['gid'];
+                $additional_groups .= match ($db->type) {
+                    'pgsql', 'sqlite' => " OR ','||u.additionalgroups||',' LIKE ',{$group['gid']},'",
+                    default           => " OR CONCAT(',',u.additionalgroups,',') LIKE ',{$group['gid']},'",
+                };
+            }
+
+            if (count($groups) > 0) {
+                $groups_csv = implode(',', $groups);
+                $query = $db->sql_query("
+                    SELECT s.tid, u.id
+                    FROM threadsubscriptions s
+                    LEFT JOIN users u ON (u.id=s.uid)
+                    WHERE s.tid IN ({$tids_csv})
+                    AND (u.usergroup IN ({$groups_csv}){$additional_groups})
+                ");
+                while ($subscription = $db->fetch_array($query)) {
+                    $db->delete_query('threadsubscriptions', "uid='{$subscription['uid']}' AND tid='{$subscription['tid']}'");
+                }
+            }
+        } else {
+            // Delete all subscriptions of these threads
+            $db->delete_query('threadsubscriptions', "tid IN ({$tids_csv})");
+        }
+
+        $arguments = ['tids' => $tids, 'all' => $all, 'fid' => $fid];
+        $plugins->run_hooks('class_moderation_remove_thread_subscriptions', $arguments);
+
+        return true;
+    }
+	
+	
+	
+	
 
     // ── close_threads ─────────────────────────────────────────────────────────
 
@@ -508,6 +566,48 @@ class Moderation
 
         return true;
     }
+	
+	
+	// ── remove_redirects ──────────────────────────────────────────────────────
+
+    public function remove_redirects(int $tid): bool
+    {
+        global $db, $plugins;
+
+        if ($tid <= 0) {
+            return false;
+        }
+
+        $plugins->run_hooks('class_moderation_remove_redirects', $tid);
+
+        $query = $db->simple_select('threads', 'tid', "closed='moved|{$tid}'");
+        while ($redirect_tid = $db->fetch_field($query, 'tid')) {
+            $this->delete_thread((int)$redirect_tid);
+        }
+
+        return true;
+    }
+	
+	
+	
+	 // ── expire_thread ─────────────────────────────────────────────────────────
+
+    public function expire_thread(int $tid, int $deletetime): bool
+    {
+        global $db, $plugins;
+
+        if ($tid <= 0) {
+            return false;
+        }
+
+        $db->update_query('threads', ['deletetime' => $deletetime], "tid='{$tid}'");
+
+        $arguments = ['tid' => $tid, 'deletetime' => $deletetime];
+        $plugins->run_hooks('class_moderation_expire_thread', $arguments);
+
+        return true;
+    }
+	
 
     // ── delete_thread ─────────────────────────────────────────────────────────
 
@@ -782,7 +882,7 @@ class Moderation
 
         foreach ($forum_counters as $fid => $c) {
             update_forum_counters($fid, ['posts' => signed($c['num_posts'])]);
-            update_forum_lastpost($fid);
+            update_forum_lastpost((int)$fid);
         }
 
         foreach ($user_counters as $uid => $c) {
@@ -858,11 +958,12 @@ class Moderation
         }
         $db->delete_query('threadsubscriptions', "tid = '{$mergetid}'");
 
-        $plugins->run_hooks('class_moderation_merge_threads', [
+        $merge_data = [
             'mergetid' => $mergetid,
             'tid'      => $tid,
             'subject'  => $subject,
-        ]);
+        ];
+        $plugins->run_hooks('class_moderation_merge_threads', $merge_data);
 
         $this->delete_thread($mergetid);
 
@@ -884,7 +985,7 @@ class Moderation
         }
 
         if ((int)$new_firstpost['pid'] !== (int)$thread['firstpost']) {
-            update_first_post($thread['tid']);
+            update_first_post((int)$thread['tid']);
         }
 
         if ((int)$thread['uid'] !== (int)$new_firstpost['uid'] && (int)$thread['visible'] === 1) {
@@ -895,7 +996,7 @@ class Moderation
         if ($mergethread['fid'] != $thread['fid']) {
             update_forum_counters($thread['fid'],    ['posts' => "+{$mergethread['replies']}"]);
             update_forum_counters($mergethread['fid'], ['posts' => "-{$mergethread['replies']}"]);
-            update_forum_lastpost($mergethread['fid']);
+            update_forum_lastpost((int)$mergethread['fid']);
         }
 
         foreach ($user_posts as $uid => $counters) {
@@ -911,7 +1012,7 @@ class Moderation
             'attachmentcount' => "+{$mergethread['attachmentcount']}",
         ]);
         update_last_post($tid);
-        update_forum_lastpost($thread['fid']);
+        update_forum_lastpost((int)$thread['fid']);
 
         return true;
     }
@@ -945,7 +1046,8 @@ class Moderation
 
         switch ($method) {
             case 'redirect':
-                $plugins->run_hooks('class_moderation_move_thread_redirect', ['tid' => $tid, 'new_fid' => $new_fid]);
+                $redirect_data = ['tid' => $tid, 'new_fid' => $new_fid];
+                $plugins->run_hooks('class_moderation_move_thread_redirect', $redirect_data);
 
                 // Delete existing redirects to the same destination
                 $query = $db->simple_select('threads', 'tid', "closed='moved|{$tid}' AND fid='{$new_fid}'");
@@ -1081,7 +1183,8 @@ class Moderation
                 break;
 
             default: // plain move
-                $plugins->run_hooks('class_moderation_move_simple', ['tid' => $tid, 'new_fid' => $new_fid]);
+                $move_data = ['tid' => $tid, 'new_fid' => $new_fid];
+                $plugins->run_hooks('class_moderation_move_simple', $move_data);
                 $db->update_query('threads', ['fid' => $new_fid], "tid='{$tid}'");
                 $db->update_query('posts',   ['fid' => $new_fid], "tid='{$tid}'");
                 break;
@@ -1118,7 +1221,7 @@ class Moderation
         }
 
         update_forum_counters($new_fid, ['threads' => "+{$num_threads}", 'posts' => "+{$num_posts}"]);
-        update_forum_lastpost($new_fid);
+        update_forum_lastpost((int)$new_fid);
 
         if ($method !== 'copy') {
             if ($method === 'redirect') {
@@ -1129,8 +1232,15 @@ class Moderation
                 };
             }
             update_forum_counters($fid, ['threads' => "-{$num_threads}", 'posts' => "-{$num_posts}"]);
-            update_forum_lastpost($fid);
+            update_forum_lastpost((int)$fid);
         }
+		
+		if ($newtid !== null) {
+            return $newtid;
+        }
+
+        // Remove thread subscriptions for the users who no longer have permission to view the thread
+        $this->remove_thread_subscriptions($tid, false, $new_fid);
 
         return $newtid ?? $tid;
     }
@@ -1306,7 +1416,7 @@ $plugins->run_hooks('class_moderation_split_posts', $split_data);
                 $c[$key] = $val >= 0 ? "+{$val}" : (string)$val;
             }
             update_forum_counters($f, $c);
-            update_forum_lastpost($f);
+            update_forum_lastpost((int)$f);
         }
 
         return $newtid;

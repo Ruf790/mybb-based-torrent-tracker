@@ -1110,10 +1110,12 @@ CREATE TABLE IF NOT EXISTS `threads` (
   `numratings` smallint unsigned NOT NULL DEFAULT '0',
   `totalratings` smallint unsigned NOT NULL DEFAULT '0',
   `unapprovedposts` int unsigned NOT NULL DEFAULT '0',
+  `deletetime` int unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`tid`),
   KEY `fid` (`fid`,`visible`,`sticky`),
   KEY `lastpost` (`lastpost`,`fid`),
-  KEY `uid` (`uid`)
+  KEY `uid` (`uid`),
+  KEY `deletetime` (`deletetime`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `threadsread` (

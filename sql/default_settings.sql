@@ -123,6 +123,7 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('betweenregstime',       '24'),
 ('maxregsbetweentime',    '2'),
 ('offline_minutes',       ''),
+('allowmultipleemails',   '0'),
 
 -- ── Announce ──────────────────────────────────────────────────────────────────
 ('nc',                    'no'),

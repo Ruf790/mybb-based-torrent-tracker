@@ -4,6 +4,71 @@
 declare(strict_types=1);
 
 
+function get_execution_time(): ?float
+{
+    static $time_start;
+
+    $time = microtime(true);
+
+    if (!$time_start) {
+        $time_start = $time;
+        return null;
+    } else {
+        $total = $time - $time_start;
+        if ($total < 0) $total = 0;
+        $time_start = 0;
+        return $total;
+    }
+}
+
+function format_time_duration(mixed $time): string
+{
+    if (!is_numeric($time)) {
+        return 'na';
+    }
+
+    $time = (float)$time;
+    $microseconds = round(1000000 * $time, 2);
+
+    return match(true) {
+        $microseconds < 1000    => number_format($microseconds) . " μs",
+        $microseconds < 1000000 => number_format(round(1000 * $time, 2)) . " ms",
+        default                 => round($time, 3) . " seconds"
+    };
+}
+
+
+function validate_utf8_string(string $input, bool $allow_mb4 = true, bool $return = true): string|bool
+{
+    $isValid = mb_check_encoding($input, 'UTF-8');
+
+    if (!$return) {
+        if (!$isValid) {
+            return false;
+        }
+        return $allow_mb4 || !preg_match("#[^\\x00-\\x7F][\\x80-\\xBF]{3,}#", $input);
+    }
+
+    // Чистим только если строка реально невалидна - mb_scrub() на уже
+    // валидном UTF-8 ничего не меняет, но лишний проход по строке смысла
+    // не имеет, а эта функция вызывается на каждое значение внутри
+    // escape_string() - горячий путь.
+    if (!$isValid) {
+        $prevSubstitute = mb_substitute_character();
+        mb_substitute_character(ord('?'));
+        $input = mb_scrub($input, 'UTF-8');
+        mb_substitute_character($prevSubstitute);
+    }
+
+    return $allow_mb4
+        ? $input
+        : preg_replace("#[^\\x00-\\x7F][\\x80-\\xBF]{3,}#", '?', $input);
+}
+
+
+
+
+
 function fix_url(string $url): string
 {
     $url = htmlspecialchars($url);
@@ -15,7 +80,7 @@ function get_user_by_username(string $username, array $options = []): array|bool
 {
     global $db;
 
-    $username = $db->escape_string(my_strtolower($username));
+    $username = my_strtolower($username);
     $method   = (int) ($options['username_method'] ?? 0);
 
     $field  = match($db->type) {
@@ -27,23 +92,26 @@ function get_user_by_username(string $username, array $options = []): array|bool
         default           => 'LOWER(email)',
     };
 
-    $sqlwhere = match($method) {
-        1       => "{$efield}='{$username}'",
-        2       => "{$field}='{$username}' OR {$efield}='{$username}'",
-        default => "{$field}='{$username}'",
+    [$sqlwhere, $params] = match($method) {
+        1       => ["{$efield}=?", [$username]],
+        2       => ["{$field}=? OR {$efield}=?", [$username, $username]],
+        default => ["{$field}=?", [$username]],
     };
 
     $fields = ($options['fields'] ?? null) === '*'
         ? '*'
         : implode(',', array_unique(array_merge(['id'], (array) ($options['fields'] ?? []))));
 
-    $query = $db->simple_select('users', $fields, $sqlwhere, ['limit' => 1]);
+    $query = $db->sql_query_prepared(
+        "SELECT {$fields} FROM users WHERE {$sqlwhere} LIMIT 1",
+        $params
+    );
 
     if (isset($options['exists'])) {
-        return (bool) $db->num_rows($query);
+        return (bool) ($query && $db->num_rows($query));
     }
 
-    return $db->fetch_array($query) ?: false;
+    return $query ? ($db->fetch_array($query) ?: false) : false;
 }
 
 
@@ -58,7 +126,8 @@ function get_thread(int|string $tid, bool $recache = false): array|false
         return $thread_cache[$tid];
     }
 
-    $thread = $db->fetch_array($db->simple_select('threads', '*', "tid='{$tid}'"));
+    $query = $db->sql_query_prepared("SELECT * FROM threads WHERE tid = ?", [$tid]);
+    $thread = $query ? $db->fetch_array($query) : null;
     $thread_cache[$tid] = $thread ?: false;
 
     return $thread_cache[$tid];
@@ -75,31 +144,35 @@ function stdhead(string $title = '', bool $msgalert = true, string $script = '',
 
     // Проверка автоматического включения сайта
     if ($SITEONLINE === 'no' && isset($offline_minutes)) {
-        // Для limited-режима (когда установлен числовой timestamp)
-        if (is_numeric($offline_minutes) && $offline_minutes > 0) {
-            if (time() > (int)$offline_minutes) {
-                $db->sql_query("START TRANSACTION");
-                try {
-                    $db->sql_query("UPDATE settings SET value = 'yes' WHERE name = 'SITEONLINE'");
-                    $db->sql_query("UPDATE settings SET value = '0' WHERE name = 'offline_minutes'");
-                    $db->sql_query("COMMIT");
-                    
-                    rebuild_settings();
-                    write_log("[MAINTENANCE] Automatically switched to online - time expired");
-                    
-                    // Обновляем глобальные переменные
-                    $SITEONLINE = 'yes';
-                    $offline_minutes = 0;
-                    
-                } catch (Exception $e) {
-                    $db->sql_query("ROLLBACK");
-                    write_log("[ERROR] Failed to auto-enable site: " . $e->getMessage());
+    // Для limited-режима (когда установлен числовой timestamp)
+    if (is_numeric($offline_minutes) && $offline_minutes > 0) {
+        if (time() > (int)$offline_minutes) {
+            $db->begin_transaction(hide_errors: true);
+            try {
+                if (!$db->sql_query_prepared("UPDATE settings SET value = 'yes' WHERE name = 'SITEONLINE'", [], 1)) {
+                    throw new Exception("Failed to update 'SITEONLINE'");
                 }
+                if (!$db->sql_query_prepared("UPDATE settings SET value = '0' WHERE name = 'offline_minutes'", [], 1)) {
+                    throw new Exception("Failed to update 'offline_minutes'");
+                }
+                $db->commit(hide_errors: true);
+                
+                rebuild_settings();
+                write_log("[MAINTENANCE] Automatically switched to online - time expired");
+                
+                // Обновляем глобальные переменные
+                $SITEONLINE = 'yes';
+                $offline_minutes = 0;
+                
+            } catch (Exception $e) {
+                $db->rollback(hide_errors: true);
+                write_log("[ERROR] Failed to auto-enable site: " . $e->getMessage());
             }
         }
-        // Для unlimited-режима ничего не делаем - остается в оффлайне
     }
-
+    // Для unlimited-режима ничего не делаем - остается в оффлайне
+    }
+	
     if ($SITEONLINE != 'yes' && $CURUSER) {
         if ($usergroups['canviewboardclosed'] != '1') {
             require_once INC_PATH . '/maintenance_page.php';
@@ -115,7 +188,8 @@ function stdhead(string $title = '', bool $msgalert = true, string $script = '',
     
     $ts_tzoffset = $CURUSER['timezone'] ?? $timezoneoffset;
 
-    $title = $SITENAME.' :: '.($title != '' ? htmlspecialchars_uni($title) : TS_MESSAGE);
+    
+	$title = $SITENAME.' :: '.($title != '' ? htmlspecialchars_uni($title) : TS_MESSAGE);
 
     if ($CURUSER) {
         include_once(INC_PATH.'/functions_ratio.php');
@@ -142,8 +216,11 @@ $lwarn = (!empty($CURUSER['leechwarn'] ?? null) && $CURUSER['leechwarn'] === 'ye
 	   
 
         if ($checkconnectable == 'yes') {
-            $connectablequery = $db->sql_query("SELECT userid FROM peers WHERE connectable = 'no' AND userid = ".sqlesc($CURUSER['id']));
-            $c_count = $db->num_rows($connectablequery);
+            $connectablequery = $db->sql_query_prepared(
+                "SELECT userid FROM peers WHERE connectable = 'no' AND userid = ?",
+                [(int)$CURUSER['id']]
+            );
+            $c_count = $connectablequery ? $db->num_rows($connectablequery) : 0;
             if ($c_count > 0) {
                 $connectablealert = sprintf($lang->global['connectablealert'], $c_count, $BASEURL.'/tsf_forums/', $BASEURL.'/faq.php');
                 $warnmessages[] = $connectablealert;
@@ -156,7 +233,7 @@ $lwarn = (!empty($CURUSER['leechwarn'] ?? null) && $CURUSER['leechwarn'] === 'ye
 
 function stdfoot(): void
 {    
-    global $SITENAME, $BASEURL, $CURUSER, $rootpath, $lang, $usergroups, $db, $mybb, $maintimer, $templates, $templatelist, $session;    
+    global $SITENAME, $BASEURL, $CURUSER, $rootpath, $lang, $usergroups, $db, $mybb, $maintimer, $cache, $session;    
     
     include(INC_PATH.'/templates/default/footer.php');    
 }
@@ -689,6 +766,7 @@ function get_ip(): string
             }
         }
     }
+	
 
     if(!$ip && isset($_SERVER['HTTP_CLIENT_IP'])) {
         $ip = strtolower($_SERVER['HTTP_CLIENT_IP']);
@@ -822,7 +900,7 @@ function is_banned_ip(string $ip_address, bool $update_lastuse = false): bool
         if($banned) {
             // Updating last use
             if($update_lastuse == true) {
-                $db->update_query("banfilters", ["lastuse" => TIMENOW], "fid='{$banned_ip['fid']}'");
+                $db->sql_query_prepared("UPDATE banfilters SET lastuse=? WHERE fid=?", [TIMENOW, (int)$banned_ip['fid']]);
             }
             return true;
         }
@@ -1002,12 +1080,10 @@ function update_stats(array $changes = [], bool $force = false): void
 
     // Обновляем lastmember, если изменился numusers
     if (array_key_exists('numusers', $changes)) {
-        $query = $db->simple_select("users", "id, username", "", [
-            'order_by' => 'added',
-            'order_dir' => 'DESC',
-            'limit' => 1
-        ]);
-        $lastmember = $db->fetch_array($query);
+        $query = $db->sql_query_prepared(
+            "SELECT id, username FROM users ORDER BY added DESC LIMIT 1"
+        );
+        $lastmember = $query ? $db->fetch_array($query) : null;
         if ($lastmember) {
             $new_stats['lastuid'] = (int)$lastmember['id'];
             $new_stats['lastusername'] = htmlspecialchars_uni($lastmember['username'] ?? '');
@@ -1023,23 +1099,23 @@ function update_stats(array $changes = [], bool $force = false): void
     }
 
     // Подсчёты
-    $res      = $db->sql_query("SELECT COUNT(id) AS cnt FROM torrents");
-    $row      = $db->fetch_array($res);
+    $res      = $db->sql_query_prepared("SELECT COUNT(id) AS cnt FROM torrents");
+    $row      = $res ? $db->fetch_array($res) : null;
     $torrents = (int) ($row['cnt'] ?? 0);
 
-    $query = $db->sql_query("SELECT COUNT(id) as totalseeders FROM peers WHERE seeder = 'yes'");
-    $Result = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT COUNT(id) as totalseeders FROM peers WHERE seeder = 'yes'");
+    $Result = $query ? $db->fetch_array($query) : null;
     $stats['seeders'] = ts_nf((int)($Result['totalseeders'] ?? 0));
 
-    $query = $db->sql_query("SELECT COUNT(id) as totalleechers FROM peers WHERE seeder = 'no'");
-    $Result = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT COUNT(id) as totalleechers FROM peers WHERE seeder = 'no'");
+    $Result = $query ? $db->fetch_array($query) : null;
     $stats['leechers'] = ts_nf((int)($Result['totalleechers'] ?? 0));
 
     $stats['peers'] = ts_nf(((int)$stats['seeders']) + ((int)$stats['leechers']));
     $stats['torrents'] = (int)$torrents;
 
-    $result = $db->sql_query("SELECT SUM(downloaded) AS totaldl, SUM(uploaded) AS totalul FROM users");
-    $row = $db->fetch_array($result);
+    $result = $db->sql_query_prepared("SELECT SUM(downloaded) AS totaldl, SUM(uploaded) AS totalul FROM users");
+    $row = $result ? $db->fetch_array($result) : null;
     $stats['totaldownloaded'] = (int)($row['totaldl'] ?? 0);
     $stats['totaluploaded'] = (int)($row['totalul'] ?? 0);
 
@@ -1061,7 +1137,8 @@ function update_stats(array $changes = [], bool $force = false): void
         "totaluploaded" => (int)($stats['totaluploaded'] ?? 0)
     ];
 
-    $db->replace_query("stats", $todays_stats, "dateline");
+    $set = implode(',', array_map(fn($column) => "`{$column}`=?", array_keys($todays_stats)));
+    $db->sql_query_prepared("REPLACE INTO stats SET {$set}", array_values($todays_stats));
 
     $cache->update("stats", $stats, "dateline");
     $stats_changes['inserted'] = true;
@@ -1070,51 +1147,42 @@ function update_stats(array $changes = [], bool $force = false): void
 
 
 
-
-
-
 function unichr(int $c): string|false
 {
-    if($c <= 0x7F) {
-        return chr($c);
-    } elseif($c <= 0x7FF) {
-        return chr(0xC0 | $c >> 6) . chr(0x80 | $c & 0x3F);
-    } elseif($c <= 0xFFFF) {
-        return chr(0xE0 | $c >> 12) . chr(0x80 | $c >> 6 & 0x3F)
-                                . chr(0x80 | $c & 0x3F);
-    } elseif($c <= 0x10FFFF) {
-        return chr(0xF0 | $c >> 18) . chr(0x80 | $c >> 12 & 0x3F)
-                                . chr(0x80 | $c >> 6 & 0x3F)
-                                . chr(0x80 | $c & 0x3F);
-    } else {
-        return false;
-    }
+    return mb_chr($c, 'UTF-8') ?: false;
 }
+
+
+
 
 function email_already_in_use(string $email, int $uid = 0): bool
 {
     global $db;
 
-    $uid_string = "";
-    if($uid) {
-        $uid_string = " AND id != '".(int)$uid."'";
-    }
-    $query = $db->simple_select("users", "COUNT(email) as emails", "email = '".$db->escape_string($email)."'{$uid_string}");
+    $sql    = "SELECT COUNT(email) as emails FROM users WHERE email = ?";
+    $params = [$email];
 
-    return $db->fetch_field($query, "emails") > 0;
+    if ($uid) {
+        $sql     .= " AND id != ?";
+        $params[] = $uid;
+    }
+
+    $query = $db->sql_query_prepared($sql, $params);
+
+    return $query && $db->fetch_field($query, "emails") > 0;
 }
 
 function is_banned_username(string $username, bool $update_lastuse = false): bool
 {
     global $db;
-    $query = $db->simple_select('banfilters', 'filter, fid', "type='2'");
-    while($banned_username = $db->fetch_array($query)) {
+    $query = $db->sql_query_prepared("SELECT filter, fid FROM banfilters WHERE type = '2'");
+    while($banned_username = $query ? $db->fetch_array($query) : null) {
         // Make regular expression * match
         $banned_username['filter'] = str_replace('\*', '(.*)', preg_quote($banned_username['filter'], '#'));
         if(preg_match("#(^|\b){$banned_username['filter']}($|\b)#i", $username)) {
             // Updating last use
             if($update_lastuse == true) {
-                $db->update_query("banfilters", ["lastuse" => TIMENOW], "fid='{$banned_username['fid']}'");
+                $db->sql_query_prepared("UPDATE banfilters SET lastuse=? WHERE fid=?", [TIMENOW, (int)$banned_username['fid']]);
             }
             return true;
         }
@@ -1142,7 +1210,7 @@ function is_banned_email(string $email, bool $update_lastuse = false): bool
             if(preg_match("#{$banned_email['filter']}#i", $email)) {
                 // Updating last use
                 if($update_lastuse == true) {
-                    $db->update_query("banfilters", ["lastuse" => TIMENOW], "fid='{$banned_email['fid']}'");
+                    $db->sql_query_prepared("UPDATE banfilters SET lastuse=? WHERE fid=?", [TIMENOW, (int)$banned_email['fid']]);
                 }
                 return true;
             }
@@ -1173,9 +1241,9 @@ function get_user(int $uid): array
     
     // Загружаем из базы
     elseif($uid > 0) {
-        $query = $db->simple_select("users", "*", "id = '{$uid}'");
+        $query = $db->sql_query_prepared("SELECT * FROM users WHERE id = ?", [$uid]);
         
-        if ($db->num_rows($query) > 0) {
+        if ($query && $db->num_rows($query) > 0) {
             $user_data = $db->fetch_array($query);
             $user_cache[$uid] = is_array($user_data) ? $user_data : [];
         } else {
@@ -2165,29 +2233,19 @@ function dec_to_utf8(int $src): string|false
 
 function my_strlen(?string $string): int
 {
-    global $lang, $charset;
+    global $charset;
 
     $string = $string ?? '';
-    
+
     $string = preg_replace("#&\#([0-9]+);#", "-", $string);
 
     if(strtolower($charset) == "utf-8") {
-        // Get rid of any excess RTL and LTR override for they are the workings of the devil
-        $string = str_replace(dec_to_utf8(8238), "", $string);
-        $string = str_replace(dec_to_utf8(8237), "", $string);
-
-        // Remove dodgy whitespaces
-        $string = str_replace(chr(0xCA), "", $string);
+        // Убираем RTL/LTR override-символы и "подозрительные" пробелы
+        $string = str_replace([dec_to_utf8(8238), dec_to_utf8(8237), chr(0xCA)], '', $string);
     }
     $string = trim($string);
 
-    if(function_exists("mb_strlen")) {
-        $string_length = mb_strlen($string);
-    } else {
-        $string_length = strlen($string);
-    }
-
-    return $string_length;
+    return mb_strlen($string);
 }
 
 
@@ -2411,13 +2469,10 @@ function rebuild_settings(): void
 {
     global $db, $mybb;
 
-    $query = $db->simple_select("settings", "value, name", "", [
-        'order_by' => 'sid',
-        'order_dir' => 'ASC',
-    ]);
+    $query = $db->sql_query_prepared("SELECT value, name FROM settings ORDER BY sid ASC");
 
     $settings = '';
-    while($setting = $db->fetch_array($query)) {
+    while($setting = $query ? $db->fetch_array($query) : null) {
         $setting['name'] = addcslashes($setting['name'], "\\'");
         $setting['value'] = addcslashes($setting['value'], '\\"$');
         $settings .= "\${$setting['name']} = \"{$setting['value']}\";\n";
@@ -2478,7 +2533,6 @@ function get_torrent_link(int|string $tid = 0, int $page = 0, string $action = '
 
 
 
-
 function get_profile_link(int|string $uid = 0, int $page = 0, string $action = ''): string
 {
     $uid = (int)$uid;
@@ -2513,6 +2567,35 @@ function get_download_link(int|string $uid = 0): string
     $uid = (int)$uid;
     $link = str_replace("{id}", (string)$uid, DOWNLOAD_URL);
     return htmlspecialchars_uni($link);
+}
+
+
+function get_category_link(int|string $cid, int|string $page = 0): string
+{
+    $cid  = (int)$cid;
+    $page = (int)$page;
+
+    if ($page > 0) {
+        return htmlspecialchars_uni(
+            str_replace(['{cid}', '{page}'], [$cid, $page], CATEGORY_URL_PAGED)
+        );
+    }
+    return htmlspecialchars_uni(str_replace('{cid}', (string)$cid, CATEGORY_URL));
+}
+
+function get_announce_link(string $passkey, string $filename = ''): string
+{
+    global $BASEURL;
+
+    if ($filename !== '') {
+        $cleanText = strtolower(preg_replace(['/[^\w\s]/', '/\s+/'], '_', $filename) ?? '');
+        $cleanText = preg_replace('/_+/', '_', $cleanText) ?? '';
+        $cleanText = trim($cleanText, '_');
+
+        return rtrim((string)$BASEURL, '/') . '/' . $cleanText . '-a-' . urlencode($passkey);
+    }
+
+    return rtrim((string)$BASEURL, '/') . '/announce.php?passkey=' . urlencode($passkey);
 }
 
 
@@ -2578,24 +2661,12 @@ function my_strpos(string $haystack, string $needle, int $offset = 0): int|false
         return false;
     }
 
-    if(function_exists("mb_strpos")) {
-        $position = mb_strpos($haystack, $needle, $offset);
-    } else {
-        $position = strpos($haystack, $needle, $offset);
-    }
-
-    return $position;
+    return mb_strpos($haystack, $needle, $offset);
 }
 
 function my_strtolower(string $string): string
 {
-    if(function_exists("mb_strtolower")) {
-        $string = mb_strtolower($string);
-    } else {
-        $string = strtolower($string);
-    }
-
-    return $string;
+    return mb_strtolower($string);
 }
 
 
@@ -2622,42 +2693,31 @@ function run_shutdown(): void
     }
 
     // If our DB has been deconstructed already (bad PHP 5.2.0), reconstruct
-    if(!is_object($db)) {
-        if(!isset($config) || empty($config['database']['type'])) {
-            require INC_PATH."/config.php";
+    if(!is_object($db)) 
+	{
+        if(!isset($config) || empty($config['database']['type'])) 
+		{
+           require INC_PATH."/config.php";
         }
+        
+		if(isset($config)) 
+	    {
+          // Load DB interface
+          require_once INC_PATH."/db_base.php";
+          require_once INC_PATH."/db_mysqli.php";
 
-        if(isset($config)) {
-            // Load DB interface
-            require_once INC_PATH."/db_base.php";
-            require_once INC_PATH . '/AbstractPdoDbDriver.php';
+          switch($config['database']['type']) 
+		  {
+            case "mysqli":
+                $db = new DB_MySQLi;
+                break;
+            default:
+                throw new RuntimeException(
+                    "Unsupported database type '{$config['database']['type']}'. Only 'mysqli' is supported."
+                );
+          }
 
-            require_once INC_PATH."/db_".$config['database']['type'].".php";
-            switch($config['database']['type']) {
-                case "sqlite":
-                    $db = new DB_SQLite;
-                    break;
-                case "pgsql":
-                    $db = new DB_PgSQL;
-                    break;
-                case "pgsql_pdo":
-                    $db = new PostgresPdoDbDriver();
-                    break;
-                case "mysqli":
-                    $db = new DB_MySQLi;
-                    break;
-                case "mysql_pdo":
-                    $db = new MysqlPdoDbDriver();
-                    break;
-                default:
-                    $db = new DB_MySQL;
-            }
-
-            $db->connect($config['database']);
-            if(!defined("TABLE_PREFIX")) {
-                define("TABLE_PREFIX", $config['database']['table_prefix']);
-            }
-            $db->set_table_prefix(TABLE_PREFIX);
+          $db->connect($config['database']);
         }
     }
 
@@ -2681,7 +2741,7 @@ function run_shutdown(): void
     if(is_array($shutdown_queries)) {
         // Loop through and run them all
         foreach($shutdown_queries as $query) {
-            $db->write_query($query);
+            $db->sql_query_prepared($query, []);
         }
     }
 
@@ -2866,14 +2926,10 @@ function write_log(string $Text, string $category = '', int $level = 0): void
     $uid = !empty($CURUSER['id']) ? (int)$CURUSER['id'] : 0;
 
 
-    $db->insert_query("sitelog", [
-        "added"     => TIMENOW,
-        "uid"       => $uid,
-        "ipaddress" => $db->escape_binary(my_inet_pton(get_ip())),
-        "txt"       => $db->escape_string($Text),
-        "category"  => $db->escape_string($category),
-        "level"     => $level,
-    ]);
+    $db->sql_query_prepared(
+        "INSERT INTO sitelog (`added`,`uid`,`ipaddress`,`txt`,`category`,`level`) VALUES (?,?,?,?,?,?)",
+        [TIMENOW, $uid, my_inet_pton(get_ip()), $Text, $category, $level]
+    );
 }
 
 
@@ -2985,10 +3041,10 @@ function ts_nf(int|float|string|null $number): string
 function is_mod(?array $user = []): bool
 {
     $user = $user ?? [];
-    
-    return isset($user["cansettingspanel"]) && $user["cansettingspanel"] === '1' || 
-           isset($user["issupermod"]) && $user["issupermod"] === '1' || 
-           isset($user["canstaffpanel"]) && $user["canstaffpanel"] === '1';
+
+    return (isset($user["cansettingspanel"]) && (int)$user["cansettingspanel"] === 1) ||
+           (isset($user["issupermod"])       && (int)$user["issupermod"]       === 1) ||
+           (isset($user["canstaffpanel"])    && (int)$user["canstaffpanel"]    === 1);
 }
 
 
@@ -3147,7 +3203,10 @@ function error_no_permission(): void
         "location2" => 0
     ];
 
-    $db->update_query("sessions", $noperm_array, "sid='{$session->sid}'");
+    $db->sql_query_prepared(
+        "UPDATE sessions SET nopermission=?, location1=?, location2=? WHERE sid=?",
+        [$noperm_array['nopermission'], $noperm_array['location1'], $noperm_array['location2'], $session->sid]
+    );
 
     if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
         header("Content-type: application/json; charset={$charset}");
@@ -3399,25 +3458,15 @@ function my_substr(string $string, int $start, ?int $length = null, bool $handle
     if($handle_entities) {
         $string = unhtmlentities($string);
     }
-    
-    if(function_exists("mb_substr")) {
-        if($length !== null) {
-            $cut_string = mb_substr($string, $start, $length);
-        } else {
-            $cut_string = mb_substr($string, $start);
-        }
-    } else {
-        if($length !== null) {
-            $cut_string = substr($string, $start, $length);
-        } else {
-            $cut_string = substr($string, $start);
-        }
-    }
+
+    $cut_string = $length !== null
+        ? mb_substr($string, $start, $length)
+        : mb_substr($string, $start);
 
     if($handle_entities) {
         $cut_string = htmlspecialchars_uni($cut_string);
     }
-    
+
     return $cut_string;
 }
 
@@ -3605,25 +3654,6 @@ function my_datee(?string $format = null, int|string|float $stamp = 0, string $o
 
 
 
-function my_substrr(string $string, int $start, int $length = 0): string
-{
-    if(function_exists('mb_substr')) {
-        if($length != 0) {
-            $cut_string = mb_substr($string, $start, $length);
-        } else {
-            $cut_string = mb_substr($string, $start);
-        }
-    } else {
-        if($length != 0) {
-            $cut_string = substr($string, $start, $length);
-        } else {
-            $cut_string = substr($string, $start);
-        }
-    }
-
-    return $cut_string;
-}
-
 function get_date_time(int $timestamp = 0): string
 {
     if($timestamp) {
@@ -3724,12 +3754,14 @@ function scale_images(int $width, int $height, int $maxwidth, int $maxheight): a
 /**
  * Функция для форматирования аватара (PHP 8.4)
  */
+
 function format_avatar(
     ?string $avatar,
     ?string $dimensions = '',
-    ?string $max_dimensions = ''
+    ?string $max_dimensions = '',
+    string $alt = 'avatar'
 ): array {
-    global $mybb, $allowremoteavatars, $maxavatardims;
+    global $allowremoteavatars, $maxavatardims, $BASEURL;
 
     // 1) Пусто -> SVG заглушка
     if (empty($avatar)) {
@@ -3740,6 +3772,8 @@ function format_avatar(
         return [
             'image'         => $html,
             'width_height'  => '',
+            'width'         => null,
+            'height'        => null,
             'html'          => $html,
             'is_html'       => true
         ];
@@ -3752,6 +3786,8 @@ function format_avatar(
         return [
             'image'         => $html,
             'width_height'  => '',
+            'width'         => null,
+            'height'        => null,
             'html'          => $html,
             'is_html'       => true,
         ];
@@ -3760,7 +3796,7 @@ function format_avatar(
     // 3. Парсим размеры
     $width = $height = null;
     $max_width = $max_height = null;
-    
+
     // Желаемые размеры
     if (!empty($dimensions)) {
         $parts = preg_split('/[|x]/', $dimensions);
@@ -3769,7 +3805,7 @@ function format_avatar(
             $height = (int)$parts[1];
         }
     }
-    
+
     // Максимальные размеры
     $max_dims = !empty($max_dimensions) ? $max_dimensions : ($maxavatardims ?? '');
     if (!empty($max_dims)) {
@@ -3783,7 +3819,7 @@ function format_avatar(
     // 4. Определяем финальные размеры
     $final_width = $width;
     $final_height = $height;
-    
+
     // Если есть и желаемые и максимальные размеры - масштабируем
     if ($width && $height && $max_width && $max_height) {
         // Масштабируем только если текущие размеры превышают максимальные
@@ -3804,19 +3840,34 @@ function format_avatar(
         $final_height = 100;
     }
 
-    // 5. Формируем URL (используем MyBB функцию если доступна)
-    if (function_exists('htmlspecialchars_uni') && isset($mybb)) {
-        $url = htmlspecialchars_uni($mybb->get_asset_url($avatar));
-    } else {
+    // 5. Формируем URL
+    // Для remote-аватаров (уже абсолютный URL или data:-URI) просто
+    // экранируем как есть. Для локальных путей - склеиваем с $BASEURL
+    // напрямую (то же самое, что делала get_asset_url() для локального
+    // пути, без её неиспользуемой CDN-ветки: $usecdn там всегда "0").
+    if ($is_remote) {
         $url = htmlspecialchars($avatar, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
+    } else {
+        $cleanPath = ltrim((string)$avatar, '/');
+        if (str_starts_with($cleanPath, './')) {
+            $cleanPath = substr($cleanPath, 2);
+        }
+
+        $rawUrl = $cleanPath !== ''
+            ? rtrim((string)$BASEURL, '/') . '/' . $cleanPath
+            : rtrim((string)$BASEURL, '/');
+
+        $url = function_exists('htmlspecialchars_uni')
+            ? htmlspecialchars_uni($rawUrl)
+            : htmlspecialchars($rawUrl, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
     }
 
     // 6. Формируем HTML
-    $width_height = ($final_width && $final_height) 
-        ? sprintf('width="%d" height="%d"', $final_width, $final_height) 
+    $width_height = ($final_width && $final_height)
+        ? sprintf('width="%d" height="%d"', $final_width, $final_height)
         : '';
 
-    $html = '<img src="' . $url . '" ' . $width_height . ' alt="avatar" class="rounded img-fluid" loading="lazy">';
+    $html = '<img src="' . $url . '" ' . $width_height . ' alt="' . htmlspecialchars($alt, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8') . '" class="rounded img-fluid" loading="lazy">';
 
     return [
         'image'         => $url,
@@ -3827,8 +3878,6 @@ function format_avatar(
         'is_html'       => false,
     ];
 }
-
-
 
 
 if (!defined('APP_INITIALIZED')) {

@@ -8,13 +8,12 @@ function rebuild_stats(): void
 {
     global $db;
 
-    $query = $db->simple_select(
-        "forums",
-        "SUM(threads) AS numthreads, SUM(posts) AS numposts, SUM(unapprovedthreads) AS numunapprovedthreads, SUM(unapprovedposts) AS numunapprovedposts"
+    $query = $db->sql_query_prepared(
+        "SELECT SUM(threads) AS numthreads, SUM(posts) AS numposts, SUM(unapprovedthreads) AS numunapprovedthreads, SUM(unapprovedposts) AS numunapprovedposts FROM forums"
     );
     $stats = $db->fetch_array($query);
 
-    $query = $db->simple_select("users", "COUNT(id) AS numusers");
+    $query = $db->sql_query_prepared("SELECT COUNT(id) AS numusers FROM users");
     $stats['numusers'] = (int) $db->fetch_field($query, 'numusers');
 
     update_stats($stats, true);
@@ -28,10 +27,9 @@ function rebuild_forum_counters(int $fid): void
     global $db;
 
     // Approved threads/posts
-    $query = $db->simple_select(
-        'threads',
-        'COUNT(tid) AS threads, SUM(replies) AS replies, SUM(unapprovedposts) AS unapprovedposts',
-        "fid='{$fid}' AND visible='1'"
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(tid) AS threads, SUM(replies) AS replies, SUM(unapprovedposts) AS unapprovedposts FROM threads WHERE fid = ? AND visible = '1'",
+        [$fid]
     );
     $count = $db->fetch_array($query);
     $count['threads'] = (int) $count['threads'];
@@ -40,10 +38,9 @@ function rebuild_forum_counters(int $fid): void
     $count['unapprovedposts'] = (int) $count['unapprovedposts'];
 
     // Unapproved threads/posts
-    $query = $db->simple_select(
-        'threads',
-        'COUNT(tid) AS threads, SUM(replies)+SUM(unapprovedposts) AS impliedunapproved',
-        "fid='{$fid}' AND visible='0'"
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(tid) AS threads, SUM(replies)+SUM(unapprovedposts) AS impliedunapproved FROM threads WHERE fid = ? AND visible = '0'",
+        [$fid]
     );
     $count2 = $db->fetch_array($query);
     $count['unapprovedthreads'] = (int) $count2['threads'];
@@ -68,28 +65,26 @@ function rebuild_thread_counters(int $tid): void
     $count = [];
 
     // Approved replies
-    $query = $db->simple_select(
-        "posts",
-        "COUNT(pid) AS replies",
-        "tid='{$tid}' AND pid!='{$thread['firstpost']}' AND visible='1'"
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(pid) AS replies FROM posts WHERE tid = ? AND pid != ? AND visible = '1'",
+        [$tid, (int)$thread['firstpost']]
     );
     $count['replies'] = (int) $db->fetch_field($query, "replies");
 
     // Unapproved replies
-    $query = $db->simple_select(
-        "posts",
-        "COUNT(pid) AS unapprovedposts",
-        "tid='{$tid}' AND pid!='{$thread['firstpost']}' AND visible='0'"
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(pid) AS unapprovedposts FROM posts WHERE tid = ? AND pid != ? AND visible = '0'",
+        [$tid, (int)$thread['firstpost']]
     );
     $count['unapprovedposts'] = (int) $db->fetch_field($query, "unapprovedposts");
 
     // Attachment count
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT COUNT(aid) AS attachment_count
         FROM attachments a
         LEFT JOIN posts p ON a.pid=p.pid
-        WHERE p.tid='{$tid}' AND a.visible=1
-    ");
+        WHERE p.tid = ? AND a.visible=1
+    ", [$tid]);
     $count['attachmentcount'] = (int) $db->fetch_field($query, "attachment_count");
 
     update_thread_counters($tid, $count);
@@ -103,18 +98,16 @@ function rebuild_poll_counters(int $pid): void
 {
     global $db;
 
-    $query = $db->simple_select("polls", "pid, numoptions", "pid='{$pid}'");
+    $query = $db->sql_query_prepared("SELECT pid, numoptions FROM polls WHERE pid = ?", [$pid]);
     $poll = $db->fetch_array($query);
     if (!$poll) {
         return;
     }
 
     $votes = [];
-    $query = $db->simple_select(
-        "pollvotes",
-        "voteoption, COUNT(vid) AS vote_count",
-        "pid='{$poll['pid']}'",
-        ['group_by' => 'voteoption']
+    $query = $db->sql_query_prepared(
+        "SELECT voteoption, COUNT(vid) AS vote_count FROM pollvotes WHERE pid = ? GROUP BY voteoption",
+        [$poll['pid']]
     );
     while ($vote = $db->fetch_array($query)) {
         $votes[(int)$vote['voteoption']] = (int)$vote['vote_count'];
@@ -127,10 +120,10 @@ function rebuild_poll_counters(int $pid): void
         $numVotes += $votes[$i] ?? 0;
     }
 
-    $updatedPoll = [
-        "votes" => $db->escape_string(implode('||~|~||', $votesList)),
-        "numvotes" => $numVotes
-    ];
-    $db->update_query("polls", $updatedPoll, "pid='{$poll['pid']}'");
+    $votesString = implode('||~|~||', $votesList);
+    $db->sql_query_prepared(
+        "UPDATE polls SET votes = ?, numvotes = ? WHERE pid = ?",
+        [$votesString, $numVotes, $poll['pid']]
+    );
 }
 

@@ -11,22 +11,23 @@ function notify_upload_subscribers(int $catid, int $torrent_id, string $torrent_
 	$torrent_link = $BASEURL . '/' . get_torrent_link($torrent_id).'';
 	
 	
-    $res = $db->sql_query("
+    $notif_tag = "%[cat{$catid}]%";
+    $res = $db->sql_query_prepared("
         SELECT u.id, u.username, u.email, u.notifs
         FROM users u
         LEFT JOIN usergroups g ON (u.usergroup = g.gid)
         WHERE u.enabled = 'yes'
         AND u.ustatus = 'confirmed'
         AND u.notifs != ''
-        AND u.notifs LIKE '%[cat{$catid}]%'
-        AND u.id != '" . (int)$CURUSER['id'] . "'
-    ");
+        AND u.notifs LIKE ?
+        AND u.id != ?
+    ", [$notif_tag, (int)$CURUSER['id']]);
 
     if (!$res || $db->num_rows($res) === 0) return;
 
     
 
-	$row      = $db->fetch_array($db->simple_select('categories', 'name', "id='{$catid}'"));
+	$row      = $db->fetch_array($db->sql_query_prepared("SELECT name FROM categories WHERE id = ?", [$catid]));
     $cat_name = $row['name'] ?? 'Unknown Category';
 
     $subject = "New torrent in {$cat_name}: " . $torrent_name;

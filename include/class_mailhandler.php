@@ -179,16 +179,19 @@ class MailHandler
             return;
         }
 
-        $this->db->insert_query('mailerrors', [
-            'subject'     => $this->db->escape_string($this->orig_subject),
-            'message'     => $this->db->escape_string($this->message),
-            'toaddress'   => $this->db->escape_string($this->to),
-            'fromaddress' => $this->db->escape_string($this->from),
-            'dateline'    => TIMENOW,
-            'error'       => $this->db->escape_string($error),
-            'smtperror'   => $this->db->escape_string($this->data),
-            'smtpcode'    => $this->code,
-        ]);
+        $this->db->sql_query_prepared(
+            'INSERT INTO mailerrors (subject, message, toaddress, fromaddress, dateline, error, smtperror, smtpcode) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                $this->orig_subject,
+                $this->message,
+                $this->to,
+                $this->from,
+                TIMENOW,
+                $error,
+                $this->data,
+                $this->code,
+            ]
+        );
     }
 
     public function cleanup(string $string): string

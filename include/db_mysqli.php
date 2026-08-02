@@ -3,116 +3,6 @@
 
 declare(strict_types=1);
 
-function my_strtoupper(string $string): string
-{
-    return function_exists("mb_strtoupper")
-        ? mb_strtoupper($string)
-        : strtoupper($string);
-}
-
-function get_execution_time(): ?float
-{
-    static $time_start;
-
-    $time = microtime(true);
-
-    if (!$time_start) {
-        $time_start = $time;
-        return null;
-    } else {
-        $total = $time - $time_start;
-        if ($total < 0) $total = 0;
-        $time_start = 0;
-        return $total;
-    }
-}
-
-function format_time_duration(mixed $time): string
-{
-    if (!is_numeric($time)) {
-        return 'na';
-    }
-
-    $time = (float)$time;
-
-    return match(true) {
-        round(1000000 * $time, 2) < 1000 => number_format(round(1000000 * $time, 2)) . " μs",
-        round(1000000 * $time, 2) >= 1000 && round(1000000 * $time, 2) < 1000000 => number_format(round((1000 * $time), 2)) . " ms",
-        default => round($time, 3) . " seconds"
-    };
-}
-
-function validate_utf8_string(string $input, bool $allow_mb4 = true, bool $return = true): string|bool
-{
-    if (!preg_match('##u', $input)) {
-        $string = '';
-        $len = strlen($input);
-        for ($i = 0; $i < $len; $i++) {
-            $c = ord($input[$i]);
-            if ($c > 128) {
-                if ($c > 247 || $c <= 191) {
-                    if ($return) {
-                        $string .= '?';
-                        continue;
-                    } else {
-                        return false;
-                    }
-                }
-
-                $bytes = match(true) {
-                    $c > 239 => 4,
-                    $c > 223 => 3,
-                    $c > 191 => 2,
-                    default  => 0
-                };
-
-                if (($i + $bytes) > $len) {
-                    if ($return) {
-                        $string .= '?';
-                        break;
-                    } else {
-                        return false;
-                    }
-                }
-
-                $valid      = true;
-                $multibytes = $input[$i];
-                while ($bytes > 1) {
-                    $i++;
-                    $b = ord($input[$i]);
-                    if ($b < 128 || $b > 191) {
-                        if ($return) {
-                            $valid   = false;
-                            $string .= '?';
-                            break;
-                        } else {
-                            return false;
-                        }
-                    } else {
-                        $multibytes .= $input[$i];
-                    }
-                    $bytes--;
-                }
-                if ($valid) {
-                    $string .= $multibytes;
-                }
-            } else {
-                $string .= $input[$i];
-            }
-        }
-        $input = $string;
-    }
-
-    if ($return) {
-        return $allow_mb4
-            ? $input
-            : preg_replace("#[^\\x00-\\x7F][\\x80-\\xBF]{3,}#", '?', $input);
-    } else {
-        return $allow_mb4
-            ? true
-            : !preg_match("#[^\\x00-\\x7F][\\x80-\\xBF]{3,}#", $input);
-    }
-}
 
 define("MYBB_SQL",    20);
 define("CONNECT_SQL", 21);
@@ -130,6 +20,14 @@ class DB_MySQLi implements DB_Base
     public mysqli|bool|null $write_link   = null;
     public mysqli|bool|null $current_link = null;
 
+    /**
+     * Реальное число affected_rows последнего write-запроса, сохранённое
+     * сразу внутри sql_query_prepared() (пока значение точно верное), а не
+     * читаемое заново из состояния соединения при отдельном последующем
+     * вызове affected_rows() - такое отложенное чтение оказалось ненадёжным.
+     */
+    private int $last_affected_rows = 0;
+
     public array  $connections = [];
     public string $database;
     public string $explain;
@@ -137,11 +35,11 @@ class DB_MySQLi implements DB_Base
     public string $table_type    = "myisam";
     public string $engine        = "mysqli";
     public bool   $can_search    = true;
-    public string $db_encoding   = "utf8";
+    public string $db_encoding   = "utf8mb4";
     public float  $query_time    = 0.0;
     public bool   $force_display_errors = false;
     public bool   $has_errors    = false;
-    public bool   $db_initialized = false; // флаг вместо table_prefix
+    public bool   $db_initialized = false;
 
     protected int $last_query_type = 0;
 
@@ -317,7 +215,7 @@ class DB_MySQLi implements DB_Base
     // ----------------------------
     // ЗАПРОСЫ
     // ----------------------------
-    function sql_query(string $_run_query, int $hide_errors = 0, int $write_query = 0): mysqli_result|bool
+	function sql_query(string $_run_query, int $hide_errors = 0, int $write_query = 0): mysqli_result|bool
     {
         global $db, $mybb;
 
@@ -347,6 +245,10 @@ class DB_MySQLi implements DB_Base
             return false;
         }
 
+        if ($write_query) {
+            $this->last_affected_rows = mysqli_affected_rows($this->current_link);
+        }
+
         $query_time = microtime(true) - $t0;
         if ($query_time < 0) $query_time = 0;
 
@@ -367,12 +269,51 @@ class DB_MySQLi implements DB_Base
 
         return $__return;
     }
+	
+	
+	
+	
+	
+	
+	
+    /**
+     * Общий хвост статистики/логирования для sql_query_prepared() - вынесен
+     * в отдельный метод, чтобы не дублировать один и тот же блок на всех
+     * трёх return-путях (успех / mysqli-исключение / error_number()).
+     * Заодно кэширует проверку "мы внутри query_explain.php?" через static -
+     * $_SERVER['SCRIPT_NAME'] не меняется в течение запроса, пересчитывать
+     * strtolower()/str_contains() на каждый вызов SQL смысла нет.
+     */
+    private function record_query_stats(string $log_query, float $t0): float
+    {
+        $query_time = max(0, microtime(true) - $t0);
+        $this->query_time  += $query_time;
+        $this->query_count++;
+        $this->querylist[] = ['query' => $log_query, 'time' => $query_time];
+
+        static $isQueryExplain = null;
+        if ($isQueryExplain === null) {
+            $isQueryExplain = str_contains(strtolower($_SERVER['SCRIPT_NAME'] ?? ''), 'query_explain.php');
+        }
+
+        if (!$isQueryExplain) {
+            if (!isset($GLOBALS['queries']) || !is_array($GLOBALS['queries'])) {
+                $GLOBALS['queries'] = [];
+            }
+            $GLOBALS['queries'][] = [
+                'query_time' => (float)$query_time,
+                'query'      => trim($log_query),
+            ];
+        }
+
+        return $query_time;
+    }
 
     public function sql_query_prepared(string $query, array $params = [], int $hide_errors = 0): object|bool
     {
         $t0 = microtime(true);
 
-        $is_write_query = preg_match('/^\s*(INSERT|UPDATE|DELETE|REPLACE|ALTER|CREATE|DROP|RENAME|TRUNCATE|LOAD|COPY|GRANT|REVOKE|LOCK|UNLOCK)/i', $query);
+        $is_write_query = preg_match('/^\s*(INSERT|UPDATE|DELETE|REPLACE|ALTER|CREATE|DROP|RENAME|TRUNCATE|LOAD|COPY|GRANT|REVOKE|LOCK|UNLOCK|OPTIMIZE|ANALYZE)/i', $query);
 
         if ($is_write_query && $this->write_link) {
             $this->current_link = $this->write_link;
@@ -387,27 +328,40 @@ class DB_MySQLi implements DB_Base
             return false;
         }
 
-        // Форматируем запрос для логов
-        $log_query = $query;
-        if (!empty($params)) {
-            foreach ($params as $param) {
-                if (is_null($param)) {
-                    $log_query = preg_replace('/\?/', 'NULL', $log_query, 1);
-                } elseif (is_int($param) || is_float($param)) {
-                    $log_query = preg_replace('/\?/', (string)$param, $log_query, 1);
-                } else {
-                    $log_query = preg_replace('/\?/', "'" . $this->escape_string((string)$param) . "'", $log_query, 1);
-                }
+        // Форматируем запрос для логов - один проход через explode()/implode()
+        // вместо N отдельных preg_replace() (по одному на каждый '?'), что
+        // особенно заметно на batch-запросах с большим числом плейсхолдеров
+        // (массовое удаление, IN (?,?,?...) и т.п.).
+        if ($params) {
+            $parts     = explode('?', $query);
+            $log_query = array_shift($parts);
+            foreach ($params as $i => $param) {
+                $log_query .= match(true) {
+                    is_null($param)                    => 'NULL',
+                    is_int($param) || is_float($param)  => (string)$param,
+                    default                             => "'" . $this->escape_string((string)$param) . "'",
+                };
+                $log_query .= $parts[$i] ?? '';
             }
+        } else {
+            $log_query = $query;
         }
 
-        try {
-            $stmt = mysqli_prepare($link, $query);
-            if (!$stmt) {
-                throw new mysqli_sql_exception("Unable to prepare statement: " . mysqli_error($link), mysqli_errno($link));
-            }
+        $stmt = null;
 
-            if (!empty($params)) {
+        try {
+            // Быстрый путь: запрос без параметров не нуждается в PREPARE -
+            // связывать нечего, а PREPARE это лишний round-trip к серверу
+            // по сравнению с обычным mysqli_query(). Затрагивает большинство
+            // статических запросов (SELECT VERSION(), SHOW STATUS и т.п.).
+            if (!$params) {
+                $result = mysqli_query($link, $query);
+            } else {
+                $stmt = mysqli_prepare($link, $query);
+                if (!$stmt) {
+                    throw new mysqli_sql_exception("Unable to prepare statement: " . mysqli_error($link), mysqli_errno($link));
+                }
+
                 $types       = '';
                 $bind_params = [];
 
@@ -420,19 +374,24 @@ class DB_MySQLi implements DB_Base
                     };
                     $bind_params[] = &$param;
                 }
+                unset($param);
 
-                array_unshift($bind_params, $types);
-
-                if (!call_user_func_array([$stmt, 'bind_param'], $bind_params)) {
+                if (!mysqli_stmt_bind_param($stmt, $types, ...$bind_params)) {
                     throw new mysqli_sql_exception("Unable to bind parameters: " . mysqli_stmt_error($stmt), mysqli_stmt_errno($stmt));
                 }
-            }
 
-            if (!mysqli_stmt_execute($stmt)) {
-                throw new mysqli_sql_exception("Unable to execute statement: " . mysqli_stmt_error($stmt), mysqli_stmt_errno($stmt));
-            }
+                if (!mysqli_stmt_execute($stmt)) {
+                    throw new mysqli_sql_exception("Unable to execute statement: " . mysqli_stmt_error($stmt), mysqli_stmt_errno($stmt));
+                }
 
-            $result = mysqli_stmt_get_result($stmt);
+                // Для write-запросов (DELETE/UPDATE/INSERT/...) набора строк
+                // нет вообще - вызывать get_result() тут бессмысленно и
+                // рискованно (может помешать корректному чтению
+                // affected_rows ниже). Просто оставляем $result = false,
+                // ветка ниже (не instanceof mysqli_result) отработает как
+                // обычный write-путь через mysqli_stmt_affected_rows().
+                $result = $is_write_query ? false : mysqli_stmt_get_result($stmt);
+            }
 
         } catch (mysqli_sql_exception $e) {
             if (!$hide_errors) {
@@ -443,55 +402,51 @@ class DB_MySQLi implements DB_Base
                 ], __FILE__, __LINE__);
             }
 
-            $query_time = max(0, microtime(true) - $t0);
-            $this->query_time  += $query_time;
-            $this->query_count++;
-            $this->querylist[] = ['query' => $log_query, 'time' => $query_time];
-
+            $this->record_query_stats($log_query, $t0);
             return false;
         }
 
         if ($this->error_number() && !$hide_errors) {
             $this->error($log_query);
-
-            $query_time = max(0, microtime(true) - $t0);
-            $this->query_time  += $query_time;
-            $this->query_count++;
-            $this->querylist[] = ['query' => $log_query, 'time' => $query_time];
-
+            $this->record_query_stats($log_query, $t0);
             return false;
         }
 
-        $query_time = max(0, microtime(true) - $t0);
-        $this->query_time  += $query_time;
-        $this->query_count++;
-        $this->querylist[] = ['query' => $log_query, 'time' => $query_time];
-
-        $script = $_SERVER['SCRIPT_NAME'] ?? '';
-        if (!str_contains(strtolower($script), 'query_explain.php')) {
-            if (!isset($GLOBALS['queries']) || !is_array($GLOBALS['queries'])) {
-                $GLOBALS['queries'] = [];
-            }
-            $GLOBALS['queries'][] = [
-                'query_time' => (float)$query_time,
-                'query'      => trim($log_query),
-            ];
-        }
+        $this->record_query_stats($log_query, $t0);
 
         if ($result instanceof mysqli_result) {
+            if ($stmt === null) {
+                // Быстрый путь без PREPARE - но обёртку {result, stmt} всё
+                // равно строим (stmt=null), а не возвращаем сырой результат.
+                // Часть кода в проекте обращается к ->result/->stmt напрямую,
+                // минуя fetch_array(), и ожидает, что обёртка есть всегда
+                // (см. seedbonus.php/threadviews.php/optimizedb.php).
+                $wrappedResult         = new stdClass();
+                $wrappedResult->result = $result;
+                $wrappedResult->stmt   = null;
+                return $wrappedResult;
+            }
             $wrappedResult         = new stdClass();
             $wrappedResult->result = $result;
             $wrappedResult->stmt   = $stmt;
             return $wrappedResult;
         }
 
+        if ($stmt === null) {
+            // Write-запрос без параметров и без PREPARE (например TRUNCATE)
+            $this->last_affected_rows = mysqli_affected_rows($link);
+            return $this->last_affected_rows >= 0;
+        }
+
         $affected_rows = mysqli_stmt_affected_rows($stmt);
         mysqli_stmt_close($stmt);
+
+        $this->last_affected_rows = $affected_rows;
 
         return $affected_rows >= 0;
     }
 
-    function write_query(string $query, int $hide_errors = 0): mysqli_result|bool
+    function write_query(string $query, int $hide_errors = 0): object|bool
     {
         return $this->sql_query($query, $hide_errors, 1);
     }
@@ -556,16 +511,7 @@ class DB_MySQLi implements DB_Base
 
     function affected_rows(): int
     {
-        if (isset($this->current_stmt) && is_object($this->current_stmt)) {
-            return mysqli_stmt_affected_rows($this->current_stmt);
-        }
-        $link = $this->write_link ?? $this->current_link;
-        return mysqli_affected_rows($link);
-    }
-
-    function num_fields(mysqli_result $query): int
-    {
-        return mysqli_num_fields($query);
+        return $this->last_affected_rows;
     }
 
     // ----------------------------
@@ -844,14 +790,6 @@ HTML;
         return $this->escape_string(str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $string));
     }
 
-    function sqlesc(mixed $value): string
-    {
-        if (!is_numeric($value)) {
-            $value = '\'' . mysqli_real_escape_string($this->read_link, (string)$value) . '\'';
-        }
-        return (string)$value;
-    }
-
     function escape_binary(string $string): string
     {
         return "X'" . $this->escape_string(bin2hex($string)) . "'";
@@ -865,7 +803,7 @@ HTML;
     // ----------------------------
     // ТРАНЗАКЦИИ
     // ----------------------------
-    public function begin_transaction(int $flags = 0, string $name = ''): bool
+    public function begin_transaction(int $flags = 0, string $name = '', bool $hide_errors = false): bool
     {
         $link = $this->write_link ?? $this->current_link;
         if (!$link) return false;
@@ -874,12 +812,14 @@ HTML;
                 ? mysqli_begin_transaction($link, $flags, $name)
                 : mysqli_begin_transaction($link, $flags);
         } catch (\mysqli_sql_exception $e) {
-            $this->sql_error(MYBB_SQL, ['error_no' => $e->getCode(), 'error' => $e->getMessage(), 'query' => 'begin_transaction()'], __FILE__, __LINE__);
+            if (!$hide_errors) {
+                $this->sql_error(MYBB_SQL, ['error_no' => $e->getCode(), 'error' => $e->getMessage(), 'query' => 'begin_transaction()'], __FILE__, __LINE__);
+            }
         }
         return false;
     }
 
-    public function commit(int $flags = 0, string $name = ''): bool
+    public function commit(int $flags = 0, string $name = '', bool $hide_errors = false): bool
     {
         $link = $this->write_link ?? $this->current_link;
         if (!$link) return false;
@@ -888,12 +828,14 @@ HTML;
                 ? mysqli_commit($link, $flags, $name)
                 : mysqli_commit($link);
         } catch (\mysqli_sql_exception $e) {
-            $this->sql_error(MYBB_SQL, ['error_no' => $e->getCode(), 'error' => $e->getMessage(), 'query' => 'commit()'], __FILE__, __LINE__);
+            if (!$hide_errors) {
+                $this->sql_error(MYBB_SQL, ['error_no' => $e->getCode(), 'error' => $e->getMessage(), 'query' => 'commit()'], __FILE__, __LINE__);
+            }
         }
         return false;
     }
 
-    public function rollback(int $flags = 0, string $name = ''): bool
+    public function rollback(int $flags = 0, string $name = '', bool $hide_errors = false): bool
     {
         $link = $this->write_link ?? $this->current_link;
         if (!$link) return false;
@@ -902,148 +844,11 @@ HTML;
                 ? mysqli_rollback($link, $flags, $name)
                 : mysqli_rollback($link);
         } catch (\mysqli_sql_exception $e) {
-            $this->sql_error(MYBB_SQL, ['error_no' => $e->getCode(), 'error' => $e->getMessage(), 'query' => 'rollback()'], __FILE__, __LINE__);
+            if (!$hide_errors) {
+                $this->sql_error(MYBB_SQL, ['error_no' => $e->getCode(), 'error' => $e->getMessage(), 'query' => 'rollback()'], __FILE__, __LINE__);
+            }
         }
         return false;
-    }
-
-    // ----------------------------
-    // ТАБЛИЦЫ (без префикса)
-    // ----------------------------
-    function simple_select(string $table, string $fields = "*", string $conditions = "", array $options = []): mysqli_result|bool
-    {
-        $query = "SELECT " . $fields . " FROM " . $table;
-
-        if ($conditions != "") {
-            $query .= " WHERE " . $conditions;
-        }
-        if (isset($options['group_by'])) {
-            $query .= " GROUP BY " . $options['group_by'];
-        }
-        if (isset($options['order_by'])) {
-            $query .= " ORDER BY " . $options['order_by'];
-            if (isset($options['order_dir'])) {
-                $query .= " " . my_strtoupper($options['order_dir']);
-            }
-        }
-        if (isset($options['limit_start']) && isset($options['limit'])) {
-            $query .= " LIMIT " . $options['limit_start'] . ", " . $options['limit'];
-        } elseif (isset($options['limit'])) {
-            $query .= " LIMIT " . $options['limit'];
-        }
-
-        return $this->sql_query($query);
-    }
-
-    function insert_query(string $table, array $array): int|false
-    {
-        global $mybb;
-
-        if (empty($array)) return false;
-
-        foreach ($array as $field => &$value) {
-            if (isset($mybb->binary_fields[$table][$field]) && $mybb->binary_fields[$table][$field]) {
-                if (!str_starts_with($value, 'X')) {
-                    $value = $this->escape_binary($value);
-                }
-            } else {
-                $value = $this->quote_val($value);
-            }
-        }
-
-        $fields = "`" . implode("`,`", array_keys($array)) . "`";
-        $values = implode(",", $array);
-        $this->write_query("INSERT INTO {$table} ({$fields}) VALUES ({$values})");
-        return $this->insert_id();
-    }
-
-    function insert_query_multiple(string $table, array $array): void
-    {
-        global $mybb;
-
-        if (empty($array)) return;
-
-        $fields = "`" . implode("`,`", array_keys($array[0])) . "`";
-
-        $insert_rows = [];
-        foreach ($array as $values) {
-            foreach ($values as $field => &$value) {
-                if (isset($mybb->binary_fields[$table][$field]) && $mybb->binary_fields[$table][$field]) {
-                    if (!str_starts_with($value, 'X')) {
-                        $value = $this->escape_binary($value);
-                    }
-                } else {
-                    $value = $this->quote_val($value);
-                }
-            }
-            $insert_rows[] = "(" . implode(",", $values) . ")";
-        }
-
-        $this->write_query("INSERT INTO {$table} ({$fields}) VALUES " . implode(", ", $insert_rows));
-    }
-
-    function update_query(string $table, array $array, string $where = "", string $limit = "", bool $no_quote = false): mysqli_result|bool
-    {
-        global $mybb;
-
-        if (empty($array)) return false;
-
-        $comma = "";
-        $query = "";
-        $quote = $no_quote ? "" : "'";
-
-        foreach ($array as $field => $value) {
-            if (isset($mybb->binary_fields[$table][$field]) && $mybb->binary_fields[$table][$field]) {
-                if (!str_starts_with($value, 'X')) {
-                    $value = $this->escape_binary($value);
-                }
-                $query .= $comma . "`" . $field . "`={$value}";
-            } else {
-                $query .= $comma . "`" . $field . "`=" . $this->quote_val($value, $quote);
-            }
-            $comma = ', ';
-        }
-
-        if (!empty($where)) $query .= " WHERE $where";
-        if (!empty($limit)) $query .= " LIMIT $limit";
-
-        return $this->write_query("UPDATE {$table} SET $query");
-    }
-
-    function delete_query(string $table, string $where = "", string $limit = ""): mysqli_result|bool
-    {
-        $query = "";
-        if (!empty($where)) $query .= " WHERE $where";
-        if (!empty($limit)) $query .= " LIMIT $limit";
-        return $this->write_query("DELETE FROM {$table} $query");
-    }
-
-    function replace_query(string $table, array $replacements = [], string|array $default_field = "", bool $insert_id = true): mysqli_result|bool
-    {
-        global $mybb;
-
-        if (empty($replacements)) return false;
-
-        $values = '';
-        $comma  = '';
-        foreach ($replacements as $column => $value) {
-            if (isset($mybb->binary_fields[$table][$column]) && $mybb->binary_fields[$table][$column]) {
-                if (!str_starts_with($value, 'X')) {
-                    $value = $this->escape_binary($value);
-                }
-                $values .= $comma . "`" . $column . "`=" . $value;
-            } else {
-                $values .= $comma . "`" . $column . "`=" . $this->quote_val($value);
-            }
-            $comma = ',';
-        }
-
-        return $this->write_query("REPLACE INTO {$table} SET {$values}");
-    }
-
-    private function quote_val($value, string $quote = "'"): string|int
-    {
-        return is_int($value) ? $value : $quote . $value . $quote;
     }
 
     // ----------------------------
@@ -1053,7 +858,7 @@ HTML;
     {
         if (isset($this->version)) return $this->version;
 
-        $query = $this->sql_query("SELECT VERSION() as version");
+        $query = $this->sql_query_prepared("SELECT VERSION() as version");
         if (!$query) {
             $this->version = "0.0.0";
             return $this->version;
@@ -1072,43 +877,58 @@ HTML;
         return $this->version;
     }
 
-    function optimize_table(string $table): mysqli_result|bool
+    function optimize_table(string $table): object|bool
     {
-        return $this->write_query("OPTIMIZE TABLE " . $table);
+        return $this->sql_query_prepared("OPTIMIZE TABLE " . $table);
     }
 
-    function analyze_table(string $table): mysqli_result|bool
+    function analyze_table(string $table): object|bool
     {
-        return $this->write_query("ANALYZE TABLE " . $table);
+        return $this->sql_query_prepared("ANALYZE TABLE " . $table);
     }
 
     function show_create_table(string $table): string
     {
-        $query     = $this->write_query("SHOW CREATE TABLE " . $table);
+        $query     = $this->sql_query_prepared("SHOW CREATE TABLE " . $table);
         $structure = $this->fetch_array($query);
         return $structure['Create Table'] ?? '';
     }
 
     function show_fields_from(string $table): array
     {
-        $query      = $this->write_query("SHOW FIELDS FROM " . $table);
+        // information_schema — обычная таблица, не SHOW-псевдокоманда, поэтому
+        // полностью совместима с prepared-протоколом без всяких оговорок.
+        $query = $this->sql_query_prepared(
+            "SELECT 
+                COLUMN_NAME    AS `Field`,
+                COLUMN_TYPE    AS `Type`,
+                IS_NULLABLE    AS `Null`,
+                COLUMN_KEY     AS `Key`,
+                COLUMN_DEFAULT AS `Default`,
+                EXTRA          AS `Extra`
+             FROM information_schema.COLUMNS 
+             WHERE TABLE_SCHEMA = DATABASE() 
+               AND TABLE_NAME   = ?
+             ORDER BY ORDINAL_POSITION",
+            [$table]
+        );
         $field_info = [];
-        while ($field = $this->fetch_array($query)) {
+        while ($query && ($field = $this->fetch_array($query))) {
             $field_info[] = $field;
         }
         return $field_info;
     }
 
-    function list_tables(string $database, string $prefix = ''): array
+    function list_tables(string $database): array
     {
-        if ($prefix) {
-            $query = $this->sql_query("SHOW FULL TABLES FROM `$database` WHERE table_type = 'BASE TABLE' AND `Tables_in_$database` LIKE '" . $this->escape_string($prefix) . "%'");
-        } else {
-            $query = $this->sql_query("SHOW FULL TABLES FROM `$database` WHERE table_type = 'BASE TABLE'");
-        }
+        $query = $this->sql_query_prepared(
+            "SELECT TABLE_NAME FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'",
+            [$database]
+        );
 
         $tables = [];
-        while ($table = mysqli_fetch_array($query)) {
+        while ($query && ($table = $this->fetch_array($query, MYSQLI_NUM))) {
             $tables[] = $table[0];
         }
         return $tables;
@@ -1116,74 +936,27 @@ HTML;
 
     function table_exists(string $table): bool
     {
-        $query = $this->sql_query("SHOW FULL TABLES FROM `" . $this->database . "` WHERE table_type = 'BASE TABLE' AND `Tables_in_" . $this->database . "` = '" . $this->escape_string($table) . "'");
-        return $this->num_rows($query) > 0;
+        $query = $this->sql_query_prepared(
+            "SELECT 1 FROM information_schema.TABLES 
+             WHERE TABLE_SCHEMA = DATABASE() 
+               AND TABLE_NAME   = ? 
+             LIMIT 1",
+            [$table]
+        );
+        return $query ? $this->num_rows($query) > 0 : false;
     }
 
     function field_exists(string $field, string $table): bool
     {
-        $query = $this->write_query("SHOW COLUMNS FROM {$table} LIKE '$field'");
-        return $this->num_rows($query) > 0;
-    }
-
-    function index_exists(string $table, string $index): bool
-    {
-        $query = $this->write_query("SHOW INDEX FROM {$table}");
-        while ($ukey = $this->fetch_array($query)) {
-            if ($ukey['Key_name'] == $index) return true;
-        }
-        return false;
-    }
-
-    function create_fulltext_index(string $table, string $column, string $name = ""): mysqli_result|bool
-    {
-        return $this->write_query("ALTER TABLE {$table} ADD FULLTEXT $name ($column)");
-    }
-
-    function drop_index(string $table, string $name): mysqli_result|bool
-    {
-        return $this->write_query("ALTER TABLE {$table} DROP INDEX $name");
-    }
-
-    function drop_table(string $table, bool $hard = false, bool $table_prefix = true): mysqli_result|bool
-    {
-        return $hard
-            ? $this->write_query('DROP TABLE ' . $table)
-            : $this->write_query('DROP TABLE IF EXISTS ' . $table);
-    }
-
-    function rename_table(string $old_table, string $new_table, bool $table_prefix = true): mysqli_result|bool
-    {
-        return $this->write_query("RENAME TABLE {$old_table} TO {$new_table}");
-    }
-
-    function drop_column(string $table, string $column): mysqli_result|bool
-    {
-        $column = trim($column, '`');
-        return $this->write_query("ALTER TABLE {$table} DROP `{$column}`");
-    }
-
-    function add_column(string $table, string $column, string $definition): mysqli_result|bool
-    {
-        $column = trim($column, '`');
-        return $this->write_query("ALTER TABLE {$table} ADD `{$column}` {$definition}");
-    }
-
-    function modify_column(string $table, string $column, string $new_definition, bool|string $new_not_null = false, bool|string $new_default_value = false): bool
-    {
-        $column   = trim($column, '`');
-        $not_null = match($new_not_null) { 'set' => 'NOT NULL', 'drop' => 'NULL', default => '' };
-        $default  = $new_default_value !== false ? "DEFAULT " . $new_default_value : '';
-        return (bool)$this->write_query("ALTER TABLE {$table} MODIFY `{$column}` {$new_definition} {$not_null} {$default}");
-    }
-
-    function rename_column(string $table, string $old_column, string $new_column, string $new_definition, bool|string $new_not_null = false, bool|string $new_default_value = false): bool
-    {
-        $old_column = trim($old_column, '`');
-        $new_column = trim($new_column, '`');
-        $not_null   = match($new_not_null) { 'set' => 'NOT NULL', 'drop' => 'NULL', default => '' };
-        $default    = $new_default_value !== false ? "DEFAULT " . $new_default_value : '';
-        return (bool)$this->write_query("ALTER TABLE {$table} CHANGE `{$old_column}` `{$new_column}` {$new_definition} {$not_null} {$default}");
+        $query = $this->sql_query_prepared(
+            "SELECT 1 FROM information_schema.COLUMNS 
+             WHERE TABLE_SCHEMA = DATABASE() 
+               AND TABLE_NAME   = ? 
+               AND COLUMN_NAME  = ? 
+             LIMIT 1",
+            [$table, $field]
+        );
+        return $query ? $this->num_rows($query) > 0 : false;
     }
 
     function is_fulltext(string $table, string $index = ""): bool
@@ -1196,9 +969,15 @@ HTML;
     function supports_fulltext(string $table): bool
     {
         $version    = $this->get_version();
-        $query      = $this->write_query("SHOW TABLE STATUS LIKE '{$table}'");
-        $status     = $this->fetch_array($query);
-        $table_type = my_strtoupper($status['Engine'] ?? '');
+        $query      = $this->sql_query_prepared(
+            "SELECT ENGINE FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME   = ?
+             LIMIT 1",
+            [$table]
+        );
+        $status     = $query ? $this->fetch_array($query) : null;
+        $table_type = mb_strtoupper($status['ENGINE'] ?? '');
 
         return match(true) {
             version_compare($version, '3.23.23', '>=') && in_array($table_type, ['MYISAM', 'ARIA']) => true,
@@ -1227,75 +1006,24 @@ HTML;
 
     function fetch_size(string $table = ''): int
     {
-        $query = $table != ''
-            ? $this->sql_query("SHOW TABLE STATUS LIKE '" . $table . "'")
-            : $this->sql_query("SHOW TABLE STATUS");
+        if ($table !== '') {
+            $query = $this->sql_query_prepared(
+                "SELECT DATA_LENGTH, INDEX_LENGTH FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                [$table]
+            );
+        } else {
+            $query = $this->sql_query_prepared(
+                "SELECT DATA_LENGTH, INDEX_LENGTH FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE()"
+            );
+        }
 
         $total = 0;
-        while ($row = $this->fetch_array($query)) {
-            $total += $row['Data_length'] + $row['Index_length'];
+        while ($query && ($row = $this->fetch_array($query))) {
+            $total += $row['DATA_LENGTH'] + $row['INDEX_LENGTH'];
         }
         return $total;
-    }
-
-    function fetch_db_charsets(): array|false
-    {
-        if ($this->write_link && version_compare($this->get_version(), "4.1", "<")) {
-            return false;
-        }
-        return [
-            'utf8'    => 'UTF-8 Unicode',
-            'utf8mb4' => '4-Byte UTF-8 Unicode (requires MySQL 5.5.3 or above)',
-            'latin1'  => 'ISO 8859-1 Latin 1',
-            'latin2'  => 'ISO 8859-2 Central European',
-            'ascii'   => 'US ASCII',
-            'cp1251'  => 'Windows Cyrillic',
-            'cp1256'  => 'Windows Arabic',
-            'cp1257'  => 'Windows Baltic',
-            'greek'   => 'ISO 8859-7 Greek',
-            'hebrew'  => 'ISO 8859-8 Hebrew',
-            'big5'    => 'Big5 Traditional Chinese',
-            'gb2312'  => 'GB2312 Simplified Chinese',
-            'gbk'     => 'GBK Simplified Chinese',
-            'ujis'    => 'EUC-JP Japanese',
-            'sjis'    => 'Shift-JIS Japanese',
-            'euckr'   => 'EUC-KR Korean',
-            'koi8r'   => 'KOI8-R Relcom Russian',
-            'koi8u'   => 'KOI8-U Ukrainian',
-        ];
-    }
-
-    function fetch_charset_collation(string $charset): string|false
-    {
-        $collations = [
-            'utf8'    => 'utf8_general_ci',
-            'utf8mb4' => 'utf8mb4_general_ci',
-            'latin1'  => 'latin1_swedish_ci',
-            'latin2'  => 'latin2_general_ci',
-            'ascii'   => 'ascii_general_ci',
-            'cp1251'  => 'cp1251_general_ci',
-            'cp1256'  => 'cp1256_general_ci',
-            'cp1257'  => 'cp1257_general_ci',
-            'greek'   => 'greek_general_ci',
-            'hebrew'  => 'hebrew_general_ci',
-            'big5'    => 'big5_chinese_ci',
-            'gb2312'  => 'gb2312_chinese_ci',
-            'gbk'     => 'gbk_chinese_ci',
-            'ujis'    => 'ujis_japanese_ci',
-            'sjis'    => 'sjis_japanese_ci',
-            'euckr'   => 'euckr_korean_ci',
-            'koi8r'   => 'koi8r_general_ci',
-            'koi8u'   => 'koi8u_general_ci',
-        ];
-        return $collations[$charset] ?? false;
-    }
-
-    function build_create_table_collation(): string
-    {
-        if (!$this->db_encoding) return '';
-        $collation = $this->fetch_charset_collation($this->db_encoding);
-        if (!$collation) return '';
-        return " CHARACTER SET {$this->db_encoding} COLLATE {$collation}";
     }
 
     /**
@@ -1306,11 +1034,4 @@ HTML;
         return get_execution_time();
     }
 
-    /**
-     * Compatibility stub — no prefix used
-     */
-    function set_table_prefix(string $prefix): void
-    {
-        // Префиксы не используются — метод оставлен для совместимости
-    }
 }

@@ -42,16 +42,15 @@ register_shutdown_function('FatalErrorHandler');
 function is_staff_error_viewer(): bool
 {
     try {
-        global $usergroups, $CURUSER;
+        global $mybb, $CURUSER;
 
-        if (!empty($usergroups) && is_array($usergroups) && function_exists('is_mod')) {
-            if (is_mod($usergroups)) {
+        if (isset($mybb) && is_object($mybb) && !empty($mybb->usergroup) && function_exists('is_mod')) {
+            if (is_mod($mybb->usergroup)) {
                 return true;
             }
         }
 
-        // Резервная проверка, если $usergroups почему-то недоступен на момент фатала
-        if (!empty($CURUSER['id']) && !empty($usergroups['cansettingspanel'])) {
+        if (!empty($CURUSER['id']) && !empty($mybb->usergroup['cansettingspanel'])) {
             return true;
         }
     } catch (\Throwable) {

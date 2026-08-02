@@ -423,7 +423,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
            $uploadspath, $attachthumbh, $attachthumbw,
            $posthash, $pid, $tid, $forum, $maxattachments, $CURUSER;
 
-    $posthash = $db->escape_string($mybb->get_input('posthash'));
+    $posthash = $mybb->get_input('posthash');
     $pid      = (int)$pid;
 
     if (!is_uploaded_file($attachment['tmp_name']) || empty($attachment['tmp_name'])) {
@@ -451,17 +451,26 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
 
     // Квота пользователя
     if ($usergroups['attachquota'] > 0) {
-        $query = $db->simple_select('attachments', 'SUM(filesize) AS ausage', "uid='" . $CURUSER['id'] . "'");
-        $usage = (int)$db->fetch_array($query)['ausage'] + $attachment['size'];
+        $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [$CURUSER['id']]);
+        $usage = ($query ? (int)$db->fetch_array($query)['ausage'] : 0) + $attachment['size'];
         if ($usage > $usergroups['attachquota'] * 1024) {
             return ['error' => 'Sorry, but you cannot attach this file because you have reached your attachment quota of ' . mksize($usergroups['attachquota'] * 1024)];
         }
     }
 
     // Уже существующий аттачмент с таким именем
-    $uploaded_query = $pid !== 0 ? "pid='{$pid}'" : "posthash='{$posthash}'";
-    $query          = $db->simple_select('attachments', '*', "filename='" . $db->escape_string($attachment['name']) . "' AND " . $uploaded_query);
-    $prevattach     = $db->fetch_array($query);
+    if ($pid !== 0) {
+        $uploaded_query  = "pid = ?";
+        $uploaded_params = [$pid];
+    } else {
+        $uploaded_query  = "posthash = ?";
+        $uploaded_params = [$posthash];
+    }
+    $query      = $db->sql_query_prepared(
+        "SELECT * FROM attachments WHERE filename = ? AND {$uploaded_query}",
+        [$attachment['name'], ...$uploaded_params]
+    );
+    $prevattach = $query ? $db->fetch_array($query) : null;
 
     if ($prevattach && !$update_attachment) {
         return ['error' => sprintf('error_alreadyuploaded', htmlspecialchars_uni($attachment['name']))];
@@ -470,8 +479,8 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
     // Максимум аттачментов на пост
   
     if ($maxattachments > 0 && !$update_attachment) {
-        $query       = $db->simple_select('attachments', 'COUNT(aid) AS numattachs', $uploaded_query);
-        $attachcount = (int)$db->fetch_field($query, 'numattachs');
+        $query       = $db->sql_query_prepared("SELECT COUNT(aid) AS numattachs FROM attachments WHERE {$uploaded_query}", $uploaded_params);
+        $attachcount = $query ? (int)$db->fetch_field($query, 'numattachs') : 0;
         if ($attachcount >= $maxattachments) {
             return ['error' => 'Sorry but you cannot attach this file because you have reached the maximum number of attachments allowed per post of ' . $maxattachments];
         }
@@ -518,8 +527,8 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
         'pid'         => $pid,
         'posthash'    => $posthash,
         'uid'         => $CURUSER['id'],
-        'filename'    => $db->escape_string($file['original_filename']),
-        'filetype'    => $db->escape_string($file['type']),
+        'filename'    => $file['original_filename'],
+        'filetype'    => $file['type'],
         'filesize'    => (int)$file['size'],
         'attachname'  => $filename,
         'downloads'   => 0,
@@ -546,11 +555,20 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
 
     if ($prevattach && $update_attachment) {
         unset($attacharray['downloads']);
-        $db->update_query('attachments', $attacharray, "aid='" . $db->escape_string($prevattach['aid']) . "'");
+        $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($attacharray)));
+        $params = array_values($attacharray);
+        $params[] = $prevattach['aid'];
+        $db->sql_query_prepared("UPDATE attachments SET {$set} WHERE aid = ?", $params);
         _cleanup_old_attachment($prevattach, $uploadspath_abs, $db);
         $aid = $prevattach['aid'];
     } else {
-        $aid = $db->insert_query('attachments', $attacharray);
+        $columns      = array_keys($attacharray);
+        $placeholders = implode(',', array_fill(0, count($columns), '?'));
+        $db->sql_query_prepared(
+            "INSERT INTO attachments (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+            array_values($attacharray)
+        );
+        $aid = $db->insert_id();
         if ($pid) {
             update_thread_counters((int)$tid, ['attachmentcount' => '+1']);
         }
@@ -567,18 +585,23 @@ function remove_attachment(int $pid, string $posthash, int $aid): void
     global $db, $plugins, $uploadspath;
 
     $aid      = (int)$aid;
-    $posthash = $db->escape_string($posthash);
 
-    $where     = !empty($posthash) ? "aid='{$aid}' AND posthash='{$posthash}'" : "aid='{$aid}' AND pid='{$pid}'";
-    $query     = $db->simple_select('attachments', 'aid, attachname, thumbnail, visible', $where);
-    $attachment = $db->fetch_array($query);
+    if (!empty($posthash)) {
+        $where_sql    = "aid = ? AND posthash = ?";
+        $where_params = [$aid, $posthash];
+    } else {
+        $where_sql    = "aid = ? AND pid = ?";
+        $where_params = [$aid, $pid];
+    }
+    $query      = $db->sql_query_prepared("SELECT aid, attachname, thumbnail, visible FROM attachments WHERE {$where_sql}", $where_params);
+    $attachment = $query ? $db->fetch_array($query) : null;
 
-    if ($attachment === false) {
+    if ($attachment === false || $attachment === null) {
         return;
     }
 
     $plugins->run_hooks('remove_attachment_do_delete', $attachment);
-    $db->delete_query('attachments', "aid='{$attachment['aid']}'");
+    $db->sql_query_prepared("DELETE FROM attachments WHERE aid = ?", [$attachment['aid']]);
 
     $uploadspath_abs = mk_path_abs($uploadspath);
     _delete_attachment_files($attachment, $uploadspath_abs, $db);
@@ -596,22 +619,27 @@ function remove_attachments(int $pid, string $posthash = ''): void
 {
     global $db, $plugins, $uploadspath;
 
-    $post     = $pid ? get_post($pid) : [];
-    $posthash = $db->escape_string($posthash);
+    $post = $pid ? get_post($pid) : [];
 
-    $where = ($posthash !== '' && !$pid) ? "posthash='$posthash'" : "pid='$pid'";
-    $query = $db->simple_select('attachments', '*', $where);
+    if ($posthash !== '' && !$pid) {
+        $where_sql    = "posthash = ?";
+        $where_params = [$posthash];
+    } else {
+        $where_sql    = "pid = ?";
+        $where_params = [$pid];
+    }
+    $query = $db->sql_query_prepared("SELECT * FROM attachments WHERE {$where_sql}", $where_params);
 
     $uploadspath_abs  = mk_path_abs($uploadspath);
     $num_attachments  = 0;
 
-    while ($attachment = $db->fetch_array($query)) {
+    while ($query && ($attachment = $db->fetch_array($query))) {
         if ($attachment['visible'] == 1) {
             $num_attachments++;
         }
 
         $plugins->run_hooks('remove_attachments_do_delete', $attachment);
-        $db->delete_query('attachments', "aid='" . $attachment['aid'] . "'");
+        $db->sql_query_prepared("DELETE FROM attachments WHERE aid = ?", [$attachment['aid']]);
         _delete_attachment_files($attachment, $uploadspath_abs, $db);
     }
 
@@ -623,7 +651,7 @@ function remove_attachments(int $pid, string $posthash = ''): void
 /**
  * Обрабатывает аттачменты при создании/редактировании поста.
  */
-function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere, string|false $action = false): array
+function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere, string|false $action = false, array $attachwhere_params = []): array
 {
     global $db, $mybb, $lang;
 
@@ -636,8 +664,7 @@ function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere,
 
     $fields      = ['name', 'type', 'tmp_name', 'error', 'size'];
     $attachments = [];
-    $filenames   = '';
-    $delim       = '';
+    $filename_list = [];
 
     for ($i = 0; $i < $total; $i++) {
         $attachments[$i] = [];
@@ -647,16 +674,19 @@ function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere,
 
         $FILE = $attachments[$i];
         if (!empty($FILE['name']) && !empty($FILE['type']) && $FILE['size'] > 0) {
-            $filenames .= $delim . "'" . $db->escape_string($FILE['name']) . "'";
-            $delim      = ',';
+            $filename_list[] = $FILE['name'];
         }
     }
 
     // Предзагрузка уже существующих имён
     $existing = [];
-    if ($filenames !== '') {
-        $query = $db->simple_select('attachments', 'filename', "{$attachwhere} AND filename IN ({$filenames})");
-        while ($row = $db->fetch_array($query)) {
+    if (!empty($filename_list)) {
+        $placeholders = implode(',', array_fill(0, count($filename_list), '?'));
+        $query = $db->sql_query_prepared(
+            "SELECT filename FROM attachments WHERE {$attachwhere} AND filename IN ({$placeholders})",
+            [...$attachwhere_params, ...$filename_list]
+        );
+        while ($query && ($row = $db->fetch_array($query))) {
             $existing[$row['filename']] = true;
         }
     }
@@ -679,7 +709,7 @@ function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere,
             continue;
         }
 
-        $filename         = $db->escape_string($FILE['name']);
+        $filename         = $FILE['name'];
         $exists           = !empty($existing[$filename]);
         $update_attachment = $exists && (bool)$mybb->get_input('updateattachment');
 
@@ -795,8 +825,8 @@ function _process_image_attachment(
  */
 function _cleanup_old_attachment(array $prevattach, string $uploadspath_abs, object $db): void
 {
-    $query = $db->simple_select('attachments', 'COUNT(aid) as numreferences', "attachname='" . $db->escape_string($prevattach['attachname']) . "'");
-    if ($db->fetch_field($query, 'numreferences') > 0) {
+    $query = $db->sql_query_prepared("SELECT COUNT(aid) as numreferences FROM attachments WHERE attachname = ?", [$prevattach['attachname']]);
+    if ($query && $db->fetch_field($query, 'numreferences') > 0) {
         return;
     }
 
@@ -814,8 +844,8 @@ function _cleanup_old_attachment(array $prevattach, string $uploadspath_abs, obj
  */
 function _delete_attachment_files(array $attachment, string $uploadspath_abs, object $db): void
 {
-    $query = $db->simple_select('attachments', 'COUNT(aid) as numreferences', "attachname='" . $db->escape_string($attachment['attachname']) . "'");
-    if ($db->fetch_field($query, 'numreferences') > 0) {
+    $query = $db->sql_query_prepared("SELECT COUNT(aid) as numreferences FROM attachments WHERE attachname = ?", [$attachment['attachname']]);
+    if ($query && $db->fetch_field($query, 'numreferences') > 0) {
         return;
     }
 
@@ -839,9 +869,10 @@ function _maybe_delete_month_dir(string $attachname, string $uploadspath_abs, ob
     }
 
     $month_dir   = $parts[0];
-    $query_indir = $db->simple_select('attachments', 'COUNT(aid) as indir', "attachname LIKE '" . $db->escape_string_like($month_dir) . "/%'");
+    $like_pattern = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $month_dir) . '/%';
+    $query_indir = $db->sql_query_prepared("SELECT COUNT(aid) as indir FROM attachments WHERE attachname LIKE ?", [$like_pattern]);
 
-    if ($db->fetch_field($query_indir, 'indir') == 0 && @is_dir($uploadspath_abs . '/' . $month_dir)) {
+    if ($query_indir && $db->fetch_field($query_indir, 'indir') == 0 && @is_dir($uploadspath_abs . '/' . $month_dir)) {
         delete_upload_directory($uploadspath_abs . '/' . $month_dir);
     }
 }

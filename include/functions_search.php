@@ -2,6 +2,19 @@
 declare(strict_types=1);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// escape_like_pattern
+// Экранирует только LIKE-wildcard'ы (%, _, \) — для значений, которые пойдут
+// как bind-параметр в sql_query_prepared(). Кавычки экранировать не нужно:
+// это уже делает сам биндинг, в отличие от $db->escape_string_like(), который
+// экранирует ещё и кавычки — и потому не годится для значений-параметров
+// (экранирование продублируется и поломает поиск по словам с апострофами).
+// ─────────────────────────────────────────────────────────────────────────────
+function escape_like_pattern(string $value): string
+{
+    return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // make_searchable_forums
 // ─────────────────────────────────────────────────────────────────────────────
 function make_searchable_forums(int|string $pid = 0, int|string $selitem = 0, int $addselect = 1, string $depth = ''): string
@@ -15,9 +28,10 @@ $pid     = (int)$pid;
 
 
     if (!is_array($pforumcache)) {
-        $q = $db->simple_select('forums', 'pid,disporder,fid,password,name',
-            "linkto='' AND active!=0", ['order_by' => 'pid, disporder']);
-        while ($f = $db->fetch_array($q)) {
+        $q = $db->sql_query_prepared(
+            "SELECT pid,disporder,fid,password,name FROM forums WHERE linkto='' AND active!=0 ORDER BY pid, disporder"
+        );
+        while ($q && ($f = $db->fetch_array($q))) {
             $pforumcache[$f['pid']][$f['disporder']][$f['fid']] = $f;
         }
     }
@@ -178,7 +192,7 @@ function clean_keywords(string $keywords): string
     global $db, $lang;
 
     $keywords = my_strtolower($keywords);
-    $keywords = $db->escape_string_like($keywords);
+    $keywords = escape_like_pattern($keywords);
     $keywords = preg_replace('#\*{2,}#s', '*', $keywords);
     $keywords = str_replace('*', '%', $keywords);
     $keywords = preg_replace('#\s+#s', ' ', $keywords);
@@ -328,6 +342,9 @@ function perform_search_mysql(array $search): array
     $has_author     = !empty(trim($search['author'] ?? ''));
     $subject_lookin = $message_lookin = '';
 
+    $subject_lookin_params = [];
+    $message_lookin_params = [];
+
     if ($keywords) {
         $tfield = match ($db->type) {
             'mysql','mysqli' => 't.subject',
@@ -362,9 +379,11 @@ function perform_search_mysql(array $search): array
                             if (my_strlen($word) < $minsearchword) {
                                 stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
                             }
-                            $subject_lookin .= " {$boolean} {$tfield} LIKE '%{$word}%'";
+                            $subject_lookin .= " {$boolean} {$tfield} LIKE ?";
+                            $subject_lookin_params[] = "%{$word}%";
                             if ($search['postthread'] == 1 || $has_author) {
-                                $message_lookin .= " {$boolean} {$pfield} LIKE '%{$word}%'";
+                                $message_lookin .= " {$boolean} {$pfield} LIKE ?";
+                                $message_lookin_params[] = "%{$word}%";
                             }
                             $boolean = 'AND';
                         }
@@ -374,9 +393,11 @@ function perform_search_mysql(array $search): array
                     if (my_strlen($phrase) < $minsearchword) {
                         stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
                     }
-                    $subject_lookin .= " {$boolean} {$tfield} LIKE '%{$phrase}%'";
+                    $subject_lookin .= " {$boolean} {$tfield} LIKE ?";
+                    $subject_lookin_params[] = "%{$phrase}%";
                     if ($search['postthread'] == 1 || $has_author) {
-                        $message_lookin .= " {$boolean} {$pfield} LIKE '%{$phrase}%'";
+                        $message_lookin .= " {$boolean} {$pfield} LIKE ?";
+                        $message_lookin_params[] = "%{$phrase}%";
                     }
                     $boolean = 'AND';
                 }
@@ -392,9 +413,11 @@ function perform_search_mysql(array $search): array
             if (my_strlen($keywords) < $minsearchword) {
                 stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
             }
-            $subject_lookin = " AND {$tfield} LIKE '%{$keywords}%'";
+            $subject_lookin = " AND {$tfield} LIKE ?";
+            $subject_lookin_params[] = "%{$keywords}%";
             if ($search['postthread'] == 1 || $has_author) {
-                $message_lookin = " AND {$pfield} LIKE '%{$keywords}%'";
+                $message_lookin = " AND {$pfield} LIKE ?";
+                $message_lookin_params[] = "%{$keywords}%";
             }
         }
     }
@@ -406,14 +429,14 @@ function perform_search_mysql(array $search): array
         $author  = my_strtolower($search['author']);
         if (!empty($search['matchusername'])) {
             $user = get_user_by_username($author);
-            if ($user) $userids[] = $user['id'];
+            if ($user) $userids[] = (int)$user['id'];
         } else {
             $field = match ($db->type) {
                 'mysql','mysqli' => 'username',
                 default          => 'LOWER(username)',
             };
-            $q = $db->simple_select('users', 'id', "{$field} LIKE '%" . $db->escape_string_like($author) . "%'");
-            while ($u = $db->fetch_array($q)) $userids[] = $u['id'];
+            $q = $db->sql_query_prepared("SELECT id FROM users WHERE {$field} LIKE ?", ['%' . escape_like_pattern($author) . '%']);
+            while ($q && ($u = $db->fetch_array($q))) $userids[] = (int)$u['id'];
         }
         if (empty($userids)) stderr($lang->search['error_nosearchresults']);
         $uid_list       = implode(',', $userids);
@@ -423,29 +446,38 @@ function perform_search_mysql(array $search): array
 
     // Date
     $post_datecut = $thread_datecut = '';
+    $post_datecut_params = $thread_datecut_params = [];
     if (!empty($search['postdate'])) {
         $op        = ($search['pddir'] ?? 1) == 0 ? '<=' : '>=';
         $datelimit = TIMENOW - 86400 * (int)$search['postdate'];
-        $post_datecut   = " AND p.dateline {$op} '{$datelimit}'";
-        $thread_datecut = " AND t.dateline {$op} '{$datelimit}'";
+        $post_datecut   = " AND p.dateline {$op} ?";
+        $post_datecut_params[] = $datelimit;
+        $thread_datecut = " AND t.dateline {$op} ?";
+        $thread_datecut_params[] = $datelimit;
     }
     if (!empty($search['postdate_from'])) {
-        $post_datecut   .= " AND p.dateline >= '" . (int)$search['postdate_from'] . "'";
-        $thread_datecut .= " AND t.dateline >= '" . (int)$search['postdate_from'] . "'";
+        $post_datecut   .= " AND p.dateline >= ?";
+        $post_datecut_params[] = (int)$search['postdate_from'];
+        $thread_datecut .= " AND t.dateline >= ?";
+        $thread_datecut_params[] = (int)$search['postdate_from'];
     }
     if (!empty($search['postdate_to'])) {
-        $post_datecut   .= " AND p.dateline <= '" . (int)$search['postdate_to'] . "'";
-        $thread_datecut .= " AND t.dateline <= '" . (int)$search['postdate_to'] . "'";
+        $post_datecut   .= " AND p.dateline <= ?";
+        $post_datecut_params[] = (int)$search['postdate_to'];
+        $thread_datecut .= " AND t.dateline <= ?";
+        $thread_datecut_params[] = (int)$search['postdate_to'];
     }
 
     // Replies
     $thread_replycut = '';
+    $thread_replycut_params = [];
     if (isset($search['numreplies']) && $search['numreplies'] !== '' && !empty($search['findthreadst'])) {
         $op = (int)$search['findthreadst'] === 1 ? '>=' : '<=';
-        $thread_replycut = " AND t.replies {$op} '" . (int)$search['numreplies'] . "'";
+        $thread_replycut = " AND t.replies {$op} ?";
+        $thread_replycut_params[] = (int)$search['numreplies'];
     }
 
-    // Prefix
+    // Prefix (значения уже (int)-кастованы при сборке массива — безопасно оставить как литералы в IN(...))
     $thread_prefixcut = '';
     $prefixlist = [];
     if (!empty($search['threadprefix']) && $search['threadprefix'][0] !== 'any') {
@@ -457,7 +489,7 @@ function perform_search_mysql(array $search): array
         $thread_prefixcut = ' AND t.prefix IN (' . implode(',', $prefixlist) . ')';
     }
 
-    // Forums
+    // Forums (fid'ы тоже (int)-кастованы выше — безопасно оставить как литералы)
     $forumin = '';
     if (!empty($search['forums']) && (!is_array($search['forums']) || $search['forums'][0] !== 'all')) {
         if (!is_array($search['forums'])) $search['forums'] = [(int)$search['forums']];
@@ -476,13 +508,15 @@ function perform_search_mysql(array $search): array
 
     // Permissions
     $permsql    = '';
+    $permsql_params = [];
     $onlyusfids = [];
     $gp         = forum_permissions();
     foreach ($gp as $fid => $fp) {
         if (isset($fp['canonlyviewownthreads']) && $fp['canonlyviewownthreads'] == 1) $onlyusfids[] = $fid;
     }
     if ($onlyusfids) {
-        $permsql .= 'AND ((t.fid IN(' . implode(',', $onlyusfids) . ") AND t.uid='{$CURUSER['id']}') OR t.fid NOT IN(" . implode(',', $onlyusfids) . '))';
+        $permsql .= 'AND ((t.fid IN(' . implode(',', $onlyusfids) . ') AND t.uid=?) OR t.fid NOT IN(' . implode(',', $onlyusfids) . '))';
+        $permsql_params[] = (int)$CURUSER['id'];
     }
     $uf = get_unsearchable_forums(); if ($uf) $permsql .= " AND t.fid NOT IN ({$uf})";
 
@@ -513,7 +547,11 @@ function perform_search_mysql(array $search): array
     $unapproved_where_p = get_visible_where('p');
 
     $tidsql = '';
-    if (!empty($search['tid'])) $tidsql = " AND t.tid='" . (int)$search['tid'] . "'";
+    $tidsql_params = [];
+    if (!empty($search['tid'])) {
+        $tidsql = " AND t.tid=?";
+        $tidsql_params[] = (int)$search['tid'];
+    }
 
     $limitsql = '';
     $threads = $posts = $firstposts = [];
@@ -522,21 +560,23 @@ function perform_search_mysql(array $search): array
     if ($search['postthread'] == 1 || $has_author) {
 
         if (empty($search['tid'])) {
-            $q = $db->sql_query("
+            $params = [...$thread_datecut_params, ...$thread_replycut_params, ...$permsql_params, ...$subject_lookin_params];
+            $q = $db->sql_query_prepared("
                 SELECT t.tid, t.firstpost
                 FROM threads t
                 WHERE 1=1 {$thread_datecut} {$thread_replycut} {$thread_prefixcut}
                       {$forumin} {$thread_usersql} {$permsql} {$visiblesql}
                       AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%'
                       {$subject_lookin} {$limitsql}
-            ");
-            while ($t = $db->fetch_array($q)) {
+            ", $params);
+            while ($q && ($t = $db->fetch_array($q))) {
                 $threads[$t['tid']] = $t['tid'];
                 if ($t['firstpost']) $posts[$t['tid']] = $t['firstpost'];
             }
         }
 
-        $q = $db->sql_query("
+        $params = [...$post_datecut_params, ...$thread_replycut_params, ...$permsql_params, ...$tidsql_params, ...$message_lookin_params];
+        $q = $db->sql_query_prepared("
             SELECT p.pid, p.tid
             FROM posts p
             LEFT JOIN threads t ON (t.tid = p.tid)
@@ -545,8 +585,8 @@ function perform_search_mysql(array $search): array
                   {$visiblesql} {$post_visiblesql}
                   AND ({$unapproved_where_t}) AND ({$unapproved_where_p})
                   AND t.closed NOT LIKE 'moved|%' {$message_lookin} {$limitsql}
-        ");
-        while ($p = $db->fetch_array($q)) {
+        ", $params);
+        while ($q && ($p = $db->fetch_array($q))) {
             $posts[$p['pid']]   = $p['pid'];
             $threads[$p['tid']] = $p['tid'];
         }
@@ -560,14 +600,15 @@ function perform_search_mysql(array $search): array
 
     } else {
         // Только subject
-        $q = $db->sql_query("
+        $params = [...$thread_datecut_params, ...$thread_replycut_params, ...$permsql_params, ...$subject_lookin_params];
+        $q = $db->sql_query_prepared("
             SELECT t.tid, t.firstpost
             FROM threads t
             WHERE 1=1 {$thread_datecut} {$thread_replycut} {$thread_prefixcut}
                   {$forumin} {$thread_usersql} {$permsql} {$visiblesql}
                   {$subject_lookin} {$limitsql}
-        ");
-        while ($t = $db->fetch_array($q)) {
+        ", $params);
+        while ($q && ($t = $db->fetch_array($q))) {
             $threads[$t['tid']] = $t['tid'];
             if ($t['firstpost']) $firstposts[$t['tid']] = $t['firstpost'];
         }
@@ -578,8 +619,8 @@ function perform_search_mysql(array $search): array
         $firstposts = implode(',', $firstposts);
 
         if ($firstposts) {
-            $q = $db->simple_select('posts', 'pid', "pid IN ({$firstposts}) {$plain_post_visiblesql} {$limitsql}");
-            while ($p = $db->fetch_array($q)) $posts[$p['pid']] = $p['pid'];
+            $q = $db->sql_query_prepared("SELECT pid FROM posts WHERE pid IN ({$firstposts}) {$plain_post_visiblesql} {$limitsql}");
+            while ($q && ($p = $db->fetch_array($q))) $posts[$p['pid']] = $p['pid'];
             $posts = implode(',', $posts);
         }
     }
@@ -637,9 +678,13 @@ function perform_search_mysql_ft(array $search): array
             stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
         }
 
-        $kw_esc         = $db->escape_string($keywords);
-        $message_lookin = "AND MATCH(message) AGAINST('{$kw_esc}' IN BOOLEAN MODE)";
-        $subject_lookin = "AND MATCH(subject) AGAINST('{$kw_esc}' IN BOOLEAN MODE)";
+        $message_lookin = "AND MATCH(message) AGAINST(? IN BOOLEAN MODE)";
+        $subject_lookin = "AND MATCH(subject) AGAINST(? IN BOOLEAN MODE)";
+        $subject_lookin_params = [$keywords];
+        $message_lookin_params = [$keywords];
+    } else {
+        $subject_lookin_params = [];
+        $message_lookin_params = [];
     }
 
     // Author
@@ -650,10 +695,10 @@ function perform_search_mysql_ft(array $search): array
 
         if (!empty($search['matchusername'])) {
             $user = get_user_by_username($author);
-            if ($user) $userids[] = $user['id'];
+            if ($user) $userids[] = (int)$user['id'];
         } else {
-            $q = $db->simple_select('users', 'id', "username LIKE '%" . $db->escape_string_like($author) . "%'");
-            while ($u = $db->fetch_array($q)) $userids[] = $u['id'];
+            $q = $db->sql_query_prepared("SELECT id FROM users WHERE username LIKE ?", ['%' . escape_like_pattern($author) . '%']);
+            while ($q && ($u = $db->fetch_array($q))) $userids[] = (int)$u['id'];
         }
 
         if (empty($userids)) stderr($lang->search['error_nosearchresults']);
@@ -665,26 +710,35 @@ function perform_search_mysql_ft(array $search): array
 
     // Date
     $post_datecut = $thread_datecut = '';
+    $post_datecut_params = $thread_datecut_params = [];
     if (!empty($search['postdate'])) {
         $op        = ($search['pddir'] ?? 1) == 0 ? '<=' : '>=';
         $datelimit = TIMENOW - 86400 * (int)$search['postdate'];
-        $post_datecut   = " AND p.dateline {$op} '{$datelimit}'";
-        $thread_datecut = " AND t.dateline {$op} '{$datelimit}'";
+        $post_datecut   = " AND p.dateline {$op} ?";
+        $post_datecut_params[] = $datelimit;
+        $thread_datecut = " AND t.dateline {$op} ?";
+        $thread_datecut_params[] = $datelimit;
     }
     if (!empty($search['postdate_from'])) {
-        $post_datecut   .= " AND p.dateline >= '" . (int)$search['postdate_from'] . "'";
-        $thread_datecut .= " AND t.dateline >= '" . (int)$search['postdate_from'] . "'";
+        $post_datecut   .= " AND p.dateline >= ?";
+        $post_datecut_params[] = (int)$search['postdate_from'];
+        $thread_datecut .= " AND t.dateline >= ?";
+        $thread_datecut_params[] = (int)$search['postdate_from'];
     }
     if (!empty($search['postdate_to'])) {
-        $post_datecut   .= " AND p.dateline <= '" . (int)$search['postdate_to'] . "'";
-        $thread_datecut .= " AND t.dateline <= '" . (int)$search['postdate_to'] . "'";
+        $post_datecut   .= " AND p.dateline <= ?";
+        $post_datecut_params[] = (int)$search['postdate_to'];
+        $thread_datecut .= " AND t.dateline <= ?";
+        $thread_datecut_params[] = (int)$search['postdate_to'];
     }
 
     // Replies
     $thread_replycut = '';
+    $thread_replycut_params = [];
     if (!empty($search['numreplies']) && !empty($search['findthreadst'])) {
         $op = (int)$search['findthreadst'] === 1 ? '>=' : '<=';
-        $thread_replycut = " AND t.replies {$op} '" . (int)$search['numreplies'] . "'";
+        $thread_replycut = " AND t.replies {$op} ?";
+        $thread_replycut_params[] = (int)$search['numreplies'];
     }
 
     // Prefix
@@ -718,13 +772,15 @@ function perform_search_mysql_ft(array $search): array
 
     // Permissions
     $permsql    = '';
+    $permsql_params = [];
     $onlyusfids = [];
     $gp         = forum_permissions();
     foreach ($gp as $fid => $fp) {
         if (isset($fp['canonlyviewownthreads']) && $fp['canonlyviewownthreads'] == 1) $onlyusfids[] = $fid;
     }
     if ($onlyusfids) {
-        $permsql .= 'AND ((t.fid IN(' . implode(',', $onlyusfids) . ") AND t.uid='{$CURUSER['id']}') OR t.fid NOT IN(" . implode(',', $onlyusfids) . '))';
+        $permsql .= 'AND ((t.fid IN(' . implode(',', $onlyusfids) . ') AND t.uid=?) OR t.fid NOT IN(' . implode(',', $onlyusfids) . '))';
+        $permsql_params[] = (int)$CURUSER['id'];
     }
     $uf = get_unsearchable_forums(); if ($uf) $permsql .= " AND t.fid NOT IN ({$uf})";
     $ia = get_inactive_forums();     if ($ia) $permsql .= " AND t.fid NOT IN ({$ia})";
@@ -756,7 +812,11 @@ function perform_search_mysql_ft(array $search): array
     $unapproved_where_p = get_visible_where('p');
 
     $tidsql = '';
-    if (!empty($search['tid'])) $tidsql = " AND t.tid='" . (int)$search['tid'] . "'";
+    $tidsql_params = [];
+    if (!empty($search['tid'])) {
+        $tidsql = " AND t.tid=?";
+        $tidsql_params[] = (int)$search['tid'];
+    }
 
     $limitsql = '';
 
@@ -764,21 +824,23 @@ function perform_search_mysql_ft(array $search): array
 
     if ($search['postthread'] == 1) {
         if (empty($search['tid'])) {
-            $q = $db->sql_query("
+            $params = [...$thread_datecut_params, ...$thread_replycut_params, ...$permsql_params, ...$subject_lookin_params];
+            $q = $db->sql_query_prepared("
                 SELECT t.tid, t.firstpost
                 FROM threads t
                 WHERE 1=1 {$thread_datecut} {$thread_replycut} {$thread_prefixcut}
                       {$forumin} {$thread_usersql} {$permsql} {$visiblesql}
                       AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%'
                       {$subject_lookin} {$limitsql}
-            ");
-            while ($t = $db->fetch_array($q)) {
+            ", $params);
+            while ($q && ($t = $db->fetch_array($q))) {
                 $threads[$t['tid']] = $t['tid'];
                 if ($t['firstpost']) $posts[$t['tid']] = $t['firstpost'];
             }
         }
 
-        $q = $db->sql_query("
+        $params = [...$post_datecut_params, ...$thread_replycut_params, ...$permsql_params, ...$tidsql_params, ...$message_lookin_params];
+        $q = $db->sql_query_prepared("
             SELECT p.pid, p.tid
             FROM posts p
             LEFT JOIN threads t ON (t.tid = p.tid)
@@ -787,8 +849,8 @@ function perform_search_mysql_ft(array $search): array
                   {$post_visiblesql} {$visiblesql}
                   AND ({$unapproved_where_t}) AND {$unapproved_where_p}
                   AND t.closed NOT LIKE 'moved|%' {$message_lookin} {$limitsql}
-        ");
-        while ($p = $db->fetch_array($q)) {
+        ", $params);
+        while ($q && ($p = $db->fetch_array($q))) {
             $posts[$p['pid']]   = $p['pid'];
             $threads[$p['tid']] = $p['tid'];
         }
@@ -799,14 +861,15 @@ function perform_search_mysql_ft(array $search): array
         $posts   = implode(',', $posts);
 
     } else {
-        $q = $db->sql_query("
+        $params = [...$thread_datecut_params, ...$thread_replycut_params, ...$permsql_params, ...$subject_lookin_params];
+        $q = $db->sql_query_prepared("
             SELECT t.tid, t.firstpost
             FROM threads t
             WHERE 1=1 {$thread_datecut} {$thread_replycut} {$thread_prefixcut}
                   {$forumin} {$thread_usersql} {$permsql} {$visiblesql}
                   {$subject_lookin} {$limitsql}
-        ");
-        while ($t = $db->fetch_array($q)) {
+        ", $params);
+        while ($q && ($t = $db->fetch_array($q))) {
             $threads[$t['tid']] = $t['tid'];
             if ($t['firstpost']) $firstposts[$t['tid']] = $t['firstpost'];
 			
@@ -818,8 +881,8 @@ function perform_search_mysql_ft(array $search): array
         $firstposts = implode(',', $firstposts);
 
         if ($firstposts) {
-            $q = $db->simple_select('posts', 'pid', "pid IN ({$firstposts}) {$plain_post_visiblesql} {$limitsql}");
-            while ($p = $db->fetch_array($q)) $posts[$p['pid']] = $p['pid'];
+            $q = $db->sql_query_prepared("SELECT pid FROM posts WHERE pid IN ({$firstposts}) {$plain_post_visiblesql} {$limitsql}");
+            while ($q && ($p = $db->fetch_array($q))) $posts[$p['pid']] = $p['pid'];
             $posts = implode(',', $posts);
         }
     }
@@ -845,7 +908,8 @@ function privatemessage_perform_search_mysql(array $search): array
 
     $minsearchword = 3;
     $subject_lookin = $message_lookin = '';
-    $searchsql = "uid='{$CURUSER['id']}'";
+    $searchsql = "uid=?";
+    $searchsql_params = [(int)$CURUSER['id']];
 
     if ($keywords) {
         $keywords_padded = " {$keywords} ";
@@ -859,6 +923,8 @@ function privatemessage_perform_search_mysql(array $search): array
 
             $keywords_exp = explode('"', $keywords_padded);
             $inquote = false; $boolean = '';
+            $subject_lookin_params = [];
+            $message_lookin_params = [];
 
             foreach ($keywords_exp as $phrase) {
                 if (!$inquote) {
@@ -871,16 +937,28 @@ function privatemessage_perform_search_mysql(array $search): array
                             $boolean = $word;
                         } else {
                             if (my_strlen($word) < $minsearchword) stderr('error_minsearchlength');
-                            if ($search['subject'] == 1) $subject_lookin .= " {$boolean} {$sfield} LIKE '%{$word}%'";
-                            if ($search['message'] == 1) $message_lookin .= " {$boolean} {$mfield} LIKE '%{$word}%'";
+                            if ($search['subject'] == 1) {
+                                $subject_lookin .= " {$boolean} {$sfield} LIKE ?";
+                                $subject_lookin_params[] = "%{$word}%";
+                            }
+                            if ($search['message'] == 1) {
+                                $message_lookin .= " {$boolean} {$mfield} LIKE ?";
+                                $message_lookin_params[] = "%{$word}%";
+                            }
                             $boolean = 'AND';
                         }
                     }
                 } else {
                     $phrase = str_replace(['+','-','*'], '', trim($phrase));
                     if (my_strlen($phrase) < $minsearchword) stderr('error_minsearchlength');
-                    if ($search['subject'] == 1) $subject_lookin .= " {$boolean} {$sfield} LIKE '%{$phrase}%'";
-                    if ($search['message'] == 1) $message_lookin .= " {$boolean} {$mfield} LIKE '%{$phrase}%'";
+                    if ($search['subject'] == 1) {
+                        $subject_lookin .= " {$boolean} {$sfield} LIKE ?";
+                        $subject_lookin_params[] = "%{$phrase}%";
+                    }
+                    if ($search['message'] == 1) {
+                        $message_lookin .= " {$boolean} {$mfield} LIKE ?";
+                        $message_lookin_params[] = "%{$phrase}%";
+                    }
                     $boolean = 'AND';
                 }
                 $inquote = !$inquote;
@@ -888,15 +966,21 @@ function privatemessage_perform_search_mysql(array $search): array
             if ($search['subject'] == 1) $subject_lookin .= ')';
             if ($search['message'] == 1) $message_lookin .= ')';
             $searchsql .= "{$subject_lookin} {$message_lookin}";
+            array_push($searchsql_params, ...$subject_lookin_params, ...$message_lookin_params);
         } else {
             $keywords = str_replace('"', '', trim($keywords));
             if (my_strlen($keywords) < $minsearchword) stderr('error_minsearchlength');
+            $like_value = "%{$keywords}%";
             if ($search['subject'] == 1 && $search['message'] == 1) {
-                $searchsql .= " AND ({$sfield} LIKE '%{$keywords}%' OR {$mfield} LIKE '%{$keywords}%')";
+                $searchsql .= " AND ({$sfield} LIKE ? OR {$mfield} LIKE ?)";
+                $searchsql_params[] = $like_value;
+                $searchsql_params[] = $like_value;
             } elseif ($search['subject'] == 1) {
-                $searchsql .= " AND {$sfield} LIKE '%{$keywords}%'";
+                $searchsql .= " AND {$sfield} LIKE ?";
+                $searchsql_params[] = $like_value;
             } elseif ($search['message'] == 1) {
-                $searchsql .= " AND {$mfield} LIKE '%{$keywords}%'";
+                $searchsql .= " AND {$mfield} LIKE ?";
+                $searchsql_params[] = $like_value;
             }
         }
     }
@@ -905,8 +989,8 @@ function privatemessage_perform_search_mysql(array $search): array
         $userids = [];
         $sender  = my_strtolower($search['sender']);
         $field   = match ($db->type) { 'mysql','mysqli' => 'username', default => 'LOWER(username)' };
-        $q = $db->simple_select('users', 'id', "{$field} LIKE '%" . $db->escape_string_like($sender) . "%'");
-        while ($u = $db->fetch_array($q)) $userids[] = $u['id'];
+        $q = $db->sql_query_prepared("SELECT id FROM users WHERE {$field} LIKE ?", ['%' . escape_like_pattern($sender) . '%']);
+        while ($q && ($u = $db->fetch_array($q))) $userids[] = (int)$u['id'];
         if (empty($userids)) stderr($lang->search['error_nosearchresults']);
         $searchsql .= ' AND fromid IN (' . implode(',', $userids) . ')';
     }
@@ -929,8 +1013,8 @@ function privatemessage_perform_search_mysql(array $search): array
     }
 
     $pms = [];
-    $q   = $db->simple_select('privatemessages', 'pmid', $searchsql);
-    while ($pm = $db->fetch_array($q)) $pms[$pm['pmid']] = $pm['pmid'];
+    $q   = $db->sql_query_prepared("SELECT pmid FROM privatemessages WHERE {$searchsql}", $searchsql_params);
+    while ($q && ($pm = $db->fetch_array($q))) $pms[$pm['pmid']] = $pm['pmid'];
 
     if (empty($pms)) stderr($lang->search['error_nosearchresults']);
 

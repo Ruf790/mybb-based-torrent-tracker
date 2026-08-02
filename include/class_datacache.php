@@ -81,9 +81,6 @@ class datacache
     /** Cumulative time spent in handler calls (seconds). */
     public float $call_time = 0.0;
 
-    /** Last rendered debug block. */
-    public string $cache_debug = '';
-
     // Internal state for build helpers
     private array $moderators                    = [];
     private array $built_moderators              = [0 => []];
@@ -119,8 +116,8 @@ class datacache
 
         // DB-only mode: pre-load the whole datacache table once
         if ($this->handler === null) {
-            $query = $db->simple_select('datacache', 'title,cache');
-            while ($row = $db->fetch_array($query)) {
+            $query = $db->sql_query_prepared("SELECT title, cache FROM datacache");
+            while ($query && ($row = $db->fetch_array($query))) {
                 $this->cache[$row['title']] = native_unserialize($row['cache']);
             }
         }
@@ -155,7 +152,7 @@ class datacache
         $data = false;
 
         if ($this->handler instanceof CacheHandlerInterface) {
-            $data = $this->handler->fetch($name);
+            $data = $this->timedHandlerCall('get', $name, fn() => $this->handler->fetch($name));
 
             if ($data === false) {
                 // Rebuild from DB, then push back to handler
@@ -182,10 +179,10 @@ class datacache
         $this->cache[$name] = $contents;
 
         // Always persist to DB as the authoritative store
-        $db->replace_query('datacache', [
-            'title' => $db->escape_string($name),
-            'cache' => $db->escape_string(my_serialize($contents)),
-        ], '', false);
+        $db->sql_query_prepared(
+            "REPLACE INTO datacache SET `title` = ?, `cache` = ?",
+            [$name, my_serialize($contents)]
+        );
 
         if ($this->handler instanceof CacheHandlerInterface) {
             $this->timedHandlerCall('update', $name, fn() => $this->handler->put($name, $contents));
@@ -201,8 +198,8 @@ class datacache
     {
         global $db, $mybb, $cache;
 
-        $dbname = $db->escape_string($name);
-        $where  = "title = '{$dbname}'";
+        $where  = "title = ?";
+        $params = [$name];
 
         if ($this->handler instanceof CacheHandlerInterface) {
             $this->timedHandlerCall('delete', $name, fn() => $this->handler->delete($name));
@@ -219,12 +216,13 @@ class datacache
                 }
             }
 
-            $ldbname = strtr($dbname, ['%' => '=%', '=' => '==', '_' => '=_']);
-            $where  .= " OR title LIKE '{$ldbname}=_%' ESCAPE '='";
+            $like_pattern = strtr($name, ['%' => '=%', '=' => '==', '_' => '=_']) . '=_%';
+            $where       .= " OR title LIKE ? ESCAPE '='";
+            $params[]     = $like_pattern;
 
             if ($this->handler instanceof CacheHandlerInterface) {
-                $query = $db->simple_select('datacache', 'title', $where);
-                while ($row = $db->fetch_array($query)) {
+                $query = $db->sql_query_prepared("SELECT title FROM datacache WHERE {$where}", $params);
+                while ($query && ($row = $db->fetch_array($query))) {
                     $names[$row['title']] = 0;
                 }
 
@@ -243,7 +241,7 @@ class datacache
             }
         }
 
-        $db->delete_query('datacache', $where);
+        $db->sql_query_prepared("DELETE FROM datacache WHERE {$where}", $params);
     }
 
     /** Return the byte-size of a named entry (or the whole table). */
@@ -259,8 +257,8 @@ class datacache
         }
 
         if ($name !== '') {
-            $query = $db->simple_select('datacache', 'cache', "title='{$name}'");
-            return strlen((string)$db->fetch_field($query, 'cache'));
+            $query = $db->sql_query_prepared("SELECT cache FROM datacache WHERE title = ?", [$name]);
+            return $query ? strlen((string)$db->fetch_field($query, 'cache')) : 0;
         }
 
         return (int)$db->fetch_size('datacache');
@@ -272,12 +270,10 @@ class datacache
     {
         global $db;
 
-        $query     = $db->simple_select('tasks', 'nextrun', 'enabled=1', [
-            'order_by'  => 'nextrun',
-            'order_dir' => 'asc',
-            'limit'     => 1,
-        ]);
-        $next_task = $db->fetch_array($query);
+        $query = $db->sql_query_prepared(
+            "SELECT nextrun FROM tasks WHERE enabled = 1 ORDER BY nextrun ASC LIMIT 1"
+        );
+        $next_task = $query ? $db->fetch_array($query) : null;
 
         $task_cache = $this->read('tasks');
         if (!is_array($task_cache)) {
@@ -294,8 +290,8 @@ class datacache
         global $db;
 
         $banned_ips = [];
-        $query = $db->simple_select('banfilters', 'fid,filter', 'type=1');
-        while ($row = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT fid, filter FROM banfilters WHERE type = 1");
+        while ($query && ($row = $db->fetch_array($query))) {
             $banned_ips[$row['fid']] = $row;
         }
         $this->update('bannedips', $banned_ips);
@@ -306,8 +302,8 @@ class datacache
         global $db;
 
         $banned_emails = [];
-        $query = $db->simple_select('banfilters', 'fid,filter', "type='3'");
-        while ($row = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT fid, filter FROM banfilters WHERE type = '3'");
+        while ($query && ($row = $db->fetch_array($query))) {
             $banned_emails[$row['fid']] = $row;
         }
         $this->update('bannedemails', $banned_emails);
@@ -318,8 +314,8 @@ class datacache
         global $db;
 
         $types = [];
-        $query = $db->simple_select('attachtypes', '*', 'enabled=1');
-        while ($type = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT * FROM attachtypes WHERE enabled = 1");
+        while ($query && ($type = $db->fetch_array($query))) {
             $type['extension'] = my_strtolower($type['extension']);
             $types[$type['extension']] = $type;
         }
@@ -331,8 +327,8 @@ class datacache
         global $db;
 
         $smilies = [];
-        $query   = $db->sql_query('SELECT stext, spath FROM smilies ORDER BY sorder, stitle');
-        while ($smilie = $db->fetch_array($query)) {
+        $query   = $db->sql_query_prepared('SELECT stext, spath FROM smilies ORDER BY sorder, stitle');
+        while ($query && ($smilie = $db->fetch_array($query))) {
             $smilies[$smilie['stext']] = $smilie['spath'];
         }
         $this->update('smilies', $smilies);
@@ -343,8 +339,8 @@ class datacache
         global $db;
 
         $badwords = [];
-        $query    = $db->simple_select('badwords', '*');
-        while ($badword = $db->fetch_array($query)) {
+        $query    = $db->sql_query_prepared("SELECT * FROM badwords");
+        while ($query && ($badword = $db->fetch_array($query))) {
             $badwords[$badword['bid']] = $badword;
         }
         $this->update('badwords', $badwords);
@@ -355,8 +351,8 @@ class datacache
         global $db;
 
         $groups = [];
-        $query  = $db->simple_select('usergroups');
-        while ($g = $db->fetch_array($query)) {
+        $query  = $db->sql_query_prepared("SELECT * FROM usergroups");
+        while ($query && ($g = $db->fetch_array($query))) {
             $groups[$g['gid']] = $g;
         }
         $this->update('usergroups', $groups);
@@ -379,8 +375,8 @@ class datacache
             $this->forum_permissions_forum_cache[$forum['pid']][$forum['disporder']][$forum['fid']] = $forum;
         }
 
-        $query = $db->simple_select('forumpermissions');
-        while ($perm = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT * FROM forumpermissions");
+        while ($query && ($perm = $db->fetch_array($query))) {
             $this->forum_permissions[$perm['fid']][$perm['gid']] = $perm;
         }
 
@@ -408,26 +404,26 @@ class datacache
         }
 
         // Individual moderators
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT m.*, u.username, u.usergroup, u.displaygroup
             FROM moderators m
             LEFT JOIN users u ON m.id = u.id
             WHERE m.isgroup = '0'
             ORDER BY u.username
         ");
-        while ($mod = $db->fetch_array($query)) {
+        while ($query && ($mod = $db->fetch_array($query))) {
             $this->moderators[$mod['fid']]['users'][$mod['id']] = $mod;
         }
 
         // Group moderators
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT m.*, u.title
             FROM moderators m
             LEFT JOIN usergroups u ON m.id = u.gid
             WHERE m.isgroup = '1'
             ORDER BY u.title
         ");
-        while ($mod = $db->fetch_array($query)) {
+        while ($query && ($mod = $db->fetch_array($query))) {
             $this->moderators[$mod['fid']]['usergroups'][$mod['id']] = $mod;
         }
 
@@ -450,8 +446,8 @@ class datacache
     {
         global $db;
 
-        $query = $db->simple_select('users', 'COUNT(id) AS awaitingusers', "ustatus='pending'");
-        $count = (int)$db->fetch_field($query, 'awaitingusers');
+        $query = $db->sql_query_prepared("SELECT COUNT(id) AS awaitingusers FROM users WHERE ustatus = 'pending'");
+        $count = $query ? (int)$db->fetch_field($query, 'awaitingusers') : 0;
 
         $this->update('awaitingactivation', [
             'users' => $count,
@@ -466,8 +462,8 @@ class datacache
         $exclude = ['threads', 'posts', 'lastpost', 'lastposter', 'lastposttid', 'lastposteruid', 'lastpostsubject'];
         $forums  = [];
 
-        $query = $db->simple_select('forums', '*', '', ['order_by' => 'pid,disporder']);
-        while ($forum = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT * FROM forums ORDER BY pid,disporder");
+        while ($query && ($forum = $db->fetch_array($query))) {
             foreach ($exclude as $key) {
                 unset($forum[$key]);
             }
@@ -499,26 +495,26 @@ class datacache
 
         $since = TIMENOW - 86400;
 
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT u.id, u.username, COUNT(*) AS poststoday
             FROM posts p
             LEFT JOIN users u ON p.uid = u.id
-            WHERE p.dateline > {$since} AND p.visible = 1
+            WHERE p.dateline > ? AND p.visible = 1
             GROUP BY u.id, u.username
             ORDER BY poststoday DESC
-        ");
+        ", [$since]);
 
         $topposter  = [];
         $most_posts = 0;
-        while ($user = $db->fetch_array($query)) {
+        while ($query && ($user = $db->fetch_array($query))) {
             if ((int)$user['poststoday'] > $most_posts) {
                 $most_posts = (int)$user['poststoday'];
                 $topposter  = $user;
             }
         }
 
-        $query   = $db->simple_select('users', 'COUNT(id) AS posters', 'postnum>0');
-        $posters = (int)$db->fetch_field($query, 'posters');
+        $query   = $db->sql_query_prepared("SELECT COUNT(id) AS posters FROM users WHERE postnum > 0");
+        $posters = $query ? (int)$db->fetch_field($query, 'posters') : 0;
 
         $this->update('statistics', [
             'time'         => TIMENOW,
@@ -532,18 +528,16 @@ class datacache
     {
         global $db;
 
-        $query  = $db->simple_select('reportedcontent', "COUNT(rid) AS unreadcount", "reportstatus='0'");
-        $unread = (int)$db->fetch_field($query, 'unreadcount');
+        $query  = $db->sql_query_prepared("SELECT COUNT(rid) AS unreadcount FROM reportedcontent WHERE reportstatus = '0'");
+        $unread = $query ? (int)$db->fetch_field($query, 'unreadcount') : 0;
 
-        $query = $db->simple_select('reportedcontent', 'COUNT(rid) AS reportcount');
-        $total = (int)$db->fetch_field($query, 'reportcount');
+        $query = $db->sql_query_prepared("SELECT COUNT(rid) AS reportcount FROM reportedcontent");
+        $total = $query ? (int)$db->fetch_field($query, 'reportcount') : 0;
 
-        $query    = $db->simple_select('reportedcontent', 'dateline', "reportstatus='0'", [
-            'order_by'  => 'dateline',
-            'order_dir' => 'DESC',
-            'limit'     => 1,
-        ]);
-        $dateline = (int)$db->fetch_field($query, 'dateline');
+        $query    = $db->sql_query_prepared(
+            "SELECT dateline FROM reportedcontent WHERE reportstatus = '0' ORDER BY dateline DESC LIMIT 1"
+        );
+        $dateline = $query ? (int)$db->fetch_field($query, 'dateline') : 0;
 
         $this->update('reportedcontent', [
             'unread'       => $unread,
@@ -556,8 +550,8 @@ class datacache
     {
         global $db;
 
-        $query      = $db->simple_select('mailqueue', 'COUNT(*) AS queue_size');
-        $queue_size = (int)$db->fetch_field($query, 'queue_size');
+        $query      = $db->sql_query_prepared("SELECT COUNT(*) AS queue_size FROM mailqueue");
+        $queue_size = $query ? (int)$db->fetch_field($query, 'queue_size') : 0;
 
         $mailqueue = $this->read('mailqueue');
         if (!is_array($mailqueue)) {
@@ -579,8 +573,8 @@ class datacache
         global $db;
 
         $news  = [];
-        $query = $db->sql_query('SELECT id,userid,added,body,title FROM news ORDER BY added DESC LIMIT 1');
-        while ($row = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared('SELECT id,userid,added,body,title FROM news ORDER BY added DESC LIMIT 1');
+        while ($query && ($row = $db->fetch_array($query))) {
             $news[$row['id']] = $row;
         }
         $this->update('news', $news);
@@ -628,14 +622,14 @@ class datacache
         $tomorrow  = my_datee('j-n', $now + 86400, '', 0);
         $yesterday = my_datee('j-n', $now - 86400, '', 0);
 
-        $query = $db->simple_select(
-            'users',
-            'id,username,usergroup,displaygroup,birthday,birthdayprivacy',
-            "birthday LIKE '{$today}-%' OR birthday LIKE '{$yesterday}-%' OR birthday LIKE '{$tomorrow}-%'"
+        $query = $db->sql_query_prepared(
+            "SELECT id,username,usergroup,displaygroup,birthday,birthdayprivacy FROM users
+             WHERE birthday LIKE ? OR birthday LIKE ? OR birthday LIKE ?",
+            ["{$today}-%", "{$yesterday}-%", "{$tomorrow}-%"]
         );
 
         $birthdays = [];
-        while ($bday = $db->fetch_array($query)) {
+        while ($query && ($bday = $db->fetch_array($query))) {
             $parts = explode('-', $bday['birthday']);
             array_pop($parts); // strip year
             $key = implode('-', $parts);
@@ -660,14 +654,12 @@ class datacache
         $fd = [];
 
         // Active announcements
-        $query = $db->simple_select(
-          'announcements',
-          'fid',
-          "type IN ('forum', 'global') AND (enddate = '0' OR enddate > '" . TIMENOW . "')",
-          ['order_by' => 'id']
+        $query = $db->sql_query_prepared(
+            "SELECT fid FROM announcements WHERE type IN ('forum', 'global') AND (enddate = '0' OR enddate > ?) ORDER BY id",
+            [TIMENOW]
         );
-		
-        while ($row = $db->fetch_array($query)) {
+
+        while ($query && ($row = $db->fetch_array($query))) {
             $fd[$row['fid']]['announcements'] ??= 1;
         }
 
@@ -687,40 +679,8 @@ class datacache
     {
         global $db;
 
-        $query = $db->simple_select('datacache', 'cache', "title='mostonline'");
-        $this->update('mostonline', my_unserialize($db->fetch_field($query, 'cache')));
-    }
-
-    // ── Debug ─────────────────────────────────────────────────
-
-    public function debug_call(string $string, float $qtime, bool $hit): void
-    {
-        global $mybb, $plugins;
-
-        $plugin_extra = $plugins->current_hook
-            ? '<div style="float:right">(Plugin Hook: ' . $plugins->current_hook . ')</div>'
-            : '';
-
-        $hit_label               = $hit ? 'HIT' : 'MISS';
-        [$method, $key]          = explode(':', $string, 2) + [1 => ''];
-
-        $this->cache_debug = sprintf(
-            '<table style="background-color:#666" width="95%%" cellpadding="4" cellspacing="1" align="center">
-<tr><td style="background-color:#ccc">%s<div><strong>#%d - %s Call</strong></div></td></tr>
-<tr style="background-color:#fefefe"><td><span style="font-family:Courier;font-size:14px">(%s) [%s] %s</span></td></tr>
-<tr><td bgcolor="#ffffff">Call Time: %s</td></tr>
-</table><br>%s',
-            $plugin_extra,
-            $this->call_count,
-            ucfirst($method),
-            $mybb->config['cache_store'],
-            $hit_label,
-            htmlspecialchars_uni($key),
-            format_time_duration($qtime),
-            "\n"
-        );
-
-        $this->calllist[$this->call_count] = ['key' => $string, 'time' => $qtime];
+        $query = $db->sql_query_prepared("SELECT cache FROM datacache WHERE title = 'mostonline'");
+        $this->update('mostonline', my_unserialize($query ? $db->fetch_field($query, 'cache') : null));
     }
 
     // ── Private helpers ───────────────────────────────────────
@@ -730,37 +690,40 @@ class datacache
     {
         global $db;
 
-        $query = $db->simple_select(
-            'datacache',
-            'title,cache',
-            "title='" . $db->escape_string($name) . "'"
-        );
-        $row = $db->fetch_array($query);
+        $query = $db->sql_query_prepared("SELECT title, cache FROM datacache WHERE title = ?", [$name]);
+        $row = $query ? $db->fetch_array($query) : null;
 
         return $row ? native_unserialize($row['cache']) : false;
     }
 
-    /**
-     * Run a handler call, measure elapsed time, update counters and debug log.
-     *
-     * @param \Closure(): bool $call
-     */
-    private function timedHandlerCall(string $verb, string $key, \Closure $call): bool
-    {
-        global $mybb;
+    // ── Debug ─────────────────────────────────────────────────
 
+    /**
+     * Run a handler call, measure elapsed time, update counters.
+     * Данные копятся всегда (не только при debug_mode) - они уходят через
+     * скрытые поля формы в footer.php и рендерятся по клику "Advanced
+     * Details" в query_explain.php, тем же путём, что и SQL-запросы.
+     */
+    private function timedHandlerCall(string $verb, string $key, \Closure $call): mixed
+    {
         $start   = microtime(true);
-        $hit     = $call();
+        $result  = $call();
         $elapsed = microtime(true) - $start;
 
         $this->call_time += $elapsed;
         $this->call_count++;
 
-        if (!empty($mybb->debug_mode)) {
-            $this->debug_call("{$verb}:{$key}", $elapsed, $hit);
-        }
+        // HIT/MISS определяем отдельно от возвращаемого значения - для
+        // read() результат это реальные данные (могут быть false при
+        // промахе), для set/update/delete это признак успеха операции.
+        $this->calllist[$this->call_count] = [
+            'verb' => $verb,
+            'key'  => $key,
+            'time' => $elapsed,
+            'hit'  => $result !== false,
+        ];
 
-        return (bool)$hit;
+        return $result;
     }
 
     /** Shared query for most-replied / most-viewed thread stats. */
@@ -769,13 +732,11 @@ class datacache
         global $db;
 
         $threads = [];
-        $query   = $db->simple_select('threads', $fields, "visible='1'", [
-            'order_by'    => $order_by,
-            'order_dir'   => 'DESC',
-            'limit_start' => 0,
-            'limit'       => $limit,
-        ]);
-        while ($row = $db->fetch_array($query)) {
+        $query   = $db->sql_query_prepared(
+            "SELECT {$fields} FROM threads WHERE visible = '1' ORDER BY {$order_by} DESC LIMIT 0, ?",
+            [$limit]
+        );
+        while ($query && ($row = $db->fetch_array($query))) {
             $threads[] = $row;
         }
         return $threads;

@@ -11,11 +11,10 @@ function remaining(string $type = 'login'): string
 {
     global $db, $failedlogincount;
 
-    $ip    = $db->sqlesc(USERIPADDRESS);
-    $query = $db->sql_query("SELECT attempts FROM loginattempts WHERE ip = {$ip} LIMIT 1");
-    $row   = mysqli_fetch_assoc($query);
+    $query = $db->sql_query_prepared("SELECT attempts FROM loginattempts WHERE ip = ? LIMIT 1", [USERIPADDRESS]);
+    $row   = $query ? $db->fetch_array($query) : null;
 
-    $total = ($db->num_rows($query) > 0) ? (int)$row['attempts'] : 0;
+    $total = ($query && $db->num_rows($query) > 0) ? (int)$row['attempts'] : 0;
     $left  = max(0, (int)$failedlogincount - $total);
     $color = $left <= 2 ? '#f90510' : '#037621';
 
@@ -30,16 +29,15 @@ function failedloginscheck(string $type = 'Login'): void
 {
     global $db, $lang, $BASEURL, $failedlogincount;
 
-    $ip  = get_ip();
-    $esc = $db->sqlesc($ip);
+    $ip = get_ip();
 
-    $query = $db->sql_query("SELECT attempts FROM loginattempts WHERE ip = {$esc} LIMIT 1");
-    $total = ($db->num_rows($query) > 0)
+    $query = $db->sql_query_prepared("SELECT attempts FROM loginattempts WHERE ip = ? LIMIT 1", [$ip]);
+    $total = ($query && $db->num_rows($query) > 0)
         ? (int)$db->fetch_field($query, 'attempts')
         : 0;
 
     if ((int)$failedlogincount <= $total) {
-        $db->sql_query("UPDATE loginattempts SET banned = 'yes' WHERE ip = {$esc}");
+        $db->sql_query_prepared("UPDATE loginattempts SET banned = 'yes' WHERE ip = ?", [$ip]);
 
         stderr(
             sprintf(
@@ -79,29 +77,26 @@ function failedlogins(
     $added = TIMENOW;
 
     // ── Upsert login attempt ──────────────────────────────────
-    $escapedIp = $db->sqlesc($ip);
+    $countQuery = $db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM loginattempts WHERE ip = ? LIMIT 1", [$ip]);
+    $count      = $countQuery ? (int)$db->fetch_field($countQuery, 'cnt') : 0;
 
-    [$count] = mysqli_fetch_row(
-        $db->sql_query("SELECT COUNT(*) FROM loginattempts WHERE ip = {$escapedIp} LIMIT 1")
-    );
-
-    if ((int)$count === 0) {
-        $db->sql_query(
-            "INSERT INTO loginattempts (ip, added, attempts)
-             VALUES ({$escapedIp}, {$added}, 1)"
+    if ($count === 0) {
+        $db->sql_query_prepared(
+            "INSERT INTO loginattempts (ip, added, attempts) VALUES (?, ?, 1)",
+            [$ip, $added]
         );
     } else {
-        $db->sql_query(
-            "UPDATE loginattempts SET attempts = attempts + 1
-             WHERE ip = {$escapedIp}"
+        $db->sql_query_prepared(
+            "UPDATE loginattempts SET attempts = attempts + 1 WHERE ip = ?",
+            [$ip]
         );
     }
 
     // ── Mark as recovery attempt if requested ─────────────────
     if ($recover) {
-        $db->sql_query(
-            "UPDATE loginattempts SET type = 'recover'
-             WHERE ip = {$escapedIp}"
+        $db->sql_query_prepared(
+            "UPDATE loginattempts SET type = 'recover' WHERE ip = ?",
+            [$ip]
         );
     }
 
@@ -166,13 +161,11 @@ function login_attempt_check(int|string|null $uid = 0, bool $fatal = true): int|
 
     // ── Per-user check (UID supplied) ─────────────────────────
     if ($uid > 0) {
-        $query    = $db->simple_select(
-            'users',
-            'loginattempts, loginlockoutexpiry',
-            "id='{$uid}'",
-            ['limit' => 1],
+        $query    = $db->sql_query_prepared(
+            "SELECT loginattempts, loginlockoutexpiry FROM users WHERE id = ? LIMIT 1",
+            [$uid]
         );
-        $attempts = $db->fetch_array($query);
+        $attempts = $query ? $db->fetch_array($query) : null;
 
         // No failed attempts recorded at all → allow immediately
         if ((int)($attempts['loginattempts'] ?? 0) <= 0) {
@@ -203,10 +196,9 @@ function login_attempt_check(int|string|null $uid = 0, bool $fatal = true): int|
             my_setcookie('lockoutexpiry', (string)$attempts['loginlockoutexpiry']);
 
             if ($uid > 0) {
-                $db->update_query(
-                    'users',
-                    ['loginlockoutexpiry' => $attempts['loginlockoutexpiry']],
-                    "id='{$uid}'",
+                $db->sql_query_prepared(
+                    "UPDATE users SET loginlockoutexpiry = ? WHERE id = ?",
+                    [$attempts['loginlockoutexpiry'], $uid]
                 );
             }
         }
@@ -226,10 +218,9 @@ function login_attempt_check(int|string|null $uid = 0, bool $fatal = true): int|
 
         // Lockout expired → reset and allow
         if ($uid > 0) {
-            $db->update_query(
-                'users',
-                ['loginattempts' => 0, 'loginlockoutexpiry' => 0],
-                "id='{$uid}'",
+            $db->sql_query_prepared(
+                "UPDATE users SET loginattempts = 0, loginlockoutexpiry = 0 WHERE id = ?",
+                [$uid]
             );
         }
         my_unsetcookie('lockoutexpiry');
@@ -325,15 +316,11 @@ function log_login(int $uid, string $status = 'fail', string $type = 'login'): v
 
     if ($status === 'success' && $uid > 0) {
         if ($country !== '' && $country !== 'Local') {
-            $prev = $db->fetch_field(
-                $db->simple_select(
-                    'login_log',
-                    'country',
-                    "uid='{$uid}' AND status='success' AND suspicious='no' AND country != ''",
-                    ['order_by' => 'datetime', 'order_dir' => 'DESC', 'limit' => 1]
-                ),
-                'country'
+            $prevQuery = $db->sql_query_prepared(
+                "SELECT country FROM login_log WHERE uid = ? AND status = 'success' AND suspicious = 'no' AND country != '' ORDER BY datetime DESC LIMIT 1",
+                [$uid]
             );
+            $prev = $prevQuery ? $db->fetch_field($prevQuery, 'country') : null;
 
             if ($prev !== null && $prev !== '' && $prev !== $country) {
                 $suspicious = 'yes';
@@ -341,28 +328,21 @@ function log_login(int $uid, string $status = 'fail', string $type = 'login'): v
         }
 
         // Fingerprint check — known device list
-        $known = $db->fetch_field(
-            $db->simple_select(
-                'user_devices',
-                'id',
-                "uid='{$uid}' AND fingerprint='" . $db->escape_string($fingerprint) . "'",
-                ['limit' => 1]
-            ),
-            'id'
+        $knownQuery = $db->sql_query_prepared(
+            "SELECT id FROM user_devices WHERE uid = ? AND fingerprint = ? LIMIT 1",
+            [$uid, $fingerprint]
         );
+        $known = $knownQuery ? $db->fetch_field($knownQuery, 'id') : null;
 
         if ($known) {
             // Known device — just update last_seen
-            $db->update_query('user_devices', ['last_seen' => $now], "id='{$known}'");
+            $db->sql_query_prepared("UPDATE user_devices SET last_seen = ? WHERE id = ?", [$now, $known]);
         } else {
             // New device — add to list and alert user
-            $db->insert_query('user_devices', [
-                'uid'         => $uid,
-                'fingerprint' => $db->escape_string($fingerprint),
-                'user_agent'  => $db->escape_string($user_agent),
-                'first_seen'  => $now,
-                'last_seen'   => $now,
-            ]);
+            $db->sql_query_prepared(
+                "INSERT INTO user_devices (`uid`,`fingerprint`,`user_agent`,`first_seen`,`last_seen`) VALUES (?,?,?,?,?)",
+                [$uid, $fingerprint, $user_agent, $now, $now]
+            );
             $fp_mismatch = true;
         }
     }
@@ -370,33 +350,22 @@ function log_login(int $uid, string $status = 'fail', string $type = 'login'): v
     // Is the IP currently banned in loginattempts?
     $banned = 'no';
     if ($ip !== '') {
-        $ban = $db->fetch_field(
-            $db->simple_select('loginattempts', 'banned', "ip='" . $db->escape_string($ip) . "'", ['limit' => 1]),
-            'banned'
-        );
+        $banQuery = $db->sql_query_prepared("SELECT banned FROM loginattempts WHERE ip = ? LIMIT 1", [$ip]);
+        $ban      = $banQuery ? $db->fetch_field($banQuery, 'banned') : null;
         if ($ban === 'yes') {
             $banned = 'yes';
         }
     }
 
     // Persist the record
-    $db->insert_query('login_log', [
-        'uid'         => $uid,
-        'ip'          => $db->escape_string($ip),
-        'country'     => $db->escape_string($country),
-        'city'        => $db->escape_string($city),
-        'user_agent'  => $db->escape_string($user_agent),
-        'fingerprint' => $fingerprint,
-        'datetime'    => $now,
-        'type'        => $db->escape_string($type),
-        'status'      => $status,
-        'suspicious'  => $suspicious,
-        'banned'      => $banned,
-    ]);
+    $db->sql_query_prepared(
+        "INSERT INTO login_log (`uid`,`ip`,`country`,`city`,`user_agent`,`fingerprint`,`datetime`,`type`,`status`,`suspicious`,`banned`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        [$uid, $ip, $country, $city, $user_agent, $fingerprint, $now, $type, $status, $suspicious, $banned]
+    );
 
     // Clean up records older than 30 days (runs with 1% probability)
     if (random_int(1, 100) === 1) {
-        $db->sql_query("DELETE FROM login_log WHERE datetime < " . ($now - 2592000));
+        $db->sql_query_prepared("DELETE FROM login_log WHERE datetime < ?", [$now - 2592000]);
     }
 
     // Alert admin on suspicious successful login (new country)
@@ -427,9 +396,8 @@ function notify_admin_suspicious(
         return;
     }
 
-    $user = $db->fetch_array(
-        $db->simple_select('users', 'username, email', "id='{$uid}'")
-    );
+    $query = $db->sql_query_prepared("SELECT username, email FROM users WHERE id = ?", [$uid]);
+    $user  = $query ? $db->fetch_array($query) : null;
 
     if (empty($user['username'])) {
         return;
@@ -476,9 +444,8 @@ function notify_user_new_device(
 
     if ($uid <= 0) return;
 
-    $user = $db->fetch_array(
-        $db->simple_select('users', 'username, email', "id='{$uid}'", ['limit' => 1])
-    );
+    $query = $db->sql_query_prepared("SELECT username, email FROM users WHERE id = ? LIMIT 1", [$uid]);
+    $user  = $query ? $db->fetch_array($query) : null;
 
     if (empty($user['email'])) return;
 

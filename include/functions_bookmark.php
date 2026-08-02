@@ -8,7 +8,7 @@ function return_torrent_bookmark_array(int $userid): array
 
     if (isset($cache[$userid])) return $cache[$userid];
 
-    $res  = $db->simple_select('bookmarks', 'torrentid', "userid='{$userid}'");
+    $res  = $db->sql_query_prepared("SELECT torrentid FROM bookmarks WHERE userid = ?", [$userid]);
     $list = [];
     while ($row = $db->fetch_array($res)) {
         $list[] = (int)$row['torrentid'];

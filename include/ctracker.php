@@ -6,6 +6,14 @@ if (!defined('APP_INITIALIZED')) {
     exit('<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
+// $BASEURL обычно устанавливается global.php до подключения этого файла,
+// но полагаться на это вслепую нельзя (например, при нештатном порядке
+// инициализации). Явно подтягиваем из глобальной области и подстраховываемся
+// пустой строкой, чтобы страница блокировки хотя бы отрендерилась (пути к
+// CSS/JS станут относительными), а не падала с Undefined variable.
+global $BASEURL;
+$baseUrl = $BASEURL ?? '';
+
 function is_malicious_request($input, $patterns) {
     foreach ($patterns as $pattern) {
         if (stripos($input, $pattern) !== false) {
@@ -64,8 +72,8 @@ exit('
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Security Warning</title>
-  <link href="'.$BASEURL.'/include/templates/default/style/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css">
+  <link href="'.$baseUrl.'/include/templates/default/style/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="'.$baseUrl.'/include/templates/default/style/bootstrap-icons.css">
   
   
   <style>
@@ -222,7 +230,7 @@ exit('
     </div>
   </div>
 
-  <script src="'.$BASEURL.'/scripts/bootstrap.bundle.min.js"></script>
+  <script src="'.$baseUrl.'/scripts/bootstrap.bundle.min.js"></script>
   
   
   <script>

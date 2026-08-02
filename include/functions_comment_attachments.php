@@ -57,16 +57,54 @@ function get_attachment_icon2(string $ext): string
  
 function attach_to_comment(string $posthash, int $comment_id, int $user_id): void
 {
-    global $db;
+    global $db, $maxattachments;
     if (empty($posthash) || !$comment_id) return;
 
-    $db->sql_query(
-        "UPDATE attachments 
-         SET pid = 0, comment_id = {$comment_id}
-         WHERE posthash = '" . $db->escape_string($posthash) . "'
-           AND uid = {$user_id}
-           AND comment_id = 0
-           AND pid = 0"
+	
+	// Та же семантика, что и у постов на форуме: $maxattachments > 0 && ... — 0 пропускает проверку (без лимита)
+    $limit = (int)($maxattachments ?? 0);
+    $hasLimit = $limit > 0;
+	
+    $limitSql = '';
+
+    if ($hasLimit) {
+        // Сколько уже реально прикреплено к этому комментарию (актуально при редактировании)
+        $existingCount = (int)$db->fetch_field(
+            $db->sql_query_prepared("SELECT COUNT(aid) as cnt FROM attachments WHERE comment_id = ?", [$comment_id]),
+            'cnt'
+        );
+
+        $slotsLeft = $limit - $existingCount;
+        if ($slotsLeft <= 0) {
+            return; // лимит уже достигнут — новые черновики не прикрепляем
+        }
+        $limitSql = " LIMIT ?";
+    }
+
+    // Прикрепляем черновики по posthash (при наличии лимита — не больше, чем осталось свободных слотов)
+    $params = [$posthash, $user_id];
+    if ($hasLimit) {
+        $params[] = $slotsLeft;
+    }
+
+    $query = $db->sql_query_prepared(
+        "SELECT aid FROM attachments
+         WHERE posthash = ? AND uid = ? AND comment_id = 0 AND pid = 0
+         ORDER BY dateuploaded ASC" . $limitSql,
+        $params
+    );
+
+    $aids = [];
+    while ($row = $db->fetch_array($query)) {
+        $aids[] = (int)$row['aid'];
+    }
+
+    if (empty($aids)) return;
+
+    $placeholders = implode(',', array_fill(0, count($aids), '?'));
+    $db->sql_query_prepared(
+        "UPDATE attachments SET pid = 0, comment_id = ? WHERE aid IN ({$placeholders})",
+        [$comment_id, ...$aids]
     );
 }
 
@@ -76,10 +114,11 @@ function attach_to_comment(string $posthash, int $comment_id, int $user_id): voi
 function get_comment_attachments(int $comment_id): array
 {
     global $db;
-    $result = $db->sql_query(
+    $result = $db->sql_query_prepared(
         "SELECT * FROM attachments 
-         WHERE comment_id = {$comment_id} AND visible = 1
-         ORDER BY dateuploaded ASC"
+         WHERE comment_id = ? AND visible = 1
+         ORDER BY dateuploaded ASC",
+        [$comment_id]
     );
     $atts = [];
     while ($row = $db->fetch_array($result)) {
@@ -94,13 +133,14 @@ function get_comment_attachments(int $comment_id): array
 function get_draft_attachments(string $posthash, int $user_id): array
 {
     global $db;
-    $result = $db->sql_query(
+    $result = $db->sql_query_prepared(
         "SELECT * FROM attachments 
-         WHERE posthash = '" . $db->escape_string($posthash) . "'
-           AND uid = {$user_id}
+         WHERE posthash = ?
+           AND uid = ?
            AND comment_id = 0
            AND pid = 0
-         ORDER BY dateuploaded ASC"
+         ORDER BY dateuploaded ASC",
+        [$posthash, $user_id]
     );
     $atts = [];
     while ($row = $db->fetch_array($result)) {
@@ -119,8 +159,9 @@ function delete_comment_attachments(int $comment_id): void
     require_once INC_PATH . '/functions_upload.php';
     
     $uploadDir = TSDIR . '/uploads/attachments/';
-    $result = $db->sql_query(
-        "SELECT attachname, thumbnail FROM attachments WHERE comment_id = {$comment_id}"
+    $result = $db->sql_query_prepared(
+        "SELECT attachname, thumbnail FROM attachments WHERE comment_id = ?",
+        [$comment_id]
     );
     while ($row = $db->fetch_array($result)) {
         delete_uploaded_file($uploadDir . $row['attachname']);
@@ -128,13 +169,13 @@ function delete_comment_attachments(int $comment_id): void
             delete_uploaded_file($uploadDir . $row['thumbnail']);
         }
     }
-    $db->sql_query("DELETE FROM attachments WHERE comment_id = {$comment_id}");
+    $db->sql_query_prepared("DELETE FROM attachments WHERE comment_id = ?", [$comment_id]);
 }
 
 /**
  * Render: виджет загрузки (вставить в форму комментария)
  */
-function render_attachment_uploader(string $posthash, int $user_id, array $existing = []): string
+function render_attachment_uploader(string $posthash, int $user_id, array $existing = [], int $comment_id = 0): string
 {
     global $BASEURL, $mybb;
     $post_key = $mybb->post_code ?? '';
@@ -174,7 +215,8 @@ function render_attachment_uploader(string $posthash, int $user_id, array $exist
     initAttachmentUploader(
         <?= json_encode($posthash) ?>,
         <?= json_encode($post_key) ?>,
-        <?= json_encode($BASEURL . '/upload_attachment.php') ?>
+        <?= json_encode($BASEURL . '/upload_attachment.php') ?>,
+        <?= json_encode($comment_id) ?>
     );
     </script>
     <?php

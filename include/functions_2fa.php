@@ -123,9 +123,8 @@ function totp_get(int $uid): ?array
 {
     global $db;
 
-    $row = $db->fetch_array(
-        $db->simple_select('2fa', '*', "uid='{$uid}'")
-    );
+    $query = $db->sql_query_prepared("SELECT * FROM `2fa` WHERE uid = ?", [$uid]);
+    $row   = $query ? $db->fetch_array($query) : null;
 
     return $row ?: null;
 }
@@ -159,17 +158,15 @@ function totp_enable(int $uid, string $secret): void
     $existing = totp_get($uid);
 
     if ($existing === null) {
-        $db->insert_query('2fa', [
-            'uid'        => $uid,
-            'secret'     => $db->escape_string($secret),
-            'enabled'    => 'yes',
-            'created_at' => (int)TIMENOW,
-        ]);
+        $db->sql_query_prepared(
+            "INSERT INTO `2fa` (`uid`,`secret`,`enabled`,`created_at`) VALUES (?,?,?,?)",
+            [$uid, $secret, 'yes', (int)TIMENOW]
+        );
     } else {
-        $db->update_query('2fa', [
-            'secret'  => $db->escape_string($secret),
-            'enabled' => 'yes',
-        ], "uid='{$uid}'");
+        $db->sql_query_prepared(
+            "UPDATE `2fa` SET secret = ?, enabled = ? WHERE uid = ?",
+            [$secret, 'yes', $uid]
+        );
     }
 }
 
@@ -180,7 +177,7 @@ function totp_disable(int $uid): void
 {
     global $db;
 
-    $db->update_query('2fa', ['enabled' => 'no'], "uid='{$uid}'");
+    $db->sql_query_prepared("UPDATE `2fa` SET enabled = ? WHERE uid = ?", ['no', $uid]);
 }
 
 
@@ -194,17 +191,14 @@ function totp_create_pending(int $uid, string $remember, string $url): string
     global $db;
 
     // Clean up expired pending entries (older than 10 minutes)
-    $db->sql_query("DELETE FROM 2fa_pending WHERE created_at < " . ((int)TIMENOW - 600));
+    $db->sql_query_prepared("DELETE FROM `2fa_pending` WHERE created_at < ?", [(int)TIMENOW - 600]);
 
     $token = bin2hex(random_bytes(32));
 
-    $db->insert_query('2fa_pending', [
-        'token'      => $token,
-        'uid'        => $uid,
-        'remember'   => $db->escape_string(substr($remember, 0, 8)),
-        'url'        => $db->escape_string(substr($url, 0, 512)),
-        'created_at' => (int)TIMENOW,
-    ]);
+    $db->sql_query_prepared(
+        "INSERT INTO `2fa_pending` (`token`,`uid`,`remember`,`url`,`created_at`) VALUES (?,?,?,?,?)",
+        [$token, $uid, substr($remember, 0, 8), substr($url, 0, 512), (int)TIMENOW]
+    );
 
     // Cookie expires in 10 minutes
     setcookie('2fa_token', $token, time() + 600, '/', '', false, true);
@@ -223,10 +217,11 @@ function totp_get_pending(): ?array
     $token = $_COOKIE['2fa_token'] ?? '';
     if (empty($token) || strlen($token) !== 64) return null;
 
-    $token = $db->escape_string($token);
-    $row   = $db->fetch_array(
-        $db->sql_query("SELECT * FROM 2fa_pending WHERE token='{$token}' AND created_at > " . ((int)TIMENOW - 600))
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM `2fa_pending` WHERE token = ? AND created_at > ?",
+        [$token, (int)TIMENOW - 600]
     );
+    $row = $query ? $db->fetch_array($query) : null;
 
     return $row ?: null;
 }
@@ -238,7 +233,7 @@ function totp_clear_pending(string $token): void
 {
     global $db;
 
-    $db->sql_query("DELETE FROM 2fa_pending WHERE token='" . $db->escape_string($token) . "'");
+    $db->sql_query_prepared("DELETE FROM `2fa_pending` WHERE token = ?", [$token]);
     setcookie('2fa_token', '', time() - 3600, '/');
 }
 

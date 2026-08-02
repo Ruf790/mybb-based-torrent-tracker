@@ -73,6 +73,7 @@ function toggleCommentSelect(checkbox) {
         wrapper.classList.toggle('comment-selected', checkbox.checked);
     }
     toggleMassDeleteButton();
+    toggleMergeButton();
 }
 
 function toggleSelectAll(masterSwitch) {
@@ -84,6 +85,7 @@ function toggleSelectAll(masterSwitch) {
         }
     });
     toggleMassDeleteButton();
+    toggleMergeButton();
 }
 
 function toggleMassDeleteButton() {
@@ -93,6 +95,71 @@ function toggleMassDeleteButton() {
         btn.classList.toggle('d-none', count === 0);
         btn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete Selected (' + count + ')';
     }
+}
+
+function toggleMergeButton() {
+    const count = document.querySelectorAll('.comment-checkbox:checked').length;
+    const btn = document.getElementById('mergeCommentsButton');
+    if (btn) {
+        // Merge имеет смысл только от 2 выбранных комментариев
+        btn.classList.toggle('d-none', count < 2);
+        btn.innerHTML = '<i class="fa-solid fa-code-merge"></i> Merge Selected (' + count + ')';
+    }
+}
+
+function mergeComments() {
+    const checked = [...document.querySelectorAll('.comment-checkbox:checked')].map(cb => cb.value);
+    if (checked.length < 2) {
+        return;
+    }
+    if (!confirm('Merge ' + checked.length + ' selected comments into one? This cannot be undone.')) {
+        return;
+    }
+
+    const btn = document.getElementById('mergeCommentsButton');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Merging...';
+    }
+
+    fetch('comment.php?action=merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            comment_ids: checked.join(','),
+            my_post_key: window.CS_POST_CODE || ''
+        })
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                alert('Error: ' + (data.error || 'Unknown error'));
+                if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+                return;
+            }
+
+            // Убираем поглощённые комментарии из DOM
+            (data.removed_ids || []).forEach(id => {
+                const el = document.getElementById('comment-' + id);
+                if (el) el.remove();
+            });
+
+            // Заменяем мастер-комментарий на обновлённый HTML
+            const masterEl = document.getElementById('comment-' + data.master_id);
+            if (masterEl && data.html) {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = data.html;
+                masterEl.replaceWith(...tmp.childNodes);
+            }
+
+            toggleMassDeleteButton();
+            toggleMergeButton();
+        })
+        .catch(() => {
+            alert('Merge failed. Please try again.');
+            if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+        });
 }
 </script>
 
@@ -523,12 +590,18 @@ function generateDeleteButton(array $row): string
  */
 function generateHeaderSection(string $torrent_name, bool $moderator): string
 {
+    global $mybb;
+
     $moderator_html = $moderator ? '
+    <script>window.CS_POST_CODE = ' . json_encode($mybb->post_code ?? '') . ';</script>
     <div class="d-flex align-items-center gap-3">
         <div class="form-check form-switch mb-0">
             <input class="form-check-input" type="checkbox" role="switch" id="selectAllCheckbox" onchange="toggleSelectAll(this)" style="cursor:pointer;">
             <label class="form-check-label small text-black fw-normal" for="selectAllCheckbox">Select All</label>
         </div>
+        <button id="mergeCommentsButton" class="btn btn-sm btn-primary d-none" onclick="mergeComments()">
+            <i class="fa-solid fa-code-merge me-1"></i>Merge Selected
+        </button>
         <button id="massDeleteButton" class="btn btn-sm btn-danger d-none" onclick="massDeleteComments()">
             <i class="fa-solid fa-trash me-1"></i>Delete Selected
         </button>

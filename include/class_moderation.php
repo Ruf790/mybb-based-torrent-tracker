@@ -17,11 +17,19 @@ class Moderation
     }
 
     /**
-     * Build "moved|N, moved|N2, ..." SQL list from tid array.
+     * Build "moved|N, moved|N2, ..." list from tid array (values only, for binding).
      */
-    private function buildMovedList(array $tids): string
+    private function buildMovedList(array $tids): array
     {
-        return implode(',', array_map(fn(int $t) => "'moved|{$t}'", $tids));
+        return array_map(fn(int $t) => "moved|{$t}", $tids);
+    }
+
+    /**
+     * Builds "?,?,?" placeholders and the matching params array for an IN (...) clause.
+     */
+    private function inClause(array $values): array
+    {
+        return [implode(',', array_fill(0, count($values), '?')), array_values($values)];
     }
 
     // ── unapprove_threads ─────────────────────────────────────────────────────
@@ -35,15 +43,15 @@ class Moderation
             return false;
         }
 
-        $tid_list       = implode(',', $tids);
         $tid_moved_list = $this->buildMovedList($tids);
 
         $forum_counters = [];
         $user_counters  = [];
         $posts_to_unapprove = [];
 
-        $query = $db->simple_select('threads', '*', "tid IN ({$tid_list})");
-        while ($thread = $db->fetch_array($query)) {
+        [$ph, $params] = $this->inClause($tids);
+        $query = $db->sql_query_prepared("SELECT * FROM threads WHERE tid IN ({$ph})", $params);
+        while ($query && ($thread = $db->fetch_array($query))) {
             $forum = get_forum($thread['fid']);
             $fid   = $forum['fid'];
 
@@ -72,11 +80,11 @@ class Moderation
                 }
 
                 if ((int)$thread['visible'] === 1 && $forum['usepostcounts'] != 0) {
-                    $q2 = $db->simple_select(
-                        'posts', 'COUNT(pid) AS posts, uid',
-                        "tid='{$thread['tid']}' AND (visible='1' OR pid='{$thread['firstpost']}') AND uid > 0 GROUP BY uid"
+                    $q2 = $db->sql_query_prepared(
+                        "SELECT COUNT(pid) AS posts, uid FROM posts WHERE tid = ? AND (visible = '1' OR pid = ?) AND uid > 0 GROUP BY uid",
+                        [$thread['tid'], $thread['firstpost']]
                     );
-                    while ($counter = $db->fetch_array($q2)) {
+                    while ($q2 && ($counter = $db->fetch_array($q2))) {
                         $user_counters[$counter['uid']] ??= ['num_posts' => 0, 'num_threads' => 0];
                         $user_counters[$counter['uid']]['num_posts'] += $counter['posts'];
                     }
@@ -90,12 +98,14 @@ class Moderation
             $posts_to_unapprove[] = (int)$thread['firstpost'];
         }
 
-        $db->update_query('threads', ['visible' => 0], "tid IN ({$tid_list})");
+        [$ph, $params] = $this->inClause($tids);
+        $db->sql_query_prepared("UPDATE threads SET visible = 0 WHERE tid IN ({$ph})", $params);
 
         // Unapprove redirects too
         $redirect_tids = [];
-        $query = $db->simple_select('threads', 'tid', "closed IN ({$tid_moved_list})");
-        while ($redirect_tid = $db->fetch_field($query, 'tid')) {
+        [$ph, $params] = $this->inClause($tid_moved_list);
+        $query = $db->sql_query_prepared("SELECT tid FROM threads WHERE closed IN ({$ph})", $params);
+        while ($query && ($redirect_tid = $db->fetch_field($query, 'tid'))) {
             $redirect_tids[] = (int)$redirect_tid;
         }
         if (!empty($redirect_tids)) {
@@ -103,7 +113,8 @@ class Moderation
         }
 
         if (!empty($posts_to_unapprove)) {
-            $db->update_query('posts', ['visible' => 0], 'pid IN (' . implode(',', $posts_to_unapprove) . ')');
+            [$ph, $params] = $this->inClause($posts_to_unapprove);
+            $db->sql_query_prepared("UPDATE posts SET visible = 0 WHERE pid IN ({$ph})", $params);
         }
 
         $plugins->run_hooks('class_moderation_unapprove_threads', $tids);
@@ -141,17 +152,17 @@ class Moderation
         }
 
         $pids     = $this->normalizeIds($pids);
-        $pid_list = implode(',', $pids);
 
         // Find first posts of unapproved threads → approve whole thread
         $threads_to_update = [];
-        $query = $db->sql_query("
+        [$ph, $params] = $this->inClause($pids);
+        $query = $db->sql_query_prepared("
             SELECT p.tid
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
-            WHERE p.pid IN ({$pid_list}) AND p.visible = '0' AND t.firstpost = p.pid AND t.visible = 0
-        ");
-        while ($post = $db->fetch_array($query)) {
+            WHERE p.pid IN ({$ph}) AND p.visible = '0' AND t.firstpost = p.pid AND t.visible = 0
+        ", $params);
+        while ($query && ($post = $db->fetch_array($query))) {
             $threads_to_update[] = (int)$post['tid'];
         }
         if (!empty($threads_to_update)) {
@@ -163,13 +174,14 @@ class Moderation
         $user_counters   = [];
         $approved_pids   = [];
 
-        $query = $db->sql_query("
+        [$ph, $params] = $this->inClause($pids);
+        $query = $db->sql_query_prepared("
             SELECT p.pid, p.tid, p.fid, p.uid, t.visible AS threadvisible
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
-            WHERE p.pid IN ({$pid_list}) AND p.visible = '0' AND t.firstpost != p.pid
-        ");
-        while ($post = $db->fetch_array($query)) {
+            WHERE p.pid IN ({$ph}) AND p.visible = '0' AND t.firstpost != p.pid
+        ", $params);
+        while ($query && ($post = $db->fetch_array($query))) {
             $approved_pids[] = (int)$post['pid'];
 
             $thread_counters[$post['tid']] ??= ['replies' => 0];
@@ -192,7 +204,8 @@ class Moderation
         }
 
         if (!empty($approved_pids)) {
-            $db->update_query('posts', ['visible' => 1], 'pid IN (' . implode(',', $approved_pids) . ')');
+            [$ph, $params] = $this->inClause($approved_pids);
+            $db->sql_query_prepared("UPDATE posts SET visible = 1 WHERE pid IN ({$ph})", $params);
         }
 
         $plugins->run_hooks('class_moderation_approve_posts', $approved_pids);
@@ -231,16 +244,16 @@ class Moderation
         }
 
         $pids     = $this->normalizeIds($pids);
-        $pid_list = implode(',', $pids);
 
         $threads_to_update = [];
-        $query = $db->sql_query("
+        [$ph, $params] = $this->inClause($pids);
+        $query = $db->sql_query_prepared("
             SELECT p.tid
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
-            WHERE p.pid IN ({$pid_list}) AND p.visible IN (-1,1) AND t.firstpost = p.pid AND t.visible IN (-1,1)
-        ");
-        while ($post = $db->fetch_array($query)) {
+            WHERE p.pid IN ({$ph}) AND p.visible IN (-1,1) AND t.firstpost = p.pid AND t.visible IN (-1,1)
+        ", $params);
+        while ($query && ($post = $db->fetch_array($query))) {
             $threads_to_update[] = (int)$post['tid'];
         }
         if (!empty($threads_to_update)) {
@@ -252,13 +265,14 @@ class Moderation
         $user_counters    = [];
         $unapproved_pids  = [];
 
-        $query = $db->sql_query("
+        [$ph, $params] = $this->inClause($pids);
+        $query = $db->sql_query_prepared("
             SELECT p.pid, p.tid, p.visible, p.fid, p.uid, t.visible AS threadvisible
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
-            WHERE p.pid IN ({$pid_list}) AND p.visible IN (-1,1) AND t.firstpost != p.pid
-        ");
-        while ($post = $db->fetch_array($query)) {
+            WHERE p.pid IN ({$ph}) AND p.visible IN (-1,1) AND t.firstpost != p.pid
+        ", $params);
+        while ($query && ($post = $db->fetch_array($query))) {
             $unapproved_pids[] = (int)$post['pid'];
 
             $thread_counters[$post['tid']] ??= ['replies' => 0, 'unapprovedposts' => 0];
@@ -292,7 +306,8 @@ class Moderation
         }
 
         if (!empty($unapproved_pids)) {
-            $db->update_query('posts', ['visible' => 0], 'pid IN (' . implode(',', $unapproved_pids) . ')');
+            [$ph, $params] = $this->inClause($unapproved_pids);
+            $db->sql_query_prepared("UPDATE posts SET visible = 0 WHERE pid IN ({$ph})", $params);
         }
 
         $plugins->run_hooks('class_moderation_unapprove_posts', $unapproved_pids);
@@ -331,14 +346,14 @@ class Moderation
             return false;
         }
 
-        $tids_list      = implode(',', $tids);
         $tid_list       = [];
         $forum_counters = [];
         $user_counters  = [];
         $posts_to_approve = [];
 
-        $query = $db->simple_select('threads', '*', "tid IN ({$tids_list})");
-        while ($thread = $db->fetch_array($query)) {
+        [$ph, $params] = $this->inClause($tids);
+        $query = $db->sql_query_prepared("SELECT * FROM threads WHERE tid IN ({$ph})", $params);
+        while ($query && ($thread = $db->fetch_array($query))) {
             if ((int)$thread['visible'] === 1 || (int)$thread['visible'] === -1) {
                 continue;
             }
@@ -356,11 +371,11 @@ class Moderation
             $forum_counters[$fid]['num_unapproved_posts'] += $thread['deletedposts'] + $thread['replies'] + 1;
 
             if ($forum['usepostcounts'] != 0) {
-                $q2 = $db->simple_select(
-                    'posts', 'COUNT(pid) AS posts, uid',
-                    "tid='{$thread['tid']}' AND (visible='1' OR pid='{$thread['firstpost']}') AND uid > 0 GROUP BY uid"
+                $q2 = $db->sql_query_prepared(
+                    "SELECT COUNT(pid) AS posts, uid FROM posts WHERE tid = ? AND (visible = '1' OR pid = ?) AND uid > 0 GROUP BY uid",
+                    [$thread['tid'], $thread['firstpost']]
                 );
-                while ($counter = $db->fetch_array($q2)) {
+                while ($q2 && ($counter = $db->fetch_array($q2))) {
                     $user_counters[$counter['uid']] ??= ['num_posts' => 0, 'num_threads' => 0];
                     $user_counters[$counter['uid']]['num_posts'] += $counter['posts'];
                 }
@@ -378,13 +393,14 @@ class Moderation
         }
 
         $tid_moved_list = $this->buildMovedList($tid_list);
-        $tid_list_str   = implode(',', $tid_list);
 
-        $db->update_query('threads', ['visible' => 1], "tid IN ({$tid_list_str})");
+        [$ph, $params] = $this->inClause($tid_list);
+        $db->sql_query_prepared("UPDATE threads SET visible = 1 WHERE tid IN ({$ph})", $params);
 
         $redirect_tids = [];
-        $query = $db->simple_select('threads', 'tid', "closed IN ({$tid_moved_list})");
-        while ($redirect_tid = $db->fetch_field($query, 'tid')) {
+        [$ph, $params] = $this->inClause($tid_moved_list);
+        $query = $db->sql_query_prepared("SELECT tid FROM threads WHERE closed IN ({$ph})", $params);
+        while ($query && ($redirect_tid = $db->fetch_field($query, 'tid'))) {
             $redirect_tids[] = (int)$redirect_tid;
         }
         if (!empty($redirect_tids)) {
@@ -392,7 +408,8 @@ class Moderation
         }
 
         if (!empty($posts_to_approve)) {
-            $db->update_query('posts', ['visible' => 1], 'pid IN (' . implode(',', $posts_to_approve) . ')');
+            [$ph, $params] = $this->inClause($posts_to_approve);
+            $db->sql_query_prepared("UPDATE posts SET visible = 1 WHERE pid IN ({$ph})", $params);
         }
 
         $plugins->run_hooks('class_moderation_approve_threads', $tids);
@@ -429,9 +446,9 @@ class Moderation
 
         $plugins->run_hooks('class_moderation_delete_poll', $pid);
 
-        $db->delete_query('polls',     "pid='{$pid}'");
-        $db->delete_query('pollvotes', "pid='{$pid}'");
-        $db->update_query('threads',   ['poll' => 0], "poll='{$pid}'");
+        $db->sql_query_prepared("DELETE FROM polls WHERE pid = ?", [$pid]);
+        $db->sql_query_prepared("DELETE FROM pollvotes WHERE pid = ?", [$pid]);
+        $db->sql_query_prepared("UPDATE threads SET poll = 0 WHERE poll = ?", [$pid]);
 
         return true;
     }
@@ -449,16 +466,16 @@ class Moderation
             return false;
         }
 
-        $tids_csv = implode(',', $tids);
-
         if (!$all) {
             // Delete only subscriptions from users who no longer have permission to read the thread.
             $forum_parentlist = get_parent_list($fid);
-            $query = $db->simple_select('forumpermissions', 'gid', "fid IN ({$forum_parentlist}) AND (canview=0 OR canviewthreads=0)");
+            $query = $db->sql_query_prepared(
+                "SELECT gid FROM forumpermissions WHERE fid IN ({$forum_parentlist}) AND (canview=0 OR canviewthreads=0)"
+            );
 
             $groups = [];
             $additional_groups = '';
-            while ($group = $db->fetch_array($query)) {
+            while ($query && ($group = $db->fetch_array($query))) {
                 $groups[] = $group['gid'];
                 $additional_groups .= match ($db->type) {
                     'pgsql', 'sqlite' => " OR ','||u.additionalgroups||',' LIKE ',{$group['gid']},'",
@@ -467,21 +484,26 @@ class Moderation
             }
 
             if (count($groups) > 0) {
-                $groups_csv = implode(',', $groups);
-                $query = $db->sql_query("
+                [$tid_ph, $tid_params] = $this->inClause($tids);
+                [$grp_ph, $grp_params] = $this->inClause($groups);
+                $query = $db->sql_query_prepared("
                     SELECT s.tid, u.id
                     FROM threadsubscriptions s
                     LEFT JOIN users u ON (u.id=s.uid)
-                    WHERE s.tid IN ({$tids_csv})
-                    AND (u.usergroup IN ({$groups_csv}){$additional_groups})
-                ");
-                while ($subscription = $db->fetch_array($query)) {
-                    $db->delete_query('threadsubscriptions', "uid='{$subscription['uid']}' AND tid='{$subscription['tid']}'");
+                    WHERE s.tid IN ({$tid_ph})
+                    AND (u.usergroup IN ({$grp_ph}){$additional_groups})
+                ", [...$tid_params, ...$grp_params]);
+                while ($query && ($subscription = $db->fetch_array($query))) {
+                    $db->sql_query_prepared(
+                        "DELETE FROM threadsubscriptions WHERE uid = ? AND tid = ?",
+                        [$subscription['uid'], $subscription['tid']]
+                    );
                 }
             }
         } else {
             // Delete all subscriptions of these threads
-            $db->delete_query('threadsubscriptions', "tid IN ({$tids_csv})");
+            [$ph, $params] = $this->inClause($tids);
+            $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE tid IN ({$ph})", $params);
         }
 
         $arguments = ['tids' => $tids, 'all' => $all, 'fid' => $fid];
@@ -507,8 +529,8 @@ class Moderation
 
         $plugins->run_hooks('class_moderation_close_threads', $tids);
 
-        $tid_list = implode(',', $tids);
-        $db->update_query('threads', ['closed' => 1], "tid IN ({$tid_list}) AND closed NOT LIKE 'moved|%'");
+        [$ph, $params] = $this->inClause($tids);
+        $db->sql_query_prepared("UPDATE threads SET closed = 1 WHERE tid IN ({$ph}) AND closed NOT LIKE 'moved|%'", $params);
 
         return true;
     }
@@ -526,7 +548,8 @@ class Moderation
 
         $plugins->run_hooks('class_moderation_open_threads', $tids);
 
-        $db->update_query('threads', ['closed' => 0], 'tid IN (' . implode(',', $tids) . ')');
+        [$ph, $params] = $this->inClause($tids);
+        $db->sql_query_prepared("UPDATE threads SET closed = 0 WHERE tid IN ({$ph})", $params);
 
         return true;
     }
@@ -544,7 +567,8 @@ class Moderation
 
         $plugins->run_hooks('class_moderation_stick_threads', $tids);
 
-        $db->update_query('threads', ['sticky' => 1], 'tid IN (' . implode(',', $tids) . ')');
+        [$ph, $params] = $this->inClause($tids);
+        $db->sql_query_prepared("UPDATE threads SET sticky = 1 WHERE tid IN ({$ph})", $params);
 
         return true;
     }
@@ -562,7 +586,8 @@ class Moderation
 
         $plugins->run_hooks('class_moderation_unstick_threads', $tids);
 
-        $db->update_query('threads', ['sticky' => 0], 'tid IN (' . implode(',', $tids) . ')');
+        [$ph, $params] = $this->inClause($tids);
+        $db->sql_query_prepared("UPDATE threads SET sticky = 0 WHERE tid IN ({$ph})", $params);
 
         return true;
     }
@@ -580,8 +605,8 @@ class Moderation
 
         $plugins->run_hooks('class_moderation_remove_redirects', $tid);
 
-        $query = $db->simple_select('threads', 'tid', "closed='moved|{$tid}'");
-        while ($redirect_tid = $db->fetch_field($query, 'tid')) {
+        $query = $db->sql_query_prepared("SELECT tid FROM threads WHERE closed = ?", ["moved|{$tid}"]);
+        while ($query && ($redirect_tid = $db->fetch_field($query, 'tid'))) {
             $this->delete_thread((int)$redirect_tid);
         }
 
@@ -600,7 +625,7 @@ class Moderation
             return false;
         }
 
-        $db->update_query('threads', ['deletetime' => $deletetime], "tid='{$tid}'");
+        $db->sql_query_prepared("UPDATE threads SET deletetime = ? WHERE tid = ?", [$deletetime, $tid]);
 
         $arguments = ['tid' => $tid, 'deletetime' => $deletetime];
         $plugins->run_hooks('class_moderation_expire_thread', $arguments);
@@ -625,8 +650,8 @@ class Moderation
         $pids      = [];
         $num_unapproved_posts = $num_approved_posts = $num_deleted_posts = 0;
 
-        $query = $db->simple_select('posts', 'pid, uid, visible', "tid='{$tid}'");
-        while ($post = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT pid, uid, visible FROM posts WHERE tid = ?", [$tid]);
+        while ($query && ($post = $db->fetch_array($query))) {
             $pids[] = (int)$post['pid'];
 
             if (!function_exists('remove_attachments')) {
@@ -662,33 +687,36 @@ class Moderation
         }
 
         if (!empty($pids)) {
-            $pids_str = implode(',', $pids);
-            $db->delete_query('posts',   "pid IN ({$pids_str})");
-            $db->delete_query('attachments', "pid IN ({$pids_str})");
+            [$ph, $params] = $this->inClause($pids);
+            $db->sql_query_prepared("DELETE FROM posts WHERE pid IN ({$ph})", $params);
+            [$ph, $params] = $this->inClause($pids);
+            $db->sql_query_prepared("DELETE FROM attachments WHERE pid IN ({$ph})", $params);
 
             // Delete attached files from disk
-            $files = $db->simple_select('comment_files', '*', "post_id IN ({$pids_str})");
-            while ($file = $db->fetch_array($files)) {
+            [$ph, $params] = $this->inClause($pids);
+            $files = $db->sql_query_prepared("SELECT * FROM comment_files WHERE post_id IN ({$ph})", $params);
+            while ($files && ($file = $db->fetch_array($files))) {
                 if (is_file($file['file_path'])) {
                     @unlink($file['file_path']);
                 }
             }
-            $db->delete_query('comment_files', "post_id IN ({$pids_str})");
+            [$ph, $params] = $this->inClause($pids);
+            $db->sql_query_prepared("DELETE FROM comment_files WHERE post_id IN ({$ph})", $params);
         }
 
         // Delete thread ratings
-        $db->delete_query('threadratings', "tid='{$tid}'");
-		
-		$db->delete_query('threads',            "tid='{$tid}'");
-        $db->delete_query('threadsubscriptions', "tid='{$tid}'");
-        $db->delete_query('polls',              "tid='{$tid}'");
-        $db->delete_query('pollvotes',          "pid='{$thread['poll']}'");
-        $db->delete_query('threadsread',        "tid='{$tid}'");
-        $db->sql_query("DELETE FROM reports WHERE type='forumpost' AND thread_id = {$tid}");
+        $db->sql_query_prepared("DELETE FROM threadratings WHERE tid = ?", [$tid]);
+
+        $db->sql_query_prepared("DELETE FROM threads WHERE tid = ?", [$tid]);
+        $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE tid = ?", [$tid]);
+        $db->sql_query_prepared("DELETE FROM polls WHERE tid = ?", [$tid]);
+        $db->sql_query_prepared("DELETE FROM pollvotes WHERE pid = ?", [$thread['poll']]);
+        $db->sql_query_prepared("DELETE FROM threadsread WHERE tid = ?", [$tid]);
+        $db->sql_query_prepared("DELETE FROM reports WHERE type = 'forumpost' AND thread_id = ?", [$tid]);
 
         // Delete redirect threads
-        $query = $db->simple_select('threads', 'tid', "closed='moved|{$tid}'");
-        while ($redirect_tid = $db->fetch_field($query, 'tid')) {
+        $query = $db->sql_query_prepared("SELECT tid FROM threads WHERE closed = ?", ["moved|{$tid}"]);
+        while ($query && ($redirect_tid = $db->fetch_field($query, 'tid'))) {
             $this->delete_thread((int)$redirect_tid);
         }
 
@@ -722,13 +750,13 @@ class Moderation
         $pid = $plugins->run_hooks('class_moderation_delete_post_start', $pid);
         $pid = (int)$pid;
 
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT p.pid, p.uid, p.fid, p.tid, p.visible, t.visible AS threadvisible
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
-            WHERE p.pid = '{$pid}'
-        ");
-        $post = $db->fetch_array($query);
+            WHERE p.pid = ?
+        ", [$pid]);
+        $post = $query ? $db->fetch_array($query) : null;
         if (!$post) {
             return false;
         }
@@ -742,17 +770,17 @@ class Moderation
         }
         remove_attachments($pid);
 
-        $db->delete_query('posts', "pid='{$pid}'");
-        $db->sql_query("DELETE FROM reports WHERE type='forumpost' AND reported_id = {$pid}");
+        $db->sql_query_prepared("DELETE FROM posts WHERE pid = ?", [$pid]);
+        $db->sql_query_prepared("DELETE FROM reports WHERE type = 'forumpost' AND reported_id = ?", [$pid]);
 
         // Delete attached files from disk
-        $files = $db->simple_select('comment_files', '*', "post_id = {$pid}");
-        while ($file = $db->fetch_array($files)) {
+        $files = $db->sql_query_prepared("SELECT * FROM comment_files WHERE post_id = ?", [$pid]);
+        while ($files && ($file = $db->fetch_array($files))) {
             if (is_file($file['file_path'])) {
                 @unlink($file['file_path']);
             }
         }
-        $db->delete_query('comment_files', "post_id = {$pid}");
+        $db->sql_query_prepared("DELETE FROM comment_files WHERE post_id = ?", [$pid]);
 
         $plugins->run_hooks('class_moderation_delete_post', $post['pid']);
 
@@ -776,7 +804,6 @@ class Moderation
             return false;
         }
 
-        $pidin   = implode(',', $pids);
         $first   = true;
         $message = '';
         $masterpid = $mastertid = $fid = $visible = 0;
@@ -786,19 +813,20 @@ class Moderation
         $user_counters   = [];
         $threads         = [];
 
-        $query = $db->sql_query("
+        [$ph, $params] = $this->inClause($pids);
+        $query = $db->sql_query_prepared("
             SELECT p.pid, p.uid, p.fid, p.tid, p.visible, p.message,
                    t.visible AS threadvisible, t.replies AS threadreplies,
                    t.firstpost AS threadfirstpost, COUNT(a.aid) AS attachmentcount
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
             LEFT JOIN attachments a ON a.pid = p.pid AND a.visible = 1
-            WHERE p.pid IN ({$pidin})
+            WHERE p.pid IN ({$ph})
             GROUP BY p.pid
             ORDER BY p.dateline ASC, p.pid ASC
-        ");
+        ", $params);
 
-        while ($post = $db->fetch_array($query)) {
+        while ($query && ($post = $db->fetch_array($query))) {
             $threads[$post['tid']] = $post['tid'];
             $thread_counters[$post['tid']] ??= ['replies' => 0, 'attachmentcount' => 0];
 
@@ -841,18 +869,26 @@ class Moderation
             }
         }
 
-        $db->update_query('posts',  ['message' => $db->escape_string($message)], "pid = '{$masterpid}'");
-        $db->delete_query('posts',  "pid IN ({$pidin}) AND pid != '{$masterpid}'");
-        $db->update_query('attachments', ['pid' => $masterpid], "pid IN ({$pidin})");
+        $db->sql_query_prepared("UPDATE posts SET message = ? WHERE pid = ?", [$message, $masterpid]);
+
+        [$ph, $params] = $this->inClause($pids);
+        $db->sql_query_prepared("DELETE FROM posts WHERE pid IN ({$ph}) AND pid != ?", [...$params, $masterpid]);
+
+        [$ph, $params] = $this->inClause($pids);
+        $db->sql_query_prepared("UPDATE attachments SET pid = ? WHERE pid IN ({$ph})", [$masterpid, ...$params]);
 
         // Fix firstpost if needed
-        $query = $db->simple_select('threads', 'tid, uid, fid, visible', "firstpost IN ({$pidin}) AND firstpost != '{$masterpid}'");
-        while ($thread = $db->fetch_array($query)) {
-            $q2 = $db->simple_select('posts', 'pid, uid, visible', "tid='{$thread['tid']}'", ['order_by' => 'dateline, pid', 'limit' => 1]);
-            $new_firstpost = $db->fetch_array($q2);
+        [$ph, $params] = $this->inClause($pids);
+        $query = $db->sql_query_prepared("SELECT tid, uid, fid, visible FROM threads WHERE firstpost IN ({$ph}) AND firstpost != ?", [...$params, $masterpid]);
+        while ($query && ($thread = $db->fetch_array($query))) {
+            $q2 = $db->sql_query_prepared(
+                "SELECT pid, uid, visible FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1",
+                [$thread['tid']]
+            );
+            $new_firstpost = $q2 ? $db->fetch_array($q2) : null;
 
             if ((int)$thread['visible'] !== (int)$new_firstpost['visible']) {
-                $db->update_query('posts', ['visible' => $thread['visible']], "pid='{$new_firstpost['pid']}'");
+                $db->sql_query_prepared("UPDATE posts SET visible = ? WHERE pid = ?", [$thread['visible'], $new_firstpost['pid']]);
                 if ((int)$new_firstpost['visible'] === 1) {
                     --$thread_counters[$thread['tid']]['replies'];
                 }
@@ -914,13 +950,11 @@ class Moderation
         $user_posts = [];
 
         if ((int)$thread['visible'] !== (int)$mergethread['visible']) {
-            $query = $db->sql_query("
-                SELECT uid, COUNT(pid) AS postnum
-                FROM posts
-                WHERE tid='{$mergetid}' AND visible=1
-                GROUP BY uid
-            ");
-            while ($post = $db->fetch_array($query)) {
+            $query = $db->sql_query_prepared(
+                "SELECT uid, COUNT(pid) AS postnum FROM posts WHERE tid = ? AND visible = 1 GROUP BY uid",
+                [$mergetid]
+            );
+            while ($query && ($post = $db->fetch_array($query))) {
                 $user_posts[$post['uid']]['postnum'] ??= 0;
                 if ((int)$mergethread['visible'] === 1) {
                     $user_posts[$post['uid']]['postnum'] -= $post['postnum'];
@@ -930,18 +964,20 @@ class Moderation
             }
         }
 
-        $db->update_query('posts', [
-            'tid'     => $tid,
-            'fid'     => $thread['fid'],
-            'replyto' => 0,
-        ], "tid='{$mergetid}'");
+        $db->sql_query_prepared(
+            "UPDATE posts SET tid = ?, fid = ?, replyto = 0 WHERE tid = ?",
+            [$tid, $thread['fid'], $mergetid]
+        );
 
-        $db->update_query('threads', ['closed' => "moved|{$tid}"], "closed='moved|{$mergetid}'");
+        $db->sql_query_prepared("UPDATE threads SET closed = ? WHERE closed = ?", ["moved|{$tid}", "moved|{$mergetid}"]);
 
         // Handle subscriptions
         $subscriptions = [];
-        $query = $db->simple_select('threadsubscriptions', 'tid, uid', "tid='{$mergetid}' OR tid='{$tid}'");
-        while ($sub = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared(
+            "SELECT tid, uid FROM threadsubscriptions WHERE tid = ? OR tid = ?",
+            [$mergetid, $tid]
+        );
+        while ($query && ($sub = $db->fetch_array($query))) {
             $subscriptions[$sub['tid']][] = $sub['uid'];
         }
 
@@ -951,12 +987,14 @@ class Moderation
                 fn($user) => !isset($subscriptions[$tid]) || !in_array($user, $subscriptions[$tid], true)
             );
             if (!empty($update_users)) {
-                $db->update_query('threadsubscriptions', ['tid' => $tid],
-                    "tid = '{$mergetid}' AND uid IN (" . implode(',', $update_users) . ')'
+                [$ph, $params] = $this->inClause($update_users);
+                $db->sql_query_prepared(
+                    "UPDATE threadsubscriptions SET tid = ? WHERE tid = ? AND uid IN ({$ph})",
+                    [$tid, $mergetid, ...$params]
                 );
             }
         }
-        $db->delete_query('threadsubscriptions', "tid = '{$mergetid}'");
+        $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE tid = ?", [$mergetid]);
 
         $merge_data = [
             'mergetid' => $mergetid,
@@ -977,11 +1015,14 @@ class Moderation
         }
 
         // Sync first post visibility
-        $q = $db->simple_select('posts', 'pid, uid, visible', "tid='{$tid}'", ['order_by' => 'dateline, pid', 'limit' => 1]);
-        $new_firstpost = $db->fetch_array($q);
+        $q = $db->sql_query_prepared(
+            "SELECT pid, uid, visible FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1",
+            [$tid]
+        );
+        $new_firstpost = $q ? $db->fetch_array($q) : null;
 
         if ((int)$thread['visible'] !== (int)$new_firstpost['visible']) {
-            $db->update_query('posts', ['visible' => $thread['visible']], "pid='{$new_firstpost['pid']}'");
+            $db->sql_query_prepared("UPDATE posts SET visible = ? WHERE pid = ?", [$thread['visible'], $new_firstpost['pid']]);
         }
 
         if ((int)$new_firstpost['pid'] !== (int)$thread['firstpost']) {
@@ -1050,38 +1091,40 @@ class Moderation
                 $plugins->run_hooks('class_moderation_move_thread_redirect', $redirect_data);
 
                 // Delete existing redirects to the same destination
-                $query = $db->simple_select('threads', 'tid', "closed='moved|{$tid}' AND fid='{$new_fid}'");
-                while ($redirect_tid = $db->fetch_field($query, 'tid')) {
+                $query = $db->sql_query_prepared(
+                    "SELECT tid FROM threads WHERE closed = ? AND fid = ?",
+                    ["moved|{$tid}", $new_fid]
+                );
+                while ($query && ($redirect_tid = $db->fetch_field($query, 'tid'))) {
                     $this->delete_thread((int)$redirect_tid);
                 }
 
-                $db->update_query('threads', ['fid' => $new_fid], "tid='{$tid}'");
-                $db->update_query('posts',   ['fid' => $new_fid], "tid='{$tid}'");
+                $db->sql_query_prepared("UPDATE threads SET fid = ? WHERE tid = ?", [$new_fid, $tid]);
+                $db->sql_query_prepared("UPDATE posts SET fid = ? WHERE tid = ?", [$new_fid, $tid]);
 
-                $redirect_tid = $db->insert_query('threads', [
-                    'fid'          => $thread['fid'],
-                    'subject'      => $db->escape_string($thread['subject']),
-                    'uid'          => $thread['uid'],
-                    'username'     => $db->escape_string($thread['username']),
-                    'dateline'     => $thread['dateline'],
-                    'lastpost'     => $thread['lastpost'],
-                    'lastposteruid'=> $thread['lastposteruid'],
-                    'lastposter'   => $db->escape_string($thread['lastposter']),
-                    'views'        => 0,
-                    'replies'      => 0,
-                    'closed'       => "moved|{$tid}",
-                    'sticky'       => $thread['sticky'],
-                    'visible'      => (int)$thread['visible'],
-                    'notes'        => '',
-                ]);
+                $redirect_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'closed', 'sticky', 'visible', 'notes'];
+                $redirect_values  = [
+                    $thread['fid'], $thread['subject'], $thread['uid'], $thread['username'],
+                    $thread['dateline'], $thread['lastpost'], $thread['lastposteruid'], $thread['lastposter'],
+                    0, 0, "moved|{$tid}", $thread['sticky'], (int)$thread['visible'], '',
+                ];
+                $placeholders = implode(',', array_fill(0, count($redirect_columns), '?'));
+                $db->sql_query_prepared(
+                    "INSERT INTO threads (`" . implode('`,`', $redirect_columns) . "`) VALUES ({$placeholders})",
+                    $redirect_values
+                );
+                $redirect_tid = (int)$db->insert_id();
 
                 if ($redirect_expire) {
                     $this->expire_thread((int)$redirect_tid, $redirect_expire);
                 }
 
                 // Delete redirect if moving back to origin
-                $query = $db->simple_select('threads', 'tid', "closed LIKE 'moved|{$tid}' AND fid='{$new_fid}'");
-                while ($redirect_tid = $db->fetch_field($query, 'tid')) {
+                $query = $db->sql_query_prepared(
+                    "SELECT tid FROM threads WHERE closed LIKE ? AND fid = ?",
+                    ["moved|{$tid}", $new_fid]
+                );
+                while ($query && ($redirect_tid = $db->fetch_field($query, 'tid'))) {
                     $this->delete_thread((int)$redirect_tid);
                 }
                 break;
@@ -1090,92 +1133,63 @@ class Moderation
                 $copy_data = ['tid' => $tid, 'new_fid' => $new_fid];
                 $plugins->run_hooks('class_moderation_copy_thread', $copy_data);
 
-                $newtid = $db->insert_query('threads', [
-                    'fid'             => $new_fid,
-                    'subject'         => $db->escape_string($thread['subject']),
-                    'uid'             => $thread['uid'],
-                    'username'        => $db->escape_string($thread['username']),
-                    'dateline'        => $thread['dateline'],
-                    'firstpost'       => 0,
-                    'lastpost'        => $thread['lastpost'],
-                    'lastposteruid'   => $thread['lastposteruid'],
-                    'lastposter'      => $db->escape_string($thread['lastposter']),
-                    'views'           => $thread['views'],
-                    'replies'         => $thread['replies'],
-                    'closed'          => $thread['closed'],
-                    'sticky'          => $thread['sticky'],
-                    'visible'         => (int)$thread['visible'],
-                    'attachmentcount' => $thread['attachmentcount'],
-                    'notes'           => '',
-                ]);
+                $copy_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'closed', 'sticky', 'visible', 'attachmentcount', 'notes'];
+                $copy_values  = [
+                    $new_fid, $thread['subject'], $thread['uid'], $thread['username'], $thread['dateline'],
+                    0, $thread['lastpost'], $thread['lastposteruid'], $thread['lastposter'],
+                    $thread['views'], $thread['replies'], $thread['closed'], $thread['sticky'],
+                    (int)$thread['visible'], $thread['attachmentcount'], '',
+                ];
+                $placeholders = implode(',', array_fill(0, count($copy_columns), '?'));
+                $db->sql_query_prepared(
+                    "INSERT INTO threads (`" . implode('`,`', $copy_columns) . "`) VALUES ({$placeholders})",
+                    $copy_values
+                );
+                $newtid = (int)$db->insert_id();
 
                 if ($thread['poll'] != 0) {
-                    $q     = $db->simple_select('polls', '*', "tid='{$thread['tid']}'");
-                    $poll  = $db->fetch_array($q);
-                    $new_pid = $db->insert_query('polls', [
-                        'tid'       => $newtid,
-                        'question'  => $db->escape_string($poll['question']),
-                        'dateline'  => $poll['dateline'],
-                        'options'   => $db->escape_string($poll['options']),
-                        'votes'     => $db->escape_string($poll['votes']),
-                        'numoptions'=> $poll['numoptions'],
-                        'numvotes'  => $poll['numvotes'],
-                        'timeout'   => $poll['timeout'],
-                        'closed'    => $poll['closed'],
-                        'multiple'  => $poll['multiple'],
-                        'public'    => $poll['public'],
-                    ]);
-                    $q2 = $db->simple_select('pollvotes', '*', "pid='{$poll['pid']}'");
-                    while ($pv = $db->fetch_array($q2)) {
-                        $db->insert_query('pollvotes', [
-                            'pid'        => $new_pid,
-                            'uid'        => $pv['uid'],
-                            'voteoption' => $pv['voteoption'],
-                            'dateline'   => $pv['dateline'],
-                        ]);
+                    $q     = $db->sql_query_prepared("SELECT * FROM polls WHERE tid = ?", [$thread['tid']]);
+                    $poll  = $q ? $db->fetch_array($q) : null;
+                    $db->sql_query_prepared(
+                        "INSERT INTO polls (`tid`,`question`,`dateline`,`options`,`votes`,`numoptions`,`numvotes`,`timeout`,`closed`,`multiple`,`public`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        [$newtid, $poll['question'], $poll['dateline'], $poll['options'], $poll['votes'], $poll['numoptions'], $poll['numvotes'], $poll['timeout'], $poll['closed'], $poll['multiple'], $poll['public']]
+                    );
+                    $new_pid = (int)$db->insert_id();
+
+                    $q2 = $db->sql_query_prepared("SELECT * FROM pollvotes WHERE pid = ?", [$poll['pid']]);
+                    while ($q2 && ($pv = $db->fetch_array($q2))) {
+                        $db->sql_query_prepared(
+                            "INSERT INTO pollvotes (`pid`,`uid`,`voteoption`,`dateline`) VALUES (?,?,?,?)",
+                            [$new_pid, $pv['uid'], $pv['voteoption'], $pv['dateline']]
+                        );
                     }
-                    $db->update_query('threads', ['poll' => $new_pid], "tid='{$newtid}'");
+                    $db->sql_query_prepared("UPDATE threads SET poll = ? WHERE tid = ?", [$new_pid, $newtid]);
                 }
 
-                $q = $db->simple_select('posts', '*', "tid='{$thread['tid']}'");
-                while ($post = $db->fetch_array($q)) {
-                    $new_post_array = [
-                        'tid'       => $newtid,
-                        'fid'       => $new_fid,
-                        'subject'   => $db->escape_string($post['subject']),
-                        'uid'       => $post['uid'],
-                        'username'  => $db->escape_string($post['username']),
-                        'dateline'  => $post['dateline'],
-                        'ipaddress' => $db->escape_binary($post['ipaddress']),
-                        'edituid'   => $post['edituid'],
-                        'edittime'  => $post['edittime'],
-                        'visible'   => $post['visible'],
-                        'message'   => $db->escape_string($post['message']),
-                    ];
-                    $new_pid = $db->insert_query('posts', $new_post_array);
+                $q = $db->sql_query_prepared("SELECT * FROM posts WHERE tid = ?", [$thread['tid']]);
+                while ($q && ($post = $db->fetch_array($q))) {
+                    $db->sql_query_prepared(
+                        "INSERT INTO posts (`tid`,`fid`,`subject`,`uid`,`username`,`dateline`,`ipaddress`,`edituid`,`edittime`,`visible`,`message`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        [$newtid, $new_fid, $post['subject'], $post['uid'], $post['username'], $post['dateline'], $post['ipaddress'], $post['edituid'], $post['edittime'], $post['visible'], $post['message']]
+                    );
+                    $new_pid = (int)$db->insert_id();
 
                     if ((int)$thread['firstpost'] === (int)$post['pid']) {
-                        $db->update_query('threads', ['firstpost' => $new_pid], "tid='{$newtid}'");
+                        $db->sql_query_prepared("UPDATE threads SET firstpost = ? WHERE tid = ?", [$new_pid, $newtid]);
                     }
 
-                    $q2 = $db->simple_select('attachments', '*', "pid='{$post['pid']}'");
-                    while ($att = $db->fetch_array($q2)) {
-                        $new_aid = $db->insert_query('attachments', [
-                            'pid'        => $new_pid,
-                            'uid'        => $att['uid'],
-                            'filename'   => $db->escape_string($att['filename']),
-                            'filetype'   => $db->escape_string($att['filetype']),
-                            'filesize'   => $att['filesize'],
-                            'attachname' => $db->escape_string($att['attachname']),
-                            'downloads'  => $att['downloads'],
-                            'visible'    => $att['visible'],
-                            'thumbnail'  => $db->escape_string($att['thumbnail']),
-                        ]);
+                    $q2 = $db->sql_query_prepared("SELECT * FROM attachments WHERE pid = ?", [$post['pid']]);
+                    while ($q2 && ($att = $db->fetch_array($q2))) {
+                        $db->sql_query_prepared(
+                            "INSERT INTO attachments (`pid`,`uid`,`filename`,`filetype`,`filesize`,`attachname`,`downloads`,`visible`,`thumbnail`) VALUES (?,?,?,?,?,?,?,?,?)",
+                            [$new_pid, $att['uid'], $att['filename'], $att['filetype'], $att['filesize'], $att['attachname'], $att['downloads'], $att['visible'], $att['thumbnail']]
+                        );
+                        $new_aid = (int)$db->insert_id();
                         $post['message'] = str_replace("[attachment={$att['aid']}]", "[attachment={$new_aid}]", $post['message']);
                     }
 
                     if (str_contains($post['message'], '[attachment=')) {
-                        $db->update_query('posts', ['message' => $db->escape_string($post['message'])], "pid='{$new_pid}'");
+                        $db->sql_query_prepared("UPDATE posts SET message = ? WHERE pid = ?", [$post['message'], $new_pid]);
                     }
                 }
 
@@ -1185,21 +1199,21 @@ class Moderation
             default: // plain move
                 $move_data = ['tid' => $tid, 'new_fid' => $new_fid];
                 $plugins->run_hooks('class_moderation_move_simple', $move_data);
-                $db->update_query('threads', ['fid' => $new_fid], "tid='{$tid}'");
-                $db->update_query('posts',   ['fid' => $new_fid], "tid='{$tid}'");
+                $db->sql_query_prepared("UPDATE threads SET fid = ? WHERE tid = ?", [$new_fid, $tid]);
+                $db->sql_query_prepared("UPDATE posts SET fid = ? WHERE tid = ?", [$new_fid, $tid]);
                 break;
         }
 
         // Update user post/thread counts if forum counting settings differ
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT COUNT(p.pid) AS posts, u.id
             FROM posts p
             LEFT JOIN users u ON u.id = p.uid
-            WHERE p.tid = '{$tid}' AND p.visible = 1
+            WHERE p.tid = ? AND p.visible = 1
             GROUP BY u.id
             ORDER BY posts DESC
-        ");
-        while ($posters = $db->fetch_array($query)) {
+        ", [$tid]);
+        while ($query && ($posters = $db->fetch_array($query))) {
             $pcount = 0;
             if ($forum['usepostcounts'] == 1 && $method !== 'copy' && $newforum['usepostcounts'] == 0 && (int)$thread['visible'] === 1) {
                 $pcount -= $posters['posts'];
@@ -1266,7 +1280,6 @@ class Moderation
         }
 
         $forum_cache = $cache->read('forums');
-        $pidin       = implode(',', $pids);
 
         $newthread = null;
         if ($destination_tid > 0) {
@@ -1275,24 +1288,22 @@ class Moderation
 
         if ($destination_tid === 0) {
             // Get the oldest post to use as subject/dateline for new thread
-            $q = $db->simple_select('posts', 'uid, username, dateline', "pid IN ({$pidin})", ['order_by' => 'dateline, pid', 'limit' => 1]);
-            $post_info = $db->fetch_array($q);
+            [$ph, $params] = $this->inClause($pids);
+            $q = $db->sql_query_prepared("SELECT uid, username, dateline FROM posts WHERE pid IN ({$ph}) ORDER BY dateline, pid LIMIT 1", $params);
+            $post_info = $q ? $db->fetch_array($q) : null;
 
-            $newtid = $db->insert_query('threads', [
-                'fid'           => $moveto,
-                'subject'       => $db->escape_string($newsubject),
-                'uid'           => $post_info['uid'],
-                'username'      => $db->escape_string($post_info['username']),
-                'dateline'      => $post_info['dateline'],
-                'firstpost'     => 0,
-                'lastpost'      => $post_info['dateline'],
-                'lastposteruid' => $post_info['uid'],
-                'lastposter'    => $db->escape_string($post_info['username']),
-                'views'         => 0,
-                'replies'       => 0,
-                'visible'       => (int)$thread['visible'],
-                'notes'         => '',
-            ]);
+            $split_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'visible', 'notes'];
+            $split_values  = [
+                $moveto, $newsubject, $post_info['uid'], $post_info['username'], $post_info['dateline'],
+                0, $post_info['dateline'], $post_info['uid'], $post_info['username'],
+                0, 0, (int)$thread['visible'], '',
+            ];
+            $placeholders = implode(',', array_fill(0, count($split_columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO threads (`" . implode('`,`', $split_columns) . "`) VALUES ({$placeholders})",
+                $split_values
+            );
+            $newtid = (int)$db->insert_id();
         }
 
         $newthread ??= get_thread($newtid);
@@ -1307,20 +1318,21 @@ class Moderation
         ];
         $user_counters = [];
 
-        $q = $db->sql_query("
+        [$ph, $params] = $this->inClause($pids);
+        $q = $db->sql_query_prepared("
             SELECT p.pid, p.uid, p.fid, p.tid, p.visible, p.dateline,
                    t.visible AS threadvisible, t.firstpost AS threadfirstpost
             FROM posts p
             LEFT JOIN threads t ON t.tid = p.tid
-            WHERE p.pid IN ({$pidin})
+            WHERE p.pid IN ({$ph})
             ORDER BY p.dateline ASC, p.pid ASC
-        ");
+        ", $params);
 
         $post_info = null;
-        while ($post = $db->fetch_array($query = $q)) {
+        while ($q && ($post = $db->fetch_array($q))) {
             $post_info ??= $post;
 
-            $db->update_query('posts', ['tid' => $newtid, 'fid' => $moveto], "pid='{$post['pid']}'");
+            $db->sql_query_prepared("UPDATE posts SET tid = ?, fid = ? WHERE pid = ?", [$newtid, $moveto, $post['pid']]);
 
             // Remove from old thread
             $user_counters[$post['uid']] ??= ['postnum' => 0, 'threadnum' => 0];
@@ -1383,23 +1395,23 @@ $plugins->run_hooks('class_moderation_split_posts', $split_data);
 
         foreach ($thread_counters as $t => $counters) {
             if ($t == $newtid) {
-                $q = $db->simple_select('posts', 'pid', "tid='{$newtid}'", ['order_by' => 'dateline, pid', 'limit' => 1]);
-                $fp = $db->fetch_array($q);
-                $db->update_query('posts', ['subject' => $db->escape_string($newsubject), 'replyto' => 0], "pid='{$fp['pid']}'");
+                $q  = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1", [$newtid]);
+                $fp = $q ? $db->fetch_array($q) : null;
+                $db->sql_query_prepared("UPDATE posts SET subject = ?, replyto = 0 WHERE pid = ?", [$newsubject, $fp['pid']]);
             } else {
-                $q = $db->sql_query("
+                $q = $db->sql_query_prepared("
                     SELECT p.pid, t.subject
                     FROM posts p
                     LEFT JOIN threads t ON p.tid = t.tid
-                    WHERE p.tid = '{$tid}'
+                    WHERE p.tid = ?
                     ORDER BY p.dateline ASC, p.pid ASC
                     LIMIT 1
-                ");
-                $oldthread = $db->fetch_array($q);
-                $db->update_query('posts', [
-                    'subject' => $db->escape_string($oldthread['subject']),
-                    'replyto' => 0,
-                ], "pid='{$oldthread['pid']}'");
+                ", [$tid]);
+                $oldthread = $q ? $db->fetch_array($q) : null;
+                $db->sql_query_prepared(
+                    "UPDATE posts SET subject = ?, replyto = 0 WHERE pid = ?",
+                    [$oldthread['subject'], $oldthread['pid']]
+                );
             }
 
             $c = [];

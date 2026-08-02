@@ -16,11 +16,7 @@ class MyBB
     public bool   $seo_support  = false;
     public array  $config       = [];
     public string $request_method = "";
-    public bool   $safemode     = false;
-    public bool   $dev_mode     = false;
     public bool   $use_shutdown = true;
-    public bool   $debug_mode   = false;
-    public ?string $asset_url   = null;
     public mixed $session = null;
     public string $post_code    = '';
     public mixed  $admin        = null;
@@ -53,9 +49,7 @@ class MyBB
         'moderatorlog'  => ['ipaddress' => true],
         'sitelog'       => ['ipaddress' => true],
         'pollvotes'     => ['ipaddress' => true],
-        'tsf_pollvotes' => ['ipaddress' => true],
         'posts'         => ['ipaddress' => true],
-        'tsf_posts'     => ['ipaddress' => true],
         'privatemessages' => ['ipaddress' => true],
         'searchlog'     => ['ipaddress' => true],
         'sessions'      => ['ip' => true],
@@ -98,28 +92,6 @@ class MyBB
         };
 
         $this->clean_input();
-
-        $safe_mode_status = @ini_get("safe_mode");
-        if ($safe_mode_status == 1 || strtolower((string)$safe_mode_status) === 'on') {
-            $this->safemode = true;
-        }
-
-        if (isset($_SERVER['MYBB_DEV_MODE']) && $_SERVER['MYBB_DEV_MODE'] == 1) {
-            $this->dev_mode = true;
-        }
-
-        if (isset($this->input['debug']) && $this->input['debug'] == 1) {
-            $this->debug_mode = true;
-        }
-
-        if (isset($this->input['action']) && $this->input['action'] === "mybb_logo") {
-            require_once dirname(__FILE__) . "/mybb_group.php";
-            output_logo();
-        }
-
-        if (isset($this->input['intcheck']) && $this->input['intcheck'] == 1) {
-            die("&#077;&#089;&#066;&#066;");
-        }
     }
 
     // ----------------------------
@@ -207,57 +179,29 @@ class MyBB
         };
     }
 
-    // ----------------------------
-    // ASSETS
-    // ----------------------------
-    public function get_asset_url(string $path = '', bool $use_cdn = true): string
-    {
-        global $BASEURL;
-
-        $cdnurl  = "";
-        $usecdn  = "0";
-
-        $path = ltrim((string)$path, '/');
-
-        if (!str_starts_with($path, 'http')) {
-            if (str_starts_with($path, './')) {
-                $path = substr($path, 2);
-            }
-
-            $base_path = ($use_cdn && $usecdn && !empty($cdnurl))
-                ? rtrim($cdnurl, '/')
-                : rtrim((string)$BASEURL, '/');
-
-            return !empty($path)
-                ? $base_path . '/' . $path
-                : $base_path;
-        }
-
-        return $path;
-    }
 
     // ----------------------------
     // ОШИБКИ
     // ----------------------------
     function trigger_generic_error(string $code): void
     {
-        global $error_handler;
-
-        [$message, $error_code] = match($code) {
-            'cache_no_write'      => ["The data cache directory (cache/) needs to exist and be writable by the web server.", MYBB_CACHE_NO_WRITE],
-            'install_directory'   => ["The install directory (install/) still exists on your server and is not locked.", MYBB_INSTALL_DIR_EXISTS],
-            'board_not_installed' => ["Your board has not yet been installed and configured.", MYBB_NOT_INSTALLED],
-            'board_not_upgraded'  => ["Your board has not yet been upgraded.", MYBB_NOT_UPGRADED],
-            'sql_load_error'      => ["MyBB was unable to load the SQL extension. <a href=\"https://mybb.com\">MyBB Website</a>", MYBB_SQL_LOAD_ERROR],
-            'apc_load_error'      => ["APC needs to be configured with PHP to use the APC cache support.", MYBB_CACHEHANDLER_LOAD_ERROR],
-            'apcu_load_error'     => ["APCu needs to be configured with PHP to use the APCu cache support.", MYBB_CACHEHANDLER_LOAD_ERROR],
-            'memcache_load_error' => ["Your server does not have memcache support enabled.", MYBB_CACHEHANDLER_LOAD_ERROR],
-            'memcached_load_error'=> ["Your server does not have memcached support enabled.", MYBB_CACHEHANDLER_LOAD_ERROR],
-            'redis_load_error'    => ["Your server does not have redis support enabled.", MYBB_CACHEHANDLER_LOAD_ERROR],
-            default               => ["MyBB has experienced an internal error. <a href=\"https://mybb.com\">MyBB Website</a>", MYBB_GENERAL]
+        $message = match($code) {
+            'cache_no_write'       => 'The data cache directory (cache/) needs to exist and be writable by the web server.',
+            'install_directory'    => 'The install directory (install/) still exists on your server and is not locked.',
+            'board_not_installed'  => 'Your board has not yet been installed and configured.',
+            'board_not_upgraded'   => 'Your board has not yet been upgraded.',
+            'sql_load_error'       => 'Unable to load the SQL extension.',
+            'apc_load_error'       => 'APC needs to be configured with PHP to use the APC cache support.',
+            'apcu_load_error'      => 'APCu needs to be configured with PHP to use the APCu cache support.',
+            'memcache_load_error'  => 'Your server does not have memcache support enabled.',
+            'memcached_load_error' => 'Your server does not have memcached support enabled.',
+            'redis_load_error'     => 'Your server does not have redis support enabled.',
+            'eaccelerator_load_error' => 'Your server does not have eAccelerator support enabled.',
+            'xcache_load_error'    => 'Your server does not have XCache support enabled.',
+            default                => 'An internal configuration error occurred.',
         };
 
-        $error_handler->trigger($message, $error_code);
+        stderr($message, 'Configuration Error', 500, 'general');
     }
 
     function __destruct()

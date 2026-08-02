@@ -33,12 +33,12 @@ class Session
 
         // Attempt to find a session id in the cookies
         if (isset($mybb->cookies['sid']) && !defined('IN_UPGRADE')) {
-            $sid = $db->escape_string($mybb->cookies['sid']);
+            $cookie_sid = $mybb->cookies['sid'];
 
             // Load the session if not using a bot sid
-            if (!str_contains($sid, '=')) {
-                $query = $db->simple_select("sessions", "*", "sid='{$sid}'");
-                $session = $db->fetch_array($query);
+            if (!str_contains($cookie_sid, '=')) {
+                $query = $db->sql_query_prepared("SELECT * FROM sessions WHERE sid = ?", [$cookie_sid]);
+                $session = $query ? $db->fetch_array($query) : null;
                 if ($session) {
                     $this->sid = $session['sid'];
                 }
@@ -83,7 +83,7 @@ class Session
         $plugins?->run_hooks('post_session_load', $this);
         
         // ✅ Activate cron
-        $GLOBALS['ts_cron_image'] = !defined('SKIP_CRON_JOBS');
+        $GLOBALS['cron_image'] = !defined('SKIP_CRON_JOBS');
     }
 
    
@@ -133,36 +133,57 @@ class Session
         $mybb->user['pms_unread'] = $mybb->user['unreadpms'] ?? 0;
 
         // Update IP if changed
-        $lastip_add = '';
-        if (($mybb->user['lastip'] ?? '') != $this->packedip && array_key_exists('lastip', $mybb->user) && !defined('IN_UPGRADE')) {
-            $lastip_add = ", lastip=".$db->escape_binary($this->packedip);
-        }
+        $update_lastip = ($mybb->user['lastip'] ?? '') != $this->packedip
+            && array_key_exists('lastip', $mybb->user)
+            && !defined('IN_UPGRADE');
 
         // Update last login if needed
-        $last_login = '';
-        if (900 < TIMENOW - ($mybb->user['last_login'] ?? 0)) {
-            $last_login = ", last_login=".(int)($mybb->user['lastactive'] ?? 0);
-        }
+        $update_last_login = 900 < TIMENOW - ($mybb->user['last_login'] ?? 0);
 
         // Generate passkey if needed
-        $passkeys = '';
+        $new_passkey = null;
         if (strlen($mybb->user['passkey'] ?? '') != 32) {
             $passkey = generate_passkey($mybb->user['username'], $mybb->user['loginkey']);
             if ($passkey !== false) {
-                $passkeys = ", passkey='" . $db->escape_string($passkey) . "'";
+                $new_passkey = $passkey;
             }
         }
 
         // Update user activity
         $time = TIMENOW;
         if ($time - ($mybb->user['lastactive'] ?? 0) > 900) {
-            $db->sql_query("UPDATE users SET lastvisit='{$mybb->user['lastactive']}', lastactive='$time' WHERE id='{$mybb->user['id']}'");
+            $db->sql_query_prepared(
+                "UPDATE users SET lastvisit = ?, lastactive = ? WHERE id = ?",
+                [$mybb->user['lastactive'], $time, $mybb->user['id']]
+            );
             $mybb->user['lastvisit'] = $mybb->user['lastactive'];
             require_once INC_PATH."/functions_user.php";
             update_pm_count('', 2);
         } else {
             $timespent = TIMENOW - $mybb->user['lastactive'];
-            $db->sql_query("UPDATE users SET lastactive='$time', timeonline=timeonline+$timespent{$last_login}{$passkeys}{$lastip_add} WHERE id='{$mybb->user['id']}'");
+
+            $set_parts = ["lastactive = ?", "timeonline = timeonline + ?"];
+            $params    = [$time, $timespent];
+
+            if ($update_last_login) {
+                $set_parts[] = "last_login = ?";
+                $params[]    = (int)($mybb->user['lastactive'] ?? 0);
+            }
+            if ($new_passkey !== null) {
+                $set_parts[] = "passkey = ?";
+                $params[]    = $new_passkey;
+            }
+            if ($update_lastip) {
+                $set_parts[] = "lastip = ?";
+                $params[]    = $this->packedip;
+            }
+
+            $params[] = $mybb->user['id'];
+
+            $db->sql_query_prepared(
+                "UPDATE users SET " . implode(', ', $set_parts) . " WHERE id = ?",
+                $params
+            );
         }
 
         // Set user preferences
@@ -194,9 +215,8 @@ class Session
         $userGroupId = (int)($mybb->user['usergroup'] ?? 0); // ✅ ИСПРАВЛЕНО: приводим к int
 
         if (!empty($usergroups[$userGroupId]) && $usergroups[$userGroupId]['isbannedgroup'] == 1) {
-            $ban = $db->fetch_array(
-                $db->simple_select('banned', '*', 'uid='.$mybb->user['id'], ['limit' => 1])
-            );
+            $ban_query = $db->sql_query_prepared("SELECT * FROM banned WHERE uid = ? LIMIT 1", [$mybb->user['id']]);
+            $ban = $ban_query ? $db->fetch_array($ban_query) : null;
 
             if ($ban) {
                 $mybb->user['banned'] = 1;
@@ -217,8 +237,16 @@ class Session
             !empty($mybb->user['banlifted']) && 
             $mybb->user['banlifted'] < $time) {
             
-            $db->shutdown_query("UPDATE users SET usergroup='".(int)($mybb->user['banoldgroup'] ?? 0)."', additionalgroups='".$db->escape_string($mybb->user['banoldadditionalgroups'] ?? '')."', displaygroup='".(int)($mybb->user['banolddisplaygroup'] ?? 0)."' WHERE id='".$mybb->user['id']."'");
-            $db->shutdown_query("DELETE FROM banned WHERE uid='".$mybb->user['id']."'");
+            $db->sql_query_prepared(
+                "UPDATE users SET usergroup = ?, additionalgroups = ?, displaygroup = ? WHERE id = ?",
+                [
+                    (int)($mybb->user['banoldgroup'] ?? 0),
+                    $mybb->user['banoldadditionalgroups'] ?? '',
+                    (int)($mybb->user['banolddisplaygroup'] ?? 0),
+                    $mybb->user['id'],
+                ]
+            );
+            $db->sql_query_prepared("DELETE FROM banned WHERE uid = ?", [$mybb->user['id']]);
             
             $mybb->user['usergroup'] = $mybb->user['banoldgroup'];
             $mybb->user['displaygroup'] = $mybb->user['banolddisplaygroup'];
@@ -350,8 +378,8 @@ class Session
     {
         global $mybb, $db;
 
-        $query = $db->simple_select("spiders", "*", "sid='{$spider_id}'");
-        $spider = $db->fetch_array($query);
+        $query = $db->sql_query_prepared("SELECT * FROM spiders WHERE sid = ?", [$spider_id]);
+        $spider = $query ? $db->fetch_array($query) : null;
 
         $this->is_spider = true;
         //$userGroup = (int)($spider['usergroup'] ?? 1); // ✅ ИСПРАВЛЕНО: приводим к int
@@ -376,7 +404,7 @@ class Session
 
         // Update spider last visit
         if (($spider['lastvisit'] ?? 0) < TIMENOW - 120) {
-            $db->update_query("spiders", ["lastvisit" => TIMENOW], "sid='{$spider_id}'");
+            $db->sql_query_prepared("UPDATE spiders SET lastvisit = ? WHERE sid = ?", [TIMENOW, $spider_id]);
         }
 
         // Update online data
@@ -398,19 +426,22 @@ class Session
         global $db;
 
         $speciallocs = $this->get_special_locations();
-        
+
         $onlinedata = [
-            'uid' => $uid,
-            'time' => TIMENOW,
-            'location' => $db->escape_string(substr(get_current_location(false, $this->ignore_parameters), 0, 150)),
-            'useragent' => $db->escape_string(substr($this->useragent, 0, 200)),
-            'location1' => (int)($speciallocs['1'] ?? 0),
-            'location2' => (int)($speciallocs['2'] ?? 0),
-            'nopermission' => 0
+            'uid'          => $uid,
+            'time'         => TIMENOW,
+            'location'     => substr(get_current_location(false, $this->ignore_parameters), 0, 150),
+            'useragent'    => substr($this->useragent, 0, 200),
+            'location1'    => (int)($speciallocs['1'] ?? 0),
+            'location2'    => (int)($speciallocs['2'] ?? 0),
+            'nopermission' => 0,
         ];
 
-        $sid = $db->escape_string($sid);
-        $db->update_query("sessions", $onlinedata, "sid='{$sid}'");
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($onlinedata)));
+        $params    = array_values($onlinedata);
+        $params[] = $sid;
+
+        $db->sql_query_prepared("UPDATE sessions SET {$set} WHERE sid = ?", $params);
     }
 
     /**
@@ -424,9 +455,9 @@ class Session
 
         // Delete existing sessions
         if ($uid > 0) {
-            $db->delete_query("sessions", "uid='{$uid}'");
+            $db->sql_query_prepared("DELETE FROM sessions WHERE uid = ?", [$uid]);
         } elseif ($this->is_spider) {
-            $db->delete_query("sessions", "sid='{$this->sid}'");
+            $db->sql_query_prepared("DELETE FROM sessions WHERE sid = ?", [$this->sid]);
         }
 
         // Generate session ID
@@ -437,18 +468,19 @@ class Session
         }
 
         $onlinedata = [
-            'sid' => $sid,
-            'uid' => $uid,
-            'time' => TIMENOW,
-            'ip' => $db->escape_binary($this->packedip),
-            'location' => $db->escape_string(substr(get_current_location(false, $this->ignore_parameters), 0, 150)),
-            'useragent' => $db->escape_string(substr($this->useragent, 0, 200)),
-            'location1' => (int)($speciallocs['1'] ?? 0),
-            'location2' => (int)($speciallocs['2'] ?? 0),
-            'nopermission' => 0
+            'sid'          => $sid,
+            'uid'          => $uid,
+            'time'         => TIMENOW,
+            'ip'           => $this->packedip,
+            'location'     => substr(get_current_location(false, $this->ignore_parameters), 0, 150),
+            'useragent'    => substr($this->useragent, 0, 200),
+            'location1'    => (int)($speciallocs['1'] ?? 0),
+            'location2'    => (int)($speciallocs['2'] ?? 0),
+            'nopermission' => 0,
         ];
 
-        $db->replace_query("sessions", $onlinedata, "sid", false);
+        $set = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($onlinedata)));
+        $db->sql_query_prepared("REPLACE INTO sessions SET {$set}", array_values($onlinedata));
         $this->sid = $sid;
         $this->uid = $uid;
     }
@@ -473,8 +505,11 @@ class Session
             if ($tid > 0 && $tid < 4294967296) {
                 $array[2] = $tid;
             } elseif (isset($mybb->input['pid']) && !empty($mybb->input['pid'])) {
-                $query = $db->simple_select("posts", "tid", "pid=".$mybb->get_input('pid', MyBB::INPUT_INT), ["limit" => 1]);
-                $post = $db->fetch_array($query);
+                $query = $db->sql_query_prepared(
+                    "SELECT tid FROM posts WHERE pid = ? LIMIT 1",
+                    [$mybb->get_input('pid', MyBB::INPUT_INT)]
+                );
+                $post = $query ? $db->fetch_array($query) : null;
                 if ($post) {
                     $array[2] = $post['tid'];
                 }

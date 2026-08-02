@@ -490,26 +490,25 @@ function log_moderator_action(array $data, string $action = ''): void
 
     $serialized = is_array($data) ? my_serialize($data) : $data;
 
-    $base = [
-        'uid'       => (int)$CURUSER['id'],
-        'dateline'  => TIMENOW,
-        'fid'       => $fid,
-        'tid'       => $tid,
-        'pid'       => $pid,
-        'action'    => $db->escape_string($action),
-        'data'      => $db->escape_string($serialized),
-        'ipaddress' => $db->escape_binary($session->packedip),
-    ];
+    $uid       = (int)$CURUSER['id'];
+    $dateline  = TIMENOW;
+    $ipaddress = $session->packedip;
 
-    if ($tids) {
-        $rows = [];
-        foreach ($tids as $t) {
-            $rows[] = array_merge($base, ['tid' => (int)$t]);
-        }
-        $db->insert_query_multiple('moderatorlog', $rows);
-    } else {
-        $db->insert_query('moderatorlog', $base);
+    // Один или несколько tid — строим общий multi-row INSERT через prepared statement
+    $tid_list = $tids ?: [$tid];
+
+    $placeholders = [];
+    $params       = [];
+
+    foreach ($tid_list as $t) {
+        $placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?)';
+        array_push($params, $uid, $dateline, $fid, (int)$t, $pid, $action, $serialized, $ipaddress);
     }
+
+    $sql = "INSERT INTO moderatorlog (`uid`,`dateline`,`fid`,`tid`,`pid`,`action`,`data`,`ipaddress`)
+            VALUES " . implode(', ', $placeholders);
+
+    $db->sql_query_prepared($sql, $params);
 }
 
 // ── get_subscription_method ───────────────────────────────────────────────────
@@ -529,8 +528,11 @@ function get_subscription_method(int $tid = 0, array $postoptions = []): string
         return in_array($m, $methods, true) ? $m : '';
     }
 
-    $query        = $db->simple_select('threadsubscriptions', 'tid, notification', "tid='{$tid}' AND uid='{$CURUSER['id']}'", ['limit' => 1]);
-    $subscription = $db->fetch_array($query);
+    $query = $db->sql_query_prepared(
+        "SELECT tid, notification FROM threadsubscriptions WHERE tid = ? AND uid = ? LIMIT 1",
+        [$tid, (int)$CURUSER['id']]
+    );
+    $subscription = $query ? $db->fetch_array($query) : null;
 
     if ($subscription) {
         $method = (int)$subscription['notification'] + 1;
@@ -728,22 +730,24 @@ function update_thread_data(int $tid): void
         return;
     }
 
-    $last = $db->fetch_array($db->sql_query("
+    $last_query = $db->sql_query_prepared("
         SELECT u.id, u.username, p.username AS postusername, p.dateline
         FROM posts p LEFT JOIN users u ON u.id = p.uid
-        WHERE p.tid = '{$tid}' AND p.visible = '1'
+        WHERE p.tid = ? AND p.visible = '1'
         ORDER BY p.dateline DESC, p.pid DESC LIMIT 1
-    "));
+    ", [$tid]);
+    $last = $last_query ? $db->fetch_array($last_query) : null;
 
-    $first = $db->fetch_array($db->sql_query("
+    $first_query = $db->sql_query_prepared("
         SELECT u.id, u.username, p.pid, p.username AS postusername, p.dateline
         FROM posts p LEFT JOIN users u ON u.id = p.uid
-        WHERE p.tid = '{$tid}'
+        WHERE p.tid = ?
         ORDER BY p.dateline ASC, p.pid ASC LIMIT 1
-    "));
+    ", [$tid]);
+    $first = $first_query ? $db->fetch_array($first_query) : null;
 
-    $first['username'] = $db->escape_string($first['username'] ?: $first['postusername']);
-    $last['username']  = $db->escape_string($last['username']  ?: $last['postusername']);
+    $first['username'] = $first['username'] ?: $first['postusername'];
+    $last['username']  = $last['username']  ?: $last['postusername'];
 
     if (empty($last['dateline'])) {
         $last['username'] = $first['username'];
@@ -751,15 +755,21 @@ function update_thread_data(int $tid): void
         $last['dateline'] = $first['dateline'];
     }
 
-    $db->update_query('threads', [
-        'firstpost'    => (int)$first['pid'],
-        'username'     => $first['username'],
-        'uid'          => (int)$first['id'],
-        'dateline'     => (int)$first['dateline'],
-        'lastpost'     => (int)$last['dateline'],
-        'lastposter'   => $last['username'],
-        'lastposteruid'=> (int)$last['id'],
-    ], "tid='{$tid}'");
+    $db->sql_query_prepared("
+        UPDATE threads
+        SET firstpost = ?, username = ?, uid = ?, dateline = ?,
+            lastpost = ?, lastposter = ?, lastposteruid = ?
+        WHERE tid = ?
+    ", [
+        (int)$first['pid'],
+        $first['username'],
+        (int)$first['id'],
+        (int)$first['dateline'],
+        (int)$last['dateline'],
+        $last['username'],
+        (int)$last['id'],
+        $tid,
+    ]);
 }
 
 // ── update_first_post ─────────────────────────────────────────────────────────
@@ -767,19 +777,25 @@ function update_first_post(int $tid): void
 {
     global $db;
 
-    $first = $db->fetch_array($db->sql_query("
+    $first_query = $db->sql_query_prepared("
         SELECT u.id, u.username, p.pid, p.username AS postusername, p.dateline
         FROM posts p LEFT JOIN users u ON u.id = p.uid
-        WHERE p.tid = '{$tid}'
+        WHERE p.tid = ?
         ORDER BY p.dateline ASC, p.pid ASC LIMIT 1
-    "));
+    ", [$tid]);
+    $first = $first_query ? $db->fetch_array($first_query) : null;
 
-    $db->update_query('threads', [
-        'firstpost' => (int)$first['pid'],
-        'username'  => $db->escape_string($first['username'] ?: $first['postusername']),
-        'uid'       => (int)$first['id'],
-        'dateline'  => (int)$first['dateline'],
-    ], "tid='{$tid}'");
+    $db->sql_query_prepared("
+        UPDATE threads
+        SET firstpost = ?, username = ?, uid = ?, dateline = ?
+        WHERE tid = ?
+    ", [
+        (int)$first['pid'],
+        $first['username'] ?: $first['postusername'],
+        (int)$first['id'],
+        (int)$first['dateline'],
+        $tid,
+    ]);
 }
 
 // ── update_user_counters ──────────────────────────────────────────────────────
@@ -790,8 +806,11 @@ function update_user_counters(int|string $uid, array $changes = []): void
     $uid = (int)$uid;
     
 	$counters = ['postnum', 'threadnum'];
-    $query    = $db->simple_select('users', implode(',', $counters), "id='{$uid}'");
-    $user     = $db->fetch_array($query);
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM users WHERE id = ?",
+        [$uid]
+    );
+    $user = $query ? $db->fetch_array($query) : null;
 
     if (!$user) {
         return;
@@ -818,7 +837,12 @@ function update_user_counters(int|string $uid, array $changes = []): void
     }
 
     if (!empty($update)) {
-        $db->update_query('users', $update, "id='{$uid}'");
+        // Имена колонок берутся только из фиксированного списка $counters выше — не из ввода
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $uid;
+
+        $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
     }
 }
 
@@ -827,12 +851,13 @@ function update_last_post(int $tid): bool
 {
     global $db;
 
-    $last = $db->fetch_array($db->sql_query("
+    $last_query = $db->sql_query_prepared("
         SELECT u.id, u.username, p.username AS postusername, p.dateline
         FROM posts p LEFT JOIN users u ON u.id = p.uid
-        WHERE p.tid = '{$tid}' AND p.visible = '1'
+        WHERE p.tid = ? AND p.visible = '1'
         ORDER BY p.dateline DESC, p.pid DESC LIMIT 1
-    "));
+    ", [$tid]);
+    $last = $last_query ? $db->fetch_array($last_query) : null;
 
     if (!$last) {
         return false;
@@ -841,22 +866,29 @@ function update_last_post(int $tid): bool
     $last['username'] = $last['username'] ?: $last['postusername'];
 
     if (empty($last['dateline'])) {
-        $first = $db->fetch_array($db->sql_query("
+        $first_query = $db->sql_query_prepared("
             SELECT u.id, u.username, p.username AS postusername, p.dateline
             FROM posts p LEFT JOIN users u ON u.id = p.uid
-            WHERE p.tid = '{$tid}'
+            WHERE p.tid = ?
             ORDER BY p.dateline ASC, p.pid ASC LIMIT 1
-        "));
+        ", [$tid]);
+        $first = $first_query ? $db->fetch_array($first_query) : null;
+
         $last['username'] = $first['username'] ?: $first['postusername'];
         $last['id']       = $first['id'];
         $last['dateline'] = $first['dateline'];
     }
 
-    $db->update_query('threads', [
-        'lastpost'     => (int)$last['dateline'],
-        'lastposter'   => $db->escape_string($last['username']),
-        'lastposteruid'=> (int)$last['id'],
-    ], "tid='{$tid}'");
+    $db->sql_query_prepared("
+        UPDATE threads
+        SET lastpost = ?, lastposter = ?, lastposteruid = ?
+        WHERE tid = ?
+    ", [
+        (int)$last['dateline'],
+        $last['username'],
+        (int)$last['id'],
+        $tid,
+    ]);
 
     return true;
 }
@@ -867,9 +899,12 @@ function update_thread_counters(int $tid, array $changes = []): void
     global $db;
 
     $counters = ['replies', 'unapprovedposts', 'attachmentcount'];
-    $query    = $db->simple_select('threads', implode(',', $counters), "tid='{$tid}'");
-    $thread   = $db->fetch_array($query);
-    $update   = [];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM threads WHERE tid = ?",
+        [$tid]
+    );
+    $thread = $query ? $db->fetch_array($query) : null;
+    $update = [];
 
     foreach ($counters as $counter) {
         if (!array_key_exists($counter, $changes)) {
@@ -890,7 +925,11 @@ function update_thread_counters(int $tid, array $changes = []): void
     }
 
     if (!empty($update)) {
-        $db->update_query('threads', $update, "tid='{$tid}'");
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $tid;
+
+        $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
     }
 }
 
@@ -902,9 +941,12 @@ function update_forum_counters(int|string $fid, array $changes = []): void
     $fid = (int)$fid;
 	
 	$counters = ['threads', 'unapprovedthreads', 'posts', 'unapprovedposts'];
-    $query    = $db->simple_select('forums', implode(',', $counters), "fid='{$fid}'");
-    $forum    = $db->fetch_array($query);
-    $update   = [];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM forums WHERE fid = ?",
+        [$fid]
+    );
+    $forum  = $query ? $db->fetch_array($query) : null;
+    $update = [];
 
     foreach ($counters as $counter) {
         if (!array_key_exists($counter, $changes)) {
@@ -925,7 +967,11 @@ function update_forum_counters(int|string $fid, array $changes = []): void
     }
 
     if (!empty($update)) {
-        $db->update_query('forums', $update, "fid='{$fid}'");
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $fid;
+
+        $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
     }
 
     // Обновляем глобальную статистику
@@ -955,21 +1001,21 @@ function update_forum_lastpost(int $fid): void
 {
     global $db;
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT tid, lastpost, lastposter, lastposteruid, subject
         FROM threads
-        WHERE fid = '{$fid}' AND visible = '1' AND closed NOT LIKE 'moved|%'
+        WHERE fid = ? AND visible = '1' AND closed NOT LIKE 'moved|%'
         ORDER BY lastpost DESC LIMIT 1
-    ");
+    ", [$fid]);
 
-    if ($db->num_rows($query) > 0) {
+    if ($query && $db->num_rows($query) > 0) {
         $last = $db->fetch_array($query);
         $updated = [
-            'lastpost'       => (int)$last['lastpost'],
-            'lastposter'     => $db->escape_string($last['lastposter']),
-            'lastposteruid'  => (int)$last['lastposteruid'],
-            'lastposttid'    => (int)$last['tid'],
-            'lastpostsubject'=> $db->escape_string($last['subject']),
+            'lastpost'        => (int)$last['lastpost'],
+            'lastposter'      => $last['lastposter'],
+            'lastposteruid'   => (int)$last['lastposteruid'],
+            'lastposttid'     => (int)$last['tid'],
+            'lastpostsubject' => $last['subject'],
         ];
     } else {
         $updated = [
@@ -978,7 +1024,11 @@ function update_forum_lastpost(int $fid): void
         ];
     }
 
-    $db->update_query('forums', $updated, "fid='{$fid}'");
+    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated)));
+    $params = array_values($updated);
+    $params[] = $fid;
+
+    $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
 }
 
 // ── get_post_link ─────────────────────────────────────────────────────────────
@@ -1135,7 +1185,8 @@ function get_post(int $pid): array|false
         return $post_cache[$pid];
     }
 
-    $post = $db->fetch_array($db->simple_select('posts', '*', "pid='{$pid}'"));
+    $query = $db->sql_query_prepared("SELECT * FROM posts WHERE pid = ?", [$pid]);
+    $post  = $query ? $db->fetch_array($query) : null;
     $post_cache[$pid] = $post ?: false;
 
     return $post_cache[$pid];

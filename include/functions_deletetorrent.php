@@ -10,11 +10,12 @@ function update_users_comment_count_before_delete(int $torrent_id): void
 {
     global $db, $kpscomment;
 
-    $result = $db->sql_query(
-        "SELECT `user`, COUNT(*) AS cnt FROM comments WHERE torrent = {$torrent_id} GROUP BY `user`"
+    $result = $db->sql_query_prepared(
+        "SELECT `user`, COUNT(*) AS cnt FROM comments WHERE torrent = ? GROUP BY `user`",
+        [$torrent_id]
     );
 
-    while ($row = $db->fetch_array($result)) {
+    while ($result && ($row = $db->fetch_array($result))) {
         $uid = (int)$row['user'];
         $cnt = (int)$row['cnt'];
 
@@ -22,8 +23,9 @@ function update_users_comment_count_before_delete(int $torrent_id): void
             continue;
         }
 
-        $db->sql_query(
-            "UPDATE users SET comms = GREATEST(comms - {$cnt}, 0) WHERE id = {$uid}"
+        $db->sql_query_prepared(
+            "UPDATE users SET comms = GREATEST(comms - ?, 0) WHERE id = ?",
+            [$cnt, $uid]
         );
 		
 		kps('-', $kpscomment * $cnt, $uid);
@@ -114,9 +116,9 @@ function delete_imdb_images(int $id, array $image_types): void
 {
     global $torrent_dir, $db;
     
-    $query = $db->simple_select("torrents", "t_link", "id = '{$id}'");
+    $query = $db->sql_query_prepared("SELECT t_link FROM torrents WHERE id = ?", [$id]);
     
-    if ($db->num_rows($query)) {
+    if ($query && $db->num_rows($query)) {
         $result = $db->fetch_array($query);
         $t_link = $result["t_link"] ?? '';
         
@@ -164,9 +166,9 @@ function delete_screenshots(int $id): void
 {
     global $db;
     
-    $screenshots = $db->sql_query("SELECT filename FROM `screenshots` WHERE torrent_id = '{$id}'");
+    $screenshots = $db->sql_query_prepared("SELECT filename FROM `screenshots` WHERE torrent_id = ?", [$id]);
     
-    while ($shot = $db->fetch_array($screenshots)) {
+    while ($screenshots && ($shot = $db->fetch_array($screenshots))) {
         $screenshot_file = $_SERVER['DOCUMENT_ROOT'] . '/torrents/screens/' . ($shot['filename'] ?? '');
         
         if (!empty($shot['filename']) && file_exists($screenshot_file)) {
@@ -174,7 +176,7 @@ function delete_screenshots(int $id): void
         }
     }
     
-    $db->delete_query("screenshots", "torrent_id='{$id}'");
+    $db->sql_query_prepared("DELETE FROM screenshots WHERE torrent_id = ?", [$id]);
 }
 
 /**
@@ -209,31 +211,32 @@ function delete_attachments_by_torrent_comments(int $torrent_id): void
 
     // Получаем comment_ids батчами
     do {
-        $comments = $db->sql_query(
-            "SELECT id FROM comments WHERE torrent = {$torrent_id}
-             LIMIT {$batch_size} OFFSET {$offset}"
+        $comments = $db->sql_query_prepared(
+            "SELECT id FROM comments WHERE torrent = ? LIMIT ? OFFSET ?",
+            [$torrent_id, $batch_size, $offset]
         );
 
         $comment_ids = [];
-        while ($row = $db->fetch_array($comments)) {
+        while ($comments && ($row = $db->fetch_array($comments))) {
             $comment_ids[] = (int)$row['id'];
         }
 
         if (empty($comment_ids)) break;
 
-        $ids_sql = implode(',', $comment_ids);
+        $id_placeholders = implode(',', array_fill(0, count($comment_ids), '?'));
 
         // Удаляем файлы батчами
         $att_offset = 0;
         do {
-            $result = $db->sql_query(
+            $result = $db->sql_query_prepared(
                 "SELECT attachname, thumbnail FROM attachments
-                 WHERE comment_id IN ($ids_sql)
-                 LIMIT {$batch_size} OFFSET {$att_offset}"
+                 WHERE comment_id IN ({$id_placeholders})
+                 LIMIT ? OFFSET ?",
+                [...$comment_ids, $batch_size, $att_offset]
             );
 
             $count = 0;
-            while ($row = $db->fetch_array($result)) {
+            while ($result && ($row = $db->fetch_array($result))) {
                 delete_uploaded_file($uploadDir . $row['attachname']);
                 if (!empty($row['thumbnail']) && $row['thumbnail'] !== 'SMALL') {
                     delete_uploaded_file($uploadDir . $row['thumbnail']);
@@ -243,7 +246,7 @@ function delete_attachments_by_torrent_comments(int $torrent_id): void
             $att_offset += $batch_size;
         } while ($count === $batch_size);
 
-        $db->sql_query("DELETE FROM attachments WHERE comment_id IN ($ids_sql)");
+        $db->sql_query_prepared("DELETE FROM attachments WHERE comment_id IN ({$id_placeholders})", $comment_ids);
 
         $offset += $batch_size;
 
@@ -260,10 +263,10 @@ function delete_comment_files_by_torrent_id(int $torrent_id): void
 {
     global $db;
     
-    $files = $db->simple_select("comment_files", "*", "torrent_id = " . $torrent_id);
+    $files = $db->sql_query_prepared("SELECT * FROM comment_files WHERE torrent_id = ?", [$torrent_id]);
     $deleted_files = 0;
     
-    while ($file = $db->fetch_array($files)) {
+    while ($files && ($file = $db->fetch_array($files))) {
         $file_path = $file['file_path'] ?? '';
         $file_name = $file['file_name'] ?? '';
         
@@ -282,7 +285,7 @@ function delete_comment_files_by_torrent_id(int $torrent_id): void
     }
     
     // Delete database records
-    $db->delete_query("comment_files", "torrent_id = " . $torrent_id);
+    $db->sql_query_prepared("DELETE FROM comment_files WHERE torrent_id = ?", [$torrent_id]);
     
 }
 
@@ -300,12 +303,12 @@ function delete_comment_files_by_torrent_comments(int $torrent_id): void
         return;
     }
     
-    $comment_ids_str = implode(',', $comment_ids);
-    $files = $db->simple_select("comment_files", "*", "comment_id IN (" . $comment_ids_str . ")");
+    $id_placeholders = implode(',', array_fill(0, count($comment_ids), '?'));
+    $files = $db->sql_query_prepared("SELECT * FROM comment_files WHERE comment_id IN ({$id_placeholders})", $comment_ids);
     
     $deleted_files = 0;
     
-    while ($file = $db->fetch_array($files)) {
+    while ($files && ($file = $db->fetch_array($files))) {
         $file_path = $file['file_path'] ?? '';
         $file_name = $file['file_name'] ?? '';
         
@@ -324,7 +327,7 @@ function delete_comment_files_by_torrent_comments(int $torrent_id): void
     }
     
     // Delete database records
-    $db->delete_query("comment_files", "comment_id IN (" . $comment_ids_str . ")");
+    $db->sql_query_prepared("DELETE FROM comment_files WHERE comment_id IN ({$id_placeholders})", $comment_ids);
     
 }
 
@@ -336,9 +339,9 @@ function get_torrent_comment_ids(int $torrent_id): array
     global $db;
     
     $comment_ids = [];
-    $comments = $db->simple_select("comments", "id", "torrent = " . $torrent_id);
+    $comments = $db->sql_query_prepared("SELECT id FROM comments WHERE torrent = ?", [$torrent_id]);
     
-    while ($comment = $db->fetch_array($comments)) {
+    while ($comments && ($comment = $db->fetch_array($comments))) {
         $comment_ids[] = (int)$comment['id'];
     }
     
@@ -380,21 +383,20 @@ function delete_torrent_database_records(int $id): void
     global $db;
     
     $tables = [
-        "peers" => "torrent='$id'",
-        "comments" => "torrent='$id'",
-        "bookmarks" => "torrentid='$id'",
-        "snatched" => "torrentid='$id'",
-        "torrents" => "id='$id'",
-        "torrents_nfo" => "id='$id'",
-		"reports" => "reported_id='$id'",
-		//"announce_actions" => "torrentid='$id'",
-		"cheat_attempts" => "torrentid='$id'",
-		"hit_and_run" => "torrentid='$id'",
-		"torrent_ratings" => "torrent_id='$id'"
+        "peers"           => "torrent",
+        "comments"        => "torrent",
+        "bookmarks"       => "torrentid",
+        "snatched"        => "torrentid",
+        "torrents"        => "id",
+        "torrents_nfo"    => "id",
+        "reports"         => "reported_id",
+        "cheat_attempts"  => "torrentid",
+        "hit_and_run"     => "torrentid",
+        "torrent_ratings" => "torrent_id",
     ];
     
-    foreach ($tables as $table => $condition) {
-        $db->delete_query($table, $condition);
+    foreach ($tables as $table => $column) {
+        $db->sql_query_prepared("DELETE FROM {$table} WHERE {$column} = ?", [$id]);
     }
 }
 

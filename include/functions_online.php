@@ -259,31 +259,31 @@ function preload_wol_data(UserActivity $activity): void
 
     // Users
     if ($activity->uid && !isset($usernames[$activity->uid])) {
-        $user = $db->fetch_array($db->simple_select('users', 'id, username', "id = " . (int)$activity->uid));
+        $user = $db->fetch_array($db->sql_query_prepared('SELECT id, username FROM users WHERE id = ?', [(int)$activity->uid]));
         if ($user) $usernames[$user['id']] = htmlspecialchars_uni($user['username']);
     }
 
     // Threads
     if ($activity->tid && !isset($threads[$activity->tid])) {
-        $thread = $db->fetch_array($db->simple_select('threads', 'tid, subject', "tid = " . (int)$activity->tid));
+        $thread = $db->fetch_array($db->sql_query_prepared('SELECT tid, subject FROM threads WHERE tid = ?', [(int)$activity->tid]));
         if ($thread) $threads[$thread['tid']] = htmlspecialchars_uni($thread['subject']);
     }
 
     // Forums
     if ($activity->fid && !isset($forums[$activity->fid])) {
-        $forum = $db->fetch_array($db->simple_select('forums', 'fid, name', "fid = " . (int)$activity->fid));
+        $forum = $db->fetch_array($db->sql_query_prepared('SELECT fid, name FROM forums WHERE fid = ?', [(int)$activity->fid]));
         if ($forum) $forums[$forum['fid']] = htmlspecialchars_uni($forum['name']);
     }
 
     // Torrents
     if ($activity->id && !isset($torrents2[$activity->id])) {
-        $torrent = $db->fetch_array($db->simple_select('torrents', 'id, name', "id = " . (int)$activity->id));
+        $torrent = $db->fetch_array($db->sql_query_prepared('SELECT id, name FROM torrents WHERE id = ?', [(int)$activity->id]));
         if ($torrent) $torrents2[$torrent['id']] = htmlspecialchars_uni($torrent['name']);
     }
 
     // Announcements
     if ($activity->aid && !isset($announcements[$activity->aid])) {
-        $ann = $db->fetch_array($db->simple_select('announcements', 'aid, subject', "aid = " . (int)$activity->aid));
+        $ann = $db->fetch_array($db->sql_query_prepared('SELECT aid, subject FROM announcements WHERE aid = ?', [(int)$activity->aid]));
         if ($ann) $announcements[$ann['aid']] = htmlspecialchars_uni($ann['subject']);
     }
 
@@ -297,7 +297,7 @@ if ($activity->activity === WolActivity::ATTACHMENT && $activity->aid) {
 
     // 1. Получаем pid из attachments
     if (!isset($attachments[$aid])) {
-        $att = $db->fetch_array($db->simple_select('attachments', 'pid', "aid = " . $aid));
+        $att = $db->fetch_array($db->sql_query_prepared('SELECT pid FROM attachments WHERE aid = ?', [$aid]));
         if ($att) {
             $attachments[$aid] = (int)$att['pid'];
         }
@@ -307,7 +307,7 @@ if ($activity->activity === WolActivity::ATTACHMENT && $activity->aid) {
     if (isset($attachments[$aid])) {
         $pid = (int)$attachments[$aid];
         if (!isset($posts[$pid])) {
-            $post = $db->fetch_array($db->simple_select('posts', 'tid', "pid = " . $pid));
+            $post = $db->fetch_array($db->sql_query_prepared('SELECT tid FROM posts WHERE pid = ?', [$pid]));
             if ($post) {
                 $posts[$pid] = (int)$post['tid'];
             }
@@ -318,7 +318,7 @@ if ($activity->activity === WolActivity::ATTACHMENT && $activity->aid) {
     if (isset($posts[$pid])) {
         $tid = (int)$posts[$pid];
         if (!isset($threads[$tid])) {
-            $thread = $db->fetch_array($db->simple_select('threads', 'subject', "tid = " . $tid));
+            $thread = $db->fetch_array($db->sql_query_prepared('SELECT subject FROM threads WHERE tid = ?', [$tid]));
             if ($thread) {
                 $threads[$tid] = ['subject' => $thread['subject']];
             }

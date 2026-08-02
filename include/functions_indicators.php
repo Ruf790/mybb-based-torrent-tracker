@@ -25,10 +25,10 @@ function mark_thread_read(int $tid, int $fid): void
                 ], ["tid", "uid"]);
                 break;
             default:
-                $GLOBALS['db']->write_query("
-                    REPLACE INTO threadsread (tid, uid, dateline)
-                    VALUES('{$tid}', '{$CURUSER['id']}', '".TIMENOW."')
-                ");
+                $GLOBALS['db']->sql_query_prepared(
+                    "REPLACE INTO threadsread (tid, uid, dateline) VALUES(?, ?, ?)",
+                    [$tid, (int)$CURUSER['id'], TIMENOW]
+                );
         }
     }
     else
@@ -115,11 +115,11 @@ function fetch_unread_count($fid)
         if(!empty($tids))
         {
             $count = 0;
-            $query = $GLOBALS['db']->simple_select(
-                "threads",
-                "lastpost, tid, fid",
-                "visible=1 AND closed NOT LIKE 'moved|%' AND {$where} AND lastpost > '{$cutoff}'",
-                ["limit" => 100]
+            $query = $GLOBALS['db']->sql_query_prepared(
+                "SELECT lastpost, tid, fid FROM threads
+                 WHERE visible=1 AND closed NOT LIKE 'moved|%' AND {$where} AND lastpost > ?
+                 LIMIT 100",
+                [$cutoff]
             );
 
             while($thread = $GLOBALS['db']->fetch_array($query))
@@ -140,16 +140,16 @@ function fetch_unread_count($fid)
     {
         $db = $GLOBALS['db'];
         $uid = (int)$CURUSER['id'];
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT COUNT(t.tid) AS unread_count
             FROM threads t
-            LEFT JOIN threadsread tr ON (tr.tid=t.tid AND tr.uid='{$uid}')
-            LEFT JOIN forumsread fr ON (fr.fid=t.fid AND fr.uid='{$uid}')
+            LEFT JOIN threadsread tr ON (tr.tid=t.tid AND tr.uid=?)
+            LEFT JOIN forumsread fr ON (fr.fid=t.fid AND fr.uid=?)
             WHERE t.visible=1 AND t.closed NOT LIKE 'moved|%' AND {$where2} 
-              AND t.lastpost > IFNULL(tr.dateline,{$cutoff}) 
-              AND t.lastpost > IFNULL(fr.dateline,{$cutoff}) 
-              AND t.lastpost > {$cutoff}
-        ");
+              AND t.lastpost > IFNULL(tr.dateline,?) 
+              AND t.lastpost > IFNULL(fr.dateline,?) 
+              AND t.lastpost > ?
+        ", [$uid, $uid, $cutoff, $cutoff, $cutoff]);
 
         return (int)$db->fetch_field($query, "unread_count");
     }
@@ -187,7 +187,7 @@ function mark_all_forums_read(): void
     if(isset($CURUSER['id']) && $CURUSER['id'] > 0)
     {
         $uid = (int)$CURUSER['id'];
-        $db->update_query("users", ['lastvisit' => TIMENOW], "id='{$uid}'");
+        $db->sql_query_prepared("UPDATE users SET lastvisit = ? WHERE id = ?", [TIMENOW, $uid]);
 
         require_once INC_PATH . "/functions_user.php";
         update_pm_count('', 2);

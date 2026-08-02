@@ -17,7 +17,6 @@ if (isset($_REQUEST['GLOBALS']) || isset($_FILES['GLOBALS'])) {
 
 // --- Load core classes ---
 require_once INC_PATH . '/functions.php';
-require_once INC_PATH . '/functions_tsseo.php';
 
 require_once INC_PATH . "/class_timers.php";
 $maintimer = new timer();
@@ -58,27 +57,25 @@ $mybb->config = $config;
 
 
 require_once INC_PATH . '/db_base.php';
-$dbDriverFile = INC_PATH . "/db_{$config['database']['type']}.php";
-
+$dbDriverFile = INC_PATH . "/db_mysqli.php";
 if (file_exists($dbDriverFile)) {
     require_once $dbDriverFile;
 } else {
-    throw new RuntimeException("Database driver not found: {$config['database']['type']}");
+    throw new RuntimeException("Database driver not found: db_mysqli.php");
 }
 
 // --- Database driver selection ---
 $db = match($config['database']['type']) {
-    'sqlite' => new DB_SQLite(),
-    'pgsql'  => new DB_PgSQL(),
     'mysqli' => new DB_MySQLi(),
-    default  => new DB_MySQL()
+    default  => throw new RuntimeException(
+        "Unsupported database type '{$config['database']['type']}'. Only 'mysqli' is supported."
+    ),
 };
 
 // --- Database connection ---
-define("TABLE_PREFIX", $config['database']['table_prefix']);
 $db->connect($config['database']);
-$db->set_table_prefix(TABLE_PREFIX);
 $db->type = $config['database']['type'];
+
 
 // --- Cache system ---
 require_once INC_PATH . '/class_datacache.php';
@@ -87,7 +84,7 @@ $cache->cache();
 
 $mybb->parse_cookies();
 $mybb->cache = $cache;
-$mybb->asset_url = $mybb->get_asset_url();
+
 
 require_once INC_PATH . '/ctracker.php';
 
@@ -148,12 +145,18 @@ if ($seoEnabled) {
     define('POST_URL', 'post-{pid}.html');
     define('PROFILE_URL', 'user-{id}.html');
     define('PROFILE_URL_PAGED', 'user-{id}-page-{page}.html');
-    define('TORRENT_URL', 'torrent-{id}.html');
+    
+	define('TORRENT_URL', 'torrent-{id}.html');
     define('TORRENT_URL_PAGED', 'torrent-{id}-page-{page}.html');
-    define('DOWNLOAD_URL', 'download-{id}.html');
+	
+	
+	define('DOWNLOAD_URL', 'download-{id}.html');
     define('TORRENT_URL_COMMENT', 'torrent-{id}-comment-{pid}.html');
     define('COMMENT_URL', 'comment-{pid}.html');
     define('ANNOUNCEMENT_URL', 'announcement-{aid}.html');
+	
+	define('CATEGORY_URL', 'category-{cid}.html');
+    define('CATEGORY_URL_PAGED', 'category-{cid}-page-{page}.html');
 
 } else {
     // Standard URLs
@@ -171,7 +174,12 @@ if ($seoEnabled) {
     define('TORRENT_URL_COMMENT', 'details.php?id={id}&pid={pid}');
     define('COMMENT_URL', 'details.php?pid={pid}');
     define('DOWNLOAD_URL', 'download.php?id={id}');
+	define('CATEGORY_URL', 'browse.php?browse_categories&category={cid}');
+    define('CATEGORY_URL_PAGED', 'browse.php?browse_categories&category={cid}&page={page}');
+	
 }
+
+define('ANNOUNCE_URL', 'announce.php?passkey={passkey}');
 
 
 // --- Date and time formats ---

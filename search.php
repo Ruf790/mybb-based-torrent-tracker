@@ -177,7 +177,6 @@ if ($mybb->input['action'] === 'suggest')
         exit;
     }
 
-    $kwEsc = $db->escape_string($kw);
     $results = [];
 
     /*
@@ -186,7 +185,9 @@ if ($mybb->input['action'] === 'suggest')
     =====================================================
     */
 
-    $threads = $db->sql_query("
+    $like = '%' . escape_like_pattern($kw) . '%';
+
+    $threads = $db->sql_query_prepared("
         SELECT
             t.tid,
             t.subject,
@@ -194,12 +195,12 @@ if ($mybb->input['action'] === 'suggest')
             f.name AS forumname
         FROM threads t
         LEFT JOIN forums f ON(f.fid=t.fid)
-        WHERE t.subject LIKE '%{$kwEsc}%'
+        WHERE t.subject LIKE ?
         ORDER BY t.lastpost DESC
         LIMIT 5
-    ");
+    ", [$like]);
 
-    while($row = $db->fetch_array($threads))
+    while($threads && ($row = $db->fetch_array($threads)))
     {
         $results[] = [
             'type'    => 'thread',
@@ -216,7 +217,7 @@ if ($mybb->input['action'] === 'suggest')
     =====================================================
     */
 
-    $posts = $db->sql_query("
+    $posts = $db->sql_query_prepared("
         SELECT
             p.pid,
             p.subject,
@@ -224,12 +225,12 @@ if ($mybb->input['action'] === 'suggest')
             t.tid
         FROM posts p
         LEFT JOIN threads t ON(t.tid=p.tid)
-        WHERE p.message LIKE '%{$kwEsc}%'
+        WHERE p.message LIKE ?
         ORDER BY p.dateline DESC
         LIMIT 5
-    ");
+    ", [$like]);
 
-    while($row = $db->fetch_array($posts))
+    while($posts && ($row = $db->fetch_array($posts)))
     {
         $results[] = [
             'type'    => 'post',
@@ -246,15 +247,15 @@ if ($mybb->input['action'] === 'suggest')
     =====================================================
     */
 
-    $users = $db->sql_query("
+    $users = $db->sql_query_prepared("
         SELECT id, username
         FROM users
-        WHERE username LIKE '%{$kwEsc}%'
+        WHERE username LIKE ?
         ORDER BY username ASC
         LIMIT 5
-    ");
+    ", [$like]);
 
-    while($row = $db->fetch_array($users))
+    while($users && ($row = $db->fetch_array($users)))
     {
         $results[] = [
             'type'    => 'user',
@@ -271,15 +272,15 @@ if ($mybb->input['action'] === 'suggest')
     =====================================================
     */
 
-    $forums = $db->sql_query("
+    $forums = $db->sql_query_prepared("
         SELECT fid,name,description
         FROM forums
-        WHERE name LIKE '%{$kwEsc}%'
+        WHERE name LIKE ?
         ORDER BY disporder ASC
         LIMIT 5
-    ");
+    ", [$like]);
 
-    while($row = $db->fetch_array($forums))
+    while($forums && ($row = $db->fetch_array($forums)))
     {
         $results[] = [
             'type'    => 'forum',
@@ -305,9 +306,9 @@ if ($mybb->input['action'] === 'suggest')
 // ─────────────────────────────────────────────────────────────────────────────
 if ($mybb->input['action'] === 'results') {
 
-    $sid    = $db->escape_string($mybb->get_input('sid'));
-    $query  = $db->simple_select('searchlog', '*', "sid='$sid'");
-    $search = $db->fetch_array($query);
+    $sid    = $mybb->get_input('sid');
+    $query  = $db->sql_query_prepared("SELECT * FROM searchlog WHERE sid = ?", [$sid]);
+    $search = $query ? $db->fetch_array($query) : null;
 	
 	
 	
@@ -358,14 +359,17 @@ if ($mybb->input['action'] === 'results') {
     $forumsread = [];
 
     if ($CURUSER['id'] == 0) {
-        $q = $db->sql_query("SELECT fid FROM forums WHERE active != 0 ORDER BY pid, disporder");
+        $q = $db->sql_query_prepared("SELECT fid FROM forums WHERE active != 0 ORDER BY pid, disporder");
         $forumsread = isset($mybb->cookies['mybb']['forumread'])
             ? my_unserialize($mybb->cookies['mybb']['forumread'], false) : [];
     } else {
-        $q = $db->sql_query("SELECT f.fid, fr.dateline AS lastread FROM forums f LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid='{$CURUSER['id']}') WHERE f.active!=0 ORDER BY pid, disporder");
+        $q = $db->sql_query_prepared(
+            "SELECT f.fid, fr.dateline AS lastread FROM forums f LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid=?) WHERE f.active!=0 ORDER BY pid, disporder",
+            [(int)$CURUSER['id']]
+        );
     }
     $readforums = [];
-    while ($f = $db->fetch_array($q)) {
+    while ($q && ($f = $db->fetch_array($q))) {
         if ($CURUSER['id'] == 0 && !empty($forumsread[$f['fid']])) $f['lastread'] = $forumsread[$f['fid']];
         $readforums[$f['fid']] = $f['lastread'] ?? '';
     }
@@ -379,32 +383,35 @@ if ($mybb->input['action'] === 'results') {
         $threads            = [];
 
         if ($search['querycache'] !== '') {
-            $q = $db->simple_select('threads t', 't.tid', $search['querycache'] . " AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%' ORDER BY t.lastpost DESC {$limitsql}");
-            while ($t = $db->fetch_array($q)) { $threads[$t['tid']] = $t['tid']; $threadcount++; }
+            $q = $db->sql_query_prepared("SELECT t.tid FROM threads t WHERE {$search['querycache']} AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%' ORDER BY t.lastpost DESC {$limitsql}");
+            while ($q && ($t = $db->fetch_array($q))) { $threads[$t['tid']] = $t['tid']; $threadcount++; }
             if (!$threadcount) stderr($lang->search['error_nosearchresults']);
             $search['threads'] = implode(',', $threads);
             $where_conditions  = 't.tid IN (' . $search['threads'] . ')';
         } else {
             $where_conditions = 't.tid IN (' . $search['threads'] . ')';
-            $q     = $db->simple_select('threads t', 'COUNT(t.tid) AS resultcount', $where_conditions . " AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%' {$limitsql}");
-            $cnt   = $db->fetch_array($q);
+            $q     = $db->sql_query_prepared("SELECT COUNT(t.tid) AS resultcount FROM threads t WHERE {$where_conditions} AND ({$unapproved_where_t}) AND t.closed NOT LIKE 'moved|%' {$limitsql}");
+            $cnt   = $q ? $db->fetch_array($q) : null;
             if (!$cnt['resultcount']) stderr($lang->search['error_nosearchresults']);
             $threadcount = $cnt['resultcount'];
         }
 
-        $permsql = ''; $onlyusfids = [];
+        $permsql = ''; $onlyusfids = []; $permsql_params = [];
         $gp = forum_permissions();
         foreach ($gp as $fid => $fp) {
             if (isset($fp['canonlyviewownthreads']) && $fp['canonlyviewownthreads'] == 1) $onlyusfids[] = $fid;
         }
-        if (!empty($onlyusfids)) $permsql .= "AND ((t.fid IN(" . implode(',', $onlyusfids) . ") AND t.uid='{$CURUSER['id']}') OR t.fid NOT IN(" . implode(',', $onlyusfids) . "))";
+        if (!empty($onlyusfids)) {
+            $permsql .= "AND ((t.fid IN(" . implode(',', $onlyusfids) . ") AND t.uid=?) OR t.fid NOT IN(" . implode(',', $onlyusfids) . "))";
+            $permsql_params[] = (int)$CURUSER['id'];
+        }
         $uf = get_unsearchable_forums(); if ($uf) $permsql .= " AND t.fid NOT IN ($uf)";
         $ia = get_inactive_forums();     if ($ia) $permsql .= " AND t.fid NOT IN ($ia)";
 
         $pages = max(1, (int)ceil($threadcount / $perpage));
         if ($page > $pages) { $start = 0; $page = 1; }
 
-        $q = $db->sql_query("
+        $q = $db->sql_query_prepared("
             SELECT t.*, u.username AS userusername, u.avatar, u.avatardimensions, u.usergroup AS u_usergroup,
                    COALESCE(tr.avg_rating, 0) AS avg_rating
             FROM threads t
@@ -418,10 +425,10 @@ if ($mybb->input['action'] === 'results') {
             WHERE $where_conditions AND ({$unapproved_where_t}) {$permsql} AND t.closed NOT LIKE 'moved|%'
             ORDER BY $sortfield $order
             LIMIT $start, $perpage
-        ");
+        ", $permsql_params);
 
         $thread_cache = [];
-        while ($t = $db->fetch_array($q)) {
+        while ($q && ($t = $db->fetch_array($q))) {
             $t['threadprefix'] = '';
             $thread_cache[$t['tid']] = $t;
         }
@@ -431,14 +438,14 @@ if ($mybb->input['action'] === 'results') {
         // dot icons
         if ($CURUSER['id'] && $thread_cache) {
             $uwp = str_replace('t.', '', $unapproved_where_t);
-            $q2  = $db->simple_select('posts', 'DISTINCT tid,uid', "uid='{$CURUSER['id']}' AND tid IN({$thread_ids}) AND ({$uwp})");
-            while ($t = $db->fetch_array($q2)) $thread_cache[$t['tid']]['dot_icon'] = 1;
+            $q2  = $db->sql_query_prepared("SELECT DISTINCT tid,uid FROM posts WHERE uid=? AND tid IN({$thread_ids}) AND ({$uwp})", [(int)$CURUSER['id']]);
+            while ($q2 && ($t = $db->fetch_array($q2))) $thread_cache[$t['tid']]['dot_icon'] = 1;
         }
         // read threads
         $threadreadcut = 7;
         if ($CURUSER['id'] && $threadreadcut > 0) {
-            $q2 = $db->simple_select('threadsread', 'tid,dateline', "uid='{$CURUSER['id']}' AND tid IN({$thread_ids})");
-            while ($rt = $db->fetch_array($q2)) $thread_cache[$rt['tid']]['lastread'] = $rt['dateline'];
+            $q2 = $db->sql_query_prepared("SELECT tid,dateline FROM threadsread WHERE uid=? AND tid IN({$thread_ids})", [(int)$CURUSER['id']]);
+            while ($q2 && ($rt = $db->fetch_array($q2))) $thread_cache[$rt['tid']]['lastread'] = $rt['dateline'];
         }
 
         // ── OUTPUT ────────────────────────────────────────────────────────
@@ -588,13 +595,10 @@ if ($mybb->input['action'] === 'results') {
         }
 
         $tids = []; $pids = [];
-        $q = $db->simple_select('posts', 'pid, tid', "pid IN(" . $db->escape_string($search['posts']) . ") AND ({$unapproved_where})", $post_cache_options);
-		
-
-
-		
-		
-        while ($p = $db->fetch_array($q)) 
+        $order_clause = !empty($post_cache_options['order_by']) ? " ORDER BY {$post_cache_options['order_by']} {$post_cache_options['order_dir']}" : '';
+        $limit_clause = !empty($post_cache_options['limit']) ? " LIMIT {$post_cache_options['limit']}" : '';
+        $q = $db->sql_query_prepared("SELECT pid, tid FROM posts WHERE pid IN({$search['posts']}) AND ({$unapproved_where}){$order_clause}{$limit_clause}");
+        while ($q && ($p = $db->fetch_array($q)))
 		{ 
 	
 	     $pids[$p['pid']] = $p['tid']; $tids[$p['tid']][$p['pid']] = $p['pid']; 
@@ -610,13 +614,14 @@ if ($mybb->input['action'] === 'results') {
 		
 
         if (!empty($pids)) {
-            $gp = forum_permissions(); $permsql = ''; $onlyusfids = [];
+            $gp = forum_permissions(); $permsql = ''; $onlyusfids = []; $permsql_params = [];
             foreach ($gp as $fid => $fp) { if (!empty($fp['canonlyviewownthreads'])) $onlyusfids[] = $fid; }
-            if ($onlyusfids) $permsql .= ' OR (fid IN(' . implode(',', $onlyusfids) . ") AND uid!={$CURUSER['id']})";
+            if ($onlyusfids) { $permsql .= ' OR (fid IN(' . implode(',', $onlyusfids) . ") AND uid!=?)"; $permsql_params[] = (int)$CURUSER['id']; }
             $uf = get_unsearchable_forums(); if ($uf) $permsql .= " OR fid IN ($uf)";
             $ia = get_inactive_forums();     if ($ia) $permsql .= " OR fid IN ($ia)";
-            $q = $db->simple_select('threads', 'tid', "tid IN(" . $db->escape_string(implode(',', array_keys($tids))) . ") AND (NOT ({$unapproved_where}){$permsql} OR closed LIKE 'moved|%')");
-            while ($t = $db->fetch_array($q)) {
+            $tid_list = implode(',', array_keys($tids));
+            $q = $db->sql_query_prepared("SELECT tid FROM threads WHERE tid IN({$tid_list}) AND (NOT ({$unapproved_where}){$permsql} OR closed LIKE 'moved|%')", $permsql_params);
+            while ($q && ($t = $db->fetch_array($q))) {
                 foreach ($tids[$t['tid']] as $pid) unset($pids[$pid]);
                 unset($tids[$t['tid']]);
             }
@@ -638,14 +643,14 @@ if ($mybb->input['action'] === 'results') {
         $readthreads = [];
         $threadreadcut = 7;
         if ($CURUSER['id'] && $threadreadcut > 0) {
-            $q = $db->simple_select('threadsread', 'tid, dateline', "uid='{$CURUSER['id']}' AND tid IN(" . $db->escape_string($tids_str) . ")");
-            while ($rt = $db->fetch_array($q)) $readthreads[$rt['tid']] = $rt['dateline'];
+            $q = $db->sql_query_prepared("SELECT tid, dateline FROM threadsread WHERE uid=? AND tid IN({$tids_str})", [(int)$CURUSER['id']]);
+            while ($q && ($rt = $db->fetch_array($q))) $readthreads[$rt['tid']] = $rt['dateline'];
         }
 
         $pages = max(1, (int)ceil($postcount / $perpage));
         if ($page > $pages) { $start = 0; $page = 1; }
 
-        $q = $db->sql_query("
+        $q = $db->sql_query_prepared("
             SELECT p.*, u.username AS userusername, u.avatar, u.avatardimensions, u.usergroup AS u_usergroup,
                    t.subject AS thread_subject, t.replies AS thread_replies, t.views AS thread_views,
                    t.lastpost AS thread_lastpost, t.closed AS thread_closed, t.uid AS thread_uid
@@ -653,7 +658,7 @@ if ($mybb->input['action'] === 'results') {
             LEFT JOIN threads t ON (t.tid = p.tid)
             LEFT JOIN users u ON (u.id = p.uid)
             LEFT JOIN forums f ON (t.fid = f.fid)
-            WHERE p.pid IN (" . $db->escape_string($search['posts']) . ")
+            WHERE p.pid IN ({$search['posts']})
             ORDER BY $sortfield $order
             LIMIT $start, $perpage
         ");
@@ -682,7 +687,7 @@ if ($mybb->input['action'] === 'results') {
         while ($post = $db->fetch_array($q)) {
             if ($post['userusername']) $post['username'] = $post['userusername'];
             $post['username']       = htmlspecialchars_uni($post['username']);
-            $post['thread_subject'] = htmlspecialchars_uni($parser->parse_badwords($post['thread_subject']));
+            $post['thread_subject'] = htmlspecialchars_uni($parser->parse_badwords((string)$post['thread_subject']));
 
             //$parser_opts['me_username'] = $post['username'];
             $clean_msg = $parser->parse_message($post['message'], $parser_options);
@@ -758,6 +763,11 @@ if ($mybb->input['action'] === 'results') {
 
     $action = $mybb->input['action'];
 
+    // ВАЖНО: $where_sql сохраняется как есть в searchlog.querycache и позже
+    // повторно склеивается в новый запрос на странице результатов (action=results).
+    // Поэтому здесь используются литеральные значения, а не '?' — все они
+    // гарантированно int благодаря MyBB::INPUT_INT/(int)-касту, плейсхолдеры
+    // в сохранённом querycache были бы бесполезны при повторном использовании.
     $where_sql = match ($action) {
         'findguest'       => "uid='0'",
         'finduser',
@@ -798,33 +808,26 @@ if ($mybb->input['action'] === 'results') {
     $resulttype = 'threads'; $querycache = ''; $pids = ''; $tids = ''; $comma = '';
 
     if (in_array($action, ['finduserthreads','getnew','getdaily'], true)) {
-        $q = $db->simple_select('threads', 'tid', $where_sql);
-        while ($tid = $db->fetch_field($q, 'tid')) { $tids .= $comma . $tid; $comma = ','; }
+        $q = $db->sql_query_prepared("SELECT tid FROM threads WHERE {$where_sql}");
+        while ($q && ($tid = $db->fetch_field($q, 'tid'))) { $tids .= $comma . $tid; $comma = ','; }
         $querycache = $where_sql;
     } else {
         $resulttype = 'posts';
-        $opts = ['order_by' => 'dateline DESC, pid DESC'];
-        if ($searchhardlimit > 0) $opts['limit'] = $searchhardlimit;
-        $q = $db->simple_select('posts', 'pid', $where_sql, $opts);
-        while ($pid = $db->fetch_field($q, 'pid')) { $pids .= $comma . $pid; $comma = ','; }
+        $order_limit = ' ORDER BY dateline DESC, pid DESC';
+        if ($searchhardlimit > 0) $order_limit .= " LIMIT {$searchhardlimit}";
+        $q = $db->sql_query_prepared("SELECT pid FROM posts WHERE {$where_sql}{$order_limit}");
+        while ($q && ($pid = $db->fetch_field($q, 'pid'))) { $pids .= $comma . $pid; $comma = ','; }
         $comma = '';
-        $q = $db->simple_select('threads', 'tid', $where_sql);
-        while ($tid = $db->fetch_field($q, 'tid')) { $tids .= $comma . $tid; $comma = ','; }
+        $q = $db->sql_query_prepared("SELECT tid FROM threads WHERE {$where_sql}");
+        while ($q && ($tid = $db->fetch_field($q, 'tid'))) { $tids .= $comma . $tid; $comma = ','; }
     }
 
     $sid = md5(uniqid(microtime(), true));
     $plugins->run_hooks('search_do_search_process');
-    $db->insert_query('searchlog', [
-        'sid'        => $db->escape_string($sid),
-        'uid'        => $CURUSER['id'],
-        'dateline'   => TIMENOW,
-        'ipaddress'  => $db->escape_binary($session->packedip),
-        'threads'    => $db->escape_string($tids),
-        'posts'      => $db->escape_string($pids),
-        'resulttype' => $resulttype,
-        'querycache' => $db->escape_string($querycache),
-        'keywords'   => '',
-    ]);
+    $db->sql_query_prepared(
+        "INSERT INTO searchlog (`sid`,`uid`,`dateline`,`ipaddress`,`threads`,`posts`,`resulttype`,`querycache`,`keywords`) VALUES (?,?,?,?,?,?,?,?,?)",
+        [$sid, $CURUSER['id'], TIMENOW, $session->packedip, $tids, $pids, $resulttype, $querycache, '']
+    );
     redirect("search.php?action=results&sid=$sid", $lang->search['redirect_searchresults']);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -842,10 +845,19 @@ if ($mybb->input['action'] === 'results') {
 
     $searchfloodtime = 30;
     if ($searchfloodtime > 0 && $usergroups['cansearch'] != 1) {
-        $cond    = $CURUSER['id'] ? "uid='{$CURUSER['id']}'" : "uid='0' AND ipaddress=" . $db->escape_binary($session->packedip);
         $timecut = TIMENOW - $searchfloodtime;
-        $q       = $db->simple_select('searchlog', '*', "$cond AND dateline > '$timecut'", ['order_by'=>'dateline','order_dir'=>'DESC']);
-        $ls      = $db->fetch_array($q);
+        if ($CURUSER['id']) {
+            $cond_sql    = "uid = ?";
+            $cond_params = [(int)$CURUSER['id']];
+        } else {
+            $cond_sql    = "uid = '0' AND ipaddress = ?";
+            $cond_params = [$session->packedip];
+        }
+        $q  = $db->sql_query_prepared(
+            "SELECT * FROM searchlog WHERE {$cond_sql} AND dateline > ? ORDER BY dateline DESC",
+            [...$cond_params, $timecut]
+        );
+        $ls = $q ? $db->fetch_array($q) : null;
         if (!empty($ls['sid'])) {
             $rt  = $searchfloodtime - (TIMENOW - $ls['dateline']);
             stderr($rt === 1
@@ -894,17 +906,10 @@ if ($mybb->input['action'] === 'results') {
     
 	
 	
-	$db->insert_query('searchlog', [
-        'sid'        => $db->escape_string($sid),
-        'uid'        => $CURUSER['id'],
-        'dateline'   => $now,
-        'ipaddress'  => $db->escape_binary($session->packedip),
-        'threads'    => $search_results['threads'],
-        'posts'      => $search_results['posts'],
-        'resulttype' => $resulttype,
-        'querycache' => $search_results['querycache'],
-        'keywords'   => $db->escape_string($mybb->input['keywords']),
-    ]);
+	$db->sql_query_prepared(
+        "INSERT INTO searchlog (`sid`,`uid`,`dateline`,`ipaddress`,`threads`,`posts`,`resulttype`,`querycache`,`keywords`) VALUES (?,?,?,?,?,?,?,?,?)",
+        [$sid, $CURUSER['id'], $now, $session->packedip, $search_results['threads'], $search_results['posts'], $resulttype, $search_results['querycache'], $mybb->input['keywords']]
+    );
 
     $so = my_strtolower($mybb->get_input('sortordr'));
     $sortorder = in_array($so, ['asc','desc']) ? $so : 'desc';
@@ -931,17 +936,10 @@ if ($mybb->input['action'] === 'results') {
 
     $sid = md5(uniqid(microtime(), true));
     $plugins->run_hooks('search_thread_process');
-    $db->insert_query('searchlog', [
-        'sid'        => $db->escape_string($sid),
-        'uid'        => $CURUSER['id'],
-        'dateline'   => $now,
-        'ipaddress'  => $db->escape_binary($session->packedip),
-        'threads'    => $search_results['threads'],
-        'posts'      => $search_results['posts'],
-        'resulttype' => 'posts',
-        'querycache' => $search_results['querycache'],
-        'keywords'   => $db->escape_string($mybb->input['keywords']),
-    ]);
+    $db->sql_query_prepared(
+        "INSERT INTO searchlog (`sid`,`uid`,`dateline`,`ipaddress`,`threads`,`posts`,`resulttype`,`querycache`,`keywords`) VALUES (?,?,?,?,?,?,?,?,?)",
+        [$sid, $CURUSER['id'], $now, $session->packedip, $search_results['threads'], $search_results['posts'], 'posts', $search_results['querycache'], $mybb->input['keywords']]
+    );
     $plugins->run_hooks('search_do_search_end');
     redirect("search.php?action=results&sid=$sid", $lang->search['redirect_searchresults']);
 

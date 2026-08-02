@@ -101,7 +101,10 @@ function poll_parse_postoptions(array $raw): array
 function poll_get_or_die(int $pid, bool $is_ajax): array
 {
     global $db;
-    $query = $db->simple_select('polls', '*', "pid='{$pid}'");
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM polls WHERE pid = ?",
+        [$pid]
+    );
     $poll  = $db->fetch_array($query);
     if (!$poll) {
         poll_error($is_ajax, 'Invalid poll');
@@ -221,10 +224,10 @@ if ($action === 'do_newpoll' && $is_post) {
     $count = count($clean_options);
     $newpoll = [
         'tid'        => $thread['tid'],
-        'question'   => $db->escape_string($question),
+        'question'   => $question,
         'dateline'   => TIMENOW,
-        'options'    => $db->escape_string(implode('||~|~||', $clean_options)),
-        'votes'      => $db->escape_string(poll_zero_votes($count)),
+        'options'    => implode('||~|~||', $clean_options),
+        'votes'      => poll_zero_votes($count),
         'numoptions' => $count,
         'numvotes'   => 0,
         'timeout'    => $timeout,
@@ -236,8 +239,18 @@ if ($action === 'do_newpoll' && $is_post) {
 
     $plugins->run_hooks('polls_do_newpoll_process');
 
-    $pid = $db->insert_query('polls', $newpoll);
-    $db->update_query('threads', ['poll' => $pid], "tid='{$thread['tid']}'");
+    $columns      = array_keys($newpoll);
+    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO polls (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
+        array_values($newpoll)
+    );
+    $pid = $db->insert_id();
+
+    $db->sql_query_prepared(
+        "UPDATE threads SET poll = ? WHERE tid = ?",
+        [$pid, $thread['tid']]
+    );
 
     $plugins->run_hooks('polls_do_newpoll_end');
 
@@ -253,7 +266,10 @@ if ($action === 'editpoll') {
     $pid    = $mybb->get_input('pid', MyBB::INPUT_INT);
     $poll   = poll_get_or_die($pid, false);
 
-    $query  = $db->simple_select('threads', '*', "poll='{$pid}'");
+    $query  = $db->sql_query_prepared(
+        "SELECT * FROM threads WHERE poll = ?",
+        [$pid]
+    );
     $thread = $db->fetch_array($query);
     if (!$thread) {
         stderr('error_invalidthread');
@@ -322,17 +338,23 @@ if ($action === 'do_editpoll' && $is_post) {
     $maxoptions = max(0, $mybb->get_input('maxoptions', MyBB::INPUT_INT));
     $count      = count($clean_options);
 
-    $db->update_query('polls', [
-        'question'   => $db->escape_string($question),
-        'options'    => $db->escape_string(implode('||~|~||', $clean_options)),
-        'votes'      => $db->escape_string(implode('||~|~||', $clean_votes)),
-        'numoptions' => $count,
-        'multiple'   => $opts['multiple'],
-        'public'     => $opts['public'],
-        'closed'     => $opts['closed'],
-        'timeout'    => $timeout,
-        'maxoptions' => $maxoptions,
-    ], "pid='{$pid}'");
+    $db->sql_query_prepared(
+        "UPDATE polls
+         SET question = ?, options = ?, votes = ?, numoptions = ?, multiple = ?, public = ?, closed = ?, timeout = ?, maxoptions = ?
+         WHERE pid = ?",
+        [
+            $question,
+            implode('||~|~||', $clean_options),
+            implode('||~|~||', $clean_votes),
+            $count,
+            $opts['multiple'],
+            $opts['public'],
+            $opts['closed'],
+            $timeout,
+            $maxoptions,
+            $pid,
+        ]
+    );
 
     $thread = poll_get_thread_or_die($poll['tid'], $is_ajax);
     poll_respond($is_ajax, get_thread_link($thread['tid']), 'Poll updated successfully');
@@ -369,13 +391,14 @@ if ($action === 'showresults') {
 
     // Gather voter data
     $voters = $votedfor = $guest_voters = [];
-    $query  = $db->sql_query("
-        SELECT v.*, u.username
-        FROM pollvotes v
-        LEFT JOIN users u ON (u.id = v.uid)
-        WHERE v.pid = '{$poll['pid']}'
-        ORDER BY u.username
-    ");
+    $query  = $db->sql_query_prepared(
+        "SELECT v.*, u.username
+         FROM pollvotes v
+         LEFT JOIN users u ON (u.id = v.uid)
+         WHERE v.pid = ?
+         ORDER BY u.username",
+        [$poll['pid']]
+    );
     while ($voter = $db->fetch_array($query)) {
         $cur_uid = (int)($CURUSER['id'] ?? 0);
         if ($cur_uid && $cur_uid == $voter['uid']) {
@@ -437,12 +460,19 @@ if ($action === 'vote' && $is_post) {
     }
 
     // Duplicate-vote check
-    $cur_uid   = (int)($CURUSER['id'] ?? 0);
-    $uid_check = $cur_uid
-        ? "uid='{$cur_uid}'"
-        : "ipaddress=" . $db->escape_binary($session->packedip);
+    $cur_uid = (int)($CURUSER['id'] ?? 0);
+    if ($cur_uid) {
+        $uid_condition = "uid = ?";
+        $uid_params    = [$cur_uid];
+    } else {
+        $uid_condition = "ipaddress = ?";
+        $uid_params    = [$session->packedip];
+    }
 
-    $votecheck = $db->fetch_array($db->simple_select('pollvotes', '*', "{$uid_check} AND pid='{$poll['pid']}'"));
+    $votecheck = $db->fetch_array($db->sql_query_prepared(
+        "SELECT * FROM pollvotes WHERE {$uid_condition} AND pid = ?",
+        [...$uid_params, $poll['pid']]
+    ));
     if ($votecheck) {
         stderr('error_alreadyvoted');
     }
@@ -462,9 +492,9 @@ if ($action === 'vote' && $is_post) {
                 $votesql[] = [
                     'pid'        => $poll['pid'],
                     'uid'        => $cur_uid,
-                    'voteoption' => $db->escape_string($voteoption),
+                    'voteoption' => $voteoption,
                     'dateline'   => TIMENOW,
-                    'ipaddress'  => $db->escape_binary($session->packedip),
+                    'ipaddress'  => $session->packedip,
                 ];
                 $votesarray[$voteoption - 1]++;
                 $numvotes++;
@@ -481,9 +511,9 @@ if ($action === 'vote' && $is_post) {
         $votesql = [
             'pid'        => $poll['pid'],
             'uid'        => $cur_uid,
-            'voteoption' => $db->escape_string($option),
+            'voteoption' => $option,
             'dateline'   => TIMENOW,
-            'ipaddress'  => $db->escape_binary($session->packedip),
+            'ipaddress'  => $session->packedip,
         ];
         $votesarray[$option - 1]++;
         $numvotes++;
@@ -495,15 +525,19 @@ if ($action === 'vote' && $is_post) {
 
     $plugins->run_hooks('polls_vote_process');
 
-    $poll['multiple'] == 1
-        ? $db->insert_query_multiple('pollvotes', $votesql)
-        : $db->insert_query('pollvotes', $votesql);
+    $vote_rows = $poll['multiple'] == 1 ? $votesql : [$votesql];
+    foreach ($vote_rows as $row) {
+        $db->sql_query_prepared(
+            "INSERT INTO pollvotes (pid, uid, voteoption, dateline, ipaddress) VALUES (?, ?, ?, ?, ?)",
+            [$row['pid'], $row['uid'], $row['voteoption'], $row['dateline'], $row['ipaddress']]
+        );
+    }
 
     $voteslist = implode('||~|~||', $votesarray);
-    $db->update_query('polls', [
-        'votes'    => $db->escape_string($voteslist),
-        'numvotes' => $numvotes,
-    ], "pid='{$poll['pid']}'");
+    $db->sql_query_prepared(
+        "UPDATE polls SET votes = ?, numvotes = ? WHERE pid = ?",
+        [$voteslist, $numvotes, $poll['pid']]
+    );
 
     $plugins->run_hooks('polls_vote_end');
 
@@ -537,13 +571,20 @@ if ($action === 'do_undovote') {
         stderr('error_pollclosed');
     }
 
-    $cur_uid   = (int)($CURUSER['id'] ?? 0);
-    $uid_check = $cur_uid
-        ? "uid='{$cur_uid}'"
-        : "uid='0' AND ipaddress=" . $db->escape_binary($session->packedip);
+    $cur_uid = (int)($CURUSER['id'] ?? 0);
+    if ($cur_uid) {
+        $uid_condition = "uid = ?";
+        $uid_params    = [$cur_uid];
+    } else {
+        $uid_condition = "uid = 0 AND ipaddress = ?";
+        $uid_params    = [$session->packedip];
+    }
 
     $vote_options = [];
-    $query = $db->simple_select('pollvotes', 'vid,voteoption', "{$uid_check} AND pid='{$poll['pid']}'");
+    $query = $db->sql_query_prepared(
+        "SELECT vid, voteoption FROM pollvotes WHERE {$uid_condition} AND pid = ?",
+        [...$uid_params, $poll['pid']]
+    );
     while ($row = $db->fetch_array($query)) {
         $vote_options[$row['vid']] = $row['voteoption'];
     }
@@ -575,11 +616,14 @@ if ($action === 'do_undovote') {
 
     $plugins->run_hooks('polls_do_undovote_process');
 
-    $db->delete_query('pollvotes', "{$uid_check} AND pid='{$poll['pid']}'");
-    $db->update_query('polls', [
-        'votes'    => $db->escape_string(implode('||~|~||', $votesarray)),
-        'numvotes' => $numvotes,
-    ], "pid='{$poll['pid']}'");
+    $db->sql_query_prepared(
+        "DELETE FROM pollvotes WHERE {$uid_condition} AND pid = ?",
+        [...$uid_params, $poll['pid']]
+    );
+    $db->sql_query_prepared(
+        "UPDATE polls SET votes = ?, numvotes = ? WHERE pid = ?",
+        [implode('||~|~||', $votesarray), $numvotes, $poll['pid']]
+    );
 
     $plugins->run_hooks('polls_do_undovote_end');
 

@@ -392,7 +392,7 @@ if ($mybb->input['action'] === 'do_options' && $mybb->request_method === 'post')
         'uid'               => $CURUSER['id'],
         'dateformat'        => $mybb->get_input('dateformat', MyBB::INPUT_INT),
         'timeformat'        => $mybb->get_input('timeformat', MyBB::INPUT_INT),
-        'timezone'          => $db->escape_string($mybb->get_input('timezoneoffset')),
+        'timezone'          => $mybb->get_input('timezoneoffset'),
         'usergroup'         => $CURUSER['usergroup'],
         'additionalgroups'  => $CURUSER['additionalgroups'],
         'options'           => [
@@ -987,21 +987,19 @@ if ($mybb->input['action'] === 'do_email' && $mybb->request_method === 'post') {
         } else {
             $activation = false;
             if ($CURUSER['usergroup'] == 5 && in_array($regtype, ['verify', 'both'], true)) {
-                $query      = $db->simple_select('awaitingactivation', '*', "uid='{$CURUSER['id']}' AND (type='r' OR type='b')");
-                $activation = $db->fetch_array($query);
+                $query      = $db->sql_query_prepared("SELECT * FROM awaitingactivation WHERE uid = ? AND (type='r' OR type='b')", [(int)$CURUSER['id']]);
+                $activation = $query ? $db->fetch_array($query) : null;
             }
 
             if ($activation) {
                 $userhandler->update_user();
-                $db->delete_query('awaitingactivation', "uid='{$CURUSER['id']}'");
+                $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ?", [(int)$CURUSER['id']]);
 
                 $activationcode = random_str();
-                $db->insert_query('awaitingactivation', [
-                    'uid'      => $CURUSER['id'],
-                    'dateline' => TIMENOW,
-                    'code'     => $activationcode,
-                    'type'     => $activation['type'],
-                ]);
+                $db->sql_query_prepared(
+                    "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
+                    [(int)$CURUSER['id'], TIMENOW, $activationcode, $activation['type']]
+                );
 
                 $emailsubject = 'Account Activation at ' . $SITENAME;
                 $emailmessage = sprintf(
@@ -1017,14 +1015,11 @@ if ($mybb->input['action'] === 'do_email' && $mybb->request_method === 'post') {
 
             } elseif ($mybb->usergroup['cancp'] != 1 && in_array($regtype, ['verify', 'both'], true)) {
                 $activationcode = random_str();
-                $db->delete_query('awaitingactivation', "uid='{$CURUSER['id']}'");
-                $db->insert_query('awaitingactivation', [
-                    'uid'      => $CURUSER['id'],
-                    'dateline' => TIMENOW,
-                    'code'     => $activationcode,
-                    'type'     => 'e',
-                    'misc'     => $db->escape_string($mybb->get_input('email')),
-                ]);
+                $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ?", [(int)$CURUSER['id']]);
+                $db->sql_query_prepared(
+                    "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`,`misc`) VALUES (?,?,?,?,?)",
+                    [(int)$CURUSER['id'], TIMENOW, $activationcode, 'e', $mybb->get_input('email')]
+                );
                 my_mail(
                     $mybb->get_input('email'),
                     sprintf('Change of Email at ' . $SITENAME),
@@ -1486,7 +1481,7 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
     require_once INC_PATH . '/functions_upload.php';
 
     if (!empty($mybb->input['remove'])) {
-        $db->update_query('users', ['avatar' => '', 'avatardimensions' => '', 'avatartype' => ''], "id='{$CURUSER['id']}'");
+        $db->sql_query_prepared("UPDATE users SET avatar = '', avatardimensions = '', avatartype = '' WHERE id = ?", [(int)$CURUSER['id']]);
         remove_avatars($CURUSER['id']);
 
     } elseif ($_FILES['avatarupload']['name'] ?? '') {
@@ -1497,11 +1492,10 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
             $avatar_dimensions = ($avatar['width'] > 0 && $avatar['height'] > 0)
                 ? $avatar['width'] . '|' . $avatar['height']
                 : '';
-            $db->update_query('users', [
-                'avatar'           => $avatar['avatar'],
-                'avatardimensions' => $avatar_dimensions,
-                'avatartype'       => 'upload',
-            ], "id='{$CURUSER['id']}'");
+            $db->sql_query_prepared(
+                "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = ? WHERE id = ?",
+                [$avatar['avatar'], $avatar_dimensions, 'upload', (int)$CURUSER['id']]
+            );
         }
 
     } elseif (!$allowremoteavatars && !($_FILES['avatarupload']['name'] ?? '')) {
@@ -1546,11 +1540,10 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
 
         if (empty($avatar_error)) {
             $avatar_dimensions = ($width > 0 && $height > 0) ? (int) $width . '|' . (int) $height : '';
-            $db->update_query('users', [
-                'avatar'           => $db->escape_string($avatarurl),
-                'avatardimensions' => $avatar_dimensions,
-                'avatartype'       => 'remote',
-            ], "id='{$CURUSER['id']}'");
+            $db->sql_query_prepared(
+                "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = ? WHERE id = ?",
+                [$avatarurl, $avatar_dimensions, 'remote', (int)$CURUSER['id']]
+            );
             remove_avatars($CURUSER['id']);
         }
     } else {
@@ -2020,7 +2013,7 @@ if ($mybb->input['action'] === 'do_editsig' && $mybb->request_method === 'post')
     verify_post_check($mybb->get_input('my_post_key'));
     $plugins->run_hooks('usercp_do_editsig_start');
 
-    $db->update_query('users', ['signature' => $db->escape_string($mybb->input['signature'])], "id='{$CURUSER['id']}'");
+    $db->sql_query_prepared("UPDATE users SET signature = ? WHERE id = ?", [$mybb->input['signature'], (int)$CURUSER['id']]);
 
     $plugins->run_hooks('usercp_do_editsig_end');
     redirect('usercp.php?action=editsig', 'Your signature has been successfully updated.<br />You will be now returned to the signature settings');
@@ -2364,11 +2357,17 @@ if ($mybb->input['action'] === 'do_profile' && $mybb->request_method === 'post')
 
         if ($passhint > 0 && $hintanswer !== '') {
             $hashed_answer = md5($hintanswer);
-            $query = $db->simple_select('ts_secret_questions', 'userid', "userid='{$CURUSER['id']}'");
-            if ($db->num_rows($query) > 0) {
-                $db->update_query('ts_secret_questions', ['passhint' => $passhint, 'hintanswer' => $hashed_answer], "userid='{$CURUSER['id']}'");
+            $query = $db->sql_query_prepared("SELECT userid FROM ts_secret_questions WHERE userid = ?", [(int)$CURUSER['id']]);
+            if ($query && $db->num_rows($query) > 0) {
+                $db->sql_query_prepared(
+                    "UPDATE ts_secret_questions SET passhint = ?, hintanswer = ? WHERE userid = ?",
+                    [$passhint, $hashed_answer, (int)$CURUSER['id']]
+                );
             } else {
-                $db->insert_query('ts_secret_questions', ['userid' => $CURUSER['id'], 'passhint' => $passhint, 'hintanswer' => $hashed_answer]);
+                $db->sql_query_prepared(
+                    "INSERT INTO ts_secret_questions (`userid`,`passhint`,`hintanswer`) VALUES (?,?,?)",
+                    [(int)$CURUSER['id'], $passhint, $hashed_answer]
+                );
             }
         }
 
@@ -2385,12 +2384,12 @@ if ($mybb->input['action'] === 'removesubscriptions') {
 
     if ($mybb->get_input('type') === 'forum') {
         $plugins->run_hooks('usercp2_removesubscriptions_forum');
-        $db->delete_query('forumsubscriptions', "uid='{$CURUSER['id']}'");
+        $db->sql_query_prepared("DELETE FROM forumsubscriptions WHERE uid = ?", [(int)$CURUSER['id']]);
         $url = $server_http_referer ?: 'usercp.php?action=forumsubscriptions';
         redirect($url, $lang->redirect_forumsubscriptionsremoved);
     } else {
         $plugins->run_hooks('usercp2_removesubscriptions_thread');
-        $db->delete_query('threadsubscriptions', "uid='{$CURUSER['id']}'");
+        $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE uid = ?", [(int)$CURUSER['id']]);
         $url = $server_http_referer ?: 'usercp.php?action=subscriptions';
         redirect($url, $lang->usercp['redirect_subscriptionsremoved']);
     }
@@ -2411,14 +2410,14 @@ if ($mybb->input['action'] === 'do_subscriptions') {
     $tids = implode(',', $mybb->input['check']);
 
     if ($mybb->get_input('do') === 'delete') {
-        $db->delete_query('threadsubscriptions', "tid IN ($tids) AND uid='{$CURUSER['id']}'");
+        $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE tid IN ($tids) AND uid = ?", [(int)$CURUSER['id']]);
     } else {
         $new_notification = match ($mybb->get_input('do')) {
             'email_notification' => 1,
             'pm_notification'    => 2,
             default              => 0,
         };
-        $db->update_query('threadsubscriptions', ['notification' => $new_notification], "tid IN ($tids) AND uid='{$CURUSER['id']}'");
+        $db->sql_query_prepared("UPDATE threadsubscriptions SET notification = ? WHERE tid IN ($tids) AND uid = ?", [$new_notification, (int)$CURUSER['id']]);
     }
 
     redirect('usercp.php?action=subscriptions', $lang->usercp['redirect_subscriptions_updated']);
@@ -2430,7 +2429,8 @@ if ($mybb->input['action'] === 'do_subscriptions') {
 if ($mybb->input['action'] === 'subscriptions') {
     $plugins->run_hooks('usercp_subscriptions_start');
 
-    $where_parts = ["s.uid={$CURUSER['id']}"];
+    $where_parts = ["s.uid=?"];
+    $where_params = [(int)$CURUSER['id']];
     if ($unviewable_forums = get_unviewable_forums(true)) {
         $where_parts[] = "t.fid NOT IN ({$unviewable_forums})";
     }
@@ -2439,8 +2439,8 @@ if ($mybb->input['action'] === 'subscriptions') {
     }
     $where = implode(' AND ', $where_parts);
 
-    $query        = $db->sql_query("SELECT COUNT(s.tid) as threads FROM threadsubscriptions s LEFT JOIN threads t ON (t.tid=s.tid) WHERE {$where}");
-    $threadcount  = (int) $db->fetch_field($query, 'threads');
+    $query        = $db->sql_query_prepared("SELECT COUNT(s.tid) as threads FROM threadsubscriptions s LEFT JOIN threads t ON (t.tid=s.tid) WHERE {$where}", $where_params);
+    $threadcount  = $query ? (int) $db->fetch_field($query, 'threads') : 0;
     $perpage      = ($f_threadsperpage && (int) $f_threadsperpage >= 1) ? (int) $f_threadsperpage : 20;
 
     $page  = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
@@ -2452,7 +2452,7 @@ if ($mybb->input['action'] === 'subscriptions') {
     $fpermissions = forum_permissions();
     $del_subs     = $subscriptions = [];
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT s.*, s.dateline AS subscription_dateline, t.*, t.username AS threadusername,
                u.username, u.username AS author,
                f.name AS forumname
@@ -2463,9 +2463,9 @@ if ($mybb->input['action'] === 'subscriptions') {
         WHERE {$where}
         ORDER BY t.lastpost DESC
         LIMIT {$start}, {$perpage}
-    ");
+    ", $where_params);
 
-    while ($subscription = $db->fetch_array($query)) {
+    while ($query && ($subscription = $db->fetch_array($query))) {
         $fp = $fpermissions[$subscription['fid']];
         if (isset($fp['canonlyviewownthreads']) && $fp['canonlyviewownthreads'] != 0 && $subscription['uid'] != $mybb->user['id']) {
             $del_subs[] = $subscription['sid'];
@@ -2475,8 +2475,8 @@ if ($mybb->input['action'] === 'subscriptions') {
     }
 
     if ($del_subs) {
-        $sids = implode(',', $del_subs);
-        $db->delete_query('threadsubscriptions', "sid IN ({$sids}) AND uid='{$CURUSER['id']}'");
+        $sids = implode(',', array_map('intval', $del_subs));
+        $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE sid IN ({$sids}) AND uid = ?", [(int)$CURUSER['id']]);
         $threadcount = max(0, $threadcount - count($del_subs));
     }
 
@@ -2486,20 +2486,20 @@ if ($mybb->input['action'] === 'subscriptions') {
 
         // Forum read times
         $readforums = [];
-        $q = $db->sql_query("
+        $q = $db->sql_query_prepared("
             SELECT f.fid, fr.dateline AS lastread
             FROM forums f
-            LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid='{$CURUSER['id']}')
+            LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid=?)
             WHERE f.active != 0 ORDER BY pid, disporder
-        ");
-        while ($forum = $db->fetch_array($q)) {
+        ", [(int)$CURUSER['id']]);
+        while ($q && ($forum = $db->fetch_array($q))) {
             $readforums[$forum['fid']] = $forum['lastread'];
         }
 
         // Dot icons
         if ((int) ($dotfolders ?? 1) !== 0) {
-            $q = $db->simple_select('posts', 'tid,uid', "uid='{$CURUSER['id']}' AND tid IN ({$tids})");
-            while ($post = $db->fetch_array($q)) {
+            $q = $db->sql_query_prepared("SELECT tid,uid FROM posts WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
+            while ($q && ($post = $db->fetch_array($q))) {
                 $subscriptions[$post['tid']]['doticon'] = 1;
             }
         }
@@ -2507,8 +2507,8 @@ if ($mybb->input['action'] === 'subscriptions') {
         // Thread read times
         $threadreadcut = (int) ($threadreadcut ?? 7);
         if ($threadreadcut > 0) {
-            $q = $db->simple_select('threadsread', '*', "uid='{$CURUSER['id']}' AND tid IN ({$tids})");
-            while ($rt = $db->fetch_array($q)) {
+            $q = $db->sql_query_prepared("SELECT * FROM threadsread WHERE uid=? AND tid IN ({$tids})", [(int)$CURUSER['id']]);
+            while ($q && ($rt = $db->fetch_array($q))) {
                 $subscriptions[$rt['tid']]['lastread'] = $rt['dateline'];
             }
         }
@@ -3131,13 +3131,13 @@ if ($mybb->input['action'] === 'forumsubscriptions') {
     $plugins->run_hooks('usercp_forumsubscriptions_start');
 
     $readforums = [];
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT f.fid, fr.dateline AS lastread
         FROM forums f
-        LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid='{$CURUSER['id']}')
+        LEFT JOIN forumsread fr ON (fr.fid=f.fid AND fr.uid=?)
         WHERE f.active != 0 ORDER BY pid, disporder
-    ");
-    while ($forum = $db->fetch_array($q)) {
+    ", [(int)$CURUSER['id']]);
+    while ($q && ($forum = $db->fetch_array($q))) {
         $readforums[$forum['fid']] = $forum['lastread'];
     }
 
@@ -3396,7 +3396,7 @@ if ($mybb->input['action'] === 'do_removebookmarks') {
     $tids = implode(',', $mybb->input['check']);
 
     if ($mybb->get_input('do') === 'delete') {
-        $db->delete_query('bookmarks', "torrentid IN ($tids) AND userid='{$CURUSER['id']}'");
+        $db->sql_query_prepared("DELETE FROM bookmarks WHERE torrentid IN ($tids) AND userid = ?", [(int)$CURUSER['id']]);
     }
 
     echo json_encode(['status' => 'success', 'message' => $lang->usercp['redirect_bookmark_updated']]);
@@ -3406,7 +3406,7 @@ if ($mybb->input['action'] === 'do_removebookmarks') {
 if ($mybb->input['action'] === 'removebookmarks') {
     verify_post_check($mybb->get_input('my_post_key'));
     $plugins->run_hooks('usercp2_removesubscriptions_thread');
-    $db->delete_query('bookmarks', "userid='{$CURUSER['id']}'");
+    $db->sql_query_prepared("DELETE FROM bookmarks WHERE userid = ?", [(int)$CURUSER['id']]);
 
     header('Content-Type: application/json');
     echo json_encode(['status' => 'success', 'message' => $lang->usercp['redirect_bookmarkremoved']]);
@@ -3649,8 +3649,8 @@ if ($mybb->input['action'] === 'manage_files') {
     $plugins->run_hooks('usercp_manage_files_start');
 
     $uid       = (int) $CURUSER['id'];
-    $count_q   = $db->sql_query("SELECT COUNT(*) as files_count FROM comment_files WHERE user_id={$uid}");
-    $filecount = (int) $db->fetch_field($count_q, 'files_count');
+    $count_q   = $db->sql_query_prepared("SELECT COUNT(*) as files_count FROM comment_files WHERE user_id=?", [$uid]);
+    $filecount = $count_q ? (int) $db->fetch_field($count_q, 'files_count') : 0;
     $perpage   = max(1, (int) ($ts_perpage ?? 15));
     $page      = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
     $start     = ($page - 1) * $perpage;
@@ -3852,7 +3852,7 @@ if ($mybb->input['action'] === 'do_remove_files') {
                 LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
                 WHERE cf.id=? AND cf.user_id=?", [$file_id, (int) $CURUSER['id']]);
 
-            if ($db->num_rows($query) > 0) {
+            if ($query && $db->num_rows($query) > 0) {
                 $file = $db->fetch_array($query);
                 if (!empty($file['file_path']) && file_exists($file['file_path'])) {
                     @unlink($file['file_path']);
@@ -3871,12 +3871,12 @@ if ($mybb->input['action'] === 'do_remove_files') {
                     if ($id) {
                         $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
                         if ($new_text !== $content) {
-                            $db->sql_query("UPDATE {$table} SET {$field}='" . $db->escape_string($new_text) . "' WHERE {$id_field}=" . (int) $id);
+                            $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
                         }
                     }
                 }
 
-                $db->sql_query("DELETE FROM comment_files WHERE id={$file_id} AND user_id={$CURUSER['id']}");
+                $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file_id, (int)$CURUSER['id']]);
                 $deleted++;
             }
         }
@@ -3908,7 +3908,7 @@ if ($mybb->input['action'] === 'remove_all_files') {
         WHERE cf.user_id=?", [$uid]);
 
     $deleted = 0;
-    while ($file = $db->fetch_array($query)) {
+    while ($query && ($file = $db->fetch_array($query))) {
         if (!empty($file['file_path']) && file_exists($file['file_path'])) {
             @unlink($file['file_path']);
         }
@@ -3925,12 +3925,12 @@ if ($mybb->input['action'] === 'remove_all_files') {
             if ($id) {
                 $new_text = preg_replace($image_pattern, '[Image Deleted]', (string) $content);
                 if ($new_text !== $content) {
-                    $db->sql_query("UPDATE {$table} SET {$field}='" . $db->escape_string($new_text) . "' WHERE {$id_field}=" . (int) $id);
+                    $db->sql_query_prepared("UPDATE {$table} SET {$field}=? WHERE {$id_field}=?", [$new_text, (int) $id]);
                 }
             }
         }
 
-        $db->sql_query("DELETE FROM comment_files WHERE id={$file['id']} AND user_id={$uid}");
+        $db->sql_query_prepared("DELETE FROM comment_files WHERE id=? AND user_id=?", [$file['id'], $uid]);
         $deleted++;
     }
 
@@ -3944,8 +3944,8 @@ if ($mybb->input['action'] === 'remove_all_files') {
 if ($mybb->input['action'] === 'acceptrequest') {
     verify_post_check($mybb->get_input('my_post_key'));
 
-    $query   = $db->simple_select('buddyrequests', '*', 'id=' . $mybb->get_input('id', MyBB::INPUT_INT) . ' AND touid=' . (int) $CURUSER['id']);
-    $request = $db->fetch_array($query);
+    $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND touid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
+    $request = $query ? $db->fetch_array($query) : null;
     if (empty($request)) { error('invalid_request'); }
 
     $plugins->run_hooks('usercp_acceptrequest_start');
@@ -3958,14 +3958,14 @@ if ($mybb->input['action'] === 'acceptrequest') {
     $requester_buddylist[] = (int) $CURUSER['id'];
     $new_list = preg_replace(['#,{2,}#', '#[^0-9,]#'], [',', ''], implode(',', $requester_buddylist));
     $new_list = trim($new_list, ',');
-    $db->update_query('users', ['buddylist' => $db->escape_string($new_list)], "id='" . (int) $user['id'] . "'");
+    $db->sql_query_prepared("UPDATE users SET buddylist = ? WHERE id = ?", [$new_list, (int) $user['id']]);
 
     // Add requestor to current user's buddy list
     $my_buddylist   = array_filter(explode(',', $CURUSER['buddylist']));
     $my_buddylist[] = (int) $request['uid'];
     $new_list = preg_replace(['#,{2,}#', '#[^0-9,]#'], [',', ''], implode(',', $my_buddylist));
     $new_list = trim($new_list, ',');
-    $db->update_query('users', ['buddylist' => $db->escape_string($new_list)], "id='" . (int) $CURUSER['id'] . "'");
+    $db->sql_query_prepared("UPDATE users SET buddylist = ? WHERE id = ?", [$new_list, (int) $CURUSER['id']]);
 
     require_once INC_PATH . '/functions_pm.php';
     send_pm([
@@ -3974,7 +3974,7 @@ if ($mybb->input['action'] === 'acceptrequest') {
         'touid'   => $user['id'],
     ], $CURUSER['id'], true);
 
-    $db->delete_query('buddyrequests', 'id=' . (int) $request['id']);
+    $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
     $plugins->run_hooks('usercp_acceptrequest_end');
     redirect('usercp.php?action=editlists', $lang->usercp['buddyrequest_accepted']);
 }
@@ -3982,15 +3982,15 @@ if ($mybb->input['action'] === 'acceptrequest') {
 if ($mybb->input['action'] === 'declinerequest') {
     verify_post_check($mybb->get_input('my_post_key'));
 
-    $query   = $db->simple_select('buddyrequests', '*', 'id=' . $mybb->get_input('id', MyBB::INPUT_INT) . ' AND touid=' . (int) $CURUSER['id']);
-    $request = $db->fetch_array($query);
+    $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND touid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
+    $request = $query ? $db->fetch_array($query) : null;
     if (empty($request)) { error('invalid_request'); }
 
     $plugins->run_hooks('usercp_declinerequest_start');
     $user = get_user($request['uid']);
     if (empty($user)) { error('user_doesnt_exist'); }
 
-    $db->delete_query('buddyrequests', 'id=' . (int) $request['id']);
+    $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
     $plugins->run_hooks('usercp_declinerequest_end');
     redirect('usercp.php?action=editlists', $lang->usercp['buddyrequest_declined']);
 }
@@ -3998,12 +3998,12 @@ if ($mybb->input['action'] === 'declinerequest') {
 if ($mybb->input['action'] === 'cancelrequest') {
     verify_post_check($mybb->get_input('my_post_key'));
 
-    $query   = $db->simple_select('buddyrequests', '*', 'id=' . $mybb->get_input('id', MyBB::INPUT_INT) . ' AND uid=' . (int) $CURUSER['id']);
-    $request = $db->fetch_array($query);
+    $query   = $db->sql_query_prepared("SELECT * FROM buddyrequests WHERE id=? AND uid=?", [$mybb->get_input('id', MyBB::INPUT_INT), (int) $CURUSER['id']]);
+    $request = $query ? $db->fetch_array($query) : null;
     if (empty($request)) { error('invalid_request'); }
 
     $plugins->run_hooks('usercp_cancelrequest_start');
-    $db->delete_query('buddyrequests', 'id=' . (int) $request['id']);
+    $db->sql_query_prepared("DELETE FROM buddyrequests WHERE id = ?", [(int) $request['id']]);
     $plugins->run_hooks('usercp_cancelrequest_end');
     redirect('usercp.php?action=editlists', $lang->usercp['buddyrequest_cancelled']);
 }
@@ -4034,27 +4034,27 @@ if ($mybb->input['action'] === 'do_editlists') {
             if (strtoupper($CURUSER['username']) === strtoupper($username)) {
                 $adding_self = true;
                 unset($users[$key]);
-            } else {
-                $users[$key] = $db->escape_string($username);
             }
         }
 
         // Pending requests
-        $q        = $db->simple_select('buddyrequests', 'touid', 'uid=' . (int) $CURUSER['id']);
+        $q        = $db->sql_query_prepared("SELECT touid FROM buddyrequests WHERE uid=?", [(int) $CURUSER['id']]);
         $requests = [];
-        while ($r = $db->fetch_array($q)) { $requests[$r['touid']] = true; }
+        while ($q && ($r = $db->fetch_array($q))) { $requests[$r['touid']] = true; }
 
-        $q = $db->simple_select('buddyrequests', 'uid', 'touid=' . (int) $CURUSER['id']);
+        $q = $db->sql_query_prepared("SELECT uid FROM buddyrequests WHERE touid=?", [(int) $CURUSER['id']]);
         $requests_rec = [];
-        while ($r = $db->fetch_array($q)) { $requests_rec[$r['uid']] = true; }
+        while ($q && ($r = $db->fetch_array($q))) { $requests_rec[$r['uid']] = true; }
 
         $sent = false;
 
         if (count($users) > 0) {
             $field = in_array($db->type, ['mysql', 'mysqli'], true) ? 'username' : 'LOWER(username)';
-            $q     = $db->simple_select('users', 'id,buddyrequestsauto,buddyrequestspm', $field . " IN ('" . strtolower(implode("','", $users)) . "')");
+            $lowered_users = array_map('strtolower', $users);
+            $placeholders  = implode(',', array_fill(0, count($lowered_users), '?'));
+            $q     = $db->sql_query_prepared("SELECT id,buddyrequestsauto,buddyrequestspm FROM users WHERE {$field} IN ({$placeholders})", $lowered_users);
 
-            while ($user = $db->fetch_array($q)) {
+            while ($q && ($user = $db->fetch_array($q))) {
                 $found_users++;
 
                 if (in_array($user['id'], $existing_users) || in_array($user['id'], $selected_list)) {
@@ -4082,7 +4082,10 @@ if ($mybb->input['action'] === 'do_editlists') {
                     require_once INC_PATH . '/functions_pm.php';
                     send_pm($user['id'], $lang->usercp['buddyrequest_new_buddy_message'], $lang->usercp['buddyrequest_new_buddy'], $CURUSER['id']);
                 } elseif ($user['buddyrequestsauto'] != 1 && !$isIgnored) {
-                    $db->insert_query('buddyrequests', ['uid' => (int) $CURUSER['id'], 'touid' => (int) $user['id'], 'date' => TIMENOW]);
+                    $db->sql_query_prepared(
+                        "INSERT INTO buddyrequests (`uid`,`touid`,`date`) VALUES (?,?,?)",
+                        [(int) $CURUSER['id'], (int) $user['id'], TIMENOW]
+                    );
                     require_once INC_PATH . '/functions_pm.php';
                     send_pm([
                         'subject'       => $lang->usercp['buddyrequest_received'],
@@ -4130,7 +4133,7 @@ if ($mybb->input['action'] === 'do_editlists') {
                 if ($k2 !== false) { unset($bl[$k2]); }
                 $nl  = preg_replace(['#,{2,}#', '#[^0-9,]#'], [',', ''], implode(',', $bl));
                 $nl  = trim($nl, ',');
-                $db->update_query('users', ['buddylist' => $db->escape_string($nl)], "id='" . (int) $del_user['uid'] . "'");
+                $db->sql_query_prepared("UPDATE users SET buddylist = ? WHERE id = ?", [$nl, (int) $del_user['uid']]);
             }
             $tmpl = $isIgnored ? $lang->usercp['removed_from_ignore_list'] : $lang->usercp['removed_from_buddy_list'];
             $message = sprintf($tmpl, htmlspecialchars_uni($del_user['username'] ?? ''));
@@ -4140,11 +4143,11 @@ if ($mybb->input['action'] === 'do_editlists') {
     $new_list = trim(preg_replace(['#,{2,}#', '#[^0-9,]#'], [',', ''], implode(',', $existing_users)), ',');
 
     if ($isIgnored) {
-        $CURUSER['ignorelist'] = $db->escape_string($new_list);
-        $db->update_query('users', ['ignorelist' => $CURUSER['ignorelist']], "id='{$CURUSER['id']}'");
+        $CURUSER['ignorelist'] = $new_list;
+        $db->sql_query_prepared("UPDATE users SET ignorelist = ? WHERE id = ?", [$CURUSER['ignorelist'], (int)$CURUSER['id']]);
     } else {
-        $CURUSER['buddylist'] = $db->escape_string($new_list);
-        $db->update_query('users', ['buddylist' => $CURUSER['buddylist']], "id='{$CURUSER['id']}'");
+        $CURUSER['buddylist'] = $new_list;
+        $db->sql_query_prepared("UPDATE users SET buddylist = ? WHERE id = ?", [$CURUSER['buddylist'], (int)$CURUSER['id']]);
     }
 
     $plugins->run_hooks('usercp_do_editlists_end');
@@ -4188,8 +4191,8 @@ if ($mybb->input['action'] === 'editlists') {
 
     if ($CURUSER['buddylist']) {
         $type  = 'buddy';
-        $query = $db->simple_select('users', '*', "id IN ({$CURUSER['buddylist']})", ['order_by' => 'username']);
-        while ($user = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT * FROM users WHERE id IN ({$CURUSER['buddylist']}) ORDER BY username");
+        while ($query && ($user = $db->fetch_array($query))) {
             $user['username'] = htmlspecialchars_uni($user['username']);
             $profile_link     = build_profile_link(format_name($user['username'], $user['usergroup'], $user['displaygroup']), $user['id']);
             $status           = ($user['lastactive'] > $timecut && ($user['invisible'] == 0 || $mybb->usergroup['canviewwolinvis'] == 1) && $user['lastvisit'] != $user['lastactive'])
@@ -4232,8 +4235,8 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
     $ignore_count = 0;
     if ($CURUSER['ignorelist']) {
         $type  = 'ignored';
-        $query = $db->simple_select('users', '*', "id IN ({$CURUSER['ignorelist']})", ['order_by' => 'username']);
-        while ($user = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT * FROM users WHERE id IN ({$CURUSER['ignorelist']}) ORDER BY username");
+        while ($query && ($user = $db->fetch_array($query))) {
             $user['username'] = htmlspecialchars_uni($user['username']);
             $profile_link     = build_profile_link(format_name($user['username'], $user['usergroup'], $user['displaygroup']), $user['id']);
             $status           = ($user['lastactive'] > $timecut && ($user['invisible'] == 0 || $usergroups['issupermod'] === 'yes') && $user['lastvisit'] != $user['lastactive'])
@@ -4269,8 +4272,8 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
         } else {
             if (isset($sent) && $sent === true) {
                 $sent_rows = '';
-                $q = $db->sql_query("SELECT r.*, u.username FROM buddyrequests r LEFT JOIN users u ON (u.id=r.touid) WHERE r.uid=" . (int) $CURUSER['id']);
-                while ($request = $db->fetch_array($q)) {
+                $q = $db->sql_query_prepared("SELECT r.*, u.username FROM buddyrequests r LEFT JOIN users u ON (u.id=r.touid) WHERE r.uid=?", [(int) $CURUSER['id']]);
+                while ($q && ($request = $db->fetch_array($q))) {
                     $request['username'] = build_profile_link(htmlspecialchars_uni($request['username']), (int) $request['touid']);
                     $request['date']     = my_datee('relative', $request['date']);
                     
@@ -4320,8 +4323,8 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
 
     // Received requests
     $received_rows = '';
-    $q = $db->sql_query("SELECT r.*, u.username FROM buddyrequests r LEFT JOIN users u ON (u.id=r.uid) WHERE r.touid=" . (int) $CURUSER['id']);
-    while ($request = $db->fetch_array($q)) {
+    $q = $db->sql_query_prepared("SELECT r.*, u.username FROM buddyrequests r LEFT JOIN users u ON (u.id=r.uid) WHERE r.touid=?", [(int) $CURUSER['id']]);
+    while ($q && ($request = $db->fetch_array($q))) {
         $request['username'] = build_profile_link(htmlspecialchars_uni($request['username']), (int) $request['id']);
         $request['date']     = my_datee('relative', $request['date']);
         
@@ -4361,8 +4364,8 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
 
     // Sent requests
     $sent_rows = '';
-    $q = $db->sql_query("SELECT r.*, u.username FROM buddyrequests r LEFT JOIN users u ON (u.id=r.touid) WHERE r.uid=" . (int) $CURUSER['id']);
-    while ($request = $db->fetch_array($q)) {
+    $q = $db->sql_query_prepared("SELECT r.*, u.username FROM buddyrequests r LEFT JOIN users u ON (u.id=r.touid) WHERE r.uid=?", [(int) $CURUSER['id']]);
+    while ($q && ($request = $db->fetch_array($q))) {
         $request['username'] = build_profile_link(htmlspecialchars_uni($request['username']), (int) $request['touid']);
         $request['date']     = my_datee('relative', $request['date']);
         
@@ -4554,13 +4557,13 @@ if ($mybb->input['action'] === 'do_drafts' && $mybb->request_method === 'post') 
     $tidinp = '';
     if ($tidin_arr) {
         $tidin  = implode(',', $tidin_arr);
-        $db->delete_query('threads', "tid IN ({$tidin}) AND visible='-2' AND uid='{$CURUSER['id']}'");
+        $db->sql_query_prepared("DELETE FROM threads WHERE tid IN ({$tidin}) AND visible='-2' AND uid = ?", [(int)$CURUSER['id']]);
         $tidinp = "OR tid IN ({$tidin})";
     }
 
     if ($pidin || $tidinp) {
         $pidinq = $pidin ? 'pid IN (' . implode(',', $pidin) . ')' : '1=0';
-        $db->delete_query('posts', "({$pidinq} {$tidinp}) AND visible='-2' AND uid='{$CURUSER['id']}'");
+        $db->sql_query_prepared("DELETE FROM posts WHERE ({$pidinq} {$tidinp}) AND visible='-2' AND uid = ?", [(int)$CURUSER['id']]);
     }
 
     $plugins->run_hooks('usercp_do_drafts_end');
@@ -4573,8 +4576,8 @@ if ($mybb->input['action'] === 'do_drafts' && $mybb->request_method === 'post') 
 if ($mybb->input['action'] === 'drafts') {
     $plugins->run_hooks('usercp_drafts_start');
 
-    $query      = $db->simple_select('posts', 'COUNT(pid) AS draftcount', "visible='-2' AND uid='{$CURUSER['id']}'");
-    $draftcount = (int) $db->fetch_field($query, 'draftcount');
+    $query      = $db->sql_query_prepared("SELECT COUNT(pid) AS draftcount FROM posts WHERE visible='-2' AND uid = ?", [(int)$CURUSER['id']]);
+    $draftcount = $query ? (int) $db->fetch_field($query, 'draftcount') : 0;
     $drafts_count       = 'Saved Drafts (' . ts_nf($draftcount) . ')';
     $drafts             = '';
     $disable_delete_drafts = '';
@@ -5106,9 +5109,9 @@ if ($mybb->input['action'] === 'do_attachments' && $mybb->request_method === 'po
     if ($inactiveforums)    { $f_perm_sql .= " AND (p.fid IS NULL OR p.fid NOT IN ({$inactiveforums}))"; }
 
     $aids  = implode(',', array_map('intval', $mybb->input['attachments']));
-    $query = $db->sql_query("SELECT a.*, p.fid FROM attachments a LEFT JOIN posts p ON (a.pid=p.pid) WHERE aid IN ({$aids}) AND a.uid={$CURUSER['id']} {$f_perm_sql}");
+    $query = $db->sql_query_prepared("SELECT a.*, p.fid FROM attachments a LEFT JOIN posts p ON (a.pid=p.pid) WHERE aid IN ({$aids}) AND a.uid=? {$f_perm_sql}", [(int)$CURUSER['id']]);
 
-    while ($attachment = $db->fetch_array($query)) {
+    while ($query && ($attachment = $db->fetch_array($query))) {
         if ((int)$attachment['pid'] > 0) {
             remove_attachment((int)$attachment['pid'], '', (int)$attachment['aid']);
         } else {
@@ -5121,7 +5124,7 @@ if ($mybb->input['action'] === 'do_attachments' && $mybb->request_method === 'po
                 delete_uploaded_file($uploadDir . $attachment['thumbnail']);
             }
 
-            $db->delete_query('attachments', "aid='" . (int)$attachment['aid'] . "'");
+            $db->sql_query_prepared("DELETE FROM attachments WHERE aid = ?", [(int)$attachment['aid']]);
         }
     }
 
@@ -5934,9 +5937,8 @@ if ($mybb->input['action'] === 'do_2fa' && $mybb->request_method === 'post') {
 
     // ── Notify the account owner of a 2FA status change ─────────────────────
     $notify_2fa_change = function (int $uid, bool $enabled) use ($db, $SITENAME): void {
-        $user = $db->fetch_array(
-            $db->simple_select('users', 'username, email', "id='{$uid}'", ['limit' => 1])
-        );
+        $query = $db->sql_query_prepared("SELECT username, email FROM users WHERE id = ? LIMIT 1", [$uid]);
+        $user  = $query ? $db->fetch_array($query) : null;
 
         if (empty($user['email'])) {
             return;
@@ -6209,13 +6211,13 @@ if ($mybb->input['action'] === 'do_sessions' && $mybb->request_method === 'post'
     if ($mode === 'remove_device') {
         $device_id = (int)$mybb->get_input('device_id');
         if ($device_id > 0) {
-            $db->delete_query('user_devices', "id='{$device_id}' AND uid='{$uid}'");
+            $db->sql_query_prepared("DELETE FROM user_devices WHERE id = ? AND uid = ?", [$device_id, $uid]);
         }
         redirect('usercp.php?action=sessions', 'Device removed from your known devices list.');
     }
 
     // ── Log out everywhere ────────────────────────────────────────────────
-    $db->delete_query('sessions', "uid='{$uid}'");
+    $db->sql_query_prepared("DELETE FROM sessions WHERE uid = ?", [$uid]);
     update_loginkey($uid);
 
     my_unsetcookie('mybbuser');
@@ -6241,9 +6243,8 @@ if ($mybb->input['action'] === 'sessions') {
     $uid      = (int)$CURUSER['id'];
     $postCode = htmlspecialchars($mybb->post_code, ENT_QUOTES, 'UTF-8');
 
-    $session_row = $db->fetch_array(
-        $db->simple_select('sessions', '*', "uid='{$uid}'", ['limit' => 1])
-    );
+    $session_query = $db->sql_query_prepared("SELECT * FROM sessions WHERE uid = ? LIMIT 1", [$uid]);
+    $session_row   = $session_query ? $db->fetch_array($session_query) : null;
 
     // ── Parse user agent into a friendly browser / OS label ────────────────
     $ua = $session_row['useragent'] ?? '';
@@ -6357,13 +6358,10 @@ if ($mybb->input['action'] === 'sessions') {
                         <h6 class="fw-bold mb-3"><i class="fas fa-list me-2 text-secondary"></i>Known Devices</h6>';
 
     // Load known devices
-    $devices_query = $db->simple_select('user_devices', '*', "uid='{$uid}'", [
-        'order_by'  => 'last_seen',
-        'order_dir' => 'DESC',
-    ]);
+    $devices_query = $db->sql_query_prepared("SELECT * FROM user_devices WHERE uid = ? ORDER BY last_seen DESC", [$uid]);
 
     $devices_html = '';
-    while ($dev = $db->fetch_array($devices_query)) {
+    while ($devices_query && ($dev = $db->fetch_array($devices_query))) {
         $dev_ua = $dev['user_agent'];
 
         $dev_browser = 'Unknown browser';

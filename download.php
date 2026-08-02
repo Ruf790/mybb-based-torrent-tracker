@@ -104,11 +104,9 @@ if ($action_type === 'rss') {
         download_error();
     }
 
-    $res = $db->sql_query(
-        'SELECT * FROM users WHERE passkey = ' . $db->sqlesc($secret_key) . ' LIMIT 1'
-    );
+    $res = $db->sql_query_prepared('SELECT * FROM users WHERE passkey = ? LIMIT 1', [$secret_key]);
 
-    if ($db->num_rows($res) === 0) {
+    if (!$res || $db->num_rows($res) === 0) {
         download_error();
     }
 
@@ -161,13 +159,14 @@ if (!is_valid_id($id)) {
 // Загрузка данных торрента
 // ---------------------------------------------------------------------------
 
-$res = $db->sql_query(
+$res = $db->sql_query_prepared(
     'SELECT t.id, t.name, t.filename, t.size, t.owner, t.free
      FROM torrents t
      LEFT JOIN categories c ON t.category = c.id
-     WHERE t.id = ' . $id
+     WHERE t.id = ?',
+    [$id]
 );
-$row = $db->fetch_array($res);
+$row = $res ? $db->fetch_array($res) : null;
 
 // Проверяем существование торрента ДО обращения к полям $row
 if (!$row) {
@@ -189,8 +188,8 @@ if (!is_readable($fn)) {
 // Проверка прав на скачивание
 // ---------------------------------------------------------------------------
 
-$perm_query = $db->simple_select('users', 'candownload', 'id = ' . (int)$CURUSER['id']);
-$downperm = $db->fetch_array($perm_query);
+$perm_query = $db->sql_query_prepared('SELECT candownload FROM users WHERE id = ?', [(int)$CURUSER['id']]);
+$downperm = $perm_query ? $db->fetch_array($perm_query) : null;
 if ((int)($downperm['candownload'] ?? 1) === 0) {
     download_error();
 }
@@ -214,12 +213,11 @@ if (
     && $row['owner'] != $CURUSER['id']
     && $row['free']  !== 'yes'
 ) {
-    $already_finished = $db->num_rows($db->sql_query(
-        'SELECT torrentid FROM snatched
-         WHERE torrentid = ' . $id . '
-           AND userid    = ' . (int)$CURUSER['id'] . '
-           AND finished  = "yes"'
-    ));
+    $finished_query = $db->sql_query_prepared(
+        "SELECT torrentid FROM snatched WHERE torrentid = ? AND userid = ? AND finished = 'yes'",
+        [$id, (int)$CURUSER['id']]
+    );
+    $already_finished = $finished_query ? $db->num_rows($finished_query) : 0;
 
     if (!$already_finished) {
         $userlist_url = '<a href=' . get_profile_link($CURUSER['id']) . '>' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '</a>';
@@ -271,14 +269,14 @@ if ($action_type === 'magnet') {
 // Обновление счётчика загрузок
 // ---------------------------------------------------------------------------
 
-$db->update_query('torrents', ['hits' => 'hits+1'], "id='{$id}'", '1', true);
+$db->sql_query_prepared("UPDATE torrents SET hits = hits+1 WHERE id = ? LIMIT 1", [$id]);
 
 // ---------------------------------------------------------------------------
 // Подстановка announce URL
 // ---------------------------------------------------------------------------
 
 $torrentFileObj->setAnnounce(
-    ts_seo($CURUSER['passkey'] ?? '', $row['filename'], 'a')
+    get_announce_link($CURUSER['passkey'] ?? '', $row['filename'])
 );
 
 $torrent_contents = $torrentFileObj->storeToString();

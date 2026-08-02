@@ -79,7 +79,7 @@ $title       = $mybb->settings['bbname'] ?? $SITENAME;
 $forumcache  = [];
 $comma       = ' - ';
 
-$query = $db->simple_select('forums', 'name, fid', '1=1 ' . $forumlistsql);
+$query = $db->sql_query_prepared('SELECT name, fid FROM forums WHERE 1=1 ' . $forumlistsql);
 while ($forum = $db->fetch_array($query)) {
     if (!$isPortal) {
         $title .= $comma . $forum['name'];
@@ -127,11 +127,12 @@ if (!empty($onlyusfids)) {
 $items      = [];
 $firstposts = [];
 
-$query = $db->simple_select(
-    'threads',
-    'subject, tid, dateline, firstpost',
-    "visible='1' AND closed NOT LIKE 'moved|%' {$permsql} {$forumlistsql}",
-    ['order_by' => 'dateline', 'order_dir' => 'DESC', 'limit' => $thread_limit]
+$query = $db->sql_query_prepared(
+    "SELECT subject, tid, dateline, firstpost FROM threads
+     WHERE visible='1' AND closed NOT LIKE 'moved|%' {$permsql} {$forumlistsql}
+     ORDER BY dateline DESC
+     LIMIT ?",
+    [$thread_limit]
 );
 
 while ($thread = $db->fetch_array($query)) {
@@ -151,17 +152,16 @@ if (!empty($firstposts)) {
     $attachments   = [];
 
     if (($enableattachments ?? 0) == 1) {
-        $query = $db->simple_select('attachments', '*', $firstpostlist);
+        $query = $db->sql_query_prepared("SELECT * FROM attachments WHERE {$firstpostlist}");
         while ($attachment = $db->fetch_array($query)) {
             $attachments[$attachment['pid']][] = $attachment;
         }
     }
 
-    $query = $db->simple_select(
-        'posts',
-        'message, edittime, tid, uid, username, fid, pid',
-        $firstpostlist,
-        ['order_by' => 'dateline DESC, pid DESC']
+    $query = $db->sql_query_prepared(
+        "SELECT message, edittime, tid, uid, username, fid, pid FROM posts
+         WHERE {$firstpostlist}
+         ORDER BY dateline DESC, pid DESC"
     );
 
     while ($post = $db->fetch_array($query)) {

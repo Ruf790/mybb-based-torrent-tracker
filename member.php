@@ -132,11 +132,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') {
     $avatar_dimensions = $width . '|' . $height;
     $avatar_url        = 'uploads/avatars/' . $new_name;
 
-    $db->update_query('users', [
-        'avatar'           => $avatar_url,
-        'avatardimensions' => $avatar_dimensions,
-        'avatartype'       => 'upload',
-    ], "id='{$uid}'");
+    $db->sql_query_prepared(
+        "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = ? WHERE id = ?",
+        [$avatar_url, $avatar_dimensions, 'upload', (int)$uid]
+    );
 
     if ($is_ajax) {
         $json(['ok' => true, 'url' => $avatar_url, 'width' => $width, 'height' => $height, 'message' => 'Аватар обновлён']);
@@ -544,7 +543,8 @@ if (in_array($mybb->input['action'], ['register', 'do_register'], true)) {
 	
 
     if ((int)$maxusers > 0) {
-        $count = $db->num_rows($db->sql_query('SELECT id FROM users WHERE id > 0'));
+        $count_q = $db->sql_query_prepared('SELECT id FROM users WHERE id > 0');
+        $count   = $count_q ? $db->num_rows($count_q) : 0;
         if ($maxusers <= $count) { stderr($lang->global['signuplimitreached']); }
     }
 
@@ -554,8 +554,8 @@ if (in_array($mybb->input['action'], ['register', 'do_register'], true)) {
 
     if ($betweenregstime && $maxregsbetweentime) {
         $datecut = TIMENOW - (60 * 60 * $betweenregstime);
-        $query   = $db->simple_select('users', '*', 'regip=' . $db->escape_binary($session->packedip) . " AND added > '{$datecut}'");
-        $regcount = $db->num_rows($query);
+        $query   = $db->sql_query_prepared("SELECT * FROM users WHERE regip = ? AND added > ?", [$session->packedip, $datecut]);
+        $regcount = $query ? $db->num_rows($query) : 0;
         if ($regcount >= $maxregsbetweentime) {
             stderr(sprintf($lang->member['error_alreadyregisteredtime'], $regcount, $betweenregstime));
         }
@@ -676,7 +676,10 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
 		
 		if ($regtype === 'verify') {
             $activationcode = random_str();
-            $db->insert_query('awaitingactivation', ['uid' => $user_info['uid'], 'dateline' => TIMENOW, 'code' => $activationcode, 'type' => 'r']);
+            $db->sql_query_prepared(
+                "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
+                [$user_info['uid'], TIMENOW, $activationcode, 'r']
+            );
             $emailsubject = sprintf($lang->member['emailsubject_activateaccount'], $SITENAME);
             $emailmessage = sprintf($lang->member['email_activateaccount' . ($username_method ?: '')], $user_info['username'], $SITENAME, $BASEURL, $user_info['uid'], $activationcode);
             my_mail($user_info['email'], $emailsubject, $emailmessage);
@@ -697,7 +700,7 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
             $emailsubject = sprintf($lang->member['emailsubject_randompassword'], $SITENAME);
             $emailmessage = sprintf($lang->member['email_randompassword' . ($username_method ?: '')], $user['username'], $SITENAME, $user_info['username'], $mybb->get_input('password'));
             my_mail($user_info['email'], $emailsubject, $emailmessage);
-            $db->update_query('users', ['ustatus' => 'confirmed'], "id='{$user_info['uid']}' AND ustatus='pending' AND enabled='yes'");
+            $db->sql_query_prepared("UPDATE users SET ustatus = 'confirmed' WHERE id = ? AND ustatus='pending' AND enabled='yes'", [$user_info['uid']]);
             require_once INC_PATH . '/functions_pm.php';
             $pm = ['subject' => sprintf($lang->member['welcomepmsubject'], $SITENAME), 'message' => sprintf($lang->member['welcomepmbody'], $user_info['username'], $SITENAME, $BASEURL), 'touid' => $user_info['uid']];
             $pm['sender']['uid'] = -1;
@@ -723,7 +726,10 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
 			
         } elseif ($regtype === 'both') {
             $activationcode = random_str();
-            $db->insert_query('awaitingactivation', ['uid' => $user_info['uid'], 'dateline' => TIMENOW, 'code' => $activationcode, 'type' => 'b']);
+            $db->sql_query_prepared(
+                "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
+                [$user_info['uid'], TIMENOW, $activationcode, 'b']
+            );
            	
 			
 			
@@ -756,7 +762,7 @@ my_mail($user_info['email'], $emailsubject, $emailmessage);
 			
 			
         } else {
-            $db->update_query('users', ['ustatus' => 'confirmed'], "id='{$user_info['uid']}' AND ustatus='pending' AND enabled='yes'");
+            $db->sql_query_prepared("UPDATE users SET ustatus = 'confirmed' WHERE id = ? AND ustatus='pending' AND enabled='yes'", [$user_info['uid']]);
             require_once INC_PATH . '/functions_pm.php';
             $pm = ['subject' => sprintf($lang->member['welcomepmsubject'], $SITENAME), 'message' => sprintf($lang->member['welcomepmbody'], $user_info['username'], $SITENAME, $BASEURL), 'touid' => $user_info['uid']];
             $pm['sender']['uid'] = -1;
@@ -1130,28 +1136,28 @@ if ($mybb->input['action'] === 'activate') {
     }
 
     if (isset($mybb->input['code']) && $user) {
-        $query      = $db->simple_select('awaitingactivation', '*', "uid='{$user['id']}' AND (type='r' OR type='e' OR type='b')");
-        $activation = $db->fetch_array($query);
+        $query      = $db->sql_query_prepared("SELECT * FROM awaitingactivation WHERE uid = ? AND (type='r' OR type='e' OR type='b')", [$user['id']]);
+        $activation = $query ? $db->fetch_array($query) : null;
 
         if (!$activation)                                       { stderr('error_alreadyactivated'); }
         if ($activation['code'] !== $mybb->get_input('code'))  { stderr('error_badactivationcode'); }
         if ($activation['type'] === 'b' && $activation['validated'] == 1) { stderr($lang->member['error_alreadyvalidated']); }
 
-        $db->delete_query('awaitingactivation', "uid='{$user['id']}' AND (type='r' OR type='e')");
+        $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ? AND (type='r' OR type='e')", [$user['id']]);
 
         if ($user['usergroup'] == 2 && !in_array($activation['type'], ['e', 'b'], true)) {
-            $db->update_query('users', ['usergroup' => 2], "id='{$user['id']}'");
+            $db->sql_query_prepared("UPDATE users SET usergroup = ? WHERE id = ?", [2, $user['id']]);
             $cache->update_awaitingactivation();
         }
 
         if ($activation['type'] === 'e') {
-			$db->update_query('users', ['email' => $db->escape_string($activation['misc'])], "id='{$user['id']}'");
+			$db->sql_query_prepared("UPDATE users SET email = ? WHERE id = ?", [$activation['misc'], $user['id']]);
             $plugins->run_hooks('member_activate_emailupdated');
             redirect('usercp.php', $lang->member['redirect_emailupdated']);
         } 
 		elseif ($activation['type'] === 'b') {
-            $db->update_query('awaitingactivation', ['validated' => 1], "uid='{$user['id']}' AND type='b'");
-			$db->update_query('users', ['ustatus' => 'confirmed'], "id='{$user['id']}' AND ustatus='pending' AND enabled='yes'");
+            $db->sql_query_prepared("UPDATE awaitingactivation SET validated = 1 WHERE uid = ? AND type='b'", [$user['id']]);
+			$db->sql_query_prepared("UPDATE users SET ustatus = 'confirmed' WHERE id = ? AND ustatus='pending' AND enabled='yes'", [$user['id']]);
 			$cache->update_awaitingactivation();
             
 			require_once INC_PATH . '/functions_pm.php';
@@ -1167,7 +1173,7 @@ if ($mybb->input['action'] === 'activate') {
             redirect('index.php', $lang->member['redirect_accountactivated_admin'], '', true);
         } else {
             $plugins->run_hooks('member_activate_accountactivated');
-            $db->update_query('users', ['ustatus' => 'confirmed'], "id='{$user['id']}' AND ustatus='pending' AND enabled='yes'");
+            $db->sql_query_prepared("UPDATE users SET ustatus = 'confirmed' WHERE id = ? AND ustatus='pending' AND enabled='yes'", [$user['id']]);
             require_once INC_PATH . '/functions_pm.php';
             $pm = ['subject' => sprintf($lang->member['welcomepmsubject'], $SITENAME), 'message' => sprintf($lang->member['welcomepmbody'], $user['username'], $SITENAME, $BASEURL), 'touid' => $user['id']];
             $pm['sender']['uid'] = -1;
@@ -1231,8 +1237,11 @@ if ($mybb->input['action'] === 'do_resendactivation' && $mybb->request_method ==
 
     if ($regtype === 'admin') { error($lang->error_activated_by_admin); }
 
-    $query    = $db->query("SELECT u.id, u.username, u.usergroup, u.email, a.code, a.type, a.validated FROM users u LEFT JOIN awaitingactivation a ON (a.id=u.id AND (a.type='r' OR a.type='b')) WHERE u.email='" . $db->escape_string($mybb->get_input('email')) . "'");
-    $numusers = $db->num_rows($query);
+    $query    = $db->sql_query_prepared(
+        "SELECT u.id, u.username, u.usergroup, u.email, a.code, a.type, a.validated FROM users u LEFT JOIN awaitingactivation a ON (a.id=u.id AND (a.type='r' OR a.type='b')) WHERE u.email = ?",
+        [$mybb->get_input('email')]
+    );
+    $numusers = $query ? $db->num_rows($query) : 0;
 
     if ($numusers < 1) {
         error($lang->error_invalidemail);
@@ -1242,7 +1251,10 @@ if ($mybb->input['action'] === 'do_resendactivation' && $mybb->request_method ==
             if ($user['usergroup'] == 5) {
                 if (!$user['code']) {
                     $user['code'] = random_str();
-                    $db->insert_query('awaitingactivation', ['uid' => $user['id'], 'dateline' => TIMENOW, 'code' => $user['code'], 'type' => $user['type']]);
+                    $db->sql_query_prepared(
+                        "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
+                        [$user['id'], TIMENOW, $user['code'], $user['type']]
+                    );
                 }
                 $emailmessage = sprintf($lang->email_activateaccount . ($username_method ?: ''), $user['username'], $SITENAME, $BASEURL, $user['uid'], $user['code']);
                 my_mail($user['email'], sprintf($lang->emailsubject_activateaccount, $SITENAME), $emailmessage);
@@ -1261,8 +1273,8 @@ if ($mybb->input['action'] === 'resendactivation') {
     if ($regtype === 'admin') { error($lang->error_activated_by_admin); }
     if ($mybb->user['uid'] && $mybb->user['usergroup'] != 5) { error($lang->error_alreadyactivated); }
 
-    $query      = $db->simple_select('awaitingactivation', '*', "uid='{$mybb->user['uid']}' AND type='b'");
-    $activation = $db->fetch_array($query);
+    $query      = $db->sql_query_prepared("SELECT * FROM awaitingactivation WHERE uid = ? AND type='b'", [$mybb->user['uid']]);
+    $activation = $query ? $db->fetch_array($query) : null;
     if ($activation && $activation['validated'] == 1) { error($lang->error_activated_by_admin); }
 
     $errors = isset($errors) && count($errors) > 0 ? inline_error($errors) : '';
@@ -1313,16 +1325,19 @@ if ($mybb->input['action'] === 'resendactivation') {
 if ($mybb->input['action'] === 'do_lostpw' && $mybb->request_method === 'post') {
     $plugins->run_hooks('member_do_lostpw_start');
 
-    $query    = $db->simple_select('users', '*', "email='" . $db->escape_string($mybb->get_input('email')) . "'");
-    $numusers = $db->num_rows($query);
+    $query    = $db->sql_query_prepared("SELECT * FROM users WHERE email = ?", [$mybb->get_input('email')]);
+    $numusers = $query ? $db->num_rows($query) : 0;
 
     if ($numusers < 1) {
         stderr($lang->member['error_invalidemail']);
     } else {
-        while ($user = $db->fetch_array($query)) {
-            $db->delete_query('awaitingactivation', "uid='{$user['id']}' AND type='p'");
+        while ($query && ($user = $db->fetch_array($query))) {
+            $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ? AND type='p'", [$user['id']]);
             $activationcode = random_str(30);
-            $db->insert_query('awaitingactivation', ['uid' => $user['id'], 'dateline' => TIMENOW, 'code' => $activationcode, 'type' => 'p']);
+            $db->sql_query_prepared(
+                "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
+                [$user['id'], TIMENOW, $activationcode, 'p']
+            );
             $emailmessage = sprintf($lang->member['email_lostpw' . ($username_method ?: '')], $user['username'], $SITENAME, $BASEURL, $user['id'], $activationcode);
             my_mail($user['email'], sprintf($lang->member['emailsubject_lostpw'], $SITENAME), $emailmessage);
         }
@@ -1403,12 +1418,12 @@ if ($mybb->input['action'] === 'resetpassword') {
     if (!$user && isset($mybb->input['username'])) { stderr('error_invalidpworusername'); }
 
     if (isset($mybb->input['code']) && $user) {
-        $query          = $db->simple_select('awaitingactivation', 'code', "uid='{$user['id']}' AND type='p'");
-        $activationcode = $db->fetch_field($query, 'code');
+        $query          = $db->sql_query_prepared("SELECT code FROM awaitingactivation WHERE uid = ? AND type='p'", [$user['id']]);
+        $activationcode = $query ? $db->fetch_field($query, 'code') : null;
 
         if (!$activationcode || $activationcode !== $mybb->get_input('code')) { stderr('error_badlostpwcode'); }
 
-        $db->delete_query('awaitingactivation', "uid='{$user['id']}' AND type='p'");
+        $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ? AND type='p'", [$user['id']]);
 
         $password_length = max(8, min((int)$minpasswordlength, (int)$maxpasswordlength));
 
@@ -1511,7 +1526,7 @@ if ($mybb->input['action'] === 'do_login' && $mybb->request_method === 'post') {
 
         login_attempt_check($login_user_uid);
 		
-        $db->update_query('users', ['loginattempts' => 'loginattempts+1'], "id='{$login_user_uid}'", '1', true);
+        $db->sql_query_prepared("UPDATE users SET loginattempts = loginattempts+1 WHERE id = ?", [$login_user_uid]);
         
 		$username = $mybb->get_input('username');
         $password = $mybb->get_input('password');
@@ -1774,8 +1789,8 @@ if ($mybb->input['action'] === 'logout') {
     my_unsetcookie('sid');
     if ($CURUSER['id']) {
         $time = TIMENOW;
-        $db->shutdown_query("UPDATE users SET lastvisit='{$time}', lastactive='{$time}' WHERE id='{$CURUSER['id']}'");
-        $db->delete_query('sessions', "sid='{$session->sid}'");
+        $db->sql_query_prepared("UPDATE users SET lastvisit = ?, lastactive = ? WHERE id = ?", [$time, $time, $CURUSER['id']]);
+        $db->sql_query_prepared("DELETE FROM sessions WHERE sid = ?", [$session->sid]);
 
         // Clear the admin-panel 2FA gate so a future login (same browser/session,
         // possibly a different account) doesn't inherit a stale "verified" state.
@@ -1955,8 +1970,8 @@ if ($mybb->input['action'] === 'profile') {
     $usericons = get_user_icons($user);
 
     if ($memprofile['invited_by']) {
-        $query = $db->simple_select('users', 'username, usergroup', "id='{$memprofile['invited_by']}'");
-        if ($db->num_rows($query) > 0) {
+        $query = $db->sql_query_prepared("SELECT username, usergroup FROM users WHERE id = ?", [$memprofile['invited_by']]);
+        if ($query && $db->num_rows($query) > 0) {
             $IUser = $db->fetch_array($query);
             $memprofile['invited_by'] = '<a href="' . get_profile_link($memprofile['invited_by']) . '">' . format_name($IUser['username'], $IUser['usergroup']) . '</a>';
         }
@@ -2034,8 +2049,8 @@ if ($mybb->input['action'] === 'profile') {
 
     // Online status
     $timesearch = TIMENOW - $wolcutoffmins * 60;
-    $query      = $db->simple_select('sessions', 'location,nopermission', "uid='{$uid}' AND time>'{$timesearch}'", ['order_by' => 'time', 'order_dir' => 'DESC', 'limit' => 1]);
-    $session    = $db->fetch_array($query);
+    $query      = $db->sql_query_prepared("SELECT location,nopermission FROM sessions WHERE uid = ? AND time > ? ORDER BY time DESC LIMIT 1", [$uid, $timesearch]);
+    $session    = $query ? $db->fetch_array($query) : null;
 
     $timeonline      = 'None Registered';
     $memlastvisitdate = $lang->member['lastvisit_never'];
@@ -2083,8 +2098,8 @@ if ($mybb->input['action'] === 'profile') {
     // Ban info
     $bannedbit = '';
     if ($memperms['isbannedgroup'] == 1 && $usergroups['canuserdetails'] == 1) {
-        $query = $db->simple_select('banned b LEFT JOIN users a ON (b.admin=a.id)', 'b.*, a.username AS adminuser', "b.uid='{$uid}'", ['limit' => 1]);
-        if ($db->num_rows($query)) {
+        $query = $db->sql_query_prepared("SELECT b.*, a.username AS adminuser FROM banned b LEFT JOIN users a ON (b.admin=a.id) WHERE b.uid = ? LIMIT 1", [$uid]);
+        if ($query && $db->num_rows($query)) {
             $memban = $db->fetch_array($query);
             $memban['reason'] = $memban['reason'] ? htmlspecialchars_uni($parser->parse_badwords($memban['reason'])) : $lang->na;
 
@@ -2937,13 +2952,23 @@ if ($mybb->input['action'] === 'do_emailuser' && $mybb->request_method === 'post
     $errors = [];
 
     if ($mybb->usergroup['maxemails'] > 0) {
-        $user_check = $mybb->user['uid'] > 0 ? "fromuid='{$mybb->user['uid']}'" : 'ipaddress=' . $db->escape_binary($session->packedip);
-        $sent_count = (int)$db->fetch_field($db->simple_select('maillogs', 'COUNT(*) AS sent_count', "{$user_check} AND dateline >= '" . (TIMENOW - 86400) . "'"), 'sent_count');
+        if ($mybb->user['uid'] > 0) {
+            $check_sql    = "fromuid = ?";
+            $check_params = [$mybb->user['uid']];
+        } else {
+            $check_sql    = "ipaddress = ?";
+            $check_params = [$session->packedip];
+        }
+        $count_query = $db->sql_query_prepared(
+            "SELECT COUNT(*) AS sent_count FROM maillogs WHERE {$check_sql} AND dateline >= ?",
+            [...$check_params, TIMENOW - 86400]
+        );
+        $sent_count = $count_query ? (int)$db->fetch_field($count_query, 'sent_count') : 0;
         if ($sent_count >= $mybb->usergroup['maxemails']) { error(sprintf($lang->error_max_emails_day, $mybb->usergroup['maxemails'])); }
     }
 
-    $query   = $db->simple_select('users', 'id, username, email, hideemail', "id='" . $mybb->get_input('id', MyBB::INPUT_INT) . "'");
-    $to_user = $db->fetch_array($query);
+    $query   = $db->sql_query_prepared("SELECT id, username, email, hideemail FROM users WHERE id = ?", [$mybb->get_input('id', MyBB::INPUT_INT)]);
+    $to_user = $query ? $db->fetch_array($query) : null;
 
     if (!$to_user['username']) { stderr('error_invalidusername'); }
     if ($to_user['hideemail'] != 0) { stderr('error_hideemail'); }
@@ -2964,18 +2989,21 @@ if ($mybb->input['action'] === 'do_emailuser' && $mybb->request_method === 'post
         my_mail($to_user['email'], $mybb->get_input('subject'), $message, '', '', '', false, 'text', '', $from);
 
         if ($mail_logging > 0) {
-            $db->insert_query('maillogs', [
-                'subject'   => $db->escape_string($mybb->get_input('subject')),
-                'message'   => $db->escape_string($mybb->get_input('message')),
-                'dateline'  => TIMENOW,
-                'fromuid'   => $CURUSER['id'],
-                'fromemail' => $db->escape_string($mybb->input['fromemail']),
-                'touid'     => $to_user['id'],
-                'toemail'   => $db->escape_string($to_user['email']),
-                'tid'       => 0,
-                'ipaddress' => $db->escape_binary($session->packedip),
-                'type'      => 1,
-            ]);
+            $db->sql_query_prepared(
+                "INSERT INTO maillogs (`subject`,`message`,`dateline`,`fromuid`,`fromemail`,`touid`,`toemail`,`tid`,`ipaddress`,`type`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [
+                    $mybb->get_input('subject'),
+                    $mybb->get_input('message'),
+                    TIMENOW,
+                    $CURUSER['id'],
+                    $mybb->input['fromemail'],
+                    $to_user['id'],
+                    $to_user['email'],
+                    0,
+                    $session->packedip,
+                    1,
+                ]
+            );
         }
 
         $plugins->run_hooks('member_do_emailuser_end');
@@ -2993,8 +3021,8 @@ if ($mybb->input['action'] === 'emailuser') {
 
     if ($usergroups['cansendemail'] == 0) { print_no_permission(); }
 
-    $query   = $db->simple_select('users', 'id, username, email, hideemail, ignorelist', "id='" . $mybb->get_input('id', MyBB::INPUT_INT) . "'");
-    $to_user = $db->fetch_array($query);
+    $query   = $db->sql_query_prepared("SELECT id, username, email, hideemail, ignorelist FROM users WHERE id = ?", [$mybb->get_input('id', MyBB::INPUT_INT)]);
+    $to_user = $query ? $db->fetch_array($query) : null;
     $to_user['username'] = htmlspecialchars_uni($to_user['username']);
     $email_user = sprintf($lang->member['email_user'], $to_user['username']);
 

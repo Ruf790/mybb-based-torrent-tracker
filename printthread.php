@@ -73,26 +73,27 @@ $thread['threadlink'] = get_thread_link($tid);
 $postrow_cache = [];
 $attachcache   = [];
 
-$query = $db->sql_query("
+$query = $db->sql_query_prepared("
     SELECT u.*, u.username AS userusername, p.*
     FROM posts p
     LEFT JOIN users u ON (u.id = p.uid)
-    WHERE p.tid = '{$tid}' AND p.visible = '1'
+    WHERE p.tid = ? AND p.visible = '1'
     ORDER BY p.dateline, p.pid
-    LIMIT {$start}, {$perpage}
-");
+    LIMIT ?, ?
+", [$tid, $start, $perpage]);
 
-while ($postrow = $db->fetch_array($query)) {
+while ($query && ($postrow = $db->fetch_array($query))) {
     $postrow_cache[$postrow['pid']] = $postrow;
 }
 
 $postrow_cache = array_filter($postrow_cache);
 
 if (!empty($postrow_cache)) {
-    $pids = implode("','", array_keys($postrow_cache));
+    $pids = array_keys($postrow_cache);
+    $placeholders = implode(',', array_fill(0, count($pids), '?'));
 
-    $queryAttachments = $db->simple_select('attachments', '*', "pid IN ('{$pids}')");
-    while ($attachment = $db->fetch_array($queryAttachments)) {
+    $queryAttachments = $db->sql_query_prepared("SELECT * FROM attachments WHERE pid IN ({$placeholders})", $pids);
+    while ($queryAttachments && ($attachment = $db->fetch_array($queryAttachments))) {
         $attachcache[$attachment['pid']][$attachment['aid']] = $attachment;
     }
 }
@@ -215,12 +216,8 @@ function makeprintablenav(int $pid = 0, string $depth = '--'): string
     if ($pforumcache === null) {
         $pforumcache = [];
         $parlist     = build_parent_list($fid, 'fid', 'OR', $forum['parentlist']);
-        $query       = $db->simple_select(
-            'forums', 'name, fid, pid',
-            $parlist,
-            ['order_by' => 'pid, disporder']
-        );
-        while ($forumnav = $db->fetch_array($query)) {
+        $query       = $db->sql_query_prepared("SELECT name, fid, pid FROM forums WHERE {$parlist} ORDER BY pid, disporder");
+        while ($query && ($forumnav = $db->fetch_array($query))) {
             $pforumcache[$forumnav['pid']][$forumnav['fid']] = $forumnav;
         }
     }

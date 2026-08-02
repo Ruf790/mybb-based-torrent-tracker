@@ -82,7 +82,7 @@ if ($action === 'dismiss_notice') {
     if ($CURUSER['pmnotice'] != 2) exit;
 
     verify_post_check($mybb->get_input('my_post_key'));
-    $db->update_query('users', ['pmnotice' => 1], "id='{$CURUSER['id']}'");
+    $db->sql_query_prepared("UPDATE users SET pmnotice = 1 WHERE id = ?", [$CURUSER['id']]);
 
     if (!empty($mybb->input['ajax'])) {
         echo 1;
@@ -100,21 +100,22 @@ if ($action === 'do_send' && $mybb->request_method === 'post') {
     $plugins->run_hooks('private_send_do_send');
 
     $to         = array_unique(array_map('trim', explode(',', $mybb->get_input('to'))));
-    $to_escaped = implode("','", array_map([$db, 'escape_string'], array_map('my_strtolower', $to)));
+    $to_lower   = array_map('my_strtolower', $to);
     $time_cutoff = TIMENOW - (5 * 60 * 60);
 
-    $query = $db->sql_query("
+    $to_placeholders = implode(',', array_fill(0, count($to_lower), '?'));
+    $query = $db->sql_query_prepared("
         SELECT pm.pmid FROM privatemessages pm
         LEFT JOIN users u ON (u.id = pm.toid)
-        WHERE LOWER(u.username) IN ('{$to_escaped}')
-          AND pm.dateline > {$time_cutoff}
-          AND pm.fromid = '{$CURUSER['id']}'
-          AND pm.subject = '" . $db->escape_string($mybb->get_input('subject')) . "'
-          AND pm.message = '" . $db->escape_string($mybb->get_input('message')) . "'
+        WHERE LOWER(u.username) IN ({$to_placeholders})
+          AND pm.dateline > ?
+          AND pm.fromid = ?
+          AND pm.subject = ?
+          AND pm.message = ?
           AND pm.folder != '3'
         LIMIT 0, 1
-    ");
-    if ($db->num_rows($query) > 0) {
+    ", [...$to_lower, $time_cutoff, $CURUSER['id'], $mybb->get_input('subject'), $mybb->get_input('message')]);
+    if ($query && $db->num_rows($query) > 0) {
         stderr($lang->private['error_pm_already_submitted']);
     }
 
@@ -214,14 +215,13 @@ if ($mybb->input['action'] === 'send') {
 
     // Draft / reply / forward
     if ($mybb->get_input('pmid') && empty($mybb->input['preview']) && !$send_errors) {
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT pm.*, u.username AS quotename
             FROM privatemessages pm
             LEFT JOIN users u ON (u.id = pm.fromid)
-            WHERE pm.pmid = '" . $mybb->get_input('pmid', MyBB::INPUT_INT) . "'
-              AND pm.uid = '{$CURUSER['id']}'
-        ");
-        $pm      = $db->fetch_array($query);
+            WHERE pm.pmid = ? AND pm.uid = ?
+        ", [$mybb->get_input('pmid', MyBB::INPUT_INT), $CURUSER['id']]);
+        $pm      = $query ? $db->fetch_array($query) : null;
         $message = htmlspecialchars_uni($parser->parse_badwords($pm['message']));
         $subject = htmlspecialchars_uni($parser->parse_badwords($pm['subject']));
 
@@ -230,23 +230,22 @@ if ($mybb->input['action'] === 'send') {
             if ($pm['receipt']) $optionschecked['readreceipt'] = 'checked="checked"';
 
             $recipients   = my_unserialize($pm['recipients']);
-            $recipientids = '';
-            $comma        = '';
+            $recipientid_list = [];
             $recipient_list = [];
 
             foreach (['to', 'bcc'] as $type) {
                 if (isset($recipients[$type]) && is_array($recipients[$type])) {
                     foreach ($recipients[$type] as $recipient) {
                         $recipient_list[$type][] = $recipient;
-                        $recipientids .= $comma . $recipient;
-                        $comma = ',';
+                        $recipientid_list[] = (int)$recipient;
                     }
                 }
             }
 
-            if (!empty($recipientids)) {
-                $query = $db->simple_select('users', 'id, username', "id IN ({$recipientids})");
-                while ($user = $db->fetch_array($query)) {
+            if (!empty($recipientid_list)) {
+                $ph = implode(',', array_fill(0, count($recipientid_list), '?'));
+                $query = $db->sql_query_prepared("SELECT id, username FROM users WHERE id IN ({$ph})", $recipientid_list);
+                while ($query && ($user = $db->fetch_array($query))) {
                     if (isset($recipient_list['bcc']) && in_array($user['id'], $recipient_list['bcc'])) {
                         $bcc .= htmlspecialchars_uni($user['username']) . ', ';
                     } else {
@@ -273,22 +272,23 @@ if ($maxpmquotedepth !== 0) {
                 $uid = $pm['fromid'];
                 $to  = $CURUSER['id'] === $uid
                     ? $CURUSER['username']
-                    : $db->fetch_field($db->simple_select('users', 'username', "id='{$uid}'"), 'username');
+                    : $db->fetch_field($db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [$uid]), 'username');
                 $to  = htmlspecialchars_uni($to);
             } elseif ($do === 'replyall') {
                 $subject      = "Re: {$subject}";
                 $recipients   = my_unserialize($pm['recipients']);
-                $recipientids = (string)$pm['fromid'];
+                $recipientid_list = [(int)$pm['fromid']];
 
                 if (isset($recipients['to']) && is_array($recipients['to'])) {
                     foreach ($recipients['to'] as $recipient) {
                         if ($recipient === $CURUSER['id']) continue;
-                        $recipientids .= ',' . $recipient;
+                        $recipientid_list[] = (int)$recipient;
                     }
                 }
                 $comma = '';
-                $query = $db->simple_select('users', 'id, username', "id IN ({$recipientids})");
-                while ($user = $db->fetch_array($query)) {
+                $ph = implode(',', array_fill(0, count($recipientid_list), '?'));
+                $query = $db->sql_query_prepared("SELECT id, username FROM users WHERE id IN ({$ph})", $recipientid_list);
+                while ($query && ($user = $db->fetch_array($query))) {
                     $to    .= $comma . htmlspecialchars_uni($user['username']);
                     $comma  = $lang->private['comma'];
                 }
@@ -299,7 +299,7 @@ if ($maxpmquotedepth !== 0) {
     // New PM with preset recipient
     if ($mybb->get_input('uid', MyBB::INPUT_INT) && empty($mybb->input['preview'])) {
         $to = htmlspecialchars_uni($db->fetch_field(
-            $db->simple_select('users', 'username', "id='" . $mybb->get_input('uid', MyBB::INPUT_INT) . "'"),
+            $db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [$mybb->get_input('uid', MyBB::INPUT_INT)]),
             'username'
         )) . ', ';
     }
@@ -518,13 +518,13 @@ if ($action === 'read') {
     $plugins->run_hooks('private_read');
 
     $pmid  = $mybb->get_input('pmid', MyBB::INPUT_INT);
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT pm.*, u.*
         FROM privatemessages pm
         LEFT JOIN users u ON (u.id = pm.fromid)
-        WHERE pm.pmid = '{$pmid}' AND pm.uid = '" . $CURUSER['id'] . "'
-    ");
-    $pm = $db->fetch_array($query);
+        WHERE pm.pmid = ? AND pm.uid = ?
+    ", [$pmid, $CURUSER['id']]);
+    $pm = $query ? $db->fetch_array($query) : null;
 
     if (!$pm) stderr($lang->private['error_invalidpm']);
 
@@ -557,10 +557,13 @@ if ($action === 'read') {
     if ($pm['status'] == 0) {
         $updatearray = ['status' => 1, 'readtime' => TIMENOW];
         if ($receiptadd !== null) $updatearray['receipt'] = $receiptadd;
-        $db->update_query('privatemessages', $updatearray, "pmid='{$pmid}'");
+        $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updatearray)));
+        $params = array_values($updatearray);
+        $params[] = $pmid;
+        $db->sql_query_prepared("UPDATE privatemessages SET {$set} WHERE pmid = ?", $params);
         update_pm_count($CURUSER['id'], 6);
         if ($CURUSER['unreadpms'] - 1 <= 0 && $CURUSER['pmnotice'] == 2) {
-            $db->update_query('users', ['pmnotice' => 1], "id='{$CURUSER['id']}'");
+            $db->sql_query_prepared("UPDATE users SET pmnotice = 1 WHERE id = ?", [$CURUSER['id']]);
         }
     } elseif ($pm['status'] == 3 && $pm['statustime']) {
         $reply_date   = my_datee('relative', $pm['statustime']);
@@ -578,21 +581,22 @@ if ($action === 'read') {
     if (!$pm['username'])   $pm['username'] = 'na';
 
     $pm['recipients'] = my_unserialize($pm['recipients']);
-    $uid_sql = isset($pm['recipients']['to']) && is_array($pm['recipients']['to'])
-        ? implode(',', $pm['recipients']['to'])
-        : (string)$pm['toid'];
+    $recipient_id_list = isset($pm['recipients']['to']) && is_array($pm['recipients']['to'])
+        ? array_map('intval', $pm['recipients']['to'])
+        : [(int)$pm['toid']];
 
     if (!isset($pm['recipients']['to'])) $pm['recipients']['to'] = [$pm['toid']];
 
     $show_bcc = 0;
     if (isset($pm['recipients']['bcc']) && count($pm['recipients']['bcc']) > 0) {
         $show_bcc  = 1;
-        $uid_sql  .= ',' . implode(',', $pm['recipients']['bcc']);
+        $recipient_id_list = array_merge($recipient_id_list, array_map('intval', $pm['recipients']['bcc']));
     }
 
     $bcc_recipients = $to_recipients = $bcc_form_val = [];
-    $query = $db->simple_select('users', 'id, username', "id IN ({$uid_sql})");
-    while ($recipient = $db->fetch_array($query)) {
+    $ph = implode(',', array_fill(0, count($recipient_id_list), '?'));
+    $query = $db->sql_query_prepared("SELECT id, username FROM users WHERE id IN ({$ph})", $recipient_id_list);
+    while ($query && ($recipient = $db->fetch_array($query))) {
         $recipient['username'] = htmlspecialchars_uni($recipient['username']);
         if ($show_bcc && in_array($recipient['id'], $pm['recipients']['bcc'])) {
             $bcc_recipients[] = build_profile_link($recipient['username'], $recipient['id']);
@@ -642,7 +646,7 @@ if ($maxpmquotedepth !== 0) {
         $subject = preg_replace('#(FW|RE):( *)#is', '', $pm['subject']);
         $to = $CURUSER['id'] === $pm['fromid']
             ? htmlspecialchars_uni($CURUSER['username'])
-            : htmlspecialchars_uni($db->fetch_field($db->simple_select('users', 'username', "id='{$pm['fromid']}'"), 'username'));
+            : htmlspecialchars_uni($db->fetch_field($db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [$pm['fromid']]), 'username'));
 
         $private_send_tracking = $mybb->usergroup['cantrackpms']
             ? '<input type="checkbox" class="form-check-input" name="options[readreceipt]" value="1" tabindex="8" ' . $optionschecked['readreceipt'] . ' /> ' . $lang->private['quickreply_read_receipt']
@@ -695,7 +699,11 @@ if ($action === 'tracking') {
     $perpage = max(1, (int)($f_postsperpage ?: 20));
 
     // Read messages
-    $postcount = (int)$db->fetch_field($db->simple_select('privatemessages', 'COUNT(pmid) as readpms', "receipt='2' AND folder!='3' AND status!='0' AND fromid='" . $CURUSER['id'] . "'"), 'readpms');
+    $read_count_query = $db->sql_query_prepared(
+        "SELECT COUNT(pmid) as readpms FROM privatemessages WHERE receipt='2' AND folder!='3' AND status!='0' AND fromid=?",
+        [$CURUSER['id']]
+    );
+    $postcount = $read_count_query ? (int)$db->fetch_field($read_count_query, 'readpms') : 0;
     $page      = $mybb->get_input('read_page', MyBB::INPUT_INT) ?: 1;
     $pages     = max(1, (int)ceil($postcount / $perpage));
     $page      = max(1, min($page, $pages));
@@ -703,15 +711,15 @@ if ($action === 'tracking') {
     $read_multipage = multipage($postcount, $perpage, $page, 'private.php?action=tracking&amp;read_page={page}');
 
     $readmessages = '';
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT pm.pmid, pm.subject, pm.toid, pm.readtime, u.username as tousername
         FROM privatemessages pm
         LEFT JOIN users u ON (u.id = pm.toid)
-        WHERE pm.receipt = '2' AND pm.folder != '3' AND pm.status != '0' AND pm.fromid = '" . $CURUSER['id'] . "'
+        WHERE pm.receipt = '2' AND pm.folder != '3' AND pm.status != '0' AND pm.fromid = ?
         ORDER BY pm.readtime DESC
-        LIMIT {$start}, {$perpage}
-    ");
-    while ($rm = $db->fetch_array($query)) {
+        LIMIT ?, ?
+    ", [$CURUSER['id'], $start, $perpage]);
+    while ($query && ($rm = $db->fetch_array($query))) {
         $rm['subject']     = htmlspecialchars_uni($parser->parse_badwords($rm['subject']));
         $rm['tousername']  = htmlspecialchars_uni($rm['tousername']);
         $rm['profilelink'] = build_profile_link($rm['tousername'], $rm['toid']);
@@ -738,7 +746,11 @@ if ($action === 'tracking') {
     if (!$readmessages) $readmessages = '<div class="ps-3 pe-3 pb-3">' . $lang->private['no_unreadmessages'] . '</div>';
 
     // Unread messages
-    $postcount = (int)$db->fetch_field($db->simple_select('privatemessages', 'COUNT(pmid) as unreadpms', "receipt='1' AND folder!='3' AND status='0' AND fromid='" . $CURUSER['id'] . "'"), 'unreadpms');
+    $unread_count_query = $db->sql_query_prepared(
+        "SELECT COUNT(pmid) as unreadpms FROM privatemessages WHERE receipt='1' AND folder!='3' AND status='0' AND fromid=?",
+        [$CURUSER['id']]
+    );
+    $postcount = $unread_count_query ? (int)$db->fetch_field($unread_count_query, 'unreadpms') : 0;
     $page      = $mybb->get_input('unread_page', MyBB::INPUT_INT) ?: 1;
     $pages     = max(1, (int)ceil($postcount / $perpage));
     $page      = max(1, min($page, $pages));
@@ -830,14 +842,14 @@ if ($action === 'do_tracking' && $mybb->request_method === 'post') {
 
     if (!empty($mybb->input['stoptracking'])) {
         foreach ($mybb->get_input('readcheck', MyBB::INPUT_ARRAY) as $key => $val) {
-            $db->update_query('privatemessages', ['receipt' => 0], 'pmid=' . (int)$key . ' AND fromid=' . $CURUSER['id']);
+            $db->sql_query_prepared("UPDATE privatemessages SET receipt = 0 WHERE pmid = ? AND fromid = ?", [(int)$key, $CURUSER['id']]);
         }
         $plugins->run_hooks('private_do_tracking_end');
         redirect('private.php?action=tracking', $lang->private['redirect_pmstrackingstopped']);
 
     } elseif (!empty($mybb->input['stoptrackingunread'])) {
         foreach ($mybb->get_input('unreadcheck', MyBB::INPUT_ARRAY) as $key => $val) {
-            $db->update_query('privatemessages', ['receipt' => 0], 'pmid=' . (int)$key . ' AND fromid=' . $CURUSER['id']);
+            $db->sql_query_prepared("UPDATE privatemessages SET receipt = 0 WHERE pmid = ? AND fromid = ?", [(int)$key, $CURUSER['id']]);
         }
         $plugins->run_hooks('private_do_tracking_end');
         redirect('private.php?action=tracking', $lang->private['redirect_pmstrackingstopped']);
@@ -845,11 +857,15 @@ if ($action === 'do_tracking' && $mybb->request_method === 'post') {
     } elseif (!empty($mybb->input['cancel'])) {
         $unreadcheck = $mybb->get_input('unreadcheck', MyBB::INPUT_ARRAY);
         if (!empty($unreadcheck)) {
-            $pmids   = implode(',', array_map('intval', array_keys($unreadcheck)));
+            $pmid_list = array_map('intval', array_keys($unreadcheck));
+            $ph      = implode(',', array_fill(0, count($pmid_list), '?'));
             $pmuids  = [];
-            $query   = $db->simple_select('privatemessages', 'uid', "pmid IN ($pmids) AND fromid='" . $CURUSER['id'] . "'");
-            while ($pm = $db->fetch_array($query)) $pmuids[$pm['uid']] = $pm['uid'];
-            $db->delete_query('privatemessages', "pmid IN ($pmids) AND receipt='1' AND status='0' AND fromid='" . $CURUSER['id'] . "'");
+            $query   = $db->sql_query_prepared("SELECT uid FROM privatemessages WHERE pmid IN ({$ph}) AND fromid = ?", [...$pmid_list, $CURUSER['id']]);
+            while ($query && ($pm = $db->fetch_array($query))) $pmuids[$pm['uid']] = $pm['uid'];
+            $db->sql_query_prepared(
+                "DELETE FROM privatemessages WHERE pmid IN ({$ph}) AND receipt='1' AND status='0' AND fromid = ?",
+                [...$pmid_list, $CURUSER['id']]
+            );
             foreach ($pmuids as $uid) update_pm_count($uid);
         }
         $plugins->run_hooks('private_do_tracking_end');
@@ -861,7 +877,7 @@ if ($action === 'do_tracking' && $mybb->request_method === 'post') {
 if ($action === 'stopalltracking') {
     verify_post_check($mybb->get_input('my_post_key'));
     $plugins->run_hooks('private_stopalltracking_start');
-    $db->update_query('privatemessages', ['receipt' => 0], "receipt='2' AND folder!='3' AND status!='0' AND fromid=" . $CURUSER['id']);
+    $db->sql_query_prepared("UPDATE privatemessages SET receipt = 0 WHERE receipt='2' AND folder!='3' AND status!='0' AND fromid = ?", [$CURUSER['id']]);
     $plugins->run_hooks('private_stopalltracking_end');
     redirect('private.php?action=tracking', $lang->private['redirect_allpmstrackingstopped']);
 }
@@ -879,7 +895,8 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
         if (!empty($pms)) {
             $fid_move = $mybb->input['fid'] ?: 1;
             if (array_key_exists($fid_move, $foldernames)) {
-                $db->update_query('privatemessages', ['folder' => $fid_move], 'pmid IN (' . implode(',', $pms) . ") AND uid='" . $CURUSER['id'] . "'");
+                $ph = implode(',', array_fill(0, count($pms), '?'));
+                $db->sql_query_prepared("UPDATE privatemessages SET folder = ? WHERE pmid IN ({$ph}) AND uid = ?", [$fid_move, ...$pms, $CURUSER['id']]);
                 update_pm_count();
             } else {
                 error($lang->error_invalidmovefid);
@@ -892,17 +909,21 @@ if ($action === 'do_stuff' && $mybb->request_method === 'post') {
     } elseif (!empty($mybb->input['delete'])) {
         $check = $mybb->get_input('check', MyBB::INPUT_ARRAY);
         if (!empty($check)) {
-            $pmssql   = implode(',', array_map(fn($k) => "'" . (int)$k . "'", array_keys($check)));
+            $pmid_list = array_map('intval', array_keys($check));
+            $ph        = implode(',', array_fill(0, count($pmid_list), '?'));
             $deletepms = [];
-            $query     = $db->simple_select('privatemessages', 'pmid, folder', "pmid IN ($pmssql) AND uid='" . $CURUSER['id'] . "' AND folder='4'");
-            while ($dp = $db->fetch_array($query)) $deletepms[$dp['pmid']] = 1;
+            $query     = $db->sql_query_prepared("SELECT pmid, folder FROM privatemessages WHERE pmid IN ({$ph}) AND uid = ? AND folder='4'", [...$pmid_list, $CURUSER['id']]);
+            while ($query && ($dp = $db->fetch_array($query))) $deletepms[$dp['pmid']] = 1;
 
             foreach ($check as $key => $val) {
                 $key = (int)$key;
                 if (!empty($deletepms[$key])) {
-                    $db->delete_query('privatemessages', "pmid='$key' AND uid='" . $CURUSER['id'] . "'");
+                    $db->sql_query_prepared("DELETE FROM privatemessages WHERE pmid = ? AND uid = ?", [$key, $CURUSER['id']]);
                 } else {
-                    $db->update_query('privatemessages', ['folder' => 4, 'deletetime' => TIMENOW], "pmid='{$key}' AND uid='" . $CURUSER['id'] . "'");
+                    $db->sql_query_prepared(
+                        "UPDATE privatemessages SET folder = ?, deletetime = ? WHERE pmid = ? AND uid = ?",
+                        [4, TIMENOW, $key, $CURUSER['id']]
+                    );
                 }
             }
         }
@@ -919,12 +940,15 @@ if ($action === 'delete') {
     $plugins->run_hooks('private_delete_start');
 
     $pmid_del = $mybb->get_input('pmid', MyBB::INPUT_INT);
-    $query    = $db->simple_select('privatemessages', '*', "pmid='{$pmid_del}' AND uid='" . $CURUSER['id'] . "' AND folder='4'");
+    $query    = $db->sql_query_prepared("SELECT * FROM privatemessages WHERE pmid = ? AND uid = ? AND folder='4'", [$pmid_del, $CURUSER['id']]);
 
-    if ($db->num_rows($query) == 1) {
-        $db->delete_query('privatemessages', "pmid='{$pmid_del}'");
+    if ($query && $db->num_rows($query) == 1) {
+        $db->sql_query_prepared("DELETE FROM privatemessages WHERE pmid = ?", [$pmid_del]);
     } else {
-        $db->update_query('privatemessages', ['folder' => 4, 'deletetime' => TIMENOW], "pmid='{$pmid_del}' AND uid='" . $CURUSER['id'] . "'");
+        $db->sql_query_prepared(
+            "UPDATE privatemessages SET folder = ?, deletetime = ? WHERE pmid = ? AND uid = ?",
+            [4, TIMENOW, $pmid_del, $CURUSER['id']]
+        );
     }
 
     update_pm_count();
@@ -973,7 +997,11 @@ if (!$mybb->input['action']) {
     $sortsel[$sortby] = 'selected="selected"';
 
     $selective = ($fid == 1) ? " AND status='0'" : '';
-    $pmscount  = (int)$db->fetch_field($db->simple_select('privatemessages', 'COUNT(*) AS total', "uid='" . $CURUSER['id'] . "' AND folder='$folder'{$selective}"), 'total');
+    $count_query = $db->sql_query_prepared(
+        "SELECT COUNT(*) AS total FROM privatemessages WHERE uid = ? AND folder = ?{$selective}",
+        [$CURUSER['id'], $folder]
+    );
+    $pmscount  = $count_query ? (int)$db->fetch_field($count_query, 'total') : 0;
 
     $perpage = max(1, (int)($f_threadsperpage ?: 20));
     $page    = $mybb->get_input('page', MyBB::INPUT_INT);
@@ -997,14 +1025,14 @@ if (!$mybb->input['action']) {
     if ($folder == 2 || $folder == 3) {
         $u = ($sortfield === 'username') ? 'u.' : 'pm.';
         $get_users = [];
-        $users_query = $db->sql_query("
+        $users_query = $db->sql_query_prepared("
             SELECT pm.recipients FROM privatemessages pm
             LEFT JOIN users u ON (u.id = pm.toid)
-            WHERE pm.folder = '{$folder}' AND pm.uid = '" . $CURUSER['id'] . "'
+            WHERE pm.folder = ? AND pm.uid = ?
             ORDER BY {$u}{$sortfield} {$sortordernow}
-            LIMIT {$start}, {$perpage}
-        ");
-        while ($row = $db->fetch_array($users_query)) {
+            LIMIT ?, ?
+        ", [$folder, $CURUSER['id'], $start, $perpage]);
+        while ($users_query && ($row = $db->fetch_array($users_query))) {
             $recipients = my_unserialize($row['recipients']);
             foreach (['to', 'bcc'] as $type) {
                 if (isset($recipients[$type]) && is_array($recipients[$type]) && count($recipients[$type])) {
@@ -1012,9 +1040,10 @@ if (!$mybb->input['action']) {
                 }
             }
         }
-        if ($get_users = implode(',', array_unique($get_users))) {
-            $users_query = $db->simple_select('users', 'id, username, usergroup, displaygroup', "id IN ({$get_users})");
-            while ($user = $db->fetch_array($users_query)) $cached_users[$user['id']] = $user;
+        if ($get_users_list = array_values(array_unique($get_users))) {
+            $ph = implode(',', array_fill(0, count($get_users_list), '?'));
+            $users_query = $db->sql_query_prepared("SELECT id, username, usergroup, displaygroup FROM users WHERE id IN ({$ph})", $get_users_list);
+            while ($users_query && ($user = $db->fetch_array($users_query))) $cached_users[$user['id']] = $user;
         }
     }
 
@@ -1025,17 +1054,17 @@ if (!$mybb->input['action']) {
         $pm_prefix = ($sortfield === 'username') ? 'fu.' : 'pm.';
     }
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT pm.*, fu.username AS fromusername, tu.username as tousername, fu.avatar, fu.avatardimensions
         FROM privatemessages pm
         LEFT JOIN users fu ON (fu.id = pm.fromid)
         LEFT JOIN users tu ON (tu.id = pm.toid)
-        WHERE pm.folder = '$folder' AND pm.uid = '" . $CURUSER['id'] . "'{$selective}
+        WHERE pm.folder = ? AND pm.uid = ?{$selective}
         ORDER BY {$pm_prefix}{$sortfield} {$sortordernow}
-        LIMIT $start, $perpage
-    ");
+        LIMIT ?, ?
+    ", [$folder, $CURUSER['id'], $start, $perpage]);
 
-    if ($db->num_rows($query) > 0) {
+    if ($query && $db->num_rows($query) > 0) {
         $bgcolor = alt_trow(true);
         while ($message = $db->fetch_array($query)) {
             $msgstatus = $msgalt = $fa_icon_html = $badge_class = $popover_title = $popover_content = '';
@@ -1172,7 +1201,8 @@ if (!$mybb->input['action']) {
     // PM quota bar
     $pmspacebar = '';
     if ($usergroups['pmquota'] != 0) {
-        $pmscount_arr = $db->fetch_array($db->simple_select('privatemessages', 'COUNT(*) AS total', "uid='" . $CURUSER['id'] . "'"));
+        $quota_query = $db->sql_query_prepared("SELECT COUNT(*) AS total FROM privatemessages WHERE uid = ?", [$CURUSER['id']]);
+        $pmscount_arr = $quota_query ? $db->fetch_array($quota_query) : null;
         $spaceused    = $pmscount_arr['total'] == 0 ? 0 : min(100, $pmscount_arr['total'] / $usergroups['pmquota'] * 100);
         $pmspacebar   = '<div class="progress mt-3" style="height:40px"><div class="progress-bar" role="progressbar" style="width:' . $spaceused . '%"></div></div>
             <div class="mt-1">' . round($spaceused, 0) . '% ' . $lang->private['pmspaceused'] . '</div>';

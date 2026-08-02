@@ -38,7 +38,7 @@ function staffnamecheck($username)
     global $db, $lang;
     $username = strtolower($username);
 
-    $query = $db->sql_query("SELECT id FROM users WHERE username = " . $db->sqlesc($username));
+    $query = $db->sql_query_prepared("SELECT id FROM users WHERE username = ?", [$username]);
     if ($db->num_rows($query) > 0) {
         $res    = $db->fetch_array($query);
         $userid = intval($res['id']);
@@ -164,12 +164,13 @@ if ($act === 1) {
 
 
 
-    $res = $db->sql_query(
+    $res = $db->sql_query_prepared(
         "SELECT id, username, email FROM users
-         WHERE username = " . $db->sqlesc(strtolower($username)) . "
+         WHERE username = ?
            AND ustatus = 'confirmed'
            AND enabled  = 'yes'
-         LIMIT 1"
+         LIMIT 1",
+        [strtolower($username)]
     );
 
     // Anti-enumeration: always show the same message regardless of result
@@ -179,13 +180,23 @@ if ($act === 1) {
         [$plain, $hash] = generate_reset_token();
         $expires = TIMENOW + 3600;
 
-        $db->delete_query("password_reset_tokens", "userid = '" . intval($arr['id']) . "'");
-        $db->insert_query("password_reset_tokens", [
+        $db->sql_query_prepared(
+            "DELETE FROM password_reset_tokens WHERE userid = ?",
+            [intval($arr['id'])]
+        );
+
+        $insert_token = [
             "userid"     => intval($arr['id']),
-            "token_hash" => $db->escape_string($hash),
+            "token_hash" => $hash,
             "expires_at" => $expires,
-            "ip"         => $db->escape_string($_SERVER['REMOTE_ADDR'] ?? ''),
-        ]);
+            "ip"         => $_SERVER['REMOTE_ADDR'] ?? '',
+        ];
+        $columns      = array_keys($insert_token);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $db->sql_query_prepared(
+            "INSERT INTO password_reset_tokens (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
+            array_values($insert_token)
+        );
 
         $link    = $BASEURL . '/recoverhint.php?act=3&token=' . urlencode($plain);
         $subject = '[' . $SITENAME . '] ' . $lang->recover['email_subject'];
@@ -230,12 +241,13 @@ if ($act === 3) {
 
     $token_hash = hash('sha256', $token_plain);
 
-    $res = $db->sql_query(
+    $res = $db->sql_query_prepared(
         "SELECT t.userid, t.expires_at, u.username, u.email, u.ustatus, u.enabled
          FROM password_reset_tokens t
          JOIN users u ON u.id = t.userid
-         WHERE t.token_hash = " . $db->sqlesc($token_hash) . "
-         LIMIT 1"
+         WHERE t.token_hash = ?
+         LIMIT 1",
+        [$token_hash]
     );
 
     if ($db->num_rows($res) < 1) {
@@ -247,7 +259,10 @@ if ($act === 3) {
     $row = $db->fetch_array($res);
 
     if ((int)$row['expires_at'] < TIMENOW) {
-        $db->delete_query("password_reset_tokens", "userid = '" . intval($row['userid']) . "'");
+        $db->sql_query_prepared(
+            "DELETE FROM password_reset_tokens WHERE userid = ?",
+            [intval($row['userid'])]
+        );
         stderr($lang->global['error'], $lang->recover['token_expired']);
         exit();
     }
@@ -306,7 +321,10 @@ if ($act === 3) {
 
         my_setcookie('mybbuser', $row['userid'] . '_' . $userhandler->data['loginkey'], null, true, 'lax');
 
-        $db->delete_query("password_reset_tokens", "userid = '" . intval($row['userid']) . "'");
+        $db->sql_query_prepared(
+            "DELETE FROM password_reset_tokens WHERE userid = ?",
+            [intval($row['userid'])]
+        );
 
         // ── Log + notify account owner ─────────────────────────────────────
         require_once INC_PATH . '/function_loginattemptcheck.php';

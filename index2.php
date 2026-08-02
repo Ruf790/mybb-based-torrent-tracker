@@ -30,35 +30,37 @@ $membercount = $guestcount = $anoncount = $botcount = 0;
 $forum_viewers = $doneusers = $onlinemembers = $onlinebots = [];
 
 // Forum viewer counts (guests per forum)
-$q = $db->sql_query("
+$q = $db->sql_query_prepared("
     SELECT location1, COUNT(DISTINCT ip) AS guestcount
     FROM sessions
-    WHERE uid = 0 AND location1 != 0 AND SUBSTR(sid,4,1) != '=' AND time > {$timesearch}
+    WHERE uid = 0 AND location1 != 0 AND SUBSTR(sid,4,1) != '=' AND time > ?
     GROUP BY location1
-");
-while ($loc = $db->fetch_array($q)) {
+", [$timesearch]);
+while ($q && ($loc = $db->fetch_array($q))) {
     $forum_viewers[$loc['location1']] = ($forum_viewers[$loc['location1']] ?? 0) + $loc['guestcount'];
 }
 
 // Total guest count
-$q = $db->simple_select('sessions', 'COUNT(DISTINCT ip) AS guestcount',
-    "uid = 0 AND SUBSTR(sid,4,1) != '=' AND time > {$timesearch}");
-$guestcount = (int)$db->fetch_field($q, 'guestcount');
+$q = $db->sql_query_prepared(
+    "SELECT COUNT(DISTINCT ip) AS guestcount FROM sessions WHERE uid = 0 AND SUBSTR(sid,4,1) != '=' AND time > ?",
+    [$timesearch]
+);
+$guestcount = $q ? (int)$db->fetch_field($q, 'guestcount') : 0;
 
 // Members & bots
-$q = $db->sql_query("
+$q = $db->sql_query_prepared("
     SELECT s.sid, s.ip, s.uid, s.time, s.location, s.location1,
            u.username, u.invisible, u.usergroup, u.displaygroup
     FROM sessions s
     LEFT JOIN users u ON s.uid = u.id
-    WHERE (s.uid != 0 OR SUBSTR(s.sid,4,1) = '=') AND s.time > {$timesearch}
+    WHERE (s.uid != 0 OR SUBSTR(s.sid,4,1) = '=') AND s.time > ?
     ORDER BY u.username ASC, s.time DESC
-");
+", [$timesearch]);
 
 $spiders         = $cache->read('spiders');
 $woldisplayspiders = '1';
 
-while ($user = $db->fetch_array($q)) {
+while ($q && ($user = $db->fetch_array($q))) {
     $botkey = my_strtolower(str_replace('bot=', '', $user['sid']));
 
     if ($user['uid'] > 0) {
@@ -207,8 +209,8 @@ if (!empty($today_bdays)) {
     if ($showbirthdayspostlimit > 0) {
         $bday_sql = implode(',', array_column($today_bdays, 'id'));
         if ($bday_sql) {
-            $q = $db->simple_select('users', 'id, postnum', "id IN ({$bday_sql})");
-            while ($bu = $db->fetch_array($q)) {
+            $q = $db->sql_query_prepared("SELECT id, postnum FROM users WHERE id IN ({$bday_sql})");
+            while ($q && ($bu = $db->fetch_array($q))) {
                 if ($bu['postnum'] < $showbirthdayspostlimit) {
                     $today_bdays = array_filter($today_bdays, fn($u) => $u['id'] != $bu['id']);
                 }
@@ -413,24 +415,24 @@ $boardstats = '<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
 
 /* ── Forum list ──────────────────────────────────────────────────────── */
 if (($CURUSER['id'] ?? 0) == 0) {
-    $q = $db->simple_select('forums', '*', 'active!=0', ['order_by' => 'pid, disporder']);
+    $q = $db->sql_query_prepared("SELECT * FROM forums WHERE active!=0 ORDER BY pid, disporder");
     $forumsread = [];
     if (isset($mybb->cookies['mybb']['forumread'])) {
         $forumsread = my_unserialize($mybb->cookies['mybb']['forumread'], false);
     }
 } else {
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT f.*, fr.dateline AS lastread
         FROM forums f
-        LEFT JOIN forumsread fr ON (fr.fid = f.fid AND fr.uid = '{$CURUSER['id']}')
+        LEFT JOIN forumsread fr ON (fr.fid = f.fid AND fr.uid = ?)
         WHERE f.active != 0
         ORDER BY pid, disporder
-    ");
+    ", [$CURUSER['id']]);
 }
 
 $fcache = [];
 
-while ($forum = $db->fetch_array($q)) {
+while ($q && ($forum = $db->fetch_array($q))) {
     if (($CURUSER['id'] ?? 0) == 0 && !empty($forumsread[$forum['fid']])) {
         $forum['lastread'] = $forumsread[$forum['fid']];
     }
@@ -603,7 +605,6 @@ $index  = '<html>
 
 /* ── Output ──────────────────────────────────────────────────────────── */
 stdhead($SITENAME . ' FORUMS');
-
 
 echo $index;
 stdfoot();

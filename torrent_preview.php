@@ -12,7 +12,7 @@ if ($id <= 0) {
 }
 
 // Запрос (id уже int — инъекция невозможна)
-$res     = $db->sql_query("SELECT name, descr, seeders, leechers, size, added, t_image FROM torrents WHERE id = {$id}");
+$res     = $db->sql_query_prepared("SELECT name, descr, seeders, leechers, size, added, t_image FROM torrents WHERE id = ?", [$id]);
 $torrent = $db->fetch_array($res);
 
 if (!$torrent) {

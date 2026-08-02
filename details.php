@@ -78,11 +78,8 @@ if(!empty($mybb->input['pid']) && !$mybb->input['id'])
 	}
 	else
 	{
-		$options = array(
-			"limit" => 1
-		);
-		$query = $db->simple_select("comments", "torrent", "id=".$mybb->input['pid'], $options);
-		$post = $db->fetch_array($query);
+		$query = $db->sql_query_prepared("SELECT torrent FROM comments WHERE id = ? LIMIT 1", [(int)$mybb->input['pid']]);
+		$post = $query ? $db->fetch_array($query) : null;
 		
 		if(empty($post))
 		{
@@ -116,8 +113,8 @@ function get_comment($pid)
 	}
 	else
 	{
-		$query = $db->simple_select("comments", "*", "id = '{$pid}'");
-		$post = $db->fetch_array($query);
+		$query = $db->sql_query_prepared("SELECT * FROM comments WHERE id = ?", [$pid]);
+		$post = $query ? $db->fetch_array($query) : null;
 
 		if($post)
 		{
@@ -143,8 +140,8 @@ function get_torrent(int $tid, bool $recache = false): array|false
         return $thread_cache[$tid];
     }
 
-    $query = $db->simple_select("torrents", "*", "id = '{$tid}'");
-    $thread = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT * FROM torrents WHERE id = ?", [$tid]);
+    $thread = $query ? $db->fetch_array($query) : null;
 
     if ($thread) {
         $thread_cache[$tid] = $thread;
@@ -253,7 +250,7 @@ if ($query_result && $db->num_rows($query_result) > 0)
     while ($SMTQ = $db->fetch_array($query_result)) {
         if ($SMTQ['score'] > 1) {
             $SEOLink  = get_torrent_link($SMTQ['id']);
-            $SEOLinkC = ts_seo($SMTQ['category'], $SMTQ['catname'], 'c');
+            $SEOLinkC = get_category_link($SMTQ['category']);
 
             $poster = !empty($SMTQ['t_image'])
                 ? htmlspecialchars_uni($SMTQ['t_image'])
@@ -399,15 +396,15 @@ if ($torrent2['type'] == 's')
 	}
 	if ($parentcategory && $parentcatid)
 	{
-		$seolink = ts_seo($parentcatid,$parentcategory,'c');
-		$seolink2 = ts_seo($torrent2['categoryid'],$torrent2['categoryname'],'c');
+		$seolink = get_category_link($parentcatid);
+		$seolink2 = get_category_link($torrent2['categoryid']);
 		$torrent2["categoryname"] = '<a href="'.$seolink.'" target="_self" alt="'.$parentcategory.'" title="'.$parentcategory.'" />'.$parentcategory.'</a> / <a href="'.$seolink2.'" target="_self" alt="'.$torrent2['categoryname'].'" title="'.$torrent2['categoryname'].'" />'.$torrent2['categoryname'].'</a>';
 	}
 }
 else
 {
 
-	$seolink2 = ts_seo($torrent2['categoryid'],$torrent2['categoryname'],'c');
+	$seolink2 = get_category_link($torrent2['categoryid']);
 	
 	$torrent2["categoryname"] = '
 	<a href="'.$seolink2.'" target="_self" alt="'.$torrent2['categoryname'].'" title="'.$torrent2['categoryname'].'" />
@@ -524,8 +521,8 @@ $rating_data = [
     'user_rating' => $user_rating,
 ];
 if ($CURUSER['id']) {
-    $q2 = $db->sql_query("SELECT rating FROM torrent_ratings WHERE torrent_id = {$id} AND user_id = {$CURUSER['id']} LIMIT 1");
-    if ($ur = $db->fetch_array($q2)) $rating_data['user_rating'] = (int)$ur['rating'];
+    $q2 = $db->sql_query_prepared("SELECT rating FROM torrent_ratings WHERE torrent_id = ? AND user_id = ? LIMIT 1", [$id, $CURUSER['id']]);
+    if ($q2 && ($ur = $db->fetch_array($q2))) $rating_data['user_rating'] = (int)$ur['rating'];
 }
 
 // Avg stars
@@ -598,8 +595,8 @@ $rating_html = '
 
 
 
-$query = $db->simple_select("comments c", "COUNT(id) AS commentss", "torrent = '$id'");
-$threadcount = $db->fetch_field($query, "commentss");
+$query = $db->sql_query_prepared("SELECT COUNT(id) AS commentss FROM comments c WHERE torrent = ?", [$id]);
+$threadcount = $query ? $db->fetch_field($query, "commentss") : 0;
 
 if (!$threadcount)
 {
@@ -679,8 +676,8 @@ if (!empty($mybb->input['pid']))
   
     
 
-$query = $db->simple_select("comments c", "COUNT(*) AS replies", "c.torrent='$id'");
-$thread['replies'] = (int)$db->fetch_field($query, 'replies') - 1;
+$query = $db->sql_query_prepared("SELECT COUNT(*) AS replies FROM comments c WHERE c.torrent = ?", [$id]);
+$thread['replies'] = $query ? (int)$db->fetch_field($query, 'replies') - 1 : -1;
     
 $postcount = $thread['replies'] + 1;
 $pages = ceil($postcount / $perpage);
@@ -716,7 +713,7 @@ if(!$postcounter) {
 }
 
 
-$multipage = multipage((int)$postcount, (int)$perpage, (int)$page, str_replace("{id}", $id, TORRENT_URL_PAGED));
+$multipage = multipage((int)$postcount, (int)$perpage, (int)$page, str_replace("{id}", (string)$id, TORRENT_URL_PAGED));
 
 
 
@@ -766,13 +763,14 @@ if ($subres && isset($subres))
 $all_attachments = [];
 if (!empty($allrows)) {
     $comment_ids = array_map(fn($r) => (int)$r['id'], $allrows);
-    $ids_sql     = implode(',', $comment_ids);
-    $att_res = $db->sql_query(
+    $placeholders = implode(',', array_fill(0, count($comment_ids), '?'));
+    $att_res = $db->sql_query_prepared(
         "SELECT * FROM attachments
-         WHERE comment_id IN ($ids_sql) AND visible = 1
-         ORDER BY comment_id, dateuploaded ASC"
+         WHERE comment_id IN ($placeholders) AND visible = 1
+         ORDER BY comment_id, dateuploaded ASC",
+        $comment_ids
     );
-    while ($att = $db->fetch_array($att_res)) {
+    while ($att_res && ($att = $db->fetch_array($att_res))) {
         $all_attachments[(int)$att['comment_id']][] = $att;
     }
 }
@@ -934,6 +932,7 @@ $showcommenttable .= '
         <input type="hidden" name="ctype" value="quickcomment">
         <input type="hidden" name="page" value="' . intval($page ?? ($_GET['page'] ?? 1)) . '">
         <input type="hidden" name="posthash" value="' . htmlspecialchars($posthash) . '">
+        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
         <div id="fileIdsContainer"></div>
         <div class="mb-3">
             <label for="message" class="form-label">Your Comment <small class="text-muted">(макс. 500 символов)</small></label>
@@ -1089,11 +1088,14 @@ $show_manage .= '
  <i class="fa-solid fa-person-running fa-xl" style="color: #161718;" alt="Hit & Run" title="Hit & Run"></i></a>
 	 
   
-  <a href="'.$BASEURL.'/comment.php?tid='.$id.'&action='.($Torrent['allowcomments'] != 'yes' ? 'open' : 'close').'"  onmouseout="window.status=\'\'; return true;" onMouseOver="window.status=\''.($Torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']).'\'; return true;">'.($Torrent['allowcomments'] != 'yes' ? 
+  <form method="post" action="'.$BASEURL.'/comment.php?tid='.$id.'&action='.($Torrent['allowcomments'] != 'yes' ? 'open' : 'close').'" style="display:inline;">
+  <input type="hidden" name="my_post_key" value="'.htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES).'">
+  <button type="submit" style="background:none;border:none;padding:0;margin:0;" onmouseout="window.status=\'\'; return true;" onMouseOver="window.status=\''.($Torrent['allowcomments'] == 'no' ? $lang->details['open'] : $lang->details['close']).'\'; return true;">'.($Torrent['allowcomments'] != 'yes' ? 
   
   '<i class="fa-solid fa-comment-slash fa-xl" style="color: #e91b0c;" alt="'.$lang->details['open'].'" title="'.$lang->details['open'].'"></i>' : 
   
-  '<i class="fa-solid fa-comment-slash fa-xl" style="color: #08e74b;" alt="'.$lang->details['close'].'" title="'.$lang->details['close'].'"></i>').'</a>
+  '<i class="fa-solid fa-comment-slash fa-xl" style="color: #08e74b;" alt="'.$lang->details['close'].'" title="'.$lang->details['close'].'"></i>').'</button>
+  </form>
 	
   
 	

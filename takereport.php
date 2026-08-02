@@ -190,7 +190,12 @@ if ($type === 'forumpost')
 
 try {
     // Вставляем отчет в базу
-    $db->insert_query("reports", $insert_report);
+    $columns      = array_keys($insert_report);
+    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO reports (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
+        array_values($insert_report)
+    );
     
     // Получаем ID вставленной записи
     $report_id = $db->insert_id();

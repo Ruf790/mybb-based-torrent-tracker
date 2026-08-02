@@ -31,10 +31,16 @@ if($mybb->get_input('action') == "today")
     $plugins->run_hooks("online_today_start");
 
     $threshold = TIMENOW - (60 * 60 * 24);
-    $query = $db->simple_select("users", "COUNT(id) AS users", "lastactive > '{$threshold}'");
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(id) AS users FROM users WHERE lastactive > ?",
+        [$threshold]
+    );
     $todaycount = (int)$db->fetch_field($query, "users");
 
-    $query = $db->simple_select("users", "COUNT(id) AS users", "lastactive > '{$threshold}' AND invisible = '1'");
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(id) AS users FROM users WHERE lastactive > ? AND invisible = 1",
+        [$threshold]
+    );
     $invis_count = (int)$db->fetch_field($query, "users");
 
     
@@ -64,12 +70,10 @@ if($mybb->get_input('action') == "today")
         $page = 1;
     }
 
-    $query = $db->simple_select("users", "*", "lastactive > '{$threshold}'", [
-        "order_by" => "lastactive", 
-        "order_dir" => "desc", 
-        "limit" => $perpage, 
-        "limit_start" => $start
-    ]);
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM users WHERE lastactive > ? ORDER BY lastactive DESC LIMIT ?, ?",
+        [$threshold, $start, $perpage]
+    );
 
     $todayrows = '';
     while($online = $db->fetch_array($query))
@@ -200,11 +204,12 @@ else
     $timesearch = TIMENOW - ($wolcutoffmins ?? 15) * 60;
 
     // Get online count
-    $query = $db->sql_query("
-        SELECT COUNT(DISTINCT CONCAT(COALESCE(uid, 0), '-', ip)) AS online 
-        FROM sessions 
-        WHERE time > $timesearch
-    ");
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(DISTINCT CONCAT(COALESCE(uid, 0), '-', ip)) AS online 
+         FROM sessions 
+         WHERE time > ?",
+        [$timesearch]
+    );
 
     $online_count = (int)$db->fetch_field($query, "online");
 
@@ -240,15 +245,16 @@ else
     $dbversion = $db->get_version();
     
     // Simplified query for better compatibility
-    $query = $db->sql_query("
-        SELECT s.sid, s.ip, s.uid, s.time, s.location, u.username, s.nopermission, 
-               u.invisible, u.usergroup, u.displaygroup
-        FROM sessions s
-        LEFT JOIN users u ON (s.uid = u.id)
-        WHERE s.time > $timesearch
-        ORDER BY $sql
-        LIMIT $start, $perpage
-    ");
+    $query = $db->sql_query_prepared(
+        "SELECT s.sid, s.ip, s.uid, s.time, s.location, u.username, s.nopermission, 
+                u.invisible, u.usergroup, u.displaygroup
+         FROM sessions s
+         LEFT JOIN users u ON (s.uid = u.id)
+         WHERE s.time > ?
+         ORDER BY $sql
+         LIMIT ?, ?",
+        [$timesearch, $start, $perpage]
+    );
 
     // Fetch spiders
     $spiders = $cache->read("spiders") ?? [];

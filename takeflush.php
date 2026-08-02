@@ -29,7 +29,7 @@ function deadtime(): int {
 if (($is_mod || $CURUSER["id"] === $id) && isset($CURUSER) && $CURUSER["id"] > 0) {
     $deadtime = deadtime();
 
-    $db->sql_query("DELETE FROM peers WHERE last_action < {$deadtime} AND userid=" . $db->sqlesc($id));
+    $db->sql_query_prepared("DELETE FROM peers WHERE last_action < ? AND userid = ?", [$deadtime, $id]);
     
 
     if ($db->affected_rows()) {

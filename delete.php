@@ -24,8 +24,8 @@ if (!verify_post_check($mybb->get_input('my_post_key'))) {
 $id = (int)($_POST['id'] ?? 0);
 int_check($id, true);
 
-$res = $db->sql_query('SELECT name, owner FROM torrents WHERE id = ' . $db->sqlesc($id));
-$row = $db->fetch_array($res);
+$res = $db->sql_query_prepared('SELECT name, owner FROM torrents WHERE id = ?', [$id]);
+$row = $res ? $db->fetch_array($res) : null;
 
 if (!$row) {
     stderr($lang->global['error'], $lang->global['notorrentid']);

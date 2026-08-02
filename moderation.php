@@ -45,8 +45,8 @@ if ($fid) {
 }
 
 if ($pmid > 0) {
-    $query = $db->simple_select('privatemessages', 'uid, subject, ipaddress, fromid', "pmid = $pmid");
-    $pm = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT uid, subject, ipaddress, fromid FROM privatemessages WHERE pmid = ?", [$pmid]);
+    $pm = $query ? $db->fetch_array($query) : null;
     if (!$pm) {
         error($lang->error_invalidpm, $lang->error);
     }
@@ -140,7 +140,7 @@ switch ($action) {
         verify_post_check($mybb->get_input('my_post_key'));
         add_breadcrumb($lang->moderation['delayed_moderation']);
         $plugins->run_hooks('moderation_cancel_delayedmoderation');
-        $db->delete_query('delayedmoderation', "did='" . $mybb->get_input('did', MyBB::INPUT_INT) . "'");
+        $db->sql_query_prepared("DELETE FROM delayedmoderation WHERE did = ?", [$mybb->get_input('did', MyBB::INPUT_INT)]);
 
         if ($tid === 0) {
             moderation_redirect(get_forum_link($fid), $lang->moderation['redirect_delayed_moderation_cancelled']);
@@ -247,15 +247,18 @@ switch ($action) {
                     $mybb->input['tids'] = implode(',', $mybb->input['tids']);
                 }
 
-                $db->insert_query('delayedmoderation', [
-                    'type'          => $db->escape_string($mybb->input['type']),
-                    'delaydateline' => (int)$rundate,
-                    'uid'           => $CURUSER['id'],
-                    'tids'          => $db->escape_string($mybb->input['tids']),
-                    'fid'           => $fid,
-                    'dateline'      => TIMENOW,
-                    'inputs'        => $db->escape_string(my_serialize($mybb->input['delayedmoderation'])),
-                ]);
+                $db->sql_query_prepared(
+                    "INSERT INTO delayedmoderation (`type`,`delaydateline`,`uid`,`tids`,`fid`,`dateline`,`inputs`) VALUES (?,?,?,?,?,?,?)",
+                    [
+                        $mybb->input['type'],
+                        (int)$rundate,
+                        $CURUSER['id'],
+                        $mybb->input['tids'],
+                        $fid,
+                        TIMENOW,
+                        my_serialize($mybb->input['delayedmoderation']),
+                    ]
+                );
 
                 $plugins->run_hooks('moderation_do_delayedmoderation');
 
@@ -655,7 +658,7 @@ stdfoot();
         $plugins->run_hooks('moderation_do_deletethread');
 
         $modlogdata['thread_subject'] = $thread['subject'];
-        log_moderator_action($modlogdata, sprintf($lang->moderation['thread_deleted'], $db->escape_string($thread['subject'])));
+        log_moderator_action($modlogdata, sprintf($lang->moderation['thread_deleted'], $thread['subject']));
         $moderation->delete_thread($tid);
         moderation_redirect(get_forum_link($fid), $lang->moderation['redirect_threaddeleted']);
         break;
@@ -665,7 +668,8 @@ stdfoot();
         add_breadcrumb('nav_deletepoll');
         $plugins->run_hooks('moderation_deletepoll');
 
-        $poll = $db->fetch_array($db->simple_select('polls', 'pid', "tid='$tid'"));
+        $q = $db->sql_query_prepared("SELECT pid FROM polls WHERE tid = ?", [$tid]);
+        $poll = $q ? $db->fetch_array($q) : null;
         if (!$poll) stderr('error_invalidpoll');
 
         $deletepoll = <<<HTML
@@ -731,7 +735,8 @@ stdfoot();
         if ($thread['visible'] == -1) stderr('error_thread_deleted');
         if (!isset($mybb->input['delete'])) stderr('redirect_pollnotdeleted');
 
-        $poll = $db->fetch_array($db->simple_select('polls', 'pid', "tid = $tid"));
+        $q = $db->sql_query_prepared("SELECT pid FROM polls WHERE tid = ?", [$tid]);
+        $poll = $q ? $db->fetch_array($q) : null;
         if (!$poll) stderr('error_invalidpoll');
 
         $plugins->run_hooks('moderation_do_deletepoll');
@@ -908,7 +913,8 @@ stdfoot();
         $splitpost = $mybb->get_input('splitpost', MyBB::INPUT_ARRAY);
         if (empty($splitpost)) stderr('error_nosplitposts');
 
-        $count = $db->fetch_array($db->simple_select('posts', 'COUNT(*) AS totalposts', "tid='{$tid}'"));
+        $count_q = $db->sql_query_prepared("SELECT COUNT(*) AS totalposts FROM posts WHERE tid = ?", [$tid]);
+        $count = $count_q ? $db->fetch_array($count_q) : null;
         if ($count['totalposts'] == 1)                           stderr('error_cantsplitonepost');
         if ($count['totalposts'] == count($splitpost))           stderr('error_cantsplitall');
 
@@ -917,8 +923,8 @@ stdfoot();
         if (!$newforum || $newforum['type'] !== 'f' || $newforum['linkto'] !== '') stderr('error_invalidforum');
 
         $pids  = [];
-        $query = $db->simple_select('posts', 'pid', "tid='$tid'");
-        while ($post = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ?", [$tid]);
+        while ($query && ($post = $db->fetch_array($query))) {
             if (isset($splitpost[$post['pid']]) && $splitpost[$post['pid']] == 1) {
                 $pids[] = $post['pid'];
             }
@@ -1252,12 +1258,12 @@ stdfoot();
         $postlist = array_map('intval', explode(',', $mybb->get_input('posts')));
         if (!is_mod($usergroups)) error_no_permission();
 
-        $pids = implode(',', $postlist);
         $tids = [];
 
-        if ($pids) {
-            $query = $db->simple_select('threads', 'tid', "firstpost IN({$pids})");
-            while ($threadid = $db->fetch_field($query, 'tid')) {
+        if ($postlist) {
+            $ph = implode(',', array_fill(0, count($postlist), '?'));
+            $query = $db->sql_query_prepared("SELECT tid FROM threads WHERE firstpost IN ({$ph})", $postlist);
+            while ($query && ($threadid = $db->fetch_field($query, 'tid'))) {
                 $tids[] = $threadid;
             }
         }
@@ -1274,7 +1280,7 @@ stdfoot();
             }
             $url = get_forum_link($fid);
         } else {
-            $numposts = $db->num_rows($db->simple_select('posts', 'pid', "tid = $tid"));
+            $numposts = $db->num_rows($db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ?", [$tid]));
             if (!$numposts) {
                 $moderation->delete_thread($tid);
                 $url = get_forum_link($fid);
@@ -1641,8 +1647,9 @@ stdfoot();
 
         $posts = [];
         if (!empty($plist)) {
-            $query = $db->simple_select('posts', 'pid', 'pid IN (' . implode(',', $plist) . ')');
-            while ($p = $db->fetch_field($query, 'pid')) $posts[] = $p;
+            $ph = implode(',', array_fill(0, count($plist), '?'));
+            $query = $db->sql_query_prepared("SELECT pid FROM posts WHERE pid IN ({$ph})", $plist);
+            while ($query && ($p = $db->fetch_field($query, 'pid'))) $posts[] = $p;
         }
         if (empty($posts)) error($lang->error_inline_nopostsselected, $lang->error);
 
@@ -1891,7 +1898,7 @@ stdfoot();
         }
 
         if (!empty($parameters['pid']) && empty($parameters['tid'])) {
-            $newtid = (int)$db->fetch_field($db->simple_select('posts', 'tid', "pid='" . (int)$parameters['pid'] . "'"), 'tid');
+            $newtid = (int)$db->fetch_field($db->sql_query_prepared("SELECT tid FROM posts WHERE pid = ?", [(int)$parameters['pid']]), 'tid');
         } else {
             $newtid = (int)($parameters['tid'] ?? 0);
         }
@@ -1905,8 +1912,9 @@ stdfoot();
 
         $posts = [];
         if (!empty($plist)) {
-            $query = $db->simple_select('posts', 'pid', 'pid IN (' . implode(',', $plist) . ')');
-            while ($p = $db->fetch_field($query, 'pid')) $posts[] = $p;
+            $ph = implode(',', array_fill(0, count($plist), '?'));
+            $query = $db->sql_query_prepared("SELECT pid FROM posts WHERE pid IN ({$ph})", $plist);
+            while ($query && ($p = $db->fetch_field($query, 'pid'))) $posts[] = $p;
         }
         if (empty($posts)) stderr($lang->moderation['error_inline_nopostsselected']);
 
@@ -1925,7 +1933,7 @@ stdfoot();
         }
         if (count($pcheck2) !== count($pcheck)) stderr($lang->moderation['error_cantmoveall']);
 
-       $newtid = $moderation->split_posts($posts, $tid, (int)$newthread['fid'], $db->escape_string($newthread['subject']), $newtid);
+       $newtid = $moderation->split_posts($posts, $tid, (int)$newthread['fid'], $newthread['subject'], $newtid);
         log_moderator_action($modlogdata, sprintf($lang->moderation['move_selective_posts'], implode(', ', $posts), $newtid));
         moderation_redirect(get_thread_link($newtid), $lang->moderation['redirect_moveposts']);
         break;
@@ -1994,29 +2002,36 @@ stdfoot();
                 $userhandler->delete_content($uid);
                 $userhandler->delete_posts($uid);
 
-                $query = $db->simple_select('banned', 'uid', "uid = '{$uid}'");
-                if ($db->num_rows($query) > 0) {
-                    $db->update_query('banned', ['reason' => $db->escape_string($mybb->settings['purgespammerbanreason'])], "uid = '{$uid}'");
+                $ban_check = $db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ?", [$uid]);
+                if ($ban_check && $db->num_rows($ban_check) > 0) {
+                    $db->sql_query_prepared("UPDATE banned SET reason = ? WHERE uid = ?", [$mybb->settings['purgespammerbanreason'], $uid]);
                 } else {
-                    $db->insert_query('banned', [
-                        'uid'                  => $uid,
-                        'gid'                  => (int)$mybb->settings['purgespammerbangroup'],
-                        'oldgroup'             => 2,
-                        'oldadditionalgroups'  => '',
-                        'olddisplaygroup'      => 0,
-                        'admin'                => (int)$mybb->user['uid'],
-                        'dateline'             => TIMENOW,
-                        'bantime'              => '---',
-                        'lifted'               => 0,
-                        'reason'               => $db->escape_string($mybb->settings['purgespammerbanreason']),
-                    ]);
+                    $db->sql_query_prepared(
+                        "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        [
+                            $uid,
+                            (int)$mybb->settings['purgespammerbangroup'],
+                            2,
+                            '',
+                            0,
+                            (int)$mybb->user['uid'],
+                            TIMENOW,
+                            '---',
+                            0,
+                            $mybb->settings['purgespammerbanreason'],
+                        ]
+                    );
                 }
 
                 if ($mybb->settings['purgespammerbanip'] == 1) {
                     foreach ([$user['regip'], $user['lastip']] as $ip) {
                         $ip = my_inet_ntop($db->unescape_binary($ip));
-                        if ($db->num_rows($db->simple_select('banfilters', 'type', "type = 1 AND filter = '" . $db->escape_string($ip) . "'")) === 0) {
-                            $db->insert_query('banfilters', ['filter' => $db->escape_string($ip), 'type' => 1, 'dateline' => TIMENOW]);
+                        $ip_check = $db->sql_query_prepared("SELECT type FROM banfilters WHERE type = 1 AND filter = ?", [$ip]);
+                        if ($ip_check && $db->num_rows($ip_check) === 0) {
+                            $db->sql_query_prepared(
+                                "INSERT INTO banfilters (`filter`,`type`,`dateline`) VALUES (?,?,?)",
+                                [$ip, 1, TIMENOW]
+                            );
                         }
                     }
                 }
@@ -2156,9 +2171,10 @@ stdfoot();
             if (count($pids) < 1) error($lang->error_inline_nopostsselected, $lang->error);
             if (!is_mod($usergroups)) error_no_permission();
 
-            $query = $db->simple_select('posts', 'DISTINCT tid, dateline', 'pid IN (' . implode(',', $pids) . ')', ['order_by' => 'dateline, pid']);
+            $ph = implode(',', array_fill(0, count($pids), '?'));
+            $query = $db->sql_query_prepared("SELECT DISTINCT tid, dateline FROM posts WHERE pid IN ({$ph}) ORDER BY dateline, pid", $pids);
             $tids  = [];
-            while ($row = $db->fetch_array($query)) $tids[] = $row['tid'];
+            while ($query && ($row = $db->fetch_array($query))) $tids[] = $row['tid'];
 
             $ret = $custommod->execute($mybb->get_input('action', MyBB::INPUT_INT), $tids, $pids);
             log_moderator_action($modlogdata, $lang->sprintf($lang->custom_tool, $tool['name']));
@@ -2217,13 +2233,13 @@ function getallids(string|int $id, string $type): array
     }
 
     if ($type === 'forum') {
-        $query = $db->simple_select('threads', 'tid', "fid='" . (int)$id . "'");
-        while ($tid = $db->fetch_field($query, 'tid')) {
+        $query = $db->sql_query_prepared("SELECT tid FROM threads WHERE fid = ?", [(int)$id]);
+        while ($query && ($tid = $db->fetch_field($query, 'tid'))) {
             if (!in_array($tid, $removed_ids)) $ids[] = $tid;
         }
     } elseif ($type === 'search') {
-        $query     = $db->simple_select('searchlog', 'resulttype, posts, threads', "sid='" . $db->escape_string($id) . "' AND uid='{$CURUSER['id']}'", 1);
-        $searchlog = $db->fetch_array($query);
+        $query     = $db->sql_query_prepared("SELECT resulttype, posts, threads FROM searchlog WHERE sid = ? AND uid = ?", [$id, $CURUSER['id']]);
+        $searchlog = $query ? $db->fetch_array($query) : null;
         $ids       = explode(',', $searchlog['resulttype'] === 'posts' ? $searchlog['posts'] : $searchlog['threads']);
 
         if (is_array($ids)) {

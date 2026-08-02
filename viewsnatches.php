@@ -116,8 +116,9 @@ function sendPmToUsers(array $userIds, string $subject, string $messageTemplate,
     global $db;
     if (empty($userIds)) return 0;
 
-    $safeIds   = implode(',', array_map('intval', $userIds));
-    $res       = $db->sql_query("SELECT id, username FROM users WHERE id IN ({$safeIds})");
+    $userIds   = array_map('intval', $userIds);
+    $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+    $res       = $db->sql_query_prepared("SELECT id, username FROM users WHERE id IN ({$placeholders})", $userIds);
     $sentCount = 0;
 
     while ($user = $db->fetch_array($res)) {

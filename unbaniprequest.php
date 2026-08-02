@@ -27,19 +27,21 @@ if ($userip === '') {
 }
 
 // ── Check if IP is actually banned ────────────────────────────
-$query = $db->sql_query(
-    "SELECT id FROM loginattempts WHERE ip = " . $db->sqlesc($userip) . " AND banned = 'yes' LIMIT 1"
+$query = $db->sql_query_prepared(
+    "SELECT id FROM loginattempts WHERE ip = ? AND banned = 'yes' LIMIT 1",
+    [$userip]
 );
 if ($db->num_rows($query) < 1) {
     stderr($lang->unbaniprequest['error'] ?? 'Your IP is not banned.');
 }
 
 // ── Check if request already submitted ───────────────────────
-$query = $db->sql_query(
+$query = $db->sql_query_prepared(
     "SELECT id FROM unbanrequests
-     WHERE ip = " . $db->sqlesc($userip) . "
-        OR realip = " . $db->sqlesc($userip) . "
-     LIMIT 1"
+     WHERE ip = ?
+        OR realip = ?
+     LIMIT 1",
+    [$userip, $userip]
 );
 if ($db->num_rows($query) > 0) {
     stderr($lang->unbaniprequest['error2'] ?? 'You have already submitted an unban request.');
@@ -71,22 +73,17 @@ if (is_banned_email($email, true)) {
     }
 
     if (empty($errors)) {
-        $query = $db->sql_query(
+        $query = $db->sql_query_prepared(
             "INSERT INTO unbanrequests (ip, realip, email, comment, added)
-             VALUES (
-                 " . $db->sqlesc($userip) . ",
-                 " . $db->sqlesc(get_ip()) . ",
-                 " . $db->sqlesc($email) . ",
-                 " . $db->sqlesc($comment) . ",
-                 " . TIMENOW . "
-             )"
+             VALUES (?, ?, ?, ?, ?)",
+            [$userip, get_ip(), $email, $comment, TIMENOW]
         );
 
         $newid = $db->insert_id();
 
         if ($db->affected_rows() && $newid) {
             // Notify staff via PM
-            $query = $db->sql_query(
+            $query = $db->sql_query_prepared(
                 "SELECT usergroups FROM staffpanel
                  WHERE name = 'viewunbaniprequest'
                     OR filename = 'viewunbaniprequest.php'
@@ -98,7 +95,7 @@ if (is_banned_email($email, true)) {
                 $permusergroups = trim(str_replace(['[', ']'], '', (string)$permusergroups));
 
                 if ($permusergroups !== '') {
-                    $query = $db->sql_query(
+                    $query = $db->sql_query_prepared(
                         "SELECT id FROM users WHERE usergroup IN ({$permusergroups})"
                     );
 

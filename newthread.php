@@ -28,8 +28,10 @@ if ($mybb->input['action'] === 'editdraft'
     || ($mybb->input['tid'] && $mybb->input['pid']))
 {
     $thread = get_thread($mybb->input['tid']);
-    $query  = $db->simple_select('posts', '*', "tid='{$mybb->input['tid']}' AND visible='-2'",
-        ['order_by' => 'dateline, pid', 'limit' => 1]);
+    $query  = $db->sql_query_prepared(
+        "SELECT * FROM posts WHERE tid = ? AND visible = -2 ORDER BY dateline, pid LIMIT 1",
+        [(int)$mybb->input['tid']]
+    );
     $post   = $db->fetch_array($query);
 
     if (!$thread || !$post || $thread['visible'] != -2 || $thread['uid'] != $CURUSER['id']) {
@@ -181,7 +183,7 @@ if ($enableattachments == 1
 			
 			
             $ret['template'] = $attemplate;
-            $query = $db->simple_select('attachments', 'SUM(filesize) AS ausage', "uid='{$CURUSER['id']}'");
+            $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [(int)$CURUSER['id']]);
             $usage = $db->fetch_array($query);
             $ret['usage'] = mksize($usage['ausage']);
         }
@@ -209,7 +211,7 @@ if ($enableattachments == 1
     if (!$mybb->get_input('submit')) $mybb->input['action'] = 'newthread';
 
     if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) {
-        $query = $db->simple_select('attachments', 'SUM(filesize) AS ausage', "uid='{$CURUSER['id']}'");
+        $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [(int)$CURUSER['id']]);
         $usage = $db->fetch_array($query);
         header("Content-type: application/json; charset={$charset}");
         echo json_encode(['success' => true, 'usage' => mksize($usage['ausage'])]);
@@ -222,8 +224,10 @@ $thread_errors = '';
 // ── Max posts per day ─────────────────────────────────────────────────────────
 if ($mybb->usergroup['maxposts'] > 0) {
     $daycut = TIME_NOW - 86400;
-    $query  = $db->simple_select('posts', 'COUNT(*) AS posts_today',
-        "uid='{$mybb->user['uid']}' AND visible !='-1' AND dateline>{$daycut}");
+    $query  = $db->sql_query_prepared(
+        "SELECT COUNT(*) AS posts_today FROM posts WHERE uid = ? AND visible != -1 AND dateline > ?",
+        [(int)$mybb->user['uid'], (int)$daycut]
+    );
     $post_count = $db->fetch_field($query, 'posts_today');
     if ($post_count >= $mybb->usergroup['maxposts']) {
         $lang->error_maxposts = $lang->sprintf($lang->error_maxposts, $mybb->usergroup['maxposts']);
@@ -246,14 +250,22 @@ if ($mybb->input['action'] === 'do_newthread' && $mybb->request_method === 'post
 
     // Duplicate check
     if (!$mybb->get_input('savedraft') && !$pid) {
-        $user_check = $uid > 0
-            ? "p.uid='{$uid}'"
-            : 'p.ipaddress=' . $db->escape_binary($session->packedip);
-        $query = $db->simple_select('posts p', 'p.pid',
-            "$user_check AND p.fid='{$forum['fid']}'"
-            . " AND p.subject='" . $db->escape_string($mybb->get_input('subject')) . "'"
-            . " AND p.message='" . $db->escape_string($mybb->get_input('message')) . "'"
-            . ' AND p.dateline>' . (TIMENOW - 600));
+        if ($uid > 0) {
+            $user_check        = "p.uid = ?";
+            $user_check_params = [(int)$uid];
+        } else {
+            $user_check        = "p.ipaddress = ?";
+            $user_check_params = [$session->packedip];
+        }
+        $query = $db->sql_query_prepared(
+            "SELECT p.pid FROM posts p WHERE {$user_check} AND p.fid = ? AND p.subject = ? AND p.message = ? AND p.dateline > ?",
+            array_merge($user_check_params, [
+                (int)$forum['fid'],
+                $mybb->get_input('subject'),
+                $mybb->get_input('message'),
+                TIMENOW - 600,
+            ])
+        );
         if ($db->num_rows($query) > 0) stderr('error_post_already_submitted');
     }
 
@@ -360,7 +372,8 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
         }
 
         if (count($quoted_posts) > 0) {
-            $quoted_posts_str  = implode(',', $quoted_posts);
+            $quoted_posts_arr    = array_map('intval', array_values($quoted_posts));
+            $quoted_placeholders = implode(',', array_fill(0, count($quoted_posts_arr), '?'));
             $unviewable_forums = get_unviewable_forums();
             $inactiveforums    = get_inactive_forums();
             $uv_sql = $unviewable_forums ? "AND t.fid NOT IN ({$unviewable_forums})" : '';
@@ -377,19 +390,23 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
                     $onlyusfids[] = $gpfid;
                 }
             }
+            $onlyus_sql_params = [];
             $onlyus_sql = !empty($onlyusfids)
-                ? "AND ((t.fid IN(" . implode(',', $onlyusfids) . ") AND t.uid='{$CURUSER['id']}') OR t.fid NOT IN(" . implode(',', $onlyusfids) . "))"
+                ? "AND ((t.fid IN(" . implode(',', $onlyusfids) . ") AND t.uid=?) OR t.fid NOT IN(" . implode(',', $onlyusfids) . "))"
                 : '';
+            if (!empty($onlyusfids)) {
+                $onlyus_sql_params = [(int)$CURUSER['id']];
+            }
 
             if ($mybb->get_input('load_all_quotes', MyBB::INPUT_INT) == 1) {
-                $query = $db->sql_query("
+                $query = $db->sql_query_prepared("
                     SELECT p.subject, p.message, p.pid, p.tid, p.username, p.dateline, u.username AS userusername
                     FROM posts p
                     LEFT JOIN threads t ON (t.tid=p.tid)
                     LEFT JOIN users u ON (u.id=p.uid)
-                    WHERE p.pid IN ({$quoted_posts_str}) {$uv_sql} {$ia_sql} {$onlyus_sql} {$vis_sql}
+                    WHERE p.pid IN ({$quoted_placeholders}) {$uv_sql} {$ia_sql} {$onlyus_sql} {$vis_sql}
                     ORDER BY p.dateline, p.pid
-                ");
+                ", array_merge($quoted_posts_arr, $onlyus_sql_params));
                 while ($qp = $db->fetch_array($query)) {
                     if ($qp['userusername']) $qp['username'] = $qp['userusername'];
                     $qp['message'] = preg_replace('#(^|\r|\n)/me ([^\r\n<]*)#i', "\\1* {$qp['username']} \\2", $qp['message']);
@@ -399,11 +416,11 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
                 }
                 $quoted_ids = 'all';
             } else {
-                $query = $db->sql_query("
+                $query = $db->sql_query_prepared("
                     SELECT COUNT(*) AS quotes FROM posts p
                     LEFT JOIN threads t ON (t.tid=p.tid)
-                    WHERE p.pid IN ({$quoted_posts_str}) {$uv_sql} {$ia_sql} {$onlyus_sql} {$vis_sql}
-                ");
+                    WHERE p.pid IN ({$quoted_placeholders}) {$uv_sql} {$ia_sql} {$onlyus_sql} {$vis_sql}
+                ", array_merge($quoted_posts_arr, $onlyus_sql_params));
                 $external_quotes = (int)$db->fetch_field($query, 'quotes');
 
                 if ($external_quotes > 0) {
@@ -517,11 +534,15 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
             $post['dateline']    = TIMENOW;
             $post['includesig']  = ($mybb->input['postoptions']['signature'] ?? 0) == 1 ? 1 : 0;
 
-            $attachwhere = $mybb->get_input('pid', MyBB::INPUT_INT)
-                ? "pid='" . $mybb->get_input('pid', MyBB::INPUT_INT) . "'"
-                : "posthash='" . $db->escape_string($mybb->get_input('posthash')) . "'";
+            if ($mybb->get_input('pid', MyBB::INPUT_INT)) {
+                $attachwhere_sql    = "pid = ?";
+                $attachwhere_params = [$mybb->get_input('pid', MyBB::INPUT_INT)];
+            } else {
+                $attachwhere_sql    = "posthash = ?";
+                $attachwhere_params = [$mybb->get_input('posthash')];
+            }
 
-            $query = $db->simple_select('attachments', '*', $attachwhere);
+            $query = $db->sql_query_prepared("SELECT * FROM attachments WHERE {$attachwhere_sql}", $attachwhere_params);
             while ($attachment = $db->fetch_array($query)) {
                 $attachcache[0][$attachment['aid']] = $attachment;
             }
@@ -618,11 +639,15 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
     $attachbox = '';
     if ($enableattachments != 0 && $forumpermissions['canpostattachments'] != 0) {
         $attachcount = 0;
-        $attachwhere = ($mybb->input['action'] === 'editdraft' || ($mybb->input['tid'] && $mybb->input['pid']))
-            ? "pid='{$pid}'"
-            : "posthash='" . $db->escape_string($posthash) . "'";
+        if ($mybb->input['action'] === 'editdraft' || ($mybb->input['tid'] && $mybb->input['pid'])) {
+            $attachwhere_sql    = "pid = ?";
+            $attachwhere_params = [(int)$pid];
+        } else {
+            $attachwhere_sql    = "posthash = ?";
+            $attachwhere_params = [$posthash];
+        }
 
-        $query       = $db->simple_select('attachments', '*', $attachwhere);
+        $query       = $db->sql_query_prepared("SELECT * FROM attachments WHERE {$attachwhere_sql}", $attachwhere_params);
         $attachments = '';
 
         while ($attachment = $db->fetch_array($query)) {
@@ -698,7 +723,7 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
             $attachcount++;
         }
 
-        $query = $db->simple_select('attachments', 'SUM(filesize) AS ausage', "uid='{$CURUSER['id']}'");
+        $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [(int)$CURUSER['id']]);
         $usage = $db->fetch_array($query);
 
         $noshowattach = ($usage['ausage'] > ($usergroups['attachquota'] * 1024) && $usergroups['attachquota'] != 0);

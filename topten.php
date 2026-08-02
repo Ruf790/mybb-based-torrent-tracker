@@ -177,34 +177,34 @@ if ($type == 1)
 
     if ($limit == 10 || $subtype == "ul") {
         $order = "uploaded DESC";
-        ($r = $db->sql_query($mainquery . " ORDER BY " . $order . " LIMIT " . $limit));
+        ($r = $db->sql_query_prepared($mainquery . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
         usertable($r, sprintf($lang->topten["type1_title1"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=ul'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=ul'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "dl") {
         $order = "downloaded DESC";
-        ($r = $db->sql_query($mainquery . " ORDER BY " . $order . " LIMIT " . $limit));
+        ($r = $db->sql_query_prepared($mainquery . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
         usertable($r, sprintf($lang->topten["type1_title2"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=dl'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=dl'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "uls") {
         $order = "upspeed DESC";
-        ($r = $db->sql_query($mainquery . " ORDER BY " . $order . " LIMIT " . $limit));
+        ($r = $db->sql_query_prepared($mainquery . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
         usertable($r, sprintf($lang->topten["type1_title3"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=uls'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=uls'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "dls") {
         $order = "downspeed DESC";
-        ($r = $db->sql_query($mainquery . " ORDER BY " . $order . " LIMIT " . $limit));
+        ($r = $db->sql_query_prepared($mainquery . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
         usertable($r, sprintf($lang->topten["type1_title4"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=dls'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=dls'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "bsh") {
         $order = "uploaded / downloaded DESC";
         $extrawhere = " AND downloaded > 1073741824";
-        ($r = $db->sql_query($mainquery . $extrawhere . " ORDER BY " . $order . " LIMIT " . $limit));
+        ($r = $db->sql_query_prepared($mainquery . $extrawhere . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
         usertable($r, sprintf($lang->topten["type1_title5"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=bsh'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=bsh'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "wsh") {
         $order = "uploaded / downloaded ASC, downloaded DESC";
         $extrawhere = " AND downloaded > 1073741824";
-        ($r = $db->sql_query($mainquery . $extrawhere . " ORDER BY " . $order . " LIMIT " . $limit));
+        ($r = $db->sql_query_prepared($mainquery . $extrawhere . " ORDER BY " . $order . " LIMIT ?", [(int)$limit]));
         usertable($r, sprintf($lang->topten["type1_title6"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=1&lim=100&subtype=wsh'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=1&lim=250&subtype=wsh'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
     }
 } 
@@ -223,41 +223,41 @@ elseif ($type == 2)
     }
     if ($limit == 10 || $subtype == "act") {
         if ($xbt_active == "yes") {
-            $r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE p.`left` > 0 GROUP BY t.id ORDER BY seeders + leechers DESC, seeders DESC, added ASC LIMIT " . $limit) || sqlerr(__FILE__, 287);
+            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE p.`left` > 0 GROUP BY t.id ORDER BY seeders + leechers DESC, seeders DESC, added ASC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 287);
         } else {
-            ($r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE p.seeder = 'no' GROUP BY t.id ORDER BY seeders + leechers DESC, seeders DESC, added ASC LIMIT " . $limit)) || sqlerr(__FILE__, 289);
+            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE p.seeder = 'no' GROUP BY t.id ORDER BY seeders + leechers DESC, seeders DESC, added ASC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 289);
         }
         _torrenttable($r, sprintf($lang->topten["type2_title1"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=act'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=act'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "sna") {
         if ($xbt_active == "yes") {
-            $r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE t.times_completed > 0 GROUP BY t.id ORDER BY times_completed DESC, added ASC LIMIT " . $limit) || sqlerr(__FILE__, 296);
+            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE t.times_completed > 0 GROUP BY t.id ORDER BY times_completed DESC, added ASC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 296);
         } else {
-            ($r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE t.times_completed > 0 GROUP BY t.id ORDER BY times_completed DESC, added ASC LIMIT " . $limit)) || sqlerr(__FILE__, 298);
+            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE t.times_completed > 0 GROUP BY t.id ORDER BY times_completed DESC, added ASC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 298);
         }
         _torrenttable($r, sprintf($lang->topten["type2_title2"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=sna'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=sna'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "mdt") {
         if ($xbt_active == "yes") {
-            $r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE times_completed > 0 GROUP BY t.id ORDER BY data DESC, added ASC LIMIT " . $limit) || sqlerr(__FILE__, 305);
+            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE times_completed > 0 GROUP BY t.id ORDER BY data DESC, added ASC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 305);
         } else {
-            ($r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE times_completed > 0 GROUP BY t.id ORDER BY data DESC, added ASC LIMIT " . $limit)) || sqlerr(__FILE__, 307);
+            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE times_completed > 0 GROUP BY t.id ORDER BY data DESC, added ASC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 307);
         }
         _torrenttable($r, sprintf($lang->topten["type2_title3"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=mdt'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=mdt'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "bse") {
         if ($xbt_active == "yes") {
-            $r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE seeders >= 5 GROUP BY t.id ORDER BY seeders DESC, seeders+leechers DESC, added ASC LIMIT " . $limit) || sqlerr(__FILE__, 314);
+            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE seeders >= 5 GROUP BY t.id ORDER BY seeders DESC, seeders+leechers DESC, added ASC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 314);
         } else {
-            ($r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE seeders >= 5 GROUP BY t.id ORDER BY seeders DESC, seeders+leechers DESC, added ASC LIMIT " . $limit)) || sqlerr(__FILE__, 316);
+            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE seeders >= 5 GROUP BY t.id ORDER BY seeders DESC, seeders+leechers DESC, added ASC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 316);
         }
         _torrenttable($r, sprintf($lang->topten["type2_title4"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=bse'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=bse'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "wse") {
         if ($xbt_active == "yes") {
-            $r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE p.`left` > 0 AND leechers >= 5 AND times_completed > 0 GROUP BY t.id ORDER BY seeders / leechers ASC, leechers DESC LIMIT " . $limit) || sqlerr(__FILE__, 323);
+            $r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN xbt_files_users AS p ON t.id = p.fid WHERE p.`left` > 0 AND leechers >= 5 AND times_completed > 0 GROUP BY t.id ORDER BY seeders / leechers ASC, leechers DESC LIMIT ?", [(int)$limit]) || sqlerr(__FILE__, 323);
         } else {
-            ($r = $db->sql_query("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE p.seeder = 'no' AND leechers >= 5 AND times_completed > 0 GROUP BY t.id ORDER BY seeders / leechers ASC, leechers DESC LIMIT " . $limit)) || sqlerr(__FILE__, 325);
+            ($r = $db->sql_query_prepared("SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data FROM torrents AS t LEFT JOIN peers AS p ON t.id = p.torrent WHERE p.seeder = 'no' AND leechers >= 5 AND times_completed > 0 GROUP BY t.id ORDER BY seeders / leechers ASC, leechers DESC LIMIT ?", [(int)$limit])) || sqlerr(__FILE__, 325);
         }
         _torrenttable($r, sprintf($lang->topten["type2_title5"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=2&lim=25&subtype=wse'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=2&lim=50&subtype=wse'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
     }
@@ -475,12 +475,12 @@ $sql = "
     LEFT JOIN usergroups g ON users.usergroup = g.gid
     WHERE usergroup NOT IN ({$notin})
     ORDER BY uprate DESC
-    LIMIT ".$limit."
+    LIMIT ?
 ";
 
 
 
-$r = $db->sql_query($sql);
+$r = $db->sql_query_prepared($sql, [(int)$limit]);
 
 
 
@@ -491,7 +491,7 @@ $r = $db->sql_query($sql);
         peerstable($r, sprintf($lang->topten["type4_title1"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=4&lim=100&subtype=ul'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=4&lim=250&subtype=ul'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
     }
     if ($limit == 10 || $subtype == "dl") {
-        ($r = $db->sql_query("SELECT users.id AS userid, avatar, avatardimensions, usergroup, peers.id AS peerid, username, peers.uploaded, peers.downloaded, IF(peers.uploaded >= peers.uploadoffset, (peers.uploaded - peers.uploadoffset), peers.uploadoffset) / (UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started)) AS uprate, IF(seeder = 'yes',(peers.downloaded - peers.downloadoffset) / (finishedat - UNIX_TIMESTAMP(started)),(peers.downloaded - peers.downloadoffset) / (UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started))) AS downrate, g.namestyle FROM peers LEFT JOIN users ON peers.userid = users.id LEFT JOIN usergroups g ON (users.usergroup=g.gid) ORDER BY downrate DESC LIMIT " . $limit));
+        ($r = $db->sql_query_prepared("SELECT users.id AS userid, avatar, avatardimensions, usergroup, peers.id AS peerid, username, peers.uploaded, peers.downloaded, IF(peers.uploaded >= peers.uploadoffset, (peers.uploaded - peers.uploadoffset), peers.uploadoffset) / (UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started)) AS uprate, IF(seeder = 'yes',(peers.downloaded - peers.downloadoffset) / (finishedat - UNIX_TIMESTAMP(started)),(peers.downloaded - peers.downloadoffset) / (UNIX_TIMESTAMP(last_action) - UNIX_TIMESTAMP(started))) AS downrate, g.namestyle FROM peers LEFT JOIN users ON peers.userid = users.id LEFT JOIN usergroups g ON (users.usergroup=g.gid) ORDER BY downrate DESC LIMIT ?", [(int)$limit]));
         peerstable($r, sprintf($lang->topten["type4_title2"], $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=4&lim=100&subtype=dl'>" . $lang->topten["top100"] . "</a>] [<a href='topten.php?type=4&lim=250&subtype=dl'>" . $lang->topten["top250"] . "</a>]</small>" : ""));
     }
 }

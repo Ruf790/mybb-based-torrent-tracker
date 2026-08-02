@@ -25,10 +25,9 @@ function spamcheck(int $reseedid = 0, int $receiver = 0, int $sender = 0): bool
 {
     global $db;
 
-    $spamcheck = $db->simple_select(
-        'messages',
-        'sender',
-        "sender = '{$sender}' AND subject = '{$db->escape_string($_GET['subject'] ?? '')}' AND receiver = '{$receiver}'"
+    $spamcheck = $db->sql_query_prepared(
+        "SELECT sender FROM messages WHERE sender = ? AND subject = ? AND receiver = ?",
+        [$sender, $_GET['subject'] ?? '', $receiver]
     );
 
     return $db->num_rows($spamcheck) === 0;

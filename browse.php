@@ -154,7 +154,7 @@ if (count($_categoriesS) > 0) {
         $sc['name'] = htmlspecialchars_uni($sc['name']);
         $searcincategories[] = $sc['id'];
 
-        $SEOLinkC = ts_seo($sc['id'], $sc['name'], 'c');
+        $SEOLinkC = get_category_link($sc['id']);
 
         $subcategories[$sc['pid']][] = '
         <span id="category' . $sc['id'] . '"' . (
@@ -212,7 +212,7 @@ if (($rows = count($_categoriesC)) > 0) {
 
         $tracker_cats_width = '';
         $cname = htmlspecialchars_uni($c['name']);
-        $SEOLinkC = ts_seo($c['id'], $cname, 'c');
+        $SEOLinkC = get_category_link($c['id']);
 
 $categories .= '
 <td class="p-2">
@@ -769,7 +769,7 @@ if ($TotalTorrents && count($TotalTorrents))
         }
 
         $SEOLink = get_torrent_link($Torrent['id']);
-        $SEOLinkC = ts_seo($Torrent['category'], $Torrent['catname'], 'c');
+        $SEOLinkC = get_category_link($Torrent['category']);
         
         $categoryIcon = 'fa-solid fa-question';
         foreach ($_categoriesC as $category) {

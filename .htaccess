@@ -18,21 +18,7 @@ ErrorDocument 500 /error.php?errorid=500
 # Uncomment the following and add your tracker path if rewrites arent working properly
 #RewriteBase /
 RewriteRule ^index.html$ index.php [L,NE]
-RewriteRule ^(.*)-b-([0-9]+).ts(.*)$ browse.php?cat=$2 [QSA,L]
-RewriteRule ^(.*)-c-([0-9]+).ts(.*)$ browse.php?category=$2 [QSA,L]
-RewriteRule ^(.*)-d-([0-9]+).ts(.*)$ download.php?id=$2 [QSA,L]
-RewriteRule ^(.*)-s-([0-9]+).ts(.*)$ details.php?id=$2 [QSA,L]
-RewriteRule ^(.*)-a-(.*).ts(.*)$ announce.php?passkey=$2 [QSA,L]
-
-
-
-
-
-
-RewriteRule ^(.*)-u?([0-9]+).ts(.*)$ userdetails.php?id=$2$3 [QSA,L]
-RewriteRule ^(.*)-f([0-9]+).tsf(.*)$ index2.php?fid=$2$3 [QSA,L]
-RewriteRule ^(.*)-fd([0-9]+).tsf(.*)$ forumdisplay.php?fid=$2$3 [QSA,L]
-RewriteRule ^(.*)-t([0-9]+).tsf(.*)$ showthread.php?tid=$2$3 [QSA,L]
+RewriteRule ^(.*)-a-(.*)$ announce.php?passkey=$2 [QSA,L]
 
 
 
@@ -62,11 +48,16 @@ RewriteRule ^torrent-([0-9]+)-page-([0-9]+)\.html$ details.php?id=$1&page=$2 [L,
 
 
 
+
 RewriteRule ^download-([0-9]+)\.html$ download.php?id=$1 [L,QSA]
 
 
 RewriteRule ^announcement-([0-9]+)\.html$ announcements.php?aid=$1 [L,QSA]
 
+
+
+RewriteRule ^category-([0-9]+)\.html$ browse.php?category=$1 [L,QSA]
+RewriteRule ^category-([0-9]+)-page-([0-9]+)\.html$ browse.php?category=$1&page=$2 [L,QSA]
 
 
 # //seo_mod_end

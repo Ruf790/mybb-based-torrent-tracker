@@ -50,7 +50,7 @@ function show_flash(): void {
 
 // ── Load categories ───────────────────────────────────────────────────────────
 $cats = [];
-$q = $db->sql_query("SELECT id, name FROM categories ORDER BY name");
+$q = $db->sql_query_prepared("SELECT id, name FROM categories ORDER BY name");
 while ($r = $db->fetch_array($q)) $cats[$r['id']] = $r['name'];
 
 // ── AJAX: Request upload ──────────────────────────────────────────────────────
@@ -61,16 +61,22 @@ if ($action === 'want' && $mybb->request_method === 'post') {
         echo json_encode(['success' => false, 'error' => 'Invalid post key']); exit();
     }
     $uid = (int)$CURUSER['id'];
-    $offer = $db->fetch_array($db->simple_select('offers', 'id, status, user_id', "id='$oid'"));
+    $offer = $db->fetch_array($db->sql_query_prepared("SELECT id, status, user_id FROM offers WHERE id = ?", [$oid]));
     if (!$offer) { echo json_encode(['success' => false, 'error' => 'Not found']); exit(); }
     if ($offer['status'] !== 'open') { echo json_encode(['success' => false, 'error' => 'Offer is closed']); exit(); }
     if ($offer['user_id'] == $uid) { echo json_encode(['success' => false, 'error' => 'Cannot request your own offer']); exit(); }
-    if ($db->num_rows($db->simple_select('offer_votes', 'id', "offer_id='$oid' AND user_id='$uid'"))) {
+    if ($db->num_rows($db->sql_query_prepared("SELECT id FROM offer_votes WHERE offer_id = ? AND user_id = ?", [$oid, $uid]))) {
         echo json_encode(['success' => false, 'error' => 'Already requested']); exit();
     }
-    $db->insert_query('offer_votes', ['offer_id' => $oid, 'user_id' => $uid, 'created_at' => TIMENOW]);
-    $db->sql_query("UPDATE offers SET requests = requests + 1, updated_at = '" . TIMENOW . "' WHERE id='$oid'");
-    $new_count = (int)$db->fetch_field($db->simple_select('offers', 'requests', "id='$oid'"), 'requests');
+    $vote_data = ['offer_id' => $oid, 'user_id' => $uid, 'created_at' => TIMENOW];
+    $columns      = array_keys($vote_data);
+    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO offer_votes (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
+        array_values($vote_data)
+    );
+    $db->sql_query_prepared("UPDATE offers SET requests = requests + 1, updated_at = ? WHERE id = ?", [TIMENOW, $oid]);
+    $new_count = (int)$db->fetch_field($db->sql_query_prepared("SELECT requests FROM offers WHERE id = ?", [$oid]), 'requests');
     echo json_encode(['success' => true, 'requests' => $new_count]);
     exit();
 }
@@ -84,15 +90,21 @@ if ($action === 'add_comment' && $mybb->request_method === 'post') {
     }
     $message = trim($mybb->get_input('message'));
     if (empty($message)) { echo json_encode(['success' => false, 'error' => 'Empty message']); exit(); }
-    if (!$db->num_rows($db->simple_select('offers', 'id', "id='$oid'"))) {
+    if (!$db->num_rows($db->sql_query_prepared("SELECT id FROM offers WHERE id = ?", [$oid]))) {
         echo json_encode(['success' => false, 'error' => 'Not found']); exit();
     }
-    $db->insert_query('offer_comments', [
+    $comment_data = [
         'offer_id'   => $oid,
         'user_id'    => (int)$CURUSER['id'],
-        'message'    => $db->escape_string($message),
+        'message'    => $message,
         'created_at' => TIMENOW,
-    ]);
+    ];
+    $columns      = array_keys($comment_data);
+    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO offer_comments (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
+        array_values($comment_data)
+    );
     echo json_encode(['success' => true]);
     exit();
 }
@@ -108,9 +120,11 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
     if (strlen($title) < 3) $errors[] = 'Title must be at least 3 characters.';
     if (strlen($title) > 255) $errors[] = 'Title is too long.';
     if (empty($errors)) {
-        $year_val = $year !== null ? (int)$year : 'NULL';
-        $db->sql_query("INSERT INTO offers (user_id, title, description, category_id, year, status, requests, created_at, updated_at)
-            VALUES ('" . (int)$CURUSER['id'] . "', '" . $db->escape_string($title) . "', '" . $db->escape_string($description) . "', '$category_id', $year_val, 'open', 0, '" . TIMENOW . "', '" . TIMENOW . "')");
+        $db->sql_query_prepared(
+            "INSERT INTO offers (user_id, title, description, category_id, year, status, requests, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'open', 0, ?, ?)",
+            [(int)$CURUSER['id'], $title, $description, $category_id, $year, TIMENOW, TIMENOW]
+        );
         $id = $db->insert_id();
         $_SESSION['flash'] = ['msg' => 'Offer created successfully!', 'type' => 'success'];
         header('Location: offers.php?action=view&oid=' . $id);
@@ -121,18 +135,21 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
 // ── POST: Mark as Uploaded ────────────────────────────────────────────────────
 if ($action === 'upload' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
-    $offer = $db->fetch_array($db->simple_select('offers', '*', "id='$oid'"));
+    $offer = $db->fetch_array($db->sql_query_prepared("SELECT * FROM offers WHERE id = ?", [$oid]));
     if (!$offer || ($offer['user_id'] != $CURUSER['id'] && !$is_mod)) stderr('No permission');
     if ($offer['status'] !== 'open') stderr('Offer already closed');
     $torrent_id = $mybb->get_input('torrent_id', MyBB::INPUT_INT);
-    if (!$torrent_id || !$db->num_rows($db->simple_select('torrents', 'id', "id='$torrent_id'"))) {
+    if (!$torrent_id || !$db->num_rows($db->sql_query_prepared("SELECT id FROM torrents WHERE id = ?", [$torrent_id]))) {
         $_SESSION['flash'] = ['msg' => 'Torrent ID ' . $torrent_id . ' does not exist.', 'type' => 'danger'];
         header('Location: offers.php?action=view&oid=' . $oid);
         exit();
     }
-    $db->update_query('offers', ['status' => 'uploaded', 'torrent_id' => $torrent_id, 'uploaded_at' => TIMENOW, 'updated_at' => TIMENOW], "id='$oid'");
+    $db->sql_query_prepared(
+        "UPDATE offers SET status = ?, torrent_id = ?, uploaded_at = ?, updated_at = ? WHERE id = ?",
+        ['uploaded', $torrent_id, TIMENOW, TIMENOW, $oid]
+    );
     require_once INC_PATH . '/functions_pm.php';
-    $votes_q = $db->simple_select('offer_votes', 'user_id', "offer_id='$oid'");
+    $votes_q = $db->sql_query_prepared("SELECT user_id FROM offer_votes WHERE offer_id = ?", [$oid]);
     while ($v = $db->fetch_array($votes_q)) {
         if ($v['user_id'] == $CURUSER['id']) continue;
         $pm = ['subject' => 'Offer uploaded: ' . $offer['title'], 'message' => 'The offer [b]' . $offer['title'] . '[/b] has been uploaded! [url=' . $BASEURL . '/details.php?id=' . $torrent_id . ']Download here[/url]', 'touid' => (int)$v['user_id']];
@@ -147,9 +164,9 @@ if ($action === 'upload' && $mybb->request_method === 'post') {
 // ── POST: Cancel ──────────────────────────────────────────────────────────────
 if ($action === 'cancel' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
-    $offer = $db->fetch_array($db->simple_select('offers', 'user_id, status', "id='$oid'"));
+    $offer = $db->fetch_array($db->sql_query_prepared("SELECT user_id, status FROM offers WHERE id = ?", [$oid]));
     if (!$offer || ($offer['user_id'] != $CURUSER['id'] && !$is_mod)) stderr('No permission');
-    $db->update_query('offers', ['status' => 'cancelled', 'updated_at' => TIMENOW], "id='$oid'");
+    $db->sql_query_prepared("UPDATE offers SET status = ?, updated_at = ? WHERE id = ?", ['cancelled', TIMENOW, $oid]);
     $_SESSION['flash'] = ['msg' => 'Offer cancelled.', 'type' => 'info'];
     header('Location: offers.php');
     exit();
@@ -159,9 +176,9 @@ if ($action === 'cancel' && $mybb->request_method === 'post') {
 if ($action === 'delete' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
     if (!$is_mod) stderr('No permission');
-    $db->delete_query('offer_votes', "offer_id='$oid'");
-    $db->delete_query('offer_comments', "offer_id='$oid'");
-    $db->delete_query('offers', "id='$oid'");
+    $db->sql_query_prepared("DELETE FROM offer_votes WHERE offer_id = ?", [$oid]);
+    $db->sql_query_prepared("DELETE FROM offer_comments WHERE offer_id = ?", [$oid]);
+    $db->sql_query_prepared("DELETE FROM offers WHERE id = ?", [$oid]);
     $_SESSION['flash'] = ['msg' => 'Offer deleted.', 'type' => 'success'];
     header('Location: offers.php');
     exit();
@@ -171,23 +188,28 @@ if ($action === 'delete' && $mybb->request_method === 'post') {
 // VIEW: Single Offer
 // ═══════════════════════════════════════════════════════════════════════════════
 if ($action === 'view' && $oid) {
-    $offer = $db->fetch_array($db->sql_query("
-        SELECT o.*, u.username, u.avatar, u.usergroup, u.displaygroup
-        FROM offers o
-        LEFT JOIN users u ON u.id = o.user_id
-        WHERE o.id = '$oid'
-    "));
+    $offer = $db->fetch_array($db->sql_query_prepared(
+        "SELECT o.*, u.username, u.avatar, u.usergroup, u.displaygroup
+         FROM offers o
+         LEFT JOIN users u ON u.id = o.user_id
+         WHERE o.id = ?",
+        [$oid]
+    ));
     if (!$offer) stderr('Offer not found.');
 
-    $my_want = $db->num_rows($db->simple_select('offer_votes', 'id', "offer_id='$oid' AND user_id='" . (int)$CURUSER['id'] . "'")) > 0;
+    $my_want = $db->num_rows($db->sql_query_prepared(
+        "SELECT id FROM offer_votes WHERE offer_id = ? AND user_id = ?",
+        [$oid, (int)$CURUSER['id']]
+    )) > 0;
 
-    $comments_q = $db->sql_query("
-        SELECT oc.*, u.username, u.avatar
-        FROM offer_comments oc
-        LEFT JOIN users u ON u.id = oc.user_id
-        WHERE oc.offer_id = '$oid'
-        ORDER BY oc.created_at ASC
-    ");
+    $comments_q = $db->sql_query_prepared(
+        "SELECT oc.*, u.username, u.avatar
+         FROM offer_comments oc
+         LEFT JOIN users u ON u.id = oc.user_id
+         WHERE oc.offer_id = ?
+         ORDER BY oc.created_at ASC",
+        [$oid]
+    );
 
     $status_badge = match($offer['status']) {
         'open'      => '<span class="badge bg-success bg-opacity-25 text-success"><i class="fas fa-circle me-1" style="font-size:.5rem"></i>Open</span>',
@@ -681,21 +703,26 @@ $perpage       = 25;
 $page          = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
 
 $where = [];
-if ($filter_status) $where[] = "o.status = '$filter_status'";
-if ($filter_cat)    $where[] = "o.category_id = '$filter_cat'";
+$where_params = [];
+if ($filter_status) { $where[] = "o.status = ?"; $where_params[] = $filter_status; }
+if ($filter_cat)    { $where[] = "o.category_id = ?"; $where_params[] = $filter_cat; }
 $where_sql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-$total = (int)$db->fetch_field($db->sql_query("SELECT COUNT(*) AS cnt FROM offers o $where_sql"), 'cnt');
+$total = (int)$db->fetch_field(
+    $db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM offers o $where_sql", $where_params),
+    'cnt'
+);
 $offset = ($page - 1) * $perpage;
 
-$offers_q = $db->sql_query("
-    SELECT o.*, u.username
-    FROM offers o
-    LEFT JOIN users u ON u.id = o.user_id
-    $where_sql
-    ORDER BY o.$sort DESC
-    LIMIT $offset, $perpage
-");
+$offers_q = $db->sql_query_prepared(
+    "SELECT o.*, u.username
+     FROM offers o
+     LEFT JOIN users u ON u.id = o.user_id
+     $where_sql
+     ORDER BY o.$sort DESC
+     LIMIT ?, ?",
+    [...$where_params, $offset, $perpage]
+);
 
 stdhead('Offers');
 show_flash();

@@ -64,14 +64,14 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
     }
 
     $screenshot_id = (int)$_POST['screenshot_id'];
-    $row = $db->fetch_array($db->sql_query("SELECT * FROM `screenshots` WHERE id = '{$screenshot_id}'"));
+    $row_q = $db->sql_query_prepared("SELECT * FROM `screenshots` WHERE id = ?", [$screenshot_id]);
+    $row = $row_q ? $db->fetch_array($row_q) : null;
 
     if ($row) 
     {
         // Проверяем, что скриншот принадлежит торренту текущего юзера (или юзер — мод)
-        $torrent_owner = $db->fetch_array(
-            $db->sql_query("SELECT owner FROM torrents WHERE id = " . (int)$row['torrent_id'])
-        );
+        $owner_q = $db->sql_query_prepared("SELECT owner FROM torrents WHERE id = ?", [(int)$row['torrent_id']]);
+        $torrent_owner = $owner_q ? $db->fetch_array($owner_q) : null;
 
         $is_mod = is_mod($usergroups);
 
@@ -86,7 +86,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
             unlink($filePath);
         }
 
-        $db->delete_query("screenshots", "id='$screenshot_id'");
+        $db->sql_query_prepared("DELETE FROM screenshots WHERE id = ?", [$screenshot_id]);
 
         echo json_encode(['success' => true]);
         exit;
@@ -114,24 +114,18 @@ if (isset($_POST['action']) && $_POST['action'] === 'reorder_screenshots')
         if ($screenshotId <= 0) continue;
 
         // Проверка владения для каждого screenshot_id
-        $row = $db->fetch_array(
-            $db->sql_query("SELECT torrent_id FROM `screenshots` WHERE id = " . (int)$screenshotId)
-        );
+        $row_q = $db->sql_query_prepared("SELECT torrent_id FROM `screenshots` WHERE id = ?", [(int)$screenshotId]);
+        $row = $row_q ? $db->fetch_array($row_q) : null;
         if (!$row) continue;
 
-        $torrent_owner = $db->fetch_array(
-            $db->sql_query("SELECT owner FROM torrents WHERE id = " . (int)$row['torrent_id'])
-        );
+        $owner_q = $db->sql_query_prepared("SELECT owner FROM torrents WHERE id = ?", [(int)$row['torrent_id']]);
+        $torrent_owner = $owner_q ? $db->fetch_array($owner_q) : null;
 
         if (!$torrent_owner || (!$is_mod && (int)$CURUSER['id'] !== (int)$torrent_owner['owner'])) {
             continue; // тихо пропускаем чужие скриншоты, не отдавая их ID в ответе
         }
 
-        $db->update_query(
-            "screenshots",
-            ['sort_order' => (int)$position],
-            "id='" . $screenshotId . "'"
-        );
+        $db->sql_query_prepared("UPDATE screenshots SET sort_order = ? WHERE id = ?", [(int)$position, $screenshotId]);
     }
 
     echo json_encode(['success' => true]);
@@ -152,9 +146,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'check_torrent_hash')
         exit;
     }
 
-    $escaped = $db->escape_string($info_hash);
-    $query   = $db->simple_select("torrents", "id, name, added", "info_hash='{$escaped}'", ['limit' => 1]);
-    $torrent = $db->fetch_array($query);
+    $query   = $db->sql_query_prepared("SELECT id, name, added FROM torrents WHERE info_hash = ? LIMIT 1", [$info_hash]);
+    $torrent = $query ? $db->fetch_array($query) : null;
 
     if ($torrent) {
         echo json_encode([
@@ -280,8 +273,8 @@ $lang->load('upload');
 
 $is_mod = is_mod($usergroups);
 
-$query = $db->simple_select('users', 'canupload', 'id = ' . (int)$CURUSER['id'] . ' LIMIT 1');
-$user  = $db->fetch_array($query);
+$query = $db->sql_query_prepared("SELECT canupload FROM users WHERE id = ? LIMIT 1", [(int)$CURUSER['id']]);
+$user  = $query ? $db->fetch_array($query) : null;
 if ((int)($user['canupload'] ?? 1) === 0) {
     stderr($lang->upload['no_upload_permission'] ?? 'You do not have permission to upload.', '', 403, '403upload');
 }
@@ -671,11 +664,7 @@ if (!empty($t_link))
             // Include script that fetches metadata (like $Genre)
             include_once(INC_PATH . '/imdb_parser.php');
 
-            // Escape IMDb link
-            $t_link = $db->escape_string($t_link);
-
-            // Escape Genre (populated by imdb_parser.php)
-            $Genre = isset($Genre) ? $db->escape_string($Genre) : '';
+            $Genre = $Genre ?? '';
         }
     } 
 	else 
@@ -788,22 +777,22 @@ $isEdit = isset($_POST['EditTorrent']) && !empty($_POST['EditTorrentID']);
 
 // Store metadata (Example: Save to DB or log)
 $metadata = array(
-    'name' => $db->escape_string($torrentName),
+    'name' => $torrentName,
     't_link' => $t_link,
-    'tags' => $db->escape_string(trim($_POST['tags'] ?? $Genre)),
-    //'owner' => $db->escape_string($CURUSER['id']),
+    'tags' => trim($_POST['tags'] ?? $Genre),
+    //'owner' => $CURUSER['id'],
     'category' => $category,
-    'anonymous' => $db->escape_string($anonymous),
-    'isrequest' => $db->escape_string($request),
-    'free' => $db->escape_string($free),
-    'silver' => $db->escape_string($silver),
-    'doubleupload' => $db->escape_string($doubleUpload),
-	'thirtypercent' => $db->escape_string($thirtypercent),
-    'allowcomments' => $db->escape_string($allowComments),
-    'sticky' => $db->escape_string($sticky),
-    'isnuked' => $db->escape_string($isNuked),
-    'WhyNuked' => $db->escape_string($nukeReason),
-    'descr' => $db->escape_string($description)
+    'anonymous' => $anonymous,
+    'isrequest' => $request,
+    'free' => $free,
+    'silver' => $silver,
+    'doubleupload' => $doubleUpload,
+	'thirtypercent' => $thirtypercent,
+    'allowcomments' => $allowComments,
+    'sticky' => $sticky,
+    'isnuked' => $isNuked,
+    'WhyNuked' => $nukeReason,
+    'descr' => $description
     
 );
 
@@ -812,7 +801,7 @@ $metadata = array(
 // Добавляем дату добавления только при новом торрента
 if (!$isEdit) 
 {
-    $metadata['owner'] = $db->escape_string($CURUSER['id']);
+    $metadata['owner'] = $CURUSER['id'];
 	$metadata['added'] = TIMENOW;
 }
 
@@ -822,11 +811,11 @@ if ($torrentFilename)
 {
     // filename обновляем только если загружен новый файл
     if ($newFileUploaded) {
-        $metadata['filename'] = $db->escape_string($originalTorrentFilename);
+        $metadata['filename'] = $originalTorrentFilename;
     } elseif (!$isEdit) {
-        $metadata['filename'] = $db->escape_string($originalTorrentFilename);
+        $metadata['filename'] = $originalTorrentFilename;
     }
-    $metadata['info_hash'] = $db->escape_string($info_hash);
+    $metadata['info_hash'] = $info_hash;
     $metadata['size'] = (int)$size;
     $metadata['numfiles'] = (int)$numfiles;
 }
@@ -846,9 +835,8 @@ if ($torrentFilename)
         // Проверка владельца: сохранять может только владелец торрента или модератор.
         // Никогда не доверяем данным из POST для этой проверки - берём владельца
         // напрямую из базы.
-        $ownerCheck = $db->fetch_array(
-            $db->sql_query("SELECT owner FROM torrents WHERE id = " . $EditTorrentID)
-        );
+        $ownerCheck_q = $db->sql_query_prepared("SELECT owner FROM torrents WHERE id = ?", [$EditTorrentID]);
+        $ownerCheck = $ownerCheck_q ? $db->fetch_array($ownerCheck_q) : null;
         if (!$ownerCheck || (!$is_mod && (int)$CURUSER['id'] !== (int)$ownerCheck['owner'])) {
             write_log(sprintf(
                 'Security: user %s attempted to edit torrent #%d without permission (not the owner, not a moderator). Actual owner id: %s',
@@ -863,7 +851,10 @@ if ($torrentFilename)
         }
 
         // Update database entry
-        $db->update_query("torrents", $metadata, "id='{$EditTorrentID}'");
+        $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($metadata)));
+        $params = array_values($metadata);
+        $params[] = $EditTorrentID;
+        $db->sql_query_prepared("UPDATE torrents SET {$set} WHERE id = ?", $params);
         $NewTID = $EditTorrentID;
 		
 		
@@ -871,15 +862,11 @@ if ($torrentFilename)
         if (!empty($_POST['file_ids'])) 
 		{
              $file_ids = array_map('intval', $_POST['file_ids']); // защита
-             $id_list  = implode(',', $file_ids);
 
-             if (!empty($id_list)) 
+             if (!empty($file_ids)) 
 		     {
-                 $db->sql_query("
-                     UPDATE comment_files 
-                     SET torrent_id = " . (int)$NewTID . "
-                     WHERE id IN ($id_list)
-                     ");
+                 $ph = implode(',', array_fill(0, count($file_ids), '?'));
+                 $db->sql_query_prepared("UPDATE comment_files SET torrent_id = ? WHERE id IN ({$ph})", [$NewTID, ...$file_ids]);
              }
         }
 		
@@ -908,7 +895,8 @@ if ($torrentFilename)
 
        if (empty($_POST['imageUrl']) && empty($_FILES['imagesUpload']['tmp_name'])) 
 	   {
-           $row = $db->fetch_array($db->simple_select("torrents", "t_image", "id='{$NewTID}'"));
+           $row_q = $db->sql_query_prepared("SELECT t_image FROM torrents WHERE id = ?", [$NewTID]);
+           $row = $row_q ? $db->fetch_array($row_q) : null;
            if (!empty($row['t_image'])) 
 		   {
               $imgPath = parse_url($row['t_image'], PHP_URL_PATH);
@@ -923,7 +911,8 @@ if ($torrentFilename)
 
        if (empty($_POST['imageUrl2']) && empty($_FILES['imagesUpload2']['tmp_name'])) 
 	   {
-           $row = $db->fetch_array($db->simple_select("torrents", "t_image2", "id='{$NewTID}'"));
+           $row_q = $db->sql_query_prepared("SELECT t_image2 FROM torrents WHERE id = ?", [$NewTID]);
+           $row = $row_q ? $db->fetch_array($row_q) : null;
            if (!empty($row['t_image2'])) 
 		   {
               $imgPath2 = parse_url($row['t_image2'], PHP_URL_PATH);
@@ -938,7 +927,10 @@ if ($torrentFilename)
 
         if (!empty($UpdateSet)) 
 		{
-            $db->update_query("torrents", $UpdateSet, "id='{$NewTID}'");
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($UpdateSet)));
+            $params = array_values($UpdateSet);
+            $params[] = $NewTID;
+            $db->sql_query_prepared("UPDATE torrents SET {$set} WHERE id = ?", $params);
         }
 		
 		
@@ -948,22 +940,23 @@ if ($torrentFilename)
 	else 
 	{
         // Insert new torrent record
-        $db->insert_query("torrents", $metadata);
+        $columns      = array_keys($metadata);
+        $placeholders = implode(',', array_fill(0, count($columns), '?'));
+        $db->sql_query_prepared(
+            "INSERT INTO torrents (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+            array_values($metadata)
+        );
         $NewTID = $db->insert_id();
 		
 		// Привязываем загруженные файлы к этому комментарию
         if (!empty($_POST['file_ids'])) 
 		{
              $file_ids = array_map('intval', $_POST['file_ids']); // защита
-             $id_list  = implode(',', $file_ids);
 
-             if (!empty($id_list)) 
+             if (!empty($file_ids)) 
 		     {
-                 $db->sql_query("
-                     UPDATE comment_files 
-                     SET torrent_id = " . (int)$NewTID . "
-                     WHERE id IN ($id_list)
-                     ");
+                 $ph = implode(',', array_fill(0, count($file_ids), '?'));
+                 $db->sql_query_prepared("UPDATE comment_files SET torrent_id = ? WHERE id IN ({$ph})", [$NewTID, ...$file_ids]);
              }
         }
 		
@@ -992,8 +985,8 @@ function get_next_screenshot_number($torrent_id, $db, $step = 3)
     $existingScreenshots = [];
 
     // Загружаем существующие имена файлов
-    $res = $db->sql_query("SELECT filename FROM `screenshots` WHERE torrent_id = '{$torrent_id}'");
-    while ($row = $db->fetch_array($res)) 
+    $res = $db->sql_query_prepared("SELECT filename FROM `screenshots` WHERE torrent_id = ?", [$torrent_id]);
+    while ($res && ($row = $db->fetch_array($res))) 
 	{
         $existingScreenshots[] = $row['filename'];
     }
@@ -1037,12 +1030,10 @@ if (!empty($screenshotFilenames))
 
 		
 		
-		$insert_array = array(
-			'torrent_id' => $db->escape_string($NewTID),
-			'filename' => $db->escape_string($newFilename),
-			'uploaded_at' => TIMENOW
+		$db->sql_query_prepared(
+			"INSERT INTO screenshots (`torrent_id`,`filename`,`uploaded_at`) VALUES (?,?,?)",
+			[$NewTID, $newFilename, TIMENOW]
 		);
-		$db->insert_query("screenshots", $insert_array);
 		
 
         $count++;
@@ -1124,11 +1115,7 @@ if (!empty($_FILES['imagesUpload']['tmp_name']))
 				
 				$NewImageURL = 'torrents/images/' . $NewTID . '.' . $ext;
 				
-				$update_image = array(
-			        "t_image" => $db->escape_string($BASEURL . '/' . $NewImageURL)
-		        );
-						   
-				$db->update_query("torrents", $update_image, "id='{$NewTID}'");
+				$db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $NewTID]);
 				
             } 
             else 
@@ -1191,11 +1178,7 @@ if (!empty($_FILES['imagesUpload2']['tmp_name']))
 				
 				$NewImageURL2 = 'torrents/images/' . $NewTID . '_2.' . $ext;
 				
-				$update_image2 = array(
-			        "t_image2" => $db->escape_string($BASEURL . '/' . $NewImageURL2)
-		        );
-						   
-				$db->update_query("torrents", $update_image2, "id='{$NewTID}'");
+				$db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL2, $NewTID]);
 				
 				
 				
@@ -1237,7 +1220,7 @@ if (!empty($_POST['imageUrl']))
             if (@file_put_contents($uploadPath, $imageData)) 
 			{
                 $NewImageURL = 'torrents/images/' . $imageName;
-                $db->update_query("torrents", ["t_image" => $db->escape_string($BASEURL . '/' . $NewImageURL)], "id='{$NewTID}'");
+                $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $NewTID]);
             } 
 			else 
 			{
@@ -1273,7 +1256,7 @@ if (!empty($_POST['imageUrl2']))
             if (@file_put_contents($uploadPath2, $imageData2)) 
 			{
                 $NewImageURL2 = 'torrents/images/' . $imageName2;
-                $db->update_query("torrents", ["t_image2" => $db->escape_string($BASEURL . '/' . $NewImageURL2)], "id='{$NewTID}'");
+                $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL2, $NewTID]);
             } 
 			else 
 			{
@@ -1333,11 +1316,10 @@ if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
         $filePath = rtrim($screenshotDir, '/') . '/' . $filename;
 
         if (@file_put_contents($filePath, $imgData)) {
-            $db->insert_query("screenshots", [
-                'torrent_id'  => $db->escape_string($NewTID),
-                'filename'    => $db->escape_string($filename),
-                'uploaded_at' => TIMENOW
-            ]);
+            $db->sql_query_prepared(
+                "INSERT INTO screenshots (`torrent_id`,`filename`,`uploaded_at`) VALUES (?,?,?)",
+                [$NewTID, $filename, TIMENOW]
+            );
         }
     }
 }
@@ -1362,20 +1344,18 @@ if ($nfoContentRaw !== null && strlen($nfoContentRaw) > 0) {
     }
 
     if (!empty($nfoUtf8)) {
-        $escaped     = $db->escape_string($nfoUtf8);
-        $existingNfo = $db->simple_select("torrents_nfo", "id", "torrent_id='{$NewTID}'", ['limit' => 1]);
+        $existingNfo_q = $db->sql_query_prepared("SELECT id FROM torrents_nfo WHERE torrent_id = ? LIMIT 1", [$NewTID]);
 
-        if ($db->num_rows($existingNfo)) {
-            $db->update_query("torrents_nfo",
-                ['nfo' => $escaped, 'uploaded_at' => TIMENOW],
-                "torrent_id='{$NewTID}'"
+        if ($existingNfo_q && $db->num_rows($existingNfo_q)) {
+            $db->sql_query_prepared(
+                "UPDATE torrents_nfo SET nfo = ?, uploaded_at = ? WHERE torrent_id = ?",
+                [$nfoUtf8, TIMENOW, $NewTID]
             );
         } else {
-            $db->insert_query("torrents_nfo", [
-                'torrent_id'  => (int)$NewTID,
-                'nfo'         => $escaped,
-                'uploaded_at' => TIMENOW
-            ]);
+            $db->sql_query_prepared(
+                "INSERT INTO torrents_nfo (`torrent_id`,`nfo`,`uploaded_at`) VALUES (?,?,?)",
+                [(int)$NewTID, $nfoUtf8, TIMENOW]
+            );
         }
     }
 }
@@ -1466,10 +1446,10 @@ if (isset($_GET['id']) && is_numeric($_GET['id']))
     //$query = "SELECT * FROM torrents WHERE id = $EditTorrentID";
 
     // Execute query
-    $result = $db->sql_query("SELECT * FROM torrents WHERE id = $EditTorrentID");
+    $result = $db->sql_query_prepared("SELECT * FROM torrents WHERE id = ?", [$EditTorrentID]);
 
     // Fetch the result as an associative array
-    $torrent = $db->fetch_array($result);
+    $torrent = $result ? $db->fetch_array($result) : null;
 
     // Проверка владельца: редактировать может только владелец торрента или модератор
     if (!$torrent || (!$is_mod && (int)$CURUSER['id'] !== (int)$torrent['owner'])) {
@@ -1487,8 +1467,8 @@ if (isset($_GET['id']) && is_numeric($_GET['id']))
 	
 	// Получить все скрины торрента
     $screenshots = [];
-    $res = $db->sql_query("SELECT id, filename FROM `screenshots` WHERE torrent_id = '{$EditTorrentID}' ORDER BY sort_order ASC, id ASC");
-    while ($row = $db->fetch_array($res)) 
+    $res = $db->sql_query_prepared("SELECT id, filename FROM `screenshots` WHERE torrent_id = ? ORDER BY sort_order ASC, id ASC", [$EditTorrentID]);
+    while ($res && ($row = $db->fetch_array($res))) 
     {
        $screenshots[] = $row;
     }
@@ -2083,7 +2063,8 @@ function copyAnnounceUrl() {
     <?php if ($isEdit): ?>
     <!-- Показываем что NFO уже есть -->
     <?php
-    $existingNfoRow = $db->fetch_array($db->simple_select("torrents_nfo", "id", "id='{$EditTorrentID}'"));
+    $existingNfoQ = $db->sql_query_prepared("SELECT id FROM torrents_nfo WHERE torrent_id = ?", [$EditTorrentID]);
+    $existingNfoRow = $existingNfoQ ? $db->fetch_array($existingNfoQ) : null;
     if ($existingNfoRow):
     ?>
     <div class="mt-2 d-flex align-items-center gap-2">

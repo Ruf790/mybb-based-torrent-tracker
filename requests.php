@@ -46,7 +46,7 @@ $rid    = $mybb->get_input('rid', MyBB::INPUT_INT);
 
 // ── Load categories ──────────────────────────────────────────────────────────
 $cats = [];
-$q = $db->sql_query("SELECT id, name FROM categories ORDER BY name");
+$q = $db->sql_query_prepared("SELECT id, name FROM categories ORDER BY name");
 while ($r = $db->fetch_array($q)) $cats[$r['id']] = $r['name'];
 
 // ── AJAX: Vote ────────────────────────────────────────────────────────────────
@@ -58,11 +58,11 @@ if ($action === 'vote' && $mybb->request_method === 'post') {
     }
     $uid = (int)$CURUSER['id'];
     $bounty = max(0, (float)($mybb->input['bounty'] ?? 0));
-    $req = $db->fetch_array($db->simple_select('requests', 'id, status, user_id', "id='$rid'"));
+    $req = $db->fetch_array($db->sql_query_prepared("SELECT id, status, user_id FROM requests WHERE id = ?", [$rid]));
     if (!$req) { echo json_encode(['success' => false, 'error' => 'Not found']); exit(); }
     if ($req['status'] !== 'open') { echo json_encode(['success' => false, 'error' => 'Request is closed']); exit(); }
     if ($req['user_id'] == $uid) { echo json_encode(['success' => false, 'error' => 'Cannot vote on your own request']); exit(); }
-    if ($db->fetch_array($db->simple_select('request_votes', 'id', "request_id='$rid' AND user_id='$uid'"))) {
+    if ($db->fetch_array($db->sql_query_prepared("SELECT id FROM request_votes WHERE request_id = ? AND user_id = ?", [$rid, $uid]))) {
         echo json_encode(['success' => false, 'error' => 'Already voted']);
         exit();
     }
@@ -71,17 +71,23 @@ if ($action === 'vote' && $mybb->request_method === 'post') {
             echo json_encode(['success' => false, 'error' => 'Not enough bonus points']);
             exit();
         }
-        $db->sql_query("UPDATE users SET seedbonus = seedbonus - '$bounty' WHERE id = '$uid'");
-        $db->sql_query("UPDATE requests SET bounty = bounty + '$bounty' WHERE id = '$rid'");
+        $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?", [$bounty, $uid]);
+        $db->sql_query_prepared("UPDATE requests SET bounty = bounty + ? WHERE id = ?", [$bounty, $rid]);
     }
-    $db->insert_query('request_votes', [
+    $vote_data = [
         'request_id' => $rid,
         'user_id'    => $uid,
         'bounty'     => $bounty,
         'created_at' => TIMENOW,
-    ]);
-    $db->sql_query("UPDATE requests SET votes = votes + 1, updated_at = '" . TIMENOW . "' WHERE id = '$rid'");
-    $new_votes = (int)$db->fetch_field($db->simple_select('requests', 'votes', "id='$rid'"), 'votes');
+    ];
+    $columns      = array_keys($vote_data);
+    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO request_votes (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
+        array_values($vote_data)
+    );
+    $db->sql_query_prepared("UPDATE requests SET votes = votes + 1, updated_at = ? WHERE id = ?", [TIMENOW, $rid]);
+    $new_votes = (int)$db->fetch_field($db->sql_query_prepared("SELECT votes FROM requests WHERE id = ?", [$rid]), 'votes');
     echo json_encode(['success' => true, 'votes' => $new_votes]);
     exit();
 }
@@ -95,16 +101,22 @@ if ($action === 'add_comment' && $mybb->request_method === 'post') {
     }
     $message = trim($mybb->get_input('message'));
     if (empty($message)) { echo json_encode(['success' => false, 'error' => 'Empty message']); exit(); }
-    if (!$db->fetch_array($db->simple_select('requests', 'id', "id='$rid'"))) {
+    if (!$db->fetch_array($db->sql_query_prepared("SELECT id FROM requests WHERE id = ?", [$rid]))) {
         echo json_encode(['success' => false, 'error' => 'Not found']);
         exit();
     }
-    $db->insert_query('request_comments', [
+    $comment_data = [
         'request_id' => $rid,
         'user_id'    => (int)$CURUSER['id'],
-        'message'    => $db->escape_string($message),
+        'message'    => $message,
         'created_at' => TIMENOW,
-    ]);
+    ];
+    $columns      = array_keys($comment_data);
+    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO request_comments (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
+        array_values($comment_data)
+    );
     echo json_encode(['success' => true]);
     exit();
 }
@@ -122,12 +134,22 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
     if (strlen($title) > 255) $errors[] = 'Title is too long.';
     if ($bounty > 0 && (float)$CURUSER['seedbonus'] < $bounty) $errors[] = 'Not enough bonus points.';
     if (empty($errors)) {
-        if ($bounty > 0) $db->sql_query("UPDATE users SET seedbonus = seedbonus - '$bounty' WHERE id = '" . (int)$CURUSER['id'] . "'");
-        $year_val = $year !== null && $year > 0 ? (int)$year : 'NULL';
-        $db->sql_query("INSERT INTO requests (user_id, title, description, category_id, year, status, votes, bounty, created_at, updated_at)
-            VALUES ('" . (int)$CURUSER['id'] . "', '" . $db->escape_string($title) . "', '" . $db->escape_string($description) . "', '$category_id', $year_val, 'open', 1, '$bounty', '" . TIMENOW . "', '" . TIMENOW . "')");
+        if ($bounty > 0) {
+            $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?", [$bounty, (int)$CURUSER['id']]);
+        }
+        $db->sql_query_prepared(
+            "INSERT INTO requests (user_id, title, description, category_id, year, status, votes, bounty, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'open', 1, ?, ?, ?)",
+            [(int)$CURUSER['id'], $title, $description, $category_id, $year, $bounty, TIMENOW, TIMENOW]
+        );
         $id = $db->insert_id();
-        $db->insert_query('request_votes', ['request_id' => $id, 'user_id' => (int)$CURUSER['id'], 'bounty' => $bounty, 'created_at' => TIMENOW]);
+        $vote_data    = ['request_id' => $id, 'user_id' => (int)$CURUSER['id'], 'bounty' => $bounty, 'created_at' => TIMENOW];
+        $columns      = array_keys($vote_data);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $db->sql_query_prepared(
+            "INSERT INTO request_votes (" . implode(', ', $columns) . ") VALUES ({$placeholders})",
+            array_values($vote_data)
+        );
         $_SESSION['flash'] = ['msg' => 'Request created successfully!', 'type' => 'success'];
         header('Location: requests.php?action=view&rid=' . $id);
         exit();
@@ -138,21 +160,24 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
 if ($action === 'fill' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
     $torrent_id = $mybb->get_input('torrent_id', MyBB::INPUT_INT);
-    $req = $db->fetch_array($db->simple_select('requests', '*', "id='$rid'"));
+    $req = $db->fetch_array($db->sql_query_prepared("SELECT * FROM requests WHERE id = ?", [$rid]));
     if (!$req || $req['status'] !== 'open') stderr('Invalid request');
-    if (!$torrent_id || !$db->num_rows($db->simple_select('torrents', 'id', "id='$torrent_id'"))) {
+    if (!$torrent_id || !$db->num_rows($db->sql_query_prepared("SELECT id FROM torrents WHERE id = ?", [$torrent_id]))) {
         $_SESSION['flash'] = ['msg' => 'Torrent ID ' . $torrent_id . ' does not exist.', 'type' => 'danger'];
         header('Location: requests.php?action=view&rid=' . $rid);
         exit();
     }
     if ((float)$req['bounty'] > 0) {
-        $db->sql_query("UPDATE users SET seedbonus = seedbonus + '{$req['bounty']}' WHERE id = '" . (int)$CURUSER['id'] . "'");
+        $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?", [$req['bounty'], (int)$CURUSER['id']]);
     }
-    $db->update_query('requests', ['status' => 'filled', 'filled_by' => (int)$CURUSER['id'], 'torrent_id' => $torrent_id, 'filled_at' => TIMENOW, 'updated_at' => TIMENOW], "id='$rid'");
+    $db->sql_query_prepared(
+        "UPDATE requests SET status = ?, filled_by = ?, torrent_id = ?, filled_at = ?, updated_at = ? WHERE id = ?",
+        ['filled', (int)$CURUSER['id'], $torrent_id, TIMENOW, TIMENOW, $rid]
+    );
     if ($req['user_id'] != $CURUSER['id']) {
         require_once INC_PATH . '/datahandlers/pm.php';
         $pmhandler = new PMDataHandler();
-        $requester = $db->fetch_array($db->simple_select('users', 'username', "id='{$req['user_id']}'"));
+        $requester = $db->fetch_array($db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [$req['user_id']]));
         if ($requester) {
             $pm = [
                 'subject' => 'Your request has been filled!',
@@ -176,9 +201,9 @@ if ($action === 'fill' && $mybb->request_method === 'post') {
 
 if ($action === 'cancel' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
-    $req = $db->fetch_array($db->simple_select('requests', 'user_id, status', "id='$rid'"));
+    $req = $db->fetch_array($db->sql_query_prepared("SELECT user_id, status FROM requests WHERE id = ?", [$rid]));
     if (!$req || ($req['user_id'] != $CURUSER['id'] && !$is_mod)) stderr('No permission');
-    $db->update_query('requests', ['status' => 'cancelled', 'updated_at' => TIMENOW], "id='$rid'");
+    $db->sql_query_prepared("UPDATE requests SET status = ?, updated_at = ? WHERE id = ?", ['cancelled', TIMENOW, $rid]);
     $_SESSION['flash'] = ['msg' => 'Request cancelled.', 'type' => 'info'];
     header('Location: requests.php');
     exit();
@@ -187,17 +212,19 @@ if ($action === 'cancel' && $mybb->request_method === 'post') {
 if ($action === 'delete' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'))) stderr('Invalid post key');
     if (!$is_mod) stderr('No permission');
-    $req = $db->fetch_array($db->simple_select('requests', 'bounty, status', "id='$rid'"));
+    $req = $db->fetch_array($db->sql_query_prepared("SELECT bounty, status FROM requests WHERE id = ?", [$rid]));
     if (!$req) stderr('Not found');
     if ($req['status'] === 'open' && (float)$req['bounty'] > 0) {
-        $votes_q = $db->simple_select('request_votes', 'user_id, bounty', "request_id='$rid'");
+        $votes_q = $db->sql_query_prepared("SELECT user_id, bounty FROM request_votes WHERE request_id = ?", [$rid]);
         while ($v = $db->fetch_array($votes_q)) {
-            if ((float)$v['bounty'] > 0) $db->sql_query("UPDATE users SET seedbonus = seedbonus + '{$v['bounty']}' WHERE id='{$v['user_id']}'");
+            if ((float)$v['bounty'] > 0) {
+                $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?", [$v['bounty'], $v['user_id']]);
+            }
         }
     }
-    $db->delete_query('request_votes', "request_id='$rid'");
-    $db->delete_query('request_comments', "request_id='$rid'");
-    $db->delete_query('requests', "id='$rid'");
+    $db->sql_query_prepared("DELETE FROM request_votes WHERE request_id = ?", [$rid]);
+    $db->sql_query_prepared("DELETE FROM request_comments WHERE request_id = ?", [$rid]);
+    $db->sql_query_prepared("DELETE FROM requests WHERE id = ?", [$rid]);
     $_SESSION['flash'] = ['msg' => 'Request deleted.', 'type' => 'success'];
     header('Location: requests.php');
     exit();
@@ -207,23 +234,28 @@ if ($action === 'delete' && $mybb->request_method === 'post') {
 // VIEW: Single request
 // ═══════════════════════════════════════════════════════════════════════════════
 if ($action === 'view' && $rid) {
-    $req = $db->fetch_array($db->sql_query("
-        SELECT r.*, u.username, u.avatar, u.usergroup, u.displaygroup
-        FROM requests r
-        LEFT JOIN users u ON u.id = r.user_id
-        WHERE r.id = '$rid'
-    "));
+    $req = $db->fetch_array($db->sql_query_prepared(
+        "SELECT r.*, u.username, u.avatar, u.usergroup, u.displaygroup
+         FROM requests r
+         LEFT JOIN users u ON u.id = r.user_id
+         WHERE r.id = ?",
+        [$rid]
+    ));
     if (!$req) stderr('Request not found.');
 
-    $my_vote = $db->num_rows($db->simple_select('request_votes', 'id', "request_id='$rid' AND user_id='" . (int)$CURUSER['id'] . "'")) > 0;
+    $my_vote = $db->num_rows($db->sql_query_prepared(
+        "SELECT id FROM request_votes WHERE request_id = ? AND user_id = ?",
+        [$rid, (int)$CURUSER['id']]
+    )) > 0;
 
-    $comments_q = $db->sql_query("
-        SELECT rc.*, u.username, u.avatar, u.usergroup, u.displaygroup
-        FROM request_comments rc
-        LEFT JOIN users u ON u.id = rc.user_id
-        WHERE rc.request_id = '$rid'
-        ORDER BY rc.created_at ASC
-    ");
+    $comments_q = $db->sql_query_prepared(
+        "SELECT rc.*, u.username, u.avatar, u.usergroup, u.displaygroup
+         FROM request_comments rc
+         LEFT JOIN users u ON u.id = rc.user_id
+         WHERE rc.request_id = ?
+         ORDER BY rc.created_at ASC",
+        [$rid]
+    );
 
     $status_badge = match($req['status']) {
         'open'      => '<span class="badge bg-success bg-opacity-25 text-success"><i class="fas fa-circle me-1" style="font-size:.5rem"></i>Open</span>',
@@ -735,22 +767,26 @@ $perpage       = 25;
 $page          = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
 
 $where = [];
-if ($filter_status) $where[] = "r.status = '$filter_status'";
-if ($filter_cat)    $where[] = "r.category_id = '$filter_cat'";
+$where_params = [];
+if ($filter_status) { $where[] = "r.status = ?"; $where_params[] = $filter_status; }
+if ($filter_cat)    { $where[] = "r.category_id = ?"; $where_params[] = $filter_cat; }
 $where_sql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-$total_q = $db->fetch_field($db->sql_query("SELECT COUNT(*) AS cnt FROM requests r $where_sql"), 'cnt');
-$total   = (int)$total_q;
+$total = (int)$db->fetch_field(
+    $db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM requests r $where_sql", $where_params),
+    'cnt'
+);
 $offset  = ($page - 1) * $perpage;
 
-$requests_q = $db->sql_query("
-    SELECT r.*, u.username, u.avatar
-    FROM requests r
-    LEFT JOIN users u ON u.id = r.user_id
-    $where_sql
-    ORDER BY r.$sort DESC
-    LIMIT $offset, $perpage
-");
+$requests_q = $db->sql_query_prepared(
+    "SELECT r.*, u.username, u.avatar
+     FROM requests r
+     LEFT JOIN users u ON u.id = r.user_id
+     $where_sql
+     ORDER BY r.$sort DESC
+     LIMIT ?, ?",
+    [...$where_params, $offset, $perpage]
+);
 
 stdhead('Requests');
 show_flash();

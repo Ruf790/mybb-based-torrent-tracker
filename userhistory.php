@@ -28,7 +28,7 @@ if (!$userid || ($CURUSER['id'] !== $userid && ($usergroups['canuserdetails'] ??
 
 // ── Пользователь ──────────────────────────────────────────────────────────────
 $q    = $db->sql_query_prepared('SELECT username, usergroup, avatar, avatardimensions FROM users WHERE id = ?', [$userid]);
-$User = $db->num_rows($q) ? $db->fetch_array($q) : null;
+$User = ($q && $db->num_rows($q)) ? $db->fetch_array($q) : null;
 
 if (!$User) {
     stderr($lang->userdetails['invaliduser'] ?? 'Invalid user.', '', 404, '404');
@@ -47,8 +47,8 @@ $avatarImg = (!empty($useravatar['image']) && !str_starts_with($useravatar['imag
       . '<i class="fas fa-user text-muted fs-4"></i></div>';
 
 // ── Пагинация ─────────────────────────────────────────────────────────────────
-$q            = $db->simple_select('comments c', 'COUNT(id) AS total', "user = '{$userid}'");
-$threadcount  = (int)($db->fetch_field($q, 'total') ?? 0);
+$q            = $db->sql_query_prepared("SELECT COUNT(id) AS total FROM comments c WHERE user = ?", [$userid]);
+$threadcount  = $q ? (int)($db->fetch_field($q, 'total') ?? 0) : 0;
 
 $ts_perpage   = max(1, (int)($ts_perpage ?? 20));
 $page         = max(1, (int)($mybb->input['page'] ?? 1));
@@ -122,7 +122,7 @@ stdhead($pageTitle);
 	?>
 	
 	<!-- Комментарии -->
-    <?php if (!$db->num_rows($result)): ?>
+    <?php if (!$result || !$db->num_rows($result)): ?>
     <div class="text-center py-5">
             <i class="fa-regular fa-comments fa-4x text-muted mb-4"></i>
             <h4 class="text-muted">No comments found</h4>

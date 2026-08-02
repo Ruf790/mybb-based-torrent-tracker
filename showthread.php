@@ -20,10 +20,9 @@ $lang->load("showthread");
 // ─── Resolve pid → tid ────────────────────────────────────────────────────────
 
 if (!empty($mybb->input['pid']) && empty($mybb->input['tid'])) {
-    $query = $db->simple_select(
-        "posts", "fid,tid,visible",
-        "pid=" . $mybb->get_input('pid', MyBB::INPUT_INT),
-        ["limit" => 1]
+    $query = $db->sql_query_prepared(
+        "SELECT fid,tid,visible FROM posts WHERE pid = ? LIMIT 1",
+        [$mybb->get_input('pid', MyBB::INPUT_INT)]
     );
     $post = $db->fetch_array($query);
     if (empty($post)) {
@@ -125,16 +124,22 @@ if (!$mybb->get_input('action')) {
 
 if ($mybb->input['action'] === "newpost") {
     $lastread = $cutoff = 0;
-    $query = $db->simple_select("threadsread", "dateline", "uid='{$CURUSER['id']}' AND tid='{$thread['tid']}'");
+    $query = $db->sql_query_prepared(
+        "SELECT dateline FROM threadsread WHERE uid = ? AND tid = ?",
+        [(int)$CURUSER['id'], (int)$thread['tid']]
+    );
     $thread_read = $db->fetch_field($query, "dateline");
 
     if ($threadreadcut > 0 && $CURUSER['id']) {
-        $query = $db->simple_select("forumsread", "dateline", "fid='{$fid}' AND uid='{$CURUSER['id']}'");
+        $query = $db->sql_query_prepared(
+            "SELECT dateline FROM forumsread WHERE fid = ? AND uid = ?",
+            [(int)$fid, (int)$CURUSER['id']]
+        );
         $forum_read = $db->fetch_field($query, "dateline");
         $read_cutoff = TIMENOW - $threadreadcut * 86400;
         $forum_read = (!$forum_read || $forum_read < $read_cutoff) ? $read_cutoff : $forum_read;
     } else {
-        $forum_read = (int)my_get_array_cookie("forumread", $fid);
+        $forum_read = (int)my_get_array_cookie("forumread", (string)$fid);
     }
 
     if ($threadreadcut > 0 && $CURUSER['id'] && $thread['lastpost'] > $forum_read) {
@@ -143,7 +148,7 @@ if ($mybb->input['action'] === "newpost") {
     }
 
     if (!$lastread) {
-        $readcookie = $threadread = (int)my_get_array_cookie("threadread", $thread['tid']);
+        $readcookie = $threadread = (int)my_get_array_cookie("threadread", (string)$thread['tid']);
         $lastread   = ($readcookie > $forum_read) ? $readcookie : $forum_read;
     }
     if ($cutoff && $lastread < $cutoff) {
@@ -151,10 +156,9 @@ if ($mybb->input['action'] === "newpost") {
     }
 
     $lastread = (int)$lastread;
-    $query = $db->simple_select(
-        "posts", "pid",
-        "tid='{$tid}' AND dateline > '{$lastread}' {$visibleonly}",
-        ["limit_start" => 0, "limit" => 1, "order_by" => "dateline, pid"]
+    $query = $db->sql_query_prepared(
+        "SELECT pid FROM posts WHERE tid = ? AND dateline > ? {$visibleonly} ORDER BY dateline, pid LIMIT 0, 1",
+        [(int)$tid, (int)$lastread]
     );
     $newpost = $db->fetch_array($query);
 
@@ -232,25 +236,42 @@ $breadcrumb_multipage = [];
 
 if ($showforumpagesbreadcrumb) {
     $f_threadsperpage = (int)$f_threadsperpage > 0 ? (int)$f_threadsperpage : 20;
-    $query = $db->simple_select("forums", "threads, unapprovedthreads, pid", "fid = '{$fid}'", ['limit' => 1]);
+    $query = $db->sql_query_prepared(
+        "SELECT threads, unapprovedthreads, pid FROM forums WHERE fid = ? LIMIT 1",
+        [(int)$fid]
+    );
     $forum_threads = $db->fetch_array($query);
     $threadcount   = $forum_threads['threads'];
 
     $uid_only = '';
     if (isset($forumpermissions['canonlyviewownthreads']) && $forumpermissions['canonlyviewownthreads'] == 1) {
-        $uid_only    = " AND uid = '" . $CURUSER['id'] . "'";
-        $query       = $db->simple_select("threads", "COUNT(tid) AS threads", "fid = '$fid' $visibleonly $uid_only", ['limit' => 1]);
+        $uid_only    = " AND uid = ?";
+        $query       = $db->sql_query_prepared(
+            "SELECT COUNT(tid) AS threads FROM threads WHERE fid = ? $visibleonly $uid_only LIMIT 1",
+            [(int)$fid, (int)$CURUSER['id']]
+        );
         $threadcount = $db->fetch_field($query, "threads");
     }
     if ($threadcount === 0) {
-        $query       = $db->simple_select("threads", "COUNT(tid) AS threads", "fid = '$fid' $visibleonly $uid_only", ['limit' => 1]);
+        $params      = $uid_only ? [(int)$fid, (int)$CURUSER['id']] : [(int)$fid];
+        $query       = $db->sql_query_prepared(
+            "SELECT COUNT(tid) AS threads FROM threads WHERE fid = ? $visibleonly $uid_only LIMIT 1",
+            $params
+        );
         $threadcount = $db->fetch_field($query, "threads");
     }
 
     $stickybit = $thread['sticky'] == 1 ? " AND sticky=1" : " OR sticky=1";
+    $position_params = $uid_only ? [(int)$fid, (int)$thread['lastpost'], (int)$CURUSER['id']] : [(int)$fid, (int)$thread['lastpost']];
     $query = match ($db->type) {
-        "pgsql" => $db->sql_query("SELECT COUNT(tid) as threads FROM threads WHERE fid = '$fid' AND (lastpost >= '" . (int)$thread['lastpost'] . "'{$stickybit}) {$visibleonly} {$uid_only} GROUP BY lastpost ORDER BY lastpost DESC"),
-        default => $db->simple_select("threads", "COUNT(tid) as threads", "fid = '$fid' AND (lastpost >= '" . (int)$thread['lastpost'] . "'{$stickybit}) {$visibleonly} {$uid_only}", ['order_by' => 'lastpost', 'order_dir' => 'desc']),
+        "pgsql" => $db->sql_query_prepared(
+            "SELECT COUNT(tid) as threads FROM threads WHERE fid = ? AND (lastpost >= ? {$stickybit}) {$visibleonly} {$uid_only} GROUP BY lastpost ORDER BY lastpost DESC",
+            $position_params
+        ),
+        default => $db->sql_query_prepared(
+            "SELECT COUNT(tid) as threads FROM threads WHERE fid = ? AND (lastpost >= ? {$stickybit}) {$visibleonly} {$uid_only} ORDER BY lastpost DESC",
+            $position_params
+        ),
     };
 
     $thread_position = $db->fetch_field($query, "threads");
@@ -277,7 +298,10 @@ if ($thread['firstpost'] == 0 || $thread['dateline'] == 0) {
 $pollbox = "";
 
 if ($thread['poll']) {
-    $query = $db->simple_select("polls", "*", "pid='" . $thread['poll'] . "'", ["limit" => 1]);
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM polls WHERE pid = ? LIMIT 1",
+        [(int)$thread['poll']]
+    );
     $poll  = $db->fetch_array($query);
 
     $poll['timeout'] = $poll['timeout'] * 86400;
@@ -291,13 +315,20 @@ if ($thread['poll']) {
     ) ? 1 : 0;
 
     $cur_uid    = (int)($CURUSER['id'] ?? 0);
-    $user_check = $cur_uid
-        ? "uid='{$cur_uid}'"
-        : "uid='0' AND ipaddress=" . $db->escape_binary($session->packedip);
+    if ($cur_uid) {
+        $user_check   = "uid = ?";
+        $user_check_params = [$cur_uid];
+    } else {
+        $user_check   = "uid = 0 AND ipaddress = ?";
+        $user_check_params = [$session->packedip];
+    }
 
     $alreadyvoted = 0;
     $votedfor     = [];
-    $query = $db->simple_select("pollvotes", "*", "{$user_check} AND pid='" . $poll['pid'] . "'");
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM pollvotes WHERE {$user_check} AND pid = ?",
+        array_merge($user_check_params, [(int)$poll['pid']])
+    );
     while ($votecheck = $db->fetch_array($query)) {
         $alreadyvoted = 1;
         $votedfor[$votecheck['voteoption']] = 1;
@@ -519,7 +550,7 @@ if (!empty($mybb->input['pid'])) {
 }
 
 if ($visible_states !== ["1"]) {
-    $query = $db->simple_select("posts p", "COUNT(*) AS replies", "p.tid='$tid' $visibleonly_p");
+    $query = $db->sql_query_prepared("SELECT COUNT(*) AS replies FROM posts p WHERE p.tid = ? {$visibleonly_p}", [(int)$tid]);
     $thread['replies'] = (int)$db->fetch_field($query, 'replies') - 1;
     $cached_replies    = $thread['replies'] + $thread['unapprovedposts'];
     if (in_array('-1', $visible_states) && in_array('0', $visible_states)) {
@@ -559,37 +590,42 @@ $multipage = multipage($postcount, $perpage, $page, str_replace("{tid}", (string
 
 // ─── Fetch & build posts ──────────────────────────────────────────────────────
 
-$pids  = "";
-$comma = '';
-$query = $db->simple_select("posts p", "p.pid", "p.tid='$tid' $visibleonly_p", ['order_by' => 'p.dateline, p.pid', 'limit_start' => $start, 'limit' => $perpage]);
+$pid_list = [];
+$query = $db->sql_query_prepared(
+    "SELECT p.pid FROM posts p WHERE p.tid = ? {$visibleonly_p} ORDER BY p.dateline, p.pid LIMIT {$start}, {$perpage}",
+    [(int)$tid]
+);
 while ($getid = $db->fetch_array($query)) {
     if (empty($pid)) {
         $pid = $getid['pid'];
     }
-    $pids  .= "{$comma}'{$getid['pid']}'";
-    $comma  = ",";
+    $pid_list[] = (int)$getid['pid'];
 }
-if (!$pids) {
+if (!$pid_list) {
     stderr($lang->global['error_invalidthread']);
 }
 
-$pids        = "pid IN($pids)";
+$pid_placeholders = implode(',', array_fill(0, count($pid_list), '?'));
 $attachcache = [];
 if ($thread['attachmentcount'] > 0) {
-    $query = $db->simple_select("attachments", "*", $pids);
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM attachments WHERE pid IN ({$pid_placeholders})",
+        $pid_list
+    );
     while ($attachment = $db->fetch_array($query)) {
         $attachcache[$attachment['pid']][$attachment['aid']] = $attachment;
     }
 }
 
 $posts = '';
-$query = $db->sql_query("
-    SELECT u.*, u.username AS userusername, p.*, eu.username AS editusername
+$query = $db->sql_query_prepared(
+    "SELECT u.*, u.username AS userusername, p.*, eu.username AS editusername
     FROM posts p
     LEFT JOIN users u ON (u.id=p.uid)
     LEFT JOIN users eu ON (eu.id=p.edituid)
-    WHERE $pids ORDER BY p.dateline, p.pid
-");
+    WHERE p.pid IN ({$pid_placeholders}) ORDER BY p.dateline, p.pid",
+    $pid_list
+);
 while ($post = $db->fetch_array($query)) {
     if ($thread['firstpost'] == $post['pid'] && $thread['visible'] == 0) {
         $post['visible'] = 0;
@@ -609,7 +645,7 @@ $canQuickReply = $forumpermissions['canpostreplys'] != 0
     && ($thread['uid'] == $CURUSER['id'] || empty($forumpermissions['canonlyreplyownthreads']));
 
 if ($canQuickReply) {
-    $query    = $db->simple_select("posts", "pid", "tid='{$tid}'", ["order_by" => "pid", "order_dir" => "desc", "limit" => 1]);
+    $query    = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? ORDER BY pid DESC LIMIT 1", [(int)$tid]);
     $last_pid = $db->fetch_field($query, "pid");
     $posthash = md5($CURUSER['id'] . random_str());
 
@@ -644,14 +680,7 @@ foreach ($gids as $gid) {
     };
 }
 
-//$query = match ($db->type) {
-    //"pgsql", "sqlite" => $db->simple_select("modtools", 'tid, name, type', "(','||forums||',' LIKE '%,$fid,%' OR ','||forums||',' LIKE '%,-1,%' OR forums='') AND (groups='' OR ','||groups||',' LIKE '%,-1,%'{$gidswhere})"),
-    //default           => $db->simple_select("modtools", 'tid, name, type', "(CONCAT(',',forums,',') LIKE '%,$fid,%' OR CONCAT(',',forums,',') LIKE '%,-1,%' OR forums='') AND (`groups`='' OR CONCAT(',',`groups`,',') LIKE '%,-1,%'{$gidswhere})"),
-//};
 
-//while ($tool = $db->fetch_array($query)) {
-    //$tool['name'] = htmlspecialchars_uni($tool['name']);
-//}
 
 $inlinemoddelete  = '<option value="multideleteposts">Delete Posts Permanently</option>';
 $inlinemodmanage  = '<option value="multimergeposts">' . $lang->showthread["mergeposts"] . '</option>'
@@ -712,7 +741,10 @@ if (
 
 $addremovesubscription = '';
 if ($CURUSER['id']) {
-    $query         = $db->simple_select("threadsubscriptions", "tid", "tid='" . (int)$tid . "' AND uid='" . (int)$CURUSER['id'] . "'", ['limit' => 1]);
+    $query         = $db->sql_query_prepared(
+        "SELECT tid FROM threadsubscriptions WHERE tid = ? AND uid = ? LIMIT 1",
+        [(int)$tid, (int)$CURUSER['id']]
+    );
     $is_subscribed = $db->num_rows($query) > 0;
 
     $add_remove_subscription      = $is_subscribed ? 'remove' : 'add';
@@ -737,13 +769,13 @@ if ($browsingthisthread != 0) {
     $comma       = '';
 
     // Один запрос вместо двух — гости и члены вместе
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT s.ip, s.uid, s.time, u.username, u.invisible, u.usergroup, u.displaygroup
         FROM sessions s
         LEFT JOIN users u ON (s.uid = u.id)
-        WHERE s.time > '{$timecut}' AND s.location2 = '{$tid}' AND s.nopermission != 1
+        WHERE s.time > ? AND s.location2 = ? AND s.nopermission != 1
         ORDER BY u.username ASC, s.time DESC
-    ");
+    ", [(int)$timecut, (int)$tid]);
     while ($user = $db->fetch_array($query)) {
         if ($user['uid'] == 0) {
             // Гость — считаем уникальные IP
@@ -799,9 +831,9 @@ $thread_deleted = $thread['visible'] == -1 ? 1 : 0;
 
 stdhead($thread['subject']);
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/showthread.css">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/showthread.css">';
 echo '<script src="' . $BASEURL . '/scripts/ignor.js"></script>';
-echo '<script src="' . $BASEURL . '/showthread.js"></script>';
+echo '<script src="' . $BASEURL . '/scripts/showthread.js"></script>';
 
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/thread.js?ver=1827"></script>';
@@ -856,9 +888,9 @@ $rating_data = [
 
 // Current user's rating
 if ($CURUSER['id']) {
-    $q2 = $db->sql_query(
-        "SELECT rating FROM threadratings 
-         WHERE tid = {$tid} AND user_id = {$CURUSER['id']} LIMIT 1"
+    $q2 = $db->sql_query_prepared(
+        "SELECT rating FROM threadratings WHERE tid = ? AND user_id = ? LIMIT 1",
+        [(int)$tid, (int)$CURUSER['id']]
     );
     if ($ur = $db->fetch_array($q2)) {
         $rating_data['user_rating'] = (int)$ur['rating'];

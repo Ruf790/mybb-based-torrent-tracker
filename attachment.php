@@ -29,8 +29,8 @@ $pid         = $mybb->get_input('pid', MyBB::INPUT_INT);
 
 // ── Загрузка вложения ─────────────────────────────────────────────────────────
 $query      = $aid
-    ? $db->simple_select('attachments', '*', "aid='{$aid}'")
-    : $db->simple_select('attachments', '*', "pid='{$pid}'");
+    ? $db->sql_query_prepared("SELECT * FROM attachments WHERE aid = ?", [$aid])
+    : $db->sql_query_prepared("SELECT * FROM attachments WHERE pid = ?", [$pid]);
 $attachment = $db->fetch_array($query);
 
 $plugins->run_hooks('attachment_start');
@@ -74,9 +74,9 @@ if ($pid || $attachment['uid'] != $CURUSER['id']) {
 
 // ── Счётчик скачиваний ────────────────────────────────────────────────────────
 if (!$isThumbnail) {
-    $db->update_query('attachments',
-        ['downloads' => (int)$attachment['downloads'] + 1],
-        "aid='{$attachment['aid']}'"
+    $db->sql_query_prepared(
+        "UPDATE attachments SET downloads = ? WHERE aid = ?",
+        [(int)$attachment['downloads'] + 1, (int)$attachment['aid']]
     );
 }
 

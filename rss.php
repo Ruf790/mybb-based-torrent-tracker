@@ -121,11 +121,11 @@ function printitems(string $timezone, int $showrows, string $feedtype, string $c
             LEFT JOIN categories ON torrents.category = categories.id 
             WHERE $whereClause 
             ORDER BY added DESC 
-            LIMIT " . (int)$showrows;
+            LIMIT ?";
 
-    $getarticles = $db->sql_query($sql);
+    $getarticles = $db->sql_query_prepared($sql, [$showrows]);
     
-    if ($db->num_rows($getarticles) > 0) {
+    if ($getarticles && $db->num_rows($getarticles) > 0) {
         while (($article = $db->fetch_array($getarticles)) && $rowCount < $showrows) {
             $name = htmlspecialchars(strip_tags($article['name'] ?? ''), ENT_XML1 | ENT_QUOTES, 'UTF-8');
             $parsedDescription = $parser->parse_message($article['descr'] ?? '', $parser_options);
@@ -197,8 +197,8 @@ if (empty($secret_key) || strlen($secret_key) !== 32 || !ctype_xdigit($secret_ke
 }
 
 // Validate user
-$query = $db->sql_query('SELECT ustatus, enabled FROM users WHERE passkey = ' . $db->sqlesc($secret_key));
-if ($db->num_rows($query) === 0) {
+$query = $db->sql_query_prepared('SELECT ustatus, enabled FROM users WHERE passkey = ?', [$secret_key]);
+if (!$query || $db->num_rows($query) === 0) {
     http_response_code(403);
     exit('Access denied');
 }

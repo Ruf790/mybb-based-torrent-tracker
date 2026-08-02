@@ -21,10 +21,7 @@ $action = $mybb->get_input('action');
 if ($action === 'dstswitch' && $mybb->request_method === 'post' && $CURUSER['id'] > 0) {
 
     if ((int)($CURUSER['dstcorrection'] ?? 0) === 2) {
-        $db->update_query('users',
-            ['dst' => $CURUSER['dst'] == 1 ? 0 : 1],
-            "id='{$CURUSER['id']}'"
-        );
+        $db->sql_query_prepared("UPDATE users SET dst = ? WHERE id = ?", [$CURUSER['dst'] == 1 ? 0 : 1, $CURUSER['id']]);
     }
 
     if (!isset($mybb->input['ajax'])) {
@@ -119,20 +116,20 @@ if ($action === 'dstswitch' && $mybb->request_method === 'post' && $CURUSER['id'
 
     $sortsql = $sort === 'username' ? 'ORDER BY p.username ASC' : 'ORDER BY posts DESC';
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT COUNT(p.pid) AS posts, p.username AS postusername,
                u.id, u.username, u.usergroup, u.displaygroup
         FROM posts p
         LEFT JOIN users u ON (u.id = p.uid)
-        WHERE p.tid = '" . (int)$tid . "' AND p.visible IN (0,1)
+        WHERE p.tid = ? AND p.visible IN (0,1)
         GROUP BY u.id, p.username, u.username, u.usergroup, u.displaygroup
         {$sortsql}
-    ");
+    ", [$tid]);
 
     $rows     = '';
     $numposts = 0;
 
-    while ($poster = $db->fetch_array($query)) {
+    while ($query && ($poster = $db->fetch_array($query))) {
         if ($poster['username'] === '') {
             $poster['username'] = $poster['postusername'];
         }
@@ -397,12 +394,8 @@ function makesyndicateforums(
 
     if (!is_array($forumcache)) {
         $forumcache = [];
-        $query = $db->simple_select(
-            'forums', '*',
-            "linkto = '' AND active != 0",
-            ['order_by' => 'pid, disporder']
-        );
-        while ($forum = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT * FROM forums WHERE linkto = '' AND active != 0 ORDER BY pid, disporder");
+        while ($query && ($forum = $db->fetch_array($query))) {
             $forumcache[$forum['pid']][$forum['disporder']][$forum['fid']] = $forum;
         }
     }

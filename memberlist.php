@@ -16,6 +16,16 @@ require_once INC_PATH . '/functions_multipage.php';
 $lang->load('memberlist');
 $plugins->run_hooks('memberlist_start');
 
+/**
+ * Экранирует только LIKE-wildcard'ы (%, _, \) — для bind-параметров.
+ * Кавычки экранировать не нужно, это делает сам биндинг (в отличие
+ * от $db->escape_string_like(), который экранирует и их тоже).
+ */
+function ml_escape_like(string $value): string
+{
+    return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+}
+
 
 /* ═══════════════════════════════════════════════════════════════════
  *  HELPER FUNCTIONS
@@ -239,6 +249,7 @@ if ($per_page <= 0 || $per_page > 500) $per_page = 20;
 
 // Search query building
 $search_conditions = ['1=1'];
+$search_params = [];
 $search_url_params = [];
 
 // Letter filter
@@ -248,7 +259,8 @@ if (isset($mybb->input['letter'])) {
         $search_conditions[] = "u.username NOT REGEXP('[a-zA-Z]')";
         $search_url_params['letter'] = -1;
     } elseif (strlen($letter) == 1) {
-        $search_conditions[] = "u.username LIKE '" . $db->escape_string_like($letter) . "%'";
+        $search_conditions[] = "u.username LIKE ?";
+        $search_params[] = ml_escape_like($letter) . '%';
         $search_url_params['letter'] = $letter;
     }
 }
@@ -256,34 +268,36 @@ if (isset($mybb->input['letter'])) {
 // Username filter
 $search_username = htmlspecialchars_uni(trim($mybb->get_input('username')));
 if ($search_username !== '') {
-    $ulike = $db->escape_string_like($search_username);
     $match = $mybb->get_input('username_match');
     $search_url_params['username'] = $search_username;
     
     if ($match === 'begins') {
-        $search_conditions[] = "u.username LIKE '{$ulike}%'";
+        $search_conditions[] = "u.username LIKE ?";
+        $search_params[] = ml_escape_like($search_username) . '%';
         $search_url_params['username_match'] = 'begins';
     } elseif ($match === 'contains') {
-        $search_conditions[] = "u.username LIKE '%{$ulike}%'";
+        $search_conditions[] = "u.username LIKE ?";
+        $search_params[] = '%' . ml_escape_like($search_username) . '%';
         $search_url_params['username_match'] = 'contains';
     } else {
-        $esc = $db->escape_string(my_strtolower($search_username));
-        $search_conditions[] = "LOWER(u.username)='{$esc}'";
+        $search_conditions[] = "LOWER(u.username)=?";
+        $search_params[] = my_strtolower($search_username);
     }
 }
 
 // Website filter
 $search_website = htmlspecialchars_uni(trim($mybb->get_input('website')));
 if ($search_website !== '') {
-    $search_conditions[] = "u.website LIKE '%" . $db->escape_string_like($search_website) . "%'";
+    $search_conditions[] = "u.website LIKE ?";
+    $search_params[] = '%' . ml_escape_like($search_website) . '%';
     $search_url_params['website'] = $search_website;
 }
 
 $search_query = implode(' AND ', $search_conditions);
 
 // Pagination
-$num_users = (int)$db->fetch_field(
-    $db->simple_select('users u', 'COUNT(*) AS users', $search_query), 'users');
+$count_query = $db->sql_query_prepared("SELECT COUNT(*) AS users FROM users u WHERE {$search_query}", $search_params);
+$num_users = $count_query ? (int)$db->fetch_field($count_query, 'users') : 0;
 
 $page = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
 $pages = (int)ceil($num_users / $per_page);
@@ -299,15 +313,15 @@ $multipage = multipage($num_users, $per_page, $page, htmlspecialchars_uni($base_
 
 
 $users_html = '';
-$query = $db->sql_query("
+$query = $db->sql_query_prepared("
     SELECT u.*
     FROM users u
     WHERE {$search_query}
     ORDER BY {$sort_field} {$sort_order}
-    LIMIT {$start}, {$per_page}
-");
+    LIMIT ?, ?
+", [...$search_params, $start, $per_page]);
 
-while ($user = $db->fetch_array($query)) {
+while ($query && ($user = $db->fetch_array($query))) {
     $user = $plugins->run_hooks('memberlist_user', $user);
     
     // Format user data

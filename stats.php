@@ -28,7 +28,7 @@ $repliesperthread = ts_nf(round(($numposts - $numthreads) / max(1, $numthreads),
 $postspermember   = ts_nf(round($numposts   / max(1, $numusers), 2));
 $threadspermember = ts_nf(round($numthreads / max(1, $numusers), 2));
 
-$query  = $db->simple_select('users', 'added', '', ['order_by' => 'added', 'order_dir' => 'ASC', 'limit' => 1]);
+$query  = $db->sql_query_prepared("SELECT added FROM users ORDER BY added ASC LIMIT 1");
 $result = $db->fetch_array($query);
 $days   = max((TIMENOW - (int)($result['added'] ?? TIMENOW)) / 86400, 1);
 
@@ -110,10 +110,8 @@ if (empty($statistics) || $interval === 0 || (TIMENOW - $interval) > ($statistic
     $statistics = $cache->read('statistics') ?? [];
 }
 
-$query = $db->simple_select(
-    'forums', 'fid, name, threads, posts',
-    "type='f' {$fidnot}",
-    ['order_by' => 'posts', 'order_dir' => 'DESC', 'limit' => 1]
+$query = $db->sql_query_prepared(
+    "SELECT fid, name, threads, posts FROM forums WHERE type = 'f' {$fidnot} ORDER BY posts DESC LIMIT 1"
 );
 $forum = $db->fetch_array($query);
 

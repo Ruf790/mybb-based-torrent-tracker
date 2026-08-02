@@ -27,7 +27,7 @@ $parser = new PostParser();
  * Parser configuration
  */
 $parserOptions = [
-    'allow_html'      => 1,
+    'allow_html'      => 0,
     'allow_mycode'    => 1,
     'allow_smilies'   => 1,
     'allow_imgcode'   => 1,
@@ -83,11 +83,11 @@ stdhead();
  */
 try {
     $query = 'SELECT id, title, text, usergroups FROM rules ORDER BY id';
-    $result = $db->sql_query($query);
+    $result = $db->sql_query_prepared($query);
     
     $rulesDisplayed = 0;
     
-    while ($rule = $db->fetch_array($result)) {
+    while ($result && ($rule = $db->fetch_array($result))) {
         $ruleId = (int) ($rule['id'] ?? 0);
         $ruleTitle = htmlspecialchars($rule['title'] ?? 'Untitled Rule', ENT_QUOTES, 'UTF-8');
         $ruleGroups = (string) ($rule['usergroups'] ?? '');

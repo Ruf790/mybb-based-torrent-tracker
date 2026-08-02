@@ -31,7 +31,7 @@ function loadSeedbonusSettings(): array
 {
     global $db;
 
-    $res = $db->sql_query('SELECT setting_key, setting_value, setting_type FROM seedbonus_settings');
+    $res = $db->sql_query_prepared('SELECT setting_key, setting_value, setting_type FROM seedbonus_settings');
     $cfg = [];
 
     while ($row = $db->fetch_array($res)) {
@@ -160,7 +160,7 @@ function handleGift(int $uid, array $b, bool &$used): void
     if ($gift < 1)                        { $errors[] = 'Invalid gift amount!';    return; }
     if ($to === $CURUSER['username'])      { $errors[] = 'Cannot gift to yourself!'; return; }
 
-    $res    = $db->simple_select('users', 'id, seedbonus, username', 'username = ' . $db->sqlesc($to));
+    $res    = $db->sql_query_prepared('SELECT id, seedbonus, username FROM users WHERE username = ?', [$to]);
     $target = $db->fetch_array($res);
     if (!$target) { $errors[] = 'User not found!'; return; }
 
@@ -200,11 +200,17 @@ function handleRatioFix(int $uid, array $b, bool &$used): void
     $tid = (int)($_POST['torrentid'] ?? 0);
     if ($tid <= 0) { $errors[] = 'Invalid torrent ID!'; return; }
 
-    $res   = $db->simple_select('snatched', 'uploaded', "torrentid = '{$tid}' AND userid = '{$uid}' AND finished = 'yes'");
+    $res   = $db->sql_query_prepared(
+        "SELECT uploaded FROM snatched WHERE torrentid = ? AND userid = ? AND finished = 'yes'",
+        [(int)$tid, (int)$uid]
+    );
     $snatch = $db->fetch_array($res);
     if (!$snatch) { $errors[] = 'Torrent not found!'; return; }
 
-    $db->sql_query("UPDATE snatched SET uploaded = downloaded, seedtime = GREATEST(seedtime, 86400) WHERE torrentid = '{$tid}' AND userid = '{$uid}'");
+    $db->sql_query_prepared(
+        "UPDATE snatched SET uploaded = downloaded, seedtime = GREATEST(seedtime, 86400) WHERE torrentid = ? AND userid = ?",
+        [(int)$tid, (int)$uid]
+    );
     $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?', [(int)$b['points'], $uid]);
     if ($db->affected_rows()) { logBonus($uid, $b); $used = true; }
 }
@@ -314,7 +320,7 @@ HTML);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id    = (int)($_POST['id'] ?? 0);
-    $res   = $db->simple_select('bonus', '*', 'id = ' . $id);
+    $res   = $db->sql_query_prepared('SELECT * FROM bonus WHERE id = ?', [$id]);
     $bonus = $db->fetch_array($res);
 
     if (!$bonus) {
@@ -440,14 +446,14 @@ function getUserStats(int $uid, array $cfg): array
         FROM peers p
         INNER JOIN torrents t ON t.id = p.torrent
         WHERE p.seeder     = 'yes'
-          AND p.userid     = '{$uid}'
+          AND p.userid     = ?
           AND t.visible    = 'yes'
           AND t.banned     = 'no'
           AND t.isnuked    = 'no'
           AND p.last_action >= UNIX_TIMESTAMP() - 2700
         GROUP BY p.userid";
 
-    $res  = $db->sql_query($sql);
+    $res  = $db->sql_query_prepared($sql, [(int)$uid]);
     $row  = $db->fetch_array($res);
     return $row ?: [];
 }
@@ -622,7 +628,7 @@ $art_gate_map = [
     // 'traffic' сюда не входит — у него нет отдельного kps*-флага, всегда доступен
 ];
 
-$res   = $db->simple_select('bonus', '*', '', ['order_by' => 'points']);
+$res   = $db->sql_query_prepared('SELECT * FROM bonus ORDER BY points');
 $cards = '';
 while ($b = $db->fetch_array($res)) {
     // Пропускаем товар, если для его типа есть gate-флаг и он выключен

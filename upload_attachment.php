@@ -41,8 +41,9 @@ if ($action === 'delete') {
     $aid = (int)($_POST['aid'] ?? 0);
     if (!$aid) { echo json_encode(['error' => 'Invalid ID']); exit; }
 
-    $att = $db->fetch_array($db->sql_query(
-        "SELECT * FROM attachments WHERE aid = {$aid} AND uid = " . (int)$CURUSER['id']
+    $att = $db->fetch_array($db->sql_query_prepared(
+        "SELECT * FROM attachments WHERE aid = ? AND uid = ?",
+        [$aid, (int)$CURUSER['id']]
     ));
 
     if (!$att) { echo json_encode(['error' => 'Not found']); exit; }
@@ -52,7 +53,7 @@ if ($action === 'delete') {
     @unlink($uploadDir . $att['attachname']);
     if ($att['thumbnail']) @unlink($uploadDir . $att['thumbnail']);
 
-    $db->sql_query("DELETE FROM attachments WHERE aid = {$aid}");
+    $db->sql_query_prepared("DELETE FROM attachments WHERE aid = ?", [$aid]);
     echo json_encode(['success' => true]);
     exit;
 }
@@ -67,6 +68,41 @@ $file     = $_FILES['attachment'];
 $posthash = trim($_POST['posthash'] ?? '');
 if (empty($posthash)) {
     $posthash = bin2hex(random_bytes(16));
+}
+
+// ── Лимит на количество вложений ─────────────────────────────────────────────
+// Та же семантика, что и у постов на форуме: $maxattachments > 0 && ... — 0 пропускает проверку (без лимита)
+$attLimit = (int)($maxattachments ?? 0);
+$hasCountLimit = $attLimit > 0;
+
+// При редактировании существующего комментария учитываем и уже прикреплённые к нему файлы
+$commentId = (int)($_POST['comment_id'] ?? 0);
+
+// Быстрая предварительная проверка — экономит работу (обработку файла/thumbnail),
+// но НЕ атомарна и НЕ является защитой сама по себе: при параллельных запросах
+// (fetch без await несколько файлов сразу) несколько запросов могут увидеть
+// одно и то же "текущее количество" до того, как хоть один из них запишется в БД.
+// Настоящая защита от превышения лимита — атомарный INSERT ... SELECT ниже, у самой вставки.
+if ($hasCountLimit) {
+    $currentCount = (int)$db->fetch_field(
+        $db->sql_query_prepared(
+            "SELECT COUNT(aid) as cnt FROM attachments
+             WHERE posthash = ?
+               AND uid = ?
+               AND comment_id = 0 AND pid = 0",
+            [$posthash, (int)$CURUSER['id']]
+        ),
+        'cnt'
+    );
+    if ($commentId > 0) {
+        $currentCount += (int)$db->fetch_field(
+            $db->sql_query_prepared("SELECT COUNT(aid) as cnt FROM attachments WHERE comment_id = ?", [$commentId]),
+            'cnt'
+        );
+    }
+    if ($currentCount >= $attLimit) {
+        json_out(false, ['error' => "Attachment limit reached ({$attLimit} files max)."]);
+    }
 }
 
 // Разрешённые типы
@@ -140,6 +176,19 @@ if ($file['size'] > $maxSize) {
     json_out(false, ['error' => 'File too large (max ' . $maxHuman . ' for ' . $fileCategory . ')']);
 }
 
+// ── Квота на вложения (общая с форумом — та же таблица attachments) ───────────
+// Быстрая предварительная проверка (не атомарна сама по себе, авторитетная — в INSERT ниже)
+if (($usergroups['attachquota'] ?? 0) > 0) {
+    $quotaBytes = (int)$usergroups['attachquota'] * 1024;
+    $usedBytes  = (int)$db->fetch_field(
+        $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [(int)$CURUSER['id']]),
+        'ausage'
+    );
+    if ($usedBytes + $file['size'] > $quotaBytes) {
+        json_out(false, ['error' => 'Sorry, but you cannot attach this file because you have reached your attachment quota of ' . mksize($quotaBytes)]);
+    }
+}
+
 if (!in_array($mimeType, $allowedMime, true)) {
     json_out(false, ['error' => 'File type not allowed: ' . $mimeType]);
 }
@@ -182,21 +231,88 @@ if ($isImage) {
     }
 }
 
-// ── INSERT в БД ───────────────────────────────────────────────────────────
-$db->insert_query('attachments', [
-    'pid'          => 0,
-    'posthash'     => $db->escape_string($posthash),
-    'uid'          => (int)$CURUSER['id'],
-    'filename'     => $db->escape_string($origName),
-    'filetype'     => $db->escape_string($mimeType),
-    'filesize'     => (int)$file['size'],
-    'attachname'   => $db->escape_string($saveName),
-    'dateuploaded' => TIMENOW,
-    'visible'      => 1,
-    'thumbnail'    => $db->escape_string($thumbName),
-]);
+// ── INSERT в БД (атомарно, с повторной проверкой лимита) ──────────────────
+// Одним запросом: вставляем новую строку, только если лимит всё ещё не превышен
+// НА МОМЕНТ САМОЙ ВСТАВКИ. Для MyISAM запись в таблицу сериализуется табличной
+// блокировкой — то есть подзапрос COUNT(...) и сам INSERT в рамках одного
+// оператора не могут "разъехаться" между параллельными запросами, в отличие
+// от раздельных SELECT + INSERT.
+$quotaBytes = ((int)($usergroups['attachquota'] ?? 0) > 0) ? (int)$usergroups['attachquota'] * 1024 : 0;
+
+$whereParams = [];
+$conditions  = [];
+
+if ($hasCountLimit) {
+    $condSql    = "(
+        SELECT COUNT(*) FROM attachments
+        WHERE (posthash = ? AND uid = ? AND comment_id = 0 AND pid = 0)";
+    $condParams = [$posthash, (int)$CURUSER['id']];
+
+    if ($commentId > 0) {
+        $condSql .= " OR comment_id = ?";
+        $condParams[] = $commentId;
+    }
+
+    $condSql .= "
+    ) < ?";
+    $condParams[] = $attLimit;
+
+    $conditions[] = $condSql;
+    $whereParams  = array_merge($whereParams, $condParams);
+}
+$whereClause = $conditions ? implode(' AND ', $conditions) : '1=1';
+
+$quotaParams = [];
+$quotaCondition = '';
+if ($quotaBytes > 0) {
+    $quotaCondition = " AND (SELECT COALESCE(SUM(filesize),0) FROM attachments WHERE uid = ?) + ? <= ?";
+    $quotaParams    = [(int)$CURUSER['id'], (int)$file['size'], $quotaBytes];
+}
+
+$selectParams = [
+    $posthash,
+    (int)$CURUSER['id'],
+    $origName,
+    $mimeType,
+    (int)$file['size'],
+    $saveName,
+    TIMENOW,
+    $thumbName,
+];
+
+$insertSql = "
+    INSERT INTO attachments (pid, posthash, uid, filename, filetype, filesize, attachname, dateuploaded, visible, thumbnail)
+    SELECT 0, ?, ?, ?, ?, ?, ?, ?, 1, ?
+    FROM DUAL
+    WHERE {$whereClause}
+    {$quotaCondition}";
+
+$insertParams = array_merge($selectParams, $whereParams, $quotaParams);
+
+
+$db->sql_query_prepared($insertSql, $insertParams);
 
 $aid = $db->insert_id();
+
+if ($aid <= 0) {
+   
+    @unlink($savePath);
+    if ($thumbName) {
+        @unlink($uploadDir . $thumbName);
+    }
+
+    if ($quotaBytes > 0) {
+        $usedNow = (int)$db->fetch_field(
+            $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [(int)$CURUSER['id']]),
+            'ausage'
+        );
+        if ($usedNow + (int)$file['size'] > $quotaBytes) {
+            json_out(false, ['error' => 'Sorry, but you cannot attach this file because you have reached your attachment quota of ' . mksize($quotaBytes)]);
+        }
+    }
+
+    json_out(false, ['error' => "Attachment limit reached ({$attLimit} files max)."]);
+}
 
 $thumbUrl = $thumbName ? $BASEURL . '/uploads/attachments/' . $thumbName : null;
 

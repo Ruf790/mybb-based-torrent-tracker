@@ -60,13 +60,12 @@ flush();
 $lang->load('cronjobs');
 
 // Get pending cron jobs
-$cronQuery = $db->simple_select(
-    "cron", 
-    "cronid, minutes, filename, loglevel", 
-    "nextrun <= '" . TIMENOW . "' AND active = '1'"
+$cronQuery = $db->sql_query_prepared(
+    "SELECT cronid, minutes, filename, loglevel FROM cron WHERE nextrun <= ? AND active = '1'",
+    [TIMENOW]
 );
 
-if ($db->num_rows($cronQuery) > 0) {
+if ($cronQuery && $db->num_rows($cronQuery) > 0) {
     while ($cronJob = $db->fetch_array($cronQuery)) {
         $cronFile = CRON_PATH . $cronJob['filename'];
         
@@ -87,10 +86,9 @@ if ($db->num_rows($cronQuery) > 0) {
             $nextRun = TIMENOW + (int)$cronJob['minutes'];
             
             // Update next run time
-            $db->update_query(
-                "cron", 
-                ["nextrun" => $nextRun], 
-                "cronid = '" . (int)$cronJob['cronid'] . "'"
+            $db->sql_query_prepared(
+                "UPDATE cron SET nextrun = ? WHERE cronid = ?",
+                [$nextRun, (int)$cronJob['cronid']]
             );
         } 
 		

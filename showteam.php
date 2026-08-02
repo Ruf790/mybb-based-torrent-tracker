@@ -17,9 +17,8 @@ $is_mod  = is_mod($usergroups);
 $user_groups_data = $moderators = [];
 
 /* ── Groups to show ─────────────────────────────────────────────────── */
-$query = $db->simple_select('usergroups', 'gid, title', 'showforumteam=1',
-    ['order_by' => 'disporder']);
-while ($ug = $db->fetch_array($query)) {
+$query = $db->sql_query_prepared("SELECT gid, title FROM usergroups WHERE showforumteam=1 ORDER BY disporder");
+while ($query && ($ug = $db->fetch_array($query))) {
     $usergroups[$ug['gid']] = $ug;
 }
 
@@ -27,7 +26,7 @@ if (empty($usergroups)) stderr('error_noteamstoshow');
 
 /* ── Forum moderators ───────────────────────────────────────────────── */
 if (!empty($usergroups[5]['gid'])) {
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT m.*, f.name
         FROM moderators m
         LEFT JOIN users u ON (u.id = m.id)
@@ -35,7 +34,7 @@ if (!empty($usergroups[5]['gid'])) {
         WHERE f.active = 1 AND m.isgroup = 0
         ORDER BY u.username
     ");
-    while ($mod = $db->fetch_array($query)) {
+    while ($query && ($mod = $db->fetch_array($query))) {
         $moderators[$mod['id']][] = $mod;
     }
 }
@@ -46,24 +45,28 @@ $groups_in      = implode(',', $visible_groups) ?: '0';
 $users_in       = implode(',', array_keys($moderators)) ?: '0';
 $forum_permissions = forum_permissions();
 $query_part = '';
+$query_part_params = [];
 
 foreach ($visible_groups as $vg) {
     $query_part .= ($db->type === 'pgsql')
-        ? "'$vg' = ANY (string_to_array(additionalgroups, ',')) OR "
-        : "FIND_IN_SET('$vg', additionalgroups) OR ";
+        ? "? = ANY (string_to_array(additionalgroups, ',')) OR "
+        : "FIND_IN_SET(?, additionalgroups) OR ";
+    $query_part_params[] = $vg;
 }
 
 
 /* ── Fetch users ────────────────────────────────────────────────────── */
-$query = $db->simple_select('users',
-    'id, username, displaygroup, usergroup, additionalgroups,
-     ignorelist, hideemail, receivepms, lastactive, lastvisit, invisible, avatar, avatardimensions',
-    $query_part .
-    "displaygroup IN ($groups_in) OR (displaygroup='0' AND usergroup IN ($groups_in)) OR id IN ($users_in)",
-    ['order_by' => 'username']
+$query = $db->sql_query_prepared(
+    "SELECT id, username, displaygroup, usergroup, additionalgroups,
+     ignorelist, hideemail, receivepms, lastactive, lastvisit, invisible, avatar, avatardimensions
+     FROM users
+     WHERE " . $query_part .
+    "displaygroup IN ($groups_in) OR (displaygroup='0' AND usergroup IN ($groups_in)) OR id IN ($users_in)
+     ORDER BY username",
+    $query_part_params
 );
 
-while ($user = $db->fetch_array($query)) {
+while ($query && ($user = $db->fetch_array($query))) {
     if (isset($moderators[$user['id']])) {
         $forumlist = '';
         foreach ($moderators[$user['id']] as $forum) {

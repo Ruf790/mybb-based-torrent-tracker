@@ -155,12 +155,14 @@ if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_
     verify_post_check($mybb->get_input('my_post_key'));
 
     if ($pid) {
-        $attachwhere = "pid='{$pid}'";
+        $attachwhere = "pid = ?";
+        $attachwhere_params = [$pid];
     } else {
-        $attachwhere = "posthash='".$db->escape_string($mybb->get_input('posthash'))."'";
+        $attachwhere = "posthash = ?";
+        $attachwhere_params = [$mybb->get_input('posthash')];
     }
 
-    $ret = add_attachments($pid, $forumpermissions, $attachwhere, "editpost");
+    $ret = add_attachments($pid, $forumpermissions, $attachwhere, "editpost", $attachwhere_params);
 
     if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) {
         if (isset($ret['success'])) {
@@ -222,8 +224,8 @@ if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_
             
             $ret['template'] = $attemplate;
 
-            $query = $db->simple_select("attachments", "SUM(filesize) AS ausage", "uid='".$CURUSER['id']."'");
-            $usage = $db->fetch_array($query);
+            $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [$CURUSER['id']]);
+            $usage = $query ? $db->fetch_array($query) : null;
             $ret['usage'] = mksize($usage['ausage']);
         }
         
@@ -257,18 +259,16 @@ if ($enableattachments == 1 && $mybb->get_input('attachmentaid', MyBB::INPUT_INT
     if ($mybb->input['attachmentact'] == "remove") {
         remove_attachment($pid, "", $mybb->input['attachmentaid']);
     } elseif ($mybb->get_input('attachmentact') == "approve" && $is_mod) {
-        $update_sql = ["visible" => 1];
-        $db->update_query("attachments", $update_sql, "aid='{$mybb->input['attachmentaid']}'");
+        $db->sql_query_prepared("UPDATE attachments SET visible = 1 WHERE aid = ?", [$mybb->input['attachmentaid']]);
         update_thread_counters((int)$post['tid'], ['attachmentcount' => "+1"]);
     } elseif ($mybb->get_input('attachmentact') == "unapprove" && $is_mod) {
-        $update_sql = ["visible" => 0];
-        $db->update_query("attachments", $update_sql, "aid='{$mybb->input['attachmentaid']}'");
+        $db->sql_query_prepared("UPDATE attachments SET visible = 0 WHERE aid = ?", [$mybb->input['attachmentaid']]);
         update_thread_counters((int)$post['tid'], ['attachmentcount' => "-1"]);
     }
 
     if ($mybb->get_input('ajax', MyBB::INPUT_INT) == 1) {
-        $query = $db->simple_select("attachments", "SUM(filesize) AS ausage", "uid='".$CURUSER['id']."'");
-        $usage = $db->fetch_array($query);
+        $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [$CURUSER['id']]);
+        $usage = $query ? $db->fetch_array($query) : null;
 
         header("Content-type: application/json; charset={$charset}");
         echo json_encode(["success" => true, "usage" => mksize($usage['ausage'])]);
@@ -332,8 +332,8 @@ if ($mybb->input['action'] == "deletepost" && $mybb->request_method == "post") {
 
             write_log('Post (' . $pid . ' - ' . $thread['subject'] . ') has been deleted by ' . $CURUSER['username']);
 
-            $query = $db->simple_select("posts", "pid", "tid='{$tid}' AND dateline <= '{$post['dateline']}'", ["limit" => 1, "order_by" => "dateline DESC, pid DESC"]);
-            $next_post = $db->fetch_array($query);
+            $query = $db->sql_query_prepared("SELECT pid FROM posts WHERE tid = ? AND dateline <= ? ORDER BY dateline DESC, pid DESC LIMIT 1", [$tid, $post['dateline']]);
+            $next_post = $query ? $db->fetch_array($query) : null;
             if ($next_post['pid']) {
                 $redirect = get_post_link($next_post['pid'], $tid)."#pid{$next_post['pid']}";
             } else {
@@ -409,7 +409,7 @@ if ($mybb->input['action'] == "do_editpost" && $mybb->request_method == "post") 
         $first_post = $postinfo['first_post'];
 
         // Help keep our attachments table clean.
-        $db->delete_query("attachments", "filename='' OR filesize<1");
+        $db->sql_query_prepared("DELETE FROM attachments WHERE filename='' OR filesize<1");
 
         // Did the user choose to post a poll? Redirect them to the poll posting page.
         if ($mybb->get_input('postpoll', MyBB::INPUT_INT) && $forumpermissions['canpostpolls']) {
@@ -540,9 +540,9 @@ $deletebox .= $modal_delete;
     if ($enableattachments != 0) {
         // Get a listing of the current attachments, if there are any
         $attachcount = 0;
-        $query = $db->simple_select("attachments", "*", "pid='{$pid}'");
+        $query = $db->sql_query_prepared("SELECT * FROM attachments WHERE pid = ?", [$pid]);
         $attachments = '';
-        while ($attachment = $db->fetch_array($query)) {
+        while ($query && ($attachment = $db->fetch_array($query))) {
             $attachment['size'] = mksize($attachment['filesize']);
             $attachment['icon'] = get_attachment_icon(get_extension($attachment['filename']));
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
@@ -643,8 +643,8 @@ $deletebox .= $modal_delete;
             $attachcount++;
         }
         
-        $query = $db->simple_select("attachments", "SUM(filesize) AS ausage", "uid='".$CURUSER['id']."'");
-        $usage = $db->fetch_array($query);
+        $query = $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [$CURUSER['id']]);
+        $usage = $query ? $db->fetch_array($query) : null;
         
         if ($usage['ausage'] > ($usergroups['attachquota']*1024) && $usergroups['attachquota'] != 0) {
             $noshowattach = 1;
@@ -828,8 +828,8 @@ $deletebox .= $modal_delete;
 
     if (!empty($mybb->input['previewpost'])) {
         if (!$post['uid']) {
-            $query = $db->simple_select('posts', 'username, dateline', "pid='{$pid}'");
-            $postinfo = $db->fetch_array($query);
+            $query = $db->sql_query_prepared("SELECT username, dateline FROM posts WHERE pid = ?", [$pid]);
+            $postinfo = $query ? $db->fetch_array($query) : null;
         } else {
             $sql = "
                SELECT u.*, p.dateline
@@ -843,13 +843,13 @@ $deletebox .= $modal_delete;
             ];
 
             $query = $db->sql_query_prepared($sql, $params);
-            $postinfo = $db->fetch_array($query);
+            $postinfo = $query ? $db->fetch_array($query) : null;
 
             $postinfo['userusername'] = $postinfo['username'];
         }
 
-        $query = $db->simple_select("attachments", "*", "pid='{$pid}'");
-        while ($attachment = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared("SELECT * FROM attachments WHERE pid = ?", [$pid]);
+        while ($query && ($attachment = $db->fetch_array($query))) {
             $attachcache[0][$attachment['aid']] = $attachment;
         }
 
@@ -934,8 +934,8 @@ $deletebox .= $modal_delete;
 	
 	
 
-    $query = $db->simple_select("posts", "*", "tid='{$tid}'", ["limit" => 1, "order_by" => "dateline, pid"]);
-    $firstcheck = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT * FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1", [$tid]);
+    $firstcheck = $query ? $db->fetch_array($query) : null;
 
     $time = TIMENOW;
     $polltimelimit = "12";

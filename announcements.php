@@ -15,7 +15,7 @@ $lang->load('announcements');
 $aid = $mybb->get_input('aid', MyBB::INPUT_INT);
 
 // ── Get announcement fid — новая таблица, поле id вместо aid ─────
-$query        = $db->simple_select('announcements', 'fid', "id = '{$aid}'");
+$query        = $db->sql_query_prepared("SELECT fid FROM announcements WHERE id = ?", [$aid]);
 $announcement = $db->fetch_array($query);
 
 $plugins->run_hooks('announcements_start');
@@ -45,7 +45,7 @@ $time  = TIMENOW;
 
 
 
-$query = $db->sql_query("
+$query = $db->sql_query_prepared("
     SELECT a.id AS announcement_id,
            a.subject, a.message, a.uid, a.added, a.updated,
            a.views, a.startdate, a.enddate, a.fid, a.type,
@@ -57,10 +57,10 @@ $query = $db->sql_query("
     FROM announcements a
     LEFT JOIN users u ON (u.id = a.uid)
     WHERE a.type IN ('forum', 'global')
-      AND a.startdate <= '{$time}'
-      AND (a.enddate >= '{$time}' OR a.enddate = '0')
-      AND a.id = '{$aid}'
-");
+      AND a.startdate <= ?
+      AND (a.enddate >= ? OR a.enddate = '0')
+      AND a.id = ?
+", [$time, $time, $aid]);
 
 
 $announcementarray = $db->fetch_array($query);

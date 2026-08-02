@@ -69,25 +69,24 @@ function processBookmarkToggle(): never
     $user_id = (int)$CURUSER['id'];
     
     // Check if torrent exists
-    $torrentExists = $db->simple_select("torrents", "id", "id = " . $torrentid);
+    $torrentExists = $db->sql_query_prepared("SELECT id FROM torrents WHERE id = ?", [$torrentid]);
     if ($db->num_rows($torrentExists) === 0) {
         sendJsonResponse(404, ['success' => false, 'message' => 'Torrent not found']);
     }
     
     // Check current bookmark state
-    $bookmarkExists = $db->simple_select(
-        "bookmarks", 
-        "id", 
-        "torrentid = " . $torrentid . " AND userid = " . $user_id
+    $bookmarkExists = $db->sql_query_prepared(
+        "SELECT id FROM bookmarks WHERE torrentid = ? AND userid = ?",
+        [$torrentid, $user_id]
     );
     
     $isBookmarked = $db->num_rows($bookmarkExists) > 0;
     
     if ($isBookmarked) {
         // Remove bookmark
-        $db->delete_query(
-            "bookmarks", 
-            "torrentid = " . $torrentid . " AND userid = " . $user_id
+        $db->sql_query_prepared(
+            "DELETE FROM bookmarks WHERE torrentid = ? AND userid = ?",
+            [$torrentid, $user_id]
         );
         
         sendJsonResponse(200, [
@@ -99,12 +98,10 @@ function processBookmarkToggle(): never
         
     } else {
         // Add bookmark
-        $insert_data = [
-            'torrentid' => $torrentid,
-            'userid' => $user_id
-        ];
-        
-        $db->insert_query("bookmarks", $insert_data);
+        $db->sql_query_prepared(
+            "INSERT INTO bookmarks (torrentid, userid) VALUES (?, ?)",
+            [$torrentid, $user_id]
+        );
         
         sendJsonResponse(200, [
             'success' => true, 

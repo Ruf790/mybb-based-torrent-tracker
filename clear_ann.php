@@ -12,12 +12,12 @@ if (!$CURUSER) {
 // Увеличиваем счётчик просмотров
 $announcement_id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 if ($announcement_id > 0) {
-    $db->sql_query("UPDATE announcements SET views = views + 1 WHERE id = {$announcement_id}");
+    $db->sql_query_prepared("UPDATE announcements SET views = views + 1 WHERE id = ?", [$announcement_id]);
 }
 
 // Отмечаем анонс как прочитанный
 if ($CURUSER['announce_read'] === 'no') {
-    $db->update_query('users', ['announce_read' => 'yes'], "announce_read='no' AND id='{$CURUSER['id']}'");
+    $db->sql_query_prepared("UPDATE users SET announce_read = 'yes' WHERE announce_read='no' AND id = ?", [$CURUSER['id']]);
 }
 
 header('Expires: Sat, 1 Jan 2000 01:00:00 GMT');

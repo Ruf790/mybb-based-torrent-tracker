@@ -20,19 +20,11 @@ class FAQSystem
     }
     
     /**
-     * Экранирование строки для безопасности
-     */
-    private function escape($string): string
-    {
-        return $this->db->real_escape_string($string);
-    }
-    
-    /**
      * Получить все категории FAQ
      */
     public function getCategories(): array
     {
-        $result = $this->db->sql_query("
+        $result = $this->db->sql_query_prepared("
             SELECT id, name, description, icon_class 
             FROM faq 
             WHERE type = 'category' AND is_active = 1 
@@ -40,10 +32,10 @@ class FAQSystem
         ");
         
         $categories = [];
-        while ($row = $this->db->fetch_array($result)) {
+        while ($result && ($row = $this->db->fetch_array($result))) {
             $categories[] = $row;
         }
-        $this->db->free_result($result);
+        if ($result) $this->db->free_result($result);
         
         return $categories;
     }
@@ -53,21 +45,21 @@ class FAQSystem
      */
     public function getCategoryItems(int $categoryId): array
     {
-        $result = $this->db->sql_query("
+        $result = $this->db->sql_query_prepared("
             SELECT f.id, f.name, f.description, f.icon_class, f.views_count, 
                    c.name as category_name 
             FROM faq f 
             LEFT JOIN faq c ON (c.id = f.pid)
-            WHERE f.type = 'item' AND f.pid = " . (int)$categoryId . " 
+            WHERE f.type = 'item' AND f.pid = ?
             AND f.is_active = 1 
             ORDER BY f.disporder ASC
-        ");
+        ", [$categoryId]);
         
         $items = [];
-        while ($row = $this->db->fetch_array($result)) {
+        while ($result && ($row = $this->db->fetch_array($result))) {
             $items[] = $row;
         }
-        $this->db->free_result($result);
+        if ($result) $this->db->free_result($result);
         
         return $items;
     }
@@ -77,30 +69,32 @@ class FAQSystem
      */
     public function searchFAQ(string $query, string $searchType = 'all'): array
     {
-        $searchQuery = $this->escape($query);
-        
+        $likeValue = '%' . $query . '%';
+
         if ($searchType === 'titles') {
             $sql = "SELECT id, name, description 
                     FROM faq 
                     WHERE type = 'item' AND is_active = 1 
-                    AND name LIKE '%" . $searchQuery . "%' 
+                    AND name LIKE ?
                     ORDER BY disporder ASC";
+            $params = [$likeValue];
         } else {
             $sql = "SELECT id, name, description 
                     FROM faq 
                     WHERE type = 'item' AND is_active = 1 
-                    AND (name LIKE '%" . $searchQuery . "%' 
-                    OR description LIKE '%" . $searchQuery . "%') 
+                    AND (name LIKE ?
+                    OR description LIKE ?) 
                     ORDER BY disporder ASC";
+            $params = [$likeValue, $likeValue];
         }
         
-        $result = $this->db->sql_query($sql);
+        $result = $this->db->sql_query_prepared($sql, $params);
         $items = [];
         
-        while ($row = $this->db->fetch_array($result)) {
+        while ($result && ($row = $this->db->fetch_array($result))) {
             $items[] = $row;
         }
-        $this->db->free_result($result);
+        if ($result) $this->db->free_result($result);
         
         return $items;
     }
@@ -110,19 +104,19 @@ class FAQSystem
      */
     public function getPopularFAQ(int $limit = 5): array
     {
-        $result = $this->db->sql_query("
+        $result = $this->db->sql_query_prepared("
             SELECT id, name, views_count 
             FROM faq 
             WHERE type = 'item' AND is_active = 1 
             ORDER BY views_count DESC 
-            LIMIT " . (int)$limit
-        );
+            LIMIT ?
+        ", [$limit]);
         
         $popular = [];
-        while ($row = $this->db->fetch_array($result)) {
+        while ($result && ($row = $this->db->fetch_array($result))) {
             $popular[] = $row;
         }
-        $this->db->free_result($result);
+        if ($result) $this->db->free_result($result);
         
         return $popular;
     }
@@ -132,11 +126,11 @@ class FAQSystem
      */
     public function incrementViewCount(int $faqId): void
     {
-        $this->db->sql_query("
+        $this->db->sql_query_prepared("
             UPDATE faq SET views_count = views_count + 1 
-            WHERE id = " . (int)$faqId . " 
+            WHERE id = ? 
             AND type = 'item'
-        ");
+        ", [$faqId]);
     }
     
     /**
@@ -147,34 +141,34 @@ class FAQSystem
         $stats = [];
         
         // Всего вопросов
-        $result = $this->db->sql_query("
+        $result = $this->db->sql_query_prepared("
             SELECT COUNT(*) as total 
             FROM faq 
             WHERE type = 'item' AND is_active = 1
         ");
-        $row = $this->db->fetch_array($result);
+        $row = $result ? $this->db->fetch_array($result) : null;
         $stats['total_questions'] = $row['total'] ?? 0;
-        $this->db->free_result($result);
+        if ($result) $this->db->free_result($result);
         
         // Всего категорий
-        $result = $this->db->sql_query("
+        $result = $this->db->sql_query_prepared("
             SELECT COUNT(*) as total 
             FROM faq 
             WHERE type = 'category' AND is_active = 1
         ");
-        $row = $this->db->fetch_array($result);
+        $row = $result ? $this->db->fetch_array($result) : null;
         $stats['total_categories'] = $row['total'] ?? 0;
-        $this->db->free_result($result);
+        if ($result) $this->db->free_result($result);
         
         // Всего просмотров
-        $result = $this->db->sql_query("
+        $result = $this->db->sql_query_prepared("
             SELECT SUM(views_count) as total 
             FROM faq 
             WHERE type = 'item'
         ");
-        $row = $this->db->fetch_array($result);
+        $row = $result ? $this->db->fetch_array($result) : null;
         $stats['total_views'] = $row['total'] ?? 0;
-        $this->db->free_result($result);
+        if ($result) $this->db->free_result($result);
         
         return $stats;
     }
@@ -184,11 +178,11 @@ class FAQSystem
 $faqSystem = new FAQSystem($db);
 
 // Получаем параметры
-$do = isset($_GET['do']) ? $db->escape_string($_GET['do']) : '';
-$view = isset($_GET['view']) ? $db->escape_string($_GET['view']) : '';
+$do = isset($_GET['do']) ? (string)$_GET['do'] : '';
+$view = isset($_GET['view']) ? (string)$_GET['view'] : '';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$words = isset($_GET['words']) ? $db->escape_string($_GET['words']) : '';
-$searchtype = isset($_GET['searchtype']) ? $db->escape_string($_GET['searchtype']) : 'all';
+$words = isset($_GET['words']) ? (string)$_GET['words'] : '';
+$searchtype = isset($_GET['searchtype']) ? (string)$_GET['searchtype'] : 'all';
 
 // Начинаем вывод
 stdhead($lang->faq['faqtitle']);
@@ -502,18 +496,18 @@ if ($do === 'search' && !empty($words)) {
         
         foreach ($categories as $category) {
             // Получаем количество вопросов в категории
-            $countResult = $db->sql_query("
+            $countResult = $db->sql_query_prepared("
                 SELECT COUNT(*) as count 
                 FROM faq 
-                WHERE type = 'item' AND pid = " . (int)$category['id'] . " 
+                WHERE type = 'item' AND pid = ? 
                 AND is_active = 1
-            ");
+            ", [(int)$category['id']]);
            
 			
 			
-			 $countRow = $db->fetch_array($countResult);
+			 $countRow = $countResult ? $db->fetch_array($countResult) : null;
     $count = $countRow['count'] ?? 0;
-    $db->free_result($countResult);
+    if ($countResult) $db->free_result($countResult);
 			
 			
 			

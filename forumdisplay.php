@@ -85,15 +85,20 @@ if ($CURUSER['id'] == 0) {
         $forumsread[$fid] = $mybb->cookies['mybb']['lastvisit'];
     }
 
-    $query = $db->simple_select('forums', '*', 'active != 0', ['order_by' => 'pid, disporder']);
-} else {
-    $query = $db->sql_query("
-        SELECT f.*, fr.dateline AS lastread
-        FROM forums f
-        LEFT JOIN forumsread fr ON (fr.fid = f.fid AND fr.uid = '{$CURUSER['id']}')
-        WHERE f.active != 0
+    $query = $db->sql_query_prepared("
+        SELECT *
+        FROM forums
+        WHERE active != 0
         ORDER BY pid, disporder
     ");
+} else {
+    $query = $db->sql_query_prepared("
+        SELECT f.*, fr.dateline AS lastread
+        FROM forums f
+        LEFT JOIN forumsread fr ON (fr.fid = f.fid AND fr.uid = ?)
+        WHERE f.active != 0
+        ORDER BY pid, disporder
+    ", [(int)$CURUSER['id']]);
 }
 
 while ($forum = $db->fetch_array($query)) {
@@ -243,13 +248,13 @@ if ($browsingthisforum != 0) {
     $guest_ips    = [];
 
     // Один запрос вместо двух
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT s.ip, s.uid, u.username, s.time, u.invisible, u.usergroup, u.displaygroup
         FROM sessions s
         LEFT JOIN users u ON (s.uid = u.id)
-        WHERE s.time > {$timecut} AND s.location1 = {$fid} AND s.nopermission != 1
+        WHERE s.time > ? AND s.location1 = ? AND s.nopermission != 1
         ORDER BY u.username ASC, s.time DESC
-    ");
+    ", [(int)$timecut, (int)$fid]);
     while ($user = $db->fetch_array($query)) {
         if ($user['uid'] == 0) {
             $guest_ips[$user['ip']] = true;
@@ -428,7 +433,10 @@ if (isset($fpermissions['canonlyviewownthreads']) && $fpermissions['canonlyviewo
 
 if ($fpermissions['canviewthreads'] != 0) {
     if ($useronly === '' && $datecutsql === '' && $prefixsql === '') {
-        $query        = $db->simple_select('forums', 'threads, unapprovedthreads', 'fid=' . (int)$fid);
+        $query        = $db->sql_query_prepared(
+            "SELECT threads, unapprovedthreads FROM forums WHERE fid = ?",
+            [(int)$fid]
+        );
         $forum_threads = $db->fetch_array($query);
 
         if (in_array(1, $visible_states))  { $threadcount += (int)$forum_threads['threads']; }
@@ -437,11 +445,17 @@ if ($fpermissions['canviewthreads'] != 0) {
         if (in_array(0, $visible_states)) {
             $threadcount += (int)$forum_threads['unapprovedthreads'];
         } elseif ($CURUSER['id'] && ($showownunapproved ?? false)) {
-            $query        = $db->simple_select('threads t', 'COUNT(tid) AS threads', "fid = '$fid' AND t.visible=0 AND t.uid=" . (int)$CURUSER['id']);
+            $query        = $db->sql_query_prepared(
+                "SELECT COUNT(tid) AS threads FROM threads t WHERE fid = ? AND t.visible=0 AND t.uid=?",
+                [(int)$fid, (int)$CURUSER['id']]
+            );
             $threadcount += (int)$db->fetch_field($query, 'threads');
         }
     } else {
-        $query       = $db->simple_select('threads t', 'COUNT(tid) AS threads', "fid = '$fid' $tuseronly $tvisibleonly $datecutsql2 $prefixsql2");
+        $query       = $db->sql_query_prepared(
+            "SELECT COUNT(tid) AS threads FROM threads t WHERE fid = ? $tuseronly $tvisibleonly $datecutsql2 $prefixsql2",
+            [(int)$fid]
+        );
         $threadcount = (int)$db->fetch_field($query, 'threads');
     }
 }
@@ -513,16 +527,16 @@ if ($has_announcements) {
     $sql               = build_parent_list($fid, 'fid', 'OR', $parentlist);
     $time              = TIMENOW;
 
-   $query = $db->sql_query("
+   $query = $db->sql_query_prepared("
     SELECT a.*, u.username
     FROM announcements a
     LEFT JOIN users u ON (u.id = a.uid)
     WHERE a.type IN ('forum', 'global')
-      AND a.startdate <= '$time'
-      AND (a.enddate >= '$time' OR a.enddate = '0')
+      AND a.startdate <= ?
+      AND (a.enddate >= ? OR a.enddate = '0')
       AND ($sql OR a.fid = '-1')
     ORDER BY a.startdate DESC $limit
-");
+", [(int)$time, (int)$time]);
 
     $cookie = [];
     if (isset($mybb->cookies['mybb']['announcements'])) {
@@ -594,14 +608,14 @@ $threadcache = [];
 if ($fpermissions['canviewthreads'] != 0) {
     $plugins->run_hooks('forumdisplay_get_threads');
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT t.*, t.username AS threadusername, u.username
         FROM threads t
         LEFT JOIN users u ON (u.id = t.uid)
-        WHERE t.fid = '$fid' $tuseronly $tvisibleonly $datecutsql2 $prefixsql2
+        WHERE t.fid = ? $tuseronly $tvisibleonly $datecutsql2 $prefixsql2
         ORDER BY t.sticky DESC, {$t}{$sortfield} $sortordernow $sortfield2
         LIMIT $start, $perpage
-    ");
+    ", [(int)$fid]);
 
     $moved_threads = [];
 
@@ -651,7 +665,11 @@ $tids_str = !empty($tids) ? implode(',', $tids) : '';
 $dotfolders = '1';
 
 if ($dotfolders != 0 && $CURUSER['id'] && !empty($threadcache) && $tids_str !== '') {
-    $query = $db->simple_select('posts', 'DISTINCT tid,uid', "uid='{$CURUSER['id']}' AND tid IN ({$tids_str}) {$visibleonly}");
+    $tid_placeholders = implode(',', array_fill(0, count($tids), '?'));
+    $query = $db->sql_query_prepared(
+        "SELECT DISTINCT tid,uid FROM posts WHERE uid=? AND tid IN ({$tid_placeholders}) {$visibleonly}",
+        array_merge([(int)$CURUSER['id']], array_map('intval', array_values($tids)))
+    );
     while ($post = $db->fetch_array($query)) {
         $ptid = $moved_threads[$post['tid']] ?? $post['tid'];
         if (isset($threadcache[$ptid])) {
@@ -664,7 +682,11 @@ if ($dotfolders != 0 && $CURUSER['id'] && !empty($threadcache) && $tids_str !== 
 $threadreadcut = 7;
 
 if ($CURUSER['id'] && $threadreadcut > 0 && !empty($threadcache) && $tids_str !== '') {
-    $query = $db->simple_select('threadsread', '*', "uid='{$CURUSER['id']}' AND tid IN ({$tids_str})");
+    $tid_placeholders = implode(',', array_fill(0, count($tids), '?'));
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM threadsread WHERE uid=? AND tid IN ({$tid_placeholders})",
+        array_merge([(int)$CURUSER['id']], array_map('intval', array_values($tids)))
+    );
     while ($readthread = $db->fetch_array($query)) {
         $rtid = $moved_threads[$readthread['tid']] ?? $readthread['tid'];
         if (isset($threadcache[$rtid])) {
@@ -677,7 +699,10 @@ $read_cutoff = TIMENOW - $threadreadcut * 60 * 60 * 24;
 
 if ($threadreadcut > 0 && $CURUSER['id']) {
     $forum_read = 0;
-    $query      = $db->simple_select('forumsread', 'dateline', "fid='{$fid}' AND uid='{$CURUSER['id']}'");
+    $query      = $db->sql_query_prepared(
+        "SELECT dateline FROM forumsread WHERE fid = ? AND uid = ?",
+        [(int)$fid, (int)$CURUSER['id']]
+    );
     if ($db->num_rows($query) > 0) {
         $forum_read = (int)$db->fetch_field($query, 'dateline');
     }
@@ -685,7 +710,7 @@ if ($threadreadcut > 0 && $CURUSER['id']) {
         $forum_read = $read_cutoff;
     }
 } else {
-    $forum_read = my_get_array_cookie('forumread', $fid);
+    $forum_read = my_get_array_cookie('forumread', (string)$fid);
     if (isset($mybb->cookies['mybb']['readallforums']) && !$forum_read) {
         $forum_read = $mybb->cookies['mybb']['lastvisit'];
     }
@@ -842,7 +867,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
         if ($threadreadcut > 0 && $CURUSER['id'] && $thread['lastpost'] > $forum_read) {
             $last_read = $thread['lastread'] ?? $read_cutoff;
         } else {
-            $last_read = my_get_array_cookie('threadread', $thread['tid']);
+            $last_read = my_get_array_cookie('threadread', (string)$thread['tid']);
         }
 
         if ($forum_read > $last_read) {
@@ -1324,7 +1349,10 @@ $add_remove_subscription_text = 'Subscribe to this forum';
 $addremovesubscription        = '';
 
 if ($CURUSER['id']) {
-    $query = $db->simple_select('forumsubscriptions', 'fid', "fid='{$fid}' AND uid='{$CURUSER['id']}'", ['limit' => 1]);
+    $query = $db->sql_query_prepared(
+        "SELECT fid FROM forumsubscriptions WHERE fid = ? AND uid = ? LIMIT 1",
+        [(int)$fid, (int)$CURUSER['id']]
+    );
 
     if ($db->num_rows($query) > 0) {
         $add_remove_subscription      = 'remove';

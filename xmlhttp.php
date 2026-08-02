@@ -14,6 +14,7 @@ define("SCRIPTNAME", "xmlhttp.php");
 define ('IN_TRACKER', true);
 define ('APP_INITIALIZED', true);
 define ('TIMENOW', time ());
+
   
 define ('TSDIR', dirname (__FILE__));
 define ('INC_PATH', TSDIR . '/include');
@@ -116,8 +117,8 @@ function get_torrent(int $tid, bool $recache = false): array|false
         return $thread_cache[$tid];
     }
 
-    $query = $db->simple_select("torrents", "*", "id = '{$tid}'");
-    $thread = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT * FROM torrents WHERE id = ?", [$tid]);
+    $thread = $query ? $db->fetch_array($query) : null;
 
     if ($thread) {
         $thread_cache[$tid] = $thread;
@@ -196,10 +197,9 @@ function handleRateTorrent(): void
         exit;
     }
 
-    $db->sql_query("
-        INSERT INTO torrent_ratings (torrent_id, user_id, rating, added)
-        VALUES ({$torrent_id}, {$CURUSER['id']}, {$rating}, " . TIMENOW . ")
-        ON DUPLICATE KEY UPDATE rating = {$rating}, added = " . TIMENOW
+    $db->sql_query_prepared(
+        "INSERT INTO torrent_ratings (torrent_id, user_id, rating, added) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE rating = ?, added = ?",
+        [$torrent_id, $CURUSER['id'], $rating, TIMENOW, $rating, TIMENOW]
     );
 
  
@@ -207,8 +207,8 @@ function handleRateTorrent(): void
         kps('+', $kpsrate, (int)$CURUSER['id']);
     }
 
-    $q = $db->sql_query("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM torrent_ratings WHERE torrent_id = {$torrent_id}");
-    $row = $db->fetch_array($q);
+    $q = $db->sql_query_prepared("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM torrent_ratings WHERE torrent_id = ?", [$torrent_id]);
+    $row = $q ? $db->fetch_array($q) : null;
 
     echo json_encode([
         'success' => true,
@@ -241,10 +241,9 @@ function handleRateThread(): void
     }
 
     // Insert or update user's rating
-    $db->sql_query("
-        INSERT INTO threadratings (tid, user_id, rating, added)
-        VALUES ({$tid}, {$CURUSER['id']}, {$rating}, " . TIMENOW . ")
-        ON DUPLICATE KEY UPDATE rating = {$rating}, added = " . TIMENOW
+    $db->sql_query_prepared(
+        "INSERT INTO threadratings (tid, user_id, rating, added) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE rating = ?, added = ?",
+        [$tid, $CURUSER['id'], $rating, TIMENOW, $rating, TIMENOW]
     );
 	
     if ($db->affected_rows() === 1) {
@@ -252,20 +251,18 @@ function handleRateThread(): void
     }
 
     // Recalculate avg and count
-    $q = $db->sql_query(
-        "SELECT ROUND(AVG(rating), 1) AS avg, COUNT(id) AS cnt 
-         FROM threadratings WHERE tid = {$tid}"
+    $q = $db->sql_query_prepared(
+        "SELECT ROUND(AVG(rating), 1) AS avg, COUNT(id) AS cnt FROM threadratings WHERE tid = ?",
+        [$tid]
     );
-    $row = $db->fetch_array($q);
+    $row = $q ? $db->fetch_array($q) : null;
     $avg   = (float)($row['avg'] ?? 0);
     $count = (int)($row['cnt'] ?? 0);
 
     // Update threads table cache
-    $db->sql_query(
-        "UPDATE threads SET 
-            numratings   = {$count},
-            totalratings = " . (int)round($avg * $count) . "
-         WHERE tid = {$tid}"
+    $db->sql_query_prepared(
+        "UPDATE threads SET numratings = ?, totalratings = ? WHERE tid = ?",
+        [$count, (int)round($avg * $count), $tid]
     );
 
     echo json_encode([
@@ -302,30 +299,26 @@ function handleGetUsers(): void
     $limit = $mybb->get_input('getone', MyBB::INPUT_INT) == 1 ? 1 : 15;
     header("Content-type: application/json; charset={$charset}");
 
-    $query_options = [
-        "order_by" => "username",
-        "order_dir" => "asc",
-        "limit_start" => 0,
-        "limit" => $limit
-    ];
-
     $plugins->run_hooks("xmlhttp_get_users_start");
 
-    $likestring = $db->escape_string_like($mybb->input['query']);
+    $likestring = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $mybb->input['query']);
     $likestring = match ($search_type) {
         1 => '%'.$likestring,
         2 => '%'.$likestring.'%',
         default => $likestring.'%'
     };
 
-    $query = $db->simple_select("users", "id, username", "username LIKE '{$likestring}'", $query_options);
+    $query = $db->sql_query_prepared(
+        "SELECT id, username FROM users WHERE username LIKE ? ORDER BY username ASC LIMIT ?,?",
+        [$likestring, 0, $limit]
+    );
     
     if ($limit == 1) {
-        $user = $db->fetch_array($query);
+        $user = $query ? $db->fetch_array($query) : null;
         $data = ['uid' => $user['id'], 'id' => $user['username'], 'text' => $user['username']];
     } else {
         $data = [];
-        while ($user = $db->fetch_array($query)) {
+        while ($query && ($user = $db->fetch_array($query))) {
             $data[] = ['uid' => $user['id'], 'id' => $user['username'], 'text' => $user['username']];
         }
     }
@@ -372,15 +365,17 @@ function handleGetMultiquoted(): void
         exit;
     }
 
-    $quoted_posts_str = implode(",", $quoted_posts);
+    $quoted_placeholders = implode(',', array_fill(0, count($quoted_posts), '?'));
     $message = '';
 
     // Строим условие WHERE
     $from_tid = "";
+    $from_tid_params = [];
     if (empty($mybb->input['load_all'])) {
         $current_tid = $mybb->get_input('tid', MyBB::INPUT_INT);
         if ($current_tid > 0) {
-            $from_tid = "p.tid != '".$current_tid."' AND ";
+            $from_tid = "p.tid != ? AND ";
+            $from_tid_params[] = $current_tid;
         }
     }
 
@@ -392,14 +387,14 @@ function handleGetMultiquoted(): void
 
     try {
         // Выполняем запрос с обработкой ошибок
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT p.subject, p.message, p.pid, p.tid, p.username, p.dateline, t.fid, t.uid AS thread_uid, p.visible, u.username AS userusername
             FROM posts p
             LEFT JOIN threads t ON (t.tid=p.tid)
             LEFT JOIN users u ON (u.id=p.uid)
-            WHERE {$from_tid}p.pid IN ({$quoted_posts_str}) AND p.visible = 1
+            WHERE {$from_tid}p.pid IN ({$quoted_placeholders}) AND p.visible = 1
             ORDER BY p.dateline, p.pid
-        ");
+        ", [...$from_tid_params, ...$quoted_posts]);
         
         if (!$query) {
             throw new Exception("Database query failed");
@@ -538,8 +533,8 @@ function handleEditPost(): void
 
         $enableattachments = "1";
         if ($enableattachments != 0) {
-            $query = $db->simple_select("attachments", "*", "pid='{$post['pid']}'");
-            while ($attachment = $db->fetch_array($query)) {
+            $query = $db->sql_query_prepared("SELECT * FROM attachments WHERE pid = ?", [$post['pid']]);
+            while ($query && ($attachment = $db->fetch_array($query))) {
                 $attachcache[$attachment['pid']][$attachment['aid']] = $attachment;
             }
 
@@ -597,9 +592,8 @@ function handleEditSubject(): void
             xmlhttp_error('thread_doesnt_exist');
         }
 
-        $query_options = ["order_by" => "dateline, pid"];
-        $query = $db->simple_select("posts", "pid,uid,dateline", "tid='".$thread['tid']."'", $query_options);
-        $post = $db->fetch_array($query);
+        $query = $db->sql_query_prepared("SELECT pid,uid,dateline FROM posts WHERE tid = ? ORDER BY dateline, pid", [$thread['tid']]);
+        $post = $query ? $db->fetch_array($query) : null;
     } else {
         exit;
     }
@@ -676,20 +670,15 @@ function handleGetBuddySelect(): void
         xmlhttp_error('buddylist_error');
     }
 
-    $query_options = [
-        "order_by" => "username",
-        "order_dir" => "asc"
-    ];
-
     $plugins->run_hooks("xmlhttp_get_buddyselect_start");
 
     $timecut = TIMENOW - $wolcutoffmins;
-    $query = $db->simple_select("users", "id, username, usergroup, displaygroup, lastactive, lastvisit, invisible", "id IN ({$CURUSER['buddylist']})", $query_options);
+    $query = $db->sql_query_prepared("SELECT id, username, usergroup, displaygroup, lastactive, lastvisit, invisible FROM users WHERE id IN ({$CURUSER['buddylist']}) ORDER BY username ASC");
     
     $online = [];
     $offline = [];
     
-    while ($buddy = $db->fetch_array($query)) {
+    while ($query && ($buddy = $db->fetch_array($query))) {
         $buddy['username'] = htmlspecialchars_uni($buddy['username']);
         $buddy_name = format_name($buddy['username'], $buddy['usergroup'], $buddy['displaygroup']);
         $profile_link = build_profile_link($buddy_name, $buddy['id'], '_blank');
@@ -872,13 +861,13 @@ function handleQuickComment(): void
 {
     global $db, $CURUSER, $lang, $shoutboxcharset, $is_mod, $BASEURL, $plugins, $ts_perpage, $kpscomment;
 
-	if (!isset($_POST['ajax_quick_comment']) || !isset($_POST['id']) || !isset($_POST['text']) || !$CURUSER) {
-        return;
+	if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+        show_msg('Invalid security token. Please refresh the page and try again.');
     }
 
 	
-	$query = $db->simple_select('users', 'cancomment', "id = '{$CURUSER['id']}'");
-    $commentperm = $db->fetch_array($query);
+	$query = $db->sql_query_prepared("SELECT cancomment FROM users WHERE id = ?", [$CURUSER['id']]);
+    $commentperm = $query ? $db->fetch_array($query) : null;
     if ((int)($commentperm['cancomment'] ?? 1) === 0) 
     {
        show_msg('nopermission');
@@ -906,17 +895,17 @@ function handleQuickComment(): void
         }
     }
 
-    $query = $db->simple_select("comments", "dateline", "user = '{$CURUSER['id']}'", ['order_by' => 'dateline', 'order_dir' => 'DESC', 'limit' => 1]);
+    $query = $db->sql_query_prepared("SELECT dateline FROM comments WHERE user = ? ORDER BY dateline DESC LIMIT 1", [$CURUSER['id']]);
     $last_comment = 0;
     
-    if ($db->num_rows($query) > 0) {
+    if ($query && $db->num_rows($query) > 0) {
         $result = $db->fetch_array($query);
         $last_comment = $result['dateline'];
     }
 
     $floodmsg = flood_check($lang->comment['floodcomment'], $last_comment > 0 ? (string)$last_comment : null, true);
-    $res = $db->simple_select("torrents", "name, owner", "id='".$torrentid."'");
-    $arr = $db->fetch_array($res);
+    $res = $db->sql_query_prepared("SELECT name, owner FROM torrents WHERE id = ?", [$torrentid]);
+    $arr = $res ? $db->fetch_array($res) : null;
     
     if (!empty($floodmsg)) {
         show_msg(str_replace(['<font color="#9f040b" size="2">', '</font>', '<b>', '</b>'], '', $floodmsg));
@@ -930,32 +919,32 @@ function handleQuickComment(): void
 
     $commentposted = false;
     if (!$is_mod) {
-        $query = $db->simple_select("comments", "id, user, text", "torrent='{$torrentid}'", ['order_by' => 'dateline', 'order_dir' => 'DESC', 'limit_start' => 0, 'limit' => 1]);
+        $query = $db->sql_query_prepared(
+            "SELECT id, user, text FROM comments WHERE torrent = ? ORDER BY dateline DESC LIMIT 1",
+            [$torrentid]
+        );
         
-        if ($db->num_rows($query) > 0) {
+        if ($query && $db->num_rows($query) > 0) {
             $last_post55 = $db->fetch_array($query);
             $lastcommentuserid = $last_post55['user'];
             
             if ($lastcommentuserid == $CURUSER['id']) {
                 $oldtext = $last_post55['text'];
                 $newid = $last_post55['id'];
-                $newtext = $oldtext .="\n[hr]\n".$_POST['text'];
+                $newtext = $oldtext .="\n[hr]\n".$text;
                 
-                $update_comments = [
-                    "text" => $db->escape_string($newtext),
-                    "editedat" => TIMENOW,
-                    "editedby" => $db->escape_string($CURUSER['id'])
-                ];
-                        
-                $db->update_query("comments", $update_comments, "id='{$newid}'");
+                $db->sql_query_prepared(
+                    "UPDATE comments SET text = ?, editedat = ?, editedby = ? WHERE id = ?",
+                    [$newtext, TIMENOW, $CURUSER['id'], $newid]
+                );
                 
                 if ($db->affected_rows()) {
                     $commentposted = true;
 					
 				
                    // Редирект на последнюю страницу к этому комменту
-$count_query = $db->simple_select("comments", "COUNT(id) as total", "torrent='{$torrentid}'");
-$count_row   = $db->fetch_array($count_query);
+$count_query = $db->sql_query_prepared("SELECT COUNT(id) as total FROM comments WHERE torrent = ?", [$torrentid]);
+$count_row   = $count_query ? $db->fetch_array($count_query) : null;
 $total       = (int)($count_row['total'] ?? 0);
 $perpage     = (int)($ts_perpage ?? 20);
 if ($perpage <= 0) $perpage = 20;
@@ -976,24 +965,25 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
     }
 
     if (!$commentposted) {
-        $comment_insert_data = [
-            "user" => $db->escape_string($CURUSER['id']),
-            "torrent" => $db->escape_string($torrentid),
-            "dateline" => TIMENOW,
-            "text" => $db->escape_string($text)
-        ];
-
-        $db->insert_query("comments", $comment_insert_data);
+        $db->sql_query_prepared(
+            "INSERT INTO comments (`user`,`torrent`,`dateline`,`text`) VALUES (?,?,?,?)",
+            [$CURUSER['id'], $torrentid, TIMENOW, $text]
+        );
         $cid = $db->insert_id();
 		
 		kps('+', $kpscomment, $CURUSER['id']);
 
         if (!empty($_POST['file_ids'])) {
             $file_ids = array_map('intval', (array)$_POST['file_ids']);
-            $id_list = implode(',', $file_ids);
 
-            if (!empty($id_list)) {
-                $db->sql_query("UPDATE comment_files SET comment_id = " . $cid . " WHERE id IN ($id_list)");
+            if (!empty($file_ids)) {
+                $file_placeholders = implode(',', array_fill(0, count($file_ids), '?'));
+                // AND user_id = ? - без этого юзер мог подставить чужой
+                // (угаданный) file_id и присвоить себе чужую загрузку.
+                $db->sql_query_prepared(
+                    "UPDATE comment_files SET comment_id = ? WHERE id IN ({$file_placeholders}) AND user_id = ?",
+                    [$cid, ...$file_ids, $CURUSER['id']]
+                );
             }
         }
 		
@@ -1007,13 +997,13 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
 		
 		
 
-        $db->update_query("torrents", ['comments' => 'comments+1'], "id='{$torrentid}'", "1", true);
-        $db->update_query("users", ['comms' => 'comms+1'], "id='{$CURUSER['id']}'", "1", true);
+        $db->sql_query_prepared("UPDATE torrents SET comments = comments+1 WHERE id = ?", [$torrentid]);
+        $db->sql_query_prepared("UPDATE users SET comms = comms+1 WHERE id = ?", [$CURUSER['id']]);
 
         $sql = "SELECT commentpm FROM users WHERE id = ?";
         $params = [(int)$arr['owner']];
         $ras = $db->sql_query_prepared($sql, $params);
-        $arg = $db->fetch_array($ras);
+        $arg = $ras ? $db->fetch_array($ras) : null;
 
         if ($arg['commentpm'] == 1 && $CURUSER['id'] != $arr['owner']) {
             require_once INC_PATH . '/functions_pm.php';
@@ -1058,8 +1048,8 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
    
     
 	// Считаем страницу для нового комментария
-$count_query = $db->simple_select("comments", "COUNT(id) as total", "torrent='{$torrentid}'");
-$count_row   = $db->fetch_array($count_query);
+$count_query = $db->sql_query_prepared("SELECT COUNT(id) as total FROM comments WHERE torrent = ?", [$torrentid]);
+$count_row   = $count_query ? $db->fetch_array($count_query) : null;
 $total       = (int)($count_row['total'] ?? 0);
 $perpage     = (int)($ts_perpage ?? 20);
 if ($perpage <= 0) $perpage = 20;
@@ -1182,9 +1172,9 @@ function handleEditTorrent(): void
     $WhyNuked = isset($_POST['WhyNuked']) ? htmlspecialchars($_POST['WhyNuked']) : '';
 
     $UpdateSet = [
-        'name' => $db->escape_string($name),
-        'descr' => $db->escape_string($descr),
-        'category' => $db->escape_string($category),
+        'name' => $name,
+        'descr' => $descr,
+        'category' => $category,
         'free' => $free,
         'silver' => $silver,
 		'thirtypercent' => $thirtypercent,
@@ -1193,7 +1183,7 @@ function handleEditTorrent(): void
         'sticky' => $sticky,
         'isrequest' => $isrequest,
         'isnuked' => $isnuked,
-        'WhyNuked' => $isnuked == 'yes' ? $db->escape_string($WhyNuked) : ''
+        'WhyNuked' => $isnuked == 'yes' ? $WhyNuked : ''
     ];
 
     
@@ -1229,11 +1219,7 @@ if (!empty($t_image_file))
                     {
                         $COVERIMAGEUPDATED = true;
                         
-                        $update_image2 = array(
-                            "t_image" => $db->escape_string($BASEURL . '/' . $NewImageURL)
-                        );
-                    
-                        $db->update_query("torrents", $update_image2, "id='{$id}'");
+                        $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
                         $cache->update_torrents();
                     }
                 }
@@ -1271,11 +1257,7 @@ if (!empty($t_image_file2))
                     {
                         $COVERIMAGEUPDATED = true;
                         
-                        $update_image22 = array(
-                            "t_image2" => $db->escape_string($BASEURL . '/' . $NewImageURL)
-                        );
-                    
-                        $db->update_query("torrents", $update_image22, "id='{$id}'");
+                        $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
                         $cache->update_torrents();
                     }
                 }
@@ -1309,11 +1291,7 @@ if (!empty($t_image_url))
             {
                 $COVERIMAGEUPDATED = true;
                 
-                $update_image = array(
-                    "t_image" => $db->escape_string($BASEURL . '/' . $NewImageURL)
-                );
-                
-                $db->update_query("torrents", $update_image, "id='{$id}'");
+                $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
                 $cache->update_torrents();
             }
         }
@@ -1345,11 +1323,7 @@ if (!empty($t_image_url2))
             {
                 $COVERIMAGEUPDATED = true;
                 
-                $update_image23 = array(
-                    "t_image2" => $db->escape_string($BASEURL . '/' . $NewImageURL)
-                );
-                
-                $db->update_query("torrents", $update_image23, "id='{$id}'");
+                $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
                 $cache->update_torrents();
             }
         }
@@ -1405,30 +1379,21 @@ if (empty($t_image_url2))
             if ($result[0]) {
                 $t_link = $result[0];
                 include_once(INC_PATH . '/imdb_parser.php');
-                $Update_tlink = array(
-                    "t_link" => $db->escape_string($t_link),
-                    "tags" => $db->escape_string($Genre ?? '')
-                );
-                $db->update_query("torrents", $Update_tlink, "id='{$id}'");
+                $db->sql_query_prepared("UPDATE torrents SET t_link = ?, tags = ? WHERE id = ?", [$t_link, $Genre ?? '', $id]);
                 unset($result);
             }
         } else {
-            $Update_tlink = array(
-                "t_link" => '',
-                "tags" => ''
-            );
-            $db->update_query("torrents", $Update_tlink, "id='{$id}'");
+            $db->sql_query_prepared("UPDATE torrents SET t_link = '', tags = '' WHERE id = ?", [$id]);
         }
     } else {
-        $Update_tlink = array(
-            "t_link" => '',
-            "tags" => ''
-        );
-        $db->update_query("torrents", $Update_tlink, "id='{$id}'");
+        $db->sql_query_prepared("UPDATE torrents SET t_link = '', tags = '' WHERE id = ?", [$id]);
     }
 
     // Основное обновление торрента
-    $res = $db->update_query('torrents', $UpdateSet, "id='{$id}'");
+    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($UpdateSet)));
+    $params = array_values($UpdateSet);
+    $params[] = $id;
+    $res = $db->sql_query_prepared("UPDATE torrents SET {$set} WHERE id = ?", $params);
     if ($res) 
 	{
         

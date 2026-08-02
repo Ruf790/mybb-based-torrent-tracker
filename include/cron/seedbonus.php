@@ -56,7 +56,7 @@ $PROMO_SILVER       = max(0.0, (float)$cfg['promo_silver']);
 $PROMO_DOUBLE       = max(0.0, (float)$cfg['promo_double']);
 
 $HISTORY_SECONDS    = max(86400, (int)$cfg['history_days'] * 86400);
-$ENABLE_HEURISTIC   = (bool)$cfg['enable_heuristic']; // уже bool после loadSeedbonusSettings
+$ENABLE_HEURISTIC   = (bool)$cfg['enable_heuristic'];
 
 $HEURISTIC = [
     50 => max(0, (int)$cfg['heuristic_50']),
@@ -68,7 +68,6 @@ $HEURISTIC = [
      1 => max(0, (int)$cfg['heuristic_1']),
 ];
 
-// Максимально возможный бонус за один интервал (для sanity-check)
 $MAX_POSSIBLE_BONUS = $HOUR_CAP * $CRON_HOURS * 2;
 
 $activeWindow = $ANNOUNCE_INTERVAL * 3;
@@ -99,10 +98,18 @@ $sql = buildMainQuery([
     'promo_double'   => $PROMO_DOUBLE,
 ]);
 
-$res = $db->sql_query($sql);
+$wrapped = $db->sql_query_prepared($sql, []);
 ++$CQueryCount;
 
-if (!$db->num_rows($res)) {
+$numRows = 0;
+if ($wrapped && $wrapped->result) {
+    $numRows = mysqli_num_rows($wrapped->result);
+}
+
+if (!$numRows) {
+    if ($wrapped && $wrapped->stmt) {
+        mysqli_stmt_close($wrapped->stmt);
+    }
     savelog('Seedbonus cron: done | no active seeders');
     return;
 }
@@ -114,18 +121,24 @@ if (!$db->num_rows($res)) {
 $allRows    = [];
 $allUserIds = [];
 
-while ($row = $db->fetch_array($res)) {
-    $uid = (int)$row['userid'];
-    $allUserIds[] = $uid;
-    $allRows[$uid] = [
-        'torrents' => (int)$row['torrents_count'],
-        'hours'    => max(0.0, (float)$row['avg_hours_seeded']),
-        'raw'      => max(0.0, (float)$row['raw_bonus_sum']),
-    ];
+if ($wrapped && $wrapped->result) {
+    while ($row = mysqli_fetch_array($wrapped->result, MYSQLI_BOTH)) {
+        $uid = (int)$row['userid'];
+        $allUserIds[] = $uid;
+        $allRows[$uid] = [
+            'torrents' => (int)$row['torrents_count'],
+            'hours'    => max(0.0, (float)$row['avg_hours_seeded']),
+            'raw'      => max(0.0, (float)$row['raw_bonus_sum']),
+        ];
+    }
+    mysqli_free_result($wrapped->result);
+}
+if ($wrapped && $wrapped->stmt) {
+    mysqli_stmt_close($wrapped->stmt);
 }
 
 // ============================================================
-//  5. Загрузка текущих бонусов одним или несколькими запросами
+//  5. Загрузка текущих бонусов
 // ============================================================
 
 $currentBonuses = loadCurrentBonuses($allUserIds, $db, $CQueryCount);
@@ -143,19 +156,16 @@ foreach ($allRows as $uid => $data) {
     $hours    = $data['hours'];
     $raw      = $data['raw'];
 
-    // Sanity-check на аномалии
     if ($torrents > 10000 || $hours > 1000 || $raw > 100000) {
         savelog("WARNING: uid={$uid} anomal: torrents={$torrents} hours={$hours} raw={$raw}");
         continue;
     }
 
-    // Эвристика времени
     if ($ENABLE_HEURISTIC) {
         $heuristicPerInterval = getHeuristicHours($torrents, $HEURISTIC) * ($CRON_HOURS / 24);
         $hours = max($hours, $heuristicPerInterval);
     }
 
-    // Расчёт бонуса
     $capMul      = torrentMultiplier($torrents, $MULTIPLIER_TYPE, $FLAT_MULTIPLIER);
     $hourlyBonus = min($raw * $BASE_BONUS * $capMul, $HOUR_CAP);
     $finalBonus  = round($hourlyBonus * $hours, 1);
@@ -164,13 +174,11 @@ foreach ($allRows as $uid => $data) {
         continue;
     }
 
-    // Sanity-cap
     if ($finalBonus > $MAX_POSSIBLE_BONUS) {
         savelog("WARNING: uid={$uid} bonus capped {$finalBonus} → {$MAX_POSSIBLE_BONUS}");
         $finalBonus = $MAX_POSSIBLE_BONUS;
     }
 
-    // Проверка лимита в БД
     $current = $currentBonuses[$uid] ?? 0.0;
 
     if ($current >= $MAX_DB_VALUE) {
@@ -198,14 +206,12 @@ foreach ($allRows as $uid => $data) {
     }
 }
 
-// Последний батч
 if (!empty($updates)) {
     $stats['updated'] += processBatch($updates, $db, $CQueryCount);
 }
 
-// FLUSH TABLES один раз в конце, а не после каждого батча
 if ($stats['updated'] > 0) {
-    $db->sql_query('FLUSH TABLES');
+    $db->sql_query_prepared('FLUSH TABLES', []);
     ++$CQueryCount;
 }
 
@@ -226,9 +232,6 @@ savelog(sprintf(
 //  Функции
 // ============================================================
 
-/**
- * Загружает настройки из seedbonus_settings с приведением типов.
- */
 function loadSeedbonusSettings($db, int &$queryCount): array
 {
     $defaults = [
@@ -266,30 +269,36 @@ function loadSeedbonusSettings($db, int &$queryCount): array
         'heuristic_1'           => 2,
     ];
 
-    $res = $db->sql_query('SELECT setting_key, setting_value, setting_type FROM seedbonus_settings');
+    $wrapped = $db->sql_query_prepared(
+        'SELECT setting_key, setting_value, setting_type FROM seedbonus_settings',
+        []
+    );
     ++$queryCount;
 
     $cfg = $defaults;
 
-    while ($row = $db->fetch_array($res)) {
-        $key = $row['setting_key'];
-        $val = $row['setting_value'];
+    if ($wrapped && $wrapped->result) {
+        while ($row = mysqli_fetch_array($wrapped->result, MYSQLI_BOTH)) {
+            $key = $row['setting_key'];
+            $val = $row['setting_value'];
 
-        $cfg[$key] = match ($row['setting_type']) {
-            'boolean' => in_array($val, ['yes', 'true', '1', 'on'], true),
-            'integer' => (int)$val,
-            'float'   => (float)$val,
-            'array'   => json_decode($val, true) ?? [],
-            default   => (string)$val,
-        };
+            $cfg[$key] = match ($row['setting_type']) {
+                'boolean' => in_array($val, ['yes', 'true', '1', 'on'], true),
+                'integer' => (int)$val,
+                'float'   => (float)$val,
+                'array'   => json_decode($val, true) ?? [],
+                default   => (string)$val,
+            };
+        }
+        mysqli_free_result($wrapped->result);
+    }
+    if ($wrapped && $wrapped->stmt) {
+        mysqli_stmt_close($wrapped->stmt);
     }
 
     return $cfg;
 }
 
-/**
- * Загружает текущие бонусы пользователей батчами по 5000.
- */
 function loadCurrentBonuses(array $userIds, $db, int &$queryCount): array
 {
     $result = [];
@@ -298,29 +307,32 @@ function loadCurrentBonuses(array $userIds, $db, int &$queryCount): array
         return $result;
     }
 
-    // Приводим к int для безопасной вставки в IN()
     $safeIds = array_map('intval', $userIds);
 
     foreach (array_chunk($safeIds, 5000) as $chunk) {
-        $in  = implode(',', $chunk);
-        $res = $db->sql_query("SELECT id, seedbonus FROM users WHERE id IN ({$in})");
+        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+        $wrapped = $db->sql_query_prepared(
+            "SELECT id, seedbonus FROM users WHERE id IN ({$placeholders})",
+            $chunk
+        );
         ++$queryCount;
 
-        while ($row = $db->fetch_array($res)) {
-            $result[(int)$row['id']] = max(0.0, (float)$row['seedbonus']);
+        if ($wrapped && $wrapped->result) {
+            while ($row = mysqli_fetch_array($wrapped->result, MYSQLI_BOTH)) {
+                $result[(int)$row['id']] = max(0.0, (float)$row['seedbonus']);
+            }
+            mysqli_free_result($wrapped->result);
+        }
+        if ($wrapped && $wrapped->stmt) {
+            mysqli_stmt_close($wrapped->stmt);
         }
     }
 
     return $result;
 }
 
-/**
- * Строит основной SQL-запрос с подстановкой настроек.
- * Все значения приводятся через floatval/intval перед вставкой.
- */
 function buildMainQuery(array $p): string
 {
-    // Приводим всё к float для безопасной вставки
     $f = array_map('floatval', array_diff_key($p, ['active_window' => 1]));
     $activeWindow = (int)$p['active_window'];
     $cronHours    = $f['cron_hours'];
@@ -378,9 +390,6 @@ function buildMainQuery(array $p): string
     ";
 }
 
-/**
- * Множитель по количеству торрентов.
- */
 function torrentMultiplier(int $count, string $type, float $flat): float
 {
     return match ($type) {
@@ -402,9 +411,6 @@ function torrentMultiplier(int $count, string $type, float $flat): float
     };
 }
 
-/**
- * Эвристическое время сидирования (часов в день) по количеству торрентов.
- */
 function getHeuristicHours(int $count, array $h): float
 {
     return (float)match (true) {
@@ -418,10 +424,6 @@ function getHeuristicHours(int $count, array $h): float
     };
 }
 
-/**
- * Применяет батч UPDATE через CASE WHEN.
- * FLUSH TABLES вызывается один раз снаружи после всех батчей.
- */
 function processBatch(array $updates, $db, int &$queryCount): int
 {
     if (empty($updates)) {
@@ -429,6 +431,7 @@ function processBatch(array $updates, $db, int &$queryCount): int
     }
 
     $caseWhen = [];
+    $params   = [];
     $userIds  = [];
 
     foreach ($updates as $u) {
@@ -439,7 +442,9 @@ function processBatch(array $updates, $db, int &$queryCount): int
             continue;
         }
 
-        $caseWhen[] = "WHEN {$uid} THEN {$bonus}";
+        $caseWhen[] = "WHEN id = ? THEN seedbonus + ?";
+        $params[]   = $uid;
+        $params[]   = $bonus;
         $userIds[]  = $uid;
     }
 
@@ -447,13 +452,16 @@ function processBatch(array $updates, $db, int &$queryCount): int
         return 0;
     }
 
-    $in  = implode(',', $userIds);
-    $sql = "UPDATE users
-            SET seedbonus = seedbonus + CASE id\n"
-         . implode("\n", $caseWhen)
-         . "\nEND\nWHERE id IN ({$in})";
+    $in        = implode(',', array_fill(0, count($userIds), '?'));
+    $sql       = "UPDATE users SET seedbonus = CASE
+"
+               . implode("
+", $caseWhen)
+               . "
+ELSE seedbonus END WHERE id IN ({$in})";
+    $allParams = array_merge($params, $userIds);
 
-    $db->sql_query($sql);
+    $db->sql_query_prepared($sql, $allParams);
     ++$queryCount;
 
     return (int)$db->affected_rows();

@@ -73,7 +73,7 @@ foreach ($tables as $table) {
     if ($db->engine === 'mysqli') {
         $query = mysqli_query($db->read_link, "SELECT * FROM {$table}", MYSQLI_USE_RESULT);
     } else {
-        $query = $db->simple_select($table);
+        $query = $db->sql_query_prepared("SELECT * FROM {$table}");
     }
     ++$CQueryCount;
 

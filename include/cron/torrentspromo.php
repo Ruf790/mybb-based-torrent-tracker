@@ -4,11 +4,6 @@ if (!defined('IN_CRON')) {
     exit();
 }
 
-// ============================================================
-//  Маппинг типов промо-акций
-//  Ключ = тип (int), значение = условие WHERE для SELECT
-// ============================================================
-
 const PROMO_CONDITIONS = [
     1 => "free = 'no'  AND silver = 'no'  AND doubleupload = 'no' AND thirtypercent = 'no'",
     2 => "free = 'yes' AND thirtypercent = 'no'",
@@ -19,7 +14,6 @@ const PROMO_CONDITIONS = [
     7 => "thirtypercent = 'yes' AND free = 'no' AND silver = 'no' AND doubleupload = 'no'",
 ];
 
-// Что ставим в UPDATE и как называем тип для лога
 const PROMO_TARGETS = [
     1 => ["free = 'no',  silver = 'no',  doubleupload = 'no',  thirtypercent = 'no'",  'normal'],
     2 => ["free = 'yes', silver = 'no',  doubleupload = 'no',  thirtypercent = 'no'",  'Free'],
@@ -30,18 +24,6 @@ const PROMO_TARGETS = [
     7 => ["free = 'no',  silver = 'no',  doubleupload = 'no',  thirtypercent = 'yes'", '30%'],
 ];
 
-// ============================================================
-
-/**
- * Истекает промо-акцию для торрентов старше $days дней.
- *
- * Вместо UPDATE по одному — один SELECT + один UPDATE по IN(ids).
- *
- * @param float $days        Возраст в днях после которого промо истекает
- * @param int   $type        Тип текущей промо-акции (ключ PROMO_CONDITIONS)
- * @param int   $targettype  Тип в который переводим (ключ PROMO_TARGETS)
- * @return int Количество обновлённых торрентов
- */
 function torrent_promotion_expire(float $days, int $type = 2, int $targettype = 1): int
 {
     global $db, $CQueryCount;
@@ -51,48 +33,57 @@ function torrent_promotion_expire(float $days, int $type = 2, int $targettype = 
 
     $dt = TIMENOW - (int)($days * 86400);
 
-    // Один SELECT — берём только id и name
-    $res = $db->sql_query("
-        SELECT id, name
-        FROM torrents
-        WHERE added < {$dt}
-          AND {$condition}
-          AND promotion_time_type = 0
-    ");
+    $wrapped = $db->sql_query_prepared(
+        "SELECT id, name FROM torrents WHERE added < ? AND {$condition} AND promotion_time_type = 0",
+        [$dt]
+    );
     ++$CQueryCount;
 
-    if (!$res || !$db->num_rows($res)) {
+    $numRows = 0;
+    if ($wrapped && $wrapped->result) {
+        $numRows = mysqli_num_rows($wrapped->result);
+    }
+
+    if (!$numRows) {
+        if ($wrapped && $wrapped->stmt) {
+            mysqli_stmt_close($wrapped->stmt);
+        }
         return 0;
     }
 
     $ids   = [];
     $names = [];
 
-    while ($row = $db->fetch_array($res)) {
-        $ids[]   = (int)$row['id'];
-        $names[] = $row['name'];
+    if ($wrapped && $wrapped->result) {
+        while ($row = mysqli_fetch_array($wrapped->result, MYSQLI_BOTH)) {
+            $ids[]   = (int)$row['id'];
+            $names[] = $row['name'];
+        }
+        mysqli_free_result($wrapped->result);
     }
-    $db->free_result($res);
+    if ($wrapped && $wrapped->stmt) {
+        mysqli_stmt_close($wrapped->stmt);
+    }
 
-    // Один UPDATE вместо N
-    $in = implode(',', $ids);
-    $db->sql_query("UPDATE torrents SET {$setFields} WHERE id IN ({$in})");
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $db->sql_query_prepared(
+        "UPDATE torrents SET {$setFields} WHERE id IN ({$placeholders})",
+        $ids
+    );
     ++$CQueryCount;
 
     $updated = (int)$db->affected_rows();
 
     if ($updated > 0) {
         $label   = $targettype === 1 ? 'no longer on promotion' : "changed to {$targetLabel}";
-        $nameLog = implode("\n", $names);
-        savelog("Torrents {$label} (time expired):\n{$nameLog}", 'normal');
+        $nameLog = implode("
+", $names);
+        savelog("Torrents {$label} (time expired):
+{$nameLog}", 'normal');
     }
 
     return $updated;
 }
-
-// ============================================================
-//  Конфигурация запусков: [days, fromType, toType, label]
-// ============================================================
 
 $promotions = [
     [$expirehalfleech,         5, $halfleechbecome,         'Expired 50% Leech'],
@@ -103,10 +94,6 @@ $promotions = [
     [$expirethirtypercentleech,7, $thirtypercentleechbecome,'Expired 30% Leech'],
     [$expirenormal,            1, $normalbecome,            'Expired Normal'],
 ];
-
-// ============================================================
-//  Запуск
-// ============================================================
 
 savelog('Starting torrent promotion expiration cleanup', 'cron');
 

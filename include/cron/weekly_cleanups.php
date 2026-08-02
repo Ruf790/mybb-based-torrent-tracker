@@ -1,17 +1,12 @@
 <?php
 /**
  * Hit & Run Cron
- *
- * Правила:
- * - каждый торрент-нарушитель = +1 к timeswarned + PM
- * - бан обрабатывается отдельным кроном по timeswarned >= ban_user_limit
  */
 
 if (!defined('IN_CRON')) exit();
 
 require_once INC_PATH . '/functions_pm.php';
 
-// ── Настройки ─────────────────────────────────────────────
 $MinSeedHours   = 24;
 $MinFinishDate  = 1230772229;
 $Enabled        = true;
@@ -20,7 +15,6 @@ $ban_user_limit = 5;
 
 if (!$Enabled || $MinSeedHours <= 0) return;
 
-// ── Выборка нарушителей ───────────────────────────────────
 $seed_seconds = $MinSeedHours * HOUR_IN_SECONDS;
 
 $where = [
@@ -29,8 +23,8 @@ $where = [
     "t.banned      = 'no'",
     "u.enabled     = 'yes'",
     "u.ustatus     = 'confirmed'",
-    "s.completedat > " . (int)$MinFinishDate,
-    "s.seedtime    < {$seed_seconds}",
+    "s.completedat > ?",
+    "s.seedtime    < ?",
     "NOT EXISTS (
         SELECT 1 FROM peers p
         WHERE p.torrent = s.torrentid
@@ -39,44 +33,50 @@ $where = [
     )",
 ];
 
+$params = [(int)$MinFinishDate, (int)$seed_seconds];
+
 if (!empty($HRSkipGroups)) {
     $skip    = implode(',', array_map('intval', $HRSkipGroups));
     $where[] = "u.usergroup NOT IN (0,{$skip})";
 }
 
-$res = $db->sql_query("
-    SELECT s.id, s.torrentid, s.userid, s.seedtime, s.completedat,
+$wrapped = $db->sql_query_prepared(
+    "SELECT s.id, s.torrentid, s.userid, s.seedtime, s.completedat,
            t.name,
            u.username, u.timeswarned
     FROM snatched s
     INNER JOIN torrents t ON s.torrentid = t.id
     INNER JOIN users    u ON s.userid    = u.id
     WHERE " . implode(' AND ', $where) . "
-    ORDER BY s.userid, s.completedat ASC
-");
+    ORDER BY s.userid, s.completedat ASC",
+    $params
+);
 $CQueryCount++;
 
-// ── Группируем по юзеру ───────────────────────────────────
 $userTorrents  = [];
 $userWarnCount = [];
 
-while ($row = $db->fetch_array($res)) {
-    $uid = (int)$row['userid'];
-    $userTorrents[$uid][] = $row;
-    $userWarnCount[$uid]  = (int)$row['timeswarned'];
+if ($wrapped && $wrapped->result) {
+    while ($row = mysqli_fetch_array($wrapped->result, MYSQLI_BOTH)) {
+        $uid = (int)$row['userid'];
+        $userTorrents[$uid][] = $row;
+        $userWarnCount[$uid]  = (int)$row['timeswarned'];
+    }
+    mysqli_free_result($wrapped->result);
+}
+if ($wrapped && $wrapped->stmt) {
+    mysqli_stmt_close($wrapped->stmt);
 }
 
-// ── Распределяем по стадиям ───────────────────────────────
-$warnPm     = []; // обычный PM
-$finalPm    = []; // финальный PM (следующий — бан, но бан не наш)
-$silentMark = []; // snatched.id — warned=1 без PM (уже за порогом)
+$warnPm     = [];
+$finalPm    = [];
+$silentMark = [];
 
 foreach ($userTorrents as $uid => $torrents) {
     $warns = $userWarnCount[$uid];
 
     foreach ($torrents as $row) {
         if ($warns >= $ban_user_limit) {
-            // Уже за порогом — тихая пометка, бан сделает другой крон
             $silentMark[] = (int)$row['id'];
             continue;
         }
@@ -84,14 +84,13 @@ foreach ($userTorrents as $uid => $torrents) {
         $warns++;
 
         if ($warns >= $ban_user_limit) {
-            $finalPm[] = $row; // последний варн перед баном
+            $finalPm[] = $row;
         } else {
             $warnPm[] = $row;
         }
     }
 }
 
-// ── Отправка PM ───────────────────────────────────────────
 if (!empty($warnPm)) {
     hr_send_pm($warnPm, $lang->cronjobs['hr_warn_subject'], $lang->cronjobs['hr_warn_message']);
 }
@@ -101,12 +100,11 @@ if (!empty($finalPm)) {
 }
 
 if (!empty($silentMark)) {
-    $in = implode(',', $silentMark);
-    $db->sql_query("UPDATE snatched SET warned = '1' WHERE id IN ({$in})");
+    $placeholders = implode(',', array_fill(0, count($silentMark), '?'));
+    $db->sql_query_prepared("UPDATE snatched SET warned = '1' WHERE id IN ({$placeholders})", $silentMark);
     $CQueryCount++;
 }
 
-// ── Инкремент timeswarned (+1 за каждый торрент) ─────────
 $incrementMap = [];
 foreach (array_merge($warnPm, $finalPm) as $row) {
     $uid = (int)$row['userid'];
@@ -115,33 +113,41 @@ foreach (array_merge($warnPm, $finalPm) as $row) {
 
 if (!empty($incrementMap)) {
     if (max($incrementMap) === 1) {
-        $in = implode(',', array_keys($incrementMap));
-        $db->sql_query("UPDATE users SET timeswarned = timeswarned + 1 WHERE id IN ({$in})");
-    } else {
-        $caseWhen = array_map(
-            fn($uid, $cnt) => "WHEN {$uid} THEN timeswarned + {$cnt}",
-            array_keys($incrementMap),
-            $incrementMap
+        $placeholders = implode(',', array_fill(0, count($incrementMap), '?'));
+        $db->sql_query_prepared(
+            "UPDATE users SET timeswarned = timeswarned + 1 WHERE id IN ({$placeholders})",
+            array_keys($incrementMap)
         );
-        $in = implode(',', array_keys($incrementMap));
-        $db->sql_query(
-            "UPDATE users SET timeswarned = CASE id\n"
-            . implode("\n", $caseWhen)
-            . "\nEND WHERE id IN ({$in})"
+    } else {
+        $caseWhen = [];
+        $params   = [];
+        $userIds  = [];
+        foreach ($incrementMap as $uid => $cnt) {
+            $caseWhen[] = "WHEN id = ? THEN timeswarned + ?";
+            $params[]   = $uid;
+            $params[]   = $cnt;
+            $userIds[]  = $uid;
+        }
+        $in = implode(',', array_fill(0, count($userIds), '?'));
+        $db->sql_query_prepared(
+            "UPDATE users SET timeswarned = CASE
+"
+            . implode("
+", $caseWhen)
+            . "
+ELSE timeswarned END WHERE id IN ({$in})",
+            array_merge($params, $userIds)
         );
     }
     $CQueryCount++;
 }
 
-// ── Лог ───────────────────────────────────────────────────
 savelog(sprintf(
     'HR cron: warn=%d final=%d silent=%d',
     count($warnPm),
     count($finalPm),
     count($silentMark)
 ), 'cron');
-
-// ── Функции ───────────────────────────────────────────────
 
 function hr_send_pm(array $rows, string $subject, string $tpl): void
 {
@@ -173,8 +179,8 @@ function hr_send_pm(array $rows, string $subject, string $tpl): void
     }
 
     if (!empty($snatchedIds)) {
-        $in = implode(',', $snatchedIds);
-        $db->sql_query("UPDATE snatched SET warned = '1' WHERE id IN ({$in})");
+        $placeholders = implode(',', array_fill(0, count($snatchedIds), '?'));
+        $db->sql_query_prepared("UPDATE snatched SET warned = '1' WHERE id IN ({$placeholders})", $snatchedIds);
         $CQueryCount++;
     }
 }

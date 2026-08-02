@@ -16,7 +16,7 @@ require_once INC_PATH . "/class_moderation.php";
 $moderation = new Moderation;
 
 // Iterate through all our delayed moderation actions
-$query = $db->simple_select("delayedmoderation", "*", "delaydateline <= '" . TIMENOW . "'");
+$query = $db->sql_query_prepared("SELECT * FROM delayedmoderation WHERE delaydateline <= ?", [TIMENOW]);
 
 while ($delayedmoderation = $db->fetch_array($query)) {
     if (is_object($plugins)) {
@@ -48,7 +48,7 @@ while ($delayedmoderation = $db->fetch_array($query)) {
         };
     }
 
-    $db->delete_query("delayedmoderation", "did='" . $delayedmoderation['did'] . "'");
+    $db->sql_query_prepared("DELETE FROM delayedmoderation WHERE did = ?", [$delayedmoderation['did']]);
 }
 
 savelog('The delayed moderation task successfully ran');
@@ -65,8 +65,10 @@ savelog('The delayed moderation task successfully ran');
 function handleOpenCloseThread(Moderation $moderation, string $threadIds, object $db): void
 {
     $closedTids = $openTids = [];
-    
-    $query = $db->simple_select("threads", "tid,closed", "tid IN({$threadIds})");
+
+    $tidList      = array_map('intval', explode(',', $threadIds));
+    $placeholders = implode(',', array_fill(0, count($tidList), '?'));
+    $query = $db->sql_query_prepared("SELECT tid, closed FROM threads WHERE tid IN ($placeholders)", $tidList);
 	
 
 	
@@ -118,8 +120,10 @@ function handleMoveThread(Moderation $moderation, array $tids, ?string $newForum
 function handleStickThread(Moderation $moderation, string $threadIds, object $db): void
 {
     $unstuckTids = $stuckTids = [];
-    
-    $query = $db->simple_select("threads", "tid,sticky", "tid IN({$threadIds})");
+
+    $tidList      = array_map('intval', explode(',', $threadIds));
+    $placeholders = implode(',', array_fill(0, count($tidList), '?'));
+    $query = $db->sql_query_prepared("SELECT tid, sticky FROM threads WHERE tid IN ($placeholders)", $tidList);
 	
     
     while ($thread = $db->fetch_array($query)) {
@@ -169,11 +173,8 @@ function handleMergeThread(Moderation $moderation, string $threadIds, array $inp
 
     // If no subject provided, get from source thread
     if (empty($subject)) {
-        $query = $db->simple_select("threads", "subject", "tid='{$sourceTid}'");
-		
-		
+        $query = $db->sql_query_prepared("SELECT subject FROM threads WHERE tid = ?", [$sourceTid]);
         $subject = $db->fetch_field($query, "subject") ?? '';
-        
     }
 
     $moderation->merge_threads($mergeTid, $sourceTid, $subject);
@@ -245,8 +246,10 @@ function handleRemoveSubscriptions(Moderation $moderation, array $tids): void
 function handleApproveThread(Moderation $moderation, string $threadIds, object $db): void
 {
     $approvedTids = $unapprovedTids = [];
-    
-    $query = $db->simple_select("threads", "tid,visible", "tid IN({$threadIds})");
+
+    $tidList      = array_map('intval', explode(',', $threadIds));
+    $placeholders = implode(',', array_fill(0, count($tidList), '?'));
+    $query = $db->sql_query_prepared("SELECT tid, visible FROM threads WHERE tid IN ($placeholders)", $tidList);
 	
 	
     

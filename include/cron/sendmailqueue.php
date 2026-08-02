@@ -3,12 +3,6 @@
 
 declare(strict_types=1);
 
-/**
- * MyBB 1.8
- * Send Mail Queue Cron
- * Optimized for TS Special Edition v5.6
- */
-
 
 // Disallow direct access to this file for security reasons
 if (!defined('IN_CRON')) {

@@ -1,11 +1,8 @@
 <?php
 
-
-
 if (!defined('IN_CRON')) {
     exit();
 }
-
 
 $log_pruning = [
     'admin_logs'     => 365,
@@ -17,27 +14,27 @@ $log_pruning = [
 // Clear out old admin logs
 if ($log_pruning['admin_logs'] > 0) {
     $cut = TIMENOW - 60 * 60 * 24 * $log_pruning['admin_logs'];
-    $db->delete_query("adminlog", "dateline<'{$cut}'");
+    $db->sql_query_prepared("DELETE FROM adminlog WHERE dateline < ?", [$cut]);
     ++$CQueryCount;
 }
 
 // Clear out old moderator logs
 if ($log_pruning['mod_logs'] > 0) {
     $cut = TIMENOW - 60 * 60 * 24 * $log_pruning['mod_logs'];
-    $db->delete_query("moderatorlog", "dateline<'{$cut}'");
+    $db->sql_query_prepared("DELETE FROM moderatorlog WHERE dateline < ?", [$cut]);
     ++$CQueryCount;
 }
 
 // Clear out old mail error logs
 if ($log_pruning['mail_logs'] > 0) {
     $cut = TIMENOW - 60 * 60 * 24 * $log_pruning['mail_logs'];
-    $db->delete_query("mailerrors", "dateline<'{$cut}'");
+    $db->sql_query_prepared("DELETE FROM mailerrors WHERE dateline < ?", [$cut]);
     ++$CQueryCount;
 }
 
 // Clear out old user mail logs
 if ($log_pruning['user_mail_logs'] > 0) {
     $cut = TIMENOW - 60 * 60 * 24 * $log_pruning['user_mail_logs'];
-    $db->delete_query("maillogs", "dateline<'{$cut}'");
+    $db->sql_query_prepared("DELETE FROM maillogs WHERE dateline < ?", [$cut]);
     ++$CQueryCount;
 }

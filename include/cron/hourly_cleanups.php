@@ -15,21 +15,21 @@ $moderation = new Moderation();
 
 
 // ======= Cleanup of stale data =======
-$db->sql_query("DELETE FROM loginattempts WHERE banned='no' AND added < '" . (TIMENOW - DAY_IN_SECONDS) . "'");
+$db->sql_query_prepared("DELETE FROM loginattempts WHERE banned='no' AND added < ?", [TIMENOW - DAY_IN_SECONDS]);
 $CQueryCount++;
 
 
 // ======= Peer cleanup =======
 $deadtime = deadtime();
-$db->sql_query("DELETE FROM peers WHERE last_action < " . $deadtime);
+$db->sql_query_prepared("DELETE FROM peers WHERE last_action < ?", [$deadtime]);
 $CQueryCount++;
 
-$db->sql_query("UPDATE snatched SET seeder='no' WHERE seeder='yes' AND last_action < " . $deadtime);
+$db->sql_query_prepared("UPDATE snatched SET seeder='no' WHERE seeder='yes' AND last_action < ?", [$deadtime]);
 $CQueryCount++;
 
 // ======= Hide stale torrents =======
 $cut = TIMENOW - 2 * DAY_IN_SECONDS; // 2 days
-$db->sql_query("UPDATE torrents SET visible='no' WHERE visible='yes' AND mtime < {$cut}");
+$db->sql_query_prepared("UPDATE torrents SET visible='no' WHERE visible='yes' AND mtime < ?", [$cut]);
 $CQueryCount++;
 
 // ======= Session and search cleanup =======
@@ -43,7 +43,7 @@ $time_limits = [
 
 
 // Delete moved threads with expired redirects
-$query = $db->simple_select('threads', 'tid', "deletetime != '0' AND deletetime < '" . (int)$time_limits['threads'] . "'");
+$query = $db->sql_query_prepared("SELECT tid FROM threads WHERE deletetime != 0 AND deletetime < ?", [(int)$time_limits['threads']]);
 $CQueryCount++;
 
 while ($tid = $db->fetch_field($query, 'tid')) {
@@ -54,25 +54,25 @@ while ($tid = $db->fetch_field($query, 'tid')) {
 
 
 // Remove old search log entries
-$db->delete_query("searchlog", "dateline < '" . (int)$time_limits['searchlog'] . "'");
+$db->sql_query_prepared("DELETE FROM searchlog WHERE dateline < ?", [(int)$time_limits['searchlog']]);
 $CQueryCount++;
 
 // Clean up sessions older than 24 hours
-$db->delete_query("sessions", "time < '" . (int)$time_limits['sessionstime'] . "'");
+$db->sql_query_prepared("DELETE FROM sessions WHERE time < ?", [(int)$time_limits['sessionstime']]);
 $CQueryCount++;
 
 
 
 // Remove old read-thread/forum markers
-$db->delete_query("threadsread", "dateline < '" . (int)$time_limits['threadreadcut'] . "'");
+$db->sql_query_prepared("DELETE FROM threadsread WHERE dateline < ?", [(int)$time_limits['threadreadcut']]);
 $CQueryCount++;
-$db->delete_query("forumsread", "dateline < '" . (int)$time_limits['threadreadcut'] . "'");
+$db->sql_query_prepared("DELETE FROM forumsread WHERE dateline < ?", [(int)$time_limits['threadreadcut']]);
 $CQueryCount++;
 
 // ======= Moderator log pruning =======
 if (!empty($config['log_pruning']['mod_logs']) && $config['log_pruning']['mod_logs'] > 0) {
     $cut = TIMENOW - $config['log_pruning']['mod_logs'] * DAY_IN_SECONDS;
-    $db->delete_query("moderatorlog", "dateline < '{$cut}'");
+    $db->sql_query_prepared("DELETE FROM moderatorlog WHERE dateline < ?", [$cut]);
     $CQueryCount++;
 }
 
@@ -81,7 +81,7 @@ $torrents_data = [];
 $fields = ['comments', 'leechers', 'seeders', 'times_completed'];
 
 // Gather peer counts
-$query = $db->sql_query('SELECT torrent, seeder, COUNT(*) AS count FROM peers GROUP BY torrent, seeder');
+$query = $db->sql_query_prepared('SELECT torrent, seeder, COUNT(*) AS count FROM peers GROUP BY torrent, seeder');
 $CQueryCount++;
 while ($row = $db->fetch_array($query)) {
     $key = ($row['seeder'] == 'yes') ? 'seeders' : 'leechers';
@@ -89,14 +89,14 @@ while ($row = $db->fetch_array($query)) {
 }
 
 // Gather completed download counts
-$query = $db->sql_query('SELECT torrentid, COUNT(*) as count FROM snatched WHERE finished=\'yes\' GROUP BY torrentid');
+$query = $db->sql_query_prepared('SELECT torrentid, COUNT(*) as count FROM snatched WHERE finished=? GROUP BY torrentid', ['yes']);
 $CQueryCount++;
 while ($row = $db->fetch_array($query)) {
     $torrents_data[$row['torrentid']]['times_completed'] = (int)$row['count'];
 }
 
 // Gather comment counts
-$query = $db->sql_query('SELECT torrent, COUNT(*) AS count FROM comments GROUP BY torrent');
+$query = $db->sql_query_prepared('SELECT torrent, COUNT(*) AS count FROM comments GROUP BY torrent');
 $CQueryCount++;
 while ($row = $db->fetch_array($query)) {
     $torrents_data[$row['torrent']]['comments'] = (int)$row['count'];
@@ -105,9 +105,12 @@ while ($row = $db->fetch_array($query)) {
 // Bulk-update torrents
 if (!empty($torrents_data)) {
     $torrent_ids = array_map('intval', array_keys($torrents_data));
-    $ids_list    = implode(',', $torrent_ids);
 
-    $query = $db->sql_query("SELECT id, seeders, leechers, comments, times_completed FROM torrents WHERE id IN ({$ids_list})");
+    $placeholders = implode(',', array_fill(0, count($torrent_ids), '?'));
+    $query = $db->sql_query_prepared(
+        "SELECT id, seeders, leechers, comments, times_completed FROM torrents WHERE id IN ({$placeholders})",
+        $torrent_ids
+    );
     $CQueryCount++;
 
     $changed_ids   = [];
@@ -136,23 +139,26 @@ if (!empty($torrents_data)) {
     // One UPDATE per field via CASE WHEN, instead of one UPDATE per changed
     // row — significantly fewer queries at larger scale.
     if (!empty($changed_ids)) {
-        $changed_ids_list = implode(',', $changed_ids);
-
         foreach ($field_changes as $field => $id_to_value) {
             if (empty($id_to_value)) {
                 continue;
             }
 
-            $case_parts = [];
+            $case_parts  = [];
+            $case_params = [];
             foreach ($id_to_value as $id => $value) {
-                $case_parts[] = "WHEN {$id} THEN {$value}";
+                $case_parts[]  = "WHEN ? THEN ?";
+                $case_params[] = $id;
+                $case_params[] = $value;
             }
             $case_sql = implode(' ', $case_parts);
 
-            $affected_ids = implode(',', array_keys($id_to_value));
+            $affected_ids    = array_keys($id_to_value);
+            $in_placeholders = implode(',', array_fill(0, count($affected_ids), '?'));
 
-            $db->sql_query(
-                "UPDATE torrents SET `{$field}` = CASE id {$case_sql} ELSE `{$field}` END WHERE id IN ({$affected_ids})"
+            $db->sql_query_prepared(
+                "UPDATE torrents SET `{$field}` = CASE id {$case_sql} ELSE `{$field}` END WHERE id IN ({$in_placeholders})",
+                [...$case_params, ...$affected_ids]
             );
             $CQueryCount++;
         }

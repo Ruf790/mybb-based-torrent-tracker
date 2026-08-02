@@ -1,10 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/**
- * TS Special Edition / MyBB Cron Helper Functions
- * Compatible with PHP 8.4
- */
+
 
 if (!defined('IN_CRON')) {
     exit();
@@ -59,14 +56,10 @@ function savelog(string $Text, string $category = '', int $level = 0): void
     $uid = !empty($CURUSER['id']) ? (int)$CURUSER['id'] : 0;
 
 
-    $db->insert_query("sitelog", [
-        "added"     => TIMENOW,
-        "uid"       => $uid,
-        "ipaddress" => $db->escape_binary(my_inet_pton(get_ip())),
-        "txt"       => $db->escape_string($Text),
-        "category"  => $db->escape_string($category),
-        "level"     => $level,
-    ]);
+    $db->sql_query_prepared(
+        "INSERT INTO sitelog (added, uid, ipaddress, txt, category, level) VALUES (?, ?, ?, ?, ?, ?)",
+        [TIMENOW, $uid, my_inet_pton(get_ip()), $Text, $category, $level]
+    );
 }
 
 
@@ -77,16 +70,10 @@ function logcronaction(string $filename, int $queryCount, float $executeTime): v
 {
     global $db;
 
-    $sql = sprintf(
-        "REPLACE INTO cron_log (filename, querycount, executetime, runtime)
-         VALUES ('%s', '%d', '%.4f', '%d')",
-        $db->escape_string($filename),
-        $queryCount,
-        $executeTime,
-        TIMENOW
+    $db->sql_query_prepared(
+        "REPLACE INTO cron_log (filename, querycount, executetime, runtime) VALUES (?, ?, ?, ?)",
+        [$filename, $queryCount, $executeTime, TIMENOW]
     );
-
-    $db->sql_query($sql);
 }
 
 /**
@@ -109,15 +96,13 @@ function send_mail_queue(int $count = 10): void
         $plugins->run_hooks('send_mail_queue_start');
     }
 
-    $query = $db->simple_select(
-        'mailqueue',
-        '*',
-        '',
-        ['order_by' => 'mid', 'order_dir' => 'asc', 'limit_start' => 0, 'limit' => $count]
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM mailqueue ORDER BY mid ASC LIMIT 0, ?",
+        [$count]
     );
 
     while ($email = $db->fetch_array($query)) {
-        $db->delete_query('mailqueue', "mid='{$email['mid']}'");
+        $db->sql_query_prepared("DELETE FROM mailqueue WHERE mid = ?", [$email['mid']]);
 
         if ($db->affected_rows() === 1) {
             my_mail(

@@ -27,7 +27,6 @@ $repairedTables = [];
 $settingDone = false;
 
 $configDatabase = $config['database']['database'] ?? '';
-$configPrefix   = $config['database']['table_prefix'] ?? '';
 
 if ($configDatabase === '') {
     savelog('Error: Database name not set in config.');
@@ -35,7 +34,7 @@ if ($configDatabase === '') {
 }
 
 
-$tables = $db->list_tables($configDatabase, $configPrefix);
+$tables = $db->list_tables($configDatabase);
 ++$CQueryCount;
 
 if (!empty($tables)) {
@@ -46,7 +45,7 @@ if (!empty($tables)) {
 
     
     if ($tablesList !== '') {
-        $checkQuery = $db->sql_query("CHECK TABLE {$tablesList} CHANGED;");
+        $checkQuery = $db->sql_query("CHECK TABLE {$tablesList} CHANGED");
         ++$CQueryCount;
 
         while ($table = $db->fetch_array($checkQuery)) {

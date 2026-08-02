@@ -7,25 +7,27 @@ declare(strict_types=1);
  * Fully compatible with PHP 8.4
  */
 
-
-
 if (!defined('IN_CRON')) {
     exit();
 }
 
 $startTime = microtime(true);
 
-// === Получаем истёкшие баны ===
-$query = $db->simple_select(
-    'banned',
-    'uid, oldgroup, oldadditionalgroups, olddisplaygroup',
-    'lifted != 0 AND lifted < ' . (int)TIMENOW
+$wrapped = $db->sql_query_prepared(
+    'SELECT uid, oldgroup, oldadditionalgroups, olddisplaygroup FROM banned WHERE lifted != 0 AND lifted < ?',
+    [(int)TIMENOW]
 );
 ++$CQueryCount;
 
 $bannedUsers = [];
-while ($ban = $db->fetch_array($query)) {
-    $bannedUsers[] = $ban;
+if ($wrapped && $wrapped->result) {
+    while ($ban = mysqli_fetch_array($wrapped->result, MYSQLI_BOTH)) {
+        $bannedUsers[] = $ban;
+    }
+    mysqli_free_result($wrapped->result);
+}
+if ($wrapped && $wrapped->stmt) {
+    mysqli_stmt_close($wrapped->stmt);
 }
 
 if ($bannedUsers) {
@@ -39,20 +41,22 @@ if ($bannedUsers) {
 
         $userIds[] = $uid;
 
-        $updatedUser = [
-            'usergroup'         => (int)$ban['oldgroup'],
-            'additionalgroups'  => $db->escape_string((string)$ban['oldadditionalgroups']),
-            'displaygroup'      => (int)$ban['olddisplaygroup'],
-            'notifs'            => '', 
-        ];
-
-        $db->update_query('users', $updatedUser, "id='{$uid}'");
+        $db->sql_query_prepared(
+            "UPDATE users SET usergroup=?, additionalgroups=?, displaygroup=?, notifs=? WHERE id=?",
+            [
+                (int)$ban['oldgroup'],
+                (string)$ban['oldadditionalgroups'],
+                (int)$ban['olddisplaygroup'],
+                '',
+                $uid,
+            ]
+        );
         ++$CQueryCount;
     }
 
-    // === Удаляем записи о банах ===
     if ($userIds) {
-        $db->delete_query('banned', 'uid IN (' . implode(',', $userIds) . ')');
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $db->sql_query_prepared("DELETE FROM banned WHERE uid IN ({$placeholders})", $userIds);
         ++$CQueryCount;
     }
 
@@ -64,4 +68,3 @@ if ($bannedUsers) {
     savelog("No expired bans to remove ({$elapsed}s)");
     ++$CQueryCount;
 }
-

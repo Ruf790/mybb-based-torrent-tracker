@@ -15,11 +15,10 @@ require INC_PATH . '/functions_pm.php';
 
 // ======= Вспомогательные функции =======
 
-// Безопасная генерация IN-условия для SQL
-function build_safe_in_clause(array $ids, string $field = 'id'): string {
-    if (empty($ids)) return '0=1'; // Защита от пустого массива
-    $safe_ids = array_map('intval', $ids);
-    return $field . ' IN (' . implode(',', $safe_ids) . ')';
+// Генерация плейсхолдеров для IN(...) под sql_query_prepared
+function build_in_placeholders(array $ids): string {
+    if (empty($ids)) return '0=1'; // Защита от пустого массива, используется как самостоятельное условие
+    return implode(',', array_fill(0, count($ids), '?'));
 }
 
 // Отправка PM нескольким пользователям
@@ -37,43 +36,55 @@ function send_bulk_pm(array $user_ids, string $subject, string $message) {
 }
 
 // ======= LeechWarn remove =======
-$query = $db->sql_query("SELECT DISTINCT id FROM users WHERE leechwarn='yes' AND uploaded / downloaded >= $leechwarn_remove_ratio AND enabled='yes'");
+$query = $db->sql_query_prepared(
+    "SELECT DISTINCT id FROM users WHERE leechwarn='yes' AND uploaded / downloaded >= ? AND enabled='yes'",
+    [(float)$leechwarn_remove_ratio]
+);
 $CQueryCount++;
 
 $leechwarn_remove_ids = [];
 while ($row = $db->fetch_array($query)) {
-    $leechwarn_remove_ids[] = $row['id'];
+    $leechwarn_remove_ids[] = (int)$row['id'];
 }
 
 if ($leechwarn_remove_ids) {
-    $db->sql_query("
-        UPDATE users
+    $modcomment  = gmdate('Y-m-d') . " - Leech-Warning removed by System.\n";
+    $placeholders = build_in_placeholders($leechwarn_remove_ids);
+    $db->sql_query_prepared(
+        "UPDATE users
         SET leechwarn='no',
             leechwarnuntil=0,
-            modcomment=CONCAT('" . gmdate('Y-m-d') . " - Leech-Warning removed by System.\n', modcomment)
-        WHERE " . build_safe_in_clause($leechwarn_remove_ids)
+            modcomment=CONCAT(?, modcomment)
+        WHERE id IN ({$placeholders})",
+        array_merge([$modcomment], $leechwarn_remove_ids)
     );
     $CQueryCount++;
 }
 
 // ======= Apply LeechWarn =======
 $downloaded_limit = $leechwarn_gig_limit * GB_IN_BYTES;
-$query = $db->sql_query("SELECT DISTINCT id FROM users WHERE usergroup='" . UC_USER . "' AND leechwarn='no' AND enabled='yes' AND uploaded / downloaded < $leechwarn_min_ratio AND downloaded >= $downloaded_limit");
+$query = $db->sql_query_prepared(
+    "SELECT DISTINCT id FROM users WHERE usergroup=? AND leechwarn='no' AND enabled='yes' AND uploaded / downloaded < ? AND downloaded >= ?",
+    [(int)UC_USER, (float)$leechwarn_min_ratio, (int)$downloaded_limit]
+);
 $CQueryCount++;
 
 $leechwarn_ids = [];
 $until = TIMENOW + $leechwarn_length * WEEK_IN_SECONDS;
 while ($row = $db->fetch_array($query)) {
-    $leechwarn_ids[] = $row['id'];
+    $leechwarn_ids[] = (int)$row['id'];
 }
 
 if ($leechwarn_ids) {
-    $db->sql_query("
-        UPDATE users
+    $modcomment   = gmdate('Y-m-d') . " - Leech-Warned by System - Low Ratio.\n";
+    $placeholders = build_in_placeholders($leechwarn_ids);
+    $db->sql_query_prepared(
+        "UPDATE users
         SET leechwarn='yes',
-            leechwarnuntil=$until,
-            modcomment=CONCAT('" . gmdate('Y-m-d') . " - Leech-Warned by System - Low Ratio.\n', modcomment)
-        WHERE " . build_safe_in_clause($leechwarn_ids)
+            leechwarnuntil=?,
+            modcomment=CONCAT(?, modcomment)
+        WHERE id IN ({$placeholders})",
+        array_merge([(int)$until, $modcomment], $leechwarn_ids)
     );
     $CQueryCount++;
 
@@ -88,23 +99,29 @@ if ($leechwarn_ids) {
 }
 
 // ======= Ban LeechWarn expired =======
-$query = $db->sql_query("SELECT DISTINCT id FROM users WHERE usergroup='" . UC_USER . "' AND enabled='yes' AND leechwarn='yes' AND leechwarnuntil < " . TIMENOW);
+$query = $db->sql_query_prepared(
+    "SELECT DISTINCT id FROM users WHERE usergroup=? AND enabled='yes' AND leechwarn='yes' AND leechwarnuntil < ?",
+    [(int)UC_USER, TIMENOW]
+);
 $CQueryCount++;
 
 $leech_ban_ids = [];
 $reason = 'Reason: Banned by System because of Leech-Warning expired!';
 while ($row = $db->fetch_array($query)) {
-    $leech_ban_ids[] = $row['id'];
+    $leech_ban_ids[] = (int)$row['id'];
 }
 
 if ($leech_ban_ids) {
-    $db->sql_query("
-        UPDATE users
+    $modcomment   = gmdate('Y-m-d') . " - $reason\n";
+    $placeholders = build_in_placeholders($leech_ban_ids);
+    $db->sql_query_prepared(
+        "UPDATE users
         SET enabled='no',
-            usergroup='" . UC_BANNED . "',
-            notifs=" . $db->sqlesc($reason) . ",
-            modcomment=CONCAT('" . gmdate('Y-m-d') . " - $reason\n', modcomment)
-        WHERE " . build_safe_in_clause($leech_ban_ids)
+            usergroup=?,
+            notifs=?,
+            modcomment=CONCAT(?, modcomment)
+        WHERE id IN ({$placeholders})",
+        array_merge([(int)UC_BANNED, $reason, $modcomment], $leech_ban_ids)
     );
     $CQueryCount++;
     savelog('Banned users (LeechWarn expired): ' . implode(', ', $leech_ban_ids));
@@ -115,44 +132,53 @@ if ($leech_ban_ids) {
 
 
 // ======= Ban by max warn =======
-$query = $db->sql_query("SELECT DISTINCT id, usergroup, additionalgroups, displaygroup FROM users WHERE enabled='yes' AND timeswarned >= '$ban_user_limit'");
+$query = $db->sql_query_prepared(
+    "SELECT DISTINCT id, usergroup, additionalgroups, displaygroup FROM users WHERE enabled='yes' AND timeswarned >= ?",
+    [(int)$ban_user_limit]
+);
 $CQueryCount++;
 $ban_limit_ids = [];
 $reason = 'Reason: Automatically banned system. Max Warn Limit reached!';
 
 while ($row = $db->fetch_array($query)) {
-    $ban_limit_ids[] = $row['id'];
+    $ban_limit_ids[] = (int)$row['id'];
 
     // Запись в таблицу banned
-    $db->sql_query("
-        INSERT INTO banned (uid, gid, oldgroup, oldadditionalgroups, olddisplaygroup, admin, dateline, bantime, lifted, reason)
-        VALUES (
-            " . intval($row['id']) . ",
-            " . intval(UC_BANNED) . ",
-            " . intval($row['usergroup']) . ",
-            " . $db->sqlesc($row['additionalgroups'] ?? '') . ",
-            " . intval($row['displaygroup']) . ",
+    $db->sql_query_prepared(
+        "INSERT INTO banned (uid, gid, oldgroup, oldadditionalgroups, olddisplaygroup, admin, dateline, bantime, lifted, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            dateline = ?,
+            reason   = ?",
+        [
+            (int)$row['id'],
+            (int)UC_BANNED,
+            (int)$row['usergroup'],
+            $row['additionalgroups'] ?? '',
+            (int)$row['displaygroup'],
             0,
-            " . TIMENOW . ",
+            TIMENOW,
             'permanent',
             0,
-            " . $db->sqlesc($reason) . "
-        )
-        ON DUPLICATE KEY UPDATE
-            dateline = " . TIMENOW . ",
-            reason   = " . $db->sqlesc($reason) . "
-    ");
+            $reason,
+            TIMENOW,
+            $reason,
+        ]
+    );
     $CQueryCount++;
 }
 
 if ($ban_limit_ids) {
-    $db->sql_query("
-        UPDATE users
+    $modcomment   = gmdate('Y-m-d') . " - $reason";
+    $placeholders = build_in_placeholders($ban_limit_ids);
+    $db->sql_query_prepared(
+        "UPDATE users
         SET enabled='no',
-            usergroup='" . UC_BANNED . "',
-            notifs=" . $db->sqlesc($reason) . ",
-            modcomment=CONCAT('" . gmdate('Y-m-d') . " - $reason', modcomment)
-        WHERE " . build_safe_in_clause($ban_limit_ids)
+            usergroup=?,
+            notifs=?,
+            modcomment=CONCAT(?, modcomment)
+        WHERE id IN ({$placeholders})",
+        array_merge([(int)UC_BANNED, $reason, $modcomment], $ban_limit_ids)
     );
     $CQueryCount++;
     savelog('Banned users (Max warn limit): ' . implode(', ', $ban_limit_ids));
@@ -164,22 +190,28 @@ if ($ban_limit_ids) {
 
 
 // ======= Remove expired warns =======
-$query = $db->sql_query("SELECT DISTINCT id FROM users WHERE warned='yes' AND warneduntil < " . TIMENOW . " AND enabled='yes'");
+$query = $db->sql_query_prepared(
+    "SELECT DISTINCT id FROM users WHERE warned='yes' AND warneduntil < ? AND enabled='yes'",
+    [TIMENOW]
+);
 $CQueryCount++;
 
 $warn_remove_ids = [];
 while ($row = $db->fetch_array($query)) {
-    $warn_remove_ids[] = $row['id'];
+    $warn_remove_ids[] = (int)$row['id'];
 }
 
 if ($warn_remove_ids) {
-    $db->sql_query("
-        UPDATE users
+    $modcomment   = gmdate('Y-m-d') . " - Warning removed by System.\n";
+    $placeholders = build_in_placeholders($warn_remove_ids);
+    $db->sql_query_prepared(
+        "UPDATE users
         SET warned='no',
             timeswarned=IF(timeswarned>0,timeswarned-1,0),
             warneduntil=0,
-            modcomment=CONCAT('" . gmdate('Y-m-d') . " - Warning removed by System.\n', modcomment)
-        WHERE " . build_safe_in_clause($warn_remove_ids)
+            modcomment=CONCAT(?, modcomment)
+        WHERE id IN ({$placeholders})",
+        array_merge([$modcomment], $warn_remove_ids)
     );
     $CQueryCount++;
 }
@@ -189,27 +221,31 @@ if ($promote_gig_limit > 0) {
     $limit = $promote_gig_limit * GB_IN_BYTES;
     $maxdt = TIMENOW - DAY_IN_SECONDS * $promote_min_reg_days;
 
-    $query = $db->sql_query("
-        SELECT DISTINCT id FROM users
-        WHERE usergroup='" . UC_USER . "' 
-        AND enabled='yes' 
-        AND uploaded >= $limit 
-        AND uploaded / downloaded >= $promote_min_ratio
-        AND added < $maxdt
-    ");
+    $query = $db->sql_query_prepared(
+        "SELECT DISTINCT id FROM users
+        WHERE usergroup=?
+        AND enabled='yes'
+        AND uploaded >= ?
+        AND uploaded / downloaded >= ?
+        AND added < ?",
+        [(int)UC_USER, (int)$limit, (float)$promote_min_ratio, (int)$maxdt]
+    );
     $CQueryCount++;
 
     $promote_ids = [];
     while ($row = $db->fetch_array($query)) {
-        $promote_ids[] = $row['id'];
+        $promote_ids[] = (int)$row['id'];
     }
 
     if ($promote_ids) {
-        $db->sql_query("
-            UPDATE users
-            SET usergroup='" . UC_POWER_USER . "',
-                modcomment=CONCAT('" . gmdate('Y-m-d') . " - Promoted to POWER USER by AutoSystem.\n', modcomment)
-            WHERE " . build_safe_in_clause($promote_ids)
+        $modcomment   = gmdate('Y-m-d') . " - Promoted to POWER USER by AutoSystem.\n";
+        $placeholders = build_in_placeholders($promote_ids);
+        $db->sql_query_prepared(
+            "UPDATE users
+            SET usergroup=?,
+                modcomment=CONCAT(?, modcomment)
+            WHERE id IN ({$placeholders})",
+            array_merge([(int)UC_POWER_USER, $modcomment], $promote_ids)
         );
         $CQueryCount++;
         savelog('Promoted users: ' . implode(', ', $promote_ids));
@@ -224,25 +260,29 @@ if ($promote_gig_limit > 0) {
 }
 
 // ======= Demote Power Users =======
-$query = $db->sql_query("
-    SELECT DISTINCT id FROM users
-    WHERE usergroup='" . UC_POWER_USER . "' 
-    AND uploaded / downloaded < $demote_min_ratio
-    AND enabled='yes'
-");
+$query = $db->sql_query_prepared(
+    "SELECT DISTINCT id FROM users
+    WHERE usergroup=?
+    AND uploaded / downloaded < ?
+    AND enabled='yes'",
+    [(int)UC_POWER_USER, (float)$demote_min_ratio]
+);
 $CQueryCount++;
 
 $demote_ids = [];
 while ($row = $db->fetch_array($query)) {
-    $demote_ids[] = $row['id'];
+    $demote_ids[] = (int)$row['id'];
 }
 
 if ($demote_ids) {
-    $db->sql_query("
-        UPDATE users
-        SET usergroup='" . UC_USER . "',
-            modcomment=CONCAT('" . gmdate('Y-m-d') . " - Demoted to USER by AutoSystem.\n', modcomment)
-        WHERE " . build_safe_in_clause($demote_ids)
+    $modcomment   = gmdate('Y-m-d') . " - Demoted to USER by AutoSystem.\n";
+    $placeholders = build_in_placeholders($demote_ids);
+    $db->sql_query_prepared(
+        "UPDATE users
+        SET usergroup=?,
+            modcomment=CONCAT(?, modcomment)
+        WHERE id IN ({$placeholders})",
+        array_merge([(int)UC_USER, $modcomment], $demote_ids)
     );
     $CQueryCount++;
     savelog('Demoted users: ' . implode(', ', $demote_ids));
@@ -254,5 +294,3 @@ if ($demote_ids) {
         sprintf($lang->cronjobs['demote_message'], $demote_min_ratio)
     );
 }
-
-?>

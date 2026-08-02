@@ -63,9 +63,17 @@ document.addEventListener("DOMContentLoaded", function() {
                 reasonInput.name = 'reason[3]';
                 reasonInput.value = 'Deleted via quick delete modal';
                 
+                // CSRF-токен - без него сервер теперь отклоняет удаление
+                const myPostKeyInput = document.createElement('input');
+                myPostKeyInput.name = 'my_post_key';
+                myPostKeyInput.value = document.getElementById('myPostKey')?.value
+                    || document.querySelector('input[name="my_post_key"]')?.value
+                    || '';
+                
                 form.appendChild(idInput);
                 form.appendChild(reasonTypeInput);
                 form.appendChild(reasonInput);
+                form.appendChild(myPostKeyInput);
                 document.body.appendChild(form);
                 form.submit();
             }

@@ -82,12 +82,16 @@ function TSajaxquickcomment(TorrentID) {
     var posthashInput = form ? form.querySelector('input[name="posthash"]') : null;
     var posthashValue = posthashInput ? posthashInput.value : '';
 
+    var myPostKeyInput = form ? form.querySelector('input[name="my_post_key"]') : null;
+    var myPostKeyValue = myPostKeyInput ? myPostKeyInput.value : '';
+
     var pars = {
         ajax_quick_comment: 1,
         id: intval(TorrentID),
         text: urlencode(message),
         page: currentPage,
-        posthash: posthashValue
+        posthash: posthashValue,
+        my_post_key: myPostKeyValue
     };
 
     // file_ids

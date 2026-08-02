@@ -546,8 +546,16 @@ heightInput.value = '';
       const formData = new FormData();
       formData.append('image', file);
       formData.append('upload_type', 'editor_image');
-	  
-	  
+
+      // CSRF-токен - лежит в hidden-инпуте активной формы (комментарий/
+      // новость/сообщение). На странице одновременно активна только одна
+      // такая форма, поэтому простой поиск по имени поля безопасен.
+      const postKeyInput = document.querySelector('input[name="my_post_key"]');
+      if (postKeyInput) {
+        formData.append('my_post_key', postKeyInput.value);
+      } else {
+        console.error('my_post_key не найден на странице - загрузка будет отклонена сервером');
+      }
 
       //const response = await fetch('upload_image.php', {
 	  const response = await fetch(`${baseurl}/upload_image.php`, {

@@ -3,7 +3,9 @@
  * Attachment uploader for comments
  */
 
-function initAttachmentUploader(posthash, postKey, uploadUrl) {
+function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
+
+    commentId = commentId || 0;
 
     const dropzone  = document.getElementById('attDropzone-' + posthash);
     const list      = document.getElementById('attPreviewList-' + posthash);
@@ -55,6 +57,7 @@ function initAttachmentUploader(posthash, postKey, uploadUrl) {
         fd.append('attachment', file);
         fd.append('posthash', posthash);
         fd.append('my_post_key', postKey);
+        fd.append('comment_id', commentId);
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', uploadUrl);

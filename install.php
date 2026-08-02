@@ -1,8 +1,28 @@
 <?php
 /**
- * Installer v1.2
+ * Installer v1.5
  * 
  */
+
+// ── Безопасный вывод ошибок ────────────────────────────────────────────────
+// Ошибки/варнинги PHP не должны печататься на страницу (утечка путей,
+// структуры кода и т.п.), особенно пока install.php ещё не удалён с сервера.
+// Вместо этого пишем их в install_error.log рядом с инсталлером.
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+ini_set('error_log', __DIR__ . '/install_error.log');
+
+/**
+ * Логирует техническую деталь ошибки и возвращает безопасное для показа
+ * пользователю сообщение общего вида.
+ */
+function safe_error(string $context, Throwable $e): string
+{
+    error_log(sprintf('[installer] %s: %s in %s:%d', $context, $e->getMessage(), $e->getFile(), $e->getLine()));
+    return $context . '. Подробности сохранены в install_error.log — проверьте лог на сервере.';
+}
+
 const IN_TRACKER = true;
 const APP_INITIALIZED = true;
 define('IN_MYBB', 1);
@@ -13,10 +33,18 @@ define('INC_PATH', __DIR__ . '/include');
 require_once INC_PATH . '/functions.php';
 require_once INC_PATH . '/functions_user.php';
 
-define('INSTALLER_VERSION', '1.2.0');
+define('INSTALLER_VERSION', '1.5.0');
 define('LOCK_FILE', __DIR__ . '/install.lock');
 
-if (file_exists(LOCK_FILE) && !isset($_GET['force'])) {
+// ── Защита от повторного запуска ────────────────────────────────────────────
+// ВАЖНО: раньше здесь была проверка `!isset($_GET['force'])`, позволявшая
+// обойти install.lock простым GET-параметром без какой-либо аутентификации -
+// то есть кто угодно, зная (или угадав) install.php?force=1, мог заново
+// пройти установку, создать нового admin-пользователя и переписать
+// $config['super_admins'] в config.php, полностью захватив сайт. Единственный
+// способ переустановки теперь - ручное удаление install.lock на сервере
+// (доступ есть только у того, у кого есть доступ к файловой системе).
+if (file_exists(LOCK_FILE)) {
     die('<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,8 +58,6 @@ if (file_exists(LOCK_FILE) && !isset($_GET['force'])) {
         .lock-card:hover { transform:translateY(-5px); }
         .lock-icon { font-size:5rem; animation:pulse 2s infinite; }
         @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.1);opacity:.8} }
-        .danger-btn { transition:all .3s ease; }
-        .danger-btn:hover { transform:translateY(-2px); box-shadow:0 10px 20px rgba(220,53,69,.3); }
         code { background:#f8f9fa; padding:4px 8px; border-radius:8px; font-weight:600; color:#dc3545; }
         .warning-alert { border-left:4px solid #ffc107; background:#fff9e6; }
     </style>
@@ -44,17 +70,16 @@ if (file_exists(LOCK_FILE) && !isset($_GET['force'])) {
                 <div class="mb-3"><span class="badge bg-danger bg-opacity-10 text-danger px-3 py-2 rounded-pill"><i class="fas fa-shield-alt me-2"></i>Installation Locked</span></div>
                 <h2 class="fw-bold mb-2" style="color:#1a1a2e;">Already Installed</h2>
                 <p class="text-muted mb-1">Mybb Based Torrent Tracker is already installed and configured.</p>
-                <p class="text-muted">Delete <code>install.lock</code> to reinstall.</p>
+                <p class="text-muted">To reinstall, delete <code>install.lock</code> from the server via FTP/SSH/RDP, then reload this page.</p>
             </div>
             <hr class="my-4">
             <div class="warning-alert p-3 rounded mb-4">
                 <div class="d-flex">
                     <div class="flex-shrink-0"><i class="fas fa-exclamation-triangle text-warning fa-lg"></i></div>
-                    <div class="ms-3"><strong class="d-block mb-1">Warning!</strong><small class="text-muted">Force reinstall will overwrite your current settings and data.</small></div>
+                    <div class="ms-3"><strong class="d-block mb-1">Warning!</strong><small class="text-muted">Reinstalling will overwrite your current settings and data.</small></div>
                 </div>
             </div>
             <div class="d-grid gap-3">
-                <a href="install.php?force=1" class="btn btn-outline-danger btn-lg danger-btn"><i class="fas fa-rotate-right me-2"></i>Force Reinstall</a>
                 <a href="/" class="btn btn-secondary btn-lg"><i class="fas fa-home me-2"></i>Go to Homepage</a>
             </div>
         </div>
@@ -63,7 +88,31 @@ if (file_exists(LOCK_FILE) && !isset($_GET['force'])) {
 </html>');
 }
 
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path'     => '/',
+    'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 session_start();
+
+// ── CSRF token ───────────────────────────────────────────────────────────
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
+function csrf_field(): string
+{
+    return '<input type="hidden" name="csrf_token" value="' . htmlspecialchars($_SESSION['csrf_token'] ?? '') . '">';
+}
+
+function csrf_check(): bool
+{
+    $sent = $_POST['csrf_token'] ?? '';
+    return is_string($sent) && !empty($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $sent);
+}
 
 $steps = [
     1 => 'Requirements',
@@ -110,14 +159,16 @@ function getDb(): mixed
     };
 
     $db->connect($config['database']);
-    $db->set_table_prefix('');
     $db->type = $config['database']['type'];
 
     return $db;
 }
 
 // ── POST handling ────────────────────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_check()) {
+    $errors[] = 'Invalid or expired form token, please try again.';
+}
+elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Step 2: connection check ────────────────────────────────────────────
     if ($step === 2) {
@@ -134,10 +185,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $db = getDb();
             // Simple test: version query
-            $db->sql_query("SELECT 1");
+            $db->sql_query_prepared("SELECT 1");
             header('Location: install.php?step=3'); exit;
         } catch (Throwable $e) {
-            $errors[] = 'Cannot connect to database: ' . $e->getMessage();
+            $errors[] = safe_error('Cannot connect to the database. Please check your credentials', $e);
         }
     }
 
@@ -201,7 +252,7 @@ function runInstallation(): true|array
     try {
         $db = getDb();
     } catch (Throwable $e) {
-        return ['Database connection failed: ' . $e->getMessage()];
+        return [safe_error('Database connection failed', $e)];
     }
 
     // ── SQL — tracker schema ────────────────────────────────────────────────────
@@ -233,7 +284,7 @@ CREATE TABLE IF NOT EXISTS `adminlog` (
   `data` text NOT NULL,
   KEY `module` (`module`,`action`),
   KEY `uid` (`uid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
 CREATE TABLE IF NOT EXISTS `announcements` (
@@ -276,7 +327,7 @@ CREATE TABLE IF NOT EXISTS `attachments` (
   KEY `uid` (`uid`),
   KEY `comment_id` (`comment_id`),
   KEY `posthash` (`posthash`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `attachtypes` (
   `atid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -291,7 +342,7 @@ CREATE TABLE IF NOT EXISTS `attachtypes` (
   `forums` text NOT NULL,
   `avatarfile` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`atid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `auto_vip` (
   `userid` int unsigned NOT NULL DEFAULT '0',
@@ -310,7 +361,7 @@ CREATE TABLE IF NOT EXISTS `awaitingactivation` (
   `validated` tinyint(1) NOT NULL DEFAULT '0',
   `misc` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`aid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `banfilters` (
   `fid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -320,7 +371,7 @@ CREATE TABLE IF NOT EXISTS `banfilters` (
   `dateline` int unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`fid`),
   KEY `type` (`type`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `banned` (
   `uid` int unsigned NOT NULL DEFAULT '0',
@@ -335,7 +386,7 @@ CREATE TABLE IF NOT EXISTS `banned` (
   `reason` varchar(255) NOT NULL DEFAULT '',
   KEY `uid` (`uid`),
   KEY `dateline` (`dateline`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `bookmarks` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -343,7 +394,7 @@ CREATE TABLE IF NOT EXISTS `bookmarks` (
   `torrentid` int unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `userid` (`userid`,`torrentid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `categories` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -355,7 +406,7 @@ CREATE TABLE IF NOT EXISTS `categories` (
   `icon` varchar(100) NOT NULL DEFAULT 'fa-solid fa-question',
   PRIMARY KEY (`id`),
   KEY `type` (`type`,`name`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `cheat_attempts` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -372,7 +423,7 @@ CREATE TABLE IF NOT EXISTS `cheat_attempts` (
   `detail` varchar(512) NOT NULL DEFAULT '',
   `severity` enum('low','medium','high') NOT NULL DEFAULT 'medium',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `comment_files` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -393,7 +444,7 @@ CREATE TABLE IF NOT EXISTS `comment_files` (
   KEY `idx_news_id` (`news_id`),
   KEY `idx_torrent_id` (`torrent_id`),
   KEY `idx_user_id` (`user_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `comments` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -407,7 +458,7 @@ CREATE TABLE IF NOT EXISTS `comments` (
   PRIMARY KEY (`id`),
   KEY `user` (`user`),
   KEY `torrent` (`torrent`,`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `countries` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -415,7 +466,7 @@ CREATE TABLE IF NOT EXISTS `countries` (
   `flagpic` char(25) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   KEY `name` (`name`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `cron` (
   `cronid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -428,7 +479,7 @@ CREATE TABLE IF NOT EXISTS `cron` (
   PRIMARY KEY (`cronid`),
   KEY `nextrun` (`nextrun`),
   KEY `active` (`active`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `cron_log` (
   `filename` char(100) NOT NULL DEFAULT '',
@@ -436,13 +487,13 @@ CREATE TABLE IF NOT EXISTS `cron_log` (
   `executetime` char(10) NOT NULL DEFAULT '0',
   `runtime` int unsigned NOT NULL DEFAULT '0',
   UNIQUE KEY `filename` (`filename`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `datacache` (
   `title` varchar(50) NOT NULL DEFAULT '',
   `cache` mediumtext NOT NULL,
   PRIMARY KEY (`title`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `faq` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -457,7 +508,7 @@ CREATE TABLE IF NOT EXISTS `faq` (
   `views_count` int unsigned DEFAULT '0',
   `icon_class` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `forumpermissions` (
   `pid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -486,7 +537,7 @@ CREATE TABLE IF NOT EXISTS `forumpermissions` (
   `cansearch` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`pid`),
   KEY `fid` (`fid`,`gid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `hit_and_run` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -494,14 +545,14 @@ CREATE TABLE IF NOT EXISTS `hit_and_run` (
   `torrentid` int unsigned NOT NULL DEFAULT '0',
   `added` int unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `inactivity` (
   `userid` int unsigned NOT NULL DEFAULT '0',
   `inactivitytag` int unsigned NOT NULL DEFAULT '0',
   KEY `userid` (`userid`),
   KEY `inactivitytag` (`inactivitytag`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `invites` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -521,7 +572,7 @@ CREATE TABLE IF NOT EXISTS `invites` (
   KEY `inviter_id` (`inviter_id`),
   KEY `status` (`status`),
   KEY `expires_at` (`expires_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `loginattempts` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -532,7 +583,7 @@ CREATE TABLE IF NOT EXISTS `loginattempts` (
   `type` enum('login','recover') NOT NULL DEFAULT 'login',
   PRIMARY KEY (`id`),
   KEY `ip` (`ip`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
 CREATE TABLE IF NOT EXISTS `login_log` (
@@ -565,7 +616,7 @@ CREATE TABLE IF NOT EXISTS `mailerrors` (
   `smtperror` varchar(200) NOT NULL DEFAULT '',
   `smtpcode` smallint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`eid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `maillogs` (
   `mid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -580,7 +631,7 @@ CREATE TABLE IF NOT EXISTS `maillogs` (
   `ipaddress` varbinary(16) NOT NULL DEFAULT '',
   `type` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`mid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `mailqueue` (
   `mid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -590,7 +641,7 @@ CREATE TABLE IF NOT EXISTS `mailqueue` (
   `message` text NOT NULL,
   `headers` text NOT NULL,
   PRIMARY KEY (`mid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `moderatorlog` (
   `uid` int unsigned NOT NULL DEFAULT '0',
@@ -604,7 +655,7 @@ CREATE TABLE IF NOT EXISTS `moderatorlog` (
   KEY `uid` (`uid`),
   KEY `fid` (`fid`),
   KEY `tid` (`tid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `moderators` (
   `mid` smallint unsigned NOT NULL AUTO_INCREMENT,
@@ -636,7 +687,7 @@ CREATE TABLE IF NOT EXISTS `moderators` (
   `canviewmodlog` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`mid`),
   KEY `uid` (`id`,`fid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `news` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -646,7 +697,7 @@ CREATE TABLE IF NOT EXISTS `news` (
   `title` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   KEY `added` (`added`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -687,7 +738,7 @@ CREATE TABLE IF NOT EXISTS `peers` (
   KEY `passkey` (`passkey`),
   KEY `torrent` (`torrent`),
   KEY `peer_id` (`peer_id`,`seeder`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `privatemessages` (
   `pmid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -709,7 +760,7 @@ CREATE TABLE IF NOT EXISTS `privatemessages` (
   PRIMARY KEY (`pmid`),
   KEY `uid` (`uid`,`folder`),
   KEY `toid` (`toid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `reports` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -730,7 +781,7 @@ CREATE TABLE IF NOT EXISTS `reports` (
   PRIMARY KEY (`id`),
   KEY `idx_reported_id` (`reported_id`),
   KEY `idx_dealtwith` (`dealtwith`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `rules` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -747,7 +798,7 @@ CREATE TABLE IF NOT EXISTS `rules` (
   PRIMARY KEY (`id`),
   KEY `category` (`category`),
   KEY `is_active` (`is_active`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `screenshots` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -756,7 +807,7 @@ CREATE TABLE IF NOT EXISTS `screenshots` (
   `uploaded_at` int unsigned NOT NULL DEFAULT '0',
   `sort_order` int NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `searchlog` (
   `sid` varchar(32) NOT NULL DEFAULT '',
@@ -769,7 +820,7 @@ CREATE TABLE IF NOT EXISTS `searchlog` (
   `querycache` text NOT NULL,
   `keywords` text NOT NULL,
   PRIMARY KEY (`sid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `seedbonus_settings` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -782,7 +833,7 @@ CREATE TABLE IF NOT EXISTS `seedbonus_settings` (
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `setting_key` (`setting_key`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `sessions` (
   `sid` varchar(32) NOT NULL DEFAULT '',
@@ -798,14 +849,14 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   PRIMARY KEY (`sid`),
   KEY `time` (`time`),
   KEY `uid` (`uid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `settings` (
   `sid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(120) NOT NULL DEFAULT '',
   `value` text NOT NULL,
   PRIMARY KEY (`sid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `sitelog` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -819,7 +870,7 @@ CREATE TABLE IF NOT EXISTS `sitelog` (
   KEY `uid` (`uid`),
   KEY `category` (`category`),
   KEY `added` (`added`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `smilies` (
   `sid` smallint unsigned NOT NULL AUTO_INCREMENT,
@@ -828,7 +879,7 @@ CREATE TABLE IF NOT EXISTS `smilies` (
   `spath` char(100) NOT NULL DEFAULT '',
   `sorder` smallint unsigned NOT NULL DEFAULT '1',
   PRIMARY KEY (`sid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `snatched` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -856,7 +907,7 @@ CREATE TABLE IF NOT EXISTS `snatched` (
   KEY `torrentid` (`torrentid`),
   KEY `userid` (`userid`),
   KEY `finished` (`finished`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `spiders` (
   `sid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -867,7 +918,7 @@ CREATE TABLE IF NOT EXISTS `spiders` (
   `useragent` varchar(200) NOT NULL DEFAULT '',
   `lastvisit` int unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`sid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `staffmessages` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -880,7 +931,7 @@ CREATE TABLE IF NOT EXISTS `staffmessages` (
   `answer` text,
   PRIMARY KEY (`id`),
   KEY `answered` (`answered`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `staffpanel` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -890,7 +941,7 @@ CREATE TABLE IF NOT EXISTS `staffpanel` (
   `usergroups` char(32) NOT NULL DEFAULT '[8]',
   PRIMARY KEY (`id`),
   KEY `name` (`name`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `stats` (
   `dateline` int unsigned NOT NULL DEFAULT '0',
@@ -904,7 +955,7 @@ CREATE TABLE IF NOT EXISTS `stats` (
   `totaldownloaded` bigint unsigned NOT NULL DEFAULT '0',
   `totaluploaded` bigint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`dateline`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `torrents` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -948,7 +999,7 @@ CREATE TABLE IF NOT EXISTS `torrents` (
   KEY `category` (`category`),
   KEY `owner` (`owner`),
   KEY `visible` (`visible`,`banned`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `torrents_nfo` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -957,7 +1008,7 @@ CREATE TABLE IF NOT EXISTS `torrents_nfo` (
   `uploaded_at` int NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   KEY `torrent_id` (`torrent_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `torrent_ratings` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1016,7 +1067,7 @@ CREATE TABLE IF NOT EXISTS `forums` (
   PRIMARY KEY (`fid`),
   KEY `pid` (`pid`),
   KEY `type` (`type`,`pid`,`disporder`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `forumsread` (
   `fid` int unsigned NOT NULL DEFAULT '0',
@@ -1024,7 +1075,7 @@ CREATE TABLE IF NOT EXISTS `forumsread` (
   `dateline` int unsigned NOT NULL DEFAULT '0',
   UNIQUE KEY `fid` (`fid`,`uid`),
   KEY `dateline` (`dateline`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `forumsubscriptions` (
   `fsid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1032,7 +1083,7 @@ CREATE TABLE IF NOT EXISTS `forumsubscriptions` (
   `uid` int unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`fsid`),
   KEY `uid` (`uid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
 CREATE TABLE IF NOT EXISTS `polls` (
@@ -1051,7 +1102,7 @@ CREATE TABLE IF NOT EXISTS `polls` (
   `maxoptions` smallint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`pid`),
   KEY `tid` (`tid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `pollvotes` (
   `vid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1062,7 +1113,7 @@ CREATE TABLE IF NOT EXISTS `pollvotes` (
   `ipaddress` varbinary(16) NOT NULL DEFAULT '',
   PRIMARY KEY (`vid`),
   KEY `pid` (`pid`,`uid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `posts` (
   `pid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1083,7 +1134,7 @@ CREATE TABLE IF NOT EXISTS `posts` (
   KEY `tid` (`tid`,`uid`),
   KEY `uid` (`uid`),
   KEY `dateline` (`dateline`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `threads` (
   `tid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1116,7 +1167,7 @@ CREATE TABLE IF NOT EXISTS `threads` (
   KEY `lastpost` (`lastpost`,`fid`),
   KEY `uid` (`uid`),
   KEY `deletetime` (`deletetime`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `threadsread` (
   `tid` int unsigned NOT NULL DEFAULT '0',
@@ -1124,7 +1175,7 @@ CREATE TABLE IF NOT EXISTS `threadsread` (
   `dateline` int unsigned NOT NULL DEFAULT '0',
   UNIQUE KEY `tid` (`tid`,`uid`),
   KEY `dateline` (`dateline`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `threadsubscriptions` (
   `sid` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1135,12 +1186,12 @@ CREATE TABLE IF NOT EXISTS `threadsubscriptions` (
   PRIMARY KEY (`sid`),
   KEY `uid` (`uid`),
   KEY `tid` (`tid`,`notification`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `threadviews` (
   `tid` int unsigned NOT NULL DEFAULT '0',
   KEY `tid` (`tid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `unbanrequests` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1151,7 +1202,7 @@ CREATE TABLE IF NOT EXISTS `unbanrequests` (
   `added` int unsigned NOT NULL DEFAULT '0',
   `reply` varchar(150) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `usergroups` (
   `gid` smallint unsigned NOT NULL AUTO_INCREMENT,
@@ -1209,7 +1260,7 @@ CREATE TABLE IF NOT EXISTS `usergroups` (
   `canviewwolinvis` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`gid`),
   KEY `autoinvite` (`autoinvite`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `users` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1303,7 +1354,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   KEY `uploaded` (`uploaded`),
   KEY `added` (`added`),
   KEY `usergroup` (`usergroup`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
 CREATE TABLE IF NOT EXISTS `user_devices` (
@@ -1327,7 +1378,7 @@ CREATE TABLE IF NOT EXISTS `bonus` (
   `art` char(10) NOT NULL DEFAULT 'traffic',
   `menge` bigint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `buddyrequests` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1337,7 +1388,7 @@ CREATE TABLE IF NOT EXISTS `buddyrequests` (
   PRIMARY KEY (`id`),
   KEY `uid` (`uid`),
   KEY `touid` (`touid`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `delayedmoderation` (
   `did` int unsigned NOT NULL AUTO_INCREMENT,
@@ -1349,14 +1400,14 @@ CREATE TABLE IF NOT EXISTS `delayedmoderation` (
   `dateline` int unsigned NOT NULL DEFAULT '0',
   `inputs` text NOT NULL,
   PRIMARY KEY (`did`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `notconnectablepmlog` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `user` int unsigned NOT NULL DEFAULT '0',
   `date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `requests` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1378,7 +1429,7 @@ CREATE TABLE IF NOT EXISTS `requests` (
   KEY `idx_user_id` (`user_id`),
   KEY `idx_category_id` (`category_id`),
   KEY `idx_created_at` (`created_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `request_votes` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1390,7 +1441,7 @@ CREATE TABLE IF NOT EXISTS `request_votes` (
   UNIQUE KEY `idx_unique_vote` (`request_id`,`user_id`),
   KEY `idx_request_id` (`request_id`),
   KEY `idx_user_id` (`user_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `request_comments` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1400,7 +1451,7 @@ CREATE TABLE IF NOT EXISTS `request_comments` (
   `created_at` int UNSIGNED NOT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_request_id` (`request_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `offers` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1420,7 +1471,7 @@ CREATE TABLE IF NOT EXISTS `offers` (
   KEY `idx_user_id` (`user_id`),
   KEY `idx_category_id` (`category_id`),
   KEY `idx_created_at` (`created_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `offer_votes` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1431,7 +1482,7 @@ CREATE TABLE IF NOT EXISTS `offer_votes` (
   UNIQUE KEY `idx_unique_vote` (`offer_id`,`user_id`),
   KEY `idx_offer_id` (`offer_id`),
   KEY `idx_user_id` (`user_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `offer_comments` (
   `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1441,7 +1492,7 @@ CREATE TABLE IF NOT EXISTS `offer_comments` (
   `created_at` int UNSIGNED NOT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_offer_id` (`offer_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 SQL;
 
     // ── Execute CREATE TABLE via DB class ─────────────────────────────────────
@@ -1450,16 +1501,17 @@ SQL;
     foreach ($statements as $sql) {
         if (empty($sql)) continue;
         try {
-            $db->sql_query($sql);
+            $db->sql_query_prepared($sql);
         } catch (Throwable $e) {
-            $err = $e->getMessage();
-            if (!str_contains($err, 'already exists')) {
-                $sql_errors[] = $err;
+            if (!str_contains($e->getMessage(), 'already exists')) {
+                preg_match('/CREATE TABLE IF NOT EXISTS `(\w+)`/', $sql, $m);
+                $table = $m[1] ?? 'unknown table';
+                $sql_errors[] = safe_error("Failed to create table `{$table}`", $e);
             }
         }
     }
     if ($sql_errors) {
-        return array_merge(['SQL errors:'], array_slice($sql_errors, 0, 5));
+        return array_merge(['Database setup failed:'], array_slice($sql_errors, 0, 5));
     }
 
     $now = time();
@@ -1473,18 +1525,16 @@ SQL;
         ['UltraHD', 'fa-solid fa-satellite-dish'],
     ];
     foreach ($cats as $cat) {
-        $db->insert_query(
-            'categories',
-            ['name' => $cat[0], 'icon' => $cat[1], 'type' => 'c', 'minclassread' => 0],
-            true   // IGNORE
+        $db->sql_query_prepared(
+            'INSERT IGNORE INTO categories (name, icon, type, minclassread) VALUES (?, ?, ?, ?)',
+            [$cat[0], $cat[1], 'c', 0]
         );
     }
 
     // ── Default country ─────────────────────────────────────────────────────────
-    $db->insert_query(
-        'countries',
-        ['id' => 1, 'name' => 'Unknown', 'flagpic' => 'unknown.gif'],
-        true
+    $db->sql_query_prepared(
+        'INSERT IGNORE INTO countries (id, name, flagpic) VALUES (?, ?, ?)',
+        [1, 'Unknown', 'unknown.gif']
     );
 	
 	
@@ -1494,25 +1544,33 @@ SQL;
     $loginkey  = generate_loginkey();
     $pass_hash = md5(md5($salt) . md5($admin['password']));
 
-    $admin_id = $db->insert_query('users', [
-        'username'     => $admin['username'],
-        'password'     => $pass_hash,
-        'salt'         => $salt,
-        'loginkey'     => $loginkey,
-        'email'        => $admin['email'],
-        'ustatus'      => 'confirmed',
-        'enabled'      => 'yes',
-        'added'        => $now,
-		'lastactive'   => $now,
-		'lastvisit'    => $now,
-        'usergroup'    => 8,
-        'timezone'     => '0',
-        'ignorelist'   => '',
-        'buddylist'    => '',
-        'pmfolders'    => '0**$%%$1**$%%$2**$%%$3**$%%$4**',
-        'notifs'       => '',
-		'announce_read' => 'no',
-    ]);
+    $db->sql_query_prepared(
+        'INSERT INTO users (
+            username, password, salt, loginkey, email, ustatus, enabled,
+            added, lastactive, lastvisit, usergroup, timezone, ignorelist,
+            buddylist, pmfolders, notifs, announce_read
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+            $admin['username'],
+            $pass_hash,
+            $salt,
+            $loginkey,
+            $admin['email'],
+            'confirmed',
+            'yes',
+            $now,
+            $now,
+            $now,
+            8,
+            '0',
+            '',
+            '',
+            '0**$%%$1**$%%$2**$%%$3**$%%$4**',
+            '',
+            'no',
+        ]
+    );
+    $admin_id = $db->insert_id();
 
     // ── STAFFTEAM ─────────────────────────────────────────────────────────────
     $staffteam_dir  = __DIR__ . '/config';
@@ -1526,25 +1584,33 @@ SQL;
     }
 
     // ── News post and announcement ──────────────────────────────────────────────
-    $db->insert_query('news', [
-        'userid' => $admin_id,
-        'added'  => $now,
-        'body'   => '<p>Welcome to <strong>' . $site['name'] . '</strong>! The tracker is now online.</p>',
-        'title'  => 'Welcome!',
-    ]);
+    $db->sql_query_prepared(
+        'INSERT INTO news (userid, added, body, title) VALUES (?, ?, ?, ?)',
+        [
+            $admin_id,
+            $now,
+            '<p>Welcome to <strong>' . $site['name'] . '</strong>! The tracker is now online.</p>',
+            'Welcome!',
+        ]
+    );
 
 
-    $db->insert_query('announcements', [
-    'subject'      => 'Welcome to ' . $site['name'],
-    'message'      => '<p>The tracker is now online and ready to use!</p>',
-    'uid'          => $admin_id,   // ← correct field
-    'added'        => $now,
-    'updated'      => $now,
-    'startdate'    => $now,
-    'enddate'      => 0,
-    'minclassread' => 0,
-    'type'         => 'tracker',
-    ]);
+    $db->sql_query_prepared(
+        'INSERT INTO announcements (
+            subject, message, uid, added, updated, startdate, enddate, minclassread, type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+            'Welcome to ' . $site['name'],
+            '<p>The tracker is now online and ready to use!</p>',
+            $admin_id,
+            $now,
+            $now,
+            $now,
+            0,
+            0,
+            'tracker',
+        ]
+    );
 	
 	
 
@@ -1565,11 +1631,10 @@ SQL;
     $config_php  = "<?php\n";
     $config_php .= "  \$config['database']['type'] = '" . addslashes($db_cfg['type'] ?? 'mysqli') . "';\n";
     $config_php .= "  \$config['database']['database'] = '" . addslashes($db_cfg['database']) . "';\n";
-    $config_php .= "  \$config['database']['table_prefix'] = '';\n";
     $config_php .= "  \$config['database']['hostname'] = '" . addslashes($db_cfg['hostname']) . "';\n";
     $config_php .= "  \$config['database']['username'] = '" . addslashes($db_cfg['username']) . "';\n";
     $config_php .= "  \$config['database']['password'] = '" . addslashes($db_cfg['password']) . "';\n";
-    $config_php .= "  \$config['database']['encoding'] = 'utf8';\n";
+    $config_php .= "  \$config['database']['encoding'] = 'utf8mb4';\n";
     $config_php .= "  \$config['cache_store'] = 'files';\n";
     $config_php .= "  \$config['super_admins'] = '{$admin_id}';\n";
     $config_php .= "  \$config['log_pruning'] = array(\n";
@@ -1606,23 +1671,37 @@ SQL;
         '{{DB_PASS}}'      => $db_cfg['password'],
         '{{DB_NAME}}'      => $db_cfg['database'],
     ];
-    // Escape values for SQL strings (single quotes)
-    foreach ($placeholders as $key => $val) {
-        $settings_sql = str_replace($key, $db->escape_string($val), $settings_sql);
-    }
 
-    // Execute as a single query
+    // Заменяем каждое '{{KEY}}' (в кавычках, как строковый литерал SQL) на
+    // позиционный ? и одновременно копим значения в $settings_params в том
+    // же порядке, в каком плейсхолдеры встречаются в файле слева направо -
+    // ? в MySQL строго позиционные, поэтому порядок критичен. Кавычки вокруг
+    // токена убираются вместе с ним - bind_param() сам возьмёт на себя
+    // экранирование и кавычки при выполнении, ручной escape_string() больше
+    // не нужен.
+    $settings_params = [];
+    $settings_sql = preg_replace_callback(
+        "/'\{\{(\w+)\}\}'/",
+        function (array $m) use ($placeholders, &$settings_params): string {
+            $key = '{{' . $m[1] . '}}';
+            $settings_params[] = $placeholders[$key] ?? '';
+            return '?';
+        },
+        $settings_sql
+    );
+
+    // Execute as a single prepared query
     try {
-        $db->sql_query($settings_sql);
+        $db->sql_query_prepared($settings_sql, $settings_params);
     } catch (Throwable $e) {
-        return ['Failed to insert default settings: ' . $e->getMessage()];
+        return [safe_error('Failed to insert default settings', $e)];
     }
 
     // ── Generate settings.php from the DB table ──────────────────────────────
     // Format: $VARNAME = "value"; — this is exactly how the tracker reads it (global.php, my_setcookie, etc.)
     // Single source of truth: the DB is primary, the file is its cache.
     $settings_out = '';
-    $q = $db->simple_select('settings', 'name, value');
+    $q = $db->sql_query_prepared('SELECT name, value FROM settings');
     while ($row = $db->fetch_array($q)) {
         $n = $row['name'];                        // variable name — as-is
         $v = addcslashes($row['value'], '\\"$'); // escape \, " and $ in the value
@@ -1679,9 +1758,9 @@ SQL;
             $sql = trim(implode("\n", $lines));
             if (!preg_match('/^INSERT/i', $sql)) continue;
             try {
-                $db->sql_query(rtrim($sql, ';'));
+                $db->sql_query_prepared(rtrim($sql, ';'));
             } catch (Throwable $e) {
-                $errors_out[] = 'install_data.sql: ' . $e->getMessage();
+                $errors_out[] = safe_error('install_data.sql: insert failed', $e);
             }
         }
     } else {
@@ -1695,9 +1774,9 @@ SQL;
         foreach (array_filter(array_map('trim', explode("\n", $faq_sql))) as $sql) {
             if (stripos($sql, 'INSERT') !== 0) continue;
             try {
-                $db->sql_query(rtrim($sql, ';'));
+                $db->sql_query_prepared(rtrim($sql, ';'));
             } catch (Throwable $e) {
-                $errors_out[] = 'faq.sql: ' . $e->getMessage();
+                $errors_out[] = safe_error('faq.sql: insert failed', $e);
             }
         }
     } else {
@@ -1711,9 +1790,9 @@ SQL;
         foreach (array_filter(array_map('trim', explode("\n", $usergroups_sql))) as $sql) {
             if (stripos($sql, 'INSERT') !== 0) continue;
             try {
-                $db->sql_query(rtrim($sql, ';'));
+                $db->sql_query_prepared(rtrim($sql, ';'));
             } catch (Throwable $e) {
-                $errors_out[] = 'group.sql: ' . $e->getMessage();
+                $errors_out[] = safe_error('group.sql: insert failed', $e);
             }
         }
     } else {
@@ -1846,7 +1925,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
 
             <?php elseif ($step === 2): ?>
             <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-database fa-2x me-3"></i><h5 class="mb-0">Database Configuration</h5></div><p class="text-muted small mb-0">Connects via your DB class (db_base.php + driver).</p></div>
-            <form method="post" action="install.php?step=2">
+            <form method="post" action="install.php?step=2"><?= csrf_field() ?>
                 <input type="hidden" name="db_type" value="mysqli">
                 <div class="row g-3">
                     <div class="col-md-6">
@@ -1871,7 +1950,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
 
             <?php elseif ($step === 3): ?>
             <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-globe fa-2x me-3"></i><h5 class="mb-0">Site Configuration</h5></div><p class="text-muted small mb-0">Basic tracker settings.</p></div>
-            <form method="post" action="install.php?step=3">
+            <form method="post" action="install.php?step=3"><?= csrf_field() ?>
                 <div class="row g-3">
                     <div class="col-12">
                         <label class="form-label fw-semibold"><i class="fas fa-tag me-1"></i>Site Name</label>
@@ -1915,7 +1994,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
 
             <?php elseif ($step === 4): ?>
             <div class="info-card"><div class="d-flex align-items-center mb-3"><i class="fas fa-user-shield fa-2x me-3"></i><h5 class="mb-0">Administrator Account</h5></div><p class="text-muted small mb-0">Master admin for your tracker.</p></div>
-            <form method="post" action="install.php?step=4">
+            <form method="post" action="install.php?step=4"><?= csrf_field() ?>
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label fw-semibold"><i class="fas fa-user me-1"></i>Username</label>
@@ -1952,7 +2031,7 @@ foreach ($reqs as $r) { if (!$r[1]) { $allOk = false; break; } }
                 <i class="fas fa-exclamation-triangle me-2"></i>
                 <strong>Warning:</strong> This will create all database tables and config files. Cannot be undone.
             </div>
-            <form method="post" action="install.php?step=5">
+            <form method="post" action="install.php?step=5"><?= csrf_field() ?>
                 <button type="submit" class="btn btn-success w-100 btn-lg"><i class="fas fa-download me-2"></i>Install Mybb Based Torrent Tracker Now!</button>
             </form>
 

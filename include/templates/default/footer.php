@@ -5,6 +5,8 @@ declare(strict_types=1);
 
 if(!defined('IN_TRACKER')) die('Hacking attempt!');
 
+global $cache;
+
 
 
 $QueryForm = '';
@@ -54,6 +56,7 @@ if (isset($GLOBALS['ts_start_time'])) {
     $GLOBALS['totaltime'] = round(microtime(true) - $GLOBALS['ts_start_time'], 4);
 }
 
+
 // SQL Analysis Form (Admin only)
 if (($usergroups['cansettingspanel'] ?? 0) == 1) {
     // CSRF protection
@@ -91,12 +94,32 @@ if (($usergroups['cansettingspanel'] ?? 0) == 1) {
         $totalTimeInput = '<input type="hidden" name="totaltime" value="' . $GLOBALS['totaltime'] . '" />';
     }
 
+    // Collect cache calls for the same "Advanced Details" screen - тем же
+    // паттерном, что SQL-запросы выше. Данные копятся всегда в
+    // timedHandlerCall(), независимо от debug_mode, поэтому доступны на
+    // каждой странице для стаффа.
+    $cacheCallsInputs = '';
+    if (isset($cache->calllist) && is_array($cache->calllist)) {
+        foreach ($cache->calllist as $c) {
+            $payload = base64_encode(
+                sprintf('%.4F', $c['time'] ?? 0.0) . ',' .
+                (!empty($c['hit']) ? '1' : '0') . ',' .
+                base64_encode((string)($c['verb'] ?? '')) . ',' .
+                base64_encode((string)($c['key'] ?? ''))
+            );
+
+            $cacheCallsInputs .= '<input type="hidden" name="cache_calls[]" value="' .
+                htmlspecialchars($payload, ENT_QUOTES, 'UTF-8') . '">';
+        }
+    }
+
     $QueryForm = '
 <form method="post" action="' . $BASEURL . '/admin/query_explain.php" name="ts_queries" id="ts_queries">
   ' . $totalTimeInput . '
   ' . $csrfField . '
   <input type="hidden" name="deep" id="deep_input" value="0">
   ' . $queriesInputs . '
+  ' . $cacheCallsInputs . '
 </form>';
 }
 
@@ -140,7 +163,7 @@ if (($usergroups['cansettingspanel'] ?? 0) == 1 && !defined('SKIP_SHOW_QUERIES')
 }
 
 $cron_code = '';
-if (!defined('SKIP_CRON_JOBS') && isset($GLOBALS['ts_cron_image'])) {
+if (!defined('SKIP_CRON_JOBS') && isset($GLOBALS['cron_image'])) {
     $cron_code = '
 <!-- TS Auto Cronjobs code -->
     <img src="' . $BASEURL . '/cron.php?rand=' . TIMENOW . '" alt="" width="1" height="1" border="0">

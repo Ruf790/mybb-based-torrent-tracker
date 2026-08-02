@@ -217,7 +217,7 @@ echo '<br><br>';
 
 // Get user seeding/leeching information
 $uid = (int)($CURUSER['id'] ?? 0);
-$q = $db->sql_query("SELECT SUM(seeder='yes') AS seeding, SUM(seeder='no') AS leeching FROM peers WHERE userid={$uid}");
+$q = $db->sql_query_prepared("SELECT SUM(seeder='yes') AS seeding, SUM(seeder='no') AS leeching FROM peers WHERE userid = ?", [$uid]);
 $pr = $db->fetch_array($q);
 $seedtorrentscount     = (int)($pr['seeding']  ?? 0);
 $leechingtorrentscount = (int)($pr['leeching'] ?? 0);
@@ -897,12 +897,12 @@ if ((isset($CURUSER) && ($CURUSER['id'] ?? 0) > 0 && ($CURUSER['downloaded'] ?? 
 // Announcements
 if (isset($CURUSER) && ($CURUSER['announce_read'] ?? '') === 'no') 
 {
-   $res = $db->sql_query('SELECT a.id, a.subject, a.message, a.added, COALESCE(u.username, \'Admin\') AS `by`
+   $res = $db->sql_query_prepared("SELECT a.id, a.subject, a.message, a.added, COALESCE(u.username, 'Admin') AS `by`
     FROM announcements a
     LEFT JOIN users u ON u.id = a.uid
-    WHERE a.type = \'tracker\'
-      AND a.minclassread IN (0,' . (int)($CURUSER['usergroup'] ?? 0) . ')
-    ORDER BY a.added DESC LIMIT 1');
+    WHERE a.type = 'tracker'
+      AND a.minclassread IN (0, ?)
+    ORDER BY a.added DESC LIMIT 1", [(int)($CURUSER['usergroup'] ?? 0)]);
 	
     if ($db->num_rows($res) > 0) 
 	{
@@ -1005,14 +1005,14 @@ $current_page = my_strtolower(basename(SCRIPTNAME ?? ''));
 $pm_notice = '';
 
 if (isset($CURUSER['pmnotice']) && (int)($CURUSER['pmnotice'] ?? 0) === 2 && ($CURUSER['pms_unread'] ?? 0) > 0 && ($current_page !== "private.php" || ($mybb->get_input('action') ?? '') !== "read")) {
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT pm.subject, pm.pmid, fu.username AS fromusername, fu.id AS fromuid
         FROM privatemessages pm
         LEFT JOIN users fu on (fu.id=pm.fromid)
-        WHERE pm.folder = '1' AND pm.uid = '" . (int)($CURUSER['id'] ?? 0) . "' AND pm.status = '0'
+        WHERE pm.folder = '1' AND pm.uid = ? AND pm.status = '0'
         ORDER BY pm.dateline DESC
         LIMIT 1
-    ");
+    ", [(int)($CURUSER['id'] ?? 0)]);
 
     $pm = $db->fetch_array($query);
     $pm['subject'] = htmlspecialchars_uni($pm['subject'] ?? '');

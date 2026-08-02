@@ -173,7 +173,7 @@ class BanManager
                 die('Invalid security token');
             }
 
-            $this->db->delete_query('banfilters', "fid='{$filter['fid']}'");
+            $this->db->sql_query_prepared("DELETE FROM banfilters WHERE fid = ?", [$filter['fid']]);
             $this->plugins->run_hooks('admin_config_banning_delete_commit');
             $this->updateCaches((int)$filter['type']);
             log_admin_action((int)$filter['fid'], $filter['filter'], (int)$filter['type']);
@@ -217,18 +217,17 @@ class BanManager
 
     private function isDuplicateFilter(string $filter, int $type): bool
     {
-        $q = $this->db->simple_select('banfilters', 'fid', "filter='" . $this->db->escape_string($filter) . "' AND type='{$type}'");
-        return $this->db->num_rows($q) > 0;
+        $q = $this->db->sql_query_prepared("SELECT fid FROM banfilters WHERE filter = ? AND type = ?", [$filter, $type]);
+        return $q ? $this->db->num_rows($q) > 0 : false;
     }
 
     private function addBanFilter(string $filter, int $type): void
     {
-        $fid = $this->db->insert_query('banfilters', [
-            'filter'   => $this->db->escape_string(trim($filter)),
-            'type'     => $type,
-            'dateline' => TIMENOW,
-            'lastuse'  => 0,
-        ]);
+        $this->db->sql_query_prepared(
+            "INSERT INTO banfilters (`filter`,`type`,`dateline`,`lastuse`) VALUES (?,?,?,?)",
+            [trim($filter), $type, TIMENOW, 0]
+        );
+        $fid = $this->db->insert_id();
         $this->plugins->run_hooks('admin_config_banning_add_commit');
         $this->updateCaches($type);
         log_admin_action((int)$fid, $filter, $type);
@@ -245,8 +244,8 @@ class BanManager
 
     private function getFilterById(int $fid): ?array
     {
-        $q   = $this->db->simple_select('banfilters', '*', "fid='{$fid}'");
-        $row = $this->db->fetch_array($q);
+        $q   = $this->db->sql_query_prepared("SELECT * FROM banfilters WHERE fid = ?", [$fid]);
+        $row = $q ? $this->db->fetch_array($q) : null;
         if (!$row) return null;
         $row['fid']      = (int)$row['fid'];
         $row['type']     = (int)$row['type'];
@@ -307,12 +306,16 @@ class BanManager
 
     private function outputBanList(array $tc): void
     {
-        $total   = (int)$this->db->fetch_field($this->db->simple_select('banfilters', 'COUNT(fid) AS c', "type='{$tc['type']}'"), 'c');
+        $total_q = $this->db->sql_query_prepared("SELECT COUNT(fid) AS c FROM banfilters WHERE type = ?", [$tc['type']]);
+        $total   = $total_q ? (int)$this->db->fetch_field($total_q, 'c') : 0;
         $page    = max(1, $this->mybb->get_input('page', MyBB::INPUT_INT));
         $start   = ($page - 1) * 20;
-        $q       = $this->db->simple_select('banfilters', '*', "type='{$tc['type']}'", ['limit_start' => $start, 'limit' => 20, 'order_by' => 'dateline', 'order_dir' => 'desc']);
+        $q       = $this->db->sql_query_prepared(
+            "SELECT * FROM banfilters WHERE type = ? ORDER BY dateline DESC LIMIT ?, ?",
+            [$tc['type'], $start, 20]
+        );
         $filters = [];
-        while ($f = $this->db->fetch_array($q)) {
+        while ($q && ($f = $this->db->fetch_array($q))) {
             $f['fid'] = (int)$f['fid']; $f['type'] = (int)$f['type'];
             $f['dateline'] = (int)$f['dateline']; $f['lastuse'] = (int)$f['lastuse'];
             $filters[] = $f;
@@ -450,16 +453,14 @@ class BannedAccountsManager
             exit;
         }
 
-        $like = $this->db->escape_string_like($term);
-        $q = $this->db->simple_select(
-            'users',
-            'id, username',
-            "username LIKE '%{$like}%'",
-            ['limit' => 10, 'order_by' => 'username', 'order_dir' => 'asc']
+        $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
+        $q = $this->db->sql_query_prepared(
+            "SELECT id, username FROM users WHERE username LIKE ? ORDER BY username ASC LIMIT 10",
+            ['%' . $like . '%']
         );
 
         $results = [];
-        while ($row = $this->db->fetch_array($q)) {
+        while ($q && ($row = $this->db->fetch_array($q))) {
             $results[] = ['id' => (int)$row['id'], 'username' => $row['username']];
         }
 
@@ -496,10 +497,10 @@ class BannedAccountsManager
 
             require_once INC_PATH . '/class_moderation.php';
             $mod = new Moderation();
-            $q   = $this->db->simple_select('threads', 'tid', "uid='{$user['id']}'");
-            while ($r = $this->db->fetch_array($q)) $mod->delete_thread($r['tid']);
-            $q = $this->db->simple_select('posts', 'pid', "uid='{$user['id']}'");
-            while ($r = $this->db->fetch_array($q)) $mod->delete_post($r['pid']);
+            $q   = $this->db->sql_query_prepared("SELECT tid FROM threads WHERE uid = ?", [$user['id']]);
+            while ($q && ($r = $this->db->fetch_array($q))) $mod->delete_thread($r['tid']);
+            $q = $this->db->sql_query_prepared("SELECT pid FROM posts WHERE uid = ?", [$user['id']]);
+            while ($q && ($r = $this->db->fetch_array($q))) $mod->delete_post($r['pid']);
             $this->plugins->run_hooks('admin_user_banning_prune_commit');
             $this->cache->update_reportedcontent();
             log_admin_action((int)$user['id'], $user['username']);
@@ -542,12 +543,11 @@ class BannedAccountsManager
                 die('Invalid security token');
             }
 
-            $this->db->delete_query('banned', "uid='{$ban['uid']}'");
-            $this->db->update_query('users', [
-                'usergroup'        => $ban['oldgroup'],
-                'additionalgroups' => $this->db->escape_string($ban['oldadditionalgroups']),
-                'displaygroup'     => $ban['olddisplaygroup'],
-            ], "id='{$ban['uid']}'");
+            $this->db->sql_query_prepared("DELETE FROM banned WHERE uid = ?", [$ban['uid']]);
+            $this->db->sql_query_prepared(
+                "UPDATE users SET usergroup = ?, additionalgroups = ?, displaygroup = ? WHERE id = ?",
+                [$ban['oldgroup'], $ban['oldadditionalgroups'], $ban['olddisplaygroup'], $ban['uid']]
+            );
             $this->plugins->run_hooks('admin_user_banning_lift_commit');
             log_admin_action($ban['uid'], $user['username']);
             flash_message('Ban lifted successfully', 'success');
@@ -597,19 +597,22 @@ class BannedAccountsManager
 
                 if (count($bannedGroups) === 1) $this->mybb->input['usergroup'] = array_key_first($bannedGroups);
 
-                $this->db->update_query('banned', [
-                    'gid'      => $this->mybb->get_input('usergroup', MyBB::INPUT_INT),
-                    'dateline' => TIMENOW,
-                    'bantime'  => $this->db->escape_string($bantime),
-                    'lifted'   => $this->db->escape_string($lifted),
-                    'reason'   => $this->db->escape_string($reason),
-                ], "uid='{$ban['uid']}'");
+                $this->db->sql_query_prepared(
+                    "UPDATE banned SET gid = ?, dateline = ?, bantime = ?, lifted = ?, reason = ? WHERE uid = ?",
+                    [
+                        $this->mybb->get_input('usergroup', MyBB::INPUT_INT),
+                        TIMENOW,
+                        $bantime,
+                        $lifted,
+                        $reason,
+                        $ban['uid'],
+                    ]
+                );
 
-                $this->db->update_query('users', [
-                    'usergroup'        => $this->mybb->get_input('usergroup', MyBB::INPUT_INT),
-                    'displaygroup'     => 0,
-                    'additionalgroups' => '',
-                ], "id='{$ban['uid']}'");
+                $this->db->sql_query_prepared(
+                    "UPDATE users SET usergroup = ?, displaygroup = 0, additionalgroups = '' WHERE id = ?",
+                    [$this->mybb->get_input('usergroup', MyBB::INPUT_INT), $ban['uid']]
+                );
 
                 $this->plugins->run_hooks('admin_user_banning_edit_commit');
                 log_admin_action($ban['uid'], $user['username']);
@@ -644,8 +647,8 @@ class BannedAccountsManager
 
     private function getBanByUserId(int $uid): ?array
     {
-        $q   = $this->db->simple_select('banned', '*', "uid='{$uid}'");
-        $row = $this->db->fetch_array($q);
+        $q   = $this->db->sql_query_prepared("SELECT * FROM banned WHERE uid = ?", [$uid]);
+        $row = $q ? $this->db->fetch_array($q) : null;
         if (!$row) return null;
         foreach (['uid','gid','oldgroup','olddisplaygroup','admin','dateline','lifted'] as $k) {
             $row[$k] = (int)$row[$k];
@@ -667,9 +670,9 @@ class BannedAccountsManager
 
     private function getBannedGroups(): array
     {
-        $q = $this->db->simple_select('usergroups', 'gid,title', 'isbannedgroup=1', ['order_by' => 'title']);
+        $q = $this->db->sql_query_prepared("SELECT gid,title FROM usergroups WHERE isbannedgroup=1 ORDER BY title");
         $g = [];
-        while ($r = $this->db->fetch_array($q)) $g[(int)$r['gid']] = $r['title'];
+        while ($q && ($r = $this->db->fetch_array($q))) $g[(int)$r['gid']] = $r['title'];
         return $g;
     }
 
@@ -697,22 +700,28 @@ class BannedAccountsManager
 
             if (count($bannedGroups) === 1) $this->mybb->input['usergroup'] = array_key_first($bannedGroups);
 
-            $this->db->insert_query('banned', [
-                'uid'                 => $uid,
-                'gid'                 => $this->mybb->get_input('usergroup', MyBB::INPUT_INT),
-                'oldgroup'            => (int)$user['usergroup'],
-                'oldadditionalgroups' => $this->db->escape_string($user['additionalgroups']),
-                'olddisplaygroup'     => (int)$user['displaygroup'],
-                'admin'               => $this->getCurrentUserId(),
-                'dateline'            => TIMENOW,
-                'bantime'             => $this->db->escape_string($bantime),
-                'lifted'              => $this->db->escape_string($lifted),
-                'reason'              => $this->db->escape_string($reason),
-            ]);
+            $this->db->sql_query_prepared(
+                "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [
+                    $uid,
+                    $this->mybb->get_input('usergroup', MyBB::INPUT_INT),
+                    (int)$user['usergroup'],
+                    $user['additionalgroups'],
+                    (int)$user['displaygroup'],
+                    $this->getCurrentUserId(),
+                    TIMENOW,
+                    $bantime,
+                    $lifted,
+                    $reason,
+                ]
+            );
 
-            $this->db->update_query('users', ['usergroup' => $this->mybb->get_input('usergroup', MyBB::INPUT_INT), 'displaygroup' => 0, 'additionalgroups' => ''], "id='{$uid}'");
-            $this->db->delete_query('forumsubscriptions',  "uid='{$uid}'");
-            $this->db->delete_query('threadsubscriptions', "uid='{$uid}'");
+            $this->db->sql_query_prepared(
+                "UPDATE users SET usergroup = ?, displaygroup = 0, additionalgroups = '' WHERE id = ?",
+                [$this->mybb->get_input('usergroup', MyBB::INPUT_INT), $uid]
+            );
+            $this->db->sql_query_prepared("DELETE FROM forumsubscriptions WHERE uid = ?", [$uid]);
+            $this->db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE uid = ?", [$uid]);
 
             $this->plugins->run_hooks('admin_user_banning_start_commit');
             log_admin_action($uid, $user['username'], $lifted);
@@ -725,8 +734,8 @@ class BannedAccountsManager
 
     private function isUserAlreadyBanned(int $uid): bool
     {
-        $q = $this->db->simple_select('banned', 'uid', "uid='{$uid}'");
-        if ($this->db->fetch_field($q, 'uid')) return true;
+        $q = $this->db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ?", [$uid]);
+        if ($q && $this->db->fetch_field($q, 'uid')) return true;
         $usergroups = $this->cache->read('usergroups');
         $user       = get_user($uid);
         return !empty($usergroups[(int)($user['usergroup'] ?? 0)]['isbannedgroup']);
@@ -906,13 +915,16 @@ class BannedAccountsManager
 
         $username  = $this->mybb->get_input('username');
         $userWhere = '';
+        $userWhereParams = [];
 
         if ($this->mybb->request_method === 'post' && isset($this->mybb->input['search']) && $username) {
             $user = get_user_by_username($username);
-            if ($user) $userWhere = "b.uid='" . (int)$user['id'] . "'";
+            if ($user) { $userWhere = "b.uid = ?"; $userWhereParams = [(int)$user['id']]; }
         }
 
-        $row      = $this->db->fetch_array($this->db->simple_select('banned', 'COUNT(*) AS cnt', $userWhere));
+        $count_sql = $userWhere ? "SELECT COUNT(*) AS cnt FROM banned b WHERE {$userWhere}" : "SELECT COUNT(*) AS cnt FROM banned";
+        $count_q   = $this->db->sql_query_prepared($count_sql, $userWhereParams);
+        $row      = $count_q ? $this->db->fetch_array($count_q) : null;
         $banCount = (int)($row['cnt'] ?? 0);
         $perPage  = 20;
         $page     = max(1, $this->mybb->get_input('page', MyBB::INPUT_INT));
@@ -948,16 +960,16 @@ class BannedAccountsManager
                   <tbody>
                   <?php
                   $where = $userWhere ? "WHERE {$userWhere}" : '';
-                  $q = $this->db->sql_query("
+                  $q = $this->db->sql_query_prepared("
                       SELECT b.*, a.username AS adminuser, u.username
                       FROM banned b
                       LEFT JOIN users u ON b.uid   = u.id
                       LEFT JOIN users a ON b.admin = a.id
                       {$where}
                       ORDER BY b.dateline DESC
-                      LIMIT {$start}, {$perPage}
-                  ");
-                  while ($ban = $this->db->fetch_array($q)):
+                      LIMIT ?, ?
+                  ", [...$userWhereParams, $start, $perPage]);
+                  while ($q && ($ban = $this->db->fetch_array($q))):
                       $ban['uid']      = (int)$ban['uid'];
                       $ban['dateline'] = (int)$ban['dateline'];
                       $ban['lifted']   = (int)$ban['lifted'];

@@ -330,7 +330,7 @@ class ServerInfoDisplay {
         foreach ($variables as $name => $value) {
             echo '<tr>
                 <td><code>' . htmlspecialchars($name) . '</code></td>
-                <td><span class="badge metric-badge">' . htmlspecialchars($value) . '</span></td>
+                <td><span class="badge metric-badge">' . htmlspecialchars((string)$value) . '</span></td>
                 <td><small class="text-muted">' . $this->getMysqlVarDescription($name) . '</small></td>
             </tr>';
         }
@@ -377,16 +377,16 @@ document.addEventListener(\'DOMContentLoaded\', function() {
     }
 
     private function getSqlVersion(): string {
-        $result = $this->db->sql_query('SELECT VERSION() as version');
-        $row = mysqli_fetch_assoc($result);
+        $result = $this->db->sql_query_prepared('SELECT VERSION() as version');
+        $row = $this->db->fetch_array($result);
         return $row['version'] ?? 'Unknown';
     }
 
     private function getDatabaseUsage(string $column): int {
         $usage = 0;
-        $result = $this->db->sql_query("SHOW TABLE STATUS FROM `{$this->config['database']['database']}`");
+        $result = $this->db->sql_query_prepared("SHOW TABLE STATUS FROM `{$this->config['database']['database']}`");
         
-        while ($row = mysqli_fetch_assoc($result)) {
+        while ($row = $this->db->fetch_array($result)) {
             $usage += (int)($row[$column] ?? 0);
         }
         
@@ -394,16 +394,22 @@ document.addEventListener(\'DOMContentLoaded\', function() {
     }
 
     private function getMysqlVariable(string $variable): string {
-        $result = $this->db->sql_query("SHOW VARIABLES LIKE '{$variable}'");
-        $row = mysqli_fetch_assoc($result);
-        return $row['Value'] ?? 'N/A';
+        // MySQL не позволяет плейсхолдер в LIKE-паттерне для SHOW VARIABLES/
+        // SHOW STATUS через PREPARE-протокол ("...syntax ... near '?'"),
+        // поэтому sql_query_prepared() тут не годится. $variable во всех
+        // вызовах - захардкоженный литерал (не пользовательский ввод), но
+        // на всякий случай пропускаем через escape_string().
+        $safeVariable = $this->db->escape_string($variable);
+        $result = $this->db->sql_query("SHOW VARIABLES LIKE '{$safeVariable}'");
+        $row = $this->db->fetch_array($result);
+        return (string)($row['Value'] ?? 'N/A');
     }
 
     private function getMysqlVariables(): array {
         $variables = [];
-        $result = $this->db->sql_query('SHOW VARIABLES');
+        $result = $this->db->sql_query_prepared('SHOW VARIABLES');
         
-        while ($row = mysqli_fetch_assoc($result)) {
+        while ($row = $this->db->fetch_array($result)) {
             $variables[$row['Variable_name']] = $row['Value'];
         }
         

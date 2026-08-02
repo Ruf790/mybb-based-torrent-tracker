@@ -5,6 +5,14 @@
 
 declare(strict_types=1);
 
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger">Error! Direct initialization of this file is not allowed.</div>');
+}
+
+if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+    http_response_code(403);
+    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
+}
 
 require_once INC_PATH . '/functions_multipage.php';
 
@@ -51,12 +59,28 @@ function generate_yes_no_radio(string $name, $value = "1", bool $int = true, arr
     $yes_options['checked'] = $is_no ? 0 : 1;
     $no_options['checked']  = $is_no ? 1 : 0;
 
-    $yes_value = $int ? 1 : "yes";
-    $no_value  = $int ? 0 : "no";
+    $yes_value = $int ? "1" : "yes";
+    $no_value  = $int ? "0" : "no";
 
     return generate_radio_button($name, $yes_value, 'yes', $yes_options)
          . ' '
          . generate_radio_button($name, $no_value,  'no',  $no_options);
+}
+
+function generate_yes_no_switch(string $name, $value = "1", array $options = []): string
+{
+    $is_no   = $value === "no" || $value === '0' || $value === 0 || $value === false;
+    $checked = $is_no ? '' : 'checked';
+    $id      = $options['id'] ?? $name;
+    $class   = trim('form-check-input ' . ($options['class'] ?? ''));
+
+    return <<<HTML
+<input type="hidden" name="{$name}" value="0" />
+<div class="form-check form-switch mb-0">
+    <input type="checkbox" class="{$class}" role="switch" id="{$id}" name="{$name}" value="1" {$checked}
+           style="width:2.75em;height:1.5em;cursor:pointer;">
+</div>
+HTML;
 }
 
 function generate_group_select(string $name, $selected = [], array $options = []): string
@@ -245,9 +269,9 @@ function render_attachment_form_fields(
             . generate_text_box('icon', $data['icon'] ?? 'pic/attachtypes/', ['id' => 'icon', 'style' => 'width:400px;'])
             . '</div>';
 
-    $enabled_f    = generate_yes_no_radio('enabled',      $data['enabled']      ?? 1);
-    $download_f   = generate_yes_no_radio('forcedownload',$data['forcedownload'] ?? 0);
-    $avatar_f     = generate_yes_no_radio('avatarfile',   $data['avatarfile']   ?? 0);
+    $enabled_f    = generate_yes_no_switch('enabled',       $data['enabled']       ?? 1, ['id' => 'enabled']);
+    $download_f   = generate_yes_no_switch('forcedownload', $data['forcedownload'] ?? 0, ['id' => 'forcedownload']);
+    $avatar_f     = generate_yes_no_switch('avatarfile',    $data['avatarfile']    ?? 0, ['id' => 'avatarfile']);
 
     $groups_val     = $data['groups'] ?? '';
     $selected_grps  = ($groups_val !== '' && $groups_val != -1) ? explode(',', $groups_val) : [];
@@ -294,11 +318,11 @@ HTML;
                     {$icon_f}
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Enabled?</label>
+                    <label for="enabled" class="form-label">Enabled?</label>
                     <div class="form_row">{$enabled_f}</div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Force Download</label>
+                    <label for="forcedownload" class="form-label">Force Download</label>
                     <div class="description">Force file download</div>
                     <div class="form_row">{$download_f}</div>
                 </div>
@@ -311,7 +335,7 @@ HTML;
                     {$forums_sel}
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Avatar File</label>
+                    <label for="avatarfile" class="form-label">Avatar File</label>
                     <div class="description">Allow for avatars?</div>
                     <div class="form_row">{$avatar_f}</div>
                 </div>
@@ -391,9 +415,20 @@ function handle_add_action(): void
     $plugins->run_hooks("admin_config_attachment_types_add");
 
     if ($mybb->request_method === "post") {
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            die('Invalid security token');
+        }
+
         $errors = validate_attachment_type_input($mybb->input);
         if (empty($errors)) {
-            $db->insert_query("attachtypes", prepare_attachment_type_data($mybb->input));
+            $data         = prepare_attachment_type_data($mybb->input);
+            $columns      = array_keys($data);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO attachtypes (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($data)
+            );
             $plugins->run_hooks("admin_config_attachment_types_add_commit");
             $cache->update_attachtypes();
             flash_message('success_attachment_type_created', 'success');
@@ -409,7 +444,8 @@ function handle_edit_action(): void
     global $mybb, $db, $plugins, $cache;
 
     $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
-    $type = $db->fetch_array($db->simple_select("attachtypes", "*", "atid='{$atid}'"));
+    $tq   = $db->sql_query_prepared("SELECT * FROM attachtypes WHERE atid = ?", [$atid]);
+    $type = $tq ? $db->fetch_array($tq) : null;
 
     if (!($type['atid'] ?? null)) {
         flash_message('error_invalid_attachment_type', 'error');
@@ -419,9 +455,18 @@ function handle_edit_action(): void
     $plugins->run_hooks("admin_config_attachment_types_edit");
 
     if ($mybb->request_method === "post") {
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            die('Invalid security token');
+        }
+
         $errors = validate_attachment_type_input($mybb->input);
         if (empty($errors)) {
-            $db->update_query("attachtypes", prepare_attachment_type_data($mybb->input), "atid='{$atid}'");
+            $data   = prepare_attachment_type_data($mybb->input);
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($data)));
+            $params = array_values($data);
+            $params[] = $atid;
+            $db->sql_query_prepared("UPDATE attachtypes SET {$set} WHERE atid = ?", $params);
             $plugins->run_hooks("admin_config_attachment_types_edit_commit");
             $cache->update_attachtypes();
             flash_message('success_attachment_type_updated', 'success');
@@ -439,7 +484,8 @@ function handle_delete_action(): void
     global $mybb, $db, $plugins, $cache, $lang;
 
     $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
-    $type = $db->fetch_array($db->simple_select("attachtypes", "*", "atid='{$atid}'"));
+    $tq   = $db->sql_query_prepared("SELECT * FROM attachtypes WHERE atid = ?", [$atid]);
+    $type = $tq ? $db->fetch_array($tq) : null;
 
     if (!($type['atid'] ?? null)) {
         flash_message($lang->error_invalid_attachment_type, 'error');
@@ -449,7 +495,12 @@ function handle_delete_action(): void
     $plugins->run_hooks("admin_config_attachment_types_delete");
 
     if ($mybb->request_method === "post") {
-        $db->delete_query("attachtypes", "atid='{$atid}'");
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            die('Invalid security token');
+        }
+
+        $db->sql_query_prepared("DELETE FROM attachtypes WHERE atid = ?", [$atid]);
         $plugins->run_hooks("admin_config_attachment_types_delete_commit");
         $cache->update_attachtypes();
         flash_message($lang->success_attachment_type_deleted, 'success');
@@ -466,8 +517,14 @@ function handle_toggle_status_action(): void
 {
     global $mybb, $db, $plugins, $cache, $lang;
 
+    if ($mybb->request_method !== "post" || !verify_post_check($mybb->get_input('my_post_key'))) {
+        http_response_code(403);
+        die('Invalid security token or request method. Please use the button on the list page.');
+    }
+
     $atid = $mybb->get_input('atid', MyBB::INPUT_INT);
-    $type = $db->fetch_array($db->simple_select('attachtypes', '*', "atid='{$atid}'"));
+    $tq2  = $db->sql_query_prepared("SELECT * FROM attachtypes WHERE atid = ?", [$atid]);
+    $type = $tq2 ? $db->fetch_array($tq2) : null;
 
     if (!($type['atid'] ?? null)) {
         flash_message($lang->error_invalid_mycode, 'error');
@@ -476,7 +533,7 @@ function handle_toggle_status_action(): void
 
     $plugins->run_hooks('admin_config_attachment_types_toggle_status');
     $new_status = $type['enabled'] == 1 ? 0 : 1;
-    $db->update_query('attachtypes', ['enabled' => $new_status], "atid='{$atid}'");
+    $db->sql_query_prepared("UPDATE attachtypes SET enabled = ? WHERE atid = ?", [$new_status, $atid]);
     $plugins->run_hooks('admin_config_attachment_types_toggle_status_commit');
     $cache->update_attachtypes();
 
@@ -498,11 +555,13 @@ function handle_list_action(): void
     $plugins->run_hooks("admin_config_attachment_types_start");
 
     $per_page   = 20;
-    $total_rows = (int)$db->fetch_field($db->simple_select("attachtypes", "COUNT(atid) AS attachtypes"), "attachtypes");
+    $trq        = $db->sql_query_prepared("SELECT COUNT(atid) AS attachtypes FROM attachtypes");
+    $total_rows = $trq ? (int)$db->fetch_field($trq, "attachtypes") : 0;
     $page       = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
     $start      = ($page - 1) * $per_page;
     $pages      = ceil($total_rows / $per_page);
 
+    echo render_stats_cards();
     echo render_attachment_types_table($start, $per_page);
 
     if ($pages > 1) {
@@ -545,15 +604,15 @@ function prepare_attachment_type_data(array $input): array
     }
 
     return [
-        'name'          => $db->escape_string($input['name'] ?? ''),
-        'mimetype'      => $db->escape_string($mimetype),
-        'extension'     => $db->escape_string($extension),
+        'name'          => $input['name'] ?? '',
+        'mimetype'      => $mimetype,
+        'extension'     => $extension,
         'maxsize'       => $mybb->get_input('maxsize', MyBB::INPUT_INT) ?: "",
-        'icon'          => $db->escape_string($input['icon'] ?? ''),
+        'icon'          => $input['icon'] ?? '',
         'enabled'       => $mybb->get_input('enabled',       MyBB::INPUT_INT),
         'forcedownload' => $mybb->get_input('forcedownload', MyBB::INPUT_INT),
-        'groups'        => $db->escape_string($processed['groups']),
-        'forums'        => $db->escape_string($processed['forums']),
+        'groups'        => $processed['groups'],
+        'forums'        => $processed['forums'],
         'avatarfile'    => $mybb->get_input('avatarfile', MyBB::INPUT_INT),
     ];
 }
@@ -572,56 +631,130 @@ function output_admin_resources(): void
     print_selection_javascript();
 }
 
+function render_stats_cards(): string
+{
+    global $db;
+
+    $tq2 = $db->sql_query_prepared("SELECT COUNT(atid) AS c FROM attachtypes");
+    $total    = $tq2 ? (int)$db->fetch_field($tq2, 'c') : 0;
+    $eq  = $db->sql_query_prepared("SELECT COUNT(atid) AS c FROM attachtypes WHERE enabled='1'");
+    $enabled  = $eq ? (int)$db->fetch_field($eq, 'c') : 0;
+    $disabled = $total - $enabled;
+    $aq  = $db->sql_query_prepared("SELECT AVG(maxsize) AS c FROM attachtypes WHERE maxsize > 0");
+    $avgsize  = $aq ? (int)$db->fetch_field($aq, 'c') : 0;
+    $avgsize  = $avgsize > 0 ? number_format($avgsize) . ' KB' : '—';
+
+    $cards = [
+        ['icon' => 'fa-layer-group',  'color' => '#3b82f6', 'label' => 'Total Types',    'value' => $total],
+        ['icon' => 'fa-toggle-on',    'color' => '#22c55e', 'label' => 'Enabled',        'value' => $enabled],
+        ['icon' => 'fa-toggle-off',   'color' => '#64748b', 'label' => 'Disabled',       'value' => $disabled],
+        ['icon' => 'fa-weight-hanging','color' => '#f59e0b', 'label' => 'Avg. Max Size', 'value' => $avgsize],
+    ];
+
+    $html = '<div class="container mt-3"><div class="row g-3 mb-1">';
+    foreach ($cards as $c) {
+        $html .= <<<HTML
+<div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex align-items-center gap-3 py-3">
+            <div class="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+                 style="width:44px;height:44px;background:{$c['color']}1a;">
+                <i class="fa-solid {$c['icon']}" style="color:{$c['color']};font-size:18px;"></i>
+            </div>
+            <div>
+                <div class="text-19 fw-bold lh-1">{$c['value']}</div>
+                <div class="text-secondary" style="font-size:12px;">{$c['label']}</div>
+            </div>
+        </div>
+    </div>
+</div>
+HTML;
+    }
+    return $html . '</div></div>';
+}
+
+function format_maxsize_badge($maxsize): string
+{
+    if ($maxsize === '' || $maxsize === null || (int)$maxsize === 0) {
+        return '<span class="badge rounded-pill text-bg-light border">Unlimited</span>';
+    }
+    $kb = (int)$maxsize;
+    $display = $kb >= 1024 ? number_format($kb / 1024, 1) . ' MB' : $kb . ' KB';
+    return '<span class="badge rounded-pill text-bg-light border">' . htmlspecialchars($display) . '</span>';
+}
+
 function render_attachment_types_table(int $start, int $per_page): string
 {
     global $db, $mybb;
 
-    $query = $db->simple_select("attachtypes", "*", "", [
-        'limit_start' => $start,
-        'limit'       => $per_page,
-        'order_by'    => 'extension',
-    ]);
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM attachtypes ORDER BY extension LIMIT ?, ?",
+        [$start, $per_page]
+    );
 
     $html = <<<HTML
 <div class="container mt-3">
-    <div class="card border-0 mb-4">
-        <div class="card-header rounded-bottom text-19 fw-bold">Attachment Types</div>
-    </div>
-    <div class="card">
-        <table class="table table-hover">
-            <thead>
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white d-flex align-items-center justify-content-between rounded-top">
+            <span class="text-19 fw-bold"><i class="fa-solid fa-paperclip me-2 text-secondary"></i>Attachment Types</span>
+            <a href="index.php?act=attachment_types&amp;action=add" class="btn btn-primary btn-sm">
+                <i class="fa-solid fa-plus me-1"></i>Add New
+            </a>
+        </div>
+        <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
                 <tr>
-                    <th>Extension</th><th>MIME Type</th>
-                    <th>Enabled</th><th>Maximum Size</th><th>Controls</th>
+                    <th>Type</th><th>MIME Type</th>
+                    <th class="text-center">Status</th><th class="text-center">Max Size</th><th class="text-end">Controls</th>
                 </tr>
             </thead>
             <tbody>
 HTML;
 
-    while ($type = $db->fetch_array($query)) {
+    while ($query && ($type = $db->fetch_array($query))) {
         process_attachment_icon($type);
 
         $status = $type['enabled']
-            ? '<i class="fas fa-toggle-on text-success" title="Enabled" style="font-size:18px;"></i>'
-            : '<i class="fas fa-toggle-off text-secondary" title="Disabled" style="font-size:18px;"></i>';
+            ? '<span class="badge rounded-pill text-bg-success-subtle text-success-emphasis"><i class="fa-solid fa-circle-check me-1"></i>Enabled</span>'
+            : '<span class="badge rounded-pill text-bg-secondary-subtle text-secondary-emphasis"><i class="fa-solid fa-circle-xmark me-1"></i>Disabled</span>';
 
-        $phrase = $type['enabled'] ? 'Disable' : 'Enable';
-        $atid   = $type['atid'];
+        $phrase   = $type['enabled'] ? 'Disable' : 'Enable';
+        $atid     = $type['atid'];
+        $mimetype = $type['mimetype'] !== '' ? htmlspecialchars($type['mimetype']) : '<span class="text-secondary">—</span>';
+        $sizebadge = format_maxsize_badge($type['maxsize']);
 
         $html .= <<<HTML
 <tr>
-    <td>{$type['icon']} <strong>{$type['extension']}</strong></td>
-    <td>{$type['mimetype']}</td>
-    <td class="align_center">{$status}</td>
-    <td class="align_center">{$type['maxsize']}</td>
     <td>
+        <div class="d-flex align-items-center gap-2">
+            <span style="width:24px;text-align:center;">{$type['icon']}</span>
+            <strong>.{$type['extension']}</strong>
+        </div>
+    </td>
+    <td><code class="small">{$mimetype}</code></td>
+    <td class="text-center">{$status}</td>
+    <td class="text-center">{$sizebadge}</td>
+    <td class="text-end">
         <div class="dropdown">
-            <a href="#" data-bs-toggle="dropdown">
+            <a href="#" class="text-decoration-none" data-bs-toggle="dropdown">
                 <i class="fa-solid fa-gear"></i> Options <i class="fa-solid fa-angle-down small"></i>
             </a>
-            <div class="dropdown-menu">
-                <a href="index.php?act=attachment_types&action=edit&atid={$atid}">Edit</a>
-                <a href="index.php?act=attachment_types&action=toggle_status&atid={$atid}&my_post_key={$mybb->post_code}">{$phrase}</a>
+            <div class="dropdown-menu dropdown-menu-end">
+                <a class="dropdown-item" href="index.php?act=attachment_types&action=edit&atid={$atid}">
+                    <i class="fa-solid fa-pen me-2 text-secondary"></i>Edit
+                </a>
+                <form method="post" action="index.php?act=attachment_types&action=toggle_status" class="d-inline">
+                    <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
+                    <input type="hidden" name="atid" value="{$atid}">
+                    <button type="submit" class="dropdown-item btn btn-link p-0 border-0 text-start" style="text-decoration:none;">
+                        <i class="fa-solid fa-power-off me-2 text-secondary"></i>{$phrase}
+                    </button>
+                </form>
+                <div class="dropdown-divider"></div>
+                <a class="dropdown-item text-danger" href="index.php?act=attachment_types&action=delete&atid={$atid}">
+                    <i class="fa-solid fa-trash me-2"></i>Delete
+                </a>
             </div>
         </div>
     </td>
@@ -629,5 +762,5 @@ HTML;
 HTML;
     }
 
-    return $html . '</tbody></table></div></div>';
+    return $html . '</tbody></table></div></div></div>';
 }

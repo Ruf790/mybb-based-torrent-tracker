@@ -61,13 +61,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act
                 $userhandler = new UserDataHandler('update');
                 
                 // Check if user exists
-                $escapedUserId = $db->sqlesc((int)$userId);
-                $userQuery = $db->sql_query('SELECT id, username FROM users WHERE id = ' . $escapedUserId . ' LIMIT 1');
+                $userQuery = $db->sql_query_prepared('SELECT id, username FROM users WHERE id = ? LIMIT 1', [(int)$userId]);
                 
-                if ($db->num_rows($userQuery) === 0) {
+                if (!$userQuery || $db->num_rows($userQuery) === 0) {
                     $message = 'No user found with this ID.';
                 } else {
-                    $user = mysqli_fetch_assoc($userQuery);
+                    $user = $db->fetch_array($userQuery);
                     $oldUsername = $user['username'];
                     
                     // Set the data for the user update
@@ -110,13 +109,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act
             }
         } else {
             // Need confirmation - get current username
-            $escapedUserId = $db->sqlesc((int)$userId);
-            $userQuery = $db->sql_query('SELECT id, username FROM users WHERE id = ' . $escapedUserId . ' LIMIT 1');
+            $userQuery = $db->sql_query_prepared('SELECT id, username FROM users WHERE id = ? LIMIT 1', [(int)$userId]);
             
-            if ($db->num_rows($userQuery) === 0) {
+            if (!$userQuery || $db->num_rows($userQuery) === 0) {
                 $message = 'No user found with this ID.';
             } else {
-                $user = mysqli_fetch_assoc($userQuery);
+                $user = $db->fetch_array($userQuery);
                 
                 // Check super admin permissions before showing confirmation
                 if (is_super_admin((int)$userId) && $CURUSER['id'] != $userId && !is_super_admin($CURUSER['id'])) {
@@ -129,8 +127,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act
                         $message = 'Username must be between 3 and 25 characters.';
                     } else {
                         // Check if username already exists (basic check before UserDataHandler)
-                        $usernameCheck = $db->sql_query('SELECT id FROM users WHERE username = ' . $db->sqlesc($newUsername) . ' LIMIT 1');
-                        if ($db->num_rows($usernameCheck) > 0) {
+                        $usernameCheck = $db->sql_query_prepared('SELECT id FROM users WHERE username = ? LIMIT 1', [$newUsername]);
+                        if ($usernameCheck && $db->num_rows($usernameCheck) > 0) {
                             $message = 'This username is already taken.';
                         } else {
                             $confirmationNeeded = true;

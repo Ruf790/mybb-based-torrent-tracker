@@ -31,14 +31,14 @@ class CategoryManager
         $categoriesS = [];
         
         // Fetch main categories
-        $query = $this->db->sql_query("SELECT * FROM categories WHERE type = 'c' ORDER BY name, id");
-        while ($row = $this->db->fetch_array($query)) {
+        $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE type = 'c' ORDER BY name, id");
+        while ($query && ($row = $this->db->fetch_array($query))) {
             $categoriesC[] = $row;
         }
         
         // Fetch subcategories
-        $query = $this->db->sql_query("SELECT * FROM categories WHERE type = 's' ORDER BY name, id");
-        while ($row = $this->db->fetch_array($query)) {
+        $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE type = 's' ORDER BY name, id");
+        while ($query && ($row = $this->db->fetch_array($query))) {
             $categoriesS[] = $row;
         }
         
@@ -116,8 +116,8 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             $html .= '<option value="0">-- Select Category --</option>';
         }
         
-        $query = $this->db->sql_query("SELECT id, name FROM categories WHERE type = 'c' ORDER BY name");
-        while ($cat = $this->db->fetch_array($query)) {
+        $query = $this->db->sql_query_prepared("SELECT id, name FROM categories WHERE type = 'c' ORDER BY name");
+        while ($query && ($cat = $this->db->fetch_array($query))) {
             $selected = ($selectedId == (int)$cat['id']) ? ' selected' : '';
             $html .= sprintf(
                 '<option value="%d"%s>%s</option>',
@@ -189,22 +189,15 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         
         if ($id === null) {
             // Insert new category
-            $sql = "INSERT INTO categories (name, icon, type, pid) 
-                    VALUES (" . $this->db->sqlesc($data['name']) . ", 
-                            " . $this->db->sqlesc($data['icon']) . ",                         
-                            " . $this->db->sqlesc($data['type']) . ", 
-                            " . (int)$data['pid'] . ")";
+            $sql    = "INSERT INTO categories (name, icon, type, pid) VALUES (?, ?, ?, ?)";
+            $params = [$data['name'], $data['icon'], $data['type'], (int)$data['pid']];
         } else {
             // Update existing category
-            $sql = "UPDATE categories SET 
-                    name = " . $this->db->sqlesc($data['name']) . ", 
-                    icon = " . $this->db->sqlesc($data['icon']) . ",              
-                    type = " . $this->db->sqlesc($data['type']) . ", 
-                    pid = " . (int)$data['pid'] . " 
-                    WHERE id = " . (int)$id;
+            $sql    = "UPDATE categories SET name = ?, icon = ?, type = ?, pid = ? WHERE id = ?";
+            $params = [$data['name'], $data['icon'], $data['type'], (int)$data['pid'], (int)$id];
         }
         
-        $result = $this->db->sql_query($sql);
+        $result = $this->db->sql_query_prepared($sql, $params);
         if (!$result) {
             $this->addError('Database error while saving category');
             return false;
@@ -324,7 +317,7 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         }
         
         if ($what === 'sure' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-            $this->db->sql_query("DELETE FROM categories WHERE id = " . (int)$id . " LIMIT 1");
+            $this->db->sql_query_prepared("DELETE FROM categories WHERE id = ? LIMIT 1", [$id]);
             $this->updateCategoriesCache();
             redirect('admin/index.php?act=category', 'Category has been successfully deleted!');
         } else {
@@ -716,14 +709,14 @@ document.addEventListener("DOMContentLoaded", function () {
         $subcategories = [];
         
         // Get main categories
-        $query = $this->db->sql_query("SELECT * FROM categories WHERE type = 'c' ORDER BY name");
-        while ($cat = $this->db->fetch_array($query)) {
+        $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE type = 'c' ORDER BY name");
+        while ($query && ($cat = $this->db->fetch_array($query))) {
             $categories[$cat['id']] = $cat;
         }
         
         // Get subcategories grouped by parent
-        $query = $this->db->sql_query("SELECT * FROM categories WHERE type = 's' ORDER BY name");
-        while ($sub = $this->db->fetch_array($query)) {
+        $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE type = 's' ORDER BY name");
+        while ($query && ($sub = $this->db->fetch_array($query))) {
             $subcategories[$sub['pid']][] = $sub;
         }
         
@@ -838,8 +831,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const _iconSelectorHtml = <?php echo json_encode($this->getIconSelector()); ?>;
 
     function escapeHtml(text) {
-        if (!text) return '';
-        return text
+        if (text === null || text === undefined) return '';
+        return String(text)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -923,9 +916,15 @@ document.addEventListener('DOMContentLoaded', function () {
      */
     private function getCategory(int $id): ?array
     {
-        $sql = "SELECT * FROM categories WHERE id = " . (int)$id;
-        $query = $this->db->sql_query($sql);
-        if ($row = $this->db->fetch_array($query)) {
+        $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE id = ?", [$id]);
+        if ($query && ($row = $this->db->fetch_array($query))) {
+            // sql_query_prepared() использует нативные prepared statements —
+            // числовые колонки (id, pid) возвращаются как настоящий PHP int,
+            // а не как строка (в отличие от старого mysqli_query()). Явно
+            // приводим обратно к строке, чтобы JSON-ответ AJAX-эндпоинта
+            // (ajaxGetCategory) не менял тип данных для фронтенда.
+            if (isset($row['id']))  $row['id']  = (string)$row['id'];
+            if (isset($row['pid'])) $row['pid'] = (string)$row['pid'];
             return $row;
         }
         return null;
@@ -936,13 +935,15 @@ document.addEventListener('DOMContentLoaded', function () {
      */
     private function validateCategoryId(int $id, string $type = null): bool
     {
-        $sql = "SELECT id FROM categories WHERE id = " . (int)$id;
+        $sql    = "SELECT id FROM categories WHERE id = ?";
+        $params = [$id];
         if ($type) {
-            $sql .= " AND type = " . $this->db->sqlesc($type);
+            $sql .= " AND type = ?";
+            $params[] = $type;
         }
         
-        $query = $this->db->sql_query($sql);
-        return $this->db->num_rows($query) > 0;
+        $query = $this->db->sql_query_prepared($sql, $params);
+        return $query ? $this->db->num_rows($query) > 0 : false;
     }
 }
 

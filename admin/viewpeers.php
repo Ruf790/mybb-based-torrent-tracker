@@ -1,7 +1,5 @@
 <?php
 
-
-
 declare(strict_types=1);
 
 if (!defined('STAFF_PANEL')) {
@@ -84,9 +82,13 @@ function format_data_size(int $uploaded, int $downloaded, string $type): string
 stdhead('Peer List');
 require_once INC_PATH . '/functions_multipage.php';
 
-// Get total peer count
-$count_result = $db->sql_query('SELECT COUNT(*) FROM peers');
-$total_peers = (int)mysqli_fetch_array($count_result)[0];
+// Get total peer count с использованием prepared statement
+$count_result = $db->sql_query_prepared('SELECT COUNT(*) AS cnt FROM peers');
+$total_peers = 0;
+if ($count_result !== false) {
+    $row = $db->fetch_array($count_result);
+    $total_peers = (int)($row['cnt'] ?? 0);
+}
 
 // Pagination setup
 $per_page = max(20, (int)($ts_perpage ?? 20));
@@ -144,19 +146,19 @@ if (!empty($multipage)) {
     </div>';
 }
 
-// Fetch peers data
+// Fetch peers data с использованием prepared statement
 $sql = "
     SELECT p.*, t.name, t.added, u.username, u.usergroup, u.displaygroup
     FROM peers p 
     LEFT JOIN torrents t ON (p.torrent = t.id)
     LEFT JOIN users u ON (p.userid = u.id)
     ORDER BY p.started DESC 
-    LIMIT {$start}, {$per_page}
+    LIMIT ? OFFSET ?
 ";
 
-$result = $db->sql_query($sql);
+$result = $db->sql_query_prepared($sql, [$per_page, $start]);
 
-if ($db->num_rows($result) > 0) {
+if ($result !== false && $db->num_rows($result) > 0) {
     echo '
     <div class="container mt-3">
         <div class="row">
@@ -185,7 +187,7 @@ if ($db->num_rows($result) > 0) {
                                 </thead>
                                 <tbody>';
 
-    while ($row = mysqli_fetch_array($result)) {
+    while ($row = $db->fetch_array($result)) {
         echo render_peer_row($row);
     }
 
@@ -238,57 +240,55 @@ stdfoot();
 /**
  * Render a single peer row
  */
-/**
- * Render a single peer row
- */
 function render_peer_row(array $row): string
 {
     global $BASEURL, $dateformat, $timeformat;
-	
-	$username = htmlspecialchars_uni($row['username'] ?? '');
+    
+    // Приводим все значения к строкам для htmlspecialchars_uni
+    $username = isset($row['username']) ? (string)$row['username'] : '';
     $formatted_name = format_name($username, $row['usergroup'] ?? 0, $row['displaygroup'] ?? 0);
     $profile_link = $BASEURL . '/' . get_profile_link($row['userid'] ?? 0);
     
-    $torrent_name = htmlspecialchars_uni($row['name'] ?? 'Unknown Torrent');
-    $short_name = htmlspecialchars_uni(cutename($row['name'] ?? 'Unknown', 5));
+    $torrent_name = isset($row['name']) ? (string)$row['name'] : 'Unknown Torrent';
+    $short_name = htmlspecialchars_uni(cutename($torrent_name, 5));
     $torrent_link = $BASEURL . '/' . get_torrent_link($row['torrent'] ?? 0);
     
     // Safe date for popover
-    $torrent_added = my_datee($dateformat, $row['added']);
+    $torrent_added = my_datee($dateformat, $row['added'] ?? 0);
     
-    $ip_port = htmlspecialchars_uni($row['ip'] ?? 'N/A') . '<br><small class="text-muted">' . htmlspecialchars_uni($row['port'] ?? 'N/A') . '</small>';
+    // Исправление: приводим IP и PORT к строкам
+    $ip = isset($row['ip']) ? (string)$row['ip'] : 'N/A';
+    $port = isset($row['port']) ? (string)$row['port'] : 'N/A';
+    $ip_port = htmlspecialchars_uni($ip) . '<br><small class="text-muted">' . htmlspecialchars_uni($port) . '</small>';
     
     $uploaded = format_data_size((int)($row['uploaded'] ?? 0), (int)($row['downloaded'] ?? 0), 'uploaded');
     $downloaded = format_data_size((int)($row['uploaded'] ?? 0), (int)($row['downloaded'] ?? 0), 'downloaded');
     
-    $peer_id = html_safe_chars(get_agent_info($row["agent"] ?? '', $row['peer_id'] ?? ''));
+    $peer_id = html_safe_chars(get_agent_info(
+        isset($row['agent']) ? (string)$row['agent'] : '', 
+        isset($row['peer_id']) ? (string)$row['peer_id'] : ''
+    ));
     $connectable = format_peer_status($row['connectable'] ?? 'no', 'connectable');
     $status = format_peer_status($row['seeder'] ?? 'no', 'seeder');
     
     // Safe date formatting with null checks
-    $started = my_datee($dateformat, $row['started']) . '<br><small class="text-muted">' . my_datee($timeformat, $row['started']) . '</small>';
-    $last_action = my_datee($dateformat, $row['last_action']) . '<br><small class="text-muted">' . my_datee($timeformat, $row['last_action']) . '</small>';
-    $prev_action = my_datee($dateformat, $row['prev_action']) . '<br><small class="text-muted">' . my_datee($timeformat, $row['prev_action']) . '</small>';
+    $started = my_datee($dateformat, $row['started'] ?? 0) . '<br><small class="text-muted">' . my_datee($timeformat, $row['started'] ?? 0) . '</small>';
+    $last_action = my_datee($dateformat, $row['last_action'] ?? 0) . '<br><small class="text-muted">' . my_datee($timeformat, $row['last_action'] ?? 0) . '</small>';
+    $prev_action = my_datee($dateformat, $row['prev_action'] ?? 0) . '<br><small class="text-muted">' . my_datee($timeformat, $row['prev_action'] ?? 0) . '</small>';
     
-    $upload_offset = mksize($row['uploadoffset']);
-    $download_offset = mksize($row['downloadoffset']);
-    $to_go = mksize($row['to_go']);
-	
-	
-	
-	
-	
-	
-	
-	
-
+    $upload_offset = mksize($row['uploadoffset'] ?? 0);
+    $download_offset = mksize($row['downloadoffset'] ?? 0);
+    $to_go = mksize($row['to_go'] ?? 0);
+    
     // Правильно экранируем HTML для popover
-    $popover_title = htmlspecialchars('📁 ' . cutename($row['name'] ?? 'Unknown', 20), ENT_QUOTES);
+    $popover_title = htmlspecialchars('📁 ' . cutename($torrent_name, 20), ENT_QUOTES);
+    
+    // Экранируем содержимое popover, приводя все к строкам
     $popover_content = htmlspecialchars('
         <div class="torrent-popover">
             <div class="mb-2">
                 <strong>📂 Full Name:</strong><br>
-                <span class="text-break">' . $torrent_name . '</span>
+                <span class="text-break">' . htmlspecialchars_uni($torrent_name) . '</span>
             </div>
             <div class="d-flex justify-content-between align-items-center border-top pt-2 small text-muted">
                 <span><i class="fas fa-user me-1"></i>' . $formatted_name . '</span>
@@ -337,9 +337,7 @@ function render_peer_row(array $row): string
     </tr>';
 }
 
-
 echo '
-
 
 <style>
 .torrent-popover {
@@ -371,7 +369,6 @@ echo '
     border-top-color: var(--bs-primary);
 }
 </style>';
-
 
 // JavaScript for tooltips
 echo '

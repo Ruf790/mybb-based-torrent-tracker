@@ -15,12 +15,54 @@ $type     = (int)($_GET['type'] ?? 1);
 $uploader = isset($_GET['uploader']) && is_valid_id($_GET['uploader']) ? (int)$_GET['uploader'] : null;
 $combine  = $uploader !== null;
 
-if ($combine)       $what = 'u.id = ' . $uploader;
-elseif ($type === 2) $what = "g.canupload = 'yes'";
-else                 $what = 'u.usergroup = ' . UC_UPLOADER;
+// Формируем условия для WHERE с использованием prepared statements
+$whereClause = '';
+$params = [];
 
-$countQ      = $db->sql_query("SELECT COUNT(u.id) AS cnt FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE u.enabled='yes' AND {$what}");
-$total_count = (int)($db->fetch_array($countQ)['cnt'] ?? 0);
+if ($combine) {
+    $whereClause = 'u.id = ?';
+    $params[] = $uploader;
+} elseif ($type === 2) {
+    // Для "canupload" используем прямой запрос без параметров
+    $whereClause = "g.canupload = 'yes'";
+} else {
+    // Для UC_UPLOADER используем параметр
+    $whereClause = 'u.usergroup = ?';
+    $params[] = UC_UPLOADER;
+}
+
+// Для отладки - можно залогировать
+// error_log("WHERE clause: $whereClause, params: " . print_r($params, true));
+
+// COUNT запрос с использованием prepared statement
+$countSql = "SELECT COUNT(u.id) AS cnt FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE u.enabled='yes' AND {$whereClause}";
+$countQ = $db->sql_query_prepared($countSql, $params);
+
+$total_count = 0;
+if ($countQ !== false) {
+    $row = $db->fetch_array($countQ);
+    $total_count = (int)($row['cnt'] ?? 0);
+}
+
+// Если нет результатов и это type=1, попробуем альтернативный запрос без JOIN
+if ($total_count === 0 && $type === 1) {
+    // Альтернативный запрос - возможно, usergroup хранится как число
+    $altCountQ = $db->sql_query_prepared(
+        "SELECT COUNT(id) AS cnt FROM users WHERE enabled='yes' AND usergroup = ?",
+        [UC_UPLOADER]
+    );
+    if ($altCountQ !== false) {
+        $row = $db->fetch_array($altCountQ);
+        $alt_count = (int)($row['cnt'] ?? 0);
+        if ($alt_count > 0) {
+            // Если альтернативный запрос вернул результаты, используем его
+            $total_count = $alt_count;
+            // Обновляем основной запрос
+            $whereClause = 'u.usergroup = ?';
+            $params = [UC_UPLOADER];
+        }
+    }
+}
 
 $perpage = 25;
 $page    = max(1, (int)($mybb->input['page'] ?? 1));
@@ -31,45 +73,85 @@ $start   = ($page - 1) * $perpage;
 $multipage = multipage($total_count, $perpage, $page,
     $_this_script_ . '&type=' . $type . ($uploader ? '&uploader=' . $uploader : '') . '&');
 
-$query = $db->sql_query("
-    SELECT u.id, u.username, u.avatar, u.avatardimensions, u.usergroup,
-           u.lastactive, u.lastvisit, u.uploaded, u.downloaded
-    FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid)
-    WHERE u.enabled='yes' AND {$what}
-    ORDER BY u.username ASC
-    LIMIT {$start}, {$perpage}
-");
+// Основной SELECT запрос с использованием prepared statement
+$queryParams = array_merge($params, [$start, $perpage]);
+$querySql = "SELECT u.id, u.username, u.avatar, u.avatardimensions, u.usergroup,
+                    u.lastactive, u.lastvisit, u.uploaded, u.downloaded
+             FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid)
+             WHERE u.enabled='yes' AND {$whereClause}
+             ORDER BY u.username ASC
+             LIMIT ? OFFSET ?";
+
+$query = $db->sql_query_prepared($querySql, $queryParams);
 
 $uploaderIds  = [];
 $uploaderRows = [];
-while ($row = $db->fetch_array($query)) {
-    $uploaderIds[]             = (int)$row['id'];
-    $uploaderRows[$row['id']] = $row;
+
+if ($query !== false) {
+    while ($row = $db->fetch_array($query)) {
+        $uploaderIds[]             = (int)$row['id'];
+        $uploaderRows[$row['id']] = $row;
+    }
 }
 
-// FIX: один запрос вместо SELECT * FROM torrents без WHERE
+// Если все еще нет результатов и это type=1, попробуем прямой запрос без JOIN
+if (empty($uploaderRows) && $type === 1) {
+    // Прямой запрос без JOIN
+    $altQuery = $db->sql_query_prepared(
+        "SELECT id, username, avatar, avatardimensions, usergroup,
+                lastactive, lastvisit, uploaded, downloaded
+         FROM users 
+         WHERE enabled='yes' AND usergroup = ?
+         ORDER BY username ASC
+         LIMIT ? OFFSET ?",
+        [UC_UPLOADER, $perpage, $start]
+    );
+    
+    if ($altQuery !== false) {
+        while ($row = $db->fetch_array($altQuery)) {
+            $uploaderIds[]             = (int)$row['id'];
+            $uploaderRows[$row['id']] = $row;
+        }
+        // Обновляем total_count если он был 0
+        if ($total_count === 0) {
+            $total_count = count($uploaderIds);
+        }
+    }
+}
+
+// Получение торрентов с использованием prepared statement с IN()
 $torrentsByOwner = [];
 $torrentCounts   = [];
+
 if (!empty($uploaderIds)) {
-    $idList = implode(',', $uploaderIds);
-    $tq = $db->sql_query("SELECT id, name, added, owner, seeders, leechers, size FROM torrents WHERE owner IN ({$idList}) ORDER BY added DESC");
-    while ($t = $db->fetch_array($tq)) {
-        $oid = (int)$t['owner'];
-        $torrentCounts[$oid] = ($torrentCounts[$oid] ?? 0) + 1;
-        if ($combine || ($torrentCounts[$oid] <= 5)) {
-            $torrentsByOwner[$oid][] = $t;
+    // Создаем плейсхолдеры для каждого ID
+    $placeholders = implode(',', array_fill(0, count($uploaderIds), '?'));
+    
+    $tq = $db->sql_query_prepared(
+        "SELECT id, name, added, owner, seeders, leechers, size 
+         FROM torrents 
+         WHERE owner IN ({$placeholders}) 
+         ORDER BY added DESC",
+        $uploaderIds
+    );
+    
+    if ($tq !== false) {
+        while ($t = $db->fetch_array($tq)) {
+            $oid = (int)$t['owner'];
+            $torrentCounts[$oid] = ($torrentCounts[$oid] ?? 0) + 1;
+            if ($combine || ($torrentCounts[$oid] <= 5)) {
+                $torrentsByOwner[$oid][] = $t;
+            }
         }
     }
 }
 
 stdhead($SITENAME . ' — Uploader List');
 
-
 $BASE     = htmlspecialchars($BASEURL, ENT_QUOTES, 'UTF-8');
 $h_script = htmlspecialchars($_this_script_, ENT_QUOTES, 'UTF-8');
 $h_site   = htmlspecialchars($SITENAME, ENT_QUOTES, 'UTF-8');
 ?>
-
 
 <style>
 /* ── Hero banner ───────────────────────────────────────────────────────────── */
@@ -187,21 +269,26 @@ $h_site   = htmlspecialchars($SITENAME, ENT_QUOTES, 'UTF-8');
 
     <?php if (empty($uploaderRows)): ?>
     
-	<div class="card border-0 rounded-4 overflow-hidden" style="background: #fff;">
-    <div class="card-body p-5 text-center">
-        <div class="empty-state-icon mb-4">
-            <i class="fas fa-folder-open fa-5x text-primary" style="opacity: 0.2;"></i>
-            <i class="fas fa-user-slash fa-2x text-danger position-absolute" style="margin-top: -60px; margin-left: -10px; opacity: 0.6;"></i>
-        </div>
-        <h3 class="fw-light text-dark mb-2">No Uploaders Found</h3>
-        <p class="text-muted mb-4">Looks like there are no uploaders in this section yet</p>
-        <div class="d-flex justify-content-center gap-2">
-            <span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2 rounded-pill">
-                <i class="fas fa-clock me-1"></i> Check back later
-            </span>
+    <div class="card border-0 rounded-4 overflow-hidden" style="background: #fff;">
+        <div class="card-body p-5 text-center">
+            <div class="empty-state-icon mb-4 position-relative d-inline-block">
+                <i class="fas fa-folder-open fa-5x text-primary" style="opacity: 0.2;"></i>
+                <i class="fas fa-user-slash fa-2x text-danger position-absolute" style="margin-top: -60px; margin-left: -10px; opacity: 0.6;"></i>
+            </div>
+            <h3 class="fw-light text-dark mb-2">No Uploaders Found</h3>
+            <p class="text-muted mb-4">Looks like there are no uploaders in this section yet</p>
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2 rounded-pill">
+                    <i class="fas fa-clock me-1"></i> Check back later
+                </span>
+                <?php if ($type === 1): ?>
+                <span class="badge bg-info bg-opacity-10 text-info px-3 py-2 rounded-pill">
+                    <i class="fas fa-info-circle me-1"></i> UC_UPLOADER = <?= defined('UC_UPLOADER') ? UC_UPLOADER : 'not defined' ?>
+                </span>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
-</div>
 
     <?php else: ?>
 

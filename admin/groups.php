@@ -133,34 +133,45 @@ if (($mybb->input['action'] ?? '') === 'add') {
         if (!$errors) {
             $new_usergroup = [
                 'type'        => 2,
-                'title'       => $db->escape_string($mybb->input['title']),
-                'description' => $db->escape_string($mybb->input['description']),
-                'namestyle'   => $db->escape_string($mybb->input['namestyle']),
-                'usertitle'   => $db->escape_string($mybb->input['usertitle']),
-                'image'       => $db->escape_string($mybb->input['image']),
+                'title'       => $mybb->input['title'],
+                'description' => $mybb->input['description'],
+                'namestyle'   => $mybb->input['namestyle'],
+                'usertitle'   => $mybb->input['usertitle'],
+                'image'       => $mybb->input['image'],
                 'disporder'   => 0,
             ];
 
             if ($mybb->input['copyfrom'] == 0) {
                 $new_usergroup = array_merge($new_usergroup, $usergroup_permissions);
             } else {
-                $q = $db->simple_select('usergroups', '*', "gid='" . $mybb->get_input('copyfrom', MyBB::INPUT_INT) . "'");
-                $existing = $db->fetch_array($q);
+                $q = $db->sql_query_prepared("SELECT * FROM usergroups WHERE gid = ?", [$mybb->get_input('copyfrom', MyBB::INPUT_INT)]);
+                $existing = $q ? $db->fetch_array($q) : null;
                 foreach (array_keys($usergroup_permissions) as $field) {
                     $new_usergroup[$field] = $existing[$field];
                 }
             }
 
             $plugins->run_hooks('admin_user_groups_add_commit');
-            $gid = $db->insert_query('usergroups', $new_usergroup);
+            $columns      = array_keys($new_usergroup);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO usergroups (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($new_usergroup)
+            );
+            $gid = $db->insert_id();
             $plugins->run_hooks('admin_user_groups_add_commit_end');
 
             if ($mybb->input['copyfrom'] > 0) {
-                $q = $db->simple_select('forumpermissions', '*', "gid='" . $mybb->get_input('copyfrom', MyBB::INPUT_INT) . "'");
-                while ($fp = $db->fetch_array($q)) {
+                $q = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE gid = ?", [$mybb->get_input('copyfrom', MyBB::INPUT_INT)]);
+                while ($q && ($fp = $db->fetch_array($q))) {
                     unset($fp['pid']);
                     $fp['gid'] = $gid;
-                    $db->insert_query('forumpermissions', $fp);
+                    $fp_columns      = array_keys($fp);
+                    $fp_placeholders = implode(',', array_fill(0, count($fp_columns), '?'));
+                    $db->sql_query_prepared(
+                        "INSERT INTO forumpermissions (`" . implode('`,`', $fp_columns) . "`) VALUES ({$fp_placeholders})",
+                        array_values($fp)
+                    );
                 }
             }
 
@@ -235,8 +246,8 @@ if (($mybb->input['action'] ?? '') === 'add') {
     echo '<h6 class="mb-3"><i class="fas fa-copy me-2"></i>Copy Permissions</h6>';
 
     $options = [0 => 'Create with default permissions (no copying)'];
-    $q = $db->simple_select('usergroups', 'gid, title', "gid != '1'", ['order_by' => 'title']);
-    while ($ug = $db->fetch_array($q)) {
+    $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups WHERE gid != '1' ORDER BY title");
+    while ($q && ($ug = $db->fetch_array($q))) {
         $options[$ug['gid']] = htmlspecialchars_uni($ug['title']);
     }
 
@@ -266,8 +277,8 @@ if (($mybb->input['action'] ?? '') === 'add') {
 // ═══════════════════════════════════════════════════════════
 if (($mybb->input['action'] ?? '') === 'edit') {
     $gid_input = $mybb->get_input('gid', MyBB::INPUT_INT);
-    $q = $db->simple_select('usergroups', '*', "gid='{$gid_input}'");
-    $usergroup = $db->fetch_array($q);
+    $q = $db->sql_query_prepared("SELECT * FROM usergroups WHERE gid = ?", [$gid_input]);
+    $usergroup = $q ? $db->fetch_array($q) : null;
 
     if (!$usergroup) {
         flash_message('You have selected an invalid user group', 'error');
@@ -305,11 +316,11 @@ if (($mybb->input['action'] ?? '') === 'edit') {
             $g = fn(string $k) => $mybb->get_input($k, MyBB::INPUT_INT);
             $updated_group = [
                 'type'                  => $g('type'),
-                'title'                 => $db->escape_string($mybb->input['title']),
-                'description'           => $db->escape_string($mybb->input['description']),
-                'namestyle'             => $db->escape_string($mybb->input['namestyle']),
-                'usertitle'             => $db->escape_string($mybb->input['usertitle']),
-                'image'                 => $db->escape_string($mybb->input['image']),
+                'title'                 => $mybb->input['title'],
+                'description'           => $mybb->input['description'],
+                'namestyle'             => $mybb->input['namestyle'],
+                'usertitle'             => $mybb->input['usertitle'],
+                'image'                 => $mybb->input['image'],
                 'isbannedgroup'         => $g('isbannedgroup'),
                 'canview'               => $g('canview'),
                 'canviewthreads'        => $g('canviewthreads'),
@@ -354,7 +365,10 @@ if (($mybb->input['action'] ?? '') === 'edit') {
             ];
 
             $plugins->run_hooks('admin_user_groups_edit_commit');
-            $db->update_query('usergroups', $updated_group, "gid='{$usergroup['gid']}'");
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated_group)));
+            $params = array_values($updated_group);
+            $params[] = $usergroup['gid'];
+            $db->sql_query_prepared("UPDATE usergroups SET {$set} WHERE gid = ?", $params);
             $cache->update_usergroups();
             $cache->update_forumpermissions();
             log_admin_action($usergroup['gid'], $mybb->input['title']);
@@ -567,8 +581,8 @@ if (($mybb->input['action'] ?? '') === 'edit') {
 // ACTION: DELETE
 // ═══════════════════════════════════════════════════════════
 if (($mybb->input['action'] ?? '') === 'delete') {
-    $q = $db->simple_select('usergroups', '*', "gid='" . $mybb->get_input('gid', MyBB::INPUT_INT) . "'");
-    $usergroup = $db->fetch_array($q);
+    $q = $db->sql_query_prepared("SELECT * FROM usergroups WHERE gid = ?", [$mybb->get_input('gid', MyBB::INPUT_INT)]);
+    $usergroup = $q ? $db->fetch_array($q) : null;
 
     if (!$usergroup) {
         flash_message('You have selected an invalid user group', 'error');
@@ -587,17 +601,19 @@ if (($mybb->input['action'] ?? '') === 'delete') {
     if ($mybb->request_method === 'post') {
         verify_post_check($mybb->get_input('my_post_key'));
 
-        $updated_users = ['usergroup' => $usergroup['isbannedgroup'] == 1 ? 9 : 1];
-        $db->update_query('users', $updated_users, "usergroup='{$usergroup['gid']}'");
-        $db->update_query('users', ['displaygroup' => 'usergroup'], "displaygroup='{$usergroup['gid']}'", '', true);
+        $newGroup = $usergroup['isbannedgroup'] == 1 ? 9 : 1;
+        $db->sql_query_prepared("UPDATE users SET usergroup = ? WHERE usergroup = ?", [$newGroup, $usergroup['gid']]);
+        // displaygroup = usergroup — копируем значение из колонки usergroup (не строковый литерал!)
+        $db->sql_query_prepared("UPDATE users SET displaygroup = usergroup WHERE displaygroup = ?", [$usergroup['gid']]);
 
-        $db->update_query('banned', ['gid' => 9],          "gid='{$usergroup['gid']}'");
-        $db->update_query('banned', ['oldgroup' => 1],     "oldgroup='{$usergroup['gid']}'");
-        $db->update_query('banned', ['olddisplaygroup' => 'oldgroup'], "olddisplaygroup='{$usergroup['gid']}'", '', true);
+        $db->sql_query_prepared("UPDATE banned SET gid = 9 WHERE gid = ?", [$usergroup['gid']]);
+        $db->sql_query_prepared("UPDATE banned SET oldgroup = 1 WHERE oldgroup = ?", [$usergroup['gid']]);
+        // olddisplaygroup = oldgroup — та же логика, копирование значения колонки
+        $db->sql_query_prepared("UPDATE banned SET olddisplaygroup = oldgroup WHERE olddisplaygroup = ?", [$usergroup['gid']]);
 
-        $db->delete_query('forumpermissions', "gid='{$usergroup['gid']}'");
-        $db->delete_query('moderators',       "id='{$usergroup['gid']}' AND isgroup='1'");
-        $db->delete_query('usergroups',       "gid='{$usergroup['gid']}'");
+        $db->sql_query_prepared("DELETE FROM forumpermissions WHERE gid = ?", [$usergroup['gid']]);
+        $db->sql_query_prepared("DELETE FROM moderators WHERE id = ? AND isgroup = '1'", [$usergroup['gid']]);
+        $db->sql_query_prepared("DELETE FROM usergroups WHERE gid = ?", [$usergroup['gid']]);
 
         $plugins->run_hooks('admin_user_groups_delete_commit');
         $plugins->run_hooks('admin_user_groups_delete_commit_end');
@@ -622,7 +638,7 @@ if (($mybb->input['action'] ?? '') === 'disporder' && $mybb->request_method === 
     foreach ($mybb->input['disporder'] as $gid => $order) {
         $gid = (int)$gid; $order = (int)$order;
         if ($gid && $order) {
-            $db->update_query('usergroups', ['disporder' => $order], "gid='{$gid}'");
+            $db->sql_query_prepared("UPDATE usergroups SET disporder = ? WHERE gid = ?", [$order, $gid]);
         }
     }
     log_admin_action();
@@ -639,7 +655,7 @@ if (!($mybb->input['action'] ?? '')) {
 
     if ($mybb->request_method === 'post' && !empty($mybb->input['disporder'])) {
         foreach ($mybb->input['disporder'] as $gid => $order) {
-            $db->update_query('usergroups', ['disporder' => (int)$order], "gid='" . (int)$gid . "'");
+            $db->sql_query_prepared("UPDATE usergroups SET disporder = ? WHERE gid = ?", [(int)$order, (int)$gid]);
         }
         $plugins->run_hooks('admin_user_groups_start_commit');
         $cache->update_usergroups();
@@ -665,14 +681,14 @@ if (!($mybb->input['action'] ?? '')) {
 
     // Count primary users
     $primaryusers = $secondaryusers = [];
-    $q = $db->sql_query('SELECT g.gid, COUNT(u.id) AS users FROM users u LEFT JOIN usergroups g ON (g.gid=u.usergroup) GROUP BY g.gid');
-    while ($row = $db->fetch_array($q)) $primaryusers[$row['gid']] = $row['users'];
+    $q = $db->sql_query_prepared('SELECT g.gid, COUNT(u.id) AS users FROM users u LEFT JOIN usergroups g ON (g.gid=u.usergroup) GROUP BY g.gid');
+    while ($q && ($row = $db->fetch_array($q))) $primaryusers[$row['gid']] = $row['users'];
 
     $col = $db->type === 'pgsql' || $db->type === 'sqlite'
         ? "','||u.additionalgroups||',' LIKE '%,'||g.gid||',%'"
         : "CONCAT(',',u.additionalgroups,',') LIKE CONCAT('%,',g.gid,',%')";
-    $q = $db->sql_query("SELECT g.gid, COUNT(u.id) AS users FROM users u LEFT JOIN usergroups g ON ({$col}) WHERE g.gid != '0' AND g.gid IS NOT NULL GROUP BY g.gid");
-    while ($row = $db->fetch_array($q)) $secondaryusers[$row['gid']] = $row['users'];
+    $q = $db->sql_query_prepared("SELECT g.gid, COUNT(u.id) AS users FROM users u LEFT JOIN usergroups g ON ({$col}) WHERE g.gid != '0' AND g.gid IS NOT NULL GROUP BY g.gid");
+    while ($q && ($row = $db->fetch_array($q))) $secondaryusers[$row['gid']] = $row['users'];
 
     echo '<div class="card border-0 shadow-sm">';
     echo '<div class="card-header bg-white py-3"><h5 class="mb-0"><i class="fas fa-list me-2"></i>All User Groups</h5></div>';
@@ -684,8 +700,8 @@ if (!($mybb->input['action'] ?? '')) {
     echo '<th width="30%" class="text-center">Actions</th>';
     echo '</tr></thead><tbody>';
 
-    $q = $db->simple_select('usergroups', '*', '', ['order_by' => 'disporder']);
-    while ($ug = $db->fetch_array($q)) {
+    $q = $db->sql_query_prepared("SELECT * FROM usergroups ORDER BY disporder");
+    while ($q && ($ug = $db->fetch_array($q))) {
         $icon = !empty($ug['image'])
             ? $ug['image']
             : ($ug['type'] > 1

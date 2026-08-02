@@ -11,7 +11,42 @@ if (!defined('STAFF_PANEL')) {
           </div>');
 }
 
+
+
 use function htmlspecialchars as e;
+
+// ── AJAX: поиск юзера для автокомплита (username -> id) ─────────────────────
+if (($_GET['action'] ?? '') === 'search_user') {
+    header('Content-Type: application/json; charset=utf-8');
+    $term = trim($_GET['term'] ?? '');
+    if ($term === '' || mb_strlen($term) < 2) {
+        echo json_encode([]);
+        exit;
+    }
+
+    // Для prepared LIKE экранируем только \, % и _ (чтобы они искались буквально),
+    // затем оборачиваем в %. Сам prepared statement позаботится о кавычках.
+    $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
+
+    $query = $db->sql_query_prepared(
+        "SELECT id, username, uploaded, downloaded FROM users WHERE username LIKE ? ORDER BY username ASC LIMIT 20",
+        ['%' . $like . '%']
+    );
+
+    $results = [];
+    while ($row = $db->fetch_array($query)) {
+        $ratio = (int)$row['downloaded'] > 0
+            ? number_format((int)$row['uploaded'] / (int)$row['downloaded'], 2)
+            : '∞';
+        $results[] = [
+            'id'   => $row['username'],
+            'text' => $row['username'] . '  (↑' . mksize((float)$row['uploaded']) . ' / ↓' . mksize((float)$row['downloaded']) . ', ratio ' . $ratio . ')',
+        ];
+    }
+
+    echo json_encode($results);
+    exit;
+}
 
 // Initialize variables
 $action = $_POST['action'] ?? '';
@@ -23,6 +58,11 @@ $success = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'update') {
         try {
+            global $mybb;
+            if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+                throw new InvalidArgumentException('Security check failed. Please refresh the page and try again.');
+            }
+
             $username = trim($_POST['username'] ?? '');
             $uploaded = trim($_POST['uploaded'] ?? '');
             $downloaded = trim($_POST['downloaded'] ?? '');
@@ -42,44 +82,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($uploaded < 0 || $downloaded < 0) {
                 throw new InvalidArgumentException('Values cannot be negative.');
             }
+
+            // Старые значения — нужны для лога и редиректа
+            $beforeQuery = $db->sql_query_prepared(
+                "SELECT id, uploaded, downloaded FROM users WHERE username = ?",
+                [$username]
+            );
+            $before = $beforeQuery ? $db->fetch_array($beforeQuery) : null;
+            if (!$before) {
+                throw new RuntimeException('User not found.');
+            }
             
-            // Update database using sql_query_prepared
-            $updateQuery = "UPDATE users 
-                           SET uploaded = ?, downloaded = ? 
-                           WHERE username = ?";
-            
-            $result = $db->sql_query_prepared($updateQuery, [$uploaded, $downloaded, $username]);
+            // Update database
+            $result = $db->sql_query_prepared(
+                "UPDATE users SET uploaded = ?, downloaded = ? WHERE username = ?",
+                [$uploaded, $downloaded, $username]
+            );
             
             if ($result === false) {
                 throw new RuntimeException('Database update failed.');
             }
+
+            write_log(sprintf(
+                'Ratio Manager: %s (UID %d) changed stats for user "%s" (UID %d): uploaded %s -> %s, downloaded %s -> %s',
+                $CURUSER['username'],
+                (int)$CURUSER['id'],
+                $username,
+                (int)$before['id'],
+                mksize((float)$before['uploaded']),
+                mksize((float)$uploaded),
+                mksize((float)$before['downloaded']),
+                mksize((float)$downloaded)
+            ), 'ratio');
             
-            if ($db->affected_rows() === 0) {
-                throw new RuntimeException('User not found.');
-            }
+            // Редирект — ID уже известен из $before
+            $success = "User statistics updated successfully!";
+            $member  = get_profile_link((int)$before['id']);
             
-            // Get user ID for redirect
-            $selectQuery = "SELECT id FROM users WHERE username = ?";
-            $userResult = $db->sql_query_prepared($selectQuery, [$username]);
-            
-            if ($userResult) {
-                $user = $db->fetch_array($userResult);
-                if ($user) {
-                    $success = "User statistics updated successfully!";
-					
-					$member = get_profile_link((int)$user['id']);
-					
-					
-					
-					
-                    // Redirect after 2 seconds
-                    echo '<script>
-                            setTimeout(function() {
-                                window.location.href = "' . $BASEURL . '/'.$member . '";
-                            }, 2000);
-                          </script>';
-                }
-            }
+            echo '<script>
+                    setTimeout(function() {
+                        window.location.href = "' . $BASEURL . '/' . $member . '";
+                    }, 2000);
+                  </script>';
             
         } catch (InvalidArgumentException $e) {
             $error = $e->getMessage();
@@ -87,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = $e->getMessage();
         } catch (Exception $e) {
             $error = 'An unexpected error occurred.';
-            error_log("Update ratio error: " . $e->getMessage());
+            write_log('Ratio Manager error: ' . $e->getMessage(), 'error');
         }
         
     } elseif ($action === 'calculate') {
@@ -196,26 +240,25 @@ stdhead('Update User Statistics');
                 <div class="card-body p-4">
                     <form method="post" action="<?= $_this_script_ ?>" id="updateForm">
                         <input type="hidden" name="action" value="update">
+                        <input type="hidden" name="my_post_key" value="<?= e($mybb->post_code ?? '') ?>">
                         
                         <div class="row g-4">
                             <!-- Username -->
-                            <div class="col-md-12">
-                                <div class="form-floating">
-                                    <input type="text" 
-                                           class="form-control <?= isset($_POST['username']) && empty($_POST['username']) ? 'is-invalid' : '' ?>"
-                                           name="username" 
-                                           id="username"
-                                           value="<?= e($_POST['username'] ?? '') ?>"
-                                           placeholder=" "
-                                           required
-                                           autofocus>
-                                    <label for="username" class="form-label">
-                                        <i class="fas fa-user me-2"></i>Username
-                                    </label>
-                                    <div class="invalid-feedback">
-                                        Please enter a username
-                                    </div>
-                                </div>
+                            <div class="col-md-12 position-relative">
+                                <label for="username" class="form-label fw-semibold">
+                                    <i class="fas fa-user me-2"></i>Username
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       name="username"
+                                       id="username"
+                                       value="<?= e($_POST['username'] ?? '') ?>"
+                                       placeholder="Start typing a username…"
+                                       autocomplete="off"
+                                       required
+                                       autofocus>
+                                <div id="usernameSuggestions" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:1050; max-height:280px; overflow-y:auto;"></div>
+                                <div class="form-text">Start typing at least 2 characters to search.</div>
                             </div>
                             
                             <!-- Uploaded -->
@@ -387,11 +430,84 @@ stdhead('Update User Statistics');
 <!-- JavaScript Enhancements -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Bootstrap tooltips
+    // Автокомплит поиска юзера на чистом JS
+    (function () {
+        const input = document.getElementById('username');
+        const box   = document.getElementById('usernameSuggestions');
+        if (!input || !box) return;
+
+        let debounceTimer = null;
+        let activeIndex = -1;
+
+        function hideBox() {
+            box.classList.add('d-none');
+            box.innerHTML = '';
+            activeIndex = -1;
+        }
+
+        function renderResults(results) {
+            box.innerHTML = '';
+            if (!results.length) {
+                box.classList.add('d-none');
+                return;
+            }
+            results.forEach((r, i) => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'list-group-item list-group-item-action py-2';
+                item.textContent = r.text;
+                item.dataset.username = r.id;
+                item.addEventListener('click', () => {
+                    input.value = r.id;
+                    hideBox();
+                });
+                box.appendChild(item);
+            });
+            box.classList.remove('d-none');
+        }
+
+        input.addEventListener('input', function () {
+            const term = input.value.trim();
+            clearTimeout(debounceTimer);
+            if (term.length < 2) {
+                hideBox();
+                return;
+            }
+            debounceTimer = setTimeout(() => {
+                fetch('<?= $_this_script_ ?>&action=search_user&term=' + encodeURIComponent(term))
+                    .then(r => r.json())
+                    .then(renderResults)
+                    .catch(() => hideBox());
+            }, 250);
+        });
+
+        input.addEventListener('keydown', function (e) {
+            const items = box.querySelectorAll('.list-group-item');
+            if (!items.length) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeIndex = Math.min(activeIndex + 1, items.length - 1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeIndex = Math.max(activeIndex - 1, 0);
+            } else if (e.key === 'Enter' && activeIndex >= 0) {
+                e.preventDefault();
+                items[activeIndex].click();
+                return;
+            } else {
+                return;
+            }
+            items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+        });
+
+        document.addEventListener('click', function (e) {
+            if (e.target !== input && !box.contains(e.target)) hideBox();
+        });
+    })();
+
     const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
     tooltips.forEach(tooltip => new bootstrap.Tooltip(tooltip));
     
-    // Auto-format input fields
     const formatInput = function(input) {
         const value = input.value.trim();
         if (value.match(/^\d+(\.\d+)?[GMK]?B?$/i)) {
@@ -413,7 +529,6 @@ document.addEventListener('DOMContentLoaded', function() {
         formatInput(this);
     });
     
-    // Confirm before submission
     document.getElementById('updateForm').addEventListener('submit', function(e) {
         const username = document.getElementById('username').value.trim();
         if (!confirm(`Are you sure you want to update statistics for "${username}"?`)) {
@@ -424,6 +539,20 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <style>
+#usernameSuggestions {
+    background-color: var(--bs-body-bg, #fff);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.25);
+}
+#usernameSuggestions .list-group-item {
+    background-color: var(--bs-body-bg, #fff);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+#usernameSuggestions .list-group-item:hover,
+#usernameSuggestions .list-group-item.active {
+    background-color: var(--bs-tertiary-bg, #f1f3f5);
+}
 .card {
     border-radius: 12px;
     overflow: hidden;

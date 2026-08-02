@@ -1,4 +1,16 @@
 <?php
+// Этот файл рассчитан только на include() из manage_uploads.php.
+// Повторная проверка — защита на случай прямого обращения по URL,
+// поскольку сам manage_uploads.php не определяет отдельную константу
+// вроде STAFF_PANEL, на которую можно было бы опереться здесь.
+
+declare(strict_types=1);
+
+if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+    http_response_code(403);
+    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
+}
+
 // Helper functions at the beginning of the file
 function getFileTypeClass($ext) 
 {
@@ -239,8 +251,8 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
 					<?php if ($file['comment_id']): ?>
     <?php 
     // Получаем torrent из таблицы comments
-    $torrent_result = $db->sql_query("SELECT torrent FROM comments WHERE id = " . (int)$file['comment_id']);
-    $torrent_row = $db->fetch_array($torrent_result);
+    $torrent_result = $db->sql_query_prepared("SELECT torrent FROM comments WHERE id = ?", [(int)$file['comment_id']]);
+    $torrent_row = $torrent_result ? $db->fetch_array($torrent_result) : null;
     $torrent_id = $torrent_row['torrent'] ?? 0;
     
     // Формируем ссылку
@@ -295,8 +307,8 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
 <?php if ($file['post_id']): ?>
     <?php 
     // Получаем tid из таблицы posts
-    $post_result = $db->sql_query("SELECT tid FROM posts WHERE pid = " . (int)$file['post_id']);
-    $post_row = $db->fetch_array($post_result);
+    $post_result = $db->sql_query_prepared("SELECT tid FROM posts WHERE pid = ?", [(int)$file['post_id']]);
+    $post_row = $post_result ? $db->fetch_array($post_result) : null;
     $tid = $post_row['tid'] ?? 0;
     
     // Получаем ссылку на пост и добавляем якорь #pid
@@ -399,9 +411,31 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
                 </a>
             </li>
             <li>
+                <a class="dropdown-item move-btn" 
+                   href="#" 
+                   data-bs-toggle="modal" 
+                   data-bs-target="#moveModal"
+                   data-id="<?= $file['id'] ?>"
+                   data-file-name="<?= htmlspecialchars($file['file_name']) ?>"
+                   data-file-url="<?= htmlspecialchars($file['file_url']) ?>">
+                    <i class="bi bi-arrows-move me-2 text-primary"></i> Move
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item copy-btn" 
+                   href="#" 
+                   data-bs-toggle="modal" 
+                   data-bs-target="#copyModal"
+                   data-id="<?= $file['id'] ?>"
+                   data-file-name="<?= htmlspecialchars($file['file_name']) ?>"
+                   data-file-url="<?= htmlspecialchars($file['file_url']) ?>">
+                    <i class="bi bi-files me-2 text-info"></i> Copy
+                </a>
+            </li>
+            <li>
                 <a class="dropdown-item btn-delete" 
                    href="#" 
-                   data-id="<?= htmlspecialchars($file['id']) ?>">
+                   data-id="<?= htmlspecialchars((string)$file['id']) ?>">
                     <i class="bi bi-trash me-2 text-danger"></i> Delete
                 </a>
             </li>
@@ -525,10 +559,3 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
-
-
-
-
-
-
-

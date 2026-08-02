@@ -51,7 +51,10 @@ function handlePasskeyReset(): void
 {
     global $db, $mybb, $error, $title, $passkey;
 
-    verify_post_check($mybb->get_input('my_post_key'));
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        $error = 'Security check failed. Please refresh the page and try again.';
+        return;
+    }
 
     $title = 'Passkey Reset: ';
     $passkey = trim(strtolower($_POST['passkey'] ?? ''));
@@ -66,7 +69,7 @@ function handlePasskeyReset(): void
         return;
     }
     
-    $db->sql_query('UPDATE users SET passkey = \'\' WHERE passkey = ' . $db->sqlesc($passkey));
+    $db->sql_query_prepared("UPDATE users SET passkey = '' WHERE passkey = ?", [$passkey]);
     $affected = $db->affected_rows();
     
     if ($affected > 0) {
@@ -97,11 +100,11 @@ function handlePasskeySearch(): void
         return;
     }
     
-    $query = $db->sql_query('SELECT u.*, g.namestyle FROM users u 
+    $query = $db->sql_query_prepared('SELECT u.*, g.namestyle FROM users u 
                             LEFT JOIN usergroups g ON (u.usergroup=g.gid) 
-                            WHERE u.passkey = ' . $db->sqlesc($passkey));
+                            WHERE u.passkey = ?', [$passkey]);
     
-    if ($db->num_rows($query) == 0) {
+    if (!$query || $db->num_rows($query) == 0) {
         $error = '<i class="fas fa-user-slash text-warning"></i> No registered user found with this passkey!';
         return;
     }

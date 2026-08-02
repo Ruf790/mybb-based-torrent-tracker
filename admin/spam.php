@@ -1,10 +1,14 @@
 <?php
 
+declare(strict_types=1);
 
+define('IN_MYBB', 1);
+define('IN_ADMINCP', 1);
 
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger m-3"><strong>Error!</strong> Direct access not allowed.</div>');
+}
 
-// Admin permission check
-// if(!$CURUSER || !$CURUSER['admin']) die("Access denied");
 
 // Pagination settings
 $perPage = 25;
@@ -19,29 +23,34 @@ $filterStatus = isset($_GET['status']) ? $_GET['status'] : 'all';
 
 // Build WHERE conditions
 $where = [];
+$where_params = [];
 
 if (!empty($search)) {
-    $esc = $db->sqlesc("%$search%");
-    $where[] = "(pm.subject LIKE $esc OR pm.message LIKE $esc)";
+    $where[] = "(pm.subject LIKE ? OR pm.message LIKE ?)";
+    $where_params[] = "%$search%";
+    $where_params[] = "%$search%";
 }
 
 if ($filterFrom > 0) {
-    $where[] = "pm.fromid = " . (int)$filterFrom;
+    $where[] = "pm.fromid = ?";
+    $where_params[] = $filterFrom;
 }
 
 if ($filterTo > 0) {
-    $where[] = "pm.toid = " . (int)$filterTo;
+    $where[] = "pm.toid = ?";
+    $where_params[] = $filterTo;
 }
 
 if ($filterStatus !== 'all') {
-    $where[] = "pm.status = " . ($filterStatus === 'read' ? 1 : 0);
+    $where[] = "pm.status = ?";
+    $where_params[] = $filterStatus === 'read' ? 1 : 0;
 }
 
 $whereClause = $where ? "WHERE " . implode(" AND ", $where) : "";
 
 // Get total messages count
 $totalQuery = "SELECT COUNT(*) as c FROM privatemessages pm $whereClause";
-$totalRes   = $db->sql_query($totalQuery);
+$totalRes   = $db->sql_query_prepared($totalQuery, $where_params);
 $totalRow   = $db->fetch_array($totalRes);
 $total      = $totalRow['c'];
 
@@ -54,9 +63,9 @@ $query = "SELECT pm.*,
           LEFT JOIN users u2 ON pm.toid   = u2.id
           $whereClause
           ORDER BY pm.dateline DESC
-          LIMIT $offset, $perPage";
+          LIMIT ?, ?";
 
-$res = $db->sql_query($query);
+$res = $db->sql_query_prepared($query, array_merge($where_params, [(int)$offset, (int)$perPage]));
 
 
 
@@ -174,7 +183,7 @@ stdhead();
         <h4 class="mb-0">
           <i class="bi bi-chat-left-text me-2"></i>Private Messages
         </h4>
-        <span class="badge bg-light text-dark">Total: <?=number_format($total)?></span>
+        <span class="badge bg-light text-dark">Total: <?=ts_nf($total)?></span>
       </div>
     </div>
     
@@ -341,8 +350,8 @@ $receiver_avatar = $avatar['image'];
                 </div>
               </td>
               <td>
-                <span title="<?=date("Y-m-d H:i:s", $row['dateline'])?>">
-                  <?=date("d.m.Y H:i", $row['dateline'])?>
+                <span title="<?=date("Y-m-d H:i:s", (int)$row['dateline'])?>">
+                  <?=date("d.m.Y H:i", (int)$row['dateline'])?>
                 </span>
               </td>
               <td>
@@ -593,7 +602,6 @@ function showToast(msg) {
 </script>
 
 
-<?
+<?php
 stdfoot();
 ?>
-

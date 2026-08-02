@@ -12,7 +12,7 @@ require_once INC_PATH . '/functions_multipage.php';
 
 final class BonusPointsManager
 {
-    private const BS_VERSION    = 'v0.3 by xam';
+    private const BS_VERSION    = 'v0.7';
     private const ALLOWED_ACTIONS = [
         'showlist', 'edituser', 'updateuser', 'updatebonussystem',
         'updatebonussystemsave', 'adminpanel', 'add', 'add_save', 'resetall', 'reset'
@@ -32,6 +32,17 @@ final class BonusPointsManager
 
     public function handleRequest(): void
     {
+        global $mybb;
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            // $silent=true — иначе при провале функция может сама вывести HTML
+            // (в зависимости от состояния IN_ADMINCP) вместо простого false.
+            if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+                http_response_code(403);
+                die('Invalid security token');
+            }
+        }
+
         $action = $this->getValidatedAction();
         match ($action) {
             'showlist'             => $this->showUserList(),
@@ -61,8 +72,8 @@ final class BonusPointsManager
 
     private function getTotalUsersWithBonus(): int
     {
-        $res = $this->db->sql_query("SELECT COUNT(*) as total FROM users WHERE seedbonus > 0");
-        return (int)($this->db->fetch_array($res)['total'] ?? 0);
+        $res = $this->db->sql_query_prepared("SELECT COUNT(*) as total FROM users WHERE seedbonus > 0");
+        return $res ? (int)($this->db->fetch_array($res)['total'] ?? 0) : 0;
     }
 
     private function getPagination(int $total): string
@@ -89,14 +100,14 @@ final class BonusPointsManager
 
     private function getUserById(int $id): ?array
     {
-        $res = $this->db->sql_query('SELECT id, username, seedbonus FROM users WHERE id = ' . $this->db->sqlesc($id));
-        return $this->db->num_rows($res) > 0 ? $this->db->fetch_array($res) : null;
+        $res = $this->db->sql_query_prepared("SELECT id, username, seedbonus FROM users WHERE id = ?", [$id]);
+        return ($res && $this->db->num_rows($res) > 0) ? $this->db->fetch_array($res) : null;
     }
 
     private function getBonusById(int $id): ?array
     {
-        $res = $this->db->sql_query('SELECT * FROM bonus WHERE id = ' . $this->db->sqlesc($id));
-        return $this->db->num_rows($res) > 0 ? $this->db->fetch_array($res) : null;
+        $res = $this->db->sql_query_prepared("SELECT * FROM bonus WHERE id = ?", [$id]);
+        return ($res && $this->db->num_rows($res) > 0) ? $this->db->fetch_array($res) : null;
     }
 
     private function renderHeader(string $title, string $icon): string
@@ -148,6 +159,8 @@ HTML;
 
     private function renderBonusForm(string $action_url, array $data = [], bool $show_delete = false): string
     {
+        global $mybb;
+
         $name        = htmlspecialchars($data['bonusname']   ?? '');
         $points      = htmlspecialchars((string)($data['points']  ?? ''));
         $description = htmlspecialchars($data['description'] ?? '');
@@ -175,6 +188,7 @@ HTML;
         <div class="card-body">
             <form method="post" action="{$action_url}">
                 <input type="hidden" name="act" value="bonuspoints">
+                <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
 				<input type="hidden" name="action" value="{$hidden_action}">
                 {$hidden_id}
 				
@@ -250,23 +264,26 @@ HTML;
         $page  = max(1, (int)($_GET['page'] ?? 1));
         $start = ($page - 1) * $this->perPage;
 
-        $res  = $this->db->sql_query(
+        $res  = $this->db->sql_query_prepared(
             "SELECT id, username, seedbonus, bonuscomment, uploaded
              FROM users WHERE seedbonus > 0
-             ORDER BY seedbonus DESC LIMIT {$start}, {$this->perPage}"
+             ORDER BY seedbonus DESC LIMIT ?, ?",
+            [$start, $this->perPage]
         );
 
         $rows = '';
-        while ($u = $this->db->fetch_array($res)) {
+        while ($res && ($u = $this->db->fetch_array($res))) {
             $link   = $this->baseUrl . '/' . get_profile_link($u['id']);
             $size   = mksize($u['uploaded']);
             $edit   = $this->script . '?act=bonuspoints&action=edituser&id=' . $u['id'];
+            $safeUsername = htmlspecialchars($u['username']);
+            $safeComment  = htmlspecialchars($u['bonuscomment'] ?? '');
             $rows  .= <<<HTML
 <tr>
     <td class="text-center"><a href="{$link}" class="text-decoration-none"><i class="bi bi-person-badge me-1 text-muted"></i>{$u['id']}</a></td>
-    <td class="text-center"><a href="{$link}" class="text-decoration-none fw-bold"><i class="bi bi-person-circle me-1 text-primary"></i>{$u['username']}</a></td>
+    <td class="text-center"><a href="{$link}" class="text-decoration-none fw-bold"><i class="bi bi-person-circle me-1 text-primary"></i>{$safeUsername}</a></td>
     <td class="text-center"><span class="badge bg-success fs-6"><i class="bi bi-coin me-1"></i>{$u['seedbonus']} points</span></td>
-    <td><textarea class="form-control form-control-sm" rows="2" readonly>{$u['bonuscomment']}</textarea></td>
+    <td><textarea class="form-control form-control-sm" rows="2" readonly>{$safeComment}</textarea></td>
     <td class="text-end"><i class="bi bi-cloud-upload text-info me-1"></i>{$size}</td>
     <td class="text-center"><a href="{$edit}" class="btn btn-sm btn-primary"><i class="bi bi-pencil-square me-1"></i>Edit</a></td>
 </tr>
@@ -303,8 +320,9 @@ HTML;
         $user = $this->getUserById($this->getValidatedUserId());
         if (!$user) { stderr('Error', 'User not found!'); return; }
 
-        stdhead('Bonus Points ' . self::BS_VERSION . " - Edit User ({$user['username']})");
-        echo $this->renderHeader("Edit User: {$user['username']}", 'bi-person-gear');
+        $safeUsername = htmlspecialchars($user['username']);
+        stdhead('Bonus Points ' . self::BS_VERSION . " - Edit User ({$safeUsername})");
+        echo $this->renderHeader("Edit User: {$safeUsername}", 'bi-person-gear');
         echo $this->renderEditUserForm($user);
         echo $this->renderNavigation();
         stdfoot();
@@ -312,8 +330,11 @@ HTML;
 
     private function renderEditUserForm(array $user): string
     {
+        global $mybb;
+
         $link = $this->baseUrl . '/userdetails.php?id=' . $user['id'];
         $s    = $this->script;
+        $safeUsername = htmlspecialchars($user['username']);
         return <<<HTML
 <div class="container mt-3">
     <div class="card shadow-sm border-primary">
@@ -323,6 +344,7 @@ HTML;
         <div class="card-body">
             <form method="post" action="{$s}">
                 <input type="hidden" name="act" value="bonuspoints">
+                <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
                 <input type="hidden" name="action" value="updateuser">
                 <input type="hidden" name="id" value="{$user['id']}">
                 <div class="row g-3">
@@ -332,7 +354,7 @@ HTML;
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-bold">Username</label>
-                        <div class="form-control"><a href="{$link}" class="fw-bold">{$user['username']}</a></div>
+                        <div class="form-control"><a href="{$link}" class="fw-bold">{$safeUsername}</a></div>
                     </div>
                     <div class="col-md-4">
                         <label for="seedbonus" class="form-label fw-bold"><i class="bi bi-coin me-1"></i>Bonus Points</label>
@@ -354,9 +376,14 @@ HTML;
 
     private function updateUser(): void
     {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(403);
+            die('Invalid request method');
+        }
+
         $id    = $this->getValidatedUserId();
         $bonus = (float)($_POST['seedbonus'] ?? 0);
-        $ok    = $this->db->sql_query("UPDATE users SET seedbonus = " . $this->db->sqlesc($bonus) . " WHERE id = " . $this->db->sqlesc($id));
+        $ok    = $this->db->sql_query_prepared("UPDATE users SET seedbonus = ? WHERE id = ?", [$bonus, $id]);
         $ok
             ? stdok('User ID: ' . $id . ' successfully updated', 'Success', 'success')
             : stdok('Unable to update user: ' . $id, 'Error', 'error');
@@ -373,19 +400,21 @@ HTML;
 
     private function renderBonusList(): string
     {
-        $res  = $this->db->sql_query('SELECT * FROM bonus ORDER BY id ASC');
+        $res  = $this->db->sql_query_prepared('SELECT * FROM bonus ORDER BY id ASC');
         $rows = '';
         $count = 0;
 
-        while ($b = $this->db->fetch_array($res)) {
+        while ($res && ($b = $this->db->fetch_array($res))) {
             $count++;
             $edit  = $this->script . '?act=bonuspoints&action=updatebonussystem&id=' . $b['id'];
+            $safeBonusName   = htmlspecialchars($b['bonusname']);
+            $safeDescription = htmlspecialchars($b['description'] ?? '');
             $rows .= <<<HTML
 <tr>
     <td class="text-center fw-bold"><i class="bi bi-hash text-muted me-1"></i>{$b['id']}</td>
-    <td class="fw-bold text-primary"><i class="bi bi-tag me-1"></i>{$b['bonusname']}</td>
+    <td class="fw-bold text-primary"><i class="bi bi-tag me-1"></i>{$safeBonusName}</td>
     <td class="text-center"><span class="badge bg-success fs-6"><i class="bi bi-coin me-1"></i>{$b['points']}</span></td>
-    <td><div class="alert alert-info mb-0 p-2 small"><i class="bi bi-info-circle me-1"></i>{$b['description']}</div></td>
+    <td><div class="alert alert-info mb-0 p-2 small"><i class="bi bi-info-circle me-1"></i>{$safeDescription}</div></td>
     <td class="text-center"><a href="{$edit}" class="btn btn-sm btn-primary"><i class="bi bi-pencil-square"></i></a></td>
 </tr>
 HTML;
@@ -424,8 +453,9 @@ HTML;
         $bonus = $this->getBonusById($this->getValidatedBonusId());
         if (!$bonus) { stdok('Bonus item not found!', 'Error', 'error'); return; }
 
-        stdhead('Bonus Points ' . self::BS_VERSION . " - Update Bonus ({$bonus['bonusname']})");
-        echo $this->renderHeader("Update Bonus: {$bonus['bonusname']}", 'bi-pencil-square');
+        $safeBonusName = htmlspecialchars($bonus['bonusname']);
+        stdhead('Bonus Points ' . self::BS_VERSION . " - Update Bonus ({$safeBonusName})");
+        echo $this->renderHeader("Update Bonus: {$safeBonusName}", 'bi-pencil-square');
         echo $this->renderBonusForm(
             $this->script,
             array_merge($bonus, ['action' => 'updatebonussystemsave']),
@@ -437,19 +467,32 @@ HTML;
 
     private function updateBonusSystemSave(): void
     {
+        global $mybb;
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(403);
+            die('Invalid request method');
+        }
+
         $id     = $this->getValidatedBonusId();
         $delete = isset($_POST['delete']) && $_POST['delete'] == '1';
-        $sure   = (int)($_GET['sure'] ?? 0);
+        $sure   = (int)($_POST['sure'] ?? $_GET['sure'] ?? 0);
+        $postKey = htmlspecialchars($mybb->post_code);
 
         if ($delete && !$sure) {
-            $url = $this->script . '?act=bonuspoints&action=updatebonussystemsave&id=' . $id . '&sure=1';
+            $url = $this->script . '?act=bonuspoints&action=updatebonussystemsave&id=' . $id;
             stdok(
                 "<div class='text-center'>
                     <i class='bi bi-exclamation-triangle-fill text-warning display-4 mb-3'></i>
                     <h4>Confirm Deletion</h4>
                     <p class='lead'>You are about to delete this bonus item permanently.</p>
                     <div class='mt-4'>
-                        <a href='{$url}' class='btn btn-danger btn-lg me-3'><i class='bi bi-trash-fill me-2'></i>Confirm Delete</a>
+                        <form method='post' action='{$url}' class='d-inline'>
+                            <input type='hidden' name='my_post_key' value='{$postKey}'>
+                            <input type='hidden' name='delete' value='1'>
+                            <input type='hidden' name='sure' value='1'>
+                            <button type='submit' class='btn btn-danger btn-lg me-3'><i class='bi bi-trash-fill me-2'></i>Confirm Delete</button>
+                        </form>
                         <a href='{$this->script}?act=bonuspoints' class='btn btn-secondary btn-lg'><i class='bi bi-x-circle me-2'></i>Cancel</a>
                     </div>
                 </div>",
@@ -459,20 +502,27 @@ HTML;
         }
 
         if ($delete && $sure) {
-            $ok = $this->db->sql_query('DELETE FROM bonus WHERE id = ' . $this->db->sqlesc($id));
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                http_response_code(403);
+                die('Invalid request method');
+            }
+
+            $ok = $this->db->sql_query_prepared("DELETE FROM bonus WHERE id = ?", [$id]);
             $ok
                 ? stdok('Bonus item successfully deleted.' . $this->renderNavigation(), 'Success', 'success')
                 : stdok('Unable to delete bonus item.', 'Error', 'error');
             return;
         }
 
-        $ok = $this->db->sql_query(
-            "UPDATE bonus SET
-                bonusname   = " . $this->db->sqlesc($_POST['bonusname']   ?? '') . ",
-                points      = " . $this->db->sqlesc((float)($_POST['points']      ?? 0)) . ",
-                description = " . $this->db->sqlesc($_POST['description'] ?? '') . ",
-                menge       = " . $this->db->sqlesc((int)($_POST['menge']         ?? 0)) . "
-             WHERE id = " . $this->db->sqlesc($id)
+        $ok = $this->db->sql_query_prepared(
+            "UPDATE bonus SET bonusname = ?, points = ?, description = ?, menge = ? WHERE id = ?",
+            [
+                $_POST['bonusname']   ?? '',
+                (float)($_POST['points']      ?? 0),
+                $_POST['description'] ?? '',
+                (int)($_POST['menge']         ?? 0),
+                $id,
+            ]
         );
 
         $ok
@@ -491,12 +541,19 @@ HTML;
 
     private function addBonusSave(): void
     {
-        $ok = $this->db->sql_query(
-            "INSERT INTO bonus (bonusname, points, description, menge, art) VALUES (" .
-            $this->db->sqlesc($_POST['bonusname']  ?? '') . ", " .
-            $this->db->sqlesc((float)($_POST['points']     ?? 0)) . ", " .
-            $this->db->sqlesc($_POST['description'] ?? '') . ", " .
-            $this->db->sqlesc((int)($_POST['menge']       ?? 0)) . ", 'traffic')"
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(403);
+            die('Invalid request method');
+        }
+
+        $ok = $this->db->sql_query_prepared(
+            "INSERT INTO bonus (bonusname, points, description, menge, art) VALUES (?, ?, ?, ?, 'traffic')",
+            [
+                $_POST['bonusname']  ?? '',
+                (float)($_POST['points']     ?? 0),
+                $_POST['description'] ?? '',
+                (int)($_POST['menge']       ?? 0),
+            ]
         );
 
         $ok
@@ -515,6 +572,8 @@ HTML;
 
     private function renderResetForm(): string
     {
+        global $mybb;
+
         $groups = _selectbox_('Usergroup', 'usergroup');
         $s = $this->script;
         return <<<HTML
@@ -530,6 +589,7 @@ HTML;
             </div>
             <form method="post" action="{$s}">
                 <input type="hidden" name="act" value="bonuspoints">
+                <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
                 <input type="hidden" name="action" value="resetall">
                 <div class="row g-3">
                     <div class="col-md-8">
@@ -555,19 +615,27 @@ HTML;
 
     private function resetAllPoints(): void
     {
+        global $mybb;
+
         $group = $this->getValidatedUserGroup();
-        $sure  = (int)($_GET['sure'] ?? 0);
+        $sure  = (int)($_POST['sure'] ?? $_GET['sure'] ?? 0);
+        $postKey = htmlspecialchars($mybb->post_code);
 
         if (!$sure) {
             $groupName  = $group ? '[' . get_user_class_name($group) . ']' : '[ALL User Groups]';
-            $confirmUrl = $this->script . '?act=bonuspoints&action=resetall&sure=1' . ($group ? '&usergroup=' . $group : '');
+            $confirmUrl = $this->script . '?act=bonuspoints&action=resetall';
             stdok(
                 "<div class='text-center'>
                     <i class='bi bi-exclamation-triangle-fill text-warning display-4 mb-3'></i>
                     <h4>Reset Confirmation</h4>
                     <p class='lead'>Reset all bonus points for: <b>{$groupName}</b></p>
                     <div class='mt-4'>
-                        <a href='{$confirmUrl}' class='btn btn-danger btn-lg me-3'><i class='bi bi-trash-fill me-2'></i>Confirm Reset</a>
+                        <form method='post' action='{$confirmUrl}' class='d-inline'>
+                            <input type='hidden' name='my_post_key' value='{$postKey}'>
+                            <input type='hidden' name='sure' value='1'>
+                            <input type='hidden' name='usergroup' value='{$group}'>
+                            <button type='submit' class='btn btn-danger btn-lg me-3'><i class='bi bi-trash-fill me-2'></i>Confirm Reset</button>
+                        </form>
                         <a href='{$this->script}?act=bonuspoints' class='btn btn-secondary btn-lg'><i class='bi bi-x-circle me-2'></i>Cancel</a>
                     </div>
                 </div>",
@@ -576,10 +644,16 @@ HTML;
             return;
         }
 
-        $sql = "UPDATE users SET seedbonus = 0.0 WHERE enabled = 'yes' AND ustatus = 'confirmed'";
-        if ($group) $sql .= " AND usergroup = " . $this->db->sqlesc($group);
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(403);
+            die('Invalid request method');
+        }
 
-        $ok = $this->db->sql_query($sql);
+        $sql = "UPDATE users SET seedbonus = 0.0 WHERE enabled = 'yes' AND ustatus = 'confirmed'";
+        $params = [];
+        if ($group) { $sql .= " AND usergroup = ?"; $params[] = $group; }
+
+        $ok = $this->db->sql_query_prepared($sql, $params);
         $ok
             ? stdok('All bonus points have been successfully reset.' . $this->renderNavigation(), 'Success', 'success')
             : stdok('Unable to reset bonus points.' . $this->renderNavigation(), 'Error', 'error');

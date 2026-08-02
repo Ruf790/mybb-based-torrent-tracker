@@ -674,8 +674,9 @@ function splitsql(string $sql): string
 
 // Initialize application
 $rootpath = './../';
-define('TQE_VERSION', '0.4 by xam');
+define('TQE_VERSION', '0.8');
 define('DEBUGMODE', false);
+define('IN_MYBB', 1);
 
 require_once $rootpath . 'global.php';
 
@@ -686,8 +687,34 @@ if (!defined('APP_INITIALIZED')) {
 gzip();
 maxsysop();
 
-if ($usergroups['cansettingspanel'] !== '1') {
+if ((int)($usergroups['cansettingspanel'] ?? 0) !== 1) {
     print_no_permission(true);
+}
+
+// CSRF: без этой проверки EXPLAIN ANALYZE (реально выполняющий переданный
+// SQL-текст против живой БД) можно было бы спровоцировать подделанным
+// POST-запросом от имени залогиненного sysop-а.
+//
+// $mybb->post_code (и, соответственно, токен в форме) считается ОДИН РАЗ
+// внутри global.php — до того, как конкретная страница (если вообще делает
+// это) успевает сама объявить IN_ADMINCP. Из-за этого нельзя надёжно узнать
+// заранее, в каком состоянии была константа в момент реального вычисления
+// токена — это зависит от конкретного файла и порядка define()/require_once
+// в нём. Поэтому не гадаем через флаг, а пробуем оба варианта явно:
+// сначала БЕЗ IN_ADMINCP (обязательно первым — константу нельзя "отменить"
+// после define()), и только если не совпало — определяем и пробуем снова.
+global $mybb;
+$submitted_token = $mybb->get_input('my_post_key');
+$token_valid = verify_post_check($submitted_token, true);
+
+if (!$token_valid && !defined('IN_ADMINCP')) {
+    define('IN_ADMINCP', 1);
+    $token_valid = verify_post_check($submitted_token, true);
+}
+
+if (!$token_valid) {
+    http_response_code(403);
+    exit('<div class="alert alert-danger">Invalid security token. Please refresh the page and try again.</div>');
 }
 
 $memoryUsage = function_exists('memory_get_usage') 
@@ -697,10 +724,11 @@ $memoryUsage = function_exists('memory_get_usage')
 $deep = !empty($_POST['deep']);
 $queries = $_POST['queries'] ?? [];
 $totalTime = (float) ($_POST['totaltime'] ?? 0.0);
+$cacheCallsRaw = $_POST['cache_calls'] ?? [];
 
-process_queries($queries, $deep, $totalTime, $memoryUsage);
+process_queries($queries, $deep, $totalTime, $memoryUsage, $cacheCallsRaw);
 
-function process_queries(array $queries, bool $deep, float $totalTime, string $memoryUsage): void
+function process_queries(array $queries, bool $deep, float $totalTime, string $memoryUsage, array $cacheCallsRaw = []): void
 {
     if (empty($queries)) {
         render_no_queries();
@@ -755,6 +783,7 @@ function process_queries(array $queries, bool $deep, float $totalTime, string $m
 
     $output .= render_enhanced_stats($printed, $skipped, $queryTime, $totalTime, $memoryUsage, $deep);
     $output .= render_performance_summary($performanceStats);
+    $output .= process_cache_calls($cacheCallsRaw);
 
     render_final_output($output, $printed, $skipped, $queryTime, $totalTime, $memoryUsage, $deep);
 }
@@ -771,6 +800,92 @@ function decode_query_data(string $queryData): array
     $sql = base64_decode($parts[1] ?? '', true);
 
     return [$execTime, $sql !== false ? $sql : null];
+}
+
+function decode_cache_call_data(string $data): ?array
+{
+    $decoded = base64_decode($data, true);
+    if ($decoded === false) {
+        return null;
+    }
+
+    $parts = explode(',', $decoded, 4);
+    if (count($parts) < 4) {
+        return null;
+    }
+
+    $verb = base64_decode($parts[2], true);
+    $key  = base64_decode($parts[3], true);
+
+    return [
+        'time' => (float) $parts[0],
+        'hit'  => $parts[1] === '1',
+        'verb' => $verb !== false ? $verb : '',
+        'key'  => $key !== false ? $key : '',
+    ];
+}
+
+function render_cache_call(int $id, array $call): string
+{
+    $hitLabel  = $call['hit'] ? 'HIT' : 'MISS';
+    $hitClass  = $call['hit'] ? 'bg-success' : 'bg-danger';
+    $verbLabel = hsafe(ucfirst($call['verb']));
+    $timeHtml  = '<b>Call Time:</b> ' . format_time_duration($call['time']);
+
+    return '
+        <div class="card-header bg-primary text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <strong>#' . $id . ' - ' . $verbLabel . ' Call</strong>
+                <div class="badge ' . $hitClass . '">' . $hitLabel . '</div>
+            </div>
+        </div>
+        <div class="card-body">
+            <code>' . hsafe($call['key']) . '</code>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <span>' . $timeHtml . '</span>
+            <small class="text-muted">Call #' . $id . '</small>
+        </div>';
+}
+
+function process_cache_calls(array $cacheCallsRaw): string
+{
+    if (empty($cacheCallsRaw)) {
+        return '';
+    }
+
+    $cards     = '';
+    $id        = 1;
+    $totalTime = 0.0;
+    $printed   = 0;
+
+    foreach ($cacheCallsRaw as $raw) {
+        $call = decode_cache_call_data((string)$raw);
+        if ($call === null) {
+            continue;
+        }
+
+        $totalTime += $call['time'];
+
+        $cards .= '
+        <div class="container mt-3">
+            <div class="card shadow-sm query-card">' . render_cache_call($id, $call) . '</div>
+        </div>';
+
+        $id++;
+        $printed++;
+    }
+
+    if ($printed === 0) {
+        return '';
+    }
+
+    $heading = '
+    <div class="container mt-4">
+        <h4>Cache Calls (' . $printed . ' Total, ' . format_time_duration($totalTime) . ')</h4>
+    </div>';
+
+    return $heading . $cards;
 }
 
 function render_no_queries(): void

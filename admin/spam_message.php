@@ -6,12 +6,19 @@ define("IN_MYBB", 1);
 
 require_once $rootpath . 'global.php';
 
+// Только модераторы и выше - это инструмент разбора жалоб, а не обычный
+// просмотр личных сообщений. Раньше эта проверка отсутствовала вообще,
+// позволяя любому читать чужую переписку по прямой ссылке.
+if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+    http_response_code(403);
+    die("Access denied. Staff only.");
+}
 
 require_once(INC_PATH.'/class_parser.php');
 
 $parser = new postParser;
 $parser_options = array(
-    "allow_html" => 1,
+    "allow_html" => 0,
     "allow_mycode" => 1,
     "allow_smilies" => 1,
     "allow_imgcode" => 1,
@@ -34,18 +41,18 @@ $query = "SELECT pm.*,
           FROM privatemessages pm
           LEFT JOIN users u ON pm.fromid = u.id
           LEFT JOIN users u2 ON pm.toid = u2.id
-          WHERE pm.pmid = $pmid";
+          WHERE pm.pmid = ?";
 
-$row = $db->fetch_array($db->sql_query($query));
+$row = $db->fetch_array($db->sql_query_prepared($query, [$pmid]));
 
 if (!$row) {
     die("Message not found");
 }
 
-// Update status to "read" if necessary
-if ($row['status'] == 0) {
-    $db->sql_query("UPDATE privatemessages SET status = 1, readtime = UNIX_TIMESTAMP() WHERE pmid = $pmid");
-}
+// Примечание: раньше здесь было "UPDATE ... SET status = 1 ..." при
+// открытии. Это убрано - теперь файл доступен только стаффу для разбора
+// жалоб, и статус "прочитано" у настоящих участников переписки не должен
+// меняться от того, что кто-то из модерации сюда заглянул.
 
 
 

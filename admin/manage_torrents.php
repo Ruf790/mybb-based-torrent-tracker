@@ -84,7 +84,7 @@ class TorrentManager
     private function moveTorrents(string $ids, int $category): void {
         global $db;
         if ($category > 0) {
-            $db->update_query('torrents', ['category' => $category], "id IN ($ids)");
+            $db->sql_query_prepared("UPDATE torrents SET category = ? WHERE id IN ($ids)", [$category]);
         } else {
             $this->addError('Invalid category selected!');
         }
@@ -99,7 +99,7 @@ class TorrentManager
 
     private function toggleField(string $ids, string $field): void {
         global $db;
-        $db->sql_query("UPDATE torrents SET $field = IF($field = 'yes', 'no', 'yes') WHERE id IN ($ids)");
+        $db->sql_query_prepared("UPDATE torrents SET $field = IF($field = 'yes', 'no', 'yes') WHERE id IN ($ids)");
     }
 }
 
@@ -125,25 +125,29 @@ $searchtype = $_GET['searchtype'] ?? $_POST['searchtype'] ?? '';
 // Build query conditions
 $queryBuilder = new class {
     public array $conditions = [];
+    public array $params = [];
     public string $extralink = '';
 
     public function addCategoryCondition(int $category): void {
         global $db;
         
         if ($category > 0) {
-            $query = $db->simple_select('categories', 'type', "id = '{$category}'");
-            if ($db->num_rows($query)) {
+            $query = $db->sql_query_prepared("SELECT type FROM categories WHERE id = ?", [$category]);
+            if ($query && $db->num_rows($query)) {
                 $result = $db->fetch_array($query);
                 
                 if ($result['type'] === 's') {
-                    $this->conditions[] = "t.category = $category";
+                    $this->conditions[] = "t.category = ?";
+                    $this->params[] = $category;
                 } else {
                     $subCats = [$category];
-                    $subQuery = $db->simple_select('categories', 'id', "pid = '{$category}'");
-                    while ($subCat = $db->fetch_array($subQuery)) {
-                        $subCats[] = $subCat['id'];
+                    $subQuery = $db->sql_query_prepared("SELECT id FROM categories WHERE pid = ?", [$category]);
+                    while ($subQuery && ($subCat = $db->fetch_array($subQuery))) {
+                        $subCats[] = (int)$subCat['id'];
                     }
-                    $this->conditions[] = "t.category IN (" . implode(',', $subCats) . ")";
+                    $ph = implode(',', array_fill(0, count($subCats), '?'));
+                    $this->conditions[] = "t.category IN ({$ph})";
+                    array_push($this->params, ...$subCats);
                 }
                 $this->extralink .= "browsecategory=$category&amp;";
             }
@@ -152,8 +156,8 @@ $queryBuilder = new class {
 
     public function addSearchCondition(string $searchword): void {
         if (!empty($searchword)) {
-            global $db;
-            $this->conditions[] = "t.name LIKE " . $db->sqlesc("%$searchword%");
+            $this->conditions[] = "t.name LIKE ?";
+            $this->params[] = "%$searchword%";
             $this->extralink .= "searchword=" . urlencode($searchword) . "&amp;";
         }
     }
@@ -178,6 +182,10 @@ $queryBuilder = new class {
         return $this->conditions ? 'WHERE ' . implode(' AND ', $this->conditions) : '';
     }
 
+    public function getParams(): array {
+        return $this->params;
+    }
+
     public function getCountQuery(): string {
         return "SELECT COUNT(*) as total FROM torrents t " . $this->getWhereClause();
     }
@@ -190,8 +198,12 @@ $queryBuilder = new class {
             LEFT JOIN categories c ON t.category = c.id 
             " . $this->getWhereClause() . "
             ORDER BY $orderBy 
-            LIMIT $start, $perPage
+            LIMIT ?, ?
         ";
+    }
+
+    public function getMainQueryParams(int $start, int $perPage): array {
+        return [...$this->params, $start, $perPage];
     }
 };
 
@@ -219,14 +231,11 @@ if ($do === 'quick_edit') {
     }
 
     $tid  = (int)($_POST['torrent_id'] ?? 0);
-    $name = $db->escape_string($_POST['name'] ?? '');
+    $name = trim($_POST['name'] ?? '');
     $cat  = (int)($_POST['category'] ?? 0);
 
     if ($tid > 0 && $name !== '' && $cat > 0) {
-        $db->update_query('torrents', [
-            'name'     => $name,
-            'category' => $cat,
-        ], "id = $tid");
+        $db->sql_query_prepared("UPDATE torrents SET name = ?, category = ? WHERE id = ?", [$name, $cat, $tid]);
         $_SESSION['action_success'] = 'Torrent #' . $tid . ' updated successfully!';
     }
 
@@ -260,8 +269,8 @@ if (isset($_GET['orderby']) && in_array($_GET['orderby'], $allowedOrders)) {
 
 // Get torrent count and setup pagination
 $startTime = microtime(true);
-$countQuery = $db->sql_query($queryBuilder->getCountQuery());
-$totalTorrents = (int)$db->fetch_field($countQuery, 'total');
+$countQuery = $db->sql_query_prepared($queryBuilder->getCountQuery(), $queryBuilder->getParams());
+$totalTorrents = $countQuery ? (int)$db->fetch_field($countQuery, 'total') : 0;
 $queryTime = round((microtime(true) - $startTime) * 1000, 2);
 
 // Adaptive pagination based on performance
@@ -445,13 +454,16 @@ echo '
 
 // Fetch and display torrents
 $queryStart = microtime(true);
-$query = $db->sql_query($queryBuilder->getMainQuery($orderBy, $start, $torrentsPerPage));
+$query = $db->sql_query_prepared(
+    $queryBuilder->getMainQuery($orderBy, $start, $torrentsPerPage),
+    $queryBuilder->getMainQueryParams($start, $torrentsPerPage)
+);
 $queryTime = round((microtime(true) - $queryStart) * 1000, 2);
 
 $torrentCount = 0;
 $totalSize = 0;
 
-while ($torrent = $db->fetch_array($query)) {
+while ($query && ($torrent = $db->fetch_array($query))) {
     $torrentCount++;
     $totalSize += $torrent['size'];
     $flags = GetTorrentTags($torrent);

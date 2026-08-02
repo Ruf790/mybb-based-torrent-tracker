@@ -140,8 +140,8 @@ class LoginAttemptsManager
     {
         global $db, $dateformat, $timeformat, $BASEURL;
         
-        $whereClause = $this->buildWhereClause();
-        $totalRows = $this->getTotalRows($whereClause);
+        [$whereClause, $whereParams] = $this->buildWhereClause();
+        $totalRows = $this->getTotalRows($whereClause, $whereParams);
         
         if ($totalRows === 0) {
             return $this->renderEmptyState();
@@ -150,7 +150,11 @@ class LoginAttemptsManager
         $pagination = $this->getPagination($totalRows);
         $query = $this->buildQuery($whereClause, $pagination['offset']);
         
-        $result = $db->sql_query($query);
+        $result = $db->sql_query_prepared($query, [...$whereParams, $pagination['offset'], self::PER_PAGE]);
+        
+        if (!$result) {
+            return $this->renderEmptyState();
+        }
         
         $output = $this->renderTable($result, $dateformat, $timeformat, $BASEURL);
         $output .= $this->renderPagination($pagination, $totalRows);
@@ -175,21 +179,14 @@ class LoginAttemptsManager
             $newStatus = $action === 'ban' ? 'yes' : 'no';
             $message = $action === 'ban' ? 'Ban' : 'Unban';
             
-            $query = sprintf(
-                "UPDATE loginattempts SET banned = '%s' WHERE id = %d",
-                $db->escape_string($newStatus),
-                $id
-            );
-            
-            $db->sql_query($query);
+            $db->sql_query_prepared("UPDATE loginattempts SET banned = ? WHERE id = ?", [$newStatus, $id]);
             
             // Получаем обновленные данные
-            $query = sprintf(
-                "SELECT * FROM loginattempts WHERE id = %d",
-                $id
-            );
-            $result = $db->sql_query($query);
-            $row = $db->fetch_array($result);
+            $result = $db->sql_query_prepared("SELECT * FROM loginattempts WHERE id = ?", [$id]);
+            $row = $result ? $db->fetch_array($result) : null;
+            if (!$row) {
+                throw new Exception('Record not found after update');
+            }
             
             echo json_encode([
                 'success' => true,
@@ -230,13 +227,11 @@ class LoginAttemptsManager
             }
             
             // Получаем IP перед удалением для сообщения
-            $query = sprintf("SELECT ip FROM loginattempts WHERE id = %d", $id);
-            $result = $db->sql_query($query);
-            $row = $db->fetch_array($result);
+            $result = $db->sql_query_prepared("SELECT ip FROM loginattempts WHERE id = ?", [$id]);
+            $row = $result ? $db->fetch_array($result) : null;
             $ip = $row['ip'] ?? '';
             
-            $query = sprintf("DELETE FROM loginattempts WHERE id = %d", $id);
-            $db->sql_query($query);
+            $db->sql_query_prepared("DELETE FROM loginattempts WHERE id = ?", [$id]);
             
             echo json_encode([
                 'success' => true,
@@ -261,22 +256,26 @@ class LoginAttemptsManager
         header('Content-Type: application/json');
         
         try {
-            $searchTerm = $db->escape_string($_POST['search'] ?? '');
+            $searchTerm = trim($_POST['search'] ?? '');
             $filterBanned = $_POST['filter_banned'] ?? '';
             $filterType = $_POST['filter_type'] ?? '';
             
             $whereParts = [];
+            $params = [];
             
             if (!empty($searchTerm)) {
-                $whereParts[] = sprintf("ip LIKE '%%%s%%'", $searchTerm);
+                $whereParts[] = "ip LIKE ?";
+                $params[] = '%' . $this->likeEscape($searchTerm) . '%';
             }
             
             if (!empty($filterBanned) && $filterBanned !== 'all') {
-                $whereParts[] = sprintf("banned = '%s'", $db->escape_string($filterBanned));
+                $whereParts[] = "banned = ?";
+                $params[] = $filterBanned;
             }
             
             if (!empty($filterType) && $filterType !== 'all') {
-                $whereParts[] = sprintf("type = '%s'", $db->escape_string($filterType));
+                $whereParts[] = "type = ?";
+                $params[] = $filterType;
             }
             
             $whereClause = empty($whereParts) ? '' : 'WHERE ' . implode(' AND ', $whereParts);
@@ -287,8 +286,8 @@ class LoginAttemptsManager
                 $this->orderType
             );
             
-            $result = $db->sql_query($query);
-            $count = $db->num_rows($result);
+            $result = $db->sql_query_prepared($query, $params);
+            $count = $result ? $db->num_rows($result) : 0;
             
             if ($count === 0) {
                 $html = $this->renderEmptySearch($searchTerm);
@@ -381,28 +380,32 @@ class LoginAttemptsManager
             $searchIp = $this->getRequest('search_ip', '');
             
             $whereParts = [];
+            $params = [];
             
             if (!empty($searchIp)) {
-                $whereParts[] = sprintf("ip LIKE '%%%s%%'", $db->escape_string($searchIp));
+                $whereParts[] = "ip LIKE ?";
+                $params[] = '%' . $this->likeEscape($searchIp) . '%';
             }
             
             if (!empty($filterBanned) && $filterBanned !== 'all') {
-                $whereParts[] = sprintf("banned = '%s'", $db->escape_string($filterBanned));
+                $whereParts[] = "banned = ?";
+                $params[] = $filterBanned;
             }
             
             if (!empty($filterType) && $filterType !== 'all') {
-                $whereParts[] = sprintf("type = '%s'", $db->escape_string($filterType));
+                $whereParts[] = "type = ?";
+                $params[] = $filterType;
             }
             
             $whereClause = empty($whereParts) ? '' : 'WHERE ' . implode(' AND ', $whereParts);
             $query = "SELECT COUNT(*) as count FROM loginattempts " . $whereClause;
             
-            $result = $db->sql_query($query);
-            $row = $db->fetch_array($result);
+            $result = $db->sql_query_prepared($query, $params);
+            $row = $result ? $db->fetch_array($result) : null;
             
             echo json_encode([
                 'success' => true,
-                'count' => (int) $row['count']
+                'count' => (int) ($row['count'] ?? 0)
             ]);
             
         } catch (Exception $e) {
@@ -415,48 +418,54 @@ class LoginAttemptsManager
         exit;
     }
     
-    private function buildWhereClause(): string
+    private function buildWhereClause(): array
     {
-        global $db;
-        
         $whereParts = [];
+        $params = [];
         
         if (!empty($this->searchIp)) {
-            $whereParts[] = sprintf("ip LIKE '%%%s%%'", $db->escape_string($this->searchIp));
+            $whereParts[] = "ip LIKE ?";
+            $params[] = '%' . $this->likeEscape($this->searchIp) . '%';
         }
         
         if (!empty($this->filterBanned) && $this->filterBanned !== 'all') {
-            $whereParts[] = sprintf("banned = '%s'", $db->escape_string($this->filterBanned));
+            $whereParts[] = "banned = ?";
+            $params[] = $this->filterBanned;
         }
         
         if (!empty($this->filterType) && $this->filterType !== 'all') {
-            $whereParts[] = sprintf("type = '%s'", $db->escape_string($this->filterType));
+            $whereParts[] = "type = ?";
+            $params[] = $this->filterType;
         }
         
-        return empty($whereParts) ? '' : 'WHERE ' . implode(' AND ', $whereParts);
+        $sql = empty($whereParts) ? '' : 'WHERE ' . implode(' AND ', $whereParts);
+        return [$sql, $params];
+    }
+    
+    private function likeEscape(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
     
     private function buildQuery(string $whereClause, int $offset): string
     {
         return sprintf(
-            "SELECT * FROM loginattempts %s ORDER BY %s %s LIMIT %d, %d",
+            "SELECT * FROM loginattempts %s ORDER BY %s %s LIMIT ?, ?",
             $whereClause,
             $this->orderBy,
-            $this->orderType,
-            $offset,
-            self::PER_PAGE
+            $this->orderType
         );
     }
     
-    private function getTotalRows(string $whereClause): int
+    private function getTotalRows(string $whereClause, array $whereParams = []): int
     {
         global $db;
         
         $query = "SELECT COUNT(*) as count FROM loginattempts " . $whereClause;
-        $result = $db->sql_query($query);
-        $row = $db->fetch_array($result);
+        $result = $db->sql_query_prepared($query, $whereParams);
+        $row = $result ? $db->fetch_array($result) : null;
         
-        return (int) $row['count'];
+        return (int) ($row['count'] ?? 0);
     }
     
     private function getPagination(int $totalRows): array
@@ -562,7 +571,7 @@ class LoginAttemptsManager
         HTML;
     }
     
-    private function renderTable(mysqli_result $result, string $dateformat, string $timeformat, string $baseUrl): string
+    private function renderTable(object $result, string $dateformat, string $timeformat, string $baseUrl): string
     {
         global $db;
         
@@ -773,6 +782,8 @@ class LoginAttemptsManager
 
 private function includeJavaScriptLibraries(): string
 {
+    global $mybb;
+
     // Получаем текущие значения фильтров
     $currentBanned = $this->filterBanned ?? 'all';
     $currentType = $this->filterType ?? 'all';
@@ -784,10 +795,12 @@ private function includeJavaScriptLibraries(): string
     $currentSearch = addslashes($currentSearch);
     $orderBy = addslashes($this->orderBy);
     $orderType = addslashes($this->orderType);
+    $postKey = htmlspecialchars($mybb->post_code);
     
     return <<<HTML
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <input type="hidden" id="maxloginPostKey" value="{$postKey}">
     
     <!-- JavaScript для AJAX функционала -->
     <script>
@@ -834,12 +847,13 @@ private function includeJavaScriptLibraries(): string
         
         // AJAX helper
         function makeRequest(url, data) {
+            const myPostKey = document.getElementById('maxloginPostKey')?.value || '';
             return fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: new URLSearchParams(data)
+                body: new URLSearchParams({ ...data, my_post_key: myPostKey })
             })
             .then(response => response.json())
             .catch(error => {
@@ -1315,13 +1329,8 @@ private function includeJavaScriptLibraries(): string
         $this->validateId();
         stdhead('Login Attempts - Edit');
         
-        $query = sprintf(
-            "SELECT * FROM loginattempts WHERE id = %d",
-            $this->id
-        );
-        
-        $result = $db->sql_query($query);
-        $attempt = $db->fetch_array($result);
+        $result = $db->sql_query_prepared("SELECT * FROM loginattempts WHERE id = ?", [$this->id]);
+        $attempt = $result ? $db->fetch_array($result) : null;
         
         echo $this->renderEditForm($attempt);
         stdfoot();
@@ -1333,23 +1342,16 @@ private function includeJavaScriptLibraries(): string
         
         $id = (int) $_POST['id'];
         $attempts = (int) $_POST['attempts'];
-        $type = $db->escape_string($_POST['type']);
-        $banned = $db->escape_string($_POST['banned']);
+        $type = trim($_POST['type'] ?? '');
+        $banned = trim($_POST['banned'] ?? '');
         
         $this->validateId($id);
         $this->validateAttempts($attempts);
         
-        $query = sprintf(
-            "UPDATE loginattempts 
-             SET attempts = %d, type = '%s', banned = '%s' 
-             WHERE id = %d LIMIT 1",
-            $attempts,
-            $type,
-            $banned,
-            $id
+        $db->sql_query_prepared(
+            "UPDATE loginattempts SET attempts = ?, type = ?, banned = ? WHERE id = ? LIMIT 1",
+            [$attempts, $type, $banned, $id]
         );
-        
-        $db->sql_query($query);
         
         if (!empty($_POST['returnto'])) {
             redirect($_POST['returnto']);
@@ -1362,17 +1364,12 @@ private function includeJavaScriptLibraries(): string
     {
         global $db, $dateformat, $timeformat, $BASEURL;
         
-        $ip = $db->escape_string($_POST['ip']);
+        $ip = trim($_POST['ip'] ?? '');
         stdhead('Login Attempts - Search Results');
         
-        $query = sprintf(
-            "SELECT * FROM loginattempts WHERE ip LIKE '%%%s%%'",
-            $ip
-        );
+        $result = $db->sql_query_prepared("SELECT * FROM loginattempts WHERE ip LIKE ?", ['%' . $this->likeEscape($ip) . '%']);
         
-        $result = $db->sql_query($query);
-        
-        if ($db->num_rows($result) === 0) {
+        if (!$result || $db->num_rows($result) === 0) {
             echo $this->renderEmptySearch($ip);
         } else {
             echo $this->renderTable($result, $dateformat, $timeformat, $BASEURL);
@@ -1404,14 +1401,7 @@ private function includeJavaScriptLibraries(): string
     {
         global $db;
         
-        $query = sprintf(
-            "UPDATE loginattempts SET %s = '%s' WHERE id = %d",
-            $field,
-            $db->escape_string($value),
-            $this->id
-        );
-        
-        $db->sql_query($query);
+        $db->sql_query_prepared("UPDATE loginattempts SET {$field} = ? WHERE id = ?", [$value, $this->id]);
         redirect($_SERVER['PHP_SELF'] . "?act=maxlogin&update=$message");
     }
     
@@ -1419,12 +1409,7 @@ private function includeJavaScriptLibraries(): string
     {
         global $db;
         
-        $query = sprintf(
-            "DELETE FROM loginattempts WHERE id = %d",
-            $this->id
-        );
-        
-        $db->sql_query($query);
+        $db->sql_query_prepared("DELETE FROM loginattempts WHERE id = ?", [$this->id]);
         
         if ($returnToRequests) {
             redirect('admin.php?act=viewunbaniprequest');
@@ -1435,9 +1420,12 @@ private function includeJavaScriptLibraries(): string
     
     private function renderEditForm(array $attempt): string
     {
+        global $mybb;
+
         $added = my_datee('relative', $attempt['added']);
         $returnHidden = isset($_GET['return']) && $_GET['return'] === 'yes' ? 
             '<input type="hidden" name="returnto" value="admin.php?act=viewunbaniprequest">' : '';
+        $postKey = htmlspecialchars($mybb->post_code);
         
         return <<<HTML
         <div class="container-md">
@@ -1477,6 +1465,7 @@ private function includeJavaScriptLibraries(): string
                         <input type="hidden" name="action" value="save">
                         <input type="hidden" name="id" value="{$attempt['id']}">
                         <input type="hidden" name="ip" value="{$attempt['ip']}">
+                        <input type="hidden" name="my_post_key" value="{$postKey}">
                         {$returnHidden}
                         
                         <div class="row g-3">
@@ -1714,7 +1703,11 @@ class LoginLogManager
         $this->filterStatus     = htmlspecialchars($_POST['filter_status']     ?? 'all', ENT_QUOTES, 'UTF-8');
         $this->filterSuspicious = htmlspecialchars($_POST['filter_suspicious'] ?? 'all', ENT_QUOTES, 'UTF-8');
         $this->searchIp         = htmlspecialchars($_POST['search_log_ip']     ?? '',    ENT_QUOTES, 'UTF-8');
-        $this->orderBy          = htmlspecialchars($_POST['lorder']  ?? 'datetime', ENT_QUOTES, 'UTF-8');
+        $order                  = $_POST['lorder'] ?? 'datetime';
+        $this->orderBy          = match($order) {
+            'id','uid','ip','country','city','datetime','status','suspicious','banned','type' => $order,
+            default => 'datetime'
+        };
         $this->orderType        = ($_POST['lotype'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
 
         echo json_encode(['success' => true, 'html' => $this->renderTableContent()]);
@@ -1723,9 +1716,10 @@ class LoginLogManager
     private function ajaxGetCount(): void
     {
         global $db;
-        $where = $this->buildWhere();
-        $row   = $db->fetch_array($db->sql_query("SELECT COUNT(*) AS c FROM login_log $where"));
-        echo json_encode(['success' => true, 'count' => (int)$row['c']]);
+        [$where, $whereParams] = $this->buildWhere();
+        $result = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM login_log $where", $whereParams);
+        $row = $result ? $db->fetch_array($result) : null;
+        echo json_encode(['success' => true, 'count' => (int)($row['c'] ?? 0)]);
     }
 
     private function ajaxDelete(): void
@@ -1733,8 +1727,10 @@ class LoginLogManager
         global $db;
         $id = (int)($_POST['id'] ?? 0);
         if ($id <= 0) throw new Exception('Invalid ID');
-        $row = $db->fetch_array($db->sql_query("SELECT ip FROM login_log WHERE id=$id"));
-        $db->sql_query("DELETE FROM login_log WHERE id=$id");
+        $result = $db->sql_query_prepared("SELECT ip FROM login_log WHERE id=?", [$id]);
+        $row = $result ? $db->fetch_array($result) : null;
+        if (!$row) throw new Exception('Log entry not found');
+        $db->sql_query_prepared("DELETE FROM login_log WHERE id=?", [$id]);
         echo json_encode(['success' => true, 'message' => "Log entry #{$id} ({$row['ip']}) deleted.", 'id' => $id]);
     }
 
@@ -1750,8 +1746,9 @@ class LoginLogManager
             default      => '',
         };
 
-        $count = (int)$db->fetch_field($db->sql_query("SELECT COUNT(*) FROM login_log $where"), 'COUNT(*)');
-        $db->sql_query("DELETE FROM login_log $where");
+        $countResult = $db->sql_query_prepared("SELECT COUNT(*) as c FROM login_log $where");
+        $count = $countResult ? (int)$db->fetch_field($countResult, 'c') : 0;
+        $db->sql_query_prepared("DELETE FROM login_log $where");
 
         echo json_encode(['success' => true, 'message' => "{$count} records deleted.", 'count' => $count]);
     }
@@ -1760,7 +1757,7 @@ class LoginLogManager
     {
         global $db;
         $id = (int)($_GET['id'] ?? 0);
-        if ($id > 0) $db->sql_query("DELETE FROM login_log WHERE id=$id");
+        if ($id > 0) $db->sql_query_prepared("DELETE FROM login_log WHERE id=?", [$id]);
         redirect($_SERVER['PHP_SELF'] . '?act=maxlogin&tab=log&update=Delete');
     }
 
@@ -1779,8 +1776,9 @@ class LoginLogManager
     {
         global $db;
 
-        $where = $this->buildWhere();
-        $total = (int)$db->fetch_field($db->sql_query("SELECT COUNT(*) AS c FROM login_log $where"), 'c');
+        [$where, $whereParams] = $this->buildWhere();
+        $totalResult = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM login_log $where", $whereParams);
+        $total = $totalResult ? (int)$db->fetch_field($totalResult, 'c') : 0;
 
         if ($total === 0) {
             return $this->renderEmpty();
@@ -1790,38 +1788,48 @@ class LoginLogManager
         $currentPage = max(1, min($this->page, $totalPages));
         $offset      = ($currentPage - 1) * self::PER_PAGE;
 
-        $result = $db->sql_query(
+        $result = $db->sql_query_prepared(
             "SELECT l.*, u.username FROM login_log l
              LEFT JOIN users u ON u.id = l.uid
              $where
              ORDER BY l.{$this->orderBy} {$this->orderType}
-             LIMIT $offset, " . self::PER_PAGE
+             LIMIT ?, ?",
+            [...$whereParams, $offset, self::PER_PAGE]
         );
 
         $rows = '';
-        while ($row = $db->fetch_array($result)) {
+        while ($result && ($row = $db->fetch_array($result))) {
             $rows .= $this->renderRow($row);
         }
 
         return $this->renderTable($rows) . $this->renderPager($currentPage, $totalPages, $total);
     }
 
-    private function buildWhere(): string
+    private function buildWhere(): array
     {
-        global $db;
         $parts = [];
+        $params = [];
 
         if (!empty($this->searchIp)) {
-            $parts[] = "ip LIKE '%" . $db->escape_string($this->searchIp) . "%'";
+            $parts[] = "ip LIKE ?";
+            $params[] = '%' . $this->likeEscape($this->searchIp) . '%';
         }
         if ($this->filterStatus !== 'all' && $this->filterStatus !== '') {
-            $parts[] = "status = '" . $db->escape_string($this->filterStatus) . "'";
+            $parts[] = "status = ?";
+            $params[] = $this->filterStatus;
         }
         if ($this->filterSuspicious !== 'all' && $this->filterSuspicious !== '') {
-            $parts[] = "suspicious = '" . $db->escape_string($this->filterSuspicious) . "'";
+            $parts[] = "suspicious = ?";
+            $params[] = $this->filterSuspicious;
         }
 
-        return empty($parts) ? '' : 'WHERE ' . implode(' AND ', $parts);
+        $sql = empty($parts) ? '' : 'WHERE ' . implode(' AND ', $parts);
+        return [$sql, $params];
+    }
+
+    private function likeEscape(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
 
     private function renderTable(string $rows): string
@@ -2072,6 +2080,7 @@ class LoginLogManager
             const logCount     = document.getElementById('log-total-count');
 
             function logReq(action, extra) {
+                const myPostKey = document.getElementById('maxloginPostKey')?.value || '';
                 const params = new URLSearchParams({
                     action,
                     lpage:              logPage,
@@ -2080,6 +2089,7 @@ class LoginLogManager
                     filter_status:      logStatus,
                     filter_suspicious:  logSuspicious,
                     search_log_ip:      logSearch,
+                    my_post_key:        myPostKey,
                     ...extra
                 });
                 if (logSpinner) logSpinner.classList.remove('d-none');
@@ -2259,6 +2269,9 @@ function maxlogin_render_tabs(): void
     // SweetAlert2 (нужен для обоих вкладок)
     echo '<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>';
 
+    global $mybb;
+    echo '<input type="hidden" id="maxloginPostKey" value="' . htmlspecialchars($mybb->post_code) . '">';
+
     if ($update) {
         echo '<div class="alert alert-success alert-dismissible fade show mx-3 mt-3" role="alert">'
            . '<i class="fas fa-check-circle me-2"></i><strong>Success!</strong> Operation "' . $update . '" completed.'
@@ -2269,7 +2282,7 @@ function maxlogin_render_tabs(): void
     $tab_log_active      = $tab === 'log'      ? 'active' : '';
 
     echo <<<HTML
-    <div class="container-fluid mt-3">
+    <div class="container mt-3">
         <ul class="nav nav-tabs mb-4" id="loginTabs">
             <li class="nav-item">
                 <a class="nav-link {$tab_attempts_active}" href="?act=maxlogin&tab=attempts">
@@ -2300,8 +2313,32 @@ function maxlogin_render_tabs(): void
 
 // Initialize and execute the manager
 try {
-    // Check if we handle an AJAX request for the log tab — bypass tab wrapper
     $rawAction = $_REQUEST['action'] ?? '';
+
+    // ── CSRF-защита для всех мутирующих действий ────────────────────────
+    // Раньше любое из этих действий (бан/анбан/удаление, включая массовое
+    // удаление ВСЕЙ истории логинов) принималось через $_REQUEST - то есть
+    // срабатывало по простой GET-ссылке, без токена вообще.
+    $mutatingActions = [
+        'ajax_ban', 'ajax_unban', 'ajax_delete',
+        'ban', 'unban', 'delete', 'save',
+        'log_ajax_delete', 'log_ajax_delete_all',
+    ];
+    if (in_array($rawAction, $mutatingActions, true)) {
+        global $mybb;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            if (str_starts_with($rawAction, 'ajax_') || str_starts_with($rawAction, 'log_ajax_')) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Invalid security token or request method']);
+            } else {
+                stderr('Error', 'Invalid security token or request method. Please try again from the page.');
+            }
+            exit;
+        }
+    }
+
+    // Check if we handle an AJAX request for the log tab — bypass tab wrapper
     if (str_starts_with($rawAction, 'log_ajax_')) {
         $logMgr = new LoginLogManager();
         $logMgr->renderTab();

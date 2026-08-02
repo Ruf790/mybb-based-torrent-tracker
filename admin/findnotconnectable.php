@@ -86,7 +86,7 @@ if ($do === 'showlist') {
             $isSeeder = $row['seeder'] === 'yes';
             $rows .= '
             <tr>
-                <td><a href="' . ts_seo($row['userid'], $row['username']) . '">'
+                <td><a href="' . get_profile_link($row['userid']) . '">'
                     . get_user_color($row['username'], $row['namestyle']) . '</a></td>
                 <td><a href="' . $BASEURL . '/details.php?id=' . (int)$row['torrent'] . '">'
                     . cutename($row['name'], 60) . '</a></td>

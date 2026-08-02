@@ -16,7 +16,7 @@ if (!defined('STAFF_PANEL')) {
 // Initialize parser
 $parser = new postParser();
 $parser_options = [
-    "allow_html" => 1,
+    "allow_html" => 0,
     "allow_mycode" => 1,
     "allow_smilies" => 1,
     "allow_imgcode" => 1,
@@ -63,7 +63,7 @@ function handleMailErrorActions(): void
     }
     
     if (($_POST['clear'] ?? '') === 'yes') {
-        $db->sql_query('TRUNCATE TABLE mailerrors');
+        $db->sql_query_prepared('TRUNCATE TABLE mailerrors');
         showAlert('success', '<i class="fas fa-trash"></i> Error log table has been completely cleared!');
         return;
     }
@@ -72,7 +72,7 @@ function handleMailErrorActions(): void
         $log_ids = array_filter($_POST['logid'], 'is_numeric');
         if (!empty($log_ids)) {
             $ids = implode(', ', array_map('intval', $log_ids));
-            $db->sql_query("DELETE FROM mailerrors WHERE eid IN ($ids)");
+            $db->sql_query_prepared("DELETE FROM mailerrors WHERE eid IN ($ids)");
             $deleted = $db->affected_rows();
             showAlert('success', 
                 '<i class="fas fa-check-circle"></i> Successfully deleted ' . $deleted . ' ' . 
@@ -167,8 +167,8 @@ function getTotalMailErrorCount(): int
 {
     global $db;
     
-    $res = $db->sql_query('SELECT COUNT(*) as total FROM mailerrors');
-    $row = $db->fetch_array($res);
+    $res = $db->sql_query_prepared('SELECT COUNT(*) as total FROM mailerrors');
+    $row = $res ? $db->fetch_array($res) : null;
     
     return (int)($row['total'] ?? 0);
 }
@@ -183,12 +183,12 @@ function getMailErrorLogs(int $start, int $perpage): array
     $query = "SELECT eid, dateline, message, fromaddress, toaddress, error 
               FROM mailerrors 
               ORDER BY dateline DESC 
-              LIMIT $start, $perpage";
+              LIMIT ?, ?";
     
-    $res = $db->sql_query($query);
+    $res = $db->sql_query_prepared($query, [$start, $perpage]);
     $logs = [];
     
-    while ($row = $db->fetch_array($res)) {
+    while ($res && ($row = $db->fetch_array($res))) {
         $logs[] = $row;
     }
     

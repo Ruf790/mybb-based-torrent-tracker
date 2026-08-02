@@ -1,12 +1,4 @@
 <?php
-/***********************************************/
-/*=========[TS Special Edition v.5.6]==========*/
-/*=============[Special Thanks To]=============*/
-/*        DrNet - wWw.SpecialCoders.CoM        */
-/*          Vinson - wWw.Decode4u.CoM          */
-/*    MrDecoder - wWw.Fearless-Releases.CoM    */
-/*           Fynnon - wWw.BvList.CoM           */
-/***********************************************/
 
 /**
  * Display FAQ error messages
@@ -100,13 +92,13 @@ function handleView($id)
         return;
     }
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
     SELECT a.id, a.name, a.description, b.name AS title
     FROM faq a
     LEFT JOIN faq b ON (a.pid = b.id)
-    WHERE a.type = 'item' AND a.pid = " . (int)$id . "
+    WHERE a.type = 'item' AND a.pid = ?
     ORDER BY a.disporder ASC
-    ");
+    ", [(int)$id]);
 
     if (!$query) {
         die('SQL ERROR: ' . $db->error());
@@ -201,7 +193,7 @@ function handleSaveDisplayOrder()
     }
     
     foreach ($orders as $id => $order) {
-        $db->sql_query("UPDATE faq SET disporder = '" . $db->escape_string($order) . "' WHERE id = '" . $db->escape_string($id) . "'");
+        $db->sql_query_prepared("UPDATE faq SET disporder = ? WHERE id = ?", [$order, $id]);
     }
     
     // Redirect to prevent form resubmission
@@ -222,8 +214,8 @@ function handleDelete($id)
         return;
     }
     
-    $db->sql_query("DELETE FROM faq WHERE id = '" . $db->escape_string($id) . "'");
-    $db->sql_query("DELETE FROM faq WHERE pid = '" . $db->escape_string($id) . "'");
+    $db->sql_query_prepared("DELETE FROM faq WHERE id = ?", [$id]);
+    $db->sql_query_prepared("DELETE FROM faq WHERE pid = ?", [$id]);
     
     // Redirect after deletion
     header('Location: ' . $_this_script_);
@@ -245,7 +237,7 @@ function handleNew()
         if (empty($name)) {
             $faq_errors[] = 'Please fill all fields!';
         } else {
-            $db->sql_query("INSERT INTO faq (type,name,description,disporder) VALUES ('1','" . $db->escape_string($name) . "','" . $db->escape_string($description) . "','" . $db->escape_string($disporder) . "')");
+            $db->sql_query_prepared("INSERT INTO faq (type,name,description,disporder) VALUES ('1',?,?,?)", [$name, $description, $disporder]);
             header('Location: ' . $_this_script_);
             exit;
         }
@@ -369,14 +361,14 @@ function handleAdd($id)
         if (empty($name)) {
             $faq_errors[] = 'Please fill all fields!';
         } else {
-            $db->sql_query("INSERT INTO faq (type,name,description,disporder,pid) VALUES ('2','" . $db->escape_string($name) . "','" . $db->escape_string($description) . "','" . $db->escape_string($disporder) . "','" . $db->escape_string($pid) . "')");
+            $db->sql_query_prepared("INSERT INTO faq (type,name,description,disporder,pid) VALUES ('2',?,?,?,?)", [$name, $description, $disporder, $pid]);
             header('Location: ' . $_this_script_);
             exit;
         }
     }
     
-    $query = $db->sql_query("SELECT * FROM faq WHERE type = 'category'");
-    if ($db->num_rows($query) == 0) {
+    $query = $db->sql_query_prepared("SELECT * FROM faq WHERE type = 'category'");
+    if (!$query || $db->num_rows($query) == 0) {
         $faq_errors[] = $lang->faq['faqerror'];
         show_faq_errors();
     } else {
@@ -523,13 +515,10 @@ function handleEdit($id)
     if (empty($name) || ($type == 'item' && empty($description))) {
         $faq_errors[] = 'Please fill all fields!';
     } else {
-        $db->sql_query("UPDATE faq SET 
-            type = '" . $db->escape_string($type) . "', 
-            name = '" . $db->escape_string($name) . "', 
-            description = '" . $db->escape_string($description) . "', 
-            disporder = '" . $db->escape_string($disporder) . "', 
-            pid = '" . $db->escape_string($pid) . "' 
-        WHERE id = '" . $db->escape_string($id) . "'");
+        $db->sql_query_prepared(
+            "UPDATE faq SET type = ?, name = ?, description = ?, disporder = ?, pid = ? WHERE id = ?",
+            [$type, $name, $description, $disporder, $pid, $id]
+        );
 
         header('Location: ' . $_this_script_);
         exit;
@@ -537,8 +526,8 @@ function handleEdit($id)
 }
 
     
-    $firstquery = $db->sql_query("SELECT * FROM faq WHERE id = '" . $db->escape_string($id) . "'");
-    if ($db->num_rows($firstquery) == 0) {
+    $firstquery = $db->sql_query_prepared("SELECT * FROM faq WHERE id = ?", [$id]);
+    if (!$firstquery || $db->num_rows($firstquery) == 0) {
         $faq_errors[] = $lang->faq['faqerror'];
         show_faq_errors();
     } else {
@@ -546,7 +535,7 @@ function handleEdit($id)
         show_faq_errors();
         
         if ($editfaq['type'] == 2) {
-            $query2 = $db->sql_query("SELECT * FROM faq WHERE type = '1' ORDER BY disporder ASC");
+            $query2 = $db->sql_query_prepared("SELECT * FROM faq WHERE type = '1' ORDER BY disporder ASC");
             $categories = '
                 <div class="col-md-12">
                     <label for="pid" class="form-label">
@@ -555,7 +544,7 @@ function handleEdit($id)
                     </label>
                     <select name="pid" class="form-select">';
             
-            while ($cat = $db->fetch_array($query2)) {
+            while ($query2 && ($cat = $db->fetch_array($query2))) {
                 $categories .= '<option value="' . $cat['id'] . '"' . ($editfaq['pid'] == $cat['id'] ? ' selected="selected"' : '') . '>' . $cat['name'] . '</option>';
             }
             
@@ -676,9 +665,9 @@ function handleDefault()
     
     $where = array('Add New FAQ Item' => $_this_script_ . '&do=new');
     
-    $query = $db->sql_query("SELECT disporder, id, name FROM faq WHERE type = 'category' ORDER BY disporder ASC");
+    $query = $db->sql_query_prepared("SELECT disporder, id, name FROM faq WHERE type = 'category' ORDER BY disporder ASC");
     
-    if ($db->num_rows($query) == 0) {
+    if (!$query || $db->num_rows($query) == 0) {
         echo '
         <div class="container mt-3">
             <div class="alert alert-info text-center">

@@ -17,7 +17,7 @@ require_once __DIR__ . '/../cache/smilies.php';
 
 $parser         = new postParser();
 $parser_options = [
-    'allow_html'      => 1,
+    'allow_html'      => 0,
     'allow_mycode'    => 1,
     'allow_smilies'   => 1,
     'allow_imgcode'   => 1,
@@ -37,12 +37,14 @@ function af_redirect(string $msg = ''): never
 function af_get_announcement(int $id): array
 {
     global $db;
-    $row = $db->fetch_array($db->sql_query(
+    $q = $db->sql_query_prepared(
         "SELECT a.*, u.username AS author_name
          FROM announcements a
          LEFT JOIN users u ON u.id = a.uid
-         WHERE a.id = {$id} AND a.type IN ('forum','global') LIMIT 1"
-    ));
+         WHERE a.id = ? AND a.type IN ('forum','global') LIMIT 1",
+        [$id]
+    );
+    $row = $q ? $db->fetch_array($q) : null;
     if (!$row) af_redirect('Announcement not found.');
     return $row;
 }
@@ -51,8 +53,8 @@ function af_get_forums(): array
 {
     global $db;
     $forums = ['-1' => '🌐 Global (All Forums)'];
-    $q = $db->sql_query("SELECT fid, name, pid FROM forums ORDER BY disporder ASC");
-    while ($f = $db->fetch_array($q)) {
+    $q = $db->sql_query_prepared("SELECT fid, name, pid FROM forums ORDER BY disporder ASC");
+    while ($q && ($f = $db->fetch_array($q))) {
         $prefix = $f['pid'] > 0 ? '   ↳ ' : '';
         $forums[(string)$f['fid']] = $prefix . htmlspecialchars($f['name']);
     }
@@ -184,17 +186,18 @@ function af_handle_list(): void
 
     stdhead('Forum Announcements ' . AF_VERSION);
 
-    $total   = (int)$db->fetch_array($db->sql_query(
-        "SELECT COUNT(*) AS c FROM announcements WHERE type IN ('forum','global')"))['c'];
+    $total_q = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM announcements WHERE type IN ('forum','global')");
+    $total   = $total_q ? (int)$db->fetch_array($total_q)['c'] : 0;
     $perpage = 15;
     $page    = max(0, (int)($_GET['page'] ?? 0));
     $offset  = $page * $perpage;
 
-    $res = $db->sql_query(
+    $res = $db->sql_query_prepared(
         "SELECT a.*, u.username AS author_name
          FROM announcements a LEFT JOIN users u ON u.id = a.uid
          WHERE a.type IN ('forum','global')
-         ORDER BY a.added DESC LIMIT {$offset}, {$perpage}"
+         ORDER BY a.added DESC LIMIT ?, ?",
+        [$offset, $perpage]
     );
 
     $forums = af_get_forums();
@@ -228,7 +231,7 @@ function af_handle_list(): void
                         </tr>
                     </thead>
                     <tbody>
-                    <?php if ($db->num_rows($res) > 0): ?>
+                    <?php if ($res && $db->num_rows($res) > 0): ?>
                         <?php while ($row = $db->fetch_array($res)): ?>
                         <tr>
                             <td class="text-center fw-bold text-muted"><?= (int)$row['id'] ?></td>
@@ -333,7 +336,7 @@ function af_handle_view(int $id): void
     $forums = af_get_forums();
     $script = htmlspecialchars($_SERVER['SCRIPT_NAME']);
 
-    $db->sql_query("UPDATE announcements SET views = views + 1 WHERE id = {$id}");
+    $db->sql_query_prepared("UPDATE announcements SET views = views + 1 WHERE id = ?", [$id]);
 
     stdhead('View: ' . htmlspecialchars($row['subject']));
     ?>
@@ -475,9 +478,9 @@ function af_handle_add(string $do): void
 
         if (!$errors) {
             $type = $fid === -1 ? 'global' : 'forum';
-            $db->insert_query('announcements', [
-                'subject'   => $db->escape_string($subject),
-                'message'   => $db->escape_string($message),
+            $insert = [
+                'subject'   => $subject,
+                'message'   => $message,
                 'uid'       => (int)$CURUSER['id'],
                 'added'     => TIMENOW,
                 'updated'   => 0,
@@ -486,7 +489,13 @@ function af_handle_add(string $do): void
                 'enddate'   => $enddate,
                 'fid'       => $fid,
                 'type'      => $type,
-            ]);
+            ];
+            $columns      = array_keys($insert);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO announcements (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($insert)
+            );
             
 			$cache->update_forumsdisplay();
 			
@@ -526,16 +535,20 @@ function af_handle_edit(int $id, string $do): void
 
         if (!$errors) {
             $type = $fid === -1 ? 'global' : 'forum';
-            $db->update_query('announcements', [
-                'subject'   => $db->escape_string($subject),
-                'message'   => $db->escape_string($message),
+            $update = [
+                'subject'   => $subject,
+                'message'   => $message,
                 'uid'       => (int)$CURUSER['id'],
                 'updated'   => TIMENOW,
                 'startdate' => $startdate,
                 'enddate'   => $enddate,
                 'fid'       => $fid,
                 'type'      => $type,
-            ], "id = {$id}");
+            ];
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+            $params = array_values($update);
+            $params[] = $id;
+            $db->sql_query_prepared("UPDATE announcements SET {$set} WHERE id = ?", $params);
             
 			$cache->update_forumsdisplay();
 			
@@ -561,7 +574,7 @@ function af_handle_delete(int $id): void
         af_redirect('Deletion cancelled.');
     }
 
-    $db->sql_query("DELETE FROM announcements WHERE id = {$id} AND type IN ('forum','global')");
+    $db->sql_query_prepared("DELETE FROM announcements WHERE id = ? AND type IN ('forum','global')", [$id]);
     
 	$cache->update_forumsdisplay();
 	
@@ -583,23 +596,24 @@ function af_handle_duplicate(int $id): void
         exit;
     }
 
-    $row = $db->fetch_array($db->sql_query(
-        "SELECT * FROM announcements WHERE id = {$id} AND type IN ('forum','global') LIMIT 1"
-    ));
+    $q = $db->sql_query_prepared(
+        "SELECT * FROM announcements WHERE id = ? AND type IN ('forum','global') LIMIT 1",
+        [$id]
+    );
+    $row = $q ? $db->fetch_array($q) : null;
     if (!$row) {
         echo json_encode(['success' => false, 'message' => 'Not found.']);
         exit;
     }
 
     $subject = 'Copy of ' . $row['subject'];
-    $count   = (int)$db->fetch_array($db->sql_query(
-        "SELECT COUNT(*) AS c FROM announcements WHERE subject LIKE '" .
-        $db->escape_string($subject) . "%'"))['c'];
+    $count_q = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM announcements WHERE subject LIKE ?", [$subject . '%']);
+    $count   = $count_q ? (int)$db->fetch_array($count_q)['c'] : 0;
     if ($count > 0) $subject .= ' (' . ($count + 1) . ')';
 
-    $new_id = $db->insert_query('announcements', [
-        'subject'   => $db->escape_string($subject),
-        'message'   => $db->escape_string($row['message']),
+    $insert = [
+        'subject'   => $subject,
+        'message'   => $row['message'],
         'uid'       => (int)$CURUSER['id'],
         'added'     => TIMENOW,
         'updated'   => 0,
@@ -608,7 +622,14 @@ function af_handle_duplicate(int $id): void
         'enddate'   => (int)$row['enddate'],
         'fid'       => (int)$row['fid'],
         'type'      => $row['type'],
-    ]);
+    ];
+    $columns      = array_keys($insert);
+    $placeholders = implode(',', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO announcements (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+        array_values($insert)
+    );
+    $new_id = $db->insert_id();
 
     $script = htmlspecialchars($_SERVER['SCRIPT_NAME']);
     echo json_encode([

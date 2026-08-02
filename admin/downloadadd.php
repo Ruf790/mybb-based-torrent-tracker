@@ -85,10 +85,7 @@ class DownloadAmountManager
         $groupId = $this->validateGroupId($_POST['usergroup'] ?? 0);
         $amountGB = $this->validateAmount($_POST['classamount'] ?? 0, self::MAX_GB_BULK);
         
-        $query = "enabled = 'yes' AND ustatus = 'confirmed'" . 
-                 ($groupId ? " AND usergroup = {$groupId}" : '');
-        
-        $this->updateGroupDownloadAmount($query, $amountGB, $groupId);
+        $this->updateGroupDownloadAmount($groupId, $amountGB);
         
         $this->logAction('bulk', $amountGB, $groupId);
         $this->displaySuccess($amountGB, $groupId);
@@ -155,24 +152,24 @@ private function searchByGroup(int $groupId): array
     
     // Получаем название группы
     $groupName = 'Unknown Group';
-    $groupResult = $db->sql_query("SELECT title FROM usergroups WHERE gid = " . $db->sqlesc($groupId));
-    if ($row = mysqli_fetch_assoc($groupResult)) {
+    $groupResult = $db->sql_query_prepared("SELECT title FROM usergroups WHERE gid = ?", [$groupId]);
+    if ($groupResult && ($row = $db->fetch_array($groupResult))) {
         $groupName = $row['title'];
     }
     
     // Ищем пользователей в этой группе
     $sql = "SELECT id, username, downloaded, uploaded, usergroup 
             FROM users 
-            WHERE usergroup = " . $db->sqlesc($groupId) . "
+            WHERE usergroup = ?
             AND enabled = 'yes' 
             AND ustatus = 'confirmed'
             ORDER BY username 
             LIMIT 200";
     
-    $result = $db->sql_query($sql);
+    $result = $db->sql_query_prepared($sql, [$groupId]);
     $users = [];
     
-    while ($row = mysqli_fetch_assoc($result)) {
+    while ($result && ($row = $db->fetch_array($result))) {
         $downloaded = (float)$row['downloaded'];
         $uploaded = (float)$row['uploaded'];
         $ratio = $downloaded > 0 ? round($uploaded / $downloaded, 2) : 0;
@@ -222,8 +219,8 @@ private function searchByGroup(int $groupId): array
                 WHERE enabled = 'yes' 
                 AND ustatus = 'confirmed'";
         
-        $result = $db->sql_query($sql);
-        $this->userStats['global'] = mysqli_fetch_assoc($result) ?? [];
+        $result = $db->sql_query_prepared($sql);
+        $this->userStats['global'] = ($result ? $db->fetch_array($result) : null) ?? [];
         
         // Статистика по группам
         $sql = "SELECT 
@@ -235,9 +232,9 @@ private function searchByGroup(int $groupId): array
                 AND ustatus = 'confirmed'
                 GROUP BY usergroup";
         
-        $result = $db->sql_query($sql);
+        $result = $db->sql_query_prepared($sql);
         $this->userStats['groups'] = [];
-        while ($row = mysqli_fetch_assoc($result)) {
+        while ($result && ($row = $db->fetch_array($result))) {
             $this->userStats['groups'][$row['usergroup']] = $row;
         }
         
@@ -261,14 +258,14 @@ private function searchByGroup(int $groupId): array
         
         $sql = "SELECT id, username, downloaded, uploaded, usergroup 
                 FROM users 
-                WHERE username = " . $db->sqlesc($username) . "
+                WHERE username = ?
                 AND enabled = 'yes' 
                 AND ustatus = 'confirmed' 
                 LIMIT 1";
         
-        $result = $db->sql_query($sql);
+        $result = $db->sql_query_prepared($sql, [$username]);
         
-        if ($row = mysqli_fetch_assoc($result)) {
+        if ($result && ($row = $db->fetch_array($result))) {
             $downloaded = (float)$row['downloaded'];
             $uploaded = (float)$row['uploaded'];
             $ratio = $downloaded > 0 ? round($uploaded / $downloaded, 2) : 0;
@@ -304,16 +301,16 @@ private function searchByGroup(int $groupId): array
         
         $sql = "SELECT username, usergroup 
                 FROM users 
-                WHERE username LIKE " . $db->sqlesc($query . '%') . "
+                WHERE username LIKE ?
                 AND enabled = 'yes' 
                 AND ustatus = 'confirmed'
                 ORDER BY username 
                 LIMIT 10";
         
-        $result = $db->sql_query($sql);
+        $result = $db->sql_query_prepared($sql, [$query . '%']);
         $users = [];
         
-        while ($row = mysqli_fetch_assoc($result)) {
+        while ($result && ($row = $db->fetch_array($result))) {
             $users[] = [
                 'username' => $row['username'],
                 'group_id' => (int)$row['usergroup']
@@ -364,10 +361,10 @@ private function searchByGroup(int $groupId): array
                 ORDER BY added DESC 
                 LIMIT 10";
         
-        $result = $db->sql_query($sql);
+        $result = $db->sql_query_prepared($sql);
         $activities = [];
         
-        while ($row = mysqli_fetch_assoc($result)) {
+        while ($result && ($row = $db->fetch_array($result))) {
             $activities[] = [
                 'id' => (int)$row['id'],
                 'message' => $row['txt'],
@@ -401,24 +398,25 @@ private function searchByGroup(int $groupId): array
     /**
      * Update download amount for a user group
      */
-    private function updateGroupDownloadAmount(string $query, int $amountGB, ?int $groupId): void
+    private function updateGroupDownloadAmount(?int $groupId, int $amountGB): void
     {
         global $db;
         
         $bytes = $this->convertGBtoBytes($amountGB);
         $modComment = $this->generateModComment($amountGB, 'group');
         
-        $sql = sprintf(
-            "UPDATE users 
-             SET downloaded = downloaded + %d, 
-                 modcomment = CONCAT(%s, modcomment) 
-             WHERE %s",
-            $bytes,
-            $db->sqlesc($modComment),
-            $query
-        );
+        $sql = "UPDATE users 
+             SET downloaded = downloaded + ?, 
+                 modcomment = CONCAT(?, modcomment) 
+             WHERE enabled = 'yes' AND ustatus = 'confirmed'";
+        $params = [$bytes, $modComment];
+
+        if ($groupId) {
+            $sql .= " AND usergroup = ?";
+            $params[] = $groupId;
+        }
         
-        $db->sql_query($sql);
+        $db->sql_query_prepared($sql, $params);
     }
 
     /**
@@ -431,19 +429,14 @@ private function searchByGroup(int $groupId): array
         $bytes = $this->convertGBtoBytes($amountGB);
         $modComment = $this->generateModComment($amountGB, 'individual', $adminNote);
         
-        $sql = sprintf(
-            "UPDATE users 
-             SET downloaded = downloaded + %d, 
-                 modcomment = CONCAT(%s, modcomment) 
-             WHERE username = %s 
+        $sql = "UPDATE users 
+             SET downloaded = downloaded + ?, 
+                 modcomment = CONCAT(?, modcomment) 
+             WHERE username = ? 
              AND enabled = 'yes' 
-             AND ustatus = 'confirmed'",
-            $bytes,
-            $db->sqlesc($modComment),
-            $db->sqlesc($username)
-        );
+             AND ustatus = 'confirmed'";
         
-        $db->sql_query($sql);
+        $db->sql_query_prepared($sql, [$bytes, $modComment, $username]);
         
         // Verify the update
         $this->verifyUserUpdate($username);
@@ -456,11 +449,11 @@ private function searchByGroup(int $groupId): array
     {
         global $db;
         
-        $res = $db->sql_query(
-            "SELECT id FROM users WHERE username = " . $db->sqlesc($username)
+        $res = $db->sql_query_prepared(
+            "SELECT id FROM users WHERE username = ?", [$username]
         );
         
-        if (!$res || mysqli_num_rows($res) === 0) {
+        if (!$res || $db->num_rows($res) === 0) {
             throw new RuntimeException('User not found or update failed.');
         }
     }
@@ -1536,8 +1529,8 @@ private function displaySuccess(int $amountGB, ?int $groupId = null): void
         $html .= '<option value="" disabled selected>Select a user group...</option>';
         $html .= '<option value="">All Users</option>';
         
-        $result = $db->sql_query("SELECT gid, title FROM usergroups ORDER BY gid DESC");
-        while ($group = mysqli_fetch_assoc($result)) {
+        $result = $db->sql_query_prepared("SELECT gid, title FROM usergroups ORDER BY gid DESC");
+        while ($result && ($group = $db->fetch_array($result))) {
             $html .= sprintf(
                 '<option value="%d">%s (GID: %d)</option>',
                 $group['gid'],

@@ -210,12 +210,13 @@ function get_act(): string
     return '';
 }
 
-function get_count(string $col, string $table, string $extra = ''): int
+function get_count(string $col, string $table, string $extra = '', array $params = []): int
 {
     global $db;
-    $res = $db->sql_query("SELECT COUNT(*) AS {$col} FROM {$table} {$extra}");
-    [$n] = mysqli_fetch_array($res);
-    return (int) $n;
+    $res = $db->sql_query_prepared("SELECT COUNT(*) AS {$col} FROM {$table} {$extra}", $params);
+    if (!$res) return 0;
+    $row = $db->fetch_array($res);
+    return (int) ($row[$col] ?? 0);
 }
 
 /* ──────────────────────── Routing ───────────────────────────────── */
@@ -371,8 +372,8 @@ function handle_managestafftools(): void
 function fetch_tool(int $id): array
 {
     global $db;
-    $sql = $db->sql_query('SELECT * FROM staffpanel WHERE id = ' . $db->escape_string($id));
-    if ($db->num_rows($sql) === 0) { stderr('Error! Tool not found.'); exit(); }
+    $sql = $db->sql_query_prepared('SELECT * FROM staffpanel WHERE id = ?', [$id]);
+    if (!$sql || $db->num_rows($sql) === 0) { stderr('Error! Tool not found.'); exit(); }
     return $db->fetch_array($sql);
 }
 
@@ -394,17 +395,25 @@ function save_tool(string $mode, int $id = 0): void
     }
 
     $data = [
-        'name'        => $db->escape_string($name),
-        'description' => $db->escape_string($description),
-        'filename'    => $db->escape_string($filename),
-        'usergroups'  => $db->escape_string($groups),
+        'name'        => $name,
+        'description' => $description,
+        'filename'    => $filename,
+        'usergroups'  => $groups,
     ];
 
     if ($mode === 'create') {
-        $db->insert_query('staffpanel', $data);
+        $columns      = array_keys($data);
+        $placeholders = implode(',', array_fill(0, count($columns), '?'));
+        $db->sql_query_prepared(
+            "INSERT INTO staffpanel (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+            array_values($data)
+        );
         redirect('admin/index.php?act=' . $name, 'The new tool has been added.');
     } else {
-        $db->update_query('staffpanel', $data, "id='" . $id . "'");
+        $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($data)));
+        $params = array_values($data);
+        $params[] = $id;
+        $db->sql_query_prepared("UPDATE staffpanel SET {$set} WHERE id = ?", $params);
         redirect('index.php?act=managestafftools', 'The tool has been updated.');
     }
 }
@@ -419,7 +428,7 @@ function delete_tool(int $id): void
             . ' &nbsp; <a href="' . $_this_script_ . '">No, go back</a>', false);
         return;
     }
-    $db->sql_query('DELETE FROM staffpanel WHERE id = ' . $db->escape_string($id));
+    $db->sql_query_prepared('DELETE FROM staffpanel WHERE id = ?', [$id]);
     redirect('admin/index.php?act=managestafftools', 'The tool has been deleted.');
 }
 
@@ -489,8 +498,8 @@ function render_tool_form(string $mode, ?array $tool = null): void
               <div class="staff-permissions">
 HTML;
 
-    $sql = $db->sql_query("SELECT gid, title, namestyle FROM usergroups WHERE canstaffpanel='1' ORDER BY disporder");
-    while ($g = $db->fetch_array($sql)) {
+    $sql = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups WHERE canstaffpanel='1' ORDER BY disporder");
+    while ($sql && ($g = $db->fetch_array($sql))) {
         $checked = ($is_edit
             ? in_array('[' . $g['gid'] . ']', $tool_groups)
             : $g['gid'] == UC_SYSOP) ? 'checked' : '';
@@ -588,12 +597,18 @@ function handle_securitycheck(): void
 
     
 
-    $empty_pw = (int) $db->fetch_array($db->sql_query(
-        "SELECT COUNT(*) AS c FROM users WHERE password='' OR password IS NULL"))['c'];
-    $weak_pw  = (int) $db->fetch_array($db->sql_query(
-        "SELECT COUNT(*) AS c FROM users WHERE LENGTH(password)<6"))['c'];
-    $mysql_ver         = $db->fetch_array($db->sql_query("SELECT VERSION() AS v"))['v'];
-    $has_default_table = $db->sql_query("SHOW TABLES LIKE 'users'")->num_rows > 0;
+    $empty_pw_q = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM users WHERE password='' OR password IS NULL");
+    $empty_pw = $empty_pw_q ? (int) $db->fetch_array($empty_pw_q)['c'] : 0;
+
+    $weak_pw_q = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM users WHERE LENGTH(password)<6");
+    $weak_pw = $weak_pw_q ? (int) $db->fetch_array($weak_pw_q)['c'] : 0;
+
+    $mysql_ver_q = $db->sql_query_prepared("SELECT VERSION() AS v");
+    $mysql_ver = $mysql_ver_q ? $db->fetch_array($mysql_ver_q)['v'] : '0.0.0';
+
+    $tables_q = $db->sql_query_prepared("SHOW TABLES LIKE ?", ['users']);
+    $has_default_table = $tables_q && $db->num_rows($tables_q) > 0;
+
     $https             = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on';
 
     // [label, risk, passed, notice]
@@ -780,19 +795,19 @@ function render_dashboard(): void
 	require_once $thispath . 'include/stafftoolsfunctions.php';
 
     $cut  = TIMENOW - 86400;
-    $esc  = fn($v) => $db->escape_string($v);
 
     $totalusers    = get_count('c', 'users',    "WHERE ustatus='confirmed'");
-    $newuserstoday = get_count('c', 'users',    'WHERE added>'    . $esc($cut));
+    $newuserstoday = get_count('c', 'users',    'WHERE added > ?', [$cut]);
     $pendingusers  = get_count('c', 'users',    "WHERE ustatus='pending'");
-    $todaycomments = get_count('c', 'comments', 'WHERE dateline>' . $esc($cut));
-    $todayvisits   = get_count('c', 'users',    'WHERE lastactive>' . $esc($cut));
+    $todaycomments = get_count('c', 'comments', 'WHERE dateline > ?', [$cut]);
+    $todayvisits   = get_count('c', 'users',    'WHERE lastactive > ?', [$cut]);
     $peers         = get_count('c', 'peers');
     $seeders       = get_count('c', 'peers',    "WHERE seeder='yes'");
     $leechers      = get_count('c', 'peers',    "WHERE seeder='no'");
     $totaltorrents = get_count('c', 'torrents');
 
-    $row      = $db->fetch_array($db->sql_query('SELECT SUM(downloaded) AS dl, SUM(uploaded) AS ul FROM users'));
+    $sum_q    = $db->sql_query_prepared('SELECT SUM(downloaded) AS dl, SUM(uploaded) AS ul FROM users');
+    $row      = $sum_q ? $db->fetch_array($sum_q) : ['dl' => 0, 'ul' => 0];
     $dl       = (float) $row['dl'];
     $ul       = (float) $row['ul'];
     $dl_disp  = mksize($dl);
@@ -993,10 +1008,10 @@ function getDbSize(): string
     global $db, $config;
     $dbname = $config['database']['database'] ?? null;
     if (!$dbname) return '—';
-    $r = $db->sql_query(
+    $r = $db->sql_query_prepared(
         "SELECT ROUND(SUM(data_length+index_length)/1024/1024,1) AS mb
          FROM information_schema.tables
-         WHERE table_schema='" . $db->escape_string($dbname) . "'");
+         WHERE table_schema = ?", [$dbname]);
     if (!$r) return '—';
     return ($db->fetch_array($r)['mb'] ?? 0) . ' MB';
 }
@@ -1012,10 +1027,10 @@ function getDiskFree(): string
 function getRecentActivity(int $limit = 5): string
 {
     global $db;
-    $r = $db->sql_query(
+    $r = $db->sql_query_prepared(
         "SELECT l.*, u.username FROM sitelog l
          LEFT JOIN users u ON l.uid=u.id
-         ORDER BY l.id DESC LIMIT " . (int)$limit);
+         ORDER BY l.id DESC LIMIT ?", [$limit]);
 
     if (!$r || $db->num_rows($r) === 0) {
         return '<div class="text-center text-muted py-3">'
@@ -1023,7 +1038,7 @@ function getRecentActivity(int $limit = 5): string
     }
 
     $html = '<ul class="list-unstyled mb-0">';
-    while ($row = $db->fetch_array($r)) {
+    while ($r && ($row = $db->fetch_array($r))) {
         $user   = htmlspecialchars($row['username'] ?? 'System');
         $action = htmlspecialchars($row['txt']      ?? '');
         $time   = date('d.m H:i', (int)($row['added'] ?? 0));

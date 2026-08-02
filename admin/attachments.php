@@ -6,6 +6,17 @@ declare(strict_types=1);
 
 require_once INC_PATH . '/functions_multipage.php';
 
+if (!function_exists('escape_like_pattern')) {
+    /**
+     * Экранирует только LIKE-wildcard'ы (%, _, \) — для bind-параметров.
+     * Кавычки экранировать не нужно, это делает сам биндинг.
+     */
+    function escape_like_pattern(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+}
+
 
 
 // Disallow direct access to this file for security reasons
@@ -57,9 +68,13 @@ if ($mybb->input['action'] === "delete") {
 
     $aids = is_array($mybb->input['aids'] ?? null) 
         ? array_map('intval', $mybb->input['aids'])
-        : [$mybb->get_input('aid', MyBB::INPUT_INT)];
+        : array_filter([$mybb->get_input('aid', MyBB::INPUT_INT)]);
 
-    if (empty($aids)) {
+    $cf_ids = is_array($mybb->input['cf_ids'] ?? null)
+        ? array_map('intval', $mybb->input['cf_ids'])
+        : [];
+
+    if (empty($aids) && empty($cf_ids)) {
         flash_message('No attachments selected for deletion', 'error');
         admin_redirect("index.php?act=attachments");
     }
@@ -67,12 +82,13 @@ if ($mybb->input['action'] === "delete") {
     if ($mybb->request_method === "post") {
         require_once INC_PATH . "/functions_upload.php";
 
-        
-		$query = $db->simple_select("attachments", 
-    "aid, pid, posthash, filename, attachname, thumbnail, comment_id", 
-    "aid IN (" . implode(",", $aids) . ")"
+        if (!empty($aids)) {
+		$aids_ph = implode(',', array_fill(0, count($aids), '?'));
+		$query = $db->sql_query_prepared(
+    "SELECT aid, pid, posthash, filename, attachname, thumbnail, comment_id FROM attachments WHERE aid IN ({$aids_ph})",
+    $aids
 );
-while ($attachment = $db->fetch_array($query)) {
+while ($query && ($attachment = $db->fetch_array($query))) {
     if ((int)($attachment['comment_id'] ?? 0) > 0) {
         // Комментарий — удаляем только этот файл
         $uploadDir = TSDIR . '/uploads/attachments/';
@@ -80,7 +96,7 @@ while ($attachment = $db->fetch_array($query)) {
         if (!empty($attachment['thumbnail']) && $attachment['thumbnail'] !== 'SMALL') {
             delete_uploaded_file($uploadDir . $attachment['thumbnail']);
         }
-        $db->delete_query('attachments', "aid='" . (int)$attachment['aid'] . "'");
+        $db->sql_query_prepared("DELETE FROM attachments WHERE aid = ?", [(int)$attachment['aid']]);
         log_admin_action($attachment['aid'], $attachment['filename']);
     } elseif (!(int)$attachment['pid']) {
         // Форум — черновик
@@ -92,6 +108,20 @@ while ($attachment = $db->fetch_array($query)) {
         log_admin_action($attachment['aid'], $attachment['filename'], $attachment['pid']);
     }
 }
+        }
+
+        // comment_files — отдельное хранилище (.attach-файлы), своя таблица и свои колонки
+        if (!empty($cf_ids)) {
+            $cf_ph = implode(',', array_fill(0, count($cf_ids), '?'));
+            $query = $db->sql_query_prepared("SELECT id, file_name, file_path FROM comment_files WHERE id IN ({$cf_ph})", $cf_ids);
+            while ($query && ($file = $db->fetch_array($query))) {
+                if (!empty($file['file_path']) && is_file($file['file_path'])) {
+                    @unlink($file['file_path']);
+                }
+                $db->sql_query_prepared("DELETE FROM comment_files WHERE id = ?", [(int)$file['id']]);
+                log_admin_action($file['id'], $file['file_name']);
+            }
+        }
 
 
         $plugins->run_hooks("admin_forum_attachments_delete_commit");
@@ -99,6 +129,7 @@ while ($attachment = $db->fetch_array($query)) {
         admin_redirect("index.php?act=attachments");
     } else {
         $aids_param = implode('&amp;aids[]=', $aids);
+        $cf_ids_param = !empty($cf_ids) ? '&amp;cf_ids[]=' . implode('&amp;cf_ids[]=', $cf_ids) : '';
         echo "
         <div class='modal fade' id='confirmModal' tabindex='-1'>
             <div class='modal-dialog'>
@@ -111,7 +142,7 @@ while ($attachment = $db->fetch_array($query)) {
                     </div>
                     <div class='modal-footer'>
                         <a href='index.php?act=attachments' class='btn btn-secondary'>Cancel</a>
-                        <a href='index.php?act=attachments&amp;action=delete&amp;aids={$aids_param}&amp;my_post_key={$mybb->post_code}' class='btn btn-danger'>Delete</a>
+                        <a href='index.php?act=attachments&amp;action=delete&amp;aids={$aids_param}{$cf_ids_param}&amp;my_post_key={$mybb->post_code}' class='btn btn-danger'>Delete</a>
                     </div>
                 </div>
             </div>
@@ -127,8 +158,8 @@ while ($attachment = $db->fetch_array($query)) {
 if ($mybb->input['action'] === "stats") {
     $plugins->run_hooks("admin_forum_attachments_stats");
 
-    $query = $db->simple_select("attachments", "COUNT(*) AS total_attachments, SUM(filesize) as disk_usage, SUM(downloads*filesize) as bandwidthused", "visible='1'");
-    $attachment_stats = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT COUNT(*) AS total_attachments, SUM(filesize) as disk_usage, SUM(downloads*filesize) as bandwidthused FROM attachments WHERE visible='1'");
+    $attachment_stats = $query ? $db->fetch_array($query) : null;
 
     // Convert string values to integers to avoid type errors
     $total_attachments = (int)($attachment_stats['total_attachments'] ?? 0);
@@ -141,7 +172,18 @@ if ($mybb->input['action'] === "stats") {
     output_nav_tabs($sub_tabs, 'stats');
 
     if ($total_attachments === 0) {
-        output_inline_error(['There are no attachments on your forum yet. Once an attachment is posted you will be able to access this section']);
+        echo '
+        <div class="container mt-4">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10 mb-3" style="width:72px;height:72px;">
+                        <i class="fas fa-chart-pie text-primary" style="font-size:28px;"></i>
+                    </div>
+                    <h5 class="mb-1">No Attachments Yet</h5>
+                    <p class="text-muted mb-0">There are no attachments on your forum yet. Once an attachment is posted you will be able to access this section.</p>
+                </div>
+            </div>
+        </div>';
         stdfoot();
         exit;
     }
@@ -196,6 +238,11 @@ if ($mybb->input['action'] === "stats") {
  * Handle orphaned attachments deletion
  */
 if ($mybb->input['action'] === "delete_orphans" && $mybb->request_method === "post") {
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        flash_message('Security check failed. Please try again.', 'error');
+        admin_redirect('index.php?act=attachments&action=orphans');
+    }
+
     $plugins->run_hooks("admin_forum_attachments_delete_orphans");
 
     $success_count = $error_count = 0;
@@ -220,18 +267,54 @@ if ($mybb->input['action'] === "delete_orphans" && $mybb->request_method === "po
         }
     }
 
-    // Delete orphaned database entries
+    // Delete orphaned database entries — ветвим по comment_id/pid, как в основном
+    // action=delete выше: комментарийные вложения (в т.ч. просроченные черновики)
+    // чистим напрямую (файл + thumbnail + строка), форумные — через remove_attachment()
     if (is_array($mybb->input['orphaned_attachments'] ?? null)) {
         $orphaned_aids = array_map('intval', $mybb->input['orphaned_attachments']);
         require_once INC_PATH . "/functions_upload.php";
 
-        $query = $db->simple_select("attachments", "aid,pid,posthash", "aid IN (" . implode(",", $orphaned_aids) . ")");
-        while ($attachment = $db->fetch_array($query)) {
-            if (!$attachment['pid']) {
-                remove_attachment(null, $attachment['posthash'], $attachment['aid']);
+        $orph_ph = implode(',', array_fill(0, count($orphaned_aids), '?'));
+        $query = $db->sql_query_prepared("SELECT aid,pid,posthash,comment_id,attachname,thumbnail FROM attachments WHERE aid IN ({$orph_ph})", $orphaned_aids);
+        while ($query && ($attachment = $db->fetch_array($query))) {
+            $is_comment_style = (int)($attachment['comment_id'] ?? 0) > 0
+                || (!str_contains((string)$attachment['attachname'], '/') && (int)$attachment['pid'] === 0);
+
+            if ($is_comment_style) {
+                // Комментарийное вложение ИЛИ его черновик без родителя —
+                // плоское хранилище uploads/attachments/, без префикса месяца.
+                // Отличаем черновик-форум от черновика-комментария по формату
+                // attachname: форумные всегда содержат "/" (префикс месяца).
+                $uploadDir = TSDIR . '/uploads/attachments/';
+                if (!empty($attachment['attachname'])) {
+                    @unlink($uploadDir . $attachment['attachname']);
+                }
+                if (!empty($attachment['thumbnail']) && $attachment['thumbnail'] !== 'SMALL') {
+                    @unlink($uploadDir . $attachment['thumbnail']);
+                }
+                $db->sql_query_prepared("DELETE FROM attachments WHERE aid = ?", [(int)$attachment['aid']]);
             } else {
-                remove_attachment($attachment['pid'], null, $attachment['aid']);
+                // Форумное вложение (с постом или черновик с posthash) —
+                // remove_attachment() сам корректно резолвит путь с префиксом месяца
+                remove_attachment((int)$attachment['pid'], (string)$attachment['posthash'], (int)$attachment['aid']);
             }
+            $success_count++;
+        }
+    }
+
+    // Delete orphaned comment_files entries (включая просроченные черновики) —
+    // раньше этот блок отсутствовал, cf_ids[] с формы сканирования тихо
+    // игнорировались.
+    if (is_array($mybb->input['cf_ids'] ?? null)) {
+        $cf_ids = array_map('intval', $mybb->input['cf_ids']);
+        $cf_ph  = implode(',', array_fill(0, count($cf_ids), '?'));
+        $query  = $db->sql_query_prepared("SELECT id, file_name, file_path FROM comment_files WHERE id IN ({$cf_ph})", $cf_ids);
+        while ($query && ($file = $db->fetch_array($query))) {
+            if (!empty($file['file_path']) && is_file($file['file_path'])) {
+                @unlink($file['file_path']);
+            }
+            $db->sql_query_prepared("DELETE FROM comment_files WHERE id = ?", [(int)$file['id']]);
+            log_admin_action($file['id'], $file['file_name']);
             $success_count++;
         }
     }
@@ -259,19 +342,7 @@ if ($mybb->input['action'] === "delete_orphans" && $mybb->request_method === "po
  */
 if ($mybb->input['action'] === "orphans") {
     $plugins->run_hooks("admin_forum_attachments_orphans");
-    
-    $step = $mybb->get_input('step', MyBB::INPUT_INT);
-    
-    switch($step) {
-        case 3:
-            handle_orphans_step3();
-            break;
-        case 2:
-            handle_orphans_step2();
-            break;
-        default:
-            handle_orphans_step1();
-    }
+    handle_orphans_scan();
 }
 
 /**
@@ -300,45 +371,75 @@ if (!$mybb->input['action']) {
 function handle_comment_attachments(): void {
     global $mybb, $db, $perpage, $BASEURL;
 
-    $search_sql = 'a.comment_id > 0';
-
-    // Filename filter
-    if ($mybb->get_input('filename')) {
-        $search_sql .= " AND a.filename LIKE '%" . $db->escape_string_like($mybb->input['filename']) . "%'";
-    }
-
-    // Username filter
+    // Фильтры собираются отдельно под каждую таблицу — колонки называются по-разному
+    $filename_val = $mybb->get_input('filename') ? escape_like_pattern($mybb->input['filename']) : '';
+    $mimetype_val = $mybb->get_input('mimetype') ? escape_like_pattern($mybb->input['mimetype']) : '';
+    $user_id_filter = null;
     if (!empty($mybb->input['username'])) {
-        $user = get_user_by_username($mybb->input['username']);
-        if ($user) {
-            $search_sql .= " AND a.uid = " . (int)$user['id'];
+        $found_user = get_user_by_username($mybb->input['username']);
+        if ($found_user) {
+            $user_id_filter = (int)$found_user['id'];
         }
     }
 
-    // MIME type filter
-    if ($mybb->get_input('mimetype')) {
-        $search_sql .= " AND a.filetype LIKE '%" . $db->escape_string_like($mybb->input['mimetype']) . "%'";
+    $att_filter = 'comment_id > 0';
+    $cf_filter  = 'comment_id IS NOT NULL';
+    $union_params = [];
+    $att_params = [];
+    $cf_params  = [];
+
+    if ($filename_val !== '') {
+        $att_filter .= " AND filename LIKE ?";
+        $cf_filter  .= " AND file_name LIKE ?";
+        $att_params[] = "%{$filename_val}%";
+        $cf_params[]  = "%{$filename_val}%";
     }
+    if ($mimetype_val !== '') {
+        $att_filter .= " AND filetype LIKE ?";
+        $cf_filter  .= " AND file_type LIKE ?";
+        $att_params[] = "%{$mimetype_val}%";
+        $cf_params[]  = "%{$mimetype_val}%";
+    }
+    if ($user_id_filter !== null) {
+        $att_filter .= " AND uid = ?";
+        $cf_filter  .= " AND user_id = ?";
+        $att_params[] = $user_id_filter;
+        $cf_params[]  = $user_id_filter;
+    }
+    $union_params = [...$att_params, ...$cf_params];
+
+    // UNION ALL нормализует колонки обеих таблиц под общие имена, чтобы можно
+    // было сортировать/пагинировать результат как единый набор
+    $union_sql = "
+        SELECT aid AS id, filename, filesize, filetype, thumbnail, uid,
+               comment_id, dateuploaded AS dateuploaded_ts, downloads,
+               NULL AS file_url_override, attachname, 'attachments' AS source
+        FROM attachments
+        WHERE {$att_filter}
+
+        UNION ALL
+
+        SELECT id, file_name AS filename, file_size AS filesize, file_type AS filetype, NULL AS thumbnail, user_id AS uid,
+               comment_id, UNIX_TIMESTAMP(uploaded_at) AS dateuploaded_ts, 0 AS downloads,
+               file_url AS file_url_override, file_name AS attachname, 'comment_files' AS source
+        FROM comment_files
+        WHERE {$cf_filter}
+    ";
 
     // Count
-    $query = $db->sql_query("
-        SELECT COUNT(a.aid) AS num_results
-        FROM attachments a
-        WHERE {$search_sql}
-    ");
-    $num_results = (int)$db->fetch_field($query, 'num_results');
+    $query = $db->sql_query_prepared("SELECT COUNT(*) AS num_results FROM ({$union_sql}) x", $union_params);
+    $num_results = $query ? (int)$db->fetch_field($query, 'num_results') : 0;
 
-    // Aggregate stats (across full comment-attachment set, ignoring search filters)
-    $stats_query = $db->sql_query("
-        SELECT
-            COUNT(aid)              AS total_count,
-            SUM(filesize)           AS total_size,
-            SUM(downloads)          AS total_downloads,
-            AVG(filesize)           AS avg_size
-        FROM attachments
-        WHERE comment_id > 0
+    // Aggregate stats (across full comment-attachment set из обеих таблиц, без учёта фильтров поиска)
+    $stats_query = $db->sql_query_prepared("
+        SELECT COUNT(*) AS total_count, SUM(filesize) AS total_size, SUM(downloads) AS total_downloads, AVG(filesize) AS avg_size
+        FROM (
+            SELECT filesize, downloads FROM attachments WHERE comment_id > 0
+            UNION ALL
+            SELECT file_size AS filesize, 0 AS downloads FROM comment_files WHERE comment_id IS NOT NULL
+        ) s
     ");
-    $stats          = $db->fetch_array($stats_query);
+    $stats          = $stats_query ? $db->fetch_array($stats_query) : null;
     $stat_count     = (int)($stats['total_count'] ?? 0);
     $stat_size      = mksize((float)($stats['total_size'] ?? 0));
     $stat_downloads = (int)($stats['total_downloads'] ?? 0);
@@ -352,7 +453,7 @@ function handle_comment_attachments(): void {
     <div class="container mt-4">
         <div class="att-page-header">
             <h2><i class="fas fa-paperclip"></i> Comment Attachments</h2>
-            <p>' . ts_nf($stat_count) . ' attachments &bull; ' . $stat_size . ' used</p>
+            <p>' . ts_nf($stat_count) . ' attachments &bull; ' . $stat_size . ' used &bull; includes both attachments and comment_files storage</p>
         </div>
         <div class="att-stats-row">
             <div class="att-stat-card">
@@ -419,7 +520,18 @@ function handle_comment_attachments(): void {
     </div>';
 
     if ($num_results === 0) {
-        output_inline_error(['No comment attachments found.']);
+        echo '
+        <div class="container mt-4">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-warning bg-opacity-10 mb-3" style="width:72px;height:72px;">
+                        <i class="fas fa-magnifying-glass text-warning" style="font-size:28px;"></i>
+                    </div>
+                    <h5 class="mb-1">No Comment Attachments Found</h5>
+                    <p class="text-muted mb-0">No matching results — try adjusting your search or filters.</p>
+                </div>
+            </div>
+        </div>';
         stdfoot();
         exit;
     }
@@ -444,6 +556,7 @@ function handle_comment_attachments(): void {
                                     <th>File</th>
                                     <th class="text-center">Size</th>
                                     <th class="text-center">Type</th>
+                                    <th class="text-center">Storage</th>
                                     <th class="text-center">Uploaded By</th>
                                     <th class="text-center">Comment</th>
                                     <th class="text-center">Date</th>
@@ -451,42 +564,53 @@ function handle_comment_attachments(): void {
                             </thead>
                             <tbody>';
 
-    $query = $db->sql_query("
-        SELECT a.*, u.username AS user_username, u.id, u.enabled, u.donor, u.warned, u.leechwarn, u.usergroup, u.canupload, u.candownload, u.cancomment,
+    $query = $db->sql_query_prepared("
+        SELECT x.*, u.username AS user_username, u.id AS user_pk, u.enabled, u.donor, u.warned, u.leechwarn, u.usergroup, u.canupload, u.candownload, u.cancomment,
                c.torrent AS torrent_id, t.name AS torrent_name
-        FROM attachments a
-        LEFT JOIN users u ON (u.id = a.uid)
-        LEFT JOIN comments c ON (c.id = a.comment_id)
+        FROM ({$union_sql}) x
+        LEFT JOIN users u ON (u.id = x.uid)
+        LEFT JOIN comments c ON (c.id = x.comment_id)
         LEFT JOIN torrents t ON (t.id = c.torrent)
-        WHERE {$search_sql}
-        ORDER BY a.dateuploaded DESC
-        LIMIT {$start}, {$perpage}
-    ");
+        ORDER BY x.dateuploaded_ts DESC
+        LIMIT ?, ?
+    ", [...$union_params, $start, $perpage]);
 
-    while ($att = $db->fetch_array($query)) {
-        $date      = $att['dateuploaded'] > 0 ? my_datee('relative', $att['dateuploaded']) : 'Unknown';
+    while ($query && ($att = $db->fetch_array($query))) {
+        $is_cf     = $att['source'] === 'comment_files';
+        $date      = $att['dateuploaded_ts'] > 0 ? my_datee('relative', $att['dateuploaded_ts']) : 'Unknown';
         $username  = $att['user_username'] ?: 'Guest';
-		$group  = $att['usergroup'] ?: 'Guest';
-       
-		
-		$profile_url = get_profile_link((int)$att['id']);
+        $group     = $att['usergroup'] ?: 'Guest';
+
+        $profile_url = get_profile_link((int)$att['user_pk']);
         $display_name = format_name($username, $group);
         $user_link = '<a href="' . $BASEURL . '/' . $profile_url . '">' . $display_name . '</a>' . get_user_icons($att);
-		
+
         $size      = mksize((float)$att['filesize']);
         $icon      = get_attachment_icon(get_extension($att['filename']));
-        $att_url   = '../uploads/attachments/' . rawurlencode($att['attachname']);
-        $file_link = '<a href="' . $att_url . '" target="_blank">' . htmlspecialchars_uni($att['filename']) . '</a>';
-        $mime      = '<span class="badge bg-light text-dark border">' . htmlspecialchars_uni($att['filetype']) . '</span>';
 
-        // Image preview thumbnail
+        // comment_files хранит готовый file_url, attachments — собираем путь сами
+        $att_url   = $is_cf
+            ? htmlspecialchars_uni($att['file_url_override'])
+            : '../uploads/attachments/' . rawurlencode($att['attachname']);
+        $file_link = '<a href="' . $att_url . '" target="_blank">' . htmlspecialchars_uni($att['filename']) . '</a>';
+        $mime      = '<span class="badge bg-light text-dark border">' . htmlspecialchars_uni((string)$att['filetype']) . '</span>';
+        $storage_badge = $is_cf
+            ? '<span class="badge bg-secondary" title="comment_files table">.attach</span>'
+            : '<span class="badge bg-info text-dark" title="attachments table">standard</span>';
+
+        // Image preview thumbnail (только для attachments — у comment_files нет thumbnail-колонки)
         $is_image = str_starts_with((string)($att['filetype'] ?? ''), 'image/');
-        if ($is_image) {
+        if ($is_image && !$is_cf) {
             $thumb_url = (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL')
                 ? '../uploads/attachments/' . rawurlencode($att['thumbnail'])
                 : $att_url;
             $file_icon_html = '<a href="' . $att_url . '" target="_blank" class="ca-thumb-link">
                 <img src="' . $thumb_url . '" class="ca-thumb" alt="" loading="lazy"
+                     onerror="this.closest(\'.ca-thumb-link\').outerHTML=\'' . addslashes($icon) . '\'">
+            </a>';
+        } elseif ($is_image) {
+            $file_icon_html = '<a href="' . $att_url . '" target="_blank" class="ca-thumb-link">
+                <img src="' . $att_url . '" class="ca-thumb" alt="" loading="lazy"
                      onerror="this.closest(\'.ca-thumb-link\').outerHTML=\'' . addslashes($icon) . '\'">
             </a>';
         } else {
@@ -502,12 +626,16 @@ function handle_comment_attachments(): void {
             $comment_link = '<span class="text-muted">—</span>';
         }
 
+        $checkbox_name = $is_cf ? 'cf_ids[]' : 'aids[]';
+        $checkbox_value = $is_cf ? (int)$att['id'] : (int)$att['id'];
+
         echo '
                                 <tr>
-                                    <td><label class="form-switch-custom"><input type="checkbox" name="aids[]" value="' . $att['aid'] . '"><span class="switch-slider"></span></label></td>
+                                    <td><label class="form-switch-custom"><input type="checkbox" name="' . $checkbox_name . '" value="' . $checkbox_value . '"><span class="switch-slider"></span></label></td>
                                     <td>' . $file_icon_html . ' ' . $file_link . '</td>
                                     <td class="text-center"><span class="badge bg-secondary">' . $size . '</span></td>
                                     <td class="text-center">' . $mime . '</td>
+                                    <td class="text-center">' . $storage_badge . '</td>
                                     <td class="text-center">' . $user_link . '</td>
                                     <td class="text-center">' . $comment_link . '</td>
                                     <td class="text-center"><small class="text-muted">' . $date . '</small></td>
@@ -570,21 +698,26 @@ function handle_attachments_search(): void {
     }
 
     // Build search conditions
+    $search_params = [];
     if ($mybb->get_input('filename')) {
-        $search_sql .= " AND a.filename LIKE '%" . $db->escape_string_like($mybb->input['filename']) . "%'";
+        $search_sql .= " AND a.filename LIKE ?";
+        $search_params[] = '%' . escape_like_pattern($mybb->input['filename']) . '%';
     }
     
     if ($mybb->get_input('mimetype')) {
-        $search_sql .= " AND a.filetype LIKE '%" . $db->escape_string_like($mybb->input['mimetype']) . "%'";
+        $search_sql .= " AND a.filetype LIKE ?";
+        $search_params[] = '%' . escape_like_pattern($mybb->input['mimetype']) . '%';
     }
     
     // Username search
     if (!empty($mybb->input['username'])) {
         $user = get_user_by_username($mybb->input['username']);
         if ($user) {
-            $search_sql .= " AND a.uid='{$user['id']}'";
+            $search_sql .= " AND a.uid=?";
+            $search_params[] = $user['id'];
         } else {
-            $search_sql .= " AND p.username LIKE '%" . $db->escape_string_like($mybb->input['username']) . "%'";
+            $search_sql .= " AND p.username LIKE ?";
+            $search_params[] = '%' . escape_like_pattern($mybb->input['username']) . '%';
         }
     }
 
@@ -603,13 +736,13 @@ function handle_attachments_search(): void {
     }
 
     // Check for results
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT COUNT(a.aid) AS num_results
         FROM attachments a
         LEFT JOIN posts p ON (p.pid=a.pid)
         WHERE {$search_sql}
-    ");
-    $num_results = (int)$db->fetch_field($query, "num_results");
+    ", $search_params);
+    $num_results = $query ? (int)$db->fetch_field($query, "num_results") : 0;
 
     if (!$num_results) {
         $errors[] = 'No attachments were found with the specified search criteria';
@@ -661,7 +794,7 @@ function handle_attachments_search(): void {
                             </thead>
                             <tbody>';
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
         FROM attachments a
         LEFT JOIN posts p ON (p.pid=a.pid)
@@ -669,10 +802,10 @@ function handle_attachments_search(): void {
         LEFT JOIN users u ON (u.id=a.uid)
         WHERE {$search_sql}
         ORDER BY {$sort_field} {$order}
-        LIMIT {$start}, {$perpage}
-    ");
+        LIMIT ?, ?
+    ", [...$search_params, $start, $perpage]);
 
-    while ($attachment = $db->fetch_array($query)) {
+    while ($query && ($attachment = $db->fetch_array($query))) {
         $date = $attachment['dateuploaded'] > 0 ? my_datee('relative', $attachment['dateuploaded']) : 'Unknown';
         $username = $attachment['user_username'] ?: $attachment['username'];
         $user_link = $attachment['uid'] ? build_profile_link(htmlspecialchars_uni($username), $attachment['uid'], "_blank") : htmlspecialchars_uni($username);
@@ -814,7 +947,7 @@ function render_search_form(array $errors = []): void {
 function render_top_attachments_section(string $title, string $order, string $text_color, string $icon): void {
     global $db;
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
         FROM attachments a
         LEFT JOIN posts p ON (p.pid=a.pid)
@@ -845,7 +978,7 @@ function render_top_attachments_section(string $title, string $order, string $te
                         </thead>
                         <tbody>';
 
-    while ($attachment = $db->fetch_array($query)) {
+    while ($query && ($attachment = $db->fetch_array($query))) {
         $date = $attachment['dateuploaded'] > 0 ? my_datee('relative', $attachment['dateuploaded']) : 'Unknown';
         $username = $attachment['user_username'] ?: $attachment['username'];
         
@@ -908,7 +1041,7 @@ function render_top_users_section(): void {
                         </thead>
                         <tbody>';
 
-    $query = $db->sql_query("
+    $query = $db->sql_query_prepared("
         SELECT a.uid, u.username, SUM(a.filesize) as totalsize
         FROM attachments a
         LEFT JOIN users u ON (u.id=a.uid)
@@ -917,7 +1050,7 @@ function render_top_users_section(): void {
         LIMIT 5
     ");
 
-    while ($user = $db->fetch_array($query)) {
+    while ($query && ($user = $db->fetch_array($query))) {
         $username = $user['username'] ?: 'N/A';
         $user_link = $user['uid'] ? build_profile_link(htmlspecialchars_uni($username), $user['uid'], "_blank") : htmlspecialchars_uni($username);
         $size_link = "<a href=\"index.php?act=attachments&amp;results=1&amp;username=" . urlencode($username) . "\" target=\"_blank\" class=\"text-decoration-none\">" . mksize($user['totalsize']) . "</a>";
@@ -1117,121 +1250,446 @@ function render_header(string $title): void {
                 checkbox.checked = source.checked;
             });
         }
-    </script>';
-}
-
-
-
-/**
- * Handle orphaned attachments step 1
- */
-function handle_orphans_step1(): void {
-    global $mybb;
-    
-    render_header('Orphaned Attachments - Step 1');
-    output_nav_tabs($GLOBALS['sub_tabs'], 'find_orphans');
-    
-    echo '
-    <div class="container mt-4">
-        <div class="card shadow-sm">
-            <div class="card-header bg-warning text-dark">
-                <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Step 1 of 2 - File System Scan</h5>
-            </div>
-            <div class="card-body text-center">
-                <div class="mb-4">
-                    <i class="fas fa-spinner fa-spin fa-3x text-primary mb-3"></i>
-                    <h4>Scanning File System</h4>
-                </div>
-                <p class="text-muted">Please wait while we scan the file system for orphaned attachments...</p>
-                <p class="text-muted">You will be automatically redirected to the next step once this process is complete.</p>
-            </div>
-        </div>
-    </div>';
-    
-    stdfoot();
-    
-    // Simulate scan process
-    echo '
-    <form action="index.php?act=attachments&amp;action=orphans&amp;step=2" method="post" id="redirectForm">
-        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-    </form>
-    <script>
-        setTimeout(function() {
-            document.getElementById("redirectForm").submit();
-        }, 2000);
-    </script>';
-}
-
-/**
- * Handle orphaned attachments step 2
- */
-function handle_orphans_step2(): void {
-    global $mybb;
-    
-    render_header('Orphaned Attachments - Step 2');
-    output_nav_tabs($GLOBALS['sub_tabs'], 'find_orphans');
-    
-    echo '
-    <div class="container mt-4">
-        <div class="card shadow-sm">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0"><i class="fas fa-database me-2"></i>Step 2 of 2 - Database Scan</h5>
-            </div>
-            <div class="card-body text-center">
-                <div class="mb-4">
-                    <i class="fas fa-spinner fa-spin fa-3x text-primary mb-3"></i>
-                    <h4>Scanning Database</h4>
-                </div>
-                <p class="text-muted">Please wait while we scan the database for orphaned attachments...</p>
-                <p class="text-muted">You will be automatically redirected to the results once this process is complete.</p>
-            </div>
-        </div>
-    </div>';
-    
-    stdfoot();
-    
-    // Simulate database scan
-    echo '
-    <form action="index.php?act=attachments&amp;action=orphans&amp;step=3" method="post" id="redirectForm">
-        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-    </form>
-    <script>
-        setTimeout(function() {
-            document.getElementById("redirectForm").submit();
-        }, 2000);
+        function checkAllByName(source, name) {
+            document.querySelectorAll(\'input[name="\' + name + \'"]\').forEach(checkbox => {
+                checkbox.checked = source.checked;
+            });
+        }
     </script>';
 }
 
 
 
 
+/**
+ * Найти физические файлы без записи в БД (по attachname/thumbnail)
+ */
+function scan_orphaned_files(string $commentUploadDir, string $forumUploadsBase, $db): array
+{
+    $known = [];
+    $q = $db->sql_query_prepared("SELECT attachname, thumbnail FROM attachments");
+    while ($q && ($row = $db->fetch_array($q))) {
+        if (!empty($row['attachname'])) {
+            $known[$row['attachname']] = true;
+        }
+        if (!empty($row['thumbnail']) && $row['thumbnail'] !== 'SMALL') {
+            $known[$row['thumbnail']] = true;
+        }
+    }
 
+    // comment_files хранит ПОЛНЫЙ путь в file_path (не относительно uploads/) —
+    // нормализуем слэши (в БД могут быть и / и \) для надёжного сравнения
+    $knownCommentFilePaths = [];
+    $qcf = $db->sql_query_prepared("SELECT file_path FROM comment_files WHERE file_path != ''");
+    while ($qcf && ($row = $db->fetch_array($qcf))) {
+        $knownCommentFilePaths[str_replace('\\', '/', $row['file_path'])] = true;
+    }
+
+    $orphans = [];
+
+    // Комментарийные вложения — общая папка uploads/attachments/
+    if (is_dir($commentUploadDir)) {
+        foreach (scandir($commentUploadDir) as $file) {
+            if ($file === '.' || $file === '..' || is_dir($commentUploadDir . $file)) {
+                continue;
+            }
+            if (!isset($known[$file])) {
+                // Префикс папки — тот же формат "папка/файл", что и у форумных ниже,
+                // чтобы обработчик удаления резолвил путь от uploads/ одинаково для всех
+                $orphans[] = ['name' => 'attachments/' . $file, 'size' => @filesize($commentUploadDir . $file) ?: 0];
+            }
+        }
+    }
+
+    // Форумные вложения — папки по месяцу загрузки: uploads/YYYYMM/
+    if (is_dir($forumUploadsBase)) {
+        foreach (scandir($forumUploadsBase) as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $entryPath = $forumUploadsBase . $entry . '/';
+
+            // Файлы, лежащие ПРЯМО в корне uploads/ (не в подпапке) — это владения
+            // comment_files, у которой file_path хранит абсолютный путь целиком
+            if (!is_dir($entryPath)) {
+                $normalized = str_replace('\\', '/', $forumUploadsBase . $entry);
+                if (!isset($knownCommentFilePaths[$normalized])) {
+                    $orphans[] = ['name' => $entry, 'size' => @filesize($entryPath) ?: 0];
+                }
+                continue;
+            }
+
+            if (!preg_match('/^\d{6}$/', $entry)) {
+                continue; // не YYYYMM-папка (например, "attachments" сюда тоже не попадёт)
+            }
+
+            foreach (scandir($entryPath) as $file) {
+                if ($file === '.' || $file === '..' || is_dir($entryPath . $file)) {
+                    continue;
+                }
+                // attachname хранит путь С префиксом месяца ("202607/файл") — сверяем
+                // по такому же полному ключу, а не по голому имени файла
+                $relative = $entry . '/' . $file;
+                if (!isset($known[$relative])) {
+                    $orphans[] = ['name' => $relative, 'size' => @filesize($entryPath . $file) ?: 0];
+                }
+            }
+        }
+    }
+
+    return $orphans;
+}
 
 /**
- * Handle orphaned attachments step 3
+ * Найти записи в attachments, у которых родитель (пост/комментарий) удалён,
+ * либо физический файл на диске отсутствует. LEFT JOIN — один запрос на
+ * категорию, без N+1.
  */
-function handle_orphans_step3(): void {
-    global $mybb;
-    
-    render_header('Orphaned Attachments - Results');
+function scan_orphaned_db_rows($db, string $uploadDir): array
+{
+    $orphans = [];
+
+    // Форумные вложения на несуществующий пост
+    $q = $db->sql_query_prepared("
+        SELECT a.aid, a.filename, a.filesize, a.attachname, a.thumbnail, a.pid, a.comment_id
+        FROM attachments a
+        LEFT JOIN posts p ON p.pid = a.pid
+        WHERE a.pid != 0 AND a.comment_id = 0 AND p.pid IS NULL
+    ");
+    while ($q && ($row = $db->fetch_array($q))) {
+        $row['reason'] = 'missing_post';
+        $orphans[] = $row;
+    }
+
+    // Комментарийные вложения на несуществующий комментарий
+    $q = $db->sql_query_prepared("
+        SELECT a.aid, a.filename, a.filesize, a.attachname, a.thumbnail, a.pid, a.comment_id
+        FROM attachments a
+        LEFT JOIN comments c ON c.id = a.comment_id
+        WHERE a.comment_id != 0 AND c.id IS NULL
+    ");
+    while ($q && ($row = $db->fetch_array($q))) {
+        $row['reason'] = 'missing_comment';
+        $orphans[] = $row;
+    }
+
+    // Записи, чей файл физически отсутствует на диске.
+    // Форумные вложения (comment_id = 0): attachname УЖЕ хранит относительный путь
+    // с префиксом месяца (например "202607/post_1_....attach" — так его формирует
+    // upload_attachment() в functions_upload.php), поэтому просто uploads/ + attachname.
+    // Комментарийные (comment_id != 0) — общая плоская uploads/attachments/, без префикса.
+    $forumUploadsBase = TSDIR . '/uploads/';
+    $q = $db->sql_query_prepared("SELECT aid, filename, filesize, attachname, thumbnail, pid, comment_id, dateuploaded FROM attachments WHERE attachname != ''");
+    while ($q && ($row = $db->fetch_array($q))) {
+        if ((int)$row['comment_id'] > 0) {
+            $expectedPath = $uploadDir . $row['attachname'];
+        } else {
+            $expectedPath = $forumUploadsBase . $row['attachname'];
+        }
+
+        if (!is_file($expectedPath)) {
+            $row['reason'] = 'missing_file';
+            $orphans[] = $row;
+        }
+    }
+
+    return $orphans;
+}
+
+/**
+ * Найти "забытые" черновики — залиты, но так и не привязаны ни к посту,
+ * ни к комментарию дольше $cutoffDays дней (пользователь начал загрузку
+ * и передумал/закрыл вкладку).
+ */
+function scan_stale_draft_attachments($db, int $cutoffDays = 7): array
+{
+    $cutoff = TIMENOW - ($cutoffDays * 86400);
+    $q = $db->sql_query_prepared("
+        SELECT aid, filename, filesize, attachname, thumbnail, dateuploaded
+        FROM attachments
+        WHERE pid = 0 AND comment_id = 0 AND dateuploaded < ?
+        ORDER BY dateuploaded ASC
+    ", [$cutoff]);
+    $rows = [];
+    while ($row = $db->fetch_array($q)) {
+        $row['reason'] = 'stale_draft';
+        $rows[] = $row;
+    }
+    return $rows;
+}
+
+/**
+ * Найти черновики comment_files - файлы, загруженные через редактор
+ * (upload_image.php), но так и не привязанные ни к чему (юзер закрыл
+ * вкладку/передумал до отправки формы). В отличие от attachments, тут все
+ * FK-колонки nullable и "не привязано" значит NULL, а не 0.
+ */
+function scan_stale_draft_comment_files($db, int $cutoffDays = 7): array
+{
+    $cutoff = date('Y-m-d H:i:s', TIMENOW - ($cutoffDays * 86400));
+    $q = $db->sql_query_prepared("
+        SELECT id, file_name, file_size, file_path, uploaded_at
+        FROM comment_files
+        WHERE comment_id IS NULL AND news_id IS NULL AND torrent_id IS NULL
+          AND post_id IS NULL AND messages_id IS NULL
+          AND uploaded_at < ?
+        ORDER BY uploaded_at ASC
+    ", [$cutoff]);
+    $rows = [];
+    while ($q && ($row = $db->fetch_array($q))) {
+        $row['reason'] = 'stale_draft';
+        $rows[] = $row;
+    }
+    return $rows;
+}
+
+/**
+ * Найти "сирот" в comment_files — отдельном хранилище (.attach-файлы) со
+ * своими FK-колонками (comment_id/post_id/torrent_id/news_id/messages_id).
+ * Проверяем родителя только для трёх известных таблиц (comments/posts/torrents) —
+ * news_id и messages_id пропущены, не знаем точно, на какие таблицы они ссылаются.
+ * Плюс отдельно — записи, чей файл физически отсутствует на диске (это не
+ * требует знания родительской таблицы, просто проверяем file_path напрямую).
+ */
+function scan_orphaned_comment_files($db): array
+{
+    $orphans = [];
+
+    $q = $db->sql_query_prepared("
+        SELECT cf.id, cf.file_name, cf.file_size, cf.file_path, cf.comment_id, cf.post_id, cf.torrent_id, cf.news_id, cf.messages_id
+        FROM comment_files cf
+        LEFT JOIN comments c ON c.id = cf.comment_id
+        WHERE cf.comment_id IS NOT NULL AND c.id IS NULL
+    ");
+    while ($q && ($row = $db->fetch_array($q))) {
+        $row['reason'] = 'missing_comment';
+        $orphans[] = $row;
+    }
+
+    $q = $db->sql_query_prepared("
+        SELECT cf.id, cf.file_name, cf.file_size, cf.file_path, cf.comment_id, cf.post_id, cf.torrent_id, cf.news_id, cf.messages_id
+        FROM comment_files cf
+        LEFT JOIN posts p ON p.pid = cf.post_id
+        WHERE cf.post_id IS NOT NULL AND p.pid IS NULL
+    ");
+    while ($q && ($row = $db->fetch_array($q))) {
+        $row['reason'] = 'missing_post';
+        $orphans[] = $row;
+    }
+
+    $q = $db->sql_query_prepared("
+        SELECT cf.id, cf.file_name, cf.file_size, cf.file_path, cf.comment_id, cf.post_id, cf.torrent_id, cf.news_id, cf.messages_id
+        FROM comment_files cf
+        LEFT JOIN torrents t ON t.id = cf.torrent_id
+        WHERE cf.torrent_id IS NOT NULL AND t.id IS NULL
+    ");
+    while ($q && ($row = $db->fetch_array($q))) {
+        $row['reason'] = 'missing_torrent';
+        $orphans[] = $row;
+    }
+
+    // Файл физически отсутствует на диске — не зависит от типа родителя
+    $q = $db->sql_query_prepared("SELECT id, file_name, file_size, file_path, comment_id, post_id, torrent_id, news_id, messages_id FROM comment_files WHERE file_path != ''");
+    while ($q && ($row = $db->fetch_array($q))) {
+        if (!is_file($row['file_path'])) {
+            $row['reason'] = 'missing_file';
+            $orphans[] = $row;
+        }
+    }
+
+    return $orphans;
+}
+
+/**
+ * Единая страница результатов сканирования — заменяет фейковые
+ * handle_orphans_step1/2/3(). Никакой анимации: запросы быстрые
+ * (LEFT JOIN, не N+1), показываем результат сразу.
+ */
+function handle_orphans_scan(): void {
+    global $mybb, $db;
+
+    render_header('Orphaned Attachments');
     output_nav_tabs($GLOBALS['sub_tabs'], 'find_orphans');
-    
-    echo '
-    <div class="container mt-4">
-        <div class="card shadow-sm">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0"><i class="fas fa-check-circle me-2"></i>Scan Complete</h5>
-            </div>
-            <div class="card-body text-center">
-                <div class="mb-4">
+
+    $uploadDir = TSDIR . '/uploads/attachments/';
+    $staleDays = max(1, $mybb->get_input('stale_days', MyBB::INPUT_INT) ?: 7);
+
+    $orphanedFiles = scan_orphaned_files($uploadDir, TSDIR . '/uploads/', $db);
+    $orphanedRows  = scan_orphaned_db_rows($db, $uploadDir);
+    $staleDrafts   = scan_stale_draft_attachments($db, $staleDays);
+    $orphanedCommentFiles = scan_orphaned_comment_files($db);
+    $staleDraftCommentFiles = scan_stale_draft_comment_files($db, $staleDays);
+    $orphanedCommentFiles = [...$orphanedCommentFiles, ...$staleDraftCommentFiles];
+
+    $totalFound = count($orphanedFiles) + count($orphanedRows) + count($staleDrafts) + count($orphanedCommentFiles);
+
+    if ($totalFound === 0) {
+        echo '
+        <div class="container mt-4">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
                     <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
                     <h4>No Orphaned Attachments Found</h4>
+                    <p class="text-muted">Files on disk, database records, and drafts are all in sync.</p>
+                    <a href="index.php?act=attachments" class="btn btn-primary">Return to Attachments</a>
                 </div>
-                <p class="text-muted">The scan did not find any orphaned attachments in your system.</p>
-                <a href="index.php?act=attachments" class="btn btn-primary">Return to Attachments</a>
             </div>
+        </div>';
+        stdfoot();
+        return;
+    }
+
+    $reasonLabels = [
+        'missing_post'    => ['label' => 'Post Deleted',    'class' => 'bg-danger'],
+        'missing_comment' => ['label' => 'Comment Deleted', 'class' => 'bg-danger'],
+        'missing_torrent' => ['label' => 'Torrent Deleted', 'class' => 'bg-danger'],
+        'missing_file'    => ['label' => 'File Missing',    'class' => 'bg-warning text-dark'],
+        'stale_draft'     => ['label' => 'Stale Draft',     'class' => 'bg-secondary'],
+    ];
+
+    echo '
+    <div class="container mt-4">
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Found <strong>' . ts_nf($totalFound) . '</strong> orphaned item(s):
+            ' . count($orphanedFiles) . ' file(s) without a DB record,
+            ' . count($orphanedRows) . ' attachments record(s) pointing nowhere,
+            ' . count($orphanedCommentFiles) . ' comment_files record(s) (broken links or abandoned drafts),
+            ' . count($staleDrafts) . ' stale draft(s) older than ' . $staleDays . ' day(s).
         </div>
-    </div>';
-    
+    </div>
+
+    <form action="index.php?act=attachments&amp;action=delete_orphans" method="post">
+        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
+        <div class="container">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-database me-2"></i>Database Records</h5>
+                    <label class="form-switch-custom" title="Select All"><input type="checkbox" onclick="checkAllByName(this, \'orphaned_attachments[]\')"><span class="switch-slider"></span></label>
+                </div>
+                <div class="card-body p-0">';
+
+    if (empty($orphanedRows) && empty($staleDrafts)) {
+        echo '<div class="p-4 text-center text-muted">No broken database records found.</div>';
+    } else {
+        echo '
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="40"></th>
+                                    <th>File</th>
+                                    <th class="text-center">Size</th>
+                                    <th class="text-center">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>';
+
+        foreach ([...$orphanedRows, ...$staleDrafts] as $row) {
+            $reason = $reasonLabels[$row['reason']] ?? ['label' => $row['reason'], 'class' => 'bg-secondary'];
+            echo '
+                                <tr>
+                                    <td><label class="form-switch-custom"><input type="checkbox" name="orphaned_attachments[]" value="' . (int)$row['aid'] . '"><span class="switch-slider"></span></label></td>
+                                    <td>' . htmlspecialchars_uni($row['filename']) . '</td>
+                                    <td class="text-center">' . mksize((float)$row['filesize']) . '</td>
+                                    <td class="text-center"><span class="badge ' . $reason['class'] . '">' . $reason['label'] . '</span></td>
+                                </tr>';
+        }
+
+        echo '
+                            </tbody>
+                        </table>
+                    </div>';
+    }
+
+    echo '
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-file-shield me-2"></i>comment_files Records</h5>
+                    <label class="form-switch-custom" title="Select All"><input type="checkbox" onclick="checkAllByName(this, \'cf_ids[]\')"><span class="switch-slider"></span></label>
+                </div>
+                <div class="card-body p-0">';
+
+    if (empty($orphanedCommentFiles)) {
+        echo '<div class="p-4 text-center text-muted">No broken comment_files records found.</div>';
+    } else {
+        echo '
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="40"></th>
+                                    <th>File</th>
+                                    <th class="text-center">Size</th>
+                                    <th class="text-center">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>';
+
+        foreach ($orphanedCommentFiles as $row) {
+            $reason = $reasonLabels[$row['reason']] ?? ['label' => $row['reason'], 'class' => 'bg-secondary'];
+            echo '
+                                <tr>
+                                    <td><label class="form-switch-custom"><input type="checkbox" name="cf_ids[]" value="' . (int)$row['id'] . '"><span class="switch-slider"></span></label></td>
+                                    <td>' . htmlspecialchars_uni($row['file_name']) . '</td>
+                                    <td class="text-center">' . mksize((float)$row['file_size']) . '</td>
+                                    <td class="text-center"><span class="badge ' . $reason['class'] . '">' . $reason['label'] . '</span></td>
+                                </tr>';
+        }
+
+        echo '
+                            </tbody>
+                        </table>
+                    </div>';
+    }
+
+    echo '
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-file-circle-question me-2"></i>Files Without Database Record</h5>
+                    <label class="form-switch-custom" title="Select All"><input type="checkbox" onclick="checkAllByName(this, \'orphaned_files[]\')"><span class="switch-slider"></span></label>
+                </div>
+                <div class="card-body p-0">';
+
+    if (empty($orphanedFiles)) {
+        echo '<div class="p-4 text-center text-muted">No orphaned physical files found.</div>';
+    } else {
+        echo '
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-light">
+                                <tr><th width="40"></th><th>File</th><th class="text-center">Size</th></tr>
+                            </thead>
+                            <tbody>';
+        foreach ($orphanedFiles as $file) {
+            echo '
+                                <tr>
+                                    <td><label class="form-switch-custom"><input type="checkbox" name="orphaned_files[]" value="' . htmlspecialchars_uni($file['name']) . '"><span class="switch-slider"></span></label></td>
+                                    <td>' . htmlspecialchars_uni($file['name']) . '</td>
+                                    <td class="text-center">' . mksize((float)$file['size']) . '</td>
+                                </tr>';
+        }
+        echo '
+                            </tbody>
+                        </table>
+                    </div>';
+    }
+
+    echo '
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-danger" onclick="return confirm(\'Permanently delete the selected orphaned items?\');">
+                <i class="fas fa-trash-alt me-1"></i>Delete Selected
+            </button>
+        </div>
+    </form>';
+
     stdfoot();
 }

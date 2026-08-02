@@ -218,16 +218,18 @@ if ($action === 'update') {
                 $extendSeconds = $limit * 7 * 86400;
 
                 foreach ($userIds as $uid) {
-                    $existing = $db->fetch_array($db->sql_query_prepared(
+                    $existingQ = $db->sql_query_prepared(
                         'SELECT vip_until, old_gid FROM auto_vip WHERE userid = ?',
                         [$uid]
-                    ));
+                    );
+                    $existing = $existingQ ? $db->fetch_array($existingQ) : null;
 
                     if ($existing) {
                         $newUntil = max((int)$existing['vip_until'], TIMENOW) + $extendSeconds;
                         $db->sql_query_prepared('UPDATE auto_vip SET vip_until = ? WHERE userid = ?', [$newUntil, $uid]);
                     } else {
-                        $currentGroup = $db->fetch_array($db->sql_query_prepared('SELECT usergroup FROM users WHERE id = ?', [$uid]));
+                        $currentGroupQ = $db->sql_query_prepared('SELECT usergroup FROM users WHERE id = ?', [$uid]);
+                        $currentGroup = $currentGroupQ ? $db->fetch_array($currentGroupQ) : null;
                         $oldGid = ((int)($currentGroup['usergroup'] ?? 0) === VIP_USERGROUP_ID)
                             ? UC_USER
                             : (int)($currentGroup['usergroup'] ?? UC_USER);
@@ -258,7 +260,8 @@ if ($action === 'update') {
 
             case 'remove_vip':
                 foreach ($userIds as $uid) {
-                    $existing = $db->fetch_array($db->sql_query_prepared('SELECT old_gid FROM auto_vip WHERE userid = ?', [$uid]));
+                    $existingQ = $db->sql_query_prepared('SELECT old_gid FROM auto_vip WHERE userid = ?', [$uid]);
+                    $existing = $existingQ ? $db->fetch_array($existingQ) : null;
                     $newGid = ($existing && (int)$existing['old_gid'] > 0) ? (int)$existing['old_gid'] : UC_USER;
 
                     $db->sql_query_prepared('UPDATE users SET usergroup = ? WHERE id = ?', [$newGid, $uid]);
@@ -480,7 +483,7 @@ stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts foun
                                 </thead>
                                 <tbody>
                                     <?php if ($vipUsers && $vipUsersCount > 0): ?>
-                                        <?php while ($vip = $db->fetch_array($vipUsers)): ?>
+                                        <?php while ($vipUsers && ($vip = $db->fetch_array($vipUsers))): ?>
                                         <tr class="align-middle">
                                             <td>
                                                 <div class="form-check">

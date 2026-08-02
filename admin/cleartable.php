@@ -42,14 +42,14 @@ class TableTruncationManager
     private function getAllTables()
     {
         $database = $this->config['database']['database'];
-        $result = $this->db->sql_query("SHOW TABLES FROM `{$database}`");
+        $result = $this->db->sql_query_prepared("SHOW TABLES FROM `{$database}`");
         $tables = [];
         
-        while ($row = $this->db->fetch_array($result)) {
+        while ($result && ($row = $this->db->fetch_array($result))) {
             $tables[] = reset($row);
         }
         
-        if (method_exists($this->db, 'free_result')) {
+        if ($result && method_exists($this->db, 'free_result')) {
             $this->db->free_result($result);
         }
         
@@ -66,7 +66,7 @@ class TableTruncationManager
         }
         
         try {
-            $this->db->sql_query("TRUNCATE TABLE `{$tableName}`");
+            $this->db->sql_query_prepared("TRUNCATE TABLE `{$tableName}`");
             return true;
         } catch (Exception $e) {
             error_log("[TableTruncation] Error truncating table {$tableName}: " . $e->getMessage());
@@ -84,8 +84,16 @@ class TableTruncationManager
 		
 		// AJAX optimize handler
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ajax_optimize') {
+        global $mybb;
+
         $table = trim($_POST['table'] ?? '');
         header('Content-Type: application/json');
+
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Invalid security token']);
+            exit;
+        }
 
         if (!$this->validateTableName($table)) {
             echo json_encode(['success' => false, 'message' => 'Invalid table name']);
@@ -93,7 +101,7 @@ class TableTruncationManager
         }
 
         try {
-            $this->db->sql_query("OPTIMIZE TABLE `{$table}`");
+            $this->db->sql_query_prepared("OPTIMIZE TABLE `{$table}`");
             echo json_encode(['success' => true, 'table' => $table]);
         } catch (\Throwable $e) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -122,6 +130,14 @@ class TableTruncationManager
             $this->showConfirmation($tables);
             return;
         }
+
+        // Реальное удаление - только POST с валидным CSRF-токеном.
+        global $mybb;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            $this->showError('Invalid or missing security token. Please use the confirmation button below instead of a direct link.');
+            return;
+        }
         
         $this->executeTruncation($tables);
     }
@@ -141,8 +157,8 @@ class TableTruncationManager
             return $tables;
         }
         
-        if (isset($_GET['tablehash'])) {
-            $decoded = base64_decode($_GET['tablehash']);
+        if (isset($_POST['tablehash']) || isset($_GET['tablehash'])) {
+            $decoded = base64_decode($_POST['tablehash'] ?? $_GET['tablehash']);
             $tables = explode(':', $decoded);
             $validTables = [];
             foreach ($tables as $table) {
@@ -190,6 +206,8 @@ HTML;
      */
     private function showConfirmation($tables)
     {
+        global $mybb;
+
         $tableHash = base64_encode(implode(':', $tables));
         $tableList = implode(', ', $tables);
         
@@ -214,10 +232,13 @@ HTML;
                         </div>
                         
                         <div class="d-flex gap-3">
-                            <a href="{$this->scriptUrl}&do=clear&sure=true&tablehash={$tableHash}" 
-                               class="btn btn-danger btn-lg px-4">
-                                <i class="fas fa-check-circle me-2"></i>Yes, I am sure
-                            </a>
+                            <form method="post" action="{$this->scriptUrl}&do=clear&sure=true" class="d-inline">
+                                <input type="hidden" name="my_post_key" value="{$this->escapeHtml($mybb->post_code)}">
+                                <input type="hidden" name="tablehash" value="{$this->escapeHtml($tableHash)}">
+                                <button type="submit" class="btn btn-danger btn-lg px-4">
+                                    <i class="fas fa-check-circle me-2"></i>Yes, I am sure
+                                </button>
+                            </form>
                             <a href="{$this->scriptUrl}" class="btn btn-secondary btn-lg px-4">
                                 <i class="fas fa-arrow-left me-2"></i>No, go back
                             </a>

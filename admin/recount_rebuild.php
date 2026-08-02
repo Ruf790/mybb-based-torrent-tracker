@@ -5,9 +5,10 @@ declare(strict_types=1);
 
 
 // Disallow direct access to this file for security reasons
-if (!defined("IN_MYBB")) {
-    die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
+if (!defined("STAFF_PANEL")) {
+    die("Direct initialization of this file is not allowed.<br /><br />Please make sure STAFF_PANEL is defined.");
 }
+
 
 // Initialize missing inputs
 foreach (['action', 'do', 'module'] as $input) {
@@ -78,8 +79,8 @@ function acp_rebuild_forum_counters(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_forum_counters");
 
-    $query = $db->simple_select("forums", "COUNT(*) as num_forums");
-    $num_forums = (int)$db->fetch_field($query, 'num_forums');
+    $query = $db->sql_query_prepared("SELECT COUNT(*) as num_forums FROM forums");
+    $num_forums = $query ? (int)$db->fetch_field($query, 'num_forums') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('forumcounters', MyBB::INPUT_INT);
@@ -87,21 +88,14 @@ function acp_rebuild_forum_counters(): void
     $start = ($page - 1) * $per_page;
     $end = $start + $per_page;
 
-    $query = $db->simple_select(
-        "forums", 
-        "fid", 
-        '', 
-        [
-            'order_by' => 'fid', 
-            'order_dir' => 'asc', 
-            'limit_start' => $start, 
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT fid FROM forums ORDER BY fid ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
     
-    while ($forum = $db->fetch_array($query)) {
+    while ($query && ($forum = $db->fetch_array($query))) {
         $update = ['parentlist' => make_parent_list((int)$forum['fid'])];
-        $db->update_query("forums", $update, "fid='{$forum['fid']}'");
+        $db->sql_query_prepared("UPDATE forums SET parentlist = ? WHERE fid = ?", [$update['parentlist'], (int)$forum['fid']]);
         rebuild_forum_counters((int)$forum['fid']);
     }
 
@@ -127,8 +121,8 @@ function acp_rebuild_thread_counters(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_thread_counters");
 
-    $query = $db->simple_select("threads", "COUNT(*) as num_threads");
-    $num_threads = (int)$db->fetch_field($query, 'num_threads');
+    $query = $db->sql_query_prepared("SELECT COUNT(*) as num_threads FROM threads");
+    $num_threads = $query ? (int)$db->fetch_field($query, 'num_threads') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('threadcounters', MyBB::INPUT_INT);
@@ -136,19 +130,12 @@ function acp_rebuild_thread_counters(): void
     $start = ($page - 1) * $per_page;
     $end = $start + $per_page;
 
-    $query = $db->simple_select(
-        "threads", 
-        "tid", 
-        '', 
-        [
-            'order_by' => 'tid', 
-            'order_dir' => 'asc', 
-            'limit_start' => $start, 
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT tid FROM threads ORDER BY tid ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
     
-    while ($thread = $db->fetch_array($query)) {
+    while ($query && ($thread = $db->fetch_array($query))) {
         rebuild_thread_counters((int)$thread['tid']);
     }
 
@@ -174,8 +161,8 @@ function acp_rebuild_poll_counters(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_poll_counters");
 
-    $query = $db->simple_select("polls", "COUNT(*) as num_polls");
-    $num_polls = (int)$db->fetch_field($query, 'num_polls');
+    $query = $db->sql_query_prepared("SELECT COUNT(*) as num_polls FROM polls");
+    $num_polls = $query ? (int)$db->fetch_field($query, 'num_polls') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('pollcounters', MyBB::INPUT_INT);
@@ -183,19 +170,12 @@ function acp_rebuild_poll_counters(): void
     $start = ($page - 1) * $per_page;
     $end = $start + $per_page;
 
-    $query = $db->simple_select(
-        "polls", 
-        "pid", 
-        '', 
-        [
-            'order_by' => 'pid', 
-            'order_dir' => 'asc', 
-            'limit_start' => $start, 
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT pid FROM polls ORDER BY pid ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
     
-    while ($poll = $db->fetch_array($query)) {
+    while ($query && ($poll = $db->fetch_array($query))) {
         rebuild_poll_counters((int)$poll['pid']);
     }
 
@@ -221,8 +201,8 @@ function acp_recount_thread_ratings(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_thread_ratings");
 
-    $query = $db->simple_select("threads", "COUNT(*) as num_threads");
-    $num_threads = (int)$db->fetch_field($query, 'num_threads');
+    $query = $db->sql_query_prepared("SELECT COUNT(*) as num_threads FROM threads");
+    $num_threads = $query ? (int)$db->fetch_field($query, 'num_threads') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('threadratings', MyBB::INPUT_INT);
@@ -230,30 +210,23 @@ function acp_recount_thread_ratings(): void
     $start = ($page - 1) * $per_page;
     $end = $start + $per_page;
 
-    $query = $db->simple_select(
-        "threads",
-        "tid",
-        '',
-        [
-            'order_by' => 'tid',
-            'order_dir' => 'asc',
-            'limit_start' => $start,
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT tid FROM threads ORDER BY tid ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
 
-    while ($thread = $db->fetch_array($query)) {
+    while ($query && ($thread = $db->fetch_array($query))) {
         $tid = (int)$thread['tid'];
 
-        $r = $db->sql_query("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM threadratings WHERE tid = {$tid}");
-        $row = $db->fetch_array($r);
+        $r = $db->sql_query_prepared("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM threadratings WHERE tid = ?", [$tid]);
+        $row = $r ? $db->fetch_array($r) : null;
         $avg   = (float)($row['avg'] ?? 0);
         $count = (int)($row['cnt'] ?? 0);
 
-        $db->update_query("threads", [
-            'numratings'   => $count,
-            'totalratings' => (int)round($avg * $count),
-        ], "tid='{$tid}'");
+        $db->sql_query_prepared(
+            "UPDATE threads SET numratings = ?, totalratings = ? WHERE tid = ?",
+            [$count, (int)round($avg * $count), $tid]
+        );
     }
 
     $message = $lang->success_rebuilt_thread_ratings ?? 'Thread ratings have been recounted successfully';
@@ -278,8 +251,8 @@ function acp_recount_torrent_comments(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_torrent_comments");
 
-    $query = $db->simple_select("torrents", "COUNT(*) as num_torrents");
-    $num_torrents = (int)$db->fetch_field($query, 'num_torrents');
+    $query = $db->sql_query_prepared("SELECT COUNT(*) as num_torrents FROM torrents");
+    $num_torrents = $query ? (int)$db->fetch_field($query, 'num_torrents') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('torrentcomments', MyBB::INPUT_INT);
@@ -287,25 +260,19 @@ function acp_recount_torrent_comments(): void
     $start = ($page - 1) * $per_page;
     $end = $start + $per_page;
 
-    $query = $db->simple_select(
-        "torrents",
-        "id",
-        '',
-        [
-            'order_by' => 'id',
-            'order_dir' => 'asc',
-            'limit_start' => $start,
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT id FROM torrents ORDER BY id ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
 
-    while ($torrent = $db->fetch_array($query)) {
+    while ($query && ($torrent = $db->fetch_array($query))) {
         $tid = (int)$torrent['id'];
 
-        $r = $db->sql_query("SELECT COUNT(*) AS cnt FROM comments WHERE torrent = {$tid}");
-        $count = (int)($db->fetch_array($r)['cnt'] ?? 0);
+        $r = $db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM comments WHERE torrent = ?", [$tid]);
+        $row = $r ? $db->fetch_array($r) : null;
+        $count = (int)($row['cnt'] ?? 0);
 
-        $db->update_query("torrents", ['comments' => $count], "id='{$tid}'");
+        $db->sql_query_prepared("UPDATE torrents SET comments = ? WHERE id = ?", [$count, $tid]);
     }
 
     $message = $lang->success_rebuilt_torrent_comments ?? 'Torrent comment counts have been recounted successfully';
@@ -330,8 +297,8 @@ function acp_recount_user_posts(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_user_posts");
 
-    $query = $db->simple_select("users", "COUNT(id) as num_users");
-    $num_users = (int)$db->fetch_field($query, 'num_users');
+    $query = $db->sql_query_prepared("SELECT COUNT(id) as num_users FROM users");
+    $num_users = $query ? (int)$db->fetch_field($query, 'num_users') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('userposts', MyBB::INPUT_INT);
@@ -340,9 +307,9 @@ function acp_recount_user_posts(): void
     $end = $start + $per_page;
 
     $fids = [];
-    $query = $db->simple_select("forums", "fid", "usepostcounts = 0");
+    $query = $db->sql_query_prepared("SELECT fid FROM forums WHERE usepostcounts = 0");
     
-    while ($forum = $db->fetch_array($query)) {
+    while ($query && ($forum = $db->fetch_array($query))) {
         $fids[] = (int)$forum['fid'];
     }
     
@@ -352,31 +319,24 @@ function acp_recount_user_posts(): void
         $fidsCondition = " AND p.fid NOT IN({$fidsList})";
     }
 
-    $query = $db->simple_select(
-        "users", 
-        "id", 
-        '', 
-        [
-            'order_by' => 'id', 
-            'order_dir' => 'asc', 
-            'limit_start' => $start, 
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT id FROM users ORDER BY id ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
     
-    while ($user = $db->fetch_array($query)) {
-        $query2 = $db->sql_query("
+    while ($query && ($user = $db->fetch_array($query))) {
+        $query2 = $db->sql_query_prepared("
             SELECT COUNT(p.pid) AS post_count
             FROM posts p
             LEFT JOIN threads t ON (t.tid = p.tid)
-            WHERE p.uid = '{$user['id']}' 
+            WHERE p.uid = ? 
             AND t.visible > 0 
             AND p.visible > 0
             {$fidsCondition}
-        ");
+        ", [(int)$user['id']]);
         
-        $num_posts = (int)$db->fetch_field($query2, "post_count");
-        $db->update_query("users", ["postnum" => $num_posts], "id = '{$user['id']}'");
+        $num_posts = $query2 ? (int)$db->fetch_field($query2, "post_count") : 0;
+        $db->sql_query_prepared("UPDATE users SET postnum = ? WHERE id = ?", [$num_posts, (int)$user['id']]);
     }
 
     $message = $lang->success_rebuilt_user_post_counters ?? 'The user posts count have been recounted successfully';
@@ -401,8 +361,8 @@ function acp_recount_user_threads(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_user_threads");
 
-    $query = $db->simple_select("users", "COUNT(id) as num_users");
-    $num_users = (int)$db->fetch_field($query, 'num_users');
+    $query = $db->sql_query_prepared("SELECT COUNT(id) as num_users FROM users");
+    $num_users = $query ? (int)$db->fetch_field($query, 'num_users') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('userthreads', MyBB::INPUT_INT);
@@ -411,9 +371,9 @@ function acp_recount_user_threads(): void
     $end = $start + $per_page;
 
     $fids = [];
-    $query = $db->simple_select("forums", "fid", "usethreadcounts = 0");
+    $query = $db->sql_query_prepared("SELECT fid FROM forums WHERE usethreadcounts = 0");
     
-    while ($forum = $db->fetch_array($query)) {
+    while ($query && ($forum = $db->fetch_array($query))) {
         $fids[] = (int)$forum['fid'];
     }
     
@@ -423,30 +383,23 @@ function acp_recount_user_threads(): void
         $fidsCondition = " AND t.fid NOT IN({$fidsList})";
     }
 
-    $query = $db->simple_select(
-        "users", 
-        "id", 
-        '', 
-        [
-            'order_by' => 'id', 
-            'order_dir' => 'asc', 
-            'limit_start' => $start, 
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT id FROM users ORDER BY id ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
     
-    while ($user = $db->fetch_array($query)) {
-        $query2 = $db->sql_query("
+    while ($query && ($user = $db->fetch_array($query))) {
+        $query2 = $db->sql_query_prepared("
             SELECT COUNT(t.tid) AS thread_count
             FROM threads t
-            WHERE t.uid = '{$user['id']}' 
+            WHERE t.uid = ? 
             AND t.visible > 0 
             AND t.closed NOT LIKE 'moved|%'
             {$fidsCondition}
-        ");
+        ", [(int)$user['id']]);
         
-        $num_threads = (int)$db->fetch_field($query2, "thread_count");
-        $db->update_query("users", ["threadnum" => $num_threads], "id = '{$user['id']}'");
+        $num_threads = $query2 ? (int)$db->fetch_field($query2, "thread_count") : 0;
+        $db->sql_query_prepared("UPDATE users SET threadnum = ? WHERE id = ?", [$num_threads, (int)$user['id']]);
     }
 
     $message = $lang->success_rebuilt_user_thread_counters ?? 'The user threads count have been recounted successfully';
@@ -471,8 +424,8 @@ function acp_recount_private_messages(): void
 
     $plugins->run_hooks("admin_tools_recount_recount_private_messages");
 
-    $query = $db->simple_select("users", "COUNT(id) as num_users");
-    $num_users = (int)$db->fetch_field($query, 'num_users');
+    $query = $db->sql_query_prepared("SELECT COUNT(id) as num_users FROM users");
+    $num_users = $query ? (int)$db->fetch_field($query, 'num_users') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('privatemessages', MyBB::INPUT_INT);
@@ -482,19 +435,12 @@ function acp_recount_private_messages(): void
 
     require_once INC_PATH . "/functions_user.php";
 
-    $query = $db->simple_select(
-        "users", 
-        "id", 
-        '', 
-        [
-            'order_by' => 'id', 
-            'order_dir' => 'asc', 
-            'limit_start' => $start, 
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT id FROM users ORDER BY id ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
     
-    while ($user = $db->fetch_array($query)) {
+    while ($query && ($user = $db->fetch_array($query))) {
         update_pm_count((int)$user['id']);
     }
 
@@ -517,8 +463,8 @@ function acp_recount_user_comments(): void
 
     $plugins->run_hooks("admin_tools_recount_recount_comments");
 
-    $query = $db->simple_select("users", "COUNT(id) as num_users");
-    $num_users = (int)$db->fetch_field($query, 'num_users');
+    $query = $db->sql_query_prepared("SELECT COUNT(id) as num_users FROM users");
+    $num_users = $query ? (int)$db->fetch_field($query, 'num_users') : 0;
     
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('comments', MyBB::INPUT_INT);
@@ -526,28 +472,21 @@ function acp_recount_user_comments(): void
     $start = ($page - 1) * $per_page;
     $end = $start + $per_page;
     
-    $query = $db->simple_select(
-        "users", 
-        "id", 
-        '', 
-        [
-            'order_by' => 'id', 
-            'order_dir' => 'asc', 
-            'limit_start' => $start, 
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT id FROM users ORDER BY id ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
     
-    while ($user = $db->fetch_array($query)) {
-        $query2 = $db->sql_query("
+    while ($query && ($user = $db->fetch_array($query))) {
+        $query2 = $db->sql_query_prepared("
             SELECT COUNT(c.id) AS post_count
             FROM comments c
             LEFT JOIN torrents t ON (t.id = c.torrent)
-            WHERE c.user = '{$user['id']}'
-        ");
+            WHERE c.user = ?
+        ", [(int)$user['id']]);
         
-        $num_posts = (int)$db->fetch_field($query2, "post_count");
-        $db->update_query("users", ["comms" => $num_posts], "id = '{$user['id']}'");
+        $num_posts = $query2 ? (int)$db->fetch_field($query2, "post_count") : 0;
+        $db->sql_query_prepared("UPDATE users SET comms = ? WHERE id = ?", [$num_posts, (int)$user['id']]);
     }
     
     $message = $lang->success_rebuilt_private_messages ?? 'The user private message count has been recounted successfully';
@@ -572,8 +511,8 @@ function acp_rebuild_attachment_thumbnails(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_attachment_thumbs");
 
-    $query = $db->simple_select("attachments", "COUNT(aid) as num_attachments");
-    $num_attachments = (int)$db->fetch_field($query, 'num_attachments');
+    $query = $db->sql_query_prepared("SELECT COUNT(aid) as num_attachments FROM attachments");
+    $num_attachments = $query ? (int)$db->fetch_field($query, 'num_attachments') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('attachmentthumbs', MyBB::INPUT_INT);
@@ -586,21 +525,14 @@ function acp_rebuild_attachment_thumbnails(): void
 	
     require_once INC_PATH . "/functions_image.php";
 
-    $query = $db->simple_select(
-        "attachments", 
-        "*", 
-        '', 
-        [
-            'order_by' => 'aid', 
-            'order_dir' => 'asc', 
-            'limit_start' => $start, 
-            'limit' => $per_page
-        ]
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM attachments ORDER BY aid ASC LIMIT ?, ?",
+        [$start, $per_page]
     );
     
     $imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'webp'];
     
-    while ($attachment = $db->fetch_array($query)) {
+    while ($query && ($attachment = $db->fetch_array($query))) {
         $ext = strtolower(pathinfo($attachment['filename'], PATHINFO_EXTENSION));
         
         if (in_array($ext, $imageExtensions, true)) {
@@ -614,15 +546,16 @@ function acp_rebuild_attachment_thumbnails(): void
                 $attachthumbw
             );
             
-            if ($thumbnail['code'] == 4) {
+            if (($thumbnail['code'] ?? null) == 4) {
                 $thumbnail['filename'] = "SMALL";
             }
             
-            $db->update_query(
-                "attachments", 
-                ["thumbnail" => $thumbnail['filename']], 
-                "aid = '{$attachment['aid']}'"
-            );
+            if (isset($thumbnail['filename'])) {
+                $db->sql_query_prepared(
+                    "UPDATE attachments SET thumbnail = ? WHERE aid = ?",
+                    [$thumbnail['filename'], (int)$attachment['aid']]
+                );
+            }
         }
     }
 
@@ -652,8 +585,8 @@ function acp_rebuild_comment_attachment_thumbnails(): void
 
     $plugins->run_hooks('admin_tools_recount_rebuild_comment_attachment_thumbs');
 
-    $query = $db->simple_select('attachments', 'COUNT(aid) as num_attachments', "comment_id > 0");
-    $num_attachments = (int)$db->fetch_field($query, 'num_attachments');
+    $query = $db->sql_query_prepared("SELECT COUNT(aid) as num_attachments FROM attachments WHERE comment_id > 0");
+    $num_attachments = $query ? (int)$db->fetch_field($query, 'num_attachments') : 0;
 
     $page     = $mybb->get_input('page', MyBB::INPUT_INT);
     $per_page = $mybb->get_input('commentattachmentthumbs', MyBB::INPUT_INT);
@@ -664,16 +597,14 @@ function acp_rebuild_comment_attachment_thumbnails(): void
 
     require_once INC_PATH . '/functions_image.php';
 
-    $query = $db->simple_select('attachments', '*', 'comment_id > 0', [
-        'order_by'    => 'aid',
-        'order_dir'   => 'asc',
-        'limit_start' => $start,
-        'limit'       => $per_page,
-    ]);
+    $query = $db->sql_query_prepared(
+        "SELECT * FROM attachments WHERE comment_id > 0 ORDER BY aid ASC LIMIT ?, ?",
+        [$start, $per_page]
+    );
 
     $imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'webp'];
 
-    while ($attachment = $db->fetch_array($query)) {
+    while ($query && ($attachment = $db->fetch_array($query))) {
         $ext = strtolower(pathinfo($attachment['filename'], PATHINFO_EXTENSION));
 
         if (in_array($ext, $imageExtensions, true)) {
@@ -691,10 +622,9 @@ function acp_rebuild_comment_attachment_thumbnails(): void
             }
 
             if (isset($thumbnail['filename'])) {
-                $db->update_query(
-                    'attachments',
-                    ['thumbnail' => $thumbnail['filename']],
-                    "aid = '{$attachment['aid']}'"
+                $db->sql_query_prepared(
+                    "UPDATE attachments SET thumbnail = ? WHERE aid = ?",
+                    [$thumbnail['filename'], (int)$attachment['aid']]
                 );
             }
         }
@@ -772,6 +702,14 @@ if (!$mybb->input['action']) {
 
     if ($mybb->request_method == "post") {
         require_once INC_PATH . "/functions_rebuild.php";
+
+        // CSRF-проверка - токен уже выводился в формах (my_post_key), но
+        // нигде не проверялся. Одна проверка тут закрывает сразу все
+        // 12 мутирующих действий этого файла (foreach ниже + do_recountstats).
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            die("Invalid security token. Please refresh the page and try again.");
+        }
 
         $mybb->input['page'] = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
         $plugins->run_hooks("admin_tools_do_recount_rebuild");

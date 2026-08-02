@@ -29,12 +29,14 @@ function formatByteSize(int $value, int $precision = 2): array
  */
 function getOverheadDisplay(array $row, string $scriptUrl): string
 {
+    global $mybb;
+
     $dataFree = (int)($row['Data_free'] ?? 0);
     [$formattedSize, $unit] = formatByteSize($dataFree);
     
     if ($dataFree > 0) {
         $tableName = urlencode($row['Name'] ?? '');
-        $link = htmlspecialchars($scriptUrl . '&Do=T&table=' . $tableName);
+        $link = htmlspecialchars($scriptUrl . '&Do=T&table=' . $tableName . '&my_post_key=' . $mybb->post_code);
         return sprintf(
             '<a href="%s" class="text-decoration-none text-danger fw-bold" title="Optimize Table">
                 <i class="fas fa-tools me-1"></i>%s %s
@@ -85,23 +87,23 @@ function getDatabaseServerStatus(): array {
     
     try {
         // Server version and uptime
-        $result = $db->sql_query("SELECT VERSION() as version, @@version_comment as version_comment");
-        if ($row = mysqli_fetch_assoc($result)) {
+        $result = $db->sql_query_prepared("SELECT VERSION() as version, @@version_comment as version_comment");
+        if ($row = $db->fetch_array($result)) {
             $status['version'] = $row['version'] ?? 'Unknown';
             $status['version_comment'] = $row['version_comment'] ?? '';
         }
         
         // Uptime
-        $result = $db->sql_query("SHOW STATUS LIKE 'Uptime'");
-        if ($row = mysqli_fetch_assoc($result)) {
+        $result = $db->sql_query_prepared("SHOW STATUS LIKE 'Uptime'");
+        if ($row = $db->fetch_array($result)) {
             $uptimeSeconds = (int)($row['Value'] ?? 0);
             $status['uptime_seconds'] = $uptimeSeconds;
             $status['uptime'] = gmdate("H:i:s", $uptimeSeconds);
         }
         
         // Connections
-        $result = $db->sql_query("SHOW STATUS WHERE `variable_name` IN ('Threads_connected', 'Max_used_connections', 'Max_connections')");
-        while ($row = mysqli_fetch_assoc($result)) {
+        $result = $db->sql_query_prepared("SHOW STATUS WHERE `variable_name` IN ('Threads_connected', 'Max_used_connections', 'Max_connections')");
+        while ($row = $db->fetch_array($result)) {
             $status[$row['Variable_name']] = $row['Value'];
         }
         
@@ -115,8 +117,8 @@ function getDatabaseServerStatus(): array {
         ];
         
         foreach ($queries as $key => $name) {
-            $result = $db->sql_query("SHOW STATUS WHERE `variable_name` = '{$key}'");
-            if ($row = mysqli_fetch_assoc($result)) {
+            $result = $db->sql_query_prepared("SHOW STATUS WHERE `variable_name` = ?", [$key]);
+            if ($row = $db->fetch_array($result)) {
                 $status[$name] = $row['Value'];
             }
         }
@@ -127,19 +129,19 @@ function getDatabaseServerStatus(): array {
         }
         
         // Active processes count
-        $result = $db->sql_query("SHOW PROCESSLIST");
-        $status['active_processes'] = mysqli_num_rows($result);
-        mysqli_free_result($result);
+        $result = $db->sql_query_prepared("SHOW PROCESSLIST");
+        $status['active_processes'] = $db->num_rows($result);
+        $db->free_result($result);
         
         // Database size
         $database = $GLOBALS['config']['database']['database'] ?? '';
-        $result = $db->sql_query("
+        $result = $db->sql_query_prepared("
             SELECT 
                 ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size_mb
             FROM information_schema.TABLES 
-            WHERE table_schema = '{$database}'
-        ");
-        if ($row = mysqli_fetch_assoc($result)) {
+            WHERE table_schema = ?
+        ", [$database]);
+        if ($row = $db->fetch_array($result)) {
             $status['database_size_mb'] = $row['size_mb'] ?? 0;
         }
         
@@ -159,7 +161,7 @@ function getActiveProcesses(): array {
     $processes = [];
     
     try {
-        $result = $db->sql_query("
+        $result = $db->sql_query_prepared("
             SELECT 
                 Id, User, Host, db, Command, Time, State, Info,
                 CASE 
@@ -173,11 +175,11 @@ function getActiveProcesses(): array {
             ORDER BY Time DESC
         ");
         
-        while ($row = mysqli_fetch_assoc($result)) {
+        while ($row = $db->fetch_array($result)) {
             $processes[] = $row;
         }
         
-        mysqli_free_result($result);
+        $db->free_result($result);
     } catch (Exception $e) {
         error_log("Process list error: " . $e->getMessage());
     }
@@ -213,6 +215,73 @@ HTML;
     die($errorPage);
 }
 
+// ── AJAX handlers - must run BEFORE any HTML output (stdhead() etc),
+// otherwise headers()/clean JSON output are impossible once the page
+// has started rendering. ──────────────────────────────────────────
+if (isset($_GET['ajax'])) {
+    header('Content-Type: application/json');
+
+    switch ($_GET['ajax']) {
+        case 'stats':
+            $status = getDatabaseServerStatus();
+            echo json_encode([
+                'success' => true,
+                'uptime' => $status['uptime'] ?? '00:00:00',
+                'connections' => $status['Threads_connected'] ?? 0,
+                'max_connections' => $status['Max_connections'] ?? 0,
+                'queries_per_second' => $status['queries_per_second'] ?? 0,
+                'active_processes' => $status['active_processes'] ?? 0,
+                'slow_queries' => $status['slow_queries'] ?? 0,
+                'database_size_mb' => $status['database_size_mb'] ?? 0
+            ]);
+            exit;
+
+        case 'processes':
+            $processes = getActiveProcesses();
+            echo json_encode([
+                'success' => true,
+                'processes' => $processes
+            ]);
+            exit;
+
+        case 'kill':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_post_check($mybb->get_input('my_post_key'))) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Invalid security token or request method']);
+                exit;
+            }
+
+            if (isset($_GET['process']) || isset($_POST['process'])) {
+                $processId = (int)($_POST['process'] ?? $_GET['process']);
+
+                // Проверяем, что процесс ещё жив - к моменту клика он мог
+                // уже сам завершиться или быть убитым другой попыткой.
+                $existsCheck = $db->sql_query_prepared("SELECT 1 FROM information_schema.PROCESSLIST WHERE Id = ?", [$processId]);
+                if (!$existsCheck || $db->num_rows($existsCheck) === 0) {
+                    echo json_encode(['success' => false, 'error' => 'Process #' . $processId . ' no longer exists (it may have already finished or been killed).']);
+                    exit;
+                }
+
+                try {
+                    // KILL - административная команда, MySQL не поддерживает
+                    // её через PREPARE-протокол ("This command is not
+                    // supported in the prepared statement protocol yet"),
+                    // поэтому sql_query_prepared() тут не применить.
+                    // $processId уже приведён к (int) выше - конкатенация безопасна.
+                    $ok = @$db->sql_query("KILL " . $processId);
+                    if ($ok) {
+                        echo json_encode(['success' => true]);
+                    } else {
+                        echo json_encode(['success' => false, 'error' => 'Failed to kill process #' . $processId . '.']);
+                    }
+                } catch (Exception $e) {
+                    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+                }
+            }
+            exit;
+    }
+}
+
 // Get real-time status
 $serverStatus = getDatabaseServerStatus();
 $activeProcesses = getActiveProcesses();
@@ -224,20 +293,27 @@ $message = $_GET['message'] ?? '';
 $error = '';
 
 if ($action === 'T' && $table && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $table)) {
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        $error = 'Invalid or expired security token. Please try again from this page.';
+    } else {
     $tableName = '`' . $table . '`';
     $sql = "OPTIMIZE TABLE {$tableName}";
     
-    if ($db->sql_query($sql)) {
+    if ($db->sql_query_prepared($sql)) {
         $successMsg = 'Table "' . htmlspecialchars($table) . '" optimized successfully!';
         header('Location: ' . $_this_script_ . '&Do=F&message=' . urlencode($successMsg));
         exit;
     } else {
-        $error = 'Optimization error: ' . htmlspecialchars(mysqli_error($db->connection_id ?? $db->link ?? ''));
+        $error = 'Optimization error: ' . htmlspecialchars($db->error_string());
+    }
     }
 }
 
 stdhead('MySQL Server Stats');
 ?>
+
+<input type="hidden" id="myPostKey" value="<?= htmlspecialchars($mybb->post_code) ?>">
+<input type="hidden" id="actQuery" value="?act=<?= htmlspecialchars($_GET['act'] ?? 'mysql_overview') ?>">
 
 <div class="container mt-3">
     <div class="row justify-content-center">
@@ -468,8 +544,9 @@ stdhead('MySQL Server Stats');
                                                     </td>
                                                     <td class="text-center pe-3">
                                                         <?php if ($process['Command'] !== 'Sleep' && $process['Command'] !== 'Daemon'): ?>
-                                                            <button class="btn btn-sm btn-outline-danger" 
-                                                                    onclick="killProcess(<?= $process['Id'] ?>, '<?= htmlspecialchars($process['User']) ?>')"
+                                                            <button class="btn btn-sm btn-outline-danger kill-process-btn" 
+                                                                    data-pid="<?= (int)$process['Id'] ?>"
+                                                                    data-user="<?= htmlspecialchars($process['User']) ?>"
                                                                     title="Kill Process">
                                                                 <i class="fas fa-skull"></i>
                                                             </button>
@@ -554,7 +631,7 @@ stdhead('MySQL Server Stats');
                             } else {
                                 try {
                                     $query = "SHOW TABLE STATUS FROM `" . $databaseName . "`";
-                                    $res = $db->sql_query($query);
+                                    $res = $db->sql_query_prepared($query);
                                     
                                     if (!$res) {
                                         throw new RuntimeException('Database query error');
@@ -566,7 +643,7 @@ stdhead('MySQL Server Stats');
                                         'needs_optimization' => 0
                                     ];
                                     
-                                    while ($row = mysqli_fetch_array($res, MYSQLI_ASSOC)) {
+                                    while ($row = $db->fetch_array($res)) {
                                         $stats['tables']++;
                                         
                                         // Format data
@@ -668,13 +745,13 @@ stdhead('MySQL Server Stats');
                                         echo '<div class="col-md-2"><strong>Engine:</strong> ' . $engine . '</div>';
                                         echo '<div class="col-md-2"><strong>Created:</strong> ' . $createTime . '</div>';
                                         echo '<div class="col-md-2"><strong>Updated:</strong> ' . $updateTime . '</div>';
-                                        echo '<div class="col-md-2"><strong>Checked:</strong> ' . $checkTime . '</div>';
-                                        echo '<div class="col-md-2"><strong>Checksum:</strong> ' . htmlspecialchars($row['Checksum'] ?? 'N/A') . '</div>';
+                                        echo '<div class="col-md-2"><strong>Checked:</strong> ' . $checkTime . '</div>';                                     
+										echo '<div class="col-md-2"><strong>Checksum:</strong> ' . htmlspecialchars((string)($row['Checksum'] ?? 'N/A')) . '</div>';
                                         echo '</div>';
                                         echo '</td></tr>';
                                     }
                                     
-                                    mysqli_free_result($res);
+                                    $db->free_result($res);
                                     
                                     // Summary statistics
                                     [$totalFormatted, $totalUnit] = formatByteSize($stats['total_size'], 1);
@@ -744,7 +821,8 @@ function stopAutoRefresh() {
 
 async function updateServerStats() {
     try {
-        const response = await fetch('?ajax=stats&_=' + Date.now());
+        const actQuery = document.getElementById('actQuery')?.value || '';
+        const response = await fetch(actQuery + '&ajax=stats&_=' + Date.now());
         const data = await response.json();
         
         if (data.success) {
@@ -786,7 +864,8 @@ async function refreshProcessList() {
         button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
         button.disabled = true;
         
-        const response = await fetch('?ajax=processes&_=' + Date.now());
+        const actQuery = document.getElementById('actQuery')?.value || '';
+        const response = await fetch(actQuery + '&ajax=processes&_=' + Date.now());
         const data = await response.json();
         
         if (data.success) {
@@ -842,8 +921,8 @@ function updateProcessList(processes) {
             </td>
             <td class="text-center pe-3">
                 ${process.Command !== 'Sleep' && process.Command !== 'Daemon' ? 
-                    `<button class="btn btn-sm btn-outline-danger" 
-                            onclick="killProcess(${process.Id}, '${escapeHtml(process.User)}')"
+                    `<button class="btn btn-sm btn-outline-danger kill-process-btn" 
+                            data-pid="${process.Id}" data-user="${escapeHtml(process.User)}"
                             title="Kill Process">
                         <i class="fas fa-skull"></i>
                     </button>` : 
@@ -856,7 +935,9 @@ function updateProcessList(processes) {
 
 function killProcess(processId, userName) {
     if (confirm(`Kill process #${processId} from user "${userName}"?`)) {
-        fetch('?ajax=kill&process=' + processId, {
+        const myPostKey = document.getElementById('myPostKey')?.value || '';
+        const actQuery = document.getElementById('actQuery')?.value || '';
+        fetch(`${actQuery}&ajax=kill&process=${processId}&my_post_key=${encodeURIComponent(myPostKey)}`, {
             method: 'POST',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -890,6 +971,14 @@ function escapeHtml(unsafe) {
 // Initialize auto-refresh
 document.addEventListener('DOMContentLoaded', function() {
     startAutoRefresh();
+
+    // Delegated handler for Kill Process buttons - works for both the
+    // initial server-rendered rows and rows re-rendered via AJAX refresh.
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.kill-process-btn');
+        if (!btn) return;
+        killProcess(parseInt(btn.dataset.pid, 10), btn.dataset.user);
+    });
     
     // Toggle auto-refresh
     document.getElementById('autoRefresh').addEventListener('change', function() {
@@ -1234,7 +1323,9 @@ function performOptimization(tableName) {
     showToast(`<i class="fas fa-spinner fa-spin me-2"></i>Optimizing table "${tableName}"...`, 'info');
     
     // Perform AJAX request
-    fetch(`?Do=T&table=${encodeURIComponent(tableName)}`, {
+    const myPostKey = document.getElementById('myPostKey')?.value || '';
+    const actQuery = document.getElementById('actQuery')?.value || '';
+    fetch(`${actQuery}&Do=T&table=${encodeURIComponent(tableName)}&my_post_key=${encodeURIComponent(myPostKey)}`, {
         method: 'GET',
         headers: {
             'X-Requested-With': 'XMLHttpRequest'
@@ -1419,46 +1510,5 @@ if (!document.getElementById('optimize-styles')) {
 </script>
 
 <?php
-// AJAX handlers for real-time updates
-if (isset($_GET['ajax'])) {
-    header('Content-Type: application/json');
-    
-    switch ($_GET['ajax']) {
-        case 'stats':
-            $status = getDatabaseServerStatus();
-            echo json_encode([
-                'success' => true,
-                'uptime' => $status['uptime'] ?? '00:00:00',
-                'connections' => $status['Threads_connected'] ?? 0,
-                'max_connections' => $status['Max_connections'] ?? 0,
-                'queries_per_second' => $status['queries_per_second'] ?? 0,
-                'active_processes' => $status['active_processes'] ?? 0,
-                'slow_queries' => $status['slow_queries'] ?? 0,
-                'database_size_mb' => $status['database_size_mb'] ?? 0
-            ]);
-            exit;
-            
-        case 'processes':
-            $processes = getActiveProcesses();
-            echo json_encode([
-                'success' => true,
-                'processes' => $processes
-            ]);
-            exit;
-            
-        case 'kill':
-            if (isset($_GET['process'])) {
-                $processId = (int)$_GET['process'];
-                try {
-                    $db->sql_query("KILL " . $processId);
-                    echo json_encode(['success' => true]);
-                } catch (Exception $e) {
-                    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-                }
-            }
-            exit;
-    }
-}
-
 stdfoot();
 ?>

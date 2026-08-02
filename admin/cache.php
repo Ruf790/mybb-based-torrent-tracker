@@ -82,8 +82,8 @@ function getCacheItem(string $title): ?array
         ];
     }
     
-    $query = $db->simple_select("datacache", "*", "title = '" . $db->escape_string($title) . "'");
-    return $db->fetch_array($query) ?: null;
+    $query = $db->sql_query_prepared("SELECT * FROM datacache WHERE title = ?", [$title]);
+    return ($query ? $db->fetch_array($query) : null) ?: null;
 }
 
 /**
@@ -209,8 +209,8 @@ function handleCacheRebuildAll(): void
     $plugins->run_hooks("admin_tools_cache_rebuild_all");
 
     // Rebuild all datacache items (как в оригинале)
-    $query = $db->simple_select("datacache");
-    while($cacheitem = $db->fetch_array($query)) {
+    $query = $db->sql_query_prepared("SELECT * FROM datacache");
+    while($query && ($cacheitem = $db->fetch_array($query))) {
         if(method_exists($cache, "update_{$cacheitem['title']}")) {
             $func = "update_{$cacheitem['title']}";
             $cache->$func();
@@ -300,8 +300,8 @@ function handleCacheManager(): void
     displaySettingsCacheRow();
     
     // Display other caches from database
-    $query = $db->simple_select("datacache", "*", "", ["order_by" => "title"]);
-    while($cacheitem = $db->fetch_array($query)) {
+    $query = $db->sql_query_prepared("SELECT * FROM datacache ORDER BY title");
+    while($query && ($cacheitem = $db->fetch_array($query))) {
         displayCacheRow($cacheitem);
     }
     

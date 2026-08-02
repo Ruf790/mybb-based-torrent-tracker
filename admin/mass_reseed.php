@@ -9,7 +9,7 @@ if (!defined('STAFF_PANEL')) {
 }
 
 
-define('MR_VERSION', 'v0.4 by xam');
+define('MR_VERSION', 'v0.7');
 
 require_once INC_PATH . '/datahandler.php';
 
@@ -116,7 +116,7 @@ class ReseedRequestHandler
     {
         $idList = implode(',', array_map('intval', $torrentIds));
         
-        $query = $this->db->sql_query("
+        $query = $this->db->sql_query_prepared("
             SELECT t.owner, t.name, t.id, u.username
             FROM torrents t
             INNER JOIN users u ON t.owner = u.id
@@ -132,7 +132,7 @@ class ReseedRequestHandler
     {
         $idList = implode(',', array_map('intval', $torrentIds));
         
-        $query = $this->db->sql_query("
+        $query = $this->db->sql_query_prepared("
             SELECT DISTINCT s.userid as owner, s.torrentid as id, t.name, u.username
             FROM snatched s
             INNER JOIN torrents t ON s.torrentid = t.id
@@ -151,7 +151,7 @@ class ReseedRequestHandler
         $sentCount = 0;
         $baseUrl = $this->config['baseurl'] ?? $GLOBALS['BASEURL'] ?? '';
         
-        while ($torrent = $this->db->fetch_array($query)) {
+        while ($query && ($torrent = $this->db->fetch_array($query))) {
             $torrentUrl = $baseUrl . '/' . get_torrent_link($torrent['id']);
             $formattedMessage = str_replace(
                 ['{username}', '{torrentname}'],
@@ -163,8 +163,8 @@ class ReseedRequestHandler
             );
             
             send_pm([
-                'subject' => $this->db->escape_string($subject),
-                'message' => $this->db->escape_string($formattedMessage),
+                'subject' => $subject,
+                'message' => $formattedMessage,
                 'touid'   => (int)$torrent['owner']
             ], $senderId, true);
             
@@ -177,7 +177,7 @@ class ReseedRequestHandler
     private function enableDoubleUpload(array $torrentIds): void
     {
         $idList = implode(',', array_map('intval', $torrentIds));
-        $this->db->sql_query("
+        $this->db->sql_query_prepared("
             UPDATE torrents 
             SET doubleupload = 'yes' 
             WHERE id IN ({$idList})
@@ -383,7 +383,7 @@ class ReseedRequestHandler
 		
 		
 		
-		$res = $this->db->sql_query("
+		$res = $this->db->sql_query_prepared("
             SELECT t.id, t.name, t.seeders, t.leechers, 
                    t.times_completed, t.added, t.owner, 
                    u.username, u.usergroup, u.uploaded, u.downloaded
@@ -398,6 +398,7 @@ class ReseedRequestHandler
         $baseUrl = $this->config['baseurl'] ?? $GLOBALS['BASEURL'] ?? '';
         $dateFormat = $GLOBALS['dateformat'] ?? 'd-m-Y';
         $timeFormat = $GLOBALS['timeformat'] ?? 'H:i:s';
+        $resCount = $res ? $this->db->num_rows($res) : 0;
         ?>
         
         <div class="container mt-3">
@@ -411,7 +412,7 @@ class ReseedRequestHandler
                                     Weak Torrents (No Seeders)
                                 </h4>
                                 <span class="badge bg-warning text-dark fs-6">
-                                    <?= $this->db->num_rows($res) ?> torrent<?= $this->db->num_rows($res) !== 1 ? 's' : '' ?>
+                                    <?= $resCount ?> torrent<?= $resCount !== 1 ? 's' : '' ?>
                                 </span>
                             </div>
                         </div>
@@ -441,8 +442,8 @@ class ReseedRequestHandler
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <?php if ($this->db->num_rows($res) > 0): ?>
-                                                <?php while ($torrent = $this->db->fetch_array($res)): ?>
+                                            <?php if ($resCount > 0): ?>
+                                                <?php while ($res && ($torrent = $this->db->fetch_array($res))): ?>
                                                     <tr class="<?= $torrent['leechers'] > 0 ? 'table-warning' : '' ?>">
                                                         <td class="ps-3">
                                                             <div class="d-flex align-items-center">
@@ -521,7 +522,7 @@ class ReseedRequestHandler
                                     </table>
                                 </div>
                                 
-                                <?php if ($this->db->num_rows($res) > 0): ?>
+                                <?php if ($resCount > 0): ?>
                                 <div class="mt-4 pt-3 border-top">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div class="form-text">

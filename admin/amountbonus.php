@@ -10,17 +10,35 @@ if (!defined('STAFF_PANEL')) {
           </div>');
 }
 
+if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+    http_response_code(403);
+    exit('<div class="alert alert-danger text-center" style="font-family: system-ui, -apple-system, sans-serif; font-size: 1rem; color: #dc2626;">
+            <strong>🚫 Access Denied!</strong> You do not have permission to access this page.
+          </div>');
+}
+
 const AB_VERSION = 'Enhanced Amountbonus Module v0.8.5';
 const EOL = PHP_EOL;
+
+// Group IDs that must never be targeted by bulk distribution (Moderator, Administrator, Sysop — canstaffpanel=1)
+const PROTECTED_BULK_GROUPS = [6, 7, 8];
+
+global $mybb;
 
 /**
  * Process bonus points distribution
  */
 function processBonusDistribution(): bool
 {
-    global $db, $CURUSER, $BASEURL;
+    global $db, $CURUSER, $BASEURL, $mybb;
     
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        return false;
+    }
+    
+    if (!verify_post_check($mybb->get_input('my_post_key'))) {
+        http_response_code(403);
+        displayError('⚠️ Invalid security token. Please refresh the page and try again.');
         return false;
     }
     
@@ -29,9 +47,9 @@ function processBonusDistribution(): bool
         ['options' => ['min_range' => 1, 'max_range' => 1000000]]
     );
     
-    $username = htmlspecialchars($_POST['username'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE);
+    $username = trim($_POST['username'] ?? '');
     $toAll = $_POST['toall'] ?? '';
-    $usergroup = filter_input(INPUT_POST, 'usergroup', FILTER_VALIDATE_INT);
+    $usergroup = filter_input(INPUT_POST, 'usergroup', FILTER_VALIDATE_INT) ?: null;
     
     if ($seedbonus === false || $seedbonus === null) {
         displayError('❌ Please enter a valid number between 1 and 1,000,000 for bonus points.');
@@ -51,16 +69,24 @@ function processBonusDistribution(): bool
     
     try {
         if ($toAll === 'yes') {
+            if ($usergroup !== null && $usergroup > 0 && in_array($usergroup, PROTECTED_BULK_GROUPS, true)) {
+                displayError('🚫 Bulk distribution to staff or administrative groups is not allowed.');
+                return false;
+            }
             distributeToAll($seedbonus, $usergroup, $modcomment, $moderatorName);
-        } elseif (!empty($username)) {
+        } elseif ($username !== '') {
             distributeToUser($seedbonus, $username, $modcomment, $moderatorName);
         } else {
             displayError('Please specify either a username or select "All Users".');
             return false;
         }
         return true;
+    } catch (InvalidArgumentException | RuntimeException $e) {
+        // Known, safe-to-display validation/business-logic errors
+        displayError('❌ ' . htmlspecialchars($e->getMessage(), ENT_QUOTES));
+        return false;
     } catch (Throwable $e) {
-        error_log('Bonus Distribution Error: ' . $e->getMessage());
+        // Unexpected/internal errors — don't leak details to the browser
         displayError('⚠️ An unexpected error occurred. Please try again.');
         return false;
     }
@@ -73,28 +99,25 @@ function distributeToAll(int $points, ?int $group, string $comment, string $mode
 {
     global $db;
     
-    $escapedPoints = $db->sqlesc((string)$points);
-    $escapedComment = $db->sqlesc($comment);
+    if ($group !== null && $group > 0 && in_array($group, PROTECTED_BULK_GROUPS, true)) {
+        throw new InvalidArgumentException('Bulk distribution to staff or administrative groups is not allowed.');
+    }
     
     // Build WHERE clause
     $whereClause = "WHERE ustatus = 'confirmed'";
     $targetDescription = 'All confirmed users';
-    
+    $params = [$points, $comment];
+
     if ($group > 0) {
-        $escapedGroup = $db->sqlesc((string)$group);
-        $whereClause .= " AND usergroup = $escapedGroup";
+        $whereClause .= " AND usergroup = ?";
+        $params[] = $group;
         $targetDescription = get_user_class_name($group) . ' group';
     }
-    
-    // Using modern SQL syntax
-    $query = <<<SQL
-        UPDATE users 
-        SET seedbonus = seedbonus + $escapedPoints, 
-            modcomment = CONCAT($escapedComment, modcomment) 
-        $whereClause
-    SQL;
-    
-    if (!$db->sql_query($query)) {
+
+    // Using prepared statement
+    $query = "UPDATE users SET seedbonus = seedbonus + ?, modcomment = CONCAT(?, modcomment) $whereClause";
+
+    if (!$db->sql_query_prepared($query, $params)) {
         throw new RuntimeException('Failed to update user records.');
     }
     
@@ -117,20 +140,10 @@ function distributeToUser(int $points, string $username, string $comment, string
         throw new InvalidArgumentException('Username must be at least 3 characters long.');
     }
     
-    $escapedUsername = $db->sqlesc($username);
-    $escapedPoints = $db->sqlesc((string)$points);
-    $escapedComment = $db->sqlesc($comment);
-    
-    // Update user's bonus points - using modern syntax
-    $updateQuery = <<<SQL
-        UPDATE users 
-        SET seedbonus = seedbonus + $escapedPoints, 
-            modcomment = CONCAT($escapedComment, modcomment)
-           
-        WHERE username = $escapedUsername
-    SQL;
-    
-    if (!$db->sql_query($updateQuery)) {
+    // Update user's bonus points - using prepared statement
+    $updateQuery = "UPDATE users SET seedbonus = seedbonus + ?, modcomment = CONCAT(?, modcomment) WHERE username = ?";
+
+    if (!$db->sql_query_prepared($updateQuery, [$points, $comment, $username])) {
         throw new RuntimeException('Failed to update user account.');
     }
     
@@ -140,15 +153,10 @@ function distributeToUser(int $points, string $username, string $comment, string
     }
     
     // Get user ID for redirection
-    $selectQuery = <<<SQL
-        SELECT id, username 
-        FROM users 
-        WHERE username = $escapedUsername
-        LIMIT 1
-    SQL;
-    
-    $result = $db->sql_query($selectQuery);
-    $userData = mysqli_fetch_assoc($result);
+    $selectQuery = "SELECT id, username FROM users WHERE username = ? LIMIT 1";
+
+    $result = $db->sql_query_prepared($selectQuery, [$username]);
+    $userData = $result ? $db->fetch_array($result) : null;
     
     if (!$userData) {
         throw new RuntimeException('Failed to retrieve user information.');
@@ -165,21 +173,57 @@ function distributeToUser(int $points, string $username, string $comment, string
 }
 
 /**
+ * Store a flash message to be rendered later, in the correct place in the page layout
+ * (echoing directly here would run before stdhead() and break the page structure)
+ */
+function setFlashMessage(string $type, string $message): void
+{
+    $GLOBALS['_bonus_flash'] = ['type' => $type, 'message' => $message];
+}
+
+/**
+ * Render the stored flash message (call this from within the page layout, after stdhead())
+ */
+function renderFlashMessage(): void
+{
+    $flash = $GLOBALS['_bonus_flash'] ?? null;
+    if (!$flash) {
+        return;
+    }
+
+    if ($flash['type'] === 'error') {
+        echo <<<HTML
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-exclamation-triangle me-3 fs-4"></i>
+                    <div class="flex-grow-1">
+                        <strong>Error:</strong> {$flash['message']}
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            </div>
+        HTML;
+    } else {
+        echo <<<HTML
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-check-circle me-3 fs-4"></i>
+                    <div class="flex-grow-1">
+                        <strong>Success!</strong> {$flash['message']}
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            </div>
+        HTML;
+    }
+}
+
+/**
  * Display error message
  */
 function displayError(string $message): void
 {
-    echo <<<HTML
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <div class="d-flex align-items-center">
-                <i class="fas fa-exclamation-triangle me-3 fs-4"></i>
-                <div class="flex-grow-1">
-                    <strong>Error:</strong> $message
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        </div>
-    HTML;
+    setFlashMessage('error', $message);
 }
 
 /**
@@ -187,17 +231,7 @@ function displayError(string $message): void
  */
 function displaySuccess(string $message): void
 {
-    echo <<<HTML
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <div class="d-flex align-items-center">
-                <i class="fas fa-check-circle me-3 fs-4"></i>
-                <div class="flex-grow-1">
-                    <strong>Success!</strong> $message
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        </div>
-    HTML;
+    setFlashMessage('success', $message);
 }
 
 /**
@@ -205,22 +239,10 @@ function displaySuccess(string $message): void
  */
 function logAction(string $message, string $type = 'INFO'): void
 {
-    global $CURUSER;
-    $moderator = $CURUSER['username'] ?? 'System';
-    $logMessage = sprintf("[%s] [%s] %s - %s", 
-        gmdate('Y-m-d H:i:s'), 
-        $type, 
-        $moderator, 
-        $message
-    );
-    
     // Using write_log function from your system
     if (function_exists('write_log')) {
         write_log($message);
     }
-    
-    // Also log to PHP error log for debugging
-    error_log($logMessage);
 }
 
 /**
@@ -230,26 +252,31 @@ function generateGroupSelect(string $name = 'usergroup'): string
 {
     $groups = [
         '' => '👥 All User Groups',
-        1 => '👤 Member',
-        2 => '⭐ VIP',
-        3 => '📤 Uploader',
-        4 => '🛡️ Moderator',
-        5 => '👑 Administrator',
-        6 => '💎 Premium',
-        7 => '🔧 System'
+        2 => '👤 User',
+        3 => '⚡ Power User',
+        4 => '⭐ VIP',
+        5 => '📤 Uploader',
+        6 => '🛡️ Moderator',
+        7 => '👑 Administrator',
+        8 => '🔧 Sysop',
     ];
     
     $html = '<select name="' . htmlspecialchars($name) . '" class="form-select form-select-lg">';
     
     foreach ($groups as $value => $label) {
+        $isProtected = $value !== '' && in_array($value, PROTECTED_BULK_GROUPS, true);
+        
         $valueAttr = $value !== '' ? 'value="' . htmlspecialchars((string)$value) . '"' : '';
         $selected = $value === '' ? ' selected' : '';
+        $disabledAttr = $isProtected ? ' disabled' : '';
+        $displayLabel = $isProtected ? $label . ' (staff — protected)' : $label;
         
         $html .= sprintf(
-            '<option %s%s>%s</option>',
+            '<option %s%s%s>%s</option>',
             $valueAttr,
             $selected,
-            htmlspecialchars($label)
+            $disabledAttr,
+            htmlspecialchars($displayLabel)
         );
     }
     
@@ -265,41 +292,50 @@ function displayStatistics(): void
 {
     global $db;
     
-    $query = "SELECT COUNT(*) as total_users, SUM(seedbonus) as total_bonus FROM users WHERE ustatus = 'confirmed'";
-    $result = $db->sql_query($query);
-    $stats = mysqli_fetch_assoc($result);
+    $query = "SELECT COUNT(*) as total_users, SUM(seedbonus) as total_bonus, AVG(seedbonus) as avg_bonus FROM users WHERE ustatus = 'confirmed'";
+    $result = $db->sql_query_prepared($query);
+    $stats = $result ? $db->fetch_array($result) : null;
     
-    if ($stats) {
-        $totalUsers = number_format((int)($stats['total_users'] ?? 0));
-        $totalBonus = number_format((float)($stats['total_bonus'] ?? 0));
-        
+    if (!$stats) {
+        return;
+    }
+    
+    $totalUsers = number_format((int)($stats['total_users'] ?? 0));
+    $totalBonus = number_format((float)($stats['total_bonus'] ?? 0));
+    $avgBonus   = number_format((float)($stats['avg_bonus'] ?? 0));
+    
+    $cards = [
+        ['icon' => 'fa-users',       'color' => '#3b82f6', 'label' => 'Confirmed Users',   'value' => $totalUsers],
+        ['icon' => 'fa-coins',       'color' => '#f59e0b', 'label' => 'Total Bonus Points','value' => $totalBonus],
+        ['icon' => 'fa-chart-line',  'color' => '#22c55e', 'label' => 'Avg. per User',     'value' => $avgBonus],
+    ];
+    
+    echo '<div class="row g-3 mb-4">';
+    foreach ($cards as $c) {
         echo <<<HTML
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="card bg-light border-primary">
-                        <div class="card-body">
-                            <h6 class="card-subtitle mb-2 text-muted">📊 System Statistics</h6>
-                            <div class="d-flex justify-content-between">
-                                <span>Total Users:</span>
-                                <span class="fw-bold">{$totalUsers}</span>
-                            </div>
-                            <div class="d-flex justify-content-between mt-2">
-                                <span>Total Bonus Points:</span>
-                                <span class="fw-bold text-success">{$totalBonus}</span>
-                            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body d-flex align-items-center gap-3 py-3">
+                        <div class="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+                             style="width:48px;height:48px;background:{$c['color']}1a;">
+                            <i class="fa-solid {$c['icon']}" style="color:{$c['color']};font-size:20px;"></i>
+                        </div>
+                        <div>
+                            <div class="fs-4 fw-bold lh-1">{$c['value']}</div>
+                            <div class="text-secondary" style="font-size:13px;">{$c['label']}</div>
                         </div>
                     </div>
                 </div>
             </div>
         HTML;
     }
+    echo '</div>';
 }
 
 // Main execution
 try {
     $processed = processBonusDistribution();
 } catch (Throwable $e) {
-    error_log('Critical error in bonus module: ' . $e->getMessage());
     displayError('A critical error occurred. Please contact the administrator.');
     $processed = false;
 }
@@ -339,6 +375,9 @@ stdhead('🎁 Bonus Points Management System');
                     <?= AB_VERSION ?>
                 </p>
             </div>
+            
+            <!-- Flash message -->
+            <?php renderFlashMessage(); ?>
             
             <!-- Statistics -->
             <?php displayStatistics(); ?>
@@ -382,6 +421,7 @@ stdhead('🎁 Bonus Points Management System');
                         <div class="tab-pane fade show active" id="single" role="tabpanel">
                             <form method="POST" action="" class="needs-validation" novalidate>
                                 <input type="hidden" name="act" value="amountbonus">
+                                <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                                 
                                 <div class="row g-4">
                                     <div class="col-md-6">
@@ -451,6 +491,7 @@ stdhead('🎁 Bonus Points Management System');
                             <form method="POST" action="" class="needs-validation" novalidate>
                                 <input type="hidden" name="act" value="amountbonus">
                                 <input type="hidden" name="toall" value="yes">
+                                <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                                 
                                 <div class="row g-4">
                                     <div class="col-md-6">
@@ -577,69 +618,7 @@ stdhead('🎁 Bonus Points Management System');
 </div>
 
 
-<script>
-// Form validation
-(() => {
-    'use strict';
-    const forms = document.querySelectorAll('.needs-validation');
-    
-    forms.forEach(form => {
-        form.addEventListener('submit', event => {
-            if (!form.checkValidity()) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-            form.classList.add('was-validated');
-        }, false);
-    });
-})();
-
-// Helper functions
-function setPoints(points) {
-    const inputs = document.querySelectorAll('input[name="seedbonus"]');
-    inputs.forEach(input => input.value = points);
-    return false;
-}
-
-function confirmBulkDistribution() {
-    const points = document.querySelector('input[name="seedbonus"]').value;
-    const groupSelect = document.querySelector('select[name="usergroup"]');
-    const groupName = groupSelect.options[groupSelect.selectedIndex].text;
-    
-    if (!points || points < 1) {
-        alert('Please enter a valid points amount first.');
-        return;
-    }
-    
-    const confirmation = confirm(
-        `⚠️ BULK DISTRIBUTION CONFIRMATION\n\n` +
-        `You are about to distribute ${points} bonus points\n` +
-        `to ALL users in: ${groupName}\n\n` +
-        `This action cannot be undone.\n\n` +
-        `Click OK to proceed, or Cancel to review.`
-    );
-    
-    if (confirmation) {
-        document.querySelector('form').submit();
-    }
-}
-
-// Auto-select current tab based on previous selection
-document.addEventListener('DOMContentLoaded', () => {
-    const savedTab = localStorage.getItem('bonusTab');
-    if (savedTab) {
-        const tab = new bootstrap.Tab(document.querySelector(savedTab));
-        tab.show();
-    }
-    
-    // Save tab selection
-    document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
-        tab.addEventListener('shown.bs.tab', e => {
-            localStorage.setItem('bonusTab', e.target.getAttribute('data-bs-target'));
-        });
-    });
-});
-</script>
+<script src="<?= $BASEURL ?>/admin/scripts/amountbonus.js"></script>
 </body>
 </html>
 

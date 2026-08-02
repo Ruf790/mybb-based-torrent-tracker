@@ -152,23 +152,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     $abs_url = $base . '/' . ltrim($rel_path, '/');
 
     // DB update
-    $updated_avatar = [
-        "avatar"           => $rel_path,
-        "avatardimensions" => $avatar_dimensions,
-        "avatartype"       => "upload",
-    ];
 
-    if (method_exists($db, 'update_query')) {
-        $db->update_query("users", $updated_avatar, "id='{$uid}'");
-    } elseif (function_exists('update_query')) {
-        $db->update_query("users", $updated_avatar, "id='{$uid}'");
-    } else {
-        // fallback
-        $db->sql_query(
-            "UPDATE users SET avatar=?, avatardimensions=?, avatartype='upload' WHERE id=?",
-            [$rel_path, $avatar_dimensions, $uid]
-        );
-    }
+    $db->sql_query_prepared(
+        "UPDATE users SET avatar=?, avatardimensions=?, avatartype='upload' WHERE id=?",
+        [$rel_path, $avatar_dimensions, $uid]
+    );
 
     // reply
     if ($is_ajax) {
@@ -247,8 +235,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
 	   
 	   
 	case 'ban':
-    $ban_reason = $db->escape_string(trim($_POST['ban_reason'] ?? ''));
-    $ban_time   = $db->escape_string(trim($_POST['ban_time']   ?? '---'));
+    $ban_reason = trim($_POST['ban_reason'] ?? '');
+    $ban_time   = trim($_POST['ban_time']   ?? '---');
 
     // Вычисляем lifted через ban_date2timestamp
     if ($ban_time === '---' || empty($ban_time)) {
@@ -269,39 +257,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
     }
 
     foreach ($user_ids as $uid) {
-        $user_row = $db->fetch_array(
-            $db->simple_select("users", "username, usergroup, additionalgroups, displaygroup", "id='{$uid}'")
-        );
+        $uq = $db->sql_query_prepared("SELECT username, usergroup, additionalgroups, displaygroup FROM users WHERE id = ?", [$uid]);
+        $user_row = $uq ? $db->fetch_array($uq) : null;
         if (!$user_row) continue;
 
         $old_group       = (int)$user_row['usergroup'];
-        $old_addgroups   = $db->escape_string($user_row['additionalgroups']);
+        $old_addgroups   = $user_row['additionalgroups'];
         $old_displaygroup = (int)$user_row['displaygroup'];
 
         // Пишем в banned
-        $db->sql_query("
+        $db->sql_query_prepared("
             INSERT INTO banned 
                 (uid, gid, oldgroup, oldadditionalgroups, olddisplaygroup, admin, dateline, bantime, lifted, reason)
             VALUES 
-                ('{$uid}', '{$banned_gid}', '{$old_group}', '{$old_addgroups}', '{$old_displaygroup}',
-                '".(int)$CURUSER['id']."', '".TIMENOW."', '{$ban_time}', '{$lifted}', '{$ban_reason}')
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-                gid              = '{$banned_gid}',
-                oldgroup         = '{$old_group}',
-                oldadditionalgroups = '{$old_addgroups}',
-                olddisplaygroup  = '{$old_displaygroup}',
-                admin            = '".(int)$CURUSER['id']."',
-                dateline         = '".TIMENOW."',
-                bantime          = '{$ban_time}',
-                lifted           = '{$lifted}',
-                reason           = '{$ban_reason}'
-        ");
+                gid              = ?,
+                oldgroup         = ?,
+                oldadditionalgroups = ?,
+                olddisplaygroup  = ?,
+                admin            = ?,
+                dateline         = ?,
+                bantime          = ?,
+                lifted           = ?,
+                reason           = ?
+        ", [
+            $uid, $banned_gid, $old_group, $old_addgroups, $old_displaygroup,
+            (int)$CURUSER['id'], TIMENOW, $ban_time, $lifted, $ban_reason,
+            $banned_gid, $old_group, $old_addgroups, $old_displaygroup,
+            (int)$CURUSER['id'], TIMENOW, $ban_time, $lifted, $ban_reason,
+        ]);
 
         // Меняем группу юзера на banned group
-        $db->update_query("users", [
-            'usergroup' => $banned_gid,
-            'enabled'   => 'no'
-        ], "id='{$uid}'");
+        $db->sql_query_prepared("UPDATE users SET usergroup = ?, enabled = 'no' WHERE id = ?", [$banned_gid, $uid]);
 		
 		
 		 // Логируем
@@ -327,13 +315,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
 
     foreach ($user_ids as $uid) {
         // Берём данные из banned
-        $ban_row = $db->fetch_array(
-            $db->simple_select("banned", "*", "uid='{$uid}'")
-        );
+        $bq = $db->sql_query_prepared("SELECT * FROM banned WHERE uid = ?", [$uid]);
+        $ban_row = $bq ? $db->fetch_array($bq) : null;
 
         if (!$ban_row) {
             // Юзер не в бане — просто включаем
-            $db->update_query("users", ['enabled' => 'yes'], "id='{$uid}'");
+            $db->sql_query_prepared("UPDATE users SET enabled = 'yes' WHERE id = ?", [$uid]);
             $unbanned++;
             continue;
         }
@@ -341,19 +328,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
         // Восстанавливаем группу как в liftban
         $updated_group = [
             'usergroup'          => (int)$ban_row['oldgroup'],
-            'additionalgroups'   => $db->escape_string($ban_row['oldadditionalgroups']),
+            'additionalgroups'   => $ban_row['oldadditionalgroups'],
             'displaygroup'       => (int)$ban_row['olddisplaygroup'],
             'enabled'            => 'yes',
             'notifs'             => ''
         ];
 
-        $db->update_query("users", $updated_group, "id='{$uid}'");
-        $db->delete_query("banned", "uid='{$uid}'");
+        $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated_group)));
+        $params = array_values($updated_group);
+        $params[] = $uid;
+        $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
+        $db->sql_query_prepared("DELETE FROM banned WHERE uid = ?", [$uid]);
 
         // Логируем
-        $user_row = $db->fetch_array(
-            $db->simple_select("users", "username", "id='{$uid}'")
-        );
+        $unq = $db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [$uid]);
+        $user_row = $unq ? $db->fetch_array($unq) : null;
         if ($user_row) {
             log_moderator_action(
                 ['uid' => $uid, 'username' => $user_row['username']],
@@ -386,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
             }
 
             $safe_ids_str = implode(',', $safe_ids);
-            $db->sql_query("UPDATE users SET usergroup='{$gid}' WHERE id IN ({$safe_ids_str})");
+            $db->sql_query_prepared("UPDATE users SET usergroup = ? WHERE id IN ({$safe_ids_str})", [$gid]);
 
             log_moderator_action(
                 ['uids' => $safe_ids_str, 'gid' => $gid],
@@ -649,17 +638,17 @@ echo '
 $_ts_7d  = TIMENOW - 604800;
 $_ts_1d  = TIMENOW - 86400;
 $_ts_15m = TIMENOW - 900;
-$_stat_q = $db->sql_query("
+$_stat_q = $db->sql_query_prepared("
     SELECT
         COUNT(*)                       AS total,
         SUM(enabled = 'yes')           AS active,
         SUM(enabled = 'no')            AS banned,
-        SUM(added >= {$_ts_7d})        AS new7,
-        SUM(added >= {$_ts_1d})        AS today,
-        SUM(lastactive >= {$_ts_15m})  AS online
+        SUM(added >= ?)        AS new7,
+        SUM(added >= ?)        AS today,
+        SUM(lastactive >= ?)  AS online
     FROM users
-");
-$_stat      = $db->fetch_array($_stat_q);
+", [$_ts_7d, $_ts_1d, $_ts_15m]);
+$_stat      = ($_stat_q ? $db->fetch_array($_stat_q) : null) ?: ['total'=>0,'active'=>0,'banned'=>0,'new7'=>0,'today'=>0,'online'=>0];
 $stat_total  = (int)$_stat['total'];
 $stat_active = (int)$_stat['active'];
 $stat_banned = (int)$_stat['banned'];
@@ -773,8 +762,8 @@ echo '
             <label class="form-label">Group</label>
             <select name="usergroup" class="form-select">
                 <option value="-1">All groups</option>';
-                $q = $db->sql_query("SELECT gid, title FROM usergroups");
-                while ($g = $db->fetch_array($q)) 
+                $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups");
+                while ($q && ($g = $db->fetch_array($q))) 
                 {
                     $sel = (isset($_GET['usergroup']) && $_GET['usergroup'] == $g['gid']) ? ' selected' : '';
                     echo '<option value="'.$g['gid'].'"'.$sel.'>'.htmlspecialchars_uni($g['title']).'</option>';
@@ -922,7 +911,7 @@ echo '      </select>
 
 if (isset($_GET['latest'])) {
     // Latest Users
-    $latest_res = $db->sql_query("SELECT id, username, usergroup, added, avatar, avatardimensions, email FROM users ORDER BY id DESC LIMIT 10");
+    $latest_res = $db->sql_query_prepared("SELECT id, username, usergroup, added, avatar, avatardimensions, email FROM users ORDER BY id DESC LIMIT 10");
     echo '<div class="card mb-4"><div class="card-header fw-bold">Latest Users</div>';
     echo '<div class="table-responsive"><table class="table table-striped table-hover align-middle mb-0">';
    echo '<thead><tr>
@@ -934,7 +923,7 @@ if (isset($_GET['latest'])) {
     <th>ID</th><th>Avatar</th><th>Username</th><th>Email</th><th>Group</th>
     <th>Reg IP/Last IP</th><th>Upl/Down</th><th>Ratio</th><th>Actions</th>
 </tr></thead>';
-    while ($user = $db->fetch_array($latest_res)) {
+    while ($latest_res && ($user = $db->fetch_array($latest_res))) {
         $profile_url = $BASEURL . '/' . get_profile_link($user['id']);
         $av = format_avatar($user['avatar'], $user['avatardimensions'], '80|80');
         if (!empty($av['is_html'])) 
@@ -987,12 +976,7 @@ else {
 
 // 1. Запрос для подсчета общего количества
 $sql_count = "SELECT COUNT(*) as total FROM users WHERE $where";
-
-if (!empty($params)) {
-    $count_result = $db->sql_query_prepared($sql_count, $params);
-} else {
-    $count_result = $db->sql_query($sql_count);
-}
+$count_result = $db->sql_query_prepared($sql_count, $params);
 
 // Проверка ошибок
 if (!$count_result) {
@@ -1014,11 +998,7 @@ $params_for_data = $params;
 $params_for_data[] = (int)$start;
 $params_for_data[] = (int)$perpage;
 
-if (!empty($params_for_data)) {
-    $query_result = $db->sql_query_prepared($sql_data, $params_for_data);
-} else {
-    $query_result = $db->sql_query($sql_data);
-}
+$query_result = $db->sql_query_prepared($sql_data, $params_for_data);
 
 // Проверка ошибок
 if (!$query_result) {
@@ -1063,8 +1043,8 @@ $num = $db->num_rows($query_result);
         <div class="input-group input-group-sm" style="width:auto;">
             <select class="form-select form-select-sm" id="bulkGroupSelect">
                 <option value="">Change group...</option>';
-                $q = $db->sql_query("SELECT gid, title FROM usergroups ORDER BY title ASC");
-                while ($g = $db->fetch_array($q)) {
+                $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups ORDER BY title ASC");
+                while ($q && ($g = $db->fetch_array($q))) {
                     echo '<option value="'.(int)$g['gid'].'">'.htmlspecialchars_uni($g['title']).'</option>';
                 }
 echo '      </select>

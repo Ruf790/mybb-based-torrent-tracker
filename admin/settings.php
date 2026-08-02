@@ -11,7 +11,7 @@ require_once $rootpath . 'global.php';
 require_once INC_PATH . '/functions_mkprettytime.php';
 require TSDIR . '/cache/freeleech.php';
 
-if ($usergroups['cansettingspanel'] !== '1') {
+if ((int)($usergroups['cansettingspanel'] ?? 0) !== 1) {
     stdhead();
     error_no_permission(true);
     exit();
@@ -63,8 +63,8 @@ function admin_redirect(string $url): never
 function rebuild_announce_settings(): bool {
     global $db;
     $settings = [];
-    $q = $db->sql_query("SELECT name, value FROM settings");
-    while ($r = $db->fetch_array($q)) $settings[$r['name']] = $r['value'];
+    $q = $db->sql_query_prepared("SELECT name, value FROM settings");
+    while ($q && ($r = $db->fetch_array($q))) $settings[$r['name']] = $r['value'];
 
     $keys = ['nc','announce_wait','announce_interval',
              'max_rate','bannedclientdetect','allowed_clients',
@@ -94,8 +94,8 @@ function rebuild_announce_settings(): bool {
 
 // ── Load settings ──────────────────────────────────────────────────────────────
 $settings = [];
-$q = $db->simple_select("settings", "name, value");
-while ($r = $db->fetch_array($q)) $settings[$r['name']] = $r['value'];
+$q = $db->sql_query_prepared("SELECT name, value FROM settings");
+while ($q && ($r = $db->fetch_array($q))) $settings[$r['name']] = $r['value'];
 $announce_url = $settings['announce_urls[]'] ?? '';
 
 ob_start();
@@ -105,13 +105,11 @@ ob_start();
 function save_to_settings(array $data): void {
     global $db;
     foreach ($data as $name => $value) {
-        $n = $db->escape_string($name);
-        $v = $db->escape_string($value);
-        $check = $db->sql_query("SELECT sid FROM settings WHERE name='{$n}' LIMIT 1");
-        if ($db->num_rows($check) > 0) {
-            $db->sql_query("UPDATE settings SET value='{$v}' WHERE name='{$n}'");
+        $check = $db->sql_query_prepared("SELECT sid FROM settings WHERE name = ? LIMIT 1", [$name]);
+        if ($check && $db->num_rows($check) > 0) {
+            $db->sql_query_prepared("UPDATE settings SET value = ? WHERE name = ?", [$value, $name]);
         } else {
-            $db->sql_query("INSERT INTO settings (name, value) VALUES ('{$n}', '{$v}')");
+            $db->sql_query_prepared("INSERT INTO settings (name, value) VALUES (?, ?)", [$name, $value]);
         }
     }
     rebuild_settings();
@@ -145,7 +143,7 @@ match(true) {
     $keys = ['regtype','minnamelength','maxnamelength','illegalusernames',
              'minpasswordlength','maxpasswordlength','requirecomplexpasswords','failedlogincount',
              'failedlogintext','username_method','disableregs','maxusers',
-             '_d_usergroup','invite_count','autogigsignup','autosbsignup'];
+             '_d_usergroup','invite_count','autogigsignup','autosbsignup','allowmultipleemails'];
     $data = array_intersect_key($_POST['configoption'] ?? [], array_flip($keys));
     if (!empty($data)) save_to_settings($data);
     flash_message("Registration settings saved successfully!", "success");
@@ -195,8 +193,8 @@ isset($_POST['save_announce']) => (function(): void {
 
     isset($_POST['save_staff']) => (function() use ($db): void {
         $valid = [];
-        $q = $db->sql_query("SELECT u.id, u.username FROM users u LEFT JOIN usergroups g ON u.usergroup=g.gid WHERE u.enabled='yes' AND (g.cansettingspanel='1' OR g.issupermod='1' OR g.canstaffpanel='1')");
-        while ($r = $db->fetch_array($q)) $valid[(string)$r['id']] = $r['username'];
+        $q = $db->sql_query_prepared("SELECT u.id, u.username FROM users u LEFT JOIN usergroups g ON u.usergroup=g.gid WHERE u.enabled='yes' AND (g.cansettingspanel='1' OR g.issupermod='1' OR g.canstaffpanel='1')");
+        while ($q && ($r = $db->fetch_array($q))) $valid[(string)$r['id']] = $r['username'];
 
         $entries = []; $errors = [];
         foreach (($_POST['staffids'] ?? []) as $i => $rawId) {
@@ -239,17 +237,17 @@ isset($_POST['save_announce']) => (function(): void {
             if (isset($opts['SITEONLINE'])) write_log("[MAINTENANCE] Site set to online");
         }
 
-        $db->sql_query("START TRANSACTION");
+        $db->begin_transaction(hide_errors: true);
         try {
             foreach ($opts as $name => $value) {
-                if (!$db->sql_query("UPDATE settings SET value=" . $db->sqlesc($value) . " WHERE name=" . $db->sqlesc($name)))
+                if (!$db->sql_query_prepared("UPDATE settings SET value = ? WHERE name = ?", [$value, $name], 1))
                     throw new \Exception("Failed to update '{$name}'");
             }
-            $db->sql_query("COMMIT");
+            $db->commit(hide_errors: true);
             rebuild_settings();
             flash_message("Settings updated successfully!", "success");
         } catch (\Throwable $e) {
-            $db->sql_query("ROLLBACK");
+            $db->rollback(hide_errors: true);
             write_log("[ERROR] " . $e->getMessage());
             flash_message("Error: " . $e->getMessage(), "danger");
         }
@@ -292,6 +290,7 @@ $illegalusernames     = $settings['illegalusernames']       ?? '';
 $minpasswordlength    = $settings['minpasswordlength']      ?? '6';
 $maxpasswordlength    = $settings['maxpasswordlength']      ?? '40';
 $requirecomplexpasswords = $settings['requirecomplexpasswords'] ?? '0';
+$allowmultipleemails  = $settings['allowmultipleemails']    ?? '0';
 $failedlogincount     = $settings['failedlogincount']       ?? '0';
 $failedlogintext      = $settings['failedlogintext']        ?? '0';
 $username_method      = $settings['username_method']        ?? '0';
@@ -346,8 +345,8 @@ if (is_readable($staffFile)) {
     }
 }
 $availableStaff = [];
-$q = $db->sql_query("SELECT u.id, u.username, g.title FROM users u LEFT JOIN usergroups g ON u.usergroup=g.gid WHERE u.enabled='yes' AND (g.cansettingspanel='1' OR g.issupermod='1' OR g.canstaffpanel='1') ORDER BY u.username ASC");
-while ($r = $db->fetch_array($q)) $availableStaff[] = $r;
+$q = $db->sql_query_prepared("SELECT u.id, u.username, g.title FROM users u LEFT JOIN usergroups g ON u.usergroup=g.gid WHERE u.enabled='yes' AND (g.cansettingspanel='1' OR g.issupermod='1' OR g.canstaffpanel='1') ORDER BY u.username ASC");
+while ($q && ($r = $db->fetch_array($q))) $availableStaff[] = $r;
 
 echo '<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
 echo '<link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">';
@@ -508,7 +507,6 @@ flash_message();
               ?>
               <div class="row">
                 <div class="col-md-6"><?php fsel('use_xmlhttprequest',$yn1,$s['use_xmlhttprequest']??'1','Use XMLHttpRequest'); ?></div>
-                <div class="col-md-6"><?php fsel('redirects',$yn1,$s['redirects']??'1','Friendly Redirection Pages'); ?></div>
                 <div class="col-md-6"><?php fsel('seourls',$yn,$s['seourls']??'no','Active SEO'); ?></div>
                 <div class="col-md-6"><?php fsel('gzipcompress',$yn,$s['gzipcompress']??'yes','GZIP Compression Enabled','Compresses pages for faster delivery'); ?></div>
                 <div class="col-md-6"><?php fsel('jumptopagemultipage',$yn1,$s['jumptopagemultipage']??'1','Show Jump To Page in Pagination'); ?></div>
@@ -525,6 +523,15 @@ flash_message();
                 <div class="col-md-6"><?php ftxt('announce_urls[]',$announce_url,'Announce URL','Full URL to announce.php'); ?></div>
                 <div class="col-md-6"><?php ftxt('torrent_dir',$s['torrent_dir']??'','Torrent Directory Path','No trailing slash'); ?></div>
                 <div class="col-md-6"><?php ftxt('pic_base_url',$s['pic_base_url']??'','Image Directory Path','With trailing slash'); ?></div>
+              </div>
+
+              <div class="section-sub">Attachments</div>
+              <div class="row">
+                <div class="col-md-4"><?php fsel('enableattachments',$yn1,$s['enableattachments']??'1','Enable Attachment Functionality','If disabled, users cannot upload attachments to posts/comments'); ?></div>
+                <div class="col-md-4"><?php ftxt('maxattachments',$s['maxattachments']??'5','Max Attachments Per Post','Maximum number of attachments a user can upload per comment/post. 0 = disabled.','number'); ?></div>
+                <div class="col-md-4"><?php fsel('attachthumbnails',['yes'=>'Thumbnail','no'=>'Full Size Image','download'=>'As Download Link'],$s['attachthumbnails']??'yes','Show Attached Thumbnails','How image attachments should be displayed in comments/posts'); ?></div>
+                <div class="col-md-4"><?php ftxt('attachthumbh',$s['attachthumbh']??'96','Attached Thumbnail Max Height','In pixels','number'); ?></div>
+                <div class="col-md-4"><?php ftxt('attachthumbw',$s['attachthumbw']??'96','Attached Thumbnail Max Width','In pixels','number'); ?></div>
               </div>
             </div>
           </div>
@@ -803,6 +810,7 @@ flash_message();
                 <div class="col-md-4"><?php ftxt('minpasswordlength',$minpasswordlength,'Min Password Length','','number'); ?></div>
                 <div class="col-md-4"><?php ftxt('maxpasswordlength',$maxpasswordlength,'Max Password Length','','number'); ?></div>
                 <div class="col-md-4"><?php fsel('requirecomplexpasswords',['1'=>'Required','0'=>'Not Required'],$requirecomplexpasswords,'Complex Passwords'); ?></div>
+                <div class="col-md-4"><?php fsel('allowmultipleemails',['1'=>'Yes','0'=>'No'],$allowmultipleemails,'Allow Multiple Emails','Allow users to sign up with the same email more than once'); ?></div>
               </div>
 
               <div class="section-sub">Security & Bonuses</div>
@@ -813,8 +821,8 @@ flash_message();
                 <div class="col-md-4">
                   <div class="mb-3"><label class="form-label">Default Usergroup</label>
                     <select class="form-select" name="configoption[_d_usergroup]">
-                      <?php $gq = $db->sql_query('SELECT gid, title, namestyle FROM usergroups');
-                      while ($g = mysqli_fetch_assoc($gq)) {
+                      <?php $gq = $db->sql_query_prepared('SELECT gid, title, namestyle FROM usergroups');
+                      while ($gq && ($g = $db->fetch_array($gq))) {
                         $sel = $_d_usergroup == $g['gid'] ? ' selected' : '';
                         echo "<option value=\"{$g['gid']}\"{$sel}>" . htmlspecialchars(strip_tags($g['title'])) . "</option>";
                       } ?>

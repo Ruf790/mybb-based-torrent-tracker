@@ -23,6 +23,14 @@ $parser_options = [
 // ---------------------------------------------------------------------------
 
 /**
+ * Экранирует только LIKE-wildcard'ы (%, _, \) — для bind-параметров.
+ */
+function lc_escape_like(string $value): string
+{
+    return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+}
+
+/**
  * Отправляет JSON-ответ и завершает выполнение.
  */
 function json_exit(array $data, int $status = 200): never
@@ -87,9 +95,8 @@ function validate_torrent_exists(int $id): array|false
 {
     global $db;
     if ($id <= 0) return false;
-    return $db->fetch_array(
-        $db->simple_select('torrents', 'id, name', 'id = ' . $id)
-    ) ?: false;
+    $q = $db->sql_query_prepared('SELECT id, name FROM torrents WHERE id = ?', [$id]);
+    return ($q ? $db->fetch_array($q) : null) ?: false;
 }
 
 /**
@@ -100,10 +107,9 @@ function sync_torrent_comment_count(int $torrent_id): void
 {
     global $db;
     if ($torrent_id <= 0) return;
-    $row = $db->fetch_array(
-        $db->sql_query('SELECT COUNT(*) AS cnt FROM comments WHERE torrent = ' . $torrent_id)
-    );
-    $db->sql_query('UPDATE torrents SET comments = ' . (int)$row['cnt'] . ' WHERE id = ' . $torrent_id);
+    $q = $db->sql_query_prepared('SELECT COUNT(*) AS cnt FROM comments WHERE torrent = ?', [$torrent_id]);
+    $row = $q ? $db->fetch_array($q) : null;
+    $db->sql_query_prepared('UPDATE torrents SET comments = ? WHERE id = ?', [(int)($row['cnt'] ?? 0), $torrent_id]);
 }
 
 /**
@@ -113,10 +119,9 @@ function sync_user_comment_count(int $user_id): void
 {
     global $db;
     if ($user_id <= 0) return;
-    $row = $db->fetch_array(
-        $db->sql_query('SELECT COUNT(*) AS cnt FROM comments WHERE user = ' . $user_id)
-    );
-    $db->sql_query('UPDATE users SET comms = ' . (int)$row['cnt'] . ' WHERE id = ' . $user_id);
+    $q = $db->sql_query_prepared('SELECT COUNT(*) AS cnt FROM comments WHERE user = ?', [$user_id]);
+    $row = $q ? $db->fetch_array($q) : null;
+    $db->sql_query_prepared('UPDATE users SET comms = ? WHERE id = ?', [(int)($row['cnt'] ?? 0), $user_id]);
 }
 
 /**
@@ -335,12 +340,12 @@ if ($action === 'search_torrents' && $_SERVER['REQUEST_METHOD'] === 'GET') {
         json_exit([]);
     }
 
-    $q_escaped = $db->escape_string($q);
-    $res       = $db->sql_query(
-        "SELECT id, name FROM torrents WHERE name LIKE '%" . $q_escaped . "%' ORDER BY name ASC LIMIT 20"
+    $res = $db->sql_query_prepared(
+        "SELECT id, name FROM torrents WHERE name LIKE ? ORDER BY name ASC LIMIT 20",
+        ['%' . lc_escape_like($q) . '%']
     );
     $results = [];
-    while ($row = $db->fetch_array($res)) {
+    while ($res && ($row = $db->fetch_array($res))) {
         $results[] = ['id' => (int)$row['id'], 'name' => htmlspecialchars($row['name'])];
     }
     json_exit($results);
@@ -352,17 +357,20 @@ if ($action === 'list') {
     $page   = max(1, (int)($_GET['page'] ?? 1));
     $offset = ($page - 1) * $limit;
 
-    // Безопасная фильтрация — все строки через escape_string
+    // Безопасная фильтрация — все строки через bind-параметры
     $where = [];
+    $where_params = [];
 
     $username = trim((string)($_GET['username'] ?? ''));
     if ($username !== '') {
-        $where[] = "u.username LIKE '%" . $db->escape_string_like($username) . "%'";
+        $where[] = "u.username LIKE ?";
+        $where_params[] = '%' . lc_escape_like($username) . '%';
     }
 
     $torrent_filter = trim((string)($_GET['torrent'] ?? ''));
     if ($torrent_filter !== '') {
-        $where[] = "t.name LIKE '%" . $db->escape_string_like($torrent_filter) . "%'";
+        $where[] = "t.name LIKE ?";
+        $where_params[] = '%' . lc_escape_like($torrent_filter) . '%';
     }
 
     // Дата — принимаем только формат YYYY-MM-DD, парсим через strtotime
@@ -378,14 +386,15 @@ if ($action === 'list') {
 
     $where_sql = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
 
-    $total_row     = $db->fetch_array($db->sql_query("
+    $total_q = $db->sql_query_prepared("
         SELECT COUNT(*) AS cnt
         FROM comments c
         LEFT JOIN users u ON c.user = u.id
         LEFT JOIN torrents t ON c.torrent = t.id
         {$where_sql}
-    "));
-    $total_comments = (int)$total_row['cnt'];
+    ", $where_params);
+    $total_row = $total_q ? $db->fetch_array($total_q) : null;
+    $total_comments = (int)($total_row['cnt'] ?? 0);
     $total_pages    = max(1, (int)ceil($total_comments / $limit));
 
     if ($total_comments === 0) {
@@ -396,15 +405,15 @@ if ($action === 'list') {
         exit;
     }
 
-    $res = $db->sql_query("
+    $res = $db->sql_query_prepared("
         SELECT c.*, u.username, u.usergroup, u.id AS uid, t.name AS torrent_name
         FROM comments c
         LEFT JOIN users u ON c.user = u.id
         LEFT JOIN torrents t ON c.torrent = t.id
         {$where_sql}
         ORDER BY c.dateline DESC
-        LIMIT {$offset}, {$limit}
-    ");
+        LIMIT ?, ?
+    ", [...$where_params, $offset, $limit]);
 
     echo generateCommentsTable($res, $total_comments, $page, $limit, $offset, $total_pages);
     exit;
@@ -428,7 +437,8 @@ if ($action === 'preview') {
 // ── edit (GET — получить текст) ───────────────────────────────────────────────
 if ($action === 'edit' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     $id      = max(0, (int)($_GET['id'] ?? 0));
-    $comment = $db->fetch_array($db->simple_select('comments', 'id, text', 'id = ' . $id));
+    $q = $db->sql_query_prepared('SELECT id, text FROM comments WHERE id = ?', [$id]);
+    $comment = $q ? $db->fetch_array($q) : null;
     if (!$comment) {
         json_exit(['error' => 'Comment not found'], 404);
     }
@@ -443,7 +453,8 @@ if ($action === 'save') {
     $id   = max(0, (int)($_POST['id'] ?? 0));
     $text = trim((string)($_POST['text'] ?? ''));
 
-    $comment = $db->fetch_array($db->simple_select('comments', 'id', 'id = ' . $id));
+    $q = $db->sql_query_prepared('SELECT id FROM comments WHERE id = ?', [$id]);
+    $comment = $q ? $db->fetch_array($q) : null;
     if (!$comment) {
         json_exit(['success' => false, 'error' => 'Comment not found'], 404);
     }
@@ -453,11 +464,10 @@ if ($action === 'save') {
         json_exit(['success' => false, 'error' => 'Comment must contain meaningful text (min 3 chars)']);
     }
 
-    $db->update_query('comments', [
-        'text'     => $db->escape_string($text),
-        'editedat' => TIMENOW,
-        'editedby' => (int)($CURUSER['id'] ?? 0),
-    ], 'id = ' . $id);
+    $db->sql_query_prepared(
+        'UPDATE comments SET text = ?, editedat = ?, editedby = ? WHERE id = ?',
+        [$text, TIMENOW, (int)($CURUSER['id'] ?? 0), $id]
+    );
 
     json_exit(['success' => true]);
 }
@@ -474,31 +484,30 @@ if ($action === 'delete') {
     require_post();
     require_csrf();
     $id      = max(0, (int)($_POST['id'] ?? 0));
-    $comment = $db->fetch_array($db->sql_query(
-        'SELECT user, torrent FROM comments WHERE id = ' . $id
-    ));
+    $q = $db->sql_query_prepared('SELECT user, torrent FROM comments WHERE id = ?', [$id]);
+    $comment = $q ? $db->fetch_array($q) : null;
     if (!$comment) {
         json_exit(['success' => false, 'error' => 'Comment not found'], 404);
     }
     $user_id    = (int)$comment['user'];
     $torrent_id = (int)$comment['torrent'];
     // Удаляем прикреплённые файлы (comment_files)
-    $files = $db->simple_select('comment_files', '*', 'comment_id = ' . $id);
-    while ($file = $db->fetch_array($files)) {
+    $files = $db->sql_query_prepared('SELECT * FROM comment_files WHERE comment_id = ?', [$id]);
+    while ($files && ($file = $db->fetch_array($files))) {
         if (!empty($file['file_path']) && is_file($file['file_path'])) {
             @unlink($file['file_path']);
         }
     }
-    $db->delete_query('comment_files', 'comment_id = ' . $id);
+    $db->sql_query_prepared('DELETE FROM comment_files WHERE comment_id = ?', [$id]);
     // Удаляем вложения (attachments)
     $uploadDir = TSDIR . '/uploads/attachments/';
-    $atts = $db->simple_select('attachments', 'attachname, thumbnail', 'comment_id = ' . $id);
-    while ($att = $db->fetch_array($atts)) {
+    $atts = $db->sql_query_prepared('SELECT attachname, thumbnail FROM attachments WHERE comment_id = ?', [$id]);
+    while ($atts && ($att = $db->fetch_array($atts))) {
         if (!empty($att['attachname'])) @unlink($uploadDir . $att['attachname']);
         if (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL') @unlink($uploadDir . $att['thumbnail']);
     }
-    $db->delete_query('attachments', 'comment_id = ' . $id);
-    $db->delete_query('comments', 'id = ' . $id);
+    $db->sql_query_prepared('DELETE FROM attachments WHERE comment_id = ?', [$id]);
+    $db->sql_query_prepared('DELETE FROM comments WHERE id = ?', [$id]);
     // Пересчёт счётчиков
     sync_torrent_comment_count($torrent_id);
     sync_user_comment_count($user_id);
@@ -521,28 +530,28 @@ if ($action === 'bulk_delete') {
     // Получаем данные перед удалением
     $user_ids    = [];
     $torrent_ids = [];
-    $query       = $db->sql_query("SELECT id, user, torrent FROM comments WHERE id IN ({$ids_str})");
-    while ($row = $db->fetch_array($query)) {
+    $query       = $db->sql_query_prepared("SELECT id, user, torrent FROM comments WHERE id IN ({$ids_str})");
+    while ($query && ($row = $db->fetch_array($query))) {
         $user_ids[]    = (int)$row['user'];
         $torrent_ids[] = (int)$row['torrent'];
     }
     // Удаляем файлы (comment_files)
-    $files = $db->sql_query("SELECT file_path FROM comment_files WHERE comment_id IN ({$ids_str})");
-    while ($file = $db->fetch_array($files)) {
+    $files = $db->sql_query_prepared("SELECT file_path FROM comment_files WHERE comment_id IN ({$ids_str})");
+    while ($files && ($file = $db->fetch_array($files))) {
         if (!empty($file['file_path']) && file_exists($file['file_path'])) {
             @unlink($file['file_path']);
         }
     }
-    $db->sql_query("DELETE FROM comment_files WHERE comment_id IN ({$ids_str})");
+    $db->sql_query_prepared("DELETE FROM comment_files WHERE comment_id IN ({$ids_str})");
     // Удаляем вложения (attachments)
     $uploadDir = TSDIR . '/uploads/attachments/';
-    $atts = $db->sql_query("SELECT attachname, thumbnail FROM attachments WHERE comment_id IN ({$ids_str})");
-    while ($att = $db->fetch_array($atts)) {
+    $atts = $db->sql_query_prepared("SELECT attachname, thumbnail FROM attachments WHERE comment_id IN ({$ids_str})");
+    while ($atts && ($att = $db->fetch_array($atts))) {
         if (!empty($att['attachname'])) @unlink($uploadDir . $att['attachname']);
         if (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL') @unlink($uploadDir . $att['thumbnail']);
     }
-    $db->sql_query("DELETE FROM attachments WHERE comment_id IN ({$ids_str})");
-    $db->sql_query("DELETE FROM comments WHERE id IN ({$ids_str})");
+    $db->sql_query_prepared("DELETE FROM attachments WHERE comment_id IN ({$ids_str})");
+    $db->sql_query_prepared("DELETE FROM comments WHERE id IN ({$ids_str})");
     $deleted = (int)$db->affected_rows();
     // Пересчёт через sync_
     foreach (array_unique($torrent_ids) as $tid) {
@@ -590,13 +599,22 @@ if ($action === 'move_comments') {
     $ids_str    = ids_to_sql($ids);
     $source_ids = [];
 
-    $res = $db->sql_query("SELECT id, torrent FROM comments WHERE id IN ({$ids_str})");
-    while ($row = $db->fetch_array($res)) {
+    $res = $db->sql_query_prepared("SELECT id, torrent FROM comments WHERE id IN ({$ids_str})");
+    while ($res && ($row = $db->fetch_array($res))) {
         $source_ids[] = (int)$row['torrent'];
     }
 
-    $db->sql_query("UPDATE comments SET torrent = {$target_tid} WHERE id IN ({$ids_str})");
+    $db->sql_query_prepared("UPDATE comments SET torrent = ? WHERE id IN ({$ids_str})", [$target_tid]);
     $moved = (int)$db->affected_rows();
+
+    // comment_files.torrent_id заполняется независимо от comment_id в
+    // момент загрузки файла (см. upload_image.php) - это не производное
+    // поле, значит при переносе комментария на другой торрент его тоже
+    // нужно синхронизировать, иначе останется указывать на старый торрент.
+    $db->sql_query_prepared(
+        "UPDATE comment_files SET torrent_id = ? WHERE comment_id IN ({$ids_str})",
+        [$target_tid]
+    );
 
     // Пересчёт счётчиков для всех затронутых торрентов
     foreach (array_unique([...$source_ids, $target_tid]) as $tid) {
@@ -633,21 +651,117 @@ if ($action === 'copy_comments') {
         json_exit(['error' => 'Target torrent not found'], 404);
     }
 
-    $ids_str   = ids_to_sql($ids);
-    $res       = $db->sql_query("SELECT * FROM comments WHERE id IN ({$ids_str})");
-    $copied    = 0;
-    $user_ids  = [];
+    $ids_str    = ids_to_sql($ids);
+    $res        = $db->sql_query_prepared("SELECT * FROM comments WHERE id IN ({$ids_str})");
+    $copied     = 0;
+    $user_ids   = [];
+    $uploadDir  = TSDIR . '/uploads/attachments/';
 
-    while ($row = $db->fetch_array($res)) {
-        $db->insert_query('comments', [
-            'user'      => (int)$row['user'],
-            'torrent'   => $target_tid,
-            'text'      => $db->escape_string($row['text']),
-            'dateline'  => (int)$row['dateline'],
-            'editreason'=> $db->escape_string($row['editreason'] ?? ''),
-            'editedby'  => (int)$row['editedby'],
-            'editedat'  => (int)$row['editedat'],
-        ]);
+    while ($res && ($row = $db->fetch_array($res))) {
+        $db->sql_query_prepared(
+            "INSERT INTO comments (`user`,`torrent`,`text`,`dateline`,`editreason`,`editedby`,`editedat`) VALUES (?,?,?,?,?,?,?)",
+            [
+                (int)$row['user'],
+                $target_tid,
+                $row['text'],
+                (int)$row['dateline'],
+                $row['editreason'] ?? '',
+                (int)$row['editedby'],
+                (int)$row['editedat'],
+            ]
+        );
+        $new_comment_id = (int)$db->insert_id();
+
+        // ── Копируем вложения (attachments, comment_id-тип) ──────────────────
+        // Физически дублируем файл на диске под новым именем - расшаривать
+        // один и тот же физический файл между двумя строками нельзя: удаление
+        // одной из копий комментария unlink()'ит файл и оставит вторую с
+        // мёртвой ссылкой (см. delete_comment/delete_comments выше).
+        $atts = $db->sql_query_prepared('SELECT * FROM attachments WHERE comment_id = ?', [(int)$row['id']]);
+        while ($atts && ($attRow = $db->fetch_array($atts))) {
+            $srcAttachname = $attRow['attachname'];
+            $srcPath       = $uploadDir . $srcAttachname;
+
+            if ($srcAttachname === '' || !is_file($srcPath)) {
+                continue; // исходный файл потерян - не создаём битую ссылку у копии
+            }
+
+            $ext           = pathinfo($srcAttachname, PATHINFO_EXTENSION);
+            $newAttachname = bin2hex(random_bytes(16)) . ($ext !== '' ? ".{$ext}" : '');
+
+            if (!@copy($srcPath, $uploadDir . $newAttachname)) {
+                continue; // не удалось скопировать файл - строку в БД без файла не создаём
+            }
+
+            $newThumbnail = '';
+            $srcThumbnail = $attRow['thumbnail'] ?? '';
+            if ($srcThumbnail === 'SMALL') {
+                $newThumbnail = 'SMALL'; // спец-значение, не файл на диске
+            } elseif ($srcThumbnail !== '' && is_file($uploadDir . $srcThumbnail)) {
+                $thumbExt     = pathinfo($srcThumbnail, PATHINFO_EXTENSION);
+                $tryThumbName = bin2hex(random_bytes(16)) . ($thumbExt !== '' ? ".{$thumbExt}" : '');
+                $newThumbnail = @copy($uploadDir . $srcThumbnail, $uploadDir . $tryThumbName)
+                    ? $tryThumbName
+                    : ''; // превью не скопировалось - не критично, просто без неё
+            }
+
+            $db->sql_query_prepared(
+                "INSERT INTO attachments (`pid`,`comment_id`,`posthash`,`uid`,`filename`,`filetype`,`filesize`,`attachname`,`downloads`,`dateuploaded`,`visible`,`thumbnail`)
+                 VALUES (0,?,?,?,?,?,?,?,0,?,?,?)",
+                [
+                    $new_comment_id,
+                    $attRow['posthash'],
+                    (int)$attRow['uid'],
+                    $attRow['filename'],
+                    $attRow['filetype'],
+                    (int)$attRow['filesize'],
+                    $newAttachname,
+                    TIMENOW,
+                    (int)$attRow['visible'],
+                    $newThumbnail,
+                ]
+            );
+        }
+
+        // ── Копируем вложения (comment_files) ─────────────────────────────────
+        $cfiles = $db->sql_query_prepared('SELECT * FROM comment_files WHERE comment_id = ?', [(int)$row['id']]);
+        while ($cfiles && ($cfRow = $db->fetch_array($cfiles))) {
+            $srcPath = $cfRow['file_path'];
+
+            if ($srcPath === '' || !is_file($srcPath)) {
+                continue; // исходный файл потерян - не создаём битую ссылку у копии
+            }
+
+            $ext         = pathinfo($srcPath, PATHINFO_EXTENSION);
+            $newFileName = bin2hex(random_bytes(16)) . ($ext !== '' ? ".{$ext}" : '');
+            $newPath     = dirname($srcPath) . '/' . $newFileName;
+
+            if (!@copy($srcPath, $newPath)) {
+                continue; // не удалось скопировать файл - строку в БД без файла не создаём
+            }
+
+            // file_url строим по той же схеме, что и file_path - меняем
+            // только имя файла, сохраняя структуру каталога исходного URL.
+            $newFileUrl = rtrim(str_replace(basename($cfRow['file_url']), '', $cfRow['file_url']), '/') . '/' . $newFileName;
+
+            $db->sql_query_prepared(
+                "INSERT INTO comment_files (`comment_id`,`torrent_id`,`user_id`,`file_name`,`file_path`,`file_url`,`file_type`,`file_size`)
+                 VALUES (?,?,?,?,?,?,?,?)",
+                [
+                    $new_comment_id,
+                    $target_tid,
+                    $cfRow['user_id'] !== null ? (int)$cfRow['user_id'] : null,
+                    $cfRow['file_name'],
+                    $newPath,
+                    $newFileUrl,
+                    $cfRow['file_type'],
+                    (int)$cfRow['file_size'],
+                ]
+            );
+            // uploaded_at сознательно не указываем - есть DEFAULT
+            // CURRENT_TIMESTAMP, пусть MySQL сама проставит время копии.
+        }
+
         $user_ids[] = (int)$row['user'];
         $copied++;
     }
@@ -681,7 +795,6 @@ render_page:
 
 stdhead('Comments Admin');
 ?>
-<script>const my_post_key = '<?= htmlspecialchars($mybb->post_code, ENT_QUOTES) ?>';</script>
 
 <div class="container mt-4">
     <h1 class="mb-4 text-dark"><i class="bi bi-chat-text"></i> Comments Admin</h1>

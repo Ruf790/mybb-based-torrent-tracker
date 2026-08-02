@@ -51,9 +51,10 @@ if ($action === 'delete') {
     stdhead('Unban Requests Manager');
 
     try {
-        $result = $db->sql_query('DELETE FROM unbanrequests WHERE id = ' . $db->sqlesc($id));
+        // DELETE с использованием prepared statement
+        $result = $db->sql_query_prepared('DELETE FROM unbanrequests WHERE id = ?', [$id]);
 
-        if ($result) {
+        if ($result !== false && $db->affected_rows() > 0) {
             echo '<div class="container mt-4">
                 <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
                     <i class="bi bi-check-circle-fill me-2"></i>
@@ -77,25 +78,31 @@ if ($action === 'delete') {
 
 stdhead('Unban Requests Manager');
 
-
 echo '<link href="' .$BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
 
 $perpage      = $ts_perpage ?? 20;
 $current_page = max(1, (int)($_GET['page'] ?? 1));
 $offset       = ($current_page - 1) * $perpage;
 
-$count_query = $db->sql_query('SELECT COUNT(*) AS total FROM unbanrequests');
-$total_count = (int)($db->fetch_array($count_query)['total'] ?? 0);
+// COUNT с использованием prepared statement
+$count_result = $db->sql_query_prepared('SELECT COUNT(*) AS total FROM unbanrequests');
+$total_count = 0;
+if ($count_result !== false) {
+    $row = $db->fetch_array($count_result);
+    $total_count = (int)($row['total'] ?? 0);
+}
 
 $total_pages  = max(1, (int)ceil($total_count / $perpage));
 $current_page = min($current_page, $total_pages);
 
-$result = $db->sql_query(
+// SELECT с JOIN и LIMIT с использованием prepared statement
+$result = $db->sql_query_prepared(
     "SELECT u.*, l.id AS loginaid
      FROM unbanrequests u
      LEFT JOIN loginattempts l ON (u.ip = l.ip OR u.realip = l.ip)
      ORDER BY u.added DESC
-     LIMIT " . (int)$offset . ", " . (int)$perpage
+     LIMIT ? OFFSET ?",
+    [$perpage, $offset]
 );
 
 ?>
@@ -131,7 +138,7 @@ $result = $db->sql_query(
 <!-- ══════════════════ MAIN CONTENT ══════════════════ -->
 <div class="container mt-4">
 
-<?php if ($db->num_rows($result) === 0): ?>
+<?php if ($result === false || $db->num_rows($result) === 0): ?>
 
     <div class="card border-0 shadow-sm">
         <div class="card-body text-center py-5">

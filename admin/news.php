@@ -30,18 +30,18 @@ $newsItems  = '';
 $newsCount  = 0;
 
 try {
-    $res = $db->sql_query(
+    $res = $db->sql_query_prepared(
         'SELECT n.*, u.username, u.usergroup, u.donor
          FROM news n
          LEFT JOIN users u ON (u.id = n.userid)
          ORDER BY n.added DESC'
     );
-    $newsCount = (int)$db->num_rows($res);
+    $newsCount = $res ? (int)$db->num_rows($res) : 0;
 
     if ($newsCount > 0) {
         require_once INC_PATH . '/functions_mkprettytime.php';
 
-        while ($arr = $db->fetch_array($res)) {
+        while ($res && ($arr = $db->fetch_array($res))) {
             $newsid  = (int)$arr['id'];
             $body2   = $arr['body'] ?? '';
             $body    = $parser->parse_message($body2, $parser_options);

@@ -32,7 +32,7 @@ class TorrentDoubleUploadManager
         global $db;
         $this->database = $db;
         $this->currentUser = $GLOBALS['CURUSER'] ?? [];
-        $this->scriptUrl = $_SERVER['PHP_SELF'] . '?act=doubleupload';
+        $this->scriptUrl = 'index.php?act=doubleupload';
     }
     
     /**
@@ -86,13 +86,22 @@ private function jsonError(string $message): void
      */
     private function getAction(): string
     {
-        $action = $_POST['action'] ?? $_GET['action'] ?? 'main';
+        $action = $_SERVER['REQUEST_METHOD'] === 'POST'
+            ? ($_POST['action'] ?? 'main')
+            : ($_GET['action'] ?? 'main');
+
+        // Мутирующие действия принимаем только через POST — GET может дойти
+        // через простую ссылку/img-тег, что превращает это в one-click CSRF.
+        if (in_array($action, ['setalldouble', 'setallnormal'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $action = 'main';
+        }
+
         $action = htmlspecialchars($action, ENT_QUOTES, 'UTF-8');
-        
+
         if (!in_array($action, self::ALLOWED_ACTIONS, true)) {
             throw new InvalidArgumentException('Invalid action specified');
         }
-        
+
         return $action;
     }
     
@@ -102,12 +111,13 @@ private function jsonError(string $message): void
    private function setAllDoubleUpload(): void
 {
     $this->validateStaffAccess();
+    $this->validateCsrf();
 
     $query = "UPDATE torrents 
               SET doubleupload = 'yes' 
               WHERE doubleupload = 'no'";
 
-    if (!$this->database->sql_query($query)) {
+    if (!$this->database->sql_query_prepared($query)) {
         $this->jsonError('Database error');
     }
 
@@ -124,12 +134,13 @@ private function jsonError(string $message): void
 private function setAllNormal(): void
 {
     $this->validateStaffAccess();
+    $this->validateCsrf();
 
     $query = "UPDATE torrents 
               SET doubleupload = 'no' 
               WHERE doubleupload = 'yes'";
 
-    if (!$this->database->sql_query($query)) {
+    if (!$this->database->sql_query_prepared($query)) {
         $this->jsonError('Database error');
     }
 
@@ -150,7 +161,9 @@ private function setAllNormal(): void
      */
     private function showMainInterface(): void
     {
-        stdhead('44444444444');
+        global $mybb;
+
+        stdhead('Torrent Upload Mode Manager');
 		
 		// Get current statistics
         $stats = $this->getTorrentStats();
@@ -501,6 +514,7 @@ private function setAllNormal(): void
       data-action="setalldouble">
 
     <input type="hidden" name="action" value="setalldouble">
+    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
 
     <button type="submit" class="btn btn-warning">
         <i class="fas fa-check me-1"></i> Confirm & Proceed
@@ -593,6 +607,7 @@ private function setAllNormal(): void
                             </button>
                             <form method="post" action="<?= $this->scriptUrl ?>" class="d-inline" data-action="setallnormal">
                                 <input type="hidden" name="action" value="setallnormal">
+                                <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
                                 <button type="submit" class="btn btn-primary">
                                     <i class="fas fa-check me-1"></i> Confirm & Revert
                                 </button>
@@ -754,14 +769,14 @@ document.addEventListener('DOMContentLoaded', function() {
     {
         // Get total torrents
         $totalQuery = "SELECT COUNT(*) as total FROM torrents";
-        $totalResult = $this->database->sql_query($totalQuery);
-        $totalData = mysqli_fetch_assoc($totalResult);
+        $totalResult = $this->database->sql_query_prepared($totalQuery);
+        $totalData = $totalResult ? $this->database->fetch_array($totalResult) : null;
         $totalTorrents = (int)($totalData['total'] ?? 0);
         
         // Get double upload count
         $doubleQuery = "SELECT COUNT(*) as double_count FROM torrents WHERE doubleupload = 'yes'";
-        $doubleResult = $this->database->sql_query($doubleQuery);
-        $doubleData = mysqli_fetch_assoc($doubleResult);
+        $doubleResult = $this->database->sql_query_prepared($doubleQuery);
+        $doubleData = $doubleResult ? $this->database->fetch_array($doubleResult) : null;
         $doubleCount = (int)($doubleData['double_count'] ?? 0);
         
         // Calculate normal count
@@ -787,9 +802,25 @@ document.addEventListener('DOMContentLoaded', function() {
     {
         $userClass = (int)($this->currentUser['usergroup'] ?? 0);
         
-        // Only allow administrators and sysops (adjust as needed)
-        if (!in_array($userClass, [6, 7], true)) {
-            throw new RuntimeException('Insufficient privileges for this action');
+        // Administrator(7), Sysop(8) — Moderator(6) сюда сознательно не входит,
+        // действие затрагивает весь трекер целиком.
+        if (!in_array($userClass, [7, 8], true)) {
+            $this->jsonError('Insufficient privileges for this action');
+        }
+    }
+
+    /**
+     * Validate CSRF token for state-changing actions
+     */
+    private function validateCsrf(): void
+    {
+        $token = $_POST['my_post_key'] ?? '';
+        // $silent=true — иначе при провале функция может сама вывести HTML
+        // (в зависимости от состояния IN_ADMINCP) вместо простого false.
+        // Этот эндпоинт всегда отвечает JSON — примешавшийся HTML сломает
+        // res.json() на фронте.
+        if (!verify_post_check($token, true)) {
+            $this->jsonError('Security check failed. Please refresh the page and try again.');
         }
     }
     
@@ -808,19 +839,11 @@ document.addEventListener('DOMContentLoaded', function() {
             $affectedRows
         );
         
-        // Use existing write_log function if available
+        // write_log() уже сам пишет в sitelog — отдельный прямой INSERT
+        // ниже дублировал одну и ту же запись дважды.
         if (function_exists('write_log')) {
             write_log($message);
         }
-        
-        // Also log to database if needed
-        $logQuery = sprintf(
-            "INSERT INTO sitelog (added, txt) VALUES (UNIX_TIMESTAMP(), '%s')",
-            $this->database->escape_string($message),
-            $this->database->escape_string($username)
-        );
-        
-        $this->database->sql_query($logQuery);
     }
     
     /**
@@ -918,7 +941,18 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     private function handleError(Throwable $e): void
     {
-        error_log('TorrentManager Error: ' . $e->getMessage());
+        $username = $this->currentUser['username'] ?? 'System';
+        $logMessage = sprintf(
+            'TorrentDoubleUploadManager error for %s: %s in %s:%d',
+            $username,
+            $e->getMessage(),
+            $e->getFile(),
+            $e->getLine()
+        );
+
+        if (function_exists('write_log')) {
+            write_log($logMessage);
+        }
         
         ob_start();
         ?>
@@ -936,24 +970,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="text-center mb-4">
                                 <i class="fas fa-bug fa-4x text-danger mb-3"></i>
                                 <h4>An error occurred</h4>
-                            </div>
-                            
-                            <div class="alert alert-danger">
-                                <code><?= htmlspecialchars($e->getMessage()) ?></code>
-                            </div>
-                            
-                            <div class="alert alert-info">
-                                <h6><i class="fas fa-info-circle me-2"></i>Technical Details:</h6>
-                                <ul class="mb-0">
-                                    <li>Error Type: <?= get_class($e) ?></li>
-                                    <li>File: <?= htmlspecialchars($e->getFile()) ?></li>
-                                    <li>Line: <?= $e->getLine() ?></li>
-                                    <li>Time: <?= date('Y-m-d H:i:s') ?></li>
-                                </ul>
+                                <p class="text-muted">The issue has been logged. Please contact the system administrator if it persists.</p>
                             </div>
                             
                             <div class="text-center mt-4">
-                                <a href="<?= $this->scriptUrl ?>" class="btn btn-primary">
+                                <a href="<?= htmlspecialchars($this->scriptUrl) ?>" class="btn btn-primary">
                                     <i class="fas fa-home me-2"></i> Return to Manager
                                 </a>
                                 <button onclick="window.location.reload()" class="btn btn-secondary">

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_icons.php';
@@ -8,12 +10,14 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-light border m-3"><i class="fas fa-exclamation-triangle me-2 text-warning"></i><b class="text-dark">Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 
-define('ST_VERSION', '0.4 by xam');
+
+
+define('ST_VERSION', '0.7');
 stdhead('All Snatched Torrents');
 
 // Обработка поиска
-$search_user = isset($_GET['search_user']) ? $db->escape_string(trim($_GET['search_user'])) : '';
-$search_torrent = isset($_GET['search_torrent']) ? $db->escape_string(trim($_GET['search_torrent'])) : '';
+$search_user = isset($_GET['search_user']) ? trim($_GET['search_user']) : '';
+$search_torrent = isset($_GET['search_torrent']) ? trim($_GET['search_torrent']) : '';
 $search_user_id = isset($_GET['search_user_id']) ? intval($_GET['search_user_id']) : 0;
 $search_torrent_id = isset($_GET['search_torrent_id']) ? intval($_GET['search_torrent_id']) : 0;
 
@@ -21,25 +25,30 @@ $search_torrent_id = isset($_GET['search_torrent_id']) ? intval($_GET['search_to
 
 // Формируем условия поиска
 $where_conditions = [];
+$where_params = [];
 $search_params = [];
 
 if (!empty($search_user)) {
-    $where_conditions[] = "u.username LIKE '%" . $search_user . "%'";
+    $where_conditions[] = "u.username LIKE ?";
+    $where_params[] = '%' . $db->escape_string_like($search_user) . '%';
     $search_params[] = "search_user=" . urlencode($search_user);
 }
 
 if (!empty($search_torrent)) {
-    $where_conditions[] = "t.name LIKE '%" . $search_torrent . "%'";
+    $where_conditions[] = "t.name LIKE ?";
+    $where_params[] = '%' . $db->escape_string_like($search_torrent) . '%';
     $search_params[] = "search_torrent=" . urlencode($search_torrent);
 }
 
 if ($search_user_id > 0) {
-    $where_conditions[] = "s.userid = " . $search_user_id;
+    $where_conditions[] = "s.userid = ?";
+    $where_params[] = $search_user_id;
     $search_params[] = "search_user_id=" . $search_user_id;
 }
 
 if ($search_torrent_id > 0) {
-    $where_conditions[] = "s.torrentid = " . $search_torrent_id;
+    $where_conditions[] = "s.torrentid = ?";
+    $where_params[] = $search_torrent_id;
     $search_params[] = "search_torrent_id=" . $search_torrent_id;
 }
 
@@ -49,14 +58,14 @@ if (!empty($where_conditions)) {
 }
 
 // Получаем общее количество
-$count_query = "SELECT COUNT(*) FROM snatched s 
+$count_query = "SELECT COUNT(*) AS cnt FROM snatched s 
                LEFT JOIN torrents t ON (s.torrentid=t.id) 
                LEFT JOIN users u ON (s.userid=u.id) 
                " . $where_clause;
 
-$res1 = $db->sql_query($count_query);
-$row1 = mysqli_fetch_array($res1);
-$count = $row1[0];
+$res1 = $db->sql_query_prepared($count_query, $where_params);
+$row1 = $db->fetch_array($res1);
+$count = $row1['cnt'];
 $count1 = number_format($count);
 
 
@@ -256,17 +265,17 @@ function isNumeric(value) {
 
             <?php
             // Pagination settings
-            $torrentsperpage = ($CURUSER['torrentsperpage'] <> 0 ? intval($CURUSER['torrentsperpage']) : $ts_perpage);
+            $torrentsperpage = (int)($CURUSER['torrentsperpage'] <> 0 ? intval($CURUSER['torrentsperpage']) : $ts_perpage);
 
-            if(!$torrentsperpage || (int)$torrentsperpage < 1) 
+            if($torrentsperpage < 1)
 			{
                  $torrentsperpage = 20;
             }
 
             $perpage = $torrentsperpage;
             
-            if($mybb->input['page'] > 0) {
-                $page = $mybb->input['page'];
+            if($mybb->get_input('page', MyBB::INPUT_INT) > 0) {
+                $page = $mybb->get_input('page', MyBB::INPUT_INT);
                 $start = ($page-1) * $perpage;
                 $pages = ceil($count / $perpage);
                 if($page > $pages || $page <= 0) {
@@ -307,9 +316,9 @@ function isNumeric(value) {
                     LEFT JOIN users u ON (s.userid=u.id) 
                     " . $where_clause . "
                     ORDER BY s.to_go DESC 
-                    LIMIT " . $start . ", " . $perpage;
+                    LIMIT ?, ?";
             
-            $result = $db->sql_query($sql);
+            $result = $db->sql_query_prepared($sql, array_merge($where_params, [(int)$start, (int)$perpage]));
             
             if ($db->num_rows($result) != 0) {
             ?>
@@ -405,7 +414,7 @@ $progress_content = htmlspecialchars("
 					
 
 
-		$completed_status = "Not completed"; // Это пример, замените на вашу переменную
+			$completed_status = $progress > 0 ? "{$progress}% complete" : "Not started";
 
 
 $badge_title = "Completion Status";
@@ -416,7 +425,7 @@ $badge_content = htmlspecialchars('
             <strong>Status:</strong>
         </div>
         <div class="small">
-            <span class="text-danger">❌ Not Completed</span>
+            <span class="text-danger">❌ ' . ($progress > 0 ? "Not completed ({$progress}%)" : 'Not started') . '</span>
             <div class="mt-1 text-muted">
                 <i class="fas fa-info-circle me-1"></i>This torrent download is not finished yet.
             </div>

@@ -44,9 +44,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'check_torrent_file' && $_SERV
     try {
         $torrentObj = TorrentFile::load($file['tmp_name']);
         $infoHash   = (string) $torrentObj->v1()->getInfoHash();
-        $escaped    = $db->escape_string($infoHash);
-        $query      = $db->simple_select('torrents', 'id, name, added', "info_hash='{$escaped}'", ['limit' => 1]);
-        $torrent    = $db->fetch_array($query);
+        $query      = $db->sql_query_prepared("SELECT id, name, added FROM torrents WHERE info_hash = ? LIMIT 1", [$infoHash]);
+        $torrent    = $query ? $db->fetch_array($query) : null;
 
         if ($torrent) {
             echo json_encode([
@@ -359,13 +358,13 @@ function processTorrent(
 
     if ($csvMeta) {
         $category    = (int)($csvMeta['category'] ?? $_POST['batch_category'] ?? 1);
-        $description = $db->escape_string($csvMeta['description'] ?? '');
-        $customName  = $db->escape_string($csvMeta['name'] ?? $baseName);
+        $description = $csvMeta['description'] ?? '';
+        $customName  = $csvMeta['name'] ?? $baseName;
     } else {
         $category    = (int)($_POST['batch_categories'][$index] ?? $_POST['batch_category'] ?? 1);
-        $description = $db->escape_string($_POST['descriptions'][$index] ?? $_POST['batch_description'] ?? '');
+        $description = $_POST['descriptions'][$index] ?? $_POST['batch_description'] ?? '';
         $inputName   = trim($_POST['torrent_names'][$index] ?? '');
-        $customName  = $db->escape_string(!empty($inputName) ? substr($inputName, 0, 255) : $baseName);
+        $customName  = !empty($inputName) ? substr($inputName, 0, 255) : $baseName;
     }
 
     // IMDb
@@ -376,7 +375,6 @@ function processTorrent(
             try {
                 include INC_PATH . '/imdb_parser.php';
             } catch (Throwable) {}
-            $t_link = $db->escape_string($t_link);
         } else {
             $t_link = '';
         }
@@ -385,7 +383,7 @@ function processTorrent(
     $dbData = [
         'name'            => $customName,
         'filename'        => '',
-        'info_hash'       => $db->escape_string($infoHash),
+        'info_hash'       => $infoHash,
         'size'            => (int)$size,
         'numfiles'        => $numFiles,
         'owner'           => (int)$CURUSER['id'],
@@ -398,7 +396,12 @@ function processTorrent(
     ];
 
     // Вставка в БД
-    $db->insert_query('torrents', $dbData);
+    $columns      = array_keys($dbData);
+    $placeholders = implode(',', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO torrents (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+        array_values($dbData)
+    );
     $newId = $db->insert_id();
     if (!$newId) {
         @unlink($torrentPath);
@@ -408,12 +411,12 @@ function processTorrent(
     // Копируем файл торрента
     $finalPath = $torrentDir . $newId . '.torrent';
     if (!copy($torrentPath, $finalPath)) {
-        $db->delete_query('torrents', "id='{$newId}'");
+        $db->sql_query_prepared("DELETE FROM torrents WHERE id = ?", [$newId]);
         @unlink($torrentPath);
         throw new Exception('Failed to copy torrent file');
     }
 
-    $db->update_query('torrents', ['filename' => $newId . '.torrent'], "id='{$newId}'");
+    $db->sql_query_prepared("UPDATE torrents SET filename = ? WHERE id = ?", [$newId . '.torrent', $newId]);
     @unlink($torrentPath);
 
     // Постер
@@ -480,7 +483,7 @@ function processImage(array $imageFile, int $torrentId, string $imageDir): bool
     $relativePath = ltrim(str_replace($rootDir, '', $targetPath), '/\\');
     $imageUrl     = $BASEURL . '/' . str_replace('\\', '/', $relativePath);
 
-    $db->update_query('torrents', ['t_image' => $db->escape_string($imageUrl)], "id='{$torrentId}'");
+    $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$imageUrl, $torrentId]);
 
     return true;
 }
@@ -526,8 +529,8 @@ function showForm(): void
 
     // Категории для JS
     $categories = [];
-    $q = $db->simple_select('categories', 'id, name', '', ['order_by' => 'id']);
-    while ($cat = $db->fetch_array($q)) {
+    $q = $db->sql_query_prepared("SELECT id, name FROM categories ORDER BY id");
+    while ($q && ($cat = $db->fetch_array($q))) {
         $categories[] = ['id' => (int)$cat['id'], 'name' => $cat['name']];
     }
     $categoriesJson = json_encode($categories, JSON_UNESCAPED_UNICODE);

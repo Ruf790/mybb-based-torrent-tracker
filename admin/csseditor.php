@@ -199,6 +199,13 @@ if (!in_array($currentFile, $allowedList, true)) {
 // ── AJAX ──────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
     header('Content-Type: application/json; charset=utf-8');
+
+    if (!verify_post_check($mybb->get_input('my_post_key'))) {
+        http_response_code(403);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid security token. Please reload the page.']);
+        exit;
+    }
+
     try {
         $action   = $_POST['action']   ?? '';
         $filename = basename($_POST['file'] ?? '');
@@ -322,6 +329,7 @@ stdhead('CSS Editor');
                 <?php endforeach; ?>
             </div>
 
+            <input type="hidden" id="myPostKey" value="<?= htmlspecialchars($mybb->post_code) ?>">
             <textarea id="codeEditor"><?= htmlspecialchars($currentContent) ?></textarea>
 
             <div class="d-flex justify-content-between align-items-center mt-3">
@@ -565,10 +573,11 @@ function showAlert(type, message, timer = 3000) {
 
 // ── AJAX helper ───────────────────────────────────────────
 function ajaxPost(data) {
+    const myPostKey = document.getElementById('myPostKey')?.value || '';
     return fetch(AJAX_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ ajax: '1', file: CURRENT_FILE, ...data }),
+        body: new URLSearchParams({ ajax: '1', file: CURRENT_FILE, my_post_key: myPostKey, ...data }),
     }).then(r => r.json());
 }
 

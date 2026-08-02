@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization is not allowed.</div>');
+}
+
 
 $action = $_GET['action'] ?? 'list';
 $page   = max(1, (int)($_GET['page'] ?? 1));
@@ -19,30 +23,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $invite_id = (int)$_POST['invite_id'];
         $inv = get_invite_by_id($invite_id);
         if ($inv && $inv['status'] === 'pending') {
-            $db->sql_query("UPDATE invites SET status='revoked' WHERE id={$invite_id}");
+            $db->sql_query_prepared("UPDATE invites SET status='revoked' WHERE id=?", [$invite_id]);
         }
     }
 
     if (isset($_POST['admin_delete'])) {
         $invite_id = (int)$_POST['invite_id'];
-        $db->sql_query("DELETE FROM invites WHERE id={$invite_id}");
+        $db->sql_query_prepared("DELETE FROM invites WHERE id=?", [$invite_id]);
     }
 
     if (isset($_POST['add_invites'])) {
         $user_id = (int)$_POST['user_id'];
         $amount  = max(1, min(100, (int)$_POST['amount']));
-        $db->sql_query("UPDATE users SET invites = invites + {$amount} WHERE id={$user_id}");
+        $db->sql_query_prepared("UPDATE users SET invites = invites + ? WHERE id=?", [$amount, $user_id]);
     }
 
     if (!empty($_POST['bulk_action_type'])) {
         $action_type = $_POST['bulk_action_type'];
         $invite_ids  = $_POST['invite_ids'] ?? [];
         if (!empty($invite_ids)) {
-            $ids = implode(',', array_map('intval', $invite_ids));
+            $ids = array_map('intval', $invite_ids);
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
             if ($action_type === 'revoke') {
-                $db->sql_query("UPDATE invites SET status='revoked' WHERE id IN ({$ids}) AND status='pending'");
+                $db->sql_query_prepared("UPDATE invites SET status='revoked' WHERE id IN ({$ph}) AND status='pending'", $ids);
             } elseif ($action_type === 'delete') {
-                $db->sql_query("DELETE FROM invites WHERE id IN ({$ids})");
+                $db->sql_query_prepared("DELETE FROM invites WHERE id IN ({$ph})", $ids);
             }
         }
     }
@@ -59,36 +64,39 @@ $filter_status = $_GET['status'] ?? '';
 $filter_search = trim($_GET['search'] ?? '');
 
 $where = '1=1';
+$where_params = [];
 if ($filter_status) {
-    $where .= " AND i.status='" . $db->escape_string($filter_status) . "'";
+    $where .= " AND i.status=?";
+    $where_params[] = $filter_status;
 }
 if ($filter_search) {
-    $s = $db->escape_string($filter_search);
-    $where .= " AND (i.code LIKE '%{$s}%' OR u1.username LIKE '%{$s}%' OR u2.username LIKE '%{$s}%' OR i.email LIKE '%{$s}%')";
+    $like = "%{$filter_search}%";
+    $where .= " AND (i.code LIKE ? OR u1.username LIKE ? OR u2.username LIKE ? OR i.email LIKE ?)";
+    array_push($where_params, $like, $like, $like, $like);
 }
 
-$total_q = $db->sql_query("
+$total_q = $db->sql_query_prepared("
     SELECT COUNT(*) AS cnt FROM invites i
     LEFT JOIN users u1 ON i.inviter_id = u1.id
     LEFT JOIN users u2 ON i.invitee_id = u2.id
     WHERE {$where}
-");
-$total_row   = $db->fetch_array($total_q);
-$total_items = (int)$total_row['cnt'];
+", $where_params);
+$total_row   = $total_q ? $db->fetch_array($total_q) : null;
+$total_items = (int)($total_row['cnt'] ?? 0);
 $total_pages = max(1, (int)ceil($total_items / $limit));
 
-$q = $db->sql_query("
+$q = $db->sql_query_prepared("
     SELECT i.*, u1.username AS inviter_name, u1.usergroup AS inviter_usergroup, u2.username AS invitee_name, u2.usergroup AS invitee_usergroup
     FROM invites i
     LEFT JOIN users u1 ON i.inviter_id = u1.id
     LEFT JOIN users u2 ON i.invitee_id = u2.id
     WHERE {$where}
     ORDER BY i.created_at DESC
-    LIMIT {$limit} OFFSET {$offset}
-");
+    LIMIT ? OFFSET ?
+", [...$where_params, $limit, $offset]);
 
 $invites = [];
-while ($row = $db->fetch_array($q)) $invites[] = $row;
+while ($q && ($row = $db->fetch_array($q))) $invites[] = $row;
 
 stdhead('Invite Manager');
 
@@ -116,22 +124,27 @@ function create_invite(int $inviter_id, string $email = '', string $note = ''): 
     $ip         = $_SERVER['REMOTE_ADDR'] ?? '';
 
     $data = [
-        'code'       => $db->escape_string($code),
+        'code'       => $code,
         'inviter_id' => $inviter_id,
-        'email'      => $db->escape_string($email),
+        'email'      => $email,
         'status'     => 'pending',
         'created_at' => $created_at,
         'expires_at' => $expires_at,
-        'ip_created' => $db->escape_string($ip),
-        'note'       => $db->escape_string($note),
+        'ip_created' => $ip,
+        'note'       => $note,
     ];
 
-    $db->insert_query('invites', $data);
+    $columns      = array_keys($data);
+    $placeholders = implode(',', array_fill(0, count($columns), '?'));
+    $db->sql_query_prepared(
+        "INSERT INTO invites (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+        array_values($data)
+    );
     $id = $db->insert_id();
 
     if (!$id) return false;
 
-    $db->sql_query("UPDATE users SET invites = invites - 1 WHERE id = {$inviter_id} AND invites > 0");
+    $db->sql_query_prepared("UPDATE users SET invites = invites - 1 WHERE id = ? AND invites > 0", [$inviter_id]);
 
     return array_merge(['id' => $id], $data);
 }
@@ -144,36 +157,34 @@ function validate_invite(string $code): array|false
 
     expire_old_invites();
 
-    $code = $db->escape_string($code);
     $now  = TIMENOW;
 
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT i.*, u.username AS inviter_name
         FROM invites i
         LEFT JOIN users u ON i.inviter_id = u.id
-        WHERE i.code = '{$code}'
+        WHERE i.code = ?
           AND i.status = 'pending'
-          AND (i.expires_at IS NULL OR i.expires_at > {$now})
+          AND (i.expires_at IS NULL OR i.expires_at > ?)
         LIMIT 1
-    ");
+    ", [$code, $now]);
 
-    return $db->num_rows($q) ? $db->fetch_array($q) : false;
+    return ($q && $db->num_rows($q)) ? $db->fetch_array($q) : false;
 }
 
 function use_invite(string $code, int $new_user_id): bool
 {
     global $db;
 
-    $code = $db->escape_string($code);
     $now  = TIMENOW;
-    $ip   = $db->escape_string($_SERVER['REMOTE_ADDR'] ?? '');
+    $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
 
-    $db->sql_query("
+    $db->sql_query_prepared("
         UPDATE invites
-        SET status='used', invitee_id={$new_user_id}, used_at={$now}, ip_used='{$ip}'
-        WHERE code='{$code}' AND status='pending'
+        SET status='used', invitee_id=?, used_at=?, ip_used=?
+        WHERE code=? AND status='pending'
         LIMIT 1
-    ");
+    ", [$new_user_id, $now, $ip, $code]);
 
     return $db->affected_rows() > 0;
 }
@@ -182,14 +193,14 @@ function revoke_invite(int $invite_id, int $user_id): bool
 {
     global $db;
 
-    $db->sql_query("
+    $db->sql_query_prepared("
         UPDATE invites SET status='revoked'
-        WHERE id={$invite_id} AND inviter_id={$user_id} AND status='pending'
+        WHERE id=? AND inviter_id=? AND status='pending'
         LIMIT 1
-    ");
+    ", [$invite_id, $user_id]);
 
     if ($db->affected_rows() > 0) {
-        $db->sql_query("UPDATE users SET invites = invites + 1 WHERE id = {$user_id}");
+        $db->sql_query_prepared("UPDATE users SET invites = invites + 1 WHERE id = ?", [$user_id]);
         return true;
     }
 
@@ -200,10 +211,10 @@ function expire_old_invites(): void
 {
     global $db;
     $now = TIMENOW;
-    $db->sql_query("
+    $db->sql_query_prepared("
         UPDATE invites SET status='expired'
-        WHERE status='pending' AND expires_at IS NOT NULL AND expires_at < {$now}
-    ");
+        WHERE status='pending' AND expires_at IS NOT NULL AND expires_at < ?
+    ", [$now]);
 }
 
 function get_user_invites(int $user_id): array
@@ -212,31 +223,36 @@ function get_user_invites(int $user_id): array
 
     expire_old_invites();
 
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT i.*, u.username AS invitee_name
         FROM invites i
         LEFT JOIN users u ON i.invitee_id = u.id
-        WHERE i.inviter_id = {$user_id}
+        WHERE i.inviter_id = ?
         ORDER BY i.created_at DESC
-    ");
+    ", [$user_id]);
 
     $invites = [];
-    while ($row = $db->fetch_array($q)) $invites[] = $row;
+    while ($q && ($row = $db->fetch_array($q))) $invites[] = $row;
     return $invites;
 }
 
 function get_invite_by_id(int $id, int $user_id = 0): array|false
 {
     global $db;
-    $where = $user_id > 0 ? "AND i.inviter_id = {$user_id}" : '';
-    $q = $db->sql_query("
+    $params = [$id];
+    $where = '';
+    if ($user_id > 0) {
+        $where = "AND i.inviter_id = ?";
+        $params[] = $user_id;
+    }
+    $q = $db->sql_query_prepared("
         SELECT i.*, u1.username AS inviter_name, u2.username AS invitee_name
         FROM invites i
         LEFT JOIN users u1 ON i.inviter_id = u1.id
         LEFT JOIN users u2 ON i.invitee_id = u2.id
-        WHERE i.id = {$id} {$where} LIMIT 1
-    ");
-    return $db->num_rows($q) ? $db->fetch_array($q) : false;
+        WHERE i.id = ? {$where} LIMIT 1
+    ", $params);
+    return ($q && $db->num_rows($q)) ? $db->fetch_array($q) : false;
 }
 
 function send_invite_email(string $to_email, string $code, string $inviter_name): bool
@@ -254,7 +270,7 @@ function send_invite_email(string $to_email, string $code, string $inviter_name)
 function get_invite_stats(): array
 {
     global $db;
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT COUNT(*) AS total,
                SUM(status='pending') AS pending,
                SUM(status='used')    AS used,
@@ -262,7 +278,7 @@ function get_invite_stats(): array
                SUM(status='revoked') AS revoked
         FROM invites
     ");
-    return $db->fetch_array($q) ?: [];
+    return ($q ? $db->fetch_array($q) : null) ?: [];
 }
 
 function invite_status_badge(string $status): string
@@ -281,16 +297,16 @@ function get_invite_tree(int $user_id, int $depth = 0, int $max_depth = 3): arra
     global $db;
     if ($depth >= $max_depth) return [];
 
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT i.*, u.username AS invitee_name, u.usergroup, u.added
         FROM invites i
         LEFT JOIN users u ON i.invitee_id = u.id
-        WHERE i.inviter_id = {$user_id} AND i.status = 'used'
+        WHERE i.inviter_id = ? AND i.status = 'used'
         ORDER BY i.used_at DESC
-    ");
+    ", [$user_id]);
 
     $tree = [];
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $row['children'] = $row['invitee_id']
             ? get_invite_tree((int)$row['invitee_id'], $depth + 1, $max_depth)
             : [];

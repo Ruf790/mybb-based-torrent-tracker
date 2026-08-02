@@ -22,7 +22,8 @@ function cheat_full_ban(int $uid, string $reason, int $banned_by): void
     global $db, $cache;
 
     // Already banned? Skip.
-    if ($db->num_rows($db->simple_select('banned', 'uid', "uid='{$uid}'"))) {
+    $bq = $db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ?", [$uid]);
+    if ($bq && $db->num_rows($bq)) {
         return;
     }
 
@@ -38,45 +39,44 @@ function cheat_full_ban(int $uid, string $reason, int $banned_by): void
         }
     } else {
         // Cache miss — query directly
-        $gres = $db->simple_select('usergroups', 'gid', "isbannedgroup='1'", ['limit' => 1]);
-        $grow = $db->fetch_array($gres);
+        $gres = $db->sql_query_prepared("SELECT gid FROM usergroups WHERE isbannedgroup='1' LIMIT 1");
+        $grow = $gres ? $db->fetch_array($gres) : null;
         if ($grow) {
             $banned_gid = (int)$grow['gid'];
         }
     }
 
-    $user = $db->fetch_array($db->simple_select(
-        'users', 'usergroup, additionalgroups, displaygroup', "id='{$uid}'"
-    ));
+    $uq = $db->sql_query_prepared("SELECT usergroup, additionalgroups, displaygroup FROM users WHERE id = ?", [$uid]);
+    $user = $uq ? $db->fetch_array($uq) : null;
     if (!$user) {
         return;
     }
 
     // Insert into banned table
-    $db->insert_query('banned', [
-        'uid'                  => $uid,
-        'gid'                  => $banned_gid,
-        'oldgroup'             => (int)$user['usergroup'],
-        'oldadditionalgroups'  => $db->escape_string($user['additionalgroups']),
-        'olddisplaygroup'      => (int)$user['displaygroup'],
-        'admin'                => $banned_by,
-        'dateline'             => TIMENOW,
-        'bantime'              => '---',
-        'lifted'               => 0,
-        'reason'               => $db->escape_string($reason),
-    ]);
+    $db->sql_query_prepared(
+        "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [
+            $uid,
+            $banned_gid,
+            (int)$user['usergroup'],
+            $user['additionalgroups'],
+            (int)$user['displaygroup'],
+            $banned_by,
+            TIMENOW,
+            '---',
+            0,
+            $reason,
+        ]
+    );
 
     // Move to banned group and disable account — mirrors banning.php processBanAction()
-    $db->update_query('users', [
-        'usergroup'        => $banned_gid,
-        'displaygroup'     => 0,
-        'additionalgroups' => '',
-        'enabled'          => 'no',
-        'passkey'          => '',
-    ], "id='{$uid}'");
+    $db->sql_query_prepared(
+        "UPDATE users SET usergroup = ?, displaygroup = 0, additionalgroups = '', enabled = 'no', passkey = '' WHERE id = ?",
+        [$banned_gid, $uid]
+    );
 
-    $db->delete_query('forumsubscriptions',  "uid='{$uid}'");
-    $db->delete_query('threadsubscriptions', "uid='{$uid}'");
+    $db->sql_query_prepared("DELETE FROM forumsubscriptions WHERE uid = ?", [$uid]);
+    $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE uid = ?", [$uid]);
 }
 
 // ── POST обработка ────────────────────────────────────────
@@ -95,9 +95,9 @@ if (($_POST['do'] ?? '') === 'apply') {
 
         foreach ($ids as $uid) {
             cheat_full_ban($uid, $reason, (int)$CURUSER['id']);
-            $db->sql_query(
-                'UPDATE users SET modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment)
-                 WHERE id = ' . $uid
+            $db->sql_query_prepared(
+                'UPDATE users SET modcomment=CONCAT(?, modcomment) WHERE id = ?',
+                [$modcomment, $uid]
             );
         }
         $ca_message = 'Users have been banned';
@@ -105,21 +105,23 @@ if (($_POST['do'] ?? '') === 'apply') {
 
     // Предупреждение
     if (!empty($_POST['warn']) && is_array($_POST['warn'])) {
-        $ids        = implode(',', array_map('intval', $_POST['warn']));
+        $ids        = array_map('intval', $_POST['warn']);
+        $ids_ph     = implode(',', array_fill(0, count($ids), '?'));
         $warneduntil = TIMENOW + 604800; // 1 неделя
         $modcomment  = gmdate('Y-m-d') . ' - Warned by ' . $CURUSER['username'] . ' (Cheat Attempt)' . $eol;
 
-        $db->sql_query(
+        $db->sql_query_prepared(
             "UPDATE users SET warned='yes', timeswarned=timeswarned+1,
-             lastwarned=" . TIMENOW . ", warnedby=" . (int)$CURUSER['id'] . ",
-             warneduntil=" . $warneduntil . ",
-             modcomment=CONCAT(" . $db->sqlesc($modcomment) . ", modcomment)
-             WHERE id IN ({$ids})"
+             lastwarned=?, warnedby=?,
+             warneduntil=?,
+             modcomment=CONCAT(?, modcomment)
+             WHERE id IN ({$ids_ph})",
+            [TIMENOW, (int)$CURUSER['id'], $warneduntil, $modcomment, ...$ids]
         );
 
         require_once INC_PATH . '/functions_pm.php';
-        $res = $db->sql_query('SELECT id FROM users WHERE id IN (' . $ids . ')');
-        while ($arr = $db->fetch_array($res)) {
+        $res = $db->sql_query_prepared("SELECT id FROM users WHERE id IN ({$ids_ph})", $ids);
+        while ($res && ($arr = $db->fetch_array($res))) {
             send_pm([
                 'subject' => 'Warning: Suspicious Activity Detected',
                 'message' => 'Your account has been flagged for suspicious upload activity. Please contact staff if you believe this is an error.',
@@ -132,28 +134,30 @@ if (($_POST['do'] ?? '') === 'apply') {
 
     // Удаление записей
     if (!empty($_POST['delete']) && is_array($_POST['delete'])) {
-        $ids = implode(',', array_map('intval', $_POST['delete']));
-        $db->sql_query('DELETE FROM cheat_attempts WHERE id IN (' . $ids . ')');
+        $ids = array_map('intval', $_POST['delete']);
+        $ids_ph = implode(',', array_fill(0, count($ids), '?'));
+        $db->sql_query_prepared("DELETE FROM cheat_attempts WHERE id IN ({$ids_ph})", $ids);
         $ca_message = 'Records deleted';
     }
 
     // Авто-бан: 5+ high severity за последний час
     if (isset($_POST['autoban'])) {
-        $res = $db->sql_query(
+        $res = $db->sql_query_prepared(
             "SELECT uid, COUNT(*) AS cnt
              FROM cheat_attempts
-             WHERE added > " . (TIMENOW - 3600) . " AND severity = 'high'
+             WHERE added > ? AND severity = 'high'
              GROUP BY uid
-             HAVING cnt >= 5"
+             HAVING cnt >= 5",
+            [TIMENOW - 3600]
         );
         $banned  = 0;
         $modcomment = gmdate('Y-m-d') . ' - Auto-banned by system (5+ cheat violations/hour)' . $eol;
-        while ($row = $db->fetch_array($res)) {
+        while ($res && ($row = $db->fetch_array($res))) {
             $uid = (int)$row['uid'];
             cheat_full_ban($uid, 'Auto-banned: 5+ high severity cheat violations in one hour', (int)$CURUSER['id']);
-            $db->sql_query(
-                'UPDATE users SET modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment)
-                 WHERE id = ' . $uid
+            $db->sql_query_prepared(
+                'UPDATE users SET modcomment=CONCAT(?, modcomment) WHERE id = ?',
+                [$modcomment, $uid]
             );
             $banned++;
         }
@@ -170,7 +174,8 @@ $whereExtra = match($severity) {
     default  => '',
 };
 
-$countRow = $db->fetch_array($db->sql_query("SELECT COUNT(*) AS cnt FROM cheat_attempts c {$whereExtra}"));
+$countQuery = $db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM cheat_attempts c {$whereExtra}");
+$countRow = $countQuery ? $db->fetch_array($countQuery) : null;
 $count    = (int)($countRow['cnt'] ?? 0);
 
 $perpage = max(1, (int)($torrentsperpage ?? 20));
@@ -182,13 +187,14 @@ if ($page > $pages) { $page = 1; $start = 0; }
 $multipage = multipage($count, $perpage, $page, $_this_script_);
 
 // ── Счётчики по severity ──────────────────────────────────
-$stats = $db->fetch_array($db->sql_query(
+$statsQuery = $db->sql_query_prepared(
     "SELECT
         SUM(severity='high')   AS high_count,
         SUM(severity='medium') AS medium_count,
         COUNT(*)               AS total
      FROM cheat_attempts"
-));
+);
+$stats = $statsQuery ? $db->fetch_array($statsQuery) : null;
 
 stdhead('Cheat Attempts');
 ?>
@@ -255,7 +261,7 @@ stdhead('Cheat Attempts');
             </thead>
             <tbody>
             <?php
-            $res = $db->sql_query(
+            $res = $db->sql_query_prepared(
                 "SELECT c.id, c.uid, c.torrentid, c.added, c.reason, c.detail, c.severity, c.ip,
                         u.username, u.usergroup, u.enabled, u.donor, u.leechwarn, u.warned,
                         u.canupload, u.candownload, u.cancomment,
@@ -265,7 +271,8 @@ stdhead('Cheat Attempts');
                  LEFT JOIN torrents    t ON c.torrentid = t.id
                  {$whereExtra}
                  ORDER BY c.added DESC
-                 LIMIT {$start}, {$perpage}"
+                 LIMIT ?, ?",
+                [$start, $perpage]
             );
 
             $severityBadge = [
@@ -336,7 +343,7 @@ stdhead('Cheat Attempts');
                 }
             }
 
-            while ($arr = $db->fetch_array($res)):
+            while ($res && ($arr = $db->fetch_array($res))):
                 $badgeColor  = $severityBadge[$arr['severity']] ?? 'secondary';
                 $reasonText  = $reasonLabel[$arr['reason']] ?? htmlspecialchars($arr['reason']);
                 $torrentLink = $BASEURL . '/' . get_torrent_link((int)$arr['torrentid']);

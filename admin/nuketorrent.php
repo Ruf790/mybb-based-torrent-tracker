@@ -1,4 +1,6 @@
-<?
+<?php
+
+  declare(strict_types=1);
 
 
   if (!defined ('STAFF_PANEL'))
@@ -6,7 +8,7 @@
     exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
   }
 
-  define ('NT_VERSION', '0.2 by xam');
+  define ('NT_VERSION', '0.2');
   if (!is_mod ($usergroups))
   {
     print_no_permission (true);
@@ -44,6 +46,7 @@
 	<input type="hidden" name="act" value="nuketorrent">
 	<input type="hidden" name="do" value="nuke_torrent">
 	<input type="hidden" name="id" value="' . $id . '">
+	<input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
 	<table border="1" cellspacing="0" cellpadding="5" width="100%">
 	<tr><td class=rowhead>Reason</td><td><input type="text" name="WhyNuked" size="100" id="specialboxg" value="">
 	<select name="selbox" onChange="ChangeReason(this)">' . $options . '</select>
@@ -55,11 +58,20 @@
     return 1;
   }
 
+  // Реальные изменяющие действия — только POST с валидным CSRF-токеном.
+  // Раньше $do читался и из $_GET, и из этой проверки не было вовсе —
+  // "nuke_torrent"/"unnuke_torrent" можно было запустить одной ссылкой.
+  if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_post_check($mybb->get_input('my_post_key')))
+  {
+    http_response_code(403);
+    stderr('Error', 'Invalid security token or request method. Please use the form.');
+  }
+
   if ($do == 'nuke_torrent')
   {
     $reason = htmlspecialchars_uni ($_POST['WhyNuked']);
-    $query = $db->sql_query ('SELECT id FROM torrents WHERE id = ' . $db->sqlesc ($id));
-    if ($db->num_rows ($query) == 0)
+    $query = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$id]);
+    if (!$query || $db->num_rows ($query) == 0)
     {
       stderr ('Error', 'Invalid Torrent!');
     }
@@ -71,20 +83,20 @@
       }
     }
 
-    $db->sql_query ('UPDATE torrents set isnuked=\'yes\', WhyNuked = ' . $db->sqlesc ($reason) . ' WHERE id = ' . $db->sqlesc ($id));
+    $db->sql_query_prepared('UPDATE torrents SET isnuked = \'yes\', WhyNuked = ? WHERE id = ?', [$reason, $id]);
     redirect ('' . 'details.php?id=' . $id, 'The torrent has ben nuked!');
     return 1;
   }
 
   if ($do == 'unnuke_torrent')
   {
-    $query = $db->sql_query ('SELECT id FROM torrents WHERE id = ' . $db->sqlesc ($id));
-    if ($db->num_rows ($query) == 0)
+    $query = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$id]);
+    if (!$query || $db->num_rows ($query) == 0)
     {
       stderr ('Error', 'Invalid Torrent!');
     }
 
-    $db->sql_query ('UPDATE torrents set isnuked=\'no\', WhyNuked = \'\' WHERE id = ' . $db->sqlesc ($id));
+    $db->sql_query_prepared('UPDATE torrents SET isnuked = \'no\', WhyNuked = \'\' WHERE id = ?', [$id]);
     redirect ('' . 'details.php?id=' . $id, 'The torrent has ben unnuked!');
     return 1;
   }

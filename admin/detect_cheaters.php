@@ -195,11 +195,11 @@ $sql = "SELECT
           AND (t.free IS NULL OR t.free != 'yes')
           AND (t.silver IS NULL OR t.silver != 'yes')
           AND u.enabled = 'yes' 
-          AND u.usergroup != " . (int)BANNED_GROUP_ID . "
+          AND u.usergroup != ?
         ORDER BY u.username 
-        LIMIT " . (int)$start . ", " . (int)$perPage;
+        LIMIT ?, ?";
 
-$query = $db->sql_query($sql);
+$query = $db->sql_query_prepared($sql, [(int)BANNED_GROUP_ID, (int)$start, (int)$perPage]);
 
 if ($query === false) {
     // Логируем ошибку и показываем пользователю

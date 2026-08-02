@@ -67,7 +67,7 @@ $post_key = $mybb->post_code; // CSRF-токен для форм и мутиру
 
 // ── Категории ───────────────────────────────────────────────────────────────
 $cats = [];
-$q = $db->sql_query("SELECT id, name FROM categories ORDER BY name");
+$q = $db->sql_query_prepared("SELECT id, name FROM categories ORDER BY name");
 while ($r = $db->fetch_array($q)) $cats[$r['id']] = $r['name'];
 
 // ── Пометить как Filled/Uploaded (модалка с torrent_id) ────────────────────
@@ -84,27 +84,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_complete_id'])) {
         ro_redirect($admin_base, 'Missing torrent ID.', 'danger');
         exit();
     }
-    if (!$db->num_rows($db->simple_select('torrents', 'id', "id='{$torrent_id}'"))) {
+    $torrent_check = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$torrent_id]);
+    if (!$db->num_rows($torrent_check)) {
         ro_redirect($admin_base, "Torrent ID {$torrent_id} does not exist.", 'danger');
         exit();
     }
 
     if ($tab === 'requests') {
-        $db->update_query('requests', [
-            'status'     => 'filled',
-            'filled_by'  => (int)$CURUSER['id'],
-            'torrent_id' => $torrent_id,
-            'filled_at'  => TIMENOW,
-            'updated_at' => TIMENOW,
-        ], "id='{$cid}'");
+        $db->sql_query_prepared(
+            "UPDATE requests SET status = ?, filled_by = ?, torrent_id = ?, filled_at = ?, updated_at = ? WHERE id = ?",
+            ['filled', (int)$CURUSER['id'], $torrent_id, TIMENOW, TIMENOW, $cid]
+        );
         write_log("Marked request #{$cid} as filled (torrent #{$torrent_id}) by " . $CURUSER['username']);
     } else {
-        $db->update_query('offers', [
-            'status'      => 'uploaded',
-            'torrent_id'  => $torrent_id,
-            'uploaded_at' => TIMENOW,
-            'updated_at'  => TIMENOW,
-        ], "id='{$cid}'");
+        $db->sql_query_prepared(
+            "UPDATE offers SET status = ?, torrent_id = ?, uploaded_at = ?, updated_at = ? WHERE id = ?",
+            ['uploaded', $torrent_id, TIMENOW, TIMENOW, $cid]
+        );
         write_log("Marked offer #{$cid} as uploaded (torrent #{$torrent_id}) by " . $CURUSER['username']);
     }
 
@@ -130,18 +126,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
 
     $ids_sql = implode(',', $ids);
 
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
     if ($do === 'delete') {
-        $db->sql_query("DELETE FROM {$bt['table']} WHERE id IN ({$ids_sql})");
-        $db->sql_query("DELETE FROM {$bt['vote_table']} WHERE {$bt['vote_fk']} IN ({$ids_sql})");
-        $db->sql_query("DELETE FROM {$bt['comment_table']} WHERE {$bt['comment_fk']} IN ({$ids_sql})");
+        $db->sql_query_prepared("DELETE FROM {$bt['table']} WHERE id IN ({$placeholders})", $ids);
+        $db->sql_query_prepared("DELETE FROM {$bt['vote_table']} WHERE {$bt['vote_fk']} IN ({$placeholders})", $ids);
+        $db->sql_query_prepared("DELETE FROM {$bt['comment_table']} WHERE {$bt['comment_fk']} IN ({$placeholders})", $ids);
         write_log('Bulk deleted ' . count($ids) . " {$tab} (IDs: {$ids_sql}) by " . $CURUSER['username']);
         ro_redirect($admin_base, count($ids) . ' ' . $cfg['label'] . ' deleted.');
         exit();
     }
 
     if (array_key_exists($do, $bt['statuses'])) {
-        $status = $db->escape_string($do);
-        $db->sql_query("UPDATE {$bt['table']} SET status = '{$status}', updated_at = '" . TIMENOW . "' WHERE id IN ({$ids_sql})");
+        $params = array_merge([$do, TIMENOW], $ids);
+        $db->sql_query_prepared("UPDATE {$bt['table']} SET status = ?, updated_at = ? WHERE id IN ({$placeholders})", $params);
         write_log("Bulk set status '{$do}' on " . count($ids) . " {$tab} (IDs: {$ids_sql}) by " . $CURUSER['username']);
         ro_redirect($admin_base, 'Status updated for ' . count($ids) . ' ' . $cfg['label'] . '.');
         exit();
@@ -185,9 +183,9 @@ if ($do === 'delete' && $row_id) {
         ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
         exit();
     }
-    $db->sql_query("DELETE FROM {$cfg['table']} WHERE id = {$row_id}");
-    $db->sql_query("DELETE FROM {$cfg['vote_table']} WHERE {$cfg['vote_fk']} = {$row_id}");
-    $db->sql_query("DELETE FROM {$cfg['comment_table']} WHERE {$cfg['comment_fk']} = {$row_id}");
+    $db->sql_query_prepared("DELETE FROM {$cfg['table']} WHERE id = ?", [$row_id]);
+    $db->sql_query_prepared("DELETE FROM {$cfg['vote_table']} WHERE {$cfg['vote_fk']} = ?", [$row_id]);
+    $db->sql_query_prepared("DELETE FROM {$cfg['comment_table']} WHERE {$cfg['comment_fk']} = ?", [$row_id]);
     write_log("Deleted {$tab} #{$row_id} by " . $CURUSER['username']);
     ro_redirect($admin_base, ucfirst(rtrim($cfg['label'], 's')) . ' #' . $row_id . ' deleted.');
     exit();
@@ -199,8 +197,8 @@ if ($do === 'setstatus' && $row_id && isset($_GET['status']) && array_key_exists
         ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
         exit();
     }
-    $status = $db->escape_string($_GET['status']);
-    $db->sql_query("UPDATE {$cfg['table']} SET status = '{$status}', updated_at = '" . TIMENOW . "' WHERE id = {$row_id}");
+    $status = $_GET['status'];
+    $db->sql_query_prepared("UPDATE {$cfg['table']} SET status = ?, updated_at = ? WHERE id = ?", [$status, TIMENOW, $row_id]);
     write_log("Set status '{$status}' on {$tab} #{$row_id} by " . $CURUSER['username']);
     ro_redirect($admin_base, ucfirst(rtrim($cfg['label'], 's')) . ' #' . $row_id . ' status changed to ' . $status . '.');
     exit();
@@ -217,24 +215,25 @@ $page          = max(1, (int)($_GET['page'] ?? 1));
 $offset        = ($page - 1) * $perpage;
 
 $where = [];
-if ($filter_status !== '') $where[] = "t.status = '" . $db->escape_string($filter_status) . "'";
-if ($filter_cat > 0)       $where[] = "t.category_id = {$filter_cat}";
-if ($search !== '')        $where[] = "t.title LIKE '%" . $db->escape_string($search) . "%'";
+$where_params = [];
+if ($filter_status !== '') { $where[] = 't.status = ?';      $where_params[] = $filter_status; }
+if ($filter_cat > 0)       { $where[] = 't.category_id = ?'; $where_params[] = $filter_cat; }
+if ($search !== '')        { $where[] = 't.title LIKE ?';    $where_params[] = '%' . $search . '%'; }
 $where_sql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
 $total = (int)$db->fetch_field(
-    $db->sql_query("SELECT COUNT(*) AS cnt FROM {$cfg['table']} t {$where_sql}"),
+    $db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM {$cfg['table']} t {$where_sql}", $where_params),
     'cnt'
 );
 
-$list_q = $db->sql_query("
+$list_q = $db->sql_query_prepared("
     SELECT t.*, u.username, u.avatar
     FROM {$cfg['table']} t
     LEFT JOIN users u ON u.id = t.user_id
     {$where_sql}
     ORDER BY t.{$sort} DESC
-    LIMIT {$offset}, {$perpage}
-");
+    LIMIT ?, ?
+", array_merge($where_params, [$offset, $perpage]));
 
 $querystring = 'tab=' . $tab
     . '&status=' . urlencode($filter_status)
@@ -244,17 +243,17 @@ $querystring = 'tab=' . $tab
 
 // ── KPI по текущей вкладке (для карточек над списком) ─────────────────────
 $kpi_by_status = [];
-$kpi_q = $db->sql_query("SELECT status, COUNT(*) AS cnt FROM {$cfg['table']} GROUP BY status");
+$kpi_q = $db->sql_query_prepared("SELECT status, COUNT(*) AS cnt FROM {$cfg['table']} GROUP BY status");
 while ($r = $db->fetch_array($kpi_q)) $kpi_by_status[$r['status']] = (int)$r['cnt'];
 $kpi_total = array_sum($kpi_by_status);
 
 if ($cfg['has_bounty']) {
     $kpi_extra_label = 'Total Bounty';
-    $kpi_extra_value = number_format((float)$db->fetch_field($db->sql_query("SELECT COALESCE(SUM(bounty),0) AS s FROM {$cfg['table']}"), 's'), 1) . ' BP';
+    $kpi_extra_value = number_format((float)$db->fetch_field($db->sql_query_prepared("SELECT COALESCE(SUM(bounty),0) AS s FROM {$cfg['table']}"), 's'), 1) . ' BP';
     $kpi_extra_icon  = 'fa-coins';
 } else {
     $kpi_extra_label = 'Total ' . $cfg['count_label'];
-    $kpi_extra_value = number_format((int)$db->fetch_field($db->sql_query("SELECT COALESCE(SUM({$cfg['count_col']}),0) AS s FROM {$cfg['table']}"), 's'));
+    $kpi_extra_value = number_format((int)$db->fetch_field($db->sql_query_prepared("SELECT COALESCE(SUM({$cfg['count_col']}),0) AS s FROM {$cfg['table']}"), 's'));
     $kpi_extra_icon  = 'fa-hand-paper';
 }
 
@@ -655,7 +654,7 @@ enqueue_staff_assets();
     <!-- Tabs -->
     <ul class="nav nav-tabs ro-tabs mb-3 animate-fade-in-up">
         <?php foreach ($TABLES as $key => $t): 
-            $count_all = (int)$db->fetch_field($db->sql_query("SELECT COUNT(*) FROM {$t['table']}"), 'COUNT(*)');
+            $count_all = (int)$db->fetch_field($db->sql_query_prepared("SELECT COUNT(*) FROM {$t['table']}"), 'COUNT(*)');
         ?>
         <li class="nav-item">
             <a class="nav-link <?= $tab === $key ? 'active' : '' ?> pulse-on-hover"

@@ -17,7 +17,13 @@ if (!isset($_SESSION['query_history'])) {
 }
 
 // Clear history
-if (isset($_GET['clear_history'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_clear_history') {
+    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+        stdhead('SQL Query Editor');
+        echo '<div class="container mt-4"><div class="alert alert-danger">Security check failed. Please refresh the page and try again.</div></div>';
+        stdfoot();
+        exit;
+    }
     $_SESSION['query_history'] = [];
     header('Location: ' . $_this_script_);
     exit;
@@ -37,12 +43,19 @@ $mysqli   = $GLOBALS['mysqli'];
 $db_ok    = !$mysqli->connect_errno;
 $db_name  = $config['database']['database'];
 
+if (!$db_ok) {
+    write_log('SQL Query Editor: DB connection failed — ' . $mysqli->connect_error);
+}
+
 // ── Query execution ───────────────────────────────────────────────────────────
 $query       = '';
 $alert       = '';
 $table       = '';
 $exec_time   = null;
 $rows_info   = '';
+$needsConfirm = false;
+
+const DESTRUCTIVE_QUERY_PATTERN = '/^\s*(DROP|DELETE|TRUNCATE|UPDATE|ALTER)\b/i';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execute_sql_query') {
     if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
@@ -54,7 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execut
 
     $query = trim($_POST['query'] ?? '');
 
-    if (!empty($query)) {
+    if (!empty($query) && preg_match(DESTRUCTIVE_QUERY_PATTERN, $query) && ($_POST['confirm_destructive'] ?? '') !== '1') {
+        $alert = 'warning';
+        $rows_info = 'This query looks destructive (DROP/DELETE/TRUNCATE/UPDATE/ALTER). Confirm the dialog to run it.';
+        $needsConfirm = true;
+    } elseif (!empty($query)) {
         // Save to history
         array_unshift($_SESSION['query_history'], [
             'query'     => $query,
@@ -79,18 +96,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execut
             $rows_info = "{$num} row(s) returned";
 
             if ($num > 0) {
-                $table = '<div class="qe-result-scroll"><table class="qe-table">';
+                $table = '<div class="qe-result-scroll"><table class="qe-table" id="qeResultTable">';
                 $first = true;
+                $rowNum = 0;
                 while ($row = $result->fetch_assoc()) {
+                    $rowNum++;
                     if ($first) {
-                        $table .= '<thead><tr>';
+                        $table .= '<thead><tr><th class="qe-col-num">#</th>';
                         foreach (array_keys($row) as $col) {
                             $table .= '<th>' . htmlspecialchars($col) . '</th>';
                         }
                         $table .= '</tr></thead><tbody>';
                         $first = false;
                     }
-                    $table .= '<tr>';
+                    $table .= '<tr><td class="qe-col-num">' . $rowNum . '</td>';
                     foreach ($row as $val) {
                         $display = $val === null ? '<em class="qe-null">NULL</em>' : htmlspecialchars((string)$val);
                         $table .= '<td>' . $display . '</td>';
@@ -170,6 +189,11 @@ stdhead('SQL Query Editor');
 }
 .qe-status-ok  { background: #dcfce7; color: #14532d; }
 .qe-status-err { background: #fef2f2; color: #7f1d1d; }
+.qe-status-ok i { animation: qe-pulse 2s ease-in-out infinite; }
+@keyframes qe-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .35; }
+}
 
 /* ── Editor ── */
 .qe-editor-wrap {
@@ -330,7 +354,8 @@ stdhead('SQL Query Editor');
 
 /* ── Table ── */
 .qe-result-scroll {
-    overflow-x: auto;
+    overflow: auto;
+    max-height: 520px;
     border-radius: 10px;
     border: 1px solid #e9ecef;
 }
@@ -340,6 +365,9 @@ stdhead('SQL Query Editor');
     font-size: .9rem;
 }
 .qe-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     background: #f1f5f9;
     color: #374151;
     font-weight: 600;
@@ -348,6 +376,14 @@ stdhead('SQL Query Editor');
     border-bottom: 2px solid #e2e8f0;
     white-space: nowrap;
 }
+.qe-table .qe-col-num {
+    color: #94a3b8;
+    font-weight: 500;
+    text-align: right;
+    width: 1%;
+    background: #fafbfc;
+}
+.qe-table thead th.qe-col-num { background: #f1f5f9; }
 .qe-table tbody tr { transition: background .1s; }
 .qe-table tbody tr:hover { background: #f8fafc; }
 .qe-table tbody td {
@@ -433,13 +469,14 @@ stdhead('SQL Query Editor');
                 <i class="bi <?= $db_ok ? 'bi-circle-fill' : 'bi-x-circle-fill' ?>"></i>
                 <?= $db_ok
                     ? 'Connected &rarr; <strong>' . htmlspecialchars($db_name) . '</strong>'
-                    : 'Connection failed: ' . htmlspecialchars($mysqli->connect_error) ?>
+                    : 'Database connection failed. See server log for details.' ?>
             </div>
 
             <!-- Form -->
             <form method="post" id="qeForm">
                 <input type="hidden" name="do" value="ts_execute_sql_query">
                 <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                <input type="hidden" name="confirm_destructive" id="confirmDestructive" value="0">
 
                 <div class="qe-editor-wrap">
                     <textarea name="query" id="query"
@@ -508,6 +545,11 @@ stdhead('SQL Query Editor');
                     }; ?>
                     <?= htmlspecialchars($rows_info) ?>
                 </span>
+                <?php if (!empty($table)): ?>
+                <button type="button" class="qe-tool-btn" id="qeCopyCsv" style="padding:.25rem .75rem;font-size:.78rem;">
+                    <i class="bi bi-clipboard-data"></i> Copy as CSV
+                </button>
+                <?php endif; ?>
             </div>
         </div>
         <div class="qe-result-body">
@@ -564,11 +606,14 @@ stdhead('SQL Query Editor');
                 <?php endif; ?>
             </div>
             <div class="modal-footer" style="border-top:1px solid #f1f5f9">
-                <a href="index.php?act=execute_sql_query&clear_history=1"
-                   class="btn btn-sm btn-outline-danger"
-                   onclick="return confirm('Clear all history?')">
-                    <i class="bi bi-trash3 me-1"></i>Clear history
-                </a>
+                <form method="post" style="margin:0">
+                    <input type="hidden" name="do" value="ts_clear_history">
+                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                            onclick="return confirm('Clear all history?')">
+                        <i class="bi bi-trash3 me-1"></i>Clear history
+                    </button>
+                </form>
                 <button type="button" class="btn btn-sm btn-secondary"
                         data-bs-dismiss="modal">Close</button>
             </div>
@@ -576,72 +621,6 @@ stdhead('SQL Query Editor');
     </div>
 </div>
 
-<script>
-// Format (simple keyword uppercase)
-document.getElementById('qeFormat').addEventListener('click', function(){
-    const ta = document.getElementById('query');
-    const kw = ['SELECT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN',
-                 'ON','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','INSERT INTO',
-                 'VALUES','UPDATE','SET','DELETE','CREATE','DROP','ALTER','TRUNCATE',
-                 'AND','OR','NOT','IN','IS NULL','IS NOT NULL','AS','DISTINCT'];
-    let sql = ta.value;
-    kw.forEach(k => {
-        sql = sql.replace(new RegExp('\\b' + k + '\\b', 'gi'), k);
-    });
-    ta.value = sql;
-});
-
-document.getElementById('qeClear').addEventListener('click', () => {
-    document.getElementById('query').value = '';
-    document.getElementById('query').focus();
-});
-
-// Examples
-document.querySelectorAll('.qe-ex-btn').forEach(btn => {
-    btn.addEventListener('click', function(){
-        document.getElementById('query').value = this.dataset.q;
-        document.getElementById('query').focus();
-    });
-});
-
-// History items
-document.querySelectorAll('.qe-history-item').forEach(item => {
-    item.addEventListener('click', function(){
-        document.getElementById('query').value = this.dataset.q;
-        bootstrap.Modal.getInstance(document.getElementById('histModal'))?.hide();
-    });
-});
-
-// Scroll to results
-<?php if (!empty($alert)): ?>
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelector('.qe-result-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-});
-<?php endif; ?>
-
-// Ctrl+Enter to submit
-document.getElementById('query').addEventListener('keydown', function(e){
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        document.getElementById('qeForm').submit();
-    }
-});
-
-// Подтверждение перед выполнением потенциально деструктивных запросов —
-// один клик по "Execute" иначе может снести данные без права на "отменить".
-document.getElementById('qeForm').addEventListener('submit', function(e){
-    const sql = document.getElementById('query').value.trim();
-    const destructive = /^\s*(DROP|DELETE|TRUNCATE|UPDATE|ALTER)\b/i;
-    if (destructive.test(sql)) {
-        const ok = confirm(
-            'This looks like a destructive query (DROP/DELETE/TRUNCATE/UPDATE/ALTER).\n\n' +
-            'It will run immediately with no undo. Continue?'
-        );
-        if (!ok) {
-            e.preventDefault();
-        }
-    }
-});
-</script>
+<script src="<?= $BASEURL ?>/admin/scripts/execute_sql_query.js"></script>
 
 <?php stdfoot(); ?>

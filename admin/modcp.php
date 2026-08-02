@@ -187,7 +187,11 @@ function handle_do_modqueue(): void {
         $tids = array_map("intval", array_keys($threads));
         $threads_to_approve = $threads_to_delete = [];
         
-        $query = $db->simple_select("threads", "tid", "tid IN (" . implode(",", $tids) . "){$flist_queue_threads}");
+        $tid_placeholders = implode(',', array_fill(0, count($tids), '?'));
+        $query = $db->sql_query_prepared(
+            "SELECT tid FROM threads WHERE tid IN ({$tid_placeholders}) {$flist_queue_threads}",
+            $tids
+        );
         while($thread = $db->fetch_array($query)) {
             if(!isset($threads[$thread['tid']])) continue;
             $action = $threads[$thread['tid']];
@@ -217,7 +221,11 @@ function handle_do_modqueue(): void {
         $pids = array_map("intval", array_keys($posts));
         $posts_to_approve = $posts_to_delete = [];
         
-        $query = $db->simple_select("posts", "pid", "pid IN (" . implode(",", $pids) . "){$flist_queue_posts}");
+        $pid_placeholders = implode(',', array_fill(0, count($pids), '?'));
+        $query = $db->sql_query_prepared(
+            "SELECT pid FROM posts WHERE pid IN ({$pid_placeholders}) {$flist_queue_posts}",
+            $pids
+        );
         while($post = $db->fetch_array($query)) {
             if(!isset($posts[$post['pid']])) continue;
             $action = $posts[$post['pid']];
@@ -240,18 +248,22 @@ function handle_do_modqueue(): void {
     
     if (!empty($attachments)) {
         $aids = array_map("intval", array_keys($attachments));
-        $query = $db->sql_query("
+        $aid_placeholders = implode(',', array_fill(0, count($aids), '?'));
+        $query = $db->sql_query_prepared("
             SELECT a.pid, a.aid, t.tid
             FROM attachments a
             LEFT JOIN posts p ON (a.pid = p.pid)
             LEFT JOIN threads t ON (t.tid = p.tid)
-            WHERE aid IN (" . implode(",", $aids) . "){$tflist_queue_attach}
-        ");
+            WHERE aid IN ({$aid_placeholders}) {$tflist_queue_attach}
+        ", $aids);
         while($attachment = $db->fetch_array($query)) {
             if(!isset($attachments[$attachment['aid']])) continue;
             $action = $attachments[$attachment['aid']];
             if($action == "approve") {
-                $db->update_query("attachments", ["visible" => 1], "aid='{$attachment['aid']}'");
+                $db->sql_query_prepared(
+                    "UPDATE attachments SET visible = ? WHERE aid = ?",
+                    [1, (int)$attachment['aid']]
+                );
                 if(isset($attachment['tid'])) update_thread_counters((int)$attachment['tid'], ["attachmentcount" => "+1"]);
             } elseif($action == "delete") {
                 remove_attachment($attachment['pid'], '', $attachment['aid']);
@@ -274,7 +286,10 @@ function handle_modqueue(): void {
     
     // Threads queue
     if($type == "threads" || (!$type && ($nummodqueuethreads > 0 || $usergroups['issupermod'] == "1"))) {
-        $query = $db->simple_select("threads", "COUNT(tid) AS cnt", "visible='0' {$flist_queue_threads}");
+        $query = $db->sql_query_prepared(
+            "SELECT COUNT(tid) AS cnt FROM threads WHERE visible = ? {$flist_queue_threads}",
+            ['0']
+        );
         $total = (int)$db->fetch_field($query, "cnt");
         
         $page = max(1, (int)$mybb->get_input('page', MyBB::INPUT_INT));
@@ -282,16 +297,16 @@ function handle_modqueue(): void {
         $start = ($page - 1) * $perpage;
         $multipage = multipage($total, $perpage, $page, "modcp.php?type=threads");
         
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT t.tid, t.dateline, t.fid, t.subject, t.username AS threadusername, 
                    p.message AS postmessage, u.username, t.uid
             FROM threads t
             LEFT JOIN posts p ON (p.pid = t.firstpost)
             LEFT JOIN users u ON (u.id = t.uid)
-            WHERE t.visible='0' {$tflist_queue_threads}
+            WHERE t.visible = ? {$tflist_queue_threads}
             ORDER BY t.lastpost DESC
-            LIMIT {$start}, {$perpage}
-        ");
+            LIMIT ?, ?
+        ", ['0', $start, $perpage]);
         
         $threads_html = '';
         while($thread = $db->fetch_array($query)) {
@@ -365,12 +380,12 @@ function handle_modqueue(): void {
     
     // Posts queue
     if($type == "posts" || (!$type && ($nummodqueueposts > 0 || $usergroups['issupermod'] == "1"))) {
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT COUNT(pid) AS cnt
             FROM posts p
             LEFT JOIN threads t ON (t.tid = p.tid)
-            WHERE p.visible='0' {$tflist_queue_posts} AND t.firstpost != p.pid
-        ");
+            WHERE p.visible = ? {$tflist_queue_posts} AND t.firstpost != p.pid
+        ", ['0']);
         $total = (int)$db->fetch_field($query, "cnt");
         
         $page = max(1, (int)$mybb->get_input('page', MyBB::INPUT_INT));
@@ -378,16 +393,16 @@ function handle_modqueue(): void {
         $start = ($page - 1) * $perpage;
         $multipage = multipage($total, $perpage, $page, "modcp.php?type=posts");
         
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT p.pid, p.subject, p.message, p.username AS postusername, 
                    t.subject AS threadsubject, t.tid, u.username, p.uid, t.fid, p.dateline
             FROM posts p
             LEFT JOIN threads t ON (t.tid = p.tid)
             LEFT JOIN users u ON (u.id = p.uid)
-            WHERE p.visible='0' {$tflist_queue_posts} AND t.firstpost != p.pid
+            WHERE p.visible = ? {$tflist_queue_posts} AND t.firstpost != p.pid
             ORDER BY p.dateline DESC
-            LIMIT {$start}, {$perpage}
-        ");
+            LIMIT ?, ?
+        ", ['0', $start, $perpage]);
         
         $posts_html = '';
         while($post = $db->fetch_array($query)) {
@@ -463,13 +478,13 @@ function handle_modqueue(): void {
     
     // Attachments queue
     if(($type == "attachments" || !$type) && $enableattachments == 1) {
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT COUNT(aid) AS cnt
             FROM attachments a
             LEFT JOIN posts p ON (p.pid = a.pid)
             LEFT JOIN threads t ON (t.tid = p.tid)
-            WHERE a.visible='0'{$tflist_queue_attach}
-        ");
+            WHERE a.visible = ? {$tflist_queue_attach}
+        ", ['0']);
         $total = (int)$db->fetch_field($query, "cnt");
         
         $page = max(1, (int)$mybb->get_input('page', MyBB::INPUT_INT));
@@ -477,16 +492,16 @@ function handle_modqueue(): void {
         $start = ($page - 1) * $perpage;
         $multipage = multipage($total, $perpage, $page, "'.$_this_script_.'&type=attachments");
         
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT a.*, p.subject AS postsubject, p.dateline, p.uid, u.username, t.tid, t.subject AS threadsubject
             FROM attachments a
             LEFT JOIN posts p ON (p.pid = a.pid)
             LEFT JOIN threads t ON (t.tid = p.tid)
             LEFT JOIN users u ON (u.id = p.uid)
-            WHERE a.visible='0'{$tflist_queue_attach}
+            WHERE a.visible = ? {$tflist_queue_attach}
             ORDER BY a.dateuploaded DESC
-            LIMIT {$start}, {$perpage}
-        ");
+            LIMIT ?, ?
+        ", ['0', $start, $perpage]);
         
         $attachments_html = '';
         while($att = $db->fetch_array($query)) {

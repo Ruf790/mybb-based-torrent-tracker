@@ -16,7 +16,7 @@ if (!$id) {
     print_no_permission();
 }
 
-$res = $db->sql_query("SELECT name FROM torrents WHERE id = " . $db->escape_string($id));
+$res = $db->sql_query_prepared("SELECT name FROM torrents WHERE id = ?", [$id]);
 $row = $db->fetch_array($res);
 
 $fn = TSDIR . '/' . $torrent_dir . '/' . $id . '.torrent';

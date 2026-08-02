@@ -10,13 +10,18 @@ require_once(INC_PATH . '/functions_multipage.php');
 
 if (!defined('STAFF_PANEL')) 
 {
-    define('STAFF_PANEL_TSSEv56', true);
-    echo '<div class="alert alert-warning">Warning: STAFF_PANEL_TSSEv56 was not defined. Defined for testing.</div>';
+    exit('<div class="alert alert-danger">Error! Direct initialization of this file is not allowed.</div>');
+}
+
+if (empty($CURUSER['id']) || !is_mod($usergroups)) 
+{
+    http_response_code(403);
+    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
 }
 
 $parser = new postParser;
 $parser_options = [
-    "allow_html" => 1,
+    "allow_html" => 0,
     "allow_mycode" => 1,
     "allow_smilies" => 1,
     "allow_imgcode" => 1,
@@ -252,10 +257,10 @@ function format_admin_log($logitem, $admin_log_lang)
 
 
 
-$searchstr = isset($_GET['query']) ? trim($db->escape_string($_GET['query'])) : '';
-$event_filter = isset($_GET['event_filter']) ? trim($db->escape_string($_GET['event_filter'])) : 'all';
-$date_filter = isset($_GET['date_filter']) ? trim($db->escape_string($_GET['date_filter'])) : '';
-$log_type = isset($_GET['log_type']) ? trim($db->escape_string($_GET['log_type'])) : 'both';
+$searchstr = isset($_GET['query']) ? trim((string)$_GET['query']) : '';
+$event_filter = isset($_GET['event_filter']) ? trim((string)$_GET['event_filter']) : 'all';
+$date_filter = isset($_GET['date_filter']) ? trim((string)$_GET['date_filter']) : '';
+$log_type = isset($_GET['log_type']) ? trim((string)$_GET['log_type']) : 'both';
 $page = isset($_GET['page']) ? max(1, filter_var($_GET['page'], FILTER_VALIDATE_INT)) : 1;
 
 $filter_params = [
@@ -267,20 +272,25 @@ $filter_params = [
 
 $where_conditions_sitelog = [];
 $where_conditions_modlog = [];
+$where_params_sitelog = [];
+$where_params_modlog = [];
 
 
 $where_conditions_adminlog = [];
+$where_params_adminlog = [];
 if ($searchstr !== '') {
-    $search_esc = "%" . $db->escape_string($searchstr) . "%";
-    $where_conditions_adminlog[] = "(a.action LIKE '$search_esc' OR a.module LIKE '$search_esc' OR a.data LIKE '$search_esc')";
+    $search_like = "%{$searchstr}%";
+    $where_conditions_adminlog[] = "(a.action LIKE ? OR a.module LIKE ? OR a.data LIKE ?)";
+    array_push($where_params_adminlog, $search_like, $search_like, $search_like);
 }
 if ($event_filter !== 'all') {
-    $event_esc = "%" . $db->escape_string($event_filter) . "%";
-    $where_conditions_adminlog[] = "(a.action LIKE '$event_esc' OR a.module LIKE '$event_esc')";
+    $event_like = "%{$event_filter}%";
+    $where_conditions_adminlog[] = "(a.action LIKE ? OR a.module LIKE ?)";
+    array_push($where_params_adminlog, $event_like, $event_like);
 }
 if ($date_filter !== '') {
-    $date_esc = $db->escape_string($date_filter);
-    $where_conditions_adminlog[] = "DATE(FROM_UNIXTIME(a.dateline)) = '$date_esc'";
+    $where_conditions_adminlog[] = "DATE(FROM_UNIXTIME(a.dateline)) = ?";
+    $where_params_adminlog[] = $date_filter;
 }
 $where_adminlog = !empty($where_conditions_adminlog) 
     ? "WHERE " . implode(" AND ", $where_conditions_adminlog) 
@@ -292,9 +302,11 @@ $where_adminlog = !empty($where_conditions_adminlog)
 
 if ($searchstr !== '') 
 {
-    $search_esc = "%" . $db->escape_string($searchstr) . "%";
-    $where_conditions_sitelog[] = "s.txt LIKE '$search_esc'";
-    $where_conditions_modlog[] = "(m.action LIKE '$search_esc' OR m.data LIKE '$search_esc')";
+    $search_like = "%{$searchstr}%";
+    $where_conditions_sitelog[] = "s.txt LIKE ?";
+    $where_params_sitelog[] = $search_like;
+    $where_conditions_modlog[] = "(m.action LIKE ? OR m.data LIKE ?)";
+    array_push($where_params_modlog, $search_like, $search_like);
 }
 
 
@@ -338,9 +350,11 @@ if ($event_filter !== 'all')
     } 
 	else 
 	{
-        $event_esc = "%" . $db->escape_string($event_filter) . "%";
-        $where_conditions_sitelog[] = "s.txt LIKE '$event_esc'";
-        $where_conditions_modlog[] = "m.action LIKE '$event_esc'";
+        $event_like = "%{$event_filter}%";
+        $where_conditions_sitelog[] = "s.txt LIKE ?";
+        $where_params_sitelog[] = $event_like;
+        $where_conditions_modlog[] = "m.action LIKE ?";
+        $where_params_modlog[] = $event_like;
     }
 }
 
@@ -355,26 +369,31 @@ if ($event_filter !== 'all')
 
 
 if ($date_filter !== '') {
-    $date_esc = $db->escape_string($date_filter);
-    $where_conditions_sitelog[] = "DATE(FROM_UNIXTIME(s.added)) = '$date_esc'";
-    $where_conditions_modlog[] = "DATE(FROM_UNIXTIME(m.dateline)) = '$date_esc'";
+    $where_conditions_sitelog[] = "DATE(FROM_UNIXTIME(s.added)) = ?";
+    $where_params_sitelog[] = $date_filter;
+    $where_conditions_modlog[] = "DATE(FROM_UNIXTIME(m.dateline)) = ?";
+    $where_params_modlog[] = $date_filter;
 }
 $where_sitelog = !empty($where_conditions_sitelog) ? "WHERE " . implode(" AND ", $where_conditions_sitelog) : "";
 $where_modlog = !empty($where_conditions_modlog) ? "WHERE " . implode(" AND ", $where_conditions_modlog) : "";
 
 // Считаем общее количество записей
 $count_union = [];
+$union_params = [];
 if ($log_type === 'both' || $log_type === 'site') {
     $count_union[] = "SELECT COUNT(*) as count FROM sitelog s $where_sitelog";
+    array_push($union_params, ...$where_params_sitelog);
 }
 if ($log_type === 'both' || $log_type === 'moderator') {
     $count_union[] = "SELECT COUNT(*) as count FROM moderatorlog m $where_modlog";
+    array_push($union_params, ...$where_params_modlog);
 }
 if ($log_type === 'both' || $log_type === 'admin') {
     $count_union[] = "SELECT COUNT(*) as count FROM adminlog a $where_adminlog";
+    array_push($union_params, ...$where_params_adminlog);
 }
 $count_sql = "SELECT SUM(count) as total FROM (" . implode(" UNION ALL ", $count_union) . ") as counts";
-$result = $db->sql_query($count_sql);
+$result = $db->sql_query_prepared($count_sql, $union_params);
 if (!$result) {
     die('Error: Count query failed: ' . $db->error());
 }
@@ -429,13 +448,16 @@ if (empty($union_queries)) {
                         WHERE 1=0";
 }
 $main_query = "(" . implode(") UNION ALL (", $union_queries) . ") ORDER BY timestamp DESC";
+$main_params = $union_params;
 if ($total_count > 0) {
-    $main_query .= " LIMIT $start, $perpage";
+    $main_query .= " LIMIT ?, ?";
+    $main_params[] = $start;
+    $main_params[] = $perpage;
 }
 
 
 //error_log("Main query: $main_query"); // Логируем запрос для отладки
-$res = $db->sql_query($main_query);
+$res = $db->sql_query_prepared($main_query, $main_params);
 if (!$res) {
     die('Error: Main query failed: ' . $db->error());
 }
@@ -487,41 +509,41 @@ $posts_data = [];
 $announcements_data = [];
 
 if (!empty($user_ids_from_data)) {
-    $user_ids_str = implode(',', array_keys($user_ids_from_data));
-    $result = $db->sql_query("SELECT id, username, usergroup FROM users WHERE id IN ($user_ids_str)");
-    while ($row = $db->fetch_array($result)) {
+    $user_ids_str = implode(',', array_map('intval', array_keys($user_ids_from_data)));
+    $result = $db->sql_query_prepared("SELECT id, username, usergroup FROM users WHERE id IN ($user_ids_str)");
+    while ($result && ($row = $db->fetch_array($result))) {
         $users_from_data[$row['id']] = $row;
     }
 }
 
 if (!empty($thread_ids)) {
-    $thread_ids_str = implode(',', array_keys($thread_ids));
-    $result = $db->sql_query("SELECT tid, subject FROM threads WHERE tid IN ($thread_ids_str)");
-    while ($row = $db->fetch_array($result)) {
+    $thread_ids_str = implode(',', array_map('intval', array_keys($thread_ids)));
+    $result = $db->sql_query_prepared("SELECT tid, subject FROM threads WHERE tid IN ($thread_ids_str)");
+    while ($result && ($row = $db->fetch_array($result))) {
         $threads_data[$row['tid']] = $row;
     }
 }
 
 if (!empty($forum_ids)) {
-    $forum_ids_str = implode(',', array_keys($forum_ids));
-    $result = $db->sql_query("SELECT fid, name FROM forums WHERE fid IN ($forum_ids_str)");
-    while ($row = $db->fetch_array($result)) {
+    $forum_ids_str = implode(',', array_map('intval', array_keys($forum_ids)));
+    $result = $db->sql_query_prepared("SELECT fid, name FROM forums WHERE fid IN ($forum_ids_str)");
+    while ($result && ($row = $db->fetch_array($result))) {
         $forums_data[$row['fid']] = $row;
     }
 }
 
 if (!empty($post_ids)) {
-    $post_ids_str = implode(',', array_keys($post_ids));
-    $result = $db->sql_query("SELECT pid, subject FROM posts WHERE pid IN ($post_ids_str)");
-    while ($row = $db->fetch_array($result)) {
+    $post_ids_str = implode(',', array_map('intval', array_keys($post_ids)));
+    $result = $db->sql_query_prepared("SELECT pid, subject FROM posts WHERE pid IN ($post_ids_str)");
+    while ($result && ($row = $db->fetch_array($result))) {
         $posts_data[$row['pid']] = $row;
     }
 }
 
 if (!empty($announcement_ids)) {
-    $announcement_ids_str = implode(',', array_keys($announcement_ids));
-    $result = $db->sql_query("SELECT id, subject FROM announcements WHERE id IN ($announcement_ids_str)");
-    while ($row = $db->fetch_array($result)) {
+    $announcement_ids_str = implode(',', array_map('intval', array_keys($announcement_ids)));
+    $result = $db->sql_query_prepared("SELECT id, subject FROM announcements WHERE id IN ($announcement_ids_str)");
+    while ($result && ($row = $db->fetch_array($result))) {
         $announcements_data[$row['aid']] = $row;
     }
 }
@@ -740,7 +762,12 @@ if (function_exists('stdhead')) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['clear']) && $_POST['clear'] === 'yes' && isset($usergroups['cansettingspanel']) && $usergroups['cansettingspanel'] == '1') {
-        $result = $db->sql_query('TRUNCATE TABLE sitelog');
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            exit('Invalid security token');
+        }
+
+        $result = $db->sql_query_prepared('TRUNCATE TABLE sitelog');
         if ($result) {
             flash_message('Site log table cleared!', 'success');
         } else {
@@ -749,12 +776,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         admin_redirect('index.php?act=log&action=combined_logs');
 
     } elseif (isset($_POST['action']) && $_POST['action'] === 'delete' && !empty($_POST['logid']) && isset($usergroups['cansettingspanel']) && $usergroups['cansettingspanel'] == '1') {
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            exit('Invalid security token');
+        }
+
         $site_log_ids = array_filter((array)$_POST['logid'], function($id) {
             return is_numeric($id) && $id > 0;
         });
         if (!empty($site_log_ids)) {
             $ids = implode(',', array_map('intval', $site_log_ids));
-            $result = $db->sql_query("DELETE FROM sitelog WHERE id IN ($ids)");
+            $result = $db->sql_query_prepared("DELETE FROM sitelog WHERE id IN ($ids)");
             if ($result) {
                 flash_message('Deleted ' . $db->affected_rows() . ' site log(s)!', 'warning');
             } else {
@@ -903,6 +935,7 @@ else
 {
     echo '<form method="post" action="index.php?act=log&action=combined_logs" id="logs-form">
             <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
             <div class="card card-custom">
                 <div class="card-header card-header-custom d-flex justify-content-between align-items-center">
                     <h5 class="m-0"><i class="fas fa-history me-2"></i>Combined Event Log</h5>
@@ -1410,6 +1443,7 @@ echo <<<HTML
                 </button>
                 <form method="post" action="index.php?act=log&action=combined_logs" style="flex:1;margin:0">
                     <input type="hidden" name="clear" value="yes">
+                    <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
                     <button type="submit"
                         style="width:100%;border-radius:10px;padding:11px;font-weight:600;border:none;background:linear-gradient(135deg,#e74a3b,#c0392b);color:#fff;cursor:pointer">
                         <i class="fas fa-trash-alt me-1"></i> Clear Logs

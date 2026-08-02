@@ -370,8 +370,8 @@ function selectbox(string $title, string $name, string $type, string $class = 'f
     $options = "<option value=''>Select usergroup...</option>";
     
     if ($type === 'trackergroups') {
-        $query = $db->sql_query('SELECT gid, title, cansettingspanel, issupermod, canstaffpanel FROM usergroups ORDER BY title');
-        while ($tclass = $db->fetch_array($query)) {
+        $query = $db->sql_query_prepared('SELECT gid, title, cansettingspanel, issupermod, canstaffpanel FROM usergroups ORDER BY title');
+        while ($query && ($tclass = $db->fetch_array($query))) {
             if (
                 (($tclass['cansettingspanel'] == '1' && $usergroups['cansettingspanel'] != '1') ||
                 ($tclass['issupermod'] == '1' && $usergroups['issupermod'] != '1') ||
@@ -498,7 +498,7 @@ function get_user_data(): void
     }
 
     // LEFT JOIN с агрегатами вместо двух коррелированных subquery
-    $res = $db->sql_query('
+    $res = $db->sql_query_prepared('
     SELECT u.*,
            g.cansettingspanel,
            g.canstaffpanel,
@@ -536,10 +536,11 @@ function get_user_data(): void
                SUM(seeder = "yes")   AS peers_seeding
         FROM peers GROUP BY userid
     ) pr ON pr.userid = u.id
-    WHERE u.id = ' . $db->sqlesc($userid)
+    WHERE u.id = ?
+    ', [$userid]
     );
 
-    $arr = $db->fetch_array($res);
+    $arr = $res ? $db->fetch_array($res) : null;
     if (!$arr) {
         echo '
         <div class="user-not-found">
@@ -565,8 +566,8 @@ function username_exists222(string $username): bool
 {
     global $db;
     
-    $tracker_query = $db->sql_query('SELECT username FROM users WHERE username = ' . $db->sqlesc($username) . ' LIMIT 1');
-    return $db->num_rows($tracker_query) <= 0;
+    $tracker_query = $db->sql_query_prepared('SELECT username FROM users WHERE username = ? LIMIT 1', [$username]);
+    return $tracker_query ? $db->num_rows($tracker_query) <= 0 : true;
 }
 
 /**
@@ -584,11 +585,11 @@ function email_exists(string $email): bool
 {
     global $db;
 
-    $q = $db->sql_query(
-        'SELECT 1 FROM users WHERE email = ' . $db->sqlesc($email) . ' LIMIT 1'
+    $q = $db->sql_query_prepared(
+        'SELECT 1 FROM users WHERE email = ? LIMIT 1', [$email]
     );
 
-    return $db->num_rows($q) > 0;
+    return $q ? $db->num_rows($q) > 0 : false;
 }
 
 /**
@@ -622,7 +623,7 @@ define("IN_ADMINCP", 1);
 define('FORUM_ACTIVE', true);
 define('FORUM_SECURE', true);
 
-require_once INC_PATH . '/tsf_functions.php';
+require_once INC_PATH . '/functions_forum.php';
 
 
 
@@ -744,11 +745,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     ];
   
   $current_modcomment = $userdata['modcomment'] 
-    ?? $db->fetch_field($db->sql_query("SELECT modcomment FROM users WHERE id='{$uid}' LIMIT 1"), 'modcomment')
+    ?? (function() use ($db, $uid) {
+        $q = $db->sql_query_prepared("SELECT modcomment FROM users WHERE id = ? LIMIT 1", [$uid]);
+        return $q ? $db->fetch_field($q, 'modcomment') : null;
+    })()
     ?? '';
 
 $updated_avatar['modcomment'] = gmdate('Y-m-d H:i') . " - Avatar updated by {$CURUSER['username']}\n" . rtrim($current_modcomment);
-$db->update_query("users", $updated_avatar, "id='{$uid}'");
+$set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated_avatar)));
+$params = array_values($updated_avatar);
+$params[] = $uid;
+$db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
   
 
     if ($is_ajax) {
@@ -856,11 +863,10 @@ function process_avatar_url(string $avatar_url, int $user_id): string
 
     @unlink($temp_file);
 
-    $db->update_query("users", [
-        'avatar'           => $db->escape_string($avatar_url),
-        'avatardimensions' => $dimensions,
-        'avatartype'       => 'remote',
-    ], "id='{$user_id}'");
+    $db->sql_query_prepared(
+        "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = 'remote' WHERE id = ?",
+        [$avatar_url, $dimensions, $user_id]
+    );
 
     $userdata['avatar'] = $avatar_url;
 
@@ -927,7 +933,7 @@ function handle_avatar_update(): void
 
     if ($new_avatar === '') {
         remove_avatars($current_user_id);
-        $db->update_query("users", ['avatar' => '', 'avatardimensions' => '', 'avatartype' => ''], "id='{$current_user_id}'");
+        $db->sql_query_prepared("UPDATE users SET avatar = '', avatardimensions = '', avatartype = '' WHERE id = ?", [$current_user_id]);
         $userdata['avatar'] = '';
         modcomment("Avatar removed");
         flash_message("Avatar successfully removed!", "success");
@@ -1421,8 +1427,8 @@ function get_last_warning_info(): string
     $elapsedlw = mkprettytime(TIMENOW - $userdata['lastwarned']);
     
     if ($userdata['warnedby'] !== 'System' && !empty($userdata['warnedby'])) {
-        $res = $db->sql_query('SELECT id, username FROM users WHERE id = ' . $userdata['warnedby']);
-        $arr = $db->fetch_array($res);
+        $res = $db->sql_query_prepared('SELECT id, username FROM users WHERE id = ?', [(int)$userdata['warnedby']]);
+        $arr = $res ? $db->fetch_array($res) : null;
         $warnedby = ' by <a href="' . $BASEURL . '/userdetails.php?id=' . $arr['id'] . '" class="text-decoration-none">' . htmlspecialchars_uni($arr['username']) . '</a>';
     } else {
         $warnedby = ' automatically by System';
@@ -1455,13 +1461,13 @@ function renderStatisticsTab(): string
                 
                 <div class="mb-4 ' . $disabledClass . '">
                     <label class="form-label fw-semibold">Uploaded Amount</label>
-                    <input type="text" class="form-control" name="uploaded" value="' . htmlspecialchars_uni($userdata['uploaded']) . '" ' . $disabledAttr . '>
+                    <input type="text" class="form-control" name="uploaded" value="' . htmlspecialchars_uni((string)$userdata['uploaded']) . '" ' . $disabledAttr . '>
                     <small class="text-muted">Current: ' . mksize($userdata['uploaded']) . '</small>
                 </div>
                 
                 <div class="mb-4 ' . $disabledClass . '">
                     <label class="form-label fw-semibold">Downloaded Amount</label>
-                    <input type="text" class="form-control" name="downloaded" value="' . htmlspecialchars_uni($userdata['downloaded']) . '" ' . $disabledAttr . '>
+                    <input type="text" class="form-control" name="downloaded" value="' . htmlspecialchars_uni((string)$userdata['downloaded']) . '" ' . $disabledAttr . '>
                     <small class="text-muted">Current: ' . mksize($userdata['downloaded']) . '</small>
                 </div>
             </div>
@@ -1681,9 +1687,9 @@ function renderActivityTab(): string
     $uid = (int)$userdata['id'];
 
     // Последние загруженные торренты
-    $q = $db->sql_query("SELECT id, name, added, seeders, leechers FROM torrents WHERE owner = {$uid} ORDER BY added DESC LIMIT 10");
+    $q = $db->sql_query_prepared("SELECT id, name, added, seeders, leechers FROM torrents WHERE owner = ? ORDER BY added DESC LIMIT 10", [$uid]);
     $uploads_html = '';
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $badge = $row['seeders'] > 0
             ? '<span class="badge bg-success">' . (int)$row['seeders'] . 'S</span>'
             : '<span class="badge bg-danger">Dead</span>';
@@ -1698,9 +1704,9 @@ function renderActivityTab(): string
     if (!$uploads_html) $uploads_html = '<li class="list-group-item text-muted text-center py-3">No uploads</li>';
 
     // Последние скачивания
-    $q = $db->sql_query("SELECT s.torrentid, t.name, s.completedat, s.finished FROM snatched s LEFT JOIN torrents t ON (s.torrentid = t.id) WHERE s.userid = {$uid} ORDER BY s.completedat DESC LIMIT 10");
+    $q = $db->sql_query_prepared("SELECT s.torrentid, t.name, s.completedat, s.finished FROM snatched s LEFT JOIN torrents t ON (s.torrentid = t.id) WHERE s.userid = ? ORDER BY s.completedat DESC LIMIT 10", [$uid]);
     $downloads_html = '';
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $fin  = $row['finished'] === 'yes'
             ? '<span class="badge bg-success">Finished</span>'
             : '<span class="badge bg-warning text-dark">Incomplete</span>';
@@ -1716,9 +1722,9 @@ function renderActivityTab(): string
     if (!$downloads_html) $downloads_html = '<li class="list-group-item text-muted text-center py-3">No downloads</li>';
 
     // Последние комментарии
-    $q = $db->sql_query("SELECT c.id, c.torrent, c.dateline, c.text, t.name FROM comments c LEFT JOIN torrents t ON (c.torrent = t.id) WHERE c.user = {$uid} ORDER BY c.dateline DESC LIMIT 5");
+    $q = $db->sql_query_prepared("SELECT c.id, c.torrent, c.dateline, c.text, t.name FROM comments c LEFT JOIN torrents t ON (c.torrent = t.id) WHERE c.user = ? ORDER BY c.dateline DESC LIMIT 5", [$uid]);
     $comments_html = '';
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $torr = $row['name'] ? htmlspecialchars_uni($row['name']) : '#' . (int)$row['torrent'];
         $txt  = mb_substr(strip_tags($row['text'] ?? ''), 0, 80);
         $comments_html .= '<li class="list-group-item py-2">
@@ -1802,9 +1808,9 @@ function renderSecurityTab(): string
     $postCode = htmlspecialchars(generate_post_check() ?? '', ENT_QUOTES, 'UTF-8');
 
     // Активные сессии
-    $q = $db->sql_query("SELECT sid, ip, time, location, useragent FROM sessions WHERE uid = {$uid} ORDER BY time DESC LIMIT 10");
+    $q = $db->sql_query_prepared("SELECT sid, ip, time, location, useragent FROM sessions WHERE uid = ? ORDER BY time DESC LIMIT 10", [$uid]);
     $sessions_html = '';
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $ip       = htmlspecialchars(my_inet_ntop($db->unescape_binary($row['ip'])), ENT_QUOTES, 'UTF-8');
         $ua_short = mb_substr($row['useragent'], 0, 60);
         $time_ago = my_datee('relative', (int)$row['time']);
@@ -2037,28 +2043,28 @@ function renderHitRunTab(): string
     $total    = (int)($userdata['snatch_total'] ?? 0);
     $finished = (int)($userdata['snatch_done']  ?? 0);
 
-    $q   = $db->sql_query("SELECT COUNT(*) AS hnr_count FROM snatched WHERE userid = {$uid} AND finished = 'yes' AND seedtime < {$min_hours} * 3600");
-    $hnr = (int)($db->fetch_array($q)['hnr_count'] ?? 0);
+    $q   = $db->sql_query_prepared("SELECT COUNT(*) AS hnr_count FROM snatched WHERE userid = ? AND finished = 'yes' AND seedtime < ? * 3600", [$uid, $min_hours]);
+    $hnr = $q ? (int)($db->fetch_array($q)['hnr_count'] ?? 0) : 0;
     
     $hnr_ratio = $finished > 0 ? round($hnr / $finished * 100, 1) : 0;
     $hnr_color = $hnr_ratio < 10 ? 'success' : ($hnr_ratio < 30 ? 'warning' : 'danger');
     $hnr_status = $hnr_ratio < 10 ? 'Good' : ($hnr_ratio < 30 ? 'Warning' : 'Critical');
 
     // Список H&R торрентов
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT s.torrentid, t.name, s.downloaded, s.seedtime, s.leechtime,
                s.completedat, s.last_action
         FROM snatched s
         LEFT JOIN torrents t ON (s.torrentid = t.id)
-        WHERE s.userid = {$uid}
+        WHERE s.userid = ?
           AND s.finished = 'yes'
-          AND s.seedtime < {$min_hours} * 3600
+          AND s.seedtime < ? * 3600
         ORDER BY s.completedat DESC
         LIMIT 50
-    ");
+    ", [$uid, $min_hours]);
 
     $rows = '';
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $name     = $row['name'] ? htmlspecialchars_uni($row['name']) : '<em class="text-muted">Deleted torrent</em>';
         $seed_hours = $row['seedtime'] ? round($row['seedtime'] / 3600, 1) : 0;
         $required_hours = $min_hours;
@@ -2301,18 +2307,18 @@ function renderForumTab(): string
     $report_count = (int)($userdata['report_count'] ?? 0);
 	
     // Последние 10 постов
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT p.pid, p.tid, p.fid, p.subject, p.dateline, p.message,
                t.subject AS thread_subject, f.name AS forum_name
         FROM posts p
         LEFT JOIN threads t ON (p.tid = t.tid)
         LEFT JOIN forums  f ON (p.fid = f.fid)
-        WHERE p.uid = {$uid}
+        WHERE p.uid = ?
         ORDER BY p.dateline DESC
         LIMIT 10
-    ");
+    ", [$uid]);
     $posts_html = '';
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $thread = htmlspecialchars_uni($row['thread_subject'] ?: $row['subject']);
         $forum  = htmlspecialchars_uni($row['forum_name'] ?? '');
         $text   = mb_substr(strip_tags($row['message'] ?? ''), 0, 100);
@@ -2335,17 +2341,17 @@ function renderForumTab(): string
     if (!$posts_html) $posts_html = '<li class="list-group-item text-muted text-center py-3">No posts</li>';
 
     // Последние 10 тредов
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT t.tid, t.fid, t.subject, t.dateline, t.replies, t.views,
                f.name AS forum_name
         FROM threads t
         LEFT JOIN forums f ON (t.fid = f.fid)
-        WHERE t.uid = {$uid}
+        WHERE t.uid = ?
         ORDER BY t.dateline DESC
         LIMIT 10
-    ");
+    ", [$uid]);
     $threads_html = '';
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $subj  = htmlspecialchars_uni($row['subject']);
         $forum = htmlspecialchars_uni($row['forum_name'] ?? '');
         $date  = my_datee($dateformat, (int)$row['dateline']);
@@ -2427,41 +2433,41 @@ function buildChartData(int $uid, $db): array
     global $db;
 	
 	// Upload/Download по месяцам из snatched (последние 12 мес)
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT
             DATE_FORMAT(FROM_UNIXTIME(completedat), '%Y-%m') AS month,
             SUM(downloaded) AS dl,
             SUM(uploaded)   AS ul
         FROM snatched
-        WHERE userid = {$uid}
+        WHERE userid = ?
           AND completedat >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 12 MONTH))
           AND finished = 'yes'
         GROUP BY month
         ORDER BY month ASC
-    ");
+    ", [$uid]);
 
     $months = $dl_data = $ul_data = [];
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $months[]  = $row['month'];
         $dl_data[] = round((int)$row['dl'] / 1073741824, 2); // GB
         $ul_data[] = round((int)$row['ul'] / 1073741824, 2);
     }
 
     // Активность по дням (последние 30 дней из sitelog)
-    $q2 = $db->sql_query("
+    $q2 = $db->sql_query_prepared("
     SELECT
         DATE(FROM_UNIXTIME(completedat)) AS day,
         COUNT(*) AS events
     FROM snatched
-    WHERE userid = {$uid}
+    WHERE userid = ?
       AND completedat >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 30 DAY))
       AND completedat > 0
     GROUP BY day
     ORDER BY day ASC
-");
+", [$uid]);
 
     $days = $day_data = [];
-    while ($row = $db->fetch_array($q2)) {
+    while ($q2 && ($row = $db->fetch_array($q2))) {
         $days[]     = $row['day'];
         $day_data[] = (int)$row['events'];
     }
@@ -2489,8 +2495,8 @@ function renderQuickBanModal(bool $is_banned = false): string
     // Загружаем текущий бан если забанен
     $current_ban = null;
     if ($is_banned) {
-        $q = $db->simple_select('banned', '*', "uid='{$uid}'", ['limit' => 1]);
-        $current_ban = $db->fetch_array($q) ?: null;
+        $q = $db->sql_query_prepared("SELECT * FROM banned WHERE uid = ? LIMIT 1", [$uid]);
+        $current_ban = ($q ? $db->fetch_array($q) : null) ?: null;
     }
 
     $ban_times = fetch_ban_times();
@@ -2502,8 +2508,8 @@ function renderQuickBanModal(bool $is_banned = false): string
                   . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . "</option>";
     }
 
-    $q = $db->sql_query("SELECT gid, title FROM usergroups WHERE title LIKE '%banned%' OR title LIKE '%Banned%' LIMIT 1");
-    $banned_group = $db->fetch_array($q);
+    $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups WHERE title LIKE ? OR title LIKE ? LIMIT 1", ['%banned%', '%Banned%']);
+    $banned_group = $q ? $db->fetch_array($q) : null;
     $banned_gid   = $banned_group ? (int)$banned_group['gid'] : 0;
 
     $modal_title  = $is_banned ? 'Edit Ban: ' : 'Ban User: ';
@@ -2753,20 +2759,20 @@ function renderTorrentActivityTab(): string
     $uid = (int)$userdata['id'];
 
     // ── 1. Active peers ───────────────────────────────────────────────────────
-    $q = $db->sql_query("
+    $q = $db->sql_query_prepared("
         SELECT p.torrent, p.uploaded, p.downloaded, p.to_go,
                p.seeder, p.last_action, p.agent, p.ip, p.connectable,
                t.name, t.size, t.id AS tid
         FROM peers p
         LEFT JOIN torrents t ON t.id = p.torrent
-        WHERE p.userid = {$uid}
+        WHERE p.userid = ?
         ORDER BY p.last_action DESC
         LIMIT 50
-    ");
+    ", [$uid]);
 
     $peer_rows = '';
     $peer_count = 0;
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $peer_count++;
         $name      = htmlspecialchars($row['name'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
         $tid       = (int)$row['tid'];
@@ -2852,7 +2858,7 @@ function renderTorrentActivityTab(): string
     }
 
     // ── 2. Snatch history ─────────────────────────────────────────────────────
-    $q2 = $db->sql_query("
+    $q2 = $db->sql_query_prepared("
         SELECT s.torrentid, s.uploaded, s.downloaded, s.seeder,
                s.last_action, s.startdat, s.completedat,
                s.seedtime, s.leechtime, s.finished, s.agent,
@@ -2860,17 +2866,17 @@ function renderTorrentActivityTab(): string
                t.name, t.size, t.id AS tid
         FROM snatched s
         LEFT JOIN torrents t ON t.id = s.torrentid
-        WHERE s.userid = {$uid}
+        WHERE s.userid = ?
         ORDER BY s.last_action DESC
         LIMIT 100
-    ");
+    ", [$uid]);
 
     $snatch_rows = '';
     $snatch_count = 0;
     $total_ul = 0;
     $total_dl = 0;
 
-    while ($row = $db->fetch_array($q2)) {
+    while ($q2 && ($row = $db->fetch_array($q2))) {
         $snatch_count++;
         $total_ul += (int)$row['uploaded'];
         $total_dl += (int)$row['downloaded'];
@@ -2975,19 +2981,19 @@ function renderTorrentActivityTab(): string
     }
 
     // ── 3. Uploaded torrents ──────────────────────────────────────────────────
-    $q3 = $db->sql_query("
+    $q3 = $db->sql_query_prepared("
         SELECT id, name, size, added, seeders, leechers,
                times_completed, visible, banned, free, isnuked
         FROM torrents
-        WHERE owner = {$uid}
+        WHERE owner = ?
         ORDER BY added DESC
         LIMIT 100
-    ");
+    ", [$uid]);
 
     $upload_rows = '';
     $upload_count = 0;
 
-    while ($row = $db->fetch_array($q3)) {
+    while ($q3 && ($row = $db->fetch_array($q3))) {
         $upload_count++;
         $name    = htmlspecialchars($row['name'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
         $tid     = (int)$row['id'];
@@ -3119,7 +3125,7 @@ function renderReportsTab(): string
     $uid = (int)$userdata['id'];
 
     // ── Единый JOIN-запрос для отчётов ПРОТИВ пользователя ───────────────────
-    $q1 = $db->sql_query("
+    $q1 = $db->sql_query_prepared("
         SELECT r.*,
                u_by.username    AS reporter_username,
                u_rep.username   AS reported_username,
@@ -3130,13 +3136,13 @@ function renderReportsTab(): string
         LEFT JOIN users    u_rep   ON u_rep.id   = r.reported_user_id
         LEFT JOIN users    u_dealt ON u_dealt.id = r.dealtby
         LEFT JOIN torrents t       ON t.id        = r.reported_id AND r.type = 'torrent'
-        WHERE r.reported_user_id = {$uid}
+        WHERE r.reported_user_id = ?
         ORDER BY r.added DESC
         LIMIT 200
-    ");
+    ", [$uid]);
 
     // ── Единый JOIN-запрос для отчётов ОТ пользователя ────────────────────────
-    $q2 = $db->sql_query("
+    $q2 = $db->sql_query_prepared("
         SELECT r.*,
                u_by.username    AS reporter_username,
                u_rep.username   AS reported_username,
@@ -3147,10 +3153,10 @@ function renderReportsTab(): string
         LEFT JOIN users    u_rep   ON u_rep.id   = r.reported_user_id
         LEFT JOIN users    u_dealt ON u_dealt.id = r.dealtby
         LEFT JOIN torrents t       ON t.id        = r.reported_id AND r.type = 'torrent'
-        WHERE r.addedby = {$uid}
+        WHERE r.addedby = ?
         ORDER BY r.added DESC
         LIMIT 200
-    ");
+    ", [$uid]);
 
     // ── Построение одной строки таблицы (все данные уже в $row из JOIN) ───────
     $buildRow = function(array $row, bool $isIncoming) use ($BASEURL): string {
@@ -3263,7 +3269,7 @@ function renderReportsTab(): string
     $incoming_rows  = '';
     $incoming_open  = 0;
     $incoming_total = 0;
-    while ($row = $db->fetch_array($q1)) {
+    while ($q1 && ($row = $db->fetch_array($q1))) {
         $incoming_total++;
         if (!$row['dealtwith']) $incoming_open++;
         $incoming_rows .= $buildRow($row, true);
@@ -3272,7 +3278,7 @@ function renderReportsTab(): string
     $outgoing_rows  = '';
     $outgoing_open  = 0;
     $outgoing_total = 0;
-    while ($row = $db->fetch_array($q2)) {
+    while ($q2 && ($row = $db->fetch_array($q2))) {
         $outgoing_total++;
         if (!$row['dealtwith']) $outgoing_open++;
         $outgoing_rows .= $buildRow($row, false);
@@ -3338,23 +3344,24 @@ function buildInviteTree(int $rootUid, $db, string $BASEURL): string
     for ($depth = 0; $depth < $MAX_DEPTH; $depth++) {
         if (empty($currentLevelIds)) break;
 
-        $ids_sql = implode(',', array_map('intval', $currentLevelIds));
+        $ids = array_map('intval', $currentLevelIds);
+        $ids_ph = implode(',', array_fill(0, count($ids), '?'));
 
-        $q = $db->sql_query("
+        $q = $db->sql_query_prepared("
             SELECT u.id, u.username, u.enabled, u.warned, u.donor,
                    u.uploaded, u.downloaded, u.added,
                    i.inviter_id,
                    i.status AS invite_status
             FROM invites i
             JOIN users u ON u.id = i.invitee_id
-            WHERE i.inviter_id IN ({$ids_sql})
+            WHERE i.inviter_id IN ({$ids_ph})
               AND i.status = 'used'
             ORDER BY i.inviter_id, u.added ASC
-            LIMIT " . ($LIMIT_EACH * count($currentLevelIds)) . "
-        ");
+            LIMIT ?
+        ", [...$ids, $LIMIT_EACH * count($currentLevelIds)]);
 
         $nextLevelIds = [];
-        while ($row = $db->fetch_array($q)) {
+        while ($q && ($row = $db->fetch_array($q))) {
             $pid = (int)$row['inviter_id'];
             $childrenOf[$pid][] = $row;
             $nextLevelIds[] = (int)$row['id'];
@@ -3431,7 +3438,7 @@ function renderInvitesTab(): string
     $uid = (int)$userdata['id'];
 
     // ── Stats ─────────────────────────────────────────────────────────────────
-    $q_stats = $db->sql_query("
+    $q_stats = $db->sql_query_prepared("
         SELECT
             COUNT(*)                                          AS total,
             SUM(status = 'used')                              AS used,
@@ -3439,9 +3446,9 @@ function renderInvitesTab(): string
             SUM(status = 'expired')                           AS expired,
             SUM(status = 'revoked')                           AS revoked
         FROM invites
-        WHERE inviter_id = {$uid}
-    ");
-    $stats = $db->fetch_array($q_stats) ?: [];
+        WHERE inviter_id = ?
+    ", [$uid]);
+    $stats = ($q_stats ? $db->fetch_array($q_stats) : null) ?: [];
     $total   = (int)($stats['total']   ?? 0);
     $used    = (int)($stats['used']    ?? 0);
     $pending = (int)($stats['pending'] ?? 0);
@@ -3481,7 +3488,7 @@ function renderInvitesTab(): string
     </div>";
 
     // ── Sent invites table ────────────────────────────────────────────────────
-    $q_sent = $db->sql_query("
+    $q_sent = $db->sql_query_prepared("
         SELECT i.*,
                u.username   AS invitee_name,
                u.enabled    AS invitee_enabled,
@@ -3493,14 +3500,14 @@ function renderInvitesTab(): string
                u.donor      AS invitee_donor
         FROM invites i
         LEFT JOIN users u ON u.id = i.invitee_id
-        WHERE i.inviter_id = {$uid}
+        WHERE i.inviter_id = ?
         ORDER BY i.created_at DESC
         LIMIT 200
-    ");
+    ", [$uid]);
 
     $sent_rows = '';
     $sent_count = 0;
-    while ($row = $db->fetch_array($q_sent)) {
+    while ($q_sent && ($row = $db->fetch_array($q_sent))) {
         $sent_count++;
 
         // Status badge
@@ -3615,8 +3622,8 @@ function renderInvitesTab(): string
     $inviterSection = '';
     $invitedBy = (int)($userdata['invited_by'] ?? 0);
     if ($invitedBy) {
-        $iq = $db->sql_query("SELECT id, username, enabled, donor FROM users WHERE id = {$invitedBy} LIMIT 1");
-        if ($ir = $db->fetch_array($iq)) {
+        $iq = $db->sql_query_prepared("SELECT id, username, enabled, donor FROM users WHERE id = ? LIMIT 1", [$invitedBy]);
+        if ($iq && ($ir = $db->fetch_array($iq))) {
             $iname   = htmlspecialchars($ir['username'], ENT_QUOTES, 'UTF-8');
             $ibanned = $ir['enabled'] === 'no' ? "<span class='badge bg-danger ms-1'>Banned</span>" : '';
             $idonor  = $ir['donor']  === 'yes' ? "<span class='badge bg-info ms-1'>Donor</span>"   : '';
@@ -3743,8 +3750,8 @@ function handleEditUser(): void
 	echo renderSendPMModal();
 	
 	$uid_check = (int)$userdata['id'];
-    $q = $db->simple_select('banned', 'uid', "uid='{$uid_check}'", ['limit' => 1]);
-    $is_user_banned = $db->num_rows($q) > 0;
+    $q = $db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ? LIMIT 1", [$uid_check]);
+    $is_user_banned = $q && $db->num_rows($q) > 0;
     echo renderQuickBanModal($is_user_banned);
 	
 
@@ -4077,7 +4084,10 @@ function handleUpdateUser(): void
     }
     
     if (!empty($updateData)) {
-        $db->update_query("users", $updateData, "id = " . (int)$userdata['id']);
+        $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updateData)));
+        $params = array_values($updateData);
+        $params[] = (int)$userdata['id'];
+        $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
         write_log("User {$userdata['username']} ({$userdata['id']}) has been edited by {$CURUSER['username']}");
     }
 
@@ -4086,7 +4096,7 @@ function handleUpdateUser(): void
 	
 	// Сохраняем финальный modcomment отдельным запросом
     if (!empty($modcomment)) {
-        $db->update_query("users", ['modcomment' => $modcomment], "id = " . (int)$userdata['id']);
+        $db->sql_query_prepared("UPDATE users SET modcomment = ? WHERE id = ?", [$modcomment, (int)$userdata['id']]);
     }
 	
 
@@ -4178,7 +4188,8 @@ function processUserUpdateData(): array
     // Usergroup — требует отдельного, более высокого уровня прав, чем обычное редактирование юзера
     if (isset($_POST['usergroup']) && (int)$_POST['usergroup'] !== (int)$userdata['usergroup']) {
         $newGid = (int)$_POST['usergroup'];
-        $existingGroup = $db->fetch_array($db->simple_select('usergroups', 'gid, cansettingspanel, canstaffpanel, issupermod', "gid = {$newGid}", ['limit' => 1]));
+        $gq = $db->sql_query_prepared("SELECT gid, cansettingspanel, canstaffpanel, issupermod FROM usergroups WHERE gid = ? LIMIT 1", [$newGid]);
+        $existingGroup = $gq ? $db->fetch_array($gq) : null;
 
         $isElevatedTarget = $existingGroup && (
             $existingGroup['cansettingspanel'] == '1' ||
@@ -4263,33 +4274,40 @@ if (!empty($_POST['quick_ban'])) {
             ? 'Permanently'
             : ($ban_times_map[$ban_duration] ?? $ban_duration);
 
-        // Проверяем существующий бан
-        $existing = $db->simple_select('banned', 'uid', "uid='" . (int)$userdata['id'] . "'", ['limit' => 1]);
+        $eq = $db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ? LIMIT 1", [(int)$userdata['id']]);
+        $existing_banned = $eq && $db->num_rows($eq) > 0;
 
-        if ($db->num_rows($existing) > 0) {
+        if ($existing_banned) {
             // UPDATE — обновляем бан
-            $db->update_query('banned', [
-                'bantime'  => $db->escape_string($ban_duration === '---' ? '---' : $ban_duration),
-                'lifted'   => (string)$lifted,
-                'reason'   => $db->escape_string($ban_reason),
-                'admin'    => (int)$CURUSER['id'],
-                'dateline' => TIMENOW,
-            ], "uid='" . (int)$userdata['id'] . "'");
+            $db->sql_query_prepared(
+                "UPDATE banned SET bantime = ?, lifted = ?, reason = ?, admin = ?, dateline = ? WHERE uid = ?",
+                [
+                    $ban_duration === '---' ? '---' : $ban_duration,
+                    (string)$lifted,
+                    $ban_reason,
+                    (int)$CURUSER['id'],
+                    TIMENOW,
+                    (int)$userdata['id'],
+                ]
+            );
             modcomment("Ban updated ({$dur_label}). Reason: {$ban_reason}");
         } else {
             // INSERT — новый бан
-            $db->insert_query('banned', [
-                'uid'                 => (int)$userdata['id'],
-                'gid'                 => $banned_gid,
-                'oldgroup'            => (int)$userdata['usergroup'],
-                'oldadditionalgroups' => $db->escape_string($userdata['additionalgroups'] ?? ''),
-                'olddisplaygroup'     => (int)$userdata['displaygroup'],
-                'admin'               => (int)$CURUSER['id'],
-                'dateline'            => TIMENOW,
-                'bantime'             => $db->escape_string($ban_duration === '---' ? '---' : $ban_duration),
-                'lifted'              => (string)$lifted,
-                'reason'              => $db->escape_string($ban_reason),
-            ]);
+            $db->sql_query_prepared(
+                "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (int)$userdata['id'],
+                    $banned_gid,
+                    (int)$userdata['usergroup'],
+                    $userdata['additionalgroups'] ?? '',
+                    (int)$userdata['displaygroup'],
+                    (int)$CURUSER['id'],
+                    TIMENOW,
+                    $ban_duration === '---' ? '---' : $ban_duration,
+                    (string)$lifted,
+                    $ban_reason,
+                ]
+            );
             $updateData['usergroup'] = $banned_gid;
             modcomment("Banned ({$dur_label}). Reason: {$ban_reason}");
         }
@@ -4303,7 +4321,7 @@ if (!empty($_POST['quick_ban'])) {
 
     // FIX: Kill all sessions
     if (!empty($_POST['kill_sessions'])) {
-        $db->delete_query('sessions', 'uid = ' . (int)$userdata['id']);
+        $db->sql_query_prepared("DELETE FROM sessions WHERE uid = ?", [(int)$userdata['id']]);
         $modcomment = modcomment('All sessions killed');
         $updateData['modcomment'] = $modcomment;
         write_log("All sessions for user {$userdata['username']} ({$userdata['id']}) killed by {$CURUSER['username']}");
@@ -4357,7 +4375,10 @@ function updateUserPermissions(): void
             modcomment(ucfirst($field) . " changed from '{$oldVal}' to '{$newVal}'");
         }
     }
-    $db->update_query('users', $fields, 'id = ' . (int)$userid);
+    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($fields)));
+    $params = array_values($fields);
+    $params[] = (int)$userid;
+    $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
 }
 
 
@@ -4469,7 +4490,10 @@ function handleResetPasskey(): void
         $msg = sprintf($lang->modtask['passkeymsg'], $CURUSER['username']);
         $subject = $lang->modtask['passkeysubject'];
 
-        $db->sql_query('UPDATE users SET passkey = ' . $db->sqlesc($passkey) . ', modcomment = ' . $db->sqlesc($modcomment) . ' WHERE id = ' . $db->sqlesc($userdata['id']));
+        $db->sql_query_prepared(
+            "UPDATE users SET passkey = ?, modcomment = ? WHERE id = ?",
+            [$passkey, $modcomment, (int)$userdata['id']]
+        );
         insert_message($userid, $msg, $subject);
 
         write_log('Passkey for user: ' . $userdata['username'] . ' (' . $userdata['id'] . ') has been reset by ' . $CURUSER['username']);

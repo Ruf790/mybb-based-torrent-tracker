@@ -550,9 +550,9 @@ if ($action === 'copy') {
         $from = $mybb->get_input('from', MyBB::INPUT_INT);
         $to   = $mybb->get_input('to',   MyBB::INPUT_INT);
 
-        $query      = $db->simple_select('forums', '*', "fid='{$from}'");
-        $from_forum = $db->fetch_array($query);
-        if (!$db->num_rows($query)) $errors[] = 'error_invalid_source_forum';
+        $query      = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$from]);
+        $from_forum = $query ? $db->fetch_array($query) : null;
+        if (!$query || !$db->num_rows($query)) $errors[] = 'error_invalid_source_forum';
 
         if ($to === -1) {
             if (empty($mybb->input['title']))                               $errors[] = 'You need to give your new forum a name';
@@ -569,15 +569,20 @@ if ($action === 'copy') {
                 $new_forum['type']        = $mybb->input['type'];
                 $new_forum['pid']         = $pid;
                 $new_forum['parentlist']  = '';
-                $new_forum = array_map([$db, 'escape_string'], $new_forum);
 
-                $to = $db->insert_query('forums', $new_forum);
-                $db->update_query('forums', ['parentlist' => make_parent_list($to)], "fid='{$to}'");
+                $columns      = array_keys($new_forum);
+                $placeholders = implode(',', array_fill(0, count($columns), '?'));
+                $db->sql_query_prepared(
+                    "INSERT INTO forums (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                    array_values($new_forum)
+                );
+                $to = $db->insert_id();
+                $db->sql_query_prepared("UPDATE forums SET parentlist = ? WHERE fid = ?", [make_parent_list($to), $to]);
             }
         } elseif ($mybb->input['copyforumsettings'] == 1) {
-            $query    = $db->simple_select('forums', '*', "fid='{$to}'");
-            $to_forum = $db->fetch_array($query);
-            if (!$db->num_rows($query)) $errors[] = 'Invalid destination forum';
+            $query    = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$to]);
+            $to_forum = $query ? $db->fetch_array($query) : null;
+            if (!$query || !$db->num_rows($query)) $errors[] = 'Invalid destination forum';
 
             if (!$errors) {
                 $new_forum = array_diff_key($from_forum, array_flip([
@@ -588,8 +593,11 @@ if ($action === 'copy') {
                 $new_forum['description'] = $to_forum['description'];
                 $new_forum['pid']         = $to_forum['pid'];
                 $new_forum['parentlist']  = $to_forum['parentlist'];
-                $new_forum = array_map([$db, 'escape_string'], $new_forum);
-                $db->update_query('forums', $new_forum, "fid='{$to}'");
+
+                $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($new_forum)));
+                $params = array_values($new_forum);
+                $params[] = $to;
+                $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
             }
         } else {
             $new_forum['name'] = null;
@@ -597,14 +605,20 @@ if ($action === 'copy') {
 
         if (!$errors) {
             if (!empty($mybb->input['copygroups']) && is_array($mybb->input['copygroups'])) {
-                $groups = implode(',', array_map('intval', $mybb->input['copygroups']));
-                $query  = $db->simple_select('forumpermissions', '*', "fid='{$from}' AND gid IN ({$groups})");
-                $db->delete_query('forumpermissions', "fid='{$to}' AND gid IN ({$groups})", 1);
-                while ($p = $db->fetch_array($query)) {
+                $group_ids = array_map('intval', $mybb->input['copygroups']);
+                $ph = implode(',', array_fill(0, count($group_ids), '?'));
+                $query  = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ? AND gid IN ({$ph})", [$from, ...$group_ids]);
+                $db->sql_query_prepared("DELETE FROM forumpermissions WHERE fid = ? AND gid IN ({$ph})", [$to, ...$group_ids]);
+                while ($query && ($p = $db->fetch_array($query))) {
                     unset($p['pid']); $p['fid'] = $to;
-                    $db->insert_query('forumpermissions', $p);
+                    $columns      = array_keys($p);
+                    $placeholders = implode(',', array_fill(0, count($columns), '?'));
+                    $db->sql_query_prepared(
+                        "INSERT INTO forumpermissions (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                        array_values($p)
+                    );
                 }
-                log_admin_action($from, $from_forum['name'], $to, $new_forum['name'], $groups);
+                log_admin_action($from, $from_forum['name'], $to, $new_forum['name'], implode(',', $group_ids));
             } else {
                 log_admin_action($from, $from_forum['name'], $to, $new_forum['name']);
             }
@@ -643,8 +657,8 @@ if ($action === 'copy') {
     }
 
     $usergroupsZZ = [];
-    $q = $db->simple_select('usergroups', 'gid, title', "gid != '1'", ['order_by' => 'title']);
-    while ($ug = $db->fetch_array($q)) {
+    $q = $db->sql_query_prepared("SELECT gid, title FROM usergroups WHERE gid != '1' ORDER BY title");
+    while ($q && ($ug = $db->fetch_array($q))) {
         $usergroupsZZ[$ug['gid']] = htmlspecialchars_uni($ug['title']);
     }
 
@@ -807,8 +821,8 @@ if ($action === 'copy') {
 
 if($action == "editmod")
 {
-	$query = $db->simple_select("moderators", "*", "mid='".$mybb->get_input('mid', MyBB::INPUT_INT)."'");
-	$mod_data = $db->fetch_array($query);
+	$query = $db->sql_query_prepared("SELECT * FROM moderators WHERE mid = ?", [$mybb->get_input('mid', MyBB::INPUT_INT)]);
+	$mod_data = $query ? $db->fetch_array($query) : null;
 
 	if(!$mod_data['id'])
 	{
@@ -880,7 +894,11 @@ if($action == "editmod")
 
 			$plugins->run_hooks("admin_forum_management_editmod_commit");
 
-			$db->update_query("moderators", $update_array, "mid='".$mybb->get_input('mid', MyBB::INPUT_INT)."'");
+			$mid_input = $mybb->get_input('mid', MyBB::INPUT_INT);
+			$set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update_array)));
+			$params = array_values($update_array);
+			$params[] = $mid_input;
+			$db->sql_query_prepared("UPDATE moderators SET {$set} WHERE mid = ?", $params);
 
 			$cache->update_moderators();
 
@@ -894,13 +912,13 @@ if($action == "editmod")
 
 	if($mod_data['isgroup'])
 	{
-		$query = $db->simple_select("usergroups", "title", "gid='{$mod_data['id']}'");
-		$mod_data[$fieldname] = $db->fetch_field($query, 'title');
+		$query = $db->sql_query_prepared("SELECT title FROM usergroups WHERE gid = ?", [$mod_data['id']]);
+		$mod_data[$fieldname] = $query ? $db->fetch_field($query, 'title') : null;
 	}
 	else
 	{
-		$query = $db->simple_select("users", "username", "id='{$mod_data['id']}'");
-		$mod_data[$fieldname] = $db->fetch_field($query, 'username');
+		$query = $db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [$mod_data['id']]);
+		$mod_data[$fieldname] = $query ? $db->fetch_field($query, 'username') : null;
 	}
 
 	$sub_tabs = array();
@@ -1087,19 +1105,19 @@ if($action == "clear_permission")
 
 		if((!$fid || !$gid) && $pid)
 		{
-			$query = $db->simple_select("forumpermissions", "fid, gid", "pid='{$pid}'");
-			$result = $db->fetch_array($query);
+			$query = $db->sql_query_prepared("SELECT fid, gid FROM forumpermissions WHERE pid = ?", [$pid]);
+			$result = $query ? $db->fetch_array($query) : null;
 			$fid = $result['fid'];
 			$gid = $result['gid'];
 		}
 
 		if($pid)
 		{
-			$db->delete_query("forumpermissions", "pid='{$pid}'");
+			$db->sql_query_prepared("DELETE FROM forumpermissions WHERE pid = ?", [$pid]);
 		}
 		else
 		{
-			$db->delete_query("forumpermissions", "gid='{$gid}' AND fid='{$fid}'");
+			$db->sql_query_prepared("DELETE FROM forumpermissions WHERE gid = ? AND fid = ?", [$gid, $fid]);
 		}
 
 		$plugins->run_hooks('admin_forum_management_clear_permission_commit');
@@ -1138,8 +1156,8 @@ if ($action === 'permissions') {
         $forum = get_forum($fid, 1);
 
         if ((!$fid || !$gid) && $pid) {
-            $query  = $db->simple_select('forumpermissions', 'fid, gid', "pid='{$pid}'");
-            $result = $db->fetch_array($query);
+            $query  = $db->sql_query_prepared("SELECT fid, gid FROM forumpermissions WHERE pid = ?", [$pid]);
+            $result = $query ? $db->fetch_array($query) : null;
             $fid    = (int)$result['fid'];
             $gid    = (int)$result['gid'];
             $forum  = get_forum($fid, 1);
@@ -1154,7 +1172,7 @@ if ($action === 'permissions') {
             if (!str_contains($fname, 'can') && !str_contains($fname, 'mod')) {
                 continue;
             }
-            $update_array[$db->escape_string($fname)] = $input_perms !== null
+            $update_array[$fname] = $input_perms !== null
                 ? (int)($input_perms[$fname] ?? 0)
                 : 0;
         }
@@ -1162,13 +1180,21 @@ if ($action === 'permissions') {
         if ($fid && !$pid) {
             $update_array['fid'] = $fid;
             $update_array['gid'] = $gid;
-            $db->insert_query('forumpermissions', $update_array);
+            $columns      = array_keys($update_array);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO forumpermissions (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($update_array)
+            );
         }
 
         $plugins->run_hooks('admin_forum_management_permissions_commit');
 
         if (!($fid && !$pid)) {
-            $db->update_query('forumpermissions', $update_array, "pid='{$pid}'");
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update_array)));
+            $params = array_values($update_array);
+            $params[] = $pid;
+            $db->sql_query_prepared("UPDATE forumpermissions SET {$set} WHERE pid = ?", $params);
         }
 
         $cache->update_forumpermissions();
@@ -1209,8 +1235,8 @@ if ($action === 'permissions') {
             );
         } else {
             $pid_in = $mybb->get_input('pid', MyBB::INPUT_INT);
-            $query  = $db->simple_select('forumpermissions', 'fid', "pid='{$pid_in}'");
-            $mybb->input['fid'] = $db->fetch_field($query, 'fid');
+            $query  = $db->sql_query_prepared("SELECT fid FROM forumpermissions WHERE pid = ?", [$pid_in]);
+            $mybb->input['fid'] = $query ? $db->fetch_field($query, 'fid') : null;
 
             $sub_tabs['edit_permissions'] = [
                 'title'       => $lang->forum_management['forum_permissions'],
@@ -1309,14 +1335,16 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!empty($errors)) {
             fm_errors($errors);
             $permission_data = $mybb->input;
-            $usergroup = $db->fetch_array($db->simple_select('usergroups', '*', "gid='" . $db->escape_string($permission_data['gid']) . "'"));
-            $forum     = $db->fetch_array($db->simple_select('forums',  '*', "fid='" . $db->escape_string($permission_data['fid']) . "'"));
+            $ugq = $db->sql_query_prepared("SELECT * FROM usergroups WHERE gid = ?", [$permission_data['gid']]);
+            $usergroup = $ugq ? $db->fetch_array($ugq) : null;
+            $fq = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$permission_data['fid']]);
+            $forum = $fq ? $db->fetch_array($fq) : null;
         } else {
             $query = $pid
-                ? $db->simple_select('forumpermissions', '*', "pid='{$pid}'")
-                : $db->simple_select('forumpermissions', '*', "fid='{$fid}' AND gid='{$gid}'", ['limit' => 1]);
+                ? $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE pid = ?", [$pid])
+                : $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ? AND gid = ? LIMIT 1", [$fid, $gid]);
 
-            $permission_data = $db->fetch_array($query);
+            $permission_data = $query ? $db->fetch_array($query) : null;
 
             if (is_array($permission_data)) {
                 $fid = $fid ?: (int)$permission_data['fid'];
@@ -1324,12 +1352,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 $pid = $pid ?: (int)$permission_data['pid'];
             }
 
-            $usergroup   = $db->fetch_array($db->simple_select('usergroups', '*', "gid='{$gid}'"));
-            $forum       = $db->fetch_array($db->simple_select('forums',  '*', "fid='{$fid}'"));
-            $customperms = $db->fetch_array($db->simple_select(
-                'forumpermissions', '*',
-                build_parent_list($fid) . " AND gid='{$gid}'"
-            ));
+            $ugq2 = $db->sql_query_prepared("SELECT * FROM usergroups WHERE gid = ?", [$gid]);
+            $usergroup   = $ugq2 ? $db->fetch_array($ugq2) : null;
+            $fq2 = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$fid]);
+            $forum       = $fq2 ? $db->fetch_array($fq2) : null;
+            $cpq = $db->sql_query_prepared(
+                "SELECT * FROM forumpermissions WHERE " . build_parent_list($fid) . " AND gid = ?",
+                [$gid]
+            );
+            $customperms = $cpq ? $db->fetch_array($cpq) : null;
 
             if (!empty($permission_data['pid'])) {
                 $permission_data['usecustom'] = 1;
@@ -1514,10 +1545,10 @@ if ($action === 'add') {
         if (!$errors) {
             $pid = max(0, $pid);
             $insert = [
-                'name'             => $db->escape_string($mybb->input['title']),
-                'description'      => $db->escape_string($mybb->input['description']),
-                'linkto'           => $db->escape_string($mybb->input['linkto']),
-                'type'             => $db->escape_string($type),
+                'name'             => $mybb->input['title'],
+                'description'      => $mybb->input['description'],
+                'linkto'           => $mybb->input['linkto'],
+                'type'             => $type,
                 'pid'              => $pid,
                 'parentlist'       => '',
                 'disporder'        => $mybb->get_input('disporder',        MyBB::INPUT_INT),
@@ -1525,15 +1556,21 @@ if ($action === 'add') {
                 'open'             => $mybb->get_input('open',             MyBB::INPUT_INT),
                 'usepostcounts'    => $mybb->get_input('usepostcounts',    MyBB::INPUT_INT),
                 'usethreadcounts'  => $mybb->get_input('usethreadcounts',  MyBB::INPUT_INT),
-                'password'         => $db->escape_string($mybb->input['password']),
+                'password'         => $mybb->input['password'],
                 'defaultdatecut'   => $mybb->get_input('defaultdatecut',   MyBB::INPUT_INT),
-                'defaultsortby'    => $db->escape_string($mybb->input['defaultsortby']),
-                'defaultsortorder' => $db->escape_string($mybb->input['defaultsortorder']),
+                'defaultsortby'    => $mybb->input['defaultsortby'],
+                'defaultsortorder' => $mybb->input['defaultsortorder'],
             ];
 
             $plugins->run_hooks('admin_forum_management_add_start');
-            $fid = $db->insert_query('forums', $insert);
-            $db->update_query('forums', ['parentlist' => make_parent_list($fid)], "fid='{$fid}'");
+            $columns      = array_keys($insert);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO forums (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($insert)
+            );
+            $fid = $db->insert_id();
+            $db->sql_query_prepared("UPDATE forums SET parentlist = ? WHERE fid = ?", [make_parent_list($fid), $fid]);
             $cache->update_forums();
 
             $inherit = $mybb->input['default_permissions'] ?? [];
@@ -1662,8 +1699,8 @@ if ($action === 'add') {
     ];
     $ids = [];
 
-    $q = $db->simple_select('usergroups', '*', '', ['order' => 'name']);
-    while ($ug = $db->fetch_array($q)) $ugList[$ug['gid']] = $ug;
+    $q = $db->sql_query_prepared("SELECT * FROM usergroups");
+    while ($q && ($ug = $db->fetch_array($q))) $ugList[$ug['gid']] = $ug;
     ?>
 
     <div class="card mt-4">
@@ -1777,8 +1814,8 @@ if ($action === 'edit') {
         admin_redirect('index.php?act=management');
     }
     $fid   = $mybb->get_input('fid', MyBB::INPUT_INT);
-    $query = $db->simple_select('forums', '*', "fid='{$fid}'");
-    $forum_data = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$fid]);
+    $forum_data = $query ? $db->fetch_array($query) : null;
     if (!$forum_data) {
         flash_message($lang->forum_management['error_invalid_fid'], 'error');
         admin_redirect('index.php?act=management');
@@ -1794,48 +1831,54 @@ if ($action === 'edit') {
         $pid = $mybb->get_input('pid', MyBB::INPUT_INT);
         if ($pid === $fid)                   $errors[] = 'The forum parent cannot be the forum itself';
         else {
-            $parents = explode(',', $db->fetch_field($db->simple_select('forums','parentlist',"fid='{$pid}'"), 'parentlist'));
+            $plq = $db->sql_query_prepared("SELECT parentlist FROM forums WHERE fid = ?", [$pid]);
+            $parents = explode(',', $plq ? (string)$db->fetch_field($plq, 'parentlist') : '');
             if (in_array($fid, $parents))    $errors[] = 'Cannot set parent to a child forum';
         }
         $type = $mybb->input['type'];
         if ($pid <= 0 && $type === 'f')      $errors[] = 'You must select a parent forum';
         if ($type === 'c' && $forum_data['type'] === 'f') {
-            if ($db->fetch_field($db->simple_select('threads','COUNT(tid) as n',"fid='{$fid}'"), 'n') > 0)
+            $ctq = $db->sql_query_prepared("SELECT COUNT(tid) as n FROM threads WHERE fid = ?", [$fid]);
+            if (($ctq ? $db->fetch_field($ctq, 'n') : 0) > 0)
                 $errors[] = 'Forums with threads cannot be converted to categories';
         }
         if (!empty($mybb->input['linkto']) && empty($forum_data['linkto'])) {
-            if ($db->fetch_field($db->simple_select('threads','COUNT(tid) as n',"fid='{$fid}'",[]), 'n') > 0)
+            $ctq2 = $db->sql_query_prepared("SELECT COUNT(tid) as n FROM threads WHERE fid = ?", [$fid]);
+            if (($ctq2 ? $db->fetch_field($ctq2, 'n') : 0) > 0)
                 $errors[] = 'Forums with threads cannot be redirected';
         }
 
         if (!$errors) {
             $pid = max(0, $pid);
             $update = [
-                'name'             => $db->escape_string($mybb->input['title']),
-                'description'      => $db->escape_string($mybb->input['description']),
-                'linkto'           => $db->escape_string($mybb->input['linkto']),
-                'type'             => $db->escape_string($type),
+                'name'             => $mybb->input['title'],
+                'description'      => $mybb->input['description'],
+                'linkto'           => $mybb->input['linkto'],
+                'type'             => $type,
                 'pid'              => $pid,
                 'disporder'        => $mybb->get_input('disporder',        MyBB::INPUT_INT),
                 'active'           => $mybb->get_input('active',           MyBB::INPUT_INT),
                 'open'             => $mybb->get_input('open',             MyBB::INPUT_INT),
                 'usepostcounts'    => $mybb->get_input('usepostcounts',    MyBB::INPUT_INT),
                 'usethreadcounts'  => $mybb->get_input('usethreadcounts',  MyBB::INPUT_INT),
-                'password'         => $db->escape_string($mybb->input['password']),
+                'password'         => $mybb->input['password'],
                 'defaultdatecut'   => $mybb->get_input('defaultdatecut',   MyBB::INPUT_INT),
-                'defaultsortby'    => $db->escape_string($mybb->input['defaultsortby']),
-                'defaultsortorder' => $db->escape_string($mybb->input['defaultsortorder']),
+                'defaultsortby'    => $mybb->input['defaultsortby'],
+                'defaultsortorder' => $mybb->input['defaultsortorder'],
             ];
-            $db->update_query('forums', $update, "fid='{$fid}'");
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+            $params = array_values($update);
+            $params[] = $fid;
+            $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
 
             if ($pid !== (int)$forum_data['pid']) {
-                $db->update_query('forums', ['parentlist' => make_parent_list($fid)], "fid='{$fid}'");
+                $db->sql_query_prepared("UPDATE forums SET parentlist = ? WHERE fid = ?", [make_parent_list($fid), $fid]);
                 $col = $db->type === 'pgsql' || $db->type === 'sqlite'
-                    ? "','||parentlist||',' LIKE '%,{$fid},%'"
-                    : "CONCAT(',',parentlist,',') LIKE '%,{$fid},%'";
-                $q2 = $db->simple_select('forums', 'fid', $col);
-                while ($ch = $db->fetch_array($q2)) {
-                    $db->update_query('forums', ['parentlist' => make_parent_list($ch['fid'])], "fid='{$ch['fid']}'");
+                    ? "','||parentlist||',' LIKE ?"
+                    : "CONCAT(',',parentlist,',') LIKE ?";
+                $q2 = $db->sql_query_prepared("SELECT fid FROM forums WHERE {$col}", ["%,{$fid},%"]);
+                while ($q2 && ($ch = $db->fetch_array($q2))) {
+                    $db->sql_query_prepared("UPDATE forums SET parentlist = ? WHERE fid = ?", [make_parent_list($ch['fid']), $ch['fid']]);
                 }
             }
 
@@ -1938,11 +1981,11 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
     $ids = [];
     $existing_permissions = [];
 
-    $q = $db->simple_select('forumpermissions', '*', "fid='{$fid}'");
-    while ($ex = $db->fetch_array($q)) $existing_permissions[$ex['gid']] = $ex;
+    $q = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ?", [$fid]);
+    while ($q && ($ex = $db->fetch_array($q))) $existing_permissions[$ex['gid']] = $ex;
 
-    $q = $db->simple_select('usergroups', '*', '', ['order_dir' => 'name']);
-    while ($ug = $db->fetch_array($q)) $ugList2[$ug['gid']] = $ug;
+    $q = $db->sql_query_prepared("SELECT * FROM usergroups");
+    while ($q && ($ug = $db->fetch_array($q))) $ugList2[$ug['gid']] = $ug;
     ?>
 
     <div class="card mt-4">
@@ -2079,8 +2122,8 @@ if($action == "deletemod")
 	$isgroup = $mybb->get_input('isgroup', MyBB::INPUT_INT);
 	$fid = $mybb->get_input('fid', MyBB::INPUT_INT);
 
-	$query = $db->simple_select("moderators", "*", "id='{$modid}' AND isgroup = '{$isgroup}' AND fid='{$fid}'");
-	$mod = $db->fetch_array($query);
+	$query = $db->sql_query_prepared("SELECT * FROM moderators WHERE id = ? AND isgroup = ? AND fid = ?", [$modid, $isgroup, $fid]);
+	$mod = $query ? $db->fetch_array($query) : null;
 
 	// Does the forum not exist?
 	if(!$mod)
@@ -2104,25 +2147,25 @@ if($action == "deletemod")
 		$mid = $mod['mid'];
 		if($mybb->input['isgroup'])
 		{
-			$query = $db->sql_query("
+			$query = $db->sql_query_prepared("
 				SELECT m.*, g.title
 				FROM moderators m
 				LEFT JOIN usergroups g ON (g.gid=m.id)
-				WHERE m.mid='{$mid}'
-			");
+				WHERE m.mid = ?
+			", [$mid]);
 		}
 		else
 		{
-			$query = $db->sql_query("
+			$query = $db->sql_query_prepared("
 				SELECT m.*, u.username, u.usergroup
 				FROM moderators m
 				LEFT JOIN users u ON (u.id=m.id)
-				WHERE m.mid='{$mid}'
-			");
+				WHERE m.mid = ?
+			", [$mid]);
 		}
-		$mod = $db->fetch_array($query);
+		$mod = $query ? $db->fetch_array($query) : null;
 
-		$db->delete_query("moderators", "mid='{$mid}'");
+		$db->sql_query_prepared("DELETE FROM moderators WHERE mid = ?", [$mid]);
 
 		$plugins->run_hooks("admin_forum_management_deletemod_commit");
 
@@ -2179,8 +2222,8 @@ if ($action === 'delete')
     }
 
     // Проверяем существование форума
-    $query = $db->simple_select('forums', '*', "fid='{$fid}'");
-    $forum = $db->fetch_array($query);
+    $query = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$fid]);
+    $forum = $query ? $db->fetch_array($query) : null;
 
     if (!$forum)
     {
@@ -2194,32 +2237,28 @@ if ($action === 'delete')
     // -------------------------------------------------
     // Ищем подфорумы
     // -------------------------------------------------
-    $delquery = '';
-    $fids = [];
+    $fids = [$fid];
 
     switch ($db->type)
     {
         case 'pgsql':
         case 'sqlite':
-            $query = $db->simple_select(
-                'forums',
-                '*',
-                "','||parentlist||',' LIKE '%,$fid,%'"
+            $query = $db->sql_query_prepared(
+                "SELECT * FROM forums WHERE ','||parentlist||',' LIKE ?",
+                ["%,{$fid},%"]
             );
             break;
 
         default:
-            $query = $db->simple_select(
-                'forums',
-                '*',
-                "CONCAT(',', parentlist, ',') LIKE '%,$fid,%'"
+            $query = $db->sql_query_prepared(
+                "SELECT * FROM forums WHERE CONCAT(',', parentlist, ',') LIKE ?",
+                ["%,{$fid},%"]
             );
     }
 
-    while ($subforum = $db->fetch_array($query))
+    while ($query && ($subforum = $db->fetch_array($query)))
     {
         $fids[] = (int)$subforum['fid'];
-        $delquery .= " OR fid='{$subforum['fid']}'";
     }
 
     // -------------------------------------------------
@@ -2229,13 +2268,13 @@ if ($action === 'delete')
     $moderation = new Moderation();
 
     // Удаляем ВСЕ темы сразу (без HTML-пагинации)
-    $query = $db->simple_select(
-        'threads',
-        'tid',
-        "fid='{$fid}' {$delquery}"
+    $fids_ph = implode(',', array_fill(0, count($fids), '?'));
+    $query = $db->sql_query_prepared(
+        "SELECT tid FROM threads WHERE fid IN ({$fids_ph})",
+        $fids
     );
 
-    while ($tid = $db->fetch_field($query, 'tid'))
+    while ($query && ($tid = $db->fetch_field($query, 'tid')))
     {
         $moderation->delete_thread((int)$tid);
     }
@@ -2243,33 +2282,16 @@ if ($action === 'delete')
     // -------------------------------------------------
     // Удаляем форум и подфорумы
     // -------------------------------------------------
-    $db->delete_query('forums', "fid='{$fid}'");
-
-    switch ($db->type)
-    {
-        case 'pgsql':
-        case 'sqlite':
-            $db->delete_query(
-                'forums',
-                "','||parentlist||',' LIKE '%,$fid,%'"
-            );
-            break;
-
-        default:
-            $db->delete_query(
-                'forums',
-                "CONCAT(',', parentlist, ',') LIKE '%,$fid,%'"
-            );
-    }
+    $db->sql_query_prepared("DELETE FROM forums WHERE fid IN ({$fids_ph})", $fids);
 
     // -------------------------------------------------
     // Чистим связанные таблицы
     // -------------------------------------------------
-    $db->delete_query('moderators', "fid='{$fid}' {$delquery}");
-    $db->delete_query('forumsubscriptions', "fid='{$fid}' {$delquery}");
-    $db->delete_query('forumpermissions', "fid='{$fid}' {$delquery}");
-    $db->delete_query('announcements', "type IN ('forum', 'global') AND fid='{$fid}' {$delquery}");
-    $db->delete_query('forumsread', "fid='{$fid}' {$delquery}");
+    $db->sql_query_prepared("DELETE FROM moderators WHERE fid IN ({$fids_ph})", $fids);
+    $db->sql_query_prepared("DELETE FROM forumsubscriptions WHERE fid IN ({$fids_ph})", $fids);
+    $db->sql_query_prepared("DELETE FROM forumpermissions WHERE fid IN ({$fids_ph})", $fids);
+    $db->sql_query_prepared("DELETE FROM announcements WHERE type IN ('forum', 'global') AND fid IN ({$fids_ph})", $fids);
+    $db->sql_query_prepared("DELETE FROM forumsread WHERE fid IN ({$fids_ph})", $fids);
 
     // -------------------------------------------------
     // Хуки, кеши, лог
@@ -2384,12 +2406,12 @@ if (!$action) {
             }
 
             if (!empty($newmod['id'])) {
-                $query = $db->simple_select('moderators', 'id',
-                    "id='{$newmod['id']}' AND fid='{$fid}' AND isgroup='{$isgroup}'",
-                    ['limit' => 1]
+                $query = $db->sql_query_prepared(
+                    "SELECT id FROM moderators WHERE id = ? AND fid = ? AND isgroup = ? LIMIT 1",
+                    [$newmod['id'], $fid, $isgroup]
                 );
 
-                if (!$db->num_rows($query)) {
+                if (!$query || !$db->num_rows($query)) {
                     $new_mod = [
                         'fid' => $fid, 'id' => $newmod['id'], 'isgroup' => $isgroup,
                         'caneditposts' => 1, 'cansoftdeleteposts' => 1, 'canrestoreposts' => 1,
@@ -2401,7 +2423,13 @@ if (!$action) {
                         'canpostclosedthreads' => 1, 'canmovetononmodforum' => 1, 'canusecustomtools' => 1,
                         'canmanageannouncements' => 1, 'canmanagereportedposts' => 1, 'canviewmodlog' => 1,
                     ];
-                    $mid = $db->insert_query('moderators', $new_mod);
+                    $columns      = array_keys($new_mod);
+                    $placeholders = implode(',', array_fill(0, count($columns), '?'));
+                    $db->sql_query_prepared(
+                        "INSERT INTO moderators (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                        array_values($new_mod)
+                    );
+                    $mid = $db->insert_id();
 
                     if (!$isgroup) {
                         $newmodgroups = $newmoduser['usergroup'] ?? '';
@@ -2412,7 +2440,7 @@ if (!$action) {
                         if (($groupperms['canmodcp'] ?? 0) != 1) {
                             $uid = $newmoduser['id'];
                             if (in_array((int)($newmoduser['usergroup'] ?? 0), [2, 5], true)) {
-                                $db->update_query('users', ['usergroup' => 6], "id='{$uid}'");
+                                $db->sql_query_prepared("UPDATE users SET usergroup = 6 WHERE id = ?", [$uid]);
                             } else {
                                 join_usergroup($uid, 6);
                             }
@@ -2440,7 +2468,7 @@ if (!$action) {
                 $disporders = $mybb->input['disporder'] ?? [];
                 if (!empty($disporders) && is_array($disporders)) {
                     foreach ($disporders as $update_fid => $order) {
-                        $db->update_query('forums', ['disporder' => (int)$order], "fid='" . (int)$update_fid . "'");
+                        $db->sql_query_prepared("UPDATE forums SET disporder = ? WHERE fid = ?", [(int)$order, (int)$update_fid]);
                     }
                     $plugins->run_hooks('admin_forum_management_start_disporder_commit');
                     $cache->update_forums();
@@ -2657,13 +2685,13 @@ if (!$action) {
 
     // ── Permissions tab ───────────────────────────────────────
     if ($fid && isset($forum_cache[$fid])) {
-        $query = $db->simple_select('usergroups', '*', '', ['order' => 'name']);
+        $query = $db->sql_query_prepared("SELECT * FROM usergroups");
         $usergroups22 = [];
-        while ($ug = $db->fetch_array($query)) { $usergroups22[$ug['gid']] = $ug; }
+        while ($query && ($ug = $db->fetch_array($query))) { $usergroups22[$ug['gid']] = $ug; }
 
-        $query = $db->simple_select('forumpermissions', '*', "fid='{$fid}'");
+        $query = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ?", [$fid]);
         $existing_permissions = [];
-        while ($ep = $db->fetch_array($query)) { $existing_permissions[$ep['gid']] = $ep; }
+        while ($query && ($ep = $db->fetch_array($query))) { $existing_permissions[$ep['gid']] = $ep; }
 
         $cached_forum_perms = $cache->read('forumpermissions');
         $field_list  = ['canview'=>'Can view?','canpostthreads'=>'Can post threads?','canpostreplys'=>'Can post replies?','canpostpolls'=>'Can post polls?'];
@@ -2841,20 +2869,20 @@ if (!$action) {
             </div>';
 
         // ── Moderators tab ────────────────────────────────────
-        $query = $db->sql_query("
+        $query = $db->sql_query_prepared("
             SELECT m.mid, m.id, m.isgroup, u.username, g.title
             FROM moderators m
             LEFT JOIN users u ON (m.isgroup='0' AND m.id=u.id)
             LEFT JOIN usergroups g ON (m.isgroup='1' AND m.id=g.gid)
-            WHERE m.fid='{$fid}'
+            WHERE m.fid = ?
             ORDER BY m.isgroup DESC, u.username ASC, g.title ASC
-        ");
+        ", [$fid]);
         $current_moderators = [];
-        while ($mod = $db->fetch_array($query)) { $current_moderators[] = $mod; }
+        while ($query && ($mod = $db->fetch_array($query))) { $current_moderators[] = $mod; }
 
-        $query = $db->simple_select('usergroups', '*', '', ['order' => 'title']);
+        $query = $db->sql_query_prepared("SELECT * FROM usergroups ORDER BY title");
         $user_groups = [];
-        while ($group = $db->fetch_array($query)) { $user_groups[$group['gid']] = $group; }
+        while ($query && ($group = $db->fetch_array($query))) { $user_groups[$group['gid']] = $group; }
 
         echo '
             <div class="tab-pane fade" id="moderators" role="tabpanel">
@@ -3369,12 +3397,14 @@ function retrieve_single_permissions_row(int $gid, int $fid): string
 {
     global $cache, $db, $mybb;
 
-    $usergroup  = $db->fetch_array($db->simple_select('usergroups', '*', "gid='{$gid}'"));
-    $forum_data = $db->fetch_array($db->simple_select('forums', '*', "fid='{$fid}'"));
+    $ugq  = $db->sql_query_prepared("SELECT * FROM usergroups WHERE gid = ?", [$gid]);
+    $usergroup  = $ugq ? $db->fetch_array($ugq) : null;
+    $fq   = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$fid]);
+    $forum_data = $fq ? $db->fetch_array($fq) : null;
 
     $existing_permissions = [];
-    $q = $db->simple_select('forumpermissions', '*', "fid='{$fid}'");
-    while ($row = $db->fetch_array($q)) {
+    $q = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ?", [$fid]);
+    while ($q && ($row = $db->fetch_array($q))) {
         $existing_permissions[$row['gid']] = $row;
     }
 

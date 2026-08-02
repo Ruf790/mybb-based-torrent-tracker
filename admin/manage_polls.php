@@ -2,10 +2,33 @@
 // ============================================================
 //  POLL MANAGER
 // ============================================================
-define('PER_PAGE', 25);
+// Берём реальную настройку сайта, если она задана - иначе безопасный дефолт.
+$per_page = (int)($ts_perpage ?? 25);
+if ($per_page <= 0) $per_page = 25;
 
-if (!defined('IN_MYBB')) {
+if (!defined('STAFF_PANEL')) {
     die('Direct initialization of this file is not allowed.');
+}
+
+/**
+ * Экранирует только LIKE-wildcard'ы (%, _, \) — для bind-параметров.
+ */
+function mp_escape_like(string $value): string
+{
+    return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+}
+
+if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+    http_response_code(403);
+    die('You do not have permission to access this page.');
+}
+
+// global.php не стартует нативную PHP-сессию сама (та же история, что и в
+// member.php/report_captcha.php) — без этого $_SESSION['csrf'] не переживёт
+// между запросом формы и её отправкой, и все POST-действия ниже будут
+// постоянно валиться с "CSRF error" даже у легитимных запросов.
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
 $lang->load("polls");
@@ -62,29 +85,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // --- Poll: create ---
     if ($action === 'poll_create') {
         $errors = [];
-        $q      = trim($_POST['question'] ?? '');
-        $opts   = array_values(array_filter(array_map('trim', $_POST['options'] ?? []), fn($v) => $v !== ''));
-        $to     = max(0, (int)($_POST['timeout'] ?? 0));
-        $mo     = max(0, (int)($_POST['maxoptions'] ?? 0));
-        $cl     = !empty($_POST['closed'])   ? 1 : 0;
-        $mu     = !empty($_POST['multiple']) ? 1 : 0;
-        $pu     = !empty($_POST['public'])   ? 1 : 0;
+        $q          = trim($_POST['question'] ?? '');
+        $opts       = array_values(array_filter(array_map('trim', $_POST['options'] ?? []), fn($v) => $v !== ''));
+        $to         = max(0, (int)($_POST['timeout'] ?? 0));
+        $mo         = max(0, (int)($_POST['maxoptions'] ?? 0));
+        $cl         = !empty($_POST['closed'])   ? 1 : 0;
+        $mu         = !empty($_POST['multiple']) ? 1 : 0;
+        $pu         = !empty($_POST['public'])   ? 1 : 0;
+        $fid        = (int)($_POST['fid'] ?? 0);
+        $thread_title = trim($_POST['thread_title'] ?? '');
 
         if ($q === '') $errors[] = 'Enter a question.';
         if (my_strlen($q) > 200) $errors[] = 'Question cannot exceed 200 characters.';
         if (count($opts) < 2) $errors[] = 'Minimum 2 options required.';
         if (count($opts) > 20) $errors[] = 'Maximum 20 options allowed.';
+        if ($thread_title === '') $errors[] = 'Enter a thread title.';
+
+        $forum = $fid > 0 ? get_forum($fid) : null;
+        if (!$forum) $errors[] = 'Select a valid forum.';
 
         if (empty($errors)) {
-            $options_str = $db->escape_string(implode('||~|~||', $opts));
-            $votes_str = $db->escape_string(implode('||~|~||', array_fill(0, count($opts), '0')));
-            $question_esc = $db->escape_string($q);
-            
-            $db->sql_query("
-                INSERT INTO polls (tid, question, dateline, options, votes, numoptions, numvotes, timeout, closed, multiple, public, maxoptions)
-                VALUES (0, '{$question_esc}', " . TIME_NOW . ", '{$options_str}', '{$votes_str}', " . count($opts) . ", 0, {$to}, {$cl}, {$mu}, {$pu}, {$mo})
-            ");
-            flash_message('Poll created successfully.', 'success');
+            $options_str  = implode('||~|~||', $opts);
+            $votes_str    = implode('||~|~||', array_fill(0, count($opts), '0'));
+            $uid          = (int)$CURUSER['id'];
+
+            // 1) Опрос (tid проставим после создания треда)
+            $db->sql_query_prepared(
+                "INSERT INTO polls (tid, question, dateline, options, votes, numoptions, numvotes, timeout, closed, multiple, public, maxoptions)
+                VALUES (0, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
+                [$q, TIMENOW, $options_str, $votes_str, count($opts), $to, $cl, $mu, $pu, $mo]
+            );
+            $pollid = (int)$db->insert_id();
+
+            // 2) Тред (поля — точно как в post.php::insert_thread(), poll проставим отдельным UPDATE ниже)
+            $db->sql_query_prepared(
+                "INSERT INTO threads (fid, subject, uid, username, dateline, lastpost, lastposter, lastposteruid, views, replies, visible, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, '')",
+                [$fid, $thread_title, $uid, $CURUSER['username'], TIMENOW, TIMENOW, $CURUSER['username'], $uid]
+            );
+            $newtid = (int)$db->insert_id();
+
+            // 3) Первый пост треда (те же поля, что и post.php::insert_thread() для первого поста)
+            $message = '[b]' . $q . '[/b]' . "\n\nPlease vote in the poll above.";
+            $ip_bin = my_inet_pton(get_ip());
+            $db->sql_query_prepared(
+                "INSERT INTO posts (tid, fid, subject, uid, username, dateline, message, ipaddress, visible)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                [$newtid, $fid, $thread_title, $uid, $CURUSER['username'], TIMENOW, $message, $ip_bin]
+            );
+            $newpid = (int)$db->insert_id();
+
+            // 4) Замыкаем связи и пересчитываем счётчики
+            $db->sql_query_prepared("UPDATE threads SET firstpost = ?, poll = ? WHERE tid = ?", [$newpid, $pollid, $newtid]);
+            $db->sql_query_prepared("UPDATE polls SET tid = ? WHERE pid = ?", [$newtid, $pollid]);
+
+            update_forum_counters($fid, ['threads' => '+1', 'posts' => '+1']);
+            update_forum_lastpost($fid);
+            if (($forum['usepostcounts'] ?? 0) != 0) {
+                update_user_counters($uid, ['postnum' => '+1']);
+            }
+            if (($forum['usethreadcounts'] ?? 0) != 0) {
+                update_user_counters($uid, ['threadnum' => '+1']);
+            }
+
+            write_log("Poll created: #{$pollid} \"{$q}\" — new thread #{$newtid} in forum #{$fid} by {$CURUSER['username']}");
+            flash_message('Poll and thread created successfully.', 'success');
             header('Location: '.$_this_script_.'&p=polls'); 
             exit;
         }
@@ -116,25 +181,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (count($opts) < 2) $errors[] = 'Minimum 2 options required.';
 
         if (empty($errors)) {
-            $options_str = $db->escape_string(implode('||~|~||', $opts));
-            $votes_str = $db->escape_string(implode('||~|~||', $votes));
-            $question_esc = $db->escape_string($q);
+            $options_str = implode('||~|~||', $opts);
+            $votes_str = implode('||~|~||', $votes);
             $total_votes = array_sum($votes);
             
-            $db->sql_query("
-                UPDATE polls SET 
-                    question = '{$question_esc}',
-                    options = '{$options_str}',
-                    votes = '{$votes_str}',
-                    numoptions = " . count($opts) . ",
-                    numvotes = {$total_votes},
-                    timeout = {$to},
-                    closed = {$cl},
-                    multiple = {$mu},
-                    public = {$pu},
-                    maxoptions = {$mo}
-                WHERE pid = {$pid}
-            ");
+            $db->sql_query_prepared(
+                "UPDATE polls SET 
+                    question = ?,
+                    options = ?,
+                    votes = ?,
+                    numoptions = ?,
+                    numvotes = ?,
+                    timeout = ?,
+                    closed = ?,
+                    multiple = ?,
+                    public = ?,
+                    maxoptions = ?
+                WHERE pid = ?",
+                [$q, $options_str, $votes_str, count($opts), $total_votes, $to, $cl, $mu, $pu, $mo, $pid]
+            );
             flash_message('Changes saved.', 'success');
             header('Location: '.$_this_script_.'&p=poll_edit&pid=' . $pid); 
             exit;
@@ -147,10 +212,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // --- Poll: toggle ---
     if ($action === 'poll_toggle') {
         $pid = (int)($_POST['pid'] ?? 0);
-        $query = $db->sql_query("SELECT closed FROM polls WHERE pid = {$pid}");
-        $cur = (int)($db->fetch_field($query, 'closed'));
+        $query = $db->sql_query_prepared("SELECT closed FROM polls WHERE pid = ?", [$pid]);
+        $cur = $query ? (int)($db->fetch_field($query, 'closed')) : 0;
         $new_status = $cur ? 0 : 1;
-        $db->sql_query("UPDATE polls SET closed = {$new_status} WHERE pid = {$pid}");
+        $db->sql_query_prepared("UPDATE polls SET closed = ? WHERE pid = ?", [$new_status, $pid]);
         flash_message($cur ? 'Poll opened.' : 'Poll closed.', 'success');
         header('Location: '.$_this_script_.'&p=polls'); 
         exit;
@@ -161,21 +226,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pid = (int)($_POST['pid'] ?? 0);
         
         // Обновляем темы, где был этот полл
-        $db->sql_query("UPDATE threads SET poll = 0 WHERE poll = {$pid}");
+        $db->sql_query_prepared("UPDATE threads SET poll = 0 WHERE poll = ?", [$pid]);
         // Удаляем голоса
-        $db->sql_query("DELETE FROM pollvotes WHERE pid = {$pid}");
+        $db->sql_query_prepared("DELETE FROM pollvotes WHERE pid = ?", [$pid]);
         // Удаляем сам полл
-        $db->sql_query("DELETE FROM polls WHERE pid = {$pid}");
+        $db->sql_query_prepared("DELETE FROM polls WHERE pid = ?", [$pid]);
         
         flash_message('Poll #' . $pid . ' and all its votes deleted.', 'success');
         header('Location: '.$_this_script_.'&p=polls'); 
         exit;
     }
 
+    // --- Poll: bulk close ---
+    if ($action === 'poll_bulk_close') {
+        $pids = array_filter(array_map('intval', $_POST['pids'] ?? []));
+        if ($pids) {
+            $ph = implode(',', array_fill(0, count($pids), '?'));
+            $db->sql_query_prepared("UPDATE polls SET closed = 1 WHERE pid IN ({$ph})", $pids);
+            flash_message('Closed ' . count($pids) . ' poll(s).', 'success');
+        }
+        header('Location: '.$_this_script_.'&p=polls');
+        exit;
+    }
+
+    // --- Poll: bulk delete ---
+    if ($action === 'poll_bulk_delete') {
+        $pids = array_filter(array_map('intval', $_POST['pids'] ?? []));
+        if ($pids) {
+            $ph = implode(',', array_fill(0, count($pids), '?'));
+            // Та же последовательность, что и в одиночном poll_delete —
+            // отвязать треды, удалить голоса, удалить сами опросы
+            $db->sql_query_prepared("UPDATE threads SET poll = 0 WHERE poll IN ({$ph})", $pids);
+            $db->sql_query_prepared("DELETE FROM pollvotes WHERE pid IN ({$ph})", $pids);
+            $db->sql_query_prepared("DELETE FROM polls WHERE pid IN ({$ph})", $pids);
+            flash_message('Deleted ' . count($pids) . ' poll(s) and all their votes.', 'success');
+        }
+        header('Location: '.$_this_script_.'&p=polls');
+        exit;
+    }
+
     // --- Vote: delete single ---
     if ($action === 'vote_delete') {
         $vid = (int)($_POST['vid'] ?? 0);
-        $db->sql_query("DELETE FROM pollvotes WHERE vid = {$vid}");
+        $db->sql_query_prepared("DELETE FROM pollvotes WHERE vid = ?", [$vid]);
         flash_message('Vote #' . $vid . ' deleted.', 'success');
         $back = $_POST['back'] ?? '?p=votes';
         header('Location: ' . $back); 
@@ -186,11 +279,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'vote_bulk_delete') {
         $vids = array_filter(array_map('intval', $_POST['vids'] ?? []));
         if ($vids) {
-            $db->sql_query("DELETE FROM pollvotes WHERE vid IN (" . implode(',', $vids) . ")");
+            $ph = implode(',', array_fill(0, count($vids), '?'));
+            $db->sql_query_prepared("DELETE FROM pollvotes WHERE vid IN ({$ph})", $vids);
             flash_message('Deleted votes: ' . count($vids) . '.', 'success');
         }
         $back = $_POST['back'] ?? '?p=votes';
         header('Location: ' . $back); 
+        exit;
+    }
+
+    // --- Vote: delete all votes for a user ---
+    if ($action === 'vote_delete_user') {
+        $uid = (int)($_POST['uid'] ?? 0);
+        if ($uid > 0) {
+            $count_query = $db->sql_query_prepared("SELECT COUNT(*) FROM pollvotes WHERE uid = ?", [$uid]);
+            $count = $count_query ? (int)$db->fetch_field($count_query, 'COUNT(*)') : 0;
+            $db->sql_query_prepared("DELETE FROM pollvotes WHERE uid = ?", [$uid]);
+            flash_message('Deleted ' . $count . ' vote(s) for user #' . $uid . '.', 'success');
+        }
+        $back = $_POST['back'] ?? '?p=votes_by_user';
+        header('Location: ' . $back);
         exit;
     }
 }
@@ -201,13 +309,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ---- POLLS LIST ----
 if ($page === 'polls') {
-    $stats_query = $db->sql_query("SELECT COUNT(*) AS total, SUM(closed=0) AS open_c, SUM(closed=1) AS closed_c, SUM(numvotes) AS tvotes FROM polls");
-    $stats = $db->fetch_array($stats_query);
+    $stats_query = $db->sql_query_prepared("SELECT COUNT(*) AS total, SUM(closed=0) AS open_c, SUM(closed=1) AS closed_c, SUM(numvotes) AS tvotes FROM polls");
+    $stats = $stats_query ? $db->fetch_array($stats_query) : null;
 
     $where = '1';
+    $where_params = [];
     $search = trim($_GET['q'] ?? '');
     if ($search !== '') { 
-        $where .= " AND p.question LIKE '%" . $db->escape_string_like($search) . "%'"; 
+        $where .= " AND p.question LIKE ?"; 
+        $where_params[] = '%' . mp_escape_like($search) . '%';
     }
     $fs = $_GET['status'] ?? '';
     if ($fs === 'open') $where .= ' AND p.closed=0';
@@ -222,15 +332,15 @@ if ($page === 'polls') {
         $where .= ' AND t.tid IS NULL';
     }
 
-    $total_query = $db->sql_query("
+    $total_query = $db->sql_query_prepared("
         SELECT COUNT(*) FROM polls p 
         LEFT JOIN threads t ON (p.pid = t.poll)
         WHERE {$where}
-    ");
-    $total = (int)$db->fetch_field($total_query, 'COUNT(*)');
-    $pg = paginate($total, (int)($_GET['page'] ?? 1), PER_PAGE);
+    ", $where_params);
+    $total = $total_query ? (int)$db->fetch_field($total_query, 'COUNT(*)') : 0;
+    $pg = paginate($total, (int)($_GET['page'] ?? 1), $per_page);
 
-    $polls_query = $db->sql_query("
+    $polls_query = $db->sql_query_prepared("
         SELECT p.*, 
                (SELECT COUNT(*) FROM pollvotes v WHERE v.pid = p.pid) AS rv,
                t.subject AS thread_subject,
@@ -239,10 +349,10 @@ if ($page === 'polls') {
         LEFT JOIN threads t ON (p.pid = t.poll)
         WHERE {$where} 
         ORDER BY p.dateline DESC 
-        LIMIT {$pg['offset']}, {$pg['limit']}
-    ");
+        LIMIT ?, ?
+    ", [...$where_params, $pg['offset'], $pg['limit']]);
     $polls = [];
-    while ($row = $db->fetch_array($polls_query)) {
+    while ($polls_query && ($row = $db->fetch_array($polls_query))) {
         $polls[] = $row;
     }
 }
@@ -254,13 +364,21 @@ if ($page === 'poll_create') {
     unset($_SESSION['form_errors'], $_SESSION['form_data']);
     $opts_val = array_filter(array_map('trim', $form_data['options'] ?? ['', '']));
     if (empty($opts_val)) $opts_val = ['', ''];
+
+    // Список форумов для выбора, куда создать тред опроса (только реальные
+    // форумы, не категории — type='f', как и везде в остальном коде проекта)
+    $forums_list = [];
+    $forums_query = $db->sql_query_prepared("SELECT fid, name FROM forums WHERE type='f' AND active!=0 ORDER BY name ASC");
+    while ($forums_query && ($frow = $db->fetch_array($forums_query))) {
+        $forums_list[] = $frow;
+    }
 }
 
 // ---- POLL EDIT ----
 if ($page === 'poll_edit') {
     $pid = (int)($_GET['pid'] ?? 0);
-    $poll_query = $db->sql_query("SELECT * FROM polls WHERE pid = {$pid}");
-    $poll_row = $db->fetch_array($poll_query);
+    $poll_query = $db->sql_query_prepared("SELECT * FROM polls WHERE pid = ?", [$pid]);
+    $poll_row = $poll_query ? $db->fetch_array($poll_query) : null;
     if (!$poll_row) { 
         flash_message('Poll not found.', 'error'); 
         header('Location: ?p=polls'); 
@@ -275,40 +393,42 @@ if ($page === 'poll_edit') {
 // ---- VOTES ----
 if ($page === 'votes') {
     $vwhere = '1';
+    $vwhere_params = [];
     $vsearch = trim($_GET['q'] ?? '');
     if ($vsearch !== '') { 
-        $search_esc = $db->escape_string_like($vsearch);
-        $vwhere .= " AND (v.uid LIKE '%{$search_esc}%' OR v.ipaddress LIKE '%{$search_esc}%' OR p.question LIKE '%{$search_esc}%')"; 
+        $search_like = '%' . mp_escape_like($vsearch) . '%';
+        $vwhere .= " AND (v.uid LIKE ? OR v.ipaddress LIKE ? OR p.question LIKE ?)"; 
+        array_push($vwhere_params, $search_like, $search_like, $search_like);
     }
     $vpid = (int)($_GET['pid'] ?? 0);
-    if ($vpid) $vwhere .= " AND v.pid = {$vpid}";
+    if ($vpid) { $vwhere .= " AND v.pid = ?"; $vwhere_params[] = $vpid; }
     $vuid = (int)($_GET['uid'] ?? 0);
-    if ($vuid) $vwhere .= " AND v.uid = {$vuid}";
+    if ($vuid) { $vwhere .= " AND v.uid = ?"; $vwhere_params[] = $vuid; }
 
-    $total_query = $db->sql_query("
+    $total_query = $db->sql_query_prepared("
         SELECT COUNT(*) FROM pollvotes v 
         LEFT JOIN polls p ON p.pid = v.pid 
         WHERE {$vwhere}
-    ");
-    $vtotal = (int)$db->fetch_field($total_query, 'COUNT(*)');
-    $vpg = paginate($vtotal, (int)($_GET['page'] ?? 1), PER_PAGE);
+    ", $vwhere_params);
+    $vtotal = $total_query ? (int)$db->fetch_field($total_query, 'COUNT(*)') : 0;
+    $vpg = paginate($vtotal, (int)($_GET['page'] ?? 1), $per_page);
 
-    $votes_query = $db->sql_query("
+    $votes_query = $db->sql_query_prepared("
         SELECT v.*, p.question, p.options 
         FROM pollvotes v 
         LEFT JOIN polls p ON p.pid = v.pid 
         WHERE {$vwhere} 
         ORDER BY v.dateline DESC 
-        LIMIT {$vpg['offset']}, {$vpg['limit']}
-    ");
+        LIMIT ?, ?
+    ", [...$vwhere_params, $vpg['offset'], $vpg['limit']]);
     $votes = [];
-    while ($row = $db->fetch_array($votes_query)) {
+    while ($votes_query && ($row = $db->fetch_array($votes_query))) {
         $votes[] = $row;
     }
 
     $all_polls = [];
-    $all_polls_query = $db->sql_query("SELECT pid, question FROM polls ORDER BY dateline DESC");
-    while ($row = $db->fetch_array($all_polls_query)) {
+    $all_polls_query = $db->sql_query_prepared("SELECT pid, question FROM polls ORDER BY dateline DESC");
+    while ($all_polls_query && ($row = $db->fetch_array($all_polls_query))) {
         $all_polls[] = $row;
     }
 
@@ -316,15 +436,15 @@ if ($page === 'votes') {
     $poll_stats = null;
     $pd = null;
     if ($vpid) {
-        $pd_query = $db->sql_query("SELECT * FROM polls WHERE pid = {$vpid}");
-        $pd = $db->fetch_array($pd_query);
+        $pd_query = $db->sql_query_prepared("SELECT * FROM polls WHERE pid = ?", [$vpid]);
+        $pd = $pd_query ? $db->fetch_array($pd_query) : null;
         if ($pd) {
             $poll_stats = [];
             $options_arr = explode('||~|~||', $pd['options']);
             $ptot = 0;
             foreach ($options_arr as $i => $opt) {
-                $count_query = $db->sql_query("SELECT COUNT(*) FROM pollvotes WHERE pid = {$vpid} AND voteoption = " . ($i + 1));
-                $cnt = (int)$db->fetch_field($count_query, 'COUNT(*)');
+                $count_query = $db->sql_query_prepared("SELECT COUNT(*) FROM pollvotes WHERE pid = ? AND voteoption = ?", [$vpid, $i + 1]);
+                $cnt = $count_query ? (int)$db->fetch_field($count_query, 'COUNT(*)') : 0;
                 $poll_stats[] = ['label' => trim($opt), 'count' => $cnt];
                 $ptot += $cnt;
             }
@@ -335,15 +455,17 @@ if ($page === 'votes') {
 // ---- VOTES BY USER ----
 if ($page === 'votes_by_user') {
     $bwhere = '1';
+    $bwhere_params = [];
     $bsearch = trim($_GET['q'] ?? '');
     if ($bsearch !== '') { 
-        $search_esc = $db->escape_string_like($bsearch);
-        $bwhere .= " AND (v.uid LIKE '%{$search_esc}%' OR v.ipaddress LIKE '%{$search_esc}%')"; 
+        $search_like = '%' . mp_escape_like($bsearch) . '%';
+        $bwhere .= " AND (v.uid LIKE ? OR v.ipaddress LIKE ?)"; 
+        array_push($bwhere_params, $search_like, $search_like);
     }
     $buid = (int)($_GET['uid'] ?? 0);
-    if ($buid) $bwhere .= " AND v.uid = {$buid}";
+    if ($buid) { $bwhere .= " AND v.uid = ?"; $bwhere_params[] = $buid; }
 
-    $by_users_query = $db->sql_query("
+    $by_users_query = $db->sql_query_prepared("
     SELECT v.uid, 
            COUNT(*) AS vc, 
            COUNT(DISTINCT v.pid) AS pc,
@@ -354,23 +476,23 @@ if ($page === 'votes_by_user') {
     WHERE {$bwhere} 
     GROUP BY v.uid 
     ORDER BY lv DESC
-");
+", $bwhere_params);
 	
 	
     $by_users = [];
-    while ($row = $db->fetch_array($by_users_query)) {
+    while ($by_users_query && ($row = $db->fetch_array($by_users_query))) {
         $by_users[] = $row;
     }
 
     $user_detail = null;
     if ($buid && count($by_users) === 1) {
-        $detail_query = $db->sql_query("
+        $detail_query = $db->sql_query_prepared("
             SELECT v.*, p.question, p.options 
             FROM pollvotes v 
             LEFT JOIN polls p ON p.pid = v.pid 
-            WHERE v.uid = {$buid} 
+            WHERE v.uid = ? 
             ORDER BY v.dateline DESC
-        ");
+        ", [$buid]);
         $user_detail = [];
         while ($row = $db->fetch_array($detail_query)) {
             $user_detail[] = $row;
@@ -478,6 +600,11 @@ stdhead($title);
         <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
                 <tr>
+                    <th style="width: 34px">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="pollsSelectAll" onclick="togglePollsAll(this)">
+                        </div>
+                    </th>
                     <th style="width: 50px">#</th>
                     <th>Question</th>
                     <th style="width: 200px">Thread</th>
@@ -492,7 +619,7 @@ stdhead($title);
             <tbody>
             <?php if (!$polls): ?>
             <tr>
-                <td colspan="9" class="text-center text-muted py-5">
+                <td colspan="10" class="text-center text-muted py-5">
                     <i class="fas fa-inbox fa-3x mb-2 d-block opacity-25"></i>
                     No polls found
                 </td>
@@ -501,13 +628,18 @@ stdhead($title);
             <?php foreach ($polls as $p):
                 $exp_str = '∞';
                 if ((int)$p['timeout'] > 0) {
-                    $diff = ((int)$p['dateline'] + (int)$p['timeout'] * 86400) - TIME_NOW;
+                    $diff = ((int)$p['dateline'] + (int)$p['timeout'] * 86400) - TIMENOW;
                     if ($diff < 0) $exp_str = '<span class="badge bg-danger">Expired</span>';
                     elseif ($diff < 86400) $exp_str = '<span class="badge bg-warning">&lt;1d</span>';
                     else $exp_str = '<span class="badge bg-secondary">' . round($diff/86400) . 'd</span>';
                 }
             ?>
             <tr>
+                <td>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input pollCheckbox" type="checkbox" role="switch" name="pids[]" value="<?= (int)$p['pid'] ?>" form="bulkPollsForm">
+                    </div>
+                </td>
                 <td class="text-muted"><?= (int)$p['pid'] ?></td>
                 <td>
                     <div class="fw-semibold" style="max-width: 300px; overflow-wrap: break-word;"><?= h($p['question']) ?></div>
@@ -580,8 +712,17 @@ stdhead($title);
             </tbody>
         </table>
     </div>
+    <div class="card-footer bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="submitBulkPolls('poll_bulk_close')">
+                <i class="fas fa-lock me-1"></i>Close Selected
+            </button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="submitBulkPolls('poll_bulk_delete')">
+                <i class="fas fa-trash-alt me-1"></i>Delete Selected
+            </button>
+        </div>
     <?php if ($pg['pages'] > 1): ?>
-    <div class="card-footer bg-transparent d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-3">
         <small class="text-muted"><?= $pg['offset']+1 ?>–<?= min($pg['offset']+$pg['limit'], $total) ?> of <?= $total ?></small>
         <nav>
             <ul class="pagination pagination-sm mb-0">
@@ -595,6 +736,28 @@ stdhead($title);
     </div>
     <?php endif; ?>
 </div>
+
+<form method="post" id="bulkPollsForm">
+    <input type="hidden" name="csrf" value="<?= csrf() ?>">
+    <input type="hidden" name="action" id="bulkPollsAction" value="">
+</form>
+
+<script>
+function togglePollsAll(source) {
+    document.querySelectorAll('.pollCheckbox').forEach(cb => cb.checked = source.checked);
+}
+function submitBulkPolls(action) {
+    const checked = document.querySelectorAll('.pollCheckbox:checked');
+    if (checked.length === 0) {
+        alert('Select at least one poll first.');
+        return;
+    }
+    const label = action === 'poll_bulk_delete' ? 'delete' : 'close';
+    if (!confirm('Are you sure you want to ' + label + ' ' + checked.length + ' selected poll(s)?')) return;
+    document.getElementById('bulkPollsAction').value = action;
+    document.getElementById('bulkPollsForm').submit();
+}
+</script>
 
 <?php elseif ($page === 'poll_create'): ?>
 
@@ -620,7 +783,24 @@ stdhead($title);
             
             <div class="mb-4">
                 <label class="form-label fw-semibold">Question <span class="text-danger">*</span></label>
-                <input type="text" name="question" class="form-control form-control-lg" maxlength="200" required value="<?= h(trim($form_data['question'] ?? '')) ?>" placeholder="e.g., What is your favorite color?">
+                <input type="text" name="question" id="pollQuestion" class="form-control form-control-lg" maxlength="200" required value="<?= h(trim($form_data['question'] ?? '')) ?>" placeholder="e.g., What is your favorite color?">
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Forum <span class="text-danger">*</span></label>
+                    <select name="fid" class="form-select" required>
+                        <option value="">Select a forum…</option>
+                        <?php foreach ($forums_list as $f): ?>
+                        <option value="<?= (int)$f['fid'] ?>" <?= (int)($form_data['fid'] ?? 0) === (int)$f['fid'] ? 'selected' : '' ?>><?= h($f['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="form-text">A new thread hosting this poll will be created here.</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Thread Title <span class="text-danger">*</span></label>
+                    <input type="text" name="thread_title" id="threadTitle" class="form-control" maxlength="120" required value="<?= h(trim($form_data['thread_title'] ?? '')) ?>" placeholder="Auto-filled from question, editable">
+                </div>
             </div>
             
             <div class="mb-4">
@@ -681,6 +861,20 @@ stdhead($title);
 
 <script>
 let optionCount = document.querySelectorAll('.option-row').length;
+
+// Автозаполнение заголовка треда текстом вопроса — прекращается, как только
+// пользователь сам что-то введёт в поле заголовка вручную
+(function () {
+    const q = document.getElementById('pollQuestion');
+    const t = document.getElementById('threadTitle');
+    if (!q || !t) return;
+    let titleTouched = t.value !== '';
+    t.addEventListener('input', () => { titleTouched = true; });
+    q.addEventListener('input', () => {
+        if (!titleTouched) t.value = q.value.slice(0, 120);
+    });
+})();
+
 function addOption() {
     optionCount++;
     const div = document.createElement('div');
@@ -935,11 +1129,11 @@ function reindexOptions() {
                     <td><a href="<?php echo $_this_script_; ?>&p=votes&pid=<?= (int)$v['pid'] ?>" class="text-decoration-none">#<?= (int)$v['pid'] ?></a></td>
                     <td><a href="<?php echo $_this_script_; ?>&p=votes_by_user&uid=<?= (int)$v['uid'] ?>" class="badge bg-primary text-decoration-none"><?= (int)$v['uid'] ?></a></td>
                     <td><span class="badge bg-light text-dark">#<?= (int)$v['voteoption'] ?></span> <?= h(my_substr(opt_label($v['options'] ?? '', (int)$v['voteoption']), 0, 50)) ?></td>
-                    <td><code class="small"><?= $ipaddress ?></code></td>
+                    <td><code class="small"><?= h($ipaddress) ?></code></td>
                     <td class="text-muted small"><?= date('d.m.Y H:i:s', (int)$v['dateline']) ?></td>
                     <td>
                         <div class="btn-group btn-group-sm">
-                            <a href="<?php echo $_this_script_; ?>&p=votes&q=<?= $ipaddress ?>" class="btn btn-outline-secondary" title="Search IP">
+                            <a href="<?php echo $_this_script_; ?>&p=votes&q=<?= urlencode($ipaddress) ?>" class="btn btn-outline-secondary" title="Search IP">
                                 <i class="fas fa-search"></i>
                             </a>
                             <form method="post" class="d-inline" onsubmit="return confirm('Delete vote #<?= (int)$v['vid'] ?>?')">

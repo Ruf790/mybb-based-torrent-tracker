@@ -7,6 +7,11 @@ define('IN_ADMINCP', 1);
 $rootpath = './../';
 require_once $rootpath . 'global.php';
 
+if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+    http_response_code(403);
+    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
+}
+
 $id = (int)($_GET['id'] ?? 0);
 
 if (!$id) {
@@ -14,19 +19,22 @@ if (!$id) {
     exit;
 }
 
-$torrent = $db->fetch_array($db->simple_select('torrents', '*', "id = {$id}"));
+$torrentQuery = $db->sql_query_prepared("SELECT * FROM torrents WHERE id = ?", [$id]);
+$torrent = $torrentQuery ? $db->fetch_array($torrentQuery) : null;
 if (!$torrent) {
     echo '<div class="alert alert-danger">Torrent not found</div>';
     exit;
 }
 
-$uploader = $db->fetch_field($db->simple_select('users', 'username', "id = {$torrent['owner']}"), 'username') ?: 'Unknown';
-$category = $db->fetch_field($db->simple_select('categories', 'name', "id = {$torrent['category']}"), 'name') ?: 'Uncategorized';
+$uploaderQuery = $db->sql_query_prepared("SELECT username FROM users WHERE id = ?", [(int)$torrent['owner']]);
+$uploader = ($uploaderQuery ? $db->fetch_field($uploaderQuery, 'username') : null) ?: 'Unknown';
+$categoryQuery = $db->sql_query_prepared("SELECT name FROM categories WHERE id = ?", [(int)$torrent['category']]);
+$category = ($categoryQuery ? $db->fetch_field($categoryQuery, 'name') : null) ?: 'Uncategorized';
 
 // All categories for select
 $allCats = [];
-$catRes  = $db->sql_query("SELECT id, name FROM categories ORDER BY name ASC");
-while ($c = $db->fetch_array($catRes)) $allCats[] = $c;
+$catRes  = $db->sql_query_prepared("SELECT id, name FROM categories ORDER BY name ASC");
+while ($catRes && ($c = $db->fetch_array($catRes))) $allCats[] = $c;
 
 // Poster
 $posterImage = htmlspecialchars(

@@ -24,7 +24,7 @@ define('ANNOUNCEMENTS_MAX_CHARS', 5000);
 $parser = new postParser();
 
 $parser_options = [
-    'allow_html'     => 1,
+    'allow_html'     => 0,
     'allow_mycode'   => 1,
     'allow_smilies'  => 1,
     'allow_imgcode'  => 1,
@@ -185,16 +185,16 @@ function handleShowAction(): void
     stdhead('Announcements ' . B_VERSION);
 
 	
-	$res   = $db->sql_query("SELECT COUNT(id) AS cnt FROM announcements");
-    $total = (int) ($db->fetch_array($res)['cnt'] ?? 0);
+	$res   = $db->sql_query_prepared("SELECT COUNT(id) AS cnt FROM announcements");
+    $total = $res ? (int) ($db->fetch_array($res)['cnt'] ?? 0) : 0;
 	
     $page    = max(0, (int) ($_GET['page'] ?? 0));
     $offset  = $page * ANNOUNCEMENTS_PER_PAGE;
     $perPage = ANNOUNCEMENTS_PER_PAGE;
 
-    $res = $db->sql_query(
-        'SELECT * FROM announcements WHERE type = \'tracker\' ORDER BY added DESC'
-        . ' LIMIT ' . $offset . ', ' . $perPage
+    $res = $db->sql_query_prepared(
+        "SELECT * FROM announcements WHERE type = 'tracker' ORDER BY added DESC LIMIT ?, ?",
+        [$offset, $perPage]
     );
 
     $newUrl = $_SERVER['SCRIPT_NAME'] . '?act=announcements&action=add';
@@ -228,8 +228,8 @@ function handleShowAction(): void
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if ($db->num_rows($res) > 0): ?>
-                            <?php while ($row = mysqli_fetch_assoc($res)): ?>
+                        <?php if ($res && $db->num_rows($res) > 0): ?>
+                            <?php while ($row = $db->fetch_array($res)): ?>
                                 <?php renderAnnouncementRow($row); ?>
                             <?php endwhile; ?>
                         <?php else: ?>
@@ -348,17 +348,17 @@ function handleSeeAction(int $id): void
     }
 
     // Navigation neighbours
-    $prev = $db->fetch_array(
-        $db->sql_query('SELECT id, subject FROM announcements WHERE type = \'tracker\' AND id < ' . $id . ' ORDER BY id DESC LIMIT 1')
-    ) ?: null;
+    $prevQ = $db->sql_query_prepared("SELECT id, subject FROM announcements WHERE type = 'tracker' AND id < ? ORDER BY id DESC LIMIT 1", [$id]);
+    $prev = $prevQ ? ($db->fetch_array($prevQ) ?: null) : null;
 
-    $next = $db->fetch_array(
-        $db->sql_query('SELECT id, subject FROM announcements WHERE type = \'tracker\' AND id > ' . $id . ' ORDER BY id ASC LIMIT 1')
-    ) ?: null;
+    $nextQ = $db->sql_query_prepared("SELECT id, subject FROM announcements WHERE type = 'tracker' AND id > ? ORDER BY id ASC LIMIT 1", [$id]);
+    $next = $nextQ ? ($db->fetch_array($nextQ) ?: null) : null;
 
     // Position in list
-    $totalCount      = (int)$db->fetch_array($db->sql_query("SELECT COUNT(*) AS c FROM announcements WHERE type = 'tracker'"))['c'];
-    $currentPosition = (int)$db->fetch_array($db->sql_query("SELECT COUNT(*) AS c FROM announcements WHERE type = 'tracker' AND id <= " . (int)$id))['c'];
+    $totalQ = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM announcements WHERE type = 'tracker'");
+    $totalCount      = $totalQ ? (int)$db->fetch_array($totalQ)['c'] : 0;
+    $posQ = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM announcements WHERE type = 'tracker' AND id <= ?", [$id]);
+    $currentPosition = $posQ ? (int)$db->fetch_array($posQ)['c'] : 0;
 
     // Related announcements (keyword search, sanitised)
     $related = fetchRelatedAnnouncements($id, $current, $db);
@@ -418,21 +418,23 @@ function fetchRelatedAnnouncements(int $excludeId, array $current, object $db): 
         return [];
     }
 
-    $conditions = array_map(
-        static fn (string $kw): string =>
-            "subject LIKE '%" . $db->escape_string($kw) . "%'"
-            . " OR message LIKE '%" . $db->escape_string($kw) . "%'",
-        $keywords
-    );
+    $conditions = [];
+    $params     = [];
+    foreach ($keywords as $kw) {
+        $conditions[] = "subject LIKE ? OR message LIKE ?";
+        $like = '%' . $kw . '%';
+        $params[] = $like;
+        $params[] = $like;
+    }
 
     $sql = 'SELECT id, subject, added FROM announcements'
-         . ' WHERE type = \'tracker\' AND id != ' . $excludeId
+         . ' WHERE type = \'tracker\' AND id != ?'
          . ' AND (' . implode(' OR ', $conditions) . ')'
          . ' ORDER BY added DESC LIMIT 5';
 
-    $res     = $db->sql_query($sql);
+    $res     = $db->sql_query_prepared($sql, [$excludeId, ...$params]);
     $related = [];
-    while ($row = $db->fetch_array($res)) {
+    while ($res && ($row = $db->fetch_array($res))) {
         $related[] = $row;
     }
 
@@ -1160,13 +1162,10 @@ function handleAddAction(string $do): void
 
         $minclassValue = ($minclassread === '-') ? 0 : (int) $minclassread;
 
-        $db->insert_query('announcements', [
-            'subject'      => $subject,
-            'message'      => $message,
-            'minclassread' => $minclassValue,
-            'added'        => TIMENOW,
-			'type'         => 'tracker',
-        ]);
+        $db->sql_query_prepared(
+            "INSERT INTO announcements (`subject`,`message`,`minclassread`,`added`,`type`) VALUES (?,?,?,?,?)",
+            [$subject, $message, $minclassValue, TIMENOW, 'tracker']
+        );
 
         markUsersAsUnread($minclassValue, $db);
         redirect('admin/index.php?act=announcements', 'Announcement has been added successfully');
@@ -1198,14 +1197,10 @@ function handleEditAction(int $id, string $do): void
 
         $minclassValue = ($minclassread === '-') ? 0 : (int) $minclassread;
 
-        $db->sql_query(
-    'UPDATE announcements SET'
-    . ' subject = '      . $db->sqlesc($subject)
-    . ', message = '     . $db->sqlesc($message)
-    . ', minclassread = '. $db->sqlesc($minclassValue)
-    . ', updated = '     . TIMENOW
-    . ' WHERE type = \'tracker\' AND id = '     . $db->sqlesc($id)
-);
+        $db->sql_query_prepared(
+            "UPDATE announcements SET subject = ?, message = ?, minclassread = ?, updated = ? WHERE type = 'tracker' AND id = ?",
+            [$subject, $message, $minclassValue, TIMENOW, $id]
+        );
 
 
 
@@ -1240,7 +1235,7 @@ function handleDeleteAction(int $id): void
         redirect('admin/index.php?act=announcements', 'Deletion cancelled');
     }
 
-    $db->sql_query('DELETE FROM announcements WHERE type = \'tracker\' AND id = ' . $id);
+    $db->sql_query_prepared("DELETE FROM announcements WHERE type = 'tracker' AND id = ?", [$id]);
     redirect('admin/index.php?act=announcements', 'Announcement has been deleted');
 }
 
@@ -1291,13 +1286,10 @@ function handleDuplicateAction(int $id)
 
     $newSubject = buildCopySubject($original['subject'], $db);
 
-    $db->insert_query('announcements', [
-        'subject'      => $newSubject,
-        'message'      => $original['message'],
-        'minclassread' => $original['minclassread'],
-        'added'        => TIMENOW,
-		'type' =>       'tracker',
-    ]);
+    $db->sql_query_prepared(
+        "INSERT INTO announcements (`subject`,`message`,`minclassread`,`added`,`type`) VALUES (?,?,?,?,?)",
+        [$newSubject, $original['message'], $original['minclassread'], TIMENOW, 'tracker']
+    );
 
     $newId = $db->insert_id();
 
@@ -1321,8 +1313,8 @@ function handleDuplicateAction(int $id)
 function fetchAnnouncement(int $id): ?array
 {
     global $db;
-    $res = $db->sql_query('SELECT * FROM announcements WHERE type = \'tracker\' AND id = ' . $db->sqlesc($id));
-    $row = $db->fetch_array($res);
+    $res = $db->sql_query_prepared("SELECT * FROM announcements WHERE type = 'tracker' AND id = ?", [$id]);
+    $row = $res ? $db->fetch_array($res) : null;
     return $row ?: null;
 }
 
@@ -1333,7 +1325,11 @@ function fetchAnnouncement(int $id): ?array
 function markUsersAsUnread(int $minclass, object $db): void
 {
     $base = "UPDATE users SET announce_read = 'no' WHERE enabled = 'yes' AND ustatus = 'confirmed'";
-    $db->sql_query($minclass === 0 ? $base : $base . ' AND usergroup = ' . $minclass);
+    if ($minclass === 0) {
+        $db->sql_query_prepared($base);
+    } else {
+        $db->sql_query_prepared($base . " AND usergroup = ?", [$minclass]);
+    }
 }
 
 /**
@@ -1342,10 +1338,9 @@ function markUsersAsUnread(int $minclass, object $db): void
 function buildCopySubject(string $originalSubject, object $db): string
 {
     $base = 'Copy of ' . $originalSubject;
-    $row  = $db->fetch_array(
-        $db->sql_query("SELECT COUNT(*) AS c FROM announcements WHERE type = 'tracker' AND subject LIKE '" . $db->escape_string($base) . "%'")
-    );
-    return ((int) $row['c'] === 0) ? $base : $base . ' (' . ((int) $row['c'] + 1) . ')';
+    $q    = $db->sql_query_prepared("SELECT COUNT(*) AS c FROM announcements WHERE type = 'tracker' AND subject LIKE ?", [$base . '%']);
+    $row  = $q ? $db->fetch_array($q) : null;
+    return ((int) ($row['c'] ?? 0) === 0) ? $base : $base . ' (' . ((int) $row['c'] + 1) . ')';
 }
 
 /**

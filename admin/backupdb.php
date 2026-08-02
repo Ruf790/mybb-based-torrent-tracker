@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 
 
 // Disallow direct access to this file for security reasons
@@ -125,6 +126,11 @@ if($mybb->input['action'] == "dlbackup")
         redirect($_this_script_);
     }
 
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        flash_message('Invalid or expired link. Please try downloading again from this page.', 'error');
+        admin_redirect($_this_script_);
+    }
+
     $plugins->run_hooks("admin_tools_backupdb_dlbackup");
 
     $file = basename($mybb->input['file']);
@@ -177,6 +183,11 @@ if($mybb->input['action'] == "delete")
 
     if($mybb->request_method == "post")
     {
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            die('Invalid security token');
+        }
+
         $delete = @unlink(ADMIN_DIR.'backup/'.$file);
 
         if($delete)
@@ -243,6 +254,11 @@ if($mybb->input['action'] == "backup")
 
     if($mybb->request_method == "post")
     {
+        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+            http_response_code(403);
+            die('Invalid security token');
+        }
+
         if(empty($mybb->input['tables']) || !is_array($mybb->input['tables']))
         {
             flash_message('You did not select any tables to backup', 'error');
@@ -251,11 +267,11 @@ if($mybb->input['action'] == "backup")
 
         @set_time_limit(0);
 
-        // create an array with table prefix appended for checks, as full table names are accepted
+        // create an array for checks, as full table names are accepted
         $binary_fields_prefixed = array();
         foreach($mybb->binary_fields as $table => $fields)
         {
-            $binary_fields_prefixed[TABLE_PREFIX.$table] = $fields;
+            $binary_fields_prefixed[$table] = $fields;
         }
 
         if($mybb->input['method'] == 'disk')
@@ -297,7 +313,7 @@ if($mybb->input['action'] == "backup")
                 header('Content-Disposition: attachment; filename="'.$file.'.sql"');
             }
         }
-        $db->set_table_prefix('');
+        
 
         $time = date('dS F Y \a\t H:i', TIMENOW);
         $header = "-- {$SITENAME} Database Backup\n-- Generated: {$time}\n-- -------------------------------------\n\n";
@@ -342,7 +358,7 @@ if($mybb->input['action'] == "backup")
                 }
                 else
                 {
-                    $query = $db->simple_select($table);
+                    $query = $db->sql_query_prepared("SELECT * FROM {$table}");
                 }
 
                 while($row = $db->fetch_array($query))
@@ -394,7 +410,7 @@ if($mybb->input['action'] == "backup")
             }
         }
 
-        $db->set_table_prefix(TABLE_PREFIX);
+       
 
         if($mybb->input['method'] == 'disk')
         {
@@ -428,7 +444,7 @@ if($mybb->input['action'] == "backup")
             
 			
 			
-$file_from_admindir = $_this_script_ . '&action=dlbackup&amp;file=' . basename($file) . $ext;
+$file_from_admindir = $_this_script_ . '&action=dlbackup&amp;file=' . basename($file) . $ext . '&amp;my_post_key=' . $mybb->post_code;
 
 flash_message('
 <div class="d-flex align-items-start">
@@ -714,14 +730,14 @@ if(!$mybb->input['action'])
         $show_backup .= '<tr>
             <td>
                 <i class="fas fa-file-'.($backup['type'] == 'gz' ? 'archive text-warning' : 'alt text-info').' me-2"></i>
-                <a href="' . $_this_script_ . '&action=dlbackup&amp;file='.$backup['file'].'" class="text-decoration-none">
+                <a href="' . $_this_script_ . '&action=dlbackup&amp;file='.$backup['file'].'&amp;my_post_key='.$mybb->post_code.'" class="text-decoration-none">
                     '.$backup['file'].'
                 </a>
             </td>
             <td>'.$file_size.'</td>
             <td>'.$time.'</td>
             <td class="text-center">
-                <a href="' . $_this_script_ . '&action=dlbackup&amp;file='.$backup['file'].'" class="btn btn-sm btn-success me-1" title="Download">
+                <a href="' . $_this_script_ . '&action=dlbackup&amp;file='.$backup['file'].'&amp;my_post_key='.$mybb->post_code.'" class="btn btn-sm btn-success me-1" title="Download">
                     <i class="fas fa-download"></i>
                 </a>
                
@@ -758,10 +774,12 @@ if(!$mybb->input['action'])
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-times me-2"></i>Cancel
                 </button>
-                <a href="' . $_this_script_ . '&action=delete&amp;file='.$backup['file'].'&amp;my_post_key='.$mybb->post_code.'" 
-                   class="btn btn-danger">
-                    <i class="fas fa-trash me-2"></i>Delete Backup
-                </a>
+                <form method="post" action="' . $_this_script_ . '&action=delete&amp;file='.$backup['file'].'" class="d-inline">
+                    <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Delete Backup
+                    </button>
+                </form>
             </div>
         </div>
     </div>

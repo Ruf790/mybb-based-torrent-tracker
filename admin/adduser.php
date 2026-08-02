@@ -35,14 +35,14 @@ class UserRegistrationHandler
     {
         global $db;
         
-        $query = $db->sql_query(
+        $query = $db->sql_query_prepared(
             "SELECT gid, title FROM usergroups 
              WHERE isbannedgroup = '0' AND issupermod = '0' 
              AND cansettingspanel = '0' AND canstaffpanel = '0' 
              AND canuserdetails = '0' ORDER BY gid"
         );
         
-        while ($ug = $db->fetch_array($query)) {
+        while ($query && ($ug = $db->fetch_array($query))) {
             $this->allowed_usergroups[$ug['gid']] = $ug['title'];
         }
     }
@@ -362,16 +362,16 @@ class UserRegistrationHandler
 
         // Вставка пользователя с подготовленным запросом
         $user_insert_data = [
-            $db->escape_string($username),
+            $username,
             $user['password'],
             $user['salt'],
             $user['loginkey'],
             TIMENOW,
             'confirmed',
-            $db->escape_string($email),
+            $email,
             $usergroup,
             $additionalgroups,
-            $db->escape_string(gmdate('Y-m-d') . ' - ' . $modcomment),
+            gmdate('Y-m-d') . ' - ' . $modcomment,
             $seedbonus,
             $invites,
             $uploaded,
@@ -450,13 +450,11 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
 );
 		   
 		   
-		   $activationcode = random_str();
-           $db->insert_query('awaitingactivation', [
-                   'uid'      => $user_id,
-                   'dateline' => TIMENOW,
-                   'code'     => $activationcode,
-                   'type'     => 'r'
-           ]);
+           $activationcode = random_str();
+           $db->sql_query_prepared(
+               "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
+               [$user_id, TIMENOW, $activationcode, 'r']
+           );
 		   
 		   $cache->update_awaitingactivation();
 		   

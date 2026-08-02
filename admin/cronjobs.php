@@ -45,8 +45,8 @@ $cronid = (int)($_GET['cronid'] ?? $_POST['cronid'] ?? 0);
 // ── AJAX: load cron data for modal ────────────────────────────────────
 if ($act2 === 'get_cron_data' && is_valid_id($cronid)) {
     header('Content-Type: application/json');
-    $q = $db->sql_query("SELECT * FROM cron WHERE cronid='$cronid'");
-    if ($db->num_rows($q)) {
+    $q = $db->sql_query_prepared("SELECT * FROM cron WHERE cronid = ?", [$cronid]);
+    if ($q && $db->num_rows($q)) {
         $cron   = $db->fetch_array($q);
         $tarray = calc_cron_time((int)$cron['minutes']);
         echo json_encode([
@@ -80,8 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
         }
 
-        $filename    = $db->sqlesc($rawFilename);
-        $description = isset($_POST['description']) ? $db->sqlesc(trim($_POST['description'])) : "''";
+        $filename    = $rawFilename;
+        $description = trim($_POST['description'] ?? '');
 
         $mosecs = 31*24*60*60; $wsecs = 7*24*60*60; $dsecs = 24*60*60; $hsecs = 60*60; $msecs = 60;
         $minutes = 0;
@@ -96,10 +96,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($act2 === 'save_new') {
             $nextrun = TIMENOW + $minutes;
-            $db->sql_query("INSERT INTO cron (filename,description,minutes,nextrun,active,loglevel) VALUES ($filename,$description,'$minutes','$nextrun','$act2ive','$loglevel')");
+            $db->sql_query_prepared(
+                "INSERT INTO cron (filename,description,minutes,nextrun,active,loglevel) VALUES (?,?,?,?,?,?)",
+                [$filename, $description, $minutes, $nextrun, $act2ive, $loglevel]
+            );
             flash_message("New cron job created successfully!", "success");
         } else {
-            $db->sql_query("UPDATE cron SET filename=$filename, description=$description, minutes='$minutes', active='$act2ive', loglevel='$loglevel' WHERE cronid='$cronid'");
+            $db->sql_query_prepared(
+                "UPDATE cron SET filename=?, description=?, minutes=?, active=?, loglevel=? WHERE cronid=?",
+                [$filename, $description, $minutes, $act2ive, $loglevel, $cronid]
+            );
             flash_message("Cron job updated successfully!", "success");
         }
 
@@ -117,11 +123,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($act2, ['run', 'active', '
     }
 
     if ($act2 === 'run' && is_valid_id($cronid)) {
-        $db->sql_query("UPDATE cron SET nextrun='0' WHERE cronid='$cronid'");
+        $db->sql_query_prepared("UPDATE cron SET nextrun='0' WHERE cronid = ?", [$cronid]);
 
         // Fetch cron name for display
-        $cron_info_q = $db->sql_query("SELECT filename, description FROM cron WHERE cronid='$cronid'");
-        $cron_info   = $db->num_rows($cron_info_q) ? $db->fetch_array($cron_info_q) : [];
+        $cron_info_q = $db->sql_query_prepared("SELECT filename, description FROM cron WHERE cronid = ?", [$cronid]);
+        $cron_info   = ($cron_info_q && $db->num_rows($cron_info_q)) ? $db->fetch_array($cron_info_q) : [];
         $cron_fname  = htmlspecialchars($cron_info['filename']    ?? 'unknown');
         $cron_desc   = htmlspecialchars($cron_info['description'] ?? '');
 
@@ -161,14 +167,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($act2, ['run', 'active', '
 
     if (in_array($act2, ['active', 'disable']) && is_valid_id($cronid)) {
         $status = ($act2 === 'active') ? 1 : 0;
-        $db->sql_query("UPDATE cron SET active='$status' WHERE cronid='$cronid'");
+        $db->sql_query_prepared("UPDATE cron SET active = ? WHERE cronid = ?", [$status, $cronid]);
         flash_message("Cron job " . ($status ? "enabled" : "disabled") . " successfully!", "success");
         admin_redirect($_this_script_);
         exit();
     }
 
     if ($act2 === 'delete' && is_valid_id($cronid)) {
-        $db->sql_query("DELETE FROM cron WHERE cronid='$cronid'");
+        $db->sql_query_prepared("DELETE FROM cron WHERE cronid = ?", [$cronid]);
         flash_message("Cron job deleted successfully!", "success");
         admin_redirect($_this_script_);
         exit();
@@ -199,8 +205,8 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
                 <h5 class="mb-0 d-inline-block">Cron Jobs</h5>
                 <span class="badge bg-light text-dark ms-2">
                     <?php
-                    $count_result = $db->sql_query("SELECT COUNT(*) as total FROM cron");
-                    $count_row = $db->fetch_array($count_result);
+                    $count_result = $db->sql_query_prepared("SELECT COUNT(*) as total FROM cron");
+                    $count_row = $count_result ? $db->fetch_array($count_result) : null;
                     echo (int)($count_row['total'] ?? 0);
                     ?> jobs
                 </span>
@@ -211,7 +217,7 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
         </div>
         <div class="card-body table-responsive">
             <?php
-            $result = $db->sql_query("
+            $result = $db->sql_query_prepared("
     SELECT c.*,
            cl.runtime    AS last_runtime,
            cl.executetime AS last_executetime
@@ -222,7 +228,7 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
         )
     ORDER BY c.cronid
 ");
-            if ($db->num_rows($result) > 0):
+            if ($result && $db->num_rows($result) > 0):
             ?>
             <table class="table table-hover table-striped align-middle">
                 <thead class="table-dark">
@@ -325,8 +331,8 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
         </div>
         <div class="card-body table-responsive">
             <?php
-            $query = $db->sql_query('SELECT * FROM cron_log ORDER BY runtime DESC LIMIT 50');
-            if ($db->num_rows($query) > 0):
+            $query = $db->sql_query_prepared('SELECT * FROM cron_log ORDER BY runtime DESC LIMIT 50');
+            if ($query && $db->num_rows($query) > 0):
             ?>
             <table class="table table-sm table-hover table-striped">
                 <thead class="table-dark">

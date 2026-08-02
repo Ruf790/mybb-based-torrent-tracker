@@ -16,7 +16,7 @@ require_once(INC_PATH . '/class_parser.php');
 
 $parser = new postParser();
 $parser_options = [
-    'allow_html'       => 1,
+    'allow_html'       => 0,
     'allow_mycode'     => 1,
     'allow_smilies'    => 1,
     'allow_imgcode'    => 1,
@@ -290,7 +290,7 @@ function handleDeleteComment(int $report_id, array $report): never
 
     $comment_id = (int)$report['reported_id'];
 
-    $res          = $db->sql_query('SELECT torrent, user FROM comments WHERE id = ' . $db->escape_string($comment_id));
+    $res          = $db->sql_query_prepared('SELECT torrent, user FROM comments WHERE id = ?', [$comment_id]);
     $comment_data = $db->fetch_array($res);
 
     if (!$comment_data) {
@@ -311,9 +311,9 @@ function handleDeleteComment(int $report_id, array $report): never
     $db->delete_query('comments', 'id = ' . $comment_id);
 
     if ($torrent_id > 0 && $db->affected_rows() > 0) {
-        $db->sql_query('UPDATE torrents SET comments = IF(comments > 0, comments - 1, 0) WHERE id = ' . $db->escape_string($torrent_id));
+        $db->sql_query_prepared('UPDATE torrents SET comments = IF(comments > 0, comments - 1, 0) WHERE id = ?', [$torrent_id]);
         if ($user_id > 0) {
-            $db->sql_query('UPDATE users SET comms = IF(comms > 0, comms - 1, 0) WHERE id = ' . $db->escape_string($user_id));
+            $db->sql_query_prepared('UPDATE users SET comms = IF(comms > 0, comms - 1, 0) WHERE id = ?', [$user_id]);
         }
     }
 

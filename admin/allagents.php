@@ -1,21 +1,42 @@
-<?
+<?php
 
+if (!defined('STAFF_PANEL')) {
+    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+}
 
-  if (!defined ('STAFF_PANEL'))
-  {
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-  }
+define('AA_VERSION', '0.7');
 
-  define ('AA_VERSION', '0.5 by xam');
-  $do = $_POST['do'];
-  stdhead ('All Clients');
+// Process form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['do']) && $_POST['do'] === 'save') {
+    global $db;
+    
+    if (!verify_post_check($mybb->get_input('my_post_key'))) {
+        echo '<div class="alert alert-danger">Invalid security token. Please refresh the page.</div>';
+    } else {
+        $selected_clients = isset($_POST['client']) ? (array)$_POST['client'] : [];
+        $allowed_clients_string = implode(',', $selected_clients);
+        
+        // Update allowed_clients setting using prepared statement
+        $updateQuery = "UPDATE settings SET value = ? WHERE name = 'allowed_clients'";
+        $result = $db->sql_query_prepared($updateQuery, [$allowed_clients_string]);
+        
+        if ($result !== false) {
+            // Update the global variable
+            $GLOBALS['allowed_clients'] = $allowed_clients_string;
+            $add = true;
+        }
+    }
+}
 
- 
- 
- 
- 
- 
- 
+stdhead('All Clients');
+
+// Get current allowed clients
+$allowed_clients = explode(',', $allowed_clients);
+
+// Fetch all agents using prepared statement
+$query = "SELECT agent, peer_id FROM peers GROUP BY agent, peer_id";
+$result = $db->sql_query_prepared($query);
+
 print '
 <div class="container mt-4">
     <div class="card shadow-sm border-0">
@@ -28,6 +49,7 @@ print '
         <div class="card-body p-0">
             <form method="post" action="' . $_this_script_ . '" id="agentsForm">
                 <input type="hidden" name="do" value="save">
+                <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
                 
                 <div class="table-responsive">
                     <table class="table table-hover mb-0">
@@ -41,18 +63,17 @@ print '
                         <tbody class="table-group-divider">
 ';
 
-$allowed_clients = explode(',', $allowed_clients);
-$res2 = $db->sql_query('SELECT agent, peer_id FROM peers GROUP BY agent, peer_id');
 $agents_count = 0;
 
-while ($arr2 = mysqli_fetch_array($res2)) {
-    $userclient = substr(str_replace(' ', '', $arr2['peer_id']), 0, 8);
-    $allowed = in_array($userclient, $allowed_clients, true) ? 'checked' : '';
-    $agents_count++;
-    
-    $agent_class = $agents_count % 2 == 0 ? 'table-active' : '';
-    
-    print '
+if ($result !== false) {
+    while ($arr2 = $db->fetch_array($result)) {
+        $userclient = substr(str_replace(' ', '', $arr2['peer_id']), 0, 8);
+        $allowed = in_array($userclient, $allowed_clients, true) ? 'checked' : '';
+        $agents_count++;
+        
+        $agent_class = $agents_count % 2 == 0 ? 'table-active' : '';
+        
+        print '
                             <tr class="' . $agent_class . '">
                                 <td class="ps-4 py-3">
                                     <div class="d-flex align-items-center">
@@ -78,7 +99,8 @@ while ($arr2 = mysqli_fetch_array($res2)) {
                                     </div>
                                 </td>
                             </tr>
-    ';
+        ';
+    }
 }
 
 print '
@@ -107,7 +129,6 @@ print '
     </div>
 </div>
 
-
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const checkboxes = document.querySelectorAll("input[name=\'client[]\']");
@@ -122,7 +143,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
     
-    // Подтверждение перед сбросом
+    // Confirm before reset
     document.querySelector("button[type=\'reset\']").addEventListener("click", function(e) {
         if (!confirm("Are you sure you want to reset all changes?")) {
             e.preventDefault();
@@ -131,10 +152,6 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 ';
- 
- 
- 
-  
-  
-  stdfoot ();
+
+stdfoot();
 ?>

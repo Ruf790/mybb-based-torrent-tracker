@@ -39,14 +39,14 @@ $url = $_this_script_ . '&';
 if (($_SERVER['REQUEST_METHOD'] == 'POST' && (!empty($_POST['setanswered']) || !empty($_POST['delete'])))) {
     if (!empty($_POST['setanswered'])) {
         foreach ($_POST['setanswered'] as $set) {
-            $db->sql_query('UPDATE staffmessages SET answered = 1, answeredby = ' . $CURUSER['id'] . ' WHERE id = ' . $db->sqlesc($set));
+            $db->sql_query_prepared('UPDATE staffmessages SET answered = 1, answeredby = ? WHERE id = ?', [(int)$CURUSER['id'], (int)$set]);
         }
         unset($action);
     }
 
     if (!empty($_POST['delete'])) {
         foreach ($_POST['delete'] as $del) {
-            $db->sql_query('DELETE FROM staffmessages WHERE id = ' . $db->sqlesc($del));
+            $db->sql_query_prepared('DELETE FROM staffmessages WHERE id = ?', [(int)$del]);
         }
         unset($action);
     }
@@ -54,9 +54,9 @@ if (($_SERVER['REQUEST_METHOD'] == 'POST' && (!empty($_POST['setanswered']) || !
 
 if (!$action) {
     stdhead('Staff PM\'s');
-    ($res = $db->sql_query('SELECT count(id) FROM staffmessages'));
-    $row = mysqli_fetch_array($res);
-    $count = $row[0];
+    ($res = $db->sql_query_prepared('SELECT count(id) AS cnt FROM staffmessages'));
+    $row = $db->fetch_array($res);
+    $count = $row['cnt'];
     
     $threadcount = $count;
     $torrentsperpage = $torrentsperpage ?? 20;
@@ -120,7 +120,7 @@ if (!$action) {
                                     </thead>
                                     <tbody>';
         
-        $res = $db->sql_query('SELECT 
+        $res = $db->sql_query_prepared('SELECT 
             s.*, u.username, u.usergroup, g.namestyle,
             uu.username as username2, gg.namestyle as namestyle2
             FROM staffmessages s 
@@ -128,7 +128,7 @@ if (!$action) {
             LEFT JOIN usergroups g ON (u.usergroup=g.gid)
             LEFT JOIN users uu ON (uu.id=s.answeredby)
             LEFT JOIN usergroups gg ON (gg.gid=uu.usergroup)
-            ORDER BY s.id desc LIMIT '.$start.', ' . $perpage);
+            ORDER BY s.id desc LIMIT ?, ?', [(int)$start, (int)$perpage]);
         
         while ($arr = $db->fetch_array($res)) {
             if ($arr['answered']) {
@@ -206,18 +206,18 @@ if ($action == 'viewpm') {
     $pmid = (int)($_GET['pmid'] ?? 0);
     int_check($pmid, true);
     
-    $ress4 = $db->sql_query('SELECT s.*, u.username, g.namestyle 
+    $ress4 = $db->sql_query_prepared('SELECT s.*, u.username, g.namestyle 
         FROM staffmessages s 
         LEFT JOIN users u ON (s.answeredby=u.id) 
         LEFT JOIN usergroups g ON (u.usergroup=g.gid) 
-        WHERE s.id=' . $db->sqlesc($pmid));
+        WHERE s.id=?', [$pmid]);
     
     $arr4 = $db->fetch_array($ress4);
     $answeredby = $arr4['answeredby'];
     $senderr = $arr4['sender'] ?? '';
     
     if (is_valid_id($arr4['sender'])) {
-        $res2 = $db->sql_query('SELECT u.username,g.namestyle FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE u.id=' . $arr4['sender']);
+        $res2 = $db->sql_query_prepared('SELECT u.username,g.namestyle FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE u.id=?', [$arr4['sender']]);
         $arr2 = $db->fetch_array($res2);
         $sender = '<a href="' . $BASEURL . '/'.get_profile_link($senderr) . '" class="text-decoration-none">' . ($arr2['username'] ? get_user_color($arr2['username'], $arr2['namestyle']) : '[Deleted]') . '</a>';
     } else {
@@ -308,13 +308,13 @@ if ($action == 'viewanswer')
     $pmid = 0 + $_GET['pmid'];
     int_check ($pmid, true);
     
-	($ress4 = $db->sql_query ('SELECT s.*, u.username, g.namestyle FROM staffmessages s LEFT JOIN users u ON (s.answeredby=u.id) LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE s.id=' . $db->sqlesc ($pmid)));
+	($ress4 = $db->sql_query_prepared('SELECT s.*, u.username, g.namestyle FROM staffmessages s LEFT JOIN users u ON (s.answeredby=u.id) LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE s.id=?', [$pmid]));
     
 	$arr4 = $db->fetch_array ($ress4);
     $answeredby = $arr4['answeredby'];
     if (is_valid_id ($arr4['sender']))
     {
-      ($res2 = $db->sql_query ('SELECT u.username,g.namestyle FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE u.id=' . $arr4['sender']));
+      ($res2 = $db->sql_query_prepared('SELECT u.username,g.namestyle FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE u.id=?', [$arr4['sender']]));
       $arr2 = $db->fetch_array ($res2);
       $sender = '' . '<a href=' . $BASEURL . '/userdetails.php?id=' . $arr4['sender'] . '>' . ($arr2['username'] ? get_user_color ($arr2['username'], $arr2['namestyle']) : '[Deleted]') . '</a>';
     }
@@ -413,7 +413,6 @@ if ($action == 'answermessage')
             int_check($receiver, true);
             $userid = (int)$CURUSER['id'];
             $msg = trim($_POST['message']);
-            $message = $db->sqlesc($msg);
 
             if (!$msg)
             {
@@ -430,8 +429,8 @@ if ($action == 'answermessage')
 
             send_pm($pm, $userid, true);
 
-            $db->sql_query('UPDATE staffmessages SET answer='.$message.' WHERE id='.$db->sqlesc($answeringto));
-            $db->sql_query('UPDATE staffmessages SET answered=\'1\', answeredby='.$db->sqlesc($userid).' WHERE id='.$db->sqlesc($answeringto));
+            $db->sql_query_prepared('UPDATE staffmessages SET answer = ? WHERE id = ?', [$msg, $answeringto]);
+            $db->sql_query_prepared('UPDATE staffmessages SET answered = 1, answeredby = ? WHERE id = ?', [$userid, $answeringto]);
 
             header('Location: ' . $url . 'action=viewpm&pmid=' . $answeringto);
             exit();
@@ -442,9 +441,9 @@ if ($action == 'answermessage')
     $receiver = 0 + $_GET['receiver'];
     int_check(array($receiver, $answeringto), true);
 
-    $res = $db->sql_query('SELECT u.username, g.namestyle FROM users u 
+    $res = $db->sql_query_prepared('SELECT u.username, g.namestyle FROM users u 
                            LEFT JOIN usergroups g ON (u.usergroup=g.gid) 
-                           WHERE u.id=' . $db->sqlesc($receiver));
+                           WHERE u.id=?', [$receiver]);
     $user = $db->fetch_array($res);
 
     if (!$user)
@@ -452,7 +451,7 @@ if ($action == 'answermessage')
         stderr('Error', 'No user with that ID.');
     }
 
-    $res2 = $db->sql_query('SELECT * FROM staffmessages WHERE id=' . $db->sqlesc($answeringto));
+    $res2 = $db->sql_query_prepared('SELECT * FROM staffmessages WHERE id=?', [$answeringto]);
     $array = $db->fetch_array($res2);
 
     stdhead('Answer to Staff PM', false);
@@ -515,7 +514,7 @@ if ($action == 'deletestaffmessage')
 {
     $id = 0 + $_GET['id'];
     int_check ($id, true);
-    $db->sql_query ('DELETE FROM staffmessages WHERE id=' . $db->sqlesc ($id));
+    $db->sql_query_prepared('DELETE FROM staffmessages WHERE id=?', [$id]);
     header ('Location: ' . $url);
 }
 
@@ -523,7 +522,7 @@ if ($action == 'setanswered')
 {
     $id = 0 + $_GET['id'];
     int_check ($id, true);
-    ($db->sql_query ('' . 'UPDATE staffmessages SET answered=1, answeredby = ' . $CURUSER['id'] . ' WHERE id = ' . $db->sqlesc ($id)));
+    ($db->sql_query_prepared('UPDATE staffmessages SET answered=1, answeredby = ? WHERE id = ?', [(int)$CURUSER['id'], $id]));
     header ('Refresh: 0; url=' . $url . ('' . 'action=viewpm&pmid=' . $id));
 }
 
@@ -533,7 +532,7 @@ if ($action == 'takecontactanswered')
     {
       if (is_valid_id ($id))
       {
-        $db->sql_query ('UPDATE staffmessages SET answered = 1, answeredby = ' . $CURUSER['id'] . ' WHERE id = ' . $db->sqlesc ($id));
+        $db->sql_query_prepared('UPDATE staffmessages SET answered = 1, answeredby = ? WHERE id = ?', [(int)$CURUSER['id'], (int)$id]);
         continue;
       }
     }
@@ -568,4 +567,3 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 });
 </script>';
-

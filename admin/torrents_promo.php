@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 
 $promo_settings = [];
-$q = $db->sql_query("SELECT name, value FROM settings WHERE name IN (
+$q = $db->sql_query_prepared("SELECT name, value FROM settings WHERE name IN (
     'prorules','randomhalfleech','randomfree','randomtwoup','randomtwoupfree',
     'randomtwouphalfdown','randomthirtypercentdown','largesize','largepro',
     'expirehalfleech','expirefree','expiretwoup','expiretwoupfree',
@@ -101,10 +101,7 @@ function save_torrent_settings(): void
     ];
 
     foreach ($data as $name => $value) {
-        $n = $db->escape_string($name);
-        $v = $db->escape_string((string)$value);
-        $db->sql_query("UPDATE settings SET value='{$v}' WHERE name='{$n}'");
-        
+        $db->sql_query_prepared('UPDATE settings SET value = ? WHERE name = ?', [(string)$value, $name]);
     }
     
     rebuild_settings();

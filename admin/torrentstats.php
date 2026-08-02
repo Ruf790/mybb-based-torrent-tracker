@@ -1,15 +1,18 @@
 <?php
 
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger text-center"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
+}
 
 // Fetch categories
 $categories = [];
-$res = $db->sql_query("SELECT id, name FROM categories");
-while ($row = $db->fetch_array($res)) {
+$res = $db->sql_query_prepared("SELECT id, name FROM categories");
+while ($res && ($row = $db->fetch_array($res))) {
     $categories[(int)$row['id']] = $row['name'];
 }
 
 // Min/max date range
-$res = $db->sql_query("SELECT MIN(added) AS min_added, MAX(added) AS max_added FROM torrents WHERE visible='yes' AND banned='no'");
+$res = $db->sql_query_prepared("SELECT MIN(added) AS min_added, MAX(added) AS max_added FROM torrents WHERE visible='yes' AND banned='no'");
 $row = $db->fetch_array($res);
 $minDate = $row && $row['min_added'] ? date('Y-m-d', $row['min_added']) : date('Y-m-d');
 $maxDate = $row && $row['max_added'] ? date('Y-m-d', $row['max_added']) : date('Y-m-d');
@@ -18,6 +21,14 @@ $maxDate = $row && $row['max_added'] ? date('Y-m-d', $row['max_added']) : date('
 $group = $_GET['group'] ?? 'month';
 $fromDate = $_GET['from'] ?? $minDate;
 $toDate = $_GET['to'] ?? $maxDate;
+
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromDate) || strtotime($fromDate) === false) {
+    $fromDate = $minDate;
+}
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $toDate) || strtotime($toDate) === false) {
+    $toDate = $maxDate;
+}
+
 if ($fromDate < $minDate) $fromDate = $minDate;
 if ($toDate > $maxDate) $toDate = $maxDate;
 if ($toDate < $fromDate) $toDate = $fromDate;
@@ -33,21 +44,20 @@ switch ($group) {
 }
 
 // Chart 1: Torrents added over time
-$sql = "
-    SELECT FROM_UNIXTIME(added, '$format') AS time_group, COUNT(*) AS count
+$res = $db->sql_query_prepared("
+    SELECT FROM_UNIXTIME(added, '{$format}') AS time_group, COUNT(*) AS count
     FROM torrents
-    WHERE visible='yes' AND banned='no' AND added BETWEEN $fromTimestamp AND $toTimestamp
+    WHERE visible='yes' AND banned='no' AND added BETWEEN ? AND ?
     GROUP BY time_group ORDER BY time_group ASC
-";
-$res = $db->sql_query($sql);
+", [$fromTimestamp, $toTimestamp]);
 $timeLabels = $timeCounts = [];
-while ($row = $db->fetch_array($res)) {
+while ($res && ($row = $db->fetch_array($res))) {
     $timeLabels[] = $row['time_group'];
     $timeCounts[] = (int)$row['count'];
 }
 
 // Summary stats in range
-$sql = "
+$res = $db->sql_query_prepared("
     SELECT 
         COUNT(*) AS total,
         SUM(seeders) AS total_seeders,
@@ -55,9 +65,8 @@ $sql = "
         SUM(times_completed) AS total_completed,
         SUM(size) AS total_size
     FROM torrents
-    WHERE visible='yes' AND banned='no' AND added BETWEEN $fromTimestamp AND $toTimestamp
-";
-$res = $db->sql_query($sql);
+    WHERE visible='yes' AND banned='no' AND added BETWEEN ? AND ?
+", [$fromTimestamp, $toTimestamp]);
 $row = $db->fetch_array($res);
 $totalTorrentsInRange = (int)$row['total'];
 $totalSeeders = (int)$row['total_seeders'];

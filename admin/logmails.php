@@ -16,7 +16,7 @@ if (!defined('STAFF_PANEL')) {
 // Initialize parser
 $parser = new postParser();
 $parser_options = [
-    "allow_html" => 1,
+    "allow_html" => 0,
     "allow_mycode" => 1,
     "allow_smilies" => 1,
     "allow_imgcode" => 1,
@@ -63,7 +63,7 @@ function handleMailLogActions(): void
     }
     
     if (($_POST['clear'] ?? '') === 'yes') {
-        $db->sql_query('TRUNCATE TABLE maillogs');
+        $db->sql_query_prepared('TRUNCATE TABLE maillogs');
         showAlert('success', '<i class="fas fa-trash"></i> Log table has been completely cleared!');
         return;
     }
@@ -72,7 +72,7 @@ function handleMailLogActions(): void
         $log_ids = array_filter($_POST['logid'], 'is_numeric');
         if (!empty($log_ids)) {
             $ids = implode(', ', array_map('intval', $log_ids));
-            $db->sql_query("DELETE FROM maillogs WHERE mid IN ($ids)");
+            $db->sql_query_prepared("DELETE FROM maillogs WHERE mid IN ($ids)");
             $deleted = $db->affected_rows();
             showAlert('success', 
                 '<i class="fas fa-check-circle"></i> Successfully deleted ' . $deleted . ' ' . 
@@ -166,8 +166,8 @@ function getTotalMailCount(): int
 {
     global $db;
     
-    $res = $db->sql_query('SELECT COUNT(*) as total FROM maillogs');
-    $row = $db->fetch_array($res);
+    $res = $db->sql_query_prepared('SELECT COUNT(*) as total FROM maillogs');
+    $row = $res ? $db->fetch_array($res) : null;
     
     return (int)($row['total'] ?? 0);
 }
@@ -182,12 +182,12 @@ function getMailLogs(int $start, int $perpage): array
     $query = "SELECT mid, dateline, message, fromemail, toemail 
               FROM maillogs 
               ORDER BY dateline DESC 
-              LIMIT $start, $perpage";
+              LIMIT ?, ?";
     
-    $res = $db->sql_query($query);
+    $res = $db->sql_query_prepared($query, [$start, $perpage]);
     $logs = [];
     
-    while ($row = $db->fetch_array($res)) {
+    while ($res && ($row = $db->fetch_array($res))) {
         $logs[] = $row;
     }
     

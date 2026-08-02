@@ -118,29 +118,28 @@ class IPSearchManager
             return $results;
         }
         
-        // Escape binary data for SQL
-        $escapedBinary = $this->escapeBinary($ipBinary);
-        
         // Search in users table (registration IP) - using binary comparison
-        $query1 = $this->db->sql_query(
+        $query1 = $this->db->sql_query_prepared(
             "SELECT u.*, g.namestyle 
              FROM users u 
              LEFT JOIN usergroups g ON (u.usergroup = g.gid) 
-             WHERE u.regip = {$escapedBinary}"
+             WHERE u.regip = ?",
+            [$ipBinary]
         );
         
-        // Search in iplog table (login IP history)
-        // Assuming iplog.ip is also varbinary(16)
-        $query2 = $this->db->sql_query(
+        // Search in login_log table (login IP history).
+        // login_log.ip хранится как обычный varchar(45), не varbinary(16) -
+        // поэтому сюда идёт $ip (текстовый вид), а не $ipBinary.
+        $query2 = $this->db->sql_query_prepared(
             "SELECT DISTINCT u.*, g.namestyle 
-             FROM iplog i 
-             LEFT JOIN users u ON (i.userid = u.id) 
+             FROM login_log i 
+             LEFT JOIN users u ON (i.uid = u.id) 
              LEFT JOIN usergroups g ON (u.usergroup = g.gid) 
-             WHERE i.ip = " . $this->db->sqlesc($ip)
-             
+             WHERE i.ip = ?",
+            [$ip]
         );
         
-        if ($this->db->num_rows($query1) === 0 && $this->db->num_rows($query2) === 0) {
+        if (!$query1 || !$query2 || ($this->db->num_rows($query1) === 0 && $this->db->num_rows($query2) === 0)) {
             $results['error'] = 'No registered users found with this IP address.';
         } else {
             $results['users_table'] = $query1;
@@ -163,14 +162,28 @@ class IPSearchManager
     /**
      * Format date for display
      */
-    private function formatDateTime(string $dateTime, string $format = 'Y-m-d H:i:s'): string
+    private function formatDateTime(int|string|null $dateTime, string $format = 'Y-m-d H:i:s'): string
     {
-        if ($dateTime === '0000-00-00 00:00:00' || empty($dateTime)) {
+        if ($dateTime === null || $dateTime === '' || $dateTime === 0 || $dateTime === '0' || $dateTime === '0000-00-00 00:00:00') {
             return 'N/A';
         }
         
         try {
-            $date = new DateTime($dateTime);
+            // users.added/lastactive хранятся как unix-timestamp (int из
+            // sql_query_prepared через binary-протокол, либо числовая
+            // строка) - DateTime интерпретирует такое значение как
+            // timestamp только с явным префиксом '@', иначе пытается
+            // распарсить его как обычную дату и либо падает, либо даёт
+            // неверный результат.
+            $date = is_numeric($dateTime)
+                ? new DateTime('@' . $dateTime)
+                : new DateTime((string)$dateTime);
+
+            // DateTime('@timestamp') всегда создаётся в UTC независимо от
+            // конфигурации сервера - переключаем на таймзону приложения,
+            // иначе время разъедется с остальным интерфейсом.
+            $date->setTimezone(new DateTimeZone(date_default_timezone_get()));
+
             return $date->format($format);
         } catch (Exception $e) {
             return 'Invalid Date';
@@ -241,17 +254,25 @@ HTML;
         } else {
             require_once INC_PATH . '/functions_ratio.php';
             
-            while ($user = mysqli_fetch_assoc($query)) {
+            while ($user = $this->db->fetch_array($query)) {
+                // login_log логирует все попытки входа, включая неудачные
+                // (status='fail') - для такой записи LEFT JOIN к users не
+                // находит совпадения, и вся u.* часть строки будет NULL.
+                // Это не реальный аккаунт, показывать тут нечего - пропускаем.
+                if ($user['username'] === null) {
+                    continue;
+                }
+
                 $lastSeen = $this->formatDateTime($user['lastactive'], "$dateformat $timeformat");
                 $joinDate = $this->formatDateTime($user['added'], "$dateformat $timeformat");
                 
-                $usernameHtml = get_user_color($user['username'], $user['namestyle']);
-                $email = htmlspecialchars_uni($user['email']);
+                $usernameHtml = format_name((string)$user['username'], $user['usegroup'] ?? '');
+                $email = htmlspecialchars_uni($user['email'] ?? '');
                 $ip = $this->formatIpForDisplay($user);
-                $passkey = htmlspecialchars_uni($user['passkey']);
-                $uploaded = mksize($user['uploaded']);
-                $downloaded = mksize($user['downloaded']);
-                $ratio = get_user_ratio($user['uploaded'], $user['downloaded']);
+                $passkey = htmlspecialchars_uni($user['passkey'] ?? '');
+                $uploaded = mksize($user['uploaded'] ?? 0);
+                $downloaded = mksize($user['downloaded'] ?? 0);
+                $ratio = get_user_ratio($user['uploaded'] ?? 0, $user['downloaded'] ?? 0);
                 
                 $resetPasskeyUrl = "{$this->scriptUrl}&do=2&passkey=" . urlencode($passkey);
                 

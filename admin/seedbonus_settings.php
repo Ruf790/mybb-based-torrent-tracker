@@ -19,7 +19,7 @@ class SeedbonusSettings
     private function loadSettings(): void
     {
         global $db;
-        $q = $db->sql_query('SELECT setting_key, setting_value, setting_type FROM seedbonus_settings');
+        $q = $db->sql_query_prepared('SELECT setting_key, setting_value, setting_type FROM seedbonus_settings');
         while ($row = $db->fetch_array($q)) {
             $this->settings[$row['setting_key']] = $this->castValue($row['setting_value'], $row['setting_type']);
         }
@@ -49,19 +49,16 @@ class SeedbonusSettings
     public function saveSetting(string $key, mixed $value, string $type = 'string'): bool
     {
         global $db;
-        $value  = $this->prepareValue($value, $type);
-        $k      = $db->escape_string($key);
-        $v      = $db->escape_string($value);
-        $t      = $db->escape_string($type);
+        $value = $this->prepareValue($value, $type);
 
-        $result = $db->sql_query("
+        $result = $db->sql_query_prepared("
             INSERT INTO seedbonus_settings (setting_key, setting_value, setting_type)
-            VALUES ('{$k}', '{$v}', '{$t}')
+            VALUES (?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 setting_value = VALUES(setting_value),
                 setting_type  = VALUES(setting_type),
                 updated_at    = CURRENT_TIMESTAMP
-        ");
+        ", [$key, $value, $type]);
 
         if ($result) $this->settings[$key] = $this->castValue($value, $type);
         return (bool)$result;

@@ -69,7 +69,7 @@ if (!defined('STAFF_PANEL')) {
 stdhead('MySQL Server Statistics');
 
 // Fetch MySQL status
-$statusResult = $db->sql_query('SHOW STATUS');
+$statusResult = $db->sql_query_prepared('SHOW STATUS');
 if (!$statusResult) {
     stderr('Database Error', 'Unable to fetch MySQL status information.');
 }
@@ -81,9 +81,9 @@ while ($row = $db->fetch_array($statusResult)) {
 $db->free_result($statusResult);
 
 // Get server startup time
-$uptimeResult = $db->sql_query('SELECT UNIX_TIMESTAMP() - ' . (int)$serverStatus['Uptime']);
+$uptimeResult = $db->sql_query_prepared('SELECT UNIX_TIMESTAMP() - ? AS startup_time', [(int)($serverStatus['Uptime'] ?? 0)]);
 $startupRow = $db->fetch_array($uptimeResult);
-$startupTime = $startupRow[0] ?? time();
+$startupTime = $startupRow['startup_time'] ?? time();
 $db->free_result($uptimeResult);
 
 // Extract query statistics
@@ -348,7 +348,7 @@ foreach ($serverStatus as $name => $value) {
                                         <tr class="border-bottom">
                                             <td class="small text-muted"><?= htmlspecialchars(str_replace('_', ' ', $name)) ?></td>
                                             <td class="text-end fw-medium">
-                                                <span class="badge bg-light text-dark"><?= htmlspecialchars($value) ?></span>
+                                                <span class="badge bg-light text-dark"><?= htmlspecialchars((string)$value) ?></span>
                                             </td>
                                         </tr>
                                         <?php endforeach ?>

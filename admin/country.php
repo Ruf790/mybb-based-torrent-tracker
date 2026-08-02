@@ -24,13 +24,13 @@ class CountryManager
     
     private function getCountryData(int $id): array
     {
-        $query = $this->db->sql_query('SELECT * FROM countries WHERE id = ' . $this->db->sqlesc($id));
+        $query = $this->db->sql_query_prepared('SELECT * FROM countries WHERE id = ?', [$id]);
         
-        if ($this->db->num_rows($query) === 0) {
+        if (!$query || $this->db->num_rows($query) === 0) {
             stderr('Error', 'No country with this ID!');
         }
         
-        return mysqli_fetch_assoc($query);
+        return $this->db->fetch_array($query);
     }
     
     private function validateInput(array $data): void
@@ -158,12 +158,10 @@ class CountryManager
     {
         $this->validateInput(['name' => $name, 'flagpic' => $flagpic]);
         
-        $this->db->sql_query(sprintf(
-            "UPDATE countries SET name = %s, flagpic = %s WHERE id = %s",
-            $this->db->sqlesc($name),
-            $this->db->sqlesc($flagpic),
-            $this->db->sqlesc($id)
-        ));
+        $this->db->sql_query_prepared(
+            "UPDATE countries SET name = ?, flagpic = ? WHERE id = ?",
+            [$name, $flagpic, $id]
+        );
         
         redirect('admin/index.php?act=country&#c' . $id);
     }
@@ -206,7 +204,7 @@ class CountryManager
     
     private function deleteCountry(int $id): void
     {
-        $this->db->sql_query('DELETE FROM countries WHERE id = ' . $this->db->sqlesc($id) . ' LIMIT 1');
+        $this->db->sql_query_prepared('DELETE FROM countries WHERE id = ? LIMIT 1', [$id]);
         redirect('admin/index.php?act=country');
     }
     
@@ -296,11 +294,10 @@ class CountryManager
     {
         $this->validateInput(['name' => $name, 'flagpic' => $flagpic]);
         
-        $this->db->sql_query(sprintf(
-            "INSERT INTO countries (name, flagpic) VALUES (%s, %s)",
-            $this->db->sqlesc($name),
-            $this->db->sqlesc($flagpic)
-        ));
+        $this->db->sql_query_prepared(
+            "INSERT INTO countries (name, flagpic) VALUES (?, ?)",
+            [$name, $flagpic]
+        );
         
         $newId = $this->db->insert_id();
         redirect('admin/index.php?act=country&#c' . $newId);
@@ -342,8 +339,8 @@ class CountryManager
                             <tbody>
         HTML;
         
-        $query = $this->db->sql_query('SELECT * FROM countries ORDER BY name ASC');
-        while ($country = mysqli_fetch_assoc($query)) {
+        $query = $this->db->sql_query_prepared('SELECT * FROM countries ORDER BY name ASC');
+        while ($query && ($country = $this->db->fetch_array($query))) {
             $flagUrl = $this->baseUrl . '/' . $this->picBaseUrl . 'flag/' . $country['flagpic'];
             
             echo <<<HTML

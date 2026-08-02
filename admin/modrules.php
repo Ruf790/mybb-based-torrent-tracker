@@ -29,7 +29,7 @@ class RuleManager
     public function handleDelete(int $id): void
     {
         if ($id > 0) {
-            $this->db->delete_query('rules', "id='{$id}'");
+            $this->db->sql_query_prepared("DELETE FROM rules WHERE id = ?", [$id]);
             if (function_exists('flash_message')) {
                 flash_message($this->lang->modrules['deleted_success'] ?? 'Rule deleted successfully', 'success');
             }
@@ -50,19 +50,27 @@ class RuleManager
         $usergroups = $this->parseUsergroups($data['usergroups'] ?? []);
         
         $ruleData = [
-            "title"      => $this->db->escape_string($title),
-            "text"       => $this->db->escape_string($text),
-            "usergroups" => $this->db->escape_string($usergroups)
+            "title"      => $title,
+            "text"       => $text,
+            "usergroups" => $usergroups
         ];
         
         if ($id > 0) {
-            $this->db->update_query('rules', $ruleData, "id='{$id}'");
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($ruleData)));
+            $params = array_values($ruleData);
+            $params[] = $id;
+            $this->db->sql_query_prepared("UPDATE rules SET {$set} WHERE id = ?", $params);
             if (function_exists('flash_message')) {
                 flash_message($this->lang->modrules['updated_success'] ?? 'Rule updated successfully', 'success');
             }
         } else {
             $ruleData['created_at'] = TIMENOW;
-            $this->db->insert_query('rules', $ruleData);
+            $columns      = array_keys($ruleData);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $this->db->sql_query_prepared(
+                "INSERT INTO rules (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($ruleData)
+            );
             if (function_exists('flash_message')) {
                 flash_message($this->lang->modrules['created_success'] ?? 'Rule created successfully', 'success');
             }
@@ -91,9 +99,9 @@ class RuleManager
     public function getAllRules(): array
     {
         $rules = [];
-        $query = $this->db->simple_select('rules', '*', '', ['order_by' => 'id DESC']);
+        $query = $this->db->sql_query_prepared("SELECT * FROM rules ORDER BY id DESC");
         
-        while ($rule = $this->db->fetch_array($query)) {
+        while ($query && ($rule = $this->db->fetch_array($query))) {
             $rules[] = $rule;
         }
         
@@ -121,13 +129,13 @@ class RuleManager
 function getUsergroupsList($db): array
 {
     $groups = [];
-    $query = $db->simple_select('usergroups', 'gid, title, namestyle', "isbannedgroup != '1'");
+    $query = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups WHERE isbannedgroup != '1'");
     
-    while ($group = $db->fetch_array($query)) {
+    while ($query && ($group = $db->fetch_array($query))) {
         $groups[] = [
             'id'        => (int)$group['gid'],
             'title'     => $group['title'],
-            'namestyle' => get_user_color($group['title'], $group['namestyle'])
+            'namestyle' => format_name($group['title'], $group['namestyle'])
         ];
     }
     

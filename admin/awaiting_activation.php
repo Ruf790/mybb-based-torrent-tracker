@@ -1,9 +1,10 @@
 <?php
 
-
 declare(strict_types=1);
 
-
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger" role="alert"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
+}
 
 // Disallow direct access to this file for security reasons
 if (!defined("IN_MYBB")) {
@@ -24,7 +25,10 @@ foreach ($input_params as $input) {
 $plugins->run_hooks("admin_user_awaiting_activation_begin");
 
 if ($mybb->input['action'] == "activate" && $mybb->request_method == "post") {
-    verify_post_check($mybb->get_input('my_post_key'));
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        flash_message('Security check failed. Please try again.', 'error');
+        admin_redirect($_this_script_);
+    }
 
     $plugins->run_hooks("admin_user_awaiting_activation_activate");
 
@@ -44,7 +48,7 @@ function process_user_activation(): void
     global $mybb, $db, $lang, $cache, $plugins, $SITENAME, $BASEURL;
 
     $users = (array)$mybb->input['user'];
-    $user_ids = implode(", ", array_map('intval', $users));
+    $user_ids = array_map('intval', $users);
 
     if (empty($user_ids)) {
         flash_message($lang->user_awaiting_activation['no_users_selected'], 'error');
@@ -61,18 +65,26 @@ function process_user_activation(): void
 /**
  * Process user deletion
  */
-function process_user_deletion(string $user_ids): void
+function process_user_deletion(array $user_ids): void
 {
     global $db, $plugins;
 
     $num_deleted = 0;
     $users_to_delete = [];
 
-    $query = $db->simple_select("users", "id, ustatus", "id IN ({$user_ids})");
-    while ($user = $db->fetch_array($query)) {
-        if ($user['ustatus'] == 'pending') {
-            ++$num_deleted;
-            $users_to_delete[] = (int)$user['id'];
+    // Используем prepared statement с IN()
+    $placeholders = implode(',', array_fill(0, count($user_ids), '?'));
+    $query = $db->sql_query_prepared(
+        "SELECT id, ustatus FROM users WHERE id IN ({$placeholders})",
+        $user_ids
+    );
+
+    if ($query !== false) {
+        while ($user = $db->fetch_array($query)) {
+            if ($user['ustatus'] == 'pending') {
+                ++$num_deleted;
+                $users_to_delete[] = (int)$user['id'];
+            }
         }
     }
 
@@ -90,16 +102,24 @@ function process_user_deletion(string $user_ids): void
 /**
  * Process user activation
  */
-function process_user_activation_flow(string $user_ids): void
+function process_user_activation_flow(array $user_ids): void
 {
     global $db, $lang, $cache, $plugins, $SITENAME, $BASEURL;
 
     $num_activated = 0;
 
-    $query = $db->simple_select("users", "id, ustatus, username, email, usergroup", "id IN ({$user_ids})");
-    while ($user = $db->fetch_array($query)) {
-        ++$num_activated;
-        activate_single_user($user);
+    // Используем prepared statement с IN()
+    $placeholders = implode(',', array_fill(0, count($user_ids), '?'));
+    $query = $db->sql_query_prepared(
+        "SELECT id, ustatus, username, email, usergroup FROM users WHERE id IN ({$placeholders})",
+        $user_ids
+    );
+
+    if ($query !== false) {
+        while ($user = $db->fetch_array($query)) {
+            ++$num_activated;
+            activate_single_user($user);
+        }
     }
 
     $cache->update_awaitingactivation();
@@ -117,23 +137,33 @@ function activate_single_user(array $user): void
 
     $updated_user = [];
 
-    if ($user['coppauser']) {
-        $updated_user["coppauser"] = 0;
-    } else {
-        $db->delete_query("awaitingactivation", "uid='{$user['id']}'");
-    }
+    // Колонка coppauser больше не используется (удалена из БД) —
+    // просто снимаем запись из очереди подтверждения.
+    $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ?", [$user['id']]);
 
     if ($user['ustatus'] == 'pending') {
         $updated_user['ustatus'] = 'confirmed';
     }
 
     if (!empty($updated_user)) {
-        $db->update_query("users", $updated_user, "id='{$user['id']}'");
+        // Обновляем статус пользователя
+        $updates = [];
+        $params = [];
+        foreach ($updated_user as $field => $value) {
+            $updates[] = "$field = ?";
+            $params[] = $value;
+        }
+        $params[] = $user['id'];
+        
+        $db->sql_query_prepared(
+            "UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?",
+            $params
+        );
     }
 
     $message = sprintf(
         $lang->user_awaiting_activation['email_adminactivateaccount'],
-        $user['username'],
+        htmlspecialchars_uni($user['username']),
         $SITENAME,
         $BASEURL
     );
@@ -151,9 +181,13 @@ function display_awaiting_activation_page(): void
 
     $plugins->run_hooks("admin_user_awaiting_activation_start");
 
-    // Get user count
-    $query = $db->simple_select("users", "COUNT(*) AS users", "ustatus='pending'");
-    $user_count = (int)$db->fetch_field($query, "users");
+    // Get user count с использованием prepared statement
+    $query = $db->sql_query_prepared("SELECT COUNT(*) AS users FROM users WHERE ustatus = 'pending'");
+    $user_count = 0;
+    if ($query !== false) {
+        $row = $db->fetch_array($query);
+        $user_count = (int)($row['users'] ?? 0);
+    }
 
     // Pagination setup
     $perpage = max(20, (int)($threadsperpage2 ?? 20));
@@ -239,15 +273,17 @@ function render_user_table(int $start, int $perpage, int $user_count): void
 {
     global $db, $lang, $_this_script_, $mybb;
 
-    $query = $db->sql_query("
-        SELECT u.id, u.username, u.added, u.regip, u.lastactive, u.email,
-               a.type AS reg_type, a.validated
-        FROM users u
-        LEFT JOIN awaitingactivation a ON (a.uid = u.id)
-        WHERE u.ustatus = 'pending'
-        ORDER BY u.added DESC
-        LIMIT {$start}, {$perpage}
-    ");
+    // Используем prepared statement с LIMIT и OFFSET
+    $query = $db->sql_query_prepared(
+        "SELECT u.id, u.username, u.added, u.regip, u.lastactive, u.email,
+                a.type AS reg_type, a.validated
+         FROM users u
+         LEFT JOIN awaitingactivation a ON (a.uid = u.id)
+         WHERE u.ustatus = 'pending'
+         ORDER BY u.added DESC
+         LIMIT ? OFFSET ?",
+        [$perpage, $start]
+    );
 
     echo '
     <div class="container mt-3">
@@ -270,7 +306,7 @@ function render_user_table(int $start, int $perpage, int $user_count): void
                             </div>
                         </div>';
 
-    if ($db->num_rows($query) > 0) {
+    if ($query !== false && $db->num_rows($query) > 0) {
         render_users_table_content($query);
         render_action_buttons();
     } else {
@@ -288,7 +324,7 @@ function render_user_table(int $start, int $perpage, int $user_count): void
 /**
  * Render users table content
  */
-function render_users_table_content(mysqli_result $query): void
+function render_users_table_content(object $query): void
 {
     global $db, $lang;
 
@@ -380,8 +416,6 @@ function determine_user_type(array $user): string
 
     if (($user['reg_type'] == 'r' || $user['reg_type'] == 'b') && $user['validated'] == 0) {
         return 'Awaiting Email Activation';
-    } elseif ($user['coppauser'] == 1) {
-        return $lang->user_awaiting_activation['admin_activation_coppa'];
     } else {
         return $lang->user_awaiting_activation['administrator_activation'];
     }
@@ -408,7 +442,6 @@ function render_status_badge(string $type): string
 {
     $badge_class = match (true) {
         str_contains($type, 'Email') => 'bg-warning text-dark',
-        str_contains($type, 'COPPA') => 'bg-danger text-white',
         default => 'bg-info text-white'
     };
 

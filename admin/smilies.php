@@ -18,28 +18,23 @@ class SmilieManager
 		
 		$this->db = $db;
         $this->cache = $cache;
-		$this->smilieDir    = TSDIR . '/' . $pic_base_url . 'smilies';   // filesystem path
-		$this->smilieDirUrl = $BASEURL . '/' . $pic_base_url . 'smilies';  // URL for img src
+		$this->smilieDir    = TSDIR . '/' . $pic_base_url . 'smilies';
+		$this->smilieDirUrl = $BASEURL . '/' . $pic_base_url . 'smilies';
         $this->baseUrl = $_SERVER['PHP_SELF'] ?? 'index.php';
     }
     
     private function getUrl(string $action = '', array $params = []): string
     {
-        // Basic parameters
         $query = ['act' => 'smilies'];
         
-        // Add action if specified
         if ($action) {
             $query['action'] = $action;
         }
         
-        // Add additional parameters
         $query = array_merge($query, $params);
         
-        // Build URL
         $url = $this->baseUrl . '?' . http_build_query($query);
         
-        // Remove duplicate parameters if they already exist in $_this_script_
         if (isset($_this_script_)) {
             $url = $_this_script_;
             if (strpos($url, '?') === false) {
@@ -95,7 +90,6 @@ class SmilieManager
         $edit = $action === 'edit_smilie';
         $error = null;
         
-        // Fetch existing data for edit
         $data = $edit ? $this->getSmilie($sid) : [
             'stitle' => '',
             'stext' => '',
@@ -108,7 +102,6 @@ class SmilieManager
             return;
         }
         
-        // Handle POST
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $data = [
                 'stitle' => trim($_POST['stitle'] ?? ''),
@@ -128,24 +121,26 @@ class SmilieManager
             }
         }
         
-        // Render form
         $this->renderForm($data, $edit, $error, $sid);
     }
     
     private function getSmilie(int $sid): ?array
     {
-        $result = $this->db->sql_query("SELECT * FROM smilies WHERE sid = " . (int)$sid);
-        if ($this->db->num_rows($result) > 0) {
-            return mysqli_fetch_assoc($result);
+        $result = $this->db->sql_query_prepared("SELECT * FROM smilies WHERE sid = ?", [$sid]);
+        if ($result && $this->db->num_rows($result) > 0) {
+            return $this->db->fetch_array($result);
         }
         return null;
     }
     
     private function getNextOrder(): int
     {
-        $result = $this->db->sql_query("SELECT MAX(sorder) as max_order FROM smilies");
-        $row = mysqli_fetch_assoc($result);
-        return (int)($row['max_order'] ?? 0) + 10;
+        $result = $this->db->sql_query_prepared("SELECT MAX(sorder) as max_order FROM smilies");
+        if ($result) {
+            $row = $this->db->fetch_array($result);
+            return (int)($row['max_order'] ?? 0) + 10;
+        }
+        return 10;
     }
     
     private function validate(array $data, ?int $sid = null): array
@@ -176,14 +171,19 @@ class SmilieManager
             $errors[] = 'Order cannot be negative';
         }
         
-        // Check replacement text uniqueness
         if (!empty($data['stext'])) {
-            $query = "SELECT sid FROM smilies WHERE stext = '" . $this->db->escape_string($data['stext']) . "'";
             if ($sid !== null) {
-                $query .= " AND sid != " . (int)$sid;
+                $res = $this->db->sql_query_prepared(
+                    "SELECT sid FROM smilies WHERE stext = ? AND sid != ?",
+                    [$data['stext'], $sid]
+                );
+            } else {
+                $res = $this->db->sql_query_prepared(
+                    "SELECT sid FROM smilies WHERE stext = ?",
+                    [$data['stext']]
+                );
             }
-            $res = $this->db->sql_query($query);
-            if ($this->db->num_rows($res) > 0) {
+            if ($res && $this->db->num_rows($res) > 0) {
                 $errors[] = 'This replacement text is already used';
             }
         }
@@ -196,34 +196,16 @@ class SmilieManager
     
     private function save(array $data, ?int $sid = null): void
     {
-        //$escaped = [
-        //    'stitle' => $this->db->sqlesc($data['stitle']),
-        //    'stext' => $this->db->sqlesc($data['stext']),
-        //    'spath' => $this->db->sqlesc($data['spath'])
-        //];
-        
         if ($sid) {
-           
-				$smiliesarray = array(
-					"stitle" => $this->db->escape_string($data['stitle']),
-                    "stext" => $this->db->escape_string($data['stext']),
-                    "spath" => $this->db->escape_string($data['spath']),
-                    "sorder" => $data['sorder']
-				);
-				
-				$this->db->update_query("smilies", $smiliesarray, "sid='$sid'");
-	
-            
+            $this->db->sql_query_prepared(
+                "UPDATE smilies SET stitle = ?, stext = ?, spath = ?, sorder = ? WHERE sid = ?",
+                [$data['stitle'], $data['stext'], $data['spath'], $data['sorder'], $sid]
+            );
         } else {
-           
-			    $insert_smilie = array(
-					"stitle" => $this->db->escape_string($data['stitle']),
-                    "stext" => $this->db->escape_string($data['stext']),
-                    "spath" => $this->db->escape_string($data['spath']),
-                    "sorder" => $data['sorder']
-				);
-				$this->db->insert_query("smilies", $insert_smilie);
-	
+            $this->db->sql_query_prepared(
+                "INSERT INTO smilies (stitle, stext, spath, sorder) VALUES (?, ?, ?, ?)",
+                [$data['stitle'], $data['stext'], $data['spath'], $data['sorder']]
+            );
         }
         
         $this->cache->update_smilies();
@@ -279,7 +261,6 @@ class SmilieManager
                             <form method="post" id="smilieForm">
                                 <div class="row g-3">
                                     
-                                    <!-- Title -->
                                     <div class="col-md-6">
                                         <label class="form-label">
                                             <i class="fas fa-heading text-muted me-1"></i>
@@ -295,7 +276,6 @@ class SmilieManager
                                         <div class="form-text small">Displayed in the list</div>
                                     </div>
                                     
-                                    <!-- Replacement Text -->
                                     <div class="col-md-6">
                                         <label class="form-label">
                                             <i class="fas fa-font text-muted me-1"></i>
@@ -311,7 +291,6 @@ class SmilieManager
                                         <div class="form-text small">What users type</div>
                                     </div>
                                     
-                                    <!-- File Selection -->
                                     <div class="col-md-8">
                                         <label class="form-label">
                                             <i class="fas fa-image text-muted me-1"></i>
@@ -337,7 +316,6 @@ class SmilieManager
                                         </div>
                                     </div>
                                     
-                                    <!-- Preview -->
                                     <div class="col-md-4">
                                         <label class="form-label">
                                             <i class="fas fa-eye text-muted me-1"></i>
@@ -355,7 +333,6 @@ class SmilieManager
                                         </div>
                                     </div>
                                     
-                                    <!-- Display Order -->
                                     <div class="col-md-6">
                                         <label class="form-label">
                                             <i class="fas fa-sort-numeric-down text-muted me-1"></i>
@@ -377,7 +354,6 @@ class SmilieManager
                                         <div class="form-text small">Lower numbers appear first</div>
                                     </div>
                                     
-                                    <!-- File Information -->
                                     <?php if ($data['spath'] && file_exists($this->smilieDir . '/' . $data['spath'])): ?>
                                     <div class="col-md-6">
                                         <label class="form-label">
@@ -386,7 +362,7 @@ class SmilieManager
                                         </label>
                                         <div class="small text-muted">
                                             <?php
-                                            $path = $this->smilieDirUrl . '/' . $data['spath'];
+                                            $path = $this->smilieDir . '/' . $data['spath'];
                                             $size = filesize($path);
                                             $dimensions = getimagesize($path);
                                             ?>
@@ -432,7 +408,6 @@ class SmilieManager
         </div>
         
         <script>
-        // Update preview
         function updatePreview() {
             const path = document.getElementById('spath').value;
             const title = document.getElementsByName('stitle')[0].value;
@@ -496,7 +471,7 @@ class SmilieManager
             exit;
         }
         
-        $this->db->sql_query("DELETE FROM smilies WHERE sid = " . (int)$sid);
+        $this->db->sql_query_prepared("DELETE FROM smilies WHERE sid = ?", [$sid]);
         $this->cache->update_smilies();
         $this->redirectWithSuccess('Smilie deleted successfully');
     }
@@ -510,10 +485,9 @@ class SmilieManager
         
         foreach ($_POST['sorder'] as $sid => $order) {
             if (is_valid_id($sid)) {
-                $this->db->sql_query("
-                    UPDATE smilies 
-                    SET sorder = " . (int)$order . " 
-                    WHERE sid = " . (int)$sid
+                $this->db->sql_query_prepared(
+                    "UPDATE smilies SET sorder = ? WHERE sid = ?",
+                    [(int)$order, (int)$sid]
                 );
             }
         }
@@ -551,10 +525,10 @@ class SmilieManager
     
     private function handleExport(): void
     {
-        $res = $this->db->sql_query("SELECT * FROM smilies ORDER BY sorder");
+        $res = $this->db->sql_query_prepared("SELECT * FROM smilies ORDER BY sorder");
         $smilies = [];
         
-        while ($row = mysqli_fetch_assoc($res)) {
+        while ($res && ($row = $this->db->fetch_array($res))) {
             $smilies[] = [
                 'title' => $row['stitle'],
                 'text' => $row['stext'],
@@ -577,15 +551,15 @@ class SmilieManager
             
             if ($data) {
                 foreach ($data as $smilie) {
-                    $this->db->sql_query("
-                        INSERT INTO smilies (stitle, stext, spath, sorder)
-                        VALUES (
-                            '" . $this->db->escape_string($smilie['title']) . "',
-                            '" . $this->db->escape_string($smilie['text']) . "',
-                            '" . $this->db->escape_string($smilie['file']) . "',
-                            " . (int)($smilie['order'] ?? 0) . "
-                        )
-                    ");
+                    $this->db->sql_query_prepared(
+                        "INSERT INTO smilies (stitle, stext, spath, sorder) VALUES (?, ?, ?, ?)",
+                        [
+                            $smilie['title'],
+                            $smilie['text'],
+                            $smilie['file'],
+                            (int)($smilie['order'] ?? 0)
+                        ]
+                    );
                 }
                 
                 $this->cache->update_smilies();
@@ -630,26 +604,27 @@ class SmilieManager
             echo $this->alert(htmlspecialchars($_GET['message']));
         }
         
-        // Search
         $search = $_GET['search'] ?? '';
-        $where = '';
-        if ($search) {
-            $where = "WHERE stitle LIKE '%" . $this->db->escape_string($search) . "%' 
-                      OR stext LIKE '%" . $this->db->escape_string($search) . "%'";
+        $params = [];
+        
+        if ($search !== '') {
+            $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search) . '%';
+            $where = "WHERE stitle LIKE ? OR stext LIKE ?";
+            $params = [$like, $like];
+        } else {
+            $where = "";
         }
         
-        $res = $this->db->sql_query("
-            SELECT * FROM smilies 
-            $where 
-            ORDER BY sorder, stitle
-        ");
+        $res = $this->db->sql_query_prepared(
+            "SELECT * FROM smilies {$where} ORDER BY sorder, stitle",
+            $params
+        );
         
-        $total = $this->db->num_rows($res);
+        $total = $res ? $this->db->num_rows($res) : 0;
         ?>
         
         <div class="container mt-3">
             
-            <!-- Header and Actions -->
             <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
                 <h4 class="mb-2 mb-md-0">
                     <i class="fas fa-smile-beam text-primary me-2"></i>
@@ -658,7 +633,6 @@ class SmilieManager
                 </h4>
                 
                 <div class="d-flex gap-2 flex-wrap">
-                    <!-- Search -->
                     <form method="get" action="<?= $this->getUrl() ?>" class="d-flex">
                         <div class="input-group">
                             <input type="text" 
@@ -677,7 +651,6 @@ class SmilieManager
                         </div>
                     </form>
                     
-                    <!-- Action Buttons -->
                     <div class="btn-group">
                         <a href="<?= $this->getUrl('add_smilie') ?>" class="btn btn-success btn-sm">
                             <i class="fas fa-plus-circle me-1"></i>Add
@@ -686,18 +659,15 @@ class SmilieManager
                 </div>
             </div>
             
-            <!-- Management Form -->
             <form method="post" action="<?= $this->getUrl('update_smilies_order') ?>">
                 <div class="card shadow-sm">
                     <div class="card-body p-0">
                         
-                        <!-- Smilies List -->
                         <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5 g-2 p-3">
-                            <?php while ($s = mysqli_fetch_assoc($res)): ?>
+                            <?php while ($res && ($s = $this->db->fetch_array($res))): ?>
                             <div class="col">
                                 <div class="card h-100 smilie-card border hover-shadow">
                                     <div class="card-body text-center p-2">
-                                        <!-- Image -->
                                         <div class="mb-2">
                                             <img src="<?= $this->smilieDirUrl . '/' . $s['spath'] ?>" 
                                                  alt="<?= htmlspecialchars($s['stitle']) ?>"
@@ -705,7 +675,6 @@ class SmilieManager
                                                  style="max-height: 50px;">
                                         </div>
                                         
-                                        <!-- Information -->
                                         <div class="mb-2">
                                             <h6 class="mb-1 text-truncate" title="<?= htmlspecialchars($s['stitle']) ?>">
                                                 <?= htmlspecialchars($s['stitle']) ?>
@@ -716,7 +685,6 @@ class SmilieManager
                                             </div>
                                         </div>
                                         
-                                        <!-- Order Field -->
                                         <div class="mb-2">
                                             <div class="input-group input-group-sm">
                                                 <span class="input-group-text">
@@ -731,7 +699,6 @@ class SmilieManager
                                             </div>
                                         </div>
                                         
-                                        <!-- Actions -->
                                         <div class="d-flex justify-content-center gap-1">
                                             <a href="<?= $this->getUrl('edit_smilie', ['sid' => $s['sid']]) ?>" 
                                                class="btn btn-sm btn-outline-primary"
@@ -767,7 +734,6 @@ class SmilieManager
                         
                     </div>
                     
-                    <!-- Form Footer -->
                     <div class="card-footer bg-light">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
@@ -806,6 +772,5 @@ class SmilieManager
     }
 }
 
-// Start the application
 $smilieManager = new SmilieManager($db, $cache, $rootpath);
 $smilieManager->run();

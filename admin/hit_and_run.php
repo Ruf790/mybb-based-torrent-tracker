@@ -11,6 +11,60 @@ require_once INC_PATH . '/datahandler.php';
 include_once $rootpath . '/admin/include/global_config.php';
 include_once $rootpath . '/admin/include/staff_languages.php';
 
+global $mybb;
+
+/**
+ * Проверяет CSRF-токен для мутирующих POST-действий.
+ */
+function hnr_verify_csrf(): bool
+{
+    return verify_post_check($_POST['my_post_key'] ?? '');
+}
+
+/**
+ * Возвращает только те пары userid|torrentid из присланных клиентом,
+ * которые реально являются hit-and-run нарушением по текущим правилам —
+ * иначе клиент мог бы забанить/предупредить произвольного юзера, просто
+ * подставив его ID в форму.
+ *
+ * @param array<array{0:int,1:int}> $pairs
+ * @return array<string,bool> ключи вида "userid|torrentid"
+ */
+function hnr_get_valid_pairs(object $db, array $pairs, array $skip_usergroups): array
+{
+    $pairs = array_values(array_filter($pairs, fn($p) => $p[0] > 0 && $p[1] > 0));
+    if (empty($pairs)) {
+        return [];
+    }
+
+    $conditions = [];
+    foreach ($pairs as [$uid, $tid]) {
+        $conditions[] = '(s.userid=' . (int)$uid . ' AND s.torrentid=' . (int)$tid . ')';
+    }
+    $skip = implode(',', array_map('intval', $skip_usergroups));
+
+    $sql = "SELECT s.userid, s.torrentid, s.uploaded, s.downloaded
+            FROM snatched s
+            INNER JOIN users u ON (s.userid=u.id)
+            LEFT JOIN torrents t ON (s.torrentid=t.id)
+            WHERE s.finished='yes' AND s.seeder='no'
+              AND u.enabled='yes' AND u.usergroup NOT IN ({$skip})
+              AND u.ustatus='confirmed'
+              AND t.visible='yes'
+              AND s.downloaded > 0
+              AND (" . implode(' OR ', $conditions) . ')';
+
+    $result = $db->sql_query_prepared($sql);
+    $valid = [];
+    while ($result && ($row = $db->fetch_array($result))) {
+        $downloaded = (float)$row['downloaded'];
+        $ratio = $downloaded > 0 ? number_format((float)$row['uploaded'] / $downloaded, 2) : '∞';
+        $valid[(int)$row['userid'] . '|' . (int)$row['torrentid']] = $ratio;
+    }
+
+    return $valid;
+}
+
 // PHP 8.5 совместимость - объявляем переменные
 $success_msg = '';
 $keywords = '';
@@ -23,37 +77,74 @@ $eol = PHP_EOL;
 $page = isset($_GET['page']) && $_GET['page'] > 0 ? intval($_GET['page']) : 1;
 $per_page = $config['ts_hit_and_run']['query_limit'] ?? 20;
 
+$skip_usergroups_arr = $config['ts_hit_and_run']['skip_usergroups'] ?? [UC_BANNED, UC_VIP, UC_ADMINISTRATOR, UC_SYSOP, UC_MODERATOR];
+$skip_usergroups = implode(',', $skip_usergroups_arr);
+
 // Обработка POST запросов
 if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
     // Обработка BAN
     if (isset($_POST['ban']) && !empty($_POST['user_torrent_ids']) && is_array($_POST['user_torrent_ids'])) {
-        $userids = [];
+        if (!hnr_verify_csrf()) {
+            stderr('<div class="alert alert-danger border"><i class="fas fa-shield-alt me-2"></i><strong>Error!</strong> Security check failed. Please refresh the page and try again.</div>');
+        }
+
+        $pairs = [];
         foreach ($_POST['user_torrent_ids'] as $work) {
             $worknow = explode('|', (string)$work);
-            $userids[] = (int)$worknow[0];
+            $pairs[] = [(int)($worknow[0] ?? 0), (int)($worknow[1] ?? 0)];
+        }
+        $valid_pairs = hnr_get_valid_pairs($db, $pairs, $skip_usergroups_arr);
+
+        $userids = [];
+        foreach ($pairs as [$uid, $tid]) {
+            if (isset($valid_pairs[$uid . '|' . $tid])) {
+                $userids[] = $uid;
+            }
         }
         if (!empty($userids)) {
-            $userids = implode(',', array_unique($userids));
+            $userids   = array_values(array_unique($userids));
+            $ids_ph    = implode(',', array_fill(0, count($userids), '?'));
             $modcomment = gmdate('Y-m-d') . ' - Banned by ' . ($CURUSER['username'] ?? 'System') . '. (TS Hit & Run Staff Tool)' . $eol;
-            $db->sql_query('UPDATE users SET enabled=\'no\', usergroup=\'' . UC_BANNED . '\', modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment) WHERE id IN(0,' . $userids . ')');
-            $success_msg = '<div class="alert alert-success border-0 shadow-sm"><i class="fas fa-check-circle me-2"></i><strong>Success!</strong> Users have been banned successfully!</div>';
+            $db->sql_query_prepared(
+                "UPDATE users SET enabled='no', usergroup=?, modcomment=CONCAT(?, modcomment) WHERE id IN (0,{$ids_ph})",
+                [UC_BANNED, $modcomment, ...$userids]
+            );
+            $success_msg = '<div class="alert alert-success border"><i class="fas fa-check-circle me-2"></i><strong>Success!</strong> Users have been banned successfully!</div>';
+        } else {
+            $success_msg = '<div class="alert alert-warning border"><i class="fas fa-exclamation-triangle me-2"></i><strong>Warning!</strong> No valid hit-and-run users were found in the selection.</div>';
         }
     } 
     // Выполнение предупреждения (после ввода сообщения)
     elseif (isset($_POST['warn_execute']) && !empty($_POST['user_torrent_ids'])) {
+        if (!hnr_verify_csrf()) {
+            stderr('<div class="alert alert-danger border"><i class="fas fa-shield-alt me-2"></i><strong>Error!</strong> Security check failed. Please refresh the page and try again.</div>');
+        }
+
         $user_torrent_ids = explode(',', (string)$_POST['user_torrent_ids']);
         require_once INC_PATH . '/functions_pm.php';
-        $warned_count = 0;
+
+        $pairs = [];
         foreach ($user_torrent_ids as $work) {
             $arrays = explode('|', (string)$work);
-            $userid = (int)$arrays[0];
-            $torrentid = (int)$arrays[1];
-            $ratio = $arrays[2] ?? '0';
-            
-            $db->sql_query('REPLACE INTO hit_and_run (userid,torrentid,added) VALUES (' . $userid . ', ' . $torrentid . ', ' . TIMENOW . ')');
+            $pairs[] = [(int)($arrays[0] ?? 0), (int)($arrays[1] ?? 0)];
+        }
+        $valid_pairs = hnr_get_valid_pairs($db, $pairs, $skip_usergroups_arr);
+
+        $warned_count = 0;
+        foreach ($pairs as [$userid, $warn_torrentid]) {
+            $key = $userid . '|' . $warn_torrentid;
+            if (!isset($valid_pairs[$key])) {
+                continue; // не реальный hit-and-run — присланному клиентом значению не доверяем
+            }
+            $ratio = $valid_pairs[$key]; // ratio считаем на сервере, а не берём из POST
+
+            $db->sql_query_prepared(
+                "REPLACE INTO hit_and_run (userid,torrentid,added) VALUES (?, ?, ?)",
+                [$userid, $warn_torrentid, TIMENOW]
+            );
             $msg = str_replace(
                 ['{torrentinfo}', '{torrentdownloadinfo}', '{showratio}'],
-                ['[URL]' . $BASEURL . '/details.php?id=' . $torrentid . '[/URL]', '[URL]' . $BASEURL . '/download.php?id=' . $torrentid . '[/URL]', $ratio],
+                ['[URL]' . $BASEURL . '/details.php?id=' . $warn_torrentid . '[/URL]', '[URL]' . $BASEURL . '/download.php?id=' . $warn_torrentid . '[/URL]', $ratio],
                 (string)$_POST['warnmessage']
             );
             $pm = [
@@ -63,14 +154,21 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
             ];
             $pm['sender']['uid'] = -1;
             send_pm($pm, -1, true);
-            $modcomment = gmdate('Y-m-d') . ' - Warned by ' . ($CURUSER['username'] ?? 'System') . '. Torrent ID: ' . $torrentid . ' (TS Hit & Run Staff Tool)' . $eol;
-            $db->sql_query('UPDATE users SET timeswarned = timeswarned + 1, modcomment=CONCAT(' . $db->sqlesc($modcomment) . ', modcomment) WHERE id = ' . $userid);
+            $modcomment = gmdate('Y-m-d') . ' - Warned by ' . ($CURUSER['username'] ?? 'System') . '. Torrent ID: ' . $warn_torrentid . ' (TS Hit & Run Staff Tool)' . $eol;
+            $db->sql_query_prepared(
+                "UPDATE users SET timeswarned = timeswarned + 1, modcomment=CONCAT(?, modcomment) WHERE id = ?",
+                [$modcomment, $userid]
+            );
             $warned_count++;
         }
-        $success_msg = '<div class="alert alert-warning border-0 shadow-sm"><i class="fas fa-exclamation-triangle me-2"></i><strong>Warning!</strong> ' . $warned_count . ' user(s) have been warned successfully!</div>';
+        $success_msg = '<div class="alert alert-warning border"><i class="fas fa-exclamation-triangle me-2"></i><strong>Warning!</strong> ' . $warned_count . ' user(s) have been warned successfully!</div>';
     } 
     // Показ формы для ввода сообщения (когда нажата кнопка Warn Selected на основной странице)
     elseif (isset($_POST['warn']) && !empty($_POST['user_torrent_ids']) && is_array($_POST['user_torrent_ids'])) {
+        if (!hnr_verify_csrf()) {
+            stderr('<div class="alert alert-danger border"><i class="fas fa-shield-alt me-2"></i><strong>Error!</strong> Security check failed. Please refresh the page and try again.</div>');
+        }
+
         stdhead('Hit & Run Detection Tool');
         
         echo '
@@ -100,7 +198,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
         <div class="container py-4">
             <div class="row justify-content-center">
                 <div class="col-lg-8">
-                    <div class="card border-0 shadow-lg warning-form-card">
+                    <div class="card border warning-form-card">
                         <div class="card-header bg-warning text-white py-3">
                             <div class="d-flex align-items-center gap-3">
                                 <div class="warning-icon">
@@ -114,6 +212,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
                         </div>
                         <form method="post" action="' . $_this_script_ . '">
                             <input type="hidden" name="warn_execute" value="1">
+                            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
                             <input type="hidden" name="page" value="' . intval($_POST['page']) . '">
                             ' . ($torrentid ? '<input type="hidden" name="torrentid" value="' . $torrentid . '">' : '') . '
                             <input type="hidden" name="user_torrent_ids" value="' . htmlspecialchars(implode(',', $_POST['user_torrent_ids'])) . '">
@@ -151,21 +250,24 @@ if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
 }
 
 $alreadywarnedarrays = [];
-$query = $db->sql_query('SELECT userid,torrentid,added FROM hit_and_run WHERE added > ' . (TIMENOW - 60 * 60 * (7 * 24)));
-if ($db->num_rows($query) > 0) {
-    while ($alreadywarned = mysqli_fetch_assoc($query)) {
+$query = $db->sql_query_prepared('SELECT userid,torrentid,added FROM hit_and_run WHERE added > ?', [TIMENOW - 60 * 60 * (7 * 24)]);
+if ($query && $db->num_rows($query) > 0) {
+    while ($alreadywarned = $db->fetch_array($query)) {
         $alreadywarnedarrays[(int)$alreadywarned['userid']][(int)$alreadywarned['torrentid']] = (int)$alreadywarned['added'];
     }
 }
 
 $extraquery = '';
 $extraquery2 = '';
+$extraquery_params = [];
+$extraquery2_params = [];
 $hiddenvalues = '';
 $link = '';
 $orjlink = '';
 
 if (is_valid_id($torrentid)) {
-    $extraquery = ' AND s.torrentid=' . $torrentid;
+    $extraquery = ' AND s.torrentid=?';
+    $extraquery_params[] = $torrentid;
     $hiddenvalues = '<input type="hidden" name="torrentid" value="' . $torrentid . '">';
     $link = $orjlink = 'torrentid=' . $torrentid . '&amp;';
 }
@@ -174,11 +276,11 @@ if (isset($_GET['page'])) {
     $hiddenvalues .= '<input type="hidden" name="page" value="' . intval($_GET['page']) . '">';
 }
 
-$skip_usergroups = implode(',', $config['ts_hit_and_run']['skip_usergroups'] ?? [UC_BANNED, UC_VIP, UC_ADMINISTRATOR, UC_SYSOP, UC_MODERATOR]);
 if (isset($_GET['show_by_userid'])) {
     $userid = intval($_GET['show_by_userid']);
     if (is_valid_id($userid)) {
-        $extraquery2 = ' AND u.id=' . $db->sqlesc($userid);
+        $extraquery2 = ' AND u.id=?';
+        $extraquery2_params = [$userid];
     }
 }
 
@@ -190,13 +292,16 @@ if (isset($_POST['do_search']) && !empty($_POST['keywords'])) {
     $searchtype = intval($_POST['searchtype']);
     switch ($searchtype) {
         case 1:
-            $extraquery2 = ' AND u.username=' . $db->sqlesc($keywords);
+            $extraquery2 = ' AND u.username=?';
+            $extraquery2_params = [$keywords];
             break;
         case 2:
-            $extraquery2 = ' AND u.id=' . $db->sqlesc($keywords);
+            $extraquery2 = ' AND u.id=?';
+            $extraquery2_params = [$keywords];
             break;
         case 3:
-            $extraquery2 = ' AND s.torrentid=' . $db->sqlesc($keywords);
+            $extraquery2 = ' AND s.torrentid=?';
+            $extraquery2_params = [$keywords];
             break;
     }
 }
@@ -240,9 +345,9 @@ AND t.visible=\'yes\'
 AND s.downloaded > 0
 AND ' . $typequery . $extraquery . $extraquery2;
 
-$count_query = $db->sql_query($count_sql);
+$count_query = $db->sql_query_prepared($count_sql, [...$extraquery_params, ...$extraquery2_params]);
 $total_count = 0;
-if ($result = mysqli_fetch_assoc($count_query)) {
+if ($count_query && ($result = $db->fetch_array($count_query))) {
     $total_count = (int)$result['total'];
 }
 
@@ -318,13 +423,11 @@ AND ' . $typequery . $extraquery . $extraquery2 . '
 ORDER BY u.timeswarned DESC, s.uploaded/s.downloaded ASC 
 ' . $limit;
 
-$query = $db->sql_query($main_query);
+$query = $db->sql_query_prepared($main_query, [...$extraquery_params, ...$extraquery2_params]);
 
-if ($db->num_rows($query) > 0) {
-   
-    $criticallimit = ($ban_user_limit ?? 7) - 1;
-    
-    stdhead('TS Hit & Run Detection Tool');
+$criticallimit = ($ban_user_limit ?? 7) - 1;
+
+stdhead('TS Hit & Run Detection Tool');
     
     // JavaScript для выбора всех
     echo '
@@ -361,7 +464,7 @@ if ($db->num_rows($query) > 0) {
     }
     .table-hover tbody tr:hover {
         transform: scale(1.01);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        outline: 1px solid rgba(0,0,0,0.1);
     }
     .table-warning {
         background-color: rgba(255, 193, 7, 0.1) !important;
@@ -373,6 +476,10 @@ if ($db->num_rows($query) > 0) {
         border-radius: 20px;
         font-size: 11px;
         font-weight: 500;
+    }
+    .badge-success {
+        background: #28a745;
+        color: white;
     }
     .badge-warning {
         background: #ffc107;
@@ -388,10 +495,40 @@ if ($db->num_rows($query) > 0) {
     if (!empty($success_msg)) {
         echo '<div class="container mt-3">' . $success_msg . '</div>';
     }
+
+    $already_warned_count = array_sum(array_map('count', $alreadywarnedarrays));
+    $ban_threshold = $ban_user_limit ?? 7;
+
+    $stat_cards = [
+        ['icon' => 'fas fa-user-slash',        'color' => '#dc3545', 'label' => 'Flagged Users',   'value' => number_format($total_count)],
+        ['icon' => 'fas fa-envelope-open-text','color' => '#f59e0b', 'label' => 'Warned (7 days)', 'value' => number_format($already_warned_count)],
+        ['icon' => 'fas fa-gavel',             'color' => '#6c757d', 'label' => 'Ban Threshold',   'value' => $ban_threshold . ' warns'],
+        ['icon' => $type_icon,                 'color' => '#0d6efd', 'label' => 'Active Filter',   'value' => $type_title],
+    ];
+
+    echo '<div class="container mt-3"><div class="row g-3 mb-1">';
+    foreach ($stat_cards as $c) {
+        echo '
+        <div class="col-6 col-md-3">
+            <div class="card border h-100">
+                <div class="card-body d-flex align-items-center gap-3 py-3">
+                    <div class="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+                         style="width:46px;height:46px;background:' . $c['color'] . '1a;">
+                        <i class="' . $c['icon'] . '" style="color:' . $c['color'] . ';font-size:19px;"></i>
+                    </div>
+                    <div>
+                        <div class="fs-5 fw-bold lh-1">' . $c['value'] . '</div>
+                        <div class="text-secondary" style="font-size:12px;">' . $c['label'] . '</div>
+                    </div>
+                </div>
+            </div>
+        </div>';
+    }
+    echo '</div></div>';
     
     echo '
     <div class="container mb-4">
-        <div class="card border-0 shadow-lg">
+        <div class="card border">
             <div class="card-header bg-primary text-white py-3">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-3">
@@ -407,23 +544,23 @@ if ($db->num_rows($query) > 0) {
                 <form method="post" action="' . $_this_script_ . '" class="row g-3 align-items-end">
                     <div class="col-md-3">
                         <label class="form-label fw-bold small text-muted">SEARCH KEYWORD</label>
-                        <input type="text" class="form-control border-0 shadow-sm" name="keywords" value="' . htmlspecialchars($keywords) . '" placeholder="Enter keyword...">
+                        <input type="text" class="form-control" name="keywords" value="' . htmlspecialchars($keywords) . '" placeholder="Enter keyword...">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label fw-bold small text-muted">SEARCH TYPE</label>
-                        <select class="form-select border-0 shadow-sm" name="searchtype">
+                        <select class="form-select" name="searchtype">
                             <option value="3"' . ($searchtype == 3 ? ' selected' : '') . '>🔍 Torrent ID</option>
                             <option value="2"' . ($searchtype == 2 ? ' selected' : '') . '>👤 User ID</option>
                             <option value="1"' . ($searchtype == 1 ? ' selected' : '') . '>👤 Username</option>
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <button type="submit" class="btn btn-primary w-100 shadow-sm" name="do_search">
+                        <button type="submit" class="btn btn-primary w-100" name="do_search">
                             <i class="fas fa-search me-1"></i> Search
                         </button>
                     </div>
                     <div class="col-md-4 text-end">
-                        <div class="btn-group shadow-sm">
+                        <div class="btn-group">
                             <a href="' . $_this_script_ . '&' . $orjlink . 'page=' . $page . '&type=seedtime" class="btn btn-outline-secondary btn-sm">
                                 <i class="fas fa-hourglass-half me-1"></i>Seed/Leech Time
                             </a>
@@ -441,7 +578,7 @@ if ($db->num_rows($query) > 0) {
     
     echo '
     <div class="container">
-        <div class="card border-0 shadow-lg">
+        <div class="card border">
             <div class="card-header bg-primary text-white py-3">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="d-flex align-items-center gap-3">
@@ -451,16 +588,20 @@ if ($db->num_rows($query) > 0) {
                             <small class="opacity-75"><i class="fas fa-users me-1"></i>' . number_format($total_count) . ' users found | <i class="fas fa-list me-1"></i>Limit: ' . $per_page . '</small>
                         </div>
                     </div>
+                    <span class="badge bg-' . $type_color . ' bg-opacity-75 px-3 py-2">
+                        <i class="' . $type_icon . ' me-1"></i>' . strtoupper($type) . '
+                    </span>
                 </div>
             </div>
             <form method="post" action="' . $_this_script_ . '" name="update">
                 ' . $hiddenvalues . '
                 <input type="hidden" name="page" value="' . $page . '">
+                <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
                             <thead class="bg-light">
-                                32
+                                <tr>
                                     <th class="text-dark">Username</th>
                                     <th class="text-dark">Torrent Name</th>
                                     <th class="text-dark">Uploaded / SeedTime</th>
@@ -477,8 +618,9 @@ if ($db->num_rows($query) > 0) {
                             <tbody>';
 
     require_once INC_PATH . '/functions_mkprettytime.php';
-    
-    while ($user = mysqli_fetch_assoc($query)) {
+
+    if ($query && $db->num_rows($query) > 0) {
+    while ($user = $db->fetch_array($query)) {
         $userid = (int)$user['userid'];
         $torrentid = (int)$user['torrentid'];
         
@@ -521,6 +663,20 @@ if ($db->num_rows($query) > 0) {
                                     </td>
                                 </tr>';
     }
+    } else {
+        echo '
+                                <tr>
+                                    <td colspan="7" class="border-0">
+                                        <div class="text-center py-5">
+                                            <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-warning bg-opacity-10 mb-3" style="width:72px;height:72px;">
+                                                <i class="fas fa-magnifying-glass text-warning" style="font-size:28px;"></i>
+                                            </div>
+                                            <h5 class="mb-1">Nothing found!</h5>
+                                            <p class="text-muted mb-0">No matching results — try adjusting your search or filters.</p>
+                                        </div>
+                                    </td>
+                                </tr>';
+    }
 
     echo '
                             </tbody>
@@ -533,10 +689,10 @@ if ($db->num_rows($query) > 0) {
                             <small class="text-muted"><i class="fas fa-info-circle me-1"></i>Already warned users cannot be selected</small>
                         </div>
                         <div class="col-auto">
-                            <button type="submit" class="btn btn-warning me-2 shadow-sm" name="warn">
+                            <button type="submit" class="btn btn-warning me-2" name="warn">
                                 <i class="fas fa-exclamation-triangle me-1"></i>Warn Selected
                             </button>
-                            <button type="submit" class="btn btn-danger shadow-sm" name="ban">
+                            <button type="submit" class="btn btn-danger" name="ban">
                                 <i class="fas fa-ban me-1"></i>Ban Selected
                             </button>
                         </div>
@@ -549,7 +705,4 @@ if ($db->num_rows($query) > 0) {
     echo $pagerbottom;
     stdfoot();
     exit();
-}
-
-stderr('<div class="alert alert-light border" role="alert"><i class="fas fa-exclamation-circle me-2 text-warning"></i>Nothing found!</div>');
 ?>

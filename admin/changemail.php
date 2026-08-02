@@ -36,24 +36,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act
         $cleanEmail = str_replace(['<', '>', '\'', '"', '\\'], '', $email);
         
         // Check if email exists
-        $emailCheck = $db->sql_query('SELECT email FROM users WHERE email = ' . $db->sqlesc($cleanEmail) . ' LIMIT 1');
-        if ($db->num_rows($emailCheck) > 0) {
+        $emailCheck = $db->sql_query_prepared('SELECT email FROM users WHERE email = ? LIMIT 1', [$cleanEmail]);
+        if ($emailCheck && $db->num_rows($emailCheck) > 0) {
             $message = 'This email address is already taken.';
         } else {
             // Check if user exists and get old email
-            $userQuery = $db->sql_query('SELECT id, email FROM users WHERE username = ' . $db->sqlesc($username) . ' LIMIT 1');
-            if ($db->num_rows($userQuery) === 0) {
+            $userQuery = $db->sql_query_prepared('SELECT id, email FROM users WHERE username = ? LIMIT 1', [$username]);
+            if (!$userQuery || $db->num_rows($userQuery) === 0) {
                 $message = 'User not found.';
             } else {
-                $user = mysqli_fetch_assoc($userQuery);
+                $user = $db->fetch_array($userQuery);
                 $userId = (int)$user['id'];
                 $oldEmail = $user['email'];
                 
                 // Update email
-                $updateData = ['email' => $cleanEmail];
-                $whereCondition = "username = " . $db->sqlesc($username);
-                
-                $updateResult = $db->update_query("users", $updateData, $whereCondition);
+                $updateResult = $db->sql_query_prepared("UPDATE users SET email = ? WHERE username = ?", [$cleanEmail, $username]);
                 
                 if ($updateResult) {
                     $success = true;

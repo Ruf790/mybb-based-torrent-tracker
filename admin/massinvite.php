@@ -6,6 +6,7 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization is not allowed.</div>');
 }
 
+
 class MassInviteManager
 {
     private const ALLOWED_TYPES = ['+', '-'];
@@ -23,6 +24,14 @@ class MassInviteManager
     public function handleRequest(): void
     {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            global $mybb;
+            if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+                header('Content-Type: application/json');
+                http_response_code(403);
+                echo json_encode(['error' => 'Security check failed. Please refresh the page and try again.']);
+                exit;
+            }
+
             if (($_POST['preview'] ?? '') === 'yes') {
                 $this->previewAffectedUsers();
             } elseif (($_POST['doit'] ?? '') === 'yes') {
@@ -64,10 +73,10 @@ class MassInviteManager
 
         $query = $this->buildQuery($this->sanitizeUserGroup($userGroup), $amount, $type);
 
-        $res = $this->db->sql_query("SELECT COUNT(id) AS total FROM users WHERE {$query}");
-        $row = $this->db->fetch_array($res);
+        $res = $this->db->sql_query_prepared("SELECT COUNT(id) AS total FROM users WHERE {$query}");
+        $row = $res ? $this->db->fetch_array($res) : null;
 
-        echo json_encode(['count' => (int)$row['total']]);
+        echo json_encode(['count' => (int)($row['total'] ?? 0)]);
         exit;
     }
 
@@ -80,22 +89,23 @@ class MassInviteManager
         $query = $this->buildQuery($userGroup, $amount, $type);
 
         // Обновление
-        $this->db->sql_query("UPDATE users SET invites = invites {$type} {$amount} WHERE {$query}");
+        $this->db->sql_query_prepared("UPDATE users SET invites = invites {$type} {$amount} WHERE {$query}");
 
         // Логирование
-        $affected = $this->db->sql_query("SELECT COUNT(id) AS total FROM users WHERE {$query}");
-        $row = $this->db->fetch_array($affected);
-        $count = (int)$row['total'];
+        $affected = $this->db->sql_query_prepared("SELECT COUNT(id) AS total FROM users WHERE {$query}");
+        $row = $affected ? $this->db->fetch_array($affected) : null;
+        $count = (int)($row['total'] ?? 0);
 
-        $username = $_SESSION['username'] ?? 'Admin';
-        write_log("[MASS INVITE] Admin: {$username} | Action: " . ($type === '+' ? 'ADD' : 'REMOVE') . " | Amount: {$amount} | Group: {$userGroup} | Affected users: {$count}");
+        global $CURUSER;
+        $username = $CURUSER['username'] ?? 'Unknown';
+        write_log("[MASS INVITE] Admin: {$username} (UID " . (int)($CURUSER['id'] ?? 0) . ") | Action: " . ($type === '+' ? 'ADD' : 'REMOVE') . " | Amount: {$amount} | Group: {$userGroup} | Affected users: {$count}");
 
         //stderr("Success,Invites updated successfully for {$count} users.");
 		
 		stdok(
-    message: sprintf("Success,Invites updated successfully for {$count} users."),
-    title:   'Registration successful',
-    subtitle: 'Your account has been created.'
+    message: sprintf("Invites updated successfully for %d user(s).", $count),
+    title:   'Mass Invite Complete',
+    subtitle: ($type === '+' ? 'Added' : 'Removed') . " {$amount} invite(s) per affected user."
 );
 		
 		
@@ -105,7 +115,7 @@ class MassInviteManager
 
     private function renderForm(): void
     {
-        global $BASEURL;
+        global $BASEURL, $mybb;
 		
 		stdhead('Mass Invite Management');
         $selectBox = _selectbox_('', 'usergroup');
@@ -189,6 +199,7 @@ class MassInviteManager
                 <div class="card-body p-4">
                     <form action="<?= htmlspecialchars($this->currentScript, ENT_QUOTES) ?>" method="post" id="massInviteForm">
                         <input type="hidden" name="doit" value="yes">
+                        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
                         
                         <div class="row g-4">
                             <!-- Поле количества -->

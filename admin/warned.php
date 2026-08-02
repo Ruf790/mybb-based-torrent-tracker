@@ -1,6 +1,5 @@
 <?php
 
-
 declare(strict_types=1);
 
 if (!defined('STAFF_PANEL')) {
@@ -18,29 +17,45 @@ $action = match(true) {
     default => 'showlist'
 };
 
-
 if ($action === 'remove' && isset($_POST['userid'])) {
+    global $mybb;
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        stderr('Security check failed. Please refresh the page and try again.');
+    }
+
     $userIds = array_map('intval', $_POST['userid']);
     
     if (!empty($userIds)) {
-        $db->sql_query(
+        // Создаем плейсхолдеры для каждого ID
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $db->sql_query_prepared(
             "UPDATE users 
              SET warned = 'no', leechwarn = 'no', warneduntil = '0', leechwarnuntil = '0' 
-             WHERE id IN (" . implode(', ', $userIds) . ")"
+             WHERE id IN ($placeholders)",
+            $userIds
         );
     }
     
     $action = 'showlist';
 }
 
-
-
 if ($action === 'showlist') {
     stdhead('Warned Users');
     
-    // Get total count of warned users
-    $res       = $db->sql_query("SELECT COUNT(id) AS cnt FROM users WHERE enabled = 'yes' AND usergroup != '" . UC_BANNED . "' AND (warned = 'yes' OR leechwarn = 'yes')");
-    $countrows = ts_nf((int) ($db->fetch_array($res)['cnt'] ?? 0));
+    // Get total count of warned users с использованием prepared statement
+    $res = $db->sql_query_prepared(
+        "SELECT COUNT(id) AS cnt FROM users 
+         WHERE enabled = 'yes' 
+         AND usergroup != ? 
+         AND (warned = 'yes' OR leechwarn = 'yes')",
+        [UC_BANNED]
+    );
+    
+    $countrows = 0;
+    if ($res !== false) {
+        $row = $db->fetch_array($res);
+        $countrows = ts_nf((int) ($row['cnt'] ?? 0));
+    }
 
     // Pagination setup
     $ts_perpage = $ts_perpage ?: 20;
@@ -58,13 +73,12 @@ if ($action === 'showlist') {
     $lower = $start + 1;
     $upper = min($start + $perpage, $countrows);
     
-    
-$multipage = multipage(
-    (int)$countrows, 
-    (int)$perpage, 
-    (int)$page, 
-    $_this_script_ . '&action=showlist'
-);
+    $multipage = multipage(
+        (int)$countrows, 
+        (int)$perpage, 
+        (int)$page, 
+        $_this_script_ . '&action=showlist'
+    );
 
     // Display header and pagination
     echo '
@@ -173,6 +187,7 @@ $multipage = multipage(
     echo '
     <form method="post" action="' . $_this_script_ . '" name="update" id="warnedForm">
         <input type="hidden" name="action" value="remove">
+        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
         
         <div class="container mt-3">
             <div class="card shadow-sm">
@@ -199,20 +214,19 @@ $multipage = multipage(
                             </thead>
                             <tbody>';
 
-    // Fetch warned users
+    // Fetch warned users с использованием prepared statement
     $query = $db->sql_query_prepared(
         "SELECT u.* 
          FROM users u 
-        
-         WHERE u.usergroup != '" . UC_BANNED . "' 
+         WHERE u.usergroup != ? 
            AND u.enabled = 'yes' 
            AND (u.warned = 'yes' OR u.leechwarn = 'yes') 
          ORDER BY u.added DESC 
          LIMIT ?, ?",
-        [$start, $perpage]
+        [UC_BANNED, $start, $perpage]
     );
 
-    if ($db->num_rows($query) === 0) {
+    if ($query === false || $db->num_rows($query) === 0) {
         echo '
                                 <tr>
                                     <td colspan="9" class="text-center py-4">

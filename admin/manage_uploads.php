@@ -1,18 +1,265 @@
 <?php
 
+declare(strict_types=1);
+
+
 $rootpath = './../';
+
+if (!defined('IN_ADMINCP')) {
+    define('IN_ADMINCP', true);
+}
+
 require_once $rootpath . 'global.php';
+
+if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+    http_response_code(403);
+    exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
+}
 
 
 
 require_once INC_PATH . '/functions_multipage.php';
 
+// ── Общая карта полиморфных типов контента ───────────────
+function cf_content_map(): array
+{
+    return [
+        'comment' => ['fk' => 'comment_id',  'table' => 'comments',        'idField' => 'id',   'textField' => 'text'],
+        'news'    => ['fk' => 'news_id',     'table' => 'news',            'idField' => 'id',   'textField' => 'body'],
+        'torrent' => ['fk' => 'torrent_id',  'table' => 'torrents',        'idField' => 'id',   'textField' => 'descr'],
+        'post'    => ['fk' => 'post_id',     'table' => 'posts',           'idField' => 'pid',  'textField' => 'message'],
+        'message' => ['fk' => 'messages_id', 'table' => 'privatemessages', 'idField' => 'pmid', 'textField' => 'message'],
+    ];
+}
+
+function cf_target_exists(object $db, string $contentType, int $contentId): bool
+{
+    $map = cf_content_map();
+    if (!isset($map[$contentType]) || $contentId <= 0) return false;
+    $t = $map[$contentType];
+    $res = $db->sql_query_prepared("SELECT {$t['idField']} FROM {$t['table']} WHERE {$t['idField']} = ?", [$contentId]);
+    return $res && $db->num_rows($res) > 0;
+}
+
+// ── Edit (чинил - раньше форма слала update=1, но обработчика не было вообще) ──
+if (isset($_POST['update']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+        http_response_code(403);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        exit;
+    }
+
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id <= 0) {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid file ID']);
+        exit;
+    }
+
+    $map = cf_content_map();
+    $provided = [];
+    foreach ($map as $type => $t) {
+        $val = $_POST[$t['fk']] ?? '';
+        if ($val !== '') {
+            $provided[$type] = (int)$val;
+        }
+    }
+
+    if (count($provided) > 1) {
+        echo json_encode(['status' => 'error', 'message' => 'Only one content link (Comment/News/Torrent/Post) can be set at a time']);
+        exit;
+    }
+
+    foreach ($provided as $type => $cid) {
+        if (!cf_target_exists($db, $type, $cid)) {
+            echo json_encode(['status' => 'error', 'message' => ucfirst($type) . " with ID {$cid} does not exist"]);
+            exit;
+        }
+    }
+
+    $file_name = trim($_POST['file_name'] ?? '');
+    $user_id   = (int)($_POST['user_id'] ?? 0);
+
+    $set = ['file_name = ?', 'user_id = ?', 'comment_id = ?', 'news_id = ?', 'torrent_id = ?', 'post_id = ?'];
+    $params = [
+        $file_name,
+        $user_id > 0 ? $user_id : null,
+        $provided['comment'] ?? null,
+        $provided['news'] ?? null,
+        $provided['torrent'] ?? null,
+        $provided['post'] ?? null,
+        $id,
+    ];
+
+    $db->sql_query_prepared('UPDATE comment_files SET ' . implode(', ', $set) . ' WHERE id = ?', $params);
+    write_log("comment_files updated: ID:{$id} | {$CURUSER['username']}");
+    echo json_encode(['status' => 'success', 'message' => 'File details updated']);
+    exit;
+}
+
+// ── Move (заменяет текущую привязку на новую; старая полностью очищается) ──
+if (isset($_POST['ajax_move']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+        http_response_code(403);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        exit;
+    }
+
+    $id          = (int)($_POST['id'] ?? 0);
+    $contentType = $_POST['content_type'] ?? '';
+    $contentId   = (int)($_POST['content_id'] ?? 0);
+    $insertTag   = !empty($_POST['insert_tag']) && $contentType !== 'message';
+
+    $map = cf_content_map();
+    if (!isset($map[$contentType])) {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid content type']);
+        exit;
+    }
+
+    if (!cf_target_exists($db, $contentType, $contentId)) {
+        echo json_encode(['status' => 'error', 'message' => ucfirst($contentType) . " with ID {$contentId} does not exist"]);
+        exit;
+    }
+
+    $res = $db->sql_query_prepared('SELECT * FROM comment_files WHERE id = ?', [$id]);
+    $file = $res ? $db->fetch_array($res) : null;
+    if (!$file) {
+        echo json_encode(['status' => 'error', 'message' => 'File not found']);
+        exit;
+    }
+
+    // ── Убираем [img]-тег из старой цели, если файл был куда-то привязан ──
+    // Тот же паттерн, что уже используется в delete-обработчике этого файла.
+    foreach ($map as $oldType => $t) {
+        if ($oldType === 'message') continue; // PM-текст не трогаем автоматически
+        if (empty($file[$t['fk']])) continue;
+
+        $oldId = (int)$file[$t['fk']];
+        $res2  = $db->sql_query_prepared("SELECT {$t['textField']} FROM {$t['table']} WHERE {$t['idField']} = ?", [$oldId]);
+        $row2  = $res2 ? $db->fetch_array($res2) : null;
+        if ($row2 === null) continue;
+
+        $pattern = '/\[img\][^\[]*' . preg_quote(basename($file['file_path']), '/') . '[^\]]*\[\/img\]/i';
+        $current = $row2[$t['textField']] ?? '';
+        $updated = preg_replace($pattern, '', $current);
+        $updated = trim(preg_replace('/\n{3,}/', "\n\n", $updated ?? ''));
+
+        if ($updated !== trim($current)) {
+            $db->sql_query_prepared("UPDATE {$t['table']} SET {$t['textField']} = ? WHERE {$t['idField']} = ?", [$updated, $oldId]);
+            if ($oldType === 'news') $cache->update_news();
+        }
+        break; // ровно один FK может быть задан за раз (полиморфная эксклюзивность)
+    }
+
+    $fk = $map[$contentType]['fk'];
+    $db->sql_query_prepared(
+        "UPDATE comment_files SET comment_id = NULL, news_id = NULL, torrent_id = NULL, post_id = NULL, messages_id = NULL, {$fk} = ? WHERE id = ?",
+        [$contentId, $id]
+    );
+
+    // ── Опционально вставляем [img]-тег в текст новой цели ──────────────
+    if ($insertTag) {
+        $t   = $map[$contentType];
+        $res3 = $db->sql_query_prepared("SELECT {$t['textField']} FROM {$t['table']} WHERE {$t['idField']} = ?", [$contentId]);
+        $row3 = $res3 ? $db->fetch_array($res3) : null;
+        if ($row3 !== null) {
+            $current = $row3[$t['textField']] ?? '';
+            $updated = $current !== '' ? $current . "\n\n" . '[img]' . $file['file_url'] . '[/img]' : '[img]' . $file['file_url'] . '[/img]';
+            $db->sql_query_prepared("UPDATE {$t['table']} SET {$t['textField']} = ? WHERE {$t['idField']} = ?", [$updated, $contentId]);
+            if ($contentType === 'news') $cache->update_news();
+        }
+    }
+
+    write_log("comment_files moved: ID:{$id} -> {$contentType} #{$contentId} | {$CURUSER['username']}");
+    echo json_encode(['status' => 'success', 'message' => 'File moved successfully']);
+    exit;
+}
+
+// ── Copy (физическое дублирование файла + новая строка на другой/тот же контент) ──
+if (isset($_POST['ajax_copy']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+        http_response_code(403);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        exit;
+    }
+
+    $id          = (int)($_POST['id'] ?? 0);
+    $contentType = $_POST['content_type'] ?? '';
+    $contentId   = (int)($_POST['content_id'] ?? 0);
+    $insertTag   = !empty($_POST['insert_tag']) && $contentType !== 'message'; // PM-текст не трогаем автоматически
+
+    $map = cf_content_map();
+    if (!isset($map[$contentType])) {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid content type']);
+        exit;
+    }
+
+    if (!cf_target_exists($db, $contentType, $contentId)) {
+        echo json_encode(['status' => 'error', 'message' => ucfirst($contentType) . " with ID {$contentId} does not exist"]);
+        exit;
+    }
+
+    $res = $db->sql_query_prepared('SELECT * FROM comment_files WHERE id = ?', [$id]);
+    $file = $res ? $db->fetch_array($res) : null;
+    if (!$file || !is_file($file['file_path'])) {
+        echo json_encode(['status' => 'error', 'message' => 'Source file not found on disk']);
+        exit;
+    }
+
+    $ext         = pathinfo($file['file_path'], PATHINFO_EXTENSION);
+    $newFileName = bin2hex(random_bytes(16)) . ($ext !== '' ? ".{$ext}" : '');
+    $newPath     = dirname($file['file_path']) . '/' . $newFileName;
+
+    if (!@copy($file['file_path'], $newPath)) {
+        echo json_encode(['status' => 'error', 'message' => 'Failed to copy file on disk']);
+        exit;
+    }
+
+    $newUrl = rtrim(str_replace(basename($file['file_url']), '', $file['file_url']), '/') . '/' . $newFileName;
+    $fk     = $map[$contentType]['fk'];
+
+    $db->sql_query_prepared(
+        "INSERT INTO comment_files (file_name, file_path, file_url, file_type, file_size, user_id, {$fk}, uploaded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+        [$file['file_name'], $newPath, $newUrl, $file['file_type'], (int)$file['file_size'], (int)($CURUSER['id'] ?? 0), $contentId]
+    );
+    $newId = $db->insert_id();
+
+    if ($insertTag) {
+        $t = $map[$contentType];
+        $res = $db->sql_query_prepared("SELECT {$t['textField']} FROM {$t['table']} WHERE {$t['idField']} = ?", [$contentId]);
+        $row = $res ? $db->fetch_array($res) : null;
+        if ($row !== null) {
+            $current = $row[$t['textField']] ?? '';
+            $updated = $current !== '' ? $current . "\n\n" . '[img]' . $newUrl . '[/img]' : '[img]' . $newUrl . '[/img]';
+            $db->sql_query_prepared("UPDATE {$t['table']} SET {$t['textField']} = ? WHERE {$t['idField']} = ?", [$updated, $contentId]);
+            if ($contentType === 'news') $cache->update_news();
+        }
+    }
+
+    write_log("comment_files copied: ID:{$id} -> new ID:{$newId} -> {$contentType} #{$contentId} | {$CURUSER['username']}");
+    echo json_encode(['status' => 'success', 'message' => 'File copied successfully', 'new_id' => $newId]);
+    exit;
+}
+
 // ── Single delete (AJAX GET) ─────────────────────────────
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
     header('Content-Type: application/json; charset=utf-8');
+
+    if (!verify_post_check($_GET['my_post_key'] ?? '', true)) {
+        http_response_code(403);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        exit;
+    }
+
     $file_id = (int)$_GET['delete'];
 
-    $res = $db->sql_query("
+    $res = $db->sql_query_prepared("
         SELECT cf.*, c.text AS comment_text, n.body AS news_text,
                t.descr AS torrent_description, p.message AS post_message,
                pm.message AS pm_message
@@ -22,10 +269,10 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
         LEFT JOIN torrents t ON t.id = cf.torrent_id
         LEFT JOIN posts p ON p.pid = cf.post_id
         LEFT JOIN privatemessages pm ON pm.pmid = cf.messages_id
-        WHERE cf.id = $file_id
-    ");
+        WHERE cf.id = ?
+    ", [$file_id]);
 
-    if ($file = $db->fetch_array($res)) {
+    if ($res && ($file = $db->fetch_array($res))) {
         if (!empty($file['file_path']) && file_exists($file['file_path'])) {
             unlink($file['file_path']);
         }
@@ -44,13 +291,13 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
             if (!empty($file[$fk])) {
                 $new = preg_replace($pattern, '[Image Deleted]', $file[$textKey]);
                 if ($new !== $file[$textKey]) {
-                    $db->sql_query("UPDATE $table SET $col='" . $db->escape_string($new) . "' WHERE {$pk[$fk]}=" . (int)$file[$fk]);
+                    $db->sql_query_prepared("UPDATE $table SET $col = ? WHERE {$pk[$fk]} = ?", [$new, (int)$file[$fk]]);
                     if ($table === 'news') $cache->update_news();
                 }
             }
         }
 
-        $db->sql_query("DELETE FROM comment_files WHERE id=$file_id");
+        $db->sql_query_prepared("DELETE FROM comment_files WHERE id = ?", [$file_id]);
         echo json_encode(['status'=>'success','id'=>$file_id,'message'=>'File deleted']);
     } else {
         echo json_encode(['status'=>'error','message'=>'File not found']);
@@ -62,6 +309,12 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
 if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
     header('Content-Type: application/json; charset=utf-8');
 
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        http_response_code(403);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid security token']);
+        exit;
+    }
+
     $selected = $_POST['selected_files'] ?? [];
     if (is_string($selected)) $selected = $selected !== '' ? [$selected] : [];
     $ids = array_filter(array_map('intval', (array)$selected));
@@ -71,8 +324,8 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
         exit;
     }
 
-    $ids_str = implode(',', $ids);
-    $res = $db->sql_query("
+    $ids_ph = implode(',', array_fill(0, count($ids), '?'));
+    $res = $db->sql_query_prepared("
         SELECT cf.*, c.text AS comment_text, n.body AS news_text,
                t.descr AS torrent_description, p.message AS post_message,
                pm.message AS pm_message
@@ -82,8 +335,8 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
         LEFT JOIN torrents t ON t.id=cf.torrent_id
         LEFT JOIN posts p ON p.pid=cf.post_id
         LEFT JOIN privatemessages pm ON pm.pmid=cf.messages_id
-        WHERE cf.id IN ($ids_str)
-    ");
+        WHERE cf.id IN ({$ids_ph})
+    ", $ids);
 
     $affected = ['comments'=>[],'news'=>[],'torrents'=>[],'posts'=>[],'privatemessages'=>[]];
     $pk_map   = ['comments'=>'id','news'=>'id','torrents'=>'id','posts'=>'pid','privatemessages'=>'pmid'];
@@ -92,7 +345,7 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
     $txt_map  = ['comments'=>'comment_text','news'=>'news_text','torrents'=>'torrent_description','posts'=>'post_message','privatemessages'=>'pm_message'];
     $deleted_ids = [];
 
-    while ($file = $db->fetch_array($res)) {
+    while ($res && ($file = $db->fetch_array($res))) {
         $deleted_ids[] = $file['id'];
         if (file_exists($file['file_path'])) unlink($file['file_path']);
         $pattern = '/\[img\][^\[]*' . preg_quote(basename($file['file_path']), '/') . '[^\]]*\[\/img\]/i';
@@ -112,12 +365,12 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
         foreach ($rows as $id => $text) {
             $col = $col_map[$table];
             $pk  = $pk_map[$table];
-            $db->sql_query("UPDATE $table SET $col='" . $db->escape_string($text) . "' WHERE $pk=$id");
+            $db->sql_query_prepared("UPDATE $table SET $col = ? WHERE $pk = ?", [$text, $id]);
             if ($table === 'news') $cache->update_news();
         }
     }
 
-    $db->sql_query("DELETE FROM comment_files WHERE id IN ($ids_str)");
+    $db->sql_query_prepared("DELETE FROM comment_files WHERE id IN ({$ids_ph})", $ids);
     echo json_encode(['status'=>'success','message'=>'Files deleted','deleted_ids'=>$deleted_ids]);
     exit;
 }
@@ -127,11 +380,16 @@ $is_ajax   = isset($_GET['ajax_search']) && $_GET['ajax_search'] == '1';
 $per_page  = $ts_perpage;
 $page      = max(1, (int)($_GET['page'] ?? 1));
 $offset    = ($page - 1) * $per_page;
-$search    = isset($_GET['search'])     ? $db->escape_string($_GET['search'])     : '';
-$typeFilter= isset($_GET['type'])       ? $db->escape_string($_GET['type'])       : '';
+$search    = trim($_GET['search'] ?? '');
+$typeFilter= trim($_GET['type']   ?? '');
 
 $where = [];
-if ($search)     $where[] = "(file_name LIKE '%$search%' OR file_type LIKE '%$search%')";
+$where_params = [];
+if ($search) {
+    $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+    $where[] = "(file_name LIKE ? OR file_type LIKE ?)";
+    array_push($where_params, "%$like%", "%$like%");
+}
 if ($typeFilter) {
     $type_conditions = [
         'torrent' => "torrent_id IS NOT NULL AND torrent_id != 0",
@@ -144,21 +402,22 @@ if ($typeFilter) {
 }
 $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-$total_row   = $db->fetch_array($db->sql_query("SELECT COUNT(*) as total FROM comment_files $whereClause"));
-$total_files = $total_row['total'];
+$total_q = $db->sql_query_prepared("SELECT COUNT(*) as total FROM comment_files $whereClause", $where_params);
+$total_row   = $total_q ? $db->fetch_array($total_q) : null;
+$total_files = $total_row['total'] ?? 0;
 $total_pages = ceil($total_files / $per_page);
 
-$result = $db->sql_query("
+$result = $db->sql_query_prepared("
     SELECT comment_files.*, users.username, users.usergroup, users.avatar, users.avatardimensions
     FROM comment_files
     LEFT JOIN users ON users.id = comment_files.user_id
     $whereClause
     ORDER BY comment_files.uploaded_at DESC
-    LIMIT $offset, $per_page
-");
+    LIMIT ?, ?
+", [...$where_params, $offset, $per_page]);
 
 $files = [];
-while ($row = $db->fetch_array($result)) $files[] = $row;
+while ($result && ($row = $db->fetch_array($result))) $files[] = $row;
 
 $this_script2 = "index.php?act=manage_uploads"
     . ($search     ? "&search="  . urlencode($search)     : '')
@@ -250,6 +509,7 @@ stdhead();
     <div class="bulk-actions card mb-4" id="bulkActions">
         <div class="card-body p-3">
             <form method="POST" action="<?= $_this_script_ ?>" class="d-flex flex-column flex-md-row align-items-md-center gap-3" id="bulkForm">
+                <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
                 <div class="d-flex align-items-center">
                     <i class="bi bi-check2-square me-2 fs-5 text-primary"></i>
                     <span class="fw-medium" id="selectedCount">0</span>
@@ -288,64 +548,401 @@ stdhead();
 <!-- Edit Modal -->
 <div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title d-flex align-items-center gap-2">
+        <div class="modal-content border-0">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
                     <i class="bi bi-pencil-square text-primary"></i> Edit File Details
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="<?= $_this_script_ ?>">
-                <input type="hidden" name="id" id="editId">
-                <input type="hidden" name="update" value="1">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-medium">File Name</label>
-                        <input type="text" class="form-control" name="file_name" id="editFileName">
+            <div class="modal-body p-4">
+                <input type="hidden" id="editId">
+                <div class="mb-3">
+                    <label class="form-label fw-medium">File Name</label>
+                    <input type="text" class="form-control border-0 bg-light" id="editFileName">
+                </div>
+                <div class="alert alert-info small mb-3">
+                    <i class="bi bi-info-circle me-1"></i> Only one of Comment/News/Torrent/Post can be set at a time. Leave the others empty.
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-medium"><i class="bi bi-chat-square-text me-1"></i>Comment ID</label>
+                        <input type="number" class="form-control border-0 bg-light" id="editCommentId">
                     </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-medium"><i class="bi bi-chat-square-text me-1"></i>Comment ID</label>
-                            <input type="number" class="form-control" name="comment_id" id="editCommentId">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-medium"><i class="bi bi-newspaper me-1"></i>News ID</label>
-                            <input type="number" class="form-control" name="news_id" id="editNewsId">
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-medium"><i class="bi bi-download me-1"></i>Torrent ID</label>
-                            <input type="number" class="form-control" name="torrent_id" id="editTorrentId">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-medium"><i class="bi bi-card-text me-1"></i>Post ID</label>
-                            <input type="number" class="form-control" name="post_id" id="editPostId">
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-medium"><i class="bi bi-person me-1"></i>User ID</label>
-                            <input type="number" class="form-control" name="user_id" id="editUserId">
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-medium">Description</label>
-                        <textarea class="form-control" name="description" id="editDescription" rows="3"></textarea>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-medium"><i class="bi bi-newspaper me-1"></i>News ID</label>
+                        <input type="number" class="form-control border-0 bg-light" id="editNewsId">
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        <i class="bi bi-x-lg me-1"></i> Cancel
-                    </button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-check-lg me-1"></i> Save Changes
-                    </button>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-medium"><i class="bi bi-download me-1"></i>Torrent ID</label>
+                        <input type="number" class="form-control border-0 bg-light" id="editTorrentId">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-medium"><i class="bi bi-card-text me-1"></i>Post ID</label>
+                        <input type="number" class="form-control border-0 bg-light" id="editPostId">
+                    </div>
                 </div>
-            </form>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-medium"><i class="bi bi-person me-1"></i>User ID</label>
+                        <input type="number" class="form-control border-0 bg-light" id="editUserId">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 p-4">
+                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-primary px-4 position-relative" id="editSaveBtn">
+                    <span class="save-text"><i class="bi bi-check-lg me-1"></i> Save Changes</span>
+                    <span class="save-loading d-none"><span class="spinner-border spinner-border-sm me-2"></span>Saving...</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Move Modal -->
+<div class="modal fade" id="moveModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+                    <i class="bi bi-arrows-move text-primary"></i> Move File
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="moveId">
+                <div class="text-center mb-4">
+                    <img id="movePreviewImg" src="" class="rounded border" style="max-height:140px;max-width:100%" alt="Preview">
+                </div>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-secondary mb-2"><i class="bi bi-tag me-1"></i>New Content Type</label>
+                        <select class="form-select border-0 bg-light" id="moveContentType" required>
+                            <option value="" selected disabled>Choose type...</option>
+                            <option value="comment">💬 Comment</option>
+                            <option value="news">📰 News</option>
+                            <option value="torrent">⬇️ Torrent</option>
+                            <option value="post">📄 Post</option>
+                            <option value="message">✉️ Message</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-secondary mb-2"><i class="bi bi-hash me-1"></i>New Content ID</label>
+                        <input type="number" class="form-control border-0 bg-light" id="moveContentId" placeholder="Enter ID" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-secondary mb-2"><i class="bi bi-code-slash me-1"></i>BBCode Tag</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control border-0 bg-light" id="moveBbcodeTag" readonly>
+                        <button class="btn btn-outline-secondary" type="button" id="moveCopyBbcodeBtn" title="Copy to clipboard">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="moveInsertTag" checked>
+                    <label class="form-check-label" for="moveInsertTag">
+                        Also insert this BBCode tag into the new location automatically
+                    </label>
+                    <div class="form-text" id="moveInsertTagNote">The tag is always removed from the old location.</div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 p-4">
+                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-primary px-4 position-relative" id="moveSaveBtn">
+                    <span class="save-text"><i class="bi bi-arrows-move me-1"></i> Move</span>
+                    <span class="save-loading d-none"><span class="spinner-border spinner-border-sm me-2"></span>Moving...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Copy Modal -->
+<div class="modal fade" id="copyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+                    <i class="bi bi-files text-primary"></i> Copy File
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="copyId">
+                <div class="text-center mb-4">
+                    <img id="copyPreviewImg" src="" class="rounded border" style="max-height:140px;max-width:100%" alt="Preview">
+                </div>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-secondary mb-2"><i class="bi bi-tag me-1"></i>Target Content Type</label>
+                        <select class="form-select border-0 bg-light" id="copyContentType" required>
+                            <option value="" selected disabled>Choose type...</option>
+                            <option value="comment">💬 Comment</option>
+                            <option value="news">📰 News</option>
+                            <option value="torrent">⬇️ Torrent</option>
+                            <option value="post">📄 Post</option>
+                            <option value="message">✉️ Message</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-secondary mb-2"><i class="bi bi-hash me-1"></i>Target Content ID</label>
+                        <input type="number" class="form-control border-0 bg-light" id="copyContentId" placeholder="Enter ID" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-secondary mb-2"><i class="bi bi-code-slash me-1"></i>BBCode Tag</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control border-0 bg-light" id="copyBbcodeTag" readonly>
+                        <button class="btn btn-outline-secondary" type="button" id="copyCopyBbcodeBtn" title="Copy to clipboard">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="copyInsertTag" checked>
+                    <label class="form-check-label" for="copyInsertTag">
+                        Also insert this BBCode tag into the target's text automatically
+                    </label>
+                    <div class="form-text" id="copyInsertTagNote"></div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 p-4">
+                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-primary px-4 position-relative" id="copySaveBtn">
+                    <span class="save-text"><i class="bi bi-files me-1"></i> Copy</span>
+                    <span class="save-loading d-none"><span class="spinner-border spinner-border-sm me-2"></span>Copying...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const myPostKey = <?= json_encode($mybb->post_code ?? '') ?>;
+    const scriptUrl  = <?= json_encode($_this_script_) ?>;
+
+    function toast(msg, type) {
+        if (typeof showToast === 'function') { showToast(msg, type); }
+        else { alert(msg); }
+    }
+
+    // ── Edit ──────────────────────────────────────────────
+    const editModal = document.getElementById('editModal');
+    editModal.addEventListener('show.bs.modal', function(event) {
+        const t = event.relatedTarget;
+        if (!t) return;
+        document.getElementById('editId').value = t.getAttribute('data-id') || '';
+        document.getElementById('editFileName').value = t.getAttribute('data-file-name') || '';
+        document.getElementById('editCommentId').value = t.getAttribute('data-comment-id') || '';
+        document.getElementById('editNewsId').value = t.getAttribute('data-news-id') || '';
+        document.getElementById('editTorrentId').value = t.getAttribute('data-torrent-id') || '';
+        document.getElementById('editPostId').value = t.getAttribute('data-post-id') || '';
+        document.getElementById('editUserId').value = t.getAttribute('data-user-id') || '';
+    });
+
+    document.getElementById('editSaveBtn').addEventListener('click', function() {
+        const btn = this;
+        const formData = new FormData();
+        formData.append('update', '1');
+        formData.append('my_post_key', myPostKey);
+        formData.append('id', document.getElementById('editId').value);
+        formData.append('file_name', document.getElementById('editFileName').value);
+        formData.append('comment_id', document.getElementById('editCommentId').value);
+        formData.append('news_id', document.getElementById('editNewsId').value);
+        formData.append('torrent_id', document.getElementById('editTorrentId').value);
+        formData.append('post_id', document.getElementById('editPostId').value);
+        formData.append('user_id', document.getElementById('editUserId').value);
+
+        btn.disabled = true;
+        btn.querySelector('.save-text').classList.add('d-none');
+        btn.querySelector('.save-loading').classList.remove('d-none');
+
+        fetch(scriptUrl, { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    toast(data.message, 'success');
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(editModal)?.hide();
+                        location.reload();
+                    }, 900);
+                } else {
+                    toast(data.message || 'Update failed.', 'error');
+                }
+            })
+            .catch(() => toast('Server not responding.', 'error'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.querySelector('.save-text').classList.remove('d-none');
+                btn.querySelector('.save-loading').classList.add('d-none');
+            });
+    });
+
+    // ── Move ──────────────────────────────────────────────
+    const moveModal = document.getElementById('moveModal');
+    function updateMoveBbcode() {
+        const url = document.getElementById('movePreviewImg').src;
+        document.getElementById('moveBbcodeTag').value = url ? '[img]' + url + '[/img]' : '';
+    }
+    function updateMoveInsertNote() {
+        const type = document.getElementById('moveContentType').value;
+        const checkbox = document.getElementById('moveInsertTag');
+        const note = document.getElementById('moveInsertTagNote');
+        if (type === 'message') {
+            checkbox.checked = false;
+            checkbox.disabled = true;
+            note.textContent = 'The tag is always removed from the old location. Not inserted automatically for Messages - private message text is never modified automatically.';
+        } else {
+            checkbox.disabled = false;
+            note.textContent = 'The tag is always removed from the old location.';
+        }
+    }
+    moveModal.addEventListener('show.bs.modal', function(event) {
+        const t = event.relatedTarget;
+        if (!t) return;
+        document.getElementById('moveId').value = t.getAttribute('data-id') || '';
+        document.getElementById('movePreviewImg').src = t.getAttribute('data-file-url') || '';
+        document.getElementById('moveContentType').value = '';
+        document.getElementById('moveContentId').value = '';
+        document.getElementById('moveInsertTag').checked = true;
+        document.getElementById('moveInsertTag').disabled = false;
+        document.getElementById('moveInsertTagNote').textContent = 'The tag is always removed from the old location.';
+        updateMoveBbcode();
+    });
+    document.getElementById('moveContentType').addEventListener('change', updateMoveInsertNote);
+    document.getElementById('moveCopyBbcodeBtn').addEventListener('click', function() {
+        const input = document.getElementById('moveBbcodeTag');
+        input.select();
+        navigator.clipboard?.writeText(input.value).then(() => toast('Copied to clipboard', 'success'));
+    });
+    document.getElementById('moveSaveBtn').addEventListener('click', function() {
+        const btn = this;
+        const contentType = document.getElementById('moveContentType').value;
+        const contentId   = document.getElementById('moveContentId').value.trim();
+        if (!contentType || !contentId) { toast('Content type and ID are required', 'error'); return; }
+
+        const formData = new FormData();
+        formData.append('ajax_move', '1');
+        formData.append('my_post_key', myPostKey);
+        formData.append('id', document.getElementById('moveId').value);
+        formData.append('content_type', contentType);
+        formData.append('content_id', contentId);
+        formData.append('insert_tag', document.getElementById('moveInsertTag').checked ? '1' : '');
+
+        btn.disabled = true;
+        btn.querySelector('.save-text').classList.add('d-none');
+        btn.querySelector('.save-loading').classList.remove('d-none');
+
+        fetch(scriptUrl, { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    toast(data.message, 'success');
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(moveModal)?.hide();
+                        location.reload();
+                    }, 900);
+                } else {
+                    toast(data.message || 'Move failed.', 'error');
+                }
+            })
+            .catch(() => toast('Server not responding.', 'error'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.querySelector('.save-text').classList.remove('d-none');
+                btn.querySelector('.save-loading').classList.add('d-none');
+            });
+    });
+
+    // ── Copy ──────────────────────────────────────────────
+    const copyModal = document.getElementById('copyModal');
+    function updateCopyBbcode() {
+        const url = document.getElementById('copyPreviewImg').src;
+        document.getElementById('copyBbcodeTag').value = url ? '[img]' + url + '[/img]' : '';
+    }
+    function updateCopyInsertNote() {
+        const type = document.getElementById('copyContentType').value;
+        const checkbox = document.getElementById('copyInsertTag');
+        const note = document.getElementById('copyInsertTagNote');
+        if (type === 'message') {
+            checkbox.checked = false;
+            checkbox.disabled = true;
+            note.textContent = 'Not available for Messages - private message text is never modified automatically.';
+        } else {
+            checkbox.disabled = false;
+            note.textContent = '';
+        }
+    }
+    copyModal.addEventListener('show.bs.modal', function(event) {
+        const t = event.relatedTarget;
+        if (!t) return;
+        document.getElementById('copyId').value = t.getAttribute('data-id') || '';
+        document.getElementById('copyPreviewImg').src = t.getAttribute('data-file-url') || '';
+        document.getElementById('copyContentType').value = '';
+        document.getElementById('copyContentId').value = '';
+        document.getElementById('copyInsertTag').checked = true;
+        document.getElementById('copyInsertTag').disabled = false;
+        document.getElementById('copyInsertTagNote').textContent = '';
+        updateCopyBbcode();
+    });
+    document.getElementById('copyContentType').addEventListener('change', updateCopyInsertNote);
+    document.getElementById('copyCopyBbcodeBtn').addEventListener('click', function() {
+        const input = document.getElementById('copyBbcodeTag');
+        input.select();
+        navigator.clipboard?.writeText(input.value).then(() => toast('Copied to clipboard', 'success'));
+    });
+    document.getElementById('copySaveBtn').addEventListener('click', function() {
+        const btn = this;
+        const contentType = document.getElementById('copyContentType').value;
+        const contentId   = document.getElementById('copyContentId').value.trim();
+        if (!contentType || !contentId) { toast('Content type and ID are required', 'error'); return; }
+
+        const formData = new FormData();
+        formData.append('ajax_copy', '1');
+        formData.append('my_post_key', myPostKey);
+        formData.append('id', document.getElementById('copyId').value);
+        formData.append('content_type', contentType);
+        formData.append('content_id', contentId);
+        formData.append('insert_tag', document.getElementById('copyInsertTag').checked ? '1' : '');
+
+        btn.disabled = true;
+        btn.querySelector('.save-text').classList.add('d-none');
+        btn.querySelector('.save-loading').classList.remove('d-none');
+
+        fetch(scriptUrl, { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    toast(data.message, 'success');
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(copyModal)?.hide();
+                        location.reload();
+                    }, 900);
+                } else {
+                    toast(data.message || 'Copy failed.', 'error');
+                }
+            })
+            .catch(() => toast('Server not responding.', 'error'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.querySelector('.save-text').classList.remove('d-none');
+                btn.querySelector('.save-loading').classList.add('d-none');
+            });
+    });
+})();
+</script>
 
 <?php require_once INC_PATH . '/modals_images.php'; ?>
 

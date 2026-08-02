@@ -114,8 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_arr
         
         // Build avatar to user mapping
         $map = [];
-        $res = $db->sql_query("SELECT id, avatar FROM users WHERE avatar <> ''");
-        while ($row = $db->fetch_array($res)) {
+        $res = $db->sql_query_prepared("SELECT id, avatar FROM users WHERE avatar <> ''");
+        while ($res && ($row = $db->fetch_array($res))) {
             $k = strtolower(basename($row['avatar']));
             $map[$k][] = (int)$row['id'];
         }
@@ -132,11 +132,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_arr
             // Clear user profiles first
             if ($ids) {
                 foreach ($ids as $uid) {
-                    $db->update_query('users', [
-                        'avatar'           => '',
-                        'avatardimensions' => '',
-                        'avatartype'       => ''
-                    ], "id=" . (int)$uid);
+                    $db->sql_query_prepared(
+                        "UPDATE users SET avatar = '', avatardimensions = '', avatartype = '' WHERE id = ?",
+                        [$uid]
+                    );
                     
                     if (function_exists('remove_avatars')) {
                         remove_avatars($uid);
@@ -216,9 +215,9 @@ $avatar_to_user = [];
 $sql = "SELECT id, username, usergroup, avatar
         FROM users
         WHERE avatar <> '' AND avatar REGEXP '\\.(gif|jpe?g|png|webp)$'";
-$res = $db->sql_query($sql);
+$res = $db->sql_query_prepared($sql);
 
-while ($u = $db->fetch_array($res)) {
+while ($res && ($u = $db->fetch_array($res))) {
     $key = strtolower(basename($u['avatar']));
     $avatar_to_user[$key] = '<a href="' . htmlspecialchars($BASEURL) . '/' . get_profile_link($u['id']) . '" class="text-decoration-none">
         <i class="fas fa-user-circle me-1"></i>' . format_name($u['username'], $u['usergroup']) . '</a>';

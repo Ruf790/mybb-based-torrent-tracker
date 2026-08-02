@@ -9,197 +9,223 @@ $response = ['success' => false, 'message' => '', 'uploaded' => 0];
 
 try {
     $rootpath = './../';
+    if (!defined('IN_ADMINCP')) {
+        define('IN_ADMINCP', true);
+    }
     require_once $rootpath . 'global.php';
-    
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         throw new Exception('Invalid request method');
     }
-    
+
+    // Admin-only. Раньше эта проверка отсутствовала вообще - файл лежит в
+    // admin/, но принять запрос мог кто угодно, включая незалогиненного
+    // анонима.
+    if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+        http_response_code(403);
+        throw new Exception('Access denied. Staff only.');
+    }
+
+    // CSRF. Раньше отсутствовала полностью.
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+        throw new Exception('Invalid security token. Please refresh the page and try again.');
+    }
+
     if (!isset($_FILES['files'])) {
         throw new Exception('No files uploaded');
     }
-    
+
     $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/uploads/';
-    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+
+    // Реальный MIME по содержимому файла - $_FILES[...]['type'] это просто
+    // Content-Type заголовок ОТ КЛИЕНТА, тривиально подделывается и не может
+    // использоваться как проверка безопасности сама по себе.
+    $allowedMime = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+
+    // Явный whitelist расширений. Раньше расширение бралось из имени файла
+    // клиента без всякой проверки и приклеивалось к серверному имени - то
+    // есть можно было залить .php/.phtml с подделанным Content-Type и
+    // получить выполнение кода на сервере (файл сохранялся прямо под
+    // DOCUMENT_ROOT).
+    $allowedExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx'];
+
     $maxSize = 10 * 1024 * 1024; // 10 MB
-    
-    // Get content type and ID (используем null coalescing operator ??)
+
     $contentType = $_POST['content_type'] ?? '';
-    $contentId = isset($_POST['content_id']) ? (int)$_POST['content_id'] : 0;
-    
+    $contentId   = isset($_POST['content_id']) ? (int)$_POST['content_id'] : 0;
+
     if ($contentType === '' || $contentId === 0) {
         throw new Exception('Content type and ID are required');
     }
-    
-    // ============ ПРОВЕРКА СУЩЕСТВОВАНИЯ ID ============
-    $tableName = match($contentType) { // Используем match expression (PHP 8+)
+
+    $tableName = match ($contentType) {
         'comment' => 'comments',
-        'news' => 'news',
+        'news'    => 'news',
         'torrent' => 'torrents',
-        'post' => 'tsf_posts',
+        'post'    => 'posts',
         'message' => 'privatemessages',
-        default => throw new Exception('Invalid content type')
+        default   => throw new Exception('Invalid content type'),
     };
-    
-    $idField = match($contentType) {
-        'post' => 'pid',
+
+    $idField = match ($contentType) {
+        'post'    => 'pid',
         'message' => 'pmid',
-        default => 'id'
+        default   => 'id',
     };
-    
-    // Проверяем существует ли запись с таким ID
-    $check_result = $db->sql_query("SELECT $idField FROM $tableName WHERE $idField = $contentId");
-    if ($db->num_rows($check_result) == 0) {
-        throw new Exception("$contentType with ID $contentId does not exist");
+
+    $check_result = $db->sql_query_prepared("SELECT {$idField} FROM {$tableName} WHERE {$idField} = ?", [$contentId]);
+    if (!$check_result || $db->num_rows($check_result) === 0) {
+        throw new Exception("{$contentType} with ID {$contentId} does not exist");
     }
-    // ============ КОНЕЦ ПРОВЕРКИ ============
-    
-    // Create upload directory if it doesn't exist
+
     if (!is_dir($uploadDir)) {
-        if (!mkdir($uploadDir, 0777, true) && !is_dir($uploadDir)) {
+        if (!mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
             throw new Exception('Failed to create upload directory');
         }
     }
-    
-    $files = $_FILES['files'];
-    $fileCount = count($files['name']);
-    $uploaded = 0;
+
+    $contentColumn = match ($contentType) {
+        'comment' => 'comment_id',
+        'news'    => 'news_id',
+        'torrent' => 'torrent_id',
+        'post'    => 'post_id',
+        'message' => 'messages_id',
+        default   => null,
+    };
+
+    if ($contentColumn === null) {
+        throw new Exception('Invalid content type');
+    }
+
+    $files         = $_FILES['files'];
+    $fileCount     = count($files['name']);
+    $uploaded      = 0;
     $uploadedFiles = [];
-    
+
     for ($i = 0; $i < $fileCount; $i++) {
-        $fileName = $files['name'][$i];
-        $fileTmp = $files['tmp_name'][$i];
-        $fileSize = $files['size'][$i];
-        $fileType = $files['type'][$i];
-        
-        // Validate file type
-        if (!in_array($fileType, $allowedTypes, true) && !str_starts_with($fileType, 'image/')) { // str_starts_with для PHP 8+
+        $fileName  = $files['name'][$i];
+        $fileTmp   = $files['tmp_name'][$i];
+        $fileSize  = $files['size'][$i];
+        $fileError = $files['error'][$i];
+
+        if ($fileError !== UPLOAD_ERR_OK) {
             continue;
         }
-        
-        // Validate file size
+
         if ($fileSize > $maxSize) {
             continue;
         }
-        
-        // Generate unique filename
+
+        // MIME по содержимому, не по заголовку клиента
+        $realMime = (new finfo(FILEINFO_MIME_TYPE))->file($fileTmp);
+        if (!in_array($realMime, $allowedMime, true)) {
+            continue;
+        }
+
         $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-        $newFileName = uniqid() . '.' . $ext;
-        $uploadPath = $uploadDir . $newFileName;
-        $fileUrl = $BASEURL . '/uploads/' . $newFileName;
-        
-        if (move_uploaded_file($fileTmp, $uploadPath)) {
-            // Get user ID from session
-            $userId = (int)($CURUSER["id"] ?? 0);
-            
-            // Determine which column to use based on content type
-            $contentColumn = match($contentType) {
-                'comment' => 'comment_id',
-                'news' => 'news_id',
-                'torrent' => 'torrent_id',
-                'post' => 'post_id',
-                'message' => 'messages_id',
-                default => null
-            };
-            
-            if ($contentColumn === null) {
-                continue;
-            }
-            
-            // Insert into database
-            $sql = "INSERT INTO comment_files 
-                    (file_name, file_path, file_url, file_type, file_size, user_id, $contentColumn, uploaded_at) 
-                    VALUES 
-                    ('" . $db->escape_string($fileName) . "', 
-                     '" . $db->escape_string($uploadPath) . "', 
-                     '" . $db->escape_string($fileUrl) . "', 
-                     '" . $db->escape_string($fileType) . "', 
-                     " . (int)$fileSize . ", 
-                     " . $userId . ", 
-                     " . $contentId . ", 
-                     NOW())";
-            
-            if ($db->sql_query($sql)) {
-                $uploaded++;
-                $uploadedFiles[] = $fileUrl;
-            }
+        if (!in_array($ext, $allowedExt, true)) {
+            continue;
+        }
+
+        // Доп. проверка для изображений - ловит "полиглот"-файлы, у которых
+        // магические байты картинки валидны, но дальше не изображение.
+        if (str_starts_with($realMime, 'image/') && @getimagesize($fileTmp) === false) {
+            continue;
+        }
+
+        $newFileName = bin2hex(random_bytes(16)) . '.' . $ext;
+        $uploadPath  = $uploadDir . $newFileName;
+        $fileUrl     = $BASEURL . '/uploads/' . $newFileName;
+
+        if (!move_uploaded_file($fileTmp, $uploadPath)) {
+            continue;
+        }
+
+        $userId = (int)($CURUSER['id'] ?? 0);
+
+        $result = $db->sql_query_prepared(
+            "INSERT INTO comment_files (file_name, file_path, file_url, file_type, file_size, user_id, {$contentColumn}, uploaded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+            [$fileName, $uploadPath, $fileUrl, $realMime, (int)$fileSize, $userId, $contentId]
+        );
+
+        if ($result) {
+            $uploaded++;
+            $uploadedFiles[] = $fileUrl;
+        } else {
+            // Запись в БД не удалась - файл уже физически на диске, без
+            // этого он остался бы висеть осиротевшим.
+            @unlink($uploadPath);
         }
     }
-    
-    // Если загружены изображения и есть контент, добавляем их в текст
-    if ($uploaded > 0 && $uploadedFiles !== [] && in_array($contentType, ['comment', 'news', 'post', 'message', 'torrent'], true)) {
-        
-        // Получаем текущий контент
-        $contentInfo = match($contentType) {
+
+    // Автоматически добавляем [img] в текст контента.
+    // Приватные сообщения сюда сознательно не включены - см. пояснение в
+    // сопроводительном тексте.
+    if ($uploaded > 0 && $uploadedFiles !== []) {
+        $contentInfo = match ($contentType) {
             'comment' => ['table' => 'comments', 'field' => 'text', 'id_field' => 'id'],
-            'news' => ['table' => 'news', 'field' => 'body', 'id_field' => 'id'],
+            'news'    => ['table' => 'news', 'field' => 'body', 'id_field' => 'id'],
             'torrent' => ['table' => 'torrents', 'field' => 'descr', 'id_field' => 'id'],
-            'post' => ['table' => 'tsf_posts', 'field' => 'message', 'id_field' => 'pid'],
-            'message' => ['table' => 'privatemessages', 'field' => 'message', 'id_field' => 'pmid'],
-            default => null
+            'post'    => ['table' => 'posts', 'field' => 'message', 'id_field' => 'pid'],
+            default   => null,
         };
-        
+
         if ($contentInfo !== null) {
-            $contentTable = $contentInfo['table'];
-            $contentField = $contentInfo['field'];
-            $contentIdField = $contentInfo['id_field'];
-            
-            // Получаем текущий текст
-            $result = $db->sql_query("SELECT $contentField FROM $contentTable WHERE $contentIdField = $contentId");
-            if ($row = $db->fetch_array($result)) {
-                $currentText = $row[$contentField];
-                
-                // Добавляем изображения в текст
-                $newImages = '';
-                foreach ($uploadedFiles as $fileUrl) {
-                    $newImages .= '[img]' . $fileUrl . '[/img]' . "\n";
+            $result = $db->sql_query_prepared(
+                "SELECT {$contentInfo['field']} FROM {$contentInfo['table']} WHERE {$contentInfo['id_field']} = ?",
+                [$contentId]
+            );
+            $row = $result ? $db->fetch_array($result) : null;
+
+            if ($row !== null) {
+                $currentText = $row[$contentInfo['field']] ?? '';
+                $newImages   = '';
+                foreach ($uploadedFiles as $url) {
+                    $newImages .= '[img]' . $url . '[/img]' . "\n";
                 }
-                
-                // Если есть существующий текст, добавляем изображения после него
-                $updatedText = $currentText !== '' 
-                    ? $currentText . "\n\n" . $newImages 
-                    : $newImages;
-                
-                // Обновляем контент с изображениями
-                $update_data = match($contentType) {
-                    'torrent', 'news' => [
-                        $contentField => $db->escape_string($updatedText)
-                    ],
-                    'post' => [
-                        $contentField => $db->escape_string($updatedText),
-                        "edituid" => (int)$CURUSER["id"],
-                        "edittime" => TIMENOW,
-                        "editreason" => "Added " . count($uploadedFiles) . " new image(s)"
-                    ],
-                    default => [
-                        $contentField => $db->escape_string($updatedText),
-                        "editedat" => TIMENOW,
-                        "editedby" => $db->escape_string($CURUSER["id"])
-                    ]
-                };
-                
-                $db->update_query($contentTable, $update_data, "$contentIdField = $contentId");
-                
-                // Очищаем кеш для новостей если нужно
+                $updatedText = $currentText !== '' ? $currentText . "\n\n" . $newImages : $newImages;
+
+                if ($contentType === 'post') {
+                    $db->sql_query_prepared(
+                        "UPDATE {$contentInfo['table']} SET {$contentInfo['field']} = ?, edituid = ?, edittime = ?, editreason = ? WHERE {$contentInfo['id_field']} = ?",
+                        [$updatedText, (int)$CURUSER['id'], TIMENOW, 'Added ' . count($uploadedFiles) . ' new image(s)', $contentId]
+                    );
+                } elseif ($contentType === 'comment') {
+                    $db->sql_query_prepared(
+                        "UPDATE {$contentInfo['table']} SET {$contentInfo['field']} = ?, editedat = ?, editedby = ? WHERE {$contentInfo['id_field']} = ?",
+                        [$updatedText, TIMENOW, (int)$CURUSER['id'], $contentId]
+                    );
+                } else {
+                    $db->sql_query_prepared(
+                        "UPDATE {$contentInfo['table']} SET {$contentInfo['field']} = ? WHERE {$contentInfo['id_field']} = ?",
+                        [$updatedText, $contentId]
+                    );
+                }
+
                 if ($contentType === 'news') {
                     $cache->update_news();
                 }
             }
         }
     }
-    
+
     if ($uploaded > 0) {
-        $response['success'] = true;
-        $response['message'] = "$uploaded file(s) uploaded successfully";
+        $response['success']  = true;
+        $response['message']  = "{$uploaded} file(s) uploaded successfully";
         $response['uploaded'] = $uploaded;
     } else {
         $response['message'] = 'No files were uploaded';
     }
-    
+
 } catch (Exception $e) {
     $response['message'] = $e->getMessage();
 }
 
 echo json_encode($response);
 exit();
-?>

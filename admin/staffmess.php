@@ -1,6 +1,5 @@
 <?php
 
-
 if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
@@ -8,15 +7,12 @@ if (!defined('STAFF_PANEL')) {
 @ini_set('memory_limit', '20000M');
 define('SM_VERSION', '0.8 by xam');
 
-
-// Include our base data handler class
 require_once INC_PATH . '/datahandler.php';
-
 require_once(INC_PATH . '/class_parser.php');
 $parser = new postParser;
 
 $parser_options = array(
-    "allow_html" => 1,
+    "allow_html" => 0,
     "allow_mycode" => 1,
     "allow_smilies" => 1,
     "allow_imgcode" => 1,
@@ -27,7 +23,6 @@ $parser_options = array(
 $error = '';
 $msgtext = trim ($_POST['message']);
 $subject = trim ($_POST['subject']);
-
 
 $useravatar = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
 $avatar = '<img src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' />';
@@ -42,18 +37,15 @@ if (($_POST['previewpost'] AND !empty ($msgtext)))
 	</tr></table><br />';
 }
 
-
-
 if ($_SERVER['REQUEST_METHOD'] == 'POST') 
 {
     $gids = $_POST['gid'] ?? [];
     $sender_id = ($_POST['sender'] ?? '') === 'system' ? 0 : (int)$CURUSER['id'];
-    $dt = $db->sqlesc(get_date_time());
+    
     if (empty($msgtext) || empty($subject) || !is_array($gids)) {
         $error = 'Don\'t leave any fields blank.';
     }
 
-    $groupids = '';
     $checked = [];
     if (is_array($gids)) 
 	{
@@ -61,8 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST')
 		{
             if (is_valid_id($gid)) 
 			{
-                $groupids .= ', ' . $gid;
-                $checked[] = $gid;
+                $checked[] = (int)$gid;
             }
         }
     }
@@ -71,10 +62,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST')
 	{
         require_once INC_PATH . '/functions_pm.php';
 
-        $query = $db->simple_select("users", "id", "usergroup IN (0{$groupids})");
+        // Собираем placeholders для IN (0, ?, ?, ?)
+        $groupids_array = array_merge([0], $checked);
+        $placeholders   = implode(',', array_fill(0, count($groupids_array), '?'));
+
+        $query = $db->sql_query_prepared(
+            "SELECT id FROM users WHERE usergroup IN ({$placeholders})",
+            $groupids_array
+        );
 
         $qcount = 0;
-        while ($dat = $db->fetch_array($query)) {
+        while ($query && ($dat = $db->fetch_array($query))) {
             $pm = array(
                 'subject' => $db->escape_string($subject),
                 'message' => $db->escape_string($msgtext),
@@ -82,7 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST')
             );
 
             send_pm($pm, $sender_id, true);
-
             ++$qcount;
         }
 
@@ -107,22 +104,20 @@ if (!empty($error) && empty($_POST['previewpost'])) {
 }
 
 // Prepare usergroup checkboxes
-$query = $db->simple_select("usergroups", "gid, title, namestyle");
+$query = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups");
 
 $count = 1;
 $sgids = '
 <fieldset>
     <legend>Select Usergroup(s)</legend>
     <table border="0" cellspacing="0" cellpadding="2" width="100%"><tr>';
-while ($gid = $db->fetch_array($query)) {
+while ($query && ($gid = $db->fetch_array($query))) {
     if ($count % 5 == 1 && $count > 1) {
         $sgids .= '</tr><tr>';
     }
 
     $checkedAttr = (!empty($checked) && in_array($gid['gid'], $checked)) ? ' checked="checked"' : '';
     $sgids .= '
-    
-    
 <td style="border:0">
   <div class="form-check form-switch d-inline-block">
     <input class="form-check-input" type="checkbox"
@@ -131,10 +126,8 @@ while ($gid = $db->fetch_array($query)) {
            value="' . $gid['gid'] . '" ' . $checkedAttr . '>
     <label class="form-check-label" for="gid_' . $gid['gid'] . '"></label>
   </div>
+</div>
 </td>
-
-
-
     <td style="border: 0">' . format_name($gid['title'], $gid['gid']) . '</td>';
     ++$count;
 }
@@ -195,10 +188,7 @@ echo '
 echo '
 <div class="mb-3">
     <label for="message" class="form-label">Message</label>
-	
-	
-	
-	<!-- BBCode Toolbar -->
+    <!-- BBCode Toolbar -->
     <div class="mb-2 d-flex flex-wrap gap-1">
       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[b]\', \'[/b]\');" title="Bold (Ctrl+B)"><strong>B</strong></button>
       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[i]\', \'[/i]\');" title="Italic (Ctrl+I)"><em>I</em></button>
@@ -216,9 +206,6 @@ echo '
       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[spoiler]\', \'[/spoiler]\');" title="Spoiler">Spoiler</button>
       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[video=youtube]\', \'[/video]\');" title="YouTube Video">YouTube</button>
     </div>
-	
-	
-	
     <textarea class="form-control" id="message" name="message" rows="8" required>' . htmlspecialchars($msgtext) . '</textarea>
     <div id="charCount" class="form-text text-end">0 characters</div>
     <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="togglePreviewBtn">Show Markdown Preview</button>
@@ -286,16 +273,13 @@ document.addEventListener('DOMContentLoaded', () => {
                    .replace(/'/g, "&#039;");
     }
 
-    // Simple markdown parsing: bold **text**, italic *text*, code `text`, line breaks
     function updateMarkdownPreview() {
         let text = escapeHtml(messageEl.value);
-
         text = text
             .replace(/\\*\\*(.*?)\\*\\*/g, "<strong>$1</strong>")
             .replace(/\\*(.*?)\\*/g, "<em>$1</em>")
             .replace(/`(.*?)`/g, "<code>$1</code>")
             .replace(/\\n/g, "<br>");
-
         markdownPreview.innerHTML = text;
     }
 
@@ -328,11 +312,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
-
 <script>
   const textarea = document.getElementById("message");
  
-  // Insert BBCode tags at the cursor position or wrap selection
   function insertBBCode(openTag, closeTag) {
     if (!textarea) return;
     
@@ -344,11 +326,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const before = text.substring(0, start);
     const after = text.substring(end);
     
-    // Wrap selection or insert tags at cursor
     const newText = before + openTag + selectedText + closeTag + after;
     textarea.value = newText;
     
-    // Reset cursor position after inserted tags
     if (selectedText.length === 0) {
       const cursorPos = start + openTag.length;
       textarea.setSelectionRange(cursorPos, cursorPos);
@@ -357,18 +337,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     textarea.focus();
-
-    // Trigger input event to update character count
     textarea.dispatchEvent(new Event("input"));
   }
 </script>
-
-
-
-
-
-
-
 JS;
 
 stdfoot();

@@ -22,21 +22,22 @@ function send_warning_emails($selected_users)
     
     foreach ($selected_users as $user_id) {
         $user_id = intval($user_id);
-        $query = $db->sql_query("SELECT id, username, email FROM users WHERE id = " . $user_id);
-        $user = $db->fetch_array($query);
+        $query = $db->sql_query_prepared("SELECT id, username, email FROM users WHERE id = ?", [$user_id]);
+        $user = $query ? $db->fetch_array($query) : null;
 
         if ($user) {
             $email = htmlspecialchars_uni($user['email']);
-            $response .= '<tr><td align="right">Sending email to: ' . htmlspecialchars_uni($user['username']) . ' (' . $email . ')</td>';
+            $safe_username = htmlspecialchars_uni($user['username']);
+            $response .= '<tr><td align="right">Sending email to: ' . $safe_username . ' (' . $email . ')</td>';
             
             $format = "html";
             $text_message = "";
-            $sendmail = my_mail($email, $subject['inactive'], sprintf($body['inactive'], $user['username']), "", "", "", false, $format, $text_message);
+            $sendmail = my_mail($email, $subject['inactive'], sprintf($body['inactive'], $safe_username), "", "", "", false, $format, $text_message);
             
             $response .= '<td align="center">' . ($sendmail ? '<font color="green">Success!</font>' : '<font color="red">Failed!</font>') . '</td></tr>';
             
             if ($sendmail) {
-                $db->sql_query('REPLACE INTO inactivity (userid, inactivitytag) VALUES (' . $db->sqlesc($user['id']) . ', ' . $db->sqlesc(TIMENOW) . ')');
+                $db->sql_query_prepared('REPLACE INTO inactivity (userid, inactivitytag) VALUES (?, ?)', [$user['id'], TIMENOW]);
                 $count++;
             }
         }
@@ -55,26 +56,37 @@ function delete_selected_users($selected_users)
     }
 
     $deleted_count = 0;
-    
+
+    // ID групп, которые НИКОГДА нельзя удалить через эту панель
+    // (админы/модераторы/супермодераторы и т.п.) — подставьте реальные ID
+    // групп из вашей таблицы usergroups.
+    $protected_usergroups = [1, 3, 4, 5, 6]; // пример: Admin, Super Mod, Global Mod и т.п.
+
     // Убедитесь, что класс существует
     if (!class_exists('UserDataHandler')) {
         require_once INC_PATH . '/datahandlers/user.php';
     }
-    
+
     $userhandler = new UserDataHandler('delete');
-    
+
     foreach ($selected_users as $user_id) {
         $user_id = intval($user_id);
-        
+
         // Проверяем, не пытаемся ли удалить сами себя или важных пользователей
         if ($user_id == $CURUSER['id'] || $user_id == 1) { // Не удаляем себя и пользователя с ID 1
             continue;
         }
-        
-        $query = $db->sql_query("SELECT id, username FROM users WHERE id = " . $user_id);
-        $user = $db->fetch_array($query);
-        
+
+        $query = $db->sql_query_prepared("SELECT id, username, usergroup FROM users WHERE id = ?", [$user_id]);
+        $user = $query ? $db->fetch_array($query) : null;
+
         if ($user) {
+            // Никогда не удаляем стафф/админов/модераторов через эту панель
+            if (in_array((int)$user['usergroup'], $protected_usergroups, true)) {
+                write_log('Attempt to delete protected/staff account (' . htmlspecialchars_uni($user['username']) . ') blocked, requested by ' . $CURUSER['username']);
+                continue;
+            }
+
             try {
                 $delete = $userhandler->delete_user(intval($user['id']));
                 if ($delete) {
@@ -88,7 +100,7 @@ function delete_selected_users($selected_users)
             }
         }
     }
-    
+
     return '<tr><td colspan="2" align="left">' . $deleted_count . ' user accounts have been deleted.</td></tr>';
 }
 
@@ -124,6 +136,10 @@ if (!isset($_this_script_)) {
 
 $action_result = '';
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
+    // Проверка CSRF-токена — обязательна перед любым необратимым действием
+    // (массовая рассылка / массовое удаление аккаунтов).
+    verify_post_check($mybb->get_input('my_post_key'));
+
     // Получаем выбранных пользователей из hidden field
     $selected_users = array();
     if (isset($_POST['selected_users_data']) && !empty($_POST['selected_users_data'])) {
@@ -159,13 +175,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
 
 // --- Pagination and database queries ---
 $dt = TIMENOW - ($maxdays * 86400);
-$query = $db->sql_query("
+$query = $db->sql_query_prepared("
     SELECT COUNT(id) as uid
     FROM users u
-    WHERE lastactive <{$dt} AND ustatus='confirmed' AND enabled='yes' ORDER BY lastactive DESC
-");
+    WHERE lastactive < ? AND ustatus='confirmed' AND enabled='yes' ORDER BY lastactive DESC
+", [$dt]);
 
-$threadcount = $db->fetch_field($query, "uid");
+$threadcount = $query ? $db->fetch_field($query, "uid") : 0;
 
 $f_threadsperpage = "20";
 if (!$f_threadsperpage || (int)$f_threadsperpage < 1) {
@@ -189,7 +205,13 @@ if ($page > 0) {
 $page_url = str_replace("{fid}", $fid, $_this_script_ . '');
 $multipage = multipage($threadcount, $perpage, $page, $page_url);
 
-$query_inactive = $db->sql_query('SELECT u.id,u.username,u.usergroup,u.email,u.uploaded,u.downloaded,u.lastactive,u.lastvisit,u.added,i.inactivitytag FROM users u LEFT JOIN inactivity i ON (u.id=i.userid) WHERE u.enabled = \'yes\' AND u.ustatus = \'confirmed\' AND u.lastactive < ' . $dt . ('' . '  ORDER BY i.inactivitytag DESC, u.lastactive DESC LIMIT ' . $start . ', ' . $perpage . ''));
+$query_inactive = $db->sql_query_prepared(
+    'SELECT u.id,u.username,u.usergroup,u.email,u.uploaded,u.downloaded,u.lastactive,u.lastvisit,u.added,i.inactivitytag
+     FROM users u LEFT JOIN inactivity i ON (u.id=i.userid)
+     WHERE u.enabled = \'yes\' AND u.ustatus = \'confirmed\' AND u.lastactive < ?
+     ORDER BY i.inactivitytag DESC, u.lastactive DESC LIMIT ?, ?',
+    [$dt, $start, $perpage]
+);
 
 // --- HTML and user interface ---
 
@@ -215,6 +237,10 @@ stdhead('Inactive Users more than ' . $maxdays . ' days! (Total ' . $threadcount
             <!-- Форма без чекбоксов -->
             <form method="post" action="<?php echo htmlspecialchars($_this_script_); ?>" id="mainForm">
                 <input type="hidden" name="selected_users_data" id="selectedUsersData" value="">
+                <input type="hidden" name="my_post_key" value="<?php echo htmlspecialchars_uni($mybb->post_code ?? ''); ?>">
+                <!-- ВАЖНО: если в вашем проекте CSRF-токен генерируется иначе
+                     (не $mybb->post_code), замените на актуальное свойство/функцию,
+                     совпадающую с тем, что проверяет verify_post_check(). -->
                 
                 
 				
@@ -261,7 +287,7 @@ stdhead('Inactive Users more than ' . $maxdays . ' days! (Total ' . $threadcount
         include_once INC_PATH . '/functions_ratio.php';
         require_once INC_PATH . '/functions_mkprettytime.php';
         $count = 0;
-        if ($db->num_rows($query_inactive) > 0) {
+        if ($query_inactive && $db->num_rows($query_inactive) > 0) {
             while ($user = $db->fetch_array($query_inactive)) {
                 $last_seen = max(array($user['lastactive'], $user['lastvisit']));
                 $last_active = !empty($last_seen) ? my_datee('relative', $last_seen) : 'Never';
@@ -302,7 +328,7 @@ stdhead('Inactive Users more than ' . $maxdays . ' days! (Total ' . $threadcount
 					
 					
                     <td><a href="<?php echo $BASEURL . '/' . get_profile_link($user['id']); ?>"><?php echo format_name($user['username'], $user['usergroup']); ?></a></td>
-                    <td><a href="mailto:<?php echo $user['email']; ?>"><?php echo $user['email']; ?></a></td>
+                    <td><a href="mailto:<?php echo htmlspecialchars_uni($user['email']); ?>"><?php echo htmlspecialchars_uni($user['email']); ?></a></td>
                     <td class="text-center"><?php echo get_user_ratio($user['uploaded'], $user['downloaded']); ?></td>
                     <td><?php echo my_datee($dateformat, $user['added']); ?><br/>(<?php echo mkprettytime(TIMENOW - $user['added']); ?>)</td>
                     <td><?php echo $last_active; ?></td>

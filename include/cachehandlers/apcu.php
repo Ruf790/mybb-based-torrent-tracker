@@ -43,7 +43,7 @@ class apcuCacheHandler implements CacheHandlerInterface
 	function connect()
 	{
 		// Set a unique identifier for all queries in case other forums on this server also use this cache handler
-		$this->unique_id = md5(MYBB_ROOT);
+		$this->unique_id = md5(TSDIR);
 
 		return true;
 	}

@@ -50,7 +50,7 @@ class memcachedCacheHandler implements CacheHandlerInterface
 	 */
 	function connect()
 	{
-		global $mybb, $error_handler;
+		global $mybb;
 
 		$this->memcached = new Memcached;
 
@@ -65,8 +65,8 @@ class memcachedCacheHandler implements CacheHandlerInterface
 		{
 			if(!$memcached['host'])
 			{
-				$message = "Please configure the memcache settings in inc/config.php before attempting to use this cache handler";
-				$error_handler->trigger($message, MYBB_CACHEHANDLER_LOAD_ERROR);
+				$message = "Please configure the memcache settings before attempting to use this cache handler";
+				stderr($message, 'Configuration Error', 500, 'general');
 				die;
 			}
 
@@ -80,13 +80,13 @@ class memcachedCacheHandler implements CacheHandlerInterface
 			if(!$this->memcached)
 			{
 				$message = "Unable to connect to the memcached server on {$memcached['memcache_host']}:{$memcached['memcache_port']}. Are you sure it is running?";
-				$error_handler->trigger($message, MYBB_CACHEHANDLER_LOAD_ERROR);
+				stderr($message, 'Configuration Error', 500, 'general');
 				die;
 			}
 		}
 
 		// Set a unique identifier for all queries in case other forums are using the same memcache server
-		$this->unique_id = md5(MYBB_ROOT);
+		$this->unique_id = md5(TSDIR);
 
 		return true;
 	}

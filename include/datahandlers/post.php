@@ -227,8 +227,11 @@ class PostDataHandler extends DataHandler
             return true;
         }
 
-        $query  = $db->simple_select('threads', 'lastpost, fid', "lastposteruid='" . (int)$post['uid'] . "' AND tid='" . (int)$post['tid'] . "'", ['limit' => 1]);
-        $thread = $db->fetch_array($query);
+        $query  = $db->sql_query_prepared(
+            "SELECT lastpost, fid FROM threads WHERE lastposteruid = ? AND tid = ? LIMIT 1",
+            [(int)$post['uid'], (int)$post['tid']]
+        );
+        $thread = $query ? $db->fetch_array($query) : null;
 
         if (!$thread || ((int)$postmergemins !== 0 && (TIMENOW - (int)$thread['lastpost']) > ($postmergemins * 60))) {
             return true;
@@ -249,12 +252,19 @@ class PostDataHandler extends DataHandler
             return false;
         }
 
-        $user_check = !empty($post['uid'])
-            ? "uid='" . (int)$post['uid'] . "'"
-            : 'ipaddress=' . $db->escape_binary($session->packedip);
+        if (!empty($post['uid'])) {
+            $user_check_sql    = 'uid = ?';
+            $user_check_params = [(int)$post['uid']];
+        } else {
+            $user_check_sql    = 'ipaddress = ?';
+            $user_check_params = [$session->packedip];
+        }
 
-        $query = $db->simple_select('posts', 'pid, message, visible', "{$user_check} AND tid='" . (int)$post['tid'] . "' AND dateline='" . (int)$thread['lastpost'] . "'", ['order_by' => 'pid', 'order_dir' => 'DESC', 'limit' => 1]);
-        return $db->fetch_array($query);
+        $query = $db->sql_query_prepared(
+            "SELECT pid, message, visible FROM posts WHERE {$user_check_sql} AND tid = ? AND dateline = ? ORDER BY pid DESC LIMIT 1",
+            [...$user_check_params, (int)$post['tid'], (int)$thread['lastpost']]
+        );
+        return $query ? $db->fetch_array($query) : false;
     }
 
     // ── verify_reply_to ───────────────────────────────────────────────────────
@@ -266,16 +276,19 @@ class PostDataHandler extends DataHandler
         $post = &$this->data;
 
         if (!empty($post['replyto'])) {
-            $query      = $db->simple_select('posts', 'pid', "pid='" . (int)$post['replyto'] . "'");
-            $valid_post = $db->fetch_array($query);
+            $query      = $db->sql_query_prepared("SELECT pid FROM posts WHERE pid = ?", [(int)$post['replyto']]);
+            $valid_post = $query ? $db->fetch_array($query) : null;
             if (!empty($valid_post['pid'])) {
                 return true;
             }
             $post['replyto'] = 0;
         }
 
-        $query          = $db->simple_select('posts', 'pid', "tid='" . (int)$post['tid'] . "'", ['limit_start' => 0, 'limit' => 1, 'order_by' => 'dateline, pid']);
-        $reply_to       = $db->fetch_array($query);
+        $query = $db->sql_query_prepared(
+            "SELECT pid FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1",
+            [(int)$post['tid']]
+        );
+        $reply_to        = $query ? $db->fetch_array($query) : null;
         $post['replyto'] = (int)($reply_to['pid'] ?? 0);
 
         return true;
@@ -306,12 +319,15 @@ class PostDataHandler extends DataHandler
 
         if ($this->method === 'update') {
             if (empty($post['tid'])) {
-                $query       = $db->simple_select('posts', 'tid', "pid='" . (int)$post['pid'] . "'");
-                $post['tid'] = (int)$db->fetch_field($query, 'tid');
+                $query       = $db->sql_query_prepared("SELECT tid FROM posts WHERE pid = ?", [(int)$post['pid']]);
+                $post['tid'] = $query ? (int)$db->fetch_field($query, 'tid') : 0;
             }
 
-            $query       = $db->simple_select('posts', 'pid', "tid='" . (int)$post['tid'] . "'", ['limit' => 1, 'limit_start' => 0, 'order_by' => 'dateline, pid']);
-            $first_check = $db->fetch_array($query);
+            $query       = $db->sql_query_prepared(
+                "SELECT pid FROM posts WHERE tid = ? ORDER BY dateline, pid LIMIT 1",
+                [(int)$post['tid']]
+            );
+            $first_check = $query ? $db->fetch_array($query) : null;
             if ((int)($first_check['pid'] ?? 0) === (int)($post['pid'] ?? 0)) {
                 $this->first_post = true;
             }
@@ -388,7 +404,10 @@ class PostDataHandler extends DataHandler
                     log_moderator_action($modlogdata, 'Thread Unstuck');
                 }
                 if (!empty($modoptions_update)) {
-                    $db->update_query('threads', $modoptions_update, "tid='{$thread['tid']}'");
+                    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($modoptions_update)));
+                    $params = array_values($modoptions_update);
+                    $params[] = $thread['tid'];
+                    $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
                 }
             }
 
@@ -405,8 +424,11 @@ class PostDataHandler extends DataHandler
 
         $draft_check = false;
         if ($post['pid'] > 0) {
-            $query       = $db->simple_select('posts', 'tid', "pid='{$post['pid']}' AND uid='{$post['uid']}' AND visible='-2'");
-            $draft_check = $db->fetch_field($query, 'tid');
+            $query       = $db->sql_query_prepared(
+                "SELECT tid FROM posts WHERE pid = ? AND uid = ? AND visible = '-2'",
+                [$post['pid'], $post['uid']]
+            );
+            $draft_check = $query ? $db->fetch_field($query, 'tid') : false;
         }
 
         // Post merge
@@ -421,24 +443,28 @@ class PostDataHandler extends DataHandler
                 if ($this->validate_post()) {
                     $this->pid = (int)$double_post['pid'];
 
-                    $db->update_query('posts', [
-                        'message'  => $db->escape_string($double_post['message']),
-                        'edituid'  => $post['uid'],
-                        'edittime' => TIMENOW,
-                    ], "pid='{$double_post['pid']}'");
+                    $db->sql_query_prepared(
+                        "UPDATE posts SET message = ?, edituid = ?, edittime = ? WHERE pid = ?",
+                        [$double_post['message'], $post['uid'], TIMENOW, $double_post['pid']]
+                    );
 
                     if ($draft_check) {
-                        $db->delete_query('posts', "pid='{$post['pid']}'");
+                        $db->sql_query_prepared("DELETE FROM posts WHERE pid = ?", [$post['pid']]);
                     }
 
                     if (!empty($post['posthash'])) {
-                        $post['posthash']   = $db->escape_string($post['posthash']);
-                        $query              = $db->simple_select('attachments', 'COUNT(aid) AS attachmentcount', "pid='0' AND visible='1' AND posthash='{$post['posthash']}'");
-                        $attachmentcount    = (int)$db->fetch_field($query, 'attachmentcount');
+                        $query              = $db->sql_query_prepared(
+                            "SELECT COUNT(aid) AS attachmentcount FROM attachments WHERE pid = '0' AND visible = '1' AND posthash = ?",
+                            [$post['posthash']]
+                        );
+                        $attachmentcount    = $query ? (int)$db->fetch_field($query, 'attachmentcount') : 0;
                         if ($attachmentcount > 0) {
                             update_thread_counters((int)$post['tid'], ['attachmentcount' => "+{$attachmentcount}"]);
                         }
-                        $db->update_query('attachments', ['pid' => $double_post['pid'], 'posthash' => ''], "posthash='{$post['posthash']}' AND pid='0'");
+                        $db->sql_query_prepared(
+                            "UPDATE attachments SET pid = ?, posthash = '' WHERE posthash = ? AND pid = '0'",
+                            [$double_post['pid'], $post['posthash']]
+                        );
                     }
 
                     $this->return_values = ['pid' => $double_post['pid'], 'visible' => $visible, 'merge' => true];
@@ -452,43 +478,56 @@ class PostDataHandler extends DataHandler
 
         // Update user lastpost
         if ($visible == 1) {
-            $now          = TIMENOW;
-            $update_array = ['lastpost' => "'{$now}'"];
+            $now       = TIMENOW;
+            $set_parts = ['lastpost = ?'];
+            $params    = [$now];
             if ($thread['visible'] == 1) {
-                $update_array['postnum'] = 'postnum+1';
+                $set_parts[] = 'postnum = postnum+1';
             }
-            $db->update_query('users', $update_array, "id='{$post['uid']}'", '1', true);
+            $params[] = $post['uid'];
+            $db->sql_query_prepared("UPDATE users SET " . implode(', ', $set_parts) . " WHERE id = ? LIMIT 1", $params);
         }
 
         // Draft update or new insert
         if ($draft_check) {
             $this->post_update_data = [
-                'subject'   => $db->escape_string($post['subject'] ?? ''),
+                'subject'   => $post['subject'] ?? '',
                 'uid'       => $post['uid'],
-                'username'  => $db->escape_string($post['username'] ?? ''),
+                'username'  => $post['username'] ?? '',
                 'dateline'  => (int)($post['dateline'] ?? TIMENOW),
-                'message'   => $db->escape_string($post['message']),
-                'ipaddress' => $db->escape_binary($post['ipaddress'] ?? ''),
+                'message'   => $post['message'],
+                'ipaddress' => $post['ipaddress'] ?? '',
                 'visible'   => $visible,
             ];
             $plugins->run_hooks('datahandler_post_insert_post', $this);
-            $db->update_query('posts', $this->post_update_data, "pid='{$post['pid']}'");
+
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($this->post_update_data)));
+            $params = array_values($this->post_update_data);
+            $params[] = $post['pid'];
+            $db->sql_query_prepared("UPDATE posts SET {$set} WHERE pid = ?", $params);
             $this->pid = $post['pid'];
         } else {
             $this->post_insert_data = [
                 'tid'       => (int)$post['tid'],
                 'replyto'   => (int)($post['replyto'] ?? 0),
                 'fid'       => (int)$post['fid'],
-                'subject'   => $db->escape_string($post['subject'] ?? ''),
+                'subject'   => $post['subject'] ?? '',
                 'uid'       => $post['uid'],
-                'username'  => $db->escape_string($post['username'] ?? ''),
+                'username'  => $post['username'] ?? '',
                 'dateline'  => (int)($post['dateline'] ?? TIMENOW),
-                'message'   => $db->escape_string($post['message']),
-                'ipaddress' => $db->escape_binary($post['ipaddress'] ?? ''),
+                'message'   => $post['message'],
+                'ipaddress' => $post['ipaddress'] ?? '',
                 'visible'   => $visible,
             ];
             $plugins->run_hooks('datahandler_post_insert_post', $this);
-            $this->pid = (int)$db->insert_query('posts', $this->post_insert_data);
+
+            $columns      = array_keys($this->post_insert_data);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO posts (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($this->post_insert_data)
+            );
+            $this->pid = (int)$db->insert_id();
 
             // Attach uploaded files
             $this->attachFileIds($this->pid);
@@ -496,8 +535,10 @@ class PostDataHandler extends DataHandler
 
         // Posthash attachments
         if (!empty($post['posthash'])) {
-            $post['posthash'] = $db->escape_string($post['posthash']);
-            $db->update_query('attachments', ['pid' => $this->pid, 'posthash' => ''], "posthash='{$post['posthash']}' AND pid='0'");
+            $db->sql_query_prepared(
+                "UPDATE attachments SET pid = ?, posthash = '' WHERE posthash = ? AND pid = '0'",
+                [$this->pid, $post['posthash']]
+            );
         }
 
         $thread_update = [];
@@ -538,13 +579,10 @@ class PostDataHandler extends DataHandler
                         $BASEURL, str_replace('&amp;', '&', get_thread_link((int)$thread['tid'], 0, 'newpost')),
                         $thread['tid']
                     );
-                    $db->insert_query('mailqueue', [
-                        'mailto'   => $db->escape_string($member['email']),
-                        'mailfrom' => '',
-                        'subject'  => $db->escape_string($emailsubject),
-                        'message'  => $db->escape_string($emailmessage),
-                        'headers'  => '',
-                    ]);
+                    $db->sql_query_prepared(
+                        "INSERT INTO mailqueue (`mailto`,`mailfrom`,`subject`,`message`,`headers`) VALUES (?,?,?,?,?)",
+                        [$member['email'], '', $emailsubject, $emailmessage, '']
+                    );
                     $queued_email = true;
                 } elseif ($member['notification'] == 2) {
                     require_once INC_PATH . '/functions_pm.php';
@@ -590,8 +628,8 @@ class PostDataHandler extends DataHandler
             update_last_post((int)$post['tid']);
         }
 
-        $query           = $db->simple_select('attachments', 'COUNT(aid) AS attachmentcount', "pid='{$this->pid}' AND visible='1'");
-        $attachmentcount = (int)$db->fetch_field($query, 'attachmentcount');
+        $query           = $db->sql_query_prepared("SELECT COUNT(aid) AS attachmentcount FROM attachments WHERE pid = ? AND visible = '1'", [$this->pid]);
+        $attachmentcount = $query ? (int)$db->fetch_field($query, 'attachmentcount') : 0;
         if ($attachmentcount > 0) {
             $thread_update['attachmentcount'] = "+{$attachmentcount}";
         }
@@ -639,8 +677,8 @@ class PostDataHandler extends DataHandler
         }
 
         $thread = &$this->data;
-        $query  = $db->simple_select('forums', '*', "fid='{$thread['fid']}'");
-        $forum  = $db->fetch_array($query);
+        $query  = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$thread['fid']]);
+        $forum  = $query ? $db->fetch_array($query) : null;
         $is_mod = is_mod($usergroups);
 
         if (!empty($thread['savedraft'])) {
@@ -655,49 +693,60 @@ class PostDataHandler extends DataHandler
         }
 
         if (!empty($thread['pid']) && empty($thread['tid'])) {
-            $query          = $db->simple_select('posts', 'tid', "pid='{$thread['pid']}'");
-            $thread['tid']  = (int)$db->fetch_field($query, 'tid');
+            $query          = $db->sql_query_prepared("SELECT tid FROM posts WHERE pid = ?", [$thread['pid']]);
+            $thread['tid']  = $query ? (int)$db->fetch_field($query, 'tid') : 0;
         }
 
         $draft_check = false;
         if (!empty($thread['pid']) && (int)$thread['pid'] > 0) {
-            $query       = $db->simple_select('posts', 'pid', "pid='{$thread['pid']}' AND uid='{$thread['uid']}' AND visible='-2'");
-            $draft_check = $db->fetch_field($query, 'pid');
+            $query       = $db->sql_query_prepared(
+                "SELECT pid FROM posts WHERE pid = ? AND uid = ? AND visible = '-2'",
+                [$thread['pid'], $thread['uid']]
+            );
+            $draft_check = $query ? $db->fetch_field($query, 'pid') : false;
         }
 
         if ($draft_check) {
             $this->thread_insert_data = [
-                'subject'    => $db->escape_string($thread['subject'] ?? ''),
-                'username'   => $db->escape_string($thread['username'] ?? ''),
+                'subject'    => $thread['subject'] ?? '',
+                'username'   => $thread['username'] ?? '',
                 'dateline'   => (int)($thread['dateline'] ?? TIMENOW),
                 'lastpost'   => (int)($thread['dateline'] ?? TIMENOW),
-                'lastposter' => $db->escape_string($thread['username'] ?? ''),
+                'lastposter' => $thread['username'] ?? '',
                 'visible'    => $visible,
             ];
             $plugins->run_hooks('datahandler_post_insert_thread', $this);
-            $db->update_query('threads', $this->thread_insert_data, "tid='{$thread['tid']}'");
+
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($this->thread_insert_data)));
+            $params = array_values($this->thread_insert_data);
+            $params[] = $thread['tid'];
+            $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
 
             $this->post_insert_data = [
-                'subject'   => $db->escape_string($thread['subject'] ?? ''),
-                'username'  => $db->escape_string($thread['username'] ?? ''),
+                'subject'   => $thread['subject'] ?? '',
+                'username'  => $thread['username'] ?? '',
                 'dateline'  => (int)($thread['dateline'] ?? TIMENOW),
-                'message'   => $db->escape_string($thread['message'] ?? ''),
-                'ipaddress' => $db->escape_binary(my_inet_pton(get_ip())),
+                'message'   => $thread['message'] ?? '',
+                'ipaddress' => my_inet_pton(get_ip()),
                 'visible'   => $visible,
             ];
             $plugins->run_hooks('datahandler_post_insert_thread_post', $this);
-            $db->update_query('posts', $this->post_insert_data, "pid='{$thread['pid']}'");
+
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($this->post_insert_data)));
+            $params = array_values($this->post_insert_data);
+            $params[] = $thread['pid'];
+            $db->sql_query_prepared("UPDATE posts SET {$set} WHERE pid = ?", $params);
             $this->tid = (int)$thread['tid'];
             $this->pid = (int)$thread['pid'];
         } else {
             $this->thread_insert_data = [
                 'fid'          => (int)$thread['fid'],
-                'subject'      => $db->escape_string($thread['subject'] ?? ''),
+                'subject'      => $thread['subject'] ?? '',
                 'uid'          => (int)($thread['uid'] ?? 0),
-                'username'     => $db->escape_string($thread['username'] ?? ''),
+                'username'     => $thread['username'] ?? '',
                 'dateline'     => (int)($thread['dateline'] ?? TIMENOW),
                 'lastpost'     => (int)($thread['dateline'] ?? TIMENOW),
-                'lastposter'   => $db->escape_string($thread['username'] ?? ''),
+                'lastposter'   => $thread['username'] ?? '',
                 'lastposteruid'=> (int)($thread['uid'] ?? 0),
                 'views'        => 0,
                 'replies'      => 0,
@@ -705,25 +754,39 @@ class PostDataHandler extends DataHandler
                 'notes'        => '',
             ];
             $plugins->run_hooks('datahandler_post_insert_thread', $this);
-            $this->tid = (int)$db->insert_query('threads', $this->thread_insert_data);
+
+            $columns      = array_keys($this->thread_insert_data);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO threads (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($this->thread_insert_data)
+            );
+            $this->tid = (int)$db->insert_id();
 
             $this->post_insert_data = [
                 'tid'       => $this->tid,
                 'fid'       => (int)$thread['fid'],
-                'subject'   => $db->escape_string($thread['subject'] ?? ''),
+                'subject'   => $thread['subject'] ?? '',
                 'uid'       => (int)($thread['uid'] ?? 0),
-                'username'  => $db->escape_string($thread['username'] ?? ''),
+                'username'  => $thread['username'] ?? '',
                 'dateline'  => (int)($thread['dateline'] ?? TIMENOW),
-                'message'   => $db->escape_string($thread['message'] ?? ''),
-                'ipaddress' => $db->escape_binary(my_inet_pton(get_ip())),
+                'message'   => $thread['message'] ?? '',
+                'ipaddress' => my_inet_pton(get_ip()),
                 'visible'   => $visible,
             ];
             $plugins->run_hooks('datahandler_post_insert_thread_post', $this);
-            $this->pid = (int)$db->insert_query('posts', $this->post_insert_data);
+
+            $columns      = array_keys($this->post_insert_data);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO posts (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($this->post_insert_data)
+            );
+            $this->pid = (int)$db->insert_id();
 
             $this->attachFileIds($this->pid);
 
-            $db->update_query('threads', ['firstpost' => $this->pid], "tid='{$this->tid}'");
+            $db->sql_query_prepared("UPDATE threads SET firstpost = ? WHERE tid = ?", [$this->pid, $this->tid]);
 			
             if ($visible === 1) {
                kps('+', $kpscomment, (int)($thread['uid'] ?? 0));
@@ -760,23 +823,29 @@ class PostDataHandler extends DataHandler
                     log_moderator_action($modlogdata, 'Thread Stuck');
                 }
                 if (!empty($modoptions_update)) {
-                    $db->update_query('threads', $modoptions_update, "tid='{$this->tid}'");
+                    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($modoptions_update)));
+                    $params = array_values($modoptions_update);
+                    $params[] = $this->tid;
+                    $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
                 }
             }
 
             if ($visible == 1) {
                 if ((int)($thread['uid'] ?? 0) > 0) {
-                    $user         = get_user((int)$thread['uid']);
-                    $update_query = [];
+                    $user      = get_user((int)$thread['uid']);
+                    $set_parts = [];
+                    $params    = [];
 
                     if ((int)($thread['dateline'] ?? 0) > (int)($user['lastpost'] ?? 0)) {
-                        $update_query['lastpost'] = "'{$thread['dateline']}'";
+                        $set_parts[] = 'lastpost = ?';
+                        $params[]    = (int)$thread['dateline'];
                     }
-                    if ($forum['usepostcounts'] != 0)   { $update_query['postnum']   = 'postnum+1';   }
-                    if ($forum['usethreadcounts'] != 0) { $update_query['threadnum'] = 'threadnum+1'; }
+                    if ($forum['usepostcounts'] != 0)   { $set_parts[] = 'postnum = postnum+1'; }
+                    if ($forum['usethreadcounts'] != 0) { $set_parts[] = 'threadnum = threadnum+1'; }
 
-                    if (!empty($update_query)) {
-                        $db->update_query('users', $update_query, "id='{$thread['uid']}'", '1', true);
+                    if (!empty($set_parts)) {
+                        $params[] = $thread['uid'];
+                        $db->sql_query_prepared("UPDATE users SET " . implode(', ', $set_parts) . " WHERE id = ? LIMIT 1", $params);
                     }
                 }
 
@@ -812,13 +881,10 @@ class PostDataHandler extends DataHandler
                         $excerpt, $BASEURL, get_thread_link($this->tid), $thread['fid']
                     );
 
-                    $db->insert_query('mailqueue', [
-                        'mailto'   => $db->escape_string($member['email']),
-                        'mailfrom' => '',
-                        'subject'  => $db->escape_string($emailsubject),
-                        'message'  => $db->escape_string($emailmessage),
-                        'headers'  => '',
-                    ]);
+                    $db->sql_query_prepared(
+                        "INSERT INTO mailqueue (`mailto`,`mailfrom`,`subject`,`message`,`headers`) VALUES (?,?,?,?,?)",
+                        [$member['email'], '', $emailsubject, $emailmessage, '']
+                    );
                     $queued_email = true;
                 }
 
@@ -830,8 +896,10 @@ class PostDataHandler extends DataHandler
 
         // Posthash
         if (!empty($thread['posthash'])) {
-            $thread['posthash'] = $db->escape_string($thread['posthash']);
-            $db->update_query('attachments', ['pid' => $this->pid, 'posthash' => ''], "posthash='{$thread['posthash']}' AND pid='0'");
+            $db->sql_query_prepared(
+                "UPDATE attachments SET pid = ?, posthash = '' WHERE posthash = ? AND pid = '0'",
+                [$this->pid, $thread['posthash']]
+            );
         }
 
         if ($visible == 1) {
@@ -842,8 +910,8 @@ class PostDataHandler extends DataHandler
             update_forum_counters((int)$thread['fid'], ['unapprovedthreads' => '+1', 'unapprovedposts' => '+1']);
         }
 
-        $query           = $db->simple_select('attachments', 'COUNT(aid) AS attachmentcount', "pid='{$this->pid}' AND visible='1'");
-        $attachmentcount = (int)$db->fetch_field($query, 'attachmentcount');
+        $query           = $db->sql_query_prepared("SELECT COUNT(aid) AS attachmentcount FROM attachments WHERE pid = ? AND visible = '1'", [$this->pid]);
+        $attachmentcount = $query ? (int)$db->fetch_field($query, 'attachmentcount') : 0;
         if ($attachmentcount > 0) {
             update_thread_counters($this->tid, ['attachmentcount' => "+{$attachmentcount}"]);
         }
@@ -891,20 +959,23 @@ class PostDataHandler extends DataHandler
             $this->tid = $post['tid'];
 
             if (isset($post['subject'])) {
-                $this->thread_update_data['subject'] = $db->escape_string($post['subject']);
+                $this->thread_update_data['subject'] = $post['subject'];
             }
 
             if (!empty($this->thread_update_data)) {
                 $plugins->run_hooks('datahandler_post_update_thread', $this);
-                $db->update_query('threads', $this->thread_update_data, "tid='{$post['tid']}'");
+
+                $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($this->thread_update_data)));
+                $params = array_values($this->thread_update_data);
+                $params[] = $post['tid'];
+                $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
             }
 
             if (isset($post['subject'])) {
-                $query = $db->simple_select('threads', 'tid, closed', "closed='moved|{$this->tid}'");
-                if ($db->num_rows($query) > 0) {
-                    $update_data = ['subject' => $db->escape_string($post['subject'])];
+                $query = $db->sql_query_prepared("SELECT tid, closed FROM threads WHERE closed = ?", ["moved|{$this->tid}"]);
+                if ($query && $db->num_rows($query) > 0) {
                     while ($result = $db->fetch_array($query)) {
-                        $db->update_query('threads', $update_data, "tid='" . (int)$result['tid'] . "'");
+                        $db->sql_query_prepared("UPDATE threads SET subject = ? WHERE tid = ?", [$post['subject'], (int)$result['tid']]);
                     }
                 }
             }
@@ -912,11 +983,11 @@ class PostDataHandler extends DataHandler
 
         $this->pid = $post['pid'];
 
-        if (isset($post['subject'])) { $this->post_update_data['subject'] = $db->escape_string($post['subject']); }
-        if (isset($post['message'])) { $this->post_update_data['message'] = $db->escape_string($post['message']); }
+        if (isset($post['subject'])) { $this->post_update_data['subject'] = $post['subject']; }
+        if (isset($post['message'])) { $this->post_update_data['message'] = $post['message']; }
 
         if (isset($post['editreason']) && trim($post['editreason']) !== '') {
-            $this->post_update_data['editreason'] = $db->escape_string(trim($post['editreason']));
+            $this->post_update_data['editreason'] = trim($post['editreason']);
         } else {
             $this->post_update_data['editreason'] = '';
         }
@@ -928,7 +999,11 @@ class PostDataHandler extends DataHandler
         }
 
         $plugins->run_hooks('datahandler_post_update', $this);
-        $db->update_query('posts', $this->post_update_data, "pid='{$post['pid']}'");
+
+        $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($this->post_update_data)));
+        $params = array_values($this->post_update_data);
+        $params[] = $post['pid'];
+        $db->sql_query_prepared("UPDATE posts SET {$set} WHERE pid = ?", $params);
 
         $this->attachFileIds($post['pid']);
 
@@ -942,7 +1017,7 @@ class PostDataHandler extends DataHandler
             require_once INC_PATH . '/functions_user.php';
             add_subscribed_thread((int)$post['tid'], $notification, $uid);
         } else {
-            $db->delete_query('threadsubscriptions', "uid='{$uid}' AND tid='{$post['tid']}'");
+            $db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE uid = ? AND tid = ?", [$uid, $post['tid']]);
         }
 
         update_forum_lastpost((int)$post['fid']);
@@ -963,12 +1038,15 @@ class PostDataHandler extends DataHandler
             return;
         }
 
-        $file_ids = array_filter(array_map('intval', (array)$_POST['file_ids']));
+        $file_ids = array_values(array_filter(array_map('intval', (array)$_POST['file_ids'])));
         if (empty($file_ids)) {
             return;
         }
 
-        $id_list = implode(',', $file_ids);
-        $db->sql_query("UPDATE comment_files SET post_id = {$pid} WHERE id IN ({$id_list})");
+        $placeholders = implode(',', array_fill(0, count($file_ids), '?'));
+        $db->sql_query_prepared(
+            "UPDATE comment_files SET post_id = ? WHERE id IN ({$placeholders})",
+            [$pid, ...$file_ids]
+        );
     }
 }

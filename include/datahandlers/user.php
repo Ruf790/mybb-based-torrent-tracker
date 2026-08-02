@@ -88,15 +88,14 @@ class UserDataHandler extends DataHandler
             return;
         }
 
-        $code = $db->escape_string($hash);
-        $now  = time();
+        $now = time();
 
-        $q = $db->simple_select(
-            'invites', '*',
-            "code='{$code}' AND status='pending' AND (expires_at IS NULL OR expires_at > {$now})"
+        $q = $db->sql_query_prepared(
+            "SELECT * FROM invites WHERE code = ? AND status = 'pending' AND (expires_at IS NULL OR expires_at > ?)",
+            [$hash, $now]
         );
 
-        if ($db->num_rows($q)) {
+        if ($q && $db->num_rows($q)) {
             $row = $db->fetch_array($q);
             $user['invite_id'] = (int)$row['id'];
         } else {
@@ -174,7 +173,9 @@ class UserDataHandler extends DataHandler
 
     public function verify_email(): bool
     {
-        $user = &$this->data;
+        global $allowmultipleemails;
+		
+		$user = &$this->data;
 
         if (trim_blank_chrs($user['email']) === '') {
             $this->set_error('missing_email');
@@ -191,7 +192,6 @@ class UserDataHandler extends DataHandler
             return false;
         }
 
-        $allowmultipleemails = '0';
 
         if ($allowmultipleemails == 0 && !defined('IN_ADMINCP')) {
             $uid = (int)($user['uid'] ?? 0);
@@ -589,10 +589,12 @@ public function validate_user(): bool
         $invited_by = 0;
 
         if ($regtype === 'invite') {
-            $code = $db->escape_string(trim($user['invitehash'] ?? ''));
             $now  = time();
-            $q    = $db->simple_select('invites', '*', "code='{$code}' AND status='pending' AND (expires_at IS NULL OR expires_at > {$now})");
-            if ($db->num_rows($q)) {
+            $q    = $db->sql_query_prepared(
+                "SELECT * FROM invites WHERE code = ? AND status = 'pending' AND (expires_at IS NULL OR expires_at > ?)",
+                [trim($user['invitehash'] ?? ''), $now]
+            );
+            if ($q && $db->num_rows($q)) {
                 $row            = $db->fetch_array($q);
                 $invited_by     = (int)$row['inviter_id'];
                 $user['invite_id'] = (int)$row['id'];
@@ -600,7 +602,7 @@ public function validate_user(): bool
         }
 
         $this->user_insert_data = [
-            'username'           => $db->escape_string($user['username']),
+            'username'           => $user['username'],
             'password'           => $user['password'],
             'salt'               => $user['salt'],
             'loginkey'           => $user['loginkey'],
@@ -608,35 +610,35 @@ public function validate_user(): bool
             'seedbonus'          => $seedbonus,
             'invites'            => $invites,
             'invited_by'         => $invited_by,
-            'email'              => $db->escape_string($user['email']),
+            'email'              => $user['email'],
             'postnum'            => (int)$user['postnum'],
             'threadnum'          => (int)$user['threadnum'],
-            'avatar'             => $db->escape_string($user['avatar']),
-            'avatartype'         => $db->escape_string($user['avatartype']),
-            'usergroup'          => $db->escape_string((string)$usergroup),
-            'additionalgroups'   => $db->escape_string($user['additionalgroups']),
+            'avatar'             => $user['avatar'],
+            'avatartype'         => $user['avatartype'],
+            'usergroup'          => (string)$usergroup,
+            'additionalgroups'   => $user['additionalgroups'],
             'displaygroup'       => (int)$user['displaygroup'],
-            'usertitle'          => $db->escape_string(htmlspecialchars_uni($user['usertitle'])),
+            'usertitle'          => htmlspecialchars_uni($user['usertitle']),
             'added'              => (int)$user['regdate'],
             'lastactive'         => (int)$user['lastactive'],
             'lastvisit'          => (int)$user['lastvisit'],
             'birthday'           => $user['bday'],
-            'signature'          => $db->escape_string($user['signature']),
+            'signature'          => $user['signature'],
             'allownotices'       => (int)$user['options']['allownotices'],
             'hideemail'          => (int)$user['options']['hideemail'],
             'subscriptionmethod' => (int)$user['options']['subscriptionmethod'],
             'receivepms'         => (int)$user['options']['receivepms'],
             'receivefrombuddy'   => (int)$user['options']['receivefrombuddy'],
             'pmnotice'           => (int)$user['options']['pmnotice'],
-            'pmnotify'           => (int)$user['options']['pmnotify'],         
+            'pmnotify'           => (int)$user['options']['pmnotify'],
             'invisible'          => (int)$user['options']['invisible'],
-            'timezone'           => $db->escape_string($user['timezone']),
+            'timezone'           => $user['timezone'],
             'dstcorrection'      => (int)$user['options']['dstcorrection'],
             'threadmode'         => $user['options']['threadmode'],
-            'dateformat'         => $db->escape_string($user['dateformat']),
-            'timeformat'         => $db->escape_string($user['timeformat']),
-            'regip'              => $db->escape_binary($user['regip']),
-            'lastip'             => $db->escape_binary($user['lastip']),
+            'dateformat'         => $user['dateformat'],
+            'timeformat'         => $user['timeformat'],
+            'regip'              => $user['regip'],
+            'lastip'             => $user['lastip'],
             'buddyrequestspm'    => (int)$user['options']['buddyrequestspm'],
             'buddyrequestsauto'  => (int)$user['options']['buddyrequestsauto'],
             'buddylist'          => '',
@@ -652,16 +654,19 @@ public function validate_user(): bool
 
         $plugins->run_hooks('datahandler_user_insert', $this);
 
-        $this->uid              = $db->insert_query('users', $this->user_insert_data);
-        
-	
+        $columns      = array_keys($this->user_insert_data);
+        $placeholders = implode(',', array_fill(0, count($columns), '?'));
+        $db->sql_query_prepared(
+            "INSERT INTO users (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+            array_values($this->user_insert_data)
+        );
+        $this->uid = (int)$db->insert_id();
+
         if ($regtype === 'invite' && !empty($user['invite_id'])) {
-            $db->update_query('invites', [
-                'status'     => 'used',
-                'invitee_id' => (int)$this->uid,
-                'used_at'    => time(),
-                'ip_used'    => $db->escape_string(get_ip()),
-            ], "id='" . (int)$user['invite_id'] . "'");
+            $db->sql_query_prepared(
+                "UPDATE invites SET status = ?, invitee_id = ?, used_at = ?, ip_used = ? WHERE id = ?",
+                ['used', (int)$this->uid, time(), get_ip(), (int)$user['invite_id']]
+            );
         }
 
        
@@ -703,31 +708,31 @@ public function validate_user(): bool
         $int_fields    = ['postnum', 'threadnum', 'displaygroup', 'regdate', 'lastactive', 'lastvisit', 'style'];
 
         $map = [
-            'username'          => fn($v) => ['username',         $db->escape_string($v)],
+            'username'          => fn($v) => ['username',         $v],
             'password'          => fn($v) => ['password',         $v],
             'salt'              => fn($v) => ['salt',             $v],
             'loginkey'          => fn($v) => ['loginkey',         $v],
-            'email'             => fn($v) => ['email',            $db->escape_string($v)],
+            'email'             => fn($v) => ['email',            $v],
             'postnum'           => fn($v) => ['postnum',          (int)$v],
             'threadnum'         => fn($v) => ['threadnum',        (int)$v],
             'usergroup'         => fn($v) => ['usergroup',        (int)$v],
-            'additionalgroups'  => fn($v) => ['additionalgroups', $db->escape_string($v)],
+            'additionalgroups'  => fn($v) => ['additionalgroups', $v],
             'displaygroup'      => fn($v) => ['displaygroup',     (int)$v],
-            'usertitle'         => fn($v) => ['usertitle',        $db->escape_string($v)],
+            'usertitle'         => fn($v) => ['usertitle',        $v],
             'regdate'           => fn($v) => ['regdate',          (int)$v],
             'lastactive'        => fn($v) => ['lastactive',       (int)$v],
             'lastvisit'         => fn($v) => ['lastvisit',        (int)$v],
-            'signature'         => fn($v) => ['signature',        $db->escape_string($v)],
+            'signature'         => fn($v) => ['signature',        $v],
             'bday'              => fn($v) => ['birthday',         $v],
-            'birthdayprivacy'   => fn($v) => ['birthdayprivacy',  $db->escape_string($v)],
+            'birthdayprivacy'   => fn($v) => ['birthdayprivacy',  $v],
             'style'             => fn($v) => ['style',            (int)$v],
-            'timezone'          => fn($v) => ['timezone',         $db->escape_string($v)],
-            'dateformat'        => fn($v) => ['dateformat',       $db->escape_string($v)],
-            'timeformat'        => fn($v) => ['timeformat',       $db->escape_string($v)],
-            'regip'             => fn($v) => ['regip',            $db->escape_binary($v)],
-            'lastip'            => fn($v) => ['lastip',           $db->escape_binary($v)],
-            'notepad'           => fn($v) => ['notepad',          $db->escape_string($v)],
-            'usernotes'         => fn($v) => ['usernotes',        $db->escape_string($v)],
+            'timezone'          => fn($v) => ['timezone',         $v],
+            'dateformat'        => fn($v) => ['dateformat',       $v],
+            'timeformat'        => fn($v) => ['timeformat',       $v],
+            'regip'             => fn($v) => ['regip',            $v],
+            'lastip'            => fn($v) => ['lastip',           $v],
+            'notepad'           => fn($v) => ['notepad',          $v],
+            'usernotes'         => fn($v) => ['usernotes',        $v],
         ];
 
         foreach ($map as $key => $fn) {
@@ -738,8 +743,8 @@ public function validate_user(): bool
         }
 
         if (isset($user['avatar'])) {
-            $this->user_update_data['avatar']     = $db->escape_string($user['avatar']);
-            $this->user_update_data['avatartype'] = $db->escape_string($user['avatartype']);
+            $this->user_update_data['avatar']     = $user['avatar'];
+            $this->user_update_data['avatartype'] = $user['avatartype'];
         }
 
         if (isset($user['options']) && is_array($user['options'])) {
@@ -765,7 +770,10 @@ public function validate_user(): bool
         }
 
         if (count($this->user_update_data) > 0) {
-            $db->update_query('users', $this->user_update_data, "id='{$user['uid']}'");
+            $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($this->user_update_data)));
+            $params = array_values($this->user_update_data);
+            $params[] = $user['uid'];
+            $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
         }
 
         if (isset($user['bday']) || isset($user['username'])) {
@@ -778,13 +786,10 @@ public function validate_user(): bool
             !empty($this->user_update_data['username']) &&
             $this->user_update_data['username'] !== $old_user['username']
         ) {
-            $un_update     = ['username'   => $this->user_update_data['username']];
-            $poster_update = ['lastposter' => $this->user_update_data['username']];
-
-            $db->update_query('posts',   $un_update,     "uid='{$user['uid']}'");
-            $db->update_query('threads', $un_update,     "uid='{$user['uid']}'");
-            $db->update_query('threads', $poster_update, "lastposteruid='{$user['uid']}'");
-            $db->update_query('forums',  $poster_update, "lastposteruid='{$user['uid']}'");
+            $db->sql_query_prepared("UPDATE posts SET username = ? WHERE uid = ?", [$this->user_update_data['username'], $user['uid']]);
+            $db->sql_query_prepared("UPDATE threads SET username = ? WHERE uid = ?", [$this->user_update_data['username'], $user['uid']]);
+            $db->sql_query_prepared("UPDATE threads SET lastposter = ? WHERE lastposteruid = ?", [$this->user_update_data['username'], $user['uid']]);
+            $db->sql_query_prepared("UPDATE forums SET lastposter = ? WHERE lastposteruid = ?", [$this->user_update_data['username'], $user['uid']]);
 
             $stats = $cache->read('stats');
             if ($stats['lastuid'] == $user['uid']) {
@@ -796,6 +801,16 @@ public function validate_user(): bool
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────
+
+    /**
+     * Строит "?,?,?" и массив int-параметров из $this->delete_uids (comma-string),
+     * чтобы безопасно подставлять их в IN (...) через sql_query_prepared.
+     */
+    private function deleteUidsPlaceholders(): array
+    {
+        $ids = array_filter(array_map('intval', explode(',', (string)$this->delete_uids)));
+        return [implode(',', array_fill(0, count($ids), '?')), array_values($ids)];
+    }
 
     public function delete_user(array|int $delete_uids, int $prunecontent = 0): array
     {
@@ -818,21 +833,29 @@ public function validate_user(): bool
 
         $this->delete_content();
 
-        $query               = $db->delete_query('users', "id IN({$this->delete_uids})");
-        $this->deleted_users = $db->affected_rows($query);
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $query               = $db->sql_query_prepared("DELETE FROM users WHERE id IN ({$ph})", $ids);
+        $this->deleted_users = $db->affected_rows();
 
         if ($prunecontent === 1) {
             $this->delete_posts();
-			$db->delete_query('announcements', "type IN ('forum', 'global') AND uid IN({$this->delete_uids})");
+            [$ph, $ids] = $this->deleteUidsPlaceholders();
+            $db->sql_query_prepared("DELETE FROM announcements WHERE type IN ('forum', 'global') AND uid IN ({$ph})", $ids);
         } else {
             foreach (['pollvotes', 'posts', 'threads', 'attachments', 'announcements'] as $t) {
-                $db->update_query($t, ['uid' => 0], "uid IN({$this->delete_uids})");
+                [$ph, $ids] = $this->deleteUidsPlaceholders();
+                $db->sql_query_prepared("UPDATE {$t} SET uid = 0 WHERE uid IN ({$ph})", $ids);
             }
         }
 
-        $db->update_query('privatemessages', ['fromid'       => 0], "fromid IN({$this->delete_uids})");
-        $db->update_query('forums',      ['lastposteruid' => 0], "lastposteruid IN({$this->delete_uids})");
-        $db->update_query('threads',     ['lastposteruid' => 0], "lastposteruid IN({$this->delete_uids})");
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("UPDATE privatemessages SET fromid = 0 WHERE fromid IN ({$ph})", $ids);
+
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("UPDATE forums SET lastposteruid = 0 WHERE lastposteruid IN ({$ph})", $ids);
+
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("UPDATE threads SET lastposteruid = 0 WHERE lastposteruid IN ({$ph})", $ids);
 
         update_stats(['numusers' => '-' . $this->deleted_users]);
 
@@ -862,7 +885,8 @@ public function validate_user(): bool
 
         if (empty($this->delete_uids)) return;
 
-        $db->sql_query("DELETE FROM reports WHERE type='user' AND reported_user_id IN({$this->delete_uids})");
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("DELETE FROM reports WHERE type = 'user' AND reported_user_id IN ({$ph})", $ids);
 
         $tables = [
             'privatemessages'          => 'uid',
@@ -881,22 +905,31 @@ public function validate_user(): bool
         ];
 
         foreach ($tables as $table => $col) {
-            $db->delete_query($table, "{$col} IN({$this->delete_uids})");
+            [$ph, $ids] = $this->deleteUidsPlaceholders();
+            $db->sql_query_prepared("DELETE FROM {$table} WHERE {$col} IN ({$ph})", $ids);
         }
 
-        $db->delete_query('buddyrequests', "uid IN({$this->delete_uids}) OR touid IN({$this->delete_uids})");
-        $db->delete_query('posts',    "uid IN({$this->delete_uids}) AND visible = -2");
-        $db->delete_query('threads',  "uid IN({$this->delete_uids}) AND visible = -2");
+        [$ph1, $ids1] = $this->deleteUidsPlaceholders();
+        [$ph2, $ids2] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("DELETE FROM buddyrequests WHERE uid IN ({$ph1}) OR touid IN ({$ph2})", [...$ids1, ...$ids2]);
+
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("DELETE FROM posts WHERE uid IN ({$ph}) AND visible = -2", $ids);
+
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("DELETE FROM threads WHERE uid IN ({$ph}) AND visible = -2", $ids);
 
         require_once INC_PATH . '/functions_upload.php';
         foreach (explode(',', $this->delete_uids) as $uid) {
             remove_avatars((int)$uid);
         }
-		
-		// Delete thread ratings
-        $db->delete_query('threadratings', "user_id IN({$this->delete_uids})");
+
+        // Delete thread ratings
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("DELETE FROM threadratings WHERE user_id IN ({$ph})", $ids);
         // Delete torrent ratings
-        $db->delete_query('torrent_ratings', "user_id IN({$this->delete_uids})");
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $db->sql_query_prepared("DELETE FROM torrent_ratings WHERE user_id IN ({$ph})", $ids);
 
     }
 	
@@ -921,13 +954,15 @@ public function validate_user(): bool
 
         if (empty($this->delete_uids)) return;
 
-        $q = $db->simple_select('threads', 'tid', "uid IN({$this->delete_uids})");
-        while ($tid = $db->fetch_field($q, 'tid')) {
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $q = $db->sql_query_prepared("SELECT tid FROM threads WHERE uid IN ({$ph})", $ids);
+        while ($q && ($tid = $db->fetch_field($q, 'tid'))) {
             $moderation->delete_thread($tid);
         }
 
-        $q = $db->simple_select('posts', 'pid', "uid IN({$this->delete_uids})");
-        while ($pid = $db->fetch_field($q, 'pid')) {
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $q = $db->sql_query_prepared("SELECT pid FROM posts WHERE uid IN ({$ph})", $ids);
+        while ($q && ($pid = $db->fetch_field($q, 'pid'))) {
             $moderation->delete_post($pid);
         }
     }
@@ -955,7 +990,10 @@ public function validate_user(): bool
 
         if (empty($this->delete_uids)) return;
 
-        $db->update_query('users', $update, "id IN({$this->delete_uids})");
+        [$ph, $ids] = $this->deleteUidsPlaceholders();
+        $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params = array_values($update);
+        $db->sql_query_prepared("UPDATE users SET {$set} WHERE id IN ({$ph})", [...$params, ...$ids]);
         
 
         require_once INC_PATH . '/functions_upload.php';

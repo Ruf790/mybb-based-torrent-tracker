@@ -69,11 +69,10 @@ class LoginDataHandler extends DataHandler
             if (empty($this->login_data['loginkey'])) {
                 $this->login_data['loginkey'] = generate_loginkey();
 
-                $sql_array = [
-                    "loginkey" => $this->login_data['loginkey']
-                ];
-
-                $db->update_query("users", $sql_array, "id = '{$this->login_data['id']}'");
+                $db->sql_query_prepared(
+                    "UPDATE users SET loginkey = ? WHERE id = ?",
+                    [$this->login_data['loginkey'], $this->login_data['id']]
+                );
             }
         }
 
@@ -188,12 +187,8 @@ class LoginDataHandler extends DataHandler
         my_setcookie('loginattempts', "1");
         my_setcookie("sid", $session->sid, -1, true);
 
-        $newsession = [
-            "uid" => $user['id'],
-        ];
-
-        $db->update_query("sessions", $newsession, "sid = '{$session->sid}'");
-        $db->update_query("users", ["loginattempts" => 1], "id = '{$user['id']}'");
+        $db->sql_query_prepared("UPDATE sessions SET uid = ? WHERE sid = ?", [$user['id'], $session->sid]);
+        $db->sql_query_prepared("UPDATE users SET loginattempts = ? WHERE id = ?", [1, $user['id']]);
 
         $remember = null;
         if (!isset($mybb->input['remember']) || $mybb->input['remember'] != "yes") {

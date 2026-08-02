@@ -162,14 +162,12 @@ function verify_recipient()
                 continue;
             }
 
-            $recipientUsernames = array_map(array($db, 'escape_string'), $pm[$recipient_type]);
-            $recipientUsernames = "'".implode("','", $recipientUsernames)."'";
-
-            $query = $db->simple_select('users', '*', 'username IN('.$recipientUsernames.')');
+            $placeholders = implode(',', array_fill(0, count($pm[$recipient_type]), '?'));
+            $query = $db->sql_query_prepared("SELECT * FROM users WHERE username IN ({$placeholders})", $pm[$recipient_type]);
 
             $validUsernames = array();
 
-            while($user = $db->fetch_array($query))
+            while($query && ($user = $db->fetch_array($query)))
             {
                 if($recipient_type == "bcc")
                 {
@@ -216,13 +214,12 @@ function verify_recipient()
                 continue;
             }
 
-            $recipientUids = "'".implode("','", $pm[$recipient_type])."'";
-
-            $query = $db->simple_select('users', '*', 'id IN('.$recipientUids.')');
+            $placeholders = implode(',', array_fill(0, count($pm[$recipient_type]), '?'));
+            $query = $db->sql_query_prepared("SELECT * FROM users WHERE id IN ({$placeholders})", $pm[$recipient_type]);
 
             $validUids = array();
 
-            while($user = $db->fetch_array($query))
+            while($query && ($user = $db->fetch_array($query)))
             {
                 if($recipient_type == "bccid")
                 {
@@ -325,15 +322,10 @@ function verify_recipient()
             $emailmessage = $lang->sprintf($emailmessage, $user['username'], $mybb->settings['bbname'], $mybb->settings['bburl']);
             $emailsubject = $lang->sprintf($emailsubject, $mybb->settings['bbname'], $pm['subject']);
 
-            $new_email = array(
-                "mailto" => $db->escape_string($user['email']),
-                "mailfrom" => '',
-                "subject" => $db->escape_string($emailsubject),
-                "message" => $db->escape_string($emailmessage),
-                "headers" => ''
+            $db->sql_query_prepared(
+                "INSERT INTO mailqueue (`mailto`,`mailfrom`,`subject`,`message`,`headers`) VALUES (?,?,?,?,?)",
+                array($user['email'], '', $emailsubject, $emailmessage, '')
             );
-
-            $db->insert_query("mailqueue", $new_email);
             $cache->update_mailqueue();
 
             if($this->admin_override != true)
@@ -385,8 +377,11 @@ function verify_recipient()
 			$sender = get_user($pm['fromid']);
 
 			// Calculate last post
-			$query = $db->simple_select("privatemessages", "dateline", "fromid='".$db->escape_string($pm['fromid'])."' AND toid != '0'", array('order_by' => 'dateline', 'order_dir' => 'desc', 'limit' => 1));
-			$sender['lastpm'] = $db->fetch_field($query, "dateline");
+			$query = $db->sql_query_prepared(
+				"SELECT dateline FROM privatemessages WHERE fromid = ? AND toid != '0' ORDER BY dateline DESC LIMIT 1",
+				array($pm['fromid'])
+			);
+			$sender['lastpm'] = $query ? $db->fetch_field($query, "dateline") : 0;
 
 			// A little bit of calculation magic and moderator status checking.
 			if(TIMENOW-$sender['lastpm'] <= $pmfloodsecs)
@@ -540,20 +535,23 @@ function verify_recipient()
 		$this->pm_insert_data = array(
 			'fromid' => (int)$pm['sender']['uid'],
 			'folder' => $pm['folder'],
-			'subject' => $db->escape_string($pm['subject']),
+			'subject' => $pm['subject'],
 			'icon' => (int)$pm['icon'],
-			'message' => $db->escape_string($pm['message']),
+			'message' => $pm['message'],
 			'dateline' => TIMENOW,
 			'status' => 0,
 			'receipt' => (int)$pm['options']['readreceipt'],
 			'readtime' => 0,
-			'recipients' => $db->escape_string(my_serialize($recipient_list)),
-			'ipaddress' => $db->escape_binary($pm['ipaddress'] ?? '')
+			'recipients' => my_serialize($recipient_list),
+			'ipaddress' => $pm['ipaddress'] ?? ''
 		);
 
 		// Check if we're updating a draft or not.
-		$query = $db->simple_select("privatemessages", "pmid, deletetime", "folder='3' AND uid='".(int)$pm['sender']['uid']."' AND pmid='{$pm['pmid']}'");
-		$draftcheck = $db->fetch_array($query);
+		$query = $db->sql_query_prepared(
+			"SELECT pmid, deletetime FROM privatemessages WHERE folder = '3' AND uid = ? AND pmid = ?",
+			array((int)$pm['sender']['uid'], $pm['pmid'])
+		);
+		$draftcheck = $query ? $db->fetch_array($query) : null;
 
 		// This PM was previously a draft
 		if($draftcheck)
@@ -566,7 +564,7 @@ function verify_recipient()
 			}
 
 			// Delete the old draft as we no longer need it
-			$db->delete_query("privatemessages", "pmid='{$draftcheck['pmid']}'");
+			$db->sql_query_prepared("DELETE FROM privatemessages WHERE pmid = ?", array($draftcheck['pmid']));
 		}
 
 		// Saving this message as a draft
@@ -582,7 +580,13 @@ function verify_recipient()
 
 			$plugins->run_hooks("datahandler_pm_insert_updatedraft", $this);
 
-			$this->pmid = $db->insert_query("privatemessages", $this->pm_insert_data);
+			$columns = array_keys($this->pm_insert_data);
+			$placeholders = implode(',', array_fill(0, count($columns), '?'));
+			$db->sql_query_prepared(
+				"INSERT INTO privatemessages (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+				array_values($this->pm_insert_data)
+			);
+			$this->pmid = (int)$db->insert_id();
 
 			$plugins->run_hooks("datahandler_pm_insert_updatedraft_commit", $this);
 
@@ -598,8 +602,11 @@ function verify_recipient()
 		foreach($pm['recipients'] as $recipient)
 		{
 			// Send email notification of new PM if it is enabled for the recipient
-			$query = $db->simple_select("privatemessages", "dateline", "uid='".$recipient['uid']."' AND folder='1'", array('order_by' => 'dateline', 'order_dir' => 'desc', 'limit' => 1));
-			$lastpm = $db->fetch_array($query);
+			$query = $db->sql_query_prepared(
+				"SELECT dateline FROM privatemessages WHERE uid = ? AND folder = '1' ORDER BY dateline DESC LIMIT 1",
+				array($recipient['uid'])
+			);
+			$lastpm = $query ? $db->fetch_array($query) : null;
 			if($recipient['pmnotify'] == 1 && (empty($lastpm['dateline']) || $recipient['lastactive'] > $lastpm['dateline']))
 			{
 				if(($recipient['language'] ?? '') != "" && $lang->language_exists($recipient['language']))
@@ -647,15 +654,10 @@ function verify_recipient()
 				$emailmessage = $lang->sprintf($emailmessage, $recipient['username'], $pm['sender']['username'], $mybb->settings['bbname'], $mybb->settings['bburl'], $pm['message']);
 				$emailsubject = $lang->sprintf($emailsubject, $mybb->settings['bbname'], $pm['subject']);
 
-				$new_email = array(
-					"mailto" => $db->escape_string($recipient['email']),
-					"mailfrom" => '',
-					"subject" => $db->escape_string($emailsubject),
-					"message" => $db->escape_string($emailmessage),
-					"headers" => ''
+				$db->sql_query_prepared(
+					"INSERT INTO mailqueue (`mailto`,`mailfrom`,`subject`,`message`,`headers`) VALUES (?,?,?,?,?)",
+					array($recipient['email'], '', $emailsubject, $emailmessage, '')
 				);
-
-				$db->insert_query("mailqueue", $new_email);
 				$cache->update_mailqueue();
 			}
 
@@ -664,17 +666,20 @@ function verify_recipient()
 
 			$plugins->run_hooks("datahandler_pm_insert", $this);
 
-			$this->pmid[] = $db->insert_query("privatemessages", $this->pm_insert_data);
+			$columns = array_keys($this->pm_insert_data);
+			$placeholders = implode(',', array_fill(0, count($columns), '?'));
+			$db->sql_query_prepared(
+				"INSERT INTO privatemessages (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+				array_values($this->pm_insert_data)
+			);
+			$this->pmid[] = (int)$db->insert_id();
 
 			$plugins->run_hooks("datahandler_pm_insert_commit", $this);
 
 			// If PM noices/alerts are on, show!
 			if($recipient['pmnotice'] == 1)
 			{
-				$updated_user = array(
-					"pmnotice" => 2
-				);
-				$db->update_query("users", $updated_user, "id='{$recipient['uid']}'");
+				$db->sql_query_prepared("UPDATE users SET pmnotice = ? WHERE id = ?", array(2, $recipient['uid']));
 			}
 
 			// Update private message count (total, new and unread) for recipient
@@ -687,19 +692,17 @@ function verify_recipient()
 		{
 			if($pm['do'] == "reply" || $pm['do'] == "replyall")
 			{
-				$sql_array = array(
-					'status' => 3,
-					'statustime' => TIMENOW
+				$db->sql_query_prepared(
+					"UPDATE privatemessages SET status = ?, statustime = ? WHERE pmid = ? AND uid = ?",
+					array(3, TIMENOW, $pm['pmid'], $pm['sender']['uid'])
 				);
-				$db->update_query("privatemessages", $sql_array, "pmid={$pm['pmid']} AND uid={$pm['sender']['uid']}");
 			}
 			elseif($pm['do'] == "forward")
 			{
-				$sql_array = array(
-					'status' => 4,
-					'statustime' => TIMENOW
+				$db->sql_query_prepared(
+					"UPDATE privatemessages SET status = ?, statustime = ? WHERE pmid = ? AND uid = ?",
+					array(4, TIMENOW, $pm['pmid'], $pm['sender']['uid'])
 				);
-				$db->update_query("privatemessages", $sql_array, "pmid={$pm['pmid']} AND uid={$pm['sender']['uid']}");
 			}
 		}
 
@@ -721,7 +724,12 @@ function verify_recipient()
 
 			$plugins->run_hooks("datahandler_pm_insert_savedcopy", $this);
 
-			$db->insert_query("privatemessages", $this->pm_insert_data);
+			$columns = array_keys($this->pm_insert_data);
+			$placeholders = implode(',', array_fill(0, count($columns), '?'));
+			$db->sql_query_prepared(
+				"INSERT INTO privatemessages (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+				array_values($this->pm_insert_data)
+			);
 
 			$plugins->run_hooks("datahandler_pm_insert_savedcopy_commit", $this);
 
@@ -731,16 +739,15 @@ function verify_recipient()
 			
 			// --- ВСТАВИТЬ ПРИВЯЗКУ ФАЙЛОВ ЗДЕСЬ ---
 			if (!empty($_POST['file_ids']) && is_array($_POST['file_ids'])) {
-				$file_ids = array_filter(array_map('intval', $_POST['file_ids']));
+				$file_ids = array_values(array_filter(array_map('intval', $_POST['file_ids'])));
 				if ($file_ids) {
-					$id_list = implode(',', $file_ids);
+					$id_placeholders = implode(',', array_fill(0, count($file_ids), '?'));
 					foreach ((array)$this->pmid as $pmid) {
 						$pmid = (int)$pmid;
-						$db->sql_query("
-							UPDATE comment_files
-							SET messages_id = {$pmid}
-							WHERE id IN ($id_list)
-						");
+						$db->sql_query_prepared(
+							"UPDATE comment_files SET messages_id = ? WHERE id IN ({$id_placeholders})",
+							array_merge([$pmid], $file_ids)
+						);
 					}
 				}
 			}

@@ -471,6 +471,9 @@ function updatePreview() {
 
     const formData = new FormData();
     formData.append('text', editCommentText.value);
+    if (typeof my_post_key !== 'undefined') {
+        formData.append('my_post_key', my_post_key);
+    }
 
     fetch('index.php?act=latest_comments&action=preview', {
         method: 'POST',

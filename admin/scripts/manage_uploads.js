@@ -484,6 +484,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Prepare data
         const params = new URLSearchParams();
         params.append('bulk_action', 'delete');
+        const csrfToken = document.querySelector('#bulkForm input[name="my_post_key"]')?.value || '';
+        params.append('my_post_key', csrfToken);
         selectedIds.forEach(id => params.append('selected_files[]', id));
         
         // Send request
@@ -618,7 +620,8 @@ document.addEventListener('DOMContentLoaded', function() {
         confirmSingleBtn.disabled = true;
         confirmSingleBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Deleting...';
         
-        fetch('manage_uploads.php?delete=' + currentFileId)
+        const csrfToken = document.querySelector('#bulkForm input[name="my_post_key"]')?.value || '';
+        fetch('manage_uploads.php?delete=' + currentFileId + '&my_post_key=' + encodeURIComponent(csrfToken))
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
@@ -1036,6 +1039,7 @@ window.removeFileByIndex = function(index) {
         });
         formData.append('content_type', contentType);
         formData.append('content_id', contentId);
+        formData.append('my_post_key', document.querySelector('#bulkForm input[name="my_post_key"]')?.value || '');
         
         // Disable button and show loading
         startUploadBtn.disabled = true;

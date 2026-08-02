@@ -451,7 +451,10 @@ function get_list()
     global $eol;
     global $db;
     
-    $query = $db->sql_query('SELECT * FROM staffpanel WHERE usergroups LIKE \'%[' . intval($CURUSER['usergroup']) . ']%\' ORDER BY name');
+    $query = $db->sql_query_prepared(
+        'SELECT * FROM staffpanel WHERE usergroups LIKE ? ORDER BY name',
+        ['%[' . intval($CURUSER['usergroup']) . ']%']
+    );
     
     $str = '
     <style type="text/css">
@@ -1194,7 +1197,7 @@ function get_list()
         'default' => ['icon' => 'fas fa-toolbox', 'color' => 'blue', 'category' => 'Tools']
     ];
     
-    while ($tools = $db->fetch_array($query))
+    while ($query && ($tools = $db->fetch_array($query)))
     {
         $usergroups = explode(',', $tools['usergroups']);
         if (((@file_exists($thispath . $tools['filename']) AND strstr($tools['usergroups'], '[' . $CURUSER['usergroup'] . ']')) AND in_array('[' . $CURUSER['usergroup'] . ']', $usergroups, true)))
@@ -1463,7 +1466,7 @@ function get_list2()
     global $eol;
     global $db;
     
-    $query = $db->sql_query('SELECT * FROM staffpanel ORDER BY name');
+    $query = $db->sql_query_prepared('SELECT * FROM staffpanel ORDER BY name');
     
     $str = '
     <style type="text/css">
@@ -1792,7 +1795,7 @@ function get_list2()
     $count = 0;
     $tools_html = '';
     
-    while ($tools = $db->fetch_array($query))
+    while ($query && ($tools = $db->fetch_array($query)))
     {
         if (@file_exists($thispath . $tools['filename']))
         {

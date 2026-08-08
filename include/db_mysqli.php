@@ -215,67 +215,6 @@ class DB_MySQLi implements DB_Base
     // ----------------------------
     // ЗАПРОСЫ
     // ----------------------------
-	function sql_query(string $_run_query, int $hide_errors = 0, int $write_query = 0): mysqli_result|bool
-    {
-        global $db, $mybb;
-
-        $t0 = microtime(true);
-
-        if ($write_query && $this->write_link) {
-            $this->current_link = &$this->write_link;
-        } else {
-            $this->current_link = &$this->read_link;
-        }
-
-        try {
-            $__return = mysqli_query($this->current_link, $_run_query);
-        } catch (mysqli_sql_exception $e) {
-            if (!$hide_errors) {
-                $this->output_error(MYBB_SQL, [
-                    'error_no' => $e->getCode(),
-                    'error'    => $e->getMessage(),
-                    'query'    => $_run_query,
-                ], __FILE__, __LINE__);
-            }
-            return false;
-        }
-
-        if ($this->error_number() && !$hide_errors) {
-            $this->error($_run_query);
-            return false;
-        }
-
-        if ($write_query) {
-            $this->last_affected_rows = mysqli_affected_rows($this->current_link);
-        }
-
-        $query_time = microtime(true) - $t0;
-        if ($query_time < 0) $query_time = 0;
-
-        $this->query_time  += $query_time;
-        $this->query_count++;
-        $this->querylist[] = ['query' => $_run_query, 'time' => $query_time];
-
-        $script = $_SERVER['SCRIPT_NAME'] ?? '';
-        if (!str_contains(strtolower($script), 'query_explain.php')) {
-            if (!isset($GLOBALS['queries']) || !is_array($GLOBALS['queries'])) {
-                $GLOBALS['queries'] = [];
-            }
-            $GLOBALS['queries'][] = [
-                'query_time' => (float)$query_time,
-                'query'      => trim($_run_query),
-            ];
-        }
-
-        return $__return;
-    }
-	
-	
-	
-	
-	
-	
-	
     /**
      * Общий хвост статистики/логирования для sql_query_prepared() - вынесен
      * в отдельный метод, чтобы не дублировать один и тот же блок на всех
@@ -446,10 +385,6 @@ class DB_MySQLi implements DB_Base
         return $affected_rows >= 0;
     }
 
-    function write_query(string $query, int $hide_errors = 0): object|bool
-    {
-        return $this->sql_query($query, $hide_errors, 1);
-    }
 
     // ----------------------------
     // РЕЗУЛЬТАТЫ

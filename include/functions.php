@@ -2257,7 +2257,7 @@ function generate_post_check(int $rotation_shift = 0): string
     $rotation = floor(TIMENOW / $rotation_interval) + $rotation_shift;
     $seed = (string)$rotation;
     if (!empty($CURUSER['id'])) {
-        $seed .= $CURUSER['loginkey'] . $CURUSER['salt'] . $CURUSER['added'];
+        $seed .= $CURUSER['loginkey'] . $CURUSER['added'];
     } else {
         $seed .= $session->sid;
     }
@@ -3663,49 +3663,13 @@ function get_date_time(int $timestamp = 0): string
     return date('Y-m-d H:i:s');
 }
 
-function gmtime(): int
-{
-    return strtotime(get_date_time());
-}
-
-function unhtmlspecialchars(string $text, bool $doUniCode = false): string
-{
-    if($doUniCode) {
-        $text = preg_replace_callback('/&#([0-9]+);/U', function($matches) {
-            return convert_int_to_utf8($matches[1]);
-        }, $text);
-    }
-
-    return str_replace(['&lt;', '&gt;', '&quot;', '&amp;'], ['<', '>', '"', '&'], $text);
-}
 
 function check_email(string $email): bool
 {
     return (bool)preg_match('#^[a-z0-9.!\\#$%&\'*+-/=?^_`{|}~]+@([0-9.]+|([^\\s\'"<>]+\\.+[a-z]{2,6}))$#si', $email);
 }
 
-function parse_email(string $link = '', string $text = ''): string
-{
-    $rightlink = trim($link);
-    if(empty($rightlink)) {
-        $rightlink = trim($text);
-    }
 
-    $rightlink = str_replace(['`', '"', '\'', '['], ['&#96;', '&quot;', '&#39;', '&#91;'], $rightlink);
-    if((!trim($link) || $text == $rightlink)) {
-        $tmp = unhtmlspecialchars($rightlink);
-        if(strlen($tmp) > 55) {
-            $text = htmlspecialchars_uni(substr($tmp, 0, 36) . '...' . substr($tmp, -14));
-        }
-    }
-
-    $rightlink = str_replace('  ', '', $rightlink);
-    if(check_email($rightlink)) {
-        return '<a href="mailto:' . $rightlink . '">' . $text . '</a>';
-    }
-
-    return $text;
-}
 
 function format_urls(string $s, string $target = '_blank'): string
 {

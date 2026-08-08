@@ -281,8 +281,10 @@ class Session
 
         // Validate user access
         $script_name = basename($_SERVER['PHP_SELF']);
-        $group_data_results = $usergroups[$mybb->user['usergroup']] ?? [];
-        $GLOBALS['usergroups'] = $group_data_results;
+        // Используем уже готовый $mybb->usergroup (учитывает additionalgroups
+        // через usergroup_permissions() выше), а не прямой лукап по основной
+        // группе - тот не учитывал дополнительные группы юзера.
+        $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
 
         if (($group_data_results['isbannedgroup'] ?? 0) == '1' ||
             ($mybb->user['enabled'] ?? '') == 'no' ||
@@ -367,6 +369,7 @@ class Session
         }
 		
 		$GLOBALS['CURUSER'] = $mybb->user;
+        $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
     }
 	
 	
@@ -414,6 +417,7 @@ class Session
         }
 		
 		$GLOBALS['CURUSER'] = $mybb->user; 
+        $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
     }
 	
 	

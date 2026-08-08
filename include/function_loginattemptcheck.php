@@ -3,10 +3,7 @@
 declare(strict_types=1);
 
 
-/**
- * Returns remaining login attempts as a coloured HTML span.
- * Red when 2 or fewer attempts left, green otherwise.
- */
+
 function remaining(string $type = 'login'): string
 {
     global $db, $failedlogincount;
@@ -21,10 +18,7 @@ function remaining(string $type = 'login'): string
     return '<span style="color:' . $color . '">[' . $left . ']</span>';
 }
 
-/**
- * Checks whether the current IP has exceeded the login attempt limit.
- * If so, marks it as banned and calls stderr().
- */
+
 function failedloginscheck(string $type = 'Login'): void
 {
     global $db, $lang, $BASEURL, $failedlogincount;
@@ -53,15 +47,6 @@ function failedloginscheck(string $type = 'Login'): void
 }
 
 
-/**
- * Records a failed login attempt and optionally notifies the account owner.
- *
- * @param string $type    'login' | 'silent' | any stderr-compatible error key
- * @param bool   $recover Mark the attempt as a password-recovery attempt
- * @param bool   $head    Pass $head through to stderr()
- * @param bool   $msg     Send a warning PM to the affected user
- * @param int    $uid     UID of the affected user (required when $msg = true)
- */
 function failedlogins(
     string $type    = 'login',
     bool   $recover = false,
@@ -133,22 +118,7 @@ function failedlogins(
 }
 
 
-/**
- * Checks whether a user (or guest) is allowed to attempt a login.
- *
- * Returns:
- *   - int  0              → no prior failed attempts / lockout just expired
- *   - int  $loginattempts → number of failed attempts so far (> 0, below threshold)
- *   - false               → currently locked out ($fatal = false path)
- *
- * When $fatal = true and the account/cookie is locked out, stderr() is called
- * and execution stops inside stderr() — this function never returns in that case.
- *
- * @param int  $uid   User ID to check (0 = guest / cookie-only check)
- * @param bool $fatal Call stderr() and halt when locked out (default true)
- *
- * @return int|false
- */
+
 function login_attempt_check(int|string|null $uid = 0, bool $fatal = true): int|false
 {
     global $mybb, $lang, $db, $failedlogincount;
@@ -232,11 +202,7 @@ function login_attempt_check(int|string|null $uid = 0, bool $fatal = true): int|
     return $loginAttempts;
 }
 
-/**
- * Splits a duration in seconds into [hours, minutes, seconds].
- *
- * @return array{0: int, 1: int, 2: int}
- */
+
 function login_hms_from_seconds(int $totalSeconds): array
 {
     $hours   = (int)floor($totalSeconds / 3600);
@@ -248,11 +214,6 @@ function login_hms_from_seconds(int $totalSeconds): array
 
 
 
-/**
- * Resolves geolocation for an IP address via ip-api.com (free, no key required).
- * Returns ['country' => '...', 'city' => '...'].
- * Local/private addresses return 'Local' without making an HTTP request.
- */
 function geo_by_ip(string $ip): array
 {
     if (
@@ -285,14 +246,7 @@ function geo_by_ip(string $ip): array
     ];
 }
 
-/**
- * Writes a login event (success or failure) to login_log.
- * For successful logins from a new country, triggers an admin e-mail alert.
- *
- * @param int    $uid    User ID (0 for guests / unknown)
- * @param string $status 'success' | 'fail'
- * @param string $type   'login'   | 'recover'
- */
+
 function log_login(int $uid, string $status = 'fail', string $type = 'login'): void
 {
     global $db, $mybb;
@@ -379,9 +333,7 @@ function log_login(int $uid, string $status = 'fail', string $type = 'login'): v
     }
 }
 
-/**
- * Sends an e-mail alert to the site admin when a user logs in from a new country.
- */
+
 function notify_admin_suspicious(
     int    $uid,
     string $ip,
@@ -427,11 +379,7 @@ function notify_admin_suspicious(
     my_mail($admin, $subject, $message);
 }
 
-/**
- * Sends an informational email to the user when a successful login is
- * detected from a browser/OS fingerprint not seen before for this account.
- * Non-blocking — the login proceeds normally.
- */
+
 function notify_user_new_device(
     int    $uid,
     string $ip,

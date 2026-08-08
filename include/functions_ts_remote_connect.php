@@ -178,7 +178,6 @@ function ts_fetch_via_curl(string $url, array $url_components, string $destinati
         $data = $response;
     }
 
-    curl_close($ch);
     return $data;
 }
 

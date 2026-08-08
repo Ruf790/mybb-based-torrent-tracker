@@ -15,63 +15,7 @@ if (!empty($mybb->cookies['collapsed'])) {
     }
 }
 
-function user_exists(int|string $uid): bool
-{
-    global $db;
 
-    $query = $db->sql_query_prepared("SELECT COUNT(*) as user FROM users WHERE id = ? LIMIT 1", [(int)$uid]);
-
-    return (bool)($query && $db->fetch_field($query, 'user') == 1);
-}
-
-/**
- * Checks if $username already exists in the database.
- *
- * @param string $username The username for check for.
- * @return boolean True when exists, false when not.
- */
-function username_exists(string $username): bool
-{
-    $options = [
-        'username_method' => 2,
-    ];
-
-    return (bool)get_user_by_username($username, $options);
-}
-
-/**
- * Checks a password with a supplied username.
- *
- * @param string $username The username of the user.
- * @param string $password The plain-text password.
- * @return array|false False when no match, array with user info when match.
- */
-function validate_password_from_username(string $username, string $password): array|false
-{
-    global $mybb, $username_method;
-
-    $options = [
-        'fields' => '*',
-        'username_method' => $username_method,
-    ];
-
-    $user = get_user_by_username($username, $options);
-
-    if (!$user) {
-        return false;
-    }
-
-    return validate_password_from_uid($user['uid'], $password, $user);
-}
-
-/**
- * Checks a password with a supplied uid.
- *
- * @param int|string $uid The user id.
- * @param string $password The plain-text password.
- * @param array $user An optional user data array.
- * @return array|false False when not valid, user data array when valid.
- */
 function validate_password_from_uid(int|string $uid, string $password, array $user = []): array|false
 {
     global $db, $mybb, $CURUSER;
@@ -79,13 +23,19 @@ function validate_password_from_uid(int|string $uid, string $password, array $us
     if (isset($CURUSER['id']) && $CURUSER['id'] == $uid) {
         $user = $mybb->user;
     }
+
     if (!$user['password']) {
         $user = get_user((int)$uid);
     }
 
-    if (!$user['loginkey']) {
+    if (empty($user['loginkey'])) 
+	{
         $user['loginkey'] = generate_loginkey();
-        $db->sql_query_prepared("UPDATE users SET loginkey = ? WHERE id = ?", [$user['loginkey'], $CURUSER['id']]);
+
+        if (!empty($user['id'])) 
+		{
+            $db->sql_query_prepared("UPDATE users SET loginkey = ? WHERE id = ?", [$user['loginkey'], $user['id']]);
+        }
     }
 
     if (verify_user_password($user, $password)) {
@@ -95,79 +45,14 @@ function validate_password_from_uid(int|string $uid, string $password, array $us
     return false;
 }
 
-/**
- * Updates a user's password.
- *
- * @param int|string $uid The user's id.
- * @param string $password The md5()'ed password.
- * @param string $salt (Optional) The salt of the user.
- * @return array The new password.
- * @deprecated deprecated since version 1.8.6 Please use other alternatives.
- */
-function update_password(int|string $uid, string $password, string $salt = ''): array
-{
-    global $db, $plugins;
 
-    $newpassword = [];
-
-    // If no salt was specified, check in database first, if still doesn't exist, create one
-    if (!$salt) {
-        $query = $db->sql_query_prepared("SELECT salt FROM users WHERE id = ?", [$uid]);
-        $user = $query ? $db->fetch_array($query) : null;
-
-        $salt = $user['salt'] ?: generate_salt();
-        $newpassword['salt'] = $salt;
-    }
-
-    // Create new password based on salt
-    $saltedpw = salt_password($password, $salt);
-
-    // Generate new login key
-    $loginkey = generate_loginkey();
-
-    // Update password and login key in database
-    $newpassword['password'] = $saltedpw;
-    $newpassword['loginkey'] = $loginkey;
-
-    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($newpassword)));
-    $params = array_values($newpassword);
-    $params[] = $uid;
-
-    $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
-
-    $plugins->run_hooks("password_changed");
-
-    return $newpassword;
-}
-
-/**
- * Salts a password based on a supplied salt.
- *
- * @param string $password The md5()'ed password.
- * @param string $salt The salt.
- * @return string The password hash.
- * @deprecated deprecated since version 1.8.9 Please use other alternatives.
- */
-function salt_password(string $password, string $salt): string
-{
-    return md5(md5($salt).$password);
-}
-
-/**
- * Salts a password based on a supplied salt.
- *
- * @param string $password The input password.
- * @param string|false $salt (Optional) The salt used by the MyBB algorithm.
- * @param array|false $user (Optional) An array containing password-related data.
- * @return array Password-related fields.
- */
-function create_password(string $password, string|false $salt = false, array|false $user = false): array
+function create_password(string $password, array|false $user = false): array
 {
     global $plugins;
 
     $fields = null;
 
-    $parameters = compact('password', 'salt', 'user', 'fields');
+    $parameters = compact('password', 'user', 'fields');
 
     if (!defined('IN_INSTALL') && !defined('IN_UPGRADE')) {
         $plugins->run_hooks('create_password', $parameters);
@@ -175,15 +60,14 @@ function create_password(string $password, string|false $salt = false, array|fal
 
     if ($parameters['fields'] !== null) {
         $fields = $parameters['fields'];
-    } else {
-        if (!$salt) {
-            $salt = generate_salt();
-        }
-
-        $hash = md5(md5($salt).md5($password));
+    } 
+	
+	else 
+	{
+       
+        $hash = password_hash($password, PASSWORD_DEFAULT);
 
         $fields = [
-            'salt' => $salt,
             'password' => $hash,
         ];
     }
@@ -191,13 +75,6 @@ function create_password(string $password, string|false $salt = false, array|fal
     return $fields;
 }
 
-/**
- * Compares user's password data against provided input.
- *
- * @param array $user An array containing password-related data.
- * @param string $password The plain-text input password.
- * @return bool Result of the comparison.
- */
 function verify_user_password(array $user, string $password): bool
 {
     global $plugins;
@@ -214,53 +91,17 @@ function verify_user_password(array $user, string $password): bool
         return $parameters['result'];
     }
 
-    $password_fields = create_password($password, $user['salt'], $user);
-
-    return my_hash_equals($user['password'], $password_fields['password']);
+ 
+    return password_verify($password, $user['password'] ?? '');
 }
 
-/**
- * Generates a random salt
- *
- * @return string The salt.
- */
-function generate_salt(): string
-{
-    return random_str(8);
-}
 
-/**
- * Generates a 50 character random login key.
- *
- * @return string The login key.
- */
 function generate_loginkey(): string
 {
     return random_str(50);
 }
 
-/**
- * Updates a user's salt in the database (does not update a password).
- *
- * @param int|string $uid The uid of the user to update.
- * @return string The new salt.
- */
-function update_salt(int|string $uid): string
-{
-    global $db;
 
-    $salt = generate_salt();
-    $db->sql_query_prepared("UPDATE users SET salt = ? WHERE id = ?", [$salt, $uid]);
-
-    return $salt;
-}
-
-/**
- * Generates a new login key for a user.
- *
- * @param int|string $uid The uid of the user to update.
- * @return string The new login key.
- */
 function update_loginkey(int|string $uid): string
 {
     global $db;
@@ -271,15 +112,7 @@ function update_loginkey(int|string $uid): string
     return $loginkey;
 }
 
-/**
- * Adds a thread to a user's thread subscription list.
- * If no uid is supplied, the currently logged in user's id will be used.
- *
- * @param int|string $tid The tid of the thread to add to the list.
- * @param int|string $notification (Optional) The type of notification to receive for replies (0=none, 1=email, 2=pm)
- * @param int|string $uid (Optional) The uid of the user who's list to update.
- * @return boolean True when success, false when otherwise.
- */
+
 function add_subscribed_thread(int|string $tid, int|string $notification = 1, int|string $uid = 0): bool
 {
     global $mybb, $db, $CURUSER;
@@ -311,14 +144,7 @@ function add_subscribed_thread(int|string $tid, int|string $notification = 1, in
     return true;
 }
 
-/**
- * Remove a thread from a user's thread subscription list.
- * If no uid is supplied, the currently logged in user's id will be used.
- *
- * @param int|string $tid The tid of the thread to remove from the list.
- * @param int|string $uid (Optional) The uid of the user who's list to update.
- * @return boolean True when success, false when otherwise.
- */
+
 function remove_subscribed_thread(int|string $tid, int|string $uid = 0): bool
 {
     global $mybb, $db, $CURUSER;
@@ -336,14 +162,7 @@ function remove_subscribed_thread(int|string $tid, int|string $uid = 0): bool
     return true;
 }
 
-/**
- * Adds a forum to a user's forum subscription list.
- * If no uid is supplied, the currently logged in user's id will be used.
- *
- * @param int|string $fid The fid of the forum to add to the list.
- * @param int|string $uid (Optional) The uid of the user who's list to update.
- * @return boolean True when success, false when otherwise.
- */
+
 function add_subscribed_forum(int|string $fid, int|string $uid = 0): bool
 {
     global $mybb, $db, $CURUSER;
@@ -369,14 +188,7 @@ function add_subscribed_forum(int|string $fid, int|string $uid = 0): bool
     return true;
 }
 
-/**
- * Removes a forum from a user's forum subscription list.
- * If no uid is supplied, the currently logged in user's id will be used.
- *
- * @param int|string $fid The fid of the forum to remove from the list.
- * @param int|string $uid (Optional) The uid of the user who's list to update.
- * @return boolean True when success, false when otherwise.
- */
+
 function remove_subscribed_forum(int|string $fid, int|string $uid = 0): bool
 {
     global $mybb, $db, $CURUSER;
@@ -394,9 +206,7 @@ function remove_subscribed_forum(int|string $fid, int|string $uid = 0): bool
     return true;
 }
 
-/**
- * Constructs the usercp navigation menu.
- */
+
 function usercp_menu(): void
 {
     global $mybb, $theme, $plugins, $lang, $usercpnav, $usercpmenu, $enablepms, $usergroups;
@@ -429,9 +239,7 @@ function usercp_menu(): void
     $plugins->run_hooks("usercp_menu_built");
 }
 
-/**
- * Constructs the usercp messenger menu.
- */
+
 function usercp_menu_messenger(): void
 {
     global $db, $mybb, $CURUSER, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
@@ -480,9 +288,7 @@ function usercp_menu_messenger(): void
     $usercpmenu .= $usercp_nav_messenger;
 }
 
-/**
- * Constructs the usercp profile menu.
- */
+
 function usercp_menu_profile(): void
 {
     global $db, $mybb, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
@@ -523,9 +329,7 @@ function usercp_menu_profile(): void
 </div>';
 }
 
-/**
- * Constructs the usercp misc menu.
- */
+
 function usercp_menu_misc(): void
 {
     global $db, $mybb, $CURUSER, $theme, $usercpmenu, $lang, $collapse, $collapsed, $collapsedimg;
@@ -657,47 +461,9 @@ function usercp_menu_misc(): void
 </style>';
 }
 
-/**
- * Gets the usertitle for a specific uid.
- *
- * @param int|string $uid The uid of the user to get the usertitle of.
- * @return string The usertitle of the user.
- */
-function get_usertitle(int|string $uid = 0): string
-{
-    global $db, $mybb, $CURUSER;
 
-    if ($CURUSER['id'] == $uid) {
-        $user = $mybb->user;
-    } else {
-        $query = $db->sql_query_prepared("SELECT usertitle, postnum FROM users WHERE id = ? LIMIT 1", [$uid]);
-        $user = $query ? $db->fetch_array($query) : null;
-    }
 
-    if ($user['usertitle']) {
-        return $user['usertitle'];
-    }
 
-    $usertitles = $mybb->cache->read('usertitles');
-    $usertitle = null;
-
-    foreach ($usertitles as $title) {
-        if ($title['posts'] <= $user['postnum']) {
-            $usertitle = $title;
-            break;
-        }
-    }
-
-    return $usertitle['title'] ?? '';
-}
-
-/**
- * Updates a users private message count in the users table with the number of pms they have.
- *
- * @param int|string $uid The user id to update the count for. If none, assumes currently logged in user.
- * @param int $count_to_update Bitwise value for what to update. 1 = total, 2 = new, 4 = unread. Combinations accepted.
- * @return array The updated counters
- */
 function update_pm_count(int|string $uid = 0, int $count_to_update = 7): array
 {
     global $db, $mybb, $CURUSER;
@@ -742,13 +508,7 @@ function update_pm_count(int|string $uid = 0, int $count_to_update = 7): array
     return $pmcount;
 }
 
-/**
- * Return the language specific name for a PM folder.
- *
- * @param int|string $fid The ID of the folder.
- * @param string $name The folder name - can be blank, will use language default.
- * @return string The name of the folder.
- */
+
 function get_pm_folder_name(int|string $fid, string $name = ''): string
 {
     global $lang;

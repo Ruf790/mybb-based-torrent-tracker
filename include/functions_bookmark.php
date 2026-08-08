@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 
 function return_torrent_bookmark_array(int $userid): array

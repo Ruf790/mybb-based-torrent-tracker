@@ -218,29 +218,21 @@ class MyBB
 $grouppermignore = ["gid", "type", "title", "description", "namestyle"];
 
 $groupzerogreater = [
-    'maxposts',
     'attachquota',
     'edittimelimit',
-    'maxreputationsperthread',
-    'maxreputationsperuser',
-    'maxreputationsday',
-    'maxwarningsday',
     'pmquota',
     'maxpmrecipients',
     'maxemails',
 ];
 
 $groupzerolesser = [
-    'canusesigxposts',
     'emailfloodtime',
 ];
 
 $groupxgreater = [
-    'reputationpower' => 0,
 ];
 
 $grouppermbyswitch = [
-    'maxposts'        => ['canpostthreads', 'canpostreplys'],
     'attachquota'     => 'canpostattachments',
     'edittimelimit'   => 'caneditposts',
     'pmquota'         => 'canusepms',
@@ -258,12 +250,10 @@ $fpermfields = [
     'canpostthreads',
     'canpostreplys',
     'canpostattachments',
-    'canratethreads',
     'caneditposts',
     'candeleteposts',
     'candeletethreads',
     'caneditattachments',
-    'canviewdeletionnotice',
     'modposts',
     'modthreads',
     'modattachments',

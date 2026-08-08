@@ -981,7 +981,7 @@ $do = $_POST['do'] ?? $_GET['do'] ?? '';
 $userid = (int)($_POST['userid'] ?? $_GET['userid'] ?? 0);
 
 // Permission check
-if ($usergroups['canuserdetails'] != 1) 
+if ($usergroups['canstaffpanel'] != 1) 
 {
     print_no_permission(true);
 }
@@ -1157,14 +1157,31 @@ function renderBasicInfoTab(): string
             
              ' . selectbox('Tracker Usergroup', 'usergroup', 'trackergroups', 'form-select') .'
             
-            ' . inputbox('Avatar URL', 'avatar', htmlspecialchars_uni($userdata['avatar']), 'form-control', '35', '<small class="text-muted">Full URL to avatar image</small>', '500', true) . '
+            ' . inputbox('Avatar URL', 'avatar', htmlspecialchars_uni($userdata['avatar']), 'form-control', '35', '<small class="text-muted">Full URL to avatar image</small>', '500', false) . '
 			
 			
 			<input type="hidden" name="avatar_changed" id="avatar_changed" value="0">
 <script>
-document.querySelector(\'input[name="avatar"]\').addEventListener(\'change\', function(){
-    document.getElementById(\'avatar_changed\').value = \'1\';
-});
+(function () {
+    var avatarInput = document.querySelector(\'input[name="avatar"]\');
+    var changedFlag = document.getElementById(\'avatar_changed\');
+    if (!avatarInput || !changedFlag) return;
+
+    // Снимок исходного значения при загрузке страницы. Раньше флаг
+    // avatar_changed взводился по событию change на самом поле — но браузер
+    // может молча подставить в это поле автозаполнением значение из другого
+    // юзера (у него общее name="avatar" на все карточки редактирования),
+    // и change тогда стреляет без реального намерения админа менять аватар.
+    // Сверяем факт изменения прямо в момент отправки формы, по значению,
+    // а не по тому, сработало ли где-то браузерное событие.
+    var originalAvatar = avatarInput.value;
+    var form = avatarInput.closest(\'form\');
+    if (form) {
+        form.addEventListener(\'submit\', function () {
+            changedFlag.value = (avatarInput.value !== originalAvatar) ? \'1\' : \'0\';
+        });
+    }
+})();
 </script>
 			
 			
@@ -4212,7 +4229,7 @@ function processUserUpdateData(): array
     // Process password
     if (!empty($_POST['password'])) {
         $user['loginkey'] = generate_loginkey();
-        $password_fields = create_password($_POST['password'], false, $user);
+        $password_fields = create_password($_POST['password'], $user);
         $updateData = array_merge($updateData, $password_fields);
         $modcomment = modcomment("Password updated");
     }

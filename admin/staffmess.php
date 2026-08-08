@@ -1,10 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
-@ini_set('memory_limit', '20000M');
+// FIX: было 20000M (20 ГБ) - не помню, чтобы это было осознанным решением;
+// для построчной рассылки PM (fetch_array() в цикле, без загрузки всего
+// результата разом) такой объём не нужен даже на большую базу. 512M — с
+// хорошим запасом, но не рискует утащить память всего Apache-процесса на
+// сервере при реальном сбое/утечке.
+@ini_set('memory_limit', '512M');
 define('SM_VERSION', '0.8 by xam');
 
 require_once INC_PATH . '/datahandler.php';
@@ -21,13 +28,16 @@ $parser_options = array(
 );
 
 $error = '';
-$msgtext = trim ($_POST['message']);
-$subject = trim ($_POST['subject']);
+$checked = [];
+// FIX: прямой доступ к $_POST['message']/['subject'] без проверки бросал бы
+// "Undefined array key" при обычном GET-заходе на страницу (до первого сабмита).
+$msgtext = trim($_POST['message'] ?? '');
+$subject = trim($_POST['subject'] ?? '');
 
 $useravatar = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
 $avatar = '<img src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' />';
 	
-if (($_POST['previewpost'] AND !empty ($msgtext)))
+if (!empty($_POST['previewpost']) && !empty($msgtext))
 {
     $prvp = '<table border="0" cellspacing="0" cellpadding="4" class="none" width="100%">
 	<tr>
@@ -39,121 +49,228 @@ if (($_POST['previewpost'] AND !empty ($msgtext)))
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') 
 {
-    $gids = $_POST['gid'] ?? [];
-    $sender_id = ($_POST['sender'] ?? '') === 'system' ? 0 : (int)$CURUSER['id'];
-    
-    if (empty($msgtext) || empty($subject) || !is_array($gids)) {
-        $error = 'Don\'t leave any fields blank.';
-    }
+    // FIX: CSRF-защита - раньше отсутствовала полностью на форме массовой
+    // рассылки PM по целым юзергруппам. Тот же паттерн, что и везде на сайте.
+    // Предпросмотр (previewpost) CSRF не требует - он ничего не пишет в БД.
+    $csrfOk = !empty($_POST['previewpost']) || verify_post_check($_POST['my_post_key'] ?? '');
 
-    $checked = [];
-    if (is_array($gids)) 
-	{
-        foreach ($gids as $gid) 
-		{
-            if (is_valid_id($gid)) 
-			{
-                $checked[] = (int)$gid;
-            }
-        }
-    }
-
-    if (empty($error) && empty($_POST['previewpost'])) 
-	{
-        require_once INC_PATH . '/functions_pm.php';
-
-        // Собираем placeholders для IN (0, ?, ?, ?)
-        $groupids_array = array_merge([0], $checked);
-        $placeholders   = implode(',', array_fill(0, count($groupids_array), '?'));
-
-        $query = $db->sql_query_prepared(
-            "SELECT id FROM users WHERE usergroup IN ({$placeholders})",
-            $groupids_array
-        );
-
-        $qcount = 0;
-        while ($query && ($dat = $db->fetch_array($query))) {
-            $pm = array(
-                'subject' => $db->escape_string($subject),
-                'message' => $db->escape_string($msgtext),
-                'touid' => $dat['id']
-            );
-
-            send_pm($pm, $sender_id, true);
-            ++$qcount;
-        }
-
+    if (!$csrfOk) {
         $error = '
         <div class="container mt-3">
-            <div class="alert alert-primary alert-dismissible fade show">
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                <strong>Total&nbsp;' . ts_nf($qcount) . ' message(s) has been sent.</strong>
+            <div class="alert alert-danger">
+                <i class="fas fa-shield-alt me-2"></i>Security check failed. Please refresh the page and try again.
             </div>
         </div>';
+    } else {
+        $gids = $_POST['gid'] ?? [];
+        $sender_id = ($_POST['sender'] ?? '') === 'system' ? 0 : (int)$CURUSER['id'];
+
+        if (empty($msgtext) || empty($subject) || !is_array($gids)) {
+            $error = 'Don\'t leave any fields blank.';
+        }
+
+        $checked = [];
+        if (is_array($gids))
+        {
+            foreach ($gids as $gid)
+            {
+                if (is_valid_id($gid))
+                {
+                    $checked[] = (int)$gid;
+                }
+            }
+        }
+
+        if (empty($error) && empty($_POST['previewpost']))
+        {
+            require_once INC_PATH . '/functions_pm.php';
+
+            // Собираем placeholders для IN (0, ?, ?, ?)
+            $groupids_array = array_merge([0], $checked);
+            $placeholders   = implode(',', array_fill(0, count($groupids_array), '?'));
+
+            $query = $db->sql_query_prepared(
+                "SELECT id FROM users WHERE usergroup IN ({$placeholders})",
+                $groupids_array
+            );
+
+            $qcount = 0;
+            while ($query && ($dat = $db->fetch_array($query))) {
+                $pm = array(
+                    'subject' => $db->escape_string($subject),
+                    'message' => $db->escape_string($msgtext),
+                    'touid' => $dat['id']
+                );
+
+                send_pm($pm, $sender_id, true);
+                ++$qcount;
+            }
+
+            $error = '
+            <div class="container mt-3">
+                <div class="alert alert-success alert-dismissible fade show">
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <i class="fas fa-check-circle me-2"></i><strong>Total&nbsp;' . ts_nf($qcount) . ' message(s) has been sent.</strong>
+                </div>
+            </div>';
+        }
     }
 }
 
 stdhead('Mass Message to all Staff members and/or Users', false);
+?>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --sm-accent: var(--bs-primary, #0d6efd);
+        --sm-accent-strong: var(--bs-primary-text-emphasis, #0a58ca);
+        --sm-accent-soft: var(--bs-primary-bg-subtle, rgba(13,110,253,.1));
+    }
+    .sm-masthead {
+        padding: 1.6rem 1.75rem;
+        margin-bottom: 1.5rem;
+        background: var(--bs-body-bg, #fff);
+        border: 1px solid var(--bs-border-color, #e9ecef);
+        border-radius: .9rem;
+    }
+    .sm-masthead__eyebrow {
+        display: inline-block;
+        font-family: 'Oswald', sans-serif;
+        font-weight: 600;
+        font-size: .72rem;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--sm-accent-strong);
+        background: var(--sm-accent-soft);
+        border: 1px solid var(--sm-accent);
+        border-radius: 999px;
+        padding: .3rem .85rem;
+        margin-bottom: .7rem;
+    }
+    .sm-masthead__title {
+        font-family: 'Oswald', sans-serif;
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: clamp(1.3rem, 2.8vw, 1.7rem);
+        margin: 0;
+        color: var(--bs-emphasis-color, #212529);
+    }
+    .sm-panel {
+        border: 1px solid var(--bs-border-color, #e9ecef) !important;
+        border-radius: .9rem !important;
+        overflow: hidden;
+    }
+    .sm-panel .card-header {
+        background: var(--bs-tertiary-bg, #f8f9fa) !important;
+        color: var(--bs-emphasis-color, #212529) !important;
+        border-bottom: 1px solid var(--bs-border-color, #e9ecef);
+        border-left: 4px solid var(--sm-accent);
+    }
+    .sm-panel .card-header h5,
+    .sm-panel .card-header legend {
+        font-family: 'Oswald', sans-serif;
+        font-weight: 600;
+        font-size: .95rem;
+        margin: 0;
+    }
+    .sm-form-label {
+        font-family: 'Oswald', sans-serif;
+        font-weight: 500;
+        font-size: .85rem;
+        letter-spacing: .01em;
+    }
+    .group-chip {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        border: 1px solid var(--bs-border-color, #e9ecef);
+        border-radius: .6rem;
+        padding: .55rem .8rem;
+        transition: border-color .15s ease, background .15s ease;
+        cursor: pointer;
+        height: 100%;
+    }
+    .group-chip:hover {
+        border-color: var(--sm-accent);
+        background: var(--sm-accent-soft);
+    }
+    .group-chip input:checked ~ .group-chip-label {
+        color: var(--sm-accent-strong);
+        font-weight: 600;
+    }
+    .check-all-link {
+        font-family: 'Oswald', sans-serif;
+        font-size: .78rem;
+        font-weight: 600;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+        color: var(--sm-accent-strong);
+        text-decoration: none;
+    }
+    .check-all-link:hover { text-decoration: underline; }
 
+    .bbcode-toolbar .btn {
+        border-color: var(--bs-border-color, #dee2e6);
+    }
+</style>
+
+<div class="sm-masthead">
+    <span class="sm-masthead__eyebrow">Admin / Communication</span>
+    <h1 class="sm-masthead__title"><i class="fas fa-bullhorn me-2"></i>Mass Message to Staff / Users</h1>
+</div>
+
+<?php
 if (!empty($error) && empty($_POST['previewpost'])) {
-    echo '
-    <table border="0" cellspacing="0" cellpadding="4" class="" width="100%">
-    <tr></tr>
-    <tr><td>' . $error . '</td></tr>
-    </table><br />';
+    echo $error;
 }
 
 // Prepare usergroup checkboxes
 $query = $db->sql_query_prepared("SELECT gid, title, namestyle FROM usergroups");
 
-$count = 1;
 $sgids = '
-<fieldset>
-    <legend>Select Usergroup(s)</legend>
-    <table border="0" cellspacing="0" cellpadding="2" width="100%"><tr>';
-while ($query && ($gid = $db->fetch_array($query))) {
-    if ($count % 5 == 1 && $count > 1) {
-        $sgids .= '</tr><tr>';
-    }
+<div class="card sm-panel shadow-sm mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5><i class="fas fa-users me-2"></i>Select Usergroup(s)</h5>
+        <a href="#" class="check-all-link" onclick="checkAll(document.compose);return false;">
+            <i class="fas fa-check-double me-1"></i>Check All
+        </a>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">';
 
+while ($query && ($gid = $db->fetch_array($query))) {
     $checkedAttr = (!empty($checked) && in_array($gid['gid'], $checked)) ? ' checked="checked"' : '';
     $sgids .= '
-<td style="border:0">
-  <div class="form-check form-switch d-inline-block">
-    <input class="form-check-input" type="checkbox"
-           id="gid_' . $gid['gid'] . '"
-           name="gid[]"
-           value="' . $gid['gid'] . '" ' . $checkedAttr . '>
-    <label class="form-check-label" for="gid_' . $gid['gid'] . '"></label>
-  </div>
-</div>
-</td>
-    <td style="border: 0">' . format_name($gid['title'], $gid['gid']) . '</td>';
-    ++$count;
+            <div class="col-6 col-md-4 col-lg-3">
+                <label class="group-chip w-100 mb-0">
+                    <input class="form-check-input mt-0" type="checkbox"
+                           id="gid_' . $gid['gid'] . '"
+                           name="gid[]"
+                           value="' . $gid['gid'] . '"' . $checkedAttr . '>
+                    <span class="group-chip-label">' . format_name($gid['title'], $gid['gid']) . '</span>
+                </label>
+            </div>';
 }
 $sgids .= '
-<td style="border: 0"></td>
-<td style="border: 0"><a href="#" onclick="checkAll(document.compose);return false;"><font color="blue" size="1">check all</font></a></td>
-</tr></table>
-</fieldset>
-<br />';
+        </div>
+    </div>
+</div>';
 
 // Sender select box
 $senderOptions = '
-<fieldset>
-    <legend>Select Sender</legend>
-    <table border="0" cellspacing="0" cellpadding="2" width="100%">
-        <tr>
-            <td>
-                <select name="sender" class="form-select form-select-sm border pe-5 w-auto">
-                    <option value="system"' . (($_POST['sender'] ?? '') === 'system' ? ' selected' : '') . '>Automatic Message By System</option>
-                    <option value="' . htmlspecialchars($CURUSER['username']) . '"' . (($_POST['sender'] ?? '') === $CURUSER['username'] ? ' selected' : '') . '>' . htmlspecialchars($CURUSER['username']) . '</option>
-                </select>
-            </td>
-        </tr>
-    </table>
-</fieldset>
-<br />';
+<div class="card sm-panel shadow-sm mb-3">
+    <div class="card-header">
+        <h5><i class="fas fa-user-tag me-2"></i>Select Sender</h5>
+    </div>
+    <div class="card-body">
+        <select name="sender" class="form-select w-auto">
+            <option value="system"' . (($_POST['sender'] ?? '') === 'system' ? ' selected' : '') . '>Automatic Message By System</option>
+            <option value="' . htmlspecialchars($CURUSER['username']) . '"' . (($_POST['sender'] ?? '') === $CURUSER['username'] ? ' selected' : '') . '>' . htmlspecialchars($CURUSER['username']) . '</option>
+        </select>
+    </div>
+</div>';
 
 // The "check all" JS function
 echo <<<JS
@@ -169,56 +286,59 @@ JS;
 // Output the form with Bootstrap styles, and your custom JS below
 echo '
 <form method="post" name="compose" action="' . htmlspecialchars($_this_script_) . '" class="container-md" id="massMessageForm">
-<div class="card border-0 mb-4">
-    <div class="card-header text-19 fw-bold rounded-bottom">
-        Mass Message to all Staff members and/or Users
-    </div>
-    <div class="card-body">
+<input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '') . '">
 ';
 
 echo $sgids;
 echo $senderOptions;
 
 echo '
-<div class="mb-3">
-    <label for="subject" class="form-label">Subject</label>
-    <input type="text" class="form-control" id="subject" name="subject" value="' . htmlspecialchars($subject) . '" required>
-</div>';
-
-echo '
-<div class="mb-3">
-    <label for="message" class="form-label">Message</label>
-    <!-- BBCode Toolbar -->
-    <div class="mb-2 d-flex flex-wrap gap-1">
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[b]\', \'[/b]\');" title="Bold (Ctrl+B)"><strong>B</strong></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[i]\', \'[/i]\');" title="Italic (Ctrl+I)"><em>I</em></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[u]\', \'[/u]\');" title="Underline"><u>U</u></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[s]\', \'[/s]\');" title="Strikethrough"><s>S</s></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[url]\', \'[/url]\');" title="Insert URL">URL</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[img]\', \'[/img]\');" title="Insert Image">IMG</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[quote]\', \'[/quote]\');" title="Quote">Quote</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[code]\', \'[/code]\');" title="Code">Code</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[list]\n[*]\n[/list]\', \'\');" title="Unordered List">List</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[list=1]\n[*]\n[/list]\', \'\');" title="Ordered List">List 1.</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[color=red]\', \'[/color]\');" title="Color"><span style="color:red;">A</span></button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[size=]\', \'[/size]\');" title="Size">Size</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[center]\', \'[/center]\');" title="Center Text">Center</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[spoiler]\', \'[/spoiler]\');" title="Spoiler">Spoiler</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[video=youtube]\', \'[/video]\');" title="YouTube Video">YouTube</button>
+<div class="card sm-panel shadow-sm mb-3">
+    <div class="card-header">
+        <h5><i class="fas fa-envelope-open-text me-2"></i>Message</h5>
     </div>
-    <textarea class="form-control" id="message" name="message" rows="8" required>' . htmlspecialchars($msgtext) . '</textarea>
-    <div id="charCount" class="form-text text-end">0 characters</div>
-    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="togglePreviewBtn">Show Markdown Preview</button>
-</div>';
+    <div class="card-body">
+        <div class="mb-3">
+            <label for="subject" class="sm-form-label form-label">Subject</label>
+            <input type="text" class="form-control" id="subject" name="subject" value="' . htmlspecialchars($subject) . '" required>
+        </div>
 
-echo '<div id="markdownPreview" class="border p-3 mb-3" style="display:none; white-space: pre-wrap; background:#f8f9fa; max-height:300px; overflow-y:auto;"></div>';
+        <div class="mb-3">
+            <label for="message" class="sm-form-label form-label">Message</label>
+            <!-- BBCode Toolbar -->
+            <div class="mb-2 d-flex flex-wrap gap-1 bbcode-toolbar">
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[b]\', \'[/b]\');" title="Bold (Ctrl+B)"><strong>B</strong></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[i]\', \'[/i]\');" title="Italic (Ctrl+I)"><em>I</em></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[u]\', \'[/u]\');" title="Underline"><u>U</u></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[s]\', \'[/s]\');" title="Strikethrough"><s>S</s></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[url]\', \'[/url]\');" title="Insert URL">URL</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[img]\', \'[/img]\');" title="Insert Image">IMG</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[quote]\', \'[/quote]\');" title="Quote">Quote</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[code]\', \'[/code]\');" title="Code">Code</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[list]\n[*]\n[/list]\', \'\');" title="Unordered List">List</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[list=1]\n[*]\n[/list]\', \'\');" title="Ordered List">List 1.</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[color=red]\', \'[/color]\');" title="Color"><span style="color:red;">A</span></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[size=]\', \'[/size]\');" title="Size">Size</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[center]\', \'[/center]\');" title="Center Text">Center</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[spoiler]\', \'[/spoiler]\');" title="Spoiler">Spoiler</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[video=youtube]\', \'[/video]\');" title="YouTube Video">YouTube</button>
+            </div>
+            <textarea class="form-control" id="message" name="message" rows="8" required>' . htmlspecialchars($msgtext) . '</textarea>
+            <div id="charCount" class="form-text text-end">0 characters</div>
+            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="togglePreviewBtn">Show Markdown Preview</button>
+        </div>
 
-echo '
-<div class="d-flex gap-2">
-    <button type="submit" name="submit" class="btn btn-primary">Send Message</button>
-    <button type="button" id="previewModalBtn" class="btn btn-secondary">Preview</button>
-</div>
-</div>
+        <div id="markdownPreview" class="border rounded p-3 mb-3" style="display:none; white-space: pre-wrap; background:var(--bs-tertiary-bg, #f8f9fa); max-height:300px; overflow-y:auto;"></div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" name="submit" class="btn btn-primary px-4">
+                <i class="fas fa-paper-plane me-2"></i>Send Message
+            </button>
+            <button type="button" id="previewModalBtn" class="btn btn-outline-secondary">
+                <i class="fas fa-eye me-2"></i>Preview
+            </button>
+        </div>
+    </div>
 </div>
 </form>';
 

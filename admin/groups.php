@@ -10,22 +10,21 @@ $usergroup_permissions = [
     'canviewthreads'       => 1, 'candlattachments'     => 1,
     'canviewboardclosed'   => 1, 'canpostthreads'       => 1,
     'canpostreplys'        => 1, 'canpostattachments'   => 1,
-    'canratethreads'       => 1, 'modposts'             => 0,
+    'modposts'             => 0,
     'modthreads'           => 0, 'modattachments'       => 0,
     'mod_edit_posts'       => 0, 'caneditposts'         => 1,
     'candeletetorrent'     => 1, 'candeleteposts'       => 1,
     'candeletethreads'     => 1, 'caneditattachments'   => 1,
-    'canviewdeletionnotice'=> 1, 'canpostpolls'         => 1,
+    'canpostpolls'         => 1,
     'canvotepolls'         => 1, 'canundovotes'         => 0,
     'canusepms'            => 1, 'cansendpms'           => 1,
     'cantrackpms'          => 1, 'candenypmreceipts'    => 1,
     'pmquota'              => 100,'maxpmrecipients'     => 5,
     'cansendemail'         => 1, 'cansendemailoverride' => 0,
     'canviewwolinvis'      => 0, 'cansettingspanel'     => 0,
-    'issupermod'           => 0, 'canuserdetails'       => 0,
-    'cansearch'            => 1, 'showforumteam'        => 0,
-    'attachquota'          => 5000,'canstaffpanel'      => 0,
-    'canoverridepm'        => 0, 'maxposts'             => 0,
+    'issupermod'           => 0, 'cansearch'            => 1, 
+	'showforumteam'        => 0, 'attachquota'          => 5000,
+	'canstaffpanel'      => 0,   'canoverridepm'        => 0, 
 	'max_screenshots' => 3,
 ];
 
@@ -329,7 +328,6 @@ if (($mybb->input['action'] ?? '') === 'edit') {
                 'canpostthreads'        => $g('canpostthreads'),
                 'canpostreplys'         => $g('canpostreplys'),
                 'canpostattachments'    => $g('canpostattachments'),
-                'canratethreads'        => $g('canratethreads'),
                 'modposts'              => $g('modposts'),
                 'modthreads'            => $g('modthreads'),
                 'mod_edit_posts'        => $g('mod_edit_posts'),
@@ -339,7 +337,6 @@ if (($mybb->input['action'] ?? '') === 'edit') {
                 'candeleteposts'        => $g('candeleteposts'),
                 'candeletethreads'      => $g('candeletethreads'),
                 'caneditattachments'    => $g('caneditattachments'),
-                'canviewdeletionnotice' => $g('canviewdeletionnotice'),
                 'canpostpolls'          => $g('canpostpolls'),
                 'canvotepolls'          => $g('canvotepolls'),
                 'canundovotes'          => $g('canundovotes'),
@@ -354,13 +351,11 @@ if (($mybb->input['action'] ?? '') === 'edit') {
                 'cansettingspanel'      => $g('cansettingspanel'),
                 'canviewwolinvis'       => $g('canviewwolinvis'),
                 'issupermod'            => $g('issupermod'),
-                'canuserdetails'        => $g('canuserdetails'),
                 'cansearch'             => $g('cansearch'),
                 'showforumteam'         => $g('showforumteam'),
                 'attachquota'           => $g('attachquota'),
                 'canstaffpanel'         => $g('canstaffpanel'),
                 'canoverridepm'         => $g('canoverridepm'),
-                'maxposts'              => $g('maxposts'),
 				'max_screenshots' => max(0, (int)$mybb->input['max_screenshots']),
             ];
 
@@ -449,14 +444,15 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     ug_switch($form, 'showforumteam', 'Show this group on forum team page', $mybb->input['showforumteam']);
     ug_switch($form, 'isbannedgroup', 'This is a banned group', $mybb->input['isbannedgroup']);
     echo '</div>';
-    echo '<div class="col-md-6">';
+    
+	echo '<div class="col-md-6">';
     echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-shield-alt me-2"></i>Administration Options</h6>';
-    ug_switch($form, 'canuserdetails', 'Can update user details', $mybb->input['canuserdetails']);
     ug_switch($form, 'issupermod',     'Users are super moderators', $mybb->input['issupermod']);
     ug_switch($form, 'canstaffpanel',  'Can access Staff Panel', $mybb->input['canstaffpanel']);
     ug_switch($form, 'cansettingspanel','Can access Settings Panel', $mybb->input['cansettingspanel']);
     echo '</div>';
     echo '</div>';
+	
     echo '</div>'; // general tab
 
     // ── Forums & Posts tab ───────────────────────────────────
@@ -472,11 +468,8 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-paper-plane me-2"></i>Posting Options</h6>';
     ug_switch($form, 'canpostthreads', 'Can post new threads?',         $mybb->input['canpostthreads']);
     ug_switch($form, 'canpostreplys',  'Can post replies to threads?',  $mybb->input['canpostreplys']);
-    ug_switch($form, 'canratethreads', 'Can rate threads?',             $mybb->input['canratethreads']);
-    echo '<div class="mb-3 mt-3"><label class="form-label fw-semibold">Maximum Posts Per Day</label>';
-    echo '<div class="form-text mb-1">0 for unlimited</div>';
-    echo $form->generate_numeric_field('maxposts', $mybb->input['maxposts'], ['class' => 'form-control']);
-    echo '</div>';
+
+    
     echo '</div>';
 
     echo '<div class="col-md-6">';
@@ -545,7 +538,6 @@ if (($mybb->input['action'] ?? '') === 'edit') {
 	
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-info-circle me-2"></i>Information Options</h6>';
     ug_switch($form, 'canviewwolinvis',     'Can view invisible users?',  $mybb->get_input('canviewwolinvis', MyBB::INPUT_INT));
-    ug_switch($form, 'canviewdeletionnotice','Can view deletion notice?', $mybb->input['canviewdeletionnotice']);
     echo '</div></div>';
     echo '</div>'; // misc tab
 

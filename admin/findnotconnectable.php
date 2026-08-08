@@ -24,7 +24,8 @@ if ($do === 'delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_post_check($_POST['my_post_key'] ?? '');
     $DelID = (int)($_POST['id'] ?? 0);
     if ($DelID > 0) {
-        $db->sql_query('DELETE FROM notconnectablepmlog WHERE id = ' . $DelID);
+        // FIX: sql_query() с конкатенацией → sql_query_prepared()
+        $db->sql_query_prepared('DELETE FROM notconnectablepmlog WHERE id = ?', [$DelID]);
     }
     $do = '';
 }
@@ -47,8 +48,10 @@ if ($do === 'pm2') {
                     send_pm(['touid' => $uid, 'message' => $msg, 'subject' => $lang->findnotconnectable['subject'] ?? ''], 0, true);
                 }
             }
-            $db->sql_query(
-                'INSERT INTO notconnectablepmlog (user, date) VALUES (' . (int)$CURUSER['id'] . ', NOW())'
+            // FIX: sql_query() с конкатенацией → sql_query_prepared()
+            $db->sql_query_prepared(
+                'INSERT INTO notconnectablepmlog (user, date) VALUES (?, NOW())',
+                [(int)$CURUSER['id']]
             );
             $PMSEND = true;
             $do = '';
@@ -59,7 +62,8 @@ if ($do === 'pm2') {
 // ── Список не подключаемых пиров ──────────────────────────────────────────────
 if ($do === 'showlist') {
     // FIX: два запроса — сначала COUNT, потом с LIMIT
-    $countQ = $db->sql_query('SELECT COUNT(DISTINCT userid) AS cnt FROM peers WHERE connectable = "no"');
+    // FIX: sql_query() → sql_query_prepared()
+    $countQ = $db->sql_query_prepared('SELECT COUNT(DISTINCT userid) AS cnt FROM peers WHERE connectable = "no"');
     $count  = (int)($db->fetch_array($countQ)['cnt'] ?? 0);
 
     $perpage  = 25;
@@ -67,7 +71,8 @@ if ($do === 'showlist') {
     $start    = ($page - 1) * $perpage;
     $multipage = multipage($count, $perpage, $page, $_this_script_ . '&do=showlist&');
 
-    $query = $db->sql_query('
+    // FIX: LIMIT через конкатенацию → плейсхолдеры
+    $query = $db->sql_query_prepared('
         SELECT DISTINCT p.torrent, p.userid, p.ip, p.port, p.seeder, p.agent,
                t.name, u.username, g.namestyle
         FROM peers p
@@ -76,8 +81,8 @@ if ($do === 'showlist') {
         LEFT JOIN usergroups g   ON (u.usergroup = g.gid)
         WHERE p.connectable = "no"
         ORDER BY u.username
-        LIMIT ' . $start . ', ' . $perpage
-    );
+        LIMIT ?, ?
+    ', [$start, $perpage]);
 
     if ($db->num_rows($query) > 0) {
         $rows = '';
@@ -152,15 +157,18 @@ if ($do === 'pm') {
         if ($msg === '') {
             $errors[] = $lang->findnotconnectable['error1'] ?? 'Message is empty.';
         } else {
-            $query = $db->sql_query('SELECT DISTINCT userid FROM peers WHERE connectable = "no"');
+            // FIX: sql_query() → sql_query_prepared()
+            $query = $db->sql_query_prepared('SELECT DISTINCT userid FROM peers WHERE connectable = "no"');
             if ($db->num_rows($query) > 0) {
                 require_once INC_PATH . '/functions_pm.php';
                 // FIX: было mysqli_fetch_assoc() → $db->fetch_array()
                 while ($row = $db->fetch_array($query)) {
                     send_pm(['touid' => (int)$row['userid'], 'message' => $msg, 'subject' => $lang->findnotconnectable['subject'] ?? ''], 0, true);
                 }
-                $db->sql_query(
-                    'INSERT INTO notconnectablepmlog (user, date) VALUES (' . (int)$CURUSER['id'] . ', NOW())'
+                // FIX: sql_query() с конкатенацией → sql_query_prepared()
+                $db->sql_query_prepared(
+                    'INSERT INTO notconnectablepmlog (user, date) VALUES (?, NOW())',
+                    [(int)$CURUSER['id']]
                 );
                 $PMSEND = true;
             } else {
@@ -208,7 +216,8 @@ if ($do === '') {
     $postCode = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
     $rows     = '';
 
-    $Query = $db->sql_query('
+    // FIX: sql_query() → sql_query_prepared()
+    $Query = $db->sql_query_prepared('
         SELECT n.id, n.user, n.date, u.username, g.namestyle
         FROM notconnectablepmlog n
         LEFT JOIN users u      ON (n.user      = u.id)

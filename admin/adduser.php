@@ -39,7 +39,7 @@ class UserRegistrationHandler
             "SELECT gid, title FROM usergroups 
              WHERE isbannedgroup = '0' AND issupermod = '0' 
              AND cansettingspanel = '0' AND canstaffpanel = '0' 
-             AND canuserdetails = '0' ORDER BY gid"
+             AND canstaffpanel = '0' ORDER BY gid"
         );
         
         while ($query && ($ug = $db->fetch_array($query))) {
@@ -349,7 +349,7 @@ class UserRegistrationHandler
         // Подготовка данных пользователя
         $user = [];
         $user['loginkey'] = generate_loginkey();
-        $password_fields = create_password($password, false, $user);
+        $password_fields = create_password($password, $user);
         $user = array_merge($user, $password_fields);
 
         // Дополнительные группы
@@ -364,7 +364,6 @@ class UserRegistrationHandler
         $user_insert_data = [
             $username,
             $user['password'],
-            $user['salt'],
             $user['loginkey'],
             TIMENOW,
             'confirmed',
@@ -387,7 +386,8 @@ class UserRegistrationHandler
         ];
 
         $placeholders = str_repeat('?,', count($user_insert_data) - 1) . '?';
-        $sql = "INSERT INTO users (username, password, salt, loginkey, added, ustatus, email, usergroup, 
+
+        $sql = "INSERT INTO users (username, password, loginkey, added, ustatus, email, usergroup, 
                 additionalgroups, modcomment, seedbonus, invites, uploaded, downloaded, timezone, avatar, 
                 avatardimensions, avatartype, invisible, ignorelist, 
                 buddylist, pmfolders) VALUES ({$placeholders})";

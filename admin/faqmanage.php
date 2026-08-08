@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * Display FAQ error messages
  */
@@ -24,6 +26,102 @@ function show_faq_errors()
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     </div>';
+}
+
+/**
+ * Общие стили страницы — Oswald + primary-акцент, тот же язык, что и на
+ * остальных переоформленных страницах (masthead/левая полоса в шапках
+ * карточек). Вызывается один раз, сразу после stdhead(), каждым обработчиком.
+ */
+function render_faqmanage_styles()
+{
+    echo '
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --fm-accent: var(--bs-primary, #0d6efd);
+            --fm-accent-strong: var(--bs-primary-text-emphasis, #0a58ca);
+            --fm-accent-soft: var(--bs-primary-bg-subtle, rgba(13,110,253,.1));
+        }
+        .fm-masthead {
+            padding: 1.6rem 1.75rem;
+            margin-bottom: 1.25rem;
+            background: var(--bs-body-bg, #fff);
+            border: 1px solid var(--bs-border-color, #e9ecef);
+            border-radius: .9rem;
+        }
+        .fm-masthead__eyebrow {
+            display: inline-block;
+            font-family: "Oswald", sans-serif;
+            font-weight: 600;
+            font-size: .72rem;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--fm-accent-strong);
+            background: var(--fm-accent-soft);
+            border: 1px solid var(--fm-accent);
+            border-radius: 999px;
+            padding: .3rem .85rem;
+            margin-bottom: .7rem;
+        }
+        .fm-masthead__title {
+            font-family: "Oswald", sans-serif;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: clamp(1.35rem, 2.8vw, 1.8rem);
+            margin: 0;
+            color: var(--bs-emphasis-color, #212529);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: .75rem;
+        }
+        .fm-masthead__title i { color: var(--fm-accent); }
+
+        .fm-panel {
+            border: 1px solid var(--bs-border-color, #e9ecef) !important;
+            border-radius: .9rem !important;
+            overflow: hidden;
+        }
+        .fm-panel .card-header {
+            background: var(--bs-tertiary-bg, #f8f9fa) !important;
+            color: var(--bs-emphasis-color, #212529) !important;
+            border-bottom: 1px solid var(--bs-border-color, #e9ecef);
+            border-left: 4px solid var(--fm-accent);
+        }
+        .fm-panel .card-header h4,
+        .fm-panel .card-header h5 {
+            font-family: "Oswald", sans-serif;
+            font-weight: 600;
+            font-size: 1.05rem;
+        }
+        .fm-panel table thead th {
+            font-family: "Oswald", sans-serif;
+            font-size: .74rem;
+            font-weight: 600;
+            letter-spacing: .05em;
+            text-transform: uppercase;
+            color: var(--bs-secondary-color, #6c757d);
+            background: var(--bs-tertiary-bg, #f8f9fa) !important;
+        }
+        .fm-panel table tbody tr:hover { background-color: var(--fm-accent-soft); }
+
+        .fm-form-label {
+            font-family: "Oswald", sans-serif;
+            font-weight: 500;
+            font-size: .85rem;
+            letter-spacing: .01em;
+        }
+
+        .accordion-button:not(.collapsed) {
+            background: var(--fm-accent-soft);
+            color: var(--fm-accent-strong);
+        }
+        .accordion-button:focus { box-shadow: 0 0 0 .2rem var(--fm-accent-soft); }
+    </style>';
 }
 
 // Security check
@@ -73,15 +171,6 @@ stdfoot();
 /**
  * Handle viewing FAQ items
  */
- 
- 
-
- 
- 
- 
- 
- 
- 
 function handleView($id)
 {
     global $db, $lang, $faq_errors, $_this_script_;
@@ -110,15 +199,19 @@ function handleView($id)
         return;
     }
 
+    // FIX: stdhead() раньше вызывался ВНУТРИ while-цикла ниже (на каждый
+    // FAQ-пункт заново) - шапка страницы дублировалась бы столько раз,
+    // сколько элементов в списке. Вызываем один раз, до вывода контента.
+    stdhead($lang->faq['faqtitle'], true, '', '');
+    render_faqmanage_styles();
+
     echo '
+    <div class="fm-masthead">
+        <span class="fm-masthead__eyebrow">Admin / FAQ</span>
+        <h1 class="fm-masthead__title"><i class="fas fa-question-circle me-2"></i>' . $lang->faq['faqtitle'] . '</h1>
+    </div>
     <div class="container mt-3">
-        <div class="card shadow border-0">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">
-                    <i class="fas fa-question-circle me-2"></i>
-                    ' . $lang->faq['faqtitle'] . '
-                </h4>
-            </div>
+        <div class="card fm-panel shadow-sm">
             <div class="card-body">
                 <div class="accordion" id="faqAccordion">';
 
@@ -129,7 +222,7 @@ function handleView($id)
         if ($currentTitle !== $faq['title']) {
             $currentTitle = $faq['title'];
             echo '
-            <h5 class="text-primary mt-4 mb-3">
+            <h5 class="mt-4 mb-3" style="font-family:\'Oswald\',sans-serif;font-weight:600;color:var(--fm-accent-strong);">
                 <i class="fas fa-folder me-2"></i>
                 ' . htmlspecialchars($currentTitle) . '
             </h5>';
@@ -137,10 +230,7 @@ function handleView($id)
 
         $collapseId = 'collapse' . (int)$faq['id'];
 
-        stdhead ($lang->faq['faqtitle'], true, '', '');
-		
-		
-		echo '
+        echo '
         <div class="accordion-item mb-2">
             <h2 class="accordion-header" id="heading' . $faq['id'] . '">
                 <button class="accordion-button collapsed" type="button"
@@ -193,7 +283,7 @@ function handleSaveDisplayOrder()
     }
     
     foreach ($orders as $id => $order) {
-        $db->sql_query_prepared("UPDATE faq SET disporder = ? WHERE id = ?", [$order, $id]);
+        $db->sql_query_prepared("UPDATE faq SET disporder = ? WHERE id = ?", [(int)$order, (int)$id]);
     }
     
     // Redirect to prevent form resubmission
@@ -252,34 +342,31 @@ function handleNew()
     $where = array('Cancel' => $_this_script_);
 	
 	stdhead($lang->faq['faqtitle'], true, '', '');
+    render_faqmanage_styles();
     
     echo '
+    <div class="fm-masthead">
+        <span class="fm-masthead__eyebrow">Admin / FAQ</span>
+        <h1 class="fm-masthead__title"><i class="fas fa-plus-circle me-2"></i>Add New FAQ Item</h1>
+    </div>
     <form method="post" action="' . $_this_script_ . '">
     <input type="hidden" name="do" value="new">
     <input type="hidden" name="subdo" value="save">
     
     <div class="container-fluid">
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h3 class="text-primary">
-                        <i class="fas fa-plus-circle me-2"></i>
-                        Add New FAQ Item
-                    </h3>
-                    <div>
-                        ' . jumpbutton($where) . '
-                    </div>
-                </div>
+        <div class="row mb-3">
+            <div class="col-12 text-end">
+                ' . jumpbutton($where) . '
             </div>
         </div>
         
         <div class="row">
             <div class="col-12">
-                <div class="card shadow">
+                <div class="card fm-panel shadow-sm">
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-12">
-                                <label for="name" class="form-label">
+                                <label for="name" class="fm-form-label form-label">
                                     <i class="fas fa-heading me-1"></i>
                                     Title <span class="text-danger">*</span>
                                 </label>
@@ -292,7 +379,7 @@ function handleNew()
                             </div>
                             
                             <div class="col-md-12">
-                                <label for="description" class="form-label">
+                                <label for="description" class="fm-form-label form-label">
                                     <i class="fas fa-align-left me-1"></i>
                                     Description
                                 </label>
@@ -303,7 +390,7 @@ function handleNew()
                             </div>
                             
                             <div class="col-md-3">
-                                <label for="disporder" class="form-label">
+                                <label for="disporder" class="fm-form-label form-label">
                                     <i class="fas fa-sort-numeric-up me-1"></i>
                                     Display Order
                                 </label>
@@ -387,35 +474,32 @@ function handleAdd($id)
         $where = array('Cancel' => $_this_script_);
         
         stdhead($lang->faq['faqtitle'], true, '', '');
+        render_faqmanage_styles();
 		
 		echo '
+        <div class="fm-masthead">
+            <span class="fm-masthead__eyebrow">Admin / FAQ</span>
+            <h1 class="fm-masthead__title"><i class="fas fa-plus-circle me-2"></i>Add Child FAQ Item</h1>
+        </div>
         <form method="post" action="' . $_this_script_ . '">
         <input type="hidden" name="do" value="add">
         <input type="hidden" name="subdo" value="save">
         <input type="hidden" name="id" value="' . $id . '">
         
         <div class="container mt-3">
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h3 class="text-primary">
-                            <i class="fas fa-plus-circle me-2"></i>
-                            Add Child FAQ Item
-                        </h3>
-                        <div>
-                            ' . jumpbutton($where) . '
-                        </div>
-                    </div>
+            <div class="row mb-3">
+                <div class="col-12 text-end">
+                    ' . jumpbutton($where) . '
                 </div>
             </div>
             
             <div class="row">
                 <div class="col-12">
-                    <div class="card shadow">
+                    <div class="card fm-panel shadow-sm">
                         <div class="card-body">
                             <div class="row g-3">
                                 <div class="col-md-12">
-                                    <label for="pid" class="form-label">
+                                    <label for="pid" class="fm-form-label form-label">
                                         <i class="fas fa-folder me-1"></i>
                                         Category
                                     </label>
@@ -423,7 +507,7 @@ function handleAdd($id)
                                 </div>
                                 
                                 <div class="col-md-12">
-                                    <label for="name" class="form-label">
+                                    <label for="name" class="fm-form-label form-label">
                                         <i class="fas fa-heading me-1"></i>
                                         Title <span class="text-danger">*</span>
                                     </label>
@@ -436,7 +520,7 @@ function handleAdd($id)
                                 </div>
                                 
                                 <div class="col-md-12">
-                                    <label for="description" class="form-label">
+                                    <label for="description" class="fm-form-label form-label">
                                         <i class="fas fa-align-left me-1"></i>
                                         Description
                                     </label>
@@ -447,7 +531,7 @@ function handleAdd($id)
                                 </div>
                                 
                                 <div class="col-md-3">
-                                    <label for="disporder" class="form-label">
+                                    <label for="disporder" class="fm-form-label form-label">
                                         <i class="fas fa-sort-numeric-up me-1"></i>
                                         Display Order
                                     </label>
@@ -479,8 +563,6 @@ function handleAdd($id)
         </div>
         </form>';
     }
-    
-   
 }
 
 /**
@@ -493,6 +575,7 @@ function handleEdit($id)
     if (!is_valid_id($id)) {
         $faq_errors[] = $lang->faq['faqerror'];
         stdhead($lang->faq['faqtitle']);
+        render_faqmanage_styles();
         show_faq_errors();
         stdfoot();
         return;
@@ -538,7 +621,7 @@ function handleEdit($id)
             $query2 = $db->sql_query_prepared("SELECT * FROM faq WHERE type = '1' ORDER BY disporder ASC");
             $categories = '
                 <div class="col-md-12">
-                    <label for="pid" class="form-label">
+                    <label for="pid" class="fm-form-label form-label">
                         <i class="fas fa-folder me-1"></i>
                         Category
                     </label>
@@ -561,8 +644,13 @@ function handleEdit($id)
         $where = array('Cancel' => $_this_script_);
 		
 		stdhead($lang->faq['faqtitle'], true, '', '');
+        render_faqmanage_styles();
         
         echo '
+        <div class="fm-masthead">
+            <span class="fm-masthead__eyebrow">Admin / FAQ</span>
+            <h1 class="fm-masthead__title"><i class="fas fa-edit me-2"></i>Edit FAQ Item: ' . htmlspecialchars_uni($editfaq['name']) . '</h1>
+        </div>
         <form method="post" action="' . $_this_script_ . '">
         <input type="hidden" name="do" value="edit">
         <input type="hidden" name="subdo" value="save">
@@ -570,29 +658,21 @@ function handleEdit($id)
         <input type="hidden" name="type" value="' . $editfaq['type'] . '">
         
         <div class="container mt-3">
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h3 class="text-primary">
-                            <i class="fas fa-edit me-2"></i>
-                            Edit FAQ Item: ' . htmlspecialchars_uni($editfaq['name']) . '
-                        </h3>
-                        <div>
-                            ' . jumpbutton($where) . '
-                        </div>
-                    </div>
+            <div class="row mb-3">
+                <div class="col-12 text-end">
+                    ' . jumpbutton($where) . '
                 </div>
             </div>
             
             <div class="row">
                 <div class="col-12">
-                    <div class="card shadow">
+                    <div class="card fm-panel shadow-sm">
                         <div class="card-body">
                             <div class="row g-3">
                                 ' . $categories . '
                                 
                                 <div class="col-md-12">
-                                    <label for="name" class="form-label">
+                                    <label for="name" class="fm-form-label form-label">
                                         <i class="fas fa-heading me-1"></i>
                                         Title <span class="text-danger">*</span>
                                     </label>
@@ -605,7 +685,7 @@ function handleEdit($id)
                                 </div>
                                 
                                 <div class="col-md-12">
-                                    <label for="description" class="form-label">
+                                    <label for="description" class="fm-form-label form-label">
                                         <i class="fas fa-align-left me-1"></i>
                                         Description
                                     </label>
@@ -616,7 +696,7 @@ function handleEdit($id)
                                 </div>
                                 
                                 <div class="col-md-3">
-                                    <label for="disporder" class="form-label">
+                                    <label for="disporder" class="fm-form-label form-label">
                                         <i class="fas fa-sort-numeric-up me-1"></i>
                                         Display Order
                                     </label>
@@ -660,6 +740,7 @@ function handleDefault()
     global $db, $lang, $_this_script_;
 	
 	stdhead($lang->faq['faqtitle'], true, '', '');
+    render_faqmanage_styles();
     
     show_faq_errors();
     
@@ -685,8 +766,6 @@ function handleDefault()
         return;
     }
     
-    
-	
 	?>
 	<script>
         function confirmDeleteSwal(url) {
@@ -722,42 +801,28 @@ function showSavedSwal(message = "Saved successfully!") {
     });
 }
 
-
-
-
-
     </script>
-	<?
-	
+	<?php
 	
 	echo '
-    
-    
+    <div class="fm-masthead">
+        <span class="fm-masthead__eyebrow">Admin / FAQ</span>
+        <h1 class="fm-masthead__title">
+            <span><i class="fas fa-question-circle me-2"></i>' . $lang->faq['faqtitle'] . '</span>
+            <span class="fs-6">' . jumpbutton($where) . '</span>
+        </h1>
+    </div>
     <div class="container mt-3">
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h3 class="text-primary">
-                        <i class="fas fa-question-circle me-2"></i>
-                        ' . $lang->faq['faqtitle'] . '
-                    </h3>
-                    <div>
-                        ' . jumpbutton($where) . '
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <div class="row">
             <div class="col-12">
-                <div class="card shadow">
+                <div class="card fm-panel shadow-sm">
                     <div class="card-body p-0">
                         <form method="post" action="' . $_this_script_ . '">
                             <input type="hidden" name="do" value="savedisplayorder">
                             
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle mb-0">
-                                    <thead class="table-light">
+                                    <thead>
                                         <tr>
                                             <th class="ps-4">
                                                 <i class="fas fa-heading me-2"></i>
@@ -843,4 +908,3 @@ function showSavedSwal(message = "Saved successfully!") {
         </div>
     </div>';
 }
-?>

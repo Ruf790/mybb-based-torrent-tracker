@@ -215,6 +215,8 @@ HTML;
     die($errorPage);
 }
 
+require_once INC_PATH . '/db_sql_query.php';
+
 // ── AJAX handlers - must run BEFORE any HTML output (stdhead() etc),
 // otherwise headers()/clean JSON output are impossible once the page
 // has started rendering. ──────────────────────────────────────────
@@ -265,10 +267,14 @@ if (isset($_GET['ajax'])) {
                 try {
                     // KILL - административная команда, MySQL не поддерживает
                     // её через PREPARE-протокол ("This command is not
-                    // supported in the prepared statement protocol yet"),
-                    // поэтому sql_query_prepared() тут не применить.
-                    // $processId уже приведён к (int) выше - конкатенация безопасна.
-                    $ok = @$db->sql_query("KILL " . $processId);
+                    // supported in the prepared statement protocol yet") -
+                    // в отличие от SHOW-команд (см. serverinfo.php), которые
+                    // через sql_query_prepared() работают нормально без
+                    // плейсхолдеров, KILL не работает вообще. Используем
+                    // изолированный db_admin_raw_query() вместо удалённого
+                    // из класса $db->sql_query(). $processId уже приведён к
+                    // (int) выше - конкатенация безопасна.
+                    $ok = @db_admin_raw_query($db, "KILL " . $processId, write: true);
                     if ($ok) {
                         echo json_encode(['success' => true]);
                     } else {

@@ -66,7 +66,7 @@ $count_query = "SELECT COUNT(*) AS cnt FROM snatched s
 $res1 = $db->sql_query_prepared($count_query, $where_params);
 $row1 = $db->fetch_array($res1);
 $count = $row1['cnt'];
-$count1 = number_format($count);
+$count1 = number_format((int)$count);
 
 
 
@@ -158,19 +158,113 @@ function isNumeric(value) {
 }
 </script>
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+
 <style>
+:root {
+    --rules-accent: var(--bs-primary);
+    --rules-accent-strong: var(--bs-primary-text-emphasis, var(--bs-primary));
+    --rules-accent-soft: var(--bs-primary-bg-subtle, rgba(13, 110, 253, .12));
+}
+
+.st-masthead {
+    padding: 1.75rem 1.5rem;
+    margin-bottom: 1.25rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+}
+
+.st-masthead__eyebrow {
+    display: inline-block;
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    font-size: .72rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--rules-accent-strong);
+    background: var(--rules-accent-soft);
+    border: 1px solid var(--rules-accent);
+    border-radius: 999px;
+    padding: .3rem .85rem;
+    margin-bottom: .75rem;
+}
+
+.st-masthead__title {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .01em;
+    font-size: clamp(1.5rem, 3.4vw, 2rem);
+    color: var(--bs-emphasis-color);
+    margin: 0;
+}
+
+.st-panel {
+    border: 1px solid var(--bs-border-color) !important;
+    border-radius: .75rem;
+    background: var(--bs-body-bg);
+    overflow: hidden;
+}
+
+.st-panel .card-header {
+    background: transparent !important;
+    color: var(--bs-emphasis-color) !important;
+    border-bottom: 1px solid var(--bs-border-color);
+    border-left: 4px solid var(--rules-accent);
+    border-radius: 0 !important;
+}
+
+.st-panel .card-header h4 {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    font-size: 1.05rem;
+}
+
+.st-count-badge {
+    font-family: 'Oswald', sans-serif;
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--rules-accent-strong) !important;
+    background: var(--rules-accent-soft) !important;
+    border: 1px solid var(--rules-accent) !important;
+}
+
+.st-panel table thead th {
+    font-family: 'Oswald', sans-serif;
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color) !important;
+    background: var(--bs-tertiary-bg) !important;
+    border-top: none;
+    border-bottom: 1px solid var(--bs-border-color) !important;
+}
+
+.st-panel .table-hover tbody tr:hover {
+    background-color: var(--rules-accent-soft) !important;
+    transform: translateY(-1px);
+    transition: all .2s ease;
+}
+
 .sortable {
     position: relative;
     user-select: none;
 }
 
 .sortable:hover {
-    background-color: #f8f9fa;
+    background-color: var(--rules-accent-soft) !important;
 }
 
 .sort-indicator {
     font-weight: bold;
-    color: #0d6efd;
+    color: var(--rules-accent);
 }
 
 .asc .sort-indicator {
@@ -180,6 +274,17 @@ function isNumeric(value) {
 .desc .sort-indicator {
     color: #dc3545;
 }
+
+.st-panel .progress {
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.nav-avatar {
+    border-radius: 50%;
+    border: 2px solid var(--bs-border-color);
+    object-fit: cover;
+}
 </style>
 
 
@@ -187,15 +292,21 @@ function isNumeric(value) {
 <div class="container-fluid py-4">
     <div class="row">
         <div class="col-12">
+
+            <div class="st-masthead">
+                <span class="st-masthead__eyebrow">Admin / Torrents</span>
+                <h1 class="st-masthead__title"><i class="fas fa-download me-2" style="color: var(--rules-accent)"></i>All Snatched Torrents</h1>
+            </div>
+
             <!-- Header Card -->
-            <div class="card shadow-sm border-light mb-4">
-                <div class="card-header bg-white text-dark rounded-3 border-bottom">
+            <div class="card st-panel shadow-sm mb-4">
+                <div class="card-header">
                     <div class="d-flex justify-content-between align-items-center">
-                        <h4 class="mb-0 text-dark">
-                            <i class="fas fa-download me-2 text-primary"></i>All Snatched Torrents
+                        <h4 class="mb-0">
+                            <i class="fas fa-download me-2" style="color: var(--rules-accent)"></i>All Snatched Torrents
                         </h4>
-                        <span class="badge bg-light text-dark border fs-6">
-                            <i class="fas fa-database me-1 text-muted"></i>Total: <?php echo $count1; ?> snatched
+                        <span class="badge st-count-badge fs-6">
+                            <i class="fas fa-database me-1"></i>Total: <?php echo $count1; ?> snatched
                         </span>
                     </div>
                 </div>
@@ -292,14 +403,14 @@ function isNumeric(value) {
 			
 			//$page_url = str_replace($_this_script_ . $search_url);
 			$page_url = str_replace('', '', $_this_script_ . $search_url);
-            $multipage = multipage($count, $perpage, $page, $page_url);
+            $multipage = multipage((int)$count, $perpage, $page, $page_url);
 			
 			
             
             // Display pagination
             if($count > $perpage) {
-                echo '<div class="card mb-3 border-light">';
-                echo '<div class="card-body py-2 bg-white">';
+                echo '<div class="card st-panel mb-3">';
+                echo '<div class="card-body py-2">';
                 echo '<div class="d-flex justify-content-between align-items-center">';
                 echo '<div class="small text-muted">Showing ' . ($start + 1) . ' to ' . min($start + $perpage, $count) . ' of ' . $count . ' records</div>';
                 echo '<div>' . $multipage . '</div>';
@@ -324,11 +435,11 @@ function isNumeric(value) {
             ?>
             
             <!-- Main Data Card -->
-            <div class="card shadow-sm border-light">
-                <div class="card-body p-0 bg-white">
+            <div class="card st-panel shadow-sm">
+                <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
-                            <thead class="bg-light">
+                            <thead>
                                 <tr>
                                     <th class="sortable text-dark" style="cursor: pointer;">
                                         <i class="fas fa-user me-1 text-muted"></i>User
@@ -563,8 +674,8 @@ $badge_content = htmlspecialchars('
 
             <?php
             } else {
-                echo '<div class="card shadow-sm border-light">';
-                echo '<div class="card-body text-center py-5 bg-white">';
+                echo '<div class="card st-panel shadow-sm">';
+                echo '<div class="card-body text-center py-5">';
                 echo '<i class="fas fa-inbox fa-3x text-muted mb-3"></i>';
                 if (!empty($where_conditions)) {
                     echo '<h4 class="text-muted">No results found</h4>';
@@ -579,8 +690,8 @@ $badge_content = htmlspecialchars('
 
             // Bottom pagination
             if($count > $perpage) {
-                echo '<div class="card mt-3 border-light">';
-                echo '<div class="card-body py-2 bg-white">';
+                echo '<div class="card st-panel mt-3">';
+                echo '<div class="card-body py-2">';
                 echo '<div class="d-flex justify-content-between align-items-center">';
                 echo '<div class="small text-muted">Showing ' . ($start + 1) . ' to ' . min($start + $perpage, $count) . ' of ' . $count . ' records</div>';
                 echo '<div>' . $multipage . '</div>';
@@ -595,64 +706,9 @@ $badge_content = htmlspecialchars('
 </div>
 
 <style>
-.card {
-    border: 1px solid #e9ecef;
-    border-radius: 12px;
-    background: #ffffff;
-}
-.card-header {
-    border-radius: 12px 12px 0 0 !important;
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-}
-.table {
-    background: #ffffff;
-    border-color: #e9ecef;
-}
-.table th {
-    border-top: none;
-    border-bottom: 2px solid #e9ecef;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.85rem;
-    letter-spacing: 0.5px;
-    color: #495057;
-    background: #f8f9fa;
-}
-.table-hover tbody tr:hover {
-    background-color: rgba(13, 110, 253, 0.03) !important;
-    transform: translateY(-1px);
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-.sortable:hover {
-    background-color: rgba(248, 249, 250, 0.8) !important;
-}
-.progress {
-    border-radius: 10px;
-    overflow: hidden;
-    background: #e9ecef;
-}
-.badge {
-    font-weight: 500;
-    background: #f8f9fa;
-}
-.bg-light {
-    background: #f8f9fa !important;
-}
-.text-dark {
-    color: #212529 !important;
-}
-.border-light {
-    border-color: #e9ecef !important;
-}
-.nav-avatar {
-    border-radius: 50%;
-    border: 2px solid #e9ecef;
-    object-fit: cover;
-}
 .input-group-text {
-    background: #f8f9fa;
-    border-color: #e9ecef;
+    background: var(--bs-tertiary-bg);
+    border-color: var(--bs-border-color);
 }
 </style>
 

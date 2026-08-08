@@ -395,12 +395,15 @@ document.addEventListener(\'DOMContentLoaded\', function() {
 
     private function getMysqlVariable(string $variable): string {
         // MySQL не позволяет плейсхолдер в LIKE-паттерне для SHOW VARIABLES/
-        // SHOW STATUS через PREPARE-протокол ("...syntax ... near '?'"),
-        // поэтому sql_query_prepared() тут не годится. $variable во всех
+        // SHOW STATUS через PREPARE-протокол ("...syntax ... near '?'"), но
+        // сама команда SHOW через sql_query_prepared() отрабатывает нормально
+        // (см. getDatabaseUsage()/getMysqlVariables() выше в этом же файле,
+        // без единого плейсхолдера) - значит достаточно не биндить `?` в
+        // LIKE-паттерн, а не уходить в db_admin_raw.php. $variable во всех
         // вызовах - захардкоженный литерал (не пользовательский ввод), но
         // на всякий случай пропускаем через escape_string().
         $safeVariable = $this->db->escape_string($variable);
-        $result = $this->db->sql_query("SHOW VARIABLES LIKE '{$safeVariable}'");
+        $result = $this->db->sql_query_prepared("SHOW VARIABLES LIKE '{$safeVariable}'");
         $row = $this->db->fetch_array($result);
         return (string)($row['Value'] ?? 'N/A');
     }

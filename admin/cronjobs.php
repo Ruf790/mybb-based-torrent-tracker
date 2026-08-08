@@ -186,8 +186,110 @@ stdhead('⚡ Cron Jobs Management');
 // Prepare time selectors HTML helper
 $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minutes' => 60];
 ?>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --rules-accent: var(--bs-primary);
+        --rules-accent-strong: var(--bs-primary-text-emphasis, var(--bs-primary));
+        --rules-accent-soft: var(--bs-primary-bg-subtle, rgba(13, 110, 253, .12));
+    }
+
+    .cron-masthead {
+        padding: 1.75rem 1.5rem;
+        margin-bottom: 1.5rem;
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: .75rem;
+    }
+
+    .cron-masthead__eyebrow {
+        display: inline-block;
+        font-family: 'Oswald', sans-serif;
+        font-weight: 600;
+        font-size: .72rem;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        color: var(--rules-accent-strong);
+        background: var(--rules-accent-soft);
+        border: 1px solid var(--rules-accent);
+        border-radius: 999px;
+        padding: .3rem .85rem;
+        margin-bottom: .75rem;
+    }
+
+    .cron-masthead__title {
+        font-family: 'Oswald', sans-serif;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .01em;
+        font-size: clamp(1.5rem, 3.4vw, 2rem);
+        color: var(--bs-emphasis-color);
+        margin: 0;
+    }
+
+    .cron-panel {
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color) !important;
+        border-radius: .75rem;
+        overflow: hidden;
+    }
+
+    .cron-panel .card-header {
+        background: transparent !important;
+        color: var(--bs-emphasis-color) !important;
+        border-bottom: 1px solid var(--bs-border-color);
+        border-left: 4px solid var(--rules-accent);
+    }
+
+    .cron-panel .card-header h5,
+    .cron-panel .card-header h6 {
+        font-family: 'Oswald', sans-serif;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        font-size: .95rem;
+    }
+
+    .cron-panel .card-header i {
+        color: var(--rules-accent);
+    }
+
+    .cron-count-badge {
+        font-family: 'Oswald', sans-serif;
+        font-size: .7rem;
+        font-weight: 600;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: var(--rules-accent-strong) !important;
+        background: var(--rules-accent-soft) !important;
+        border: 1px solid var(--rules-accent);
+        border-radius: 999px;
+    }
+
+    .cron-panel table thead th {
+        font-family: 'Oswald', sans-serif;
+        font-size: .72rem;
+        font-weight: 600;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: var(--bs-secondary-color) !important;
+        background: var(--bs-tertiary-bg) !important;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .cron-panel table tbody tr:hover {
+        background-color: var(--rules-accent-soft);
+    }
+</style>
 
 <div class="container py-4">
+
+    <div class="cron-masthead">
+        <span class="cron-masthead__eyebrow">Admin / Automation</span>
+        <h1 class="cron-masthead__title"><i class="fas fa-bolt me-2" style="color: var(--rules-accent)"></i>Cron Jobs Management</h1>
+    </div>
 
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb" class="mb-4">
@@ -198,12 +300,12 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
     </nav>
 
     <!-- ─── Cron Jobs List ─────────────────────────────────────────────── -->
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+    <div class="card cron-panel shadow-sm border-0 mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <div>
                 <i class="fas fa-tasks me-2"></i>
                 <h5 class="mb-0 d-inline-block">Cron Jobs</h5>
-                <span class="badge bg-light text-dark ms-2">
+                <span class="badge cron-count-badge ms-2">
                     <?php
                     $count_result = $db->sql_query_prepared("SELECT COUNT(*) as total FROM cron");
                     $count_row = $count_result ? $db->fetch_array($count_result) : null;
@@ -211,7 +313,7 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
                     ?> jobs
                 </span>
             </div>
-            <button type="button" class="btn btn-sm btn-light" onclick="openCreateModal()">
+            <button type="button" class="btn btn-sm" style="background: var(--rules-accent); border-color: var(--rules-accent); color: #fff; font-weight: 600;" onclick="openCreateModal()">
                 <i class="fas fa-plus-circle me-1"></i> Create New
             </button>
         </div>
@@ -231,7 +333,7 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
             if ($result && $db->num_rows($result) > 0):
             ?>
             <table class="table table-hover table-striped align-middle">
-                <thead class="table-dark">
+                <thead>
                     <tr>
                         <th><i class="fas fa-file me-1"></i> Filename</th>
                         <th><i class="fas fa-align-left me-1"></i> Description</th>
@@ -321,12 +423,12 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
     </div>
 
     <!-- ─── Execution Logs ──────────────────────────────────────────────── -->
-    <div class="card shadow-sm border-0">
-        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+    <div class="card cron-panel shadow-sm border-0">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <div>
                 <i class="fas fa-history me-2"></i>
                 <h6 class="mb-0 d-inline-block">Execution Logs</h6>
-                <span class="badge bg-light text-dark ms-2">Last 50 entries</span>
+                <span class="badge cron-count-badge ms-2">Last 50 entries</span>
             </div>
         </div>
         <div class="card-body table-responsive">
@@ -335,7 +437,7 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
             if ($query && $db->num_rows($query) > 0):
             ?>
             <table class="table table-sm table-hover table-striped">
-                <thead class="table-dark">
+                <thead>
                     <tr>
                         <th><i class="fas fa-file me-1"></i> Filename</th>
                         <th class="text-center"><i class="fas fa-database me-1"></i> Queries</th>
@@ -385,8 +487,8 @@ $timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minut
             <div class="modal-header border-0 pb-0">
                 <div class="d-flex align-items-center gap-2">
                     <div class="rounded-circle d-flex align-items-center justify-content-center"
-                         id="modalIconWrap" style="width:36px;height:36px;background:rgba(13,110,253,.1)">
-                        <i class="fas fa-plus text-primary" id="modalIcon"></i>
+                         id="modalIconWrap" style="width:36px;height:36px;background:var(--rules-accent-soft)">
+                        <i class="fas fa-plus" id="modalIcon" style="color: var(--rules-accent-strong)"></i>
                     </div>
                     <h5 class="modal-title mb-0" id="cronModalLabel">Create New Cron Job</h5>
                 </div>
@@ -486,8 +588,9 @@ function openCreateModal() {
 
     // Update UI
     document.getElementById('cronModalLabel').textContent = 'Create New Cron Job';
-    document.getElementById('modalIcon').className        = 'fas fa-plus text-primary';
-    document.getElementById('modalIconWrap').style.background = 'rgba(13,110,253,.1)';
+    document.getElementById('modalIcon').className        = 'fas fa-plus';
+    document.getElementById('modalIcon').style.color      = 'var(--rules-accent-strong)';
+    document.getElementById('modalIconWrap').style.background = 'var(--rules-accent-soft)';
     document.getElementById('modalSaveBtnText').textContent   = 'Create Job';
 
     cronModal.show();
@@ -497,6 +600,7 @@ function openEditModal(cronid) {
     // Update UI to "edit" state
     document.getElementById('cronModalLabel').textContent = 'Edit Cron Job';
     document.getElementById('modalIcon').className        = 'fas fa-pen text-success';
+    document.getElementById('modalIcon').style.color      = '';
     document.getElementById('modalIconWrap').style.background = 'rgba(32,201,151,.1)';
     document.getElementById('modalSaveBtnText').textContent   = 'Save Changes';
     document.getElementById('modalLoader').classList.remove('d-none');

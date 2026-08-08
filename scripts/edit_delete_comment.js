@@ -146,7 +146,7 @@ function executeMassDelete() {
     const formData = new FormData();
     formData.append('comment_ids', window.selectedCommentIds.join(','));
     formData.append('torrent_ids', window.selectedTorrentIds.join(','));
-    formData.append('my_post_key', window.CS_POST_CODE || '');
+    formData.append('my_post_key', window.my_post_key || '');
 
     fetch('comment.php?action=massdelete', { method: 'POST', body: formData })
         .then(res => {
@@ -277,7 +277,8 @@ document.addEventListener('DOMContentLoaded', function () {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
-            body: JSON.stringify({ pid: commentToEditId, tid: torrentId, text, my_post_key: window.CS_POST_CODE || '' }),
+     
+			body: JSON.stringify({ pid: commentToEditId, tid: torrentId, text, my_post_key: window.my_post_key || '' }),
         })
         .then(res => res.json())
         .then(data => {
@@ -308,7 +309,7 @@ document.addEventListener('DOMContentLoaded', function () {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             credentials: 'same-origin',
-            body: JSON.stringify({ pid: commentToDeleteId, tid: torrentId, my_post_key: window.CS_POST_CODE || '' }),
+            body: JSON.stringify({ pid: commentToDeleteId, tid: torrentId, my_post_key: window.my_post_key || '' }),
         })
         .then(res => res.json())
         .then(data => {

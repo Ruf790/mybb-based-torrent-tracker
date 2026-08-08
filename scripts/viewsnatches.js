@@ -3,7 +3,7 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // ── Конфиг из PHP ─────────────────────────────────────
-    const { ratioData: RATIO_DATA, baseUrl: BASEURL, torrentId: TORRENT_ID, scriptName: SCRIPT_NAME } = window.VS_CONFIG;
+    const { ratioData: RATIO_DATA, baseUrl: BASEURL, torrentId: TORRENT_ID, scriptName: SCRIPT_NAME, postCode: POST_CODE } = window.VS_CONFIG;
 
     // ── Ratio Chart ───────────────────────────────────────
     const ratioCtx = document.getElementById('ratioChart');
@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
         form.method = 'POST';
         form.action = `${SCRIPT_NAME}?id=${TORRENT_ID}`;
 
-        const fields = { mass_action: action, selected_users: JSON.stringify(users), ...extra };
+        const fields = { mass_action: action, selected_users: JSON.stringify(users), my_post_key: POST_CODE, ...extra };
         for (const [name, value] of Object.entries(fields)) {
             const input = document.createElement('input');
             input.type  = 'hidden';

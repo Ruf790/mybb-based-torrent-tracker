@@ -290,37 +290,45 @@ function verify_recipient()
             }
         }
 
+       
         // Check to see if the user has reached their private message quota - if they have, email them.
-        if($recipient_permissions['pmquota'] != 0 && $user['totalpms'] >= $recipient_permissions['pmquota'] && $sender_permissions['cancp'] != 1 && empty($pm['saveasdraft']) && !$this->admin_override)
+        //if($recipient_permissions['pmquota'] != 0 && $user['totalpms'] >= $recipient_permissions['pmquota'] && $sender_permissions['cancp'] != 1 && empty($pm['saveasdraft']) && !$this->admin_override)
+		if($recipient_permissions['pmquota'] != 0 && $user['totalpms'] >= $recipient_permissions['pmquota'] && (int)($sender_permissions['canstaffpanel'] ?? 0) !== 1 && empty($pm['saveasdraft']) && !$this->admin_override)
         {
-            if(trim($user['language'] ?? '') != '' && $lang->language_exists($user['language']))
-            {
-                $uselang = trim($user['language']);
+            $lang->load("messages");
+
+            // Язык, на котором сейчас загружен глобальный $lang (язык сессии
+            // отправителя) — не обязательно совпадает с языком получателя.
+            $sessionlang = $_COOKIE['ts_language'] ?? $defaultlanguage ?? 'english';
+
+            $uselang = 'english';
+            if (!empty($user['language']) && is_dir(INC_PATH . '/languages/' . trim((string)$user['language']))) {
+                $uselang = trim((string)$user['language']);
+            } elseif (!empty($defaultlanguage) && is_dir(INC_PATH . '/languages/' . $defaultlanguage)) {
+                $uselang = $defaultlanguage;
             }
-            elseif($mybb->settings['bblanguage'])
+
+            if ($uselang === $sessionlang)
             {
-                $uselang = $mybb->settings['bblanguage'];
+                // У получателя тот же язык, что и у текущей сессии — $lang уже то, что нужно
+                $emailsubject = $lang->messages['emailsubject_reachedpmquota'];
+                $emailmessage = $lang->messages['email_reachedpmquota'];
             }
             else
             {
-                $uselang = "english";
+                // Язык получателя другой — читаем строки напрямую из ЕГО
+                // messages.lang.php, не трогая глобальный $lang (иначе
+                // сломаем язык интерфейса для текущего пользователя).
+                $l = [];
+                $messagesFile = INC_PATH . '/languages/' . $uselang . '/messages.lang.php';
+                if (is_file($messagesFile)) {
+                    require $messagesFile;
+                }
+                $emailsubject = $l['emailsubject_reachedpmquota'] ?? $lang->messages['emailsubject_reachedpmquota'];
+                $emailmessage = $l['email_reachedpmquota']        ?? $lang->messages['email_reachedpmquota'];
             }
-            if($uselang == $mybb->settings['bblanguage'] || !$uselang)
-            {
-                $emailsubject = $lang->emailsubject_reachedpmquota;
-                $emailmessage = $lang->email_reachedpmquota;
-            }
-            else
-            {
-                $userlang = new MyLanguage;
-                $userlang->set_path(MYBB_ROOT."inc/languages");
-                $userlang->set_language($uselang);
-                $userlang->load("messages");
-                $emailsubject = $userlang->emailsubject_reachedpmquota;
-                $emailmessage = $userlang->email_reachedpmquota;
-            }
-            $emailmessage = $lang->sprintf($emailmessage, $user['username'], $mybb->settings['bbname'], $mybb->settings['bburl']);
-            $emailsubject = $lang->sprintf($emailsubject, $mybb->settings['bbname'], $pm['subject']);
+            $emailmessage = sprintf($emailmessage, $user['username'], $SITENAME, $BASEURL);
+            $emailsubject = sprintf($emailsubject, $SITENAME, $pm['subject']);
 
             $db->sql_query_prepared(
                 "INSERT INTO mailqueue (`mailto`,`mailfrom`,`subject`,`message`,`headers`) VALUES (?,?,?,?,?)",

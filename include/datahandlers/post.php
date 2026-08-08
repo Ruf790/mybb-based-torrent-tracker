@@ -552,7 +552,7 @@ class PostDataHandler extends DataHandler
             $excerpt     = $parser->text_parse_message($post['message'], $parser_opts);
 
             $query = $db->sql_query_prepared(
-                "SELECT u.username, u.email, u.id, u.loginkey, u.salt, u.added, s.notification
+                "SELECT u.username, u.email, u.id, u.loginkey, u.added, s.notification
                  FROM threadsubscriptions s
                  LEFT JOIN users u ON (u.id = s.uid)
                  WHERE (s.notification = '1' OR s.notification = '2')
@@ -751,7 +751,6 @@ class PostDataHandler extends DataHandler
                 'views'        => 0,
                 'replies'      => 0,
                 'visible'      => $visible,
-                'notes'        => '',
             ];
             $plugins->run_hooks('datahandler_post_insert_thread', $this);
 

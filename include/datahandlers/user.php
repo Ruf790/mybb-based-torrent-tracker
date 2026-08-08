@@ -160,7 +160,7 @@ class UserDataHandler extends DataHandler
         }
 
         $user['loginkey']    = generate_loginkey();
-        $password_fields     = create_password($user['password'], false, $user);
+        $password_fields     = create_password($user['password'], $user);
         $user                = array_merge($user, $password_fields);
 
         return true;
@@ -604,7 +604,6 @@ public function validate_user(): bool
         $this->user_insert_data = [
             'username'           => $user['username'],
             'password'           => $user['password'],
-            'salt'               => $user['salt'],
             'loginkey'           => $user['loginkey'],
             'uploaded'           => $uploaded,
             'seedbonus'          => $seedbonus,
@@ -710,7 +709,6 @@ public function validate_user(): bool
         $map = [
             'username'          => fn($v) => ['username',         $v],
             'password'          => fn($v) => ['password',         $v],
-            'salt'              => fn($v) => ['salt',             $v],
             'loginkey'          => fn($v) => ['loginkey',         $v],
             'email'             => fn($v) => ['email',            $v],
             'postnum'           => fn($v) => ['postnum',          (int)$v],

@@ -60,8 +60,7 @@ class LoginDataHandler extends DataHandler
 
         $user = &$this->data;
 
-        if (empty($this->login_data['id']) || 
-            (!empty($this->login_data['id']) && empty($this->login_data['salt']) && $strict == false)) {
+        if (empty($this->login_data['id'])) {
             $this->invalid_combination();
         }
 

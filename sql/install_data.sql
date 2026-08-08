@@ -434,4 +434,5 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (122, 'modcp', 'Threads and Posts Awaiting Moderation', 'modcp.php', '[6],[7],[8]'),
 (123, 'manage_polls', 'Manage Polls', 'manage_polls.php', '[6],[7],[8]'),
 (124, 'requests_offers', 'Manage Requests &amp; Offers', 'requests_offers.php', '[6],[7],[8]'),
-(125, 'fastdelete', 'Fast Delete Torrent', 'fastdelete.php', '[6],[7],[8]');
+(125, 'fastdelete', 'Fast Delete Torrent', 'fastdelete.php', '[6],[7],[8]'),
+(127, 'convert_innodb', 'Convert DB Tables to InnoDB', 'convert_innodb.php', '[8]');

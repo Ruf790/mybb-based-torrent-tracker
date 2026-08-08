@@ -174,6 +174,19 @@ function handleMassAction(array $post, int $torrentId): void
                      . "Could you please help the community by reseeding it? Thank you!\n\nBest regards, Staff";
             sendPmToUsers($selectedUsers, $subject, $message, $torrentName, $torrentUrl, (int)$CURUSER['id']);
             break;
+
+        case 'delete_snatches':
+            $userIds = array_map('intval', $selectedUsers);
+            $userIds = array_filter($userIds, static fn(int $uid) => $uid > 0);
+            if (!empty($userIds)) {
+                $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+                $params       = array_merge($userIds, [$torrentId]);
+                $db->sql_query_prepared(
+                    "DELETE FROM snatched WHERE userid IN ({$placeholders}) AND torrentid = ?",
+                    $params
+                );
+            }
+            break;
     }
 
     header("Location: {$_SERVER['SCRIPT_NAME']}?id={$torrentId}");
@@ -245,12 +258,20 @@ if (isset($_GET['export']) && $is_mod) {
 
 // ── Массовые действия ─────────────────────────────────────
 if (isset($_POST['mass_action']) && $is_mod) {
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+        http_response_code(403);
+        die('Invalid security token. Please go back and try again.');
+    }
     handleMassAction($_POST, $id);
 }
 
 // ── Удаление записи ───────────────────────────────────────
-if (isset($_GET['delete']) && ($usergroups['cansettingspanel'] ?? '') == '1') {
-    $delUserId = (int)($_GET['userid'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete']) && $is_mod) {
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
+        http_response_code(403);
+        die('Invalid security token. Please go back and try again.');
+    }
+    $delUserId = (int)($_POST['userid'] ?? 0);
     if (is_valid_id($delUserId)) {
         $db->sql_query_prepared(
             "DELETE FROM snatched WHERE userid = ? AND torrentid = ?",
@@ -867,12 +888,15 @@ stdhead($lang->viewsnatches['headmessage']);
                             <i class="fas fa-eye"></i>
                         </button>
                         <?php if ($is_mod): ?>
-                        <a href="<?= $_SERVER['SCRIPT_NAME'] ?>?id=<?= $id ?>&amp;delete=1&amp;userid=<?= (int)$row['id'] ?>"
-                           class="btn btn-sm btn-outline-danger"
-                           onclick="return confirm('<?= addslashes($lang->viewsnatches['confirm_delete'] ?? 'Delete this snatch record?') ?>')"
-                           title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </a>
+                        <form method="POST" style="display:inline"
+                              onsubmit="return confirm('<?= addslashes($lang->viewsnatches['confirm_delete'] ?? 'Delete this snatch record?') ?>')">
+                            <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                            <input type="hidden" name="delete" value="1">
+                            <input type="hidden" name="userid" value="<?= (int)$row['id'] ?>">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -920,7 +944,8 @@ window.VS_CONFIG = {
     ratioData:  <?= json_encode($ratioData) ?>,
     baseUrl:    <?= json_encode($BASEURL) ?>,
     torrentId:  <?= (int)$id ?>,
-    scriptName: <?= json_encode($scriptName) ?>
+    scriptName: <?= json_encode($scriptName) ?>,
+    postCode:   <?= json_encode($mybb->post_code) ?>
 };
 </script>
 <script src="<?= $BASEURL ?>/scripts/viewsnatches.js"></script>

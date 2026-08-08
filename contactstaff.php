@@ -41,8 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax'])) {
     }
 
     // FIX: flood check внутри POST, а не до него
-    $q = $db->sql_query(
-        'SELECT added FROM staffmessages WHERE sender = ' . (int)$CURUSER['id'] . ' ORDER BY added DESC LIMIT 1'
+    // FIX: sql_query() с конкатенацией → sql_query_prepared()
+    $q = $db->sql_query_prepared(
+        'SELECT added FROM staffmessages WHERE sender = ? ORDER BY added DESC LIMIT 1',
+        [(int)$CURUSER['id']]
     );
     if ($db->num_rows($q) > 0) {
         $row = $db->fetch_array($q);

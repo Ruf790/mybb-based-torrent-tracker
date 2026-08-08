@@ -1168,7 +1168,7 @@ document.addEventListener(\'DOMContentLoaded\', function() {
     build_breadcrumb();
 	
 	
-	echo '<script type="text/javascript" src="'.$BASEURL.'/delete_post_editpost.js"></script>';
+	echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/delete_post_editpost.js"></script>';
 	
 	
 	

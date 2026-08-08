@@ -7,11 +7,6 @@ define("THIS_SCRIPT", "topten.php");
 require "./global.php";
 define("T_VERSION", "v.1.3.1 by xam");
 
-if (isset($_GET["type"]) && $_GET["type"] == 6) {
-    redirect("stats.php");
-    exit;
-}
-
 include_once INC_PATH . "/functions_ratio.php";
 $is_mod = is_mod($usergroups);
 $xbt_active = "no";
@@ -67,8 +62,273 @@ echo '<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    
-    <link href="'.$BASEURL.'/include/templates/default/style/topten.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+/* ============================================================================
+   topten.css — ArtCore Gangsta leaderboard styling
+   Same visual language as rules.php: amber accent, Oswald for display type,
+   Bootstrap CSS variables for automatic light/dark theme support.
+   ============================================================================ */
+
+:root {
+    --rules-accent: var(--bs-primary);
+    --rules-accent-strong: var(--bs-primary-text-emphasis, var(--bs-primary));
+    --rules-accent-soft: var(--bs-primary-bg-subtle, rgba(13, 110, 253, .12));
+}
+
+
+
+/* ── Shared "glass card" shell used by every table ───────────────────────── */
+.glass-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+    box-shadow: 0 4px 14px -8px rgba(0, 0, 0, .18);
+    overflow: hidden;
+}
+
+.glass-card .card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--bs-border-color);
+    border-left: 4px solid var(--rules-accent);
+    padding: .9rem 1.25rem;
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    font-size: .95rem;
+    color: var(--bs-emphasis-color);
+}
+
+.glass-card .card-header i {
+    color: var(--rules-accent);
+}
+
+.stats-badge {
+    font-family: "Oswald", sans-serif;
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--rules-accent-strong);
+    background: var(--rules-accent-soft);
+    border: 1px solid var(--rules-accent);
+    border-radius: 999px;
+    padding: .25rem .75rem;
+}
+
+/* ── Masthead ─────────────────────────────────────────────────────────────── */
+.topten-masthead {
+    padding: 2rem 1.5rem;
+}
+
+.topten-masthead__eyebrow {
+    display: inline-block;
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    font-size: .72rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--rules-accent-strong);
+    background: var(--rules-accent-soft);
+    border: 1px solid var(--rules-accent);
+    border-radius: 999px;
+    padding: .3rem .85rem;
+    margin-bottom: .9rem;
+}
+
+.topten-masthead__title {
+    font-family: "Oswald", sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .01em;
+    font-size: clamp(1.5rem, 3.4vw, 2.1rem);
+    color: var(--bs-emphasis-color);
+}
+
+.topten-masthead__title i {
+    color: var(--rules-accent);
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────────── */
+.topten-tabs {
+    border-bottom: none;
+    gap: .35rem;
+}
+
+.topten-tabs .nav-link {
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    font-size: .82rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+    border: 1px solid transparent;
+    border-radius: .5rem;
+    padding: .6rem .9rem;
+    transition: color .2s ease, background .2s ease, border-color .2s ease;
+}
+
+.topten-tabs .nav-link:hover {
+    color: var(--rules-accent-strong);
+    background: var(--rules-accent-soft);
+}
+
+.topten-tabs .nav-link.active {
+    color: #fff;
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+.glass-card .table {
+    margin-bottom: 0;
+    color: var(--bs-body-color);
+}
+
+.glass-card .table thead th {
+    font-family: "Oswald", sans-serif;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    white-space: nowrap;
+}
+
+.glass-card .table tbody tr {
+    border-color: var(--bs-border-color-translucent, var(--bs-border-color));
+}
+
+.glass-card .table tbody tr.hover-shadow {
+    transition: background-color .15s ease;
+}
+
+.glass-card .table tbody tr.hover-shadow:hover {
+    background-color: var(--rules-accent-soft);
+}
+
+/* ── Avatars / flags / rank badges ───────────────────────────────────────── */
+.user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: .65rem;
+    border: 2px solid var(--bs-border-color);
+    flex-shrink: 0;
+}
+
+.flag-icon {
+    width: 24px;
+    height: auto;
+    margin-right: .65rem;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px var(--bs-border-color);
+}
+
+.torrent-poster-link {
+    display: inline-block;
+}
+
+.torrent-poster {
+    width: 40px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: .35rem;
+    border: 1px solid var(--bs-border-color);
+    box-shadow: 0 2px 6px -2px rgba(0, 0, 0, .35);
+    transition: transform .2s ease, box-shadow .2s ease;
+    display: block;
+}
+
+.torrent-poster-link:hover .torrent-poster {
+    transform: scale(1.12) translateY(-2px);
+    box-shadow: 0 6px 14px -4px rgba(0, 0, 0, .45);
+}
+
+.torrent-poster--placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-size: 1.1rem;
+}
+
+.ratio-badge {
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: #fff;
+    padding: .3rem .55rem;
+}
+
+/* Rank column: top 3 get a small accent treatment */
+.glass-card .table tbody tr:nth-child(1) td:first-child,
+.glass-card .table tbody tr:nth-child(2) td:first-child,
+.glass-card .table tbody tr:nth-child(3) td:first-child {
+    position: relative;
+    color: var(--rules-accent-strong) !important;
+}
+
+/* ── Category icon chip (re-branded, moved out of inline PHP <style>) ──────── */
+.category-icon-wrapper {
+    width: 40px;
+    height: 40px;
+    border-radius: .5rem;
+    background: var(--rules-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+    transition: transform .25s ease, box-shadow .25s ease;
+    box-shadow: 0 4px 10px -4px rgba(var(--bs-primary-rgb), .5);
+    flex-shrink: 0;
+}
+
+.category-icon-wrapper:hover {
+    transform: scale(1.08) rotate(-4deg);
+    box-shadow: 0 6px 14px -4px rgba(var(--bs-primary-rgb), .6);
+}
+
+.category-link {
+    color: var(--bs-body-color);
+    transition: color .2s ease;
+}
+
+.category-link:hover {
+    color: var(--rules-accent-strong);
+}
+
+/* ── Empty / warning states ──────────────────────────────────────────────── */
+.glass-card .alert {
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .glass-card .table tbody tr.hover-shadow,
+    .category-icon-wrapper,
+    .topten-tabs .nav-link {
+        transition: none !important;
+    }
+}
+
+@media (max-width: 576px) {
+    .topten-masthead {
+        padding: 1.5rem 1rem;
+    }
+    .topten-tabs {
+        flex-wrap: wrap;
+    }
+}
+</style>
    
 </head>
 <body>';
@@ -78,15 +338,16 @@ echo "<div class=\"container py-4\">";
 // Header with stats
 echo '<div class="row mb-4">';
 echo '<div class="col-12">';
-echo '<div class="glass-card p-4 text-center">';
-echo '<h1 class="h3 mb-2 text-primary"><i class="bi bi-trophy-fill me-2"></i>' . $lang->topten["head"] . '</h1>';
+echo '<div class="glass-card topten-masthead p-4 text-center">';
+echo '<span class="topten-masthead__eyebrow">Leaderboards</span>';
+echo '<h1 class="topten-masthead__title mb-2"><i class="bi bi-trophy-fill me-2"></i>' . $lang->topten["head"] . '</h1>';
 echo '<p class="text-muted mb-0">' . $lang->topten["subtitle"] . '</p>';
 echo '</div>';
 echo '</div>';
 echo '</div>';
 
 $type = isset($_GET["type"]) ? intval($_GET["type"]) : 1;
-if (!in_array($type, [1, 2, 3, 4, 5, 7])) {
+if (!in_array($type, [1, 2, 3, 4, 5, 6, 7, 8, 9])) {
     $type = 1;
 }
 $limit = isset($_GET["lim"]) ? 0 + $_GET["lim"] : false;
@@ -94,7 +355,7 @@ $subtype = isset($_GET["subtype"]) ? $_GET["subtype"] : false;
 
 echo '
     <div class="glass-card p-3 mb-4">
-        <ul class="nav nav-tabs nav-justified">
+        <ul class="nav nav-tabs topten-tabs nav-justified">
             <li class="nav-item">
                 <a class="nav-link' . ($type == 1 ? ' active' : '') . '" href="topten.php?type=1">
                     <i class="bi bi-people-fill me-2"></i>' . $lang->topten["users"] . '
@@ -125,6 +386,29 @@ echo '
       </li>
 
 
+<li class="nav-item">
+        <a class="nav-link' . ($type == 6 ? ' active' : '') . '" href="topten.php?type=6">
+            <i class="bi bi-coin me-2"></i>SeedBonus
+        </a>
+      </li>
+
+
+
+
+<li class="nav-item">
+        <a class="nav-link' . ($type == 8 ? ' active' : '') . '" href="topten.php?type=8">
+            <i class="bi bi-fire me-2"></i>Hot Right Now
+        </a>
+      </li>
+
+
+
+
+<li class="nav-item">
+        <a class="nav-link' . ($type == 9 ? ' active' : '') . '" href="topten.php?type=9">
+            <i class="bi bi-chat-heart-fill me-2"></i>Top Contributors
+        </a>
+      </li>
 
 
 
@@ -544,6 +828,68 @@ $r = $db->sql_query_prepared($sql, $params);
 
 
 
+elseif ($type == 6)
+{
+    if (!$limit || $limit > 250) {
+        $limit = 10;
+    }
+
+    $r = $db->sql_query_prepared(
+        "SELECT u.id as userid, u.username, u.usergroup, u.seedbonus, u.avatar, u.avatardimensions
+         FROM users u
+         WHERE u.enabled = 'yes' AND u.usergroup NOT IN (5,6,7,8,9)
+         ORDER BY u.seedbonus DESC
+         LIMIT ?",
+        [(int)$limit]
+    );
+
+    seedbonustable($r, sprintf($lang->topten["type6_title"] ?? "Top SeedBonus (%d)", $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=6&lim=25'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=6&lim=50'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
+}
+
+elseif ($type == 8)
+{
+    if (!$limit || $limit > 50) {
+        $limit = 10;
+    }
+
+    $r = $db->sql_query_prepared(
+        "SELECT t.*, (t.size * t.times_completed + SUM(p.downloaded)) AS data
+         FROM torrents AS t
+         LEFT JOIN peers AS p ON t.id = p.torrent
+         WHERE (t.free = 'yes' OR t.silver = 'yes' OR t.thirtypercent = 'yes')
+         GROUP BY t.id
+         ORDER BY seeders + leechers DESC, added DESC
+         LIMIT ?",
+        [(int)$limit]
+    );
+
+    hottorrentstable($r, sprintf($lang->topten["type8_title"] ?? "Hot Right Now (%d)", $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=8&lim=25'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=8&lim=50'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
+}
+
+elseif ($type == 9)
+{
+    if (!$limit || $limit > 250) {
+        $limit = 10;
+    }
+
+    $r = $db->sql_query_prepared(
+        "SELECT u.id as userid, u.username, u.usergroup, u.avatar, u.avatardimensions,
+                COALESCE(c.cnt, 0) AS comment_count,
+                COALESCE(rt.cnt, 0) AS rating_count,
+                (COALESCE(c.cnt, 0) + COALESCE(rt.cnt, 0)) AS total_activity
+         FROM users u
+         LEFT JOIN (SELECT user, COUNT(*) AS cnt FROM comments GROUP BY user) c ON c.user = u.id
+         LEFT JOIN (SELECT user_id, COUNT(*) AS cnt FROM torrent_ratings GROUP BY user_id) rt ON rt.user_id = u.id
+         WHERE u.enabled = 'yes' AND u.usergroup NOT IN (5,6,7,8,9)
+         HAVING total_activity > 0
+         ORDER BY total_activity DESC
+         LIMIT ?",
+        [(int)$limit]
+    );
+
+    activitytable($r, sprintf($lang->topten["type9_title"] ?? "Top Contributors (%d)", $limit) . ($limit == 10 && $pu ? " <small class='ms-2'>[<a href='topten.php?type=9&lim=25'>" . $lang->topten["top25"] . "</a>] [<a href='topten.php?type=9&lim=50'>" . $lang->topten["top50"] . "</a>]</small>" : ""));
+}
+
 elseif ($type == 7) 
 {
     if (!$limit || $limit > 50) {
@@ -680,6 +1026,180 @@ $ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$us
 
 
 
+function seedbonustable($res, $frame_caption) {
+    global $lang, $db;
+    echo '
+    <div class="glass-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-coin me-2"></i>' . $frame_caption . '</span>
+            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="text-center" style="width: 60px;">#</th>
+                            <th scope="col" style="min-width: 200px;">' . $lang->topten["user"] . '</th>
+                            <th scope="col" class="text-end" style="width: 160px;">SeedBonus</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+    $num = 0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+
+        $useravatarzz = format_avatar($a['avatar'], $a['avatardimensions']);
+        $ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$useravatarzz['width_height'].' />';
+
+        $rankBadge = match (true) {
+            $num === 1 => '<i class="bi bi-trophy-fill" style="color:#d4af37"></i>',
+            $num === 2 => '<i class="bi bi-trophy-fill" style="color:#a8a8a8"></i>',
+            $num === 3 => '<i class="bi bi-trophy-fill" style="color:#b5651d"></i>',
+            default    => (string) $num,
+        };
+
+        echo "<tr class='hover-shadow'>
+                <td class='text-center fw-bold text-muted'>" . $rankBadge . "</td>
+                <td>
+                    <div class='d-flex align-items-center'>
+                        ".$ava22."
+                        <div>
+                            <a href='" . get_profile_link($a["userid"]) . "' class='text-decoration-none'>
+                                <strong>" . format_name($a["username"], $a["usergroup"]) . "</strong>
+                            </a>
+                        </div>
+                    </div>
+                </td>
+                <td class='text-end fw-bold'><span class='badge stats-badge'>" . number_format((float)$a["seedbonus"], 2) . "</span></td>
+              </tr>";
+    }
+    echo '</tbody></table></div></div></div>';
+}
+
+
+
+
+function hottorrentstable($res, $frame_caption) {
+    global $lang, $db;
+    echo '
+    <div class="glass-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-fire me-2"></i>' . $frame_caption . '</span>
+            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="text-center" style="width: 60px;">#</th>
+                            <th scope="col" style="width: 56px;"></th>
+                            <th scope="col">' . $lang->topten["name"] . '</th>
+                            <th scope="col" style="width: 110px;">Promo</th>
+                            <th scope="col" class="text-end" style="width: 100px;"><i class="bi bi-arrow-up-circle me-1"></i>' . $lang->topten["seeders"] . '</th>
+                            <th scope="col" class="text-end" style="width: 100px;"><i class="bi bi-arrow-down-circle me-1"></i>' . $lang->topten["leechers"] . '</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+    $num = 0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+
+        $SEOLink = get_torrent_link($a['id']);
+
+        $posterUrl = trim((string) ($a['t_image'] ?? ''));
+        $posterCell = $posterUrl
+            ? "<a href='{$SEOLink}' class='torrent-poster-link' tabindex='-1'><img src='" . htmlspecialchars($posterUrl, ENT_QUOTES, 'UTF-8') . "' alt='' class='torrent-poster' loading='lazy' onerror=\"this.closest('td').innerHTML='<div class=&quot;torrent-poster torrent-poster--placeholder&quot;><i class=&quot;bi bi-film&quot;></i></div>'\"></a>"
+            : "<div class='torrent-poster torrent-poster--placeholder'><i class='bi bi-film'></i></div>";
+
+        if (($a['free'] ?? 'no') === 'yes') {
+            $promoBadge = '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25"><i class="bi bi-gift me-1"></i>Free</span>';
+        } elseif (($a['silver'] ?? 'no') === 'yes') {
+            $promoBadge = '<span class="badge-silver" title="silverdownload"><i class="fas fa-star"></i></span>';
+        } elseif (($a['thirtypercent'] ?? 'no') === 'yes') {
+            $promoBadge = '<span class="badge bg-secondary bg-opacity-10 border border-secondary border-opacity-25" style="color:#411749;border-color:#41174966 !important;"><i class="bi bi-pie-chart-fill me-1"></i>30%</span>';
+        } else {
+            $promoBadge = '';
+        }
+
+        echo "<tr class='hover-shadow'>
+                <td class='text-center fw-bold text-muted'>" . $num . "</td>
+                <td class='text-center'>" . $posterCell . "</td>
+                <td>
+                    <a href='" . $SEOLink . "' class='text-decoration-none'>
+                        <strong>" . cutename($a["name"], 55) . "</strong>
+                    </a>
+                </td>
+                <td>" . $promoBadge . "</td>
+                <td class='text-end text-success'>" . number_format($a["seeders"]) . "</td>
+                <td class='text-end text-warning'>" . number_format($a["leechers"]) . "</td>
+              </tr>";
+    }
+    echo '</tbody></table></div></div></div>';
+}
+
+
+
+
+function activitytable($res, $frame_caption) {
+    global $lang, $db;
+    echo '
+    <div class="glass-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-chat-heart-fill me-2"></i>' . $frame_caption . '</span>
+            <span class="stats-badge">Top ' . ($GLOBALS['limit'] ?? 10) . '</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="text-center" style="width: 60px;">#</th>
+                            <th scope="col" style="min-width: 200px;">' . $lang->topten["user"] . '</th>
+                            <th scope="col" class="text-end" style="width: 130px;"><i class="bi bi-chat-dots me-1"></i>Comments</th>
+                            <th scope="col" class="text-end" style="width: 130px;"><i class="bi bi-star me-1"></i>Ratings</th>
+                            <th scope="col" class="text-end" style="width: 130px;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+    $num = 0;
+    while ($a = $db->fetch_array($res)) {
+        $num++;
+
+        $useravatarzz = format_avatar($a['avatar'], $a['avatardimensions']);
+        $ava22 = '<img class="user-avatar" src="'.$useravatarzz['image'].'" alt="" '.$useravatarzz['width_height'].' />';
+
+        $rankBadge = match (true) {
+            $num === 1 => '<i class="bi bi-trophy-fill" style="color:#d4af37"></i>',
+            $num === 2 => '<i class="bi bi-trophy-fill" style="color:#a8a8a8"></i>',
+            $num === 3 => '<i class="bi bi-trophy-fill" style="color:#b5651d"></i>',
+            default    => (string) $num,
+        };
+
+        echo "<tr class='hover-shadow'>
+                <td class='text-center fw-bold text-muted'>" . $rankBadge . "</td>
+                <td>
+                    <div class='d-flex align-items-center'>
+                        ".$ava22."
+                        <div>
+                            <a href='" . get_profile_link($a["userid"]) . "' class='text-decoration-none'>
+                                <strong>" . format_name($a["username"], $a["usergroup"]) . "</strong>
+                            </a>
+                        </div>
+                    </div>
+                </td>
+                <td class='text-end'>" . number_format((int)$a["comment_count"]) . "</td>
+                <td class='text-end'>" . number_format((int)$a["rating_count"]) . "</td>
+                <td class='text-end fw-bold'><span class='badge stats-badge'>" . number_format((int)$a["total_activity"]) . "</span></td>
+              </tr>";
+    }
+    echo '</tbody></table></div></div></div>';
+}
+
+
+
+
 function _torrenttable($res, $frame_caption) {
     global $lang, $BASEURL, $pic_base_url, $db;
     echo '
@@ -694,6 +1214,7 @@ function _torrenttable($res, $frame_caption) {
                     <thead>
                         <tr>
                             <th scope="col" class="text-center" style="width: 60px;">#</th>
+                            <th scope="col" style="width: 56px;"></th>
                             <th scope="col">' . $lang->topten["name"] . '</th>
                             <th scope="col" class="text-end" style="width: 100px;"><i class="bi bi-download me-1"></i>' . $lang->topten["snatched"] . '</th>
                             <th scope="col" class="text-end" style="width: 120px;">' . $lang->topten["data"] . '</th>
@@ -715,9 +1236,15 @@ function _torrenttable($res, $frame_caption) {
             '<span class="badge ratio-badge" style="background: ' . $color . '">' . $ratio . '</span>';
         
         $SEOLink = get_torrent_link($a['id']);
+
+        $posterUrl = trim((string) ($a['t_image'] ?? ''));
+        $posterCell = $posterUrl
+            ? "<a href='{$SEOLink}' class='torrent-poster-link' tabindex='-1'><img src='" . htmlspecialchars($posterUrl, ENT_QUOTES, 'UTF-8') . "' alt='' class='torrent-poster' loading='lazy' onerror=\"this.closest('td').innerHTML='<div class=&quot;torrent-poster torrent-poster--placeholder&quot;><i class=&quot;bi bi-film&quot;></i></div>'\"></a>"
+            : "<div class='torrent-poster torrent-poster--placeholder'><i class='bi bi-film'></i></div>";
         
         echo "<tr class='hover-shadow'>
                 <td class='text-center fw-bold text-muted'>" . $num . "</td>
+                <td class='text-center'>" . $posterCell . "</td>
                 <td>
                     <a href='" . $SEOLink . "' class='text-decoration-none'>
                         <strong>" . cutename($a["name"], 55) . "</strong>
@@ -976,39 +1503,6 @@ function categoriestable($res, $frame_caption) {
               </tr>";
     }
     echo '</tbody></table></div></div></div>';
-    
-    // Стили для Font Awesome иконок категорий
-    echo '<style>
-   
- .category-icon-wrapper {
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 1.2rem;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 8px rgba(13, 110, 253, 0.2);
-    }
-    .category-icon-wrapper:hover {
-        transform: scale(1.1) rotate(5deg);
-        box-shadow: 0 6px 12px rgba(13, 110, 253, 0.3);
-    }
-    .category-icon-wrapper i {
-        transition: all 0.3s ease;
-    }
-    .category-link {
-        color: #495057;
-        transition: color 0.2s ease;
-    }
-    .category-link:hover {
-        color: #0d6efd;
-    }
-
-    </style>';
 }
 
 

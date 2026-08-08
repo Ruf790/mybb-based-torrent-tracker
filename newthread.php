@@ -221,19 +221,6 @@ if ($enableattachments == 1
 
 $thread_errors = '';
 
-// ── Max posts per day ─────────────────────────────────────────────────────────
-if ($mybb->usergroup['maxposts'] > 0) {
-    $daycut = TIME_NOW - 86400;
-    $query  = $db->sql_query_prepared(
-        "SELECT COUNT(*) AS posts_today FROM posts WHERE uid = ? AND visible != -1 AND dateline > ?",
-        [(int)$mybb->user['uid'], (int)$daycut]
-    );
-    $post_count = $db->fetch_field($query, 'posts_today');
-    if ($post_count >= $mybb->usergroup['maxposts']) {
-        $lang->error_maxposts = $lang->sprintf($lang->error_maxposts, $mybb->usergroup['maxposts']);
-        error($lang->error_maxposts);
-    }
-}
 
 // ── DO: post new thread ───────────────────────────────────────────────────────
 if ($mybb->input['action'] === 'do_newthread' && $mybb->request_method === 'post') {

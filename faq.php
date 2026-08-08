@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 
 require_once 'global.php';
@@ -306,7 +307,7 @@ echo '
         </a>
         <div class="navbar-nav">
             <a class="nav-link" href="/">
-                <i class="bi bi-arrow-left me-1"></i>' . $lang->global['back'] . '
+                <i class="bi bi-arrow-left me-1"></i>' . ($lang->global['back'] ?? 'Back') . '
             </a>
         </div>
     </div>
@@ -600,7 +601,7 @@ echo '
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
                         <span class="text-muted">' . $lang->faq['totalviews'] . '</span>
-                        <span class="fw-bold text-warning">' . number_format($stats['total_views']) . '</span>
+                        <span class="fw-bold text-warning">' . ts_nf($stats['total_views']) . '</span>
                     </div>';
 
 echo '

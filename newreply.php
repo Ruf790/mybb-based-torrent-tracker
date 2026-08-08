@@ -191,19 +191,7 @@ if ($enableattachments == 1
 
 $reply_errors = $quoted_ids = '';
 
-// Max posts per day
-if ($usergroups['maxposts'] > 0) {
-    $daycut     = TIMENOW - 86400;
-    $query      = $db->sql_query_prepared(
-                    "SELECT COUNT(*) AS posts_today FROM posts WHERE uid = ? AND visible != -1 AND dateline > ?",
-                    [(int)$CURUSER['id'], (int)$daycut]
-                  );
-    $post_count = (int)$db->fetch_field($query, 'posts_today');
-    if ($post_count >= $usergroups['maxposts']) {
-        $lang->error_maxposts = sprintf($lang->error_maxposts, $mybb->usergroup['maxposts']);
-        error($lang->error_maxposts);
-    }
-}
+
 
 if (!$f_postsperpage || (int)$f_postsperpage < 1) $f_postsperpage = 20;
 

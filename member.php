@@ -580,14 +580,7 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
         }
     }
 
-    $password_length = (int)$minpasswordlength;
-    if ($regtype === 'randompass') {
-        if ($password_length < 8) { $password_length = min(8, (int)$maxpasswordlength); }
-        $mybb->input['password']  = random_str($password_length, (bool)$requirecomplexpasswords);
-        $mybb->input['password2'] = $mybb->input['password'];
-    }
-
-    $usergroup = in_array($regtype, ['verify', 'admin', 'both'], true) ? 5 : 2;
+    $usergroup = $regtype === 'verify' ? 5 : 2;
 
     require_once INC_PATH . '/datahandlers/user.php';
     $userhandler = new UserDataHandler('insert');
@@ -668,9 +661,7 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
     } else {
         $user_info = $userhandler->insert_user();
 
-        if ($regtype !== 'randompass') {
-           my_setcookie('mybbuser', $user_info['uid'] . '_' . $user_info['loginkey'], null, true, 'lax');
-        }
+        my_setcookie('mybbuser', $user_info['uid'] . '_' . $user_info['loginkey'], null, true, 'lax');
 
          
 		
@@ -694,72 +685,6 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
 			 
 			 
 
-			
-        } 
-		elseif ($regtype === 'randompass') {
-            $emailsubject = sprintf($lang->member['emailsubject_randompassword'], $SITENAME);
-            $emailmessage = sprintf($lang->member['email_randompassword' . ($username_method ?: '')], $user['username'], $SITENAME, $user_info['username'], $mybb->get_input('password'));
-            my_mail($user_info['email'], $emailsubject, $emailmessage);
-            $db->sql_query_prepared("UPDATE users SET ustatus = 'confirmed' WHERE id = ? AND ustatus='pending' AND enabled='yes'", [$user_info['uid']]);
-            require_once INC_PATH . '/functions_pm.php';
-            $pm = ['subject' => sprintf($lang->member['welcomepmsubject'], $SITENAME), 'message' => sprintf($lang->member['welcomepmbody'], $user_info['username'], $SITENAME, $BASEURL), 'touid' => $user_info['uid']];
-            $pm['sender']['uid'] = -1;
-            send_pm($pm, -1, true);
-            $plugins->run_hooks('member_do_register_end');
-           
-			stdok(
-    message: sprintf($lang->member['redirect_registered_passwordsent']),
-    title:   'Registration successful',
-    subtitle: 'Your account has been created.'
-);
-			
-			
-        } elseif ($regtype === 'admin') {
-            $plugins->run_hooks('member_do_register_end');
-            
-			stdok(
-    message: sprintf($lang->member['redirect_registered_admin_activate'], $SITENAME, htmlspecialchars_uni($user_info['username'])),
-    title:   'Registration successful',
-    subtitle: 'Your account has been created.'
-);
-			
-			
-        } elseif ($regtype === 'both') {
-            $activationcode = random_str();
-            $db->sql_query_prepared(
-                "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
-                [$user_info['uid'], TIMENOW, $activationcode, 'b']
-            );
-           	
-			
-			
-			$emailsubject = sprintf($lang->member['emailsubject_activateaccount'], $SITENAME);
-
-$template = match((int)($username_method ?? 0)) {
-    1 => $lang->member['email_activateaccount1'],
-    2 => $lang->member['email_activateaccount2'],
-    default => $lang->member['email_activateaccount'],
-};
-
-$emailmessage = sprintf($template, $user_info['username'], $SITENAME, $BASEURL, $user_info['uid'], $activationcode);
-
-my_mail($user_info['email'], $emailsubject, $emailmessage);
-			
-			
-			
-			
-			
-			
-            
-            $plugins->run_hooks('member_do_register_end');
-           
-			stdok(
-    message: sprintf($lang->member['redirect_registered_activation'], $SITENAME, htmlspecialchars_uni($user_info['username'])),
-    title:   'Registration successful',
-    subtitle: 'Your account has been created.'
-);
-			
-			
 			
         } else {
             $db->sql_query_prepared("UPDATE users SET ustatus = 'confirmed' WHERE id = ? AND ustatus='pending' AND enabled='yes'", [$user_info['uid']]);
@@ -837,7 +762,7 @@ if ($mybb->input['action'] === 'register') {
 
        
         $altbg          = 'trow1';
-        $usergroup = in_array($regtype, ['verify', 'admin', 'both'], true) ? 5 : 2;
+        $usergroup = $regtype === 'verify' ? 5 : 2;
        
         $jsvar_reqfields = [];
 
@@ -854,12 +779,11 @@ if ($mybb->input['action'] === 'register') {
         
 
         $passboxes = '';
-        if ($regtype !== 'randompass') {
-            $js_validator_password_length = sprintf($lang->member['js_validator_password_length'], $minpasswordlength);
-            if ($requirecomplexpasswords == 1) {
-                $lang->member['password'] = $lang->member['complex_password'] = sprintf($lang->member['complex_password'], $minpasswordlength);
-            }
-            
+        $js_validator_password_length = sprintf($lang->member['js_validator_password_length'], $minpasswordlength);
+        if ($requirecomplexpasswords == 1) {
+            $lang->member['password'] = $lang->member['complex_password'] = sprintf($lang->member['complex_password'], $minpasswordlength);
+        }
+        
 			$passboxes = '
 			
 			<div class="py-3 border-bottom">
@@ -875,11 +799,6 @@ if ($mybb->input['action'] === 'register') {
 		<div class="col" style="display: none" id="password_status">&nbsp;</div>
 	</div>
 </div>';
-			
-			
-			
-			
-        }
 
         $invitehash = htmlspecialchars_uni(
             $_POST['invitehash'] ?? 
@@ -1235,8 +1154,6 @@ if ($mybb->input['action'] === 'activate') {
 if ($mybb->input['action'] === 'do_resendactivation' && $mybb->request_method === 'post') {
     $plugins->run_hooks('member_do_resendactivation_start');
 
-    if ($regtype === 'admin') { error($lang->error_activated_by_admin); }
-
     $query    = $db->sql_query_prepared(
         "SELECT u.id, u.username, u.usergroup, u.email, a.code, a.type, a.validated FROM users u LEFT JOIN awaitingactivation a ON (a.id=u.id AND (a.type='r' OR a.type='b')) WHERE u.email = ?",
         [$mybb->get_input('email')]
@@ -1270,7 +1187,6 @@ if ($mybb->input['action'] === 'do_resendactivation' && $mybb->request_method ==
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'resendactivation') {
     $plugins->run_hooks('member_resendactivation');
-    if ($regtype === 'admin') { error($lang->error_activated_by_admin); }
     if ($mybb->user['uid'] && $mybb->user['usergroup'] != 5) { error($lang->error_alreadyactivated); }
 
     $query      = $db->sql_query_prepared("SELECT * FROM awaitingactivation WHERE uid = ? AND type='b'", [$mybb->user['uid']]);
@@ -2097,7 +2013,7 @@ if ($mybb->input['action'] === 'profile') {
 
     // Ban info
     $bannedbit = '';
-    if ($memperms['isbannedgroup'] == 1 && $usergroups['canuserdetails'] == 1) {
+    if ($memperms['isbannedgroup'] == 1 && $usergroups['canstaffpanel'] == 1) {
         $query = $db->sql_query_prepared("SELECT b.*, a.username AS adminuser FROM banned b LEFT JOIN users a ON (b.admin=a.id) WHERE b.uid = ? LIMIT 1", [$uid]);
         if ($query && $db->num_rows($query)) {
             $memban = $db->fetch_array($query);
@@ -2201,7 +2117,7 @@ if ($mybb->input['action'] === 'profile') {
     $modoptions = $viewnotes = $editnotes = $editprofile = $banuser = $manageban = $manageuser = '';
     $awaybit = $referrals = $groupimage = $userstars = $reputation = '';
 
-    if ($memperms['isbannedgroup'] == 1 && $usergroups['canuserdetails'] == 1) {
+    if ($memperms['isbannedgroup'] == 1 && $usergroups['canstaffpanel'] == 1) {
         
 		$manageban = '<li><a href="'.$BASEURL.'/modcp.php?action=banuser&amp;uid='.$uid.'">'.$lang->member['edit_ban_in_mcp'].'</a></li>
         <li><a href="'.$BASEURL.'/modcp.php?action=liftban&amp;uid='.$uid.'&amp;my_post_key='.$mybb->post_code.'">'.$lang->member['lift_ban_in_mcp'].'</a></li>';

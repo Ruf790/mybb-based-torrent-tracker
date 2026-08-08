@@ -16,7 +16,8 @@ $title  = 'User Registrations — ' . $titles[$group];
 $xlabel = $xlabels[$group];
 
 // ── Диапазон дат из БД ────────────────────────────────────────────────────────
-$res = $db->sql_query('SELECT MIN(added) AS min_added, MAX(added) AS max_added FROM users');
+// FIX: sql_query() → sql_query_prepared()
+$res = $db->sql_query_prepared('SELECT MIN(added) AS min_added, MAX(added) AS max_added FROM users');
 $row = $db->fetch_array($res);
 $minDate = $row && $row['min_added'] ? date('Y-m-d', (int)$row['min_added']) : date('Y-m-d');
 $maxDate = $row && $row['max_added'] ? date('Y-m-d', (int)$row['max_added']) : date('Y-m-d');
@@ -38,16 +39,18 @@ $fromTs = (int)strtotime($fromDate . ' 00:00:00');
 $toTs   = (int)strtotime($toDate   . ' 23:59:59');
 
 // ── Статистика ────────────────────────────────────────────────────────────────
-$res         = $db->sql_query("SELECT COUNT(*) AS total FROM users WHERE added BETWEEN {$fromTs} AND {$toTs}");
+// FIX: sql_query() с конкатенацией → sql_query_prepared()
+$res         = $db->sql_query_prepared('SELECT COUNT(*) AS total FROM users WHERE added BETWEEN ? AND ?', [$fromTs, $toTs]);
 $total_users = (int)($db->fetch_array($res)['total'] ?? 0);
 
-$result = $db->sql_query("
-    SELECT FROM_UNIXTIME(added, '{$format}') AS reg_group, COUNT(*) AS count
+// FIX: и $format (из whitelist, но всё равно), и метки времени — через плейсхолдеры
+$result = $db->sql_query_prepared("
+    SELECT FROM_UNIXTIME(added, ?) AS reg_group, COUNT(*) AS count
     FROM users
-    WHERE added BETWEEN {$fromTs} AND {$toTs}
+    WHERE added BETWEEN ? AND ?
     GROUP BY reg_group
     ORDER BY reg_group ASC
-");
+", [$format, $fromTs, $toTs]);
 $labels = $counts = [];
 while ($row = $db->fetch_array($result)) {
     $labels[] = $row['reg_group'];
@@ -57,12 +60,14 @@ while ($row = $db->fetch_array($result)) {
 $lastWeekTs  = (int)strtotime('-7 days 00:00:00');
 $lastMonthTs = (int)strtotime('-1 month 00:00:00');
 
-$res        = $db->sql_query("SELECT COUNT(*) AS c FROM users WHERE added >= {$lastWeekTs}");
+// FIX: sql_query() с конкатенацией → sql_query_prepared()
+$res        = $db->sql_query_prepared('SELECT COUNT(*) AS c FROM users WHERE added >= ?', [$lastWeekTs]);
 $weekCount  = (int)($db->fetch_array($res)['c'] ?? 0);
-$res        = $db->sql_query("SELECT COUNT(*) AS c FROM users WHERE added >= {$lastMonthTs}");
+$res        = $db->sql_query_prepared('SELECT COUNT(*) AS c FROM users WHERE added >= ?', [$lastMonthTs]);
 $monthCount = (int)($db->fetch_array($res)['c'] ?? 0);
 
-$res      = $db->sql_query('SELECT username, added FROM users ORDER BY added DESC LIMIT 1');
+// FIX: sql_query() → sql_query_prepared()
+$res      = $db->sql_query_prepared('SELECT username, added FROM users ORDER BY added DESC LIMIT 1');
 $lastUser = $db->fetch_array($res);
 
 $maxReg = $counts ? max($counts) : 0;

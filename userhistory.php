@@ -22,7 +22,7 @@ $lang->load('userdetails');
 // ── Параметры ─────────────────────────────────────────────────────────────────
 $userid = (int)($_GET['id'] ?? 0);
 
-if (!$userid || ($CURUSER['id'] !== $userid && ($usergroups['canuserdetails'] ?? 0) != 1)) {
+if (!$userid || ($CURUSER['id'] !== $userid && ($usergroups['canstaffpanel'] ?? 0) != 1)) {
     print_no_permission();
 }
 

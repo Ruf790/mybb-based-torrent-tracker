@@ -836,10 +836,9 @@ $downloaders = [];
 $query = "
     SELECT p.seeder, p.finishedat, p.downloadoffset, p.uploadoffset, p.ip, p.port, p.uploaded, p.downloaded, p.to_go, 
            p.started AS st, p.connectable, p.agent, p.peer_id, p.last_action AS la, p.userid,  
-           u.id, u.avatar, u.avatardimensions, u.invisible, u.enabled, u.username, u.displaygroup, u.warned, u.donor, g.namestyle 
+           u.id, u.avatar, u.avatardimensions, u.invisible, u.enabled, u.username, u.usergroup, u.displaygroup, u.warned, u.donor 
     FROM peers p
     LEFT JOIN users u ON (p.userid=u.id)
-    LEFT JOIN usergroups g ON (u.usergroup=g.gid)
     WHERE p.torrent = ?
 ";
 

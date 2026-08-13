@@ -360,6 +360,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action']) && !em
 			
 			
 			
+        case 'pm':
+            $pm_subject = trim($_POST['pm_subject'] ?? '');
+            $pm_message = trim($_POST['pm_message'] ?? '');
+
+            if ($pm_subject === '' || $pm_message === '') {
+                echo json_encode(['success' => false, 'error' => 'Subject and message are required']);
+                exit;
+            }
+
+            require_once INC_PATH . '/functions_pm.php';
+
+            $pm_sent = 0;
+            foreach ($user_ids as $uid) {
+                $pm = [
+                    'subject' => $db->escape_string($pm_subject),
+                    'message' => $db->escape_string($pm_message),
+                    'touid'   => $uid,
+                ];
+                send_pm($pm, (int)$CURUSER['id'], true);
+                $pm_sent++;
+            }
+
+            log_moderator_action(
+                ['uids' => $ids_str],
+                'Bulk PM sent to ' . $pm_sent . ' user(s): "' . $pm_subject . '"'
+            );
+
+            echo json_encode(['success' => true, 'message' => $pm_sent . ' PM(s) sent']);
+            break;
         case 'changegroup':
             $gid = (int)($_POST['group_id'] ?? 0);
             if ($gid <= 0) { echo json_encode(['success' => false, 'error' => 'Invalid group']); exit; }
@@ -911,7 +940,7 @@ echo '      </select>
 
 if (isset($_GET['latest'])) {
     // Latest Users
-    $latest_res = $db->sql_query_prepared("SELECT id, username, usergroup, added, avatar, avatardimensions, email FROM users ORDER BY id DESC LIMIT 10");
+    $latest_res = $db->sql_query_prepared("SELECT id, username, usergroup, added, avatar, avatardimensions, email, lastactive FROM users ORDER BY id DESC LIMIT 10");
     echo '<div class="card mb-4"><div class="card-header fw-bold">Latest Users</div>';
     echo '<div class="table-responsive"><table class="table table-striped table-hover align-middle mb-0">';
    echo '<thead><tr>
@@ -937,6 +966,10 @@ if (isset($_GET['latest'])) {
         }
         $formattedname = format_name($user['username'], $user['usergroup']);
         $joined = my_datee($dateformat, $user['added']) . ' ' . my_datee($timeformat, $user['added']);
+        $isOnline = ((int)($user['lastactive'] ?? 0)) >= (TIMENOW - 900);
+        $onlineDot = $isOnline
+            ? '<i class="bi bi-circle-fill text-success ms-1" style="font-size:8px;" title="Online now"></i>'
+            : '<i class="bi bi-circle-fill text-muted ms-1" style="font-size:8px;opacity:.35;" title="Last seen '.htmlspecialchars_uni(my_datee($dateformat, (int)($user['lastactive'] ?? 0))).'"></i>';
         echo '<tr>';
 		
 		
@@ -955,7 +988,7 @@ echo '<td>
 		
         echo '<td>'.(int)$user['id'].'</td>';
         echo '<td>'.$avatar_img.'</td>';
-        echo '<td><a href="'.$profile_url.'" class="fw-bold">'.$formattedname.'</a></td>';
+        echo '<td><a href="'.$profile_url.'" class="fw-bold">'.$formattedname.'</a>'.$onlineDot.'</td>';
         echo '<td>'.htmlspecialchars_uni($user['email']).'</td>';
         echo '<td>'.$joined.'</td>';
         echo '<td><a class="delete_employee" data-emp-id="'.$user['id'].'" href="javascript:void(0)" title="Delete">
@@ -1040,6 +1073,9 @@ $num = $db->num_rows($query_result);
         <button type="button" class="btn btn-sm btn-success" onclick="bulkAction(\'unban\')">
             <i class="bi bi-check-circle me-1"></i>Unban
         </button>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="bulkAction(\'pm\')">
+            <i class="bi bi-envelope me-1"></i>Send PM
+        </button>
         <div class="input-group input-group-sm" style="width:auto;">
             <select class="form-select form-select-sm" id="bulkGroupSelect">
                 <option value="">Change group...</option>';
@@ -1085,13 +1121,34 @@ echo '      </select>
 		
 		echo '<div class="card mb-4"><div class="card-header fw-bold">Users found: '.$total.'</div>';
         echo '<div class="table-responsive"><table class="table table-hover align-middle mb-0">';
-       
-	   
+
+        // ── Кликабельная сортировка колонок ─────────────────────────────
+        // $orderby/$orderdir уже вычислялись выше (строки 624-625) и уже
+        // используются в самом SQL-запросе - просто не были подключены к UI,
+        // добраться до сортировки можно было только вручную дописав
+        // ?orderby1=...&orderby2=... в адресную строку.
+        $sortBaseParams = $_GET;
+        unset($sortBaseParams['page'], $sortBaseParams['act'], $sortBaseParams['orderby1'], $sortBaseParams['orderby2']);
+        $sortBaseParams = array_filter($sortBaseParams, fn($v) => $v !== '' && $v !== null);
+
+        $sortLink = function (string $column, string $label) use ($sortBaseParams, $orderby, $orderdir): string {
+            $isActive = ($orderby === $column);
+            $nextDir  = ($isActive && $orderdir === 'ASC') ? 'DESC' : 'ASC';
+
+            $qs = http_build_query($sortBaseParams + ['act' => 'usersearch', 'orderby1' => $column, 'orderby2' => $nextDir]);
+            $arrow = $isActive
+                ? ($orderdir === 'ASC' ? '<i class="bi bi-sort-up-alt ms-1"></i>' : '<i class="bi bi-sort-down ms-1"></i>')
+                : '<i class="bi bi-arrow-down-up ms-1 text-muted" style="opacity:.3;font-size:.75em;"></i>';
+
+            return '<a href="?' . $qs . '" class="text-decoration-none text-reset fw-'
+                . ($isActive ? 'bold' : 'semibold') . '">' . $label . $arrow . '</a>';
+        };
+
 	  echo '<thead><tr>
-    <th>ID</th>
+    <th>'.$sortLink('id', 'ID').'</th>
     <th>Avatar</th>
-    <th>Username</th>
-    <th>Email</th>
+    <th>'.$sortLink('username', 'Username').'</th>
+    <th>'.$sortLink('email', 'Email').'</th>
     <th>Group</th>
     <th>Reg IP/Last IP</th>
     <th>Upl/Down</th>
@@ -1129,6 +1186,13 @@ echo '      </select>
             $lastip        = my_inet_ntop($u['lastip']);
             $formattedname = format_name($u['username'], $u['usergroup']);
             $pic           = get_user_icons($u);
+
+            // FIX/ADD: индикатор "онлайн" в строке - тот же порог (15 минут),
+            // что уже используется в карточке статистики "Online (15m)" выше.
+            $isOnline = ((int)($u['lastactive'] ?? 0)) >= (TIMENOW - 900);
+            $onlineDot = $isOnline
+                ? '<i class="bi bi-circle-fill text-success ms-1" style="font-size:8px;" title="Online now"></i>'
+                : '<i class="bi bi-circle-fill text-muted ms-1" style="font-size:8px;opacity:.35;" title="Last seen '.htmlspecialchars_uni(my_datee($dateformat, (int)($u['lastactive'] ?? 0))).'"></i>';
 
             // display group/title
 		   if($u['usergroup'])
@@ -1178,7 +1242,7 @@ echo '      </select>
 			
 			
 			
-            echo '<td><a href="'.$profile_url.'" class="fw-bold">'.$formattedname.'</a></br>'.get_user_ratio($u['uploaded'], $u['downloaded']).''.$pic.'</td>';
+            echo '<td><a href="'.$profile_url.'" class="fw-bold">'.$formattedname.'</a>'.$onlineDot.'</br>'.get_user_ratio($u['uploaded'], $u['downloaded']).''.$pic.'</td>';
 			
 			
             echo '<td>'.htmlspecialchars_uni($u['email']).'</td>';
@@ -1266,7 +1330,15 @@ echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*">
 ?>
 
 <script>window.myPostKey = "<?= $mybb->post_code ?>";</script>
-<script src="<?= $BASEURL ?>/admin/scripts/usersearch.js"></script>
+<?php
+    // FIX: cache-busting через filemtime() - при каждой правке usersearch.js
+    // версия в URL меняется автоматически, браузер/reverse-proxy не сможет
+    // отдать устаревший закэшированный файл незаметно (та же проблема уже
+    // была с opcache для PHP - тут аналог для статики).
+    $usersearchJsPath = __DIR__ . '/scripts/usersearch.js';
+    $usersearchJsVer  = is_file($usersearchJsPath) ? filemtime($usersearchJsPath) : time();
+?>
+<script src="<?= $BASEURL ?>/admin/scripts/usersearch.js?ver=<?= $usersearchJsVer ?>"></script>
 <script src="<?= $BASEURL ?>/admin/scripts/datepicker.js"></script>
 
 

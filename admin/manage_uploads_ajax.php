@@ -488,7 +488,7 @@ $this_script2 = "index.php?act=manage_uploads"
 <div class="card-footer d-flex justify-content-between align-items-center">
     <div class="text-muted small">
         <i class="bi bi-list-ol me-1"></i>
-        Showing <?= $offset + 1 ?> to <?= min($offset + $per_page, $total_files) ?> of <?= number_format($total_files) ?>
+        Showing <?= $offset + 1 ?> to <?= min($offset + $per_page, $total_files) ?> of <?= ts_nf($total_files) ?>
     </div>
     <nav>
         <ul class="pagination">

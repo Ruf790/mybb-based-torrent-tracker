@@ -217,9 +217,9 @@ if ($action == 'viewpm') {
     $senderr = $arr4['sender'] ?? '';
     
     if (is_valid_id($arr4['sender'])) {
-        $res2 = $db->sql_query_prepared('SELECT u.username,g.namestyle FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE u.id=?', [$arr4['sender']]);
+        $res2 = $db->sql_query_prepared('SELECT u.username,u.usergroup FROM users u WHERE u.id=?', [$arr4['sender']]);
         $arr2 = $db->fetch_array($res2);
-        $sender = '<a href="' . $BASEURL . '/'.get_profile_link($senderr) . '" class="text-decoration-none">' . ($arr2['username'] ? get_user_color($arr2['username'], $arr2['namestyle']) : '[Deleted]') . '</a>';
+        $sender = '<a href="' . $BASEURL . '/'.get_profile_link($senderr) . '" class="text-decoration-none">' . ($arr2['username'] ? format_name($arr2['username'], $arr2['usergroup']) : '[Deleted]') . '</a>';
     } else {
         $sender = 'System';
     }
@@ -230,7 +230,7 @@ if ($action == 'viewpm') {
         $answered = '<span class="badge bg-danger">No</span>';
         $setanswered = '<a href="' . $url . 'action=setanswered&id=' . $arr4['id'] . '" class="btn btn-success btn-sm ms-2">Mark Answered</a>';
     } else {
-        $answered = '<span class="badge bg-success">Yes</span> by <a href="' . $BASEURL . '/'.get_profile_link($answeredby) . '" class="text-decoration-none">' . get_user_color($arr4['username'], $arr4['namestyle']) . '</a> (<a href="' . $url . 'action=viewanswer&pmid=' . $pmid . '">Show Answer</a>)';
+        $answered = '<span class="badge bg-success">Yes</span> by <a href="' . $BASEURL . '/'.get_profile_link($answeredby) . '" class="text-decoration-none">' . format_name($arr4['username'], $arr4['namestyle']) . '</a> (<a href="' . $url . 'action=viewanswer&pmid=' . $pmid . '">Show Answer</a>)';
         $setanswered = '';
     }
 
@@ -316,7 +316,7 @@ if ($action == 'viewanswer')
     {
       ($res2 = $db->sql_query_prepared('SELECT u.username,g.namestyle FROM users u LEFT JOIN usergroups g ON (u.usergroup=g.gid) WHERE u.id=?', [$arr4['sender']]));
       $arr2 = $db->fetch_array ($res2);
-      $sender = '' . '<a href=' . $BASEURL . '/userdetails.php?id=' . $arr4['sender'] . '>' . ($arr2['username'] ? get_user_color ($arr2['username'], $arr2['namestyle']) : '[Deleted]') . '</a>';
+      $sender = '' . '<a href=' . $BASEURL . '/userdetails.php?id=' . $arr4['sender'] . '>' . ($arr2['username'] ? format_name ($arr2['username'], $arr2['namestyle']) : '[Deleted]') . '</a>';
     }
     else
     {
@@ -364,7 +364,7 @@ if ($action == 'viewanswer')
   <div class="card">
 	
 	<div class="card-header">
-	<a href=' . $BASEURL . '/userdetails.php?id=' . $answeredby . '>' . get_user_color ($arr4['username'], $arr4['namestyle']) . ('' . '</a></b> answered this message sent by ' . $sender).'
+	<a href=' . $BASEURL . '/userdetails.php?id=' . $answeredby . '>' . format_name ($arr4['username'], $arr4['namestyle']) . ('' . '</a></b> answered this message sent by ' . $sender).'
 	</div>
 	
 	

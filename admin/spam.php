@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-define('IN_MYBB', 1);
-define('IN_ADMINCP', 1);
 
 if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3"><strong>Error!</strong> Direct access not allowed.</div>');

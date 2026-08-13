@@ -456,7 +456,7 @@ stdhead();
             </div>
         </div>
         <span class="badge bg-light text-dark fs-6">
-            <i class="bi bi-database me-1"></i> <?= number_format($total_files) ?> files
+            <i class="bi bi-database me-1"></i> <?= ts_nf($total_files) ?> files
         </span>
     </div>
 

@@ -408,7 +408,7 @@ document.addEventListener("DOMContentLoaded", function () {
     /**
      * Show category form (for standalone pages)
      */
-    private function showCategoryForm(string $title, array $category = null): void
+    private function showCategoryForm(string $title, ?array $category = null): void
     {
         global $lang, $mybb;
         
@@ -933,7 +933,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /**
      * Validate category ID
      */
-    private function validateCategoryId(int $id, string $type = null): bool
+    private function validateCategoryId(int $id, ?string $type = null): bool
     {
         $sql    = "SELECT id FROM categories WHERE id = ?";
         $params = [$id];

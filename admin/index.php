@@ -605,9 +605,12 @@ function handle_securitycheck(): void
 
     $mysql_ver_q = $db->sql_query_prepared("SELECT VERSION() AS v");
     $mysql_ver = $mysql_ver_q ? $db->fetch_array($mysql_ver_q)['v'] : '0.0.0';
-
-    $tables_q = $db->sql_query_prepared("SHOW TABLES LIKE ?", ['users']);
+	
+	$safeTableName = $db->escape_string('users');
+    $tables_q = $db->sql_query_prepared("SHOW TABLES LIKE '{$safeTableName}'");
     $has_default_table = $tables_q && $db->num_rows($tables_q) > 0;
+	
+	
 
     $https             = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on';
 

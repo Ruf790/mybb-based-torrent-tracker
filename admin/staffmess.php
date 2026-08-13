@@ -6,16 +6,15 @@ if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
-// FIX: было 20000M (20 ГБ) - не помню, чтобы это было осознанным решением;
-// для построчной рассылки PM (fetch_array() в цикле, без загрузки всего
-// результата разом) такой объём не нужен даже на большую базу. 512M — с
-// хорошим запасом, но не рискует утащить память всего Apache-процесса на
-// сервере при реальном сбое/утечке.
+
 @ini_set('memory_limit', '512M');
 define('SM_VERSION', '0.8 by xam');
 
 require_once INC_PATH . '/datahandler.php';
 require_once(INC_PATH . '/class_parser.php');
+require_once TSDIR .'/cache/smilies.php';
+
+require_once INC_PATH . '/editor.php';
 $parser = new postParser;
 
 $parser_options = array(
@@ -29,8 +28,7 @@ $parser_options = array(
 
 $error = '';
 $checked = [];
-// FIX: прямой доступ к $_POST['message']/['subject'] без проверки бросал бы
-// "Undefined array key" при обычном GET-заходе на страницу (до первого сабмита).
+
 $msgtext = trim($_POST['message'] ?? '');
 $subject = trim($_POST['subject'] ?? '');
 
@@ -49,9 +47,7 @@ if (!empty($_POST['previewpost']) && !empty($msgtext))
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') 
 {
-    // FIX: CSRF-защита - раньше отсутствовала полностью на форме массовой
-    // рассылки PM по целым юзергруппам. Тот же паттерн, что и везде на сайте.
-    // Предпросмотр (previewpost) CSRF не требует - он ничего не пишет в БД.
+   
     $csrfOk = !empty($_POST['previewpost']) || verify_post_check($_POST['my_post_key'] ?? '');
 
     if (!$csrfOk) {
@@ -292,6 +288,9 @@ echo '
 echo $sgids;
 echo $senderOptions;
 
+// Общий BBCode-редактор для поля #message (та же логика, что и везде на сайте)
+$editorParts = insert_bbcode_editor($smilies, $BASEURL, 'message');
+
 echo '
 <div class="card sm-panel shadow-sm mb-3">
     <div class="card-header">
@@ -305,60 +304,23 @@ echo '
 
         <div class="mb-3">
             <label for="message" class="sm-form-label form-label">Message</label>
-            <!-- BBCode Toolbar -->
-            <div class="mb-2 d-flex flex-wrap gap-1 bbcode-toolbar">
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[b]\', \'[/b]\');" title="Bold (Ctrl+B)"><strong>B</strong></button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[i]\', \'[/i]\');" title="Italic (Ctrl+I)"><em>I</em></button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[u]\', \'[/u]\');" title="Underline"><u>U</u></button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[s]\', \'[/s]\');" title="Strikethrough"><s>S</s></button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[url]\', \'[/url]\');" title="Insert URL">URL</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[img]\', \'[/img]\');" title="Insert Image">IMG</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[quote]\', \'[/quote]\');" title="Quote">Quote</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[code]\', \'[/code]\');" title="Code">Code</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[list]\n[*]\n[/list]\', \'\');" title="Unordered List">List</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[list=1]\n[*]\n[/list]\', \'\');" title="Ordered List">List 1.</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[color=red]\', \'[/color]\');" title="Color"><span style="color:red;">A</span></button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[size=]\', \'[/size]\');" title="Size">Size</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[center]\', \'[/center]\');" title="Center Text">Center</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[spoiler]\', \'[/spoiler]\');" title="Spoiler">Spoiler</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode(\'[video=youtube]\', \'[/video]\');" title="YouTube Video">YouTube</button>
-            </div>
+            ' . $editorParts['toolbar'] . '
             <textarea class="form-control" id="message" name="message" rows="8" required>' . htmlspecialchars($msgtext) . '</textarea>
             <div id="charCount" class="form-text text-end">0 characters</div>
-            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="togglePreviewBtn">Show Markdown Preview</button>
         </div>
-
-        <div id="markdownPreview" class="border rounded p-3 mb-3" style="display:none; white-space: pre-wrap; background:var(--bs-tertiary-bg, #f8f9fa); max-height:300px; overflow-y:auto;"></div>
 
         <div class="d-flex gap-2">
             <button type="submit" name="submit" class="btn btn-primary px-4">
                 <i class="fas fa-paper-plane me-2"></i>Send Message
             </button>
-            <button type="button" id="previewModalBtn" class="btn btn-outline-secondary">
-                <i class="fas fa-eye me-2"></i>Preview
-            </button>
         </div>
     </div>
 </div>
+<div id="fileIdsContainer"></div>
 </form>';
 
-// Bootstrap modal for preview
-echo '
-<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="previewModalLabel">Message Preview</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="previewModalBody" style="white-space: pre-wrap; background:#fff;"></div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
-';
+// Модалки редактора (картинка/видео) - ВНЕ формы, как и требует сама функция
+echo $editorParts['modal'];
 
 // JavaScript for char count, preview toggle and modal preview
 echo <<<JS
@@ -366,99 +328,14 @@ echo <<<JS
 document.addEventListener('DOMContentLoaded', () => {
     const messageEl = document.getElementById('message');
     const charCountEl = document.getElementById('charCount');
-    const previewToggleBtn = document.getElementById('togglePreviewBtn');
-    const markdownPreview = document.getElementById('markdownPreview');
-    const previewModalBtn = document.getElementById('previewModalBtn');
-    const previewModalBody = document.getElementById('previewModalBody');
-    const previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
 
     function updateCharCount() {
         charCountEl.textContent = messageEl.value.length + ' characters';
     }
 
-    messageEl.addEventListener('input', () => {
-        updateCharCount();
-        if (markdownPreview.style.display !== 'none') {
-            updateMarkdownPreview();
-        }
-    });
-
+    messageEl.addEventListener('input', updateCharCount);
     updateCharCount();
-
-    function escapeHtml(text) {
-        return text.replace(/&/g, "&amp;")
-                   .replace(/</g, "&lt;")
-                   .replace(/>/g, "&gt;")
-                   .replace(/"/g, "&quot;")
-                   .replace(/'/g, "&#039;");
-    }
-
-    function updateMarkdownPreview() {
-        let text = escapeHtml(messageEl.value);
-        text = text
-            .replace(/\\*\\*(.*?)\\*\\*/g, "<strong>$1</strong>")
-            .replace(/\\*(.*?)\\*/g, "<em>$1</em>")
-            .replace(/`(.*?)`/g, "<code>$1</code>")
-            .replace(/\\n/g, "<br>");
-        markdownPreview.innerHTML = text;
-    }
-
-    previewToggleBtn.addEventListener('click', () => {
-        if (markdownPreview.style.display === 'none') {
-            updateMarkdownPreview();
-            markdownPreview.style.display = 'block';
-            previewToggleBtn.textContent = 'Hide Markdown Preview';
-        } else {
-            markdownPreview.style.display = 'none';
-            previewToggleBtn.textContent = 'Show Markdown Preview';
-        }
-    });
-
-    previewModalBtn.addEventListener('click', () => {
-        const subject = document.getElementById('subject').value.trim();
-        const message = messageEl.value.trim();
-
-        if (!subject || !message) {
-            alert('Please enter both subject and message to preview.');
-            return;
-        }
-
-        let previewContent = '<h4>' + escapeHtml(subject) + '</h4><hr>' +
-                             '<p>' + escapeHtml(message).replace(/\\n/g, "<br>") + '</p>';
-
-        previewModalBody.innerHTML = previewContent;
-        previewModal.show();
-    });
 });
-</script>
-
-<script>
-  const textarea = document.getElementById("message");
- 
-  function insertBBCode(openTag, closeTag) {
-    if (!textarea) return;
-    
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selectedText = text.substring(start, end);
-    
-    const before = text.substring(0, start);
-    const after = text.substring(end);
-    
-    const newText = before + openTag + selectedText + closeTag + after;
-    textarea.value = newText;
-    
-    if (selectedText.length === 0) {
-      const cursorPos = start + openTag.length;
-      textarea.setSelectionRange(cursorPos, cursorPos);
-    } else {
-      textarea.setSelectionRange(start, end + openTag.length + closeTag.length);
-    }
-    
-    textarea.focus();
-    textarea.dispatchEvent(new Event("input"));
-  }
 </script>
 JS;
 

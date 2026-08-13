@@ -94,6 +94,11 @@ function bulkAction(action) {
         return;
     }
 
+    if (action === 'pm') {
+        showBulkPmModal(ids);
+        return;
+    }
+
     let groupId = null;
     if (action === 'changegroup') {
         const groupSelect = document.getElementById('bulkGroupSelect');
@@ -261,6 +266,83 @@ function showBulkDeleteConfirmation(ids) {
     modal.show();
 }
 
+function showBulkPmModal(ids) {
+    if (document.getElementById('bulkPmModal')) {
+        document.getElementById('bulkPmModal').remove();
+    }
+
+    const modalHTML = `
+        <div class="modal fade" id="bulkPmModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content border-0 glass-card">
+                    <div class="modal-header bg-primary text-white text-center py-4 border-0">
+                        <div class="w-100">
+                            <i class="bi bi-envelope fa-3x mb-3" style="font-size:2.5rem;"></i>
+                            <h3 class="mb-0">Send PM</h3>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body py-4">
+                        <div class="user-info bg-light rounded-4 p-3 mb-4 text-center">
+                            <h5 class="fw-bold mb-1">${ids.length} users selected</h5>
+                            <p class="text-muted mb-0 small">IDs: ${ids.slice(0,5).join(', ')}${ids.length > 5 ? '...' : ''}</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                <i class="bi bi-card-text me-1"></i>Subject
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="bulkPmSubject"
+                                   placeholder="Subject..."
+                                   maxlength="200">
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">
+                                <i class="bi bi-chat-text me-1"></i>Message
+                            </label>
+                            <textarea class="form-control"
+                                      id="bulkPmMessage"
+                                      rows="6"
+                                      placeholder="Write your message..."></textarea>
+                        </div>
+                        <div class="d-flex justify-content-center gap-3">
+                            <button type="button" class="btn btn-primary btn-lg px-4" id="confirmBulkPm">
+                                <i class="bi bi-send me-2"></i>Send to ${ids.length} Users
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-lg px-4" data-bs-dismiss="modal">
+                                <i class="fas fa-times me-2"></i>Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    const modalEl = document.getElementById('bulkPmModal');
+    const modal   = new bootstrap.Modal(modalEl);
+
+    document.getElementById('confirmBulkPm').addEventListener('click', function() {
+        const subject = document.getElementById('bulkPmSubject').value.trim();
+        const message = document.getElementById('bulkPmMessage').value.trim();
+
+        if (!subject || !message) {
+            showToast('Please fill in both subject and message', 'warning');
+            return;
+        }
+
+        this.disabled = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sending...';
+        modal.hide();
+        executeBulkAction('pm', ids, null, { pmSubject: subject, pmMessage: message });
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', function() { this.remove(); });
+    modal.show();
+}
+
 function executeBulkAction(action, ids, groupId, extra = {}) {
     const bar = document.getElementById('bulkActionBar');
     const originalHtml = bar.innerHTML;
@@ -275,6 +357,8 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
     if (groupId)       formData.append('group_id',   groupId);
     if (extra.reason)  formData.append('ban_reason',  extra.reason);
     if (extra.bantime) formData.append('ban_time',    extra.bantime);
+    if (extra.pmSubject) formData.append('pm_subject', extra.pmSubject);
+    if (extra.pmMessage) formData.append('pm_message', extra.pmMessage);
 
     fetch(window.location.href, {
         method:  'POST',

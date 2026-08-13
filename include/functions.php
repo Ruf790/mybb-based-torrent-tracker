@@ -3420,16 +3420,6 @@ function inline_error(array|string $errors, string $title = '', array $json_data
 
 
 
-
-
-function submit_disable(string $formname = '', string $buttonname = '', string $text = ''): string
-{
-    global $lang;
-    $value = 'onsubmit="document.' . $formname . '.' . $buttonname . '.value=\'' . ($text ?: $lang->global['pleasewait']) . '\';document.' . $formname . '.' . $buttonname . '.disabled=true"';
-    return $value;
-}
-
-
 function unichr_callback1(array $matches): string
 {
     return unichr(hexdec($matches[1]));

@@ -1,0 +1,272 @@
+/* =============================================================================
+   showthread.css
+   Styles for: poll block, quick-reply spinner, moderation modals,
+               move-thread method picker, users-browsing card
+   ============================================================================= */
+
+/* ─── Poll block ────────────────────────────────────────────────────────────── */
+
+.poll-box {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.poll-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1.25rem;
+}
+
+.poll-question {
+  font-size: 1.05rem;
+  font-weight: 700;
+  flex: 1;
+}
+
+.poll-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--bs-primary, #0d6efd);
+  color: #fff;
+  padding: 0.25em 0.65em;
+  border-radius: 0.35rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Single option row */
+.poll-option {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.poll-option:last-child {
+  border-bottom: none;
+}
+
+.poll-option-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+  gap: 0.5rem;
+}
+
+.poll-option-label {
+  font-weight: 500;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.poll-option-count {
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--bs-body-color, #212529);
+}
+
+.poll-option-pct {
+  font-weight: 400;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+/* Progress bar track */
+.poll-bar-wrap {
+  height: 22px;
+  background: var(--bs-secondary-bg, #e9ecef);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+/* Progress bar fill */
+.poll-bar {
+  height: 100%;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  padding-left: 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fff;
+  transition: width 0.65s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.poll-bar-leading {
+  background: var(--bs-primary, #0d6efd);
+}
+
+.poll-bar-normal {
+  background: var(--bs-secondary, #6c757d);
+  opacity: 0.65;
+}
+
+.poll-bar-label {
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Voted checkmark */
+.poll-voted-star {
+  color: var(--bs-success, #198754);
+  font-weight: 700;
+  margin-left: 0.3em;
+}
+
+/* Voting inputs */
+.poll-option-vote {
+  padding: 0.5rem 0;
+}
+
+.poll-vote-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-weight: 400;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.poll-input {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+/* Status / meta row */
+.poll-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.poll-status-voted {
+  color: var(--bs-success, #198754);
+  font-weight: 500;
+}
+
+.poll-undo-link,
+.poll-edit-link,
+.poll-results-link {
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.poll-undo-link:hover,
+.poll-edit-link:hover,
+.poll-results-link:hover {
+  text-decoration: underline;
+}
+
+.poll-closes,
+.poll-public-note {
+  color: var(--bs-secondary-color, #6c757d);
+  font-size: 0.875rem;
+}
+
+.poll-total {
+  text-align: right;
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color, #6c757d);
+  margin-top: 0.5rem;
+}
+
+/* Footer */
+.poll-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  border-top: none;
+}
+
+.poll-footer-left,
+.poll-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* ─── Quick-reply spinner ────────────────────────────────────────────────────── */
+
+.showthread_spinner {
+  text-align: center;
+  font-size: 1.5rem;
+  color: #0b59e0;
+  padding: 1rem 0;
+}
+
+/* ─── Delete-thread modal ────────────────────────────────────────────────────── */
+
+.dt-thread-preview {
+  background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #e53e3e;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.btn-delete-thread {
+  background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+  border: none;
+  padding: 0.6rem 1.8rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #fff;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.btn-delete-thread:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(229, 62, 62, 0.3);
+}
+
+.btn-delete-thread:disabled {
+  opacity: 0.55;
+}
+
+#deleteThreadModal .form-check-input:checked {
+  background-color: #e53e3e;
+  border-color: #e53e3e;
+}
+
+/* ─── Move-thread method picker ─────────────────────────────────────────────── */
+
+.mt-method-option {
+  cursor: pointer;
+  border: 2px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.mt-method-option:hover {
+  background-color: #f8f9fa;
+}
+
+.mt-method-option.selected {
+  border-color: var(--bs-primary, #0d6efd);
+  background-color: #e7f1ff;
+}
+
+/* ─── Users browsing ─────────────────────────────────────────────────────────── */
+
+.card.bg-nav {
+  font-size: 0.9rem;
+}
+
+/* ─── Inline moderation ──────────────────────────────────────────────────────── */
+
+#inlinemoderation_options .form-select,
+#moderator_options .form-select {
+  min-width: 220px;
+}

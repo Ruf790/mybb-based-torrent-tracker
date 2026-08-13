@@ -1276,9 +1276,9 @@ if (!empty($t_image_url))
     if (in_array($ImageExt, $AllowedFileTypes, true)) 
     {
         // УБИРАЕМ getimagesize() для URL - он не работает с удаленными файлами
-        include_once(INC_PATH . '/functions_ts_remote_connect.php');
+        include_once(INC_PATH . '/functions_remote_connect.php');
 
-        if ($ImageContents = TS_Fetch_Data($t_image_url, false)) 
+        if ($ImageContents = fetch_remote_file($t_image_url, false)) 
         {
             $NewImageURL = $torrent_dir . '/images/' . $id . '.' . $ImageExt;
 
@@ -1310,7 +1310,7 @@ if (!empty($t_image_url2))
         // УБИРАЕМ getimagesize() для URL - он не работает с удаленными файлами
         include_once(INC_PATH . '/functions_ts_remote_connect.php');
 
-        if ($ImageContents = TS_Fetch_Data($t_image_url2, false)) 
+        if ($ImageContents = fetch_remote_file($t_image_url2, false)) 
         {
             $NewImageURL = $torrent_dir . '/images/' . $id . '_2.' . $ImageExt;
 

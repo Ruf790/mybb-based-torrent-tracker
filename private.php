@@ -313,112 +313,6 @@ if ($maxpmquotedepth !== 0) {
         $bcc = htmlspecialchars_uni(implode(', ', array_unique(array_map('trim', explode(',', $mybb->get_input('bcc'))))));
     }
 
-    $autocompletejs = '<script type="text/javascript">
-document.addEventListener("DOMContentLoaded", function() {
-    var container = document.getElementById(\'to-container\');
-    var toInput = document.getElementById(\'to\');
-    if (!container || !toInput) return;
-    var maxRecipients = parseInt(toInput.getAttribute(\'data-max-recipients\')) || 5;
-    var input = container.querySelector(\'.select2-tags-input\');
-    if (!input) return;
-    var recipients = [];
-    var debounceTimer = null;
-    if (toInput.value) {
-        toInput.value.split(\',\').map(v => v.trim()).filter(v => v !== \'\').forEach(v => addRecipient(v, true));
-    }
-    var dropdown = document.createElement(\'div\');
-    dropdown.className = \'select2-dropdown\';
-    dropdown.style.cssText = \'position:absolute;background:white;border:1px solid #ddd;border-radius:4px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 2px 8px rgba(0,0,0,.1);display:none;\';
-    document.body.appendChild(dropdown);
-    var errorDisplay = document.createElement(\'div\');
-    errorDisplay.style.cssText = \'color:#dc3545;font-size:12px;margin-top:5px;display:none;\';
-    container.parentNode.insertBefore(errorDisplay, container.nextSibling);
-    function addRecipient(username, skipDuplicateCheck) {
-        if (recipients.length >= maxRecipients) { showLimitMessage(); return; }
-        if (!skipDuplicateCheck && recipients.includes(username)) return;
-        recipients.push(username);
-        var tag = document.createElement(\'div\');
-        tag.style.cssText = \'display:inline-flex;align-items:center;background:#e9ecef;border-radius:16px;padding:4px 8px;font-size:14px;color:#495057;margin:2px;\';
-        var textSpan = document.createElement(\'span\');
-        textSpan.textContent = username;
-        textSpan.style.marginRight = \'6px\';
-        tag.appendChild(textSpan);
-        var removeBtn = document.createElement(\'button\');
-        removeBtn.textContent = \'×\';
-        removeBtn.style.cssText = \'background:none;border:none;color:#6c757d;font-size:16px;cursor:pointer;padding:0;\';
-        removeBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); removeRecipient(username); };
-        tag.appendChild(removeBtn);
-        container.insertBefore(tag, input);
-        toInput.value = recipients.join(\', \');
-        input.value = \'\';
-        enableInput();
-        dropdown.style.display = \'none\';
-        if (recipients.length >= maxRecipients) showLimitMessage();
-        updateCounter();
-    }
-    function removeRecipient(username) {
-        var idx = recipients.indexOf(username);
-        if (idx > -1) { recipients.splice(idx, 1); toInput.value = recipients.join(\', \'); redrawTags(); enableInput(); updateCounter(); }
-    }
-    function redrawTags() {
-        container.querySelectorAll(\'div:not(.select2-tags-input)\').forEach(t => container.removeChild(t));
-        recipients.forEach(u => {
-            var tag = document.createElement(\'div\');
-            tag.style.cssText = \'display:inline-flex;align-items:center;background:#e9ecef;border-radius:16px;padding:4px 8px;font-size:14px;color:#495057;margin:2px;\';
-            var s = document.createElement(\'span\'); s.textContent = u; s.style.marginRight = \'6px\'; tag.appendChild(s);
-            var b = document.createElement(\'button\'); b.textContent = \'×\'; b.style.cssText = \'background:none;border:none;color:#6c757d;font-size:16px;cursor:pointer;padding:0;\';
-            b.onclick = e => { e.preventDefault(); e.stopPropagation(); removeRecipient(u); }; tag.appendChild(b);
-            container.insertBefore(tag, input);
-        });
-    }
-    function showLimitMessage() {
-        var msg = \'You are only allowed to send messages to \' + maxRecipients + \' users at a time\';
-        showMessage(msg); disableInput();
-        errorDisplay.textContent = msg; errorDisplay.style.display = \'block\';
-    }
-    function enableInput()  { input.disabled = false; input.placeholder = \'Search for users\'; container.style.opacity = \'1\'; container.style.borderColor = \'#ddd\'; errorDisplay.style.display = \'none\'; }
-    function disableInput() { input.disabled = true; input.placeholder = \'Maximum recipients reached (\' + maxRecipients + \')\'; container.style.opacity = \'0.7\'; container.style.borderColor = \'#dc3545\'; }
-    function searchUsers(q) {
-        if (q.length < 2) { dropdown.style.display = \'none\'; return; }
-        fetch(\'xmlhttp.php?action=get_users&query=\' + encodeURIComponent(q))
-            .then(r => r.json()).then(displayResults).catch(() => dropdown.style.display = \'none\');
-    }
-    function displayResults(users) {
-        dropdown.innerHTML = \'\';
-        if (!users || !users.length) { showMessage(\'No matches found\'); return; }
-        users.forEach(u => {
-            var name = u.username || u.text || u.name || u.label || \'\';
-            var item = document.createElement(\'div\');
-            item.textContent = name;
-            item.style.cssText = \'padding:8px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-size:14px;background:white;color:black;\';
-            item.onmouseover = () => { item.style.background = \'#007bff\'; item.style.color = \'white\'; };
-            item.onmouseout  = () => { item.style.background = \'white\';   item.style.color = \'black\'; };
-            item.onclick     = () => addRecipient(name);
-            dropdown.appendChild(item);
-        });
-        dropdown.style.display = \'block\'; updateDropdownPosition();
-    }
-    function showMessage(msg) { dropdown.innerHTML = \'<div style="padding:8px 12px;color:#666;font-style:italic;font-size:14px;">\' + msg + \'</div>\'; dropdown.style.display = \'block\'; updateDropdownPosition(); }
-    function updateDropdownPosition() { var r = container.getBoundingClientRect(); dropdown.style.top = (r.bottom + window.scrollY) + \'px\'; dropdown.style.left = (r.left + window.scrollX) + \'px\'; dropdown.style.width = r.width + \'px\'; }
-    function updateCounter() {
-        var c = document.getElementById(\'recipientCounter\');
-        if (!c) return;
-        c.innerHTML = \'<i class="fas fa-user-plus me-1"></i> Recipients: \' + recipients.length + \'/\' + maxRecipients;
-        c.style.color = recipients.length >= maxRecipients ? \'#dc3545\' : \'\';
-    }
-    input.addEventListener(\'focus\', () => { container.style.borderColor = recipients.length >= maxRecipients ? \'#dc3545\' : \'#007bff\'; container.style.boxShadow = \'0 0 0 2px rgba(0,123,255,.25)\'; if (input.value.trim().length >= 2) searchUsers(input.value.trim()); });
-    input.addEventListener(\'blur\',  () => setTimeout(() => { container.style.borderColor = recipients.length >= maxRecipients ? \'#dc3545\' : \'#ddd\'; container.style.boxShadow = \'none\'; dropdown.style.display = \'none\'; }, 200));
-    input.addEventListener(\'input\', e => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => searchUsers(e.target.value.trim()), 300); });
-    input.addEventListener(\'keydown\', e => {
-        if (e.key === \'Enter\' && input.value.trim().length >= 2) { e.preventDefault(); addRecipient(input.value.trim()); }
-        else if (e.key === \'Backspace\' && input.value === \'\' && recipients.length > 0) { e.preventDefault(); removeRecipient(recipients[recipients.length - 1]); }
-    });
-    window.addEventListener(\'resize\', updateDropdownPosition);
-    document.addEventListener(\'click\', e => { if (!container.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = \'none\'; });
-    updateCounter();
-});
-</script>';
-
     $pmid = $mybb->get_input('pmid', MyBB::INPUT_INT);
     $do   = $mybb->get_input('do');
     if (!in_array($do, ['forward', 'reply', 'replyall'])) $do = '';
@@ -533,11 +427,7 @@ if ($action === 'read') {
         exit;
     }
 
-    //if (isset($groupscache[$pm['usergroup']])) {
-    //    foreach (['title' => 'grouptitle', 'usertitle' => 'groupusertitle', 'image' => 'groupimage', 'namestyle' => 'namestyle'] as $field => $key) {
-    //        $pm[$key] = $groupscache[$pm['usergroup']][$field];
-    //    }
-    //}
+ 
 	
 	if (!empty($pm['usergroup']) && isset($groupscache[$pm['usergroup']])) 
 	{
@@ -712,7 +602,7 @@ if ($action === 'tracking') {
 
     $readmessages = '';
     $query = $db->sql_query_prepared("
-        SELECT pm.pmid, pm.subject, pm.toid, pm.readtime, u.username as tousername
+        SELECT pm.pmid, pm.subject, pm.toid, pm.readtime, u.username as tousername, u.avatar, u.avatardimensions
         FROM privatemessages pm
         LEFT JOIN users u ON (u.id = pm.toid)
         WHERE pm.receipt = '2' AND pm.folder != '3' AND pm.status != '0' AND pm.fromid = ?
@@ -724,9 +614,16 @@ if ($action === 'tracking') {
         $rm['tousername']  = htmlspecialchars_uni($rm['tousername']);
         $rm['profilelink'] = build_profile_link($rm['tousername'], $rm['toid']);
         $readdate          = my_datee('relative', $rm['readtime']);
+        // FIX: было <avatarep_uid_[N]> - незакрытый/несуществующий тег,
+        // браузер его молча игнорировал, аватар никогда не показывался.
+        // Тот же паттерн format_avatar()/$ava_img, что и в основном инбоксе.
+        $rm_useravatar = format_avatar($rm['avatar'], $rm['avatardimensions']);
+        $rm_ava_img = str_starts_with($rm_useravatar['image'], '<')
+            ? '<svg class="nav-avatar rounded border" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">No Avatar</text></svg>'
+            : '<img class="user-avatar" src="' . $rm_useravatar['image'] . '" alt="" ' . $rm_useravatar['width_height'] . ' />';
         $readmessages .= '<div class="card mb-0 border-0"><div class="card-body pt-0 inline_row">
             <div class="row g-2 pb-3 border-bottom mb-0">
-                <div class="col-auto col-lg-1 align-self-center"><avatarep_uid_[' . $rm['toid'] . ']></div>
+                <div class="col-auto col-lg-1 align-self-center">' . $rm_ava_img . '</div>
                 <div class="col align-self-center">
                     <h6 class="mb-0 text-forum">' . $rm['subject'] . '</h6>
                     <span class="links small">' . $rm['profilelink'] . '</span>
@@ -759,7 +656,7 @@ if ($action === 'tracking') {
 
     $unreadmessages = '';
     $query = $db->sql_query_prepared(
-        'SELECT pm.pmid, pm.subject, pm.toid, pm.dateline, u.username AS tousername
+        'SELECT pm.pmid, pm.subject, pm.toid, pm.dateline, u.username AS tousername, u.avatar, u.avatardimensions
          FROM privatemessages pm LEFT JOIN users u ON u.id = pm.toid
          WHERE pm.receipt = ? AND pm.folder != ? AND pm.status = ? AND pm.fromid = ?
          ORDER BY pm.dateline DESC LIMIT ?, ?',
@@ -770,9 +667,15 @@ if ($action === 'tracking') {
         $um['tousername']  = htmlspecialchars_uni($um['tousername']);
         $um['profilelink'] = build_profile_link($um['tousername'], $um['toid']);
         $senddate          = my_datee('relative', $um['dateline']);
+        // FIX: тот же сломанный <avatarep_uid_[N]> плейсхолдер, что и в блоке
+        // read-сообщений выше.
+        $um_useravatar = format_avatar($um['avatar'], $um['avatardimensions']);
+        $um_ava_img = str_starts_with($um_useravatar['image'], '<')
+            ? '<svg class="nav-avatar rounded border" width="50" height="50" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/><text x="50" y="55" text-anchor="middle" font-size="12" fill="#666">No Avatar</text></svg>'
+            : '<img class="user-avatar" src="' . $um_useravatar['image'] . '" alt="" ' . $um_useravatar['width_height'] . ' />';
         $unreadmessages .= '<div class="card mb-0 border-0"><div class="card-body pt-0 inline_row">
             <div class="row g-2 pb-3 border-bottom mb-0">
-                <div class="col-auto col-lg-1 align-self-center"><avatarep_uid_[' . $um['toid'] . ']></div>
+                <div class="col-auto col-lg-1 align-self-center">' . $um_ava_img . '</div>
                 <div class="col align-self-center">
                     <h6 class="mb-0 text-forum">' . $um['subject'] . '</h6>
                     <span class="links small">' . $um['profilelink'] . '</span>
@@ -1174,11 +1077,9 @@ if (!$mybb->input['action']) {
                     <span class="text-muted small"><i class="fas fa-user me-1"></i>' . $tofromusername . '</span>
                 </div>
             </div>
-            <div class="col-auto d-none d-lg-block">
-                <span class="status-badge ' . $badge_class . '" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top" data-bs-title="' . $popover_title . '" data-bs-content="' . $popover_content . '" data-bs-container="body" title="' . $msgalt . '">' . $fa_icon_html . '</span>
-            </div>
-            <div class="col-lg-3">
-                <div class="d-flex align-items-center justify-content-end gap-3">
+            <div class="col-12 col-lg-5">
+                <div class="d-flex align-items-center justify-content-lg-end gap-2 flex-nowrap">
+                    <span class="status-badge ' . $badge_class . ' d-none d-lg-inline-flex flex-shrink-0" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top" data-bs-title="' . $popover_title . '" data-bs-content="' . $popover_content . '" data-bs-container="body" title="' . $msgalt . '">' . $fa_icon_html . '</span>
                     <span class="text-muted small text-nowrap"><i class="far fa-clock me-1"></i>' . $senddate . '</span>
                     <div class="form-check form-switch message-select-switch">
                         <input type="checkbox" class="form-check-input message-select-toggle" name="check[' . $message['pmid'] . ']" value="1" id="select-' . $message['pmid'] . '" data-pmid="' . $message['pmid'] . '">
@@ -1266,7 +1167,7 @@ if (!$mybb->input['action']) {
     </div>
 </div></div>
 <style>
-.status-badge { display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;font-size:16px;transition:all .3s;cursor:default;border:1px solid transparent;box-shadow:0 3px 8px rgba(0,0,0,.08); }
+.status-badge { display:inline-flex !important; flex-shrink:0 !important; position:static !important; top:auto !important; left:auto !important; right:auto !important; bottom:auto !important; margin:0 !important; float:none !important; align-items:center;justify-content:center;width:40px;height:40px;min-width:40px;min-height:40px;border-radius:10px;font-size:16px;transition:all .3s;cursor:default;border:1px solid transparent;box-shadow:0 3px 8px rgba(0,0,0,.08); }
 .status-badge:hover { transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,0,0,.12); }
 .status-badge.status-new { background:linear-gradient(135deg,rgba(231,76,60,.15),rgba(231,76,60,.08));color:#e74c3c;border-color:rgba(231,76,60,.2);animation:pulse-glow 2s infinite; }
 .status-badge.status-read { background:linear-gradient(135deg,rgba(149,165,166,.15),rgba(149,165,166,.08));color:#95a5a6;border-color:rgba(149,165,166,.2); }

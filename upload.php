@@ -1295,9 +1295,9 @@ if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
         // Используем include из functions_ts_remote_connect.php если есть
         // иначе file_get_contents с подавлением ошибок
         $imgData = false;
-        if (file_exists(INC_PATH . '/functions_ts_remote_connect.php')) {
-            include_once(INC_PATH . '/functions_ts_remote_connect.php');
-            $imgData = TS_Fetch_Data($screenshotUrl, false);
+        if (file_exists(INC_PATH . '/functions_remote_connect.php')) {
+            include_once(INC_PATH . '/functions_remote_connect.php');
+            $imgData = fetch_remote_file($screenshotUrl, false);
         } else {
             $context = stream_context_create([
                 'http' => [

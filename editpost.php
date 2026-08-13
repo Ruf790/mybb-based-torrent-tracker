@@ -86,14 +86,8 @@ if ($forum['open'] == 0 && !$is_mod) {
     print_no_permission();
 }
 
-// Add prefix to breadcrumb
+
 $breadcrumbprefix = '';
-if ($thread['prefix']) {
-    $threadprefixes = build_prefixes();
-    if (!empty($threadprefixes[$thread['prefix']])) {
-        $breadcrumbprefix = $threadprefixes[$thread['prefix']]['displaystyle'].'&nbsp;';
-    }
-}
 
 // Make navigation
 build_forum_breadcrumb($fid);
@@ -370,7 +364,6 @@ if ($mybb->input['action'] == "do_editpost" && $mybb->request_method == "post") 
         "pid" => $mybb->input['pid'],
         "prefix" => $mybb->get_input('threadprefix', MyBB::INPUT_INT),
         "subject" => $mybb->get_input('subject'),
-        "icon" => $mybb->get_input('icon', MyBB::INPUT_INT),
         "uid" => $post['uid'],
         "username" => $post['username'],
         "edit_uid" => $CURUSER['id'],
@@ -417,13 +410,13 @@ if ($mybb->input['action'] == "do_editpost" && $mybb->request_method == "post") 
             $redirect_postedited = $lang->editpost['redirect_postedited_poll'] ?? 'Post edited - redirect to poll';
         } elseif ($visible == 0 && $first_post && !$is_mod) {
             // Moderated post
-            $redirect_postedited .= $lang->editpost['redirect_thread_moderation'] ?? 'Thread awaiting moderation';
+            $redirect_postedited = $lang->editpost['redirect_thread_moderation'] ?? 'Thread awaiting moderation';
             $url = get_forum_link($fid);
         } elseif ($visible == 0 && !$is_mod) {
-            $redirect_postedited .= $lang->editpost['redirect_post_moderation'] ?? 'Post awaiting moderation';
+            $redirect_postedited = $lang->editpost['redirect_post_moderation'] ?? 'Post awaiting moderation';
             $url = get_thread_link($tid);
         } else {
-            $redirect_postedited .= $lang->editpost['redirect_postedited_redirect'] ?? 'Post edited';
+            $redirect_postedited = $lang->editpost['redirect_postedited_redirect'] ?? 'Post edited';
             $url = get_post_link($pid, $tid)."#pid{$pid}";
         }
         $plugins->run_hooks("editpost_do_editpost_end");
@@ -436,13 +429,6 @@ if (!$mybb->input['action'] || $mybb->input['action'] == "editpost") {
     $plugins->run_hooks("editpost_action_start");
 
     $preview = '';
-    if (!isset($mybb->input['previewpost'])) {
-        $icon = $post['icon'];
-    }
-
-    //if ($forum['allowpicons'] != 0) {
-    //    $posticons = get_post_icons();
-   // }
 
     $CURUSER['username'] = htmlspecialchars_uni($CURUSER['username']);
 
@@ -777,7 +763,6 @@ $deletebox .= $modal_delete;
             "pid" => $mybb->input['pid'],
             "prefix" => $mybb->get_input('threadprefix', MyBB::INPUT_INT),
             "subject" => $mybb->get_input('subject'),
-            "icon" => $mybb->get_input('icon', MyBB::INPUT_INT),
             "uid" => $post['uid'],
             "username" => $post['username'],
             "edit_uid" => $CURUSER['id'],
@@ -860,7 +845,6 @@ $deletebox .= $modal_delete;
         // Set the values of the post info array.
         $postinfo['message'] = $previewmessage;
         $postinfo['subject'] = $previewsubject;
-        $postinfo['icon'] = $icon;
         $postinfo['smilieoff'] = $postoptions['disablesmilies'];
 
         $postbit = build_postbit($postinfo, 1);
@@ -868,25 +852,34 @@ $deletebox .= $modal_delete;
     } elseif (!$post_errors) {
         $preview = '';
 
-        //if ($post['includesig'] != 0) {
-        //    $postoptionschecked['signature'] = " checked=\"checked\"";
-        //}
 
-        //if ($post['smilieoff'] == 1) {
-            //$postoptionschecked['disablesmilies'] = " checked=\"checked\"";
-        //}
 
         $subscription_method = get_subscription_method((int)$tid, $postoptions);
         ${$subscription_method.'subscribe'} = "checked=\"checked\" ";
     }
 
-    // Generate thread prefix selector if this is the first post of the thread
+   
     if ($thread['firstpost'] == $pid) {
         if (!$mybb->get_input('threadprefix', MyBB::INPUT_INT)) {
             $mybb->input['threadprefix'] = $thread['prefix'];
         }
-    } else {
-        $prefixselect = "";
+    }
+    $prefixselect = "";
+
+   
+    $closeoption = '';
+    $stickoption = '';
+    if ($is_mod) {
+        $closeoption = '
+        <div class="form-check mb-2">
+            <input type="checkbox" class="form-check-input" name="postoptions[closethread]" id="closethread" value="1"' . (($thread['closed'] ?? 0) == 1 ? ' checked="checked"' : '') . ' />
+            <label class="form-check-label" for="closethread">' . ($lang->editpost['close_thread'] ?? 'Close Thread') . '</label>
+        </div>';
+        $stickoption = '
+        <div class="form-check">
+            <input type="checkbox" class="form-check-input" name="postoptions[stickthread]" id="stickthread" value="1"' . (($thread['sticky'] ?? 0) == 1 ? ' checked="checked"' : '') . ' />
+            <label class="form-check-label" for="stickthread">' . ($lang->editpost['stick_thread'] ?? 'Stick Thread') . '</label>
+        </div>';
     }
 
     $editreason = '';
@@ -963,11 +956,36 @@ $deletebox .= $modal_delete;
 		
 		
 		';
+
+        // FIX: панель #collapse-pollop раньше вставлялась как голый HTML
+        // без всякого условия ниже по шаблону, независимо от того, есть ли
+        // вообще кнопка-триггер ($pollbox) её открыть - отсюда "Undefined
+        // variable $postpollchecked/$numpolloptions", когда условие выше
+        // ложное (не мод / уже есть опрос / не первый пост). Строим панель
+        // тем же условием, что и саму кнопку.
+        $pollpanel = '
+<!-- pollop -->
+<div id="collapse-pollop" class="collapse mt-4">
+<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['poll'].'</div>
+<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
+<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
+'.$lang->editpost['poll'].'
+</div>
+<div class="col">
+<div class="text-desc mb-3">'.$lang->editpost['poll_desc'].'</div>
+<label><input type="checkbox" class="form-check-input" name="postpoll" value="1" '.$postpollchecked.' />&nbsp; '.$lang->editpost['poll_check'].'</label>	
+<div class="mt-3">'.$lang->editpost['num_options'].'<input type="text" class="form-control border form-control-sm border" style="width: 250px" name="numpolloptions" value="'.$numpolloptions.'" size="10" /> &nbsp;'.$lang->editpost['max_options'].'
+</div>	
+</div>
+</div>
+</div>
+<!-- pollop -->';
 		
 		
 		
     } else {
         $pollbox = '';
+        $pollpanel = '';
     }
 
     $signature = '';
@@ -1074,21 +1092,7 @@ $deletebox .= $modal_delete;
 		
 
 <!-- pollop -->
-<div id="collapse-pollop" class="collapse mt-4">
-<div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['poll'].'</div>
-<div class="row g-3 border-bottom m-auto pb-4 pt-0 mb-2">
-<div class="col-lg-3 d-none d-sm-none d-md-none d-lg-block text-center text-sm-center text-md-center text-lg-end border-end text-16 fw-bold pe-3 me-3">
-'.$lang->editpost['poll'].'
-</div>
-<div class="col">
-<div class="text-desc mb-3">'.$lang->editpost['poll_desc'].'</div>
-<label><input type="checkbox" class="form-check-input" name="postpoll" value="1" '.$postpollchecked.' />&nbsp; '.$lang->editpost['poll_check'].'</label>	
-<div class="mt-3">'.$lang->editpost['num_options'].'<input type="text" class="form-control border form-control-sm border" style="width: 250px" name="numpolloptions" value="'.$numpolloptions.'" size="10" /> &nbsp;'.$lang->editpost['max_options'].'
-</div>	
-</div>
-</div>
-</div>
-<!-- pollop -->	
+'.$pollpanel.'
  <!-- attach -->
 <div id="collapse-attach" class="collapse mt-4">
 <div class="bg-nav p-2 rounded text-16 d-block d-sm-block d-md-block d-lg-none mb-3">'.$lang->editpost['attachments'].'</div>

@@ -25,7 +25,7 @@ require_once INC_PATH . '/editor.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_timezone.php';
 require_once INC_PATH . '/functions_user.php';
-require_once INC_PATH . '/functions_ts_remote_connect.php';
+require_once INC_PATH . '/functions_remote_connect.php';
 require_once INC_PATH . '/class_parser.php';
 require_once INC_PATH . '/datahandler.php';
 

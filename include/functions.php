@@ -81,22 +81,14 @@ function get_user_by_username(string $username, array $options = []): array|bool
     global $db;
 
     $username = my_strtolower($username);
-    $method   = (int) ($options['username_method'] ?? 0);
 
-    $field  = match($db->type) {
+    $field = match($db->type) {
         'mysql', 'mysqli' => 'username',
         default           => 'LOWER(username)',
     };
-    $efield = match($db->type) {
-        'mysql', 'mysqli' => 'email',
-        default           => 'LOWER(email)',
-    };
 
-    [$sqlwhere, $params] = match($method) {
-        1       => ["{$efield}=?", [$username]],
-        2       => ["{$field}=? OR {$efield}=?", [$username, $username]],
-        default => ["{$field}=?", [$username]],
-    };
+    $sqlwhere = "{$field}=?";
+    $params   = [$username];
 
     $fields = ($options['fields'] ?? null) === '*'
         ? '*'
@@ -236,27 +228,6 @@ function stdfoot(): void
     global $SITENAME, $BASEURL, $CURUSER, $rootpath, $lang, $usergroups, $db, $mybb, $maintimer, $cache, $session;    
     
     include(INC_PATH.'/templates/default/footer.php');    
-}
-
-function jumpbutton(array|string $where): string
-{
-    // Если передали строку, оборачиваем в массив
-    if (!is_array($where)) {
-        $where = [$where];
-    }
-
-    $str = '<div class="hoptobuttons d-flex flex-wrap gap-2 justify-content-center">';
-
-    foreach ($where as $value => $jump) {
-        if (!empty($value) && !empty($jump)) {
-            $str .= '<a href="' . htmlspecialchars($jump ?? '') . '" class="btn btn-primary">'
-                 . htmlspecialchars($value) . '</a>';
-        }
-    }
-
-    $str .= '</div>';
-
-    return $str;
 }
 
 
@@ -921,54 +892,7 @@ function is_super_admin(int $uid): bool
     return str_contains(",{$super_admins},", ",{$uid},");
 }
 
-function my_escape_csv(string $string, bool $escape_active_content = true): string
-{
-    if($escape_active_content) {
-        $active_content_triggers = ['=', '+', '-', '@'];
-        $delimiters = [',', ';', ':', '|', '^', "\n", "\t", " "];
 
-        $first_character = mb_substr($string, 0, 1);
-
-        if(
-            in_array($first_character, $active_content_triggers, true) ||
-            in_array($first_character, $delimiters, true)
-        ) {
-            $string = "'".$string;
-        }
-
-        foreach($delimiters as $delimiter) {
-            foreach($active_content_triggers as $trigger) {
-                $string = str_replace($delimiter.$trigger, $delimiter."'".$trigger, $string);
-            }
-        }
-    }
-
-    $string = str_replace('"', '""', $string);
-
-    return $string;
-}
-
-function my_hash_equals(string $known_string, string $user_string): bool
-{
-    if(version_compare(PHP_VERSION, '5.6.0', '>=')) {
-        return hash_equals($known_string, $user_string);
-    } else {
-        $known_string_length = my_strlen($known_string);
-        $user_string_length = my_strlen($user_string);
-
-        if($user_string_length != $known_string_length) {
-            return false;
-        }
-
-        $result = 0;
-
-        for($i = 0; $i < $known_string_length; $i++) {
-            $result |= ord($known_string[$i]) ^ ord($user_string[$i]);
-        }
-
-        return $result === 0;
-    }
-}
 
 function add_shutdown(callable $name, array $arguments = []): bool
 {
@@ -2825,43 +2749,85 @@ function format_name(string $username, int|string $usergroup, int|string|null $d
 
 function maxsysop(): void
 {
-    global $CURUSER, $mybb, $lang;
+    global $CURUSER, $mybb, $lang, $SITENAME, $db;
 
-    if (is_mod($mybb->usergroup)) 
-	{
+    if (is_mod($mybb->usergroup)) {
         $staff_file = CONFIG_DIR . '/STAFFTEAM';
-        if (file_exists($staff_file)) 
-		{
+        if (file_exists($staff_file)) {
             $results = explode(',', file_get_contents($staff_file));
-            if (!in_array($CURUSER['username'] . ':' . $CURUSER['id'], $results, true))
-			{
+            if (!in_array($CURUSER['username'] . ':' . $CURUSER['id'], $results, true)) {
                 require_once INC_PATH . '/functions_pm.php';
-				require_once INC_PATH . '/datahandler.php';
-               
-			   $ip = get_ip();
-			   $reasons = 'not in STAFFTEAM file';
-				
-				
-				$msg = "Fake Staff Detected:"
-         . " Username={$CURUSER['username']}"
-         . " ID={$CURUSER['id']}"
-         . " IP={$ip}"
-         . " Reasons=[{$reasons}]";
-				
-				$pm = [
-                  'subject' => 'Security Alert: Fake Staff Account',
-                  'message' => $msg,
-                  'touid'   => '1',
-                ];
-                $pm['sender']['uid'] = -1;
-                send_pm($pm, -1, true);
-				
-				
-				
-				
-                write_log('Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $CURUSER['id'] . ' - UserIP : ' . get_ip(), 'Warning: Fake Account Detected!');
-               
-				stderr($lang->global['fakeaccount'], $SITENAME . ' - Access Denied', 403, '403');
+                require_once INC_PATH . '/datahandler.php';
+
+                $ip = get_ip();
+                $reasons = 'not in STAFFTEAM file';
+                $uid = (int)$CURUSER['id'];
+                $is_protected = is_super_admin($uid);
+
+                if (!$is_protected) {
+                   
+                    $db->sql_query_prepared(
+                        "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        [
+                            $uid,
+                            9,
+                            (int)$mybb->user['usergroup'],
+                            (string)($mybb->user['additionalgroups'] ?? ''),
+                            (int)($mybb->user['displaygroup'] ?? 0),
+                            1,
+                            TIMENOW,
+                            '---',
+                            0,
+                            'Auto-ban: fake staff detected (not in STAFFTEAM file)',
+                        ]
+                    );
+
+                    $db->sql_query_prepared(
+                        "UPDATE users SET usergroup = 9, displaygroup = 0, additionalgroups = '' WHERE id = ?",
+                        [$uid]
+                    );
+                }
+
+                $action_text = $is_protected
+                    ? 'Action=SUPER ADMIN - ban skipped, manual review required!'
+                    : 'Action=Permanently banned';
+
+                $msg = "Fake Staff Detected:"
+                     . " Username={$CURUSER['username']}"
+                     . " ID={$uid}"
+                     . " IP={$ip}"
+                     . " Reasons=[{$reasons}]"
+                     . " {$action_text}";
+
+                // Супер-админа не троттлим - каждое такое срабатывание важно увидеть сразу
+                $alert_file = CONFIG_DIR . '/fakestaff_alerts.json';
+                $alerts = file_exists($alert_file)
+                    ? (json_decode(file_get_contents($alert_file), true) ?: [])
+                    : [];
+
+                $uid_key = (string)$uid;
+                $last_alert = (int)($alerts[$uid_key] ?? 0);
+
+                if ($is_protected || (TIMENOW - $last_alert) > 1800) {
+                    $pm = [
+                        'subject' => $is_protected
+                            ? 'URGENT: Super Admin Not In STAFFTEAM'
+                            : 'Security Alert: Fake Staff Account Banned',
+                        'message' => $msg,
+                        'touid'   => '1',
+                    ];
+                    $pm['sender']['uid'] = -1;
+                    send_pm($pm, -1, true);
+
+                    if (!$is_protected) {
+                        $alerts[$uid_key] = TIMENOW;
+                        file_put_contents($alert_file, json_encode($alerts), LOCK_EX);
+                    }
+                }
+
+                write_log('Fake Account Detected: Username: ' . $CURUSER['username'] . ' - UserID: ' . $uid . ' - UserIP : ' . $ip, $is_protected ? 'CRITICAL: Super Admin Not In STAFFTEAM!' : 'Warning: Fake Account Detected - Banned!');
+
+                stderr($lang->global['fakeaccount'], $SITENAME . ' - Access Denied', 403, '403');
             }
         }
     }
@@ -3190,30 +3156,27 @@ function error(string $error = "", string $title = ""): void
     exit;
 }
 
+
+
 function error_no_permission(): void
 {
     global $mybb, $theme, $templates, $db, $lang, $plugins, $session, $charset, $CURUSER;
-
     $time = TIMENOW;
     $plugins->run_hooks("no_permission");
-
     $noperm_array = [
         "nopermission" => '1',
         "location1" => 0,
         "location2" => 0
     ];
-
     $db->sql_query_prepared(
         "UPDATE sessions SET nopermission=?, location1=?, location2=? WHERE sid=?",
         [$noperm_array['nopermission'], $noperm_array['location1'], $noperm_array['location2'], $session->sid]
     );
-
     if($mybb->get_input('ajax', MyBB::INPUT_INT)) {
         header("Content-type: application/json; charset={$charset}");
         echo json_encode(["errors" => [$lang->error_nopermission_user_ajax]]);
         exit;
     }
-
     if (!empty($CURUSER['id'] ?? 0)) 
 	{
         $error_nopermission_user_username = sprintf('You are currently logged in with the username: '.htmlspecialchars_uni($CURUSER['username'] ?? '').'');
@@ -3235,27 +3198,8 @@ function error_no_permission(): void
         if($_SERVER['QUERY_STRING'] ?? '') {
             $redirect_url .= '?'.$_SERVER['QUERY_STRING'];
         }
-
         $redirect_url = htmlspecialchars_uni($redirect_url);
-        
-        $username_method = "0";
 
-        switch($username_method) {
-            case 0:
-                $lang_username = 'username';
-                break;
-            case 1:
-                $lang_username = 'username1';
-                break;
-            case 2:
-                $lang_username = 'username2';
-                break;
-            default:
-                $lang_username = 'username';
-                break;
-        }
-        
-		
 		$errorpage = ''.$lang->global['error_nopermission_guest_1'].'<br /><br />
 <ol>
 <li class="mb-2">'.$lang->global['error_nopermission_guest_2'].'</li>
@@ -3266,7 +3210,6 @@ function error_no_permission(): void
 		
 		
     }
-
     
 	error($errorpage);
 }
@@ -3652,36 +3595,6 @@ function get_date_time(int $timestamp = 0): string
 
     return date('Y-m-d H:i:s');
 }
-
-
-function check_email(string $email): bool
-{
-    return (bool)preg_match('#^[a-z0-9.!\\#$%&\'*+-/=?^_`{|}~]+@([0-9.]+|([^\\s\'"<>]+\\.+[a-z]{2,6}))$#si', $email);
-}
-
-
-
-function format_urls(string $s, string $target = '_blank'): string
-{
-    return preg_replace('/(\\A|[^=\\]\'"a-zA-Z0-9])((http|ftp|https|ftps|irc):\\/\\/[^()<>\\s]+)/i', '\\1<a href="\\2" target="' . $target . '">\\2</a>', $s);
-}
-
-// Вспомогательная функция для convert_int_to_utf8
-function convert_int_to_utf8(string $code): string
-{
-    $code = (int)$code;
-    if($code < 0x80) {
-        return chr($code);
-    } elseif($code < 0x800) {
-        return chr(0xC0 | ($code >> 6)) . chr(0x80 | ($code & 0x3F));
-    } elseif($code < 0x10000) {
-        return chr(0xE0 | ($code >> 12)) . chr(0x80 | (($code >> 6) & 0x3F)) . chr(0x80 | ($code & 0x3F));
-    } elseif($code < 0x200000) {
-        return chr(0xF0 | ($code >> 18)) . chr(0x80 | (($code >> 12) & 0x3F)) . chr(0x80 | (($code >> 6) & 0x3F)) . chr(0x80 | ($code & 0x3F));
-    }
-    return '';
-}
-
 
 
 // Функция format_avatar (уже обновленная ранее)

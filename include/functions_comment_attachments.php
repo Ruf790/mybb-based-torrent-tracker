@@ -127,27 +127,6 @@ function get_comment_attachments(int $comment_id): array
     return $atts;
 }
 
-/**
- * Получить вложения по posthash (черновик)
- */
-function get_draft_attachments(string $posthash, int $user_id): array
-{
-    global $db;
-    $result = $db->sql_query_prepared(
-        "SELECT * FROM attachments 
-         WHERE posthash = ?
-           AND uid = ?
-           AND comment_id = 0
-           AND pid = 0
-         ORDER BY dateuploaded ASC",
-        [$posthash, $user_id]
-    );
-    $atts = [];
-    while ($row = $db->fetch_array($result)) {
-        $atts[] = $row;
-    }
-    return $atts;
-}
 
 /**
  * Удалить все вложения комментария

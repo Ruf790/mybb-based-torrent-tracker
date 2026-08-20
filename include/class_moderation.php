@@ -1102,12 +1102,15 @@ class Moderation
                 $db->sql_query_prepared("UPDATE threads SET fid = ? WHERE tid = ?", [$new_fid, $tid]);
                 $db->sql_query_prepared("UPDATE posts SET fid = ? WHERE tid = ?", [$new_fid, $tid]);
 
-                $redirect_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'closed', 'sticky', 'visible', 'notes'];
-                $redirect_values  = [
-                    $thread['fid'], $thread['subject'], $thread['uid'], $thread['username'],
-                    $thread['dateline'], $thread['lastpost'], $thread['lastposteruid'], $thread['lastposter'],
-                    0, 0, "moved|{$tid}", $thread['sticky'], (int)$thread['visible'], '',
+                
+				$redirect_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'closed', 'sticky', 'visible'];
+                   $redirect_values  = [
+                       $thread['fid'], $thread['subject'], $thread['uid'], $thread['username'],
+                       $thread['dateline'], $thread['lastpost'], $thread['lastposteruid'], $thread['lastposter'],
+                       0, 0, "moved|{$tid}", $thread['sticky'], (int)$thread['visible'],
                 ];
+				
+
                 $placeholders = implode(',', array_fill(0, count($redirect_columns), '?'));
                 $db->sql_query_prepared(
                     "INSERT INTO threads (`" . implode('`,`', $redirect_columns) . "`) VALUES ({$placeholders})",
@@ -1133,12 +1136,12 @@ class Moderation
                 $copy_data = ['tid' => $tid, 'new_fid' => $new_fid];
                 $plugins->run_hooks('class_moderation_copy_thread', $copy_data);
 
-                $copy_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'closed', 'sticky', 'visible', 'attachmentcount', 'notes'];
+                $copy_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'closed', 'sticky', 'visible', 'attachmentcount'];
                 $copy_values  = [
                     $new_fid, $thread['subject'], $thread['uid'], $thread['username'], $thread['dateline'],
                     0, $thread['lastpost'], $thread['lastposteruid'], $thread['lastposter'],
                     $thread['views'], $thread['replies'], $thread['closed'], $thread['sticky'],
-                    (int)$thread['visible'], $thread['attachmentcount'], '',
+                    (int)$thread['visible'], $thread['attachmentcount'],
                 ];
                 $placeholders = implode(',', array_fill(0, count($copy_columns), '?'));
                 $db->sql_query_prepared(
@@ -1292,11 +1295,12 @@ class Moderation
             $q = $db->sql_query_prepared("SELECT uid, username, dateline FROM posts WHERE pid IN ({$ph}) ORDER BY dateline, pid LIMIT 1", $params);
             $post_info = $q ? $db->fetch_array($q) : null;
 
-            $split_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'visible', 'notes'];
-            $split_values  = [
+            $split_columns = ['fid', 'subject', 'uid', 'username', 'dateline', 'firstpost', 'lastpost', 'lastposteruid', 'lastposter', 'views', 'replies', 'visible'];
+            
+			$split_values  = [
                 $moveto, $newsubject, $post_info['uid'], $post_info['username'], $post_info['dateline'],
                 0, $post_info['dateline'], $post_info['uid'], $post_info['username'],
-                0, 0, (int)$thread['visible'], '',
+                0, 0, (int)$thread['visible'],
             ];
             $placeholders = implode(',', array_fill(0, count($split_columns), '?'));
             $db->sql_query_prepared(

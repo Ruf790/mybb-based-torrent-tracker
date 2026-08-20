@@ -7,6 +7,28 @@ if (!defined('FORUM_ACTIVE') || !defined('APP_INITIALIZED') || !defined('FORUM_S
 }
 
 
+function my_hash_equals(string $known_string, string $user_string): bool
+{
+    if(version_compare(PHP_VERSION, '5.6.0', '>=')) {
+        return hash_equals($known_string, $user_string);
+    } else {
+        $known_string_length = my_strlen($known_string);
+        $user_string_length = my_strlen($user_string);
+
+        if($user_string_length != $known_string_length) {
+            return false;
+        }
+
+        $result = 0;
+
+        for($i = 0; $i < $known_string_length; $i++) {
+            $result |= ord($known_string[$i]) ^ ord($user_string[$i]);
+        }
+
+        return $result === 0;
+    }
+}
+
 
 // ── check_forum_password ──────────────────────────────────────────────────────
 function check_forum_password(int|string $fid, int|string $pid = 0, bool $return = false): bool
@@ -447,37 +469,6 @@ function get_child_list(int $fid): array
 }
 
 
-
-// ── is_member ─────────────────────────────────────────────────────────────────
-function is_member(array|string|int $groups, array|int|false $user = false): array
-{
-    global $CURUSER;
-
-    if (empty($groups)) {
-        return [];
-    }
-
-    if ($user === false) {
-        $user = $CURUSER;
-    } elseif (!is_array($user)) {
-        $user = get_user((int)$user);
-    }
-
-    $memberships   = array_map('intval', explode(',', (string)($user['additionalgroups'] ?? '')));
-    $memberships[] = (int)$user['usergroup'];
-
-    if (!is_array($groups)) {
-        if ((int)$groups === -1) {
-            return $memberships;
-        }
-        $groups = is_string($groups) ? explode(',', $groups) : [(int)$groups];
-    }
-
-    $groups = array_filter(array_map('intval', $groups));
-
-    return array_intersect($groups, $memberships);
-}
-
 // ── log_moderator_action ──────────────────────────────────────────────────────
 function log_moderator_action(array $data, string $action = ''): void
 {
@@ -511,35 +502,7 @@ function log_moderator_action(array $data, string $action = ''): void
     $db->sql_query_prepared($sql, $params);
 }
 
-// ── get_subscription_method ───────────────────────────────────────────────────
-function get_subscription_method(int $tid = 0, array $postoptions = []): string
-{
-    global $db, $CURUSER;
 
-    $methods = ['', 'none', 'email', 'pm'];
-    $method  = max(0, (int)$CURUSER['subscriptionmethod']);
-
-    if ($tid <= 0) {
-        return $methods[$method] ?? '';
-    }
-
-    if (isset($postoptions['subscriptionmethod'])) {
-        $m = trim($postoptions['subscriptionmethod']);
-        return in_array($m, $methods, true) ? $m : '';
-    }
-
-    $query = $db->sql_query_prepared(
-        "SELECT tid, notification FROM threadsubscriptions WHERE tid = ? AND uid = ? LIMIT 1",
-        [$tid, (int)$CURUSER['id']]
-    );
-    $subscription = $query ? $db->fetch_array($query) : null;
-
-    if ($subscription) {
-        $method = (int)$subscription['notification'] + 1;
-    }
-
-    return $methods[$method] ?? '';
-}
 
 // ── get_inactive_forums ───────────────────────────────────────────────────────
 function get_inactive_forums(): string
@@ -655,23 +618,6 @@ function signed(int $int): string
     return $int < 0 ? (string)$int : "+{$int}";
 }
 
-// ── get_parent_list ───────────────────────────────────────────────────────────
-function get_parent_list(int $fid): string
-{
-    global $forum_cache;
-    static $forumarraycache;
-
-    if (!empty($forumarraycache[$fid])) {
-        return $forumarraycache[$fid]['parentlist'];
-    }
-
-    if (!empty($forum_cache[$fid])) {
-        return $forum_cache[$fid]['parentlist'];
-    }
-
-    cache_forums();
-    return $forum_cache[$fid]['parentlist'] ?? '';
-}
 
 // ── get_announcement_link ─────────────────────────────────────────────────────
 function get_announcement_link(int $aid = 0): string
@@ -679,20 +625,6 @@ function get_announcement_link(int $aid = 0): string
     return htmlspecialchars_uni(str_replace('{aid}', (string)$aid, ANNOUNCEMENT_URL));
 }
 
-// ── build_parent_list ─────────────────────────────────────────────────────────
-function build_parent_list(int $fid, string $column = 'fid', string $joiner = 'OR', string $parentlist = ''): string
-{
-    if (!$parentlist) {
-        $parentlist = get_parent_list($fid);
-    }
-
-    $parts = array_map(
-        fn($val) => "{$column}='{$val}'",
-        explode(',', $parentlist)
-    );
-
-    return '(' . implode(" {$joiner} ", $parts) . ')';
-}
 
 // ── get_forum ─────────────────────────────────────────────────────────────────
 function get_forum(int|string $fid, bool $active_override = false): array|false
@@ -1203,108 +1135,4 @@ function add_breadcrumb(string $name, string $url = ''): void
     }
 
     $navbits[] = ['name' => $name, 'url' => $url];
-}
-
-// ── reset_breadcrumb ──────────────────────────────────────────────────────────
-function reset_breadcrumb(): void
-{
-    global $navbits;
-
-    $first = [
-        'name' => $navbits[0]['name'] ?? '',
-        'url'  => $navbits[0]['url']  ?? '',
-    ];
-
-    if (!empty($navbits[0]['options'])) {
-        $first['options'] = $navbits[0]['options'];
-    }
-
-    $GLOBALS['navbits'] = [$first];
-}
-
-
-
-// ── build_forum_jump ──────────────────────────────────────────────────────────
-function build_forum_jump(
-    int|string $pid        = 0,
-    int|string $selitem    = 0,
-    int|string $addselect  = 1,
-    string     $depth      = '',
-    int|string $showextras = 1,
-    bool       $showall    = false,
-    string     $permissions= '',
-    string     $name       = 'fid'
-): string {
-    global $forum_cache, $jumpfcache, $permissioncache, $mybb;
-
-    $pid        = (int)$pid;
-    $selitem    = (int)$selitem;
-    $addselect  = (int)$addselect;
-    $showextras = (int)$showextras;
-
-    if (!is_array($jumpfcache)) {
-        if (!is_array($forum_cache)) {
-            cache_forums();
-        }
-        foreach ($forum_cache as $forum) {
-            if ($forum['active'] != 0) {
-                $jumpfcache[$forum['pid']][$forum['disporder']][$forum['fid']] = $forum;
-            }
-        }
-    }
-
-    if (!is_array($permissioncache)) {
-        $permissioncache = forum_permissions();
-    }
-
-    $bits = '';
-
-    if (isset($jumpfcache[$pid]) && is_array($jumpfcache[$pid])) {
-        foreach ($jumpfcache[$pid] as $main) {
-            foreach ($main as $forum) {
-                $selected = $selitem === (int)$forum['fid'] ? ' selected="selected"' : '';
-                $fname    = htmlspecialchars_uni(strip_tags($forum['name']));
-                $bits    .= "<option value=\"{$forum['fid']}\"{$selected}>{$depth} {$fname}</option>";
-                if (!empty($forum_cache[$forum['fid']])) {
-                    $bits .= build_forum_jump($forum['fid'], $selitem, 0, $depth . '--', $showextras, $showall, $permissions, $name);
-                }
-            }
-        }
-    }
-
-    if (!$addselect) {
-        return $bits;
-    }
-
-    if ($showextras === 0) {
-        return "<select name=\"{$name}\" class=\"form-select form-select-sm border pe-5 w-auto\">{$bits}</select>";
-    }
-
-    $forum_link = str_contains(FORUM_URL, '.html')
-        ? "'" . str_replace('{fid}', "'+option+'", FORUM_URL) . "'"
-        : "'" . str_replace('{fid}', "'+option", FORUM_URL);
-
-    return <<<HTML
-    <form action="forumdisplay.php" method="get">
-        <select name="{$name}" class="form-select form-select-sm border pe-5 w-auto">
-            <option value="-4">Private Messages</option>
-            <option value="-3">User Control Panel</option>
-            <option value="-5">Whos Online</option>
-            <option value="-2">Search</option>
-            <option value="-1">Forum Home</option>
-            {$bits}
-        </select>
-        <button type="submit" class="btn btn-sm btn-primary rounded">
-            <i class="fa-solid fa-shuffle"></i> &nbsp;Go
-        </button>
-    </form>
-    <script>
-    document.querySelector('select[name="{$name}"]').addEventListener('change', function() {
-        const option = this.value;
-        window.location = option < 0
-            ? 'forumdisplay.php?fid=' + option
-            : {$forum_link};
-    });
-    </script>
-    HTML;
 }

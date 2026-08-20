@@ -36,10 +36,8 @@ class MailHandler
 
     public function get_from_email(): string
     {
-        global $mybb;
-        $returnemail = '';
-        $adminemail  = 'admin@example.com';
-        return trim($returnemail) ?: $adminemail;
+        global $SITEEMAIL;
+        return trim((string)($SITEEMAIL ?? '')) ?: 'admin@example.com';
     }
 
     public function build_message(

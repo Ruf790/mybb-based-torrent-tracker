@@ -183,7 +183,7 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
     $attachtypes       = (array)$cache->read('attachtypes');
     $allowed_mime_types = [];
     foreach ($attachtypes as $attachtype) {
-        if (defined('IN_ADMINCP') || (is_member($attachtype['groups']) && $attachtype['avatarfile'])) {
+        if ($attachtype['avatarfile']) {
             $allowed_mime_types[$attachtype['mimetype']] = $attachtype['maxsize'];
         }
     }

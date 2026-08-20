@@ -39,7 +39,6 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('failedlogincount',      '3'),
 ('failedlogintext',       '1'),
 ('requirecomplexpasswords','0'),
-('username_method',       '0'),
 
 -- ── Cookies & Session ─────────────────────────────────────────────────────────
 ('cookiedomain',          '{{COOKIEDOMAIN}}'),
@@ -66,7 +65,7 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('loadlimit',             ''),
 ('wolcutoffmins',         '15'),
 ('use_xmlhttprequest',    '1'),
-('redirects',             '0'),
+
 
 -- ── Uploads & Avatars ─────────────────────────────────────────────────────────
 ('uploadspath',           './uploads'),
@@ -98,6 +97,13 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('maxmultipagelinks',     '5'),
 ('jumptopagemultipage',   '1'),
 ('enablepms',             '1'),
+('postmergemins',         '60'),
+('postmergesep',          '[hr]'),
+('postmergefignore',      ''),
+('postmergeuignore',      '6,7,8'),
+('minmessagelength',      '5'),
+('maxmessagelength',      '65535'),
+('mycodemessagelength',   '1'),
 
 -- ── Mail / SMTP ───────────────────────────────────────────────────────────────
 ('mail_handler',          'smtp'),
@@ -118,12 +124,10 @@ INSERT IGNORE INTO `settings` (`name`, `value`) VALUES
 ('minpasswordlength',     '6'),
 ('maxpasswordlength',     '30'),
 ('maxusers',              '5000'),
-('illegalusernames',      ''),
 ('_d_usergroup',          '2'),
 ('betweenregstime',       '24'),
 ('maxregsbetweentime',    '2'),
 ('offline_minutes',       ''),
-('allowmultipleemails',   '0'),
 
 -- ── Announce ──────────────────────────────────────────────────────────────────
 ('nc',                    'no'),

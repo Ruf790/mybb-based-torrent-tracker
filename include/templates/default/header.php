@@ -64,7 +64,7 @@ if (!defined('IN_TRACKER')) {
         var cookiePrefix = "<?= htmlspecialchars($cookieprefix ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>";
         var cookieSecureFlag = "<?= (int)($cookiesecureflag ?? 0) ?>";
         
-        var MyBBEditor = null;
+    
         var spinner_image = "<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/pic/spinner.gif";
         var spinner = "<img src='" + spinner_image + "' alt='' />";
         var loading_text = 'Loading. <br />Please Wait&hellip;';
@@ -840,9 +840,15 @@ if (($mybb->usergroup['canview'] ?? 0) != 1) {
 // Check banned IP addresses
 if (is_banned_ip($session->ipaddress ?? '', true)) {
     if ($CURUSER['id'] ?? 0) {
-        $db->delete_query('sessions', "ip = " . $db->escape_binary($session->packedip ?? '') . " OR uid='" . (int)($CURUSER['id'] ?? 0) . "'");
+        $db->sql_query_prepared(
+            "DELETE FROM sessions WHERE ip = ? OR uid = ?",
+            [$session->packedip ?? '', (int)($CURUSER['id'] ?? 0)]
+        );
     } else {
-        $db->delete_query('sessions', "ip = " . $db->escape_binary($session->packedip ?? ''));
+        $db->sql_query_prepared(
+            "DELETE FROM sessions WHERE ip = ?",
+            [$session->packedip ?? '']
+        );
     }
     error('I\'m sorry, but you are banned. You may not post, read threads, or access the Tracker. Please contact your forum administrator should you have any questions');
 }

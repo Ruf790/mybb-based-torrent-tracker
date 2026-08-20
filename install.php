@@ -1422,7 +1422,6 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `username` varchar(120) NOT NULL DEFAULT '',
   `password` varchar(120) NOT NULL DEFAULT '',
-  `salt` varchar(10) NOT NULL DEFAULT '',
   `loginkey` varchar(50) NOT NULL DEFAULT '',
   `email` char(64) NOT NULL DEFAULT '',
   `ustatus` enum('pending','confirmed') NOT NULL DEFAULT 'pending',

@@ -77,15 +77,12 @@ class UserRegistrationHandler
             return false;
         }
 
-        // Проверка запрещенных имен
-        $illegal_names = preg_split('/\s*,\s*/', $illegalusernames, -1, PREG_SPLIT_NO_EMPTY);
-        foreach ($illegal_names as $val) {
-            $val = trim($val);
-            if (!empty($val) && stripos($username, $val) !== false) {
-                $this->errors[] = "Username contains forbidden word: " . htmlspecialchars_uni($val);
-                return false;
-            }
+        // Проверка запрещённых имён (те же wildcard-фильтры banfilters, что и при обычной регистрации)
+        if (is_banned_username($username, true)) {
+            $this->errors[] = "Username is not allowed";
+            return false;
         }
+        
 
         return true;
     }
@@ -315,20 +312,39 @@ class UserRegistrationHandler
 
     public function processRegistration(array $post_data): bool
     {
-        global $db, $lang, $BASEURL, $SITENAME, $CURUSER, $cache, $username_method;
+        global $db, $lang, $BASEURL, $SITENAME, $CURUSER, $cache,
+               $autogigsignup, $autosbsignup, $_d_usergroup;
 
         // Очистка и валидация данных
         $username = trim($post_data['username'] ?? '');
         $email = trim($post_data['email'] ?? '');
         $password = $post_data['password'] ?? '';
         $password2 = $post_data['password2'] ?? '';
-        $usergroup = (int)($post_data['usergroup'] ?? 0);
+
+        // Если поле не заполнено (реально пусто) - подставляем дефолт с сайта,
+        // как при обычной саморегистрации. Если введено явно (в т.ч. "0") - уважаем ввод.
+        $usergroup_raw = trim((string)($post_data['usergroup'] ?? ''));
+        $usergroup = $usergroup_raw !== ''
+            ? (int)$usergroup_raw
+            : (int)($_d_usergroup ?: 2);
+
         $modcomment = htmlspecialchars_uni($post_data['modcomment'] ?? '');
-        $seedbonus = (int)($post_data['seedbonus'] ?? 0);
+
+        $seedbonus_raw = trim((string)($post_data['seedbonus'] ?? ''));
+        $seedbonus = $seedbonus_raw !== ''
+            ? (int)$seedbonus_raw
+            : (int)($autosbsignup > 0 ? $autosbsignup : 0);
+
         $invites = (int)($post_data['invites'] ?? 0);
-        $uploaded = (int)($post_data['uploaded'] ?? 0);
+
+        $uploaded_raw = trim((string)($post_data['uploaded'] ?? ''));
+        $uploaded = $uploaded_raw !== ''
+            ? (int)$uploaded_raw
+            : ($autogigsignup > 0 ? (int)$autogigsignup * 1024 * 1024 * 1024 : 0);
+
         $downloaded = (int)($post_data['downloaded'] ?? 0);
         $confirm = trim($post_data['confirm'] ?? '');
+        $send_credentials = trim($post_data['sendcredentials'] ?? '') === 'yes';
         $avatar_url = trim($post_data['avatar_url'] ?? '');
        
 
@@ -441,6 +457,26 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
         $pm['sender']['uid'] = -1;
         send_pm($pm, -1, true);
 
+        // Отправка логина/пароля на email (по желанию админа)
+        if ($send_credentials) {
+            $credentialssubject = sprintf($lang->adduser['credentialsemailsubject'], $SITENAME);
+            $credentialsbody = sprintf(
+                $lang->adduser['credentialsemailbody'],
+                $username,
+                $SITENAME,
+                $password,
+                $BASEURL
+            );
+            $credentials_sent = my_mail($email, $credentialssubject, $credentialsbody);
+
+            if (!$credentials_sent) {
+                // Не блокируем создание аккаунта - он уже создан к этому моменту,
+                // но админ должен явно узнать, что данные не были доставлены,
+                // и передать пароль пользователю каким-то другим способом.
+                $this->errors[] = 'Failed to send login credentials email - please deliver the password to the user manually. Password: ' . $password;
+            }
+        }
+
         // Подтверждение email
         if ($confirm === 'yes') {
            
@@ -459,9 +495,8 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
 		   $cache->update_awaitingactivation();
 		   
            $emailsubject = sprintf($lang->member['emailsubject_activateaccount'], $SITENAME);
-           //$emailmessage = sprintf($lang->member['email_activateaccount'], $username, $SITENAME, $BASEURL, $user_id, $activationcode);
-		   
-		   $emailmessage = sprintf($lang->member['email_activateaccount' . ($username_method ?: '')], $username, $SITENAME, $BASEURL, $user_id, $activationcode);
+           
+		   $emailmessage = sprintf($lang->member['email_activateaccount'], $username, $SITENAME, $BASEURL, $user_id, $activationcode);
 		   
            my_mail($email, $emailsubject, $emailmessage); 
 
@@ -603,8 +638,8 @@ echo '
                     <!-- Usergroup (обязательный) -->
                     <div class="col-md-6">
                         <div class="form-floating">
-                            <select class="form-select" id="input_usergroup" name="usergroup" required>
-                                <option value="">Choose usergroup...</option>';
+                            <select class="form-select" id="input_usergroup" name="usergroup">
+                                <option value="">Choose usergroup... (default: registration group)</option>';
                                 foreach ($allowed_groups as $gid => $title) {
                                     $selected = ($_POST['usergroup'] ?? '') == $gid ? 'selected' : '';
                                     echo '<option value="' . $gid . '" ' . $selected . '>' . htmlspecialchars_uni($title) . '</option>';
@@ -619,7 +654,18 @@ echo '                      </select>
                 </div>
 
                 <!-- Password Section -->
-                <div class="row g-3 mb-4">
+                <div class="row g-3 mb-2">
+                    <div class="col-12 d-flex justify-content-between align-items-center">
+                        <span class="form-text text-muted mb-0">
+                            ' . $minpasswordlength . '-' . $maxpasswordlength . ' characters' . 
+                            ($requirecomplexpasswords ? ', must contain letters and numbers' : '') . '
+                        </span>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="generatePassword()">
+                            <i class="fas fa-dice me-1"></i>Generate Password
+                        </button>
+                    </div>
+                </div>
+                <div class="row g-3 mb-2">
                     <!-- Password (обязательный) -->
                     <div class="col-md-6">
                         <div class="form-floating">
@@ -635,10 +681,6 @@ echo '                      </select>
                                 <i class="fas fa-lock me-2 text-primary"></i>Password <span class="text-danger">*</span>
                             </label>
                             <div class="invalid-feedback">Password must be ' . $minpasswordlength . '-' . $maxpasswordlength . ' characters long.</div>
-                            <div class="form-text text-muted">
-                                <small>' . $minpasswordlength . '-' . $maxpasswordlength . ' characters' . 
-                                ($requirecomplexpasswords ? ', must contain letters and numbers' : '') . '</small>
-                            </div>
                         </div>
                     </div>
                     
@@ -657,6 +699,16 @@ echo '                      </select>
                                 <i class="fas fa-lock me-2 text-primary"></i>Confirm Password <span class="text-danger">*</span>
                             </label>
                             <div class="invalid-feedback">Please confirm your password.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-3 mb-4">
+                    <div class="col-12" id="generated_password_box" style="display:none">
+                        <div class="alert alert-success d-flex align-items-center justify-content-between py-2 px-3 mb-0">
+                            <span><i class="fas fa-check-circle me-2"></i>Generated password: <code id="generated_password_text" class="fw-bold"></code></span>
+                            <button type="button" class="btn btn-sm btn-outline-success" onclick="copyGeneratedPassword()">
+                                <i class="fas fa-copy me-1"></i>Copy
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -688,8 +740,8 @@ echo '                      </select>
                                    class="form-control" 
                                    id="input_seedbonus" 
                                    name="seedbonus" 
-                                   value="' . htmlspecialchars_uni($_POST['seedbonus'] ?? '0') . '"
-                                   placeholder="Seed Bonus">
+                                   value="' . htmlspecialchars_uni($_POST['seedbonus'] ?? '') . '"
+                                   placeholder="Seed Bonus (default: site signup bonus)">
                             <label for="input_seedbonus" class="form-label">
                                 <i class="fas fa-coins me-2 text-primary"></i>Seed Bonus
                             </label>
@@ -707,8 +759,8 @@ echo '                      </select>
                                    class="form-control" 
                                    id="input_uploaded" 
                                    name="uploaded" 
-                                   value="' . htmlspecialchars_uni($_POST['uploaded'] ?? '0') . '"
-                                   placeholder="Uploaded">
+                                   value="' . htmlspecialchars_uni($_POST['uploaded'] ?? '') . '"
+                                   placeholder="Uploaded (default: site signup bonus)">
                             <label for="input_uploaded" class="form-label">
                                 <i class="fas fa-upload me-2 text-primary"></i>Uploaded (bytes)
                             </label>
@@ -848,6 +900,13 @@ echo '                      </select>
 				
 
                 <!-- Options -->
+                <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" name="sendcredentials" id="sendcredentials" value="yes" 
+                           ' . (($_POST['sendcredentials'] ?? 'yes') === 'yes' ? 'checked' : '') . '>
+                    <label for="sendcredentials" class="form-check-label">
+                        <i class="fas fa-key me-2 text-primary"></i>' . $lang->adduser['sendcredentials'] . '
+                    </label>
+                </div>
                 <div class="form-check mb-4">
                     <input type="checkbox" class="form-check-input" name="confirm" id="confirm" value="yes" 
                            ' . (($_POST['confirm'] ?? '') === 'yes' ? 'checked' : '') . '>
@@ -931,6 +990,45 @@ document.getElementById(\'input_password2\').addEventListener(\'input\', functio
         this.setCustomValidity(\'\');
     }
 });
+
+// Генерация случайного пароля
+function generatePassword() {
+    const minLength = ' . $minpasswordlength . ';
+    const length = Math.max(minLength, 12);
+    const letters = \'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\';
+    const digits = \'0123456789\';
+    const symbols = \'!@#$%^&*\';
+    const charset = letters + digits + symbols;
+
+    let password = letters[Math.floor(Math.random() * letters.length)]
+                  + digits[Math.floor(Math.random() * digits.length)];
+
+    for (let i = password.length; i < length; i++) {
+        password += charset[Math.floor(Math.random() * charset.length)];
+    }
+
+    password = password.split(\'\').sort(() => Math.random() - 0.5).join(\'\');
+
+    const passField = document.getElementById(\'input_password\');
+    const pass2Field = document.getElementById(\'input_password2\');
+    passField.value = password;
+    pass2Field.value = password;
+    passField.dispatchEvent(new Event(\'input\'));
+    pass2Field.dispatchEvent(new Event(\'input\'));
+
+    document.getElementById(\'generated_password_text\').textContent = password;
+    document.getElementById(\'generated_password_box\').style.display = \'\';
+}
+
+function copyGeneratedPassword() {
+    const text = document.getElementById(\'generated_password_text\').textContent;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+        if (typeof showToast === \'function\') {
+            showToast(\'Password copied to clipboard\', \'success\');
+        }
+    });
+}
 </script>
 
 <style>

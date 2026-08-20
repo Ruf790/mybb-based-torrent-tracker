@@ -521,10 +521,10 @@ match(true) {
     isset($_POST['save_registration']) => (function(): void {
         global $db, $CURUSER;
         
-        $keys = ['regtype','minnamelength','maxnamelength','illegalusernames',
+        $keys = ['regtype','minnamelength','maxnamelength',
                  'minpasswordlength','maxpasswordlength','requirecomplexpasswords','failedlogincount',
-                 'failedlogintext','username_method','disableregs','maxusers',
-                 '_d_usergroup','invite_count','autogigsignup','autosbsignup','allowmultipleemails',
+                 'failedlogintext','disableregs','maxusers',
+                 '_d_usergroup','invite_count','autogigsignup','autosbsignup',
                  'betweenregstime','maxregsbetweentime'];
         $old_values = get_settings_values($keys);
         
@@ -555,10 +555,24 @@ match(true) {
         $keys = ['defaultlanguage','enablepms','browsingthisthread','delayedthreadviews',
                  'showforumpagesbreadcrumb','showownunapproved','threadreadcut','ts_perpage',
                  'f_postsperpage','f_threadsperpage','userpppoptions','usertppoptions',
-                 'loadlimit','shoutboxcharset','uploadspath','usezip'];
+                 'loadlimit','shoutboxcharset','uploadspath','usezip',
+                 'postmergemins','postmergesep','postmergefignore','postmergeuignore',
+                 'minmessagelength','maxmessagelength','mycodemessagelength'];
         $old_values = get_settings_values($keys);
 
-        $data = array_intersect_key($_POST['configoption'] ?? [], array_flip($keys));
+        $raw = $_POST['configoption'] ?? [];
+
+        // Мульти-селекты форумов/групп приходят как массив id — сворачиваем в CSV.
+        // Скрытый пустой input перед селектом гарантирует, что ключ придёт в $_POST
+        // даже если админ снял все галочки (иначе браузер вообще не шлёт поле).
+        if (isset($raw['postmergefignore']) && is_array($raw['postmergefignore'])) {
+            $raw['postmergefignore'] = implode(',', array_filter(array_map('intval', $raw['postmergefignore'])));
+        }
+        if (isset($raw['postmergeuignore']) && is_array($raw['postmergeuignore'])) {
+            $raw['postmergeuignore'] = implode(',', array_filter(array_map('intval', $raw['postmergeuignore'])));
+        }
+
+        $data = array_intersect_key($raw, array_flip($keys));
         if (!empty($data)) {
             save_to_settings($data);
             foreach ($data as $key => $new_value) {
@@ -762,14 +776,11 @@ $bdayrewardtype = $settings['bdayrewardtype'] ?? 'silverleech';
 $regtype              = $settings['regtype']                ?? 'instant';
 $minnamelength        = $settings['minnamelength']          ?? '3';
 $maxnamelength        = $settings['maxnamelength']          ?? '20';
-$illegalusernames     = $settings['illegalusernames']       ?? '';
 $minpasswordlength    = $settings['minpasswordlength']      ?? '6';
 $maxpasswordlength    = $settings['maxpasswordlength']      ?? '40';
 $requirecomplexpasswords = $settings['requirecomplexpasswords'] ?? '0';
-$allowmultipleemails  = $settings['allowmultipleemails']    ?? '0';
 $failedlogincount     = $settings['failedlogincount']       ?? '0';
 $failedlogintext      = $settings['failedlogintext']        ?? '0';
-$username_method      = $settings['username_method']        ?? '0';
 $disableregs          = $settings['disableregs']            ?? '0';
 $maxusers             = $settings['maxusers']               ?? '0';
 $_d_usergroup         = $settings['_d_usergroup']           ?? '1';
@@ -1591,11 +1602,7 @@ flash_message();
                                     <?php ftxt('minnamelength',$minnamelength,'Min Username Length','','number','fas fa-arrow-down'); ?>
                                     <?php ftxt('maxnamelength',$maxnamelength,'Max Username Length','','number','fas fa-arrow-up'); ?>
                                 </div>
-                                <div class="form-group-modern">
-                                    <label><i class="fas fa-ban label-icon icon-red"></i> Banned Usernames</label>
-                                    <textarea class="form-control-modern" name="configoption[illegalusernames]" rows="3"><?= htmlspecialchars($illegalusernames) ?></textarea>
-                                    <div class="form-text">One per line</div>
-                                </div>
+                                
 
                                 <div class="section-divider">
                                     <span class="line"></span>
@@ -1607,7 +1614,7 @@ flash_message();
                                     <?php ftxt('minpasswordlength',$minpasswordlength,'Min Password Length','','number','fas fa-arrow-down'); ?>
                                     <?php ftxt('maxpasswordlength',$maxpasswordlength,'Max Password Length','','number','fas fa-arrow-up'); ?>
                                     <?php fsel('requirecomplexpasswords',['1'=>'Required','0'=>'Not Required'],$requirecomplexpasswords,'Complex Passwords','','fas fa-shield-alt'); ?>
-                                    <?php fsel('allowmultipleemails',['1'=>'Yes','0'=>'No'],$allowmultipleemails,'Allow Multiple Emails','Allow users to sign up with the same email more than once','fas fa-envelope'); ?>
+                           
                                 </div>
 
                                 <div class="section-divider">
@@ -1619,7 +1626,7 @@ flash_message();
                                 <div class="settings-grid">
                                     <?php ftxt('failedlogincount',$failedlogincount,'Max Failed Logins','0 = disabled','number','fas fa-user-lock'); ?>
                                     <?php fsel('failedlogintext',['1'=>'Yes','0'=>'No'],$failedlogintext,'Display Failed Login Count','','fas fa-text'); ?>
-                                    <?php fsel('username_method',['0'=>'Username Only','1'=>'Email Only','2'=>'Both'],$username_method,'Allowed Login Methods','','fas fa-user'); ?>
+                                   
                                     <div class="form-group-modern">
                                         <label><i class="fas fa-users-cog label-icon icon-purple"></i> Default Usergroup</label>
                                         <select class="form-select-modern" name="configoption[_d_usergroup]">
@@ -1722,6 +1729,66 @@ flash_message();
                                 <div class="settings-grid">
                                     <?php ftxt('userpppoptions',(string)($settings['userpppoptions']??'5,10,15,20,25,30,40,50'),'User "Posts Per Page" Choices','Comma-separated','text','fas fa-table-list'); ?>
                                     <?php ftxt('usertppoptions',(string)($settings['usertppoptions']??'10,15,20,25,30,40,50'),'User "Threads Per Page" Choices','Comma-separated','text','fas fa-table-list'); ?>
+                                </div>
+
+                                <div class="section-divider">
+                                    <span class="line"></span>
+                                    <span class="label"><i class="fas fa-object-group icon-orange"></i> Post Merge</span>
+                                    <span class="line"></span>
+                                </div>
+
+                                <div class="settings-grid">
+                                    <?php ftxt('postmergemins',(string)($settings['postmergemins']??'60'),'Post Merge Time (minutes)','Merge posts by the same author right after each other within this window. 0 = disabled','number','fas fa-clock'); ?>
+                                    <?php ftxt('postmergesep',(string)($settings['postmergesep']??'[hr]'),'Merge Separator','Inserted between two merged messages','text','fas fa-minus'); ?>
+                                </div>
+
+                                <div class="settings-grid">
+                                    <div class="form-group-modern">
+                                        <label><i class="fas fa-comments-slash label-icon icon-blue"></i> Forums to Exclude from Merge</label>
+                                        <?php
+                                        $mergeFidsSelected = array_filter(explode(',', (string)($settings['postmergefignore'] ?? '')), fn($v) => $v !== '');
+                                        ?>
+                                        <input type="hidden" name="configoption[postmergefignore][]" value="">
+                                        <select class="form-select-modern" name="configoption[postmergefignore][]" multiple size="6">
+                                            <?php
+                                            $fq = $db->sql_query_prepared("SELECT fid, name FROM forums ORDER BY name ASC");
+                                            while ($fq && ($f = $db->fetch_array($fq))) {
+                                                $sel = in_array((string)$f['fid'], $mergeFidsSelected, true) ? ' selected' : '';
+                                                echo '<option value="'.(int)$f['fid'].'"'.$sel.'>'.htmlspecialchars($f['name']).'</option>';
+                                            }
+                                            ?>
+                                        </select>
+                                        <div class="form-text">Hold Ctrl/Cmd to select multiple. Leave empty to allow merging in all forums.</div>
+                                    </div>
+                                    <div class="form-group-modern">
+                                        <label><i class="fas fa-users-slash label-icon icon-blue"></i> Usergroups to Exclude from Merge</label>
+                                        <?php
+                                        $mergeGidsSelected = array_filter(explode(',', (string)($settings['postmergeuignore'] ?? '6,7,8')), fn($v) => $v !== '');
+                                        ?>
+                                        <input type="hidden" name="configoption[postmergeuignore][]" value="">
+                                        <select class="form-select-modern" name="configoption[postmergeuignore][]" multiple size="6">
+                                            <?php
+                                            $gq2 = $db->sql_query_prepared("SELECT gid, title FROM usergroups ORDER BY gid ASC");
+                                            while ($gq2 && ($g2 = $db->fetch_array($gq2))) {
+                                                $sel = in_array((string)$g2['gid'], $mergeGidsSelected, true) ? ' selected' : '';
+                                                echo '<option value="'.(int)$g2['gid'].'"'.$sel.'>'.htmlspecialchars(strip_tags($g2['title'])).'</option>';
+                                            }
+                                            ?>
+                                        </select>
+                                        <div class="form-text">Members of the selected groups won't have their posts merged.</div>
+                                    </div>
+                                </div>
+
+                                <div class="section-divider">
+                                    <span class="line"></span>
+                                    <span class="label"><i class="fas fa-ruler-horizontal icon-orange"></i> Message Length</span>
+                                    <span class="line"></span>
+                                </div>
+
+                                <div class="settings-grid">
+                                    <?php ftxt('minmessagelength',(string)($settings['minmessagelength']??'5'),'Minimum Message Length','The minimum number of characters to post','number','fas fa-arrow-down-short-wide'); ?>
+                                    <?php ftxt('maxmessagelength',(string)($settings['maxmessagelength']??'65535'),'Maximum Message Length','0 = allow the database column\'s max length. MySQL TEXT column max is 65535 — switch to MEDIUMTEXT/LONGTEXT for more','number','fas fa-arrow-up-wide-short'); ?>
+                                    <?php fswitch('mycodemessagelength', ($settings['mycodemessagelength']??'1') === '1', 'MyCode Counts Toward Minimum Length', 'If off, BBCode is stripped before checking the minimum length', 'fas fa-code', '1', '0'); ?>
                                 </div>
                             </div>
                         </div>

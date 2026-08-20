@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once INC_PATH . '/functions_faq.php';
+
 /**
  * Display FAQ error messages
  */

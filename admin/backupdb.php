@@ -20,9 +20,9 @@ foreach(array('action', 'do', 'module') as $input)
     }
 }
 
-function stderr2($error="", $title="")
+function render_inline_error($error="", $title="")
 {
-    global $SITENAME, $header, $footer, $theme, $headerinclude, $db, $templates, $lang, $mybb, $plugins;
+    global $plugins;
 
     $error = $plugins->run_hooks("error", $error);
     if(!$error)
@@ -30,56 +30,39 @@ function stderr2($error="", $title="")
         $error = 'unknown_error';
     }
 
-    if(!$title)
-    {
-        $title = $SITENAME;
-    }
-
-    $errorpage = '<!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>'.$title.'</title>
-       
-        <style>
-            .error-container {
-                min-height: 60vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .error-card {
-                border: none;
-                border-radius: 15px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            }
-            .error-icon {
-                font-size: 3rem;
-                color: #dc3545;
-                margin-bottom: 1rem;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container error-container">
-            <div class="card error-card">
-                <div class="card-body text-center p-5">
-                    <div class="error-icon">
-                        <i class="fas fa-exclamation-circle"></i>
-                    </div>
-                    <h3 class="card-title text-danger mb-3">Error</h3>
-                    <p class="card-text">'.$error.'</p>
-                    <a href="javascript:history.back()" class="btn btn-primary mt-3">
-                        <i class="fas fa-arrow-left me-2"></i>Go Back
-                    </a>
+    echo '
+    <div class="container error-container">
+        <div class="card error-card">
+            <div class="card-body text-center p-5">
+                <div class="error-icon">
+                    <i class="fas fa-exclamation-circle"></i>
                 </div>
+                <h3 class="card-title text-danger mb-3">Error</h3>
+                <p class="card-text">'.$error.'</p>
+                <a href="javascript:history.back()" class="btn btn-primary mt-3">
+                    <i class="fas fa-arrow-left me-2"></i>Go Back
+                </a>
             </div>
         </div>
-    </body>
-    </html>';
-
-    echo $errorpage;
+    </div>
+    <style>
+        .error-container {
+            min-height: 30vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .error-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .error-icon {
+            font-size: 3rem;
+            color: #dc3545;
+            margin-bottom: 1rem;
+        }
+    </style>';
 }
 
 /**
@@ -549,7 +532,7 @@ flash_message('
     // Check if file is writable
     if(!is_writable(ADMIN_DIR."/backup"))
     {
-        stderr2('Your backups directory (within the Admin CP directory) is not writable. You cannot save backups on the server');
+        render_inline_error('Your backups directory (within the Admin CP directory) is not writable. You cannot save backups on the server');
         $cannot_write = true;
     }
 

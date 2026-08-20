@@ -19,7 +19,6 @@ class LoginDataHandler extends DataHandler
 
     public array $login_data = [];
 
-    public ?int $username_method = null;
 
     /**
      * Verify username exists
@@ -90,7 +89,7 @@ class LoginDataHandler extends DataHandler
      */
     public function invalid_combination(bool $show_login_attempts = false): void
     {
-        global $db, $lang, $mybb, $username_method, $failedlogincount, $failedlogintext;
+        global $db, $lang, $mybb, $failedlogincount, $failedlogintext;
         
 
 		$login_text = '';
@@ -105,18 +104,9 @@ class LoginDataHandler extends DataHandler
            }
         }
 
-        switch($username_method)
-        {
-           case 1:
-               $this->set_error('invalidpwordusernameemail', $login_text);
-            break;
-            case 2:
-                $this->set_error('invalidpwordusernamecombo', $login_text);
-            break;
-            default:
-                 $this->set_error('invalidpwordusername', $login_text);
-            break;
-        }
+       
+        $this->set_error('invalidpwordusername', $login_text);
+        
 		
     }
 
@@ -125,20 +115,10 @@ class LoginDataHandler extends DataHandler
      */
     public function get_login_data(): void
     {
-        global $username_method;
-
         $user = &$this->data;
-
-        $options = [
-            'fields' => '*',
-            'username_method' => (int)$username_method
-        ];
-
-        if ($this->username_method !== null) {
-            $options['username_method'] = $this->username_method;
-        }
-
-        //$this->login_data = get_user_by_username($user['username'] ?? '', $options);
+ 
+        $options = ['fields' => '*'];
+ 
 		$this->login_data = get_user_by_username($user['username'] ?? '', $options) ?: [];
     }
 

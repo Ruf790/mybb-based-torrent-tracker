@@ -173,8 +173,6 @@ class UserDataHandler extends DataHandler
 
     public function verify_email(): bool
     {
-        global $allowmultipleemails;
-		
 		$user = &$this->data;
 
         if (trim_blank_chrs($user['email']) === '') {
@@ -192,13 +190,11 @@ class UserDataHandler extends DataHandler
             return false;
         }
 
-
-        if ($allowmultipleemails == 0 && !defined('IN_ADMINCP')) {
-            $uid = (int)($user['uid'] ?? 0);
-            if (email_already_in_use($user['email'], $uid)) {
-                $this->set_error('email_already_in_use');
-                return false;
-            }
+        // Один email - один аккаунт, без исключений
+        $uid = (int)($user['uid'] ?? 0);
+        if (email_already_in_use($user['email'], $uid)) {
+            $this->set_error('email_already_in_use');
+            return false;
         }
 
         if (isset($user['email2']) && $user['email'] !== $user['email2']) {
@@ -407,21 +403,6 @@ class UserDataHandler extends DataHandler
         return true;
     }
 
-    public function verify_style(): bool
-    {
-        $user = &$this->data;
-
-        if (!empty($user['style'])) {
-            $theme = get_theme($user['style']);
-
-            if (empty($theme) || (!is_member($theme['allowedgroups'], $user) && $theme['allowedgroups'] !== 'all')) {
-                $this->set_error('invalid_style');
-                return false;
-            }
-        }
-
-        return true;
-    }
 
     public function verify_checkfields(): bool
     {
@@ -533,7 +514,6 @@ public function validate_user(): bool
         'lastvisit'      => 'verify_lastvisit',
         'lastactive'     => 'verify_lastactive',
         'timezone'       => 'verify_timezone',
-        'style'          => 'verify_style',
         'signature'      => 'verify_signature',
     ];
     foreach ($checks as $key => $method) {
@@ -571,7 +551,7 @@ public function validate_user(): bool
 
         $user = &$this->data;
 
-        foreach (['postnum', 'threadnum', 'avatar', 'avatartype', 'additionalgroups', 'displaygroup', 'bday', 'signature', 'style', 'dateformat', 'timeformat', 'notepad', 'regip', 'lastip'] as $k) {
+        foreach (['postnum', 'threadnum', 'avatar', 'avatartype', 'additionalgroups', 'displaygroup', 'bday', 'signature', 'dateformat', 'timeformat', 'regip', 'lastip'] as $k) {
             $user[$k] ??= '';
         }
         foreach (['subscriptionmethod', 'dstcorrection'] as $k) {
@@ -703,8 +683,8 @@ public function validate_user(): bool
         $this->uid   = $user['uid'];
 
         $string_fields = ['username', 'email', 'additionalgroups', 'usertitle', 'signature', 'bday' => 'birthday',
-                          'birthdayprivacy', 'timezone', 'dateformat', 'timeformat', 'notepad', 'usernotes'];
-        $int_fields    = ['postnum', 'threadnum', 'displaygroup', 'regdate', 'lastactive', 'lastvisit', 'style'];
+                          'birthdayprivacy', 'timezone', 'dateformat', 'timeformat'];
+        $int_fields    = ['postnum', 'threadnum', 'displaygroup', 'regdate', 'lastactive', 'lastvisit'];
 
         $map = [
             'username'          => fn($v) => ['username',         $v],
@@ -723,14 +703,11 @@ public function validate_user(): bool
             'signature'         => fn($v) => ['signature',        $v],
             'bday'              => fn($v) => ['birthday',         $v],
             'birthdayprivacy'   => fn($v) => ['birthdayprivacy',  $v],
-            'style'             => fn($v) => ['style',            (int)$v],
             'timezone'          => fn($v) => ['timezone',         $v],
             'dateformat'        => fn($v) => ['dateformat',       $v],
             'timeformat'        => fn($v) => ['timeformat',       $v],
             'regip'             => fn($v) => ['regip',            $v],
             'lastip'            => fn($v) => ['lastip',           $v],
-            'notepad'           => fn($v) => ['notepad',          $v],
-            'usernotes'         => fn($v) => ['usernotes',        $v],
         ];
 
         foreach ($map as $key => $fn) {

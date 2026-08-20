@@ -107,7 +107,8 @@ class PostDataHandler extends DataHandler
 
     public function verify_message(): bool
     {
-        global $db, $parser, $usergroups;
+      
+		global $db, $parser, $usergroups, $maxmessagelength, $minmessagelength, $mycodemessagelength;
 
         $post = &$this->data;
         $post['message'] = trim_blank_chrs($post['message'] ?? '');
@@ -117,9 +118,6 @@ class PostDataHandler extends DataHandler
             return false;
         }
 
-        $maxmessagelength    = 65535;
-        $minmessagelength    = 5;
-        $mycodemessagelength = true;
 
         $limit   = $maxmessagelength;
         $dblimit = 0;
@@ -202,18 +200,14 @@ class PostDataHandler extends DataHandler
 
     public function verify_post_merge(bool $simple_mode = false): array|bool
     {
-        global $db, $session;
+       
+		global $db, $session, $postmergemins, $postmergesep, $postmergefignore, $postmergeuignore;
 
         $post = &$this->data;
 
         if (empty($post['tid'])) {
             return true;
         }
-
-        $postmergemins  = 60;
-        $postmergesep   = '[hr]';
-        $postmergefignore = '';
-        $postmergeuignore = '6,7,8';
 
         if (empty($postmergemins)) {
             return true;
@@ -223,7 +217,14 @@ class PostDataHandler extends DataHandler
             $postmergesep = '[hr]';
         }
 
-        if (is_member($postmergeuignore, (int)$post['uid'])) {
+        // Раньше здесь был is_member($postmergeuignore, (int)$post['uid']) -
+        // инлайним ту же логику напрямую, без вызова отдельной функции.
+        $merge_ignore_groups = array_map('intval', explode(',', $postmergeuignore));
+        $post_author         = get_user((int)$post['uid']);
+        $author_memberships  = array_map('intval', explode(',', (string)($post_author['additionalgroups'] ?? '')));
+        $author_memberships[] = (int)($post_author['usergroup'] ?? 0);
+
+        if (array_intersect($merge_ignore_groups, $author_memberships)) {
             return true;
         }
 
@@ -436,9 +437,10 @@ class PostDataHandler extends DataHandler
             $double_post = $this->verify_post_merge();
 
             if ($double_post !== true && ($double_post['visible'] ?? null) == $visible) {
+                global $postmergesep;
                 $_message        = $post['message'];
-                $postmergesep    = '[hr]';
-                $post['message'] = $double_post['message'] .= "\n{$postmergesep}\n" . $post['message'];
+                $sep             = isset($postmergesep) && trim((string)$postmergesep) !== '' ? (string)$postmergesep : '[hr]';
+                $post['message'] = $double_post['message'] .= "\n{$sep}\n" . $post['message'];
 
                 if ($this->validate_post()) {
                     $this->pid = (int)$double_post['pid'];

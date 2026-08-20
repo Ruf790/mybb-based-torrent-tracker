@@ -1,4 +1,116 @@
-const removeattach_confirm = "Вы уверены, что хотите удалить это вложение?";
+const removeattach_confirm = "Are you sure you want to delete this attachment?";
+
+// ── Модалка подтверждения удаления вложения (Bootstrap modal, в стиле manage_screenshots.php) ──
+const AttachRemoveModal = {
+    IMAGE_EXT: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'],
+
+    getExtension: function(filename) {
+        const parts = (filename || '').split('.');
+        return parts.length > 1 ? parts.pop().toLowerCase() : '';
+    },
+
+    buildPreviewHtml: function(aid, filename, sourceEl) {
+        const ext = this.getExtension(filename);
+
+        if (this.IMAGE_EXT.includes(ext)) {
+            return '<div class="preview-wrapper" style="display:inline-block;max-width:100%;">'
+                + '<img src="attachment.php?aid=' + aid + '" alt="Preview" '
+                + 'style="max-width:100%;max-height:200px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);">'
+                + '</div>';
+        }
+
+        // Берём уже отрендеренную сервером иконку (get_attachment_icon(), настраивается
+        // в админке через attachtypes) - она всегда есть в разметке (сама функция
+        // на PHP-стороне гарантированно возвращает <i class="fa..."> даже для
+        // неизвестного расширения), поэтому отдельная JS-карта иконок не нужна.
+        const existingIcon = sourceEl ? sourceEl.querySelector('i[class*="fa-"]') : null;
+        const iconHtml = existingIcon
+            ? (() => {
+                const clone = existingIcon.cloneNode(true);
+                clone.style.fontSize = '52px';
+                clone.removeAttribute('title');
+                return clone.outerHTML;
+            })()
+            : '<i class="fa-solid fa-file" style="font-size:52px;color:#94a3b8"></i>';
+
+        return '<div>' + iconHtml
+            + '<div class="small text-muted text-uppercase fw-bold mt-2">' + (ext || 'file') + '</div>'
+            + '</div>';
+    },
+
+    show: function(aid, filename, sourceEl) {
+        return new Promise((resolve) => {
+            const existing = document.getElementById('attachRemoveModal');
+            if (existing) existing.remove();
+
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = `
+                <div class="modal fade" id="attachRemoveModal" tabindex="-1" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow">
+                      <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body">
+                        <div class="d-flex align-items-center mb-3">
+                          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="fas fa-trash-alt text-danger fs-1"></i>
+                          </div>
+                          <div>
+                            <h5 class="fw-bold mb-1">Delete Attachment?</h5>
+                            <p class="text-muted mb-0 attach-remove-filename"></p>
+                          </div>
+                        </div>
+                        <div class="text-center mb-3 attach-remove-preview"></div>
+                        <div class="alert alert-warning mt-2 mb-0">
+                          <div class="d-flex">
+                            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+                            <div><strong>Warning:</strong> This action cannot be undone!</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                          <i class="fas fa-times me-1"></i> Cancel
+                        </button>
+                        <button type="button" class="btn btn-danger" id="attachRemoveConfirmBtn">
+                          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+            `;
+            const modalEl = wrapper.firstElementChild;
+            modalEl.querySelector('.attach-remove-filename').textContent = filename || '';
+            modalEl.querySelector('.attach-remove-preview').innerHTML = this.buildPreviewHtml(aid, filename, sourceEl);
+
+            document.body.appendChild(modalEl);
+
+            const bsModal = new bootstrap.Modal(modalEl);
+            let resolved = false;
+
+            const finish = (result) => {
+                if (resolved) return;
+                resolved = true;
+                resolve(result);
+            };
+
+            modalEl.querySelector('#attachRemoveConfirmBtn').addEventListener('click', () => {
+                finish(true);
+                bsModal.hide();
+            });
+
+            modalEl.addEventListener('hidden.bs.modal', () => {
+                finish(false);
+                modalEl.remove();
+            });
+
+            bsModal.show();
+        });
+    }
+};
 
 const Post = {
     fileInput: null,
@@ -34,8 +146,6 @@ const Post = {
             // Hide file input, show dropzone
             this.fileInput.parentElement.parentElement.style.display = 'none';
             this.dropZone.parentElement.parentElement.style.display = 'block';
-
-            this.preventDataURIImages();
         });
     },
 
@@ -76,23 +186,6 @@ const Post = {
         });
     },
 
-    preventDataURIImages: function() {
-        const message = document.querySelector('#message');
-        if (!message) return;
-
-        new MutationObserver(() => {
-            if (typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
-                MyBBEditor.bind('valuechanged', () => {
-                    const oldValue = MyBBEditor.val();
-                    const newValue = oldValue.replace(/\[img]data:[a-z/]+;base64,[A-Za-z0-9+\/]+={0,2}\[\/img]/, '');
-                    if (oldValue !== newValue) {
-                        MyBBEditor.val(newValue);
-                    }
-                });
-            }
-        }).observe(message, {attributes: true});
-    },
-
     loadMultiQuoted: function() {
         const tid = document.input.tid.value;
         this.ajaxRequest('xmlhttp.php?action=get_multiquoted&tid=' + tid, 'GET')
@@ -115,11 +208,8 @@ const Post = {
             return false;
         }
 
-        const id = 'message';
-        if (typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
-            MyBBEditor.insert(json.message);
-        } else {
-            const messageEl = document.getElementById(id);
+        const messageEl = document.getElementById('message');
+        if (messageEl) {
             if (messageEl.value) {
                 messageEl.value += "\n";
             }
@@ -139,13 +229,25 @@ const Post = {
     },
 
     removeAttachment: function(aid) {
-        if (confirm(removeattach_confirm)) {
+        const attachment = document.getElementById('attachment_' + aid);
+        let filename = '';
+        if (attachment) {
+            if (attachment.dataset.filename) {
+                filename = attachment.dataset.filename;
+            } else {
+                const nameEl = attachment.querySelector('.attachment-name, .attach-item-name, .attachment_filename, a');
+                if (nameEl) filename = nameEl.textContent.trim();
+            }
+        }
+
+        AttachRemoveModal.show(aid, filename, attachment).then((confirmed) => {
+            if (!confirmed) return;
+
             this.attachmentAction(aid, 'remove');
 
             // Получаем URL действия формы через getAttribute
             const formAction = this.form.getAttribute('action');
-          
-            
+
             this.ajaxRequest(formAction + '&ajax=1', 'POST', new FormData(this.form))
                 .then(data => {
                     if (data.errors) {
@@ -154,28 +256,18 @@ const Post = {
                         });
                         return false;
                     } else if (data.success) {
-                        const attachment = document.getElementById('attachment_' + aid);
                         if (attachment) {
                             attachment.style.transition = 'opacity 0.5s';
                             attachment.style.opacity = '0';
                             setTimeout(() => {
-                                const instance = this.getEditorInstance();
-                                if (instance) {
-                                    const value = instance.sourceMode() ? 
-                                        instance.getSourceEditorValue(false) : 
-                                        instance.getWysiwygEditorValue(false);
-                                    const newValue = value.split('[attachment=' + aid + ']').join('');
-                                    
-                                    if (instance.sourceMode()) {
-                                        instance.setSourceEditorValue(newValue);
-                                    } else {
-                                        instance.setWysiwygEditorValue(newValue);
-                                    }
+                                const messageEl = document.getElementById('message');
+                                if (messageEl) {
+                                    messageEl.value = messageEl.value.split('[attachment=' + aid + ']').join('');
                                 }
 
                                 const usageEl = attachment.parentElement.querySelector('.tcat>strong');
                                 if (usageEl) usageEl.textContent = data.usage;
-                                
+
                                 attachment.remove();
                                 this.regenAttachbuttons();
                             }, 500);
@@ -187,7 +279,8 @@ const Post = {
                 .catch(() => {
                     showToast('Error removing attachment', 'error');
                 });
-        }
+        });
+
         return false;
     },
 
@@ -429,14 +522,6 @@ const Post = {
 
     removeTempInputs: function() {
         document.querySelectorAll('.temp_input').forEach(input => input.remove());
-    },
-
-    getEditorInstance: function() {
-        if (typeof MyBBEditor !== 'undefined') {
-            return MyBBEditor;
-        }
-        const messageEl = document.getElementById('message');
-        return messageEl ? messageEl.sceditor : null;
     },
 
     deleteCookie: function(name) {

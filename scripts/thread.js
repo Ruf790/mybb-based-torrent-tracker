@@ -13,7 +13,6 @@ var Thread = {
         Thread.initQuickReply();
         Thread.initMultiQuote();
         Thread.showQuoteButtons();
-        Thread.handleQuoteLinks();
 
         if(thread_deleted == "1") {
             Thread.hideElements("#quick_reply_form, .new_reply_button, .thread_tools, .inline_rating");
@@ -238,7 +237,6 @@ var Thread = {
             // Переинициализируем интерфейс
             setTimeout(function() {
                 Thread.showQuoteButtons();
-                Thread.handleQuoteLinks();
                 Thread.clearMultiQuoted();
             }, 100);
         } else {
@@ -264,156 +262,6 @@ var Thread = {
         }
 
         return true;
-    },
-
-    // ОБРАБОТКА ССЫЛОК ЦИТИРОВАНИЯ
-    handleQuoteLinks: function() {
-        
-        var quoteLinks = document.querySelectorAll('a[href*="newreply.php"][href*="quotedpid"]');
-        quoteLinks.forEach(function(link) {
-            var newLink = link.cloneNode(true);
-            link.parentNode.replaceChild(newLink, link);
-            
-            var href = newLink.getAttribute('href');
-            var pidMatch = href.match(/quotedpid=(\d+)/);
-            
-            if(pidMatch && pidMatch[1]) {
-                var pid = parseInt(pidMatch[1]);
-                
-                newLink.href = 'javascript:void(0);';
-                
-                newLink.replaceWith(newLink.cloneNode(true));
-                var finalLink = newLink.parentNode.lastChild;
-                
-                finalLink.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    
-                    Thread.handleSingleQuote(pid);
-                }, { once: true });
-            }
-        });
-    },
-
-    // ОБРАБОТКА ОДИНОЧНОГО ЦИТИРОВАНИЯ
-    handleSingleQuote: function(pid) {
-        
-        // Защита от множественных вызовов
-        if (this.quoting) {
-            return;
-        }
-        
-        this.quoting = true;
-        
-        // Показываем спиннер
-        var spinner = document.getElementById('quickreply_spinner');
-        if(spinner) spinner.style.display = 'block';
-
-        // Загружаем цитату через AJAX
-        fetch('xmlhttp.php?action=get_quoted&pid=' + pid)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                Thread.insertQuoteToQuickReply(data, pid);
-                if(spinner) spinner.style.display = 'none';
-                this.quoting = false;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                if(spinner) spinner.style.display = 'none';
-                if(typeof showToast !== 'undefined') {
-                    showToast('Error loading quote', 'error');
-                }
-                this.quoting = false;
-            });
-    },
-
-    // ВСТАВКА ЦИТАТЫ В БЫСТРЫЙ ОТВЕТ
-    insertQuoteToQuickReply: function(json, pid) {
-        if(typeof json == 'object' && json.hasOwnProperty("errors")) {
-            json.errors.forEach(function(message) {
-                if(typeof showToast !== 'undefined') {
-                    showToast('Quote error: ' + message, 'error');
-                }
-            });
-            return false;
-        }
-
-        if(json && json.message) {
-            var messageElement = document.getElementById('message');
-            if(!messageElement) {
-                console.error('Message element not found');
-                return false;
-            }
-
-            // Очищаем и нормализуем текст цитаты
-            var quoteText = json.message.trim();
-            
-            // Удаляем возможные дублирующиеся цитаты
-            quoteText = Thread.removeDuplicateQuotes(quoteText);
-            
-
-            // Если уже есть текст, добавляем переносы
-            var currentText = messageElement.value;
-            if(currentText.trim() !== '') {
-                // Проверяем, не содержится ли уже такая цитата
-                if (currentText.includes(quoteText)) {
-                    if(typeof showToast !== 'undefined') {
-                        showToast('Quote already exists in message', 'info');
-                    }
-                    return false;
-                }
-                quoteText = '\n\n' + quoteText;
-            }
-
-            // Вставляем цитату
-            if(typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
-                // Если используется редактор
-                MyBBEditor.insert(quoteText);
-            } else {
-                // Простое текстовое поле
-                var startPos = messageElement.selectionStart;
-                var endPos = messageElement.selectionEnd;
-                var currentValue = messageElement.value;
-                
-                messageElement.value = currentValue.substring(0, startPos) + 
-                                      quoteText + 
-                                      currentValue.substring(endPos);
-                
-                // Устанавливаем курсор после цитаты
-                var newPos = startPos + quoteText.length;
-                messageElement.setSelectionRange(newPos, newPos);
-            }
-
-            // Обновляем поле quoted_ids для правильной обработки формы
-            var quotedIds = document.getElementById('quoted_ids');
-            if(quotedIds) {
-                var currentIds = quotedIds.value ? quotedIds.value.split(',') : [];
-                if (!currentIds.includes(pid.toString())) {
-                    currentIds.push(pid.toString());
-                    quotedIds.value = currentIds.join(',');
-                }
-            }
-
-            // Фокусируемся на редакторе
-            messageElement.focus();
-            
-            // Прокручиваем к форме быстрого ответа
-            var quickReplyForm = document.getElementById('quick_reply_form');
-            if(quickReplyForm) {
-                quickReplyForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-            
-            if(typeof showToast !== 'undefined') {
-                showToast('Quote added to quick reply', 'success');
-            }
-            
-        }
     },
 
     // УДАЛЕНИЕ ДУБЛИРУЮЩИХСЯ ЦИТАТ
@@ -587,20 +435,16 @@ var Thread = {
                     quoteText = '\n\n' + quoteText;
                 }
 
-                if(typeof MyBBEditor !== 'undefined' && MyBBEditor !== null) {
-                    MyBBEditor.insert(quoteText);
-                } else {
-                    var startPos = messageElement.selectionStart;
-                    var endPos = messageElement.selectionEnd;
-                    var currentValue = messageElement.value;
-                    
-                    messageElement.value = currentValue.substring(0, startPos) + 
-                                          quoteText + 
-                                          currentValue.substring(endPos);
-                    
-                    var newPos = startPos + quoteText.length;
-                    messageElement.setSelectionRange(newPos, newPos);
-                }
+                var startPos = messageElement.selectionStart;
+                var endPos = messageElement.selectionEnd;
+                var currentValue = messageElement.value;
+                
+                messageElement.value = currentValue.substring(0, startPos) + 
+                                      quoteText + 
+                                      currentValue.substring(endPos);
+                
+                var newPos = startPos + quoteText.length;
+                messageElement.setSelectionRange(newPos, newPos);
 
                 messageElement.focus();
                 
@@ -672,9 +516,6 @@ var Thread = {
                 button.removeAttribute('hidden');
             });
             
-            
-            // Переинициализируем обработчики
-            Thread.handleQuoteLinks();
             
         }, 100);
     },
@@ -776,13 +617,6 @@ var Thread = {
         document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:01 GMT; path=/';
     },
 
-    viewNotes: function(tid) {
-        if(typeof MyBB !== 'undefined' && MyBB.popupWindow) {
-            MyBB.popupWindow("/moderation.php?action=viewthreadnotes&tid="+tid+"&modal=1");
-        } else {
-            window.open("/moderation.php?action=viewthreadnotes&tid="+tid, "_blank", "width=600,height=400");
-        }
-    }
 };
 
 // Инициализация

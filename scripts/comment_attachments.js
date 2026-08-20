@@ -136,22 +136,151 @@ function initAttachmentUploader(posthash, postKey, uploadUrl, commentId) {
             </div>`;
     }
 
+    // ── Delete confirmation modal ───────────────────────────────────
+    function showAttachDeleteModal(item) {
+        return new Promise((resolve) => {
+            const existing = document.getElementById('attDeleteModal');
+            if (existing) existing.remove();
+
+            const nameEl = item.querySelector('.att-item-name');
+            const filename = nameEl ? nameEl.textContent.trim() : '';
+            const thumbEl = item.querySelector('.att-item-thumb');
+            const previewHtml = thumbEl ? thumbEl.innerHTML : '';
+
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = `
+                <div class="modal fade" id="attDeleteModal" tabindex="-1" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow">
+                      <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body">
+                        <div class="d-flex align-items-center mb-3">
+                          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+                            <i class="fas fa-trash-alt text-danger fs-1"></i>
+                          </div>
+                          <div>
+                            <h5 class="fw-bold mb-1">Delete Attachment?</h5>
+                            <p class="text-muted mb-0 att-delete-filename"></p>
+                          </div>
+                        </div>
+                        <div class="text-center mb-3 att-delete-preview" style="font-size:2.5rem;"></div>
+                        <div class="alert alert-warning mt-2 mb-0">
+                          <div class="d-flex">
+                            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+                            <div><strong>Warning:</strong> This action cannot be undone!</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                          <i class="fas fa-times me-1"></i> Cancel
+                        </button>
+                        <button type="button" class="btn btn-danger" id="attDeleteConfirmBtn">
+                          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+            `;
+            const modalEl = wrapper.firstElementChild;
+            modalEl.querySelector('.att-delete-filename').textContent = filename;
+
+            const previewBox = modalEl.querySelector('.att-delete-preview');
+            previewBox.innerHTML = previewHtml;
+
+            const previewImg = previewBox.querySelector('img');
+            if (previewImg) {
+                previewImg.classList.remove('att-thumb-img');
+                previewImg.style.width = 'auto';
+                previewImg.style.height = 'auto';
+                previewImg.style.maxWidth = '100%';
+                previewImg.style.maxHeight = '260px';
+                previewImg.style.objectFit = 'contain';
+                previewImg.style.borderRadius = '8px';
+                previewImg.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                const link = previewBox.querySelector('a');
+                if (link) {
+                    link.removeAttribute('href');
+                    link.removeAttribute('target');
+                    link.style.cursor = 'default';
+                    link.style.display = 'inline-block';
+                }
+            }
+
+            document.body.appendChild(modalEl);
+
+            const bsModal = new bootstrap.Modal(modalEl);
+            let resolved = false;
+            const finish = (result) => {
+                if (resolved) return;
+                resolved = true;
+                resolve(result);
+            };
+
+            modalEl.querySelector('#attDeleteConfirmBtn').addEventListener('click', () => {
+                console.log('[comment_attachments] Yes, Delete clicked');
+                finish(true);
+                bsModal.hide();
+            });
+            modalEl.addEventListener('hidden.bs.modal', () => {
+                finish(false);
+                modalEl.remove();
+            });
+
+            bsModal.show();
+        });
+    }
+
     // ── Delete ───────────────────────────────────────────────────
     function bindDeleteBtn(item) {
         if (!item) return;
-        item.querySelector('.att-delete-btn')?.addEventListener('click', () => {
-            const aid = item.dataset.aid;
-            if (!aid) { item.remove(); return; }
+        const btn = item.querySelector('.att-delete-btn');
+        if (!btn) {
+            console.warn('[comment_attachments] .att-delete-btn not found in item', item);
+            return;
+        }
+        btn.addEventListener('click', () => {
+            showAttachDeleteModal(item).then((confirmed) => {
+                if (!confirmed) {
+                    console.log('[comment_attachments] delete cancelled');
+                    return;
+                }
 
-            const fd = new FormData();
-            fd.append('action', 'delete');
-            fd.append('aid', aid);
-            fd.append('my_post_key', postKey);
+                const aid = item.dataset.aid;
+                if (!aid) {
+                    console.warn('[comment_attachments] no data-aid on item, removing from DOM only', item);
+                    item.remove();
+                    return;
+                }
 
-            fetch(uploadUrl, { method: 'POST', body: fd })
-                .then(r => r.json())
-                .then(resp => { if (resp.success) item.remove(); })
-                .catch(() => item.remove());
+                const fd = new FormData();
+                fd.append('action', 'delete');
+                fd.append('aid', aid);
+                fd.append('my_post_key', postKey);
+
+                console.log('[comment_attachments] sending delete request', { aid, uploadUrl });
+
+                fetch(uploadUrl, { method: 'POST', body: fd })
+                    .then(r => {
+                        console.log('[comment_attachments] delete response status', r.status);
+                        return r.json();
+                    })
+                    .then(resp => {
+                        console.log('[comment_attachments] delete response body', resp);
+                        if (resp.success) {
+                            item.remove();
+                        } else {
+                            console.warn('[comment_attachments] server reported failure, not removing item', resp);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('[comment_attachments] delete request failed', err);
+                    });
+            });
         });
     }
 

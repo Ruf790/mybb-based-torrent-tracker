@@ -92,60 +92,6 @@ function sr_avatar(string $avatar, string $dims, string $username): string
     return '<div class="sr-avatar-placeholder rounded-circle" style="width:50px;height:50px;">' . $letter . '</div>';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PREFIX SELECT
-// ─────────────────────────────────────────────────────────────────────────────
-function build_prefix_select(mixed $fid, mixed $selected_pid = 0, int $multiple = 0, int $previous_pid = 0): string
-{
-    global $cache, $db, $lang, $mybb, $templates;
-
-    if ($fid !== 'all') $fid = (int)$fid;
-    if (empty($prefix_cache)) return '';
-
-    $prefixes = [];
-    foreach ($prefix_cache as $prefix) {
-        if ($fid !== 'all' && $prefix['forums'] !== '-1') {
-            $forums = explode(',', $prefix['forums']);
-            if (!in_array($fid, $forums) && $prefix['pid'] != $previous_pid) continue;
-        }
-        if (is_member($prefix['groups']) || $prefix['pid'] == $previous_pid) {
-            $prefixes[$prefix['pid']] = $prefix;
-        }
-    }
-    if (empty($prefixes)) return '';
-
-    $prefixselect = $prefixselect_prefix = '';
-    $any_selected     = ($multiple == 1 && $selected_pid === 'any') ? ' selected="selected"' : '';
-    $default_selected = ((int)$selected_pid === 0 && $selected_pid !== 'any') ? ' selected="selected"' : '';
-
-    foreach ($prefixes as $prefix) {
-        $selected = ($prefix['pid'] == $selected_pid) ? ' selected="selected"' : '';
-        $prefix['prefix'] = htmlspecialchars_uni($prefix['prefix']);
-        $prefixselect_prefix .= '<option value="' . (int)$prefix['pid'] . '"' . $selected . '>' . $prefix['prefix'] . '</option>';
-    }
-
-    if ($multiple !== 0) {
-        
-		$prefixselect = '<div class="col-auto align-self-center m-0 p-0 me-2">
-	<select class="form-select form-select border mb-3 pe-5" name="threadprefix[]" multiple="multiple" size="5">
-<option value="any"'.$any_selected.'>any_prefix</option>
-<option value="0"'.$default_selected.'>no_prefix</option>
-'.$prefixselect_prefix.'
-</select>
-</div>';
-		
-		
-    } else {
-        
-		$prefixselect = '<div class="col-auto align-self-center m-0 p-0 me-2"><select class="form-select form-select border mb-3 pe-5" name="threadprefix">
-<option value="0"'.$default_selected.'>no_prefix</option>
-'.$prefixselect_prefix.'
-</select>
-		</div>';
-		
-    }
-    return $prefixselect;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INIT
@@ -950,7 +896,6 @@ if ($mybb->input['action'] === 'results') {
 
     $plugins->run_hooks('search_start');
     $srchlist      = make_searchable_forums();
-    $prefixselect  = build_prefix_select('all', 'any', 1);
     $maxnamelength = 30;
     $rowspan       = 5;
     $moderator_options = '';
@@ -1122,13 +1067,6 @@ if ($mybb->input['action'] === 'results') {
                                 <?= $srchlist ?>
                                 <small class="text-muted">Hold Ctrl to select multiple</small>
                             </div>
-
-                            <?php if ($prefixselect): ?>
-                            <div class="col-md-6">
-                                <label class="sr-field-label"><i class="fas fa-tag me-1"></i>Thread prefix</label>
-                                <?= $prefixselect ?>
-                            </div>
-                            <?php endif; ?>
 
                             <?php if ($moderator_options): ?>
                             <div class="col-12">

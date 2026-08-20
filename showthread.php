@@ -10,6 +10,7 @@ require_once 'global.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_indicators.php';
+require_once INC_PATH . '/functions_forum_jump.php';
 
 
 require_once INC_PATH . '/editor.php';
@@ -38,15 +39,7 @@ if (!$thread || str_starts_with((string)$thread['closed'], "moved|")) {
     stderr($lang->global['error_invalidthread']);
 }
 
-$thread['threadprefix'] = '';
-$thread['displayprefix'] = '';
-if ($thread['prefix'] != 0) {
-    $threadprefix = build_prefixes($thread['prefix']);
-    if (!empty($threadprefix['prefix'])) {
-        $thread['threadprefix'] = htmlspecialchars_uni($threadprefix['prefix']) . '&nbsp;';
-        $thread['displayprefix'] = $threadprefix['displaystyle'] . '&nbsp;';
-    }
-}
+
 
 $reply_subject = $parser->parse_badwords($thread['subject']);
 $thread['subject'] = htmlspecialchars_uni($reply_subject);
@@ -280,7 +273,7 @@ if ($showforumpagesbreadcrumb) {
 }
 
 build_forum_breadcrumb($fid, $breadcrumb_multipage);
-add_breadcrumb($thread['displayprefix'] . $thread['subject'], get_thread_link($thread['tid']));
+add_breadcrumb($thread['subject'], get_thread_link($thread['tid']));
 $plugins->run_hooks("showthread_start");
 
 // ─── Main thread view ─────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ define('SCRIPTNAME', 'printthread.php');
 define('IN_FORUM',   true);
 
 require_once 'global.php';
+require_once INC_PATH . '/functions_parent_list.php';
 require_once INC_PATH . '/functions_post.php';
 
 $lang->load('printthread');
@@ -20,15 +21,7 @@ if (!$thread || $thread['visible'] == -1) {
     stderr($lang->printthread['error_invalidthread'] ?? 'Invalid thread.', '', 404, '404');
 }
 
-// Префикс треда
-$thread['threadprefix'] = $thread['displaystyle'] = '';
-if ($thread['prefix']) {
-    $threadprefix = build_prefixes($thread['prefix']);
-    if (!empty($threadprefix)) {
-        $thread['threadprefix'] = $threadprefix['prefix'];
-        $thread['displaystyle'] = $threadprefix['displaystyle'];
-    }
-}
+
 
 $thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
 $fid = (int)$thread['fid'];
@@ -151,7 +144,7 @@ $tdepth     = str_repeat('-', count($parentsexp) + 1);
 
 // ── Вывод ─────────────────────────────────────────────────────────────────────
 // FIX: убраны <html><head><body> и таблицы — используем stdhead/stdfoot
-stdhead($thread['threadprefix'] . ' ' . $thread['subject'] . ' — ' . ($lang->printthread['printable_version'] ?? 'Printable Version'));
+stdhead($thread['subject'] . ' — ' . ($lang->printthread['printable_version'] ?? 'Printable Version'));
 ?>
 <style>
 @media print {

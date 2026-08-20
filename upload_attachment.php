@@ -42,11 +42,17 @@ if ($action === 'delete') {
     if (!$aid) { echo json_encode(['error' => 'Invalid ID']); exit; }
 
     $att = $db->fetch_array($db->sql_query_prepared(
-        "SELECT * FROM attachments WHERE aid = ? AND uid = ?",
-        [$aid, (int)$CURUSER['id']]
+        "SELECT * FROM attachments WHERE aid = ?",
+        [$aid]
     ));
 
     if (!$att) { echo json_encode(['error' => 'Not found']); exit; }
+
+    // Владелец вложения может удалять своё; стафф (модерация) - чужое тоже
+    if ((int)$att['uid'] !== (int)$CURUSER['id'] && !is_mod($usergroups)) {
+        echo json_encode(['error' => 'No permission']);
+        exit;
+    }
 
     // Удаляем файлы
     $uploadDir = TSDIR . '/uploads/attachments/';

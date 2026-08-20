@@ -83,8 +83,7 @@ if (defined('IN_FORUM') && IN_FORUM === true) {
     define('FORUM_SECURE', true);
     
     // Load forum-specific files ONLY in forum context
-    require_once INC_PATH . '/functions_forum.php';        
-    //include_once INC_PATH . '/functions_multipage.php';            
+    require_once INC_PATH . '/functions_forum.php';                  
     include_once INC_PATH . '/class_parser.php';         
     
     // Initialize parser (forum only)

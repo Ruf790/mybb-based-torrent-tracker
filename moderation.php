@@ -5,7 +5,9 @@ define('IN_FORUM', true);
 require_once 'global.php';
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_upload.php';
+require_once INC_PATH . '/functions_parent_list.php';
 require_once INC_PATH . '/class_moderation.php';
+require_once INC_PATH . '/functions_forum_jump.php';
 
 $moderation = new Moderation();
 
@@ -95,8 +97,7 @@ $loginbox = '<div class="alert bg-nav p-2 mb-3">
 </div>';
 
 $allowable_moderation_actions = [
-    'getip', 'getpmip', 'cancel_delayedmoderation', 'delayedmoderation',
-    'threadnotes', 'purgespammer', 'viewthreadnotes',
+    'cancel_delayedmoderation', 'delayedmoderation',
 ];
 
 if ($mybb->request_method !== 'post' && !in_array($action, $allowable_moderation_actions)) {
@@ -488,7 +489,7 @@ switch ($action) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>{$SITENAME} - {$lang->delayed_moderation} | Moderation Center</title>
+    <title>{$SITENAME} - {$lang->moderation['delayed_moderation']} | Moderation Center</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/mod2.css">
 </head>
@@ -503,11 +504,11 @@ switch ($action) {
         </div>
         <div class="p-3 p-md-4">
             <div class="d-none d-lg-flex row-header-custom align-items-center">
-                <div class="col-3"><i class="fas fa-user-shield me-2"></i> {$lang->mod_username}</div>
-                <div class="col-3"><i class="fas fa-hourglass-half me-2"></i> {$lang->time_to_perform_action}</div>
-                <div class="col-2"><i class="fas fa-tasks me-2"></i> {$lang->mod_actions}</div>
-                <div class="col-2"><i class="fas fa-info-circle me-2"></i> {$lang->mod_information}</div>
-                <div class="col-2"><i class="fas fa-edit me-2"></i> {$lang->actions}</div>
+                <div class="col-3"><i class="fas fa-user-shield me-2"></i> {$lang->moderation['mod_username']}</div>
+                <div class="col-3"><i class="fas fa-hourglass-half me-2"></i> {$lang->moderation['time_to_perform_action']}</div>
+                <div class="col-2"><i class="fas fa-tasks me-2"></i> {$lang->moderation['mod_actions']}</div>
+                <div class="col-2"><i class="fas fa-info-circle me-2"></i> {$lang->moderation['mod_information']}</div>
+                <div class="col-2"><i class="fas fa-edit me-2"></i> {$lang->moderation['actions']}</div>
             </div>
             <div id="delayedQueueWrapper">{$delayedmods}</div>
         </div>
@@ -1976,222 +1977,6 @@ stdfoot();
         moderation_redirect(get_thread_link($thread['tid']), $lang->moderation['redirect_inline_postsunapproved']);
         break;
 
-    // ── Purge spammer ────────────────────────────────────────────────────────
-    case 'do_purgespammer':
-    case 'purgespammer':
-        require_once MYBB_ROOT . 'inc/functions_user.php';
-
-        if (!is_member(explode(',', $mybb->settings['purgespammergroups']))) error_no_permission();
-
-        $uid  = $mybb->get_input('uid', MyBB::INPUT_INT);
-        $user = get_user($uid);
-        if (!$user || !purgespammer_show($user['postnum'], $user['usergroup'], $user['uid'])) {
-            error($lang->purgespammer_invalid_user);
-        }
-
-        if ($action === 'do_purgespammer') {
-            verify_post_check($mybb->get_input('my_post_key'));
-
-            $user_deleted = false;
-            $plugins->run_hooks('moderation_purgespammer_purge');
-
-            require_once MYBB_ROOT . 'inc/datahandlers/user.php';
-            $userhandler = new UserDataHandler('delete');
-
-            if ($mybb->settings['purgespammerbandelete'] === 'ban') {
-                $userhandler->delete_content($uid);
-                $userhandler->delete_posts($uid);
-
-                $ban_check = $db->sql_query_prepared("SELECT uid FROM banned WHERE uid = ?", [$uid]);
-                if ($ban_check && $db->num_rows($ban_check) > 0) {
-                    $db->sql_query_prepared("UPDATE banned SET reason = ? WHERE uid = ?", [$mybb->settings['purgespammerbanreason'], $uid]);
-                } else {
-                    $db->sql_query_prepared(
-                        "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                        [
-                            $uid,
-                            (int)$mybb->settings['purgespammerbangroup'],
-                            2,
-                            '',
-                            0,
-                            (int)$mybb->user['uid'],
-                            TIMENOW,
-                            '---',
-                            0,
-                            $mybb->settings['purgespammerbanreason'],
-                        ]
-                    );
-                }
-
-                if ($mybb->settings['purgespammerbanip'] == 1) {
-                    foreach ([$user['regip'], $user['lastip']] as $ip) {
-                        $ip = my_inet_ntop($db->unescape_binary($ip));
-                        $ip_check = $db->sql_query_prepared("SELECT type FROM banfilters WHERE type = 1 AND filter = ?", [$ip]);
-                        if ($ip_check && $db->num_rows($ip_check) === 0) {
-                            $db->sql_query_prepared(
-                                "INSERT INTO banfilters (`filter`,`type`,`dateline`) VALUES (?,?,?)",
-                                [$ip, 1, TIMENOW]
-                            );
-                        }
-                    }
-                }
-
-                $userhandler->clear_profile($uid, $mybb->settings['purgespammerbangroup']);
-                $cache->update_bannedips();
-                $cache->update_awaitingactivation();
-
-            } elseif ($mybb->settings['purgespammerbandelete'] === 'delete') {
-                $user_deleted = $userhandler->delete_user($uid, 1);
-            }
-
-            if (!empty($mybb->settings['purgespammerapikey'])) {
-                @fetch_remote_file('http://stopforumspam.com/add.php?username=' . urlencode($user['username'])
-                    . '&ip_addr=' . urlencode(my_inet_ntop($db->unescape_binary($user['lastip'])))
-                    . '&email=' . urlencode($user['email'])
-                    . '&api_key=' . urlencode($mybb->settings['purgespammerapikey']));
-            }
-
-            log_moderator_action(['uid' => $uid, 'username' => $user['username']], $lang->purgespammer_modlog);
-            redirect($user_deleted ? $mybb->settings['bburl'] : get_profile_link($uid), $lang->purgespammer_success);
-
-        } else {
-            $plugins->run_hooks('moderation_purgespammer_show');
-            add_breadcrumb($lang->purgespammer);
-            $lang->purgespammer_purge      = $lang->sprintf($lang->purgespammer_purge, htmlspecialchars_uni($user['username']));
-            $lang->purgespammer_purge_desc = $lang->sprintf($lang->purgespammer_purge_desc,
-                $mybb->settings['purgespammerbandelete'] === 'ban' ? $lang->purgespammer_ban : $lang->purgespammer_delete
-            );
-            output_page($purgespammer);
-        }
-        break;
-
-    // ── Default: custom mod tools ────────────────────────────────────────────
-    default:
-        require_once MYBB_ROOT . 'inc/class_custommoderation.php';
-        $custommod = new CustomModeration();
-        $tool      = $custommod->tool_info($mybb->get_input('action', MyBB::INPUT_INT));
-
-        if ($tool === false) {
-            error_no_permission();
-            break;
-        }
-
-        verify_post_check($mybb->get_input('my_post_key'));
-
-        $options = my_unserialize($tool['threadoptions']);
-        if (!is_member($tool['groups'])) error_no_permission();
-        if ($thread['visible'] == -1) error($lang->error_thread_deleted, $lang->error);
-
-        // Confirmation page
-        if (!empty($options['confirmation']) && empty($mybb->input['confirm'])) {
-            add_breadcrumb($lang->confirm_execute_tool);
-            $lang->confirm_execute_tool_desc = $lang->sprintf($lang->confirm_execute_tool_desc, htmlspecialchars_uni($tool['name']));
-
-            $toolAction   = $mybb->get_input('action', MyBB::INPUT_INT);
-            $modtype      = htmlspecialchars_uni($mybb->get_input('modtype'));
-            $inlinetype   = htmlspecialchars_uni($mybb->get_input('inlinetype'));
-            $searchid     = htmlspecialchars_uni($mybb->get_input('searchid'));
-            $url          = htmlspecialchars_uni($mybb->get_input('url'));
-
-            $plugins->run_hooks('moderation_confirmation');
-
-            echo '<form action="moderation.php" method="post">
-                <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-                <input type="hidden" name="action" value="' . $toolAction . '" />
-                <input type="hidden" name="modtype" value="' . $modtype . '" />
-                <input type="hidden" name="tid" value="' . $tid . '" />
-                <input type="hidden" name="pid" value="' . $pid . '" />
-                <input type="hidden" name="fid" value="' . $fid . '" />
-                <input type="hidden" name="pmid" value="' . $pmid . '" />
-                <input type="hidden" name="confirm" value="1" />
-                <input type="hidden" name="inlinetype" value="' . $inlinetype . '" />
-                <input type="hidden" name="searchid" value="' . $searchid . '" />
-                <input type="hidden" name="url" value="' . $url . '" />
-                <div class="container-md"><div class="card"><div class="card-body">
-                    <div class="legend mb-4">' . $thread['subject'] . ' - confirm_execute_tool</div>
-                    <div class="ps-3 pe-3">
-                        ' . $loginbox . '
-                        <div class="mt-3 text-muted">confirm_execute_tool_desc</div>
-                        <div class="text-end mt-3"><input type="submit" class="btn btn-primary" name="submit" value="confirm_execute_tool" /></div>
-                    </div>
-                </div></div></div>
-            </form>';
-            exit;
-        }
-
-        $tool['name']    = htmlspecialchars_uni($tool['name']);
-        $modtype_input   = $mybb->get_input('modtype');
-        $inlinetype      = $mybb->get_input('inlinetype');
-        $forum_cache     = $cache->read('forums');
-
-        if ($tool['type'] === 't' && $modtype_input === 'inlinethread') {
-            $tids = $inlinetype === 'search'
-                ? getids($mybb->get_input('searchid'), 'search')
-                : getids($fid, 'forum');
-
-            if (count($tids) < 1) error($lang->error_inline_nopostsselected, $lang->error);
-            if (!is_mod($usergroups)) error_no_permission();
-
-            $thread_options = my_unserialize($tool['threadoptions']);
-            if ($thread_options['movethread'] && $forum_cache[$thread_options['movethread']]['type'] !== 'f') {
-                error($lang->error_movetocategory, $lang->error);
-            }
-
-            $custommod->execute($mybb->get_input('action', MyBB::INPUT_INT), $tids);
-            log_moderator_action($modlogdata, $lang->sprintf($lang->custom_tool, $tool['name']));
-
-            if ($inlinetype === 'search') {
-                clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
-                moderation_redirect(htmlspecialchars_uni($mybb->get_input('url')), $lang->sprintf($lang->redirect_customtool_search, $tool['name']));
-            } else {
-                clearinline($fid, 'forum');
-                redirect(get_forum_link($fid), $lang->sprintf($lang->redirect_customtool_forum, $tool['name']));
-            }
-
-        } elseif ($tool['type'] === 't' && $modtype_input === 'thread') {
-            if (!is_mod($usergroups)) error_no_permission();
-
-            $thread_options = my_unserialize($tool['threadoptions']);
-            if ($thread_options['movethread'] && $forum_cache[$thread_options['movethread']]['type'] !== 'f') {
-                error($lang->error_movetocategory, $lang->error);
-            }
-
-            $ret = $custommod->execute($mybb->get_input('action', MyBB::INPUT_INT), $tid);
-            log_moderator_action($modlogdata, $lang->sprintf($lang->custom_tool, $tool['name']));
-
-            $ret === 'forum'
-                ? moderation_redirect(get_forum_link($fid), $lang->sprintf($lang->redirect_customtool_forum, $tool['name']))
-                : moderation_redirect(get_thread_link($thread['tid']), $lang->sprintf($lang->redirect_customtool_thread, $tool['name']));
-
-        } elseif ($tool['type'] === 'p' && $modtype_input === 'inlinepost') {
-            $pids = $inlinetype === 'search'
-                ? getids($mybb->get_input('searchid'), 'search')
-                : getids($tid, 'thread');
-
-            if (count($pids) < 1) error($lang->error_inline_nopostsselected, $lang->error);
-            if (!is_mod($usergroups)) error_no_permission();
-
-            $ph = implode(',', array_fill(0, count($pids), '?'));
-            $query = $db->sql_query_prepared("SELECT DISTINCT tid, dateline FROM posts WHERE pid IN ({$ph}) ORDER BY dateline, pid", $pids);
-            $tids  = [];
-            while ($query && ($row = $db->fetch_array($query))) $tids[] = $row['tid'];
-
-            $ret = $custommod->execute($mybb->get_input('action', MyBB::INPUT_INT), $tids, $pids);
-            log_moderator_action($modlogdata, $lang->sprintf($lang->custom_tool, $tool['name']));
-
-            if ($inlinetype === 'search') {
-                clearinline($mybb->get_input('searchid', MyBB::INPUT_INT), 'search');
-                moderation_redirect(htmlspecialchars_uni($mybb->get_input('url')), $lang->sprintf($lang->redirect_customtool_search, $tool['name']));
-            } else {
-                clearinline($tid, 'thread');
-                $ret === 'forum'
-                    ? moderation_redirect(get_forum_link($fid), $lang->sprintf($lang->redirect_customtool_forum, $tool['name']))
-                    : moderation_redirect(get_thread_link($tid), $lang->sprintf($lang->redirect_customtool_thread, $tool['name']));
-            }
-        } else {
-            error_no_permission();
-        }
-        break;
 }
 
 // ── Helper functions ──────────────────────────────────────────────────────────

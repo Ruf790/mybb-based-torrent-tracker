@@ -17,6 +17,7 @@ require_once 'global.php';
 
 require_once INC_PATH."/functions_post.php";
 require_once INC_PATH."/functions_upload.php";
+require_once INC_PATH . '/functions_subscription_method.php';
 require_once 'cache/smilies.php';
 require_once INC_PATH . '/datahandler.php';
 
@@ -196,7 +197,7 @@ if ($enableattachments == 1 && ($mybb->get_input('newattachment') || $mybb->get_
             $attemplate = '
 			
 			
-			<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'">
+			<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'" data-filename="'.$attachment['filename'].'">
 <div class="row g-1">
 <div class="col-lg-8 text-start align-self-center">
 		
@@ -530,7 +531,16 @@ $deletebox .= $modal_delete;
         $attachments = '';
         while ($query && ($attachment = $db->fetch_array($query))) {
             $attachment['size'] = mksize($attachment['filesize']);
-            $attachment['icon'] = get_attachment_icon(get_extension($attachment['filename']));
+
+            // Для картинок - маленькое превью самого файла вместо иконки типа файла
+            $attach_ext = strtolower(get_extension($attachment['filename']));
+            $image_exts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+            if (in_array($attach_ext, $image_exts, true)) {
+                $attachment['icon'] = '<img src="attachment.php?aid=' . $attachment['aid'] . '" alt="" style="width:50px;height:50px;object-fit:cover;border-radius:4px;vertical-align:middle;">';
+            } else {
+                $attachment['icon'] = get_attachment_icon($attach_ext);
+            }
+
             $attachment['filename'] = htmlspecialchars_uni($attachment['filename']);
 
             $postinsert = '<input type="button" class="btn btn-page" name="insert" value="Insert Into Post" id="insertBtn" />
@@ -588,7 +598,7 @@ $deletebox .= $modal_delete;
 				
 				$attachments .= '
 				
-				<div class="alert bg-danger border-0 mt-2" id="attachment_'.$attachment['aid'].'">
+				<div class="alert bg-danger border-0 mt-2" id="attachment_'.$attachment['aid'].'" data-filename="'.$attachment['filename'].'">
 <div class="row">
 <div class="col-8 text-start">
 		
@@ -611,7 +621,7 @@ $deletebox .= $modal_delete;
 				
 				$attachments .= '
 
-				<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'">
+				<div class="bg-nav rounded p-2 small mt-2" id="attachment_'.$attachment['aid'].'" data-filename="'.$attachment['filename'].'">
 <div class="row g-1">
 <div class="col-lg-8 text-start align-self-center">
 		
@@ -660,6 +670,7 @@ $deletebox .= $modal_delete;
         }
 
         $attach_update_options = '';
+        $attach_add_options = '';
         
         if ($maxattachments == 0 || ($maxattachments != 0 && $attachcount < $maxattachments) && !$noshowattach) {
             

@@ -13,6 +13,7 @@ require_once 'global.php';
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/functions_upload.php';
+require_once INC_PATH . '/functions_subscription_method.php';
 require_once 'cache/smilies.php';
 require_once INC_PATH . '/datahandler.php';
 
@@ -230,7 +231,8 @@ if ($mybb->input['action'] === 'do_newreply' && $mybb->request_method === 'post'
         if ($db->num_rows($query) > 0) error('error_post_already_submitted');
     }
 
-    require_once INC_PATH . '/datahandlers/post.php';
+   
+	require_once INC_PATH . '/datahandlers/post.php';
     $posthandler = new PostDataHandler('insert');
 
     $post = [
@@ -238,7 +240,6 @@ if ($mybb->input['action'] === 'do_newreply' && $mybb->request_method === 'post'
         'replyto'   => $mybb->get_input('replyto', MyBB::INPUT_INT),
         'fid'       => $thread['fid'],
         'subject'   => $mybb->get_input('subject'),
-        'icon'      => $mybb->get_input('icon', MyBB::INPUT_INT),
         'uid'       => $uid,
         'username'  => $username,
         'message'   => $mybb->get_input('message'),
@@ -252,9 +253,7 @@ if ($mybb->input['action'] === 'do_newreply' && $mybb->request_method === 'post'
 
     $postoptions     = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
     $post['options'] = [
-        'signature'          => (int)($postoptions['signature']          ?? 0),
-        'subscriptionmethod' => (int)($postoptions['subscriptionmethod'] ?? 0),
-        'disablesmilies'     => (int)($postoptions['disablesmilies']     ?? 0),
+        'subscriptionmethod' => trim((string)($postoptions['subscriptionmethod'] ?? '')),
     ];
     $post['modoptions'] = $mybb->get_input('modoptions', MyBB::INPUT_ARRAY);
 
@@ -489,24 +488,21 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
     if (empty($message))                    $message         = $mybb->get_input('message');
     $message = htmlspecialchars_uni($message);
 
-    $postoptionschecked = ['signature' => '', 'disablesmilies' => ''];
     $subscribe = $nonesubscribe = $emailsubscribe = $pmsubscribe = '';
 
     if (!empty($mybb->input['previewpost']) || $reply_errors !== '') {
         $postoptions = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
-        if (($postoptions['signature']      ?? 0) == 1) $postoptionschecked['signature']      = ' checked="checked"';
-        if (($postoptions['disablesmilies'] ?? 0) == 1) $postoptionschecked['disablesmilies'] = ' checked="checked"';
         $subscription_method = get_subscription_method($tid, $postoptions);
         $subject             = $mybb->input['subject'];
     } elseif ($mybb->input['action'] === 'editdraft' && $CURUSER['id']) {
         $message = htmlspecialchars_uni($post['message']);
         $subject = $post['subject'];
-        if ($post['includesig'] != 0) $postoptionschecked['signature']      = ' checked="checked"';
-        if ($post['smilieoff']  == 1) $postoptionschecked['disablesmilies'] = ' checked="checked"';
+        
+		
+		
         $subscription_method = get_subscription_method($tid);
-        $mybb->input['icon'] = $post['icon'];
+
     } else {
-        if ($CURUSER['signature'] !== '') $postoptionschecked['signature'] = ' checked="checked"';
         $subscription_method = get_subscription_method($tid);
     }
 
@@ -540,7 +536,6 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             'replyto'   => $mybb->get_input('replyto', MyBB::INPUT_INT),
             'fid'       => $thread['fid'],
             'subject'   => $mybb->get_input('subject'),
-            'icon'      => $mybb->get_input('icon', MyBB::INPUT_INT),
             'uid'       => $uid,
             'username'  => $username,
             'message'   => $mybb->get_input('message'),
@@ -562,7 +557,7 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             $reply_errors = inline_error($post_errors);
         } else {
             $quote_ids           = htmlspecialchars_uni($mybb->get_input('quote_ids'));
-            $mybb->input['icon'] = $mybb->get_input('icon', MyBB::INPUT_INT);
+           
 
             $query = $db->sql_query_prepared("
                 SELECT u.*
@@ -571,15 +566,14 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
             ", [(int)$CURUSER['id']]);
             $post = $db->fetch_array($query);
 
-            $postoptions        = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
             $post['username']   = $username;
             if ($CURUSER['id']) $post['userusername'] = $CURUSER['username'];
             $post['message']    = $previewmessage;
             $post['subject']    = $subject;
-            $post['icon']       = $mybb->get_input('icon', MyBB::INPUT_INT);
-            $post['smilieoff']  = $postoptions['disablesmilies'] ?? 0;
+        
+            
             $post['dateline']   = TIMENOW;
-            $post['includesig'] = ($postoptions['signature'] ?? 0) == 1 ? 1 : 0;
+            
 
             if ($mybb->get_input('pid', MyBB::INPUT_INT)) {
                 $attachwhere_sql    = "pid = ?";
@@ -824,17 +818,11 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
     }
 
     // ── Post / mod options ────────────────────────────────────────────────────
-    $signature = $disablesmilies = '';
-    $postoptions = '';
-    
-	$postoptions = '
-	
+    $postoptions = '
+
 	<a class="links" data-bs-toggle="collapse" aria-expanded="false" aria-controls="collapse-1" href="#collapse-postop" role="button"><i class="fa-solid fa-gear"></i> &nbsp;'.$lang->newreply['post_options'].'</a>
-	
+
 	';
-    
-	
-	$bgcolor = 'trow2';
 
     $modoptions = '';
     $is_mod     = is_mod($usergroups);
@@ -865,9 +853,6 @@ if ($mybb->input['action'] === 'newreply' || $mybb->input['action'] === 'editdra
 			
 			
 			';
-            
-			
-			$bgcolor = 'trow1';
         }
     }
 

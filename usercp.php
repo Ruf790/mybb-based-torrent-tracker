@@ -98,8 +98,6 @@ $breadcrumb_map = [
     'do_editsig'        => $lang->usercp['nav_editsig'],
     'avatar'            => $lang->usercp['nav_avatar'],
     'do_avatar'         => $lang->usercp['nav_avatar'],
-    'notepad'           => $lang->usercpnav['ucp_nav_notepad'],
-    'do_notepad'        => $lang->usercpnav['ucp_nav_notepad'],
     'editlists'         => $lang->usercpnav['ucp_nav_editlists'],
     'do_editlists'      => $lang->usercpnav['ucp_nav_editlists'],
     'drafts'            => $lang->usercpnav['ucp_nav_drafts'],
@@ -1002,11 +1000,9 @@ if ($mybb->input['action'] === 'do_email' && $mybb->request_method === 'post') {
                 );
 
                 $emailsubject = 'Account Activation at ' . $SITENAME;
-                $emailmessage = sprintf(
-                    $lang->member['email_activateaccount' . match ((int) $username_method) {
-                        1, 2    => $username_method,
-                        default => ''
-                    }],
+                
+				$emailmessage = sprintf(
+                    $lang->member['email_activateaccount'],
                     $CURUSER['username'], $SITENAME, $BASEURL, $CURUSER['id'], $activationcode
                 );
                 my_mail($CURUSER['email'], $emailsubject, $emailmessage);
@@ -1504,7 +1500,7 @@ if ($mybb->input['action'] === 'do_avatar' && $mybb->request_method === 'post') 
     } elseif ($allowremoteavatars) {
         $avatarurl = preg_replace('#script:#i', '', $mybb->input['avatarurl']);
         $ext       = !empty(trim($avatarurl)) ? get_extension($avatarurl) : '';
-        $file      = TS_Fetch_Data($avatarurl);
+        $file      = fetch_remote_file($avatarurl);
 
         if (!$file) {
             $avatar_error = 'The URL you entered for your avatar does not appear to be valid. Please ensure you enter a valid URL';
@@ -4191,7 +4187,13 @@ if ($mybb->input['action'] === 'editlists') {
 
     if ($CURUSER['buddylist']) {
         $type  = 'buddy';
-        $query = $db->sql_query_prepared("SELECT * FROM users WHERE id IN ({$CURUSER['buddylist']}) ORDER BY username");
+        $buddy_ids = array_filter(array_map('intval', explode(',', $CURUSER['buddylist'])));
+        if (!empty($buddy_ids)) {
+            $buddy_placeholders = implode(',', array_fill(0, count($buddy_ids), '?'));
+            $query = $db->sql_query_prepared("SELECT * FROM users WHERE id IN ({$buddy_placeholders}) ORDER BY username", $buddy_ids);
+        } else {
+            $query = false;
+        }
         while ($query && ($user = $db->fetch_array($query))) {
             $user['username'] = htmlspecialchars_uni($user['username']);
             $profile_link     = build_profile_link(format_name($user['username'], $user['usergroup'], $user['displaygroup']), $user['id']);
@@ -4235,7 +4237,13 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
     $ignore_count = 0;
     if ($CURUSER['ignorelist']) {
         $type  = 'ignored';
-        $query = $db->sql_query_prepared("SELECT * FROM users WHERE id IN ({$CURUSER['ignorelist']}) ORDER BY username");
+        $ignore_ids = array_filter(array_map('intval', explode(',', $CURUSER['ignorelist'])));
+        if (!empty($ignore_ids)) {
+            $ignore_placeholders = implode(',', array_fill(0, count($ignore_ids), '?'));
+            $query = $db->sql_query_prepared("SELECT * FROM users WHERE id IN ({$ignore_placeholders}) ORDER BY username", $ignore_ids);
+        } else {
+            $query = false;
+        }
         while ($query && ($user = $db->fetch_array($query))) {
             $user['username'] = htmlspecialchars_uni($user['username']);
             $profile_link     = build_profile_link(format_name($user['username'], $user['usergroup'], $user['displaygroup']), $user['id']);

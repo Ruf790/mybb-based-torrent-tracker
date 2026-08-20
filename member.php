@@ -148,7 +148,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') {
 // ── Ban times ──────────────────────────────────────────────────────────────
 function fetch_ban_times(): array
 {
-    global $plugins;
+    global $plugins, $lang;
 
     $ban_times = [
         '1-0-0'  => '1 Day',   '2-0-0'  => '2 Days',  '3-0-0'  => '3 Days',
@@ -160,7 +160,7 @@ function fetch_ban_times(): array
     ];
 
     $ban_times = $plugins->run_hooks('functions_fetch_ban_times', $ban_times);
-    $ban_times['---'] = 'Permanent';
+    $ban_times['---'] = $lang->member['permanent'];
     return $ban_times;
 }
 
@@ -569,17 +569,6 @@ $fromreg = 0;
 if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post') {
     $plugins->run_hooks('member_do_register_start');
 
-    if ($mybb->settings['regtime'] > 0) {
-        if (isset($mybb->input['regtime'])) {
-            $timetook = TIMENOW - $mybb->get_input('regtime', MyBB::INPUT_INT);
-            if ($timetook < $mybb->settings['regtime']) {
-                error(sprintf($lang->error_spam_deny_time, $mybb->settings['regtime'], $timetook));
-            }
-        } else {
-            error($lang->error_spam_deny);
-        }
-    }
-
     $usergroup = $regtype === 'verify' ? 5 : 2;
 
     require_once INC_PATH . '/datahandlers/user.php';
@@ -672,7 +661,7 @@ if ($mybb->input['action'] === 'do_register' && $mybb->request_method === 'post'
                 [$user_info['uid'], TIMENOW, $activationcode, 'r']
             );
             $emailsubject = sprintf($lang->member['emailsubject_activateaccount'], $SITENAME);
-            $emailmessage = sprintf($lang->member['email_activateaccount' . ($username_method ?: '')], $user_info['username'], $SITENAME, $BASEURL, $user_info['uid'], $activationcode);
+            $emailmessage = sprintf($lang->member['email_activateaccount'], $user_info['username'], $SITENAME, $BASEURL, $user_info['uid'], $activationcode);
             my_mail($user_info['email'], $emailsubject, $emailmessage);
             $plugins->run_hooks('member_do_register_end');
             
@@ -1010,7 +999,6 @@ if ($mybb->input['action'] === 'register') {
                        
                         <!-- Кнопка отправки -->
                         <div class="d-grid gap-2 mt-4">
-                            <input type="hidden" name="regtime" value="'.$time.'" />
                             <input type="hidden" name="step" value="registration" />
                             <input type="hidden" name="action" value="do_register" />
                             <button type="submit" class="btn btn-primary btn-lg" name="regsubmit" value="'.$lang->member['submit_registration'].'">
@@ -1047,7 +1035,7 @@ if ($mybb->input['action'] === 'activate') {
     $plugins->run_hooks('member_activate_start');
 
     if (isset($mybb->input['username'])) {
-        $user = get_user_by_username($mybb->get_input('username'), ['username_method' => $username_method, 'fields' => '*']);
+        $user = get_user_by_username($mybb->get_input('username'), ['fields' => '*']);
         if (!$user) { stderr('error_invalidpworusername'); }
         $uid = $user['id'];
     } else {
@@ -1148,6 +1136,8 @@ if ($mybb->input['action'] === 'activate') {
     }
 }
 
+
+
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: do_resendactivation
 // ══════════════════════════════════════════════════════════════════════════
@@ -1155,30 +1145,32 @@ if ($mybb->input['action'] === 'do_resendactivation' && $mybb->request_method ==
     $plugins->run_hooks('member_do_resendactivation_start');
 
     $query    = $db->sql_query_prepared(
-        "SELECT u.id, u.username, u.usergroup, u.email, a.code, a.type, a.validated FROM users u LEFT JOIN awaitingactivation a ON (a.id=u.id AND (a.type='r' OR a.type='b')) WHERE u.email = ?",
+        "SELECT u.id, u.username, u.usergroup, u.ustatus, u.email, a.code, a.type, a.validated FROM users u LEFT JOIN awaitingactivation a ON (a.uid=u.id AND (a.type='r' OR a.type='b')) WHERE u.email = ?",
         [$mybb->get_input('email')]
     );
     $numusers = $query ? $db->num_rows($query) : 0;
 
     if ($numusers < 1) {
-        error($lang->error_invalidemail);
+        error($lang->member['error_invalidemail']);
     } else {
         while ($user = $db->fetch_array($query)) {
-            if ($user['type'] === 'b' && $user['validated'] == 1) { error($lang->error_activated_by_admin); }
-            if ($user['usergroup'] == 5) {
-                if (!$user['code']) {
-                    $user['code'] = random_str();
-                    $db->sql_query_prepared(
-                        "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
-                        [$user['id'], TIMENOW, $user['code'], $user['type']]
-                    );
+            if ($user['type'] === 'b' && $user['validated'] == 1) { error($lang->member['error_activated_by_admin']); }
+            if ($user['ustatus'] === 'pending') {
+                
+				if (!$user['code']) {
+                  $user['code'] = random_str();
+                  $db->sql_query_prepared(
+                       "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
+                  [$user['id'], TIMENOW, $user['code'], 'r']
+                );
+                   $user['type'] = 'r';
                 }
-                $emailmessage = sprintf($lang->email_activateaccount . ($username_method ?: ''), $user['username'], $SITENAME, $BASEURL, $user['uid'], $user['code']);
-                my_mail($user['email'], sprintf($lang->emailsubject_activateaccount, $SITENAME), $emailmessage);
+                $emailmessage = sprintf($lang->member['email_activateaccount'], $user['username'], $SITENAME, $BASEURL, $user['id'], $user['code']);
+			    my_mail($user['email'], sprintf($lang->member['emailsubject_activateaccount'], $SITENAME), $emailmessage);
             }
         }
         $plugins->run_hooks('member_do_resendactivation_end');
-        redirect('index.php', $lang->redirect_activationresent);
+        redirect('index.php', $lang->member['redirect_activationresent']);
     }
 }
 
@@ -1187,53 +1179,72 @@ if ($mybb->input['action'] === 'do_resendactivation' && $mybb->request_method ==
 // ══════════════════════════════════════════════════════════════════════════
 if ($mybb->input['action'] === 'resendactivation') {
     $plugins->run_hooks('member_resendactivation');
-    if ($mybb->user['uid'] && $mybb->user['usergroup'] != 5) { error($lang->error_alreadyactivated); }
+    if ($mybb->user['uid'] && ($mybb->user['ustatus'] ?? '') !== 'pending') { error($lang->member['error_alreadyactivated']); }
 
     $query      = $db->sql_query_prepared("SELECT * FROM awaitingactivation WHERE uid = ? AND type='b'", [$mybb->user['uid']]);
     $activation = $query ? $db->fetch_array($query) : null;
-    if ($activation && $activation['validated'] == 1) { error($lang->error_activated_by_admin); }
+    if ($activation && $activation['validated'] == 1) { error($lang->member['error_activated_by_admin']); }
 
     $errors = isset($errors) && count($errors) > 0 ? inline_error($errors) : '';
     $email  = $errors ? htmlspecialchars_uni($mybb->get_input('email')) : '';
 
     $plugins->run_hooks('member_resendactivation_end');
     
-	$activate = '<html>
+$activate = '<html>
 <head>
-<title>'.$SITENAME.' - resend_activation</title>
-
+<title>'.$SITENAME.' - '.$lang->member['resend_activation'].'</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
+<div class="container-md py-4" style="max-width:520px;">
+    '.$errors.'
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="p-4 text-white" style="background:linear-gradient(105deg,#4f46e5 0%,#4338ca 100%);">
+            <div class="d-flex align-items-center gap-3">
+                <div class="d-flex align-items-center justify-content-center rounded-circle bg-white bg-opacity-25" style="width:48px;height:48px;flex-shrink:0;">
+                    <i class="fa-solid fa-envelope-circle-check fs-4"></i>
+                </div>
+                <div>
+                    <h5 class="mb-0 fw-bold">'.$lang->member['resend_activation'].'</h5>
+                    <p class="mb-0 small opacity-75">Enter your email to receive a new activation code</p>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-4">
+            <form action="member.php" method="post">
+                <input type="hidden" name="action" value="do_resendactivation" />
 
-	<div class="container-md">
-'.$errors.'
-<form action="member.php" method="post">
-<div class="card shadow-sm border-0 align-center">
-<div class="card-body p-2 p-sm-2 p-md-2 p-lg-3 p-xl-3 p-xxl-3 border-0 text-start">
-	
-	<div class="legend mb-4">'.$lang->resend_activation.'</div>
-	
-		<div class="mb-3 ps-3 pe-3">
-                 <label for="email" class="form-label">'.$lang->email_address.'</label>
-                <input type="text" class="form-control border form-control-sm" name="email" value="'.$email.'" />
-	</div>
+                <div class="mb-4">
+                    <label for="email" class="form-label fw-semibold">'.$lang->member['email_address'].'</label>
+                    <div class="position-relative">
+                        <i class="fa-solid fa-envelope position-absolute" style="left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;"></i>
+                        <input type="email" class="form-control form-control-lg ps-5" id="email" name="email"
+                               value="'.$email.'" placeholder="you@example.com" required />
+                    </div>
+                </div>
 
-
-</table>
-
-<div class="ps-3 text-start"><input type="submit" class="btn btn-primary mt-2" style="padding-left 40px; padding-right: 40px" name="submit" value="'.$lang->request_activation.'" /></div>
-<input type="hidden" name="action" value="do_resendactivation" />
-</form>
-	</div>
-	</div>
-	</div>
-
+                <button type="submit" class="btn btn-lg w-100 text-white fw-semibold" name="submit"
+                        style="background:linear-gradient(95deg,#4f46e5,#4338ca);border:none;border-radius:12px;">
+                    <i class="fa-solid fa-paper-plane me-2"></i>'.$lang->member['request_activation'].'
+                </button>
+            </form>
+        </div>
+        <div class="card-footer bg-light border-0 text-center py-3">
+            <a href="member.php?action=login" class="small text-muted text-decoration-none">
+                <i class="fa-solid fa-arrow-left me-1"></i>Back to Login
+            </a>
+        </div>
+    </div>
+</div>
 </body>
 </html>';
 	
-	
-    output_page($activate);
+	stdhead();
+    echo $activate;
 }
+
+
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: do_lostpw
@@ -1254,7 +1265,7 @@ if ($mybb->input['action'] === 'do_lostpw' && $mybb->request_method === 'post') 
                 "INSERT INTO awaitingactivation (`uid`,`dateline`,`code`,`type`) VALUES (?,?,?,?)",
                 [$user['id'], TIMENOW, $activationcode, 'p']
             );
-            $emailmessage = sprintf($lang->member['email_lostpw' . ($username_method ?: '')], $user['username'], $SITENAME, $BASEURL, $user['id'], $activationcode);
+            $emailmessage = sprintf($lang->member['email_lostpw'], $user['username'], $SITENAME, $BASEURL, $user['id'], $activationcode);
             my_mail($user['email'], sprintf($lang->member['emailsubject_lostpw'], $SITENAME), $emailmessage);
         }
         $plugins->run_hooks('member_do_lostpw_end');
@@ -1328,7 +1339,7 @@ if ($mybb->input['action'] === 'resetpassword') {
     $plugins->run_hooks('member_resetpassword_start');
 
     $user = isset($mybb->input['username'])
-        ? get_user_by_username($mybb->get_input('username'), ['username_method' => $username_method, 'fields' => '*'])
+        ? get_user_by_username($mybb->get_input('username'), ['fields' => '*'])
         : get_user($mybb->get_input('id', MyBB::INPUT_INT));
 
     if (!$user && isset($mybb->input['username'])) { stderr('error_invalidpworusername'); }
@@ -1428,7 +1439,7 @@ if ($mybb->input['action'] === 'do_login' && $mybb->request_method === 'post') {
     }
 
     $user = ['username' => $mybb->get_input('username'), 'password' => $mybb->get_input('password'), 'remember' => $mybb->get_input('remember')];
-    $user_loginattempts = get_user_by_username($user['username'], ['fields' => 'loginattempts', 'username_method' => (int)$username_method]);
+    $user_loginattempts = get_user_by_username($user['username'], ['fields' => 'loginattempts']);
     if (!empty($user_loginattempts)) { $user['loginattempts'] = (int)$user_loginattempts['loginattempts']; }
 
     $loginhandler->set_data($user);
@@ -1628,8 +1639,6 @@ if ($mybb->input['action'] === 'login') {
     if (isset($mybb->input['username']) && $mybb->request_method === 'post') { $username = htmlspecialchars_uni($mybb->get_input('username')); }
     if (isset($mybb->input['password']) && $mybb->request_method === 'post') { $password = htmlspecialchars_uni($mybb->get_input('password')); }
     if (!empty($errors)) { $inline_errors = inline_error($errors); }
-    if ($username_method == 1)      { $lang->member['username'] = $lang->member['username1']; }
-    elseif ($username_method == 2)  { $lang->member['username'] = $lang->member['username2']; }
     $plugins->run_hooks('member_login_end');
    
     $login = '
@@ -1717,25 +1726,7 @@ if ($mybb->input['action'] === 'logout') {
     redirect('member.php?action=login', $lang->member['redirect_loggedout']);
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// ACTION: viewnotes
-// ══════════════════════════════════════════════════════════════════════════
-if ($mybb->input['action'] === 'viewnotes') {
-    $uid  = $mybb->get_input('id', MyBB::INPUT_INT);
-    $user = get_user($uid);
 
-    if (!$user) { error($lang->member['error_nomember']); }
-    if ($mybb->user['id'] == 0 || $mybb->usergroup['canmodcp'] != 1) { print_no_permission(); }
-
-    $user['username']  = htmlspecialchars_uni($user['username']);
-    $lang->view_notes_for = sprintf($lang->view_notes_for, $user['username']);
-    $user['usernotes'] = nl2br(htmlspecialchars_uni($user['usernotes']));
-
-    $plugins->run_hooks('member_viewnotes');
-    eval("\$viewnotes = \"".$templates->get('member_viewnotes', 1, 0)."\";");
-    echo $viewnotes;
-    exit;
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 // ACTION: profile
@@ -2867,21 +2858,7 @@ if ($mybb->input['action'] === 'do_emailuser' && $mybb->request_method === 'post
 
     $errors = [];
 
-    if ($mybb->usergroup['maxemails'] > 0) {
-        if ($mybb->user['uid'] > 0) {
-            $check_sql    = "fromuid = ?";
-            $check_params = [$mybb->user['uid']];
-        } else {
-            $check_sql    = "ipaddress = ?";
-            $check_params = [$session->packedip];
-        }
-        $count_query = $db->sql_query_prepared(
-            "SELECT COUNT(*) AS sent_count FROM maillogs WHERE {$check_sql} AND dateline >= ?",
-            [...$check_params, TIMENOW - 86400]
-        );
-        $sent_count = $count_query ? (int)$db->fetch_field($count_query, 'sent_count') : 0;
-        if ($sent_count >= $mybb->usergroup['maxemails']) { error(sprintf($lang->error_max_emails_day, $mybb->usergroup['maxemails'])); }
-    }
+    
 
     $query   = $db->sql_query_prepared("SELECT id, username, email, hideemail FROM users WHERE id = ?", [$mybb->get_input('id', MyBB::INPUT_INT)]);
     $to_user = $query ? $db->fetch_array($query) : null;
@@ -2894,10 +2871,10 @@ if ($mybb->input['action'] === 'do_emailuser' && $mybb->request_method === 'post
         $mybb->input['fromname']  = $CURUSER['username'];
     }
 
-    if (!validate_email_format($mybb->input['fromemail']))  { $errors[] = 'error_invalidfromemail'; }
-    if (empty($mybb->input['fromname']))                    { $errors[] = 'error_noname'; }
-    if (empty($mybb->input['subject']))                     { $errors[] = 'error_no_email_subject'; }
-    if (empty($mybb->input['message']))                     { $errors[] = $lang->error_no_email_message; }
+    if (!validate_email_format($mybb->input['fromemail']))  { $errors[] = $lang->member['error_invalidfromemail']; }
+    if (empty($mybb->input['fromname']))                    { $errors[] = $lang->member['error_noname']; }
+    if (empty($mybb->input['subject']))                     { $errors[] = $lang->member['error_no_email_subject']; }
+    if (empty($mybb->input['message']))                     { $errors[] = $lang->member['error_no_email_message']; }
 
     if (empty($errors)) {
         $from    = $mail_handler === 'smtp' ? $mybb->input['fromemail'] : "{$mybb->input['fromname']} <{$mybb->input['fromemail']}>";
@@ -2982,7 +2959,7 @@ $emailuser = '
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-primary text-white py-3">
             <h5 class="mb-0">
-                <i class="fas fa-envelope me-2"></i>' . $lang->member['email_user'] . '
+                <i class="fas fa-envelope me-2"></i>' . $email_user . '
             </h5>
         </div>
         <form action="member.php" method="post">

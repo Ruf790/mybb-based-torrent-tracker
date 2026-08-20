@@ -14,6 +14,8 @@ require_once 'global.php';
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_forumlist.php';
 require_once INC_PATH . '/functions_multipage.php';
+require_once INC_PATH . '/functions_forum_jump.php';
+require_once INC_PATH . '/functions_parent_list.php';
 
 
 if (empty($CURUSER['id'])) {
@@ -746,13 +748,6 @@ if (!empty($threadcache) && is_array($threadcache)) {
             $thread['profilelink'] = build_profile_link($thread['username'], $thread['uid']);
         }
 
-        $thread['threadprefix'] = $threadprefix = '';
-        if ($thread['prefix'] != 0) {
-            $threadprefix = build_prefixes($thread['prefix']);
-            if (!empty($threadprefix)) {
-                $thread['threadprefix'] = $threadprefix['displaystyle'] . '&nbsp;';
-            }
-        }
 
         $thread['subject'] = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
 
@@ -954,9 +949,9 @@ if (!empty($threadcache) && is_array($threadcache)) {
 	<div class="card-body py-0 px-1 inline_row '.$bgcolor.'">
 <div class="row py-2">
 		<div class="col align-self-center ms-2" style="min-width:0;">
-			
-			
-        <h6 class="mb-0 text-forum" style="overflow-wrap:anywhere;"><a href="'.$thread['threadlink'].'">'.$moved_badge.$thread['threadprefix'].'<span class="'.$inline_edit_class.' '.$new_class.'" id="tid_'.$inline_edit_tid.'">'.$thread['subject'].'</span></h6>
+				
+		<h6 class="mb-0 text-forum" style="overflow-wrap:anywhere;"><a href="'.$thread['threadlink'].'">'.$moved_badge.'<span class="'.$inline_edit_class.' '.$new_class.'" id="tid_'.$inline_edit_tid.'">'.$thread['subject'].'</span></h6>
+		
 		<div class="links small">'.$lang->forumdisplay['by'].' '.$thread['profilelink'].''.$rating.'</div>
 
 

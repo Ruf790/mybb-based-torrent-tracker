@@ -11,6 +11,7 @@ require_once 'global.php';
 require_once INC_PATH . '/functions_post.php';
 require_once INC_PATH . '/functions_user.php';
 require_once INC_PATH . '/functions_upload.php';
+require_once INC_PATH . '/functions_subscription_method.php';
 require_once INC_PATH . '/datahandler.php';
 require_once 'cache/smilies.php';
 
@@ -256,15 +257,14 @@ if ($mybb->input['action'] === 'do_newthread' && $mybb->request_method === 'post
         if ($db->num_rows($query) > 0) stderr('error_post_already_submitted');
     }
 
-    require_once INC_PATH . '/datahandlers/post.php';
+    
+	require_once INC_PATH . '/datahandlers/post.php';
     $posthandler         = new PostDataHandler('insert');
     $posthandler->action = 'thread';
 
     $new_thread = [
         'fid'      => $forum['fid'],
         'subject'  => $mybb->get_input('subject'),
-        'prefix'   => $mybb->get_input('threadprefix', MyBB::INPUT_INT),
-        'icon'     => $mybb->get_input('icon', MyBB::INPUT_INT),
         'uid'      => $uid,
         'username' => $username,
         'message'  => $mybb->get_input('message'),
@@ -280,12 +280,10 @@ if ($mybb->input['action'] === 'do_newthread' && $mybb->request_method === 'post
     }
 
     $postoptions = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
-    $postoptions += ['signature' => 0, 'subscriptionmethod' => 0, 'disablesmilies' => 0];
+    $postoptions += ['subscriptionmethod' => ''];
 
     $new_thread['options']    = [
-        'signature'          => $postoptions['signature'],
         'subscriptionmethod' => $postoptions['subscriptionmethod'],
-        'disablesmilies'     => $postoptions['disablesmilies'],
     ];
     $new_thread['modoptions'] = $mybb->get_input('modoptions', MyBB::INPUT_ARRAY);
 
@@ -429,7 +427,6 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
         $quoted_ids = htmlspecialchars_uni($mybb->get_input('quoted_ids'));
     }
 
-    $postoptionschecked = ['signature' => '', 'disablesmilies' => ''];
     $subscribe = $nonesubscribe = $emailsubscribe = $pmsubscribe = '';
     $postpollchecked = '';
 
@@ -441,23 +438,20 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
 
     if ($is_preview_or_attach) {
         $postoptions = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
-        if (($postoptions['signature']     ?? 0) == 1) $postoptionschecked['signature']     = ' checked="checked"';
-        if (($postoptions['disablesmilies'] ?? 0) == 1) $postoptionschecked['disablesmilies'] = ' checked="checked"';
         if ($mybb->get_input('postpoll', MyBB::INPUT_INT) == 1) $postpollchecked = 'checked="checked"';
         $subscription_method = get_subscription_method($tid, $postoptions);
         $numpolloptions      = $mybb->get_input('numpolloptions', MyBB::INPUT_INT);
     } elseif ($mybb->input['action'] === 'editdraft' && $CURUSER['id']) {
-        $mybb->input['threadprefix'] = $thread['prefix'];
+       
         $message = htmlspecialchars_uni($post['message']);
         $subject = htmlspecialchars_uni($post['subject']);
-        if ($post['includesig'] != 0) $postoptionschecked['signature']     = ' checked="checked"';
-        if ($post['smilieoff']  == 1)  $postoptionschecked['disablesmilies'] = ' checked="checked"';
-        $icon = $post['icon'];
-        if ($forum['allowpicons'] != 0) $posticons = get_post_icons();
+        
+        
+		
+		
         $subscription_method = get_subscription_method((int)$tid);
         $numpolloptions      = '2';
     } else {
-        if ($CURUSER['signature'] !== '') $postoptionschecked['signature'] = ' checked="checked"';
         $subscription_method = get_subscription_method($tid);
         $numpolloptions      = '2';
     }
@@ -481,9 +475,7 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
 
         $new_thread = [
             'fid'      => $forum['fid'],
-            'prefix'   => $mybb->get_input('threadprefix', MyBB::INPUT_INT),
             'subject'  => $mybb->get_input('subject'),
-            'icon'     => $mybb->get_input('icon'),
             'uid'      => $uid,
             'username' => $username,
             'message'  => $mybb->get_input('message'),
@@ -517,9 +509,9 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
             $post['subject']     = $mybb->get_input('subject');
             $post['icon']        = $mybb->get_input('icon', MyBB::INPUT_INT);
             $mybb->input['postoptions'] = $mybb->get_input('postoptions', MyBB::INPUT_ARRAY);
-            $post['smilieoff']   = $mybb->input['postoptions']['disablesmilies'] ?? 0;
+           
             $post['dateline']    = TIMENOW;
-            $post['includesig']  = ($mybb->input['postoptions']['signature'] ?? 0) == 1 ? 1 : 0;
+            
 
             if ($mybb->get_input('pid', MyBB::INPUT_INT)) {
                 $attachwhere_sql    = "pid = ?";
@@ -548,30 +540,14 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
         $subject = htmlspecialchars_uni($mybb->get_input('subject'));
     }
 
-    if (!$mybb->get_input('threadprefix', MyBB::INPUT_INT)) $mybb->input['threadprefix'] = 0;
+    
 
     $posthash = htmlspecialchars_uni($mybb->get_input('posthash'));
 
-    $signature = '';
-    
-	
-	$signature = '
-	
-	<input type="checkbox" class="form-check-input" name="postoptions[signature]" value="1" tabindex="7"'.$postoptionschecked['signature'].' /> '.$lang->newthread['options_sig'].'
-	
-	';
-	
-	
-
     // ── Post options ──────────────────────────────────────────────────────────
-    $postoptions = (!empty($signature) || !empty($disablesmilies))
-        ? '<a class="links" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-postop" role="button">
+    $postoptions = '<a class="links" data-bs-toggle="collapse" aria-expanded="false" href="#collapse-postop" role="button">
                <i class="fa-solid fa-gear"></i> &nbsp;Post Options:
-           </a>'
-        : '';
-
-    $bgcolor  = $postoptions ? 'trow2' : 'trow1';
-    $bgcolor2 = $postoptions ? 'trow1' : 'trow2';
+           </a>';
 
     // ── Mod options ───────────────────────────────────────────────────────────
     $modoptions  = '';
@@ -595,8 +571,6 @@ if (in_array($mybb->input['action'], ['newthread', 'editdraft'], true)) {
                 <i class="fa-solid fa-screwdriver-wrench"></i> &nbsp;Moderator Options:
             </a>&nbsp;&nbsp;';
         }
-        $bgcolor  = 'trow1';
-        $bgcolor2 = 'trow2';
     }
 
    

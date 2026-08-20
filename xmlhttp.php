@@ -93,7 +93,6 @@ function handleXmlHttpAction(): void
         'get_multiquoted' => handleGetMultiquoted(),
         'edit_post' => handleEditPost(),
         'edit_subject' => handleEditSubject(),
-        'get_buddyselect' => handleGetBuddySelect(),
         'complex_password' => handleComplexPassword(),
         'username_availability' => handleUsernameAvailability(),
         'email_availability' => handleEmailAvailability(),
@@ -102,6 +101,7 @@ function handleXmlHttpAction(): void
 		'edit_torrent' => handleEditTorrent(),
 		'rate_torrent' => handleRateTorrent(),
 		'rate_thread' => handleRateThread(),
+        'get_thread_info' => handleGetThreadInfo(),
         default => handleUnknownAction()
     };
 }
@@ -269,6 +269,56 @@ function handleRateThread(): void
         'success' => true,
         'avg'     => $avg,
         'count'   => $count,
+    ]);
+    exit;
+}
+
+/**
+ * Handle get_thread_info action - реальные данные о треде-назначении
+ * для превью на странице Move Posts (заменяет старую JS-заглушку
+ * с моковыми/случайными данными - simulateThreadInfoFetch()).
+ */
+function handleGetThreadInfo(): void
+{
+    global $mybb, $db, $charset;
+
+    header("Content-Type: application/json; charset={$charset}");
+
+    $tid = $mybb->get_input('tid', MyBB::INPUT_INT);
+
+    if (!$tid || !is_valid_id($tid)) {
+        echo json_encode(['success' => false, 'errors' => ['Invalid thread ID']]);
+        exit;
+    }
+
+    $query = $db->sql_query_prepared("
+        SELECT t.tid, t.subject, t.username, t.replies, t.lastpost, t.fid, t.visible,
+               f.name AS forum_name
+        FROM threads t
+        LEFT JOIN forums f ON (f.fid = t.fid)
+        WHERE t.tid = ?
+    ", [$tid]);
+
+    $thread = $query ? $db->fetch_array($query) : null;
+
+    if (!$thread || (int)$thread['visible'] !== 1) {
+        echo json_encode(['success' => false, 'errors' => ['Thread not found']]);
+        exit;
+    }
+
+    $forum_perms = forum_permissions($thread['fid']);
+    if (empty($forum_perms['canview'])) {
+        echo json_encode(['success' => false, 'errors' => ['No permission to view this thread']]);
+        exit;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'title'    => htmlspecialchars_uni($thread['subject']),
+        'author'   => $thread['username'] !== '' ? htmlspecialchars_uni($thread['username']) : 'Guest',
+        'posts'    => (int)$thread['replies'] + 1,
+        'lastpost' => $thread['lastpost'] ? my_datee('relative', (int)$thread['lastpost']) : '-',
+        'forum'    => htmlspecialchars_uni($thread['forum_name'] ?? 'Unknown'),
     ]);
     exit;
 }
@@ -480,7 +530,8 @@ function handleEditPost(): void
             }
         }
 
-        require_once INC_PATH."/datahandlers/post.php";
+        
+		require_once INC_PATH."/datahandlers/post.php";
         $posthandler = new PostDataHandler("update");
         $posthandler->action = "post";
 
@@ -491,9 +542,9 @@ function handleEditPost(): void
             "edit_uid" => $CURUSER['id']
         ];
 
-        if ($post['pid'] == $thread['firstpost']) {
-            $updatepost['prefix'] = $thread['prefix'];
-        }
+        //if ($post['pid'] == $thread['firstpost']) {
+            //$updatepost['prefix'] = $thread['prefix'];
+        //}
 
         $posthandler->set_data($updatepost);
 
@@ -654,48 +705,6 @@ function handleEditSubject(): void
     $mybb->input['value'] = $parser->parse_badwords($mybb->get_input('value'));
     $subject = substr($mybb->input['value'], 0, 120);
     echo json_encode(["subject" => '<a href="'.get_thread_link($thread['tid']).'">'.htmlspecialchars_uni($subject).'</a>']);
-    exit;
-}
-
-/**
- * Handle get_buddyselect action
- */
-function handleGetBuddySelect(): void
-{
-    global $CURUSER, $db, $charset, $plugins, $templates, $wolcutoffmins;
-    
-    header("Content-type: text/plain; charset={$charset}");
-
-    if ($CURUSER['buddylist'] == "") {
-        xmlhttp_error('buddylist_error');
-    }
-
-    $plugins->run_hooks("xmlhttp_get_buddyselect_start");
-
-    $timecut = TIMENOW - $wolcutoffmins;
-    $query = $db->sql_query_prepared("SELECT id, username, usergroup, displaygroup, lastactive, lastvisit, invisible FROM users WHERE id IN ({$CURUSER['buddylist']}) ORDER BY username ASC");
-    
-    $online = [];
-    $offline = [];
-    
-    while ($query && ($buddy = $db->fetch_array($query))) {
-        $buddy['username'] = htmlspecialchars_uni($buddy['username']);
-        $buddy_name = format_name($buddy['username'], $buddy['usergroup'], $buddy['displaygroup']);
-        $profile_link = build_profile_link($buddy_name, $buddy['id'], '_blank');
-        
-        if ($buddy['lastactive'] > $timecut && ($buddy['invisible'] == 0 || $CURUSER['usergroup'] == 4) && $buddy['lastvisit'] != $buddy['lastactive']) {
-            eval("\$online[] = \"".$templates->get("xmlhttp_buddyselect_online")."\";");
-        } else {
-            eval("\$offline[] = \"".$templates->get("xmlhttp_buddyselect_offline")."\";");
-        }
-    }
-    
-    $online = implode("", $online);
-    $offline = implode("", $offline);
-
-    $plugins->run_hooks("xmlhttp_get_buddyselect_end");
-    eval("\$buddy_select = \"".$templates->get("xmlhttp_buddyselect")."\";");
-    echo $buddy_select;
     exit;
 }
 

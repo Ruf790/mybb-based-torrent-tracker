@@ -112,7 +112,7 @@ if ($announcementarray['startdate'] > $CURUSER['lastvisit']) {
     }
 
     if ($setcookie) {
-        my_set_array_cookie('announcements', $announcementarray['id'], $announcementarray['startdate'], -1);
+        my_set_array_cookie('announcements', (string)$announcementarray['id'], $announcementarray['startdate'], -1);
     }
 }
 

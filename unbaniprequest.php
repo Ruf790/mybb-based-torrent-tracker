@@ -11,6 +11,8 @@ define('FORUM_SECURE', true);
 
 require_once INC_PATH . '/functions_forum.php';
 
+require_once INC_PATH . '/functions_check_email.php';
+
 require_once INC_PATH . '/datahandler.php';
 
 
@@ -95,11 +97,19 @@ if (is_banned_email($email, true)) {
                 $permusergroups = trim(str_replace(['[', ']'], '', (string)$permusergroups));
 
                 if ($permusergroups !== '') {
-                    $query = $db->sql_query_prepared(
-                        "SELECT id FROM users WHERE usergroup IN ({$permusergroups})"
-                    );
+                    $group_ids = array_filter(array_map('intval', explode(',', $permusergroups)));
 
-                    if ($db->num_rows($query) > 0) {
+                    if (!empty($group_ids)) {
+                        $placeholders = implode(',', array_fill(0, count($group_ids), '?'));
+                        $query = $db->sql_query_prepared(
+                            "SELECT id FROM users WHERE usergroup IN ({$placeholders})",
+                            $group_ids
+                        );
+                    } else {
+                        $query = false;
+                    }
+
+                    if ($query && $db->num_rows($query) > 0) {
                         $subject = $lang->unbaniprequest['subject'] ?? 'Unban IP Request';
                         $msg     = sprintf(
                             $lang->unbaniprequest['message'] ?? 'Unban request from %s. View: %s',
@@ -108,7 +118,7 @@ if (is_banned_email($email, true)) {
                         );
 
                         require_once INC_PATH . '/functions_pm.php';
-                        while ($pmstaff = mysqli_fetch_assoc($query)) {
+                        while ($pmstaff = $db->fetch_array($query)) {
     send_pm([
         'subject' => $subject,
         'message' => $msg,

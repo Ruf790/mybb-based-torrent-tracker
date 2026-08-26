@@ -648,13 +648,6 @@ function handleDeleteAction(): void
 {
     global $db, $CURUSER, $is_mod, $BASEURL, $kpscomment;
 
-    if (!$is_mod) {
-        header('Content-Type: application/json');
-        http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Permission denied']);
-        exit;
-    }
-
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
 
     if (!verify_post_check($input['my_post_key'] ?? '')) {
@@ -681,6 +674,17 @@ function handleDeleteAction(): void
     if (!$arr) {
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'error' => 'Comment not found']);
+        exit;
+    }
+
+    // Владелец комментария или модератор — было: только модератор, поэтому
+    // обычные пользователи не могли удалить даже свой собственный комментарий
+    // (та же проверка владения, что уже используется для edit-действий ниже
+    // по этому же файлу).
+    if ($arr['user'] != $CURUSER['id'] && !$is_mod) {
+        header('Content-Type: application/json');
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Permission denied']);
         exit;
     }
 

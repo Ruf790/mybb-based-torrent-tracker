@@ -5,6 +5,7 @@ if (!defined('STAFF_PANEL')) {
 }
 
 require_once INC_PATH . '/functions_multipage.php';
+require_once INC_PATH . '/functions_image_recode.php';
 
 // ═══════════════════════════════════════════════════════════
 // HELPERS
@@ -197,6 +198,14 @@ if (($_GET['action'] ?? '') === 'ajax_upload' && $_SERVER['REQUEST_METHOD'] === 
             continue;
         }
 
+        // Перекодирование через GD — защита от "полиглот"-файлов
+        // (getimagesize() проверяет только заголовок, не весь файл).
+        if (recode_image_file($path, $info['mime']) === false) {
+            @unlink($path);
+            $errors[] = "{$name}: corrupted or invalid image data";
+            continue;
+        }
+
         $db->sql_query_prepared(
             'INSERT INTO screenshots (torrent_id, filename, uploaded_at) VALUES (?, ?, ?)',
             [$torrent_id, $filename, time()]
@@ -261,7 +270,8 @@ if (($_GET['action'] ?? '') === 'ajax_edit' && $_SERVER['REQUEST_METHOD'] === 'P
             echo json_encode(['status' => 'error', 'message' => 'Invalid format. Allowed: ' . implode(', ', $allowed_ext)]);
             exit;
         }
-        if (!getimagesize($_FILES['screenshot']['tmp_name'])) {
+        $screenshotInfo = @getimagesize($_FILES['screenshot']['tmp_name']);
+        if (!$screenshotInfo) {
             echo json_encode(['status' => 'error', 'message' => 'File is not a valid image']);
             exit;
         }
@@ -269,9 +279,17 @@ if (($_GET['action'] ?? '') === 'ajax_edit' && $_SERVER['REQUEST_METHOD'] === 'P
         $old = get_upload_path($row['filename']);
         $num = get_next_screenshot_number($torrent_id, $db, 3);
         $newFilename = $torrent_id . '_' . $num . '.' . $ext;
+        $newPath = get_upload_path($newFilename);
 
-        if (!move_uploaded_file($_FILES['screenshot']['tmp_name'], get_upload_path($newFilename))) {
+        if (!move_uploaded_file($_FILES['screenshot']['tmp_name'], $newPath)) {
             echo json_encode(['status' => 'error', 'message' => 'File upload failed']);
+            exit;
+        }
+
+        // Перекодирование через GD — защита от "полиглот"-файлов.
+        if (recode_image_file($newPath, $screenshotInfo['mime']) === false) {
+            @unlink($newPath);
+            echo json_encode(['status' => 'error', 'message' => 'File is corrupted or is not a valid image']);
             exit;
         }
 
@@ -983,6 +1001,13 @@ function handle_add(): void
                     continue;
                 }
 
+                // Перекодирование через GD — защита от "полиглот"-файлов.
+                if (recode_image_file($path, $info['mime']) === false) {
+                    @unlink($path);
+                    $errors[] = "{$file['name']}: corrupted or invalid image data";
+                    continue;
+                }
+
                 $size = round(filesize($path) / 1024, 2);
                 $dims = $info[0] . 'x' . $info[1];
 
@@ -1116,17 +1141,24 @@ function handle_edit(): void
 
         if (!$error && isset($_FILES['screenshot']) && $_FILES['screenshot']['error'] === UPLOAD_ERR_OK) {
             $ext = strtolower(pathinfo($_FILES['screenshot']['name'], PATHINFO_EXTENSION));
+            $screenshotInfo = @getimagesize($_FILES['screenshot']['tmp_name']);
             if (!in_array($ext, $allowed)) {
                 $error = 'Invalid format. Allowed: ' . implode(', ', $allowed);
-            } elseif (!getimagesize($_FILES['screenshot']['tmp_name'])) {
+            } elseif (!$screenshotInfo) {
                 $error = 'File is not a valid image';
             } else {
                 $old      = get_upload_path($row['filename']);
                 $num      = get_next_screenshot_number($torrent_id, $db, 3);
                 $filename = $torrent_id . '_' . $num . '.' . $ext;
+                $newPath  = get_upload_path($filename);
 
-                if (!move_uploaded_file($_FILES['screenshot']['tmp_name'], get_upload_path($filename))) {
+                if (!move_uploaded_file($_FILES['screenshot']['tmp_name'], $newPath)) {
                     $error    = 'File upload failed';
+                    $filename = $row['filename'];
+                } elseif (recode_image_file($newPath, $screenshotInfo['mime']) === false) {
+                    // Перекодирование через GD — защита от "полиглот"-файлов.
+                    @unlink($newPath);
+                    $error    = 'File is corrupted or is not a valid image';
                     $filename = $row['filename'];
                 } else {
                     if (file_exists($old)) unlink($old);

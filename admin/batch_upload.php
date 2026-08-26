@@ -280,9 +280,7 @@ function handlePostRequest(): void
         }
     }
 
-    if (isset($cache) && method_exists($cache, 'update_torrents')) {
-        $cache->update_torrents();
-    }
+
 
     json_exit(true, [
         'processed'  => $fileCount,

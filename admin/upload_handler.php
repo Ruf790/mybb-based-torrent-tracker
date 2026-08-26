@@ -13,6 +13,7 @@ try {
         define('IN_ADMINCP', true);
     }
     require_once $rootpath . 'global.php';
+    require_once INC_PATH . '/functions_image_recode.php';
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         throw new Exception('Invalid request method');
@@ -146,12 +147,28 @@ try {
             continue;
         }
 
+        // Перекодирование через GD — только для картинок, остальные типы
+        // (pdf/doc/docx) GD не умеет и не должна трогать. getimagesize()+
+        // finfo проверяют только заголовок, не гарантируют отсутствие
+        // приклеенной после настоящих данных изображения нагрузки
+        // ("полиглот"-файл). Возвращает актуальный размер файла на диске —
+        // перекодирование почти всегда меняет размер в байтах.
+        $actualFileSize = (int)$fileSize;
+        if (str_starts_with($realMime, 'image/')) {
+            $recodedSize = recode_image_file($uploadPath, $realMime);
+            if ($recodedSize === false) {
+                @unlink($uploadPath);
+                continue;
+            }
+            $actualFileSize = $recodedSize;
+        }
+
         $userId = (int)($CURUSER['id'] ?? 0);
 
         $result = $db->sql_query_prepared(
             "INSERT INTO comment_files (file_name, file_path, file_url, file_type, file_size, user_id, {$contentColumn}, uploaded_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
-            [$fileName, $uploadPath, $fileUrl, $realMime, (int)$fileSize, $userId, $contentId]
+            [$fileName, $uploadPath, $fileUrl, $realMime, $actualFileSize, $userId, $contentId]
         );
 
         if ($result) {
@@ -208,9 +225,7 @@ try {
                     );
                 }
 
-                if ($contentType === 'news') {
-                    $cache->update_news();
-                }
+                
             }
         }
     }

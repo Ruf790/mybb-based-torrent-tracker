@@ -96,7 +96,7 @@ declare(strict_types=1);
     }
 
     kps('-', $kpsupload, (int)$row['owner']);
-    $cache->update_torrents();
+    
 
     redirect($BASEURL . '/browse.php', $lang->delete['deleted'], '', true, false, false);
     exit();

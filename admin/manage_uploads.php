@@ -149,7 +149,6 @@ if (isset($_POST['ajax_move']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($updated !== trim($current)) {
             $db->sql_query_prepared("UPDATE {$t['table']} SET {$t['textField']} = ? WHERE {$t['idField']} = ?", [$updated, $oldId]);
-            if ($oldType === 'news') $cache->update_news();
         }
         break; // ровно один FK может быть задан за раз (полиморфная эксклюзивность)
     }
@@ -169,7 +168,6 @@ if (isset($_POST['ajax_move']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $current = $row3[$t['textField']] ?? '';
             $updated = $current !== '' ? $current . "\n\n" . '[img]' . $file['file_url'] . '[/img]' : '[img]' . $file['file_url'] . '[/img]';
             $db->sql_query_prepared("UPDATE {$t['table']} SET {$t['textField']} = ? WHERE {$t['idField']} = ?", [$updated, $contentId]);
-            if ($contentType === 'news') $cache->update_news();
         }
     }
 
@@ -238,7 +236,6 @@ if (isset($_POST['ajax_copy']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $current = $row[$t['textField']] ?? '';
             $updated = $current !== '' ? $current . "\n\n" . '[img]' . $newUrl . '[/img]' : '[img]' . $newUrl . '[/img]';
             $db->sql_query_prepared("UPDATE {$t['table']} SET {$t['textField']} = ? WHERE {$t['idField']} = ?", [$updated, $contentId]);
-            if ($contentType === 'news') $cache->update_news();
         }
     }
 
@@ -292,7 +289,6 @@ if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
                 $new = preg_replace($pattern, '[Image Deleted]', $file[$textKey]);
                 if ($new !== $file[$textKey]) {
                     $db->sql_query_prepared("UPDATE $table SET $col = ? WHERE {$pk[$fk]} = ?", [$new, (int)$file[$fk]]);
-                    if ($table === 'news') $cache->update_news();
                 }
             }
         }
@@ -366,7 +362,6 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
             $col = $col_map[$table];
             $pk  = $pk_map[$table];
             $db->sql_query_prepared("UPDATE $table SET $col = ? WHERE $pk = ?", [$text, $id]);
-            if ($table === 'news') $cache->update_news();
         }
     }
 

@@ -502,7 +502,7 @@ class BannedAccountsManager
             $q = $this->db->sql_query_prepared("SELECT pid FROM posts WHERE uid = ?", [$user['id']]);
             while ($q && ($r = $this->db->fetch_array($q))) $mod->delete_post($r['pid']);
             $this->plugins->run_hooks('admin_user_banning_prune_commit');
-            $this->cache->update_reportedcontent();
+
             log_admin_action((int)$user['id'], $user['username']);
             flash_message('User content pruned successfully', 'success');
             admin_redirect('index.php?act=banning&type=users');

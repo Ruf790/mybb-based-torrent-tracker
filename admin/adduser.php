@@ -5,6 +5,7 @@ declare(strict_types=1);
 // Include our base data handler class
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_user.php';
+require_once INC_PATH . '/functions_upload.php';
 
 
 if (!defined('STAFF_PANEL')) {
@@ -178,12 +179,25 @@ class UserRegistrationHandler
             return $avatar_data;
         }
 
+        // Быстрая ранняя отбраковка очевидно небезопасных URL до похода в
+        // сеть. Настоящая гарантия безопасности — ниже, в fetch_remote_file(),
+        // которая резолвит хост и "прикалывает" соединение к уже
+        // провалидированному IP (защита от DNS rebinding между проверкой
+        // и реальным запросом — getimagesize($url) на сырой ссылке этой
+        // защиты не даёт, PHP резолвит DNS заново в момент запроса).
         if (!$this->isUrlSafeForFetch($avatar_url)) {
             $this->errors[] = "Invalid avatar URL or image not accessible";
             return $avatar_data;
         }
 
-        $image_info = @getimagesize($avatar_url);
+        require_once INC_PATH . '/functions_remote_connect.php';
+        $data = fetch_remote_file($avatar_url);
+        if ($data === false) {
+            $this->errors[] = "Invalid avatar URL or image not accessible";
+            return $avatar_data;
+        }
+
+        $image_info = @getimagesizefromstring($data);
         if (!$image_info) {
             $this->errors[] = "Invalid avatar URL or image not accessible";
             return $avatar_data;
@@ -242,59 +256,32 @@ class UserRegistrationHandler
 	private function handleAvatarUpload(int $user_id = 0): array
 {
     global $BASEURL;
-    
+
     $avatar_data = ['url' => '', 'dimensions' => '0|0'];
-    
+
     if (empty($_FILES['avatar_file']['tmp_name'])) {
         return $avatar_data;
     }
-    
-    $file = $_FILES['avatar_file'];
-    
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        $this->errors[] = 'Avatar upload failed';
+
+    // Вся валидация (расширение, реальный MIME через getimagesize(),
+    // размер по настройке avatarsize), сохранение и перекодирование через
+    // GD (защита от "полиглот"-файлов) теперь делает upload_avatar() —
+    // та же функция, что использует usercp.php/member.php/usersearch.php.
+    // Раньше здесь была ещё одна отдельная копия той же логики без
+    // перекодирования и с захардкоженным лимитом 500KB.
+    $result = upload_avatar($_FILES['avatar_file'], $user_id);
+
+    if (!empty($result['error'])) {
+        $this->errors[] = $result['error'];
         return $avatar_data;
     }
-    
-    $allowed_types = ['image/jpeg','image/png','image/gif','image/webp'];
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime  = $finfo->file($file['tmp_name']);
-    
-    if (!in_array($mime, $allowed_types, true)) {
-        $this->errors[] = 'Invalid avatar file type';
-        return $avatar_data;
-    }
-    
-    if ($file['size'] > 512000) {
-        $this->errors[] = 'Avatar file too large (max 500KB)';
-        return $avatar_data;
-    }
-    
-    $image_info = getimagesize($file['tmp_name']);
-    if (!$image_info) {
-        $this->errors[] = 'Invalid image file';
-        return $avatar_data;
-    }
-    
-    $ext = match($mime) {
-        'image/jpeg' => 'jpg',
-        'image/png'  => 'png',
-        'image/gif'  => 'gif',
-        'image/webp' => 'webp',
-    };
-    
-    $filename    = 'avatar_' . $user_id . '.' . $ext;
-    $upload_path = TSDIR . '/uploads/avatars/' . $filename;
-    
-    
-    if (!move_uploaded_file($file['tmp_name'], $upload_path)) {
-        $this->errors[] = 'Failed to save avatar';
-        return $avatar_data;
-    }
-    
+
+    $ext      = pathinfo($result['avatar'], PATHINFO_EXTENSION);
+    $filename = 'avatar_' . $user_id . '.' . $ext;
+
     return [
         'url'        => $BASEURL . '/uploads/avatars/' . $filename,
-        'dimensions' => $image_info[0] . '|' . $image_info[1],
+        'dimensions' => (int)$result['width'] . '|' . (int)$result['height'],
     ];
 }
 	

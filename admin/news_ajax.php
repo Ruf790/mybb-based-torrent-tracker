@@ -79,10 +79,7 @@ try {
 
             write_log('News item deleted: "' . $newsData['title'] . '" (id=' . $newsid . ')', 'news', 1);
 
-            // Update news cache
-            if (method_exists($cache, 'update_news')) {
-                $cache->update_news();
-            }
+            
 
             echo json_encode([
                 'success' => true, 
@@ -129,10 +126,7 @@ try {
 
             write_log('News item edited: "' . $title . '" (id=' . $newsid . ')', 'news', 1);
 
-            // Update cache
-            if (method_exists($cache, 'update_news')) {
-                $cache->update_news();
-            }
+           
             
             echo json_encode([
                 'success' => true, 
@@ -202,10 +196,7 @@ try {
                 }
             }
 
-            // Update cache
-            if (method_exists($cache, 'update_news')) {
-                $cache->update_news();
-            }
+           
 
             echo json_encode([
                 'success' => true, 

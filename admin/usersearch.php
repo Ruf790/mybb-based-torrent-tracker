@@ -7,17 +7,14 @@ declare(strict_types=1);
  */
  
 
-
 if (!defined('STAFF_PANEL')) {
     exit('<b>Error!</b> Direct initialization of this file is not allowed.');
 }
 
 
 require_once INC_PATH . '/datahandler.php';
-
-
+require_once INC_PATH . '/functions_upload.php';
 require_once INC_PATH . '/functions_multipage.php';
-
 
 
 
@@ -69,7 +66,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
     }
 
     // permissions: in admin/staff context allow staff; otherwise only owner
-    $is_staff_ctx = defined('IN_ADMINCP') || defined('STAFF_PANEL_TSSEv56');
+    $is_staff_ctx = defined('IN_ADMINCP') || defined('STAFF_PANEL');
     if (!$is_staff_ctx && $user_uid !== $uid) {
         $is_ajax ? $json(['ok'=>false,'error'=>'Нет прав менять этот аватар'], 403) : exit('Error: нет прав менять этот аватар.');
     }
@@ -85,67 +82,26 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
         $is_ajax ? $json(['ok'=>false,'error'=>'Security check failed'], 403) : exit('Error: security check failed.');
     }
 
-    // size & ext checks
-    $max_size    = 22 * 1024 * 1024; // 22 MB
-    $allowed_ext = ['jpg','jpeg','png','gif','webp'];
+    // Вся валидация (расширение, реальный MIME через getimagesize(), размер
+    // по настройке avatarsize), сохранение и перекодирование через GD
+    // (защита от "полиглот"-файлов) теперь делает upload_avatar() — та же
+    // функция, что использует usercp.php и member.php. Раньше здесь была
+    // ещё одна отдельная копия той же логики без перекодирования.
+    $avatarResult = upload_avatar($_FILES['avatar'], $uid);
 
-    $file_name = $_FILES['avatar']['name'];
-    $file_tmp  = $_FILES['avatar']['tmp_name'];
-    $file_size = (int)$_FILES['avatar']['size'];
-    $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-
-    if (!in_array($file_ext, $allowed_ext, true)) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Допустимо: JPG/JPEG/PNG/GIF/WebP'], 415) : exit('Error: Allowed JPG/JPEG/PNG/GIF/WebP.');
-    }
-    if ($file_size <= 0 || $file_size > $max_size) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Файл слишком большой (макс. 22 MB)'], 413) : exit('Error: file is too big (max 22 MB).');
+    if (!empty($avatarResult['error'])) {
+        $is_ajax
+            ? $json(['ok'=>false,'error'=>$avatarResult['error']], 415)
+            : exit('Ошибка: ' . $avatarResult['error']);
     }
 
-    // MIME + exif type
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime  = finfo_file($finfo, $file_tmp);
-    //finfo_close($finfo);
-    if (!in_array($mime, ['image/jpeg','image/png','image/gif','image/webp'], true)) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Файл не является изображением (MIME)'], 415) : exit('Error: file is not image.');
-    }
-    $itype = @exif_imagetype($file_tmp);
-    if (!in_array($itype, [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP], true)) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Файл не является изображением (EXIF)'], 415) : exit('Error: file is not image.');
-    }
-
-    // paths
-    if (!defined('TSDIR')) {
-        define('TSDIR', realpath(__DIR__ . '/..')); // admin/.. -> project root
-    }
-    $upload_dir     = rtrim(TSDIR, '/\\') . '/uploads/avatars/';
-    $public_rel_dir = 'uploads/avatars/';
-
-    if (!is_dir($upload_dir)) { @mkdir($upload_dir, 0755, true); }
-
-    $new_name  = "avatar_{$uid}." . $file_ext;
-    $dest_path = $upload_dir . $new_name;
-    $rel_path  = $public_rel_dir . $new_name;
-
-    // cleanup old extensions
-    foreach (['jpg','jpeg','png','gif','webp'] as $e) {
-        $p = $upload_dir . "avatar_{$uid}." . $e;
-        if (is_file($p)) { @unlink($p); }
-    }
-
-    // move
-    if (!move_uploaded_file($file_tmp, $dest_path)) {
-        $is_ajax ? $json(['ok'=>false,'error'=>'Не удалось сохранить файл'], 500) : exit('Ошибка: не удалось сохранить файл.');
-    }
-    @chmod($dest_path, 0644);
-
-    // get dimensions
-    $size = @getimagesize($dest_path);
-    if (!$size) {
-        @unlink($dest_path);
-        $is_ajax ? $json(['ok'=>false,'error'=>'Файл повреждён или не изображение'], 415) : exit('Ошибка: файл повреждён или не изображение.');
-    }
-    [$width, $height] = $size;
-    $avatar_dimensions = $width . '|' . $height;
+    $width  = (int)$avatarResult['width'];
+    $height = (int)$avatarResult['height'];
+    $avatar_dimensions = ($width > 0 && $height > 0) ? $width . '|' . $height : '';
+    // upload_avatar() строит путь из настройки avataruploadpath (по
+    // умолчанию './uploads/avatars') — убираем ведущий './', чтобы формат
+    // совпадал с тем, что отдавал этот файл раньше ('uploads/avatars/...').
+    $rel_path = preg_replace('#^\./#', '', $avatarResult['avatar']);
 
     // absolute URL using $BASEURL only
     $base    = rtrim($BASEURL, '/');

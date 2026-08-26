@@ -93,6 +93,46 @@ function initColorPalette() {
 
 
 
+function escapeHtmlPreview(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+// Достаёт превью торрент-карточек внутри уже вставленного в DOM previewDiv.
+// Работает так же, как предпросмотр в модалке "Embed Torrent".
+function loadTorrentPreviewsIn(container) {
+  if (!container) return;
+  const nodes = container.querySelectorAll('.bbcode-torrent-embed[data-torrent-id]');
+  nodes.forEach(function (node) {
+    const id = node.getAttribute('data-torrent-id');
+    if (!id) return;
+    const base = (typeof baseurl !== 'undefined' && baseurl) ? baseurl : '';
+    fetch(base + '/ajax_torrent_preview.php?id=' + id)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          node.innerHTML = '<div class="text-danger small"><i class="fa-solid fa-triangle-exclamation me-1"></i>' + escapeHtmlPreview(data.error) + '</div>';
+          return;
+        }
+        const img = data.image
+          ? '<img src="' + escapeHtmlPreview(data.image) + '" class="card-img-top" style="height:100px;object-fit:cover;">'
+          : '';
+        node.innerHTML =
+          '<div class="card">' + img +
+          '<div class="card-body py-2 px-3">' +
+          '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtmlPreview(data.name) + '</div>' +
+          '<div class="text-muted small">' + escapeHtmlPreview(data.catname) + ' &middot; ' + escapeHtmlPreview(data.size) +
+          ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>' +
+          ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>' +
+          '</div></div></div>';
+      })
+      .catch(function () {
+        node.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+      });
+  });
+}
+
 function initViewSource(textareaId, btnId) {
   const textarea = document.getElementById(textareaId);
   const toggleBtn = document.getElementById(btnId);
@@ -124,6 +164,7 @@ function initViewSource(textareaId, btnId) {
         
         // Ссылки и изображения
         .replace(/\[url\]\s*(.*?)\s*\[\/url\]/gis, '<a href="$1" target="_blank">$1</a>')
+        .replace(/\[email\]\s*(.*?)\s*\[\/email\]/gis, '<a href="mailto:$1">$1</a>')
         .replace(/\[img\]\s*(.*?)\s*\[\/img\]/gis, '<img src="$1" class="rounded" style="max-width:400px; width:100%">')
 
 		
@@ -138,21 +179,35 @@ function initViewSource(textareaId, btnId) {
         .replace(/\[center\]\s*(.*?)\s*\[\/center\]/gis, '<div style="text-align:center;">$1</div>')
         .replace(/\[left\]\s*(.*?)\s*\[\/left\]/gis, '<div style="text-align:left;">$1</div>')
         .replace(/\[right\]\s*(.*?)\s*\[\/right\]/gis, '<div style="text-align:right;">$1</div>')
+        .replace(/\[align=justify\]\s*(.*?)\s*\[\/align\]/gis, '<div style="text-align:justify;">$1</div>')
+
+        // Горизонтальная линия (одиночный тег, без содержимого)
+        .replace(/\[hr\]/gi, '<hr>')
         
         // Цитаты и код
         .replace(/\[quote\]\s*(.*?)\s*\[\/quote\]/gis, '<blockquote class="mycode_quote">$1</blockquote>')
         .replace(/\[code\]\s*(.*?)\s*\[\/code\]/gis, '<pre>$1</pre>')
+        .replace(/\[php\]\s*(.*?)\s*\[\/php\]/gis, '<pre class="bbcode-php bg-light border rounded p-2" style="font-family:Consolas,\'Courier New\',monospace;">$1</pre>')
+        .replace(/\[nfo\]\s*(.*?)\s*\[\/nfo\]/gis, '<pre class="bbcode-nfo bg-dark text-light border rounded p-2" style="font-family:\'Lucida Console\',Consolas,monospace; white-space:pre; overflow-x:auto;">$1</pre>')
         
         // Списки
         .replace(/\[list\]\s*(.*?)\s*\[\/list\]/gis, '<ul>$1</ul>')
         .replace(/\[list=1\]\s*(.*?)\s*\[\/list\]/gis, '<ol>$1</ol>')
         .replace(/\[\*\]\s*(.*?)(\r?\n|$)/g, '<li>$1</li>')
+
+        // Таблица
+        .replace(/\[table\]\s*(.*?)\s*\[\/table\]/gis, '<table class="table table-bordered">$1</table>')
+        .replace(/\[tr\]\s*(.*?)\s*\[\/tr\]/gis, '<tr>$1</tr>')
+        .replace(/\[td\]\s*(.*?)\s*\[\/td\]/gis, '<td>$1</td>')
         
         // Специальные теги
-        .replace(/\[spoiler\]\s*(.*?)\s*\[\/spoiler\]/gis, '<details><summary>Spoiler</summary>$1</details>')
+        .replace(/\[spoiler\]\s*(.*?)\s*\[\/spoiler\]/gis, '<details class="bbcode-spoiler border rounded p-2 my-2"><summary style="cursor:pointer;font-weight:bold;">Spoiler</summary><div class="mt-2">$1</div></details>')
+        .replace(/\[torrent=(\d+)\]/gi, '<div class="bbcode-torrent-embed border rounded p-2 my-2" data-torrent-id="$1"><div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading torrent preview...</div></div>')
         .replace(/\[video=youtube\]\s*(.*?)\s*\[\/video\]/gi, '<iframe width="300" height="200" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen></iframe>')
 		
-        .replace(/\[video=mp4\](.*?)\[\/video\]/gi, '<video src="$1" controls style="max-width:400px;"></video>')
+        .replace(/\[video=mp4\](.*?)\[\/video\]/gi, '<video src="$1" controls style="max-width:200px;"></video>')
+        // Обычный [video]...[/video] (вставляется модалкой для типов mp4/auto без явного =mp4)
+        .replace(/\[video\]\s*(.*?)\s*\[\/video\]/gis, '<video src="$1" controls style="max-width:200px;"></video>')
 		
       // Обработка смайликов
       if (typeof smilies !== "undefined") {
@@ -167,6 +222,10 @@ function initViewSource(textareaId, btnId) {
       previewDiv.innerHTML = html;
       textarea.style.display = "none";
       textarea.insertAdjacentElement("afterend", previewDiv);
+
+      // Подгружаем карточки торрентов асинхронно (т.к. это отдельный запрос к серверу)
+      loadTorrentPreviewsIn(previewDiv);
+
       toggleBtn.textContent = "Edit BBCode";
       toggleBtn.classList.add("btn-dark");
       previewMode = true;

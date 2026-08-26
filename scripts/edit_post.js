@@ -25,6 +25,8 @@ function wrapBBCode(startTag, endTag, pid) {
 }
 
 // Live Preview
+let editPostSpoilerCounter = 0;
+
 function renderPreview(pid) {
     const ta = document.getElementById("editPostTextarea" + pid);
     const preview = document.getElementById("editPostPreview" + pid);
@@ -46,12 +48,57 @@ function renderPreview(pid) {
         .replace(/\[img\](.*?)\[\/img\]/gi, '<img src="$1" alt="Image" class="rounded" style="max-width: 400px;">')
         .replace(/\[quote\](.*?)\[\/quote\]/gi, '<blockquote>$1</blockquote>')
         .replace(/\[code\](.*?)\[\/code\]/gi, '<pre>$1</pre>')
-        .replace(/\[list\](.*?)\[\/list\]/gi, '<ul>$1</ul>')
+        .replace(/\[video\](.*?)\[\/video\]/gi,'<video controls style="max-width:300px; width:100%; height:auto;"><source src="$1" type="video/mp4"></video>')
+		.replace(/\[youtube\](.*?)\[\/youtube\]/gi,'<iframe width="100%" height="315" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen referrerpolicy="no-referrer"></iframe>')
+		.replace(/\[list\](.*?)\[\/list\]/gi, '<ul>$1</ul>')
         .replace(/\[list=1\](.*?)\[\/list\]/gi, '<ol>$1</ol>')
         .replace(/\[\*\](.*?)(?=\[\*\]|\[\/list\])/gi, '<li>$1</li>')
+        .replace(/\[spoiler\](.*?)\[\/spoiler\]/gis, function (_, inner) {
+            const sid = 'preview-spoiler-' + (++editPostSpoilerCounter);
+            return '<div class="mycode_spoiler my-2">'
+                 + '<a class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" href="#' + sid + '" role="button" aria-expanded="false" aria-controls="' + sid + '">'
+                 + '<i class="fa-solid fa-eye"></i> Spoiler (click to show)'
+                 + '</a>'
+                 + '<div class="collapse mt-2 p-2 border rounded bg-light" id="' + sid + '">'
+                 + inner
+                 + '</div>'
+                 + '</div>';
+        })
+        .replace(/\[torrent=(\d+)\]/gi, '<div class="mycode_torrent_card card d-inline-block my-2" data-torrent-preview-id="$1" style="max-width:420px;"><div class="card-body py-2 px-3 text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading torrent #$1...</div></div>')
         .replace(/\n/g, "<br>");
     
     preview.innerHTML = content;
+    loadTorrentEmbedPreviews(preview);
+}
+
+// [torrent=ID] требует данных с сервера — рендерим плейсхолдер сразу вместе
+// с остальным BBCode (синхронно), а карточки подгружаем отдельно через
+// ajax_torrent_preview.php и точечно заменяем содержимое плейсхолдера.
+function loadTorrentEmbedPreviews(container) {
+    container.querySelectorAll('[data-torrent-preview-id]').forEach(function (el) {
+        const id = el.getAttribute('data-torrent-preview-id');
+        fetch('ajax_torrent_preview.php?id=' + encodeURIComponent(id))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.error) {
+                    el.innerHTML = '<div class="card-body py-2 px-3 text-danger small"><i class="fa-solid fa-triangle-exclamation me-1"></i>' + escapeHtml(data.error) + '</div>';
+                    return;
+                }
+                const img = data.image
+                    ? '<img src="' + escapeHtml(data.image) + '" class="card-img-top" style="height:100px;object-fit:cover;">'
+                    : '';
+                el.innerHTML = img
+                    + '<div class="card-body py-2 px-3">'
+                    + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
+                    + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
+                    + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
+                    + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
+                    + '</div>';
+            })
+            .catch(function () {
+                el.innerHTML = '<div class="card-body py-2 px-3 text-danger small">Failed to load preview</div>';
+            });
+    });
 }
 
 // Save function
@@ -133,6 +180,92 @@ function savePost(pid) {
 }
 
 
+// Извлекает ID из голого числа, полного URL (torrent-17.html), query-параметра
+// или произвольного вставленного текста со ссылкой внутри.
+function extractTorrentId(raw) {
+    raw = raw || '';
+    const m = raw.match(/torrent-(\d+)\.html/i)
+           || raw.match(/[?&](?:id|tid)=(\d+)/i)
+           || raw.match(/(\d+)/);
+    return m ? m[1] : '';
+}
+
+// Вставляет [torrent=ID] в позицию курсора — аналог wrapBBCode(), но для
+// одиночного самозакрытого тега без выделения текста.
+function insertTorrentTag(pid, id) {
+    const ta = document.getElementById("editPostTextarea" + pid);
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const tag = "[torrent=" + id + "]";
+    ta.value = ta.value.substring(0, start) + tag + ta.value.substring(end);
+    ta.focus();
+    ta.setSelectionRange(start + tag.length, start + tag.length);
+    renderPreview(pid);
+}
+
+function initTorrentPanel(pid) {
+    const input   = document.getElementById("torrentIdInput" + pid);
+    const btn     = document.getElementById("insertTorrentBtn" + pid);
+    const preview = document.getElementById("torrentPreview" + pid);
+    if (!input || !btn) return;
+
+    let debounceTimer = null;
+
+    if (preview) {
+        input.addEventListener("input", function () {
+            clearTimeout(debounceTimer);
+            const id = extractTorrentId(input.value);
+            if (!id) {
+                preview.innerHTML = "";
+                return;
+            }
+            debounceTimer = setTimeout(function () {
+                preview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading preview...</div>';
+                fetch('ajax_torrent_preview.php?id=' + encodeURIComponent(id))
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.error) {
+                            preview.innerHTML = '<div class="text-danger small">' + escapeHtml(data.error) + '</div>';
+                            return;
+                        }
+                        const img = data.image
+                            ? '<img src="' + escapeHtml(data.image) + '" class="card-img-top" style="height:100px;object-fit:cover;">'
+                            : '';
+                        preview.innerHTML = '<div class="card">' + img
+                            + '<div class="card-body py-2 px-3">'
+                            + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
+                            + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
+                            + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
+                            + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
+                            + '</div></div>';
+                    })
+                    .catch(function () {
+                        preview.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+                    });
+            }, 400);
+        });
+    }
+
+    const doInsert = function () {
+        const id = extractTorrentId(input.value);
+        if (!id) {
+            input.focus();
+            return;
+        }
+        insertTorrentTag(pid, id);
+        input.value = "";
+        if (preview) preview.innerHTML = "";
+    };
+
+    btn.addEventListener("click", doInsert);
+    input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            doInsert();
+        }
+    });
+}
+
 // Initialize edit post functionality
 function initEditPost(pid) {
     // Set up save button
@@ -155,6 +288,8 @@ function initEditPost(pid) {
         // Initial preview
         renderPreview(pid);
     }
+
+    initTorrentPanel(pid);
 }
 
 // Global initialization for all edit modals

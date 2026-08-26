@@ -18,6 +18,8 @@ function escapeHtml(str) {
     });
 }
 
+let spoilerPreviewCounter = 0;
+
 function parseBBCode(text) {
     return escapeHtml(text)
         .replace(/\[b\](.*?)\[\/b\]/gi,   '<strong>$1</strong>')
@@ -31,12 +33,24 @@ function parseBBCode(text) {
         .replace(/\[size=(\d+)\](.*?)\[\/size\]/gi,'<span style="font-size:$1px">$2</span>')
         .replace(/\[url\](.*?)\[\/url\]/gi,'<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
         .replace(/\[img\](.*?)\[\/img\]/gi,'<img src="$1" alt="" class="rounded" style="max-width:400px">')
-        .replace(/\[video\](.*?)\[\/video\]/gi,'<video controls style="max-width:100%"><source src="$1" type="video/mp4"></video>')
+        .replace(/\[video\](.*?)\[\/video\]/gi,'<video controls style="max-width:300px; width:100%; height:auto;"><source src="$1" type="video/mp4"></video>')
         .replace(/\[youtube\](.*?)\[\/youtube\]/gi,'<iframe width="100%" height="315" src="https://www.youtube.com/embed/$1" frameborder="0" allowfullscreen referrerpolicy="no-referrer"></iframe>')
         .replace(/\[quote\](.*?)\[\/quote\]/gis,'<blockquote>$1</blockquote>')
         .replace(/\[code\](.*?)\[\/code\]/gis,  '<pre><code>$1</code></pre>')
         .replace(/\[list\](.*?)\[\/list\]/gis,   (_, c) => '<ul>'  + c.replace(/\[\*\](.*)/g,'<li>$1</li>') + '</ul>')
         .replace(/\[list=1\](.*?)\[\/list\]/gis, (_, c) => '<ol>'  + c.replace(/\[\*\](.*)/g,'<li>$1</li>') + '</ol>')
+        .replace(/\[spoiler\](.*?)\[\/spoiler\]/gis, function (_, content) {
+            const id = 'preview-spoiler-' + (++spoilerPreviewCounter);
+            return '<div class="mycode_spoiler my-2">'
+                 + '<a class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" href="#' + id + '" role="button" aria-expanded="false" aria-controls="' + id + '">'
+                 + '<i class="fa-solid fa-eye"></i> Spoiler (click to show)'
+                 + '</a>'
+                 + '<div class="collapse mt-2 p-2 border rounded bg-light" id="' + id + '">'
+                 + content
+                 + '</div>'
+                 + '</div>';
+        })
+        .replace(/\[torrent=(\d+)\]/gi, '<div class="mycode_torrent_card card d-inline-block my-2" data-torrent-preview-id="$1" style="max-width:420px;"><div class="card-body py-2 px-3 text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading torrent #$1...</div></div>')
         .replace(/\n/g, '<br>');
 }
 
@@ -63,10 +77,129 @@ function wrapBBCodeNear(btn, openTag, closeTag) {
     ta.setSelectionRange(s + openTag.length, e + openTag.length);
 }
 
+// Извлекает ID из голого числа, полного URL (torrent-17.html), query-параметра
+// или произвольного вставленного текста со ссылкой внутри.
+function extractTorrentTagId(raw) {
+    raw = raw || '';
+    const m = raw.match(/torrent-(\d+)\.html/i)
+           || raw.match(/[?&](?:id|tid)=(\d+)/i)
+           || raw.match(/(\d+)/);
+    return m ? m[1] : '';
+}
+
+function insertTorrentTag(id) {
+    const ta = document.getElementById('editCommentText');
+    if (!ta) return;
+    const s = ta.selectionStart;
+    const e = ta.selectionEnd;
+    const tag = '[torrent=' + id + ']';
+    ta.value = ta.value.substring(0, s) + tag + ta.value.substring(e);
+    ta.focus();
+    ta.setSelectionRange(s + tag.length, s + tag.length);
+    updatePreview();
+}
+
+function initTorrentTagPanel() {
+    const input   = document.getElementById('torrentIdInput');
+    const btn     = document.getElementById('insertTorrentBtn');
+    const preview = document.getElementById('torrentPreview');
+    if (!input || !btn) return;
+
+    let debounceTimer = null;
+
+    if (preview) {
+        input.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            const id = extractTorrentTagId(input.value);
+            if (!id) {
+                preview.innerHTML = '';
+                return;
+            }
+            debounceTimer = setTimeout(function () {
+                preview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading preview...</div>';
+                fetch('ajax_torrent_preview.php?id=' + encodeURIComponent(id))
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.error) {
+                            preview.innerHTML = '<div class="text-danger small">' + escapeHtml(data.error) + '</div>';
+                            return;
+                        }
+                        const img = data.image
+                            ? '<img src="' + escapeHtml(data.image) + '" class="card-img-top" style="height:100px;object-fit:cover;">'
+                            : '';
+                        preview.innerHTML = '<div class="card">' + img
+                            + '<div class="card-body py-2 px-3">'
+                            + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
+                            + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
+                            + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
+                            + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
+                            + '</div></div>';
+                    })
+                    .catch(function () {
+                        preview.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+                    });
+            }, 400);
+        });
+    }
+
+    const doInsert = function () {
+        const id = extractTorrentTagId(input.value);
+        if (!id) {
+            input.focus();
+            return;
+        }
+        insertTorrentTag(id);
+        input.value = '';
+        if (preview) preview.innerHTML = '';
+    };
+
+    btn.addEventListener('click', doInsert);
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doInsert();
+        }
+    });
+}
+
 function updatePreview() {
     const ta      = document.getElementById('editCommentText');
     const preview = document.getElementById('bbcodePreview');
-    if (ta && preview) preview.innerHTML = parseBBCode(ta.value);
+    if (!ta || !preview) return;
+
+    preview.innerHTML = parseBBCode(ta.value);
+    loadTorrentEmbedPreviews(preview);
+}
+
+// [torrent=ID] требует данных с сервера — рендерим плейсхолдер сразу
+// (синхронно, вместе с остальным BBCode), а сами карточки подгружаем
+// через ajax_torrent_preview.php (тот же эндпоинт, что у модалки
+// вставки торрента в редакторе) и точечно заменяем содержимое.
+function loadTorrentEmbedPreviews(container) {
+    container.querySelectorAll('[data-torrent-preview-id]').forEach(function (el) {
+        const id = el.getAttribute('data-torrent-preview-id');
+        fetch('ajax_torrent_preview.php?id=' + encodeURIComponent(id))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.error) {
+                    el.innerHTML = '<div class="card-body py-2 px-3 text-danger small"><i class="fa-solid fa-triangle-exclamation me-1"></i>' + escapeHtml(data.error) + '</div>';
+                    return;
+                }
+                const img = data.image
+                    ? '<img src="' + escapeHtml(data.image) + '" class="card-img-top" style="height:100px;object-fit:cover;">'
+                    : '';
+                el.innerHTML = img
+                    + '<div class="card-body py-2 px-3">'
+                    + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
+                    + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
+                    + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
+                    + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
+                    + '</div>';
+            })
+            .catch(function () {
+                el.innerHTML = '<div class="card-body py-2 px-3 text-danger small">Failed to load preview</div>';
+            });
+    });
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -128,7 +261,10 @@ function massDeleteComments() {
     if (countEl) countEl.textContent = window.selectedCommentIds.length;
 
     const listEl = document.getElementById('massDeletePreviewList');
-    if (listEl) listEl.innerHTML = previewHTML;
+    if (listEl) {
+        listEl.innerHTML = previewHTML;
+        loadTorrentEmbedPreviews(listEl);
+    }
 
     // Используем getInstance чтобы не создавать дубли
     const modalEl = document.getElementById('massDeleteConfirmModal');
@@ -235,6 +371,8 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── Live preview textarea ─────────────────────────────── */
     if (editTextarea) editTextarea.addEventListener('input', updatePreview);
 
+    initTorrentTagPanel();
+
     /* ── Делегирование кликов ──────────────────────────────── */
     document.addEventListener('click', function (e) {
         // Редактировать
@@ -258,7 +396,11 @@ document.addEventListener('DOMContentLoaded', function () {
             if (safe('commentPreviewAuthor')) safe('commentPreviewAuthor').textContent = delTrigger.getAttribute('data-author')  || 'Unknown';
             if (safe('commentPreviewDate'))   safe('commentPreviewDate').textContent   = delTrigger.getAttribute('data-date')    || '';
             if (safe('commentPreviewId'))     safe('commentPreviewId').textContent     = 'CID: ' + (commentToDeleteId || '');
-            if (safe('commentPreviewText'))   safe('commentPreviewText').innerHTML     = parseBBCode(delTrigger.getAttribute('data-preview') || '');
+            if (safe('commentPreviewText')) {
+                const previewEl = safe('commentPreviewText');
+                previewEl.innerHTML = parseBBCode(delTrigger.getAttribute('data-preview') || '');
+                loadTorrentEmbedPreviews(previewEl);
+            }
             deleteModal.show();
         }
     });

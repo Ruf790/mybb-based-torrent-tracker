@@ -213,7 +213,6 @@ $magnetModal = '
         <h5 class="modal-title" id="editCommentModalLabel">Edit Comment</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-
       <div class="modal-body">
         <div class="mb-2">
           <!-- Text Styles -->
@@ -221,37 +220,51 @@ $magnetModal = '
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[i]', '[/i]')"><i>I</i></button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[u]', '[/u]')"><u>U</u></button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[s]', '[/s]')"><s>S</s></button>
-
           <!-- Alignment -->
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[left]', '[/left]')">Left</button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[center]', '[/center]')">Center</button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[right]', '[/right]')">Right</button>
-
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[align=justify]', '[/align]')">Justify</button>
           <!-- Color & Size -->
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[color=red]', '[/color]')">Red</button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[size=18]', '[/size]')">Size</button>
-
           <!-- Links & Media -->
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[url]', '[/url]')">URL</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[email]', '[/email]')">Email</button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[img]', '[/img]')">IMG</button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[video]', '[/video]')">Video</button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[youtube]', '[/youtube]')">YouTube</button>
-
           <!-- Quote & Code -->
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[quote]', '[/quote]')">Quote</button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[code]', '[/code]')">Code</button>
-
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[php]', '[/php]')">PHP</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[nfo]', '[/nfo]')" title="NFO Block">NFO</button>
           <!-- Lists -->
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[list]\n[*]', '\n[/list]')">List</button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[list=1]\n[*]', '\n[/list]')">#List</button>
+          <!-- Table -->
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[table]\n[tr][td]cell[/td][td]cell[/td][/tr]\n[/table]', '')" title="Insert Table"><i class="fas fa-table"></i> Table</button>
+          <!-- Horizontal Rule -->
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[hr]', '')" title="Horizontal Rule">HR</button>
+          <!-- Spoiler -->
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[spoiler]', '[/spoiler]')">Spoiler</button>
+          <!-- Torrent -->
+          <button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#torrentPanel"><i class="fa-solid fa-magnet"></i> Torrent</button>
         </div>
-
+        <div class="collapse mb-3" id="torrentPanel">
+          <div class="card card-body">
+            <label class="form-label small">Torrent ID or URL</label>
+            <div class="input-group">
+              <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput" placeholder="e.g. 17 or paste the torrent link">
+              <button type="button" class="btn btn-primary" id="insertTorrentBtn">Insert</button>
+            </div>
+            <div id="torrentPreview" class="mt-2"></div>
+          </div>
+        </div>
         <textarea id="editCommentText" class="form-control mb-3" rows="6" placeholder="Edit your comment..."></textarea>
-
         <h6>Live Preview</h6>
         <div id="bbcodePreview" class="border p-2 bg-light rounded" style="min-height: 100px;"></div>
       </div>
-
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button id="confirmEditComment" type="button" class="btn btn-primary">Save Changes</button>

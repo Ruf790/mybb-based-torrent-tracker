@@ -61,8 +61,6 @@ function deletetorrent(int $id, bool $permission = false): void
     // Delete associated data from database
     delete_torrent_database_records($id);
     
-    // Clear cache
-    $cache->update_torrents();
 }
 
 /**

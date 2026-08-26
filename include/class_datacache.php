@@ -265,26 +265,6 @@ class datacache
     }
 
     // ── update_* methods ─────────────────────────────────────
-
-    public function update_tasks(): void
-    {
-        global $db;
-
-        $query = $db->sql_query_prepared(
-            "SELECT nextrun FROM tasks WHERE enabled = 1 ORDER BY nextrun ASC LIMIT 1"
-        );
-        $next_task = $query ? $db->fetch_array($query) : null;
-
-        $task_cache = $this->read('tasks');
-        if (!is_array($task_cache)) {
-            $task_cache = [];
-        }
-
-        $task_cache['nextrun'] = (int)($next_task['nextrun'] ?? 0) ?: TIMENOW + 3600;
-
-        $this->update('tasks', $task_cache);
-    }
-
     public function update_bannedips(): void
     {
         global $db;
@@ -524,27 +504,6 @@ class datacache
         ]);
     }
 
-    public function update_reportedcontent(): void
-    {
-        global $db;
-
-        $query  = $db->sql_query_prepared("SELECT COUNT(rid) AS unreadcount FROM reportedcontent WHERE reportstatus = '0'");
-        $unread = $query ? (int)$db->fetch_field($query, 'unreadcount') : 0;
-
-        $query = $db->sql_query_prepared("SELECT COUNT(rid) AS reportcount FROM reportedcontent");
-        $total = $query ? (int)$db->fetch_field($query, 'reportcount') : 0;
-
-        $query    = $db->sql_query_prepared(
-            "SELECT dateline FROM reportedcontent WHERE reportstatus = '0' ORDER BY dateline DESC LIMIT 1"
-        );
-        $dateline = $query ? (int)$db->fetch_field($query, 'dateline') : 0;
-
-        $this->update('reportedcontent', [
-            'unread'       => $unread,
-            'total'        => $total,
-            'lastdateline' => $dateline,
-        ]);
-    }
 
     public function update_mailqueue(int $last_run = 0, int $lock_time = 0): void
     {
@@ -568,50 +527,6 @@ class datacache
         $this->update('mailqueue', $mailqueue);
     }
 
-    public function update_news(): void
-    {
-        global $db;
-
-        $news  = [];
-        $query = $db->sql_query_prepared('SELECT id,userid,added,body,title FROM news ORDER BY added DESC LIMIT 1');
-        while ($query && ($row = $db->fetch_array($query))) {
-            $news[$row['id']] = $row;
-        }
-        $this->update('news', $news);
-    }
-
-    public function update_torrents(): void
-    {
-        global $db;
-
-        $exclude    = ['comments', 'hits', 'times_completed'];
-        $showimages = 'yes';
-        $limit      = 15;
-
-        $image_field = $showimages === 'yes' ? ',t.t_image,'     : ',t.seeders,t.leechers,';
-        $image_cond  = $showimages === 'yes' ? " AND t.t_image != ''" : '';
-
-        $sql = "SELECT t.id, t.name{$image_field}t.owner, t.anonymous,
-                       t.descr, u.username, u.usergroup, t.added, t.tags
-                FROM torrents t
-                LEFT JOIN users u ON t.owner = u.id
-                LEFT JOIN categories c ON t.category = c.id
-                WHERE t.visible = 'yes' AND t.banned = 'no'{$image_cond}
-                ORDER BY added DESC
-                LIMIT ?, ?";
-
-        $query    = $db->sql_query_prepared($sql, [0, $limit]);
-        $torrents = [];
-
-        while ($torrent = $db->fetch_array($query)) {
-            foreach ($exclude as $key) {
-                unset($torrent[$key]);
-            }
-            $torrents[$torrent['id']] = $torrent;
-        }
-
-        $this->update('torrents', $torrents);
-    }
 
     public function update_birthdays(): void
     {
@@ -663,14 +578,6 @@ class datacache
             $fd[$row['fid']]['announcements'] ??= 1;
         }
 
-        // Mod tools
-        //$query = $db->simple_select('modtools', 'forums,tid', '', ['order_by' => 'tid']);
-        //while ($tool = $db->fetch_array($query)) {
-        //    foreach (explode(',', $tool['forums']) as $fid) {
-        //       $fid = $fid !== '' ? (int)$fid : -1;
-        ///       $fd[$fid]['modtools'] ??= 1;
-        //    }
-        //}
 
         $this->update('forumsdisplay', $fd);
     }

@@ -15,13 +15,31 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     require_once(INC_PATH . '/class_parser.php');
     $parser = new postParser;
 
+    // Пакетная предзагрузка [torrent=ID] по ВСЕМ комментариям разом —
+    // без этого каждый комментарий со своим уникальным торрентом бьёт
+    // в БД отдельным запросом (было видно в SQL-логе: 7 разных ID = 7
+    // отдельных запросов). $rows уже содержит весь текст комментариев,
+    // сканируем его до начала цикла рендеринга.
+    $torrentEmbedIds = [];
+    foreach ($rows as $row) {
+        if (preg_match_all('#\[torrent=(\d+)\]#i', $row['text'] ?? '', $m)) {
+            foreach ($m[1] as $tid) {
+                $torrentEmbedIds[] = (int)$tid;
+            }
+        }
+    }
+    if (!empty($torrentEmbedIds)) {
+        $parser->primeTorrentEmbedCache($torrentEmbedIds);
+    }
+
     $parser_options = [
         "allow_html" => 0,
         "allow_mycode" => 1,
         "allow_smilies" => 1,
         "allow_imgcode" => 1,
         "allow_videocode" => 1,
-        "filter_badwords" => 1
+        "filter_badwords" => 1,
+		"nofollow_on" => 1
     ];
 
     $moderator = is_mod($usergroups);

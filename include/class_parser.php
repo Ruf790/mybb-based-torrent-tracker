@@ -29,6 +29,8 @@ class postParser
     public array  $options         = [];
     public array  $list_elements   = [];
     public int    $list_count      = 0;
+    public int    $spoiler_count   = 0;
+    public array  $torrent_embed_cache = [];
     public bool   $clear_needed    = false;
 
     // ── Константы ─────────────────────────────────────────
@@ -196,6 +198,7 @@ class postParser
         $standard['copy'] = ['regex' => '#\(c\)#i',                'replacement' => '&copy;'];
         $standard['tm']   = ['regex' => '#\(tm\)#i',               'replacement' => '&#153;'];
         $standard['reg']  = ['regex' => '#\(r\)#i',                'replacement' => '&reg;'];
+        $standard['nfo']  = ['regex' => '#\[nfo\](.*?)\[/nfo\]#si', 'replacement' => '<pre class="mycode_nfo" style="background:#0d0d0d;color:#33ff66;font-family:&quot;Courier New&quot;,monospace;padding:1em;border-radius:6px;overflow-x:auto;white-space:pre;line-height:1.2;">$1</pre>'];
 
         // Callback MyCode
         $callback['url_simple']    = ['regex' => '#\[url\]((?!javascript)[a-z]+?://)([^\r\n"<]+?)\[/url\]#si', 'replacement' => [$this, 'mycode_parse_url_callback1']];
@@ -205,14 +208,19 @@ class postParser
         $callback['email_simple']  = ['regex' => '#\[email\]((?:[a-zA-Z0-9-_\+\.]+?)@[a-zA-Z0-9-]+\.[a-zA-Z0-9\.-]+(?:\?.*?)?)\[/email\]#i', 'replacement' => [$this, 'mycode_parse_email_callback']];
         $callback['email_complex'] = ['regex' => '#\[email=((?:[a-zA-Z0-9-_\+\.]+?)@[a-zA-Z0-9-]+\.[a-zA-Z0-9\.-]+(?:\?.*?)?)\](.*?)\[/email\]#i', 'replacement' => [$this, 'mycode_parse_email_callback']];
         $callback['size_int']      = ['regex' => '#\[size=([0-9\+\-]+?)\](.*?)\[/size\]#si', 'replacement' => [$this, 'mycode_handle_size_callback']];
+        $callback['torrent_embed'] = ['regex' => '#\[torrent=(\d+)\]#i', 'replacement' => [$this, 'mycode_parse_torrent_callback']];
 
         // Nestable MyCode
         $nestable['color'] = ['regex' => '#\[color=([a-zA-Z]*|\#?[\da-fA-F]{3}|\#?[\da-fA-F]{6})](.*?)\[/color\]#si', 'replacement' => '<span style="color: $1;" class="mycode_color">$2</span>'];
         $nestable['size']  = ['regex' => '#\[size=(xx-small|x-small|small|medium|large|x-large|xx-large)\](.*?)\[/size\]#si', 'replacement' => '<span style="font-size: $1;" class="mycode_size">$2</span>'];
         $nestable['align'] = ['regex' => '#\[align=(left|center|right|justify)\](.*?)\[/align\]#si', 'replacement' => '<div style="text-align: $1;" class="mycode_align">$2</div>'];
+        $nestable['table'] = ['regex' => '#\[table\](.*?)\[/table\]#si', 'replacement' => '<table class="table table-bordered mycode_table">$1</table>'];
+        $nestable['tr']    = ['regex' => '#\[tr\](.*?)\[/tr\]#si',       'replacement' => '<tr>$1</tr>'];
+        $nestable['td']    = ['regex' => '#\[td\](.*?)\[/td\]#si',       'replacement' => '<td>$1</td>'];
 
         // Nestable callback MyCode
         $nestable_callback['font'] = ['regex' => '#\[font=\s*("?)([a-z0-9 ,\-_\'"]+)\1\s*\](.*?)\[/font\]#si', 'replacement' => [$this, 'mycode_parse_font_callback']];
+        $nestable_callback['spoiler'] = ['regex' => '#\[spoiler\](.*?)\[/spoiler\]#si', 'replacement' => [$this, 'mycode_parse_spoiler_callback']];
 
        
 
@@ -240,6 +248,10 @@ class postParser
         if (!is_array($this->mycode_cache)) {
             $this->cache_mycode();
         }
+
+        // Пакетная предзагрузка всех [torrent=ID] в сообщении разом —
+        // иначе N вставок дают N отдельных SQL-запросов (N+1 проблема).
+        $this->cache_torrent_embeds($message);
 
         $message = $this->mycode_parse_quotes($message);
 
@@ -685,6 +697,103 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
         return '<span style="font-family: ' . $fonts . ';" class="mycode_font">' . $matches[3] . '</span>';
     }
 
+    public function mycode_parse_spoiler_callback(array $matches): string
+    {
+        $id = 'mycode-spoiler-' . (++$this->spoiler_count);
+
+        return '<div class="mycode_spoiler my-2">'
+             . '<a class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" href="#' . $id . '" role="button" aria-expanded="false" aria-controls="' . $id . '">'
+             . '<i class="fa-solid fa-eye"></i> Spoiler (click to show)'
+             . '</a>'
+             . '<div class="collapse mt-2 p-2 border rounded bg-light" id="' . $id . '">'
+             . $matches[1]
+             . '</div>'
+             . '</div>';
+    }
+
+    /**
+     * Публичный метод — позволяет "предзаправить" кэш списком ID снаружи,
+     * до того как парсер вообще коснётся текста сообщений. Нужен там, где
+     * заранее известны ВСЕ сообщения, которые будут отрендерены за один
+     * проход (например, commenttable.php получает сразу все комментарии
+     * массивом) — тогда можно просканировать их все и забрать данные всех
+     * упомянутых торрентов одним запросом, вместо запроса на каждый
+     * комментарий по отдельности.
+     */
+    public function primeTorrentEmbedCache(array $ids): void
+    {
+        $this->fetchTorrentEmbeds(array_map('intval', $ids));
+    }
+
+    private function cache_torrent_embeds(string $message): void
+    {
+        if (!preg_match_all('#\[torrent=(\d+)\]#i', $message, $found)) {
+            return;
+        }
+
+        $this->fetchTorrentEmbeds(array_map('intval', $found[1]));
+    }
+
+    private function fetchTorrentEmbeds(array $ids): void
+    {
+        $ids = array_unique($ids);
+
+        // Кэш накопительный на весь рендер страницы (один $parser на много
+        // parse_mycode() вызовов — например, description + N комментариев на
+        // details.php). Запрашиваем только те ID, которых ещё нет в кэше.
+        $missing = array_values(array_diff($ids, array_keys($this->torrent_embed_cache)));
+
+        if (empty($missing)) {
+            return;
+        }
+
+        global $db;
+        $ph    = implode(',', array_fill(0, count($missing), '?'));
+        $query = $db->sql_query_prepared(
+            "SELECT t.id, t.name, t.size, t.seeders, t.leechers, t.t_image, c.name AS catname
+             FROM torrents t LEFT JOIN categories c ON c.id = t.category
+             WHERE t.id IN ({$ph})",
+            $missing
+        );
+
+        while ($query && ($row = $db->fetch_array($query))) {
+            $this->torrent_embed_cache[(int)$row['id']] = $row;
+        }
+    }
+
+    public function mycode_parse_torrent_callback(array $matches): string
+    {
+        $tid = (int)$matches[1];
+        if ($tid <= 0) {
+            return $matches[0];
+        }
+
+        $torrent = $this->torrent_embed_cache[$tid] ?? null;
+
+        if (!$torrent) {
+            return $matches[0];
+        }
+
+        $link = htmlspecialchars(get_torrent_link((int)$torrent['id']), ENT_QUOTES, 'UTF-8');
+        $size = function_exists('mksize') ? mksize((int)$torrent['size']) : (int)$torrent['size'] . ' B';
+
+        $poster = !empty($torrent['t_image'])
+            ? '<img src="' . htmlspecialchars($torrent['t_image'], ENT_QUOTES, 'UTF-8') . '" class="card-img-top" style="height:420px;object-fit:cover;" alt="" />'
+            : '';
+
+        return '<a href="' . $link . '" class="mycode_torrent_card card d-inline-block text-decoration-none my-2" style="max-width:420px;">'
+             . $poster
+             . '<div class="card-body py-2 px-3">'
+             . '<div class="fw-bold text-truncate"><i class="fa-solid fa-magnet me-1"></i>' . htmlspecialchars($torrent['name'], ENT_QUOTES, 'UTF-8') . '</div>'
+             . '<div class="text-muted small">'
+             . htmlspecialchars($torrent['catname'] ?? '', ENT_QUOTES, 'UTF-8') . ' &#183; ' . $size
+             . ' &#183; <span class="text-success">' . (int)$torrent['seeders'] . ' seeders</span>'
+             . ' &#183; <span class="text-danger">' . (int)$torrent['leechers'] . ' leechers</span>'
+             . '</div>'
+             . '</div>'
+             . '</a>';
+    }
+
     public function mycode_parse_url_callback1(array $matches): string
     {
         return $this->mycode_parse_url($matches[1] . $matches[2], $matches[3] ?? '');
@@ -776,8 +885,8 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
         $url = $this->encode_url($url);
 
         return '
-        <video controls preload="metadata" class="mycode_video rounded" style="max-width:100%; height:auto;">
-            <source src="' . $url . '" type="video/' . $ext . '">
+        <video controls="controls" preload="metadata" class="mycode_video rounded" style="max-width:300px; width:100%; height:auto;">
+            <source src="' . $url . '" type="video/' . $ext . '" />
             Your browser does not support the video tag.
         </video>';
     }

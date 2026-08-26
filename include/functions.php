@@ -709,35 +709,19 @@ function my_inet_ntop(string $ip): string|false
     }
 }
 
+
 function get_ip(): string
 {
     global $mybb, $plugins;
 
     $ip = strtolower($_SERVER['REMOTE_ADDR'] ?? '');
 
-    $ip_forwarded_check = "0";
-    
-    if($ip_forwarded_check) {
-        $addresses = [];
-
-        if(isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $addresses = explode(',', strtolower($_SERVER['HTTP_X_FORWARDED_FOR']));
-        } elseif(isset($_SERVER['HTTP_X_REAL_IP'])) {
-            $addresses = explode(',', strtolower($_SERVER['HTTP_X_REAL_IP']));
-        }
-
-        if(is_array($addresses)) {
-            foreach($addresses as $val) {
-                $val = trim($val);
-                // Validate IP address and exclude private addresses
-                if(my_inet_ntop(my_inet_pton($val)) == $val && !preg_match("#^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|fe80:|fe[c-f][0-f]:|f[c-d][0-f]{2}:)#", $val)) {
-                    $ip = $val;
-                    break;
-                }
-            }
+    if (isset($_SERVER['HTTP_X_REAL_IP'])) {
+        $real_ip = trim(strtolower($_SERVER['HTTP_X_REAL_IP']));
+        if (my_inet_ntop(my_inet_pton($real_ip)) === $real_ip) {
+            $ip = $real_ip;
         }
     }
-	
 
     if(!$ip && isset($_SERVER['HTTP_CLIENT_IP'])) {
         $ip = strtolower($_SERVER['HTTP_CLIENT_IP']);
@@ -750,6 +734,11 @@ function get_ip(): string
 
     return $ip;
 }
+
+
+
+
+
 
 function fetch_ip_range(string $ipaddress): array|string|false
 {

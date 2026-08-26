@@ -135,6 +135,7 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         ['[code]',     '[/code]',     'Code'],
         ['[list]\n[*]','\n[/list]',   'List'],
         ['[list=1]\n[*]','\n[/list]', '#List'],
+        ['[spoiler]',  '[/spoiler]',  'Spoiler'],
     ];
 
     $toolbar = '';
@@ -143,6 +144,18 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         $c = addslashes($close);
         $toolbar .= '<button class="btn btn-sm btn-light" onclick="wrapBBCode(\'' . $o . '\',\'' . $c . '\',' . $pid . ')">' . $label . '</button>';
     }
+    $toolbar .= '<button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#torrentPanel' . $pid . '"><i class="fa-solid fa-magnet"></i> Torrent</button>';
+
+    $torrentPanel = '<div class="collapse mb-3" id="torrentPanel' . $pid . '">'
+        . '<div class="card card-body">'
+        . '<label class="form-label small">Torrent ID or URL</label>'
+        . '<div class="input-group">'
+        . '<input type="text" inputmode="numeric" class="form-control" id="torrentIdInput' . $pid . '" placeholder="e.g. 17 or paste the torrent link">'
+        . '<button type="button" class="btn btn-primary" id="insertTorrentBtn' . $pid . '">Insert</button>'
+        . '</div>'
+        . '<div id="torrentPreview' . $pid . '" class="mt-2"></div>'
+        . '</div>'
+        . '</div>';
 
     $modal_edit = '<div class="modal fade" id="editPostModal' . $pid . '" tabindex="-1" aria-hidden="true">'
         . '<div class="modal-dialog modal-lg"><div class="modal-content">'
@@ -152,6 +165,7 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         . '</div>'
         . '<div class="modal-body">'
         . '<div class="mb-2">' . $toolbar . '</div>'
+        . $torrentPanel
         . '<textarea id="editPostTextarea' . $pid . '" class="form-control mb-3" rows="6">' . $message . '</textarea>'
         . '<div class="mb-3">'
         . '<label for="editReasonInput' . $pid . '" class="form-label">Edit Reason (optional)</label>'
@@ -225,7 +239,7 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         . '</div>'
         . '</div></div></div>';
 
-    return [$modal_edit, $modal_delete];
+    return [$modal_edit, $modal_delete, $message2];
 }
 
 function build_postbit($post, $post_type = 0)
@@ -407,6 +421,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
 
     /* ── Edit/delete buttons + modals ────────────────────────────── */
     $modals = $modaldelete = '';
+    $postbit_parsed_message = null;
     $post['editedmsg'] = '';
 
     if (!$post_type) {
@@ -453,7 +468,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
                 . '<i class="fa-solid fa-trash"></i> &nbsp;Delete</a>'
                 . '</div></div>';
 
-            [$modals, $modaldelete] = build_postbit_modals($post, $parser, $parser_options, $lang->global);
+            [$modals, $modaldelete, $postbit_parsed_message] = build_postbit_modals($post, $parser, $parser_options, $lang->global);
         }
 
         /* ── Inline mod checkbox ──────────────────────────────────── */
@@ -557,7 +572,10 @@ if (empty($post['pid'])) $post['pid'] = 0;
     /* ── Parse message ───────────────────────────────────────────── */
     $parser_options = ['allow_html'=>0,'allow_mycode'=>1,'allow_smilies'=>1,
                        'allow_imgcode'=>1,'allow_videocode'=>1,'filter_badwords'=>1];
-    $post['message'] = $parser->parse_message($post['message'], $parser_options);
+    // Если build_postbit_modals() уже распарсила это же сообщение с теми же
+    // parser_options (для модалки удаления) — переиспользуем результат вместо
+    // повторного прохода парсера (двойной SQL-запрос на [torrent=ID] и т.п.)
+    $post['message'] = $postbit_parsed_message ?? $parser->parse_message($post['message'], $parser_options);
 
     $post['attachments'] = '';
     if ($enableattachments != 0) get_post_attachments($id, $post);

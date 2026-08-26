@@ -11,14 +11,29 @@ declare(strict_types=1);
 function totp_generate_secret(): string
 {
     $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    $secret   = '';
-    $bytes    = random_bytes(20);
+    $bytes    = random_bytes(20); // 160 бит энтропии
+
+    // Корректный base32: пакуем биты из всех 20 байт, а не по одному
+    // 5-битному куску на байт (иначе теряем 3 бита энтропии на каждый байт).
+    $buffer = 0;
+    $bits   = 0;
+    $secret = '';
 
     for ($i = 0; $i < 20; $i++) {
-        $secret .= $alphabet[ord($bytes[$i]) & 31];
+        $buffer = ($buffer << 8) | ord($bytes[$i]);
+        $bits  += 8;
+
+        while ($bits >= 5) {
+            $bits   -= 5;
+            $secret .= $alphabet[($buffer >> $bits) & 31];
+        }
     }
 
-    return $secret;
+    if ($bits > 0) {
+        $secret .= $alphabet[($buffer << (5 - $bits)) & 31];
+    }
+
+    return $secret; // 32 символа
 }
 
 // ── Base32 decode ─────────────────────────────────────────────────────────────
@@ -93,25 +108,38 @@ function totp_verify(string $secret, string $code): bool
     return false;
 }
 
-// ── QR code URL ───────────────────────────────────────────────────────────────
+// ── otpauth URI (для QR-кода) ──────────────────────────────────────────────────
 
 /**
- * Returns a Google Charts QR code URL for use with authenticator apps.
+ * Возвращает otpauth://-строку для генерации QR-кода НА КЛИЕНТЕ.
+ *
+ * ВАЖНО: секрет 2FA никогда не должен уходить на сторонний сервер (как было
+ * раньше через api.qrserver.com) — это позволяет владельцу того сервиса
+ * генерировать валидные 2FA-коды для аккаунта. QR нужно рисовать в браузере,
+ * например через qrcode.js (https://github.com/davidshimjs/qrcodejs):
+ *
+ *   <div id="qr"></div>
+ *   <script src="qrcode.min.js"></script>
+ *   <script>
+ *       new QRCode(document.getElementById('qr'), {
+ *           text: '<?= addslashes(totp_get_otpauth_uri($secret, $username, $issuer)) ?>',
+ *           width: 200,
+ *           height: 200
+ *       });
+ *   </script>
  */
-function totp_qr_url(string $secret, string $username, string $issuer): string
+function totp_get_otpauth_uri(string $secret, string $username, string $issuer): string
 {
-    $label = rawurlencode($issuer . ':' . $username);
+    $label  = rawurlencode($issuer . ':' . $username);
     $params = http_build_query([
-        'secret' => $secret,
-        'issuer' => $issuer,
+        'secret'    => $secret,
+        'issuer'    => $issuer,
         'algorithm' => 'SHA1',
         'digits'    => 6,
         'period'    => 30,
     ]);
 
-    $otpauth = rawurlencode('otpauth://totp/' . $label . '?' . $params);
-
-    return 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' . $otpauth;
+    return 'otpauth://totp/' . $label . '?' . $params;
 }
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
@@ -201,7 +229,13 @@ function totp_create_pending(int $uid, string $remember, string $url): string
     );
 
     // Cookie expires in 10 minutes
-    setcookie('2fa_token', $token, time() + 600, '/', '', false, true);
+    setcookie('2fa_token', $token, [
+        'expires'  => time() + 600,
+        'path'     => '/',
+        'secure'   => true,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
 
     return $token;
 }
@@ -234,6 +268,12 @@ function totp_clear_pending(string $token): void
     global $db;
 
     $db->sql_query_prepared("DELETE FROM `2fa_pending` WHERE token = ?", [$token]);
-    setcookie('2fa_token', '', time() - 3600, '/');
-}
 
+    setcookie('2fa_token', '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => true,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}

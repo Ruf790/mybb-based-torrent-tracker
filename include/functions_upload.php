@@ -159,7 +159,13 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
         return ['error' => 'Invalid file type. An uploaded avatar must be in GIF, JPEG, BMP, PNG or WebP format'];
     }
 
-    $avatarpath = $avataruploadpath;
+    // Переводим в абсолютный путь — $avataruploadpath хранится как
+    // относительный ('./uploads/avatars'), и раньше резолвился относительно
+    // текущей рабочей директории PHP на момент выполнения. Для файлов,
+    // лежащих в корне сайта, это случайно совпадало с нужным путём, но для
+    // вызовов из админки (например, usersearch.php, лежащего в /admin/)
+    // относительный путь резолвился не туда, move_uploaded_file() падал.
+    $avatarpath = mk_path_abs($avataruploadpath);
     $filename   = 'avatar_' . $uid . '.' . $ext;
     $file       = upload_file($avatar, $avatarpath, $filename);
 
@@ -195,6 +201,19 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
         delete_uploaded_file($avatarpath . '/' . $filename);
         return ['error' => 'The file upload failed. Please choose a valid file and try again'];
     }
+
+    // Перекодирование через GD — та же защита, что и для вложений/скриншотов
+    // раздач: getimagesize() проверяет только заголовок, а не весь файл, и
+    // не поймает "полиглот" (валидная картинка с приклеенной после неё
+    // посторонней нагрузкой). Декодирование в чистые пиксели и запись
+    // заново убирает всё, что не является самим изображением.
+    $avatarFullPath = $avatarpath . '/' . $filename;
+    if (recode_image_file($avatarFullPath, $mime_type) === false) {
+        delete_uploaded_file($avatarFullPath);
+        return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+    }
+    // BMP не поддерживается GD для перезаписи — остаётся как есть, но уже
+    // прошёл проверку getimagesize() и сверку типа выше.
 
     $max_size = min(
         $avatarsize > 0 ? $avatarsize * 1024 : PHP_INT_MAX,
@@ -259,6 +278,12 @@ function create_attachment_index(string $path): void
         @fclose($index);
     }
 }
+
+// Перекодирование изображений через GD вынесено в отдельный файл —
+// используется и другими скриптами (upload_image.php, upload_handler.php,
+// manage_screenshots.php), которым не нужен весь остальной функционал
+// этого файла (upload_file(), upload_avatar() и т.д.) ради одной утилиты.
+require_once __DIR__ . '/functions_image_recode.php';
 
 /**
  * Приводит относительный путь к абсолютному.
@@ -434,10 +459,50 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
     $attachment  = $plugins->run_hooks('upload_attachment_start', $attachment);
 
     $ext = get_extension($attachment['name']);
-    if (!isset($attachtypes[$ext])) {
+    if (!isset($attachtypes[$ext]) || empty($attachtypes[$ext]['enabled'])) {
         return ['error' => 'The type of file that you attached is not allowed. Please remove the attachment or choose a different type'];
     }
     $attachtype = $attachtypes[$ext];
+
+    // Whitelist по расширению защищает только от "неразрешённых типов" —
+    // ничто не мешает переименовать настоящий .exe в .jpg. Ловим самые
+    // опасные случаи вне зависимости от заявленного расширения, и отдельно
+    // требуем, чтобы файлы с "картиночным" расширением были реальными
+    // картинками (а не просто одноимённым файлом).
+    if (function_exists('finfo_open')) {
+        $finfo    = finfo_open(FILEINFO_MIME_TYPE);
+        $realMime = finfo_file($finfo, $attachment['tmp_name']) ?: '';
+
+        $dangerousRealTypes = [
+            'application/x-executable', 'application/x-dosexec', 'application/x-msdownload',
+            'application/x-sh', 'application/x-bat', 'text/x-php', 'application/x-httpd-php',
+            'application/x-elf', 'application/x-mach-binary',
+        ];
+
+        if (in_array($realMime, $dangerousRealTypes, true)) {
+            return ['error' => 'The uploaded file was rejected: its real content does not match an allowed file type.'];
+        }
+    }
+
+    $imageExts = ['gif', 'png', 'jpg', 'jpeg', 'jpe', 'webp', 'bmp'];
+    if (in_array($ext, $imageExts, true)) {
+        if (@getimagesize($attachment['tmp_name']) === false) {
+            return ['error' => 'The uploaded file is not a valid image.'];
+        }
+
+        // Перекодирование через GD — защита от "полиглот"-файлов (спрятанная
+        // после настоящих данных изображения нагрузка, которую не ловят ни
+        // whitelist расширений, ни finfo, ни getimagesize()).
+        $newSize = recode_image_file($attachment['tmp_name'], $realMime);
+        if ($newSize === false) {
+            return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+        }
+        // upload_file() ниже пробрасывает $attachment['size'] как есть в БД
+        // (attachments.filesize) — без обновления attachment.php потом
+        // отдавал бы неверный Content-Length (перекодирование меняет размер
+        // файла в байтах), файл выглядел бы "оборванным" на клиенте.
+        $attachment['size'] = $newSize;
+    }
 
     // Длина имени файла
     if (my_strlen($attachment['name']) > 255) {

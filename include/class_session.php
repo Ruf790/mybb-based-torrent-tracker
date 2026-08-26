@@ -286,7 +286,7 @@ class Session
         // группе - тот не учитывал дополнительные группы юзера.
         $GLOBALS['usergroups'] = $mybb->usergroup ?? [];
 
-        if (($group_data_results['isbannedgroup'] ?? 0) == '1' ||
+        if (($mybb->usergroup['isbannedgroup'] ?? 0) == '1' ||
             ($mybb->user['enabled'] ?? '') == 'no' ||
             (($mybb->user['ustatus'] ?? '') == 'pending' && 
              !($mybb->input['action'] == 'activate' && $script_name == 'member.php'))) {

@@ -1229,7 +1229,7 @@ if (!empty($t_image_file))
                         $COVERIMAGEUPDATED = true;
                         
                         $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
-                        $cache->update_torrents();
+                        
                     }
                 }
             }
@@ -1267,7 +1267,7 @@ if (!empty($t_image_file2))
                         $COVERIMAGEUPDATED = true;
                         
                         $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
-                        $cache->update_torrents();
+                        
                     }
                 }
             }
@@ -1301,7 +1301,7 @@ if (!empty($t_image_url))
                 $COVERIMAGEUPDATED = true;
                 
                 $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
-                $cache->update_torrents();
+               
             }
         }
     }
@@ -1333,7 +1333,7 @@ if (!empty($t_image_url2))
                 $COVERIMAGEUPDATED = true;
                 
                 $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $id]);
-                $cache->update_torrents();
+                
             }
         }
     }
@@ -1416,7 +1416,7 @@ $log_message = sprintf(
 write_log($log_message);
 		
 
-	   $cache->update_torrents();
+	  
         
         if ($isAjax) {
             header('Content-Type: application/json');

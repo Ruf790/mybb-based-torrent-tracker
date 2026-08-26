@@ -88,6 +88,11 @@ $uploadspath_abs = mk_path_abs($uploadspath);
 
 $plugins->run_hooks('attachment_end');
 
+// Спасает от MIME-sniffing браузером, даже если $filetype/Content-Type
+// не соответствуют реальному содержимому файла (см. функцию upload_attachment()
+// в functions_upload.php — там раньше не было проверки реального содержимого).
+header('X-Content-Type-Options: nosniff');
+
 // ── Отдача файла ──────────────────────────────────────────────────────────────
 if ($isThumbnail) {
 

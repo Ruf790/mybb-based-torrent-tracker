@@ -10,6 +10,7 @@ define('IN_ANNOUNCE', true);
 define('TIMENOW',     time());
 define('TSDIR',       dirname(__FILE__));
 
+
 const BANNED_PORTS = [
     21, 22, 411, 412, 413,
     1214, 4662, 6346, 6347, 6699,
@@ -239,7 +240,6 @@ if ($self && (int)($announce_wait ?? 0) > 0 && $event !== 'started' && $event !=
 }
 
 // ── Freeleech / Birthday ──────────────────────────────────
-
 @require_once TSDIR . '/cache/freeleech.php';
 
 if (isset($__F_START, $__F_END, $__FLSTYPE)) {

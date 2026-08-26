@@ -52,7 +52,8 @@ $parser_options = array(
 	"allow_smilies" => 1,
 	"allow_imgcode" => 1,
 	"allow_videocode" => 1,
-	"filter_badwords" => 1
+	"filter_badwords" => 1,
+	"nofollow_on" => 1
 );
 
 gzip();

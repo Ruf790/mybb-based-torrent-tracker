@@ -20,6 +20,7 @@ define('FORUM_SECURE', true);
 require_once INC_PATH . '/functions_forum.php';
 require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_post.php';
+require_once INC_PATH . '/functions_upload.php';
 require_once INC_PATH . '/functions_timezone.php';
 require_once INC_PATH . '/functions_mkprettytime.php';
 require_once INC_PATH . '/functions_multipage.php';
@@ -80,57 +81,23 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar') {
         $is_ajax ? $json(['ok' => false, 'error' => 'Файл не загружен'], 400) : exit('Error: file is not uploaded.');
     }
 
-    $max_size    = 22 * 1024 * 1024;
-    $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    // Вся валидация (расширение, реальный MIME через getimagesize(),
+    // размер по настройке avatarsize), сохранение и перекодирование через
+    // GD (защита от "полиглот"-файлов) теперь делает upload_avatar() —
+    // та же функция, что использует usercp.php. Раньше здесь была
+    // отдельная копия той же логики без перекодирования.
+    $avatarResult = upload_avatar($_FILES['avatar'], $uid);
 
-    $file_name = $_FILES['avatar']['name'];
-    $file_tmp  = $_FILES['avatar']['tmp_name'];
-    $file_size = $_FILES['avatar']['size'];
-    $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-
-    if (!in_array($file_ext, $allowed_ext, true)) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'Allowed JPG/JPEG/PNG/GIF/WebP'], 415) : exit('Error: Allowed JPG/JPEG/PNG/GIF/WebP.');
-    }
-    if ($file_size > $max_size) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'Файл слишком большой (макс. 22 MB)'], 413) : exit('Error: file is too big (max. 22 MB).');
+    if (!empty($avatarResult['error'])) {
+        $is_ajax
+            ? $json(['ok' => false, 'error' => $avatarResult['error']], 415)
+            : exit('Ошибка: ' . $avatarResult['error']);
     }
 
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime  = finfo_file($finfo, $file_tmp);
-    //finfo_close($finfo);
-
-    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'file is not image'], 415) : exit('Error: file is not image.');
-    }
-
-    $upload_dir = TSDIR . '/uploads/avatars/';
-    if (!is_dir($upload_dir)) {
-        @mkdir($upload_dir, 0777, true);
-    }
-
-    $new_name  = "avatar_{$uid}.{$file_ext}";
-    $dest_path = $upload_dir . $new_name;
-
-    foreach (['jpg', 'jpeg', 'png', 'gif', 'webp'] as $e) {
-        if ($e !== $file_ext) {
-            $p = $upload_dir . "avatar_{$uid}.{$e}";
-            if (is_file($p)) { @unlink($p); }
-        }
-    }
-
-    if (!move_uploaded_file($file_tmp, $dest_path)) {
-        $is_ajax ? $json(['ok' => false, 'error' => 'Не удалось сохранить файл'], 500) : exit('Ошибка: не удалось сохранить файл.');
-    }
-
-    $size = @getimagesize($dest_path);
-    if (!$size) {
-        @unlink($dest_path);
-        $is_ajax ? $json(['ok' => false, 'error' => 'Файл повреждён или не изображение'], 415) : exit('Ошибка: файл повреждён или не изображение.');
-    }
-
-    [$width, $height] = $size;
-    $avatar_dimensions = $width . '|' . $height;
-    $avatar_url        = 'uploads/avatars/' . $new_name;
+    $width  = (int)$avatarResult['width'];
+    $height = (int)$avatarResult['height'];
+    $avatar_dimensions = ($width > 0 && $height > 0) ? $width . '|' . $height : '';
+    $avatar_url        = $avatarResult['avatar'];
 
     $db->sql_query_prepared(
         "UPDATE users SET avatar = ?, avatardimensions = ?, avatartype = ? WHERE id = ?",

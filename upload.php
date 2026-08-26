@@ -874,7 +874,7 @@ if ($torrentFilename)
 		
 		
 		write_log( sprintf($lang->upload['editedtorrent'], '[URL='.$BASEURL."/".get_torrent_link($EditTorrentID).']<font color=red>' . $torrentName . '</font>[/URL]', '[URL='.$BASEURL . '/'.get_profile_link($CURUSER['id']).']' . format_name($CURUSER['username'],$CURUSER['usergroup']) . '[/URL]'));
-		$cache->update_torrents();
+		
 		
 
   
@@ -966,7 +966,7 @@ if ($torrentFilename)
 		
 		// Now log the upload event
         write_log(sprintf($lang->upload['newtorrent'],'[URL=' . $BASEURL . "/" . get_torrent_link($NewTID) . ']<font color=red>' . $torrentName . '</font>[/URL]','[URL=' . $BASEURL . '/' . get_profile_link($CURUSER['id']) . ']' . format_name($CURUSER['username'], $CURUSER['usergroup']) . '[/URL]'));
-        $cache->update_torrents();
+       
 		
 		notify_upload_subscribers((int)$category, $NewTID, $torrentName);
 		

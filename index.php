@@ -126,8 +126,21 @@ while ($_user = $db->fetch_array($_wgo_query2)) {
         ($is_hidden2 ? '+' : '') . get_user_icons($_user) . '</span>';
 }
 
-// Fetch the latest 5 news articles
-$newsArticles = $cache->read('news');
+// Fetch the latest news article — раньше шло через $cache->read('news'),
+// кэш больше не обновляется (см. update_news() в class_datacache.php).
+// Прямой запрос + JOIN на users, чтобы показывать реальное имя автора
+// (в старом кэше колонки username не было вообще, поэтому всегда
+// показывалось "System" вместо настоящего автора).
+$newsArticles = [];
+$newsQuery = $db->sql_query_prepared(
+    "SELECT n.id, n.userid, n.added, n.body, n.title, u.username
+     FROM news n LEFT JOIN users u ON u.id = n.userid
+     ORDER BY n.added DESC LIMIT ?",
+    [1]
+);
+while ($newsQuery && ($row = $db->fetch_array($newsQuery))) {
+    $newsArticles[$row['id']] = $row;
+}
 
 // Query to get most popular torrents by hits
 $sqlPopularTorrents = "SELECT name, hits FROM torrents WHERE visible = 'yes' AND banned = 'no' ORDER BY hits DESC LIMIT ?";

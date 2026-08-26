@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 define('SCRIPTNAME', 'upload_image.php');
 require_once 'global.php';
+require_once INC_PATH . '/functions_image_recode.php';
 
 header('Content-Type: application/json');
 
@@ -78,8 +79,16 @@ try {
 
     // Extra check on top of finfo - catches rare "polyglot" files whose
     // magic bytes look like a valid image but the rest of the file isn't.
-    if (@getimagesize($file['tmp_name']) === false) {
+    $imgInfo = @getimagesize($file['tmp_name']);
+    if ($imgInfo === false) {
         throw new RuntimeException('File is corrupted or is not a valid image.');
+    }
+
+    // Two independent detectors (finfo content-sniffing vs getimagesize()'s
+    // own header parsing) must agree on the type. A mismatch is a strong
+    // signal of a malformed or deliberately crafted file.
+    if (($imgInfo['mime'] ?? null) !== $realMime) {
+        throw new RuntimeException('Image type mismatch — file header is inconsistent.');
     }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
@@ -149,6 +158,18 @@ try {
         throw new RuntimeException('Failed to save file.');
     }
 
+    // Перекодирование через GD: getimagesize()+finfo проверяют только
+    // заголовок/структуру, но не гарантируют, что после настоящих данных
+    // изображения не приклеено что-то ещё ("полиглот"-файл). Декодирование
+    // в чистые пиксели и запись заново убирает любую такую нагрузку.
+    // Перекодирование почти всегда меняет размер файла в байтах — берём
+    // реальный размер с диска для записи в БД, а не исходный из $_FILES.
+    $fileSize = recode_image_file($destination, $realMime);
+    if ($fileSize === false) {
+        @unlink($destination);
+        throw new RuntimeException('Uploaded file is corrupted or is not a valid image.');
+    }
+
     // URL
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $url    = $scheme . '://' . $_SERVER['HTTP_HOST'] . UPLOAD_SUBDIR . $filename;
@@ -167,7 +188,7 @@ try {
             $destination,
             $url,
             $realMime,       // use the verified MIME type, not the client-supplied one
-            $file['size'],
+            $fileSize,
         ]
     );
 

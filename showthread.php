@@ -619,7 +619,30 @@ $query = $db->sql_query_prepared(
     WHERE p.pid IN ({$pid_placeholders}) ORDER BY p.dateline, p.pid",
     $pid_list
 );
-while ($post = $db->fetch_array($query)) {
+
+$post_rows = [];
+while ($row = $db->fetch_array($query)) {
+    $post_rows[] = $row;
+}
+
+// Пакетная предзагрузка [torrent=ID] по всем постам страницы разом — тот же
+// паттерн, что уже применён в commenttable.php для комментариев. Без этого
+// каждый пост со своим уникальным торрентом бьёт в БД отдельным запросом.
+if (isset($parser) && method_exists($parser, 'primeTorrentEmbedCache')) {
+    $torrentEmbedIds = [];
+    foreach ($post_rows as $row) {
+        if (preg_match_all('#\[torrent=(\d+)\]#i', $row['message'] ?? '', $m)) {
+            foreach ($m[1] as $foundTorrentId) {
+                $torrentEmbedIds[] = (int)$foundTorrentId;
+            }
+        }
+    }
+    if (!empty($torrentEmbedIds)) {
+        $parser->primeTorrentEmbedCache($torrentEmbedIds);
+    }
+}
+
+foreach ($post_rows as $post) {
     if ($thread['firstpost'] == $post['pid'] && $thread['visible'] == 0) {
         $post['visible'] = 0;
     }

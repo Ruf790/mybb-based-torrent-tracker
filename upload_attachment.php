@@ -222,6 +222,24 @@ if (!empty($uploaded['error'])) {
 
 $savePath = $uploadDir . $saveName;
 
+// ── Перекодирование картинок через GD ──────────────────────────────────────
+// Только для изображений — остальные типы (видео/аудио/документы/архивы)
+// GD не умеет и не должна трогать. finfo/расширение проверяют только
+// заголовок/структуру файла, а не гарантируют отсутствие приклеенной после
+// настоящих данных изображения посторонней нагрузки ("полиглот"-файл).
+// Перекодирование почти всегда меняет размер файла в байтах — берём
+// реальный размер с диска для записи в БД (attachment.php потом отдаёт
+// Content-Length именно из этого поля).
+$actualFileSize = (int)$file['size'];
+if (str_starts_with($mimeType, 'image/')) {
+    $recodedSize = recode_image_file($savePath, $mimeType);
+    if ($recodedSize === false) {
+        @unlink($savePath);
+        json_out(false, ['error' => 'Uploaded file is corrupted or is not a valid image.']);
+    }
+    $actualFileSize = $recodedSize;
+}
+
 // ── Thumbnail для изображений ──────────────────────────────────────────────
 $thumbName = '';
 $isImage   = str_starts_with($mimeType, 'image/');
@@ -272,7 +290,7 @@ $quotaParams = [];
 $quotaCondition = '';
 if ($quotaBytes > 0) {
     $quotaCondition = " AND (SELECT COALESCE(SUM(filesize),0) FROM attachments WHERE uid = ?) + ? <= ?";
-    $quotaParams    = [(int)$CURUSER['id'], (int)$file['size'], $quotaBytes];
+    $quotaParams    = [(int)$CURUSER['id'], $actualFileSize, $quotaBytes];
 }
 
 $selectParams = [
@@ -280,7 +298,7 @@ $selectParams = [
     (int)$CURUSER['id'],
     $origName,
     $mimeType,
-    (int)$file['size'],
+    $actualFileSize,
     $saveName,
     TIMENOW,
     $thumbName,
@@ -312,7 +330,7 @@ if ($aid <= 0) {
             $db->sql_query_prepared("SELECT SUM(filesize) AS ausage FROM attachments WHERE uid = ?", [(int)$CURUSER['id']]),
             'ausage'
         );
-        if ($usedNow + (int)$file['size'] > $quotaBytes) {
+        if ($usedNow + $actualFileSize > $quotaBytes) {
             json_out(false, ['error' => 'Sorry, but you cannot attach this file because you have reached your attachment quota of ' . mksize($quotaBytes)]);
         }
     }
@@ -327,7 +345,7 @@ echo json_encode([
     'aid'      => $aid,
     'posthash' => $posthash,
     'name'     => $origName,
-    'size'     => $file['size'],
+    'size'     => $actualFileSize,
     'type'     => $mimeType,
     'is_image' => $isImage,
     'is_video' => $isVideo,

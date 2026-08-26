@@ -1165,14 +1165,19 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
 $showimages = 'yes';
 $i_torrent_limit = '15';
 
-$torrent_cache = $cache->read('torrents');
+// Раньше тут был $cache->read('torrents') — тянул в память ВСЕ торренты
+// с сайта и фильтровал их в PHP-цикле. Заменено на точечный SQL-запрос:
+// та же цель (последние с картинками), но без загрузки всего кэша целиком.
 $carouselItems = [];
-if (!empty($torrent_cache) && is_array($torrent_cache)) {
-    foreach ($torrent_cache as $row2) {
-        if (!empty($row2['t_image'])) {
-            $carouselItems[] = $row2;
-        }
-    }
+$carouselQuery = $db->sql_query_prepared(
+    "SELECT id, name, t_image FROM torrents
+     WHERE t_image != '' AND visible = 'yes' AND banned = 'no'
+     ORDER BY added DESC
+     LIMIT ?",
+    [(int)$i_torrent_limit]
+);
+while ($carouselQuery && ($row2 = $db->fetch_array($carouselQuery))) {
+    $carouselItems[] = $row2;
 }
 $total = count($carouselItems);
 

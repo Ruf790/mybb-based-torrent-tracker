@@ -68,7 +68,7 @@ if ($is_mod || (int)$CURUSER['id'] === (int)$row['owner']) {
     
     write_log($logMessage);
     
-    $cache->update_torrents();
+    
 
     redirect($BASEURL . '/browse.php', $lang->delete['deleted'], '', false);
     exit();

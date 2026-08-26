@@ -6022,12 +6022,13 @@ if ($mybb->input['action'] === '2fa') {
         $secret   = !empty($mybb->input['2fa_secret'])
             ? htmlspecialchars($mybb->input['2fa_secret'], ENT_QUOTES, 'UTF-8')
             : totp_generate_secret();
-        $qr_url   = totp_qr_url($secret, htmlspecialchars($CURUSER['username'], ENT_QUOTES), $SITENAME);
+            $otpauth_uri = totp_get_otpauth_uri($secret, htmlspecialchars($CURUSER['username'], ENT_QUOTES), $SITENAME);
+		
         $error    = htmlspecialchars($mybb->input['2fa_error'] ?? '', ENT_QUOTES, 'UTF-8');
         $setup_mode = true;
     } else {
         $setup_mode = false;
-        $secret = $qr_url = $error = '';
+        $secret = $otpauth_uri = $error = '';
     }
 
     stdhead('Two-Factor Authentication');
@@ -6092,7 +6093,8 @@ if ($mybb->input['action'] === '2fa') {
 
     // ── Setup / confirm flow ──────────────────────────────────────────────
     } elseif ($setup_mode) {
-        echo '
+   
+   echo '
         <div class="card">
             <div class="card-body">
                 <div class="row g-4">
@@ -6105,7 +6107,6 @@ if ($mybb->input['action'] === '2fa') {
                     </div>
                     <div class="col-lg-9">
                         ' . (!empty($error) ? '<div class="alert alert-danger"><i class="fas fa-triangle-exclamation me-2"></i>' . $error . '</div>' : '') . '
-
                         <div class="info-hint mb-4">
                             <i class="fas fa-info-circle me-2 text-info"></i>
                             <strong>Step 1:</strong> Install an authenticator app —
@@ -6114,16 +6115,21 @@ if ($mybb->input['action'] === '2fa') {
                             <strong>Step 2:</strong> Scan the QR code below.<br>
                             <strong>Step 3:</strong> Enter the 6-digit code to confirm.
                         </div>
-
                         <div class="text-center mb-4">
-                            <img src="' . $qr_url . '" alt="2FA QR Code"
-                                 class="border rounded p-2" width="200" height="200">
+                            <div id="totp-qr" class="d-inline-block border rounded p-2"></div>
                             <div class="mt-2">
                                 <small class="text-muted">Manual entry key:</small><br>
                                 <code class="user-select-all fs-6 fw-bold">' . $secret . '</code>
                             </div>
                         </div>
-
+                        <script src="' . $BASEURL . '/scripts/qrcode.min.js"></script>
+                        <script>
+                        new QRCode(document.getElementById("totp-qr"), {
+                            text: ' . json_encode($otpauth_uri, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ',
+                            width: 200,
+                            height: 200
+                        });
+                        </script>
                         <form method="post" action="usercp.php">
                             <input type="hidden" name="action" value="do_2fa" />
                             <input type="hidden" name="mode" value="confirm" />
@@ -6153,6 +6159,10 @@ if ($mybb->input['action'] === '2fa') {
                 </div>
             </div>
         </div>';
+   
+   
+   
+   
 
     // ── Disabled state ────────────────────────────────────────────────────
     } else {

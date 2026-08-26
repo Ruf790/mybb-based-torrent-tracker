@@ -1839,10 +1839,7 @@ function executeInstallStep(int $index): array
                 );
 
                 $GLOBALS['db'] = $db;
-                require_once INC_PATH . '/class_datacache.php';
-                $cache = new datacache();
-                $cache->cache();
-                $cache->update_news();
+              
 
                 return ['status' => 'ok', 'label' => 'News, announcement & cache', 'message' => 'Done', 'elapsed_ms' => $elapsed()];
             }

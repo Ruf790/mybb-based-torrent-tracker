@@ -4,7 +4,7 @@
 if(!defined('IN_TRACKER'))
   die('Hacking attempt!');
 
-// users.php *** Re-Coded in v4.1 ***
+// xmlhttp.php *** Re-Coded in v4.1 ***
 $language['xmlhttp'] = array 
 (
 

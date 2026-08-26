@@ -41,7 +41,23 @@ $language['adduser'] = array
 	
 	Enjoy your Stay.
 	The Staff of {2}',
-	
+
+	'credentialsemailsubject'		=>'Your account details for {1}',
+	'credentialsemailbody'			=>'Hello {1},
+
+	An account has been created for you on {2} by staff.
+
+	Your login details:
+	Username: {1}
+	Password: {3}
+
+	You can log in here: {4}/member.php?action=login
+
+	For security, please consider changing your password after logging in.
+
+	The Staff of {2}',
+	'sendcredentials'				=>'Email login credentials to this user',
+
 
 );
 ?>

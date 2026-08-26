@@ -534,10 +534,13 @@ You do not have permission to access this page. This could be because of one of 
 	'rel_minutes_single' => 'minute',
 	'rel_in' => 'In ',
 	'rel_ago' => 'ago',
-	'rel_time' => '<span title=\"{5}{6}\">{1}{2} {3} {4}</span>',
+	//'rel_time' => '<span title=\"{5}{6}\">{1}{2} {3} {4}</span>',
+	'rel_time' => '<span title="{5}{6}">{1}{2} {3} {4}</span>',
 	
-	'today_rel' => '<span title=\"{1}\">Today</span>',
-    'yesterday_rel' => '<span title=\"{1}\">Yesterday</span>',
+	//'today_rel' => '<span title=\"{1}\">Today</span>',
+    //'yesterday_rel' => '<span title=\"{1}\">Yesterday</span>',
+	'today_rel' => '<span title="{1}">Today</span>',
+    'yesterday_rel' => '<span title="{1}">Yesterday</span>',
 	'rel_hours_single' => 'hour',
 	'rel_hours_plural' => 'hours',
 	

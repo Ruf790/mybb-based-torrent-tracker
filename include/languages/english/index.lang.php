@@ -18,7 +18,9 @@ $language['index'] = array
 'forum_unapproved_threads_count' => "There is currently {1} unapproved threads in this forum.",
 'forum_unapproved_thread_count' => "There is currently 1 unapproved thread in this forum.",	
 	
-	
+'stats_posts_threads' => 'Our members have made a total of {1} posts in {2} threads.',
+'stats_numusers' => 'We currently have {1} members registered.',
+'stats_newestuser' => 'Please welcome our newest member, <b>{1}</b>',	
 	
 	
 	

@@ -263,13 +263,13 @@ $language['forum_management'] = array
 'posting_rating_field_canpostreplys' => "Can post replies?",
 'posting_rating_field_canonlyreplyownthreads' => "Can only reply to own threads?",
 'posting_rating_field_canpostattachments' => "Can post attachments?",
-'posting_rating_field_canratethreads' => "Can rate threads?",
+
 
 'editing_field_caneditposts' => "Can edit own posts?",
 'editing_field_candeleteposts' => "Can delete own posts?",
 'editing_field_candeletethreads' => "Can delete own threads?",
 'editing_field_caneditattachments' => "Can update own attachments?",
-'editing_field_canviewdeletionnotice' => "Can view deletion notices?",
+
 
 'moderate_field_modposts' => "Moderate new posts?",
 'moderate_field_modthreads' => "Moderate new threads?",

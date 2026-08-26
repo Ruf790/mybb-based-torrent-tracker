@@ -12,6 +12,8 @@ if(!defined('IN_TRACKER'))
 $language['showthread'] = array 
 (
 
+'mergeposts'=>'Merge Posts',
+'invalid_post'	=>'The specified post does not exist.',
 
 'moderation_user_posts' => "Please note that new posts you make must be approved by a moderator before becoming visible.",
 

@@ -9,6 +9,14 @@ $language['member'] = array
 (
 
 
+
+
+'error_invalidfromemail' => "You did not enter a valid from email address.",
+'error_noname' => "You did not enter a valid name.",
+'error_no_email_subject' => "You need to enter a subject for your email",
+'error_no_email_message' => "You need to enter a message for your email",
+
+
 'permanent' => "Permanent",
 
 

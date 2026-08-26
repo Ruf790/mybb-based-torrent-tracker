@@ -38,6 +38,8 @@ $language['upload'] = [
     'torrent_hide'          => 'Hide',
 	'error_wrong_passkey'   => 'This torrent contains a passkey that does not belong to your account',
 	'error_no_passkey'      => 'Your account does not have a passkey. Please contact staff.',
+	'no_permission_edit'    => "You do not have permission to edit this torrent.",
+	'no_upload_permission'  => "You do not have permission to upload.",
 
     // ── Дубликат ────────────────────────────────────────────────────────────
     'duplicate_detected'    => 'Duplicate torrent detected!',
@@ -171,6 +173,10 @@ $language['upload'] = [
 
     'external'              => 'External Torrent',
     'external_hint'         => 'Torrent is linked from another tracker',
+	
+	'thirtypercent'         => "30% Leech",
+    'thirtypercent_hint'    => "Only 30% of downloaded data is counted toward this user's download stats.",
+	
 
     // ── Announce URL ────────────────────────────────────────────────────────
     'announce_important'    => 'Important!',

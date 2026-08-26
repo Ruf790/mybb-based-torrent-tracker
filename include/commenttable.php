@@ -336,7 +336,7 @@ if (!empty($att_bulk[$pid])) {
         }
 
         // Delete button for moderators
-        if ($moderator) {
+        if ($row['user'] == $CURUSER['id'] || $moderator) {
             $postbit_qdelete = $lang->global['postbit_qdelete_post'];
             $post['button_quickdelete'] = generateDeleteButton($row);
         }

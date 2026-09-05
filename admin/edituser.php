@@ -685,57 +685,25 @@ if (isset($_GET['action']) && $_GET['action'] === 'upload_avatar')
         $is_ajax ? $json(['success'=>false,'error'=>'File not uploaded'], 400) : exit('Error: File not uploaded.');
     }
 
-    $file_name = $_FILES['avatar']['name'];
-    $file_tmp  = $_FILES['avatar']['tmp_name'];
-    $file_size = $_FILES['avatar']['size'];
-    $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+    // Вся валидация (расширение, реальный MIME через getimagesize(), размер
+    // по настройке avatarsize), сохранение, перекодирование через GD
+    // (защита от "полиглот"-файлов) и ресайз до $maxavatardims теперь
+    // делает upload_avatar() — та же функция, что использует usercp.php,
+    // member.php, usersearch.php и adduser.php. Раньше здесь была ещё одна
+    // отдельная копия той же логики без перекодирования и без ресайза,
+    // с захардкоженным лимитом 22MB.
+    $avatarResult = upload_avatar($_FILES['avatar'], $uid);
 
-    // Разрешённые форматы и лимит
-    $allowed_ext = ['jpg','jpeg','png','gif','webp'];
-    $max_size = 22 * 1024 * 1024;
-    if (!in_array($file_ext, $allowed_ext, true)) {
-        $is_ajax ? $json(['success'=>false,'error'=>'Allowed formats: JPG, JPEG, PNG, GIF, WebP'], 415) : exit('Error: Allowed formats: JPG, JPEG, PNG, GIF, WebP.');
-    }
-    if ($file_size > $max_size) {
-        $is_ajax ? $json(['success'=>false,'error'=>'File too big (max 22 MB)'], 413) : exit('Error: File too big.');
-    }
-
-    // MIME check
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime  = finfo_file($finfo, $file_tmp);
-    //finfo_close($finfo);
-    if (!in_array($mime, ['image/jpeg','image/png','image/gif','image/webp'], true)) {
-        $is_ajax ? $json(['success'=>false,'error'=>'File is not a valid image'], 415) : exit('Error: File is not a valid image.');
+    if (!empty($avatarResult['error'])) {
+        $is_ajax
+            ? $json(['success'=>false,'error'=>$avatarResult['error']], 415)
+            : exit('Error: ' . $avatarResult['error']);
     }
 
-    // Папка и имя
-    $upload_dir = $rootpath . '/uploads/avatars/';
-    if (!is_dir($upload_dir)) @mkdir($upload_dir, 0777, true);
-
-    $new_name  = "avatar_{$uid}." . $file_ext;
-    $dest_path = $upload_dir . $new_name;
-
-    // Удаляем старые аватары
-    foreach ($allowed_ext as $e) {
-        $p = $upload_dir . "avatar_{$uid}." . $e;
-        if ($e !== $file_ext && is_file($p)) @unlink($p);
-    }
-
-    if (!move_uploaded_file($file_tmp, $dest_path)) {
-        $is_ajax ? $json(['success'=>false,'error'=>'Could not save file'], 500) : exit('Error: Could not save file.');
-    }
-
-    // Получаем размеры
-    $size = @getimagesize($dest_path);
-    if (!$size) {
-        @unlink($dest_path);
-        $is_ajax ? $json(['success'=>false,'error'=>'File corrupted or not an image'], 415) : exit('Error: File corrupted or not an image.');
-    }
-    [$width, $height] = $size;
-    $avatar_dimensions = "{$width}|{$height}";
-
-    // Относительный путь для вывода
-    $avatar_url = "/uploads/avatars/" . $new_name;
+    $width  = (int)$avatarResult['width'];
+    $height = (int)$avatarResult['height'];
+    $avatar_dimensions = ($width > 0 && $height > 0) ? "{$width}|{$height}" : '';
+    $avatar_url        = $avatarResult['avatar'];
 
     // Обновляем базу
     $updated_avatar = [
@@ -846,10 +814,10 @@ function process_avatar_url(string $avatar_url, int $user_id): string
     // Получаем размеры
     $dimensions = '';
     $temp_file  = tempnam(sys_get_temp_dir(), 'avatar_');
-    require_once INC_PATH . '/functions_ts_remote_connect.php';
+    require_once INC_PATH . '/functions_remote_connect.php';
 
     try {
-        $file_content = TS_Fetch_Data($avatar_url);
+        $file_content = fetch_remote_file($avatar_url);
         if ($file_content) {
             file_put_contents($temp_file, $file_content);
             $img_info = getimagesize($temp_file);
@@ -3701,7 +3669,7 @@ function renderInvitesTab(): string
 
 function handleEditUser(): void
 {
-    global $userdata, $BASEURL, $CURUSER, $usergroups, $db, $mybb;
+    global $userdata, $BASEURL, $CURUSER, $usergroups, $db, $mybb, $avatarsize;
     
     get_user_data();
     permission_check();
@@ -3710,13 +3678,12 @@ function handleEditUser(): void
 	$user_avatar = format_avatar($userdata['avatar'], $userdata['avatardimensions']);
 	
 	
-	
 	$is_own_profile = ((int)$CURUSER['id'] === (int)$userdata['id']);
     $is_mod = is_mod($usergroups); // твоя функция
     $can_change_avatar = ($is_own_profile || $is_mod) ? 1 : 0;
 	
 	
-    echo '<script src="'.$BASEURL.'/admin/scripts/avatar.js"></script>';
+    echo '<script src="'.$BASEURL.'/scripts/avatar_upload.js"></script>';
     echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/edituser.css">';
 
     
@@ -3783,13 +3750,14 @@ function handleEditUser(): void
 			
 				
 				
-				
 				<div class="col-auto">
-  <div class="avatar-ring position-relative hov-soft"
-       id="avatar-container"
-       data-uid="'.$userdata['id'].'"
-       data-can-change="'.$can_change_avatar.'"
-       title="Avatar">
+				<div class="avatar-ring position-relative hov-soft"
+     id="avatar-container"
+     data-uid="'.$userdata['id'].'"
+     data-can-change="'.$can_change_avatar.'"
+     data-max-mb="'.round($avatarsize / 1024).'"
+     data-upload-url="edituser.php?action=upload_avatar&amp;userid='.$userdata['id'].'"
+     title="Avatar">
     <div>
      ' . $user_avatar['html'] . '
       <span class="avatar-overlay">Change</span>

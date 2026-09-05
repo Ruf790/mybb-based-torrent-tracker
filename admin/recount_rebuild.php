@@ -9,6 +9,8 @@ if (!defined("STAFF_PANEL")) {
     die("Direct initialization of this file is not allowed.<br /><br />Please make sure STAFF_PANEL is defined.");
 }
 
+require_once INC_PATH . '/functions_image_recode.php';
+
 
 // Initialize missing inputs
 foreach (['action', 'do', 'module'] as $input) {
@@ -523,7 +525,7 @@ function acp_rebuild_attachment_thumbnails(): void
 	
 	$uploadspath_abs = TSDIR . '/uploads';
 	
-    require_once INC_PATH . "/functions_image.php";
+  
 
     $query = $db->sql_query_prepared(
         "SELECT * FROM attachments ORDER BY aid ASC LIMIT ?, ?",
@@ -531,31 +533,38 @@ function acp_rebuild_attachment_thumbnails(): void
     );
     
     $imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'webp'];
+    $extToMime = ['gif' => 'image/gif', 'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'webp' => 'image/webp'];
     
     while ($query && ($attachment = $db->fetch_array($query))) {
         $ext = strtolower(pathinfo($attachment['filename'], PATHINFO_EXTENSION));
         
         if (in_array($ext, $imageExtensions, true)) {
             $thumbname = str_replace(".attach", "_thumb.{$ext}", $attachment['attachname']);
-			
-            $thumbnail = generate_thumbnail(
-                $uploadspath_abs . "/" . $attachment['attachname'], 
-                $uploadspath_abs, 
-                $thumbname, 
-                $attachthumbh, 
-                $attachthumbw
+
+            // Реальная сигнатура create_thumbnail(): (src, dst-ФАЙЛ, maxW,
+            // maxH, mime) — не совпадает со старой generate_thumbnail(file,
+            // path-ПАПКА, filename, maxHeight, maxWidth). Раньше здесь был
+            // вызов с аргументами от старой функции, просто с заменённым
+            // именем — $thumbname передавался туда, где ждут число (ширину),
+            // а $attachthumbw — туда, где ждут MIME-строку.
+            $created = create_thumbnail(
+                $uploadspath_abs . "/" . $attachment['attachname'],
+                $uploadspath_abs . "/" . $thumbname,
+                (int)$attachthumbw,
+                (int)$attachthumbh,
+                $extToMime[$ext] ?? ''
             );
-            
-            if (($thumbnail['code'] ?? null) == 4) {
-                $thumbnail['filename'] = "SMALL";
-            }
-            
-            if (isset($thumbnail['filename'])) {
-                $db->sql_query_prepared(
-                    "UPDATE attachments SET thumbnail = ? WHERE aid = ?",
-                    [$thumbnail['filename'], (int)$attachment['aid']]
-                );
-            }
+
+            // create_thumbnail() возвращает bool, а не массив с 'code'/
+            // 'filename' (это был контракт старой generate_thumbnail()) —
+            // обращение к $thumbnail['code'] на булевом значении молча не
+            // работало бы как задумано.
+            $thumbnailFilename = $created ? $thumbname : '';
+
+            $db->sql_query_prepared(
+                "UPDATE attachments SET thumbnail = ? WHERE aid = ?",
+                [$thumbnailFilename, (int)$attachment['aid']]
+            );
         }
     }
 
@@ -595,7 +604,7 @@ function acp_rebuild_comment_attachment_thumbnails(): void
 
     $uploadspath_abs = TSDIR . '/uploads/attachments';
 
-    require_once INC_PATH . '/functions_image.php';
+   
 
     $query = $db->sql_query_prepared(
         "SELECT * FROM attachments WHERE comment_id > 0 ORDER BY aid ASC LIMIT ?, ?",
@@ -603,30 +612,32 @@ function acp_rebuild_comment_attachment_thumbnails(): void
     );
 
     $imageExtensions = ['gif', 'png', 'jpg', 'jpeg', 'webp'];
+    $extToMime = ['gif' => 'image/gif', 'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'webp' => 'image/webp'];
 
     while ($query && ($attachment = $db->fetch_array($query))) {
         $ext = strtolower(pathinfo($attachment['filename'], PATHINFO_EXTENSION));
 
         if (in_array($ext, $imageExtensions, true)) {
             $thumbname = 'thumb_' . $attachment['attachname'];
-            $thumbnail = generate_thumbnail(
+
+            // Та же проблема, что и в форумной функции выше — аргументы
+            // соответствовали старой generate_thumbnail(), не реальной
+            // сигнатуре create_thumbnail() (src, dst-ФАЙЛ, maxW, maxH, mime).
+            $created = create_thumbnail(
                 $uploadspath_abs . '/' . $attachment['attachname'],
-                $uploadspath_abs,
-                $thumbname,
-                $attachthumbh,
-                $attachthumbw
+                $uploadspath_abs . '/' . $thumbname,
+                (int)$attachthumbw,
+                (int)$attachthumbh,
+                $extToMime[$ext] ?? ''
             );
 
-            if ($thumbnail['code'] == 4) {
-                $thumbnail['filename'] = 'SMALL';
-            }
+            // create_thumbnail() возвращает bool, не массив.
+            $thumbnailFilename = $created ? $thumbname : '';
 
-            if (isset($thumbnail['filename'])) {
-                $db->sql_query_prepared(
-                    "UPDATE attachments SET thumbnail = ? WHERE aid = ?",
-                    [$thumbnail['filename'], (int)$attachment['aid']]
-                );
-            }
+            $db->sql_query_prepared(
+                "UPDATE attachments SET thumbnail = ? WHERE aid = ?",
+                [$thumbnailFilename, (int)$attachment['aid']]
+            );
         }
     }
 

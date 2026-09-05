@@ -93,14 +93,15 @@ stdhead("Torrent Stats");
 
   <!-- Preset Buttons -->
   <div class="d-flex justify-content-center gap-2 mb-4 flex-wrap">
-    <a href="?from=<?=date('Y-m-d', strtotime('-6 days'))?>&to=<?=date('Y-m-d')?>&group=day" class="btn btn-outline-primary btn-sm">Last 7 Days</a>
-    <a href="?from=<?=date('Y-m-d', strtotime('-29 days'))?>&to=<?=date('Y-m-d')?>&group=day" class="btn btn-outline-primary btn-sm">Last 30 Days</a>
-    <a href="?from=<?=date('Y-01-01')?>&to=<?=date('Y-m-d')?>&group=month" class="btn btn-outline-primary btn-sm">This Year</a>
-    <a href="?from=<?=htmlspecialchars($minDate)?>&to=<?=htmlspecialchars($maxDate)?>&group=month" class="btn btn-outline-secondary btn-sm">All Time</a>
+    <a href="<?= $_this_script_ ?>&from=<?=date('Y-m-d', strtotime('-6 days'))?>&to=<?=date('Y-m-d')?>&group=day" class="btn btn-outline-primary btn-sm">Last 7 Days</a>
+    <a href="<?= $_this_script_ ?>&from=<?=date('Y-m-d', strtotime('-29 days'))?>&to=<?=date('Y-m-d')?>&group=day" class="btn btn-outline-primary btn-sm">Last 30 Days</a>
+    <a href="<?= $_this_script_ ?>&from=<?=date('Y-01-01')?>&to=<?=date('Y-m-d')?>&group=month" class="btn btn-outline-primary btn-sm">This Year</a>
+    <a href="<?= $_this_script_ ?>&from=<?=htmlspecialchars($minDate)?>&to=<?=htmlspecialchars($maxDate)?>&group=month" class="btn btn-outline-secondary btn-sm">All Time</a>
   </div>
 
   <!-- Filter Form -->
   <form method="get" class="row g-3 align-items-center justify-content-center mb-4" id="filterForm">
+    <input type="hidden" name="act" value="<?= htmlspecialchars($_GET['act'] ?? '') ?>">
     <div class="col-auto">
       <label for="from" class="col-form-label fw-bold">From:</label>
       <input type="date" id="from" name="from" class="form-control" value="<?=htmlspecialchars($fromDate)?>" min="<?= $minDate ?>" max="<?= $maxDate ?>" required>
@@ -166,34 +167,52 @@ stdhead("Torrent Stats");
     </div>
   </div>
 
-  <!-- Chart Canvas -->
-  <canvas id="addedChart" height="100"></canvas>
+  <!-- Chart Container -->
+  <div id="addedChart" style="width:100%; height:400px;"></div>
 </div>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Highcharts.js -->
+<script src="<?= htmlspecialchars($BASEURL) ?>/scripts/highcharts.js"></script>
 <script>
-const addedChart = new Chart(document.getElementById('addedChart').getContext('2d'), {
-  type: 'bar',
-  data: {
-    labels: <?= json_encode($timeLabels) ?>,
-    datasets: [{
-      label: 'Torrents Added',
-      data: <?= json_encode($timeCounts) ?>,
-      backgroundColor: 'rgba(54, 162, 235, 0.7)',
-      borderColor: 'rgba(54, 162, 235, 1)',
-      borderWidth: 1,
-      borderRadius: 3,
-    }]
+Highcharts.chart('addedChart', {
+  chart: {
+    type: 'column',
+    backgroundColor: 'transparent',
+    animation: { duration: 700 }
   },
-  options: {
-    responsive: true,
-    scales: {
-      y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Count' } },
-      x: { title: { display: true, text: '<?= $xlabel ?>' } }
-    },
-    plugins: { legend: { display: false } }
-  }
+  title: { text: null },
+  credits: { enabled: false },
+  xAxis: {
+    categories: <?= json_encode($timeLabels) ?>,
+    title: { text: '<?= $xlabel ?>' },
+    labels: { style: { fontSize: '11px' } }
+  },
+  yAxis: {
+    title: { text: 'Count' },
+    allowDecimals: false
+  },
+  tooltip: {
+    headerFormat: '<b>{point.key}</b><br>',
+    pointFormat: 'Torrents Added: <b>{point.y}</b>'
+  },
+  legend: { enabled: false },
+  plotOptions: {
+    column: {
+      borderRadius: 4,
+      color: {
+        linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+        stops: [
+          [0, 'rgba(54, 162, 235, 0.9)'],
+          [1, 'rgba(54, 162, 235, 0.5)']
+        ]
+      },
+      borderWidth: 0
+    }
+  },
+  series: [{
+    name: 'Torrents Added',
+    data: <?= json_encode($timeCounts) ?>
+  }]
 });
 </script>
 

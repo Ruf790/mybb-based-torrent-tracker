@@ -911,15 +911,8 @@ if (isset($_GET['latest'])) {
     while ($latest_res && ($user = $db->fetch_array($latest_res))) {
         $profile_url = $BASEURL . '/' . get_profile_link($user['id']);
         $av = format_avatar($user['avatar'], $user['avatardimensions'], '80|80');
-        if (!empty($av['is_html'])) 
-		{
-            $avatar_img = '<span class="avatar-sm me-2 d-inline-flex align-items-center justify-content-center">'.$av['image'].'</span>';
-        } 
-		
-		else 
-		{
-            $avatar_img = '<img src="'.$av['image'].'" '.($av['width_height'] ?: '').' class="rounded" width="50" alt="avatar">';
-        }
+        $avClass = !empty($av['is_placeholder']) ? 'avatar-ring' : 'rounded';
+        $avatar_img = '<img src="'.$av['image'].'" style="width: 50px; height: 50px; object-fit: cover;" class="'.$avClass.'" alt="avatar">';
         $formattedname = format_name($user['username'], $user['usergroup']);
         $joined = my_datee($dateformat, $user['added']) . ' ' . my_datee($timeformat, $user['added']);
         $isOnline = ((int)($user['lastactive'] ?? 0)) >= (TIMENOW - 900);
@@ -1127,15 +1120,8 @@ echo '      </select>
 			$profile_url = $BASEURL . '/' . get_profile_link($u['id']);
 
             $av = format_avatar($u['avatar'], $u['avatardimensions'], '100|100');
-            if (!empty($av['is_html'])) 
-		    {
-                $avatar_img = '<span class="avatar-sm me-2 d-inline-flex align-items-center justify-content-center">'.$av['image'].'</span>';
-            } 
-		
-		    else 
-		    {
-                $avatar_img = '<img src="'.$av['image'].'" '.($av['width_height'] ?: '').' class="rounded" width="50" alt="avatar">';
-            }
+            $avClass = !empty($av['is_placeholder']) ? 'avatar-ring' : 'rounded';
+            $avatar_img = '<img src="'.$av['image'].'" style="width: 50px; height: 50px; object-fit: cover;" class="'.$avClass.'" alt="avatar">';
 		   
 
             $regip         = my_inet_ntop($u['regip']);
@@ -1282,7 +1268,7 @@ echo '</div>';
 
 
 /* единый скрытый инпут для всей страницы (ставим ДО скрипта) */
-echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*">';
+echo '<input type="file" id="avatarUploadInput" class="d-none" accept="image/*" data-max-mb="'.round($avatarsize / 1024).'">';
 ?>
 
 <script>window.myPostKey = "<?= $mybb->post_code ?>";</script>

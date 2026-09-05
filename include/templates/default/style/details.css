@@ -32,7 +32,18 @@
     
     /* Transitions */
     --transition-default: all 0.3s ease;
+	
+	/* Avatar ring */
+	--ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
 }
+
+
+	
+
+ /* ---------- AVATAR RING + STATUS DOT ---------- */
+    .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
+      conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
+    .avatar-ring>*{display:block; border-radius:50%}
 
 /* -----------------------------------------------
    2. Global Keyframes Animations
@@ -735,4 +746,41 @@
 .magnet-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+/* ===== Rating widget ===== */
+.rating-modern { background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:all 0.2s; }
+.rating-modern:hover { box-shadow:0 4px 16px rgba(0,0,0,0.1); }
+.rating-score { font-size:2.2rem; font-weight:800; color:#1a1a2e; line-height:1; }
+.rating-stars { display:flex; gap:4px; font-size:1rem; }
+.rating-star-filled { color:#f59e0b; }
+.rating-star-empty { color:#e9ecef; }
+.user-star { font-size:1.5rem; cursor:pointer; transition:0.15s; color:#dee2e6; }
+.user-star:hover { transform:scale(1.15); color:#f59e0b !important; }
+.user-star.active { color:#f59e0b; }
+@media(max-width:768px) { .rating-score { font-size:1.8rem; } .user-star { font-size:1.2rem; } }
+
+/* ===== Similar Torrents Cards ===== */
+.similar-torrent-card {
+    border-radius: 10px;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.similar-torrent-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15) !important;
+}
+
+.similar-overlay {
+    background: rgba(0,0,0,0.3);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.similar-torrent-card:hover .similar-overlay {
+    opacity: 1;
+}
+
+.similar-torrent-card:hover img {
+    transform: scale(1.05);
 }

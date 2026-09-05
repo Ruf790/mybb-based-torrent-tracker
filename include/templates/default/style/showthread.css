@@ -6,6 +6,23 @@
 
 /* ─── Poll block ────────────────────────────────────────────────────────────── */
 
+
+
+:root {
+   
+	/* Avatar ring */
+	--ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
+}
+
+
+ /* ---------- AVATAR RING + STATUS DOT ---------- */
+    .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
+      conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
+    .avatar-ring>*{display:block; border-radius:50%}
+
+
+
+
 .poll-box {
   border-radius: 0.75rem;
   overflow: hidden;

@@ -176,9 +176,9 @@ function render_attachment_uploader(string $posthash, int $user_id, array $exist
                 <i class="fas fa-paperclip att-dropzone-icon"></i>
                 <div class="att-dropzone-text">
                     <strong>Drag & drop files here</strong>
-                    <span>or <label class="att-browse-label">browse<input type="file" class="att-file-input" multiple accept="image/*,.pdf,.zip,.rar,.txt"></label></span>
+                    <span>or <label class="att-browse-label">browse<input type="file" class="att-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.7z,.txt,.srt,.vtt,.sub,.ass,.ssa"></label></span>
                 </div>
-                <div class="att-dropzone-hint">Images, PDF, ZIP, RAR, TXT · max 10MB each</div>
+                <div class="att-dropzone-hint">Images, video, audio, documents, archives, subtitles · up to 2GB for video, 200MB for images/audio, 100MB for other files</div>
             </div>
         </div>
 
@@ -246,7 +246,9 @@ function render_attachment_preview_item(array $att, string $BASEURL, bool $delet
         <div class="att-item-thumb">
             <?php if ($isImage): ?>
                 <a href="<?= $url ?>" target="_blank" class="att-thumb-link">
-                    <img src="<?= $thumbUrl ?>" class="att-thumb-img" alt="<?= $name ?>">
+                    <img src="<?= $thumbUrl ?>" class="att-thumb-img" alt="<?= $name ?>"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='';">
+                    <span class="att-thumb-fallback" style="display:none;"><?= get_attachment_icon2($ext) ?></span>
                 </a>
             <?php elseif ($isVideo): ?>
                 <a href="<?= $url ?>" target="_blank" class="att-thumb-link att-video-link">

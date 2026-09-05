@@ -3586,7 +3586,7 @@ function get_date_time(int $timestamp = 0): string
 }
 
 
-// Функция format_avatar (уже обновленная ранее)
+
 function scale_images(int $width, int $height, int $maxwidth, int $maxheight): array
 {
     // Если размеры уже меньше максимальных - возвращаем как есть
@@ -3611,6 +3611,19 @@ function scale_images(int $width, int $height, int $maxwidth, int $maxheight): a
  * Функция для форматирования аватара (PHP 8.4)
  */
 
+if (!function_exists('avatar_not_found_svg_url')) {
+function avatar_not_found_svg_url(): string
+{
+    $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">'
+         . '<circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/>'
+         . '<text x="50" y="47" text-anchor="middle" font-size="16" fill="#666">Avatar</text>'
+         . '<text x="50" y="65" text-anchor="middle" font-size="16" fill="#666">Not Found</text>'
+         . '</svg>';
+
+    return 'data:image/svg+xml,' . rawurlencode($svg);
+}
+}
+
 function format_avatar(
     ?string $avatar,
     ?string $dimensions = '',
@@ -3619,19 +3632,27 @@ function format_avatar(
 ): array {
     global $allowremoteavatars, $maxavatardims, $BASEURL;
 
-    // 1) Пусто -> SVG заглушка
+    
     if (empty($avatar)) {
-        $html = '<svg class="avatar-ring2" width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">'
-              . '<circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/>'
-              . '<text x="50" y="55" text-anchor="middle" font-size="16" fill="#666">No Avatar</text>'
-              . '</svg>';
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">'
+             . '<circle cx="50" cy="50" r="45" fill="#f0f0f0" stroke="#ddd" stroke-width="2"/>'
+             . '<text x="50" y="55" text-anchor="middle" font-size="16" fill="#666">No Avatar</text>'
+             . '</svg>';
+       
+        $url = 'data:image/svg+xml,' . rawurlencode($svg);
+        $width_height = 'width="100" height="100"';
+        $html = '<img src="' . $url . '" ' . $width_height . ' alt="'
+              . htmlspecialchars($alt, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8')
+              . '" class="img-fluid" loading="lazy">';
+
         return [
-            'image'         => $html,
-            'width_height'  => '',
-            'width'         => null,
-            'height'        => null,
+            'image'         => $url,
+            'width_height'  => $width_height,
+            'width'         => 100,
+            'height'        => 100,
             'html'          => $html,
-            'is_html'       => true
+            'is_html'       => false,
+            'is_placeholder' => true,
         ];
     }
 
@@ -3646,6 +3667,7 @@ function format_avatar(
             'height'        => null,
             'html'          => $html,
             'is_html'       => true,
+            'is_placeholder' => true,
         ];
     }
 
@@ -3697,13 +3719,32 @@ function format_avatar(
     }
 
     // 5. Формируем URL
-    // Для remote-аватаров (уже абсолютный URL или data:-URI) просто
-    // экранируем как есть. Для локальных путей - склеиваем с $BASEURL
-    // напрямую (то же самое, что делала get_asset_url() для локального
-    // пути, без её неиспользуемой CDN-ветки: $usecdn там всегда "0").
     if ($is_remote) {
         $url = htmlspecialchars($avatar, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
     } else {
+        
+        $avatarAbsPath = defined('TSDIR')
+            ? rtrim(TSDIR, '/\\') . DIRECTORY_SEPARATOR . ltrim($avatar, '/\\')
+            : null;
+
+        if ($avatarAbsPath !== null && !file_exists($avatarAbsPath)) {
+            $url = avatar_not_found_svg_url();
+            $width_height = 'width="100" height="100"';
+            $html = '<img src="' . $url . '" ' . $width_height . ' alt="'
+                  . htmlspecialchars($alt, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8')
+                  . '" class="avatar-ring img-fluid" loading="lazy">';
+
+            return [
+                'image'         => $url,
+                'width_height'  => $width_height,
+                'width'         => 100,
+                'height'        => 100,
+                'html'          => $html,
+                'is_html'       => false,
+                'is_placeholder' => true,
+            ];
+        }
+
         $cleanPath = ltrim((string)$avatar, '/');
         if (str_starts_with($cleanPath, './')) {
             $cleanPath = substr($cleanPath, 2);
@@ -3732,8 +3773,10 @@ function format_avatar(
         'height'        => $final_height,
         'html'          => $html,
         'is_html'       => false,
+        'is_placeholder' => false,
     ];
 }
+
 
 
 if (!defined('APP_INITIALIZED')) {

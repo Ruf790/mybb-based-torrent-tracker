@@ -374,14 +374,18 @@ if (empty($post['pid'])) $post['pid'] = 0;
         $post['useravatar'] = '';
         if (true) {
             $useravatar = format_avatar($post['avatar'], $post['avatardimensions']);
+			
+			$avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring img-fluid' : 'rounded img-fluid';
+			
+            
             $post['useravatar'] =
                 '<div class="d-none d-lg-block">'
                 . '<div class="author_avatar"><a href="' . $post['profilelink_plain'] . '">'
-                . '<img class="rounded img-fluid" style="width:100px;padding:0" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . '>'
+                . '<img class="'.$avatarClass.'" style="width:100px;" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . '>'
                 . '</a></div></div>'
                 . '<div class="d-block d-lg-none">'
                 . '<div class="author_avatar"><a href="' . $post['profilelink_plain'] . '">'
-                . '<img class="rounded img-fluid" style="width:30px;height:30px;padding:0" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . '>'
+                . '<img class="'.$avatarClass.'" style="width:30px;height:30px;" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . '>'
                 . '</a></div></div>';
         }
 

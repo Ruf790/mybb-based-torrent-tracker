@@ -831,7 +831,17 @@ public function mycode_parse_post_quotes(string $message, string $username, bool
 
         $url = $this->encode_url($url);
 
-        return '<img src="' . $url . '" loading="lazy" width="450" alt="' . $alt . '"' . $css_align . ' class="rounded" />';
+      
+        $imgWidth  = $dimensions[0] ?? null;
+        $imgHeight = $dimensions[1] ?? null;
+
+        if ($imgWidth && $imgHeight) {
+            $size_attr = ' width="' . (int)$imgWidth . '" height="' . (int)$imgHeight . '"';
+        } else {
+            $size_attr = ' style="max-width:400px;"';
+        }
+
+        return '<img src="'.$url.'" loading="lazy"'.$size_attr.' alt="'.$alt.'"'.$css_align.' class="rounded" />';
     }
 
     public function mycode_parse_img_callback1(array $matches): string { return $this->mycode_parse_img($matches[2]); }

@@ -15,11 +15,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     require_once(INC_PATH . '/class_parser.php');
     $parser = new postParser;
 
-    // Пакетная предзагрузка [torrent=ID] по ВСЕМ комментариям разом —
-    // без этого каждый комментарий со своим уникальным торрентом бьёт
-    // в БД отдельным запросом (было видно в SQL-логе: 7 разных ID = 7
-    // отдельных запросов). $rows уже содержит весь текст комментариев,
-    // сканируем его до начала цикла рендеринга.
+   
     $torrentEmbedIds = [];
     foreach ($rows as $row) {
         if (preg_match_all('#\[torrent=(\d+)\]#i', $row['text'] ?? '', $m)) {
@@ -49,7 +45,6 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     $showcommentstable = '';
 
     $ajax_quick_edit_loaded = false;
-    $quote_loaded = false;
     $ajax_quick_report_loaded = false;
     $QuickVoteLoaded = false;
 
@@ -59,6 +54,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 
 <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/comment_attachments.css">
 <script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/edit_delete_comment.js"></script>
+<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/commenttable.js"></script>
 
 <style>
 /* Comment card base transition */
@@ -84,102 +80,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 }
 </style>
 
-<script>
-function toggleCommentSelect(checkbox) {
-    const wrapper = document.getElementById('comment-' + checkbox.value);
-    if (wrapper) {
-        wrapper.classList.toggle('comment-selected', checkbox.checked);
-    }
-    toggleMassDeleteButton();
-    toggleMergeButton();
-}
 
-function toggleSelectAll(masterSwitch) {
-    document.querySelectorAll('.comment-checkbox').forEach(cb => {
-        cb.checked = masterSwitch.checked;
-        const wrapper = document.getElementById('comment-' + cb.value);
-        if (wrapper) {
-            wrapper.classList.toggle('comment-selected', masterSwitch.checked);
-        }
-    });
-    toggleMassDeleteButton();
-    toggleMergeButton();
-}
-
-function toggleMassDeleteButton() {
-    const count = document.querySelectorAll('.comment-checkbox:checked').length;
-    const btn = document.getElementById('massDeleteButton');
-    if (btn) {
-        btn.classList.toggle('d-none', count === 0);
-        btn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete Selected (' + count + ')';
-    }
-}
-
-function toggleMergeButton() {
-    const count = document.querySelectorAll('.comment-checkbox:checked').length;
-    const btn = document.getElementById('mergeCommentsButton');
-    if (btn) {
-        // Merge имеет смысл только от 2 выбранных комментариев
-        btn.classList.toggle('d-none', count < 2);
-        btn.innerHTML = '<i class="fa-solid fa-code-merge"></i> Merge Selected (' + count + ')';
-    }
-}
-
-function mergeComments() {
-    const checked = [...document.querySelectorAll('.comment-checkbox:checked')].map(cb => cb.value);
-    if (checked.length < 2) {
-        return;
-    }
-    if (!confirm('Merge ' + checked.length + ' selected comments into one? This cannot be undone.')) {
-        return;
-    }
-
-    const btn = document.getElementById('mergeCommentsButton');
-    const originalHtml = btn ? btn.innerHTML : '';
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Merging...';
-    }
-
-    fetch('comment.php?action=merge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            comment_ids: checked.join(','),
-            my_post_key: window.CS_POST_CODE || ''
-        })
-    })
-        .then(r => r.json())
-        .then(data => {
-            if (!data.success) {
-                alert('Error: ' + (data.error || 'Unknown error'));
-                if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
-                return;
-            }
-
-            // Убираем поглощённые комментарии из DOM
-            (data.removed_ids || []).forEach(id => {
-                const el = document.getElementById('comment-' + id);
-                if (el) el.remove();
-            });
-
-            // Заменяем мастер-комментарий на обновлённый HTML
-            const masterEl = document.getElementById('comment-' + data.master_id);
-            if (masterEl && data.html) {
-                const tmp = document.createElement('div');
-                tmp.innerHTML = data.html;
-                masterEl.replaceWith(...tmp.childNodes);
-            }
-
-            toggleMassDeleteButton();
-            toggleMergeButton();
-        })
-        .catch(() => {
-            alert('Merge failed. Please try again.');
-            if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
-        });
-}
-</script>
 
 
 
@@ -194,18 +95,6 @@ function mergeComments() {
 
     foreach ($rows as $row) {
         $p_commenthistory = $p_edit = $p_delete = $p_text = $p_report = $p_quote = '';
-
-        if ($quote === true && !$quote_loaded) {
-            $p_quote .= '
-<script type="text/javascript">
-    function quote(textarea,form,quote) {
-        var area=document.forms[form].elements[textarea];
-        area.value=area.value+" "+quote+" ";
-        area.focus();
-    };
-</script>';
-            $quote_loaded = true;
-        }
 
         $QuoteTag = htmlspecialchars($db->escape_string(
             '[quote=' . $row['username'] . ' pid=' . $row['id'] . ' dateline=' . $row['dateline'] . ']' . $row['text'] . '[/quote]'
@@ -271,14 +160,16 @@ if (!empty($att_bulk[$pid])) {
         
         $useravatar = format_avatar($row['useravatar'], $row['avatardimensions']);
             
-			
-	    $post['useravatar'] = '
-	    <div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
-                <div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="rounded img-fluid" style="width: 100px; padding: 0px;" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' /></a></div>
+	    $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring img-fluid' : 'rounded img-fluid';
+		
+        $post['useravatar'] = '
+        <div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
+            <div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="'.$avatarClass.'" style="width: 100px; height: 100px; object-fit: cover;" src="'.$useravatar['image'].'" alt="" /></a></div>
         </div>
         <div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none">
-                <div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="rounded img-fluid" style="width: 30px; height: 30px; padding: 0px;" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' /></a></div>
+            <div class="author_avatar"><a href="'.$post['profilelink_plain'].'"><img class="'.$avatarClass.'" style="width: 30px; height: 30px; object-fit: cover;" src="'.$useravatar['image'].'" alt="" /></a></div>
         </div>';
+    
 			
 			
 			

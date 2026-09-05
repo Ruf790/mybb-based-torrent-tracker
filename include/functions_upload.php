@@ -1,21 +1,10 @@
 <?php
 declare(strict_types=1);
 
-// ---------------------------------------------------------------------------
-// Глобальные настройки CDN (переопределяются снаружи если нужно)
-// ---------------------------------------------------------------------------
-$cdnpath = '';
-$usecdn  = '0';
-
 
 // ---------------------------------------------------------------------------
 // Upload limit
 // ---------------------------------------------------------------------------
-
-/**
- * Возвращает минимальный из PHP-лимитов на загрузку файлов (в байтах).
- * Возвращает 0 если лимиты не заданы.
- */
 function get_php_upload_limit(): int
 {
     $sizes = array_filter([
@@ -28,83 +17,9 @@ function get_php_upload_limit(): int
 
 
 // ---------------------------------------------------------------------------
-// CDN
-// ---------------------------------------------------------------------------
-
-/**
- * Копирует файл в CDN-директорию если CDN включён.
- *
- * @param string      $file_path     Локальный путь к файлу.
- * @param string|null $uploaded_path Устанавливается в CDN-путь при успехе.
- */
-function copy_file_to_cdn(string $file_path = '', ?string &$uploaded_path = null): bool
-{
-    global $cdnpath, $usecdn, $plugins;
-
-    $success        = false;
-    $real_file_path = realpath($file_path);
-
-    if ($real_file_path === false) {
-        return false;
-    }
-
-    $file_dir_path = str_replace(TSDIR, '', dirname($real_file_path));
-    $file_dir_path = ltrim($file_dir_path, './\\');
-    $file_name     = basename($real_file_path);
-
-    if (!file_exists($file_path)) {
-        return false;
-    }
-
-    if (is_object($plugins)) {
-        $hook_args = [
-            'file_path'      => &$file_path,
-            'real_file_path' => &$real_file_path,
-            'file_name'      => &$file_name,
-            'file_dir_path'  => &$file_dir_path,
-        ];
-        $plugins->run_hooks('copy_file_to_cdn_start', $hook_args);
-    }
-
-    if (!empty($usecdn) && !empty($cdnpath)) {
-        $cdn_base       = rtrim($cdnpath, '/\\');
-        $cdn_upload_dir = $cdn_base . DIRECTORY_SEPARATOR . $file_dir_path;
-
-        $dir_exists = is_dir($cdn_upload_dir) || @mkdir($cdn_upload_dir, 0777, true);
-
-        if ($dir_exists) {
-            $real_cdn_dir = realpath($cdn_upload_dir);
-            if ($real_cdn_dir !== false) {
-                $success = @copy($file_path, $real_cdn_dir . DIRECTORY_SEPARATOR . $file_name);
-                if ($success) {
-                    $uploaded_path = $real_cdn_dir;
-                }
-            }
-        }
-    }
-
-    if (is_object($plugins)) {
-        $hook_args = [
-            'file_path'      => &$file_path,
-            'real_file_path' => &$real_file_path,
-            'file_name'      => &$file_name,
-            'uploaded_path'  => &$uploaded_path,
-            'success'        => &$success,
-        ];
-        $plugins->run_hooks('copy_file_to_cdn_end', $hook_args);
-    }
-
-    return $success;
-}
-
-
-// ---------------------------------------------------------------------------
 // Аватары
 // ---------------------------------------------------------------------------
 
-/**
- * Удаляет все аватары пользователя кроме указанного файла.
- */
 function remove_avatars(int $uid, string $exclude = ''): void
 {
     global $avataruploadpath, $plugins;
@@ -131,16 +46,9 @@ function remove_avatars(int $uid, string $exclude = ''): void
     @closedir($dir);
 }
 
-/**
- * Загружает аватар в файловую систему.
- *
- * @param array $avatar Массив из $_FILES, если пустой — берёт $_FILES['avatarupload'].
- * @param int   $uid    ID пользователя (0 = текущий).
- * @return array Массив с ключами 'error' при ошибке, или 'avatar'/'width'/'height' при успехе.
- */
 function upload_avatar(array $avatar = [], int $uid = 0): array
 {
-    global $db, $CURUSER, $lang, $plugins, $cache, $avataruploadpath, $avatarsize;
+    global $db, $CURUSER, $lang, $plugins, $cache, $avataruploadpath, $avatarsize, $maxavatardims;
 
     if (!$uid) {
         $uid = (int)$CURUSER['id'];
@@ -159,12 +67,7 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
         return ['error' => 'Invalid file type. An uploaded avatar must be in GIF, JPEG, BMP, PNG or WebP format'];
     }
 
-    // Переводим в абсолютный путь — $avataruploadpath хранится как
-    // относительный ('./uploads/avatars'), и раньше резолвился относительно
-    // текущей рабочей директории PHP на момент выполнения. Для файлов,
-    // лежащих в корне сайта, это случайно совпадало с нужным путём, но для
-    // вызовов из админки (например, usersearch.php, лежащего в /admin/)
-    // относительный путь резолвился не туда, move_uploaded_file() падал.
+    
     $avatarpath = mk_path_abs($avataruploadpath);
     $filename   = 'avatar_' . $uid . '.' . $ext;
     $file       = upload_file($avatar, $avatarpath, $filename);
@@ -194,33 +97,47 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
         }
     }
 
-    $mime_type = my_strtolower($avatar['type']);
-    $img_type  = _mime_to_imagetype($mime_type);
+   
+    $img_type  = (int)$img_dimensions[2];
+    $mime_type = image_type_to_mime_type($img_type);
 
-    if (empty($allowed_mime_types[$mime_type]) || $img_dimensions[2] !== $img_type || $img_type === 0) {
+    if ($img_type === 0 || empty($allowed_mime_types[$mime_type])) {
         delete_uploaded_file($avatarpath . '/' . $filename);
         return ['error' => 'The file upload failed. Please choose a valid file and try again'];
     }
 
-    // Перекодирование через GD — та же защита, что и для вложений/скриншотов
-    // раздач: getimagesize() проверяет только заголовок, а не весь файл, и
-    // не поймает "полиглот" (валидная картинка с приклеенной после неё
-    // посторонней нагрузкой). Декодирование в чистые пиксели и запись
-    // заново убирает всё, что не является самим изображением.
+    
     $avatarFullPath = $avatarpath . '/' . $filename;
-    if (recode_image_file($avatarFullPath, $mime_type) === false) {
-        delete_uploaded_file($avatarFullPath);
-        return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+
+    [$maxW, $maxH] = array_pad(
+        array_map('intval', preg_split('/[|x]/i', (string)$maxavatardims)),
+        2,
+        200 // запасное значение, если настройка вдруг пустая/некорректная
+    );
+
+    if ($mime_type === 'image/gif' && is_animated_gif($avatarFullPath)) {
+      
+        if (!resize_animated_gif($avatarFullPath, $avatarFullPath, $maxW, $maxH)) {
+            delete_uploaded_file($avatarFullPath);
+            return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+        }
+    } elseif (in_array($mime_type, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        if (!create_thumbnail($avatarFullPath, $avatarFullPath, $maxW, $maxH, $mime_type)) {
+            delete_uploaded_file($avatarFullPath);
+            return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+        }
     }
-    // BMP не поддерживается GD для перезаписи — остаётся как есть, но уже
-    // прошёл проверку getimagesize() и сверку типа выше.
+    
+    $final_dimensions = @getimagesize($avatarFullPath) ?: $img_dimensions;
+    clearstatcache(true, $avatarFullPath);
+    $final_filesize = @filesize($avatarFullPath) ?: (int)$avatar['size'];
 
     $max_size = min(
         $avatarsize > 0 ? $avatarsize * 1024 : PHP_INT_MAX,
         ($allowed_mime_types[$mime_type] ?? 0) * 1024
     );
 
-    if ($avatar['size'] > $max_size) {
+    if ($final_filesize > $max_size) {
         delete_uploaded_file($avatarpath . '/' . $filename);
         return ['error' => 'The size of the uploaded file is too large'];
     }
@@ -229,8 +146,8 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
 
     $ret = [
         'avatar' => $avataruploadpath . '/' . $filename,
-        'width'  => (int)$img_dimensions[0],
-        'height' => (int)$img_dimensions[1],
+        'width'  => (int)$final_dimensions[0],
+        'height' => (int)$final_dimensions[1],
     ];
 
     return $plugins->run_hooks('upload_avatar_end', $ret);
@@ -241,9 +158,7 @@ function upload_avatar(array $avatar = [], int $uid = 0): array
 // Вспомогательные функции
 // ---------------------------------------------------------------------------
 
-/**
- * Проверяет PHP-ошибки загрузки файла и возвращает строку ошибки или ''.
- */
+
 function check_parse_php_upload_err(array $FILE): string
 {
     global $lang;
@@ -267,9 +182,7 @@ function check_parse_php_upload_err(array $FILE): string
     };
 }
 
-/**
- * Создаёт index.html-заглушку в директории загрузок.
- */
+
 function create_attachment_index(string $path): void
 {
     $index = @fopen(rtrim($path, '/') . '/index.html', 'w');
@@ -279,15 +192,10 @@ function create_attachment_index(string $path): void
     }
 }
 
-// Перекодирование изображений через GD вынесено в отдельный файл —
-// используется и другими скриптами (upload_image.php, upload_handler.php,
-// manage_screenshots.php), которым не нужен весь остальной функционал
-// этого файла (upload_file(), upload_avatar() и т.д.) ради одной утилиты.
+
 require_once __DIR__ . '/functions_image_recode.php';
 
-/**
- * Приводит относительный путь к абсолютному.
- */
+
 function mk_path_abs(string $path, string $base = TSDIR): string
 {
     $isWin = str_starts_with(strtoupper(PHP_OS), 'WIN');
@@ -301,9 +209,7 @@ function mk_path_abs(string $path, string $base = TSDIR): string
     return $path;
 }
 
-/**
- * Альтернативная версия mk_path_abs (оставлена для совместимости).
- */
+
 function mk_path_abs2(string $path, string $base = TSDIR): string
 {
     $isWin = str_starts_with(strtoupper(PHP_OS), 'WIN');
@@ -316,9 +222,7 @@ function mk_path_abs2(string $path, string $base = TSDIR): string
     return $path;
 }
 
-/**
- * chmod с проверкой формата строки.
- */
+
 function my_chmod(string $file, string $mode): bool
 {
     if ($mode[0] !== '0' || strlen($mode) !== 4) {
@@ -330,25 +234,12 @@ function my_chmod(string $file, string $mode): bool
     return $result;
 }
 
-/**
- * Удаляет загруженный файл (локально и из CDN если включён).
- */
+
 function delete_uploaded_file(string $path = ''): bool
 {
     global $plugins;
 
-    $cdnpath = '';
-    $usecdn  = '0';
-
     $deleted = @unlink($path);
-
-    $cdn_base = rtrim($cdnpath, '/');
-    $rel_path = ltrim($path, '/');
-    $cdn_full = realpath($cdn_base . '/' . $rel_path);
-
-    if (!empty($usecdn) && !empty($cdn_base) && $cdn_full !== false) {
-        $deleted = @unlink($cdn_full) && $deleted;
-    }
 
     $hook_params = ['path' => &$path, 'deleted' => &$deleted];
     $plugins->run_hooks('delete_uploaded_file', $hook_params);
@@ -356,26 +247,13 @@ function delete_uploaded_file(string $path = ''): bool
     return $deleted;
 }
 
-/**
- * Удаляет директорию загрузок (вместе с index.html-заглушкой).
- */
+
 function delete_upload_directory(string $path = ''): bool
 {
     global $plugins;
 
-    $cdnpath = '';
-    $usecdn  = '0';
-
     $deleted_index = @unlink(rtrim($path, '/') . '/index.html');
     $deleted       = @rmdir($path);
-
-    $cdn_base = rtrim($cdnpath, '/');
-    $rel_path = ltrim($path, '/');
-    $cdn_full = realpath($cdn_base . '/' . $rel_path);
-
-    if (!empty($usecdn) && !empty($cdn_base) && $cdn_full !== false) {
-        $deleted = @rmdir(rtrim($cdn_full, '/')) && $deleted;
-    }
 
     $hook_params = ['path' => &$path, 'deleted' => &$deleted];
     $plugins->run_hooks('delete_upload_directory', $hook_params);
@@ -387,11 +265,7 @@ function delete_upload_directory(string $path = ''): bool
     return $deleted;
 }
 
-/**
- * Перемещает загруженный файл в нужную директорию.
- *
- * @return array Массив с 'error' при неудаче или данными файла при успехе.
- */
+
 function upload_file(array $file, string $path, string $filename = ''): array
 {
     global $plugins;
@@ -414,9 +288,6 @@ function upload_file(array $file, string $path, string $filename = ''): array
 
     @my_chmod($path . '/' . $filename, '0644');
 
-    $cdn_path    = '';
-    $moved_to_cdn = copy_file_to_cdn($path . '/' . $filename, $cdn_path);
-
     $upload = [
         'original_filename' => $original,
         'filename'          => $filename,
@@ -427,10 +298,6 @@ function upload_file(array $file, string $path, string $filename = ''): array
 
     $upload = $plugins->run_hooks('upload_file_end', $upload);
 
-    if ($moved_to_cdn) {
-        $upload['cdn_path'] = $cdn_path;
-    }
-
     return $upload;
 }
 
@@ -439,9 +306,7 @@ function upload_file(array $file, string $path, string $filename = ''): array
 // Аттачменты
 // ---------------------------------------------------------------------------
 
-/**
- * Загружает один аттачмент и сохраняет запись в БД.
- */
+
 function upload_attachment(array $attachment, bool $update_attachment = false): array
 {
     global $mybb, $db, $lang, $plugins, $cache, $usergroups,
@@ -464,11 +329,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
     }
     $attachtype = $attachtypes[$ext];
 
-    // Whitelist по расширению защищает только от "неразрешённых типов" —
-    // ничто не мешает переименовать настоящий .exe в .jpg. Ловим самые
-    // опасные случаи вне зависимости от заявленного расширения, и отдельно
-    // требуем, чтобы файлы с "картиночным" расширением были реальными
-    // картинками (а не просто одноимённым файлом).
+   
     if (function_exists('finfo_open')) {
         $finfo    = finfo_open(FILEINFO_MIME_TYPE);
         $realMime = finfo_file($finfo, $attachment['tmp_name']) ?: '';
@@ -490,18 +351,13 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
             return ['error' => 'The uploaded file is not a valid image.'];
         }
 
-        // Перекодирование через GD — защита от "полиглот"-файлов (спрятанная
-        // после настоящих данных изображения нагрузка, которую не ловят ни
-        // whitelist расширений, ни finfo, ни getimagesize()).
-        $newSize = recode_image_file($attachment['tmp_name'], $realMime);
-        if ($newSize === false) {
-            return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+        if ($ext !== 'gif') {
+            $newSize = recode_image_file($attachment['tmp_name'], $realMime);
+            if ($newSize === false) {
+                return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
+            }
+            $attachment['size'] = $newSize;
         }
-        // upload_file() ниже пробрасывает $attachment['size'] как есть в БД
-        // (attachments.filesize) — без обновления attachment.php потом
-        // отдавал бы неверный Content-Length (перекодирование меняет размер
-        // файла в байтах), файл выглядел бы "оборванным" на клиенте.
-        $attachment['size'] = $newSize;
     }
 
     // Длина имени файла
@@ -642,9 +498,7 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
     return ['aid' => $aid];
 }
 
-/**
- * Удаляет один аттачмент из БД и файловой системы.
- */
+
 function remove_attachment(int $pid, string $posthash, int $aid): void
 {
     global $db, $plugins, $uploadspath;
@@ -677,9 +531,7 @@ function remove_attachment(int $pid, string $posthash, int $aid): void
     }
 }
 
-/**
- * Удаляет все аттачменты поста или posthash.
- */
+
 function remove_attachments(int $pid, string $posthash = ''): void
 {
     global $db, $plugins, $uploadspath;
@@ -713,9 +565,7 @@ function remove_attachments(int $pid, string $posthash = ''): void
     }
 }
 
-/**
- * Обрабатывает аттачменты при создании/редактировании поста.
- */
+
 function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere, string|false $action = false, array $attachwhere_params = []): array
 {
     global $db, $mybb, $lang;
@@ -806,9 +656,7 @@ function add_attachments(int $pid, mixed $forumpermissions, string $attachwhere,
 // Внутренние хелперы
 // ---------------------------------------------------------------------------
 
-/**
- * Конвертирует MIME-тип в константу IMAGETYPE_*.
- */
+
 function _mime_to_imagetype(string $mime): int
 {
     return match($mime) {
@@ -822,9 +670,7 @@ function _mime_to_imagetype(string $mime): int
     };
 }
 
-/**
- * Определяет MIME-тип файла через finfo или mime_content_type.
- */
+
 function _detect_mime(string $file_path): string
 {
     if (function_exists('finfo_open')) {
@@ -841,10 +687,7 @@ function _detect_mime(string $file_path): string
     return '';
 }
 
-/**
- * Обрабатывает изображение: проверяет MIME и генерирует миниатюру.
- * Возвращает обновлённый $attacharray или массив с 'error'.
- */
+
 function _process_image_attachment(
     array  $attacharray,
     array  $file,
@@ -870,24 +713,22 @@ function _process_image_attachment(
         return ['error' => $lang->error_uploadfailed];
     }
 
-    require_once INC_PATH . '/functions_image.php';
-
     $thumbname   = str_replace('.attach', "_thumb.{$ext}", $filename);
     $attacharray = $plugins->run_hooks('upload_attachment_thumb_start', $attacharray);
-    $thumbnail   = generate_thumbnail($file_path, $uploadspath_abs, $thumbname, $attachthumbh, $attachthumbw);
+    $attacharray['thumbnail'] = '';
 
-    if (!empty($thumbnail['filename'])) {
-        $attacharray['thumbnail'] = $thumbnail['filename'];
-    } elseif (($thumbnail['code'] ?? 0) === 4) {
-        $attacharray['thumbnail'] = 'SMALL';
+   
+    $created = create_thumbnail($file_path, $uploadspath_abs . '/' . $thumbname, (int)$attachthumbw, (int)$attachthumbh, $mime);
+
+    if ($created) {
+        $attacharray['thumbnail'] = $thumbname;
     }
+    
 
     return $attacharray;
 }
 
-/**
- * Удаляет файлы старого аттачмента при обновлении.
- */
+
 function _cleanup_old_attachment(array $prevattach, string $uploadspath_abs, object $db): void
 {
     $query = $db->sql_query_prepared("SELECT COUNT(aid) as numreferences FROM attachments WHERE attachname = ?", [$prevattach['attachname']]);
@@ -904,9 +745,7 @@ function _cleanup_old_attachment(array $prevattach, string $uploadspath_abs, obj
     _maybe_delete_month_dir($prevattach['attachname'], $uploadspath_abs, $db);
 }
 
-/**
- * Удаляет файлы аттачмента если на него нет других ссылок.
- */
+
 function _delete_attachment_files(array $attachment, string $uploadspath_abs, object $db): void
 {
     $query = $db->sql_query_prepared("SELECT COUNT(aid) as numreferences FROM attachments WHERE attachname = ?", [$attachment['attachname']]);
@@ -923,9 +762,7 @@ function _delete_attachment_files(array $attachment, string $uploadspath_abs, ob
     _maybe_delete_month_dir($attachment['attachname'], $uploadspath_abs, $db);
 }
 
-/**
- * Удаляет месячную директорию если она пуста.
- */
+
 function _maybe_delete_month_dir(string $attachname, string $uploadspath_abs, object $db): void
 {
     $parts = explode('/', $attachname);

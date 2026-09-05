@@ -157,8 +157,9 @@ function build_friendly_wol_location(UserActivity $activity): string
 WolActivity::ATTACHMENT => sprintf(
     $lang->online['viewing_attachment2'] ?? 'Viewing Attachment in <a href="%3$s">%2$s</a> (ID: %1$s)',
     $activity->aid,
-    $threads[$posts[$attachments[$activity->aid]] ?? 0]['subject'] ?? 'Unknown Thread',  // ← ТОЧНО ПО ТВОЕЙ ЛОГИКЕ
-    get_thread_link($posts[$attachments[$activity->aid]] ?? 0) ?? '#'
+    
+    $threads[$posts[$attachments[$activity->aid] ?? 0] ?? 0]['subject'] ?? 'Unknown Thread',
+    get_thread_link($posts[$attachments[$activity->aid] ?? 0] ?? 0) ?? '#'
 ),
 
 
@@ -283,8 +284,8 @@ function preload_wol_data(UserActivity $activity): void
 
     // Announcements
     if ($activity->aid && !isset($announcements[$activity->aid])) {
-        $ann = $db->fetch_array($db->sql_query_prepared('SELECT aid, subject FROM announcements WHERE aid = ?', [(int)$activity->aid]));
-        if ($ann) $announcements[$ann['aid']] = htmlspecialchars_uni($ann['subject']);
+        $ann = $db->fetch_array($db->sql_query_prepared('SELECT id, subject FROM announcements WHERE id = ?', [(int)$activity->aid]));
+        if ($ann) $announcements[$ann['id']] = htmlspecialchars_uni($ann['subject']);
     }
 
     
@@ -496,8 +497,7 @@ function handle_online(array $p): WolActivity
 
 
 function handle_reputation(array $p): WolActivity { global $uid_list; $uid_list[(int)($p['id'] ?? 0)] = (int)($p['id'] ?? 0); return WolActivity::PROFILE; }
-//function handle_details(array $p): WolActivity { global $id_list; $id_list[(int)($p['id'] ?? 0)] = (int)($p['id'] ?? 0); return WolActivity::INDEX; }
-//function handle_download(array $p): WolActivity { global $id_list; $id_list[(int)($p['id'] ?? 0)] = (int)($p['id'] ?? 0); return WolActivity::INDEX; }
+
 
 
 

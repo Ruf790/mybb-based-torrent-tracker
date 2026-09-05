@@ -422,8 +422,26 @@ function executeBulkAction(action, ids, groupId, extra = {}) {
     fileInput.addEventListener('change', () => {
         if (!fileInput.files || !fileInput.files[0] || !targetUid) return;
 
+        const file = fileInput.files[0];
+
+        if (!/\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
+            alert('Allowed JPG/JPEG/PNG/GIF/WebP');
+            fileInput.value = '';
+            return;
+        }
+
+        // Лимит берётся из data-max-mb на самом инпуте (реальная настройка
+        // avatarsize с сервера) — 22 запасное значение, если атрибут вдруг
+        // отсутствует/некорректен.
+        const maxMb = parseFloat(fileInput.dataset.maxMb) || 22;
+        if (file.size > maxMb * 1024 * 1024) {
+            alert('File is too big (max. ' + maxMb + ' MB)');
+            fileInput.value = '';
+            return;
+        }
+
         const fd = new FormData();
-        fd.append('avatar', fileInput.files[0]);
+        fd.append('avatar', file);
         fd.append('id', targetUid);
         fd.append('my_post_key', window.myPostKey || '');
 

@@ -328,33 +328,6 @@ if ($query_result && $db->num_rows($query_result) > 0)
         </div>
     </div>
 </div>
-<style>
-/* Similar Torrents Cards */
-.similar-torrent-card {
-    border-radius: 10px;
-    overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.similar-torrent-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.15) !important;
-}
-
-.similar-overlay {
-    background: rgba(0,0,0,0.3);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.similar-torrent-card:hover .similar-overlay {
-    opacity: 1;
-}
-
-.similar-torrent-card:hover img {
-    transform: scale(1.05);
-}
-</style>
 <br>
 		
 		';
@@ -429,17 +402,12 @@ require_once INC_PATH . '/functions_bookmark.php';
 
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/details.css">';
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/animate.min.css">';
-
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/comment_attachments.css">';
-
-
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js"></script>';
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/bookmark.js"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/details_modal.js"></script>';
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_torrent.js"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/delete_torrent.js"></script>';
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/advanced_torrent.js"></script>';
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/details.js"></script>';
 
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/report.js"></script>';
@@ -553,18 +521,6 @@ if ($CURUSER['id']) {
 }
 
 $rating_html = '
-<style>
-.rating-modern { background:#fff; border-radius:16px; padding:16px 20px; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:all 0.2s; }
-.rating-modern:hover { box-shadow:0 4px 16px rgba(0,0,0,0.1); }
-.rating-score { font-size:2.2rem; font-weight:800; color:#1a1a2e; line-height:1; }
-.rating-stars { display:flex; gap:4px; font-size:1rem; }
-.rating-star-filled { color:#f59e0b; }
-.rating-star-empty { color:#e9ecef; }
-.user-star { font-size:1.5rem; cursor:pointer; transition:0.15s; color:#dee2e6; }
-.user-star:hover { transform:scale(1.15); color:#f59e0b !important; }
-.user-star.active { color:#f59e0b; }
-@media(max-width:768px) { .rating-score { font-size:1.8rem; } .user-star { font-size:1.2rem; } }
-</style>
 <div class="rating-modern">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
         <div class="d-flex align-items-center gap-3">
@@ -1835,41 +1791,21 @@ $details = '
     '.$showcommenttable.'
 </div>
 
-'.$magnetModal.'
-
-<script type="text/javascript" src="'.$BASEURL.'/scripts/magnet.js"></script>
-
-';
+'.$magnetModal.'';
 
 
 
 
 echo '
-
 '.($is_mod ? '
 <script type="text/javascript">
 	l_updated = "'.$lang->global['imgupdated'].'";
 	l_refresh = "'.$lang->global['refresh'].'";
-</script>
-<script type="text/javascript" src="'.$BASEURL.'/scripts/quick_imdb.js"></script>' : '');
+</script>' : '');
 
 
 echo $details;
 
-
-
-
-echo '
-<script>
-function copyNfo() {
-    var text = document.getElementById("nfoText").textContent;
-    navigator.clipboard.writeText(text).then(function() {
-        showToast("NFO copied to clipboard!", "success");
-    }).catch(function() {
-        showToast("Copy failed", "danger");
-    });
-}
-</script>';
 
 
 

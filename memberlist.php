@@ -46,7 +46,12 @@ function render_header(string $title): void {
         <style>
             :root {
                 --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                --ring: #dfe7ff;
             }
+
+            .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
+              conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
+            .avatar-ring>*{display:block; border-radius:50%}
             
             .user-card {
                 border: none;
@@ -95,33 +100,6 @@ function render_header(string $title): void {
                 padding: 4px 12px;
                 border-radius: 20px;
                 font-size: 0.85rem;
-            }
-            
-            .avatar-wrapper {
-                width: 70px;
-                height: 70px;
-                border-radius: 12px;
-                overflow: hidden;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            
-            .avatar-wrapper img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-            }
-            
-            .avatar-placeholder {
-                width: 70px;
-                height: 70px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 2rem;
-                color: white;
             }
             
             .card {
@@ -338,17 +316,17 @@ while ($query && ($user = $db->fetch_array($query))) {
     $usertitle = htmlspecialchars_uni($usergroup['title'] ?? $lang->memberlist['member']);
     
     // Avatar
-    $avatar_html = '';
-    $memberlistmaxavatarsize = '70x70';
-    $useravatar = format_avatar($user['avatar'], $user['avatardimensions'], 
-        my_strtolower($memberlistmaxavatarsize));
-    
-    if (strpos($useravatar['image'], '<svg') !== 0) {
-        $avatar_html = '<img src="' . htmlspecialchars($useravatar['image']) 
-                     . '" alt="' . $username_plain . '" class="avatar-img">';
-    } else {
-        $avatar_html = '<i class="fas fa-user fa-2x"></i>';
-    }
+    $useravatar = format_avatar($user['avatar'], $user['avatardimensions']);
+    $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring img-fluid' : 'rounded img-fluid';
+    $avatar_profile_url = get_profile_link($user['id']);
+
+    $avatar_html = '
+        <div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
+            <div class="author_avatar"><a href="'.$avatar_profile_url.'"><img class="'.$avatarClass.'" style="width: 80px; height: 80px; object-fit: cover;" src="'.$useravatar['image'].'" alt="'.$username_plain.'" /></a></div>
+        </div>
+        <div class="d-block d-sm-block d-md-block d-lg-none d-xl-none d-xxl-none">
+            <div class="author_avatar"><a href="'.$avatar_profile_url.'"><img class="'.$avatarClass.'" style="width: 30px; height: 30px; object-fit: cover;" src="'.$useravatar['image'].'" alt="'.$username_plain.'" /></a></div>
+        </div>';
     
     // Last visit
     $last_seen = max($user['lastactive'], $user['lastvisit']);
@@ -368,8 +346,8 @@ while ($query && ($user = $db->fetch_array($query))) {
     <div class="col-lg-6 col-md-6 col-12">
         <div class="user-card p-3">
             <div class="d-flex gap-3">
-                <div class="avatar-wrapper flex-shrink-0">
-                    <div class="avatar-placeholder">{$avatar_html}</div>
+                <div class="flex-shrink-0">
+                    {$avatar_html}
                 </div>
                 <div class="flex-grow-1">
                     <h5 class="mb-1">{$profile_link}</h5>

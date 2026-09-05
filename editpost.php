@@ -88,11 +88,10 @@ if ($forum['open'] == 0 && !$is_mod) {
 }
 
 
-$breadcrumbprefix = '';
 
 // Make navigation
 build_forum_breadcrumb($fid);
-add_breadcrumb($breadcrumbprefix.$thread['subject'], get_thread_link($thread['tid']));
+add_breadcrumb($thread['subject'], get_thread_link($thread['tid']));
 add_breadcrumb('Edit Post');
 
 $forumpermissions = forum_permissions($fid);
@@ -363,7 +362,6 @@ if ($mybb->input['action'] == "do_editpost" && $mybb->request_method == "post") 
     // Set the post data that came from the input to the $post array.
     $post = [
         "pid" => $mybb->input['pid'],
-        "prefix" => $mybb->get_input('threadprefix', MyBB::INPUT_INT),
         "subject" => $mybb->get_input('subject'),
         "uid" => $post['uid'],
         "username" => $post['username'],
@@ -772,7 +770,6 @@ $deletebox .= $modal_delete;
         // Set the post data that came from the input to the $post array.
         $post = [
             "pid" => $mybb->input['pid'],
-            "prefix" => $mybb->get_input('threadprefix', MyBB::INPUT_INT),
             "subject" => $mybb->get_input('subject'),
             "uid" => $post['uid'],
             "username" => $post['username'],
@@ -868,14 +865,6 @@ $deletebox .= $modal_delete;
         $subscription_method = get_subscription_method((int)$tid, $postoptions);
         ${$subscription_method.'subscribe'} = "checked=\"checked\" ";
     }
-
-   
-    if ($thread['firstpost'] == $pid) {
-        if (!$mybb->get_input('threadprefix', MyBB::INPUT_INT)) {
-            $mybb->input['threadprefix'] = $thread['prefix'];
-        }
-    }
-    $prefixselect = "";
 
    
     $closeoption = '';
@@ -1079,7 +1068,6 @@ $deletebox .= $modal_delete;
 	</div>
 	
 	<div class="row m-0 mb-3 p-0 pb-2 border-bottom">
-'.$prefixselect.'
 			 <div class="col align-self-center m-0 p-0">
 			 <input type="text" class="form-control border mb-3" name="subject" maxlength="85" value="'.$subject.'" tabindex="1" />
 		</div>

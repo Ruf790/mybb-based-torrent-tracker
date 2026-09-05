@@ -121,21 +121,21 @@ $avatarssss = str_starts_with($useravatar['image'], '<')
 // ── Helper: render current-avatar HTML ────────────────────────────────────
 function build_avatar_html(array $useravatar): string
 {
-    $isSvg = str_starts_with($useravatar['image'], '<svg');
-    if ($isSvg) {
-        return '<div style="position:relative;display:inline-block;">'
-             . '<div id="avatarImage" class="rounded img-fluid" style="cursor:pointer;">'
-             . $useravatar['image']
-             . '</div>'
-             . '<input type="file" id="avatarInput" name="avatarupload" style="display:none;" accept="image/*">'
-             . '</div>';
-    }
+    global $avatarsize;
+    $maxMb = round(($avatarsize ?? 0) / 1024);
+
+
+    $avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring img-fluid' : 'rounded img-fluid';
+
     return '<div style="position:relative;display:inline-block;">'
-         . '<img id="avatarImage" class="rounded img-fluid" src="' . $useravatar['image'] . '" alt="" '
-         . $useravatar['width_height'] . ' style="cursor:pointer;" data-original-avatar="' . $useravatar['image'] . '">'
+         . '<img id="avatarImage" class="' . $avatarClass . '" src="' . $useravatar['image'] . '" alt="" '
+         . 'style="width:124px;height:124px;object-fit:cover;cursor:pointer;" data-original-avatar="' . $useravatar['image'] . '" data-max-mb="' . $maxMb . '">'
          . '<input type="file" id="avatarInput" name="avatarupload" style="display:none;" accept="image/*">'
          . '</div>';
 }
+
+
+
 
 // ── Helper: file type icon ─────────────────────────────────────────────────
 function get_file_type_icon(string $file_type): string
@@ -1458,7 +1458,7 @@ window.passwordConfig = {
     requireComplex: ' . $requireComplex . '
 };
 </script>
-<script src="' . $BASE . '/scripts/password-validation.js"></script>';
+<script src="' . $BASEURL . '/scripts/password-validation.js"></script>';
 
 }
 
@@ -1580,7 +1580,7 @@ if ($mybb->input['action'] === 'avatar') {
     }
 
     echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
-    echo '<script src="' . $BASEURL . '/scripts/upload_avatar_usercp.js"></script>';
+    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js"></script>';
 
     $useravatar    = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
     $currentavatar = build_avatar_html($useravatar);
@@ -1640,6 +1640,24 @@ if ($mybb->input['action'] === 'avatar') {
   
     <link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/usercp_profile.css">
     <style>
+	
+	
+	:root {
+    /* Gradients */
+	/* Avatar ring */
+	--ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
+    }
+
+
+	
+
+    /* ---------- AVATAR RING + STATUS DOT ---------- */
+    .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
+      conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
+    .avatar-ring>*{display:block; border-radius:50%}	
+	
+	
+	
         * {
             transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
         }
@@ -5784,7 +5802,7 @@ if (!$mybb->input['action']) {
     $com     = $CURUSER['comms'];
 
     echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
-    echo '<script src="' . $BASEURL . '/scripts/upload_avatar_usercp.js"></script>';
+    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js"></script>';
 
     $useravatar    = format_avatar($CURUSER['avatar'], $CURUSER['avatardimensions']);
     $currentavatar = build_avatar_html($useravatar);

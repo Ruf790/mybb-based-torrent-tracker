@@ -788,6 +788,11 @@ if ($TotalTorrents && count($TotalTorrents))
         
        	
 
+		// Базовая ссылка на торрент через get_torrent_link() - учитывает
+		// SEO-режим (torrent-{id}.html) или обычный (details.php?id=...)
+		// автоматически, вместо жёстко зашитого details.php?id=...
+		$torrentPeersLink = get_torrent_link($Torrent['id']) . (str_contains(get_torrent_link($Torrent['id']), '?') ? '&' : '?') . 'tab=peers';
+
 		$d_link = '<a href="' . get_download_link($Torrent['id']) . '" class="badge-popover download-popover" 
            data-bs-toggle="popover" data-bs-placement="top" 
            data-bs-title="📥 Download Torrent" 
@@ -807,12 +812,16 @@ if ($TotalTorrents && count($TotalTorrents))
                             ' . ($Torrent['seeders'] > 0 ? '
                             <div class="detail-item text-success">
                                 <i class="bi bi-arrow-up-circle me-2"></i>
-                                <span>' . ts_nf($Torrent['seeders']) . ' seeders</span>
+                                <a href="' . $torrentPeersLink . '#seeders" class="text-decoration-none text-success">
+                                    <span>' . ts_nf($Torrent['seeders']) . ' seeders</span>
+                                </a>
                             </div>' : '') . '
                             ' . ($Torrent['leechers'] > 0 ? '
                             <div class="detail-item text-warning">
                                 <i class="bi bi-arrow-down-circle me-2"></i>
-                                <span>' . ts_nf($Torrent['leechers']) . ' leechers</span>
+                                <a href="' . $torrentPeersLink . '#leechers" class="text-decoration-none text-warning">
+                                    <span>' . ts_nf($Torrent['leechers']) . ' leechers</span>
+                                </a>
                             </div>' : '') . '
                         </div>
                     </div>
@@ -832,15 +841,7 @@ if ($TotalTorrents && count($TotalTorrents))
 			
 			
 			
-			
-			
-			
-			
-			
-			
-			
-			
-			
+	
 			
         
         $act = $d_link . "
@@ -850,12 +851,7 @@ if ($TotalTorrents && count($TotalTorrents))
         
         $zax = cutename($Torrent['name']);
         
-       /// $ss = '
-        //<a href="' . $SEOLink. '" title="' . $zax . '">
-        //    ' . (!empty($keywords) ? 
-        //        highlight(htmlspecialchars_uni($keywords), cutename($Torrent['name'])) : 
-       //         cutename($Torrent['name'])) . '
-       /// </a>';
+   
         
         $flags = GetTorrentTags($Torrent);
         $added = my_datee('relative', $Torrent['added']);
@@ -922,8 +918,6 @@ if (!empty($Torrent['t_image'])) {
 
 
 
-
-
 $s = (int)$Torrent['seeders'];
 $l = (int)$Torrent['leechers'];
 $total_peers = $s + $l;
@@ -932,11 +926,8 @@ $total_peers = $s + $l;
 
 
 
+$torrentPeersLinkRow = get_torrent_link($Torrent['id']) . (str_contains(get_torrent_link($Torrent['id']), '?') ? '&' : '?') . 'tab=peers';
 
-
-
-
-	
 $ListTorrentsss = '
 <tr class="torrent-row"
     data-id="' . (int)$Torrent['id'] . '" 
@@ -1006,7 +997,7 @@ $ListTorrentsss = '
 <!-- Seeders -->
 <td class="torrent-stat-cell text-center">
     <span id="seeders_'.$Torrent['id'].'">
-        <a href="'.$BASEURL.'/details.php?id='.$Torrent['id'].'&tab=peers#seeders" 
+        <a href="'.$torrentPeersLinkRow.'#seeders" 
            class="text-decoration-none text-success fw-bold"
            data-tooltip="Current seeders">
             <i class="bi bi-arrow-up-circle-fill me-1"></i>
@@ -1018,7 +1009,7 @@ $ListTorrentsss = '
 <!-- Leechers -->
 <td class="torrent-stat-cell text-center">
     <span id="leechers_'.$Torrent['id'].'">
-        <a href="'.$BASEURL.'/details.php?id='.$Torrent['id'].'&tab=peers#leechers" 
+        <a href="'.$torrentPeersLinkRow.'#leechers" 
            class="text-decoration-none text-danger"
            data-tooltip="Current leechers">
             <i class="bi bi-arrow-down-circle-fill me-1"></i>
@@ -1159,15 +1150,13 @@ stdhead($lang->browse['btitle']);
 
 
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse.css">';
+
 
 
 $showimages = 'yes';
 $i_torrent_limit = '15';
 
-// Раньше тут был $cache->read('torrents') — тянул в память ВСЕ торренты
-// с сайта и фильтровал их в PHP-цикле. Заменено на точечный SQL-запрос:
-// та же цель (последние с картинками), но без загрузки всего кэша целиком.
+
 $carouselItems = [];
 $carouselQuery = $db->sql_query_prepared(
     "SELECT id, name, t_image FROM torrents
@@ -1241,6 +1230,7 @@ echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"><
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/autocomplete.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/category-highlight.js"></script>';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/autocomplete.css">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse.css">';
 
 
 
@@ -1296,80 +1286,6 @@ $table = '
     <tbody>
       '.$ListTorrents.'
     </tbody>
-<style>
-/* Иконки в таблице */
-.bi {
-    vertical-align: -0.125em;
-}
-
-/* Заголовки таблицы */
-thead th {
-    font-weight: 600;
-    color: #495057;
-    border-bottom: 2px solid #dee2e6;
-    white-space: nowrap;
-}
-
-thead th i {
-    opacity: 0.7;
-    color: #6c757d;
-}
-
-/* Строки таблицы */
-.torrent-row:hover {
-    background-color: rgba(0, 123, 255, 0.04);
-}
-
-/* Бейджи */
-.size-badge, .snatched-badge, .seeders-badge, .leechers-badge {
-    transition: all 0.2s ease;
-    min-width: 60px;
-    text-align: center;
-}
-
-.size-badge:hover, .snatched-badge:hover, .seeders-badge:hover, .leechers-badge:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-/* Теги */
-td div .badge {
-    margin-right: 4px;
-    margin-bottom: 4px;
-    font-size: 0.8rem;
-}
-
-/* Ссылки */
-a:hover {
-    text-decoration: none;
-}
-
-a strong:hover {
-    color: #0d6efd;
-}
-
-/* Адаптивность */
-@media (max-width: 768px) {
-    thead th span {
-        display: none;
-    }
-    
-    thead th i {
-        font-size: 1.1rem;
-        margin-right: 0;
-    }
-    
-    .size-badge, .snatched-badge, .seeders-badge, .leechers-badge {
-        padding: 2px 6px;
-        font-size: 0.8rem;
-        min-width: 50px;
-    }
-    
-    td div {
-        font-size: 0.85rem;
-    }
-}
-</style>
   </table>
 </div>
 

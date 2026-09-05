@@ -395,7 +395,7 @@ $scriptName = $_SERVER['SCRIPT_NAME'];
 stdhead($lang->viewsnatches['headmessage']);
 ?>
 
-<script src="<?= htmlspecialchars($BASEURL) ?>/scripts/chart.js"></script>
+<script src="<?= htmlspecialchars($BASEURL) ?>/scripts/highcharts.js"></script>
 
 <!-- Модальное окно деталей пользователя -->
 <div class="modal fade" id="userDetailsModal" tabindex="-1">
@@ -561,7 +561,7 @@ stdhead($lang->viewsnatches['headmessage']);
                     <h6 class="mb-0"><i class="fas fa-chart-pie me-2"></i><?= htmlspecialchars($lang->viewsnatches['ratio_distribution'] ?? 'Ratio Distribution', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></h6>
                 </div>
                 <div class="card-body d-flex justify-content-center align-items-center">
-                    <canvas id="ratioChart" width="260" height="260"></canvas>
+                    <div id="ratioChart" style="width:100%; height:280px;"></div>
                 </div>
             </div>
         </div>
@@ -818,7 +818,8 @@ stdhead($lang->viewsnatches['headmessage']);
                             ? $row['user_sum_uploaded'] / $row['user_sum_downloaded'] : 0;
                         $ratioClass = $ratio >= 1 ? 'text-success' : ($ratio >= 0.5 ? 'text-warning' : 'text-danger');
                         $avatarData = format_avatar($row['avatar'], $row['avatardimensions']);
-                        $avaHtml    = "<img class='user-avatar' src='{$avatarData['image']}' alt='' {$avatarData['width_height']}>";
+                        $avatarClass = !empty($avatarData['is_placeholder']) ? 'avatar-ring' : 'user-avatar';
+                        $avaHtml    = "<img class='{$avatarClass}' style='width:50px;height:50px;object-fit:cover;' src='{$avatarData['image']}' alt=''>";
                         $status     = $row['seeder']
                             ? "<span class='badge bg-success'><i class='fas fa-seedling me-1'></i>" . ($lang->viewsnatches['badge_seeding'] ?? 'Seeding') . "</span>"
                             : "<span class='badge bg-secondary'><i class='fas fa-times me-1'></i>" . ($lang->viewsnatches['badge_inactive'] ?? 'Inactive') . "</span>";
@@ -929,7 +930,27 @@ stdhead($lang->viewsnatches['headmessage']);
 </div>
 
 <style>
-.user-avatar    { width:44px;height:44px;border-radius:50%;object-fit:cover;margin-right:.75rem;border:2px solid #e9ecef;transition:border-color .3s; }
+
+
+
+:root {
+    /* Gradients */
+
+	
+	/* Avatar ring */
+	--ring:#dfe7ff; --accent:#3b82f6; --shadow:0 8px 20px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.04);
+}
+
+
+	
+
+ /* ---------- AVATAR RING + STATUS DOT ---------- */
+    .avatar-ring{position:relative; display:inline-block; padding:6px; border-radius:50%; background:
+      conic-gradient(from 140deg,#fff 0 20%, var(--ring) 20% 70%, #fff 70% 100%)}
+    .avatar-ring>*{display:block; border-radius:50%}
+
+
+.user-avatar    { width:50px;height:50px;border-radius:50%;object-fit:cover;margin-right:.75rem;border:2px solid #e9ecef;transition:border-color .3s; }
 .user-avatar:hover { border-color:#007bff; }
 .highlight-row  { background:rgba(13,110,253,.05)!important;border-left:3px solid #007bff; }
 .hnr-warned     { background:rgba(255,193,7,.06)!important;border-left:3px solid #ffc107; }

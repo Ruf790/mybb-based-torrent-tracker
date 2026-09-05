@@ -84,11 +84,7 @@ $hasCountLimit = $attLimit > 0;
 // При редактировании существующего комментария учитываем и уже прикреплённые к нему файлы
 $commentId = (int)($_POST['comment_id'] ?? 0);
 
-// Быстрая предварительная проверка — экономит работу (обработку файла/thumbnail),
-// но НЕ атомарна и НЕ является защитой сама по себе: при параллельных запросах
-// (fetch без await несколько файлов сразу) несколько запросов могут увидеть
-// одно и то же "текущее количество" до того, как хоть один из них запишется в БД.
-// Настоящая защита от превышения лимита — атомарный INSERT ... SELECT ниже, у самой вставки.
+
 if ($hasCountLimit) {
     $currentCount = (int)$db->fetch_field(
         $db->sql_query_prepared(
@@ -222,16 +218,9 @@ if (!empty($uploaded['error'])) {
 
 $savePath = $uploadDir . $saveName;
 
-// ── Перекодирование картинок через GD ──────────────────────────────────────
-// Только для изображений — остальные типы (видео/аудио/документы/архивы)
-// GD не умеет и не должна трогать. finfo/расширение проверяют только
-// заголовок/структуру файла, а не гарантируют отсутствие приклеенной после
-// настоящих данных изображения посторонней нагрузки ("полиглот"-файл).
-// Перекодирование почти всегда меняет размер файла в байтах — берём
-// реальный размер с диска для записи в БД (attachment.php потом отдаёт
-// Content-Length именно из этого поля).
+
 $actualFileSize = (int)$file['size'];
-if (str_starts_with($mimeType, 'image/')) {
+if (str_starts_with($mimeType, 'image/') && $mimeType !== 'image/gif') {
     $recodedSize = recode_image_file($savePath, $mimeType);
     if ($recodedSize === false) {
         @unlink($savePath);
@@ -249,18 +238,13 @@ $isAudio   = str_starts_with($mimeType, 'audio/');
 if ($isImage) {
     $thumbName = 'thumb_' . $saveName;
     $thumbPath = $uploadDir . $thumbName;
-    create_thumbnail($savePath, $thumbPath, 300, 300, $mimeType);
+    create_thumbnail($savePath, $thumbPath, (int)$attachthumbw, (int)$attachthumbh, $mimeType);
     if (!file_exists($thumbPath)) {
         $thumbName = '';
     }
 }
 
-// ── INSERT в БД (атомарно, с повторной проверкой лимита) ──────────────────
-// Одним запросом: вставляем новую строку, только если лимит всё ещё не превышен
-// НА МОМЕНТ САМОЙ ВСТАВКИ. Для MyISAM запись в таблицу сериализуется табличной
-// блокировкой — то есть подзапрос COUNT(...) и сам INSERT в рамках одного
-// оператора не могут "разъехаться" между параллельными запросами, в отличие
-// от раздельных SELECT + INSERT.
+
 $quotaBytes = ((int)($usergroups['attachquota'] ?? 0) > 0) ? (int)$usergroups['attachquota'] * 1024 : 0;
 
 $whereParams = [];
@@ -355,51 +339,3 @@ echo json_encode([
     'thumb'    => $thumbUrl,
     'icon'     => (!$isImage && !$isVideo && !$isAudio) ? get_attachment_icon2($ext) : null,
 ]);
-
-// ── Функция создания thumbnail ─────────────────────────────────────────────
-function create_thumbnail(string $src, string $dst, int $maxW, int $maxH, string $mime): bool
-{
-    if (!extension_loaded('gd')) return false;
-
-    [$w, $h] = @getimagesize($src);
-    if (!$w || !$h) return false;
-
-    // Вычисляем новые размеры
-    $ratio  = min($maxW / $w, $maxH / $h, 1);
-    $newW   = (int)round($w * $ratio);
-    $newH   = (int)round($h * $ratio);
-
-    $src_img = match($mime) {
-        'image/jpeg', 'image/jpg' => @imagecreatefromjpeg($src),
-        'image/png'               => @imagecreatefrompng($src),
-        'image/gif'               => @imagecreatefromgif($src),
-        'image/webp'              => @imagecreatefromwebp($src),
-        default                   => false,
-    };
-
-    if (!$src_img) return false;
-
-    $dst_img = imagecreatetruecolor($newW, $newH);
-
-    // Прозрачность для PNG/GIF/WebP
-    if (in_array($mime, ['image/png', 'image/gif', 'image/webp'])) {
-        imagealphablending($dst_img, false);
-        imagesavealpha($dst_img, true);
-        $transparent = imagecolorallocatealpha($dst_img, 0, 0, 0, 127);
-        imagefilledrectangle($dst_img, 0, 0, $newW, $newH, $transparent);
-    }
-
-    imagecopyresampled($dst_img, $src_img, 0, 0, 0, 0, $newW, $newH, $w, $h);
-
-    $result = match($mime) {
-        'image/jpeg', 'image/jpg' => imagejpeg($dst_img, $dst, 85),
-        'image/png'               => imagepng($dst_img, $dst, 6),
-        'image/gif'               => imagegif($dst_img, $dst),
-        'image/webp'              => imagewebp($dst_img, $dst, 85),
-        default                   => false,
-    };
-
-
-
-    return (bool)$result;
-}

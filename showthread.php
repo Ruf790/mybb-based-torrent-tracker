@@ -854,8 +854,9 @@ echo '<script src="' . $BASEURL . '/scripts/showthread.js"></script>';
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/thread.js?ver=1827"></script>';
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/toast.js"></script>';
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_post.js"></script>';
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/delete_post.js"></script>';
+
+echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/edit_delete_post.js"></script>';
+
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/report_post.js"></script>';
 
 

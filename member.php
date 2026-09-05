@@ -1759,9 +1759,15 @@ if ($mybb->input['action'] === 'profile') {
     $users_additional_info = sprintf($lang->member['users_additional_info'], $memprofile['username']);
 
     $useravatar = format_avatar($memprofile['avatar'], $memprofile['avatardimensions']);
-    $avatar     = str_starts_with($useravatar['image'], '<')
-        ? $useravatar['image']
-        : '<img class="rounded img-fluid" src="' . $useravatar['image'] . '" alt="" ' . $useravatar['width_height'] . ' />';
+   	
+	$avatarClass = !empty($useravatar['is_placeholder']) ? 'avatar-ring img-fluid' : 'rounded img-fluid';
+
+    $avatar = '
+      <div class="d-none d-sm-none d-md-none d-lg-block d-xxl-block d-xxl-block">
+             <div class="author_avatar"><img class="'.$avatarClass.'" src="'.$useravatar['image'].'" alt="" /></div>
+      </div>';	
+	  
+
 
     $website = $sendemail = $sendpm = $contact_details = '';
 
@@ -2210,7 +2216,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
     $is_mod_flag      = is_mod($usergroups);
     $can_change_avatar = ($is_own_profile || $is_mod_flag) ? 1 : 0;
 
-    echo '<script src="' . $BASEURL . '/scripts/upload_avatar.js"></script>';
+    echo '<script src="' . $BASEURL . '/scripts/avatar_upload.js"></script>';
 
     // Report button
     $report_button = '';
@@ -2325,6 +2331,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
        id="avatar-container"
        data-uid="'.$memprofile['id'].'"
        data-can-change="'.$can_change_avatar.'"
+	   data-max-mb="'.round($avatarsize / 1024).'"
        title="Avatar">
     <div>
       '.$avatar.'

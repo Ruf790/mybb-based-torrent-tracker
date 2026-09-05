@@ -316,7 +316,6 @@ if ($is_mod) {
     $ismod       = true;
     $inlinecount = 0;
     $inlinemod   = '';
-    $inlinecookie = 'inlinemod_forum' . $fid;
     $visible_states[] = '0';
 } else {
     $inlinemod = $inlinemodcol = '';
@@ -813,15 +812,17 @@ if (!empty($threadcache) && is_array($threadcache)) {
         }
 
         // ─ Инлайн-модерация ──────────────────────────────────────────────────
+        // Состояние выбора чекбоксов теперь хранится в localStorage
+        // (inline_moderation.js), а не в куке — сервер его не видит при
+        // рендере. JS сам проставляет checked/счётчик сразу на
+        // DOMContentLoaded, поэтому здесь всегда рендерим "не выбрано":
+        // это лишь исходное состояние до долей секунды, пока не сработает JS.
         $modbit = '';
         if (is_mod($usergroups)) {
-            $inlinecheck = (isset($mybb->cookies[$inlinecookie]) && my_strpos($mybb->cookies[$inlinecookie], '|' . $thread['tid'] . '|') !== false)
-                ? 'checked="checked"'
-                : '';
-            if ($inlinecheck) { ++$inlinecount; }
+            $inlinecheck = '';
             $multitid = $thread['tid'];
             
-			
+		
 			$modbit = '<div class="form-check form-switch float-end m-0">
                     <input class="form-check-input" type="checkbox" 
                       name="inlinemod_'.$multitid.'" 
@@ -1017,11 +1018,6 @@ if (!empty($threadcache) && is_array($threadcache)) {
             default           => "(CONCAT(',',forums,',') LIKE '%,$fid,%' OR CONCAT(',',forums,',') LIKE '%,-1,%' OR forums='') AND (`groups`='' OR CONCAT(',',`groups`,',') LIKE '%,-1,%'{$gidswhere}) AND type = 't'",
         };
 
-        //$query = $db->simple_select('modtools', 'tid, name', $whereClause);
-        //while ($tool = $db->fetch_array($query)) {
-            //$tool['name'] = htmlspecialchars_uni($tool['name']);
-			//eval('$customthreadtools .= "' . $templates->get('forumdisplay_inlinemoderation_custom_tool') . '";');
-        //}
 		
 
         if ($customthreadtools) {
@@ -1058,7 +1054,7 @@ if (!empty($threadcache) && is_array($threadcache)) {
             . '</optgroup>';
 
 $inlinemod = '<div class="col-lg-6 align-self-center text-end py-3">
-<script type="text/javascript" src="'.$BASEURL.'/scripts/inline_moderation.js?ver=1821"></script>
+<script type="text/javascript" src="'.$BASEURL.'/scripts/inline_moderation.js?ver=1832"></script>
 <form action="moderation.php" method="post" id="inlinemoderation_threads">
 <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
 <input type="hidden" name="fid" value="'.$fid.'" />

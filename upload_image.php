@@ -47,9 +47,6 @@ if (empty($CURUSER['id'])) {
 }
 
 // CSRF check - previously missing entirely. Without it a third-party page
-// could submit this form from the victim's browser (using their own
-// session) and upload a file on their behalf, attached to an arbitrary
-// comment_id/torrent_id/news_id.
 if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
     json_out(false, ['error' => 'Security check failed. Please refresh the page and try again.']);
 }
@@ -98,11 +95,7 @@ try {
 
     // ── Target (comment_id / news_id / torrent_id) ──────────────────────
     // comment_files is a polymorphic table - comment_id, torrent_id and
-    // news_id must never be set at the same time, they represent different
-    // attachment contexts. For comment_id we also verify the comment
-    // actually exists and belongs to the current user (or they're staff) -
-    // otherwise anyone could attach a file to someone else's comment just
-    // by guessing its id.
+   
     $user_id    = (int) $CURUSER['id'];
     $comment_id = isset($_POST['comment_id']) && $_POST['comment_id'] !== '' ? (int) $_POST['comment_id'] : null;
     $news_id    = isset($_POST['news_id'])    && $_POST['news_id']    !== '' ? (int) $_POST['news_id']    : null;
@@ -158,16 +151,21 @@ try {
         throw new RuntimeException('Failed to save file.');
     }
 
-    // Перекодирование через GD: getimagesize()+finfo проверяют только
-    // заголовок/структуру, но не гарантируют, что после настоящих данных
-    // изображения не приклеено что-то ещё ("полиглот"-файл). Декодирование
-    // в чистые пиксели и запись заново убирает любую такую нагрузку.
-    // Перекодирование почти всегда меняет размер файла в байтах — берём
-    // реальный размер с диска для записи в БД, а не исходный из $_FILES.
-    $fileSize = recode_image_file($destination, $realMime);
-    if ($fileSize === false) {
-        @unlink($destination);
-        throw new RuntimeException('Uploaded file is corrupted or is not a valid image.');
+   
+   
+    if ($realMime === 'image/gif') {
+        clearstatcache(true, $destination);
+        $fileSize = @filesize($destination);
+        if ($fileSize === false) {
+            @unlink($destination);
+            throw new RuntimeException('Uploaded file is corrupted or is not a valid image.');
+        }
+    } else {
+        $fileSize = recode_image_file($destination, $realMime);
+        if ($fileSize === false) {
+            @unlink($destination);
+            throw new RuntimeException('Uploaded file is corrupted or is not a valid image.');
+        }
     }
 
     // URL
@@ -193,8 +191,6 @@ try {
     );
 
     if (!$result) {
-        // The file is already on disk at this point - without this it would
-        // be left orphaned if the database write fails.
         @unlink($destination);
         throw new RuntimeException('Database write error.');
     }

@@ -1060,7 +1060,7 @@ stdfoot();
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error('error_inline_nothreadsselected', $lang->error);
+        if (count($threads) < 1) stderr($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->stick_threads($threads);
@@ -1079,7 +1079,7 @@ stdfoot();
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) error($lang->error_inline_nothreadsselected, $lang->error);
+        if (count($threads) < 1) stderr($lang->moderation['error_inline_nothreadsselected'], $lang->moderation['error']);
         if (!is_mod($usergroups)) error_no_permission();
 
         $moderation->unstick_threads($threads);
@@ -1098,7 +1098,7 @@ stdfoot();
             ? getids($mybb->get_input('searchid'), 'search')
             : getids($fid, 'forum');
 
-        if (count($threads) < 1) stderr('error_inline_nothreadsselected777');
+        if (count($threads) < 1) stderr($lang->moderation['error_inline_nothreadsselected']);
 
         $inlineids    = implode('|', $threads);
         $thread_count = count($threads);

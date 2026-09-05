@@ -1317,7 +1317,7 @@ if (!empty($t_image_url2))
     if (in_array($ImageExt, $AllowedFileTypes, true)) 
     {
         // УБИРАЕМ getimagesize() для URL - он не работает с удаленными файлами
-        include_once(INC_PATH . '/functions_ts_remote_connect.php');
+        include_once(INC_PATH . '/functions_remote_connect.php');
 
         if ($ImageContents = fetch_remote_file($t_image_url2, false)) 
         {

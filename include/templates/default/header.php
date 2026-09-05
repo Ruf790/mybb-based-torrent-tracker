@@ -20,6 +20,10 @@ if (!defined('IN_TRACKER')) {
     <meta name="keywords" content="<?= htmlspecialchars($metakeywords ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" />
     <meta http-equiv="Content-Script-Type" content="text/javascript" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
+	
+	<script>
+        window.AVATAR_NOT_FOUND_URL = <?= json_encode(avatar_not_found_svg_url(), JSON_UNESCAPED_SLASHES) ?>;
+    </script>
     
   
     <script type="text/javascript" src="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/scripts/general.js?ver=1827"></script>

@@ -165,9 +165,9 @@ if (($usergroups['cansettingspanel'] ?? 0) == 1 && !defined('SKIP_SHOW_QUERIES')
 $cron_code = '';
 if (!defined('SKIP_CRON_JOBS') && isset($GLOBALS['cron_image'])) {
     $cron_code = '
-<!-- TS Auto Cronjobs code -->
+<!-- Auto Cronjobs code -->
     <img src="' . $BASEURL . '/cron.php?rand=' . TIMENOW . '" alt="" width="1" height="1" border="0">
-<!-- TS Auto Cronjobs code -->';
+<!-- Auto Cronjobs code -->';
 }
 
 // Final output

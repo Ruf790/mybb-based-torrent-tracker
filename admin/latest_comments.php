@@ -238,11 +238,14 @@ function generateCommentsTable(
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Comments Management</h5>
             <div>
-                <button class="btn btn-sm btn-warning me-2" data-bs-toggle="modal" data-bs-target="#mergeCommentsModal">
+                <button class="btn btn-sm btn-warning me-2" data-bs-toggle="modal" data-bs-target="#moveCommentsModal">
                     <i class="bi bi-arrow-left-right"></i> Move Comments
                 </button>
                 <button class="btn btn-sm btn-info me-2" data-bs-toggle="modal" data-bs-target="#copyCommentsModal">
                     <i class="bi bi-copy"></i> Copy Comments
+                </button>
+                <button class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#mergeIntoOneModal">
+                    <i class="bi bi-union"></i> Merge Comments
                 </button>
                 <button id="bulkDeleteBtn" class="btn btn-sm btn-danger me-2" disabled>
                     <i class="bi bi-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
@@ -785,6 +788,106 @@ if ($action === 'copy_comments') {
     json_exit(['success' => true, 'copied' => $copied, 'target_torrent' => $torrent['name']]);
 }
 
+// ── merge_comments ────────────────────────────────────────────────────────────
+if ($action === 'merge_comments') {
+    require_post();
+    require_csrf();
+
+    $ids        = decode_comment_ids($_POST['comment_ids'] ?? '');
+    $target_tid = max(0, (int)($_POST['target_tid'] ?? 0));
+
+    if (count($ids) < 2) {
+        json_exit(['error' => 'Select at least 2 comments to merge']);
+    }
+    if ($target_tid <= 0) {
+        json_exit(['error' => 'Invalid target torrent ID']);
+    }
+
+    $torrent = validate_torrent_exists($target_tid);
+    if (!$torrent) {
+        json_exit(['error' => 'Target torrent not found'], 404);
+    }
+
+    $ids_str = ids_to_sql($ids);
+
+    // Читаем в хронологическом порядке (dateline ASC) - текст склеивается
+    // в порядке написания, а автором итогового комментария становится
+    // автор САМОГО РАННЕГО из выбранных (условность: комментарии могут
+    // принадлежать разным пользователям, раз это лента со всех торрентов,
+    // а не тред одного - в отличие от commenttable.php, где merge всегда
+    // подразумевает одного и того же автора).
+    $res = $db->sql_query_prepared("SELECT * FROM comments WHERE id IN ({$ids_str}) ORDER BY dateline ASC");
+
+    $texts       = [];
+    $source_tids = [];
+    $user_ids    = [];
+    $first_row   = null;
+
+    while ($res && ($row = $db->fetch_array($res))) {
+        if ($first_row === null) {
+            $first_row = $row;
+        }
+        $texts[]       = $row['text'];
+        $source_tids[] = (int)$row['torrent'];
+        $user_ids[]    = (int)$row['user'];
+    }
+
+    if ($first_row === null) {
+        json_exit(['error' => 'Comments not found'], 404);
+    }
+
+    $merged_text = implode("\n\n", $texts);
+
+    $db->sql_query_prepared(
+        "INSERT INTO comments (`user`,`torrent`,`text`,`dateline`,`editreason`,`editedby`,`editedat`) VALUES (?,?,?,?,?,?,?)",
+        [
+            (int)$first_row['user'],
+            $target_tid,
+            $merged_text,
+            (int)$first_row['dateline'],
+            'Merged from ' . count($ids) . ' comments',
+            (int)$CURUSER['id'],
+            TIMENOW,
+        ]
+    );
+    $new_comment_id = (int)$db->insert_id();
+
+    // Вложения не дублируем, как в copy_comments - исходные комментарии
+    // всё равно удаляются ниже, поэтому просто переносим владение файлами
+    // на новый объединённый комментарий.
+    $db->sql_query_prepared(
+        "UPDATE attachments SET comment_id = ? WHERE comment_id IN ({$ids_str})",
+        [$new_comment_id]
+    );
+    $db->sql_query_prepared(
+        "UPDATE comment_files SET comment_id = ?, torrent_id = ? WHERE comment_id IN ({$ids_str})",
+        [$new_comment_id, $target_tid]
+    );
+
+    $db->sql_query_prepared("DELETE FROM comments WHERE id IN ({$ids_str})");
+
+    // Пересчёт счётчиков для всех затронутых торрентов и пользователей
+    foreach (array_unique([...$source_tids, $target_tid]) as $tid) {
+        sync_torrent_comment_count($tid);
+    }
+    foreach (array_unique($user_ids) as $uid) {
+        sync_user_comment_count($uid);
+    }
+
+    write_log(sprintf(
+        'User %s (UID %d) merged %d comment(s) [%s] into new comment #%d on torrent #%d (%s)',
+        htmlspecialchars($CURUSER['username']),
+        (int)$CURUSER['id'],
+        count($ids),
+        $ids_str,
+        $new_comment_id,
+        $target_tid,
+        htmlspecialchars($torrent['name'])
+    ));
+
+    json_exit(['success' => true, 'merged' => count($ids), 'new_comment_id' => $new_comment_id, 'target_torrent' => $torrent['name']]);
+}
+
 // Неизвестный action
 json_exit(['error' => 'Unknown action'], 400);
 
@@ -843,7 +946,7 @@ stdhead('Comments Admin');
 </div>
 
 <!-- Move Modal -->
-<div class="modal fade" id="mergeCommentsModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="moveCommentsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content shadow-sm">
             <div class="modal-header bg-warning text-dark">
@@ -854,13 +957,13 @@ stdhead('Comments Admin');
                 <label for="targetTorrent" class="form-label">Target Torrent ID</label>
                 <input type="number" class="form-control" id="targetTorrent" placeholder="Enter target torrent ID">
                 <div class="alert alert-info small mt-3">
-                    <strong>Selected:</strong> <span id="selectedCommentsCount">0</span> comments.<br>
+                    <strong>Selected:</strong> <span id="moveSelectedCount">0</span> comments.<br>
                     This action cannot be undone.
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button id="confirmMergeBtn" type="button" class="btn btn-warning">Move Comments</button>
+                <button id="confirmMoveBtn" type="button" class="btn btn-warning">Move Comments</button>
             </div>
         </div>
     </div>
@@ -885,6 +988,32 @@ stdhead('Comments Admin');
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button id="confirmCopyBtn" type="button" class="btn btn-info">Copy Comments</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Merge Into One Modal -->
+<div class="modal fade" id="mergeIntoOneModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content shadow-sm">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Merge Selected Comments Into One</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label for="mergeTargetTorrent" class="form-label">Target Torrent ID</label>
+                <input type="number" class="form-control" id="mergeTargetTorrent" placeholder="Enter target torrent ID">
+                <div class="alert alert-primary small mt-3">
+                    <strong>Selected:</strong> <span id="mergeIntoOneSelectedCount">0</span> comments.<br>
+                    Texts are joined in chronological order into a single new comment on the target torrent;
+                    the author of the earliest selected comment becomes the author of the merged comment.
+                    Originals are deleted. This action cannot be undone.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button id="confirmMergeIntoOneBtn" type="button" class="btn btn-primary">Merge Comments</button>
             </div>
         </div>
     </div>

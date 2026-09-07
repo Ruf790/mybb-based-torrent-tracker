@@ -18,6 +18,7 @@ $parser_options = [
 ];
 
 stdhead('Manage Site News');
+
 define('IN_EDITOR', true);
 
 require_once $rootpath . 'cache/smilies.php';
@@ -114,29 +115,7 @@ try {
 }
 ?>
 
-<style>
-:root { --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.bg-gradient-primary { background: var(--gradient-primary) !important; }
-.fade-in-up { animation: fadeInUp .5s ease-out; }
-@keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
-.news-card { transition: all .3s ease; border:none; border-radius:15px; overflow:hidden; }
-.news-card:hover { transform:translateY(-4px); box-shadow:0 10px 30px rgba(0,0,0,.12) !important; }
-.news-icon { width:50px; height:50px; background:rgba(102,126,234,.08); border-radius:12px; display:flex; align-items:center; justify-content:center; }
-.empty-state { background:linear-gradient(135deg,#f8f9fa,#e9ecef); border-radius:15px; padding:3rem; }
-.form-control,.form-control-lg { border-radius:10px; border:2px solid #e2e8f0; transition:all .3s ease; }
-.form-control:focus,.form-control-lg:focus { border-color:#667eea; box-shadow:0 0 0 .2rem rgba(102,126,234,.25); }
-.modal-content { border-radius:20px; border:none; overflow:hidden; }
-.modal-header { background:var(--gradient-primary); border:none; }
-.modal-footer { border-top:1px solid #e2e8f0; }
-.btn-sm { border-radius:8px; margin:2px; transition:all .2s ease; }
-.btn-sm:hover { transform:translateY(-1px); }
-#bbcodeNewsPreview { background:#f8f9fa; border-radius:10px; min-height:100px; max-height:300px; overflow-y:auto; }
-@media (max-width:768px) {
-    .news-card .card-header > div { flex-direction:column; align-items:flex-start !important; }
-    .btn-group { width:100%; }
-    .btn-group .btn { flex:1; }
-}
-</style>
+
 
 <div class="container py-4">
 
@@ -243,9 +222,26 @@ try {
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[url]','[/url]')">URL</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[img]','[/img]')">IMG</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[video]','[/video]')">Video</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[youtube]','[/youtube]')">YouTube</button>
                         <span class="mx-1 text-muted">|</span>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[quote]','[/quote]')">Quote</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[code]','[/code]')">Code</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[spoiler]','[/spoiler]')">Spoiler</button>
+                        <span class="mx-1 text-muted">|</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[list]\n[*]','\n[/list]')" title="Bulleted List"><i class="fas fa-list-ul"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[list=1]\n[*]','\n[/list]')" title="Numbered List"><i class="fas fa-list-ol"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="wrapBB('[*]','')" title="List Item">[*]</button>
+                        <span class="mx-1 text-muted">|</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="torrentPanelToggleEdit" title="Embed Torrent Card"><i class="fa-solid fa-magnet"></i> Torrent</button>
+                    </div>
+                    <!-- Встроенная панель вставки торрента - скрыта, пока не нажата кнопка "Torrent" -->
+                    <div id="torrentPanelEdit" class="border rounded p-3 mb-2 d-none">
+                        <label class="form-label">Torrent ID or URL</label>
+                        <div class="input-group">
+                            <input type="text" inputmode="numeric" class="form-control" id="torrentIdInputEdit" placeholder="e.g. 17 or paste the torrent link">
+                            <button type="button" class="btn btn-primary" id="insertTorrentBtnEdit">Insert</button>
+                        </div>
+                        <div id="torrentPreviewEdit" class="mt-2"></div>
                     </div>
                     <textarea id="editBody" class="form-control" rows="8"
                               placeholder="Write your news content here..."></textarea>
@@ -272,247 +268,10 @@ try {
 </div>
 
 <script>
-(function () {
-'use strict';
-
-var newsPostKey = <?= json_encode($mybb->post_code ?? '') ?>;
-
-// ── Char counter ──────────────────────────────────────────────────────────────
-var ta  = document.getElementById('newsMessage');
-var cnt = document.getElementById('charCount');
-if (ta && cnt) {
-    ta.addEventListener('input', function () {
-        var l = this.value.length;
-        cnt.textContent = l;
-        cnt.classList.toggle('text-danger', l > 4800);
-        this.classList.toggle('is-invalid', l > 5000);
-    });
-}
-
-// ── Notification ──────────────────────────────────────────────────────────────
-function showNotification(message, type) {
-    var cls = type === 'success' ? 'success' : (type === 'error' ? 'danger' : 'info');
-    var ico = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle');
-    var n   = document.createElement('div');
-    n.className = 'alert alert-' + cls + ' alert-dismissible fade-in-up position-fixed top-0 start-50 translate-middle-x mt-3';
-    n.style.cssText = 'z-index:9999;min-width:300px;max-width:500px;box-shadow:0 5px 20px rgba(0,0,0,.2)';
-    n.innerHTML = '<i class="fas ' + ico + ' me-2"></i>' + message +
-                  '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-    document.body.appendChild(n);
-    setTimeout(function () { if (n.parentNode) n.remove(); }, 3500);
-}
-
-// ── Update count / empty state ────────────────────────────────────────────────
-function updateCount() {
-    var cards = document.querySelectorAll('.news-card').length;
-    var span  = document.getElementById('newsCount');
-    if (span) span.textContent = cards;
-    var list  = document.getElementById('newsList');
-    if (cards === 0 && list && !list.querySelector('.empty-state')) {
-        list.innerHTML =
-            '<div class="text-center py-5 empty-state fade-in-up" id="emptyState">' +
-            '<i class="fas fa-newspaper fa-4x text-muted mb-3"></i>' +
-            '<h4 class="text-muted">No News Available</h4>' +
-            '<p class="text-muted">Create your first news article!</p></div>';
-    }
-}
-
-// ── Add news ──────────────────────────────────────────────────────────────────
-var addForm = document.getElementById('newsAddForm');
-if (addForm) {
-    addForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-        var btn  = this.querySelector('button[type="submit"]');
-        var orig = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Publishing...';
-        btn.disabled  = true;
-
-        var fd = new FormData(this);
-        fd.append('action', 'add');
-        fd.append('my_post_key', newsPostKey);
-
-        fetch('news_ajax.php', { method: 'POST', body: new URLSearchParams(fd) })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                if (d.success) {
-                    showNotification('News published successfully!', 'success');
-                    setTimeout(function () { location.reload(); }, 1000);
-                } else {
-                    showNotification(d.error || 'Failed to add news', 'error');
-                    btn.innerHTML = orig;
-                    btn.disabled  = false;
-                }
-            })
-            .catch(function () {
-                showNotification('Network error. Please try again.', 'error');
-                btn.innerHTML = orig;
-                btn.disabled  = false;
-            });
-    });
-}
-
-// ── Event delegation: edit & delete ──────────────────────────────────────────
-var newsList = document.getElementById('newsList');
-if (newsList) {
-    newsList.addEventListener('click', function (e) {
-        // ── Delete ────────────────────────────────────────────────────────────
-        var delBtn = e.target.closest('.news-delete');
-        if (delBtn) {
-            e.preventDefault();
-            var card  = delBtn.closest('.news-card');
-            var id    = card ? card.dataset.newsid : null;
-            var title = card ? (card.querySelector('.card-title') || {}).textContent || '' : '';
-            if (!id) { showNotification('Invalid news item', 'error'); return; }
-
-            if (!confirm('Delete "' + title.trim() + '"?\nThis cannot be undone.')) return;
-
-            var origHTML    = delBtn.innerHTML;
-            delBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>';
-            delBtn.disabled  = true;
-
-            fetch('news_ajax.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=delete&newsid=' + encodeURIComponent(id) + '&my_post_key=' + encodeURIComponent(newsPostKey)
-            })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                if (d.success) {
-                    card.style.transition = 'all .3s ease';
-                    card.style.opacity    = '0';
-                    card.style.transform  = 'translateY(-10px)';
-                    setTimeout(function () { card.remove(); updateCount(); showNotification('News deleted!', 'success'); }, 300);
-                } else {
-                    showNotification(d.error || 'Failed to delete', 'error');
-                    delBtn.innerHTML = origHTML;
-                    delBtn.disabled  = false;
-                }
-            })
-            .catch(function () {
-                showNotification('Network error.', 'error');
-                delBtn.innerHTML = origHTML;
-                delBtn.disabled  = false;
-            });
-            return;
-        }
-
-        // ── Edit ──────────────────────────────────────────────────────────────
-        var editBtn = e.target.closest('.news-edit');
-        if (editBtn) {
-            e.preventDefault();
-            var card  = editBtn.closest('.news-card');
-            var id    = card ? card.dataset.newsid : null;
-            var title = card ? (card.querySelector('.card-title') || {}).textContent || '' : '';
-            var body  = card ? (card.dataset.body || '') : '';
-            if (!id) { showNotification('Invalid news item', 'error'); return; }
-
-            document.getElementById('editNewsId').value = id;
-            document.getElementById('editTitle').value  = title.trim();
-            document.getElementById('editBody').value   = body;
-            updatePreview();
-
-            new bootstrap.Modal(document.getElementById('newsEditModal')).show();
-        }
-    });
-}
-
-// ── BBCode wrap ───────────────────────────────────────────────────────────────
-window.wrapBB = function (open, close) {
-    var ta  = document.getElementById('editBody');
-    if (!ta) return;
-    var s   = ta.selectionStart, en = ta.selectionEnd;
-    var sel = ta.value.substring(s, en);
-    ta.value = ta.value.substring(0, s) + open + sel + close + ta.value.substring(en);
-    ta.focus();
-    ta.setSelectionRange(s + open.length, s + open.length + sel.length);
-    updatePreview();
-};
-
-// ── Live preview ──────────────────────────────────────────────────────────────
-function updatePreview() {
-    var ta  = document.getElementById('editBody');
-    var pre = document.getElementById('bbcodeNewsPreview');
-    if (!ta || !pre) return;
-
-    if (!ta.value.trim()) {
-        pre.innerHTML = '<small class="text-muted">Preview will appear here...</small>';
-        return;
-    }
-
-    // flags: g = global, s = dotAll (multiline BBCode)
-    pre.innerHTML = ta.value
-        .replace(/\[b\]([\s\S]*?)\[\/b\]/g,         '<strong>$1</strong>')
-        .replace(/\[i\]([\s\S]*?)\[\/i\]/g,         '<em>$1</em>')
-        .replace(/\[u\]([\s\S]*?)\[\/u\]/g,         '<u>$1</u>')
-        .replace(/\[s\]([\s\S]*?)\[\/s\]/g,         '<s>$1</s>')
-        .replace(/\[left\]([\s\S]*?)\[\/left\]/g,   '<div style="text-align:left">$1</div>')
-        .replace(/\[center\]([\s\S]*?)\[\/center\]/g,'<div style="text-align:center">$1</div>')
-        .replace(/\[right\]([\s\S]*?)\[\/right\]/g, '<div style="text-align:right">$1</div>')
-        .replace(/\[color=(.*?)\]([\s\S]*?)\[\/color\]/g, '<span style="color:$1">$2</span>')
-        .replace(/\[size=(\d+)\]([\s\S]*?)\[\/size\]/g,   '<span style="font-size:$1px">$2</span>')
-        .replace(/\[url\]([\s\S]*?)\[\/url\]/g,     '<a href="$1" target="_blank">$1</a>')
-        .replace(/\[url=(.*?)\]([\s\S]*?)\[\/url\]/g,'<a href="$1" target="_blank">$2</a>')
-        .replace(/\[img\]([\s\S]*?)\[\/img\]/g,     '<img src="$1" style="max-width:60%;height:auto" class="rounded">')
-        .replace(/\[video\]([\s\S]*?)\[\/video\]/g, '<video controls style="max-width:100%"><source src="$1"></video>')
-        .replace(/\[quote\]([\s\S]*?)\[\/quote\]/g, '<blockquote class="border-start border-3 border-primary ps-3 my-2">$1</blockquote>')
-        .replace(/\[code\]([\s\S]*?)\[\/code\]/g,   '<code class="bg-dark text-light p-2 rounded d-block">$1</code>')
-        .replace(/\[list\]([\s\S]*?)\[\/list\]/g,   '<ul>$1</ul>')
-        .replace(/\[list=1\]([\s\S]*?)\[\/list\]/g, '<ol>$1</ol>')
-        .replace(/\[\*\](.*?)(?=\n|$)/g,            '<li>$1</li>')
-        .replace(/\n/g, '<br>');
-}
-
-window.updateNewsPreview = updatePreview;
-
-document.getElementById('editBody')?.addEventListener('input', updatePreview);
-
-document.getElementById('newsEditModal')?.addEventListener('shown.bs.modal', function () {
-    updatePreview();
-    document.getElementById('editBody')?.focus();
-});
-
-// ── Submit edit ───────────────────────────────────────────────────────────────
-window.submitNewsEdit = function () {
-    var id    = (document.getElementById('editNewsId') || {}).value || '';
-    var title = (document.getElementById('editTitle')  || {}).value || '';
-    var body  = (document.getElementById('editBody')   || {}).value || '';
-
-    if (!title.trim()) { showNotification('Title cannot be empty.', 'error'); return; }
-    if (!body.trim())  { showNotification('Content cannot be empty.', 'error'); return; }
-
-    var btn  = document.getElementById('saveEditBtn');
-    var orig = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Saving...';
-    btn.disabled  = true;
-
-    var fd = new FormData();
-    fd.append('action', 'edit');
-    fd.append('newsid', id);
-    fd.append('title',  title);
-    fd.append('body',   body);
-    fd.append('my_post_key', newsPostKey);
-
-    fetch('news_ajax.php', { method: 'POST', body: fd })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-            if (d.success) {
-                showNotification('News updated!', 'success');
-                setTimeout(function () { location.reload(); }, 900);
-            } else {
-                showNotification(d.error || 'Edit failed.', 'error');
-                btn.innerHTML = orig;
-                btn.disabled  = false;
-            }
-        })
-        .catch(function () {
-            showNotification('Network error.', 'error');
-            btn.innerHTML = orig;
-            btn.disabled  = false;
-        });
-};
-
-})();
+    window.newsPostKey = <?= json_encode($mybb->post_code ?? '') ?>;
+    window.newsBaseUrl = <?= json_encode($BASEURL ?? '') ?>;
 </script>
+<script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/news.js"></script>
 
 <?php
 stdfoot();

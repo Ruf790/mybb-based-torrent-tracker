@@ -49,10 +49,7 @@ function validate_utf8_string(string $input, bool $allow_mb4 = true, bool $retur
         return $allow_mb4 || !preg_match("#[^\\x00-\\x7F][\\x80-\\xBF]{3,}#", $input);
     }
 
-    // Чистим только если строка реально невалидна - mb_scrub() на уже
-    // валидном UTF-8 ничего не меняет, но лишний проход по строке смысла
-    // не имеет, а эта функция вызывается на каждое значение внутри
-    // escape_string() - горячий путь.
+   
     if (!$isValid) {
         $prevSubstitute = mb_substitute_character();
         mb_substitute_character(ord('?'));
@@ -2163,47 +2160,49 @@ function my_strlen(?string $string): int
 
 
 
+
+
 function generate_post_check(int $rotation_shift = 0): string
 {
-    global $mybb, $session, $CURUSER, $encryption_key;
-    $rotation_interval = 6 * 3600;
-    $rotation = floor(TIMENOW / $rotation_interval) + $rotation_shift;
-    $seed = (string)$rotation;
-    if (!empty($CURUSER['id'])) {
-        $seed .= $CURUSER['loginkey'] . $CURUSER['added'];
-    } else {
-        $seed .= $session->sid;
-    }
-    if (defined('IN_ADMINCP')) {
-        $seed .= 'ADMINCP';
-    }
-    $seed .= $encryption_key;
-    return md5($seed);
-}
+    global $session, $CURUSER, $encryption_key;
 
+    $rotation_interval = 6 * 3600;
+    $rotation = (int) floor(TIMENOW / $rotation_interval) + $rotation_shift;
+
+
+    $identity = !empty($CURUSER['id'])
+        ? $CURUSER['loginkey'] . $CURUSER['added']
+        : $session->sid;
+
+    return substr(hash_hmac('sha256', $rotation . $identity, $encryption_key), 0, 32);
+}
 
 function verify_post_check(string $code, bool $silent = false): bool
 {
-    global $lang;
-    if(
-        generate_post_check() !== $code &&
-        generate_post_check(-1) !== $code &&
-        generate_post_check(-2) !== $code &&
-        generate_post_check(-3) !== $code
-    ) {
-        if($silent == true) {
-            return false;
-        } else {
-            if(defined("IN_ADMINCP")) {
-                return false;
-            } else {
-                stderr('Authorization code mismatch. Are you accessing this function correctly? Please go back and try again');
-            }
+   
+    for ($shift = 0; $shift >= -3; $shift--) {
+        if (hash_equals(generate_post_check($shift), $code)) {
+            return true;
         }
-    } else {
-        return true;
     }
+
+    if ($silent) {
+        return false;
+    }
+
+    if (defined('IN_ADMINCP')) {
+        return false;
+    }
+
+    stderr('Authorization code mismatch. Are you accessing this function correctly? Please go back and try again');
 }
+
+
+
+
+
+
+
 
 function secure_binary_seed_rng(int $bytes): ?string
 {
@@ -2976,8 +2975,7 @@ function cutename(string $name, int $max = 35): string
 
 function get_extension(string $filename): string
 {
-    $pos = strrpos($filename, '.');
-    return $pos !== false ? strtolower(substr($filename, $pos + 1)) : '';
+    return strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 }
 
 
@@ -2987,7 +2985,17 @@ function ts_nf(int|float|string|null $number): string
     if ($number === null || !is_numeric($number)) {
         return '0';
     }
-    return number_format((float)$number, 0, '.', ',');
+
+    $decimals = 0;
+    if (is_string($number) && str_contains($number, '.')) {
+        $decimals = strlen(explode('.', $number)[1]);
+    } elseif (is_float($number) && $number != (int)$number) {
+       
+        $decimals = strlen(rtrim(sprintf('%.10f', fmod(abs($number), 1)), '0')) - 2;
+        $decimals = max(0, $decimals);
+    }
+
+    return number_format((float)$number, $decimals, '.', ',');
 }
 
 

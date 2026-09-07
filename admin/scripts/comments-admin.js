@@ -75,12 +75,12 @@ function updateSelection() {
     commentManager.selectedComments = Array.from(checkboxes).map(checkbox => checkbox.value);
 
     const selectedCount = document.getElementById('selectedCount');
-    const selectedCommentsCount = document.getElementById('selectedCommentsCount');
+    const moveSelectedCount = document.getElementById('moveSelectedCount');
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
     const selectAll = document.getElementById('selectAll');
 
     if (selectedCount) selectedCount.textContent = commentManager.selectedComments.length;
-    if (selectedCommentsCount) selectedCommentsCount.textContent = commentManager.selectedComments.length;
+    if (moveSelectedCount) moveSelectedCount.textContent = commentManager.selectedComments.length;
     if (bulkDeleteBtn) bulkDeleteBtn.disabled = commentManager.selectedComments.length === 0;
 
     // Сбрасываем выделение строк
@@ -271,9 +271,67 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Merge Comments
+// Merge Selected Comments Into One (join texts, delete originals)
 document.addEventListener('click', function(e) {
-    if (e.target.id === 'confirmMergeBtn') {
+    if (e.target.id === 'confirmMergeIntoOneBtn') {
+        const targetInput = document.getElementById('mergeTargetTorrent');
+        if (!targetInput) return;
+
+        const target = parseInt(targetInput.value);
+        if (!target || target <= 0) {
+            alert("Please enter a valid target torrent ID");
+            return;
+        }
+
+        const selectedComments = commentManager.selectedComments;
+        if (selectedComments.length < 2) {
+            alert("Please select at least 2 comments to merge");
+            return;
+        }
+
+        if (!confirm(`Merge ${selectedComments.length} selected comments into one, on torrent ID ${target}? This cannot be undone.`)) return;
+
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = 'Merging...';
+
+        const formData = new FormData();
+        formData.append('comment_ids', JSON.stringify(selectedComments));
+        formData.append('target_tid', target);
+        if (typeof my_post_key !== 'undefined') {
+            formData.append('my_post_key', my_post_key);
+        }
+
+        fetch('index.php?act=latest_comments&action=merge_comments', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.success) {
+                showToast(res.merged + " comments merged into comment #" + res.new_comment_id + "!", 'success');
+                const modal = bootstrap.Modal.getInstance(document.getElementById('mergeIntoOneModal'));
+                if (modal) modal.hide();
+                loadComments(commentManager.currentPage);
+                if (targetInput) targetInput.value = '';
+            } else {
+                showToast("Error: " + res.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Merge error:', error);
+            showToast("AJAX error: " + error.message, 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Merge Comments';
+        });
+    }
+});
+
+// Move Comments
+document.addEventListener('click', function(e) {
+    if (e.target.id === 'confirmMoveBtn') {
         const targetInput = document.getElementById('targetTorrent');
         if (!targetInput) return;
 
@@ -285,7 +343,7 @@ document.addEventListener('click', function(e) {
 
         const selectedComments = commentManager.selectedComments;
         if (selectedComments.length === 0) {
-            alert("Please select at least one comment to merge");
+            alert("Please select at least one comment to move");
             return;
         }
 
@@ -293,7 +351,7 @@ document.addEventListener('click', function(e) {
 
         const btn = e.target;
         btn.disabled = true;
-        btn.textContent = 'Merging...';
+        btn.textContent = 'Moving...';
 
         const formData = new FormData();
         formData.append('comment_ids', JSON.stringify(selectedComments));
@@ -310,7 +368,7 @@ document.addEventListener('click', function(e) {
         .then(res => {
             if (res.success) {
                 showToast(res.moved + " comments moved successfully!", 'success');
-                const modal = bootstrap.Modal.getInstance(document.getElementById('mergeCommentsModal'));
+                const modal = bootstrap.Modal.getInstance(document.getElementById('moveCommentsModal'));
                 if (modal) modal.hide();
                 loadComments(commentManager.currentPage);
                 if (targetInput) targetInput.value = '';
@@ -319,12 +377,12 @@ document.addEventListener('click', function(e) {
             }
         })
         .catch(error => {
-            console.error('Merge error:', error);
+            console.error('Move error:', error);
             showToast("AJAX error: " + error.message, 'error');
         })
         .finally(() => {
             btn.disabled = false;
-            btn.textContent = 'Merge Comments';
+            btn.textContent = 'Move Comments';
         });
     }
 });
@@ -604,6 +662,12 @@ document.addEventListener('show.bs.modal', function(e) {
         const copySelectedCount = document.getElementById('copySelectedCount');
         if (copySelectedCount) {
             copySelectedCount.textContent = commentManager.selectedComments.length;
+        }
+    }
+    if (e.target.id === 'mergeIntoOneModal') {
+        const mergeIntoOneSelectedCount = document.getElementById('mergeIntoOneSelectedCount');
+        if (mergeIntoOneSelectedCount) {
+            mergeIntoOneSelectedCount.textContent = commentManager.selectedComments.length;
         }
     }
 });

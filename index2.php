@@ -148,15 +148,15 @@ $whosonline = '<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
         <div class="mt-3 pt-3 border-top">
             <div class="row text-center">
                 <div class="col-4">
-                    <div class="text-primary fw-bold">-</div>
+                    <div class="text-primary fw-bold">'.ts_nf($membercount).'</div>
                     <small class="text-muted">Members</small>
                 </div>
                 <div class="col-4">
-                    <div class="text-warning fw-bold">-</div>
+                    <div class="text-warning fw-bold">'.ts_nf($guestcount).'</div>
                     <small class="text-muted">Guests</small>
                 </div>
                 <div class="col-4">
-                    <div class="text-success fw-bold">-</div>
+                    <div class="text-success fw-bold">'.ts_nf($botcount).'</div>
                     <small class="text-muted">Bots</small>
                 </div>
             </div>
@@ -253,6 +253,11 @@ $forumstats = $boardstats = '';
 
 $stats = $cache->read('stats');
 
+// Новых участников за сегодня (с полуночи)
+$today_start = strtotime('today');
+$q = $db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM users WHERE added >= ?", [$today_start]);
+$new_members_today = $q ? (int)$db->fetch_field($q, 'cnt') : 0;
+
 $newestmember = !empty($stats['lastusername'])
     ? build_profile_link($stats['lastusername'], $stats['lastuid'])
     : 'nobody';
@@ -261,9 +266,12 @@ $stats_posts_threads = sprintf($lang->index['stats_posts_threads'], ts_nf($stats
 $stats_numusers      = sprintf($lang->index['stats_numusers'],      ts_nf($stats['numusers']));
 $stats_newestuser    = sprintf($lang->index['stats_newestuser'],    $newestmember);
 
-$onlinestats = [];
-if (file_exists(TSDIR . '/cache/onlinestats.php')) {
-    include_once TSDIR . '/cache/onlinestats.php';
+// Читаем через $cache (таблица datacache) - тот же механизм, что теперь
+// используется в index.php для записи 'onlinestats', вместо отдельного
+// файла TSDIR/cache/onlinestats.php.
+$onlinestats = $cache->read('onlinestats');
+if (!is_array($onlinestats)) {
+    $onlinestats = [];
 }
 
 $stats_mostonline = sprintf(
@@ -383,7 +391,7 @@ $boardstats = '<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
                     </div>
                     <div>
                         <small class="text-muted d-block">Total Posts</small>
-                        <span class="fw-semibold">-</span>
+                        <span class="fw-semibold">'.ts_nf($stats['numposts']).'</span>
                     </div>
                 </div>
             </div>
@@ -394,7 +402,7 @@ $boardstats = '<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
                     </div>
                     <div>
                         <small class="text-muted d-block">New Members</small>
-                        <span class="fw-semibold">-</span>
+                        <span class="fw-semibold">'.ts_nf($new_members_today).'</span>
                     </div>
                 </div>
             </div>

@@ -1,0 +1,6 @@
+{
+    "require": {
+        "erusev/parsedown": "^1.7",
+        "arokettu/torrent-file": "^5.3"
+    }
+}

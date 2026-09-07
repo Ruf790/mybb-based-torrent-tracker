@@ -48,8 +48,15 @@ $_wgo_query = $db->sql_query_prepared("
 $_usernames = [];
 $_hidden_members = 0;
 $_active_members = 0;
+$_done_online_users = [];
 
 while ($_active_users = $db->fetch_array($_wgo_query)) {
+  
+    if (isset($_done_online_users[$_active_users['id']])) {
+        continue;
+    }
+    $_done_online_users[$_active_users['id']] = true;
+
     $is_hidden = ($_active_users['invisible'] == 1);
     
     if ($is_hidden && $_active_users['id'] != $CURUSER['id'] && !$is_mod) {
@@ -92,13 +99,23 @@ $_wgo_query2 = $db->sql_query_prepared(
     [$timeLimit]
 );
 
-$_most_ever = $db->num_rows($_wgo_query2) + (int)$_guests;
 
-if (file_exists(TSDIR . '/cache/onlinestats.php')) {
-    include_once TSDIR . '/cache/onlinestats.php';
+$_most_ever = $_active_members + $_hidden_members;
+
+
+$onlinestats = $cache->read('onlinestats');
+if (!is_array($onlinestats)) {
+    $onlinestats = [];
 }
-
 $onlinestats['most_ever'] ??= 0;
+
+
+if ($_most_ever > $onlinestats['most_ever']) {
+    $onlinestats['most_ever']      = $_most_ever;
+    $onlinestats['most_ever_time'] = TIMENOW;
+
+    $cache->update('onlinestats', $onlinestats);
+}
 
 $_hidden_members2 = $_active_members2 = 0;
 $_usernames2 = [];
@@ -127,10 +144,6 @@ while ($_user = $db->fetch_array($_wgo_query2)) {
 }
 
 // Fetch the latest news article — раньше шло через $cache->read('news'),
-// кэш больше не обновляется (см. update_news() в class_datacache.php).
-// Прямой запрос + JOIN на users, чтобы показывать реальное имя автора
-// (в старом кэше колонки username не было вообще, поэтому всегда
-// показывалось "System" вместо настоящего автора).
 $newsArticles = [];
 $newsQuery = $db->sql_query_prepared(
     "SELECT n.id, n.userid, n.added, n.body, n.title, u.username

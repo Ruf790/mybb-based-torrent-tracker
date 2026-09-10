@@ -1,5 +1,62 @@
 'use strict';
 
+// ── Autocomplete search ─────────────────────────────────────
+document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("torrent-search");
+  const results = document.getElementById("autocomplete-results");
+  if (!input || !results) return;
+
+  let debounceTimer;
+
+  input.addEventListener("input", function () {
+    const query = input.value.trim();
+
+    clearTimeout(debounceTimer);
+    if (query.length < 3) {
+      results.classList.remove("show");
+      results.innerHTML = '';
+      return;
+    }
+
+    debounceTimer = setTimeout(() => {
+      fetch("xmlhttp.php?action=search_torrents&input=" + encodeURIComponent(query))
+        .then(response => response.json())
+        .then(data => {
+          results.innerHTML = '';
+
+          if (!Array.isArray(data) || data.length === 0) {
+            results.innerHTML = '<a class="dropdown-item disabled">No results found</a>';
+            results.classList.add("show");
+            return;
+          }
+
+          data.forEach(item => {
+            if (!item.name || !item.id) return;
+            const img = item.image_url ? `<img src="${item.image_url}" alt="" style="width:40px;height:auto;margin-right:10px;">` : "";
+            const option = document.createElement("a");
+            option.classList.add("dropdown-item", "d-flex", "align-items-center");
+            option.href = "details.php?id=" + item.id;
+            option.innerHTML = img + `<span>${item.name}</span>`;
+            results.appendChild(option);
+          });
+
+          results.classList.add("show");
+        })
+        .catch(() => {
+          results.innerHTML = '<a class="dropdown-item disabled">Error retrieving results</a>';
+          results.classList.add("show");
+        });
+    }, 300);
+  });
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("#torrent-search, #autocomplete-results")) {
+      results.classList.remove("show");
+      results.innerHTML = '';
+    }
+  });
+});
+
 // ── Poster zoom ────────────────────────────────────────────
 (function () {
     const overlay = document.getElementById('posterZoomOverlay');
@@ -39,4 +96,25 @@ document.querySelectorAll('.torrent-row').forEach(row => {
     if (+row.dataset.seeders === 0 && +row.dataset.leechers === 0 && row.dataset.external !== 'yes') {
         row.classList.add('is-dead');
     }
+});
+
+// ── Category highlight ──────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+    const categoryLinks = document.querySelectorAll('.category-link');
+    const highlightedId = localStorage.getItem('highlightedCategory');
+
+    if (highlightedId) {
+        const targetBlock = document.querySelector('.category-container[data-category-id="' + highlightedId + '"]');
+        if (targetBlock) {
+            targetBlock.classList.add('category-highlight');
+        }
+        localStorage.removeItem('highlightedCategory');
+    }
+
+    categoryLinks.forEach(link => {
+        link.addEventListener('click', function () {
+            const catId = this.getAttribute('data-cat-id');
+            localStorage.setItem('highlightedCategory', catId);
+        });
+    });
 });

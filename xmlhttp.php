@@ -97,6 +97,8 @@ function handleXmlHttpAction(): void
         'username_availability' => handleUsernameAvailability(),
         'email_availability' => handleEmailAvailability(),
         'search_torrents' => handleSearchTorrents(),
+        'get_torrents_by_ids' => handleGetTorrentsByIds(),
+        'select_all_filtered' => handleSelectAllFiltered(),
         'quick_comment' => handleQuickComment(),
 		'edit_torrent' => handleEditTorrent(),
 		'rate_torrent' => handleRateTorrent(),
@@ -860,6 +862,196 @@ function handleSearchTorrents(): void
 
     header("Content-Type: application/json; charset={$charset}");
     echo json_encode($torrents);
+    exit;
+}
+
+/**
+ * Handle get_torrents_by_ids action - возвращает name/image_url для
+ * конкретного списка ID. Используется для отображения кросс-страничного
+ * выбора в модалке модерации (details не видны в DOM для торрентов
+ * с других страниц, только их ID из sessionStorage).
+ */
+function handleGetTorrentsByIds(): void
+{
+    global $db, $charset, $BASEURL;
+
+    $raw = $_GET['ids'] ?? '';
+    $ids = array_filter(array_map('intval', explode(',', $raw)), fn($id) => $id > 0);
+    $ids = array_slice(array_unique($ids), 0, 100); // safety cap
+
+    if (empty($ids)) {
+        header("Content-Type: application/json; charset={$charset}");
+        echo json_encode([]);
+        exit;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $sql = "SELECT id, name, descr, t_image FROM torrents WHERE id IN ({$placeholders})";
+    $result = $db->sql_query_prepared($sql, $ids);
+
+    $torrents = [];
+    while ($row = $db->fetch_array($result)) {
+        $image_url = !empty($row['t_image'])
+            ? (strpos($row['t_image'], 'http') === 0 ? $row['t_image'] : $BASEURL . '/' . ltrim($row['t_image'], '/'))
+            : $BASEURL . '/pic/nopreview.gif';
+
+        $torrents[] = [
+            'id' => $row['id'],
+            'name' => mb_strimwidth($row['name'], 0, 100, '...'),
+            'descr' => $row['descr'],
+            'image_url' => $image_url
+        ];
+    }
+
+    header("Content-Type: application/json; charset={$charset}");
+    echo json_encode($torrents);
+    exit;
+}
+
+/**
+ * Handle select_all_filtered action - возвращает ID ВСЕХ торрентов,
+ * подходящих под текущие фильтры browse.php (категория, поиск, размер,
+ * include_dead_torrents), не только видимых на текущей странице.
+ * Логика построения WHERE намеренно продублирована из browse.php 1:1 -
+ * это должно давать точно те же результаты, что видны на экране.
+ * Доступно только модераторам - массовый выбор по всем страницам имеет
+ * смысл именно для модерации.
+ */
+function handleSelectAllFiltered(): void
+{
+    global $db, $charset, $CURUSER, $usergroups;
+
+    $is_mod = is_mod($usergroups);
+    if (!$is_mod) {
+        http_response_code(403);
+        header("Content-Type: application/json; charset={$charset}");
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+
+    $category = (int)($_GET['category'] ?? 0);
+    $keywords = $_GET['keywords'] ?? '';
+    $search_type = trim($_GET['search_type'] ?? '');
+    $special_search = trim($_GET['special_search'] ?? '');
+    $include_dead_torrents = trim($_GET['include_dead_torrents'] ?? '');
+    $size_min = $_GET['size_min'] ?? '';
+    $size_max = $_GET['size_max'] ?? '';
+
+    $WHERE = " WHERE" . ($include_dead_torrents === 'yes' ? '' : " t.visible = 'yes' AND") . " t.banned = 'no'";
+    $innerjoin = '';
+    $params = [];
+
+    if ($special_search === 'myreseeds') {
+        $WHERE .= ' AND t.seeders = 0 AND t.leechers > 0 AND t.owner = ?';
+        $params[] = $CURUSER['id'];
+    } elseif ($special_search === 'mybookmarks') {
+        $innerjoin = ' INNER JOIN bookmarks b ON (b.torrentid = t.id)';
+        $WHERE .= ' AND b.userid = ?';
+        $params[] = $CURUSER['id'];
+    } elseif ($special_search === 'mytorrents') {
+        $WHERE .= ' AND t.owner = ?';
+        $params[] = $CURUSER['id'];
+    } elseif ($special_search === 'weaktorrents') {
+        $WHERE .= " AND t.visible = 'no' OR (t.leechers > 0 AND t.seeders = 0) OR (t.leechers = 0 AND t.seeders = 0)";
+    }
+
+    $extraquery = [];
+    $extra_params = [];
+
+    if ($keywords && $search_type) {
+        $OrjKeywords = $keywords;
+
+        if ($keywords) {
+            switch ($search_type) {
+                case 't_name':
+                    $extraquery[] = "(t.name LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+                case 't_description':
+                    $extraquery[] = "(t.descr LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+                case 't_tags':
+                    $extraquery[] = "(t.tags LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+                case 't_both':
+                    $extraquery[] = "(t.name LIKE ? OR t.descr LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+                case 't_uploader':
+                    $user_query = $db->sql_query_prepared(
+                        "SELECT id FROM users WHERE UPPER(username) = ? LIMIT 1",
+                        [strtoupper($OrjKeywords)]
+                    );
+                    if ($db->num_rows($user_query) > 0) {
+                        $user = $db->fetch_array($user_query);
+                        $extraquery[] = "t.owner = ?";
+                        $extra_params[] = $user['id'];
+                        if (!$is_mod) {
+                            $extraquery[] = "t.anonymous != 'yes'";
+                        }
+                    } else {
+                        $extraquery[] = "t.owner = ?";
+                        $extra_params[] = $OrjKeywords;
+                    }
+                    break;
+                case 't_genre':
+                    $extraquery[] = "(t.t_link LIKE ?)";
+                    $extra_params[] = "%" . $keywords . "%";
+                    break;
+            }
+        }
+    }
+
+    if ($category) {
+        $cat_query = $db->sql_query_prepared(
+            "SELECT id FROM categories WHERE type='s' AND pid = ?",
+            [$category]
+        );
+        if ($db->num_rows($cat_query) > 0) {
+            $squerycats = [];
+            while ($squery = $db->fetch_array($cat_query)) {
+                $squerycats[] = (int)$squery['id'];
+            }
+            $extraquery[] = 't.category IN (' . $category . ', ' . implode(', ', $squerycats) . ')';
+        } else {
+            $extraquery[] = "t.category = ?";
+            $extra_params[] = $category;
+        }
+    }
+
+    $size_min_val = ($size_min !== '') ? (int)$size_min : null;
+    $size_max_val = ($size_max !== '') ? (int)$size_max : null;
+
+    if ($size_min_val !== null && $size_min_val > 0) {
+        $extraquery[] = 't.size >= ?';
+        $extra_params[] = $size_min_val;
+    }
+    if ($size_max_val !== null && $size_max_val > 0) {
+        $extraquery[] = 't.size <= ?';
+        $extra_params[] = $size_max_val;
+    }
+
+    if (count($extraquery) > 0) {
+        $WHERE .= ' AND ' . implode(' AND ', $extraquery);
+        $params = array_merge($params, $extra_params);
+    }
+
+    // Safety cap - защита от случайного выбора вообще всего трекера разом
+    $MAX_SELECT = 2000;
+    $sql = "SELECT t.id FROM torrents t{$innerjoin}{$WHERE} LIMIT ?";
+    $params[] = $MAX_SELECT;
+
+    $result = $db->sql_query_prepared($sql, $params);
+    $ids = [];
+    while ($row = $db->fetch_array($result)) {
+        $ids[] = (int)$row['id'];
+    }
+
+    header("Content-Type: application/json; charset={$charset}");
+    echo json_encode(['ids' => $ids, 'count' => count($ids), 'capped' => count($ids) >= $MAX_SELECT]);
     exit;
 }
 

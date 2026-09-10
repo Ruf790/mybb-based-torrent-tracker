@@ -613,62 +613,9 @@ $multipage = multipage($threadcount, $perpage, $page, $page_url);
 
 $ListTorrents = '
 ' . ($is_mod ? '
-<script type="text/javascript">
-    
-    function toggleAllCheckboxes(source) {
-        const checkboxes = document.querySelectorAll(\'input[name="torrentid[]"]\');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = source.checked;
-        });
-    }
-    
-   
-    function updateMasterCheckbox() {
-        const checkboxes = document.querySelectorAll(\'input[name="torrentid[]"]\');
-        const masterCheckbox = document.getElementById("checkAllSwitch");
-        
-        if (checkboxes.length === 0) return;
-        
-        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-        const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
-        
-        if (masterCheckbox) {
-            masterCheckbox.checked = allChecked;
-            masterCheckbox.indeterminate = !allChecked && anyChecked;
-        }
-    }
-    
-   
-    document.addEventListener("DOMContentLoaded", function() {
-        // Добавляем обработчики для дочерних чекбоксов
-        document.addEventListener("change", function(e) {
-            if (e.target && e.target.name === "torrentid[]") {
-                updateMasterCheckbox();
-            }
-        });
-        
-        
-        const masterCheckbox = document.getElementById("checkAllSwitch");
-        if (masterCheckbox) {
-            masterCheckbox.addEventListener("change", function() {
-                toggleAllCheckboxes(this);
-            });
-            
-            
-            updateMasterCheckbox();
-        }
-    });
-    
-    function check_it(wHAT) {
-        const moveElement = document.getElementById("movetorrent");
-        if (moveElement) {
-            moveElement.style.display = wHAT.value === "move" ? "block" : "none";
-        }
-    }
-</script>
-
 <form method="post" action="' . $BASEURL . '/admin/index.php?act=manage_torrents" name="manage_torrents" id="manage_torrents">
 <input type="hidden" name="do" value="update" />
+<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
 <input type="hidden" name="return" value="yes" />
 <input type="hidden" name="return_address" value="' . $_SERVER['SCRIPT_NAME'] . '?page=' . (int)($_GET['page'] ?? 0) . '&amp;' . 
     (isset($pagelinks) && count($pagelinks) > 0 ? implode('&amp;', $pagelinks) . '&amp;' : '') . 
@@ -873,7 +820,10 @@ if ($TotalTorrents && count($TotalTorrents))
         
         
 		
-		$moderation = ($is_mod ? '
+
+$torrentImage = !empty($Torrent['t_image']) ? htmlspecialchars($Torrent['t_image']) : '';
+
+$moderation = ($is_mod ? '
 <td align="center" class="unsortable2">
     <div class="form-check form-switch">
         <input 
@@ -882,6 +832,13 @@ if ($TotalTorrents && count($TotalTorrents))
             id="torrentid_' . $Torrent['id'] . '" 
             name="torrentid[]" 
             value="' . $Torrent['id'] . '" 
+            data-title="' . htmlspecialchars($Torrent['name']) . '"
+            data-image="' . $torrentImage . '"
+            data-size="' . (int)$Torrent['size'] . '"
+            data-seeders="' . (int)$Torrent['seeders'] . '"
+            data-leechers="' . (int)$Torrent['leechers'] . '"
+            data-category="' . (int)$Torrent['category'] . '"
+            data-catname="' . htmlspecialchars($Torrent['catname']) . '"
             role="switch"
         />
     </div>
@@ -933,12 +890,6 @@ $ListTorrentsss = '
     data-id="' . (int)$Torrent['id'] . '" 
     data-seeders="' . $s . '" 
     data-leechers="' . $l . '">	
-
-
-<!-- Enhanced Poster Zoom Overlay -->
-<div class="poster-zoom-overlay" id="posterZoomOverlay">
-    <img src="" alt="Poster preview" class="poster-zoom-img" id="posterZoomImg">
-</div>
 
 <!-- Category Icon + Poster -->
 <td class="torrent-poster-cell">
@@ -1066,72 +1017,230 @@ $ListTorrentsss = '
 
 
 $bedit = '
-<div class="container mt-3">
-    <div class="card">
-        <div class="card-header py-2 px-3">
-            <span style="font-size:.8rem;font-weight:600;color:#94a3b8;
-                         text-transform:uppercase;letter-spacing:1px;">
-                <i class="fas fa-shield-alt me-2" style="color:#3b82f6;"></i>
-                Moderation Actions
-            </span>
-        </div>
-        <div class="card-body">
-            <div class="row g-2 align-items-center">
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/moderation-modal.css">
 
-                <!-- Action select -->
-                <div class="col-md-4">
-                    <select class="form-select form-select-sm" name="actiontype" 
-                            id="actiontype" onchange="check_it(this)"
-                            style="border-radius:8px;border:1.5px solid #e2e8f0;font-size:.83rem;">
-                       
-					  <option value="0">▸ Select Action</option>
-<optgroup label="── Torrent ──">
-    <option value="move">↗ Move selected</option>
-    <option value="delete">✕ Delete selected</option>
-    <option value="sticky">★ Sticky / Unsticky</option>
-    <option value="visible">◎ Visible / Hidden</option>
-    <option value="banned">◌ Ban / Unban</option>
-    <option value="nuke">✦ Nuke / Unnuke</option>
-</optgroup>
-<optgroup label="── Promo ──">
-    <option value="free">◈ Free / Non-Free</option>
-    <option value="silver">◇ Silver / Non-Silver</option>
-    <option value="doubleupload">⊕ Double Upload ON/OFF</option>
-</optgroup>
-<optgroup label="── Other ──">
-    <option value="anonymous">◉ Anonymize / Deanon</option>
-    <option value="openclose">⊞ Open / Close comments</option>
-    <option value="request">◫ Request / Non-Request</option>
-</optgroup>
-                    
-					
-					</select>
+<!-- Moderation button with stats -->
+<div class="container mt-3">
+
+
+<div class="d-flex justify-content-between align-items-center">
+    <div class="moderation-stats">
+        <span class="badge bg-primary rounded-pill px-3 py-2" id="totalSelectedBadge">
+            <i class="fas fa-check-circle me-1"></i>
+            <span id="selectedCountDisplay" aria-live="polite">0</span> selected
+        </span>
+        <span class="badge bg-secondary rounded-pill px-3 py-2 ms-2">
+            <i class="fas fa-list me-1"></i>
+            <span id="totalTorrentsCount">' . $threadcount . '</span> total
+        </span>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary" onclick="ModerationModal.selectAllFiltered(this)">
+            <i class="fas fa-check-double me-1"></i>Select All Matching Filter
+        </button>
+        <button type="button" class="btn btn-mod-trigger" data-bs-toggle="modal" data-bs-target="#moderationModal">
+            <i class="fas fa-shield-alt me-2"></i>Moderation Actions
+        </button>
+    </div>
+</div>
+
+
+</div>
+
+<!-- Moderation Actions Modal -->
+<div class="modal fade" id="moderationModal" tabindex="-1" aria-labelledby="moderationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+    <div class="modal-content mod-modal-content shadow-lg">
+
+      <div class="modal-header mod-modal-header">
+        <h5 class="modal-title" id="moderationModalLabel">
+            <i class="fas fa-shield-alt me-2"></i>Moderation Actions
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body mod-modal-body">
+
+        <div class="row">
+            <!-- Левая колонка: превью постера -->
+            <div class="col-md-3 mod-poster-column">
+                <div class="mod-poster-container" id="modPosterContainer">
+                    <div class="mod-poster-placeholder" id="modPosterPlaceholder">
+                        <i class="fas fa-images fa-3x text-muted"></i>
+                        <p class="text-muted mt-2 small">Select torrents to preview</p>
+                    </div>
+                    <div class="mod-poster-wrapper" id="modPosterWrapper" style="display:none;">
+                        <img id="modPosterPreview" src="" alt="Torrent poster" class="mod-poster-img">
+                        <div class="mod-poster-count" id="modPosterCount"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка: действия -->
+            <div class="col-md-9">
+                <!-- Selection info -->
+                <div class="mod-selection-info alert alert-info alert-dismissible fade show" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong id="modalSelectedCount" aria-live="polite">0</strong> torrent(s) selected
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
 
-                <!-- Move category (hidden) -->
-                <div class="col-md-4" id="movetorrent" style="display:none;">
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <span style="font-size:.78rem;color:#64748b;white-space:nowrap;">
-                            <i class="fas fa-folder-open me-1"></i>Move to:
-                        </span>
-                        '.$catdropdown.'
+                <!-- Progress bar -->
+                <div class="mod-progress-container mb-2" id="modProgressContainer" style="display:none;">
+                    <div class="d-flex justify-content-between small">
+                        <span>Selected: <strong id="selectedCount2">0</strong> / <span id="totalCount2">0</span></span>
+                        <span id="progressPercentage">0%</span>
+                    </div>
+                    <div class="progress" style="height:6px;border-radius:4px;">
+                        <div id="selectionProgress" class="progress-bar" style="width:0%;"></div>
+                    </div>
+                </div>
+				
+				
+			<div class="mod-restore-info" id="modRestoreInfo" style="display:none;">
+    <i class="fas fa-history me-1"></i>
+    <span id="modRestoreMessage">Selection restored from previous session</span>
+    <button type="button" class="btn-close btn-close-sm float-end" id="modRestoreCloseBtn" aria-label="Close"></button>
+</div>
+				
+				
+				
+				
+
+                <!-- Сводная статистика по выбранным торрентам - ПЕРЕМЕЩЕНА СЮДА -->
+                <div class="mod-summary-stats" id="modSummaryStats" style="display:none;">
+                    <div class="mod-summary-stat">
+                        <i class="fas fa-hdd"></i>
+                        <span id="modSummarySize">0 B</span>
+                    </div>
+                    <div class="mod-summary-stat">
+                        <i class="fas fa-arrow-up text-success"></i>
+                        <span id="modSummarySeeders">0</span>
+                    </div>
+                    <div class="mod-summary-stat">
+                        <i class="fas fa-arrow-down text-danger"></i>
+                        <span id="modSummaryLeechers">0</span>
+                    </div>
+                    <div class="mod-summary-stat">
+                        <i class="fas fa-folder"></i>
+                        <span id="modSummaryCategories">0</span>
                     </div>
                 </div>
 
-                <!-- Submit -->
-                <div class="col-auto ms-auto">
-                    <button type="submit" class="btn btn-primary"
-                            style="border-radius:8px;font-weight:600;font-size:.83rem;">
-                        <i class="fas fa-play me-1"></i> Apply
-                    </button>
+                <!-- Mini-list of selected torrents -->
+                <div id="selectedTorrentsList" class="mod-selected-list" style="display:none;"></div>
+
+                <label class="mod-label" for="actiontype">
+                    <i class="fas fa-bolt me-1"></i>Choose an action
+                </label>
+                <select class="form-select mod-select" name="actiontype" id="actiontype">
+                    <option value="0">⚙️ Select Action</option>
+                    <optgroup label="── Torrent ──">
+                        <option value="move">📁 Move selected</option>
+                        <option value="delete">🗑️ Delete selected</option>
+                        <option value="sticky">📌 Sticky / Unsticky</option>
+                        <option value="visible">👁️ Visible / Hidden</option>
+                        <option value="banned">🚫 Ban / Unban</option>
+                        <option value="nuke">☢️ Nuke / Unnuke</option>
+                        <option value="openclose">💬 Open / Close comments</option>
+                    </optgroup>
+                    <optgroup label="── Promo ──">
+                        <option value="free">🎁 Free / Non-Free</option>
+                        <option value="silver">🥈 Silver / Non-Silver</option>
+                        <option value="doubleupload">⏫ Double Upload ON/OFF</option>
+                        <option value="thirtypercent">🟣 30% Leech ON/OFF</option>
+                    </optgroup>
+                    <optgroup label="── Other ──">
+                        <option value="anonymous">🎭 Anonymize / Deanon</option>
+                        <option value="request">📩 Request / Non-Request</option>
+                    </optgroup>
+                </select>
+
+                <!-- Move category (hidden until "Move selected" is chosen) -->
+                <div id="movetorrent" class="mod-move-block" style="display:none;">
+                    <div class="mod-move-container">
+                        <span class="mod-move-label">
+                            <i class="fas fa-folder-open me-1"></i>Move to category
+                        </span>
+                        ' . $catdropdown . '
+                    </div>
+                    <div id="modMoveCategoryWarning" class="mod-move-mismatch-warning" style="display:none;">
+                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        <span id="modMoveCategoryWarningText">Selected torrents come from different categories.</span>
+                    </div>
                 </div>
 
+                <!-- Action info -->
+                <div id="actionInfo" class="mod-action-info" style="display:none;">
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <span id="actionDescription">Select an action</span>
+                    </div>
+                </div>
+
+                <div class="mod-hint">
+                    <i class="fas fa-circle-info me-1"></i>
+                    <span>Select torrents in the table below, choose an action, then apply.</span>
+                </div>
             </div>
         </div>
-    </div>
+
+      </div>
+
+      
+	  <div class="modal-footer mod-modal-footer">
+    <button type="button" class="btn btn-outline-danger btn-sm me-auto" id="clearAllSelectionsBtn">
+        <i class="fas fa-trash-alt me-1"></i>Clear All
+    </button>
+    <button type="button" class="btn btn-mod-cancel" data-bs-dismiss="modal">
+        <i class="fas fa-times me-1"></i>Cancel
+    </button>
+    <button type="button" class="btn btn-mod-apply" id="applyActionBtn">
+        <i class="fas fa-play me-1"></i> Apply
+    </button>
 </div>
+	  
+	  
+
+    </div>
+  </div>
+</div>
+
+<!-- Confirmation modal -->
+<div class="modal fade" id="modConfirmModal" tabindex="-1" aria-labelledby="modConfirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content mod-modal-content shadow-lg">
+      <div class="modal-header mod-modal-header mod-modal-header-danger">
+        <h5 class="modal-title" id="modConfirmModalLabel">
+            <i class="fas fa-exclamation-triangle me-2"></i>Please confirm
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body mod-modal-body">
+        <p id="modConfirmMessage" class="mb-0"></p>
+        <div id="modConfirmTorrentList" class="mod-selected-list mt-3" style="display:none;"></div>
+      </div>
+      <div class="modal-footer mod-modal-footer">
+        <button type="button" class="btn btn-mod-cancel" data-bs-dismiss="modal">
+            <i class="fas fa-times me-1"></i>Cancel
+        </button>
+        <button type="button" class="btn btn-mod-danger" id="modConfirmAcceptBtn">
+            <i class="fas fa-check me-1"></i>Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </form>
-';
+
+<!-- Initialize modal -->
+<script>
+    window.browseModTotalTorrents = ' . $threadcount . ';
+</script>';
+
+
 
 
 
@@ -1227,10 +1336,10 @@ if ($showimages === 'yes' && $total > 0): ?>
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/bookmark.js"></script>';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/popover.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/autocomplete.js"></script>';
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/category-highlight.js"></script>';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/autocomplete.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse.css">';
+
+
 
 
 
@@ -1243,6 +1352,11 @@ echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/st
 $actionns = $is_mod ? $lang->browse['acction'] : '';
 
 $table = '
+
+<!-- Enhanced Poster Zoom Overlay (один раз на страницу) -->
+<div class="poster-zoom-overlay" id="posterZoomOverlay">
+    <img src="" alt="Poster preview" class="poster-zoom-img" id="posterZoomImg">
+</div>
 
 <div class="container mt-3">          
   <table class="table table-hover">
@@ -1299,6 +1413,8 @@ $table = '
 
 
 
+
+
 echo '
 ' . $___notice . '
 ' . $categories . '
@@ -1306,18 +1422,41 @@ echo '
 ' . $table . '
 ';
 
+echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse.js"></script>';
+
+if ($is_mod) {
+    echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/browse-moderation.js"></script>';
+	echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/browse-moderation.css">';
+}
 
 
 
+
+$__toast_ok  = isset($_GET['mod_success']) ? htmlspecialchars($_GET['mod_success'], ENT_QUOTES) : null;
+$__toast_err = isset($_GET['mod_error']) ? htmlspecialchars($_GET['mod_error'], ENT_QUOTES) : null;
+
+if ($__toast_ok || $__toast_err):
 ?>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    <?php if ($__toast_ok): ?>
+    showToast(<?= json_encode($__toast_ok, JSON_UNESCAPED_UNICODE) ?>, 'success');
+    <?php endif; ?>
+    <?php if ($__toast_err): ?>
+    showToast(<?= json_encode($__toast_err, JSON_UNESCAPED_UNICODE) ?>, 'error');
+    <?php endif; ?>
 
+    // Strip mod_success/mod_error from the URL so a refresh doesn't repeat the toast
+    if (window.history && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('mod_success');
+        url.searchParams.delete('mod_error');
+        window.history.replaceState({}, document.title, url.toString());
+    }
+});
+</script>
+<?php endif; ?>
 
-<script src="<?= $BASEURL ?>/scripts/browse.js"></script>
-
-
-<?
-
-
-
+<?php
 
 stdfoot();

@@ -1,8 +1,5 @@
 <?php
-// Этот файл рассчитан только на include() из manage_uploads.php.
-// Повторная проверка — защита на случай прямого обращения по URL,
-// поскольку сам manage_uploads.php не определяет отдельную константу
-// вроде STAFF_PANEL, на которую можно было бы опереться здесь.
+
 
 declare(strict_types=1);
 
@@ -485,38 +482,8 @@ $this_script2 = "index.php?act=manage_uploads"
 ?>
 
 <?php if ($total_pages > 1): ?>
-<div class="card-footer d-flex justify-content-between align-items-center">
-    <div class="text-muted small">
-        <i class="bi bi-list-ol me-1"></i>
-        Showing <?= $offset + 1 ?> to <?= min($offset + $per_page, $total_files) ?> of <?= ts_nf($total_files) ?>
-    </div>
-    <nav>
-        <ul class="pagination">
-            <?php if ($page > 1): ?>
-                <li class="page-item">
-                    <a class="page-link" href="<?= $this_script2 ?>&page=<?= $page - 1 ?>">
-                        <i class="bi bi-chevron-left"></i>
-                    </a>
-                </li>
-            <?php endif; ?>
-            
-            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                <li class="page-item <?= $i == $page ? 'active' : '' ?>">
-                    <a class="page-link" href="<?= $this_script2 ?>&page=<?= $i ?>">
-                        <?= $i ?>
-                    </a>
-                </li>
-            <?php endfor; ?>
-            
-            <?php if ($page < $total_pages): ?>
-                <li class="page-item">
-                    <a class="page-link" href="<?= $this_script2 ?>&page=<?= $page + 1 ?>">
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-                </li>
-            <?php endif; ?>
-        </ul>
-    </nav>
+<div class="card-footer">
+    <?= multipage((int)$total_files, (int)$per_page, (int)$page, $this_script2) ?>
 </div>
 <?php endif; ?>
 

@@ -5,6 +5,7 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization is not allowed.</div>');
 }
 
+require_once INC_PATH . '/functions_multipage.php';
 
 $action = $_GET['action'] ?? 'list';
 $page   = max(1, (int)($_GET['page'] ?? 1));
@@ -900,31 +901,10 @@ foreach ($stat_cards as [$label, $val, $icon, $color, $desc]):
     <!-- Pagination -->
     <?php if ($total_pages > 1): ?>
     <div class="card-footer bg-white py-3 border-0">
-        <nav class="d-flex justify-content-center">
-            <ul class="pagination pagination-modern mb-0">
-                <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
-                    <a class="page-link" href="?page=<?= $page-1 ?>&status=<?= urlencode($filter_status) ?>&search=<?= urlencode($filter_search) ?>">
-                        <i class="fas fa-chevron-left"></i>
-                    </a>
-                </li>
-                <?php
-                $start = max(1, $page - 2);
-                $end = min($total_pages, $page + 2);
-                for ($p = $start; $p <= $end; $p++):
-                ?>
-                <li class="page-item <?= $p === $page ? 'active' : '' ?>">
-                    <a class="page-link" href="?page=<?= $p ?>&status=<?= urlencode($filter_status) ?>&search=<?= urlencode($filter_search) ?>">
-                        <?= $p ?>
-                    </a>
-                </li>
-                <?php endfor; ?>
-                <li class="page-item <?= $page >= $total_pages ? 'disabled' : '' ?>">
-                    <a class="page-link" href="?page=<?= $page+1 ?>&status=<?= urlencode($filter_status) ?>&search=<?= urlencode($filter_search) ?>">
-                        <i class="fas fa-chevron-right"></i>
-                    </a>
-                </li>
-            </ul>
-        </nav>
+        <?php
+        $mp_url = $_this_script_ . '&status=' . urlencode($filter_status) . '&search=' . urlencode($filter_search);
+        echo multipage($total_items, $limit, $page, $mp_url);
+        ?>
     </div>
     <?php endif; ?>
     <?php endif; ?>

@@ -11,6 +11,8 @@ if (!defined('IN_ADMIN_PANEL'))
 define('M_AVATARS', 'v.3.0');
 define('AVATARS_PER_PAGE', 24);
 
+require_once INC_PATH . '/functions_multipage.php';
+
 
 
 
@@ -177,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_arr
             'not_found'      => $not_found,
             'unlink_failed'  => $unlink_failed,
         ];
-        admin_redirect($_this_script_ . '&p=' . $page);
+        admin_redirect($_this_script_ . '&page=' . $page);
     
 		
 		
@@ -203,7 +205,7 @@ $_avatars = array_values($_avatars);
 
 $per_page = AVATARS_PER_PAGE;
 $total = count($_avatars);
-$page = isset($_GET['p']) ? max(1, (int)$_GET['p']) : 1;
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $pages = max(1, (int)ceil($total / $per_page));
 $page = min($page, $pages);
 
@@ -575,7 +577,7 @@ Swal.fire({
         </div>
     </div>
     
-    <form method="post" action="<?= htmlspecialchars($_this_script_ . '&p=' . $page) ?>" id="avatarForm">
+    <form method="post" action="<?= htmlspecialchars($_this_script_ . '&page=' . $page) ?>" id="avatarForm">
         <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
         <div class="card-body">
             <div class="selection-toolbar mb-4">
@@ -678,39 +680,7 @@ Swal.fire({
 
 <!-- Modern Pagination -->
 <?php if ($pages > 1): ?>
-<nav class="mt-4">
-    <ul class="pagination justify-content-center modern-pagination">
-        <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
-            <a class="page-link" href="<?= $page <= 1 ? '#' : htmlspecialchars($_this_script_ . '&p=' . ($page - 1)) ?>">
-                <i class="fas fa-chevron-left"></i> <span class="d-none d-sm-inline">Prev</span>
-            </a>
-        </li>
-        
-        <?php
-        $window = 2;
-        $last_printed = 0;
-        
-        for ($i = 1; $i <= $pages; $i++) {
-            if ($i <= 2 || $i > $pages - 2 || abs($i - $page) <= $window) {
-                if ($i - $last_printed > 1 && $last_printed > 0) {
-                    echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
-                }
-                $active = $i === $page ? 'active' : '';
-                echo '<li class="page-item ' . $active . '">';
-                echo '<a class="page-link" href="' . htmlspecialchars($_this_script_ . '&p=' . $i) . '">' . $i . '</a>';
-                echo '</li>';
-                $last_printed = $i;
-            }
-        }
-        ?>
-        
-        <li class="page-item <?= $page >= $pages ? 'disabled' : '' ?>">
-            <a class="page-link" href="<?= $page >= $pages ? '#' : htmlspecialchars($_this_script_ . '&p=' . ($page + 1)) ?>">
-                <span class="d-none d-sm-inline">Next</span> <i class="fas fa-chevron-right"></i>
-            </a>
-        </li>
-    </ul>
-</nav>
+<?= multipage($total, $per_page, $page, $_this_script_) ?>
 <?php endif; ?>
 
 

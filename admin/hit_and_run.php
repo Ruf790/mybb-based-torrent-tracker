@@ -8,6 +8,7 @@ if (!defined('STAFF_PANEL')) {
 define('TSHRD_TOOL', 'v1.3');
 
 require_once INC_PATH . '/datahandler.php';
+require_once INC_PATH . '/functions_multipage.php';
 include_once $rootpath . '/admin/include/global_config.php';
 include_once $rootpath . '/admin/include/staff_languages.php';
 
@@ -353,57 +354,12 @@ if ($count_query && ($result = $db->fetch_array($count_query))) {
 
 $offset = ($page - 1) * $per_page;
 $limit = "LIMIT $offset, $per_page";
-$total_pages = $total_count > 0 ? ceil($total_count / $per_page) : 1;
 
 // Функция пагинации
-function generate_pagination($base_url, $current_page, $total_pages, $per_page, $total_count) {
-    if ($total_pages <= 1) return '';
-    
-    $base_url = str_replace('&&', '&', (string)$base_url);
-    $base_url = rtrim($base_url, '&');
-    
-    $pagination = '<nav aria-label="Page navigation"><ul class="pagination pagination-sm justify-content-center">';
-    
-    if ($current_page > 1) {
-        $pagination .= '<li class="page-item"><a class="page-link" href="' . $base_url . '&page=' . ($current_page - 1) . '"><i class="fas fa-chevron-left"></i></a></li>';
-    } else {
-        $pagination .= '<li class="page-item disabled"><span class="page-link"><i class="fas fa-chevron-left"></i></span></li>';
-    }
-    
-    $start_page = max(1, $current_page - 2);
-    $end_page = min($total_pages, $start_page + 4);
-    
-    if ($end_page - $start_page < 4) {
-        $start_page = max(1, $end_page - 4);
-    }
-    
-    for ($i = $start_page; $i <= $end_page; $i++) {
-        if ($i == $current_page) {
-            $pagination .= '<li class="page-item active"><span class="page-link">' . $i . '</span></li>';
-        } else {
-            $pagination .= '<li class="page-item"><a class="page-link" href="' . $base_url . '&page=' . $i . '">' . $i . '</a></li>';
-        }
-    }
-    
-    if ($current_page < $total_pages) {
-        $pagination .= '<li class="page-item"><a class="page-link" href="' . $base_url . '&page=' . ($current_page + 1) . '"><i class="fas fa-chevron-right"></i></a></li>';
-    } else {
-        $pagination .= '<li class="page-item disabled"><span class="page-link"><i class="fas fa-chevron-right"></i></span></li>';
-    }
-    
-    $pagination .= '</ul></nav>';
-    
-    $start_item = ($current_page - 1) * $per_page + 1;
-    $end_item = min($current_page * $per_page, $total_count);
-    $page_info = '<div class="text-center text-muted small mb-2"><i class="fas fa-chart-line me-1"></i>Showing ' . $start_item . ' to ' . $end_item . ' of ' . $total_count . ' entries</div>';
-    
-    return $page_info . $pagination;
-}
-
 $base_url = $_this_script_ . '&' . $link;
 $base_url = str_replace('&&', '&', $base_url);
 $base_url = rtrim($base_url, '&');
-$pagertop = generate_pagination($base_url, $page, $total_pages, $per_page, $total_count);
+$pagertop = multipage((int)$total_count, (int)$per_page, (int)$page, $base_url);
 $pagerbottom = $pagertop;
 
 // Основной запрос

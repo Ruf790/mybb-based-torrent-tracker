@@ -75,7 +75,10 @@ $torrentid = ((isset($_GET['torrentid']) && is_valid_id($_GET['torrentid'])) ? i
 $type = ((isset($_GET['type']) && $_GET['type'] === 'seedtime') ? 'seedtime' : 'ratio');
 $eol = PHP_EOL;
 
-$page = isset($_GET['page']) && $_GET['page'] > 0 ? intval($_GET['page']) : 1;
+// Читаем и POST, и GET - форма "Jump to Page" в multipage() отправляет
+// через POST, а обычные ссылки-страницы (1,2,3...) идут через GET.
+$page = isset($_POST['page']) && $_POST['page'] > 0 ? intval($_POST['page'])
+      : (isset($_GET['page']) && $_GET['page'] > 0 ? intval($_GET['page']) : 1);
 $per_page = $config['ts_hit_and_run']['query_limit'] ?? 20;
 
 $skip_usergroups_arr = $config['ts_hit_and_run']['skip_usergroups'] ?? [UC_BANNED, UC_VIP, UC_ADMINISTRATOR, UC_SYSOP, UC_MODERATOR];
@@ -273,8 +276,8 @@ if (is_valid_id($torrentid)) {
     $link = $orjlink = 'torrentid=' . $torrentid . '&amp;';
 }
 
-if (isset($_GET['page'])) {
-    $hiddenvalues .= '<input type="hidden" name="page" value="' . intval($_GET['page']) . '">';
+if ($page > 1) {
+    $hiddenvalues .= '<input type="hidden" name="page" value="' . $page . '">';
 }
 
 if (isset($_GET['show_by_userid'])) {

@@ -373,7 +373,9 @@ if (isset($_POST['bulk_action']) && $_POST['bulk_action'] === 'delete') {
 // ── List page setup ──────────────────────────────────────
 $is_ajax   = isset($_GET['ajax_search']) && $_GET['ajax_search'] == '1';
 $per_page  = $ts_perpage;
-$page      = max(1, (int)($_GET['page'] ?? 1));
+// Читаем и POST, и GET - форма "Jump to Page" в multipage() отправляет
+// через POST, а обычные ссылки-страницы (1,2,3...) идут через GET.
+$page      = max(1, (int)($_POST['page'] ?? $_GET['page'] ?? 1));
 $offset    = ($page - 1) * $per_page;
 $search    = trim($_GET['search'] ?? '');
 $typeFilter= trim($_GET['type']   ?? '');

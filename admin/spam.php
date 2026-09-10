@@ -7,10 +7,16 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger m-3"><strong>Error!</strong> Direct access not allowed.</div>');
 }
 
+require_once INC_PATH . '/functions_multipage.php';
+
 
 // Pagination settings
 $perPage = 25;
-$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+// Читаем и POST, и GET - форма "Jump to Page" в multipage() отправляет
+// через POST, а обычные ссылки-страницы (1,2,3...) идут через GET.
+// Раньше тут проверялся только $_GET, поэтому "Jump to Page" не работал.
+$page = isset($_POST['page']) ? max(1, (int)$_POST['page'])
+      : (isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1);
 $offset = ($page - 1) * $perPage;
 
 // Search and filter parameters
@@ -95,7 +101,10 @@ function build_url(array $overrides = []): string {
     $defaults = ['q' => '', 'from' => 0, 'to' => 0, 'status' => 'all'];
 
     // Объединяем: дефолты → QS из $_this_script_ → текущий $_GET → overrides
-    $params = array_merge($defaults, $baseQs, $_GET);
+    // $_POST тоже учитываем - форма "Jump to Page" шлёт через POST,
+    // иначе после перехода по ней остальные фильтры сбросились бы
+    // до дефолтных значений.
+    $params = array_merge($defaults, $baseQs, $_GET, $_POST);
     foreach ($overrides as $k => $v) {
         if ($v === null) unset($params[$k]); // можно удалить ключ, если нужно
         else $params[$k] = $v;
@@ -392,57 +401,10 @@ $receiver_avatar = $avatar['image'];
 
 <!-- Pagination -->
 <?php if ($total > $perPage): ?>
-  <?php
-    $totalPages = max(1, (int)ceil($total / $perPage));
-    $page       = max(1, min($page, $totalPages));
-    $startPage  = max(1, $page - 2);
-    $endPage    = min($startPage + 4, $totalPages);
-  ?>
-  <nav aria-label="Page navigation" class="mt-4">
-    <ul class="pagination justify-content-center">
-      <li class="page-item <?=$page==1?'disabled':''?>">
-        <a class="page-link" href="<?=htmlspecialchars(build_url(['page'=>1]), ENT_QUOTES)?>" title="Go to first page" data-bs-toggle="tooltip">
-          <i class="bi bi-chevron-double-left"></i>
-        </a>
-      </li>
-      <li class="page-item <?=$page==1?'disabled':''?>">
-        <a class="page-link" href="<?=htmlspecialchars(build_url(['page'=>$page-1]), ENT_QUOTES)?>" title="Go to previous page" data-bs-toggle="tooltip">
-          <i class="bi bi-chevron-left"></i>
-        </a>
-      </li>
-
-      <?php if ($startPage > 1): ?>
-        <li class="page-item disabled"><span class="page-link">…</span></li>
-      <?php endif; ?>
-
-      <?php for ($i=$startPage; $i<=$endPage; $i++): ?>
-        <li class="page-item <?=$i==$page?'active':''?>">
-          <a class="page-link" href="<?=htmlspecialchars(build_url(['page'=>$i]), ENT_QUOTES)?>" title="Go to page <?=$i?>" data-bs-toggle="tooltip">
-            <?=$i?>
-          </a>
-        </li>
-      <?php endfor; ?>
-
-      <?php if ($endPage < $totalPages): ?>
-        <li class="page-item disabled"><span class="page-link">…</span></li>
-      <?php endif; ?>
-
-      <li class="page-item <?=$page==$totalPages?'disabled':''?>">
-        <a class="page-link" href="<?=htmlspecialchars(build_url(['page'=>$page+1]), ENT_QUOTES)?>" title="Go to next page" data-bs-toggle="tooltip">
-          <i class="bi bi-chevron-right"></i>
-        </a>
-      </li>
-      <li class="page-item <?=$page==$totalPages?'disabled':''?>">
-        <a class="page-link" href="<?=htmlspecialchars(build_url(['page'=>$totalPages]), ENT_QUOTES)?>" title="Go to last page" data-bs-toggle="tooltip">
-          <i class="bi bi-chevron-double-right"></i>
-        </a>
-      </li>
-    </ul>
-  </nav>
+  <?= multipage((int)$total, $perPage, $page, build_url(['page' => null])) ?>
+<?php endif; ?>
 
 
-  
-  
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -462,7 +424,6 @@ $receiver_avatar = $avatar['image'];
 
 	  
 	  
-      <?php endif; ?>
     </div>
   </div>
 </div>

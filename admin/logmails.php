@@ -47,7 +47,7 @@ $page_url = $_this_script_ ?? '/admin/index.php';
 $multipage = multipage($total_count, $perpage, $page, $page_url);
 
 // Render page
-renderMailLogsTable($mail_logs, $total_count, $multipage, $parser, $parser_options);
+renderMailLogsTable($mail_logs, $total_count, $multipage, $parser, $parser_options, $page, $perpage);
 
 stdfoot();
 
@@ -197,7 +197,7 @@ function getMailLogs(int $start, int $perpage): array
 /**
  * Render mail logs table
  */
-function renderMailLogsTable(array $logs, int $total_count, string $multipage, $parser, array $parser_options): void
+function renderMailLogsTable(array $logs, int $total_count, string $multipage, $parser, array $parser_options, int $page, int $perpage): void
 {
     global $_this_script_, $usergroups;
     

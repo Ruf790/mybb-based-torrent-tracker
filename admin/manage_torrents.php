@@ -36,6 +36,10 @@ class TorrentManager
         $this->errors[] = $error;
     }
 
+    public function getErrors(): array {
+        return $this->errors;
+    }
+
 
 
     public function handleUpdate(array $postData): void {
@@ -53,8 +57,16 @@ class TorrentManager
             return;
         }
 
+        // Guard against accidental/malicious mass operations in one request.
+        $maxBulkSize = 1000;
+        if (count($torrentIds) > $maxBulkSize) {
+            $this->addError('Too many torrents selected at once (max ' . $maxBulkSize . '). Narrow your selection and try again.');
+            return;
+        }
+
         $torrentIdsStr = implode(',', array_map('intval', $torrentIds));
-        
+        $affectedCount = count($torrentIds);
+
         $actions = [
             'move' => fn() => $this->moveTorrents($torrentIdsStr, $category),
             'delete' => fn() => $this->deleteTorrents($torrentIds),
@@ -68,38 +80,129 @@ class TorrentManager
             'nuke' => fn() => $this->toggleField($torrentIdsStr, 'isnuked'),
             'doubleupload' => fn() => $this->toggleField($torrentIdsStr, 'doubleupload'),
             'openclose' => fn() => $this->toggleField($torrentIdsStr, 'allowcomments'),
+            'request' => fn() => $this->toggleField($torrentIdsStr, 'isrequest'),
         ];
 
+        // Extra privilege gate for irreversible/high-impact actions.
+        // Defensive: only enforced if this codebase actually exposes an
+        // is_sysop() helper - if it doesn't, we skip the extra check
+        // rather than risk a fatal error on an undefined function.
+        $dangerousActions = ['delete', 'banned', 'nuke'];
+        if (in_array($actionType, $dangerousActions, true) && function_exists('is_sysop')) {
+            if (!is_sysop()) {
+                $this->addError('This action ("' . $actionType . '") requires a higher staff level (sysop).');
+                return;
+            }
+        }
+
         if (isset($actions[$actionType])) {
-            $actions[$actionType]();
+            $errorsBefore = count($this->errors);
+            $detail = $actions[$actionType]();
+            $hasNewError = count($this->errors) > $errorsBefore;
+
+            if ($hasNewError) {
+                // The action itself already queued a user-facing error
+                // (e.g. "move" with no category picked) and did nothing -
+                // don't log a bogus success or tell the mod it worked.
+                return;
+            }
+
             write_log(
-                'Bulk action "' . $actionType . '" applied to torrent(s): ' . implode(', ', array_map('intval', $torrentIds)),
+                'Bulk action "' . $actionType . '" applied to torrent(s): ' . implode(', ', array_map('intval', $torrentIds))
+                    . ($detail ? ' - ' . $detail : ''),
                 'torrent',
                 1
             );
-            $_SESSION['action_success'] = 'Action completed successfully!';
-        }
-    }
-
-    private function moveTorrents(string $ids, int $category): void {
-        global $db;
-        if ($category > 0) {
-            $db->sql_query_prepared("UPDATE torrents SET category = ? WHERE id IN ($ids)", [$category]);
+            $_SESSION['action_success'] = 'Action completed successfully! (' . $affectedCount . ' torrent(s) affected)';
         } else {
-            $this->addError('Invalid category selected!');
+            $this->addError('Unknown or not-yet-implemented action: ' . htmlspecialchars($actionType));
         }
     }
 
-    private function deleteTorrents(array $ids): void {
+    private function moveTorrents(string $ids, int $category): ?string {
+        global $db;
+        if ($category <= 0) {
+            $this->addError('Invalid category selected!');
+            return null;
+        }
+
+        // Snapshot source categories and the target name purely for the
+        // audit log - lets a later "who moved this and from where" question
+        // be answered without cross-referencing anything else.
+        $fromCategories = [];
+        $catQuery = $db->sql_query_prepared(
+            "SELECT c.name AS name, COUNT(*) AS cnt FROM torrents t LEFT JOIN categories c ON t.category = c.id WHERE t.id IN ($ids) GROUP BY t.category"
+        );
+        while ($catQuery && ($row = $db->fetch_array($catQuery))) {
+            $fromCategories[] = ($row['name'] ?? 'unknown') . ' (' . $row['cnt'] . ')';
+        }
+
+        $targetName = null;
+        $nameQuery = $db->sql_query_prepared("SELECT name FROM categories WHERE id = ?", [$category]);
+        if ($nameQuery && $db->num_rows($nameQuery)) {
+            $targetName = $db->fetch_field($nameQuery, 'name');
+        }
+
+        $db->sql_query_prepared("UPDATE torrents SET category = ? WHERE id IN ($ids)", [$category]);
+
+        return sprintf(
+            "moved from [%s] to '%s' (id %d)",
+            $fromCategories ? implode(', ', $fromCategories) : 'unknown',
+            $targetName ?? ('#' . $category),
+            $category
+        );
+    }
+
+    private function deleteTorrents(array $ids): ?string {
+        global $db;
         require_once INC_PATH . '/functions_deletetorrent.php';
+
+        // Names have to be read *before* deleting - grab a short preview
+        // for the audit log, since "deleted ids 4, 91, 233" tells an admin
+        // a lot less six months from now than the actual torrent names.
+        $names = [];
+        if (!empty($ids)) {
+            $idsStr = implode(',', array_map('intval', $ids));
+            $nameQuery = $db->sql_query_prepared("SELECT name FROM torrents WHERE id IN ($idsStr)");
+            while ($nameQuery && ($row = $db->fetch_array($nameQuery))) {
+                $names[] = $row['name'];
+            }
+        }
+
         foreach ($ids as $id) {
             deletetorrent((int)$id);
         }
+
+        $maxNames = 10;
+        $preview = implode(', ', array_slice($names, 0, $maxNames));
+        $more = count($names) > $maxNames ? ' and ' . (count($names) - $maxNames) . ' more' : '';
+
+        return 'deleted: ' . $preview . $more;
     }
 
-    private function toggleField(string $ids, string $field): void {
+    private function toggleField(string $ids, string $field): string {
         global $db;
+
+        // Snapshot the before-state so the log can say what actually
+        // changed ("2 turned on, 1 turned off") instead of just "toggled".
+        $before = ['yes' => 0, 'no' => 0];
+        $countQuery = $db->sql_query_prepared("SELECT $field AS val, COUNT(*) AS cnt FROM torrents WHERE id IN ($ids) GROUP BY $field");
+        while ($countQuery && ($row = $db->fetch_array($countQuery))) {
+            $key = ($row['val'] === 'yes') ? 'yes' : 'no';
+            $before[$key] += (int)$row['cnt'];
+        }
+
         $db->sql_query_prepared("UPDATE torrents SET $field = IF($field = 'yes', 'no', 'yes') WHERE id IN ($ids)");
+
+        // Whatever was 'no' just flipped to 'yes', and vice versa.
+        return sprintf(
+            "'%s': %d turned on, %d turned off (was %d on / %d off)",
+            $field,
+            $before['no'],
+            $before['yes'],
+            $before['yes'],
+            $before['no']
+        );
     }
 }
 
@@ -213,10 +316,43 @@ $queryBuilder->addSearchTypeCondition($searchtype);
 
 // Handle form submission
 if ($do === 'update') {
+    $wantsReturn = ($_POST['return'] ?? '') === 'yes' && !empty($_POST['return_address']);
+
     if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
         $torrentManager->addError('Security check failed. Please refresh the page and try again.');
     } else {
         $torrentManager->handleUpdate($_POST);
+    }
+
+    if ($wantsReturn) {
+        $errors = $torrentManager->getErrors();
+        // No longer relying on $_SESSION here: admin/index.php and browse.php
+        // don't reliably share the same session (different cookie scope), so
+        // the result is passed back via a query param on the redirect instead.
+        $successMsg = $_SESSION['action_success'] ?? null;
+        unset($_SESSION['action_success']);
+
+        $returnAddress = (string)$_POST['return_address'];
+        // Open-redirect guard: only allow paths that start with exactly one
+        // "/" followed by something other than "/" or "\" - this blocks
+        // "//evil.com", "https://evil.com" and the "/\evil.com" trick some
+        // browsers still normalize to a protocol-relative URL.
+        $isSafeRelativePath = $returnAddress !== ''
+            && $returnAddress[0] === '/'
+            && !preg_match('#^/[/\\\\]#', $returnAddress);
+
+        if ($isSafeRelativePath) {
+            $separator = (strpos($returnAddress, '') !== false) ? '' : '?';
+
+            if (!empty($errors)) {
+                $returnAddress .= $separator . 'mod_error=' . rawurlencode(implode('; ', $errors));
+            } elseif ($successMsg) {
+                $returnAddress .= $separator . 'mod_success=' . rawurlencode($successMsg);
+            }
+
+            header('Location: ' . $returnAddress);
+            exit;
+        }
     }
 }
 

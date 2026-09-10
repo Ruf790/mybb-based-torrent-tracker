@@ -513,14 +513,7 @@ if ($mybb->input['action'] === 'results') {
 
         // Pagination
         $mp_url = "search.php?action=results&amp;sid=$sid&amp;sortby=$sortby&amp;order=$order&amp;uid=" . $mybb->get_input('uid', MyBB::INPUT_INT);
-        echo '<div class="sr-pagination">';
-        if ($page > 1) echo '<a href="' . $mp_url . '&amp;page=' . ($page - 1) . '" class="sr-page-btn"><i class="fas fa-chevron-left"></i></a>';
-        $ps = max(1, $page - 2); $pe = min($pages, $page + 2);
-        if ($ps > 1) { echo '<a href="' . $mp_url . '&amp;page=1" class="sr-page-btn">1</a>'; if ($ps > 2) echo '<span class="sr-page-btn disabled">…</span>'; }
-        for ($i = $ps; $i <= $pe; $i++) echo '<a href="' . $mp_url . '&amp;page=' . $i . '" class="sr-page-btn' . ($i === $page ? ' active' : '') . '">' . $i . '</a>';
-        if ($pe < $pages) { if ($pe < $pages - 1) echo '<span class="sr-page-btn disabled">…</span>'; echo '<a href="' . $mp_url . '&amp;page=' . $pages . '" class="sr-page-btn">' . $pages . '</a>'; }
-        if ($page < $pages) echo '<a href="' . $mp_url . '&amp;page=' . ($page + 1) . '" class="sr-page-btn"><i class="fas fa-chevron-right"></i></a>';
-        echo '</div>';
+        echo multipage($threadcount, $perpage, $page, $mp_url);
 
         echo '</div>';
         $plugins->run_hooks('search_results_end');
@@ -688,14 +681,7 @@ if ($mybb->input['action'] === 'results') {
 
         // Pagination
         $mp_url2 = "search.php?action=results&amp;sid=" . htmlspecialchars_uni($mybb->get_input('sid')) . "&amp;sortby=$sortby&amp;order=$order&amp;uid=" . $mybb->get_input('uid', MyBB::INPUT_INT);
-        echo '<div class="sr-pagination">';
-        if ($page > 1) echo '<a href="' . $mp_url2 . '&amp;page=' . ($page - 1) . '" class="sr-page-btn"><i class="fas fa-chevron-left"></i></a>';
-        $ps2 = max(1, $page - 2); $pe2 = min($pages, $page + 2);
-        if ($ps2 > 1) { echo '<a href="' . $mp_url2 . '&amp;page=1" class="sr-page-btn">1</a>'; if ($ps2 > 2) echo '<span class="sr-page-btn disabled">…</span>'; }
-        for ($i = $ps2; $i <= $pe2; $i++) echo '<a href="' . $mp_url2 . '&amp;page=' . $i . '" class="sr-page-btn' . ($i === $page ? ' active' : '') . '">' . $i . '</a>';
-        if ($pe2 < $pages) { if ($pe2 < $pages - 1) echo '<span class="sr-page-btn disabled">…</span>'; echo '<a href="' . $mp_url2 . '&amp;page=' . $pages . '" class="sr-page-btn">' . $pages . '</a>'; }
-        if ($page < $pages) echo '<a href="' . $mp_url2 . '&amp;page=' . ($page + 1) . '" class="sr-page-btn"><i class="fas fa-chevron-right"></i></a>';
-        echo '</div>';
+        echo multipage($postcount, $perpage, $page, $mp_url2);
 
         echo '</div>';
         $plugins->run_hooks('search_results_end');

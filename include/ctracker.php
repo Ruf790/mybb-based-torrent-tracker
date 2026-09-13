@@ -6,11 +6,7 @@ if (!defined('APP_INITIALIZED')) {
     exit('<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
-// $BASEURL обычно устанавливается global.php до подключения этого файла,
-// но полагаться на это вслепую нельзя (например, при нештатном порядке
-// инициализации). Явно подтягиваем из глобальной области и подстраховываемся
-// пустой строкой, чтобы страница блокировки хотя бы отрендерилась (пути к
-// CSS/JS станут относительными), а не падала с Undefined variable.
+
 global $BASEURL;
 $baseUrl = $BASEURL ?? '';
 
@@ -21,6 +17,24 @@ function is_malicious_request($input, $patterns) {
         }
     }
     return false;
+}
+
+
+function get_real_client_ip(): string
+{
+    $headers = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR'];
+
+    foreach ($headers as $header) {
+        if (!empty($_SERVER[$header])) {
+            
+            $candidate = trim(explode(',', $_SERVER[$header])[0]);
+            if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+                return $candidate;
+            }
+        }
+    }
+
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 }
 
 // Запрещённые шаблоны (XSS, SQLi, LFI, RFI)
@@ -41,7 +55,7 @@ $attack_patterns = [
 $query_string = urldecode($_SERVER['QUERY_STRING'] ?? '');
 $uri = $_SERVER['REQUEST_URI'] ?? '';
 $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-$ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$ip = get_real_client_ip();
 
 if (is_malicious_request($query_string, $attack_patterns) || is_malicious_request($uri, $attack_patterns)) {
     $log = sprintf(
@@ -249,4 +263,3 @@ exit('
 
 
 }
-

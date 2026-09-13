@@ -351,13 +351,15 @@ function upload_attachment(array $attachment, bool $update_attachment = false): 
             return ['error' => 'The uploaded file is not a valid image.'];
         }
 
-        if ($ext !== 'gif') {
-            $newSize = recode_image_file($attachment['tmp_name'], $realMime);
-            if ($newSize === false) {
-                return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
-            }
-            $attachment['size'] = $newSize;
+        // Перекодирование — защита от "полиглот"-файлов. recode_image_file()
+        // сама отличает анимированные GIF (Imagick, с сохранением анимации)
+        // от статичных (обычный путь через GD) - раньше GIF тут пропускался
+        // целиком, без всякой защиты.
+        $newSize = recode_image_file($attachment['tmp_name'], $realMime);
+        if ($newSize === false) {
+            return ['error' => 'The uploaded file is corrupted or is not a valid image.'];
         }
+        $attachment['size'] = $newSize;
     }
 
     // Длина имени файла

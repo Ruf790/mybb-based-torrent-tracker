@@ -9,7 +9,7 @@ function is_animated_gif(string $path): bool
         return false;
     }
     try {
-        $img = new \Imagick($path);
+        $img = new \Imagick(_resolve_absolute_image_path($path));
         $count = $img->getNumberImages();
         $img->clear();
         return $count > 1;
@@ -27,7 +27,7 @@ function resize_animated_gif(string $src, string $dst, int $maxW, int $maxH): bo
         return false;
     }
     try {
-        $img = new \Imagick($src);
+        $img = new \Imagick(_resolve_absolute_image_path($src));
         $img = $img->coalesceImages();
 
         foreach ($img as $frame) {
@@ -45,9 +45,63 @@ function resize_animated_gif(string $src, string $dst, int $maxW, int $maxH): bo
 }
 
 
+if (!function_exists('_resolve_absolute_image_path')) {
+function _resolve_absolute_image_path(string $path): string
+{
+
+    $real = realpath($path);
+    return $real !== false ? $real : $path;
+}
+}
+
+
+if (!function_exists('recode_image_via_imagick')) {
+function recode_image_via_imagick(string $path): int|false
+{
+    if (!extension_loaded('imagick')) {
+        error_log('recode_image_via_imagick: extension "imagick" not loaded');
+        return false;
+    }
+    $absPath = _resolve_absolute_image_path($path);
+    try {
+        $img = new \Imagick($absPath);
+        $frames = $img->getNumberImages();
+        if ($frames > 1) {
+            $img = $img->coalesceImages();
+            $img = $img->optimizeImageLayers();
+        }
+        $result = $img->writeImages($absPath, true);
+        $img->clear();
+        if (!$result) {
+            error_log('recode_image_via_imagick: writeImages() returned false for ' . $absPath);
+            return false;
+        }
+        clearstatcache(true, $path);
+        return @filesize($path);
+    } catch (\Throwable $e) {
+        error_log('recode_image_via_imagick: exception for ' . $absPath . ' - ' . get_class($e) . ': ' . $e->getMessage());
+        return false;
+    }
+}
+}
+
+
 if (!function_exists('recode_image_file')) {
 function recode_image_file(string $path, string $mime): int|false
 {
+    
+    if ($mime === 'image/gif' && is_animated_gif($path)) {
+        return recode_image_via_imagick($path);
+    }
+
+    if ($mime === 'image/webp' && extension_loaded('imagick')) {
+        $result = recode_image_via_imagick($path);
+        if ($result !== false) {
+            return $result;
+        }
+        error_log('recode_image_file(webp): Imagick path failed for ' . $path . ', falling back to GD attempt');
+    }
+
     $recodeMap = [
         'image/jpeg' => true,
         'image/png'  => true,
@@ -56,18 +110,22 @@ function recode_image_file(string $path, string $mime): int|false
     ];
 
     if (isset($recodeMap[$mime])) {
-        $info = @getimagesize($path);
+        $gdPath = _resolve_absolute_image_path($path);
+        $info = @getimagesize($gdPath);
         if ($info) {
             _ensure_thumbnail_memory($info[0], $info[1], $info['bits'] ?? 8, $info['channels'] ?? 3);
         }
 
         $img = match ($mime) {
-            'image/jpeg' => @imagecreatefromjpeg($path),
-            'image/png'  => @imagecreatefrompng($path),
-            'image/webp' => @imagecreatefromwebp($path),
-            'image/gif'  => @imagecreatefromgif($path),
+            'image/jpeg' => @imagecreatefromjpeg($gdPath),
+            'image/png'  => @imagecreatefrompng($gdPath),
+            'image/webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($gdPath) : false,
+            'image/gif'  => @imagecreatefromgif($gdPath),
         };
         if ($img === false) {
+            if ($mime === 'image/webp') {
+                error_log('recode_image_file(webp): GD imagecreatefromwebp() returned false for ' . $gdPath);
+            }
             return false;
         }
         if ($mime === 'image/png') {
@@ -76,10 +134,10 @@ function recode_image_file(string $path, string $mime): int|false
             imagesavealpha($img, true);
         }
         match ($mime) {
-            'image/jpeg' => imagejpeg($img, $path, 90),
-            'image/png'  => imagepng($img, $path, 9),
-            'image/webp' => imagewebp($img, $path, 90),
-            'image/gif'  => imagegif($img, $path),
+            'image/jpeg' => imagejpeg($img, $gdPath, 90),
+            'image/png'  => imagepng($img, $gdPath, 9),
+            'image/webp' => imagewebp($img, $gdPath, 90),
+            'image/gif'  => imagegif($img, $gdPath),
         };
     }
 
@@ -89,9 +147,42 @@ function recode_image_file(string $path, string $mime): int|false
 }
 
 
+if (!function_exists('create_thumbnail_via_imagick')) {
+function create_thumbnail_via_imagick(string $src, string $dst, int $maxW, int $maxH): bool
+{
+    if (!extension_loaded('imagick')) {
+        return false;
+    }
+    try {
+        $absSrc = _resolve_absolute_image_path($src);
+        $img = new \Imagick($absSrc);
+        
+        if ($img->getNumberImages() > 1) {
+            $img->setIteratorIndex(0);
+        }
+        $img->thumbnailImage($maxW, $maxH, true, false);
+        $result = $img->writeImage($dst);
+        $img->clear();
+        return (bool)$result;
+    } catch (\Throwable $e) {
+        error_log('create_thumbnail_via_imagick: exception for ' . $src . ' - ' . get_class($e) . ': ' . $e->getMessage());
+        return false;
+    }
+}
+}
+
+
 if (!function_exists('create_thumbnail')) {
 function create_thumbnail(string $src, string $dst, int $maxW, int $maxH, string $mime): bool
 {
+    
+    if ($mime === 'image/webp' && extension_loaded('imagick')) {
+        if (create_thumbnail_via_imagick($src, $dst, $maxW, $maxH)) {
+            return true;
+        }
+        error_log('create_thumbnail(webp): Imagick path failed for ' . $src . ', falling back to GD attempt');
+    }
+
     if (!extension_loaded('gd')) return false;
 
     $info = @getimagesize($src);
@@ -110,11 +201,16 @@ function create_thumbnail(string $src, string $dst, int $maxW, int $maxH, string
         'image/jpeg', 'image/jpg' => @imagecreatefromjpeg($src),
         'image/png'               => @imagecreatefrompng($src),
         'image/gif'               => @imagecreatefromgif($src),
-        'image/webp'              => @imagecreatefromwebp($src),
+        'image/webp'              => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($src) : false,
         default                   => false,
     };
 
-    if (!$src_img) return false;
+    if (!$src_img) {
+        if ($mime === 'image/webp') {
+            error_log('create_thumbnail(webp): GD imagecreatefromwebp() also returned false for ' . $src);
+        }
+        return false;
+    }
 
     $dst_img = imagecreatetruecolor($newW, $newH);
 

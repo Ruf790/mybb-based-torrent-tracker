@@ -263,3 +263,293 @@ document.addEventListener('DOMContentLoaded', function() {
     updateDeleteBtnState();
 });
 
+// ── Upload modal (AJAX) ──────────────────────────────────────────────────────
+(function() {
+    const modal        = document.getElementById("uploadScreenshotModal");
+    if (!modal) return;
+    const torrentInput = document.getElementById("scrTorrentId");
+    const fileInput     = document.getElementById("scrFileInput");
+    const dropArea      = document.getElementById("scrDropArea");
+    const placeholder    = document.getElementById("scrPlaceholder");
+    const previewContainer = document.getElementById("scrPreviewContainer");
+    const previewGrid    = document.getElementById("scrPreviewGrid");
+    const fileCountBadge = document.getElementById("scrFileCountBadge");
+    const fileCountEl    = document.getElementById("scrFileCount");
+    const clearBtn       = document.getElementById("scrClearBtn");
+    const startBtn       = document.getElementById("scrStartUploadBtn");
+    const progressWrap   = document.getElementById("scrUploadProgress")?.parentElement?.parentElement;
+    const progressBar    = document.getElementById("scrUploadProgress");
+
+    let selected = [];
+
+    function updateStartBtn() {
+        startBtn.disabled = !(selected.length > 0 && torrentInput.value.trim() !== "");
+    }
+
+    function renderPreview() {
+        previewGrid.innerHTML = "";
+        if (!selected.length) {
+            placeholder.style.display = "";
+            previewContainer.style.display = "none";
+            fileCountBadge.style.display = "none";
+            clearBtn.classList.add("d-none");
+            updateStartBtn();
+            return;
+        }
+        placeholder.style.display = "none";
+        previewContainer.style.display = "block";
+        fileCountBadge.style.display = "block";
+        fileCountEl.textContent = selected.length + " file" + (selected.length > 1 ? "s" : "");
+        clearBtn.classList.remove("d-none");
+
+        selected.forEach(file => {
+            if (!file.type.match("image.*")) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = document.createElement("img");
+                img.src = e.target.result;
+                img.className = "rounded border";
+                img.style.cssText = "max-height:100px;max-width:140px;object-fit:cover";
+                previewGrid.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        });
+        updateStartBtn();
+    }
+
+    fileInput.addEventListener("change", function() {
+        selected = [...this.files];
+        renderPreview();
+    });
+
+    torrentInput.addEventListener("input", updateStartBtn);
+
+    clearBtn.addEventListener("click", function() {
+        selected = [];
+        fileInput.value = "";
+        renderPreview();
+    });
+
+    ["dragenter", "dragover", "dragleave", "drop"].forEach(ev =>
+        dropArea.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); })
+    );
+    ["dragenter", "dragover"].forEach(ev =>
+        dropArea.addEventListener(ev, () => dropArea.classList.add("border-primary"))
+    );
+    ["dragleave", "drop"].forEach(ev =>
+        dropArea.addEventListener(ev, () => dropArea.classList.remove("border-primary"))
+    );
+    dropArea.addEventListener("drop", e => {
+        fileInput.files = e.dataTransfer.files;
+        fileInput.dispatchEvent(new Event("change"));
+    });
+
+    modal.addEventListener("hidden.bs.modal", function() {
+        selected = [];
+        fileInput.value = "";
+        torrentInput.value = "";
+        renderPreview();
+        if (progressWrap) progressWrap.style.display = "none";
+    });
+
+    startBtn.addEventListener("click", function() {
+        if (!selected.length || !torrentInput.value.trim()) return;
+
+        const formData = new FormData();
+        selected.forEach(f => formData.append("screenshots[]", f));
+        formData.append("torrent_id", torrentInput.value.trim());
+        formData.append("my_post_key", my_post_key);
+
+        startBtn.disabled = true;
+        startBtn.querySelector(".upload-text").classList.add("d-none");
+        startBtn.querySelector(".upload-loading").classList.remove("d-none");
+
+        if (progressWrap) {
+            progressWrap.style.display = "block";
+            progressBar.style.width = "0%";
+        }
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += 10;
+            if (progressBar && progress <= 90) progressBar.style.width = progress + "%";
+        }, 200);
+
+        fetch(scr_script + "&action=ajax_upload", {
+            method: "POST",
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            clearInterval(progressInterval);
+            if (progressBar) progressBar.style.width = "100%";
+
+            if (data.status === "success" || data.status === "partial") {
+                if (typeof showToast === "function") {
+                    showToast(data.message, data.status === "success" ? "success" : "warning");
+                }
+                setTimeout(() => {
+                    const inst = bootstrap.Modal.getInstance(modal);
+                    if (inst) inst.hide();
+                    location.reload();
+                }, 1200);
+            } else {
+                if (typeof showToast === "function") {
+                    showToast(data.message || "Upload failed.", "error");
+                } else {
+                    alert(data.message || "Upload failed.");
+                }
+                if (progressWrap) progressWrap.style.display = "none";
+            }
+        })
+        .catch(err => {
+            clearInterval(progressInterval);
+            console.error("Upload error:", err);
+            if (typeof showToast === "function") {
+                showToast("Server not responding.", "error");
+            }
+            if (progressWrap) progressWrap.style.display = "none";
+        })
+        .finally(() => {
+            startBtn.disabled = false;
+            startBtn.querySelector(".upload-text").classList.remove("d-none");
+            startBtn.querySelector(".upload-loading").classList.add("d-none");
+        });
+    });
+})();
+
+// ── Edit modal (AJAX) ────────────────────────────────────────────────────────
+(function() {
+    const editModal   = document.getElementById("editScreenshotModal");
+    if (!editModal) return;
+    const idInput     = document.getElementById("editScreenshotId");
+    const torrentInput = document.getElementById("editTorrentId");
+    const fileInput    = document.getElementById("editScreenshotFile");
+    const preview      = document.getElementById("editImagePreview");
+    const currentInfo  = document.getElementById("editCurrentFilename");
+    const saveBtn       = document.getElementById("editSaveBtn");
+
+    editModal.addEventListener("show.bs.modal", function(event) {
+        const trigger = event.relatedTarget;
+        if (!trigger) return;
+
+        idInput.value = trigger.getAttribute("data-id") || "";
+        torrentInput.value = trigger.getAttribute("data-torrent-id") || "";
+        preview.src = trigger.getAttribute("data-img-src") || "";
+        currentInfo.textContent = "Leave empty to keep: " + (trigger.getAttribute("data-filename") || "");
+        fileInput.value = "";
+    });
+
+    fileInput.addEventListener("change", function() {
+        const f = this.files[0];
+        if (f && f.type.match("image.*")) {
+            const r = new FileReader();
+            r.onload = e => preview.src = e.target.result;
+            r.readAsDataURL(f);
+        }
+    });
+
+    saveBtn.addEventListener("click", function() {
+        if (!torrentInput.value.trim()) {
+            if (typeof showToast === "function") showToast("Torrent ID is required", "error");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("id", idInput.value);
+        formData.append("torrent_id", torrentInput.value.trim());
+        formData.append("my_post_key", my_post_key);
+        if (fileInput.files[0]) {
+            formData.append("screenshot", fileInput.files[0]);
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.querySelector(".save-text").classList.add("d-none");
+        saveBtn.querySelector(".save-loading").classList.remove("d-none");
+
+        fetch(scr_script + "&action=ajax_edit", {
+            method: "POST",
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === "success") {
+                if (typeof showToast === "function") showToast(data.message, "success");
+                setTimeout(() => {
+                    const inst = bootstrap.Modal.getInstance(editModal);
+                    if (inst) inst.hide();
+                    location.reload();
+                }, 1000);
+            } else {
+                if (typeof showToast === "function") {
+                    showToast(data.message || "Update failed.", "error");
+                } else {
+                    alert(data.message || "Update failed.");
+                }
+            }
+        })
+        .catch(err => {
+            console.error("Edit error:", err);
+            if (typeof showToast === "function") showToast("Server not responding.", "error");
+        })
+        .finally(() => {
+            saveBtn.disabled = false;
+            saveBtn.querySelector(".save-text").classList.remove("d-none");
+            saveBtn.querySelector(".save-loading").classList.add("d-none");
+        });
+    });
+})();
+
+// ── Upload page (full-page form, multi-file preview) ─────────────────────────
+(function() {
+    const fi = document.getElementById("screenshot");
+    const grid = document.getElementById("previewGrid");
+    const ph = document.getElementById("placeholderText");
+    const da = document.getElementById("dropArea");
+    if (!fi || !grid || !da) return;
+
+    fi.addEventListener("change", function() {
+        grid.innerHTML = "";
+        const files = [...this.files];
+        if (!files.length) { if (ph) ph.style.display = "block"; return; }
+        if (ph) ph.style.display = "none";
+        files.forEach(f => {
+            if (!f.type.match("image.*")) return;
+            const r = new FileReader();
+            r.onload = e => {
+                const img = document.createElement("img");
+                img.src = e.target.result;
+                img.className = "rounded border";
+                img.style.cssText = "max-height:100px;max-width:140px;object-fit:cover";
+                grid.appendChild(img);
+            };
+            r.readAsDataURL(f);
+        });
+    });
+
+    ["dragenter", "dragover", "dragleave", "drop"].forEach(ev => da.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }));
+    ["dragenter", "dragover"].forEach(ev => da.addEventListener(ev, () => da.classList.add("border-primary")));
+    ["dragleave", "drop"].forEach(ev => da.addEventListener(ev, () => da.classList.remove("border-primary")));
+    da.addEventListener("drop", e => { fi.files = e.dataTransfer.files; fi.dispatchEvent(new Event("change")); });
+})();
+
+// ── Edit page (full-page form, single-file preview) ───────────────────────────
+(function() {
+    const fi = document.getElementById("screenshot");
+    const imgPreview = document.getElementById("imagePreview");
+    // Тот же id "screenshot", что и в блоке загрузки выше - но это
+    // взаимоисключающие состояния страницы (либо форма загрузки, либо
+    // форма редактирования рендерится за раз), коллизии ID на практике
+    // не возникает. Отличаем по наличию #imagePreview (только на форме
+    // редактирования) и по отсутствию #dropArea (только форма загрузки
+    // его использует).
+    if (!fi || !imgPreview || document.getElementById("dropArea")) return;
+
+    fi.addEventListener("change", function() {
+        const f = this.files[0];
+        if (f && f.type.match("image.*")) {
+            const r = new FileReader();
+            r.onload = e => imgPreview.src = e.target.result;
+            r.readAsDataURL(f);
+        }
+    });
+})();

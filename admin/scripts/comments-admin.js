@@ -671,3 +671,137 @@ document.addEventListener('show.bs.modal', function(e) {
         }
     }
 });
+
+
+document.addEventListener('click', function (e) {
+    const link = e.target.closest('#comments-table .pagination-wrapper a[href]');
+    if (!link) return;
+
+    e.preventDefault();
+
+    // Активная (текущая) страница рендерится как href="#" без номера -
+    // клик по ней не должен никуда переходить.
+    if (link.classList.contains('active')) return;
+
+    const href = link.getAttribute('href') || '';
+    const match = href.match(/[?&]page=(\d+)/);
+    const pageNum = match ? parseInt(match[1], 10) : 1;
+
+    loadComments(pageNum);
+});
+
+document.addEventListener('submit', function (e) {
+    const form = e.target.closest('#comments-table .dropdown-menu form');
+    if (!form) return;
+
+    const input = form.querySelector('input[name="page"]');
+    const pageNum = input ? (parseInt(input.value, 10) || 1) : 1;
+
+    e.preventDefault();
+    loadComments(pageNum);
+});
+
+// ── Torrent embed panel (модалка Edit Comment) ──────────────────────────────
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        switch (ch) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+        }
+    });
+}
+
+// Извлекает ID из голого числа, полного URL (torrent-17.html), query-параметра
+// или произвольного вставленного текста со ссылкой внутри.
+function extractTorrentTagId(raw) {
+    raw = raw || '';
+    const m = raw.match(/torrent-(\d+)\.html/i)
+           || raw.match(/[?&](?:id|tid)=(\d+)/i)
+           || raw.match(/(\d+)/);
+    return m ? m[1] : '';
+}
+
+function insertTorrentTag(id) {
+    const ta = document.getElementById('editCommentText');
+    if (!ta) return;
+    const s = ta.selectionStart;
+    const e = ta.selectionEnd;
+    const tag = '[torrent=' + id + ']';
+    ta.value = ta.value.substring(0, s) + tag + ta.value.substring(e);
+    ta.focus();
+    ta.setSelectionRange(s + tag.length, s + tag.length);
+    if (typeof updatePreview === 'function') updatePreview();
+}
+
+function initTorrentTagPanel() {
+    const input   = document.getElementById('torrentIdInput');
+    const btn     = document.getElementById('insertTorrentBtn');
+    const preview = document.getElementById('torrentPreview');
+    if (!input || !btn) return;
+
+    let debounceTimer = null;
+
+    if (preview) {
+        input.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            const id = extractTorrentTagId(input.value);
+            if (!id) {
+                preview.innerHTML = '';
+                return;
+            }
+            debounceTimer = setTimeout(function () {
+                preview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading preview...</div>';
+                // Мы в /admin/ - относительный путь резолвился бы в
+                // /admin/ajax_torrent_preview.php (404), файл лежит в
+                // корне сайта, нужен абсолютный путь.
+                fetch((window.commentsBaseUrl || '') + '/ajax_torrent_preview.php?id=' + encodeURIComponent(id))
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.error) {
+                            preview.innerHTML = '<div class="text-danger small">' + escapeHtml(data.error) + '</div>';
+                            return;
+                        }
+                        const img = data.image
+                            ? '<img src="' + escapeHtml(data.image) + '" class="card-img-top" style="height:100px;object-fit:cover;">'
+                            : '';
+                        preview.innerHTML = '<div class="card">' + img
+                            + '<div class="card-body py-2 px-3">'
+                            + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
+                            + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
+                            + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
+                            + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
+                            + '</div></div>';
+                    })
+                    .catch(function () {
+                        preview.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+                    });
+            }, 400);
+        });
+    }
+
+    const doInsert = function () {
+        const id = extractTorrentTagId(input.value);
+        if (!id) {
+            input.focus();
+            return;
+        }
+        insertTorrentTag(id);
+        input.value = '';
+        if (preview) preview.innerHTML = '';
+    };
+
+    btn.addEventListener('click', doInsert);
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doInsert();
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    initTorrentTagPanel();
+});

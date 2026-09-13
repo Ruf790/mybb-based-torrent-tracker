@@ -63,6 +63,7 @@ function openDeleteModal(id, filename, imageSrc) {
   // Показываем превью если есть изображение
   if (previewContainer && previewImg && noImageDiv) {
     if (deleteImageSrc && deleteImageSrc !== '') {
+      previewImg.onerror = function () { handleImageError(this); };
       previewImg.src = deleteImageSrc;
       previewImg.style.display = 'block';
       noImageDiv.style.display = 'none';
@@ -120,6 +121,7 @@ if (confirmBtn) {
     const formData = new FormData();
     formData.append('action', 'delete_screenshot');
     formData.append('screenshot_id', deleteId);
+    formData.append('my_post_key', typeof myPostKey !== 'undefined' ? myPostKey : '');
 
     // AJAX запрос на удаление
     fetch(window.location.href, {
@@ -143,13 +145,19 @@ if (confirmBtn) {
       }
 
       if (data.success) {
-        // Удаляем элемент скриншота из DOM
+         // Удаляем элемент скриншота из DOM
         const screenshotItem = document.querySelector(`.screenshot-item[data-id="${deleteId}"]`);
         if (screenshotItem) {
           screenshotItem.style.transition = 'all 0.3s ease';
           screenshotItem.style.opacity = '0';
           screenshotItem.style.transform = 'scale(0.8)';
           setTimeout(() => screenshotItem.remove(), 300);
+        }
+
+        // ✅ Обновляем счётчик — иначе JS будет думать, что скринов всё ещё столько же,
+        // и может заблокировать загрузку новых, хотя место уже освободилось.
+        if (typeof existingScreenshotsCount !== 'undefined') {
+          existingScreenshotsCount = Math.max(0, existingScreenshotsCount - 1);
         }
         
         // Показываем toast с успехом
@@ -195,6 +203,168 @@ if (confirmBtn) {
   console.error('Confirm delete button not found');
 }
 
+// ── Массовый выбор существующих скриншотов ──────────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+    const selectAllCb   = document.getElementById('selectAllScreenshotsCheckbox');
+    const deleteBtn     = document.getElementById('deleteSelectedScreenshotsBtn');
+    const countEl       = document.getElementById('selectedScreenshotsCount');
+    const container      = document.getElementById('existingScreenshots');
+    if (!selectAllCb || !deleteBtn || !container) return;
+
+    function getCheckboxes() {
+        return Array.from(container.querySelectorAll('.screenshot-select-checkbox'));
+    }
+
+    function updateSelectedUi() {
+        const checked = getCheckboxes().filter(cb => cb.checked);
+        countEl.textContent = checked.length;
+        deleteBtn.classList.toggle('d-none', checked.length === 0);
+
+        const all = getCheckboxes();
+        selectAllCb.checked = all.length > 0 && checked.length === all.length;
+        selectAllCb.indeterminate = checked.length > 0 && checked.length < all.length;
+    }
+
+    container.addEventListener('change', function (e) {
+        if (e.target.classList.contains('screenshot-select-checkbox')) {
+            updateSelectedUi();
+        }
+    });
+
+    selectAllCb.addEventListener('change', function () {
+        getCheckboxes().forEach(cb => { cb.checked = selectAllCb.checked; });
+        updateSelectedUi();
+    });
+
+    let pendingBulkDeleteIds = [];
+
+    deleteBtn.addEventListener('click', function () {
+        const checked = getCheckboxes().filter(cb => cb.checked);
+        if (!checked.length) return;
+
+        pendingBulkDeleteIds = checked.map(cb => cb.dataset.id);
+
+        const countEl2 = document.getElementById('bulkDeleteScreenshotsCount');
+        if (countEl2) countEl2.textContent = pendingBulkDeleteIds.length;
+
+        // Миниатюры выбранных скриншотов - берём src у уже отрисованной
+        // картинки внутри того же .screenshot-item, отдельный запрос не нужен.
+        // Показываем максимум 10 превью, остальное - просто "+N ещё".
+        const MAX_PREVIEW = 10;
+        const previewEl = document.getElementById('bulkDeleteScreenshotsPreview');
+        const previewLabelEl = document.getElementById('bulkDeleteScreenshotsPreviewLabel');
+
+        if (previewLabelEl) {
+            previewLabelEl.textContent = 'Selected screenshots (' + checked.length + ')';
+            previewLabelEl.classList.remove('d-none');
+        }
+
+        if (previewEl) {
+            const shown = checked.slice(0, MAX_PREVIEW);
+            const extra = checked.length - shown.length;
+
+            previewEl.innerHTML = shown.map(cb => {
+                const item = cb.closest('.screenshot-item');
+                const img = item ? item.querySelector('img') : null;
+                const src = img ? img.src : '';
+                return src
+                    ? '<img src="' + src + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #dee2e6;">'
+                    : '';
+            }).join('');
+
+            if (extra > 0) {
+                previewEl.innerHTML += '<div class="d-flex align-items-center justify-content-center text-muted small fw-semibold" ' +
+                    'style="width:64px;height:64px;border-radius:6px;border:1px dashed #adb5bd;">+' + extra + '</div>';
+            }
+        }
+
+        const modalEl = document.getElementById('bulkDeleteScreenshotsModal');
+        if (modalEl) new bootstrap.Modal(modalEl).show();
+    });
+
+    const confirmBulkBtn = document.getElementById('confirmBulkDeleteScreenshotsBtn');
+    if (confirmBulkBtn) {
+        confirmBulkBtn.addEventListener('click', function () {
+            if (!pendingBulkDeleteIds.length) return;
+
+            const modalEl = document.getElementById('bulkDeleteScreenshotsModal');
+            const modalInstance = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+            if (modalInstance) modalInstance.hide();
+
+            const originalHtml = deleteBtn.innerHTML;
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+
+            // Тот же эндпоинт, что и для одиночного удаления - вызываем по
+            // очереди для каждого выбранного ID, без изменений на бэкенде.
+           // ✅ Один запрос на всё — сервер сам проверит владельца и удалит файлы.
+            const formData = new FormData();
+            formData.append('action', 'delete_screenshots');
+            formData.append('my_post_key', typeof myPostKey !== 'undefined' ? myPostKey : '');
+            pendingBulkDeleteIds.forEach(id => formData.append('screenshot_ids[]', id));
+
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    if (typeof showToast === 'function') {
+                        showToast(data.error || 'Failed to delete screenshots.', 'error');
+                    }
+                    return;
+                }
+
+                // Убираем из DOM те элементы, чьи ID есть в pendingBulkDeleteIds
+                // (сервер удалил их все разом — отдельно поштучно проверять не надо).
+                let removed = 0;
+                pendingBulkDeleteIds.forEach(id => {
+                    const item = container.querySelector(`.screenshot-item[data-id="${id}"]`);
+                    if (item) {
+                        item.remove();
+                        removed++;
+                    }
+                });
+
+                // Обновляем счётчик по факту ответа сервера
+                const actualDeleted = (typeof data.deleted === 'number') ? data.deleted : removed;
+                if (typeof existingScreenshotsCount !== 'undefined') {
+                    existingScreenshotsCount = Math.max(0, existingScreenshotsCount - actualDeleted);
+                }
+
+                if (typeof showToast === 'function') {
+                    let msg = actualDeleted + ' screenshot(s) deleted.';
+                    if (data.denied) {
+                        msg += ' ' + data.denied + ' skipped (no permission).';
+                    }
+                    showToast(msg, data.denied ? 'warning' : 'success');
+                }
+
+                if (container.querySelectorAll('.screenshot-item').length === 0) {
+                    container.innerHTML = '<p class="text-muted text-center py-3">No screenshots yet</p>';
+                }
+
+                pendingBulkDeleteIds = [];
+                updateSelectedUi();
+            })
+            .catch(() => {
+                if (typeof showToast === 'function') {
+                    showToast('Network error while deleting screenshots.', 'error');
+                }
+            })
+            .finally(() => {
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = originalHtml;
+            });
+			
+			
+        });
+    }
+
+});
+
 // Очищаем превью при закрытии модалки
 const modalElement = document.getElementById('deleteScreenshotModal');
 if (modalElement) {
@@ -203,7 +373,10 @@ if (modalElement) {
     const filenameElement = document.getElementById('deleteScreenshotFilename');
     const noImageDiv = document.getElementById('noImagePreview');
     
-    if (previewImg) previewImg.src = '';
+    if (previewImg) {
+      previewImg.onerror = null;
+      previewImg.src = '';
+    }
     if (filenameElement) filenameElement.innerHTML = '';
     if (noImageDiv) noImageDiv.style.display = 'none';
   });
@@ -593,7 +766,7 @@ document.addEventListener('DOMContentLoaded', function() {
             reader.readAsDataURL(file);
         });
 
-        // Проверка лимита
+        // Проверка лимита на одну загрузку
         if (selectedCount > maxScreenshots) {
             count.innerHTML = `<span class="text-danger">
                 <i class="fas fa-exclamation-circle me-1"></i>
@@ -601,9 +774,20 @@ document.addEventListener('DOMContentLoaded', function() {
             </span>`;
             confirmBtn.disabled = true;
         } else {
-            count.textContent = selectedCount + ' / ' + maxScreenshots + ' screenshots';
-            confirmBtn.disabled = false;
-        }
+    // Проверка общего лимита (существующие + новые) — по настройке группы
+    const existingCount = (typeof existingScreenshotsCount !== 'undefined') ? existingScreenshotsCount : 0;
+    const totalAfter = existingCount + selectedCount;
+    if (totalAfter > maxScreenshots) {
+        count.innerHTML = `<span class="text-danger">
+            <i class="fas fa-exclamation-circle me-1"></i>
+            You already have <strong>${existingCount}</strong> screenshot(s). Max ${maxScreenshots} total - you can add up to <strong>${Math.max(0, maxScreenshots - existingCount)}</strong> more.
+        </span>`;
+        confirmBtn.disabled = true;
+    } else {
+        count.textContent = totalAfter + ' / ' + maxScreenshots + ' screenshots';
+        confirmBtn.disabled = false;
+    }
+}
 
         new bootstrap.Modal(document.getElementById('screenshotPreviewModal')).show();
     });
@@ -1939,9 +2123,10 @@ function loadScreenshotUrls() {
             previewEl.innerHTML = '';
             previewEl.appendChild(tempContainer);
 
-            var msg = 'Loaded ' + loaded + ' screenshot(s)';
-            if (failed > 0) msg += ', ' + failed + ' failed to load';
-            showToast(msg, failed > 0 ? 'warning' : 'success');
+           var msg = 'Loaded ' + loaded + ' screenshot(s)';
+           if (failed > 0) msg += ', ' + failed + ' failed to load';
+           showToast(msg, failed > 0 ? 'warning' : 'success');
+
         }
     }
 }
@@ -2317,6 +2502,7 @@ function saveExistingScreenshotOrder() {
     // Отправляем новый порядок на сервер
     var formData = new FormData();
     formData.append('action', 'reorder_screenshots');
+    formData.append('my_post_key', typeof myPostKey !== 'undefined' ? myPostKey : '');
     order.forEach(function(id) {
         formData.append('order[]', id);
     });

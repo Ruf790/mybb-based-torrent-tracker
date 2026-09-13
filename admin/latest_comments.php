@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 define('IN_ARCHIVE', true);
 require_once INC_PATH . '/class_parser.php';
+require_once INC_PATH . '/functions_multipage.php';
 
 if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
@@ -231,7 +232,7 @@ function generateCommentsTable(
 
     $start   = $offset + 1;
     $end     = min($offset + $limit, $total_comments);
-    $pagination = generatePagination($page, $total_pages);
+    $pagination = multipage($total_comments, $limit, $page, '#', false);
 
     return <<<HTML
     <div class="card shadow-sm border-0 bg-white">
@@ -281,48 +282,6 @@ function generateCommentsTable(
         {$pagination}
     </div>
     HTML;
-}
-
-function generatePagination(int $current, int $total): string
-{
-    if ($total <= 1) return '';
-
-    $range = 2;
-    $out   = '<nav><ul class="pagination pagination-sm mb-0">';
-
-    // Prev
-    $prev_disabled = $current <= 1 ? 'disabled' : '';
-    $prev          = max(1, $current - 1);
-    $out .= "<li class=\"page-item {$prev_disabled}\"><a class=\"page-link\" href=\"javascript:void(0);\" onclick=\"loadComments({$prev})\">&laquo; Prev</a></li>";
-
-    // First + ellipsis
-    if ($current - $range > 1) {
-        $out .= '<li class="page-item"><a class="page-link" href="javascript:void(0);" onclick="loadComments(1)">1</a></li>';
-        if ($current - $range > 2) {
-            $out .= '<li class="page-item disabled"><span class="page-link">…</span></li>';
-        }
-    }
-
-    // Pages
-    for ($i = max(1, $current - $range); $i <= min($total, $current + $range); $i++) {
-        $active = $i === $current ? 'active' : '';
-        $out   .= "<li class=\"page-item {$active}\"><a class=\"page-link\" href=\"javascript:void(0);\" onclick=\"loadComments({$i})\">{$i}</a></li>";
-    }
-
-    // Last + ellipsis
-    if ($current + $range < $total) {
-        if ($current + $range < $total - 1) {
-            $out .= '<li class="page-item disabled"><span class="page-link">…</span></li>';
-        }
-        $out .= "<li class=\"page-item\"><a class=\"page-link\" href=\"javascript:void(0);\" onclick=\"loadComments({$total})\">{$total}</a></li>";
-    }
-
-    // Next
-    $next_disabled = $current >= $total ? 'disabled' : '';
-    $next          = min($total, $current + 1);
-    $out .= "<li class=\"page-item {$next_disabled}\"><a class=\"page-link\" href=\"javascript:void(0);\" onclick=\"loadComments({$next})\">Next &raquo;</a></li>";
-
-    return $out . '</ul></nav>';
 }
 
 // ---------------------------------------------------------------------------
@@ -1036,17 +995,42 @@ stdhead('Comments Admin');
                         ['[left]','[/left]','Left'], ['[center]','[/center]','Center'],
                         ['[right]','[/right]','Right'], ['[color=red]','[/color]','Red'],
                         ['[size=18]','[/size]','Size'], ['[url]','[/url]','URL'],
+                        ['[email]','[/email]','Email'],
                         ['[img]','[/img]','IMG'], ['[video]','[/video]','Video'],
                         ['[youtube]','[/youtube]','YouTube'], ['[quote]','[/quote]','Quote'],
-                        ['[code]','[/code]','Code'],
+                        ['[code]','[/code]','Code'], ['[php]','[/php]','PHP'],
+                        ['[nfo]','[/nfo]','NFO'], ['[spoiler]','[/spoiler]','Spoiler'],
+                        ["[list]\n[*]","\n[/list]",'<i class="fas fa-list-ul"></i>'],
+                        ["[list=1]\n[*]","\n[/list]",'<i class="fas fa-list-ol"></i>'],
+                        ['[*]','','[*]'],
                     ];
                     foreach ($bbcode_buttons as [$open, $close, $label]) {
-                        $open_esc  = htmlspecialchars($open,  ENT_QUOTES);
-                        $close_esc = htmlspecialchars($close, ENT_QUOTES);
+                        // Переносы строк ([list]/[*]) нужно экранировать как
+                        // \n именно для JS-строки внутри onclick - буквальный
+                        // перенос строки внутри '...' сломал бы синтаксис JS.
+                        $open_js   = str_replace("\n", '\\n', $open);
+                        $close_js  = str_replace("\n", '\\n', $close);
+                        $open_esc  = htmlspecialchars($open_js,  ENT_QUOTES);
+                        $close_esc = htmlspecialchars($close_js, ENT_QUOTES);
                         echo "<button class=\"btn btn-sm btn-light\" onclick=\"wrapBBCode('{$open_esc}','{$close_esc}')\">{$label}</button>\n";
                     }
                     ?>
+                    <button type="button" class="btn btn-sm btn-light" id="torrentPanelToggle">
+                        <i class="fa-solid fa-magnet"></i> Torrent
+                    </button>
                 </div>
+
+                <!-- Встроенная панель вставки торрента - скрыта, пока не нажата кнопка "Torrent".
+                     initTorrentTagPanel() (comments-admin.js) уже слушает эти ID сама. -->
+                <div id="torrentPanel" class="border rounded p-2 mb-2 d-none">
+                    <label class="form-label small mb-1">Torrent ID or URL</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput" placeholder="e.g. 17 or paste the torrent link">
+                        <button type="button" class="btn btn-primary" id="insertTorrentBtn">Insert</button>
+                    </div>
+                    <div id="torrentPreview" class="mt-2"></div>
+                </div>
+
                 <textarea id="editCommentText" class="form-control mb-3" rows="6" placeholder="Edit your comment…"></textarea>
                 <h6>Live Preview</h6>
                 <div id="bbcodePreview" class="border p-2 bg-light rounded" style="min-height:100px;"></div>
@@ -1058,6 +1042,22 @@ stdhead('Comments Admin');
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    const toggleBtn = document.getElementById('torrentPanelToggle');
+    const panel = document.getElementById('torrentPanel');
+    if (toggleBtn && panel) {
+        toggleBtn.addEventListener('click', function () {
+            panel.classList.toggle('d-none');
+            if (!panel.classList.contains('d-none')) {
+                const input = document.getElementById('torrentIdInput');
+                if (input) input.focus();
+            }
+        });
+    }
+})();
+</script>
 
 <!-- Bulk Delete Confirm Modal -->
 <div class="modal fade" id="confirmBulkDeleteModal" tabindex="-1" aria-hidden="true">
@@ -1092,6 +1092,9 @@ stdhead('Comments Admin');
 </style>
 
 <script src="<?= htmlspecialchars($BASEURL) ?>/scripts/toast.js"></script>
+<script>
+    window.commentsBaseUrl = <?= json_encode($BASEURL) ?>;
+</script>
 <script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/comments-admin.js?v=1.1"></script>
 
 <?php stdfoot(); ?>

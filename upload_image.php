@@ -153,19 +153,14 @@ try {
 
    
    
-    if ($realMime === 'image/gif') {
-        clearstatcache(true, $destination);
-        $fileSize = @filesize($destination);
-        if ($fileSize === false) {
-            @unlink($destination);
-            throw new RuntimeException('Uploaded file is corrupted or is not a valid image.');
-        }
-    } else {
-        $fileSize = recode_image_file($destination, $realMime);
-        if ($fileSize === false) {
-            @unlink($destination);
-            throw new RuntimeException('Uploaded file is corrupted or is not a valid image.');
-        }
+    // Перекодирование — защита от "полиглот"-файлов. recode_image_file()
+    // сама отличает анимированные GIF (обрабатывает через Imagick, сохраняя
+    // анимацию) от статичных (обычный путь через GD) - отдельная ветка
+    // здесь больше не нужна.
+    $fileSize = recode_image_file($destination, $realMime);
+    if ($fileSize === false) {
+        @unlink($destination);
+        throw new RuntimeException('Uploaded file is corrupted or is not a valid image.');
     }
 
     // URL

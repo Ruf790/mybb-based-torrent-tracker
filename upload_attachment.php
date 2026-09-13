@@ -220,7 +220,10 @@ $savePath = $uploadDir . $saveName;
 
 
 $actualFileSize = (int)$file['size'];
-if (str_starts_with($mimeType, 'image/') && $mimeType !== 'image/gif') {
+if (str_starts_with($mimeType, 'image/')) {
+    // Перекодирование — защита от "полиглот"-файлов. recode_image_file()
+    // сама отличает анимированные GIF (обрабатывает через Imagick, сохраняя
+    // анимацию) от статичных (обычный путь через GD).
     $recodedSize = recode_image_file($savePath, $mimeType);
     if ($recodedSize === false) {
         @unlink($savePath);

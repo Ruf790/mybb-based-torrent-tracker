@@ -20,6 +20,7 @@ if (empty($CURUSER['id'])) {
 
 require(INC_PATH . '/functions_category.php');
 require_once INC_PATH.'/datahandler.php';
+require_once INC_PATH . '/functions_image_recode.php';
 
 require_once INC_PATH . '/functions_notify.php';
 
@@ -54,9 +55,17 @@ $editor = insert_bbcode_editor($smilies, $BASEURL, 'description');
 
 
 
-// ✅ Обработчик удаления скрина
+// ✅ Обработчик удаления одного скрина
 if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot') 
 {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (!verify_post_check($mybb->get_input('my_post_key'))) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        exit;
+    }
+
     if (empty($_POST['screenshot_id'])) 
     {
         echo json_encode(['success' => false, 'error' => 'Invalid ID']);
@@ -81,9 +90,10 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
         }
 
         $filePath = $_SERVER['DOCUMENT_ROOT'] . '/torrents/screens/' . $row['filename'];
-        if (file_exists($filePath)) 
-        {
-            unlink($filePath);
+        $realPath = realpath($filePath);
+        $basePath = realpath($_SERVER['DOCUMENT_ROOT'] . '/torrents/screens/');
+        if ($realPath && $basePath && strpos($realPath, $basePath) === 0 && file_exists($realPath)) {
+            @unlink($realPath);
         }
 
         $db->sql_query_prepared("DELETE FROM screenshots WHERE id = ?", [$screenshot_id]);
@@ -99,9 +109,112 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshot')
 }
 
 
+// ✅ Массовое удаление скринов — один запрос вместо N параллельных
+if (isset($_POST['action']) && $_POST['action'] === 'delete_screenshots')
+{
+    header("Content-type: application/json; charset=utf-8");
+
+    if (!verify_post_check($mybb->get_input('my_post_key'))) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        exit;
+    }
+
+    if (empty($_POST['screenshot_ids']) || !is_array($_POST['screenshot_ids'])) {
+        echo json_encode(['success' => false, 'error' => 'No IDs provided']);
+        exit;
+    }
+
+    // Приводим к int, убираем мусор и дубликаты
+    $ids = array_values(array_unique(array_filter(
+        array_map('intval', $_POST['screenshot_ids']),
+        fn($id) => $id > 0
+    )));
+
+    if (empty($ids)) {
+        echo json_encode(['success' => false, 'error' => 'No valid IDs']);
+        exit;
+    }
+
+    $is_mod = is_mod($usergroups);
+
+    // Одним запросом берём всё, что относится к этим ID, вместе с владельцем торрента
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    $res = $db->sql_query_prepared(
+        "SELECT s.id, s.filename, s.torrent_id, t.owner
+         FROM screenshots s
+         LEFT JOIN torrents t ON t.id = s.torrent_id
+         WHERE s.id IN ({$ph})",
+        $ids
+    );
+
+    $rows = [];
+    while ($res && ($row = $db->fetch_array($res))) {
+        $rows[] = $row;
+    }
+
+    if (empty($rows)) {
+        echo json_encode(['success' => false, 'error' => 'No screenshots found']);
+        exit;
+    }
+
+    // Фильтруем: оставляем только те, что принадлежат юзеру (или модератору)
+    $allowedIds    = [];
+    $allowedFiles  = [];
+    $deniedCount   = 0;
+
+    foreach ($rows as $row) {
+        if (!$row['owner'] || (!$is_mod && (int)$CURUSER['id'] !== (int)$row['owner'])) {
+            $deniedCount++;
+            continue;
+        }
+        $allowedIds[]   = (int)$row['id'];
+        $allowedFiles[] = (string)$row['filename'];
+    }
+
+    if (empty($allowedIds)) {
+        echo json_encode(['success' => false, 'error' => 'Access denied']);
+        exit;
+    }
+
+    // Удаляем файлы с диска (только те, что прошли проверку)
+    $baseDir   = rtrim($_SERVER['DOCUMENT_ROOT'], '/') . '/torrents/screens/';
+    $baseReal  = realpath($baseDir);
+    $deletedFiles = 0;
+    foreach ($allowedFiles as $filename) {
+        $filePath = $baseDir . $filename;
+        $realPath = realpath($filePath);
+        if ($realPath && $baseReal && strpos($realPath, $baseReal) === 0 && is_file($realPath)) {
+            @unlink($realPath);
+            $deletedFiles++;
+        }
+    }
+
+    // Удаляем записи из БД — один запрос
+    $ph2 = implode(',', array_fill(0, count($allowedIds), '?'));
+    $db->sql_query_prepared("DELETE FROM screenshots WHERE id IN ({$ph2})", $allowedIds);
+
+    echo json_encode([
+        'success' => true,
+        'deleted' => count($allowedIds),
+        'denied'  => $deniedCount,
+        'files'   => $deletedFiles,
+    ]);
+    exit;
+}
+
+
 // Переупорядочивание скриншотов
 if (isset($_POST['action']) && $_POST['action'] === 'reorder_screenshots')
 {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (!verify_post_check($mybb->get_input('my_post_key'))) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Invalid security token']);
+        exit;
+    }
+
     if (empty($_POST['order']) || !is_array($_POST['order'])) {
         echo json_encode(['success' => false, 'error' => 'No order provided']);
         exit;
@@ -299,6 +412,9 @@ if (!verify_post_check($mybb->get_input('my_post_key'))) {
     exit;
 }
 
+// ✅ Инициализируем массив ошибок СРАЗУ, до всех блоков с $errors[] =
+$errors = [];
+
 
 
  // ← ЧИТАЕМ NFO СРАЗУ пока tmp файл ещё существует
@@ -401,6 +517,14 @@ $numfiles = 0;
 
 if (!$isEdit || ($torrentFile && $torrentFile['error'] === UPLOAD_ERR_OK)) 
 {
+    // Проверка размера .torrent — 5MB это с большим запасом,
+    // реальные торренты редко превышают 500KB.
+    if ($torrentFile['size'] > 5 * 1024 * 1024) {
+        http_response_code(400);
+        echo json_encode(["success" => false, "error" => "Torrent file too large (max 5MB)"]);
+        exit;
+    }
+
     // Загружен новый файл
     $originalTorrentFilename = basename($torrentFile['name']); // оригинальное имя для БД/отображения
     $torrentFilename = saveFile($torrentFile, $torrentDir, ['application/x-bittorrent']);
@@ -591,7 +715,26 @@ if (!empty($_FILES['screenshotsUpload']['tmp_name'][0]))
         $filename = saveFile($file, $screenshotDir, ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp']);
         if ($filename) 
 		{
-            $screenshotFilenames[] = $filename;
+            // Перекодирование — защита от "полиглот"-файлов. saveFile() не
+            // отдаёт mime наружу, поэтому определяем заново по уже
+            // сохранённому файлу.
+            $savedPath = rtrim($screenshotDir, '/') . '/' . $filename;
+            $shotInfo  = @getimagesize($savedPath);
+            if ($shotInfo === false || recode_image_file($savedPath, $shotInfo['mime']) === false) {
+                // Раньше тут ничего не сообщалось - файл тихо удалялся,
+                // счётчик загруженных просто оказывался меньше ожидаемого,
+                // без единой подсказки почему.
+                error_log(sprintf(
+                    'Screenshot recode failed: file=%s mime=%s getimagesize=%s',
+                    $file['name'],
+                    $shotInfo['mime'] ?? 'unknown',
+                    $shotInfo === false ? 'false' : 'ok'
+                ));
+                $errors[] = "Screenshot \"{$file['name']}\": could not be processed (corrupted or unsupported image).";
+                @unlink($savedPath);
+            } else {
+                $screenshotFilenames[] = $filename;
+            }
         }
     }
 	
@@ -1012,6 +1155,19 @@ function get_next_screenshot_number($torrent_id, $db, $step = 3)
 
 if (!empty($screenshotFilenames)) 
 {
+    // Лимит на общее число скриншотов у торрента
+    
+    
+    $existingScreenshotsCount = (int)$db->fetch_field(
+        $db->sql_query_prepared("SELECT COUNT(*) as cnt FROM screenshots WHERE torrent_id = ?", [$NewTID]),
+        'cnt'
+    );
+    $screenshotSlotsLeft = max(0, $max_screenshots - $existingScreenshotsCount);
+    $screenshotFilenames = array_slice($screenshotFilenames, 0, $screenshotSlotsLeft);
+}
+
+if (!empty($screenshotFilenames)) 
+{
     
     $count = get_next_screenshot_number($NewTID, $db, 3);
 
@@ -1076,6 +1232,15 @@ if (($newFileUploaded || !$isEdit) && $torrentFilename && file_exists($originalT
 
 
 // Optional image
+// Общая карта расширений — используется и для основной, и для второй картинки
+$extByType = [
+    IMAGETYPE_JPEG => 'jpg',
+    IMAGETYPE_PNG  => 'png',
+    IMAGETYPE_GIF  => 'gif',
+    IMAGETYPE_WEBP => 'webp',
+];
+
+// Optional image
 $imageFilename = null;
 if (!empty($_FILES['imagesUpload']['tmp_name'])) 
 {
@@ -1087,13 +1252,6 @@ if (!empty($_FILES['imagesUpload']['tmp_name']))
 
     if ($imageInfo !== false) 
     {
-        $extByType = [
-            IMAGETYPE_JPEG => 'jpg',
-            IMAGETYPE_PNG  => 'png',
-            IMAGETYPE_GIF  => 'gif',
-            IMAGETYPE_WEBP => 'webp',
-        ];
-
         $ext = $extByType[$imageInfo[2]] ?? null;
 
         if ($ext !== null) 
@@ -1110,13 +1268,18 @@ if (!empty($_FILES['imagesUpload']['tmp_name']))
             // Move uploaded file to new location with new name
             if (move_uploaded_file($imageFile['tmp_name'], $targetPath)) 
             {
-                // File successfully saved and renamed
-                // You can now use $imageFilename or $targetPath
-				
-				$NewImageURL = 'torrents/images/' . $NewTID . '.' . $ext;
+                // Перекодирование — защита от "полиглот"-файлов. Сама
+                // recode_image_file() отличает анимированные GIF (Imagick,
+                // с сохранением анимации) от статичных (обычный путь GD).
+                if (recode_image_file($targetPath, $imageInfo['mime']) === false) {
+                    @unlink($targetPath);
+                    $imageFilename = null;
+                } else {
+                $NewImageURL = 'torrents/images/' . $NewTID . '.' . $ext;
 				
 				$db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $NewTID]);
 				
+                }
             } 
             else 
             {
@@ -1146,13 +1309,6 @@ if (!empty($_FILES['imagesUpload2']['tmp_name']))
 
     if ($imageInfo !== false) 
     {
-        $extByType = [
-            IMAGETYPE_JPEG => 'jpg',
-            IMAGETYPE_PNG  => 'png',
-            IMAGETYPE_GIF  => 'gif',
-            IMAGETYPE_WEBP => 'webp',
-        ];
-
         $ext = $extByType[$imageInfo[2]] ?? null;
 
         if ($ext !== null) 
@@ -1172,17 +1328,18 @@ if (!empty($_FILES['imagesUpload2']['tmp_name']))
             // Move uploaded file to new location with new name
             if (move_uploaded_file($imageFile['tmp_name'], $targetPath)) 
             {
-                // File successfully saved and renamed
-                // You can now use $imageFilename2 or $targetPath
-				
-				
+                // Перекодирование — защита от "полиглот"-файлов.
+                if (recode_image_file($targetPath, $imageInfo['mime']) === false) {
+                    @unlink($targetPath);
+                    $imageFilename2 = null;
+                } else {
 				$NewImageURL2 = 'torrents/images/' . $NewTID . '_2.' . $ext;
 				
 				$db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL2, $NewTID]);
 				
+                }
 				
-				
-				
+			
             } 
             else 
             {
@@ -1200,7 +1357,7 @@ if (!empty($_FILES['imagesUpload2']['tmp_name']))
 
 
 
-$errors = [];
+
 
 // === IMAGE FROM URL 1 ===
 if (!empty($_POST['imageUrl'])) 
@@ -1219,8 +1376,20 @@ if (!empty($_POST['imageUrl']))
 
             if (@file_put_contents($uploadPath, $imageData)) 
 			{
-                $NewImageURL = 'torrents/images/' . $imageName;
-                $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $NewTID]);
+                // Проверка содержимого + перекодировка — защита от
+                // "полиглот"-файлов. Раньше файл, скачанный по URL,
+                // сохранялся напрямую без всякой проверки, что это
+                // реально изображение.
+                $realMime = (new finfo(FILEINFO_MIME_TYPE))->file($uploadPath);
+                $imgCheck = @getimagesize($uploadPath);
+                if ($imgCheck === false || !str_starts_with((string)$realMime, 'image/')
+                    || recode_image_file($uploadPath, $realMime) === false) {
+                    @unlink($uploadPath);
+                    $errors[] = "Image from URL (imageUrl) is not a valid image.";
+                } else {
+                    $NewImageURL = 'torrents/images/' . $imageName;
+                    $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL, $NewTID]);
+                }
             } 
 			else 
 			{
@@ -1255,8 +1424,18 @@ if (!empty($_POST['imageUrl2']))
 
             if (@file_put_contents($uploadPath2, $imageData2)) 
 			{
-                $NewImageURL2 = 'torrents/images/' . $imageName2;
-                $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL2, $NewTID]);
+                // Проверка содержимого + перекодировка — защита от
+                // "полиглот"-файлов.
+                $realMime2 = (new finfo(FILEINFO_MIME_TYPE))->file($uploadPath2);
+                $imgCheck2 = @getimagesize($uploadPath2);
+                if ($imgCheck2 === false || !str_starts_with((string)$realMime2, 'image/')
+                    || recode_image_file($uploadPath2, $realMime2) === false) {
+                    @unlink($uploadPath2);
+                    $errors[] = "Image from URL (imageUrl2) is not a valid image.";
+                } else {
+                    $NewImageURL2 = 'torrents/images/' . $imageName2;
+                    $db->sql_query_prepared("UPDATE torrents SET t_image2 = ? WHERE id = ?", [$BASEURL . '/' . $NewImageURL2, $NewTID]);
+                }
             } 
 			else 
 			{
@@ -1278,51 +1457,106 @@ if (!empty($_POST['imageUrl2']))
 // Optional: log metadata
 //file_put_contents(__DIR__ . '/upload_log.json', json_encode($metadata, JSON_PRETTY_PRINT), FILE_APPEND);
 
-// === JSON Response ===
-// Проверяем ошибки
 
 
 // Screenshot URLs (bulk URL upload)
 if (!empty($_POST['screenshot_urls']) && is_array($_POST['screenshot_urls'])) {
+
+    // Сколько уже есть у торрента и сколько ещё влезет
+    $dbExistingScreenshots = (int)$db->fetch_field(
+        $db->sql_query_prepared("SELECT COUNT(*) as cnt FROM screenshots WHERE torrent_id = ?", [$NewTID]),
+        'cnt'
+    );
+    $slotsLeft = max(0, $max_screenshots - $dbExistingScreenshots);
+
+    // ✅ Считаем стартовый номер ОДИН РАЗ до цикла,
+    // дальше просто инкрементим локально — вместо SELECT filename
+    // на каждой итерации.
+    $count = ($slotsLeft > 0) ? get_next_screenshot_number($NewTID, $db, 3) : 0;
+
+    // Include remote-connect один раз, а не на каждой итерации
+    $hasRemoteConnect = file_exists(INC_PATH . '/functions_remote_connect.php');
+    if ($hasRemoteConnect) {
+        include_once(INC_PATH . '/functions_remote_connect.php');
+    }
+
     foreach ($_POST['screenshot_urls'] as $screenshotUrl) {
-        $screenshotUrl = filter_var(trim($screenshotUrl), FILTER_VALIDATE_URL);
-        if (!$screenshotUrl) continue;
-        if (!preg_match('/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i', $screenshotUrl)) continue;
+        if ($slotsLeft <= 0) break;
+
+        $rawUrl = trim($screenshotUrl);
+        $screenshotUrl = filter_var($rawUrl, FILTER_VALIDATE_URL);
+        if (!$screenshotUrl) {
+            $errors[] = "Screenshot URL \"{$rawUrl}\": not a valid URL.";
+            continue;
+        }
+	
+		
+        if (!preg_match('/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i', $screenshotUrl)) {
+            $errors[] = "Screenshot URL \"{$rawUrl}\": must end in .jpg/.jpeg/.png/.gif/.webp (viewer/gallery page links are not supported - use the direct image link).";
+            continue;
+        }
 
         $ext = strtolower(pathinfo(parse_url($screenshotUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
-        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) continue;
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+            $errors[] = "Screenshot URL \"{$rawUrl}\": unsupported extension.";
+            continue;
+        }
 
-        // Используем include из functions_ts_remote_connect.php если есть
-        // иначе file_get_contents с подавлением ошибок
-        $imgData = false;
-        if (file_exists(INC_PATH . '/functions_remote_connect.php')) {
-            include_once(INC_PATH . '/functions_remote_connect.php');
+        // Скачивание
+        if ($hasRemoteConnect && function_exists('fetch_remote_file')) {
             $imgData = fetch_remote_file($screenshotUrl, false);
         } else {
+           
+            $refererHost = parse_url($screenshotUrl, PHP_URL_HOST);
             $context = stream_context_create([
                 'http' => [
                     'timeout'         => 10,
                     'follow_location' => true,
                     'user_agent'      => 'Mozilla/5.0',
+                    'header'          => $refererHost ? "Referer: https://{$refererHost}/\r\n" : '',
                 ]
             ]);
             $imgData = @file_get_contents($screenshotUrl, false, $context);
+
         }
 
-        if (!$imgData) continue;
+        if (!$imgData) {
+            $errors[] = "Screenshot URL \"{$rawUrl}\": could not be downloaded.";
+            continue;
+        }
 
-        $count    = get_next_screenshot_number($NewTID, $db, 3);
         $filename = $NewTID . '_' . $count . '.' . $ext;
         $filePath = rtrim($screenshotDir, '/') . '/' . $filename;
 
         if (@file_put_contents($filePath, $imgData)) {
-            $db->sql_query_prepared(
+           
+            $realMimeShot = (new finfo(FILEINFO_MIME_TYPE))->file($filePath);
+            $imgCheckShot = @getimagesize($filePath);
+            if ($imgCheckShot === false || !str_starts_with((string)$realMimeShot, 'image/')
+                || recode_image_file($filePath, $realMimeShot) === false) {
+                @unlink($filePath);
+                $errors[] = "Screenshot URL \"{$rawUrl}\": downloaded content is not a valid image (mime: " . ($realMimeShot ?: 'unknown') . "). If this is a viewer/gallery page link, use the direct image link instead.";
+                continue;
+            }
+
+            $insertOk = $db->sql_query_prepared(
                 "INSERT INTO screenshots (`torrent_id`,`filename`,`uploaded_at`) VALUES (?,?,?)",
                 [$NewTID, $filename, TIMENOW]
             );
+
+            if (!$insertOk) {
+                @unlink($filePath);
+                error_log("upload.php: screenshot INSERT failed (URL), removed orphan file {$filePath}");
+                $errors[] = "Screenshot URL \"{$rawUrl}\": database error.";
+                continue;
+            }
+
+            $count++;
+            $slotsLeft--;
         }
     }
 }
+
 
 
 
@@ -1767,8 +2001,7 @@ function copyAnnounceUrl() {
         <div id="deleteScreenshotPreviewContainer" class="preview-container mb-3 text-center">
           <div class="preview-wrapper" style="display: inline-block; max-width: 100%;">
             <img id="deleteScreenshotImage" src="" alt="Preview" 
-                 style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;" 
-                 onerror="handleImageError(this)">
+                 style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;">
             <div id="noImagePreview" class="d-none flex-column align-items-center justify-content-center p-4" style="min-height: 150px;">
               <i class="fas fa-image fa-3x text-muted mb-2"></i>
               <span class="text-muted"><?= $lang->upload['screenshots_no_preview'] ?></span>
@@ -1812,6 +2045,52 @@ function copyAnnounceUrl() {
   </div>
 </div>
 
+<!-- Bulk delete screenshots confirmation -->
+<div class="modal fade" id="bulkDeleteScreenshotsModal" tabindex="-1" aria-labelledby="bulkDeleteScreenshotsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="bulkDeleteScreenshotsModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i>Delete screenshots?
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="d-flex align-items-center mb-3">
+          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
+            <i class="fas fa-trash-alt text-danger fs-1"></i>
+          </div>
+          <div>
+            <h5 class="fw-bold mb-1">Delete <span id="bulkDeleteScreenshotsCount">0</span> screenshot(s)?</h5>
+            <p class="text-muted mb-0">This will permanently remove the selected screenshots.</p>
+          </div>
+        </div>
+
+        <div id="bulkDeleteScreenshotsPreviewLabel" class="small fw-semibold text-muted mb-1 d-none"></div>
+        <div id="bulkDeleteScreenshotsPreview" class="d-flex flex-wrap gap-2 mb-3"></div>
+
+        <div class="alert alert-warning mt-2 mb-0">
+          <div class="d-flex">
+            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+            <div><strong>Warning:</strong> This action is irreversible.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times me-1"></i>Cancel
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmBulkDeleteScreenshotsBtn">
+          <i class="fas fa-trash-alt me-1"></i>Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 
 
 
@@ -1842,6 +2121,7 @@ function copyAnnounceUrl() {
 	
 <form method="post" action="<?php echo htmlspecialchars($_SERVER['SCRIPT_NAME']) . ($EditTorrent ? '?id=' . urlencode((string)$EditTorrentID) : ''); ?>" id="torrent-upload-form" enctype="multipart/form-data">
 <input type="hidden" name="my_post_key" value="<?php echo $mybb->post_code; ?>" />
+<script>var myPostKey = <?= json_encode($mybb->post_code) ?>;</script>
   
   
   <!-- Скрытый контейнер для добавления file_ids -->
@@ -1889,6 +2169,7 @@ function copyAnnounceUrl() {
 
   
   
+  <script>var existingScreenshotsCount = <?= count($screenshots ?? []) ?>;</script>
   <script src="<?= $BASEURL; ?>/scripts/Sortable.min.js"></script>
 <script src="<?= $BASEURL; ?>/scripts/upload_torrent.js"></script>
   
@@ -2975,10 +3256,22 @@ https://example.com/screen3.webp"></textarea>
 
             <!-- Existing Screenshots -->
             <?php if(!empty($screenshots)): ?>
-                <h6 class="mt-4 mb-3"><?= $lang->upload['screenshots_existing'] ?></h6>
+                <div class="d-flex justify-content-between align-items-center mt-4 mb-3">
+                   <h6 class="mb-0"><?= $lang->upload['screenshots_existing'] ?> <span class="badge bg-secondary fw-normal"><?= count($screenshots) ?> / <?= (int)$max_screenshots ?></span></h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="form-check mb-0">
+                            <input type="checkbox" class="form-check-input" id="selectAllScreenshotsCheckbox">
+                            <label class="form-check-label small" for="selectAllScreenshotsCheckbox">Select all</label>
+                        </div>
+                        <button type="button" class="btn btn-outline-danger btn-sm d-none" id="deleteSelectedScreenshotsBtn">
+                            <i class="fas fa-trash-alt me-1"></i>Delete selected (<span id="selectedScreenshotsCount">0</span>)
+                        </button>
+                    </div>
+                </div>
                 <div id="existingScreenshots" class="preview-container">
                     <?php foreach($screenshots as $shot): ?>
                         <div class="screenshot-item" data-id="<?= $shot['id'] ?>">
+                            <input type="checkbox" class="form-check-input screenshot-select-checkbox position-absolute" data-id="<?= $shot['id'] ?>">
                             <img src="/torrents/screens/<?= htmlspecialchars($shot['filename']) ?>"
                                  class="preview-screenshot"
                                  alt="Screenshot">
@@ -3096,33 +3389,23 @@ https://example.com/screen3.webp"></textarea>
 #screenshotsPreview::before {
     content: '';
 }
+
+/* Чекбокс массового выбора существующих скриншотов */
+#existingScreenshots .screenshot-item {
+    position: relative;
+}
+.screenshot-select-checkbox {
+    top: 8px;
+    left: 8px;
+    width: 20px;
+    height: 20px;
+    z-index: 2;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
 </style>	
 	
 	
-	
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
-  
-  
   
   <?php if ($isEdit): ?>
     <input type="hidden" name="EditTorrent" value="1">
@@ -3132,8 +3415,7 @@ https://example.com/screen3.webp"></textarea>
 
   <button type="submit" class="btn btn-primary"><?= $buttonFullText ?></button>
   
-  
-
+ 
   
 </form>
 

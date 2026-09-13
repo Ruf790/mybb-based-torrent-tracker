@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once 'global.php';
 require_once 'cache/smilies.php';
 require_once INC_PATH . '/class_parser.php';
+require_once INC_PATH . '/editor.php';
 
 $parser         = new postParser;
 $parser_options = [
@@ -17,8 +18,6 @@ maxsysop();
 define('STF_VERSION', '0.6');
 
 $lang->load('contactstaff');
-
-$BASE = htmlspecialchars($BASEURL, ENT_QUOTES, 'UTF-8');
 
 
 
@@ -86,7 +85,7 @@ $postCode   = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES, 'UTF-8');
 $h_subject  = htmlspecialchars($subject, ENT_QUOTES, 'UTF-8');
 $h_returnto = htmlspecialchars($returnto, ENT_QUOTES, 'UTF-8');
 $h_script   = htmlspecialchars($_SERVER['SCRIPT_NAME'], ENT_QUOTES, 'UTF-8');
-$js_smilies = json_encode($smilies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+$editor     = insert_bbcode_editor($smilies, $BASEURL, 'staffMessage');
 ?>
 
 <!-- Toast -->
@@ -125,33 +124,7 @@ $js_smilies = json_encode($smilies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLAS
             </label>
         </div>
 
-        <link rel="stylesheet" href="<?= $BASE ?>/include/templates/default/style/bbcode.css">
-        <script>const smilies = <?= $js_smilies ?>;</script>
-        <script src="<?= $BASE ?>/scripts/bbcode_tools.js"></script>
-
-        <!-- BBCode toolbar -->
-        <div class="mb-2 d-flex flex-wrap gap-1">
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[b]','[/b]','staffMessage')"><b>B</b></button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[i]','[/i]','staffMessage')"><i>I</i></button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[u]','[/u]','staffMessage')"><u>U</u></button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[s]','[/s]','staffMessage')"><s>S</s></button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[url]','[/url]','staffMessage')">URL</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[img]','[/img]','staffMessage')">IMG</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[quote]','[/quote]','staffMessage')">Quote</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[code]','[/code]','staffMessage')">Code</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="insertBBCode('[spoiler]','[/spoiler]','staffMessage')">Spoiler</button>
-            <div class="btn-group position-relative">
-                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle bbcode-color-btn"
-                        data-textarea="staffMessage">🎨</button>
-                <div class="color-palette d-none"></div>
-            </div>
-            <div class="btn-group position-relative">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="smileyBtn">😊</button>
-                <div class="smiley-panel d-none border p-2 bg-body shadow-sm position-absolute"
-                     id="smileyPanel" style="z-index:1000;"></div>
-            </div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="togglePreviewBtn">Preview</button>
-        </div>
+        <?= $editor['toolbar'] ?>
 
         <div class="mb-3">
             <textarea class="form-control" id="staffMessage" name="msgtext"
@@ -167,6 +140,8 @@ $js_smilies = json_encode($smilies, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLAS
     </form>
 
 </div>
+
+<?= $editor['modal'] ?>
 
 <script>
 (function () {

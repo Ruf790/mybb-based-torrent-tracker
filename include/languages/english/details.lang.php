@@ -106,10 +106,6 @@ It\'s important to maintain a good ratio because it helps to make downloads fast
 	'peers2'					=>'{1} seeder(s), {2} leecher(s) = {3} peer(s) total',
 	
 	
-	'peers22222222222222222'					=>'
-	<div class="spoilerBox"><div style="cursor:pointer;" class="spoilerTitle" onclick="jQuery(this).next().slideToggle(); jQuery(this).children(\'.spoilerOpen\').toggle();jQuery(this).children(\'.spoilerClose\').toggle();">
- <span class="spoilerOpen">Show</span><span class="spoilerClose" style="display:none;">Hide</span>&nbsp;{1} seeder(s), {2} leecher(s) = {3} peer(s) total</div><div style="display: none;">{4}</div></div>',
- 
  
 	'peersb'					=>'Peers',
 	'peers3'					=>'{1} seeder(s), {2} leecher(s) = {3} peer(s) total<br /><font color=red>Sorry, permission denied!</font>',

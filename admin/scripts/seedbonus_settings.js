@@ -64,6 +64,7 @@ function loadPreset(presetName) {
     const formData = new FormData();
     formData.append('action', 'load_preset');
     formData.append('preset', presetName);
+    formData.append('my_post_key', typeof myPostKey !== 'undefined' ? myPostKey : '');
 
     fetch(window.location.href, { method: 'POST', body: formData })
         .then(r => r.json())
@@ -81,6 +82,7 @@ function saveSettings() {
         if (form) new FormData(form).forEach((v, k) => formData.append(k, v));
     });
     formData.append('action', 'save');
+    formData.append('my_post_key', typeof myPostKey !== 'undefined' ? myPostKey : '');
 
     fetch(window.location.href, { method: 'POST', body: formData })
         .then(r => r.json())

@@ -3,6 +3,32 @@
 
 const VALID_IMAGE_TYPES = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
 
+// Тот же список жанров, что и в PHP-шаблоне первой строки (batch_upload.php,
+// torrentItemHtml()) - держать оба списка синхронными вручную, раз это два
+// независимых источника одной и той же разметки.
+const BATCH_GENRES = [
+    ['Action',      'fas fa-bolt',              '#ff4757'],
+    ['Adventure',   'fas fa-compass',           '#ffa502'],
+    ['Animation',   'fas fa-film',              '#7bed9f'],
+    ['Biography',   'fas fa-user-graduate',     '#70a1ff'],
+    ['Comedy',      'fas fa-laugh-squint',      '#ff6b81'],
+    ['Crime',       'fas fa-gavel',             '#2f3542'],
+    ['Documentary', 'fas fa-video',             '#a4b0be'],
+    ['Drama',       'fas fa-mask',              '#57606f'],
+    ['Family',      'fas fa-users',             '#ff7f50'],
+    ['Fantasy',     'fas fa-dragon',            '#dfe6e9'],
+    ['History',     'fas fa-landmark',          '#cd84f1'],
+    ['Horror',      'fas fa-ghost',             '#ff4d4d'],
+    ['Music',       'fas fa-music',             '#1e90ff'],
+    ['Mystery',     'fas fa-search',            '#8e44ad'],
+    ['Romance',     'fas fa-heart',             '#ff6b6b'],
+    ['Sci-Fi',      'fas fa-rocket',            '#00cec9'],
+    ['Sport',       'fas fa-trophy',            '#fdcb6e'],
+    ['Thriller',    'fas fa-skull',             '#e17055'],
+    ['War',         'fas fa-fist-raised',       '#636e72'],
+    ['Western',     'fas fa-horse-head',        '#f39c12'],
+];
+
 let torrentCount = 1;
 
 // ── Утилиты ──────────────────────────────────────────────
@@ -37,6 +63,13 @@ function buildTorrentItemHtml(idx, fileName = '') {
       </div>
     </div>
     <div class="row mt-2">
+      <div class="col-md-12">
+        <label class="form-label fw-bold"><i class="fa-solid fa-images me-1"></i>Screenshots (Optional, up to ${BATCH_CONFIG.maxScreenshots})</label>
+        <input class="form-control" type="file" name="screenshots_${idx}[]" accept="image/*" multiple>
+        <div class="screenshots-preview mt-2 d-flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+    <div class="row mt-2">
       <div class="col-md-6">
         <label class="form-label">Torrent Name <span class="text-muted fw-normal small">(Optional — uses filename if empty)</span></label>
         <input type="text" class="form-control torrent-name-input" name="torrent_names[]" placeholder="Leave empty to use filename...">
@@ -50,6 +83,29 @@ function buildTorrentItemHtml(idx, fileName = '') {
       <div class="col-md-12">
         <label class="form-label">Description</label>
         <textarea class="form-control batch-desc" name="descriptions[]" rows="5" placeholder="Description..."></textarea>
+      </div>
+    </div>
+    <div class="row mt-2">
+      <div class="col-md-12">
+        <label class="form-label">Tags <span class="text-muted fw-normal small">(overridden by CSV "tags" column if provided)</span></label>
+        <div class="input-group mb-2">
+          <span class="input-group-text bg-light border-0"><i class="fas fa-tag text-primary"></i></span>
+          <input type="text" class="form-control batch-tags-input" name="tags_manual[]" placeholder="Action, Comedy, Drama...">
+          <button type="button" class="btn btn-outline-secondary" onclick="clearBatchTags(this)">
+            <i class="fas fa-eraser me-1"></i>Clear
+          </button>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-2 batch-genre-buttons">
+          ${BATCH_GENRES.map(([label, icon, color]) => `
+          <button type="button"
+                  class="btn btn-sm batch-genre-tag-btn"
+                  data-genre="${label}"
+                  data-color="${color}"
+                  onclick="toggleBatchGenreTag(this)"
+                  style="border: 1px solid ${color}80; color: ${color};">
+              <i class="${icon} me-1"></i>${label}
+          </button>`).join('')}
+        </div>
       </div>
     </div>
     <div class="row mt-2">

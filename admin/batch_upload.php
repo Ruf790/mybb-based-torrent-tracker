@@ -11,6 +11,7 @@ if (!defined('STAFF_PANEL')) {
 
 require_once INC_PATH . '/functions_category.php';
 require_once INC_PATH . '/editor.php';
+require_once INC_PATH . '/functions_image_recode.php';
 
 $rootDir = dirname(__DIR__);
 require_once $rootDir . '/vendor/autoload.php';
@@ -44,7 +45,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'check_torrent_file' && $_SERV
     try {
         $torrentObj = TorrentFile::load($file['tmp_name']);
         $infoHash   = (string) $torrentObj->v1()->getInfoHash();
-        $query      = $db->sql_query_prepared("SELECT id, name, added FROM torrents WHERE info_hash = ? LIMIT 1", [$infoHash]);
+        $query      = $db->sql_query_prepared("SELECT id, name, added FROM torrents WHERE info_hash = ? LIMIT 1", [$infoHash], 1);
         $torrent    = $query ? $db->fetch_array($query) : null;
 
         if ($torrent) {
@@ -215,8 +216,9 @@ function handlePostRequest(): void
     $uploadDir = $rootDir . '/uploads/batch/';
     $torrentDirPath = $rootDir . '/' . $torrent_dir . '/';
     $imageDir  = $rootDir . '/torrents/images/';
+    $screenDir = $rootDir . '/torrents/screens/';
 
-    foreach ([$uploadDir, $torrentDirPath, $imageDir] as $dir) {
+    foreach ([$uploadDir, $torrentDirPath, $imageDir, $screenDir] as $dir) {
         ensureDir($dir);
     }
 
@@ -227,6 +229,22 @@ function handlePostRequest(): void
             $f = extractFileArray('posters', $idx);
             if ($f) $posterFiles[$idx] = $f;
         }
+    }
+
+    // Скриншоты - отдельное поле screenshots_{index}[] на каждую раздачу
+    // в пачке (несколько файлов на одну раздачу, не один флэт-массив,
+    // как у постеров).
+    $screenshotFiles = [];
+    for ($i = 0; $i < $fileCount; $i++) {
+        $field = "screenshots_{$i}";
+        if (!isset($_FILES[$field])) continue;
+
+        $files = [];
+        foreach (array_keys($_FILES[$field]['name']) as $j) {
+            $f = extractFileArray($field, $j);
+            if ($f) $files[] = $f;
+        }
+        if ($files) $screenshotFiles[$i] = $files;
     }
 
     // CSV
@@ -264,8 +282,8 @@ function handlePostRequest(): void
         try {
             $result = processTorrent(
                 $saved['path'], $name, $i,
-                $torrentDirPath, $imageDir,
-                $posterFiles, $csvData
+                $torrentDirPath, $imageDir, $screenDir,
+                $posterFiles, $screenshotFiles, $csvData
             );
 
             if (isset($result['error'])) {
@@ -273,6 +291,14 @@ function handlePostRequest(): void
             } else {
                 $results[] = $result;
                 $successCount++;
+
+                // Ошибки по конкретным скриншотам не блокируют сам торрент
+                // (он уже успешно создан) - но пользователь должен видеть,
+                // что часть скриншотов не прошла, а не просто недосчитаться
+                // их молча.
+                foreach ($result['screenshot_errors'] ?? [] as $shotErr) {
+                    $errors[] = "'{$name}' screenshot {$shotErr}";
+                }
             }
         } catch (Exception $e) {
             @unlink($saved['path']);
@@ -289,9 +315,10 @@ function handlePostRequest(): void
         'results'    => $results,
         'errors'     => $errors,
         'stats'      => [
-            'total_torrents' => $fileCount,
-            'with_posters'   => count(array_filter($results, fn($r) => $r['has_poster'])),
-            'csv_imported'   => count($csvData),
+            'total_torrents'      => $fileCount,
+            'with_posters'        => count(array_filter($results, fn($r) => $r['has_poster'])),
+            'total_screenshots'   => array_sum(array_column($results, 'screenshots_added')),
+            'csv_imported'        => count($csvData),
         ],
     ]);
 }
@@ -304,7 +331,9 @@ function processTorrent(
     int    $index,
     string $torrentDir,
     string $imageDir,
+    string $screenDir,
     array  $posterFiles,
+    array  $screenshotFiles,
     array  $csvData
 ): array {
     global $db, $CURUSER, $BASEURL, $lang, $privatetrackerpatch, $SITENAME, $announce_urls;
@@ -343,9 +372,10 @@ function processTorrent(
     // Проверка дубликата
     $existing = $db->sql_query_prepared(
         'SELECT id FROM torrents WHERE info_hash = ? LIMIT 1',
-        [$infoHash]
+        [$infoHash],
+        1
     );
-    if ($db->num_rows($existing) > 0) {
+    if ($existing && $db->num_rows($existing) > 0) {
         @unlink($torrentPath);
         return ['error' => 'Torrent already exists on the tracker'];
     }
@@ -365,8 +395,18 @@ function processTorrent(
         $customName  = !empty($inputName) ? substr($inputName, 0, 255) : $baseName;
     }
 
+    // Теги - приоритет: CSV-колонка "tags", иначе ручное поле формы.
+    // Если ни то ни другое не задано, а ниже подключится imdb_parser.php
+    // (при наличии IMDb-ссылки) - используем его результат ($Genre,
+    // не $tags - именно так называется переменная в одиночной загрузке,
+    // upload.php: 'tags' => trim($_POST['tags'] ?? $Genre)).
+    $manualTags = !empty($csvMeta['tags'])
+        ? trim((string)$csvMeta['tags'])
+        : trim((string)($_POST['tags_manual'][$index] ?? ''));
+
     // IMDb
     $t_link   = trim($_POST['imdb_urls'][$index] ?? '');
+    $Genre    = '';
     if (!empty($t_link)) {
         if (!str_ends_with($t_link, '/')) $t_link .= '/';
         if (preg_match('@^https?://www\.imdb\.com/title/tt\d+/@i', $t_link)) {
@@ -378,6 +418,8 @@ function processTorrent(
         }
     }
 
+    $tags = !empty($manualTags) ? $manualTags : trim((string)$Genre);
+
     $dbData = [
         'name'            => $customName,
         'filename'        => '',
@@ -388,6 +430,7 @@ function processTorrent(
         'added'           => TIMENOW,
         'category'        => $category,
         'descr'           => $description,
+        'tags'            => $tags,
         'anonymous'       => isset($_POST['batch_anonymous']) ? 'yes' : 'no',
         't_link'          => $t_link,
         'visible'         => 'yes',
@@ -396,10 +439,16 @@ function processTorrent(
     // Вставка в БД
     $columns      = array_keys($dbData);
     $placeholders = implode(',', array_fill(0, count($columns), '?'));
-    $db->sql_query_prepared(
+    
+    $insertOk = $db->sql_query_prepared(
         "INSERT INTO torrents (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
-        array_values($dbData)
+        array_values($dbData),
+        1
     );
+    if (!$insertOk) {
+        @unlink($torrentPath);
+        throw new Exception('Database error while inserting torrent: ' . $db->error_string());
+    }
     $newId = $db->insert_id();
     if (!$newId) {
         @unlink($torrentPath);
@@ -409,18 +458,29 @@ function processTorrent(
     // Копируем файл торрента
     $finalPath = $torrentDir . $newId . '.torrent';
     if (!copy($torrentPath, $finalPath)) {
-        $db->sql_query_prepared("DELETE FROM torrents WHERE id = ?", [$newId]);
+        $db->sql_query_prepared("DELETE FROM torrents WHERE id = ?", [$newId], 1);
         @unlink($torrentPath);
         throw new Exception('Failed to copy torrent file');
     }
 
-    $db->sql_query_prepared("UPDATE torrents SET filename = ? WHERE id = ?", [$newId . '.torrent', $newId]);
+    if (!$db->sql_query_prepared("UPDATE torrents SET filename = ? WHERE id = ?", [$newId . '.torrent', $newId], 1)) {
+        write_log("[BATCH_UPLOAD] Failed to set filename for torrent #{$newId}: " . $db->error_string());
+    }
     @unlink($torrentPath);
 
     // Постер
     $imageProcessed = false;
     if (isset($posterFiles[$index])) {
         $imageProcessed = processImage($posterFiles[$index], $newId, $imageDir);
+    }
+
+    // Скриншоты (несколько на раздачу)
+    $screenshotsProcessed = 0;
+    $screenshotErrors     = [];
+    if (!empty($screenshotFiles[$index])) {
+        $shotResult            = processScreenshots($screenshotFiles[$index], $newId, $screenDir);
+        $screenshotsProcessed  = $shotResult['added'];
+        $screenshotErrors      = $shotResult['errors'];
     }
 
     // Лог
@@ -432,12 +492,14 @@ function processTorrent(
     ));
 
     return [
-        'id'         => $newId,
-        'name'       => htmlspecialchars($customName),
-        'size'       => mksize($size),
-        'files'      => $numFiles,
-        'link'       => get_torrent_link($newId),
-        'has_poster' => $imageProcessed,
+        'id'                 => $newId,
+        'name'               => htmlspecialchars($customName),
+        'size'               => mksize($size),
+        'files'              => $numFiles,
+        'link'               => get_torrent_link($newId),
+        'has_poster'         => $imageProcessed,
+        'screenshots_added'  => $screenshotsProcessed,
+        'screenshot_errors'  => $screenshotErrors,
     ];
 }
 
@@ -472,18 +534,103 @@ function processImage(array $imageFile, int $torrentId, string $imageDir): bool
     if (!in_array($imageFile['type'], ALLOWED_IMAGES, true)) return false;
     if ($imageFile['size'] > MAX_IMAGE_SIZE) return false;
 
-    $ext        = IMAGE_EXTENSIONS[$imageFile['type']] ?? 'jpg';
+    // Реальный MIME по содержимому файла - $imageFile['type'] это просто
+    // Content-Type заголовок ОТ КЛИЕНТА, тривиально подделывается.
+    $realMime = (new finfo(FILEINFO_MIME_TYPE))->file($imageFile['tmp_name']);
+    if (!in_array($realMime, ALLOWED_IMAGES, true)) return false;
+
+    $ext        = IMAGE_EXTENSIONS[$realMime] ?? 'jpg';
     $targetPath = rtrim($imageDir, '/') . '/' . $torrentId . '.' . $ext;
 
     if (!copy($imageFile['tmp_name'], $targetPath)) return false;
+
+    // Перекодирование — защита от "полиглот"-файлов. recode_image_file()
+    // сама отличает анимированные GIF (Imagick, с сохранением анимации)
+    // от статичных (обычный путь через GD).
+    if (recode_image_file($targetPath, $realMime) === false) {
+        @unlink($targetPath);
+        return false;
+    }
 
     $rootDir      = dirname(__DIR__);
     $relativePath = ltrim(str_replace($rootDir, '', $targetPath), '/\\');
     $imageUrl     = $BASEURL . '/' . str_replace('\\', '/', $relativePath);
 
-    $db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$imageUrl, $torrentId]);
+    if (!$db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$imageUrl, $torrentId], 1)) {
+        write_log("[BATCH_UPLOAD] Failed to set poster for torrent #{$torrentId}: " . $db->error_string());
+        @unlink($targetPath);
+        return false;
+    }
 
     return true;
+}
+
+function processScreenshots(array $screenshotFileList, int $torrentId, string $screenDir): array
+{
+    global $db, $usergroups, $mybb;
+
+    $added  = 0;
+    $errors = [];
+    // Лимит по группе пользователя (как в upload.php), а не жёстко
+    // зашитое число - у разных групп может быть разный максимум.
+    $max_screenshots = (int)($mybb->usergroup['max_screenshots'] ?? 3);
+
+    foreach ($screenshotFileList as $shotFile) {
+        $label = $shotFile['name'] ?? 'screenshot';
+
+        if ($added >= $max_screenshots) {
+            $errors[] = "{$label}: skipped, max {$max_screenshots} screenshots per torrent reached";
+            continue;
+        }
+        if (!in_array($shotFile['type'], ALLOWED_IMAGES, true)) {
+            $errors[] = "{$label}: unsupported file type";
+            continue;
+        }
+        if ($shotFile['size'] > MAX_IMAGE_SIZE) {
+            $errors[] = "{$label}: file too large (max " . (MAX_IMAGE_SIZE / 1024 / 1024) . "MB)";
+            continue;
+        }
+
+        // Реальный MIME по содержимому файла - $shotFile['type'] это
+        // Content-Type заголовок ОТ КЛИЕНТА, тривиально подделывается.
+        $realMime = (new finfo(FILEINFO_MIME_TYPE))->file($shotFile['tmp_name']);
+        if (!in_array($realMime, ALLOWED_IMAGES, true)) {
+            $errors[] = "{$label}: content does not match an allowed image type";
+            continue;
+        }
+
+        $ext        = IMAGE_EXTENSIONS[$realMime] ?? 'jpg';
+        $filename   = $torrentId . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        $targetPath = rtrim($screenDir, '/') . '/' . $filename;
+
+        if (!copy($shotFile['tmp_name'], $targetPath)) {
+            $errors[] = "{$label}: failed to save file";
+            continue;
+        }
+
+        // Перекодирование — защита от "полиглот"-файлов, та же
+        // recode_image_file(), что и для постера.
+        if (recode_image_file($targetPath, $realMime) === false) {
+            @unlink($targetPath);
+            $errors[] = "{$label}: corrupted or unsupported image (recode failed)";
+            continue;
+        }
+
+        $inserted = $db->sql_query_prepared(
+            "INSERT INTO screenshots (torrent_id, filename, uploaded_at) VALUES (?, ?, ?)",
+            [$torrentId, $filename, TIMENOW],
+            1
+        );
+
+        if ($inserted) {
+            $added++;
+        } else {
+            @unlink($targetPath);
+            $errors[] = "{$label}: database insert failed (" . $db->error_string() . ")";
+        }
+    }
+
+    return ['added' => $added, 'errors' => $errors];
 }
 
 // ── CSV ───────────────────────────────────────────────────
@@ -502,6 +649,10 @@ function parseCSV(string $filePath): array
                 'name'             => $row[1],
                 'category'         => $row[2],
                 'description'      => $row[3],
+                // Необязательная 5-я колонка - через запятую внутри самого
+                // поля, например "Action, Comedy, Drama". Запасной вариант
+                // на случай, если у раздачи нет точного совпадения в IMDB.
+                'tags'             => $row[4] ?? '',
             ];
         }
     }
@@ -527,7 +678,7 @@ function showForm(): void
 
     // Категории для JS
     $categories = [];
-    $q = $db->sql_query_prepared("SELECT id, name FROM categories ORDER BY id");
+    $q = $db->sql_query_prepared("SELECT id, name FROM categories ORDER BY id", [], 1);
     while ($q && ($cat = $db->fetch_array($q))) {
         $categories[] = ['id' => (int)$cat['id'], 'name' => $cat['name']];
     }
@@ -541,8 +692,50 @@ function showForm(): void
     <i class="fa-solid fa-layer-group me-2 text-primary"></i>Batch Torrent Upload
   </h2>
 
+  <div class="row mb-3">
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-info text-white"><h6 class="mb-0">Instructions</h6></div>
+        <div class="card-body">
+          <ol class="mb-0 small">
+            <li class="mb-2">Drag & drop or select .torrent files</li>
+            <li class="mb-2">Add poster images for each torrent</li>
+            <li class="mb-2">Set categories and descriptions</li>
+            <li class="mb-2">Optional: Import metadata from CSV</li>
+            <li>Click "Upload"</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-success text-white"><h6 class="mb-0">System Status</h6></div>
+        <div class="card-body">
+          <ul class="list-unstyled mb-0 small">
+            <li class="mb-2"><i class="fa-solid fa-check-circle text-success me-2"></i>Torrent Parser: Available</li>
+            <li class="mb-2"><i class="fa-solid fa-hdd me-2 text-primary"></i>Maximum Files: <?= MAX_BATCH_SIZE ?></li>
+            <li><i class="fa-solid fa-image me-2 text-info"></i>Max Image Size: 5MB</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-warning text-white"><h6 class="mb-0">CSV Template</h6></div>
+        <div class="card-body">
+          <a href="data:text/csv;charset=utf-8,torrent_filename,name,category,description%0Amovie.torrent,My%20Movie,1,Description"
+             download="torrent_template.csv" class="btn btn-sm btn-outline-warning">
+            <i class="fa-solid fa-download me-1"></i>Download Template
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row">
-    <div class="col-md-8">
+    <div class="col-md-12">
       <div class="card shadow-sm">
         <div class="card-header bg-primary text-white">
           <h5 class="mb-0"><i class="fa-solid fa-upload me-2"></i>Upload Multiple Torrents</h5>
@@ -623,42 +816,6 @@ function showForm(): void
         </div>
       </div>
     </div>
-
-    <div class="col-md-4">
-      <div class="card shadow-sm mb-3">
-        <div class="card-header bg-info text-white"><h6 class="mb-0">Instructions</h6></div>
-        <div class="card-body">
-          <ol class="mb-0 small">
-            <li class="mb-2">Drag & drop or select .torrent files</li>
-            <li class="mb-2">Add poster images for each torrent</li>
-            <li class="mb-2">Set categories and descriptions</li>
-            <li class="mb-2">Optional: Import metadata from CSV</li>
-            <li>Click "Upload"</li>
-          </ol>
-        </div>
-      </div>
-
-      <div class="card shadow-sm mb-3">
-        <div class="card-header bg-success text-white"><h6 class="mb-0">System Status</h6></div>
-        <div class="card-body">
-          <ul class="list-unstyled mb-0 small">
-            <li class="mb-2"><i class="fa-solid fa-check-circle text-success me-2"></i>Torrent Parser: Available</li>
-            <li class="mb-2"><i class="fa-solid fa-hdd me-2 text-primary"></i>Maximum Files: <?= MAX_BATCH_SIZE ?></li>
-            <li><i class="fa-solid fa-image me-2 text-info"></i>Max Image Size: 5MB</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="card shadow-sm">
-        <div class="card-header bg-warning text-white"><h6 class="mb-0">CSV Template</h6></div>
-        <div class="card-body">
-          <a href="data:text/csv;charset=utf-8,torrent_filename,name,category,description%0Amovie.torrent,My%20Movie,1,Description"
-             download="torrent_template.csv" class="btn btn-sm btn-outline-warning">
-            <i class="fa-solid fa-download me-1"></i>Download Template
-          </a>
-        </div>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -707,6 +864,7 @@ const BATCH_CONFIG = {
     categories:    <?= $categoriesJson ?>,
     maxTorrents:   <?= MAX_BATCH_SIZE ?>,
     maxImageBytes: <?= MAX_IMAGE_SIZE ?>,
+    maxScreenshots: <?= (int)($mybb->usergroup['max_screenshots'] ?? 3) ?>,
     scriptUrl:     <?= json_encode($scriptUrl) ?>,
 };
 </script>
@@ -784,6 +942,91 @@ function batchBB(open, close) {
     ta.focus();
 }
 
+// ── Постер и скриншоты - превью при выборе файлов ───────────
+document.getElementById('batchUploadForm')?.addEventListener('change', function (e) {
+    const target = e.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== 'file') return;
+
+    // Постер (один файл)
+    if (target.name === 'posters[]') {
+        const container = target.closest('.row');
+        const previewDiv = container?.querySelector('.image-preview');
+        const img = previewDiv?.querySelector('img');
+        if (!previewDiv || !img) return;
+
+        const file = target.files[0];
+        if (!file) { previewDiv.style.display = 'none'; img.src = ''; return; }
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            img.src = ev.target.result;
+            previewDiv.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+        return;
+    }
+
+    // Скриншоты (несколько файлов сразу)
+    if (target.name.startsWith('screenshots_') && target.name.endsWith('[]')) {
+        const container = target.closest('.row');
+        const previewDiv = container?.querySelector('.screenshots-preview');
+        if (!previewDiv) return;
+
+        previewDiv.innerHTML = '';
+        Array.from(target.files).forEach(file => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = document.createElement('img');
+                img.src = ev.target.result;
+                img.className = 'rounded border';
+                img.style.cssText = 'width:70px;height:70px;object-fit:cover;';
+                previewDiv.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+});
+
+// ── Genre tag buttons (per torrent row) ─────────────────────
+function toggleBatchGenreTag(btn) {
+    const container = btn.closest('.row');
+    const input = container?.querySelector('.batch-tags-input');
+    if (!input) return;
+
+    const genre = btn.dataset.genre;
+    const color = btn.dataset.color;
+    let current = input.value.split(',').map(s => s.trim()).filter(Boolean);
+
+    const idx = current.indexOf(genre);
+    if (idx === -1) {
+        current.push(genre);
+        btn.classList.add('batch-genre-active');
+        btn.style.background = color;
+        btn.style.color = 'white';
+    } else {
+        current.splice(idx, 1);
+        btn.classList.remove('batch-genre-active');
+        btn.style.background = 'transparent';
+        btn.style.color = color;
+    }
+
+    input.value = current.join(', ');
+}
+
+function clearBatchTags(btn) {
+    const container = btn.closest('.row');
+    if (!container) return;
+
+    const input = container.querySelector('.batch-tags-input');
+    if (input) input.value = '';
+
+    container.querySelectorAll('.batch-genre-tag-btn').forEach(b => {
+        b.classList.remove('batch-genre-active');
+        b.style.background = 'transparent';
+        b.style.color = b.dataset.color;
+    });
+}
+
 function batchPreview() {
     const ta = _batchActiveTextarea;
     if (!ta) return;
@@ -820,6 +1063,8 @@ function batchPreview() {
 
 function torrentItemHtml(int $idx): string
 {
+    global $usergroups, $mybb;
+    $max_screenshots = (int)($mybb->usergroup['max_screenshots'] ?? 3);
     ob_start();
     ?>
     <div class="row">
@@ -838,6 +1083,13 @@ function torrentItemHtml(int $idx): string
     </div>
     <div class="row mt-2">
       <div class="col-md-6">
+        <label class="form-label fw-bold"><i class="fa-solid fa-images me-1"></i>Screenshots (Optional, up to <?= $max_screenshots ?>)</label>
+        <input class="form-control" type="file" name="screenshots_<?= $idx ?>[]" accept="image/*" multiple>
+        <div class="screenshots-preview mt-2 d-flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+    <div class="row mt-2">
+      <div class="col-md-6">
         <label class="form-label">Torrent Name <span class="text-muted fw-normal small">(Optional — uses filename if empty)</span></label>
         <input type="text" class="form-control torrent-name-input" name="torrent_names[]" placeholder="Leave empty to use filename...">
       </div>
@@ -850,6 +1102,54 @@ function torrentItemHtml(int $idx): string
       <div class="col-md-12">
         <label class="form-label">Description</label>
         <textarea class="form-control batch-desc" name="descriptions[]" rows="5" placeholder="Description..."></textarea>
+      </div>
+    </div>
+    <div class="row mt-2">
+      <div class="col-md-12">
+        <label class="form-label">Tags <span class="text-muted fw-normal small">(overridden by CSV "tags" column if provided)</span></label>
+        <div class="input-group mb-2">
+          <span class="input-group-text bg-light border-0"><i class="fas fa-tag text-primary"></i></span>
+          <input type="text" class="form-control batch-tags-input" name="tags_manual[]" placeholder="Action, Comedy, Drama...">
+          <button type="button" class="btn btn-outline-secondary" onclick="clearBatchTags(this)">
+            <i class="fas fa-eraser me-1"></i>Clear
+          </button>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-2 batch-genre-buttons">
+          <?php
+          $batchGenres = [
+              ['Action',      'fas fa-bolt',              '#ff4757'],
+              ['Adventure',   'fas fa-compass',           '#ffa502'],
+              ['Animation',   'fas fa-film',              '#7bed9f'],
+              ['Biography',   'fas fa-user-graduate',     '#70a1ff'],
+              ['Comedy',      'fas fa-laugh-squint',      '#ff6b81'],
+              ['Crime',       'fas fa-gavel',             '#2f3542'],
+              ['Documentary', 'fas fa-video',             '#a4b0be'],
+              ['Drama',       'fas fa-mask',              '#57606f'],
+              ['Family',      'fas fa-users',             '#ff7f50'],
+              ['Fantasy',     'fas fa-dragon',            '#dfe6e9'],
+              ['History',     'fas fa-landmark',          '#cd84f1'],
+              ['Horror',      'fas fa-ghost',             '#ff4d4d'],
+              ['Music',       'fas fa-music',             '#1e90ff'],
+              ['Mystery',     'fas fa-search',            '#8e44ad'],
+              ['Romance',     'fas fa-heart',             '#ff6b6b'],
+              ['Sci-Fi',      'fas fa-rocket',            '#00cec9'],
+              ['Sport',       'fas fa-trophy',            '#fdcb6e'],
+              ['Thriller',    'fas fa-skull',             '#e17055'],
+              ['War',         'fas fa-fist-raised',       '#636e72'],
+              ['Western',     'fas fa-horse-head',        '#f39c12'],
+          ];
+          foreach ($batchGenres as [$label, $icon, $color]):
+          ?>
+          <button type="button"
+                  class="btn btn-sm batch-genre-tag-btn"
+                  data-genre="<?= $label ?>"
+                  data-color="<?= $color ?>"
+                  onclick="toggleBatchGenreTag(this)"
+                  style="border: 1px solid <?= $color ?>80; color: <?= $color ?>;">
+              <i class="<?= $icon ?> me-1"></i><?= $label ?>
+          </button>
+          <?php endforeach; ?>
+        </div>
       </div>
     </div>
     <div class="row mt-2">

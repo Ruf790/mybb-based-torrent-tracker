@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
+}
+
 // ═══════════════════════════════════════════════════════════
 // CLASS
 // ═══════════════════════════════════════════════════════════
@@ -243,6 +248,25 @@ PHP;
 $seedbonus = new SeedbonusSettings();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Явная проверка прав - на всякий случай, если STAFF_PANEL определяется
+    // где-то ещё без сверки конкретно этой возможности.
+    if (empty($CURUSER['id']) || !is_mod($usergroups)) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Access denied. Staff only.']);
+        exit;
+    }
+
+    // CSRF - раньше отсутствовала полностью. Без неё сторонняя страница
+    // могла бы от имени залогиненного админа поменять общесайтовые
+    // настройки бонусной экономики без его ведома.
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Invalid security token. Please refresh the page and try again.']);
+        exit;
+    }
+
     $action = $_POST['action'] ?? '';
 
     $response = match ($action) {
@@ -288,6 +312,7 @@ stdhead('Seedbonus System Settings');
 ?>
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/seedbonus_settings.css">
+<script>var myPostKey = <?= json_encode($mybb->post_code) ?>;</script>
 
 <div class="container py-5">
 

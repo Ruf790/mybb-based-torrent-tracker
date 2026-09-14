@@ -202,8 +202,6 @@ $cleanups = [
     ['hit_and_run',         "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
     ['inactivity',          "userid NOT IN ({$ValidUsers})",                                         'userid'],                                      
     ['privatemessages',     "fromid NOT IN ({$ValidUsers}) AND toid NOT IN ({$ValidUsers})",         'pmid'],
-    ['comment_files',       "user_id NOT IN ({$ValidUsers}) OR torrent_id NOT IN ({$ValidTorrents})"],
-    ['screenshots',         "torrent_id NOT IN ({$ValidTorrents})"],
 ];
 
 foreach ($cleanups as $cleanup) {
@@ -253,6 +251,124 @@ if (!empty($orphaned_batch)) {
 
 if ($orphaned_count > 0) {
     $log[] = "Deleted {$orphaned_count} orphaned uploaded file(s), freed " . format_filesize($orphaned_freed);
+}
+
+// ── Невалидные comment_files (torrent_id/user_id указывают на
+//    несуществующую раздачу/пользователя) - раньше эти записи удалялись
+//    через общий delete_invalid_records(), но тот трогает только строку
+//    в БД, физический файл оставался сиротой на диске навсегда.
+if ($db->table_exists('comment_files')) {
+    $q = $db->sql_query_prepared(
+        "SELECT id, file_path, file_size FROM comment_files
+         WHERE (user_id IS NULL OR user_id NOT IN ({$ValidUsers}))
+            OR (torrent_id IS NOT NULL AND torrent_id NOT IN ({$ValidTorrents}))"
+    );
+
+    $invalid_cf_count = 0;
+    $invalid_cf_freed = 0;
+    $invalid_cf_batch = [];
+
+    while ($file = $db->fetch_array($q)) {
+        if (!empty($file['file_path']) && file_exists($file['file_path'])) {
+            @unlink($file['file_path']);
+        }
+        $invalid_cf_freed += (int)$file['file_size'];
+        $invalid_cf_batch[] = (int)$file['id'];
+        $invalid_cf_count++;
+
+        if (count($invalid_cf_batch) >= 1000) {
+            $placeholders = implode(',', array_fill(0, count($invalid_cf_batch), '?'));
+            $db->sql_query_prepared("DELETE FROM comment_files WHERE id IN ({$placeholders})", $invalid_cf_batch);
+            $invalid_cf_batch = [];
+        }
+    }
+    if ($invalid_cf_batch) {
+        $placeholders = implode(',', array_fill(0, count($invalid_cf_batch), '?'));
+        $db->sql_query_prepared("DELETE FROM comment_files WHERE id IN ({$placeholders})", $invalid_cf_batch);
+    }
+
+    if ($invalid_cf_count > 0) {
+        $log[] = "Deleted {$invalid_cf_count} invalid comment_files record(s) (torrent/user no longer exists), freed " . format_filesize($invalid_cf_freed);
+    }
+}
+
+// ── Невалидные screenshots (torrent_id указывает на несуществующую
+//    раздачу) - та же проблема: только строка в БД, файл оставался
+//    на диске в torrents/screens/ навсегда.
+if ($db->table_exists('screenshots')) {
+    $screenDir = TSDIR . '/torrents/screens/';
+
+    $q = $db->sql_query_prepared(
+        "SELECT id, filename FROM screenshots WHERE torrent_id IS NULL OR torrent_id NOT IN ({$ValidTorrents})"
+    );
+
+    $invalid_shot_count = 0;
+    $invalid_shot_freed = 0;
+    $invalid_shot_batch = [];
+
+    while ($row = $db->fetch_array($q)) {
+        if (!empty($row['filename'])) {
+            $path = $screenDir . $row['filename'];
+            if (is_file($path)) {
+                $invalid_shot_freed += filesize($path);
+                @unlink($path);
+            }
+        }
+        $invalid_shot_batch[] = (int)$row['id'];
+        $invalid_shot_count++;
+
+        if (count($invalid_shot_batch) >= 1000) {
+            $placeholders = implode(',', array_fill(0, count($invalid_shot_batch), '?'));
+            $db->sql_query_prepared("DELETE FROM screenshots WHERE id IN ({$placeholders})", $invalid_shot_batch);
+            $invalid_shot_batch = [];
+        }
+    }
+    if ($invalid_shot_batch) {
+        $placeholders = implode(',', array_fill(0, count($invalid_shot_batch), '?'));
+        $db->sql_query_prepared("DELETE FROM screenshots WHERE id IN ({$placeholders})", $invalid_shot_batch);
+    }
+
+    if ($invalid_shot_count > 0) {
+        $log[] = "Deleted {$invalid_shot_count} invalid screenshot record(s) (torrent no longer exists), freed " . format_filesize($invalid_shot_freed);
+    }
+}
+
+// ── Файлы в uploads/ без ЛЮБОЙ записи в comment_files ──────
+// Отличается от блока выше: там чистятся записи БД с невалидными
+// user_id/torrent_id (файл + запись). Здесь - обратный случай: файл
+// физически лежит в uploads/, но НИ ОДНОЙ строки в comment_files
+// на него вообще не ссылается (ни валидной, ни невалидной) - такие
+// первый блок не видит, потому что он тоже работает через SELECT
+// FROM comment_files, а тут нечего перебирать.
+if ($db->table_exists('comment_files')) {
+    $keepUploadFiles = [];
+    $q = $db->sql_query_prepared('SELECT file_path FROM comment_files');
+    while ($row = $db->fetch_array($q)) {
+        if (!empty($row['file_path'])) $keepUploadFiles[] = basename($row['file_path']);
+    }
+
+    [$n, $freed] = cleanup_orphaned_disk_files(TSDIR . '/uploads', $keepUploadFiles, '');
+
+    if ($n > 0) {
+        $log[] = "Deleted {$n} file(s) in uploads/ with no comment_files record at all, freed " . format_filesize($freed);
+    }
+}
+
+// ── Файлы в torrents/screens/ без ЛЮБОЙ записи в screenshots ──────
+// Тот же принцип, что и для uploads/ выше - файл физически на диске,
+// но ни одна строка в screenshots на него вообще не ссылается.
+if ($db->table_exists('screenshots')) {
+    $keepScreenshotFiles = [];
+    $q = $db->sql_query_prepared('SELECT filename FROM screenshots');
+    while ($row = $db->fetch_array($q)) {
+        if (!empty($row['filename'])) $keepScreenshotFiles[] = basename($row['filename']);
+    }
+
+    [$n, $freed] = cleanup_orphaned_disk_files(TSDIR . '/torrents/screens', $keepScreenshotFiles, '');
+
+    if ($n > 0) {
+        $log[] = "Deleted {$n} file(s) in torrents/screens/ with no screenshots record at all, freed " . format_filesize($freed);
+    }
 }
 
 // ── Файлы вложений (комментарии + посты форума) на диске без записи в attachments ──────

@@ -23,6 +23,59 @@ global $mybb, $db, $plugins, $cache, $lang;
 // HELPERS
 // ═══════════════════════════════════════════════════════════
 
+// Перенесена из adminfunctions.php - используется только этим файлом.
+function generate_numeric_field(string $name, mixed $value = 0, array $options = []): string
+{
+    $val = is_numeric($value) ? (float)$value : '';
+    $cls = isset($options['class']) ? ' ' . $options['class'] : '';
+    $id  = isset($options['id'])    ? " id=\"{$options['id']}\"" : '';
+
+    $input = "<input type=\"number\" name=\"{$name}\" value=\"{$val}\""
+           . " class=\"form-control{$cls}\"{$id}";
+
+    foreach (['min', 'max', 'step', 'style'] as $attr) {
+        if (isset($options[$attr])) $input .= " {$attr}=\"{$options[$attr]}\"";
+    }
+
+    return $input . ' />';
+}
+
+
+// ── generate_text_box ─────────────────────────────────────────────────────────
+function generate_text_box(string $name, string $value = '', array $options = []): string
+{
+    $cls = isset($options['class']) ? ' ' . $options['class'] : '';
+    $id  = isset($options['id'])    ? " id=\"{$options['id']}\"" : '';
+
+    $input = "<input type=\"text\" name=\"{$name}\" value=\"" . htmlspecialchars_uni($value) . "\""
+           . " class=\"form-control{$cls}\"{$id}";
+
+    if (isset($options['style'])) $input .= " style=\"{$options['style']}\"";
+
+    return $input . ' />';
+}
+
+
+// ── generate_radio_button ─────────────────────────────────────────────────────
+function generate_radio_button(string $name, string $value = '', string $label = '', array $options = []): string
+{
+    $cls   = isset($options['class']) ? ' ' . $options['class'] : '';
+    $id    = isset($options['id'])    ? " id=\"{$options['id']}\"" : '';
+    $forid = isset($options['id'])    ? " for=\"{$options['id']}\"" : '';
+    $chk   = !empty($options['checked']) ? ' checked="checked"' : '';
+    $lbl_c = isset($options['class']) ? " class=\"label_{$options['class']}\"" : '';
+
+    return "<label{$forid}{$lbl_c}>"
+        . "<input type=\"radio\" name=\"{$name}\" value=\"" . htmlspecialchars_uni($value) . "\""
+        . " class=\"form-check-input{$cls}\"{$id}{$chk} />"
+        . ($label !== '' ? $label : '')
+        . '</label>';
+}
+
+
+
+
+
 function print_selection_javascript(): void
 {
     static $printed = false;

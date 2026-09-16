@@ -315,7 +315,16 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             stderr('Error', 'Category with this ID was not found!');
             return;
         }
-        
+
+        // Раньше категория удалялась без проверки, используется ли она ещё
+        // раздачами - те оставались бы с "битым" category-ID, указывающим
+        // в никуда (browse.php показывал бы пустое название категории).
+        $torrentCount = $this->getTorrentCountForCategory($id);
+        if ($torrentCount > 0) {
+            stderr('Error', "This category still has {$torrentCount} torrent(s) assigned to it. Please reassign or remove them before deleting the category.");
+            return;
+        }
+
         if ($what === 'sure' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $this->db->sql_query_prepared("DELETE FROM categories WHERE id = ? LIMIT 1", [$id]);
             $this->updateCategoriesCache();
@@ -928,6 +937,19 @@ document.addEventListener('DOMContentLoaded', function () {
             return $row;
         }
         return null;
+    }
+
+    /**
+     * Count how many torrents currently use this category - защита перед
+     * удалением, чтобы не оставлять раздачи с "битым" category-ID.
+     */
+    private function getTorrentCountForCategory(int $id): int
+    {
+        $query = $this->db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM torrents WHERE category = ?", [$id]);
+        if ($query && ($row = $this->db->fetch_array($query))) {
+            return (int)$row['cnt'];
+        }
+        return 0;
     }
     
     /**

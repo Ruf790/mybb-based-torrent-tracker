@@ -334,18 +334,29 @@ function render_stafftools_page(): void
 
 function handle_managestafftools(): void
 {
-    global $_this_script_, $_this_script_no_act, $db, $thispath;
+    global $_this_script_, $_this_script_no_act, $db, $thispath, $mybb;
     
 	require_once $thispath . 'include/stafftoolsfunctions.php';
 	
 	_access_check_();
+
+    // CSRF - раньше отсутствовал вообще везде в этом блоке. save_tool()
+    // меняет, какие группы имеют доступ к каким инструментам админки
+    // (включая execute_sql_query) - без защиты это прямой путь к
+    // эскалации привилегий через подделанный запрос со стороннего сайта.
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+            print_no_permission(true);
+        }
+    }
 
     $do = $_GET['do'] ?? '';
     $id = (isset($_GET['id']) && is_valid_id($_GET['id'])) ? (int) $_GET['id'] : null;
 
     if ($do === 'newtool')                  { render_tool_form('create');                return; }
     if ($do === 'savenewtool')              { save_tool('create');                       return; }
-    if ($do === 'delete'   && $id !== null) { delete_tool($id);                         return; }
+    if ($do === 'delete'   && $id !== null && $_SERVER['REQUEST_METHOD'] === 'POST') { delete_tool($id); return; }
+    if ($do === 'delete'   && $id !== null) { render_delete_confirm($id);               return; }
     if ($do === 'edit'     && $id !== null) { render_tool_form('edit', fetch_tool($id)); return; }
     if ($do === 'savetool' && $id !== null) { save_tool('edit', $id);                   return; }
 
@@ -359,7 +370,14 @@ function handle_managestafftools(): void
     $add_btn = '<p align="right"><input type="button" class="hoptobutton" value="Add New Tool"'
              . ' onClick="jumpto(\'' . $_this_script_no_act . '?act=managestafftools&do=newtool\')"></p>';
     echo $add_btn;
-    _form_header_open_('Manage Staff Tools', 6);
+    
+	echo '
+	
+	<div class="container mt-3">
+	<table align="center" border="0" class="tborder" cellpadding="0" cellspacing="0" width="100%">
+    <tbody><tr><td><table class="tback" border="0" cellpadding="6" cellspacing="0" width="100%"><tbody><tr><td class="thead" colspan="6" align="center">Manage Staff Tools</td></tr>';
+	
+	
     get_list2();
     echo '</table></tbody></td></tr></table></tbody></div></td></tr></table>';
     echo '</div>';
@@ -418,23 +436,33 @@ function save_tool(string $mode, int $id = 0): void
     }
 }
 
+function render_delete_confirm(int $id): void
+{
+    global $_this_script_, $mybb;
+
+    stdhead('Confirm Delete');
+    echo '<div class="container mt-4"><div class="alert alert-warning">
+        <p>Are you sure you want to delete this tool?</p>
+        <form method="post" action="' . $_this_script_ . '&do=delete&id=' . $id . '">
+            <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
+            <button type="submit" class="btn btn-danger">Yes, delete it</button>
+            <a href="' . $_this_script_ . '" class="btn btn-secondary">No, go back</a>
+        </form>
+    </div></div>';
+    stdfoot();
+}
+
 function delete_tool(int $id): void
 {
     global $db, $_this_script_;
 
-    if (($_GET['sure'] ?? '') !== 'yes') {
-        stderr('Are you sure you want to delete this tool?<br><br>'
-            . '<strong><a href="' . $_this_script_ . '&do=delete&id=' . $id . '&sure=yes" style="color:red">Yes, delete it</a></strong>'
-            . ' &nbsp; <a href="' . $_this_script_ . '">No, go back</a>', false);
-        return;
-    }
     $db->sql_query_prepared('DELETE FROM staffpanel WHERE id = ?', [$id]);
     redirect('admin/index.php?act=managestafftools', 'The tool has been deleted.');
 }
 
 function render_tool_form(string $mode, ?array $tool = null): void
 {
-    global $_this_script_, $_this_script_no_act, $db, $thispath;
+    global $_this_script_, $_this_script_no_act, $db, $thispath, $mybb;
 	
 	require_once $thispath . 'include/stafftoolsfunctions.php';
 
@@ -453,6 +481,7 @@ function render_tool_form(string $mode, ?array $tool = null): void
     $val_desc    = $is_edit ? htmlspecialchars($tool['description'])  : '';
     $val_file    = $is_edit ? htmlspecialchars($tool['filename'])     : '';
     $tool_groups = $is_edit ? explode(',', $tool['usergroups'])       : [];
+    $post_key    = htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES);
 
     stdhead($title);
     enqueue_staff_assets();
@@ -477,6 +506,7 @@ function render_tool_form(string $mode, ?array $tool = null): void
         </div>
         <div class="p-4">
           <form method="post" action="{$form_action}" class="needs-validation" novalidate>
+            <input type="hidden" name="my_post_key" value="{$post_key}">
             <div class="mb-4">
               <label class="fw-semibold mb-1">Tool Name</label>
               <input type="text" class="form-control staff-form-control" id="toolName" name="name"

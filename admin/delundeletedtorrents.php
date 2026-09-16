@@ -151,7 +151,23 @@ function delete_batch(array $batch): array
 // Get all torrent IDs from database
 $torrent_ids = [];
 $sql = $db->sql_query_prepared('SELECT id FROM torrents');
-while ($sql && ($torrent = $db->fetch_array($sql))) {
+// Критично: если запрос провалится, $sql будет false, и цикл ниже просто
+// не выполнится ни разу - $torrent_ids останется пустым БЕЗ единой ошибки.
+// Дальше по коду пустой $torrent_ids означает "ни один .torrent файл на
+// диске не имеет пары в БД" - то есть АБСОЛЮТНО ВСЕ реальные раздачи сайта
+// покажутся "осиротевшими" и попадут под массовое удаление. Прерываемся
+// сразу, а не позволяем стаффу нечаянно удалить весь сайт при сбое БД.
+if (!$sql) {
+    stdhead('Delete Undeleted Torrent Files');
+    echo '<div class="container mt-3"><div class="alert alert-danger">
+        <b>Database error</b> while fetching existing torrent IDs. Aborting for safety -
+        proceeding here would have treated every torrent on the site as "orphaned".
+        Please check the database connection and try again.
+    </div></div>';
+    stdfoot();
+    exit;
+}
+while ($torrent = $db->fetch_array($sql)) {
     $torrent_ids[] = (int)$torrent['id'];
 }
 

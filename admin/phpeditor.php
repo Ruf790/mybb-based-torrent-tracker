@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-// ── Конфигурация ──────────────────────────────────────────
-if (!defined('TSDIR')) {
-    die('Direct access not allowed');
+
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger text-center"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 
 const PHP_EDITOR_BASE_DIR  = TSDIR . '/';

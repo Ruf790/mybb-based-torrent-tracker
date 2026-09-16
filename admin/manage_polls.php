@@ -35,6 +35,153 @@ $lang->load("polls");
 
 
 
+
+
+
+// ── update_user_counters ──────────────────────────────────────────────────────
+function update_user_counters(int|string $uid, array $changes = []): void
+{
+    global $db;
+
+    $uid = (int)$uid;
+    
+	$counters = ['postnum', 'threadnum'];
+    $query    = $db->sql_query_prepared("SELECT " . implode(',', $counters) . " FROM users WHERE id = ?", [$uid]);
+    $user     = $query ? $db->fetch_array($query) : null;
+
+    if (!$user) {
+        return;
+    }
+
+    $update = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $user[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $uid;
+        $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
+    }
+}
+
+
+
+// ── update_forum_counters ─────────────────────────────────────────────────────
+function update_forum_counters(int|string $fid, array $changes = []): void
+{
+    global $db;
+
+    $fid = (int)$fid;
+	
+	$counters = ['threads', 'unapprovedthreads', 'posts', 'unapprovedposts'];
+    $query    = $db->sql_query_prepared("SELECT " . implode(',', $counters) . " FROM forums WHERE fid = ?", [$fid]);
+    $forum    = $query ? $db->fetch_array($query) : null;
+    $update   = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $forum[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $fid;
+        $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
+    }
+
+    // Обновляем глобальную статистику
+    $stat_map = [
+        'threads'           => 'numthreads',
+        'unapprovedthreads' => 'numunapprovedthreads',
+        'posts'             => 'numposts',
+        'unapprovedposts'   => 'numunapprovedposts',
+    ];
+
+    $new_stats = [];
+    foreach ($stat_map as $counter => $stat) {
+        if (!isset($update[$counter])) {
+            continue;
+        }
+        $diff = $update[$counter] - $forum[$counter];
+        $new_stats[$stat] = ($diff >= 0 ? '+' : '') . $diff;
+    }
+
+    if (!empty($new_stats)) {
+        update_stats($new_stats);
+    }
+}
+
+
+
+// ── update_forum_lastpost ─────────────────────────────────────────────────────
+function update_forum_lastpost(int $fid): void
+{
+    global $db;
+
+    $query = $db->sql_query_prepared("
+        SELECT tid, lastpost, lastposter, lastposteruid, subject
+        FROM threads
+        WHERE fid = ? AND visible = '1' AND closed NOT LIKE 'moved|%'
+        ORDER BY lastpost DESC LIMIT 1
+    ", [$fid]);
+
+    if ($query && $db->num_rows($query) > 0) {
+        $last = $db->fetch_array($query);
+        $updated = [
+            'lastpost'       => (int)$last['lastpost'],
+            'lastposter'     => $last['lastposter'],
+            'lastposteruid'  => (int)$last['lastposteruid'],
+            'lastposttid'    => (int)$last['tid'],
+            'lastpostsubject'=> $last['subject'],
+        ];
+    } else {
+        $updated = [
+            'lastpost' => 0, 'lastposter' => '', 'lastposteruid' => 0,
+            'lastposttid' => 0, 'lastpostsubject' => '',
+        ];
+    }
+
+    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated)));
+    $params = array_values($updated);
+    $params[] = $fid;
+    $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
+}
+
+
+
+
+
 function h(string $s): string { 
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); 
 }

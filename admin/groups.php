@@ -2,6 +2,13 @@
 /**
  * User Groups Management — refactored
  * PHP 8.1+
+ *
+ * Классы DefaultForm/DefaultPage/DefaultTable/DefaultFormContainer убраны -
+ * заменены на прямой HTML. $page (DefaultPage) был мёртвым кодом: его
+ * единственный вызов (add_breadcrumb_item) нигде не рендерился, реальный
+ * breadcrumb строит своя функция ug_breadcrumb(). $form использовался
+ * активно - каждый вызов generate_*() заменён на эквивалентный HTML,
+ * с тем же набором атрибутов/классов, что генерировал сам класс.
  */
 
 // Array of usergroup permission fields and their default values.
@@ -34,41 +41,7 @@ if (!defined('IN_MYBB')) {
     die('Direct initialization of this file is not allowed.');
 }
 
-require_once $thispath . 'include/class_page.php';
-require_once $thispath . 'include/class_form.php';
-require_once $thispath . 'include/class_table.php';
 
-if (file_exists('include/style.php')) {
-    require_once 'include/style.php';
-}
-
-foreach ([
-    'Page'          => DefaultPage::class,
-    'Table'         => DefaultTable::class,
-    'Form'          => DefaultForm::class,
-    'FormContainer' => DefaultFormContainer::class,
-] as $alias => $class) {
-    if (!class_exists($alias, false)) {
-        class_exists($class) ? class_alias($class, $alias)
-            : throw new RuntimeException("Required class $class not found");
-    }
-}
-
-$page = new Page();
-$page->add_breadcrumb_item('User Groups', 'index.php?act=groups');
-
-if (in_array($mybb->input['action'] ?? '', ['add', '']) || !($mybb->input['action'] ?? '')) {
-    $sub_tabs['manage_groups'] = [
-        'title'       => 'Manage User Groups',
-        'link'        => 'index.php?act=groups',
-        'description' => 'Manage the various user groups on your board.',
-    ];
-    $sub_tabs['add_group'] = [
-        'title'       => 'Add New User Group',
-        'link'        => 'index.php?act=groups&action=add',
-        'description' => 'Create a new user group and optionally copy permissions from another group.',
-    ];
-}
 
 $plugins->run_hooks('admin_user_groups_begin');
 
@@ -105,10 +78,85 @@ function ug_errors(array $errors): void
     echo '</ul></div>';
 }
 
-function ug_switch(object $form, string $name, string $label, mixed $checked): void
+// ── Прямой HTML взамен DefaultForm ──────────────────────────
+
+/**
+ * Открыть форму + сразу вывести CSRF-поле (то, что раньше делал
+ * конструктор DefaultForm автоматически).
+ */
+function ug_form_open(string $action, string $id = ''): void
 {
+    global $mybb;
+    echo '<form action="' . $action . '" method="post"' . ($id !== '' ? ' id="' . $id . '"' : '') . '>' . "\n";
+    echo '<input type="hidden" name="my_post_key" value="' . htmlspecialchars_uni($mybb->post_code) . '" />' . "\n";
+}
+
+function ug_form_close(): void
+{
+    echo '</form>';
+}
+
+function ug_text_box(string $name, string $value = '', array $options = []): string
+{
+    $input = '<input type="text" name="' . $name . '" value="' . htmlspecialchars_uni($value) . '"';
+    $input .= ' class="form-control ' . ($options['class'] ?? '') . '"';
+    if (isset($options['style'])) {
+        $input .= ' style="' . $options['style'] . '"';
+    }
+    if (isset($options['placeholder'])) {
+        $input .= ' placeholder="' . htmlspecialchars_uni($options['placeholder']) . '"';
+    }
+    $input .= ' />';
+    return $input;
+}
+
+function ug_numeric_field(string $name, int|float|string $value = 0, array $options = []): string
+{
+    $value = is_numeric($value) ? (float)$value : '';
+    $input = '<input type="number" name="' . $name . '" value="' . $value . '"';
+    if (isset($options['min'])) $input .= ' min="' . $options['min'] . '"';
+    if (isset($options['max'])) $input .= ' max="' . $options['max'] . '"';
+    if (isset($options['step'])) $input .= ' step="' . $options['step'] . '"';
+    $input .= ' class="text_input ' . ($options['class'] ?? '') . '"';
+    $input .= ' />';
+    return $input;
+}
+
+function ug_select_box(string $name, array $option_list, mixed $selected = '', array $options = []): string
+{
+    $select = '<select name="' . $name . '"';
+    $select .= ' class="' . ($options['class'] ?? 'form-select') . '"';
+    $select .= ">\n";
+    foreach ($option_list as $value => $option) {
+        $select_add = '';
+        if ((!is_array($selected) || !empty($selected)) && ((is_array($selected) && in_array((string)$value, $selected)) || (!is_array($selected) && (string)$value === (string)$selected))) {
+            $select_add = ' selected="selected"';
+        }
+        $select .= '<option value="' . $value . '"' . $select_add . '>' . $option . "</option>\n";
+    }
+    $select .= "</select>\n";
+    return $select;
+}
+
+/**
+ * Комбинация "form-check-input" + доп. класс из ug_switch() ниже
+ * сохранена ровно как была раньше (там действительно дублировался
+ * класс "form-check-input form-check-input" - редундантно, но
+ * безвредно, оставляю как есть, чтобы вывод совпадал 1-в-1).
+ */
+function ug_submit_button(string $value, array $options = []): string
+{
+    $input = '<input type="submit" value="' . htmlspecialchars_uni($value) . '"';
+    $input .= ' class="submit_button ' . ($options['class'] ?? '') . '"';
+    $input .= ' />';
+    return $input;
+}
+
+function ug_switch(string $name, string $label, mixed $checked): void
+{
+    $checked_attr = ($checked === true || $checked == 1) ? ' checked="checked"' : '';
     echo '<div class="form-check form-switch mb-2">';
-    echo $form->generate_check_box($name, 1, $label, ['checked' => $checked, 'class' => 'form-check-input']);
+    echo '<label><input type="checkbox" name="' . $name . '" value="1" class="form-check-input form-check-input"' . $checked_attr . ' /> ' . $label . '</label>';
     echo '</div>';
 }
 
@@ -196,7 +244,7 @@ if (($mybb->input['action'] ?? '') === 'add') {
     echo '</div>';
     echo '<div class="card-body p-4">';
 
-    $form = new Form('index.php?act=groups&action=add', 'post', 'addGroupForm');
+    ug_form_open('index.php?act=groups&action=add', 'addGroupForm');
 
     echo '<div class="row g-4">';
 
@@ -205,13 +253,13 @@ if (($mybb->input['action'] ?? '') === 'add') {
 
     echo '<div class="mb-4">';
     echo '<label class="form-label fw-semibold">Group Title <span class="text-danger">*</span></label>';
-    echo $form->generate_text_box('title', $mybb->get_input('title'), ['class' => 'form-control form-control-lg', 'placeholder' => 'Enter group title']);
+    echo ug_text_box('title', $mybb->get_input('title'), ['class' => 'form-control-lg', 'placeholder' => 'Enter group title']);
     echo '<div class="form-text">The name that will identify this user group</div>';
     echo '</div>';
 
     echo '<div class="mb-4">';
     echo '<label class="form-label fw-semibold">Short Description</label>';
-    echo $form->generate_text_box('description', $mybb->get_input('description'), ['class' => 'form-control', 'placeholder' => 'Brief description']);
+    echo ug_text_box('description', $mybb->get_input('description'), ['placeholder' => 'Brief description']);
     echo '</div>';
 
     echo '</div>';
@@ -221,18 +269,18 @@ if (($mybb->input['action'] ?? '') === 'add') {
 
     echo '<div class="mb-4">';
     echo '<label class="form-label fw-semibold">Username Style</label>';
-    echo $form->generate_text_box('namestyle', $mybb->get_input('namestyle') ?: '{username}', ['class' => 'form-control', 'placeholder' => '{username}']);
+    echo ug_text_box('namestyle', $mybb->get_input('namestyle') ?: '{username}', ['placeholder' => '{username}']);
     echo '<div class="form-text">Use <code>{username}</code> to represent the user\'s name</div>';
     echo '</div>';
 
     echo '<div class="mb-4">';
     echo '<label class="form-label fw-semibold">Default User Title</label>';
-    echo $form->generate_text_box('usertitle', $mybb->get_input('usertitle'), ['class' => 'form-control', 'placeholder' => 'Default title for users']);
+    echo ug_text_box('usertitle', $mybb->get_input('usertitle'), ['placeholder' => 'Default title for users']);
     echo '</div>';
 
     echo '<div class="mb-4">';
     echo '<label class="form-label fw-semibold">Group Image</label>';
-    echo $form->generate_text_box('image', $mybb->get_input('image'), ['class' => 'form-control', 'placeholder' => 'path/to/image.png']);
+    echo ug_text_box('image', $mybb->get_input('image'), ['placeholder' => 'path/to/image.png']);
     echo '<div class="form-text">Use <strong>{lang}</strong> for language-specific images</div>';
     echo '</div>';
 
@@ -251,18 +299,18 @@ if (($mybb->input['action'] ?? '') === 'add') {
     }
 
     echo '<label class="form-label fw-semibold">Copy permissions from existing group</label>';
-    echo $form->generate_select_box('copyfrom', $options, $mybb->get_input('copyfrom'), ['class' => 'form-select']);
+    echo ug_select_box('copyfrom', $options, $mybb->get_input('copyfrom'));
     echo '<div class="form-text">Optionally copy all permissions from an existing group</div>';
     echo '</div>';
     echo '</div>';
 
     // Submit
     echo '<div class="text-center mt-4">';
-    echo $form->generate_submit_button('Create User Group', ['class' => 'btn btn-primary btn-lg px-5 me-2']);
+    echo ug_submit_button('Create User Group', ['class' => 'btn btn-primary btn-lg px-5 me-2']);
     echo '<a href="index.php?act=groups" class="btn btn-outline-secondary btn-lg px-4">Cancel</a>';
     echo '</div>';
 
-    $form->end();
+    ug_form_close();
     echo '</div>'; // card-body
     echo '</div>'; // card
     echo '</div>'; // container
@@ -391,7 +439,7 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     echo '</div>';
     echo '<div class="card-body">';
 
-    $form = new Form("index.php?act=groups&action=edit&amp;gid={$usergroup['gid']}", 'post', 'userGroupForm');
+    ug_form_open("index.php?act=groups&action=edit&amp;gid={$usergroup['gid']}", 'userGroupForm');
 
     // Tabs
     $tabs = [
@@ -416,24 +464,24 @@ if (($mybb->input['action'] ?? '') === 'edit') {
 
     echo '<div class="col-md-6">';
     echo '<div class="mb-3"><label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>';
-    echo $form->generate_text_box('title', $mybb->input['title'], ['class' => 'form-control']);
+    echo ug_text_box('title', $mybb->input['title']);
     echo '</div>';
     echo '<div class="mb-3"><label class="form-label fw-semibold">Short Description</label>';
-    echo $form->generate_text_box('description', $mybb->input['description'], ['class' => 'form-control']);
+    echo ug_text_box('description', $mybb->input['description']);
     echo '</div>';
     echo '</div>';
 
     echo '<div class="col-md-6">';
     echo '<div class="mb-3"><label class="form-label fw-semibold">Username Style</label>';
     echo '<div class="form-text mb-1">Use {username} to represent the users name</div>';
-    echo $form->generate_text_box('namestyle', $mybb->input['namestyle'], ['class' => 'form-control']);
+    echo ug_text_box('namestyle', $mybb->input['namestyle']);
     echo '</div>';
     echo '<div class="mb-3"><label class="form-label fw-semibold">Default User Title</label>';
-    echo $form->generate_text_box('usertitle', $mybb->input['usertitle'], ['class' => 'form-control']);
+    echo ug_text_box('usertitle', $mybb->input['usertitle']);
     echo '</div>';
     echo '<div class="mb-3"><label class="form-label fw-semibold">Group Image</label>';
     echo '<div class="form-text mb-1">Use {lang} for language-specific images</div>';
-    echo $form->generate_text_box('image', $mybb->input['image'], ['class' => 'form-control']);
+    echo ug_text_box('image', $mybb->input['image']);
     echo '</div>';
     echo '</div>';
     echo '</div>'; // row
@@ -441,15 +489,15 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     echo '<div class="row mt-3">';
     echo '<div class="col-md-6">';
     echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-sliders-h me-2"></i>General Options</h6>';
-    ug_switch($form, 'showforumteam', 'Show this group on forum team page', $mybb->input['showforumteam']);
-    ug_switch($form, 'isbannedgroup', 'This is a banned group', $mybb->input['isbannedgroup']);
+    ug_switch('showforumteam', 'Show this group on forum team page', $mybb->input['showforumteam']);
+    ug_switch('isbannedgroup', 'This is a banned group', $mybb->input['isbannedgroup']);
     echo '</div>';
     
 	echo '<div class="col-md-6">';
     echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-shield-alt me-2"></i>Administration Options</h6>';
-    ug_switch($form, 'issupermod',     'Users are super moderators', $mybb->input['issupermod']);
-    ug_switch($form, 'canstaffpanel',  'Can access Staff Panel', $mybb->input['canstaffpanel']);
-    ug_switch($form, 'cansettingspanel','Can access Settings Panel', $mybb->input['cansettingspanel']);
+    ug_switch('issupermod',     'Users are super moderators', $mybb->input['issupermod']);
+    ug_switch('canstaffpanel',  'Can access Staff Panel', $mybb->input['canstaffpanel']);
+    ug_switch('cansettingspanel','Can access Settings Panel', $mybb->input['cansettingspanel']);
     echo '</div>';
     echo '</div>';
 	
@@ -460,43 +508,43 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     echo '<div class="row">';
     echo '<div class="col-md-6">';
     echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-eye me-2"></i>Viewing Options</h6>';
-    ug_switch($form, 'canview',           'Can view board?',                $mybb->input['canview']);
-    ug_switch($form, 'canviewthreads',    'Can view threads?',              $mybb->input['canviewthreads']);
-    ug_switch($form, 'cansearch',         'Can search forums?',             $mybb->input['cansearch']);
-    ug_switch($form, 'candlattachments',  'Can download attachments?',      $mybb->input['candlattachments']);
-    ug_switch($form, 'canviewboardclosed','Can view board when closed?',    $mybb->input['canviewboardclosed']);
+    ug_switch('canview',           'Can view board?',                $mybb->input['canview']);
+    ug_switch('canviewthreads',    'Can view threads?',              $mybb->input['canviewthreads']);
+    ug_switch('cansearch',         'Can search forums?',             $mybb->input['cansearch']);
+    ug_switch('candlattachments',  'Can download attachments?',      $mybb->input['candlattachments']);
+    ug_switch('canviewboardclosed','Can view board when closed?',    $mybb->input['canviewboardclosed']);
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-paper-plane me-2"></i>Posting Options</h6>';
-    ug_switch($form, 'canpostthreads', 'Can post new threads?',         $mybb->input['canpostthreads']);
-    ug_switch($form, 'canpostreplys',  'Can post replies to threads?',  $mybb->input['canpostreplys']);
+    ug_switch('canpostthreads', 'Can post new threads?',         $mybb->input['canpostthreads']);
+    ug_switch('canpostreplys',  'Can post replies to threads?',  $mybb->input['canpostreplys']);
 
     
     echo '</div>';
 
     echo '<div class="col-md-6">';
     echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-edit me-2"></i>Editing Options</h6>';
-    ug_switch($form, 'caneditposts',       'Can edit own posts?',        $mybb->input['caneditposts']);
-    ug_switch($form, 'candeleteposts',     'Can delete own posts?',      $mybb->input['candeleteposts']);
-    ug_switch($form, 'candeletethreads',   'Can delete own threads?',    $mybb->input['candeletethreads']);
-    ug_switch($form, 'caneditattachments', 'Can edit own attachments?',  $mybb->input['caneditattachments']);
+    ug_switch('caneditposts',       'Can edit own posts?',        $mybb->input['caneditposts']);
+    ug_switch('candeleteposts',     'Can delete own posts?',      $mybb->input['candeleteposts']);
+    ug_switch('candeletethreads',   'Can delete own threads?',    $mybb->input['candeletethreads']);
+    ug_switch('caneditattachments', 'Can edit own attachments?',  $mybb->input['caneditattachments']);
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-paper-clip me-2"></i>Attachments</h6>';
-    ug_switch($form, 'canpostattachments', 'Can post attachments?', $mybb->input['canpostattachments']);
+    ug_switch('canpostattachments', 'Can post attachments?', $mybb->input['canpostattachments']);
     echo '<div class="mb-3 mt-3"><label class="form-label fw-semibold">Attachment Quota (KB)</label>';
     echo '<div class="form-text mb-1">0 for unlimited</div>';
-    echo $form->generate_numeric_field('attachquota', $mybb->input['attachquota'], ['class' => 'form-control']);
+    echo ug_numeric_field('attachquota', $mybb->input['attachquota']);
     echo '</div>';
 	
 	
 	echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-camera me-2"></i>Screenshots</h6>';
     echo '<div class="mb-3"><label class="form-label fw-semibold">Max Screenshots per Upload</label>';
     echo '<div class="form-text mb-1">Maximum number of screenshots a user can upload per torrent. 0 = not allowed.</div>';
-    echo $form->generate_numeric_field('max_screenshots', $mybb->input['max_screenshots'] ?? 3, ['class' => 'form-control', 'min' => 0, 'max' => 299]);
+    echo ug_numeric_field('max_screenshots', $mybb->input['max_screenshots'] ?? 3, ['min' => 0, 'max' => 299]);
     echo '</div>';
 	
 	
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-poll me-2"></i>Poll Options</h6>';
-    ug_switch($form, 'canpostpolls', 'Can post new polls?',      $mybb->input['canpostpolls']);
-    ug_switch($form, 'canvotepolls', 'Can vote on polls?',       $mybb->input['canvotepolls']);
-    ug_switch($form, 'canundovotes', 'Can undo own poll votes?', $mybb->input['canundovotes']);
+    ug_switch('canpostpolls', 'Can post new polls?',      $mybb->input['canpostpolls']);
+    ug_switch('canvotepolls', 'Can vote on polls?',       $mybb->input['canvotepolls']);
+    ug_switch('canundovotes', 'Can undo own poll votes?', $mybb->input['canundovotes']);
     echo '</div>';
     echo '</div>';
     echo '</div>'; // forums_posts tab
@@ -506,23 +554,23 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     echo '<div class="row">';
     echo '<div class="col-md-6">';
     echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-envelope-open-text me-2"></i>Private Messaging</h6>';
-    ug_switch($form, 'canusepms',         'Can use Private Messaging?',     $mybb->input['canusepms']);
-    ug_switch($form, 'cansendpms',        'Can send Private Messages?',     $mybb->input['cansendpms']);
-    ug_switch($form, 'cantrackpms',       'Can track Private Messages?',    $mybb->input['cantrackpms']);
-    ug_switch($form, 'candenypmreceipts', 'Can deny read receipts?',        $mybb->input['candenypmreceipts']);
-    ug_switch($form, 'canoverridepm',     'Can bypass PM limits?',          $mybb->input['canoverridepm']);
+    ug_switch('canusepms',         'Can use Private Messaging?',     $mybb->input['canusepms']);
+    ug_switch('cansendpms',        'Can send Private Messages?',     $mybb->input['cansendpms']);
+    ug_switch('cantrackpms',       'Can track Private Messages?',    $mybb->input['cantrackpms']);
+    ug_switch('candenypmreceipts', 'Can deny read receipts?',        $mybb->input['candenypmreceipts']);
+    ug_switch('canoverridepm',     'Can bypass PM limits?',          $mybb->input['canoverridepm']);
     echo '<div class="mb-3 mt-3"><label class="form-label fw-semibold">PM Quota</label>';
     echo '<div class="form-text mb-1">0 for unlimited</div>';
-    echo $form->generate_numeric_field('pmquota', $mybb->input['pmquota'], ['class' => 'form-control']);
+    echo ug_numeric_field('pmquota', $mybb->input['pmquota']);
     echo '</div>';
     echo '<div class="mb-3"><label class="form-label fw-semibold">Max PM Recipients</label>';
-    echo $form->generate_numeric_field('maxpmrecipients', $mybb->input['maxpmrecipients'], ['class' => 'form-control']);
+    echo ug_numeric_field('maxpmrecipients', $mybb->input['maxpmrecipients']);
     echo '</div>';
     echo '</div>';
     echo '<div class="col-md-6">';
     echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-at me-2"></i>Email Options</h6>';
-    ug_switch($form, 'cansendemail',         'Can send email to other users?',      $mybb->input['cansendemail']);
-    ug_switch($form, 'cansendemailoverride', 'Can override email flood check?',     $mybb->input['cansendemailoverride']);
+    ug_switch('cansendemail',         'Can send email to other users?',      $mybb->input['cansendemail']);
+    ug_switch('cansendemailoverride', 'Can override email flood check?',     $mybb->input['cansendemailoverride']);
     echo '</div>';
     echo '</div>';
     echo '</div>'; // users_permissions tab
@@ -530,14 +578,9 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     // ── Misc tab ─────────────────────────────────────────────
     echo '<div class="tab-pane fade" id="tab_misc">';
     echo '<div class="row"><div class="col-md-6">';
-    //echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-star me-2"></i>Miscellaneous</h6>';
    
-    //echo '<div class="mb-3"><label class="form-label fw-semibold">Number of Stars</label>';
-    //echo $form->generate_numeric_field('stars', $mybb->input['stars'], ['class' => 'form-control']);
-    //echo '</div>';
-	
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-info-circle me-2"></i>Information Options</h6>';
-    ug_switch($form, 'canviewwolinvis',     'Can view invisible users?',  $mybb->get_input('canviewwolinvis', MyBB::INPUT_INT));
+    ug_switch('canviewwolinvis',     'Can view invisible users?',  $mybb->get_input('canviewwolinvis', MyBB::INPUT_INT));
     echo '</div></div>';
     echo '</div>'; // misc tab
 
@@ -545,22 +588,22 @@ if (($mybb->input['action'] ?? '') === 'edit') {
     echo '<div class="tab-pane fade" id="tab_modcp">';
     echo '<div class="row"><div class="col-md-6">';
     echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-gavel me-2"></i>Moderation Options</h6>';
-    ug_switch($form, 'modposts',       'Moderate new posts?',       $mybb->input['modposts']);
-    ug_switch($form, 'modthreads',     'Moderate new threads?',     $mybb->input['modthreads']);
-    ug_switch($form, 'mod_edit_posts', 'Moderate edited posts?',    $mybb->input['mod_edit_posts']);
-    ug_switch($form, 'modattachments', 'Moderate new attachments?', $mybb->input['modattachments']);
+    ug_switch('modposts',       'Moderate new posts?',       $mybb->input['modposts']);
+    ug_switch('modthreads',     'Moderate new threads?',     $mybb->input['modthreads']);
+    ug_switch('mod_edit_posts', 'Moderate edited posts?',    $mybb->input['mod_edit_posts']);
+    ug_switch('modattachments', 'Moderate new attachments?', $mybb->input['modattachments']);
     echo '<h6 class="border-bottom pb-2 mt-4 mb-3"><i class="fas fa-trash-alt me-2"></i>Deletion Options</h6>';
-    ug_switch($form, 'candeletetorrent', 'Can delete torrents?', $mybb->input['candeletetorrent']);
+    ug_switch('candeletetorrent', 'Can delete torrents?', $mybb->input['candeletetorrent']);
     echo '</div></div>';
     echo '</div>'; // modcp tab
 
     echo '</div>'; // tab-content
 
     echo '<div class="text-center mt-4">';
-    echo $form->generate_submit_button('Save User Group', ['class' => 'btn btn-primary btn-lg px-5']);
+    echo ug_submit_button('Save User Group', ['class' => 'btn btn-primary btn-lg px-5']);
     echo '</div>';
 
-    $form->end();
+    ug_form_close();
     echo '</div>'; // card-body
     echo '</div>'; // card
     echo '</div>'; // container
@@ -669,7 +712,7 @@ if (!($mybb->input['action'] ?? '')) {
     echo '<a href="index.php?act=groups&action=add" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Add New Group</a>';
     echo '</div>';
 
-    $form = new Form('index.php?act=groups', 'post', 'groupsForm');
+    ug_form_open('index.php?act=groups', 'groupsForm');
 
     // Count primary users
     $primaryusers = $secondaryusers = [];
@@ -755,11 +798,11 @@ if (!($mybb->input['action'] ?? '')) {
     echo '<div class="card-footer bg-light">';
     echo '<div class="d-flex justify-content-between align-items-center">';
     echo '<small class="text-muted"><i class="fas fa-info-circle me-1"></i>Custom groups can be reordered using the order field</small>';
-    echo $form->generate_submit_button('Update Display Order', ['class' => 'btn btn-primary']);
+    echo ug_submit_button('Update Display Order', ['class' => 'btn btn-primary']);
     echo '</div></div>';
     echo '</div>'; // card
 
-    $form->end();
+    ug_form_close();
     echo '</div>'; // container
 
     stdfoot();

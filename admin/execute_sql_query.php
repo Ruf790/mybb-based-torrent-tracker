@@ -1,14 +1,12 @@
 <?php
 declare(strict_types=1);
 
-$rootpath = './../';
-$thispath = './';
-require_once $rootpath . 'global.php';
-
-if ($usergroups['cansettingspanel'] != '1') {
-    stdhead();
-    error_no_permission(true);
-    exit;
+if (!defined('STAFF_PANEL')) {
+    http_response_code(403);
+    exit('<div class="alert alert-danger m-3" role="alert">
+            <h4 class="alert-heading"><i class="fas fa-ban me-2"></i>Access Denied</h4>
+            <p class="mb-0">Direct initialization of this file is not allowed.</p>
+          </div>');
 }
 
 // ── Session history ───────────────────────────────────────────────────────────
@@ -55,7 +53,10 @@ $exec_time   = null;
 $rows_info   = '';
 $needsConfirm = false;
 
-const DESTRUCTIVE_QUERY_PATTERN = '/^\s*(DROP|DELETE|TRUNCATE|UPDATE|ALTER)\b/i';
+// Пропускаем пробелы И SQL-комментарии (/* */, --, #) перед разрушительным
+// ключевым словом - раньше "/* x */ DROP TABLE ..." обходил подтверждение,
+// потому что \s* пропускал только пробелы, не комментарии.
+const DESTRUCTIVE_QUERY_PATTERN = '/^(?:\s+|--[^\n]*(?:\n|$)|#[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*(DROP|DELETE|TRUNCATE|UPDATE|ALTER)\b/i';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execute_sql_query') {
     if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {

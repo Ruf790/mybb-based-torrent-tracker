@@ -10,29 +10,443 @@ if (!defined('IN_MYBB')) {
     die('Direct initialization of this file is not allowed.');
 }
 
-require_once $thispath . 'include/class_page.php';
-require_once $thispath . 'include/class_form.php';
-require_once $thispath . 'include/class_table.php';
+// style.php больше не нужен - он определял только Page/Table/Form/
+// FormContainer, которые здесь больше нигде не используются.
 
-if (file_exists('include/style.php')) {
-    require_once 'include/style.php';
-}
-
-foreach ([
-    'Page'          => DefaultPage::class,
-    'Table'         => DefaultTable::class,
-    'Form'          => DefaultForm::class,
-    'FormContainer' => DefaultFormContainer::class,
-] as $alias => $class) {
-    if (!class_exists($alias, false)) {
-        class_exists($class) ? class_alias($class, $alias)
-            : throw new RuntimeException("Required class $class not found");
-    }
-}
-
-$page = new Page();
 $lang->load('forum_management');
-$page->add_breadcrumb_item('Forum Management', 'index.php?act=management');
+
+// ── Breadcrumb (замена DefaultPage) ─────────────────────────
+// Раньше mgmt_add_breadcrumb()/mgmt_render_breadcrumb() -
+// логика воспроизведена один в один (порядок "first"/"last" через
+// &raquo; между элементами, последний элемент - просто активный текст
+// без ссылки).
+$mgmt_breadcrumb_trail = [];
+
+function mgmt_add_breadcrumb(string $name, string $url = ''): void
+{
+    global $mgmt_breadcrumb_trail;
+    $mgmt_breadcrumb_trail[] = ['name' => $name, 'url' => $url];
+}
+
+function mgmt_render_breadcrumb(): string
+{
+    global $mgmt_breadcrumb_trail;
+
+    if (empty($mgmt_breadcrumb_trail)) {
+        return '';
+    }
+
+    $trailParts = [];
+    $totalItems = count($mgmt_breadcrumb_trail);
+
+    foreach ($mgmt_breadcrumb_trail as $index => $crumb) {
+        $isLastItem = ($index === $totalItems - 1);
+        $crumbName  = htmlspecialchars((string)($crumb['name'] ?? ''), ENT_QUOTES, 'UTF-8');
+
+        if (!$isLastItem) {
+            $crumbUrl     = htmlspecialchars((string)($crumb['url'] ?? ''), ENT_QUOTES, 'UTF-8');
+            $trailParts[] = sprintf('<a href="%s">%s</a>', $crumbUrl, $crumbName);
+        } else {
+            $trailParts[] = sprintf('<span class="active">%s</span>', $crumbName);
+        }
+    }
+
+    return implode(' &raquo; ', $trailParts);
+}
+
+// ── Форма (замена DefaultForm) ──────────────────────────────
+// generate_hidden_field/text_box/numeric_field/check_box/select_box/
+// forum_select уже существуют как самостоятельные глобальные функции
+// в adminfunctions.php - используются напрямую ниже, без обёртки.
+
+function mgmt_form_open(string $action, string $method = 'post', string $id = ''): void
+{
+    global $mybb;
+    echo '<form action="' . $action . '" method="' . $method . '"' . ($id !== '' ? ' id="' . $id . '"' : '') . '>' . "\n";
+    echo generate_hidden_field('my_post_key', $mybb->post_code) . "\n";
+}
+
+function mgmt_form_close(): void
+{
+    echo '</form>';
+}
+
+function mgmt_submit_button(string $value, array $options = []): string
+{
+    $cls = isset($options['class']) ? ' ' . $options['class'] : '';
+    return '<input type="submit" value="' . htmlspecialchars_uni($value) . '" class="submit_button' . $cls . '" />';
+}
+
+function mgmt_reset_button(string $value, array $options = []): string
+{
+    $cls = isset($options['class']) ? ' ' . $options['class'] : '';
+    return '<input type="reset" value="' . htmlspecialchars_uni($value) . '" class="submit_button' . $cls . '" />';
+}
+
+function mgmt_output_submit_wrapper(array $buttons): void
+{
+    echo '<div class="form_button_wrapper">' . "\n";
+    foreach ($buttons as $b) {
+        echo $b . " \n";
+    }
+    echo "</div>\n";
+}
+
+
+
+
+// ── generate_hidden_field ─────────────────────────────────────────────────────
+function generate_hidden_field(string $name, string $value, array $options = []): string
+{
+    $id = isset($options['id']) ? " id=\"{$options['id']}\"" : '';
+    return "<input type=\"hidden\" name=\"{$name}\" value=\"" . htmlspecialchars_uni($value) . "\"{$id} />";
+}
+
+
+// ── save_quick_perms ──────────────────────────────────────────────────────────
+function save_quick_perms(int $fid): void
+{
+    global $db, $inherit, $canview, $canpostthreads, $canpostreplies, $canpostpolls, $cache;
+
+    $permission_fields = [];
+    foreach ($db->show_fields_from('forumpermissions') as $field) {
+        if (str_contains($field['Field'], 'can') || str_contains($field['Field'], 'mod')) {
+            $permission_fields[$field['Field']] = 1;
+        }
+    }
+
+    $ug_fields = $permission_fields;
+    unset($ug_fields['canonlyviewownthreads'], $ug_fields['canonlyreplyownthreads']);
+
+    $field_str = implode(',', array_keys($permission_fields));
+    $ug_str    = implode(',', array_keys($ug_fields));
+
+    $q = $db->sql_query_prepared("SELECT gid FROM usergroups");
+    while ($q && ($ug = $db->fetch_array($q))) {
+        $gid = (int)$ug['gid'];
+
+        $q2   = $db->sql_query_prepared("SELECT {$field_str} FROM forumpermissions WHERE fid = ? AND gid = ? LIMIT 1", [$fid, $gid]);
+        $perms = $q2 ? $db->fetch_array($q2) : null;
+
+        if (!$perms) {
+            $q2   = $db->sql_query_prepared("SELECT {$ug_str} FROM usergroups WHERE gid = ? LIMIT 1", [$gid]);
+            $perms = $q2 ? $db->fetch_array($q2) : null;
+        }
+
+        $db->sql_query_prepared("DELETE FROM forumpermissions WHERE fid = ? AND gid = ?", [$fid, $gid]);
+
+        if (empty($inherit[$gid])) {
+            $pview    = !empty($canview[$gid])        ? 1 : 0;
+            $pthreads = !empty($canpostthreads[$gid]) ? 1 : 0;
+            $preplies = !empty($canpostreplies[$gid]) ? 1 : 0;
+            $ppolls   = !empty($canpostpolls[$gid])   ? 1 : 0;
+
+            $insert = [
+                'fid'            => $fid,
+                'gid'            => $gid,
+                'canview'        => $pview,
+                'canpostthreads' => $pthreads,
+                'canpostreplys'  => $preplies,
+                'canpostpolls'   => $ppolls,
+            ];
+
+            foreach ($permission_fields as $field => $_) {
+                if (!array_key_exists($field, $insert)) {
+                    $insert[$field] = isset($perms[$field]) ? (int)$perms[$field] : 0;
+                }
+            }
+
+            $columns      = array_keys($insert);
+            $placeholders = implode(',', array_fill(0, count($columns), '?'));
+            $db->sql_query_prepared(
+                "INSERT INTO forumpermissions (`" . implode('`,`', $columns) . "`) VALUES ({$placeholders})",
+                array_values($insert)
+            );
+        }
+    }
+
+    $cache->update_forumpermissions();
+}
+
+
+// ── join_usergroup ────────────────────────────────────────────────────────────
+function join_usergroup(int $uid, int $joingroup): bool
+{
+    global $db, $mybb, $CURUSER;
+
+    $user = $uid === (int)$CURUSER['id']
+        ? $mybb->user
+        : (function() use ($db, $uid) {
+            $q = $db->sql_query_prepared("SELECT additionalgroups, usergroup FROM users WHERE id = ?", [$uid]);
+            return $q ? $db->fetch_array($q) : null;
+        })();
+
+    $groups = array_filter(array_map('intval', explode(',', $user['additionalgroups'] ?? '')));
+
+    if (in_array($joingroup, $groups, true)) {
+        return false;
+    }
+
+    $groups[] = $joingroup;
+    $groups   = array_values(array_unique(array_diff($groups, [(int)$user['usergroup']])));
+
+    $db->sql_query_prepared("UPDATE users SET additionalgroups = ? WHERE id = ?", [implode(',', $groups), $uid]);
+    return true;
+}
+
+
+// ── generate_check_box ────────────────────────────────────────────────────────
+function generate_check_box(string $name, string $value = '', string $label = '', array $options = []): string
+{
+    $cls     = isset($options['class'])   ? ' ' . $options['class'] : '';
+    $id      = isset($options['id'])      ? " id=\"{$options['id']}\"" : '';
+    $forid   = isset($options['id'])      ? " for=\"{$options['id']}\"" : '';
+    $lbl_c   = isset($options['class'])   ? " class=\"label_{$options['class']}\"" : '';
+    $chk     = !empty($options['checked']) ? ' checked="checked"' : '';
+    $onclick = isset($options['onclick']) ? " onclick=\"{$options['onclick']}\"" : '';
+
+    return "<label{$forid}{$lbl_c}>"
+        . "<input type=\"checkbox\" name=\"{$name}\" value=\"" . htmlspecialchars_uni($value) . "\""
+        . " class=\"form-check-input{$cls}\"{$id}{$chk}{$onclick} /> "
+        . ($label !== '' ? $label : '')
+        . '</label>';
+}
+
+
+
+function forum_permissions(int|string|null $fid = 0, int|string|null $uid = 0, int|string|null $gid = 0): array|bool
+{
+    global $db, $cache, $groupscache, $forum_cache, $fpermcache, $mybb,
+           $cached_forum_permissions_permissions, $cached_forum_permissions, $CURUSER;
+
+    // ----------------------------
+    // 🔒 SAFE INIT (CRITICAL FIX)
+    // ----------------------------
+
+    $fid = (int)($fid ?? 0);
+    $uid = (int)($uid ?? 0);
+
+    if (!is_array($cached_forum_permissions_permissions)) {
+        $cached_forum_permissions_permissions = [];
+    }
+
+    if (!is_array($cached_forum_permissions)) {
+        $cached_forum_permissions = [];
+    }
+
+    if (!is_array($CURUSER)) {
+        $CURUSER = $mybb->user ?? [];
+    }
+
+    // fallback uid
+    if ($uid === 0) {
+        $uid = (int)($CURUSER['id'] ?? $CURUSER['uid'] ?? 0);
+    }
+
+    // ----------------------------
+    // 🔒 BUILD GROUP IDS (SAFE)
+    // ----------------------------
+
+    $groupperms = [];
+
+    if (empty($gid)) {
+
+        // CASE 1: different user
+        if ($uid !== 0 && $uid !== (int)($CURUSER['id'] ?? 0)) {
+
+            $user = get_user($uid);
+
+           
+
+            $gid = trim(
+                ($user['usergroup'] ?? '1') .
+                ',' .
+                ($user['additionalgroups'] ?? '')
+            );
+
+            $groupperms = usergroup_permissions($gid);
+
+        } else {
+
+            // CASE 2: current user
+            $usergroup = $CURUSER['usergroup'] ?? '1';
+
+            if ($usergroup === '' || $usergroup === null) {
+                $usergroup = '1';
+            }
+
+            $gid = (string)$usergroup;
+
+            if (!empty($CURUSER['additionalgroups'])) {
+                $gid .= ',' . $CURUSER['additionalgroups'];
+            }
+
+            $groupperms = (is_array($mybb->usergroup))
+                ? $mybb->usergroup
+                : usergroup_permissions($gid);
+        }
+
+    } else {
+        $groupperms = usergroup_permissions($gid);
+    }
+
+    // ----------------------------
+    // 🔒 FORUM CACHE SAFE LOAD
+    // ----------------------------
+
+    if (!is_array($forum_cache)) {
+        $forum_cache = cache_forums();
+    }
+
+
+    // ----------------------------
+    // 🔒 FORUM PERMISSION CACHE
+    // ----------------------------
+
+    if (!is_array($fpermcache)) {
+        $fpermcache = $cache->read('forumpermissions');
+    }
+
+
+
+    // ----------------------------
+    // 🔥 RETURN SINGLE FORUM
+    // ----------------------------
+
+    if ($fid) {
+
+        if (!isset($cached_forum_permissions_permissions[$gid][$fid])) {
+
+            $cached_forum_permissions_permissions[$gid][$fid] =
+                fetch_forum_permissions((int)$fid, $gid, $groupperms);
+        }
+
+        return $cached_forum_permissions_permissions[$gid][$fid];
+    }
+
+    // ----------------------------
+    // 🔥 RETURN ALL FORUMS
+    // ----------------------------
+
+    if (empty($cached_forum_permissions[$gid])) {
+
+        foreach ($forum_cache as $forum) {
+
+            if (!isset($forum['fid'])) {
+                continue;
+            }
+
+            $cached_forum_permissions[$gid][$forum['fid']] =
+                fetch_forum_permissions((int)$forum['fid'], $gid, $groupperms);
+        }
+    }
+
+    return $cached_forum_permissions[$gid] ?? [];
+}
+
+
+
+// ── fetch_forum_permissions ───────────────────────────────────────────────────
+function fetch_forum_permissions(int $fid, string $gid, array $groupperms): array
+{
+    global $groupscache, $forum_cache, $fpermcache, $mybb;
+
+    $groups                 = array_filter(explode(',', $gid));
+    $current_permissions    = [];
+    $only_view_own_threads  = 1;
+    $only_reply_own_threads = 1;
+
+    if (empty($fpermcache[$fid])) {
+        return $groupperms;
+    }
+
+    foreach ($groups as $group_id) {
+        $group_id = trim($group_id);
+
+        $level_permissions = match(true) {
+            !empty($fpermcache[$fid][$group_id])  => $fpermcache[$fid][$group_id],
+            !empty($groupscache[$group_id])        => $groupscache[$group_id],
+            default                                => null,
+        };
+
+        if ($level_permissions === null) {
+            continue;
+        }
+
+        foreach ($level_permissions as $permission => $access) {
+            if (
+                empty($current_permissions[$permission]) ||
+                $access >= $current_permissions[$permission] ||
+                ($access === 'yes' && $current_permissions[$permission] === 'no')
+            ) {
+                $current_permissions[$permission] = $access;
+            }
+        }
+
+        if (!empty($level_permissions['canview']) && empty($level_permissions['canonlyviewownthreads'])) {
+            $only_view_own_threads = 0;
+        }
+
+        if (!empty($level_permissions['canpostreplys']) && empty($level_permissions['canonlyreplyownthreads'])) {
+            $only_reply_own_threads = 0;
+        }
+    }
+
+    if (empty($current_permissions)) {
+        $current_permissions = $groupperms;
+    }
+
+    $current_permissions['canonlyviewownthreads']  = ($only_view_own_threads  && isset($current_permissions['canonlyviewownthreads']))  ? 1 : 0;
+    $current_permissions['canonlyreplyownthreads'] = ($only_reply_own_threads && isset($current_permissions['canonlyreplyownthreads'])) ? 1 : 0;
+
+    return $current_permissions;
+}
+
+
+
+// ── get_parent_list ───────────────────────────────────────────────────────────
+function get_parent_list(int $fid): string
+{
+    global $forum_cache;
+    static $forumarraycache;
+
+    if (!empty($forumarraycache[$fid])) {
+        return $forumarraycache[$fid]['parentlist'];
+    }
+
+    if (!empty($forum_cache[$fid])) {
+        return $forum_cache[$fid]['parentlist'];
+    }
+
+    cache_forums();
+    return $forum_cache[$fid]['parentlist'] ?? '';
+}
+  
+  
+
+// ── build_parent_list ─────────────────────────────────────────────────────────
+function build_parent_list(int $fid, string $column = 'fid', string $joiner = 'OR', string $parentlist = ''): string
+{
+    if (!$parentlist) {
+        $parentlist = get_parent_list($fid);
+    }
+
+    $parts = array_map(
+        fn($val) => "{$column}='{$val}'",
+        explode(',', $parentlist)
+    );
+
+    return '(' . implode(" {$joiner} ", $parts) . ')';
+}
+
+
+
+
+
+
+
+
+mgmt_add_breadcrumb('Forum Management', 'index.php?act=management');
 
 // ═══════════════════════════════════════════════════════════
 // SHARED HELPERS
@@ -482,7 +896,7 @@ function fm_delete_mod_modal(): void
 
 
 
-$page->add_breadcrumb_item('Forum Management', "index.php?act=management");
+mgmt_add_breadcrumb('Forum Management', "index.php?act=management");
 
 $action = $mybb->get_input('action');
 
@@ -929,8 +1343,8 @@ if($action == "editmod")
 		'description' => $lang->forum_management['edit_mod_desc']
 	);
 
-	$page->add_breadcrumb_item('forum_moderators', "index.php?act=management&amp;fid={$mod_data['fid']}#tab_moderators");
-	$page->add_breadcrumb_item('edit_forum');
+	mgmt_add_breadcrumb('forum_moderators', "index.php?act=management&amp;fid={$mod_data['fid']}#tab_moderators");
+	mgmt_add_breadcrumb('edit_forum');
 	
 	
 
@@ -947,8 +1361,8 @@ echo '<div class="container mt-3">';
 	
 output_nav_tabs($sub_tabs, 'edit_mod');
 
-$form = new Form("index.php?act=management&action=editmod", "post", "editModForm");
-echo $form->generate_hidden_field("mid", $mod_data['mid']);
+mgmt_form_open("index.php?act=management&action=editmod", "post", "editModForm");
+echo generate_hidden_field("mid", $mod_data['mid']);
 
 if($errors)
 {
@@ -963,14 +1377,15 @@ echo '<div class="card border-0 -sm">';
     echo '<div class="card-body">';
 
 // Форма выбора форума
-$form_container = new FormContainer('');
 echo '<div class="mb-4">'; // Добавляем отступ вместо set_class
-$form_container->output_row(
-    $lang->forum_management['forum'], 
-    $lang->forum_management['forum_desc'], 
-    $form->generate_forum_select('fid', $mod_data['fid'], array('id' => 'fid', 'class' => 'form-select')), 
-    'fid'
-);
+$mgmt_row_content = '<label for="fid">' . $lang->forum_management['forum'] . '</label>'
+    . ($lang->forum_management['forum_desc'] !== '' ? "\n<div class=\"description\">{$lang->forum_management['forum_desc']}</div>\n" : '')
+    . '<div class="form_row">' . generate_forum_select('fid', $mod_data['fid'], array('id' => 'fid', 'class' => 'form-select')) . "</div>\n";
+// Воспроизводит точный вывод DefaultTable::construct_html() для одной
+// строки, без заголовка (heading='') - раньше это делал
+// new FormContainer('') + output_row() + end().
+echo '<div class="border_wrapper"><table class="general form_container " cellspacing="0">'
+   . "\n\t<tbody>\n\t\t<tr class=\"first\">\n\t\t\t<td class=\"first\">{$mgmt_row_content}</td>\n\t\t</tr>\n\t</tbody>\n</table></div>";
 echo '</div>';
 
 // Moderator Permissions
@@ -1059,21 +1474,19 @@ foreach(array_chunk($moderator_cp_permissions, 2) as $chunk)
 
 echo '</div></div></div>';
 
-$form_container->end();
-
 echo '</div>'; // .card-body
 echo '<div class="card-footer bg-light">';
     $buttons = array();
-    $buttons[] = $form->generate_submit_button($lang->forum_management['save_mod'], array('class' => 'btn btn-primary px-4'));
-    $buttons[] = $form->generate_reset_button($lang->reset, array('class' => 'btn btn-outline-secondary ms-2'));
+    $buttons[] = mgmt_submit_button($lang->forum_management['save_mod'], array('class' => 'btn btn-primary px-4'));
+    $buttons[] = mgmt_reset_button($lang->reset, array('class' => 'btn btn-outline-secondary ms-2'));
     echo '<div class="d-flex">';
-    $form->output_submit_wrapper($buttons);
+    mgmt_output_submit_wrapper($buttons);
     echo '</div>';
 echo '</div>';
 
 echo '</div>'; // .card
 
-$form->end();
+mgmt_form_close();
 
 
 
@@ -1229,7 +1642,7 @@ if ($action === 'permissions') {
                 'link'        => "index.php?act=management&action=permissions&fid={$fid_in}&amp;gid={$gid_in}",
                 'description' => $lang->forum_management['forum_permissions_desc'],
             ];
-            $page->add_breadcrumb_item(
+            mgmt_add_breadcrumb(
                 $lang->forum_management['forum_permissions2'],
                 "index.php?act=management&fid={$fid_in}#tab_permissions"
             );
@@ -1243,13 +1656,13 @@ if ($action === 'permissions') {
                 'link'        => "index.php?act=management&action=permissions&pid={$pid_in}",
                 'description' => $lang->forum_management['forum_permissions_desc'],
             ];
-            $page->add_breadcrumb_item(
+            mgmt_add_breadcrumb(
                 $lang->forum_management['forum_permissions2'],
                 "index.php?act=management&fid={$mybb->input['fid']}#tab_permissions"
             );
         }
 
-        $page->add_breadcrumb_item($lang->forum_management['forum_permissions']);
+        mgmt_add_breadcrumb($lang->forum_management['forum_permissions']);
 
         stdhead('Forum Permissions');
         fm_head_assets();
@@ -1324,13 +1737,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="p-4">
                     <div style="overflow-y:auto;max-height:400px">';
 
-        $form = new Form(
+        mgmt_form_open(
             "index.php?act=management&action=permissions&ajax=1&pid={$pid}&gid={$gid}&fid={$fid}",
             'post',
             'modal_form'
         );
 
-        echo $form->generate_hidden_field('usecustom', '1');
+        echo generate_hidden_field('usecustom', '1');
 
         if (!empty($errors)) {
             fm_errors($errors);
@@ -1364,10 +1777,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!empty($permission_data['pid'])) {
                 $permission_data['usecustom'] = 1;
-                echo $form->generate_hidden_field('pid', $pid);
+                echo generate_hidden_field('pid', $pid);
             } else {
-                echo $form->generate_hidden_field('fid', $fid);
-                echo $form->generate_hidden_field('gid', $gid);
+                echo generate_hidden_field('fid', $fid);
+                echo generate_hidden_field('gid', $gid);
                 $permission_data = empty($customperms['pid'])
                     ? usergroup_permissions($gid)
                     : forum_permissions($fid, 0, $gid);
@@ -1473,7 +1886,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!isset($groups[$fname]) || $groups[$fname] !== $group) { continue; }
 
                 $label_key = $group . '_field_' . $fname;
-                $checkbox  = $form->generate_check_box(
+                $checkbox  = generate_check_box(
                     "permissions[{$fname}]", 1, '',
                     ['checked' => !empty($permission_data[$fname]), 'id' => $fname, 'class' => 'form-check-input']
                 );
@@ -1503,7 +1916,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 </button>
               </div>';
 
-        $form->end();
+        mgmt_form_close();
 
         echo '</div></div></div></div></div>';
     }
@@ -1599,7 +2012,7 @@ if ($action === 'add') {
         }
     }
 
-    $page->add_breadcrumb_item('Add New Forum');
+    mgmt_add_breadcrumb('Add New Forum');
 
     $forum_data = [
         'type'           => 'f',
@@ -1641,7 +2054,7 @@ if ($action === 'add') {
     stdhead('Add New Forum');
 	
     echo '<div class="container mt-3">';
-    echo '<div class="breadcrumb">' . $page->_generate_breadcrumb() . '</div>';
+    echo '<div class="breadcrumb">' . mgmt_render_breadcrumb() . '</div>';
     fm_head_assets();
 	
 	echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css">';
@@ -1650,7 +2063,7 @@ if ($action === 'add') {
     echo '<link rel="stylesheet" href="templates/forum.css?ver=1813">';
     output_nav_tabs($sub_tabs ?? [], 'add_forum');
 
-    $form = new Form('index.php?act=management&action=add', 'post');
+    mgmt_form_open('index.php?act=management&action=add', 'post');
     ?>
 
     <div class="container mt-4">
@@ -1790,7 +2203,7 @@ echo <<<HTML
     }
     echo '});</script>';
 
-    $form->end();
+    mgmt_form_close();
     echo '</div>'; // container
     stdfoot();
     exit;
@@ -1915,11 +2328,11 @@ if ($action === 'edit') {
     }
 
     //$extra_header = "<script src=\"scripts/quick_perm_editor.js\"></script>\n";
-    $page->add_breadcrumb_item('Edit Forum');
+    mgmt_add_breadcrumb('Edit Forum');
 
     stdhead('Edit Forum');
     echo '<div class="container mt-3">';
-    echo '<div class="breadcrumb">' . $page->_generate_breadcrumb() . '</div>';
+    echo '<div class="breadcrumb">' . mgmt_render_breadcrumb() . '</div>';
   
     fm_head_assets();
 	
@@ -1932,8 +2345,8 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
     echo '<link rel="stylesheet" href="templates/forum.css?ver=1813">';
     output_nav_tabs($sub_tabs ?? [], 'edit_forum_settings');
 
-    $form = new Form('index.php?act=management&action=edit', 'post');
-    echo $form->generate_hidden_field('fid', $fid);
+    mgmt_form_open('index.php?act=management&action=edit', 'post');
+    echo generate_hidden_field('fid', $fid);
     ?>
 
     <div class="container mt-4">
@@ -2098,7 +2511,7 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
     echo '</script>';
 
     fm_clear_permission_modal();
-    $form->end();
+    mgmt_form_close();
     echo '</div>';
     stdfoot();
 	exit; // ← добавь это
@@ -2486,18 +2899,21 @@ if (!$action) {
     //$extra_header .= "<script src=\"scripts/quick_perm_editor.js\"></script>\n";
 
     if ($fid) {
-        $page->add_breadcrumb_item('View Forum', 'index.php?act=management');
+        mgmt_add_breadcrumb('View Forum', 'index.php?act=management');
     }
 
     if (!isset($forum_cache) || !is_array($forum_cache)) {
         cache_forums();
     }
 
-    $form_container = $fid && isset($forum_cache[$fid])
-        ? new FormContainer('Forums in ' . htmlspecialchars_uni($forum_cache[$fid]['name']))
-        : new FormContainer('Manage Forums');
+    // Раньше здесь было new FormContainer(...) с заголовком - но заголовок
+    // нигде реально не рендерился (настоящая таблица строится вручную
+    // ниже), объект использовался только как счётчик строк через
+    // construct_row()/num_rows(). Простой int делает то же самое.
+    $mgmt_row_count = 0;
 
-    $form = new Form('index.php?act=management', 'post', 'management', false, '', true);
+    $form = null; // Form больше не нужна - hidden-поля теперь вызываются напрямую,
+    // а сам <form>-тег для этого раздела прописан вручную ниже в HTML.
 
     stdhead('Forum Management');
     //echo $extra_header;
@@ -2508,7 +2924,7 @@ if (!$action) {
 	
 	
 
-    echo '<div class="container mt-3"><div class="breadcrumb">' . $page->_generate_breadcrumb() . '</div></div>';
+    echo '<div class="container mt-3"><div class="breadcrumb">' . mgmt_render_breadcrumb() . '</div></div>';
 
     output_nav_tabs($sub_tabs, $fid ? 'view_forum' : 'forum_management');
 
@@ -2609,8 +3025,8 @@ if (!$action) {
                 </div>
 
                 <form method="post" action="index.php?act=management">
-                    ' . $form->generate_hidden_field('fid', $fid) . '
-                    ' . $form->generate_hidden_field('my_post_key', $mybb->post_code) . '
+                    ' . generate_hidden_field('fid', $fid) . '
+                    ' . generate_hidden_field('my_post_key', $mybb->post_code) . '
 
                     <div class="table-container">
                         <div class="table-responsive rounded-3 border">
@@ -2630,9 +3046,9 @@ if (!$action) {
                                 </thead>
                                 <tbody>';
 
-    build_admincp_forums_list($form_container, $form, $fid);
+    build_admincp_forums_list($mgmt_row_count, $form, $fid);
 
-    if ($form_container->num_rows() === 0) {
+    if ($mgmt_row_count === 0) {
         echo '
                                     <tr>
                                         <td colspan="3" class="text-center py-5">
@@ -2651,7 +3067,7 @@ if (!$action) {
                         </div>
                     </div>';
 
-    if ($form_container->num_rows() > 0) {
+    if ($mgmt_row_count > 0) {
         echo '
                     <div class="mt-4">
                         <div class="card border-0 bg-light-subtle">
@@ -2659,7 +3075,7 @@ if (!$action) {
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span class="text-muted">
                                         <i class="fas fa-info-circle me-1"></i>
-                                        ' . $form_container->num_rows() . ' forum(s) found
+                                        ' . $mgmt_row_count . ' forum(s) found
                                     </span>
                                     <div class="btn-group">
                                         <button type="submit" name="save_forum_orders" class="btn btn-primary px-4 py-2">
@@ -3059,7 +3475,8 @@ if (!$action) {
 
 
 /**
- * @param DefaultFormContainer $form_container
+ * @param int $mgmt_row_count Счётчик строк (по ссылке) - раньше здесь был объект DefaultFormContainer,
+ *                             использовавшийся только для подсчёта, реальный HTML строится вручную ниже.
  * @param DefaultForm $form
  * @param int $pid
  * @param int $depth
@@ -3073,7 +3490,7 @@ if (!$action) {
 
 echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/popover.js"></script>';
 
-function build_admincp_forums_list(&$form_container, &$form, $pid=0, $depth=1)
+function build_admincp_forums_list(&$mgmt_row_count, &$form, $pid=0, $depth=1)
 {
     global $mybb, $lang, $db, $sub_forums;
     static $forums_by_parent;
@@ -3119,7 +3536,7 @@ function build_admincp_forums_list(&$form_container, &$form, $pid=0, $depth=1)
             // Форматируем имя форума
             $forum_name = $forum['active'] == 0 ? "<em>{$forum['name']}</em>" : $forum['name'];
 			
-			$form_container->construct_row();
+			$mgmt_row_count++;
 			
             
             if($forum['type'] == "c" && ($depth == 1 || $depth == 2))
@@ -3127,7 +3544,7 @@ function build_admincp_forums_list(&$form_container, &$form, $pid=0, $depth=1)
                 $sub_forums = '';
                 if(isset($forums_by_parent[$forum['fid']]) && $depth == 2)
                 {
-                    build_admincp_forums_list($form_container, $form, $forum['fid'], $depth+1);
+                    build_admincp_forums_list($mgmt_row_count, $form, $forum['fid'], $depth+1);
                 }
                 if($sub_forums)
                 {
@@ -3172,12 +3589,12 @@ function build_admincp_forums_list(&$form_container, &$form, $pid=0, $depth=1)
                 </tr>';
 				
 				
-				$form_container->construct_row();
+				$mgmt_row_count++;
                 
                 // Рекурсивно обрабатываем подфорумы
                 if(!empty($forums_by_parent[$forum['fid']]))
                 {
-                    build_admincp_forums_list($form_container, $form, $forum['fid'], $depth+1);
+                    build_admincp_forums_list($mgmt_row_count, $form, $forum['fid'], $depth+1);
                 }
             }
             elseif($forum['type'] == "f" && ($depth == 1 || $depth == 2))
@@ -3195,7 +3612,7 @@ function build_admincp_forums_list(&$form_container, &$form, $pid=0, $depth=1)
                 $sub_forums = '';
                 if(isset($forums_by_parent[$forum['fid']]) && $depth == 2)
                 {
-                    build_admincp_forums_list($form_container, $form, $forum['fid'], $depth+1);
+                    build_admincp_forums_list($mgmt_row_count, $form, $forum['fid'], $depth+1);
                 }
                 if($sub_forums)
                 {
@@ -3240,7 +3657,7 @@ function build_admincp_forums_list(&$form_container, &$form, $pid=0, $depth=1)
                 
                 if(isset($forums_by_parent[$forum['fid']]) && $depth == 1)
                 {
-                    build_admincp_forums_list($form_container, $form, $forum['fid'], $depth+1);
+                    build_admincp_forums_list($mgmt_row_count, $form, $forum['fid'], $depth+1);
                 }
             }
             elseif($depth == 3)

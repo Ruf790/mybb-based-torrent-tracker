@@ -33,6 +33,47 @@ $lang->load("modcp");
 /* ═══════════════════════════════════════════════════════════════════
  *  ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
  * ═══════════════════════════════════════════════════════════════════ */
+ 
+ 
+// ── update_thread_counters ────────────────────────────────────────────────────
+function update_thread_counters(int $tid, array $changes = []): void
+{
+    global $db;
+
+    $counters = ['replies', 'unapprovedposts', 'attachmentcount'];
+    $query    = $db->sql_query_prepared("SELECT " . implode(',', $counters) . " FROM threads WHERE tid = ?", [$tid]);
+    $thread   = $query ? $db->fetch_array($query) : null;
+    $update   = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $thread[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $tid;
+        $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
+    }
+} 
+ 
+ 
+ 
+ 
 
 function render_header(string $title): void {
     global $SITENAME, $mybb;

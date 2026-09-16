@@ -1,6 +1,13 @@
 <?php
 declare(strict_types=1);
 
+// Раньше здесь не было вообще никакой проверки прав - файл позволяет
+// редактировать CSS-шаблоны сайта на диске (запись файлов), а без этой
+// защиты был бы доступен кому угодно при прямом обращении по URL.
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger text-center"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
+}
+
 // ── Конфигурация ──────────────────────────────────────────
 const BASE_DIR     = TSDIR . '/include/templates/default/style/';
 const MAX_BACKUPS  = 10;

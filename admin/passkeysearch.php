@@ -51,6 +51,17 @@ function handlePasskeyReset(): void
 {
     global $db, $mybb, $error, $title, $passkey;
 
+    // Явная проверка метода - раньше полагались только на verify_post_check(),
+    // а my_post_key читается через get_input(), который принимает значения
+    // и из GET, и из POST. Токен сам по себе всё ещё нужен (обычная CSRF-атака
+    // его не узнает заранее), но GET-ссылка с уже известным токеном (например,
+    // случайно засветившаяся в логах/Referer) могла бы сработать в обход
+    // "только через форму". Доп. барьер, не критичная дыра.
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        $error = 'Invalid request method.';
+        return;
+    }
+
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
         $error = 'Security check failed. Please refresh the page and try again.';
         return;
@@ -123,8 +134,8 @@ function displayUserDetails(array $user): void
     include_once INC_PATH . '/functions_ratio.php';
     
     // Format dates
-    $lastseen = formatDateTime($user['lastactive'] ?? '0000-00-00 00:00:00');
-    $joindate = formatDateTime($user['added'] ?? '0000-00-00 00:00:00');
+    $lastseen = formatDateTime($user['lastactive'] ?? 0);
+    $joindate = formatDateTime($user['added'] ?? 0);
     $ratio = get_user_ratio((float)($user['uploaded'] ?? 0), (float)($user['downloaded'] ?? 0));
     
     // Format avatar
@@ -226,7 +237,7 @@ function displayUserDetails(array $user): void
                                     ' . $avatar_html . '
                                 </div>
                                 <div class="online-status position-absolute bottom-0 end-0">
-                                    ' . (($lastseen['full'] !== 'Never' && time() - strtotime($user['lastactive'] ?? '') < 300) ? 
+                                    ' . (($lastseen['full'] !== 'Never' && time() - (int)($user['lastactive'] ?? 0) < 300) ? 
                                     '<span class="badge bg-success p-1"><i class="fas fa-circle"></i> Online</span>' : 
                                     '<span class="badge bg-secondary p-1"><i class="fas fa-circle"></i> Offline</span>') . '
                                 </div>
@@ -380,7 +391,7 @@ function displayUserDetails(array $user): void
                                         <div>
                                             <div class="fw-medium">' . $joindate['date'] . '</div>
                                             <small class="text-muted d-block">' . $joindate['time'] . '</small>
-                                            <small class="text-muted">' . getTimeAgo($user['added'] ?? '') . '</small>
+                                            <small class="text-muted">' . getTimeAgo($user['added'] ?? 0) . '</small>
                                         </div>
                                     </div>
                                 </td>
@@ -392,7 +403,7 @@ function displayUserDetails(array $user): void
                                         <div>
                                             <div class="fw-medium">' . $lastseen['date'] . '</div>
                                             <small class="text-muted d-block">' . $lastseen['time'] . '</small>
-                                            <small class="text-muted">' . getTimeAgo($user['lastactive'] ?? '') . '</small>
+                                            <small class="text-muted">' . getTimeAgo($user['lastactive'] ?? 0) . '</small>
                                         </div>
                                     </div>
                                 </td>
@@ -587,13 +598,20 @@ function getRatioPercentage(string $ratio): float
 /**
  * Get time ago string
  */
-function getTimeAgo(string $datetime): string
+function getTimeAgo(int|string $datetime): string
 {
-    if (empty($datetime) || $datetime == '0000-00-00 00:00:00') {
+    // added/lastactive хранятся как Unix-timestamp (int) - та же причина
+    // TypeError, что была в formatDateTime(). strtotime() ожидает строку
+    // с датой, а не готовый timestamp, поэтому применяем её только если
+    // реально пришла строка.
+    if (empty($datetime) || $datetime === '0000-00-00 00:00:00') {
         return 'Never';
     }
     
-    $time = strtotime($datetime);
+    $time = is_int($datetime) ? $datetime : strtotime($datetime);
+    if ($time === false) {
+        return 'Never';
+    }
     $diff = time() - $time;
     
     if ($diff < 60) return 'Just now';
@@ -643,11 +661,15 @@ function getTimeAgo(string $datetime): string
 /**
  * Format date and time
  */
-function formatDateTime(string $datetime): array
+function formatDateTime(int|string $datetime): array
 {
     global $dateformat, $timeformat;
-    
-    if ($datetime == '0000-00-00 00:00:00' || empty($datetime)) {
+
+    // lastactive/added в БД хранятся как Unix-timestamp (int), не строка
+    // даты - раньше сигнатура ожидала string, что и давало TypeError.
+    // '0' - тот же смысл "нет значения", что раньше был у
+    // '0000-00-00 00:00:00' для строкового варианта.
+    if (empty($datetime) || $datetime === '0000-00-00 00:00:00') {
         return [
             'date' => '<span class="text-muted">N/A</span>',
             'time' => '',

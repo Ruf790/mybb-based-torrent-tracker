@@ -18,11 +18,67 @@ if (!function_exists('escape_like_pattern')) {
 }
 
 
+// ── mk_path_abs22 ─────────────────────────────────────────────────────────────
+function mk_path_abs22(string $path, string $base = TSDIR): string
+{
+    $iswin = str_starts_with(strtoupper(PHP_OS), 'WIN');
+    $char1 = my_substr($path, 0, 1);
+
+    if ($char1 !== '/' && !($iswin && ($char1 === '\\' || preg_match('(^[a-zA-Z]:\\\\)', $path)))) {
+        $path = $base . $path;
+    }
+
+    return $path;
+}
+
+
+
+// ── get_attachment_icon ───────────────────────────────────────────────────────
+function get_attachment_icon(string $ext): string
+{
+    global $cache, $attachtypes;
+
+    if (!$attachtypes) {
+        $attachtypes = $cache->read('attachtypes');
+    }
+
+    $ext  = my_strtolower($ext);
+    $name = htmlspecialchars_uni($attachtypes[$ext]['name'] ?? $ext);
+
+    if (!empty($attachtypes[$ext]['icon'])) {
+        $icon = trim($attachtypes[$ext]['icon']);
+
+        if (str_starts_with($icon, '<')) {
+            if (!str_contains($icon, 'title=')) {
+                $pos  = strpos($icon, '>');
+                $icon = $pos !== false
+                    ? substr($icon, 0, $pos) . " title=\"{$name}\">" . substr($icon, $pos + 1)
+                    : $icon;
+            }
+            if (!str_contains($icon, 'font-size:')) {
+                if (str_contains($icon, 'style=')) {
+                    $icon = str_replace('style="', 'style="font-size:16px; ', $icon);
+                } else {
+                    $pos  = strpos($icon, '>');
+                    $icon = $pos !== false
+                        ? substr($icon, 0, $pos) . ' style="font-size:16px;">' . substr($icon, $pos + 1)
+                        : $icon;
+                }
+            }
+            return $icon;
+        }
+    }
+
+    return "<i class=\"fas fa-file\" title=\"{$name}\" style=\"font-size:16px;color:#ccc;\"></i>";
+}
+
+
 
 // Disallow direct access to this file for security reasons
 if (!defined("IN_MYBB")) {
     die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
+
 
 // Initialize input parameters
 foreach (['action', 'do', 'module'] as $input) {

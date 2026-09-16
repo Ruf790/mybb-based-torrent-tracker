@@ -16,6 +16,8 @@ require_once INC_PATH . '/datahandler.php';
 require_once INC_PATH . '/functions_upload.php';
 require_once INC_PATH . '/functions_multipage.php';
 
+require_once INC_PATH . '/functions_icons.php';
+
 
 
 // ── ban_date2timestamp ────────────────────────────────────────────────────────

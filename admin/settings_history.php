@@ -20,12 +20,55 @@ if ((int)($usergroups['cansettingspanel'] ?? 0) !== 1) {
     exit();
 }
 
+// ── flash_message ─────────────────────────────────────────────────────────────
+
+if (!function_exists('flash_message')) {
+    function flash_message(?string $message = null, string $type = 'info', bool $raw_html = false): void
+    {
+        if ($message !== null) {
+            $_SESSION['flash'][] = ['message' => $message, 'type' => $type, 'raw' => $raw_html];
+            return;
+        }
+
+        if (empty($_SESSION['flash'])) return;
+
+       
+        echo '<script>';
+        foreach ($_SESSION['flash'] as $flash) {
+            
+            $jsType = $flash['type'] === 'danger' ? 'error' : $flash['type'];
+            if (!in_array($jsType, ['success', 'error', 'warning', 'info'], true)) {
+                $jsType = 'info';
+            }
+            $msg = $flash['raw'] ? $flash['message'] : htmlspecialchars($flash['message']);
+            echo 'document.addEventListener("DOMContentLoaded", function() { showToast(' . json_encode($msg) . ', ' . json_encode($jsType) . '); });' . "\n";
+        }
+        echo '</script>';
+
+        unset($_SESSION['flash']);
+    }
+}
+
+// ── admin_redirect ────────────────────────────────────────────────────────────
+if (!function_exists('admin_redirect')) {
+    function admin_redirect(string $url): never
+    {
+        header('Location: ' . $url);
+        exit;
+    }
+}
+
 // ============================================================
 //  ОБРАБОТКА POST ЗАПРОСОВ
 // ============================================================
 if (isset($_POST['action'])) {
     switch ($_POST['action']) {
         case 'cleanup':
+           
+            if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+                flash_message('Security check failed. Please try again.', 'error');
+                admin_redirect('settings_history.php');
+            }
             if (isset($_POST['confirm']) && $_POST['confirm'] === 'yes') {
                 $cutoff = time() - (90 * 86400);
                 $query = $db->sql_query_prepared("DELETE FROM sitelog WHERE category = 'settings' AND added < ?", [$cutoff]);
@@ -185,414 +228,10 @@ stdhead('Settings History');
 ?>
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/settings_history.css">
+<script src="<?= $BASEURL ?>/scripts/toast.js"></script>
 
-<style>
-.history-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 0 16px;
-}
-
-.history-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 0 20px;
-    border-bottom: 2px solid var(--bs-border-color);
-    margin-bottom: 24px;
-}
-
-.history-header h1 {
-    font-size: 1.8rem;
-    font-weight: 700;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.history-header h1 small {
-    font-size: 0.9rem;
-    font-weight: 400;
-    color: var(--bs-secondary-color);
-}
-
-.history-header .badge {
-    font-size: 0.85rem;
-    padding: 6px 14px;
-}
-
-.history-header .btn {
-    font-size: 0.85rem;
-    padding: 6px 16px;
-}
-
-.history-filters {
-    background: var(--bs-card-bg);
-    border-radius: 14px;
-    padding: 16px 20px;
-    margin-bottom: 24px;
-    border: 1px solid var(--bs-border-color);
-}
-
-.history-filters .filter-row {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    align-items: center;
-}
-
-.history-filters .filter-row .filter-group {
-    flex: 1;
-    min-width: 150px;
-}
-
-.history-filters .form-control {
-    font-size: 0.95rem;
-    padding: 8px 14px;
-}
-
-.history-filters .btn {
-    font-size: 0.9rem;
-    padding: 8px 18px;
-}
-
-/* ============================================================
-   СТАТИСТИКА - УВЕЛИЧЕННЫЙ ШРИФТ
-============================================================ */
-.stats-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    gap: 12px;
-    margin-bottom: 20px;
-}
-
-.stat-box {
-    background: var(--bs-card-bg);
-    border-radius: 12px;
-    padding: 14px 18px;
-    border: 1px solid var(--bs-border-color);
-    text-align: center;
-    transition: all 0.2s ease;
-}
-
-.stat-box:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-}
-
-.stat-box .stat-number {
-    font-size: 1.8rem;
-    font-weight: 700;
-    line-height: 1.2;
-}
-
-.stat-box .stat-label {
-    font-size: 0.8rem;
-    color: var(--bs-secondary-color);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.stat-box.info .stat-number { color: #0d6efd; }
-.stat-box.warning .stat-number { color: #ffc107; }
-.stat-box.error .stat-number { color: #dc3545; }
-.stat-box.today .stat-number { color: #198754; }
-.stat-box.week .stat-number { color: #6f42c1; }
-
-/* ============================================================
-   ТАБЛИЦА - УВЕЛИЧЕННЫЙ ШРИФТ
-============================================================ */
-.history-table-wrapper {
-    background: var(--bs-card-bg);
-    border-radius: 16px;
-    border: 1px solid var(--bs-border-color);
-    overflow: hidden;
-}
-
-.history-table {
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 0;
-}
-
-.history-table thead th {
-    background: var(--bs-tertiary-bg);
-    font-weight: 600;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 14px 18px;
-    border-bottom: 2px solid var(--bs-border-color);
-    white-space: nowrap;
-}
-
-.history-table tbody td {
-    padding: 12px 16px;
-    vertical-align: middle;
-    font-size: 0.95rem;
-}
-
-/* ============================================================
-   ЛОГ СООБЩЕНИЕ - УВЕЛИЧЕННЫЙ ШРИФТ
-============================================================ */
-.history-table .log-message {
-    font-family: 'Courier New', monospace;
-    font-size: 0.95rem;
-    display: block;
-    max-width: 600px;
-    word-wrap: break-word;
-    white-space: normal;
-    line-height: 1.5;
-    padding: 4px 0;
-    max-height: 70px;
-    overflow: hidden;
-    position: relative;
-    transition: max-height 0.3s ease;
-}
-
-.history-table .log-message.expanded {
-    max-height: none;
-    overflow: visible;
-}
-
-.history-table .log-message .log-text {
-    display: block;
-}
-
-.history-table .log-message .log-toggle {
-    cursor: pointer;
-    color: var(--bs-primary);
-    font-size: 0.8rem;
-    background: none;
-    border: none;
-    padding: 3px 8px;
-    text-decoration: underline;
-    display: inline-block;
-    margin-top: 4px;
-}
-
-.history-table .log-message .log-toggle:hover {
-    color: var(--bs-primary-hover);
-}
-
-.history-table .log-level {
-    padding: 4px 14px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    display: inline-block;
-    white-space: nowrap;
-}
-
-.history-table .log-level.level-0 {
-    background: #cfe2ff;
-    color: #084298;
-}
-
-.history-table .log-level.level-1 {
-    background: #fff3cd;
-    color: #664d03;
-}
-
-.history-table .log-level.level-2 {
-    background: #f8d7da;
-    color: #842029;
-}
-
-.history-table .user-link {
-    color: var(--bs-body-color);
-    text-decoration: none;
-    font-weight: 500;
-    font-size: 0.95rem;
-}
-
-.history-table .user-link:hover {
-    color: var(--bs-primary);
-}
-
-.history-table .ip-address {
-    font-family: 'Courier New', monospace;
-    font-size: 0.85rem;
-    color: var(--bs-secondary-color);
-}
-
-.history-table .btn-group .btn {
-    font-size: 0.8rem;
-    padding: 4px 8px;
-}
-
-.history-empty {
-    text-align: center;
-    padding: 60px 20px;
-}
-
-.history-empty i {
-    font-size: 4.5rem;
-    opacity: 0.3;
-    margin-bottom: 20px;
-    color: var(--bs-secondary-color);
-}
-
-.history-empty h4 {
-    font-size: 1.3rem;
-    color: var(--bs-secondary-color);
-}
-
-.history-empty p {
-    font-size: 1rem;
-}
-
-.history-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 20px;
-    align-items: center;
-}
-
-.history-actions .btn {
-    font-size: 0.85rem;
-    padding: 6px 16px;
-}
-
-@keyframes highlightNew {
-    0% { background: rgba(13, 110, 253, 0.12); }
-    100% { background: transparent; }
-}
-
-.history-table tbody tr.new-row {
-    animation: highlightNew 2s ease;
-}
-
-/* ============================================================
-   ТЕМНАЯ ТЕМА
-============================================================ */
-[data-theme="dark"] .history-table thead th {
-    background: #1a1a2e;
-    border-color: #2d2d3d;
-}
-
-[data-theme="dark"] .history-table .log-level.level-0 {
-    background: rgba(13, 110, 253, 0.2);
-    color: #6ea8fe;
-}
-
-[data-theme="dark"] .history-table .log-level.level-1 {
-    background: rgba(255, 193, 7, 0.2);
-    color: #ffda6a;
-}
-
-[data-theme="dark"] .history-table .log-level.level-2 {
-    background: rgba(220, 53, 69, 0.2);
-    color: #ea868f;
-}
-
-[data-theme="dark"] .stat-box {
-    border-color: #2d2d3d;
-}
-
-/* ============================================================
-   ПАГИНАЦИЯ - УВЕЛИЧЕННЫЙ ШРИФТ
-============================================================ */
-.pagination {
-    font-size: 0.95rem;
-}
-
-.pagination .page-link {
-    padding: 8px 16px;
-    font-size: 0.95rem;
-}
-
-/* ============================================================
-   АДАПТИВ
-============================================================ */
-@media (max-width: 768px) {
-    .history-header {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 12px;
-    }
-    
-    .history-header h1 {
-        font-size: 1.4rem;
-    }
-    
-    .history-filters .filter-row {
-        flex-direction: column;
-    }
-    
-    .history-filters .filter-row .filter-group {
-        min-width: unset;
-        width: 100%;
-    }
-    
-    .history-table .log-message {
-        max-width: 200px;
-        font-size: 0.85rem;
-    }
-    
-    .stats-row {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 6px;
-    }
-    
-    .stat-box {
-        padding: 10px 12px;
-    }
-    
-    .stat-box .stat-number {
-        font-size: 1.4rem;
-    }
-    
-    .stat-box .stat-label {
-        font-size: 0.7rem;
-    }
-    
-    .history-table tbody td {
-        font-size: 0.85rem;
-        padding: 8px 10px;
-    }
-    
-    .history-table thead th {
-        font-size: 0.75rem;
-        padding: 10px 12px;
-    }
-}
-
-@media (max-width: 576px) {
-    .history-table .log-message {
-        max-width: 120px;
-        font-size: 0.75rem;
-    }
-    
-    .history-table tbody td {
-        font-size: 0.8rem;
-        padding: 6px 8px;
-    }
-    
-    .history-table thead th {
-        font-size: 0.65rem;
-        padding: 6px 8px;
-    }
-    
-    .stats-row {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .history-actions .btn {
-        font-size: 0.75rem;
-        padding: 4px 10px;
-    }
-    
-    .history-header .btn {
-        font-size: 0.75rem;
-        padding: 4px 10px;
-    }
-}
-</style>
+<?php flash_message(); ?>
 
 <div class="history-container">
     <div class="history-header">
@@ -775,6 +414,7 @@ stdhead('Settings History');
         <form method="post" action="settings_history.php" style="display:inline;">
             <input type="hidden" name="action" value="cleanup">
             <input type="hidden" name="confirm" value="yes">
+            <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
             <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('⚠️ Are you sure you want to delete settings logs older than 90 days?\n\nThis action cannot be undone!')">
                 <i class="fas fa-trash me-1"></i> Cleanup Old Logs (90+ days)
             </button>

@@ -8,12 +8,8 @@ if (!defined('STAFF_PANEL')) {
 
 
 /**
- * Convert Tables to InnoDB + utf8mb4
- *
- * Ожидает стандартный admin-bootstrap (тот же паттерн, что recount_rebuild.php) -
- * $db/$mybb/$CURUSER уже проинициализированы через обычный роутер admin/index.php,
- * IN_ADMINCP уже определён до подключения этого файла.
- */
+ * Convert Tables to InnoDB + utf8mb4 
+*/
 
 const TARGET_COLLATION = 'utf8mb4_unicode_ci';
 
@@ -43,11 +39,7 @@ function get_tables_to_convert(): array
     return $tables;
 }
 
-/**
- * Строит ALTER TABLE только с теми клозами, которые реально нужны этой
- * конкретной таблице (одни уже InnoDB и им нужна только смена кодировки,
- * другие наоборот) - не переписывает то, что и так уже в порядке.
- */
+
 function build_alter_sql(string $escapedName, array $row): string
 {
     $clauses = [];
@@ -76,11 +68,7 @@ if (isset($_POST['ajax_convert_table']) && $_SERVER['REQUEST_METHOD'] === 'POST'
 
     $tableName = (string)$_POST['ajax_convert_table'];
 
-    // Не доверяем присланному имени таблицы вслепую - сверяем со свежим
-    // списком реальных таблиц, требующих конвертации, из information_schema
-    // перед тем как строить ALTER TABLE. Идентификатор таблицы нельзя
-    // параметризовать через placeholder ('?' работает только для значений,
-    // не для имён), поэтому валидация по whitelist из самой БД - обязательна.
+
     $pending = get_tables_to_convert();
     $row = null;
     foreach ($pending as $t) {
@@ -114,10 +102,7 @@ if (isset($_POST['ajax_convert_table']) && $_SERVER['REQUEST_METHOD'] === 'POST'
         }
     } catch (\Throwable $e) {
         write_log("Table conversion FAILED: {$tableName} - " . $e->getMessage() . " | {$CURUSER['username']}");
-        // Частая причина сбоя: индексируемая VARCHAR-колонка упирается в лимит
-        // длины ключа после перехода на utf8mb4 (4 байта/символ вместо 3) -
-        // отдаём сообщение как есть, это админ-панель для доверенных админов,
-        // а не публичный вывод ошибок конечным пользователям.
+       
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     }
     exit;

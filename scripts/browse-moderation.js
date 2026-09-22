@@ -3,7 +3,7 @@ window.ModerationModal = (function () {
 
     const settings = {
         totalTorrents: null,
-        selectAllId: 'checkAllSwitch',
+        selectAllId: 'checkAllSwitchVisible',
         checkboxName: 'torrentid[]',
         selectedCountId: 'selectedCountDisplay',
         totalCountId: 'totalTorrentsCount',
@@ -891,7 +891,7 @@ function updateProgress() {
      * still works even on a page that hasn't added that markup.
      */
     function confirmDangerousAction(action, count) {
-        const actionNames = { delete: 'delete', banned: 'ban/unban', nuke: 'mark as Nuked' };
+        const actionNames = { delete: 'delete', banned: 'ban/unban', nuke: 'mark as Nuked', resetrating: 'reset the rating of' };
         const actionName = actionNames[action] || action;
 
         // Уточняем в тексте, если часть выбранного - с других страниц
@@ -1038,7 +1038,7 @@ function updateProgress() {
             return;
         }
 
-        const dangerous = ['delete', 'banned', 'nuke'];
+        const dangerous = ['delete', 'banned', 'nuke', 'resetrating'];
         if (dangerous.includes(actionSelect.value)) {
             const confirmed = await confirmDangerousAction(actionSelect.value, count);
             if (!confirmed) {
@@ -1089,13 +1089,78 @@ function updateProgress() {
             }
         });
 
-        // The action is about to run server-side - don't let the old
-        // selection come back when we land back on this page.
-        clearSelectionStorage();
-
+        // Отправляем через fetch, а не form.submit(): обычная отправка формы
+        // уводит браузер на /admin/index.php?act=manage_torrents. Здесь мы
+        // остаёмся на странице и просто перезагружаем её с теми же фильтрами.
         setTimeout(function() {
-            form.submit();
+            submitModerationForm(form, applyBtn);
         }, 300);
+    }
+
+    /**
+     * Sends the moderation form in the background and reloads the current
+     * browse page (filters / sort / page number stay in the URL).
+     */
+    async function submitModerationForm(form, applyBtn) {
+        try {
+            const res = await fetch(form.action, {
+                method: 'POST',
+                body: new FormData(form),   // включает и скрытые поля с ID с других страниц
+                credentials: 'same-origin',
+                redirect: 'follow',         // если админка сама редиректит - fetch пройдёт по редиректу
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+
+            // Основной путь: manage_torrents.php по X-Requested-With отдаёт JSON
+            // {ok, message}. Ошибки (Security check failed, нет прав sysop,
+            // не выбрана категория и т.п.) приходят с ok=false / HTTP 422.
+            const contentType = res.headers.get('content-type') || '';
+            let okMsg = null;
+
+            if (contentType.indexOf('application/json') !== -1) {
+                const data = await res.json();
+                if (!data.ok) {
+                    throw new Error(data.message || 'Action failed');
+                }
+                okMsg = data.message || null;
+            } else {
+                // Не JSON. Единственный допустимый вариант - старый обработчик,
+                // вернувший нас на browse.php?...&mod_success=/mod_error=.
+                // Всё остальное (страница 2FA, логин, ошибка сервера) - НЕ успех.
+                let finalOk = null;
+                let finalErr = null;
+                try {
+                    const finalUrl = new URL(res.url, window.location.href);
+                    finalOk  = finalUrl.searchParams.get('mod_success');
+                    finalErr = finalUrl.searchParams.get('mod_error');
+                } catch (e) { /* ignore */ }
+
+                if (finalErr) {
+                    throw new Error(finalErr);
+                }
+                if (!res.ok || !finalOk) {
+                    throw new Error('Unexpected response from the admin panel (admin session or 2FA may have expired). Open the admin panel, verify, and try again.');
+                }
+                okMsg = finalOk;
+            }
+
+            // Action ran server-side - the old selection must not come back.
+            clearSelectionStorage();
+
+            // Перезагружаем ТЕКУЩУЮ страницу; тост покажет код в browse.php
+            // (он читает mod_success / mod_error и потом чистит URL).
+            const url = new URL(window.location.href);
+            url.searchParams.delete('mod_success');
+            url.searchParams.delete('mod_error');
+            url.searchParams.set('mod_success', okMsg || 'Action completed successfully!');
+            window.location.href = url.toString();
+        } catch (err) {
+            if (applyBtn) {
+                applyBtn.disabled = false;
+                applyBtn.innerHTML = '<i class="fas fa-play me-1"></i> Apply';
+            }
+            showModerationToast('Action failed: ' + err.message, 'error');
+        }
     }
 
     /**
@@ -1182,7 +1247,8 @@ function updateProgress() {
                     doubleupload: 'Toggle Double Upload for selected torrents',
                     thirtypercent: 'Toggle 30% Leech for selected torrents',
                     anonymous: 'Make selected torrents anonymous or restore authorship',
-                    request: 'Toggle "Request" status for selected torrents'
+                    request: 'Toggle "Request" status for selected torrents',
+                    resetrating: '⚠️ Permanently reset all user ratings for selected torrents. This cannot be undone!'
                 };
 
                 if (actionInfo && actionDesc) {
@@ -1192,7 +1258,7 @@ function updateProgress() {
                         actionInfo.style.display = 'block';
                         actionInfo.style.animation = 'fadeInUp 0.3s ease';
 
-                        const dangerous = ['delete', 'banned', 'nuke'];
+                        const dangerous = ['delete', 'banned', 'nuke', 'resetrating'];
                         const alertEl = actionInfo.querySelector('.alert');
                         if (alertEl) {
                             if (dangerous.includes(value)) {
@@ -1348,7 +1414,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (typeof ModerationModal !== "undefined" && ModerationModal.init) {
         ModerationModal.init({
             totalTorrents: window.browseModTotalTorrents || 0,
-            selectAllId: "checkAllSwitch",
+            selectAllId: "checkAllSwitchVisible",
             checkboxName: "torrentid[]",
             selectedCountId: "selectedCountDisplay",
             totalCountId: "totalTorrentsCount",

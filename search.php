@@ -115,6 +115,30 @@ if ($mybb->input['action'] === 'suggest')
 {
     header('Content-Type: application/json; charset=utf-8');
 
+    // Rate limit - без него это публичный, не требующий авторизации AJAX-
+    // эндпоинт с LIKE '%...%' (не использует индекс) - легко закидать
+    // запросами и нагрузить БД. Простое окно на сессию: не больше 10
+    // запросов за 10 секунд.
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+    $rl_now    = time();
+    $rl_window = 10;   // секунд
+    $rl_max    = 10;   // запросов за окно
+
+    $_SESSION['search_suggest_hits'] = array_filter(
+        $_SESSION['search_suggest_hits'] ?? [],
+        fn($t) => $t > $rl_now - $rl_window
+    );
+
+    if (count($_SESSION['search_suggest_hits']) >= $rl_max) {
+        http_response_code(429);
+        echo json_encode(['results' => [], 'error' => 'rate_limited']);
+        exit;
+    }
+
+    $_SESSION['search_suggest_hits'][] = $rl_now;
+
     $kw = trim($mybb->get_input('q'));
 
     if(my_strlen($kw) < 2)
@@ -255,13 +279,22 @@ if ($mybb->input['action'] === 'results') {
     $sid    = $mybb->get_input('sid');
     $query  = $db->sql_query_prepared("SELECT * FROM searchlog WHERE sid = ?", [$sid]);
     $search = $query ? $db->fetch_array($query) : null;
-	
-	
-	
 
-	
-	
     if (!$search) stderr($lang->search['error_invalidsearch']);
+
+    // Владелец выдачи - залогиненным сверяем uid, гостям (uid=0 в
+    // searchlog) сверяем IP. Раньше по чужому sid можно было посмотреть
+    // чужую выдачу целиком (sid практически неугадываем, но проверка
+    // владельца - правильная защита в глубину, не полагаться на одну
+    // лишь длину идентификатора).
+    $search_owner_uid = (int)($search['uid'] ?? 0);
+    if ($search_owner_uid > 0) {
+        if ((int)($CURUSER['id'] ?? 0) !== $search_owner_uid) {
+            stderr($lang->search['error_invalidsearch']);
+        }
+    } elseif (($search['ipaddress'] ?? '') !== get_ip()) {
+        stderr($lang->search['error_invalidsearch']);
+    }
 
     $plugins->run_hooks('search_results_start');
 
@@ -375,7 +408,6 @@ if ($mybb->input['action'] === 'results') {
 
         $thread_cache = [];
         while ($q && ($t = $db->fetch_array($q))) {
-            $t['threadprefix'] = '';
             $thread_cache[$t['tid']] = $t;
         }
         $thread_ids = implode(',', array_keys($thread_cache));
@@ -422,7 +454,7 @@ if ($mybb->input['action'] === 'results') {
             $thread['username']    = htmlspecialchars_uni($thread['username']);
             $thread['subject']     = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
 
-            $thread_link  = get_thread_link($thread['tid']);
+            $thread_link  = get_thread_link($thread['tid']) . $highlight;
             $lastpostdate = my_datee('relative', $thread['lastpost']);
             $lp_uid       = $thread['lastposteruid'];
             $lp_name      = $lp_uid ? htmlspecialchars_uni($thread['lastposter']) : htmlspecialchars_uni($lang->guest);
@@ -482,7 +514,7 @@ if ($mybb->input['action'] === 'results') {
             // Subject row
             echo '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">';
             echo '<a href="' . $thread_link . '" class="sr-thread-subject" onclick="event.stopPropagation()">';
-            echo htmlspecialchars_uni($thread['threadprefix']) . $thread['subject'];
+            echo $thread['subject'];
             echo '</a>';
             echo $badges;
             echo '</div>';
@@ -635,8 +667,8 @@ if ($mybb->input['action'] === 'results') {
 
             $posted    = my_datee('relative', $post['dateline']);
 
-            $thread_url  = get_thread_link($post['tid']);
-            $post_url    = get_post_link($post['pid'], $post['tid']);
+            $thread_url  = get_thread_link($post['tid']) . $highlight;
+            $post_url    = get_post_link($post['pid'], $post['tid']) . $highlight;
             $forum_name  = htmlspecialchars($forumcache[$post['fid']]['name'] ?? '');
             $forum_link  = get_forum_link($post['fid']);
             $profile_url = get_profile_link((int)$post['uid']);
@@ -814,7 +846,6 @@ if ($mybb->input['action'] === 'results') {
         'forums'        => $forums,
         'findthreadst'  => $mybb->get_input('findthreadst',  MyBB::INPUT_INT),
         'numreplies'    => $mybb->get_input('numreplies',    MyBB::INPUT_INT),
-        'threadprefix'  => $mybb->get_input('threadprefix',  MyBB::INPUT_ARRAY),
     ];
 	
 	

@@ -494,6 +494,21 @@ if ($CURUSER['id']) {
     if ($q2 && ($ur = $db->fetch_array($q2))) $rating_data['user_rating'] = (int)$ur['rating'];
 }
 
+
+
+
+// ── "Уже скачивали" ──────────────────────────────────────────────────────────
+$already_snatched = false;
+if ($CURUSER['id']) {
+    $q3 = $db->sql_query_prepared(
+        "SELECT id FROM snatched WHERE userid = ? AND torrentid = ? AND finished = 'yes' LIMIT 1",
+        [$CURUSER['id'], $id]
+    );
+    $already_snatched = $q3 && $db->num_rows($q3) > 0;
+}
+
+
+
 // Avg stars
 $avg_stars_html = '';
 for ($i = 1; $i <= 10; $i++) {
@@ -1530,7 +1545,11 @@ $details = '
                     <span class="badge bg-'.getHealthColor($Torrent['seeders'], $Torrent['leechers']).' shadow-sm">
                         <i class="bi bi-activity me-1"></i>Health: '.getHealthPercentage($Torrent['seeders'], $Torrent['leechers']).'%
                     </span>
-					 '.$act.'
+					 ' . ($already_snatched ? '
+                    <span class="badge bg-info shadow-sm" title="You have already downloaded this torrent">
+                        <i class="bi bi-download me-1"></i>Already Downloaded
+                    </span>' : '') . '
+                    ' . $act . '
                 </div>
             </div>
 			

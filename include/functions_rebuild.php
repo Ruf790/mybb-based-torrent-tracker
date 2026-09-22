@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+
 /**
  * Rebuild all board statistics (threads, posts, users)
  */

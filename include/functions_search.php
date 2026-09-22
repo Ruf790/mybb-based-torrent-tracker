@@ -477,17 +477,12 @@ function perform_search_mysql(array $search): array
         $thread_replycut_params[] = (int)$search['numreplies'];
     }
 
-    // Prefix (значения уже (int)-кастованы при сборке массива — безопасно оставить как литералы в IN(...))
+    // Prefix - убрано: колонка threads.prefix была удалена из схемы,
+    // этот код давал бы "Unknown column 't.prefix'", если бы вообще
+    // получил непустой threadprefix (сейчас недостижимо - в форме нет
+    // соответствующего поля, но лучше не оставлять рабочий с виду код,
+    // ссылающийся на несуществующую колонку).
     $thread_prefixcut = '';
-    $prefixlist = [];
-    if (!empty($search['threadprefix']) && $search['threadprefix'][0] !== 'any') {
-        foreach ($search['threadprefix'] as $tp) $prefixlist[] = (int)$tp;
-    }
-    if (count($prefixlist) === 1) {
-        $thread_prefixcut = " AND t.prefix='{$prefixlist[0]}'";
-    } elseif (count($prefixlist) > 1) {
-        $thread_prefixcut = ' AND t.prefix IN (' . implode(',', $prefixlist) . ')';
-    }
 
     // Forums (fid'ы тоже (int)-кастованы выше — безопасно оставить как литералы)
     $forumin = '';
@@ -741,17 +736,9 @@ function perform_search_mysql_ft(array $search): array
         $thread_replycut_params[] = (int)$search['numreplies'];
     }
 
-    // Prefix
+    // Prefix - убрано: колонка threads.prefix удалена из схемы, см. тот
+    // же комментарий выше в perform_search_mysql().
     $thread_prefixcut = '';
-    $prefixlist = [];
-    if (!empty($search['threadprefix']) && $search['threadprefix'][0] !== 'any') {
-        foreach ($search['threadprefix'] as $tp) $prefixlist[] = (int)$tp;
-    }
-    if (count($prefixlist) === 1) {
-        $thread_prefixcut = " AND t.prefix='{$prefixlist[0]}'";
-    } elseif (count($prefixlist) > 1) {
-        $thread_prefixcut = ' AND t.prefix IN (' . implode(',', $prefixlist) . ')';
-    }
 
     // Forums
     $forumin = '';

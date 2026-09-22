@@ -81,13 +81,14 @@ class TorrentManager
             'doubleupload' => fn() => $this->toggleField($torrentIdsStr, 'doubleupload'),
             'openclose' => fn() => $this->toggleField($torrentIdsStr, 'allowcomments'),
             'request' => fn() => $this->toggleField($torrentIdsStr, 'isrequest'),
+            'resetrating' => fn() => $this->resetRatings($torrentIdsStr),
         ];
 
         // Extra privilege gate for irreversible/high-impact actions.
         // Defensive: only enforced if this codebase actually exposes an
         // is_sysop() helper - if it doesn't, we skip the extra check
         // rather than risk a fatal error on an undefined function.
-        $dangerousActions = ['delete', 'banned', 'nuke'];
+        $dangerousActions = ['delete', 'banned', 'nuke', 'resetrating'];
         if (in_array($actionType, $dangerousActions, true) && function_exists('is_sysop')) {
             if (!is_sysop()) {
                 $this->addError('This action ("' . $actionType . '") requires a higher staff level (sysop).');
@@ -204,6 +205,32 @@ class TorrentManager
             $before['no']
         );
     }
+
+    private function resetRatings(string $ids): string {
+        global $db;
+
+        // rating_avg/rating_count не хранятся как колонки на torrents -
+        // они вычисляются на лету из torrent_ratings (подтверждено
+        // ошибкой "Unknown column 'rating_count'"). Значит достаточно
+        // удалить строки из torrent_ratings - отображение само вернёт 0
+        // при следующем подсчёте, обновлять torrents не нужно.
+        $before = ['torrents' => 0, 'ratings' => 0];
+        $beforeQuery = $db->sql_query_prepared(
+            "SELECT torrent_id, COUNT(*) AS cnt FROM torrent_ratings WHERE torrent_id IN ($ids) GROUP BY torrent_id"
+        );
+        while ($beforeQuery && ($row = $db->fetch_array($beforeQuery))) {
+            $before['torrents']++;
+            $before['ratings'] += (int)$row['cnt'];
+        }
+
+        $db->sql_query_prepared("DELETE FROM torrent_ratings WHERE torrent_id IN ($ids)");
+
+        return sprintf(
+            "reset rating on %d torrent(s), removed %d individual rating(s)",
+            $before['torrents'],
+            $before['ratings']
+        );
+    }
 }
 
 // Initialize torrent manager
@@ -314,9 +341,51 @@ $queryBuilder->addCategoryCondition($browsecategory);
 $queryBuilder->addSearchCondition($searchword);
 $queryBuilder->addSearchTypeCondition($searchtype);
 
+// Безопасен ли return_address для редиректа. Раньше принимались ТОЛЬКО
+// относительные пути ("/browse.php?..."), а browse.php шлёт абсолютный URL
+// ($BASEURL . '/browse.php?...'), поэтому редирект никогда не срабатывал и
+// показывалась страница админки. Теперь разрешены относительные пути и
+// абсолютные URL ТОЛЬКО на этот же хост (защита от open redirect сохранена).
+if (!function_exists('mt_is_safe_return_address')) {
+    function mt_is_safe_return_address(string $addr): bool
+    {
+        if ($addr === '' || preg_match('/[\x00-\x1F\x7F]/', $addr)) {
+            return false;
+        }
+
+        // Относительный путь: ровно один "/" и не "//" и не "/\"
+        if ($addr[0] === '/') {
+            return !preg_match('#^/[/\\\\]#', $addr);
+        }
+
+        // Абсолютный URL: только http(s) и только наш хост
+        $parts = parse_url($addr);
+        if ($parts === false || empty($parts['scheme']) || empty($parts['host'])) {
+            return false;
+        }
+        if (!in_array(strtolower($parts['scheme']), ['http', 'https'], true)) {
+            return false;
+        }
+
+        $allowedHosts = [];
+        if (!empty($GLOBALS['BASEURL'])) {
+            $h = parse_url((string)$GLOBALS['BASEURL'], PHP_URL_HOST);
+            if ($h) {
+                $allowedHosts[] = strtolower($h);
+            }
+        }
+        if (!empty($_SERVER['HTTP_HOST'])) {
+            $allowedHosts[] = strtolower(preg_replace('/:\d+$/', '', (string)$_SERVER['HTTP_HOST']));
+        }
+
+        return in_array(strtolower($parts['host']), $allowedHosts, true);
+    }
+}
+
 // Handle form submission
 if ($do === 'update') {
     $wantsReturn = ($_POST['return'] ?? '') === 'yes' && !empty($_POST['return_address']);
+    $isAjax      = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
 
     if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
         $torrentManager->addError('Security check failed. Please refresh the page and try again.');
@@ -324,28 +393,45 @@ if ($do === 'update') {
         $torrentManager->handleUpdate($_POST);
     }
 
+    $errors = $torrentManager->getErrors();
+    // Не полагаемся на $_SESSION между admin/index.php и browse.php (могут
+    // быть разные cookie-scope) - результат отдаём в ответе / в query.
+    $successMsg = $_SESSION['action_success'] ?? null;
+    unset($_SESSION['action_success']);
+
+    // AJAX (browse-moderation.js): отдаём JSON, страница не покидается.
+    if ($isAjax) {
+        // Буферы не снимаем (gzip() из global.php может держать ob_gzhandler),
+        // только выбрасываем уже накопленный вывод, если он есть.
+        if (ob_get_level() > 0 && ob_get_length()) {
+            ob_clean();
+        }
+        http_response_code(empty($errors) ? 200 : 422);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok'      => empty($errors),
+            'message' => empty($errors)
+                ? ($successMsg ?: 'Action completed successfully!')
+                : strip_tags(implode('; ', $errors)),
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // Обычная отправка формы: редирект обратно на return_address.
     if ($wantsReturn) {
-        $errors = $torrentManager->getErrors();
-        // No longer relying on $_SESSION here: admin/index.php and browse.php
-        // don't reliably share the same session (different cookie scope), so
-        // the result is passed back via a query param on the redirect instead.
-        $successMsg = $_SESSION['action_success'] ?? null;
-        unset($_SESSION['action_success']);
-
         $returnAddress = (string)$_POST['return_address'];
-        // Open-redirect guard: only allow paths that start with exactly one
-        // "/" followed by something other than "/" or "\" - this blocks
-        // "//evil.com", "https://evil.com" and the "/\evil.com" trick some
-        // browsers still normalize to a protocol-relative URL.
-        $isSafeRelativePath = $returnAddress !== ''
-            && $returnAddress[0] === '/'
-            && !preg_match('#^/[/\\\\]#', $returnAddress);
 
-        if ($isSafeRelativePath) {
-            $separator = (strpos($returnAddress, '') !== false) ? '' : '?';
+        if (mt_is_safe_return_address($returnAddress)) {
+            // Раньше здесь было strpos($returnAddress, '') - пустая иголка
+            // всегда "найдена", разделитель получался пустым, и параметр
+            // приклеивался к URL ("...=nomod_success=..."). Исправлено.
+            $lastChar  = substr($returnAddress, -1);
+            $separator = ($lastChar === '?' || $lastChar === '&')
+                ? ''
+                : ((strpos($returnAddress, '?') !== false) ? '&' : '?');
 
             if (!empty($errors)) {
-                $returnAddress .= $separator . 'mod_error=' . rawurlencode(implode('; ', $errors));
+                $returnAddress .= $separator . 'mod_error=' . rawurlencode(strip_tags(implode('; ', $errors)));
             } elseif ($successMsg) {
                 $returnAddress .= $separator . 'mod_success=' . rawurlencode($successMsg);
             }

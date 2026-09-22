@@ -133,7 +133,6 @@ function process_bulk_addition(int $class, int $amount): void {
     
 
 echo '
-<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
 <link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
 <div class="container mt-3">
     <div class="card error-card">
@@ -295,6 +294,15 @@ $eol = PHP_EOL;
 
 // Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Раньше здесь не было CSRF-проверки вообще - process_bulk_addition()
+    // может добавить аплоад целой usergroup (или всем пользователям сразу)
+    // по одному только запросу, без подтверждения владения формой.
+    global $mybb;
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
+        exit;
+    }
+
     try {
 
         /* ===============================
@@ -322,7 +330,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             stdhead('Preview');
 			// Custom Bootstrap preview block
             echo '
-<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
 <link href="'.$BASEURL.'/include/templates/default/style/errorss.css" rel="stylesheet">
 
 <div class="container mt-3">
@@ -348,6 +355,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="hidden" name="doit" value="yes">
                 <input type="hidden" name="usergroup" value="'.$class.'">
                 <input type="hidden" name="classamount" value="'.$amount.'">
+                <input type="hidden" name="my_post_key" value="'.htmlspecialchars($mybb->post_code, ENT_QUOTES).'">
                 <button class="btn btn-danger btn-lg w-100">
                     Confirm & Apply
                 </button>
@@ -420,6 +428,7 @@ stdhead('Update Users Upload Amounts');
                 </div>
                 <div class="card-body">
                     <form method="post" action="<?= htmlspecialchars($_this_script_) ?>" class="needs-validation" novalidate>
+                        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code, ENT_QUOTES) ?>">
                         <div class="mb-3">
                             <label for="username" class="form-label fw-semibold">
                                 <i class="fas fa-user me-1"></i>Username
@@ -484,6 +493,7 @@ stdhead('Update Users Upload Amounts');
                 <div class="card-body">
                     <form method="post" action="<?= htmlspecialchars($_this_script_) ?>" class="needs-validation" novalidate>
                         <input type="hidden" name="doit" value="yes">
+                        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code, ENT_QUOTES) ?>">
                         
                         <div class="mb-3">
                             <label for="usergroup" class="form-label fw-semibold">

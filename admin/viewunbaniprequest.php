@@ -78,7 +78,6 @@ if ($action === 'delete') {
 
 stdhead('Unban Requests Manager');
 
-echo '<link href="' .$BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
 
 $perpage      = $ts_perpage ?? 20;
 $current_page = max(1, (int)($_GET['page'] ?? 1));

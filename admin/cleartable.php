@@ -19,6 +19,20 @@ class TableTruncationManager
     private $config;
     private $scriptUrl;
     private $baseUrl;
+
+    // Критичные таблицы, которые нельзя truncate через этот инструмент
+    // ни при каких обстоятельствах - даже случайный выбор в multi-select
+    // списке не должен иметь возможности необратимо снести users/права
+    // доступа/структуру раздач. TRUNCATE необратим, отката нет.
+    //
+    // ВАЖНО: список собран по тому, что встречалось в файлах сайта за
+    // сегодня - не гарантированно полный. Проверьте и дополните под
+    // реальную схему БД перед использованием этого инструмента.
+    private const PROTECTED_TABLES = [
+        'users', 'usergroups', 'staffpanel', 'torrents', 'categories',
+        'forumpermissions', 'settings', 'moderators', 'banned',
+        'forums', 'faq', 'sitelog',
+    ];
     
     public function __construct($db, $config, $scriptUrl, $baseUrl)
     {
@@ -29,11 +43,22 @@ class TableTruncationManager
     }
     
     /**
-     * Validate table name
+     * Validate table name (формат имени, для любых операций)
      */
     private function validateTableName($tableName)
     {
         return !empty($tableName) && preg_match('/^[a-zA-Z0-9_]+$/', $tableName);
+    }
+
+    /**
+     * Проверка формата ИЛИ безопасности разрушительной операции (TRUNCATE).
+     * OPTIMIZE безопасен и данные не удаляет, поэтому использует только
+     * validateTableName() без этого дополнительного барьера.
+     */
+    private function validateTableNameForTruncate($tableName)
+    {
+        return $this->validateTableName($tableName)
+            && !in_array(strtolower($tableName), self::PROTECTED_TABLES, true);
     }
     
     /**
@@ -61,7 +86,7 @@ class TableTruncationManager
      */
     private function truncateTable($tableName)
     {
-        if (!$this->validateTableName($tableName)) {
+        if (!$this->validateTableNameForTruncate($tableName)) {
             return false;
         }
         
@@ -150,7 +175,7 @@ class TableTruncationManager
         if (isset($_POST['tablenames']) && is_array($_POST['tablenames'])) {
             $tables = [];
             foreach ($_POST['tablenames'] as $table) {
-                if ($this->validateTableName($table)) {
+                if ($this->validateTableNameForTruncate($table)) {
                     $tables[] = $table;
                 }
             }
@@ -162,7 +187,7 @@ class TableTruncationManager
             $tables = explode(':', $decoded);
             $validTables = [];
             foreach ($tables as $table) {
-                if ($this->validateTableName($table)) {
+                if ($this->validateTableNameForTruncate($table)) {
                     $validTables[] = $table;
                 }
             }
@@ -178,6 +203,7 @@ class TableTruncationManager
     private function showError($message)
     {
         stdhead('TRUNCATE MySQL Tables');
+        echo $this->getStyles();
         echo $this->getAlertHtml('danger', $message);
         stdfoot();
         exit();
@@ -188,14 +214,16 @@ class TableTruncationManager
      */
     private function getAlertHtml($type, $message)
     {
-        $icon = ($type === 'danger') ? 'fa-exclamation-triangle' : 'fa-info-circle';
-        $alertClass = ($type === 'danger') ? 'alert-danger' : 'alert-warning';
-        
         return <<<HTML
-        <div class="container-md">
-            <div class="alert {$alertClass} fade-in" role="alert">
-                <i class="fas {$icon} me-2"></i>
-                <strong>{$message}</strong>
+        <div class="ct-wrap fade-in">
+            <div class="ct-panel">
+                <div class="ct-titlebar">
+                    <h1><i class="fas fa-exclamation-triangle"></i> Truncate Database Tables</h1>
+                </div>
+                <div class="ct-notice"><strong>{$message}</strong></div>
+                <div class="ct-body">
+                    <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">Go back</a>
+                </div>
             </div>
         </div>
 HTML;
@@ -209,40 +237,40 @@ HTML;
         global $mybb;
 
         $tableHash = base64_encode(implode(':', $tables));
-        $tableList = implode(', ', $tables);
-        
+
+        $items = '';
+        foreach ($tables as $table) {
+            $items .= '<div class="ct-result-row"><span class="ct-icon-fail"><i class="fas fa-trash"></i></span>' . $this->escapeHtml($table) . '</div>';
+        }
+        $count = count($tables);
+
         $confirmationHtml = <<<HTML
-        <div class="container-md">
-            <div class="alert alert-warning fade-in">
-                <div class="d-flex align-items-start">
-                    <i class="fas fa-exclamation-triangle fa-2x me-3 text-warning"></i>
-                    <div class="flex-grow-1">
-                        <h4 class="alert-heading mb-3"><i class="fas fa-shield-alt me-2"></i>Security Check</h4>
-                        <p class="mb-3"><strong>We STRONGLY recommend backing up your database before truncating tables.</strong></p>
-                        <p class="mb-3">Are you sure you want to truncate the following tables?</p>
-                        
-                        <div class="bg-dark text-light p-3 rounded-3 mb-4">
-                            <div class="d-flex align-items-center mb-2">
-                                <i class="fas fa-database me-2"></i>
-                                <strong>Selected Tables:</strong>
-                            </div>
-                            <div class="table-list">
-                                <code class="text-info">{$this->escapeHtml($tableList)}</code>
-                            </div>
-                        </div>
-                        
-                        <div class="d-flex gap-3">
-                            <form method="post" action="{$this->scriptUrl}&do=clear&sure=true" class="d-inline">
-                                <input type="hidden" name="my_post_key" value="{$this->escapeHtml($mybb->post_code)}">
-                                <input type="hidden" name="tablehash" value="{$this->escapeHtml($tableHash)}">
-                                <button type="submit" class="btn btn-danger btn-lg px-4">
-                                    <i class="fas fa-check-circle me-2"></i>Yes, I am sure
-                                </button>
-                            </form>
-                            <a href="{$this->scriptUrl}" class="btn btn-secondary btn-lg px-4">
-                                <i class="fas fa-arrow-left me-2"></i>No, go back
-                            </a>
-                        </div>
+        <div class="ct-wrap fade-in">
+            <div class="ct-panel">
+                <div class="ct-titlebar">
+                    <h1><i class="fas fa-shield-alt"></i> Confirm Truncation</h1>
+                    <span class="ct-optag">STEP 2 OF 2</span>
+                </div>
+
+                <div class="ct-notice">
+                    <strong>You are about to permanently delete all data in {$count} table(s).</strong>
+                    This cannot be undone — make sure you have a backup before continuing.
+                </div>
+
+                <div class="ct-body">
+                    <div class="ct-table-list">{$items}</div>
+
+                    <div class="ct-divider"></div>
+
+                    <div class="ct-actions">
+                        <form method="post" action="{$this->scriptUrl}&do=clear&sure=true">
+                            <input type="hidden" name="my_post_key" value="{$this->escapeHtml($mybb->post_code)}">
+                            <input type="hidden" name="tablehash" value="{$this->escapeHtml($tableHash)}">
+                            <button type="submit" class="ct-btn ct-btn-danger">
+                                <i class="fas fa-check-circle"></i> Yes, truncate these tables
+                            </button>
+                        </form>
+                        <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">Go back</a>
                     </div>
                 </div>
             </div>
@@ -250,6 +278,7 @@ HTML;
 HTML;
         
         stdhead('TRUNCATE MySQL Tables');
+        echo $this->getStyles();
         echo $confirmationHtml;
         stdfoot();
         exit();
@@ -260,6 +289,8 @@ HTML;
      */
     private function executeTruncation($tables)
     {
+        global $CURUSER;
+
         $success = [];
         $failed = [];
         
@@ -269,6 +300,27 @@ HTML;
             } else {
                 $failed[] = $table;
             }
+        }
+
+        // Логирование - раньше отсутствовало вообще, хотя TRUNCATE
+        // необратим. Пишем и успешные, и провалившиеся попытки отдельно,
+        // чтобы при разборе инцидента было видно, кто и что реально снёс,
+        // а что просто пытался.
+        if (!empty($success)) {
+            write_log(sprintf(
+                '[CLEARTABLE] Admin: %s (UID %d) TRUNCATED table(s): %s',
+                $CURUSER['username'] ?? 'unknown',
+                (int)($CURUSER['id'] ?? 0),
+                implode(', ', $success)
+            ), 'admin');
+        }
+        if (!empty($failed)) {
+            write_log(sprintf(
+                '[CLEARTABLE] Admin: %s (UID %d) FAILED to truncate table(s): %s',
+                $CURUSER['username'] ?? 'unknown',
+                (int)($CURUSER['id'] ?? 0),
+                implode(', ', $failed)
+            ), 'admin');
         }
         
         $this->showResults($success, $failed);
@@ -280,8 +332,10 @@ HTML;
     private function showResults($success, $failed)
     {
         stdhead('TRUNCATE MySQL Tables - Results');
-        
-        echo '<div class="container-md fade-in">';
+        echo $this->getStyles();
+        echo $this->getJavaScript();
+
+        echo '<div class="ct-wrap fade-in">';
         
         if (!empty($success)) {
             echo $this->getSuccessHtml($success);
@@ -291,7 +345,6 @@ HTML;
             echo $this->getFailureHtml($failed);
         }
         
-      
         echo '</div>';
         
         stdfoot();
@@ -303,137 +356,63 @@ HTML;
      */
    private function getSuccessHtml(array $tables): string
 {
+    global $mybb;
+
     $items = '';
     foreach ($tables as $table) {
         $escaped = $this->escapeHtml($table);
         $items .= '
-        <li class="text-dark mb-2" id="row_' . $escaped . '">
-            <span class="badge bg-success me-2"><i class="fas fa-check"></i></span>
-            <code class="text-dark">' . $escaped . '</code> - successfully truncated!
+        <div class="ct-success-item" id="row_' . $escaped . '">
+            <span class="ct-check-sq"><i class="fas fa-check"></i></span>
+            ' . $escaped . ' - successfully truncated!
             <span id="opt_status_' . $escaped . '" class="ms-2"></span>
-        </li>';
+        </div>';
     }
 
     $count   = count($tables);
-    $tablesJson = json_encode($tables);
+    $tablesAttr  = htmlspecialchars(json_encode($tables), ENT_QUOTES, 'UTF-8');
+    $postKeyAttr = htmlspecialchars($mybb->post_code, ENT_QUOTES, 'UTF-8');
 
     return '
-    <div class="card mb-4">
-        <div class="card-header bg-success text-white py-3">
-            <h3 class="mb-0"><i class="fas fa-check-circle me-2"></i>Success</h3>
+    <div class="ct-success-panel" id="ctSuccessPanel" data-tables="' . $tablesAttr . '" data-post-key="' . $postKeyAttr . '">
+        <div class="ct-success-header">
+            <span class="ct-check-circle"><i class="fas fa-check"></i></span> Success
         </div>
-        <div class="card-body">
-            <div class="alert alert-success">
-                <h4 class="alert-heading mb-3">✅ Operation completed successfully!</h4>
-                <p class="mb-3">The following tables have been truncated:</p>
-                <div class="bg-light p-3 rounded-3 mb-3">
-                    <ul class="list-unstyled mb-0">' . $items . '</ul>
+        <div class="ct-success-box">
+            <div class="ct-success-lead">
+                <span class="ct-check-sq"><i class="fas fa-check"></i></span> Operation completed successfully!
+            </div>
+            <div class="ct-success-sub">The following tables have been truncated:</div>
+            <div class="ct-success-list">' . $items . '</div>
+            <div class="ct-success-total">
+                Total truncated: <span class="ct-pill">' . $count . '</span> table(s)
+            </div>
+        </div>
+
+        <div class="ct-optimize-plain" id="opt_wrap">
+            <div id="opt_progress" style="display:none;margin-bottom:1rem;">
+                <div class="progress" style="height:6px;border-radius:4px;">
+                    <div id="opt_bar" class="progress-bar bg-warning" style="width:0%"></div>
                 </div>
-                <p class="mb-0 fw-bold">
-                    Total truncated: <span class="badge bg-success">' . $count . '</span> table(s)
-                </p>
+                <div class="mt-2" style="font-size:.82rem;color:var(--text-dim)" id="opt_label">Optimizing…</div>
             </div>
 
-            
-			
-
-            <!-- Optimize block -->
-            <div class="mt-3">
-                <div id="opt_progress" class="mb-3" style="display:none">
-                    <div class="progress" style="height:8px;border-radius:4px">
-                        <div id="opt_bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                             style="width:0%"></div>
-                    </div>
-                    <div class="mt-2 text-muted small" id="opt_label">Optimizing...</div>
-                </div>
-
-                <div id="opt_done" class="alert alert-info" style="display:none">
-                    <i class="bi bi-lightning-charge-fill me-2"></i>
-                    All tables optimized successfully!
-                </div>
-
-                <div class="card">
-                    <div class="card-body text-center py-4">
-                        <i class="fas fa-database fa-3x text-primary mb-3 d-block"></i>
-                        <h4>Don\'t forget to optimize your tables!</h4>
-                        <button type="button" id="btnOptimize" class="btn btn-primary btn-lg mt-3">
-                            <i class="fas fa-rocket me-2"></i>Optimize Tables
-                        </button>
-						<a href="' . $this->scriptUrl . '" class="btn btn-primary btn-lg mt-3">
-                                <i class="bi bi-arrow-left"></i> Back
-                            </a>
-                    </div>
-                </div>
-				
-				
+            <div id="opt_done" style="display:none;color:#1e8e4f;font-weight:600;margin-bottom:1rem;">
+                <i class="bi bi-lightning-charge-fill"></i> All tables optimized.
             </div>
-			
-			
-			
+
+            <i class="bi bi-database-fill ct-db-icon"></i>
+            <h4>Don\'t forget to optimize your tables!</h4>
+            <div class="ct-actions" style="justify-content:center">
+                <button type="button" id="btnOptimize" class="ct-btn ct-btn-blue">
+                    <i class="fas fa-rocket"></i> Optimize Tables
+                </button>
+                <a href="' . $this->scriptUrl . '" class="ct-btn ct-btn-blue">
+                    <i class="bi bi-arrow-left"></i> Back
+                </a>
+            </div>
         </div>
-    </div>
-
-    <script>
-    (function(){
-        const tables  = ' . $tablesJson . ';
-        const btn     = document.getElementById("btnOptimize");
-        const bar     = document.getElementById("opt_bar");
-        const label   = document.getElementById("opt_label");
-        const progress= document.getElementById("opt_progress");
-        const done    = document.getElementById("opt_done");
-
-        if (!btn) return;
-
-        btn.addEventListener("click", function(){
-            btn.disabled = true;
-            btn.innerHTML = \'<i class="bi bi-hourglass-split me-2"></i>Optimizing...\';
-            progress.style.display = "block";
-
-            let idx = 0;
-
-            function optimizeNext() {
-                if (idx >= tables.length) {
-                    progress.style.display = "none";
-                    done.style.display = "block";
-                    btn.style.display = "none";
-                    return;
-                }
-
-                const table = tables[idx];
-                const pct   = Math.round(((idx) / tables.length) * 100);
-                bar.style.width   = pct + "%";
-                label.textContent = "Optimizing: " + table + " (" + (idx+1) + "/" + tables.length + ")";
-
-                const statusEl = document.getElementById("opt_status_" + table);
-
-                fetch(window.location.href, {
-                    method: "POST",
-                    credentials: "same-origin",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: "do=ajax_optimize&table=" + encodeURIComponent(table)
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (statusEl) {
-                        statusEl.innerHTML = data.success
-                            ? \'<span class="badge bg-primary"><i class="bi bi-lightning-charge-fill"></i> optimized</span>\'
-                            : \'<span class="badge bg-danger">failed</span>\';
-                    }
-                    idx++;
-                    bar.style.width = Math.round((idx / tables.length) * 100) + "%";
-                    optimizeNext();
-                })
-                .catch(() => {
-                    if (statusEl) statusEl.innerHTML = \'<span class="badge bg-danger">error</span>\';
-                    idx++;
-                    optimizeNext();
-                });
-            }
-
-            optimizeNext();
-        });
-    })();
-    </script>';
+    </div>';
 }
     
     /**
@@ -444,23 +423,23 @@ HTML;
         $items = '';
         foreach ($tables as $table) {
             $items .= <<<HTML
-            <li class="mb-2">
-                <span class="badge bg-danger me-2"><i class="fas fa-times"></i></span>
-                <code>{$this->escapeHtml($table)}</code>
-            </li>
+            <div class="ct-result-row">
+                <span class="ct-icon-fail"><i class="fas fa-times"></i></span>
+                {$this->escapeHtml($table)}
+            </div>
 HTML;
         }
         
         return <<<HTML
-        <div class="card">
-            <div class="card-header bg-danger text-white py-3">
-                <h3 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Errors</h3>
+        <div class="ct-panel">
+            <div class="ct-titlebar">
+                <h1><i class="fas fa-exclamation-triangle"></i> Failed</h1>
             </div>
-            <div class="card-body">
-                <div class="alert alert-danger">
-                    <h4 class="alert-heading mb-3">❌ Failed to truncate the following tables:</h4>
-                    <ul class="mb-0">{$items}</ul>
-                </div>
+            <div class="ct-notice">
+                <strong>Failed to truncate the following table(s):</strong>
+            </div>
+            <div class="ct-body">
+                <div class="ct-table-list">{$items}</div>
             </div>
         </div>
 HTML;
@@ -490,15 +469,31 @@ HTML;
      */
     private function generateTableOptions($tables)
     {
-    $options = '';
+    $rows = '';
     foreach ($tables as $table) {
-        $options .= sprintf(
-            '<option value="%s">🗄️ %s</option>',
-            $this->escapeHtml($table),
-            $this->escapeHtml($table)
-        );
+        $isProtected = in_array(strtolower($table), self::PROTECTED_TABLES, true);
+        $escaped = $this->escapeHtml($table);
+        if ($isProtected) {
+            // Показываем защищённые таблицы прямо в списке, но заблокированными -
+            // это честнее, чем молча их прятать: видно, что система реально
+            // не даст выбрать критичное, а не просто "таблицы не хватает".
+            $rows .= <<<HTML
+            <label class="ct-row ct-locked" data-name="{$escaped}">
+                <input type="checkbox" disabled>
+                <span class="ct-tname">{$escaped}</span>
+                <span class="ct-lock-tag"><i class="bi bi-lock-fill"></i> protected</span>
+            </label>
+HTML;
+        } else {
+            $rows .= <<<HTML
+            <label class="ct-row" data-name="{$escaped}">
+                <input type="checkbox" name="tablenames[]" value="{$escaped}" class="ct-check">
+                <span class="ct-tname">{$escaped}</span>
+            </label>
+HTML;
+        }
     }
-    return $options;
+    return $rows;
     }
 	
 	
@@ -513,368 +508,78 @@ HTML;
      */
     private function getStyles()
     {
-        return <<<CSS
-        <style>
-            :root {
-                --gradient-primary: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-                --gradient-danger: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-                --gradient-success: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
-            }
-            
-            .fade-in {
-                animation: fadeIn 0.5s ease-in;
-            }
-            
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(20px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            
-            .table-select-modern {
-                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                border: 2px solid #dee2e6;
-                border-radius: 12px;
-                font-family: 'Courier New', 'Monaco', monospace;
-                font-size: 14px;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                cursor: pointer;
-            }
-            
-            .table-select-modern:focus {
-                border-color: #007bff;
-              
-                transform: scale(1.01);
-            }
-            
-            .table-select-modern option {
-                padding: 12px 15px;
-                border-bottom: 1px solid #e9ecef;
-                transition: all 0.2s ease;
-                background: white;
-                color: #000000;
-            }
-            
-            .table-select-modern option:hover {
-                background: linear-gradient(135deg, #007bff 0%, #0056b3 100%) !important;
-                color: white !important;
-                transform: translateX(5px);
-            }
-            
-            .table-select-modern option:checked {
-                background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%) !important;
-                color: white !important;
-                font-weight: bold;
-            }
-            
-            .card-modern {
-                border-radius: 20px;
-                overflow: hidden;
-               
-                transition: transform 0.3s ease, box-shadow 0.3s ease;
-            }
-            
-            .card-modern:hover {
-                transform: translateY(-5px);
-                
-            }
-            
-            .btn-gradient {
-                background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-                border: none;
-                border-radius: 12px;
-                transition: all 0.3s ease;
-            }
-            
-            .btn-gradient:hover {
-                transform: translateY(-2px);
-               
-            }
-            
-            .btn-gradient-danger {
-                background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            }
-            
-            .btn-gradient-danger:hover {
-              
-            }
-            
-            .badge-glow {
-                animation: glow 2s ease-in-out infinite;
-            }
-            
-            @keyframes glow {
-                0%, 100% { box-shadow: 0 0 5px rgba(0, 123, 255, 0.5); }
-                50% { box-shadow: 0 0 20px rgba(0, 123, 255, 0.8); }
-            }
-            
-            .table-list code {
-                background: #2d3748;
-                padding: 8px 12px;
-                border-radius: 8px;
-                display: inline-block;
-                font-size: 13px;
-            }
-            
-            .text-dark {
-                color: #000000 !important;
-            }
-			
-			
-			/* ── ct-* styles ── */
-.ct-label {
-    display: flex;
-    align-items: center;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #1e293b;
-    margin-bottom: .6rem;
-}
-.ct-hint {
-    margin-left: auto;
-    font-size: .82rem;
-    font-weight: 400;
-    color: #94a3b8;
-}
-.ct-select-wrap { display: flex; gap: .85rem; align-items: flex-start; }
-.ct-select {
-    flex: 1;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 12px;
-    padding: .4rem;
-    font-size: .95rem;
-    font-family: "Fira Code","Courier New",monospace;
-    color: #1e293b;
-    background: #f8fafc;
-    outline: none;
-    min-height: 340px;
-}
-.ct-select:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,.12); }
-.ct-select option { padding: 5px 8px; font-size: .95rem; }
-.ct-select option:checked { background: #1a56db; color: #fff; }
-.ct-sidebar { display: flex; flex-direction: column; gap: .5rem; min-width: 120px; }
-.ct-count-badge {
-    text-align: center;
-    font-size: .9rem;
-    font-weight: 700;
-    color: #1a56db;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    padding: .4rem .5rem;
-    border-radius: 10px;
-}
-.ct-count-badge span { font-size: .72rem; font-weight: 400; color: #64748b; display: block; }
-.ct-search-wrap { position: relative; }
-.ct-search {
-    width: 100%;
-    padding: .45rem .5rem .45rem 2rem;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 10px;
-    font-size: .9rem;
-    background: #fff;
-    outline: none;
-    box-sizing: border-box;
-    color: #1e293b;
-}
-.ct-search:focus { border-color: #1a56db; }
-.ct-search-icon {
-    position: absolute;
-    left: .6rem;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: .8rem;
-    color: #94a3b8;
-    pointer-events: none;
-}
-.ct-side-btn {
-    width: 100%;
-    padding: .5rem;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 10px;
-    background: #fff;
-    color: #374151;
-    font-size: .875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all .15s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: .3rem;
-}
-.ct-side-btn:hover { background: #f1f5f9; }
-.ct-side-btn-primary { background: #1a56db; color: #fff; border-color: #1a56db; }
-.ct-side-btn-primary:hover { background: #1648c0; }
-.ct-divider { height: 1px; background: #f1f5f9; margin: 1.5rem 0; }
-.ct-actions { display: flex; gap: .75rem; flex-wrap: wrap; }
-.ct-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: .4rem;
-    padding: .6rem 1.4rem;
-    border-radius: 10px;
-    font-size: .95rem;
-    font-weight: 600;
-    text-decoration: none;
-    border: none;
-    cursor: pointer;
-    transition: all .15s;
-}
-.ct-btn-danger { background: #dc2626; color: #fff; }
-.ct-btn-danger:hover { background: #b91c1c; transform: translateY(-1px); }
-.ct-btn-ghost { background: #f3f4f6; color: #374151; border: 1.5px solid #e5e7eb; }
-.ct-btn-ghost:hover { background: #e5e7eb; }
-			
-			
-			
-			
-			
-        </style>
-CSS;
+        return '<link rel="stylesheet" href="' . $this->baseUrl . '/admin/templates/cleartable.css">' . "\n";
     }
-    
+
     /**
      * Form HTML
      */
     private function getFormHtml($options)
-{
-    return <<<HTML
-    <div class="container-md fade-in">
-        <div class="card">
-            <div class="card-header text-white py-4" style="background: var(--gradient-primary);">
-                <div class="d-flex align-items-center justify-content-between">
-                    <h2 class="mb-0">
-                        <i class="fas fa-database me-2"></i>
-                        TRUNCATE MySQL Tables
-                    </h2>
-                    <span class="badge bg-light text-dark badge-glow px-3 py-2">
-                        <i class="fas fa-code me-1"></i>
-                    </span>
-                </div>
-            </div>
-            
-            <div class="card-body p-4">
-                <div class="alert alert-info border-0 rounded-3 mb-4 fade-in">
-                    <div class="d-flex align-items-start">
-                        <i class="fas fa-info-circle fa-2x me-3 text-info"></i>
-                        <div>
-                            <h4 class="alert-heading mb-2"><i class="fas fa-exclamation-triangle me-2"></i>Important Notice</h4>
-                            <p class="mb-2">TRUNCATE permanently removes ALL data from selected tables.</p>
-                            <p class="mb-0"><strong class="text-danger">⚠️ Always backup your database before performing this operation!</strong></p>
-                        </div>
-                    </div>
-                </div>
-                
-                <form method="post" action="{$this->scriptUrl}&do=clear" id="truncateForm">
+    {
+        $protectedList = implode(', ', self::PROTECTED_TABLES);
+        $totalProtected = $this->countProtected();
 
-                    <div class="ct-label">
-                        <i class="bi bi-table me-2"></i>Select tables to truncate
-                        <span class="ct-hint">Hold Ctrl / Cmd to multi-select</span>
-                    </div>
+        return <<<HTML
+        <div class="ct-wrap fade-in">
+            <div class="ct-panel">
+                <div class="ct-titlebar">
+                    <h1><i class="fas fa-database"></i> Truncate Database Tables</h1>
+                    <span class="ct-optag">IRREVERSIBLE</span>
+                </div>
 
-                    <div class="ct-select-wrap">
-                        <select name="tablenames[]" id="ctSelect" multiple size="18" class="ct-select">
-                            {$options}
-                        </select>
-                        <div class="ct-sidebar">
-                            <div class="ct-count-badge">
-                                <strong id="ctCount">0</strong>
-                                <span>selected</span>
-                            </div>
+                <div class="ct-notice">
+                    <strong>TRUNCATE deletes every row in the tables you select. There is no undo.</strong>
+                    Take a database backup before continuing.
+                </div>
+
+                <div class="ct-body">
+                    <form method="post" action="{$this->scriptUrl}&do=clear" id="truncateForm">
+
+                        <div class="ct-toolbar">
+                            <div class="ct-count"><strong id="ctCount">0</strong> table(s) selected</div>
                             <div class="ct-search-wrap">
                                 <i class="bi bi-search ct-search-icon"></i>
-                                <input type="text" id="ctSearch" class="ct-search" placeholder="Filter...">
+                                <input type="text" id="ctSearch" class="ct-search" placeholder="Filter tables…">
                             </div>
-                            <button type="button" id="ctAll" class="ct-side-btn ct-side-btn-primary">
-                                <i class="bi bi-check2-all"></i> All
-                            </button>
-                            <button type="button" id="ctNone" class="ct-side-btn">
-                                <i class="bi bi-x-lg"></i> None
-                            </button>
-                            <button type="button" id="ctInvert" class="ct-side-btn">
-                                <i class="bi bi-arrow-left-right"></i> Invert
-                            </button>
+                            <div style="display:flex;gap:.5rem;">
+                                <button type="button" id="ctAll" class="ct-side-btn"><i class="bi bi-check2-all"></i> All</button>
+                                <button type="button" id="ctNone" class="ct-side-btn"><i class="bi bi-x-lg"></i> Clear</button>
+                                <button type="button" id="ctInvert" class="ct-side-btn"><i class="bi bi-arrow-left-right"></i> Invert</button>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="ct-divider"></div>
+                        <div class="ct-table-list" id="ctList">
+                            {$options}
+                        </div>
 
-                    <div class="ct-actions">
-                        <button type="submit" class="btn btn-danger">
-                                <i class="fas fa-trash-alt me-2"></i>
-                                🚨 TRUNCATE SELECTED TABLES
+                        <div class="ct-notice" style="border-radius:10px;margin-top:1rem;">
+                            <i class="bi bi-lock-fill"></i> {$totalProtected} table(s) are locked and cannot be truncated from here:
+                            <span class="ct-mono">{$this->escapeHtml($protectedList)}</span>
+                        </div>
+
+                        <div class="ct-divider"></div>
+
+                        <div class="ct-actions">
+                            <button type="submit" class="ct-btn ct-btn-danger">
+                                <i class="fas fa-trash-alt"></i> Truncate selected tables
                             </button>
-                        <a href="{$this->scriptUrl}" class="btn btn-secondary btn-lg px-4">
-                                <i class="fas fa-times me-2"></i>Cancel
-                            </a>
-                    </div>
+                            <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">Cancel</a>
+                        </div>
 
-                </form>
+                    </form>
+                </div>
             </div>
         </div>
-    </div>
 HTML;
-}
-    
+    }
+
     /**
      * JavaScript code
      */
-private function getJavaScript(): string
-{
-    return '
-<script>
-(function(){
-    const sel   = document.getElementById("ctSelect");
-    const srch  = document.getElementById("ctSearch");
-    const cnt   = document.getElementById("ctCount");
-    const opts  = sel ? Array.from(sel.options) : [];
-
-    const upd = () => { if(cnt) cnt.textContent = Array.from(sel.selectedOptions).length; };
-
-    if (sel) sel.addEventListener("change", upd);
-
-    if (srch) {
-        srch.addEventListener("input", function(){
-            const q = this.value.toLowerCase();
-            opts.forEach(o => {
-                o.hidden = !o.text.toLowerCase().includes(q);
-                if (o.hidden) o.selected = false;
-            });
-            upd();
-        });
+	private function getJavaScript(): string
+    {
+        return '<script src="' . $this->baseUrl . '/admin/scripts/cleartable.js"></script>' . "\n";
     }
-
-    const ctAll = document.getElementById("ctAll");
-    if (ctAll) ctAll.addEventListener("click", () => {
-        opts.forEach(o => { if (!o.hidden) o.selected = true; }); upd();
-    });
-
-    const ctNone = document.getElementById("ctNone");
-    if (ctNone) ctNone.addEventListener("click", () => {
-        opts.forEach(o => o.selected = false); upd();
-    });
-
-    const ctInvert = document.getElementById("ctInvert");
-    if (ctInvert) ctInvert.addEventListener("click", () => {
-        opts.forEach(o => { if (!o.hidden) o.selected = !o.selected; }); upd();
-    });
-
-    const form = document.getElementById("truncateForm");
-    if (form) {
-        form.addEventListener("submit", function(e){
-            const n = Array.from(sel.selectedOptions).length;
-            if (n === 0) {
-                e.preventDefault();
-                alert("Select at least one table.");
-                return;
-            }
-            if (!confirm("Truncate " + n + " table(s)?\n\nAll data will be permanently deleted.\nThis cannot be undone!")) {
-                e.preventDefault();
-            }
-        });
-    }
-})();
-</script>';
-}
     
     /**
      * HTML escaping
@@ -882,6 +587,11 @@ private function getJavaScript(): string
     private function escapeHtml($text)
     {
         return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    private function countProtected(): int
+    {
+        return count(self::PROTECTED_TABLES);
     }
 }
 

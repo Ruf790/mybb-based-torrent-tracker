@@ -4,6 +4,206 @@
 declare(strict_types=1);
 
 
+
+
+function update_forum_counters(int|string $fid, array $changes = []): void
+{
+    global $db;
+
+    $fid = (int)$fid;
+	
+	$counters = ['threads', 'unapprovedthreads', 'posts', 'unapprovedposts'];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM forums WHERE fid = ?",
+        [$fid]
+    );
+    $forum  = $query ? $db->fetch_array($query) : null;
+    $update = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $forum[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $fid;
+
+        $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
+    }
+
+    // Обновляем глобальную статистику
+    $stat_map = [
+        'threads'           => 'numthreads',
+        'unapprovedthreads' => 'numunapprovedthreads',
+        'posts'             => 'numposts',
+        'unapprovedposts'   => 'numunapprovedposts',
+    ];
+
+    $new_stats = [];
+    foreach ($stat_map as $counter => $stat) {
+        if (!isset($update[$counter])) {
+            continue;
+        }
+        $diff = $update[$counter] - $forum[$counter];
+        $new_stats[$stat] = ($diff >= 0 ? '+' : '') . $diff;
+    }
+
+    if (!empty($new_stats)) {
+        update_stats($new_stats);
+    }
+}
+
+
+
+// ── update_forum_lastpost ─────────────────────────────────────────────────────
+function update_forum_lastpost(int $fid): void
+{
+    global $db;
+
+    $query = $db->sql_query_prepared("
+        SELECT tid, lastpost, lastposter, lastposteruid, subject
+        FROM threads
+        WHERE fid = ? AND visible = '1' AND closed NOT LIKE 'moved|%'
+        ORDER BY lastpost DESC LIMIT 1
+    ", [$fid]);
+
+    if ($query && $db->num_rows($query) > 0) {
+        $last = $db->fetch_array($query);
+        $updated = [
+            'lastpost'        => (int)$last['lastpost'],
+            'lastposter'      => $last['lastposter'],
+            'lastposteruid'   => (int)$last['lastposteruid'],
+            'lastposttid'     => (int)$last['tid'],
+            'lastpostsubject' => $last['subject'],
+        ];
+    } else {
+        $updated = [
+            'lastpost' => 0, 'lastposter' => '', 'lastposteruid' => 0,
+            'lastposttid' => 0, 'lastpostsubject' => '',
+        ];
+    }
+
+    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated)));
+    $params = array_values($updated);
+    $params[] = $fid;
+
+    $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
+}
+
+
+
+// ── update_thread_counters ────────────────────────────────────────────────────
+function update_thread_counters(int $tid, array $changes = []): void
+{
+    global $db;
+
+    $counters = ['replies', 'unapprovedposts', 'attachmentcount'];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM threads WHERE tid = ?",
+        [$tid]
+    );
+    $thread = $query ? $db->fetch_array($query) : null;
+    $update = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $thread[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $tid;
+
+        $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
+    }
+}
+
+
+// ── update_thread_data ────────────────────────────────────────────────────────
+function update_thread_data(int $tid): void
+{
+    global $db;
+
+    $thread = get_thread($tid);
+
+    if ($thread && str_starts_with((string)$thread['closed'], 'moved|')) {
+        return;
+    }
+
+    $last_query = $db->sql_query_prepared("
+        SELECT u.id, u.username, p.username AS postusername, p.dateline
+        FROM posts p LEFT JOIN users u ON u.id = p.uid
+        WHERE p.tid = ? AND p.visible = '1'
+        ORDER BY p.dateline DESC, p.pid DESC LIMIT 1
+    ", [$tid]);
+    $last = $last_query ? $db->fetch_array($last_query) : null;
+
+    $first_query = $db->sql_query_prepared("
+        SELECT u.id, u.username, p.pid, p.username AS postusername, p.dateline
+        FROM posts p LEFT JOIN users u ON u.id = p.uid
+        WHERE p.tid = ?
+        ORDER BY p.dateline ASC, p.pid ASC LIMIT 1
+    ", [$tid]);
+    $first = $first_query ? $db->fetch_array($first_query) : null;
+
+    $first['username'] = $first['username'] ?: $first['postusername'];
+    $last['username']  = $last['username']  ?: $last['postusername'];
+
+    if (empty($last['dateline'])) {
+        $last['username'] = $first['username'];
+        $last['id']       = $first['id'];
+        $last['dateline'] = $first['dateline'];
+    }
+
+    $db->sql_query_prepared("
+        UPDATE threads
+        SET firstpost = ?, username = ?, uid = ?, dateline = ?,
+            lastpost = ?, lastposter = ?, lastposteruid = ?
+        WHERE tid = ?
+    ", [
+        (int)$first['pid'],
+        $first['username'],
+        (int)$first['id'],
+        (int)$first['dateline'],
+        (int)$last['dateline'],
+        $last['username'],
+        (int)$last['id'],
+        $tid,
+    ]);
+}
+
+
+
+
 // Disallow direct access to this file for security reasons
 if (!defined("STAFF_PANEL")) {
     die("Direct initialization of this file is not allowed.<br /><br />Please make sure STAFF_PANEL is defined.");
@@ -17,31 +217,6 @@ foreach (['action', 'do', 'module'] as $input) {
     $mybb->input[$input] ??= '';
 }
 
-function my_chmod(string $file, string $mode): bool
-{
-    // Passing $mode as an octal number causes strlen and substr to return incorrect values
-    if (!str_starts_with($mode, '0') || strlen($mode) !== 4) {
-        return false;
-    }
-    
-    $old_umask = umask(0);
-    $result = chmod($file, octdec($mode));
-    umask($old_umask);
-    
-    return $result;
-}
-
-function mk_path_abs(string $path, string $base = TSDIR): string
-{
-    $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-    $firstChar = substr($path, 0, 1);
-    
-    if ($firstChar !== '/' && !($isWin && ($firstChar === '\\' || preg_match('(^[a-zA-Z]:\\\\)', $path)))) {
-        $path = $base . $path;
-    }
-
-    return $path;
-}
 
 function output_auto_redirect(string $form, string $prompt): void
 {

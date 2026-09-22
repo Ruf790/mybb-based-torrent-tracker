@@ -1083,7 +1083,6 @@ stdhead('Comments Admin');
 <!-- Toast -->
 <div id="toastContainer" class="position-fixed top-0 end-0 p-3" style="z-index:1100;"></div>
 
-<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/bootstrap-icons.css">
 
 <style>
 #selectAll, .comment-checkbox { transform: scale(1.2); cursor: pointer; }

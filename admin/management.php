@@ -2057,7 +2057,7 @@ if ($action === 'add') {
     echo '<div class="breadcrumb">' . mgmt_render_breadcrumb() . '</div>';
     fm_head_assets();
 	
-	echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css">';
+	
     echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css">';
 	
     echo '<link rel="stylesheet" href="templates/forum.css?ver=1813">';
@@ -2338,7 +2338,6 @@ if ($action === 'edit') {
 	
 	
 
-echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css">';
 echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css">';
 	
 	
@@ -2919,7 +2918,6 @@ if (!$action) {
     //echo $extra_header;
     fm_head_assets();
     echo '<link rel="stylesheet" href="templates/forum.css?ver=1813">';
-    echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css">';
     echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css">';
 	
 	

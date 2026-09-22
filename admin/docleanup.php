@@ -21,7 +21,6 @@ declare(strict_types=1);
   {
     stdhead('CleanUp');
     echo '
-<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
 <div class="container mt-3">
     <div class="card shadow-sm">
         <div class="card-header bg-warning">
@@ -51,11 +50,6 @@ declare(strict_types=1);
 
   define ('RUN_CRONJOBS', true);
 
-  // WHERE cronid > 0 добавлен не только для ясности запроса, но и потому,
-  // что MySQL в режиме sql_safe_updates отклоняет UPDATE без WHERE по
-  // ключевой колонке или LIMIT — раньше запрос без WHERE мог тихо
-  // проваливаться на серверах с этой настройкой, а результат вообще
-  // не проверялся.
   $reset_result = $db->sql_query_prepared('UPDATE cron SET nextrun = ? WHERE cronid > 0', [0]);
 
   if (!$reset_result) {
@@ -71,7 +65,6 @@ declare(strict_types=1);
 
 $mess = '
 
-<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
 <link href="'.$BASEURL.'/include/templates/default/style/messagess.css" rel="stylesheet">
 
 <div class="container mt-3">

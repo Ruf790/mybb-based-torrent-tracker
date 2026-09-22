@@ -1,5 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization is not allowed.</div>');
+}
+
+stdhead('44');  
+
 
 class ServerInfoDisplay {
     private array $config;
@@ -26,15 +34,13 @@ class ServerInfoDisplay {
     }
 
     private function renderHeader(): void {
-        echo '<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="' . htmlspecialchars($this->charset) . '">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>' . htmlspecialchars($this->siteName) . ' - Server Info</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <style>
+        // stdhead() уже выводит <!DOCTYPE html><html><head>...</head><body> -
+        // раньше здесь выводился ВТОРОЙ, вложенный набор этих тегов поверх
+        // первого (невалидный HTML), из-за чего браузер игнорировал обычные
+        // ограничения ширины контейнера сайта. Оставляем только <style> и
+        // содержимое страницы. container-fluid -> container, чтобы совпадать
+        // по ширине с остальными страницами сайта.
+        echo '<style>
         :root {
             --primary-color: #4361ee;
             --secondary-color: #3a0ca3;
@@ -153,10 +159,17 @@ class ServerInfoDisplay {
             color: #4cc9f0;
             border: 1px solid rgba(76, 201, 240, 0.3);
         }
+
+        /* Подстраховка - гарантированное скрытие неактивных вкладок,
+           независимо от того, применяется ли собственный display:none
+           из bootstrap.min.css сайта корректно. Вкладка PHP содержит
+           огромный вывод phpinfo(), и если она хоть немного "просвечивает"
+           по высоте - это и создаёт эффект пустоты перед контентом MySQL. */
+        .tab-pane:not(.show) {
+            display: none !important;
+        }
     </style>
-</head>
-<body>
-<div class="container-fluid py-4">
+<div class="container py-4">
     <div class="row mb-4">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
@@ -270,7 +283,7 @@ class ServerInfoDisplay {
         $this->renderInfoRow('Max Post Size', ini_get('post_max_size'), 'Max Execution Time', ini_get('max_execution_time') . 's');
         $this->renderInfoRow('Short Open Tag', ini_get('short_open_tag') ? 'On' : 'Off', 'Safe Mode', ini_get('safe_mode') ? 'On' : 'Off');
         $this->renderInfoRow('Database Data', $this->formatSize($dataUsage), 'Database Index', $this->formatSize($indexUsage));
-        $this->renderInfoRow('Max Packet Size', $this->formatSize($packetMax), 'Max Connections', number_format($connectionMax));
+        $this->renderInfoRow('Max Packet Size', $this->formatSize($packetMax), 'Max Connections', ts_nf($connectionMax));
         
         echo '                      </tbody>
                             </table>
@@ -345,8 +358,10 @@ class ServerInfoDisplay {
     }
 
     private function renderFooter(): void {
+        // </body></html> убраны - их выводит stdfoot() на уровне страницы
+        // (stdhead() уже открыл их). bootstrap.bundle.min.js с CDN убран -
+        // тот же файл уже грузится локально через stdhead()/header.php.
         echo '</div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 // Initialize tooltips
 var tooltipTriggerList = [].slice.call(document.querySelectorAll(\'[data-bs-toggle="tooltip"]\'));
@@ -362,7 +377,18 @@ document.addEventListener(\'DOMContentLoaded\', function() {
             localStorage.setItem(\'activeServerInfoTab\', this.id);
         });
     });
-    
+
+    // Вкладка PHP выводит phpinfo() - она огромная (часто 10000+px).
+    // Без этого при переключении со скроленной вниз PHP-вкладки на любую
+    // другую позиция скролла не менялась, и приходилось листать вручную,
+    // хотя контент вкладки уже сменился.
+    const navTabsEl = document.getElementById(\'serverInfoTabs\');
+    if (navTabsEl) {
+        navTabsEl.addEventListener(\'shown.bs.tab\', function () {
+            window.scrollTo(0, 0);
+        });
+    }
+
     const activeTab = localStorage.getItem(\'activeServerInfoTab\');
     if (activeTab) {
         const tabElement = document.getElementById(activeTab);
@@ -371,9 +397,7 @@ document.addEventListener(\'DOMContentLoaded\', function() {
         }
     }
 });
-</script>
-</body>
-</html>';
+</script>';
     }
 
     private function getSqlVersion(): string {
@@ -436,7 +460,10 @@ document.addEventListener(\'DOMContentLoaded\', function() {
         return 'N/A';
     }
 
-    private function formatSize(int $bytes): string {
+    private function formatSize(int|string $bytes): string {
+        // SQL-агрегаты (SUM/MAX и т.п.) PHP иногда возвращает числовой
+        // строкой, а не int - отсюда и был TypeError.
+        $bytes = (float)$bytes;
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
         $i = 0;
         
@@ -496,4 +523,6 @@ try {
         <p>' . htmlspecialchars($e->getMessage()) . '</p>
     </div>';
 }
+
+stdfoot();
 ?>

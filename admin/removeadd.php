@@ -135,7 +135,6 @@ $timestamp = date('Y-m-d H:i:s');
 $performedBy = e($CURUSER['username'] ?? 'System');
 
 echo <<<HTML
-<link href="{$BASEURL}/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">
 <link href="{$BASEURL}/include/templates/default/style/errorss.css" rel="stylesheet">
 
 <div class="container mt-3">

@@ -1,6 +1,13 @@
 <?php
 declare(strict_types=1);
 
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger m-3" role="alert">
+        <i class="fas fa-ban me-2"></i><b>Error!</b> Direct initialization of this file is not allowed.
+    </div>');
+}
+
+
 require_once(INC_PATH . '/functions_mkprettytime.php');
 
 // ─── Helper: Calculate Cron Time ──────────────────────────────────────

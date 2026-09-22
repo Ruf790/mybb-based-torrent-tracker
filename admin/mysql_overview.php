@@ -35,13 +35,22 @@ function getOverheadDisplay(array $row, string $scriptUrl): string
     [$formattedSize, $unit] = formatByteSize($dataFree);
     
     if ($dataFree > 0) {
-        $tableName = urlencode($row['Name'] ?? '');
-        $link = htmlspecialchars($scriptUrl . '&Do=T&table=' . $tableName . '&my_post_key=' . $mybb->post_code);
+        $tableName = htmlspecialchars($row['Name'] ?? '', ENT_QUOTES);
+        // Раньше была прямая <a href> GET-ссылка с токеном прямо в URL -
+        // теперь маленькая inline-форма с POST, тот же барьер, что и у
+        // обработчика ниже.
         return sprintf(
-            '<a href="%s" class="text-decoration-none text-danger fw-bold" title="Optimize Table">
-                <i class="fas fa-tools me-1"></i>%s %s
-            </a>',
-            $link,
+            '<form method="post" action="%s" class="d-inline m-0 p-0">
+                <input type="hidden" name="Do" value="T">
+                <input type="hidden" name="table" value="%s">
+                <input type="hidden" name="my_post_key" value="%s">
+                <button type="submit" class="btn btn-link p-0 text-decoration-none text-danger fw-bold" title="Optimize Table" style="border:none;background:none;">
+                    <i class="fas fa-tools me-1"></i>%s %s
+                </button>
+            </form>',
+            htmlspecialchars($scriptUrl, ENT_QUOTES),
+            $tableName,
+            htmlspecialchars($mybb->post_code, ENT_QUOTES),
             $formattedSize,
             $unit
         );
@@ -293,13 +302,21 @@ $serverStatus = getDatabaseServerStatus();
 $activeProcesses = getActiveProcesses();
 
 // Process parameters
-$action = $_GET['Do'] ?? '';
-$table = $_GET['table'] ?? '';
+$action = $_POST['Do'] ?? $_GET['Do'] ?? '';
+$table = $_POST['table'] ?? $_GET['table'] ?? '';
 $message = $_GET['message'] ?? '';
 $error = '';
 
 if ($action === 'T' && $table && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $table)) {
-    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+    // Раньше срабатывало по GET (и легаси-ссылка, и AJAX-вызов), токен
+    // тоже передавался через query string - тот же класс ослабления,
+    // что был найден и исправлен в passkeysearch.php. OPTIMIZE не удаляет
+    // данные, поэтому не критично, но GET-ссылка с уже известным токеном
+    // (например, случайно засветившаяся в логах/Referer) могла бы
+    // сработать в обход "только через форму".
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        $error = 'Invalid request method.';
+    } elseif (!verify_post_check($mybb->get_input('my_post_key'), true)) {
         $error = 'Invalid or expired security token. Please try again from this page.';
     } else {
     $tableName = '`' . $table . '`';
@@ -1331,11 +1348,13 @@ function performOptimization(tableName) {
     // Perform AJAX request
     const myPostKey = document.getElementById('myPostKey')?.value || '';
     const actQuery = document.getElementById('actQuery')?.value || '';
-    fetch(`${actQuery}&Do=T&table=${encodeURIComponent(tableName)}&my_post_key=${encodeURIComponent(myPostKey)}`, {
-        method: 'GET',
+    fetch(`${actQuery}`, {
+        method: 'POST',
         headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `Do=T&table=${encodeURIComponent(tableName)}&my_post_key=${encodeURIComponent(myPostKey)}`
     })
     .then(response => {
         if (response.ok) {

@@ -38,9 +38,7 @@ try {
 
     $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/uploads/';
 
-    // Реальный MIME по содержимому файла - $_FILES[...]['type'] это просто
-    // Content-Type заголовок ОТ КЛИЕНТА, тривиально подделывается и не может
-    // использоваться как проверка безопасности сама по себе.
+    
     $allowedMime = [
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
         'application/pdf',
@@ -48,11 +46,7 @@ try {
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ];
 
-    // Явный whitelist расширений. Раньше расширение бралось из имени файла
-    // клиента без всякой проверки и приклеивалось к серверному имени - то
-    // есть можно было залить .php/.phtml с подделанным Content-Type и
-    // получить выполнение кода на сервере (файл сохранялся прямо под
-    // DOCUMENT_ROOT).
+    
     $allowedExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx'];
 
     $maxSize = 10 * 1024 * 1024; // 10 MB
@@ -147,12 +141,7 @@ try {
             continue;
         }
 
-        // Перекодирование через GD — только для картинок, остальные типы
-        // (pdf/doc/docx) GD не умеет и не должна трогать. getimagesize()+
-        // finfo проверяют только заголовок, не гарантируют отсутствие
-        // приклеенной после настоящих данных изображения нагрузки
-        // ("полиглот"-файл). Возвращает актуальный размер файла на диске —
-        // перекодирование почти всегда меняет размер в байтах.
+        
         $actualFileSize = (int)$fileSize;
         if (str_starts_with($realMime, 'image/')) {
             $recodedSize = recode_image_file($uploadPath, $realMime);
@@ -181,9 +170,7 @@ try {
         }
     }
 
-    // Автоматически добавляем [img] в текст контента.
-    // Приватные сообщения сюда сознательно не включены - см. пояснение в
-    // сопроводительном тексте.
+    
     if ($uploaded > 0 && $uploadedFiles !== []) {
         $contentInfo = match ($contentType) {
             'comment' => ['table' => 'comments', 'field' => 'text', 'id_field' => 'id'],

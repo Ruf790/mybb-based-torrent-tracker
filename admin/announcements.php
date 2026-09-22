@@ -124,6 +124,7 @@ function calculateReadingTime(string $text): string
  */
 function renderDeleteModal(string $scriptName): void
 {
+    global $mybb;
     ?>
     <div class="modal fade" id="deleteAnnouncementModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -141,9 +142,15 @@ function renderDeleteModal(string $scriptName): void
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <a href="#" id="confirmDeleteBtn" class="btn btn-danger">
-                        <i class="fas fa-trash me-1"></i> Delete
-                    </a>
+                    <form id="deleteAnnouncementForm" method="post" action="<?= htmlspecialchars($scriptName) ?>">
+                        <input type="hidden" name="act" value="announcements">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="id" id="deleteAnnouncementId" value="">
+                        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash me-1"></i> Delete
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -162,8 +169,7 @@ function renderDeleteModal(string $scriptName): void
 
         window.openDeleteModal = function (id, subject) {
             document.getElementById('deleteAnnouncementTitle').textContent = subject;
-            document.getElementById('confirmDeleteBtn').href =
-                '<?= htmlspecialchars($scriptName) ?>?act=announcements&action=delete&id=' + id + '&sure=yes';
+            document.getElementById('deleteAnnouncementId').value = id;
             getModal().show();
         };
     })();
@@ -911,7 +917,7 @@ function renderSeeScripts(
     string $scriptName
 ): void {
 	
-	global $BASEURL;
+	global $BASEURL, $mybb;
 	
     $base        = htmlspecialchars($scriptName . '?act=announcements');
     $prevId      = $prev ? (int) $prev['id'] : 'null';
@@ -940,6 +946,7 @@ function renderSeeScripts(
         let _sidebarVisible = true;
 
         const BASE_URL = '<?= $base ?>';
+        const POST_KEY = '<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>';
         const PREV_ID  = <?= $prevId ?>;
         const NEXT_ID  = <?= $nextId ?>;
 
@@ -1056,7 +1063,7 @@ function renderSeeScripts(
             fetch(`${BASE_URL}&action=duplicate&id=${id}`, {
                 method: 'POST',
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'do=duplicate',
+                body: 'do=duplicate&my_post_key=' + encodeURIComponent(POST_KEY),
             })
             .then(r => { if (!r.ok) throw new Error('Network error'); return r.json(); })
             .then(data => {
@@ -1148,9 +1155,13 @@ function renderSeeScripts(
  */
 function handleAddAction(string $do): void
 {
-    global $db;
+    global $db, $mybb;
 
     if ($do === 'save') {
+        if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+            redirect('admin/index.php?act=announcements&action=add', 'Security check failed. Please try again.');
+        }
+
         $subject      = trim($_POST['subject'] ?? '');
         $message      = trim($_POST['message'] ?? '');
         $minclassread = $_POST['minclassread'] ?? '-';
@@ -1179,13 +1190,17 @@ function handleAddAction(string $do): void
  */
 function handleEditAction(int $id, string $do): void
 {
-    global $db;
+    global $db, $mybb;
 
     if ($id <= 0) {
         redirect('admin/index.php?act=announcements', 'Invalid announcement ID');
     }
 
     if ($do === 'save') {
+        if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+            redirect("admin/index.php?act=announcements&action=edit&id=$id", 'Security check failed. Please try again.');
+        }
+
         $subject      = trim($_POST['subject'] ?? '');
         $message      = trim($_POST['message'] ?? '');
         $minclassread = $_POST['minclassread'] ?? '-';
@@ -1225,14 +1240,17 @@ function handleEditAction(int $id, string $do): void
  */
 function handleDeleteAction(int $id): void
 {
-    global $db;
+    global $db, $mybb;
 
     if ($id <= 0) {
         redirect('admin/index.php?act=announcements', 'Invalid announcement ID');
     }
 
-    if (($_GET['sure'] ?? '') !== 'yes') {
-        redirect('admin/index.php?act=announcements', 'Deletion cancelled');
+    // Раньше срабатывало по простой GET-ссылке (?sure=yes), без CSRF
+    // вообще - сторонняя страница могла обманом заставить залогиненного
+    // стаффа удалить объявление незаметно. Теперь только POST + токен.
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verify_post_check($mybb->get_input('my_post_key'), true)) {
+        redirect('admin/index.php?act=announcements', 'Invalid request method or security token.');
     }
 
     $db->sql_query_prepared("DELETE FROM announcements WHERE type = 'tracker' AND id = ?", [$id]);
@@ -1244,7 +1262,7 @@ function handleDeleteAction(int $id): void
  */
 function handleDuplicateAction(int $id)
 {
-    global $db;
+    global $db, $mybb;
 
     $isAjax = (strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest');
 
@@ -1267,6 +1285,7 @@ function handleDuplicateAction(int $id)
                     <p>Are you sure you want to duplicate this announcement?</p>
                     <form method="POST">
                         <input type="hidden" name="do" value="duplicate">
+                        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
                         <button type="submit" class="btn btn-success">Yes, Duplicate</button>
                         <a href="<?= $_SERVER['SCRIPT_NAME'] ?>?act=announcements&action=see&id=<?= $id ?>"
                            class="btn btn-secondary ms-2">Cancel</a>
@@ -1277,6 +1296,11 @@ function handleDuplicateAction(int $id)
         <?php
         stdfoot();
         return;
+    }
+
+    // CSRF - раньше отсутствовал, теперь проверяется до самого дублирования.
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        return respondDuplicate($isAjax, false, 'Security check failed. Please try again.');
     }
 
     $original = fetchAnnouncement($id);
@@ -1380,7 +1404,7 @@ function respondDuplicate(
  */
 function renderAnnouncementForm(string $mode, array $data = []): void
 {
-    global $smilies, $_this_script_, $BASEURL;
+    global $smilies, $_this_script_, $BASEURL, $mybb;
 
     $isEdit = ($mode === 'edit');
     $title  = $isEdit ? 'Edit Announcement' : 'New Announcement';
@@ -1433,6 +1457,7 @@ function renderAnnouncementForm(string $mode, array $data = []): void
                     <input type="hidden" name="act"    value="announcements">
                     <input type="hidden" name="action" value="<?= $mode ?>">
                     <input type="hidden" name="do"     value="save">
+                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
 					
 					
 					

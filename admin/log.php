@@ -1185,163 +1185,110 @@ elseif ($entry_type === 'admin') {
 
         // Маппинг бейджей
         $badge_map = [
-            'Banned User' => ['danger', 'Ban', 'fa-ban'],
-            'Lifted User Ban' => ['success', 'Unban', 'fa-unlock'],
-            'Merged Selective Posts' => ['primary', 'Merge Posts', 'fa-compress'],
-            'Deleted User' => ['danger', 'Delete User', 'fa-user-times'],
-            'Edited Post' => ['primary', 'Edit Post', 'fa-edit'],
-            'Deleted Post' => ['danger', 'Delete Post', 'fa-trash'],
-            'Moved Thread' => ['warning', 'Move Thread', 'fa-exchange-alt'],
-            'Closed Thread' => ['secondary', 'Close Thread', 'fa-lock'],
-            'has been uploaded' => ['success', 'Upload', 'fa-upload'],
-            'has been optimized..' => ['success', 'Optimization', 'fa-cogs'],
-          
-            'task successfully ran' => ['success', 'Task', 'fa-tasks'],
-            'was deleted by' => ['danger', 'Deletion', 'fa-trash'],
-            'has been deleted by' => ['danger', 'Deletion', 'fa-trash'],
-            'Attempt' => ['danger', 'Security', 'fa-shield-alt'],
-            'unwanted' => ['danger', 'Spam', 'fa-ban'],
-            'has downloaded' => ['danger', 'Download', 'fa-download'],
-            'site settings updated by' => ['danger', 'Settings', 'fa-cog'],
-            'has been edited by' => ['primary', 'Edit', 'fa-edit'],
-            'has been saved' => ['primary', 'Saved', 'fa-save'],
-		    
-			'copied' => ['primary', 'Comment Copy', 'fa-copy'],
-			
-			'copied' => ['primary', 'Copied settings', 'fa-copy'],
-			
-			
-			'Threads Deleted' => ['danger', 'Threads Del', 'fa-trash'], 
-			
-			
-			'Database check completed' => ['success', 'DB Check', 'fa-database'],
-			
-			
-			'Deleted Selective Posts' => ['danger', 'Del Posts', 'fa-object-group'],
-			
-			
-			'Rebuilt cache' => ['success', 'Cache Rebuild', 'fa-arrows-rotate'],
-			
-			'Deleted attachment' => ['danger', 'Attachment Deleted', 'fa-trash-alt'],
-			
-			
-			'moved' => ['warning', 'Comment Move', 'fa-arrows-alt'],
-			
-			'Added usergroup' => ['success', 'User Group Added', 'fa-users'],
-			
-			'Edited usergroup' => ['warning', 'User Group Edited', 'fa-pencil'],
-			
-			
-			'Database backup completed successfully' => ['success', 'Database Backup Completed', 'fa-database'],
-			
-			'Created a backup' => ['success', 'Database Backup Created', 'fa-database'],
-			
-			'done | no active seeders' => ['success', 'Seed Bonus Awarded', 'fa-check-circle'],
-	
-			
-			
-           	'send mail queue' => ['info', 'Mail Queue', 'fa-paper-plane'],
-            'Mass Comment Delete' => ['danger', 'Mass Comment Delete', 'fa-comment'],
-			
-			
-			
-			
-			'Added disallowed'  => ['danger',  'Blacklist Add', 'fa-ban'],
-            'Removed disallowed'=> ['success', 'Blacklist Del', 'fa-check-circle'],
-            'Added IP ban'      => ['danger',  'IP Ban',        'fa-shield-alt'],
-            'Removed IP ban'    => ['success', 'IP Unban',      'fa-shield-alt'],
-			
-			
-			'DB Optimized SUCCESS' => ['success', 'DB Optimized', 'fa-database'],
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			'Added forum'       => ['success', 'Forum Add',   'fa-plus'],
-'Edited forum'      => ['primary', 'Forum Edit',  'fa-edit'],
-'Deleted forum'     => ['danger',  'Forum Del',   'fa-trash'],
-'Updated quick'     => ['warning', 'Permissions', 'fa-key'],
-'Edited group perm' => ['warning', 'Permissions', 'fa-key'],
-'Added moderator'   => ['success', 'Add Mod',     'fa-user-plus'],
+        // ── Пользователи / баны ──────────────────────────────
+        'Banned User'          => ['danger',  'Ban',        'fa-ban'],
+        'Lifted User Ban'      => ['success', 'Unban',      'fa-unlock'],
+        'Lifted ban for user'  => ['success', 'Unban',      'fa-user-check'],
+        'Deleted User'         => ['danger',  'Delete User','fa-user-times'],
+        'Added disallowed'     => ['danger',  'Blacklist Add', 'fa-ban'],
+        'Removed disallowed'   => ['success', 'Blacklist Del', 'fa-check-circle'],
+        'Added IP ban'         => ['danger',  'IP Ban',        'fa-shield-alt'],
+        'Removed IP ban'       => ['success', 'IP Unban',      'fa-shield-alt'],
+        'Added usergroup'      => ['success', 'User Group Added', 'fa-users'],
+        'Edited usergroup'     => ['warning', 'User Group Edited', 'fa-pencil'],
+        'Promoted users'       => ['success', 'Promotion',  'fa-level-up-alt'],
+        'Demoted users'        => ['warning', 'Demotion',   'fa-level-down-alt'],
+        'Leech-warned users'   => ['warning', 'Leech Warning', 'fa-exclamation-triangle'],
+        'Added moderator'      => ['success', 'Add Mod',    'fa-user-plus'],
+        'Mass Invite'          => ['success', 'Mass Invite','fa-envelope-open-text'],
 
-			
-			
-'Mass Invite' => ['success', 'Mass Invite', 'fa-envelope-open-text'],
+        // ── Посты / темы ──────────────────────────────────────
+        'Merged Selective Posts'  => ['primary', 'Merge Posts', 'fa-compress'],
+        'Edited Post'              => ['primary', 'Edit Post',   'fa-edit'],
+        'Deleted Post'             => ['danger',  'Delete Post', 'fa-trash'],
+        'Moved Thread'             => ['warning', 'Move Thread', 'fa-exchange-alt'],
+        'Closed Thread'            => ['secondary', 'Close Thread', 'fa-lock'],
+        'Threads Deleted'          => ['danger',  'Threads Del', 'fa-trash'],
+        'Deleted Selective Posts'  => ['danger',  'Del Posts',   'fa-object-group'],
+        'was deleted by'           => ['danger',  'Deletion',    'fa-trash'],
+        'has been deleted by'      => ['danger',  'Deletion',    'fa-trash'],
+        'has been edited by'       => ['primary', 'Edit',        'fa-edit'],
+        'has been saved'           => ['primary', 'Saved',       'fa-save'],
 
-			
-			
-			
-			'Seedbonus cron: Система отключена' => ['danger', 'Seedbonus', 'fa-ban'],
-'Seedbonus cron: start' => ['info', 'Seedbonus Start', 'fa-play'],
-'Seedbonus cron: done | no active seeders' => ['secondary', 'Seedbonus Done', 'fa-stop'],
-'WARNING: User' => ['warning', 'Seedbonus Warning', 'fa-exclamation-triangle'],
-'Seedbonus cron: done | users=' => ['success', 'Seedbonus Done', 'fa-check'],
+        // ── Комментарии ───────────────────────────────────────
+        'copied'                    => ['primary', 'Copied settings',   'fa-copy'],
+        'moved'                     => ['warning', 'Comment Move',      'fa-arrows-alt'],
+        'deleted a comment (CID'    => ['danger',  'Comment Delete',    'fa-comment'],
+        'deleted comments'          => ['danger',  'Comment Delete',    'fa-comment'],
+        'Mass Comment Delete'       => ['danger',  'Mass Del Comments', 'fa-comment-slash'],
 
-'GB upload added to' => ['success', 'Upload Added', 'fa-upload'],
+        // ── Форумы / права ────────────────────────────────────
+        'Added forum'       => ['success', 'Forum Add',   'fa-plus'],
+        'Edited forum'      => ['primary', 'Forum Edit',  'fa-edit'],
+        'Deleted forum'     => ['danger',  'Forum Del',   'fa-trash'],
+        'Updated quick'     => ['warning', 'Permissions', 'fa-key'],
+        'Edited group perm' => ['warning', 'Permissions', 'fa-key'],
 
+        // ── Скриншоты ─────────────────────────────────────────
+        'Screenshot uploaded:' => ['success', 'Screen Upload', 'fa-image'],
+        'Screenshot deleted:'  => ['danger',  'Screen Delete', 'fa-trash'],
+        'Screenshot updated:'  => ['primary', 'Screen Edit',   'fa-edit'],
+        'Screenshot error'     => ['danger',  'Screen Error',  'fa-exclamation-circle'],
+        'Mass Delete Screens:' => ['danger',  'Mass Screens Delete', 'fa-images'],
+        'for torrent #'        => ['info',    'Torrent Screenshot',  'fa-film'],
 
-'GB upload added to user' => ['success', 'Upload Added', 'fa-upload'],
+        // ── Аплоад / скачивание ────────────────────────────────
+        'has been uploaded'       => ['success', 'Upload',       'fa-upload'],
+        'has downloaded'          => ['danger',  'Download',     'fa-download'],
+        'GB upload added to'      => ['success', 'Upload Added', 'fa-upload'],
+        'GB upload added to user' => ['success', 'Upload Added', 'fa-upload'],
+        'Deleted attachment'      => ['danger',  'Attachment Deleted', 'fa-trash-alt'],
 
+        // ── Продвижения / промо торрентов ────────────────────
+        'Starting torrent promotion expiration cleanup' => ['info',      'Promo Cleanup Start', 'fa-play-circle'],
+        'Finished torrent promotion expiration cleanup' => ['success',   'Promotion Cleanup',   'fa-broom'],
+        'Expired Free Leech promotions'                  => ['success',   'FreeLeech Expired',   'fa-hourglass-end'],
+        'Expired 50% + 2X promotions'                     => ['success',   '50%+2X Expired',      'fa-hourglass-end'],
+        'Expired 30% Leech promotions'                    => ['success',   '30% Leech Expired',   'fa-hourglass-end'],
+        'Expired 2X Upload promotions'                    => ['secondary', '2X Upload Expired',   'fa-stop-circle'],
+        'Expired Free + 2X promotions'                    => ['secondary', 'Free+2X Expired',     'fa-stop-circle'],
+        'Expired 50% Leech promotions'                    => ['secondary', '50% Leech Expired',   'fa-stop-circle'],
+        'Torrents no longer on promotion'                 => ['secondary', 'Promotion Expired',   'fa-minus-circle'],
+        'Torrents promotion changed'                      => ['success',   'Promotion Changed',   'fa-star'],
 
-	'optimized successfully' => ['success', 'DB Optimized', 'fa-database'],
-	
-	'Promoted users' => ['success', 'Promotion', 'fa-level-up-alt'],
+        // ── SeedBonus ─────────────────────────────────────────
+        'Seedbonus cron: Система отключена'         => ['danger',    'Seedbonus',         'fa-ban'],
+        'Seedbonus cron: start'                      => ['info',      'Seedbonus Start',   'fa-play'],
+        'Seedbonus cron: done | no active seeders'   => ['secondary', 'Seedbonus Done',    'fa-stop'],
+        'Seedbonus cron: done | users='              => ['success',   'Seedbonus Done',    'fa-check'],
+        'done | no active seeders'                    => ['success',   'Seed Bonus Awarded','fa-check-circle'],
+        'WARNING: User'                               => ['warning',   'Seedbonus Warning', 'fa-exclamation-triangle'],
 
-'Demoted users' => ['warning', 'Demotion', 'fa-level-down-alt'],
+        // ── База данных / кэш / бэкапы ───────────────────────
+        'has been optimized..'                        => ['success', 'Optimization', 'fa-cogs'],
+        'Database check completed'                     => ['success', 'DB Check',     'fa-database'],
+        'Rebuilt cache'                                 => ['success', 'Cache Rebuild','fa-arrows-rotate'],
+        'Database backup completed successfully'        => ['success', 'Database Backup Completed', 'fa-database'],
+        'Created a backup'                              => ['success', 'Database Backup Created',   'fa-database'],
+        'DB Optimized SUCCESS'                          => ['success', 'DB Optimized', 'fa-database'],
+        'optimized successfully'                        => ['success', 'DB Optimized', 'fa-database'],
+        'TRUNCATED table(s):'                           => ['danger',  'Table Truncated', 'fa-eraser'],
+        'FAILED to truncate table(s):'                  => ['danger',  'Truncate Failed',  'fa-times-circle'],
+        '[SQL ERROR]'                                    => ['danger',  'SQL Error', 'fa-exclamation-triangle'],
 
+        // ── Настройки / система ───────────────────────────────
+        'site settings updated by' => ['danger',  'Settings', 'fa-cog'],
+        'settings updated'         => ['primary', 'Settings', 'fa-cogs'],
+        'task successfully ran'    => ['success', 'Task',     'fa-tasks'],
+        'send mail queue'          => ['info',    'Mail Queue', 'fa-paper-plane'],
 
-'Leech-warned users' => ['warning', 'Leech Warning', 'fa-exclamation-triangle'],
-
-
-'Finished torrent promotion expiration cleanup' => ['success', 'Promotion Cleanup', 'fa-broom'],
-
-
-'Expired Free Leech promotions' => ['success', 'FreeLeech Expired', 'fa-hourglass-end'],
-	
-
-	'Expired 50% + 2X promotions' => ['success', '50%+2X Expired', 'fa-hourglass-end'],
-'Expired 30% Leech promotions' => ['success', '30% Leech Expired', 'fa-hourglass-end'],
-
-
-'Starting torrent promotion expiration cleanup' => ['info', 'Promo Cleanup Start', 'fa-play-circle'],
-
-'Expired 2X Upload promotions' => ['secondary', '2X Upload Expired', 'fa-stop-circle'],
-'Expired Free + 2X promotions' => ['secondary', 'Free+2X Expired', 'fa-stop-circle'],
-
-'Expired 50% Leech promotions' => ['secondary', '50% Leech Expired', 'fa-stop-circle'],
-
-
-'Torrents no longer on promotion' => ['secondary', 'Promotion Expired', 'fa-minus-circle'],
-    'Torrents promotion changed' => ['success', 'Promotion Changed', 'fa-star'],
-			
-			
-			
-			
-            'settings updated' => ['primary', 'Settings', 'fa-cogs'],
-            '[SQL ERROR]' => ['danger', 'SQL Error', 'fa-exclamation-triangle'],
-            'Screenshot uploaded:' => ['success', 'Screen Upload', 'fa-image'],
-            'Screenshot deleted:' => ['danger', 'Screen Delete', 'fa-trash'],
-            'Screenshot updated:' => ['primary', 'Screen Edit', 'fa-edit'],
-            'Screenshot error' => ['danger', 'Screen Error', 'fa-exclamation-circle'],
-            'Mass Delete Screens:' => ['danger', 'Mass Screens Delete', 'fa-images'],
-            //'User' => ['danger', 'Comment Delete', 'fa-comment'],
-			
-			'Lifted ban for user' => ['success', 'Unban', 'fa-user-check'],
-			
-'deleted a comment (CID'   => ['danger', 'Comment Delete', 'fa-comment'],
-'deleted comments'         => ['danger', 'Comment Delete', 'fa-comment'],
-'Mass Comment Delete'      => ['danger', 'Mass Del Comments', 'fa-comment-slash'],
-			
-			
-			
-			
-            'for torrent #' => ['info', 'Torrent Screenshot', 'fa-film']
+        // ── Безопасность / спам ───────────────────────────────
+        'Attempt'  => ['danger', 'Security', 'fa-shield-alt'],
+        'unwanted' => ['danger', 'Spam',      'fa-ban'],
         ];
+		
+		
+		
         $color = 'secondary';
         $badge = 'Log';
         $icon = 'fa-info-circle';

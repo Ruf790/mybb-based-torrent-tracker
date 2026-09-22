@@ -364,7 +364,7 @@ function show_list(): void
     $result = $db->sql_query_prepared("SELECT * FROM screenshots $where_sql ORDER BY uploaded_at DESC LIMIT ?, ?", $list_params);
 
     stdhead('Screenshot Management');
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css">';
+   
     echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/manage_screenshots.css">';
     echo '<script>var my_post_key = "' . $mybb->post_code . '"; var scr_script = "' . $_this_script_ . '";</script>';
 

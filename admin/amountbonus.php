@@ -343,25 +343,11 @@ try {
 // Display page
 stdhead('🎁 Bonus Points Management System');
 
+// stdhead() уже выводит <!DOCTYPE html><html><head>...<body> - раньше
+// здесь выводился ВТОРОЙ, вложенный набор этих тегов поверх первого
+// (невалидный HTML), плюс принудительная тёмная тема через
+// data-bs-theme="dark" независимо от реальной темы сайта/пользователя.
 ?>
-<!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bonus Points Management - Staff Panel</title>
-    
-
-
-
-
-
-
-
-
-
-</head>
-<body>
 <div class="container mt-3">
     <div class="row justify-content-center">
         <div class="col-xxl-10">
@@ -619,8 +605,6 @@ stdhead('🎁 Bonus Points Management System');
 
 
 <script src="<?= $BASEURL ?>/admin/scripts/amountbonus.js"></script>
-</body>
-</html>
 
 <?php
 stdfoot();

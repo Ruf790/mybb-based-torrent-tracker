@@ -548,7 +548,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         stdhead($lang->adduser['title']);
-        echo '<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
+        
         echo '<div class="container mt-3">';
         echo '<div class="alert alert-success"><i class="fas fa-check-circle me-2"></i>Account "'
             . htmlspecialchars_uni($user_data['username']) . '" was created successfully.</div>';

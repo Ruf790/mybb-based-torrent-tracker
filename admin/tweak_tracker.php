@@ -15,9 +15,10 @@ if (!defined('ADMIN_DIR')) {
 // ── CSS helper ────────────────────────────────────────────
 function render_css(string $BASEURL): string
 {
-    return '<link href="' . $BASEURL . '/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">'
-         . '<link href="' . $BASEURL . '/include/templates/default/style/errorss.css" rel="stylesheet">';
+    return '<link href="' . $BASEURL . '/include/templates/default/style/errorss.css" rel="stylesheet">';
 }
+
+
 
 // ── Confirmation screen ───────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['begin_optimization'])) {
@@ -62,7 +63,16 @@ $q = $db->sql_query_prepared('SELECT id FROM torrents');
 while ($row = $db->fetch_array($q)) $torrent_ids[] = (int)$row['id'];
 
 $user_ids = [];
-$q = $db->sql_query_prepared('SELECT id FROM users WHERE enabled = ? AND ustatus = ?', ['yes', 'confirmed']);
+// Раньше фильтровалось по enabled='yes' AND ustatus='confirmed' - это
+// исключало ЗАБАНЕННЫХ и НЕПОДТВЕРЖДЁННЫХ пользователей из "валидных",
+// хотя они физически всё ещё существуют в users, просто отключены.
+// snatched чистится по этому списку (строка ниже, таблица 'snatched'),
+// а крон пересчитывает times_completed на раздачах через COUNT(*) по
+// snatched - в итоге счётчик падал у раздач без единого реально
+// удалённого пользователя. Теперь берём ВСЕХ существующих пользователей,
+// независимо от статуса - только реально удалённые (отсутствующие в
+// users) считаются "невалидными".
+$q = $db->sql_query_prepared('SELECT id FROM users');
 while ($row = $db->fetch_array($q)) $user_ids[] = (int)$row['id'];
 
 if (empty($torrent_ids) || empty($user_ids)) {

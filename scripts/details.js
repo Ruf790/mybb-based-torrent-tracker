@@ -98,8 +98,17 @@ function collapseAllFiles() {
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         anchor.addEventListener('click', function (e) {
+            const href = this.getAttribute('href');
+            // Голый "#" (модалки, кнопки-плейсхолдеры, magnet-кнопка) -
+            // не валидный CSS-селектор, querySelector('#') бросает
+            // SyntaxError. Пропускаем такие ссылки, пусть работают как
+            // обычно (или их обрабатывает другой скрипт).
+            if (!href || href.length < 2) {
+                return;
+            }
+
             e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
+            const target = document.querySelector(href);
             if (target) {
                 target.scrollIntoView({
                     behavior: 'smooth',
@@ -485,3 +494,18 @@ function TS_IMDB(torrentId) {
         updateButton.disabled = false;
     });
 }
+// ===== Scroll to tab (клик по .scroll-to-tab открывает нужный таб и прокручивает к нему) =====
+// (объединено из details-extras.js)
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".scroll-to-tab").forEach(function (link) {
+        link.addEventListener("click", function (e) {
+            e.preventDefault();
+            var tabKey = this.getAttribute("data-scroll-tab");
+            var tabBtn = document.getElementById(tabKey + "-tab");
+            if (!tabBtn || typeof bootstrap === "undefined") return;
+
+            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+            tabBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+    });
+});

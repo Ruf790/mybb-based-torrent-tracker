@@ -394,77 +394,122 @@ function log_admin_action(mixed ...$args): void
 
 
 
+
 /**
  * Output navigation tabs
+ *
+ * $tabs = [
+ *     'key' => ['title' => '…', 'link' => '…', 'description' => '…' (опц.), 'icon' => 'fa-solid fa-…' (опц.)],
+ * ];
  */
 function output_nav_tabs(array $tabs, string $active_tab): void
 {
-    $has_description = !empty($tabs[$active_tab]['description'] ?? '');
+    static $css_printed = false;
+
+    // Иконки по умолчанию для известных вкладок; 'icon' в самой вкладке важнее
+    $default_icons = [
+        'find_attachments'     => 'fa-solid fa-magnifying-glass',
+        'find_orphans'         => 'fa-solid fa-broom',
+        'stats'                => 'fa-solid fa-chart-pie',
+        'comment_attachments'  => 'fa-solid fa-comment-dots',
+        'attachment_types'     => 'fa-solid fa-paperclip',
+        'add_attachment_type'  => 'fa-solid fa-circle-plus',
+        'edit_attachment_type' => 'fa-solid fa-pen-to-square',
+    ];
+
+    $description = trim((string)($tabs[$active_tab]['description'] ?? ''));
+
+    if (!$css_printed) {
+        $css_printed = true;
+        ?>
+<style>
+/* Всё под .ag-tabs — раньше правило .overflow-auto менялось для всей страницы */
+.ag-tabs { margin-top: 1rem; }
+.ag-tabs .ag-tabs-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 2px; /* чтобы не обрезалось кольцо фокуса */
+}
+.ag-tabs .ag-tabs-scroll::-webkit-scrollbar { display: none; }
+/* width: max-content + margin auto вместо justify-content: center:
+   при центрировании flex-контейнера с прокруткой левые вкладки уходили
+   за край и до них нельзя было доскроллить на телефоне */
+.ag-tabs .ag-tabs-bar {
+    display: flex; gap: .3rem;
+    width: max-content; margin: 0 auto;
+    padding: .3rem;
+    border-radius: 50rem;
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color-translucent);
+}
+.ag-tabs .ag-tab {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .5rem 1.05rem;
+    border-radius: 50rem;
+    font-size: .98rem; font-weight: 600;
+    color: var(--bs-secondary-color);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.ag-tabs .ag-tab i { font-size: .95em; opacity: .85; }
+.ag-tabs .ag-tab:hover { color: var(--bs-body-color); background: var(--bs-body-bg); }
+.ag-tabs .ag-tab:focus-visible { outline: 2px solid rgba(var(--bs-primary-rgb), .6); outline-offset: 1px; }
+.ag-tabs .ag-tab.is-active {
+    color: #fff;
+    background: var(--bs-primary);
+    box-shadow: 0 .25rem .75rem rgba(var(--bs-primary-rgb), .3);
+}
+.ag-tabs .ag-tab.is-active i { opacity: 1; }
+.ag-tabs .ag-tabs-desc {
+    display: flex; align-items: flex-start; justify-content: center; gap: .5rem;
+    margin: .75rem auto 0; max-width: 760px;
+    font-size: .93rem; color: var(--bs-secondary-color); text-align: center;
+}
+.ag-tabs .ag-tabs-desc i { color: var(--bs-primary); margin-top: .2rem; flex-shrink: 0; }
+@media (max-width: 575.98px) {
+    .ag-tabs .ag-tab { padding: .45rem .85rem; font-size: .92rem; }
+}
+</style>
+<script>
+// На узком экране прокручиваем полосу так, чтобы активная вкладка была видна
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.ag-tabs .ag-tab.is-active').forEach(function (tab) {
+        const box = tab.closest('.ag-tabs-scroll');
+        if (box && box.scrollWidth > box.clientWidth) {
+            box.scrollLeft = tab.offsetLeft - (box.clientWidth - tab.offsetWidth) / 2;
+        }
+    });
+});
+</script>
+        <?php
+    }
     ?>
-    <div class="container mt-3">
-        
-        <div class="d-flex justify-content-center overflow-auto hide-scrollbar pb-3 mb-4 border-bottom"
-             style="scroll-behavior: smooth;">
-            <?php foreach ($tabs as $key => $tab):
-                $is_active = ($key === $active_tab);
-                $icon = $tab['icon'] ?? match($key) {
-                    'find_attachments' => 'fas fa-magnifying-glass',
-                    'find_orphans'     => 'fas fa-broom',
-                    'stats'            => 'fas fa-chart-pie',
-                    default            => 'fas fa-cogs'
-                };
-                ?>
-                <a href="<?= $tab['link'] ?>"
-                   class="text-center text-decoration-none mx-2 <?= $is_active ? 'text-primary' : 'text-muted' ?>"
-                   style="min-width: 110px;">
-                    <div class="card tab-card border-0 shadow-sm h-100 <?= $is_active ? 'border-primary border-2' : 'border-light' ?>"
-                         style="width: 350px; transition: all 0.25s ease;">
-                        <div class="card-body p-3 d-flex flex-column justify-content-center">
-                            <i class="<?= $icon ?> fa-2x mb-2"></i>
-                            <div class="small fw-bold text-truncate" style="max-width: 100%;"><?= htmlspecialchars($tab['title']) ?></div>
-                        </div>
-                    </div>
-                </a>
-            <?php endforeach; ?>
+    <nav class="container ag-tabs" aria-label="Section navigation">
+        <div class="ag-tabs-scroll">
+            <div class="ag-tabs-bar" role="tablist">
+                <?php foreach ($tabs as $key => $tab):
+                    $is_active = ($key === $active_tab);
+                    $icon = $tab['icon'] ?? $default_icons[$key] ?? 'fa-solid fa-folder';
+                    ?>
+                    <a href="<?= htmlspecialchars((string)$tab['link'], ENT_QUOTES) ?>"
+                       class="ag-tab<?= $is_active ? ' is-active' : '' ?>"
+                       role="tab" aria-selected="<?= $is_active ? 'true' : 'false' ?>"<?= $is_active ? ' aria-current="page"' : '' ?>>
+                        <i class="<?= htmlspecialchars((string)$icon, ENT_QUOTES) ?>"></i>
+                        <span><?= htmlspecialchars((string)$tab['title']) ?></span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
         </div>
 
-       
-        <?php if ($has_description): ?>
-            <div class="alert alert-info d-flex align-items-start gap-3 mx-3 mb-4 rounded-3 border-0 shadow-sm">
-                <i class="fas fa-circle-info text-primary mt-1 flex-shrink-0"></i>
-                <div class="small"><?= htmlspecialchars($tabs[$active_tab]['description']) ?></div>
+        <?php if ($description !== ''): ?>
+            <div class="ag-tabs-desc">
+                <i class="fa-solid fa-circle-info"></i>
+                <span><?= htmlspecialchars($description) ?></span>
             </div>
         <?php endif; ?>
-    </div>
-
-    <style>
-    .hide-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-    }
-    .hide-scrollbar::-webkit-scrollbar {
-        display: none;
-    }
-
-    /* Анимация ТОЛЬКО для карточек вкладок */
-    .tab-card {
-        transition: all 0.25s ease;
-    }
-    .tab-card:hover {
-        transform: translateY(-6px) scale(1.03);
-        box-shadow: 0 12px 20px rgba(0,0,0,0.15) !important;
-    }
-    .tab-card:active {
-        transform: translateY(-3px) scale(1.01);
-    }
-
-    /* Плавная прокрутка на мобильных */
-    @media (max-width: 768px) {
-        .overflow-auto {
-            -webkit-overflow-scrolling: touch;
-        }
-    }
-</style>
+    </nav>
     <?php
 }
 

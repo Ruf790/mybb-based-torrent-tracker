@@ -948,7 +948,7 @@ $current_cats = implode('', $cat_matches[0]);
 </form>
 
 
-<script src="'.$BASEURL.'/scripts/usercp-options.js"></script>
+<script src="'.$BASEURL.'/scripts/usercp.js?ver=1901"></script>
 
 <script src="'.$BASEURL.'/scripts/theme-switcher.js"></script>
 
@@ -4173,17 +4173,15 @@ if ($mybb->input['action'] === 'do_editlists') {
         if ($error_message) { $message_js .= " $.jGrowl('{$error_message}', {theme:'jgrowl_error'});"; }
 
         if ($mybb->get_input('delete', MyBB::INPUT_INT)) {
-            header('Content-type: text/javascript');
-            echo '$("#' . $mybb->get_input('manage') . '_' . $mybb->get_input('delete', MyBB::INPUT_INT) . '").remove();';
-            if ($new_list === '') {
-                echo '$("#' . $mybb->get_input('manage') . '_count").html("0");';
-                echo '$("#buddylink").remove();';
-                $empty_msg = $isIgnored ? $lang->usercp['ignore_list_empty'] : $lang->usercp['buddy_list_empty'];
-                echo '$("#' . $mybb->get_input('manage') . '_list").html("<li>' . $empty_msg . '</li>");';
-            } else {
-                echo '$("#' . $mybb->get_input('manage') . '_count").html("' . count(explode(',', $new_list)) . '");';
-            }
-            echo $message_js;
+            // JSON вместо jQuery-кода ($("#…").remove(); $.jGrowl(…)): jQuery на сайте нет,
+            // а значение manage попадало в ответ без экранирования.
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => $error_message === '',
+                'deleted' => $mybb->get_input('delete', MyBB::INPUT_INT),
+                'count'   => $new_list === '' ? 0 : count(explode(',', $new_list)),
+                'message' => $error_message !== '' ? $error_message : $message,
+            ]);
             exit;
         }
         $mybb->input['action'] = 'editlists';
@@ -4221,13 +4219,10 @@ if ($mybb->input['action'] === 'editlists') {
 			
 			
 			
-$buddy_list .= '<div class="row border-bottom pb-2 mb-2">
-    <div class="col">
-        '.$profile_link.'
-    </div>
-    <div class="col text-end">
-        <a href="usercp.php?action=do_editlists&amp;my_post_key='.$mybb->post_code.'&amp;manage='.$type.'&amp;delete='.$user['id'].'" onclick="return UserCP.removeBuddy(\'' . $type . '\', ' . $user['id'] . ');" title="'.$lang->usercp['remove_from_list'].'"><i class="fa-solid fa-user-xmark text-danger" title="'.$lang->usercp['remove_from_list'].'"></i></a>
-    </div>
+$buddy_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
+    <span class="ucp-status ucp-status-'.$status.'" title="'.ucfirst($status).'"></span>
+    <div class="ucp-list-name">'.$profile_link.'</div>
+    <a href="usercp.php?action=do_editlists&amp;my_post_key='.$mybb->post_code.'&amp;manage='.$type.'&amp;delete='.(int)$user['id'].'" onclick="return UserCP.removeBuddy(\'' . $type . '\', ' . (int)$user['id'] . ');" class="ucp-list-remove" title="'.$lang->usercp['remove_from_list'].'" aria-label="'.$lang->usercp['remove_from_list'].'"><i class="fa-solid fa-xmark"></i></a>
 </div>';
 			
 			
@@ -4244,7 +4239,7 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
     if (!$buddy_list) 
 	{ 
 	
-	   $buddy_list = ''.$lang->usercp['buddy_list_empty'].''; 
+	   $buddy_list = '<div class="ucp-list-empty"><i class="fa-regular fa-face-smile"></i><span>'.$lang->usercp['buddy_list_empty'].'</span></div>'; 
 
 
 	
@@ -4269,13 +4264,10 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
                 ? 'online' : 'offline';
             
 			
-			$ignore_list .= '<div class="row border-bottom pb-2 mb-2">
-	<div class="col">
-		'.$profile_link.'
-	</div>
-	<div class="col text-end">
-		<a href="usercp.php?action=do_editlists&amp;my_post_key='.$mybb->post_code.'&amp;manage='.$type.'&amp;delete='.$user['id'].'" onclick="return UserCP.removeBuddy(\'' . $type . '\', ' . $user['id'] . ');" title="'.$lang->usercp['remove_from_list'].'"><i class="fa-solid fa-user-xmark text-danger" title="'.$lang->usercp['remove_from_list'].'"></i></a>
-	</div>
+			$ignore_list .= '<div class="ucp-list-row" id="'.$type.'_'.(int)$user['id'].'">
+    <span class="ucp-ignored-mark"><i class="fa-solid fa-eye-slash"></i></span>
+    <div class="ucp-list-name">'.$profile_link.'</div>
+    <a href="usercp.php?action=do_editlists&amp;my_post_key='.$mybb->post_code.'&amp;manage='.$type.'&amp;delete='.(int)$user['id'].'" onclick="return UserCP.removeBuddy(\'' . $type . '\', ' . (int)$user['id'] . ');" class="ucp-list-remove" title="'.$lang->usercp['remove_from_list'].'" aria-label="'.$lang->usercp['remove_from_list'].'"><i class="fa-solid fa-xmark"></i></a>
 </div>';
 			
 			
@@ -4286,7 +4278,7 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
     $current_ignored_users = sprintf($lang->usercp['current_ignored_users'], $ignore_count);
     if (!$ignore_list) 
 	{ 
-        $ignore_list = ''.$lang->usercp['ignore_list_empty'].''; 
+        $ignore_list = '<div class="ucp-list-empty"><i class="fa-regular fa-circle-check"></i><span>'.$lang->usercp['ignore_list_empty'].'</span></div>'; 
    
     }
 
@@ -4351,40 +4343,38 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
     $received_rows = '';
     $q = $db->sql_query_prepared("SELECT r.*, u.username FROM buddyrequests r LEFT JOIN users u ON (u.id=r.uid) WHERE r.touid=?", [(int) $CURUSER['id']]);
     while ($q && ($request = $db->fetch_array($q))) {
-        $request['username'] = build_profile_link(htmlspecialchars_uni($request['username']), (int) $request['id']);
+        // (int)$request['uid'] — автор заявки. Раньше здесь был $request['id'] (id самой
+        // заявки), и ссылка вела на профиль случайного пользователя с таким id.
+        $request['username'] = build_profile_link(htmlspecialchars_uni($request['username']), (int) $request['uid']);
         $request['date']     = my_datee('relative', $request['date']);
         
-		$received_rows .= '<div class="mb-2 pb-3 border-bottom">
-<div class="row">
-	<div class="col-auto">
-		'.$request['username'].'
-	</div>
-	<div class="col-auto text-desc">
-		'.$request['date'].'
-	</div>
-	<div class="col text-end">
-		<a href="'.$BASEURL.'/usercp.php?action=acceptrequest&amp;id='.$request['id'].'&amp;my_post_key='.$mybb->post_code.'" class="links"><i class="fa-solid fa-check"></i> '.$lang->usercp['accept'].'</a> &nbsp;&nbsp;&nbsp; <a href="'.$BASEURL.'/usercp.php?action=declinerequest&amp;id='.$request['id'].'&amp;my_post_key='.$mybb->post_code.'" class="links"><i class="fa-solid fa-xmark"></i> '.$lang->usercp['decline'].'</a>
-	</div>
-	</div>
+		$received_rows .= '<div class="ucp-list-row">
+    <span class="ucp-req-mark ucp-req-in"><i class="fa-solid fa-arrow-down"></i></span>
+    <div class="ucp-list-name">'.$request['username'].'<span class="ucp-list-date">'.$request['date'].'</span></div>
+    <div class="ucp-req-actions">
+        <a href="'.$BASEURL.'/usercp.php?action=acceptrequest&amp;id='.(int)$request['id'].'&amp;my_post_key='.$mybb->post_code.'" class="btn btn-sm btn-success rounded-pill px-3"><i class="fa-solid fa-check me-1"></i>'.$lang->usercp['accept'].'</a>
+        <a href="'.$BASEURL.'/usercp.php?action=declinerequest&amp;id='.(int)$request['id'].'&amp;my_post_key='.$mybb->post_code.'" class="ucp-list-remove" title="'.$lang->usercp['decline'].'" aria-label="'.$lang->usercp['decline'].'"><i class="fa-solid fa-xmark"></i></a>
+    </div>
 </div>';
 		
 		
     }
     if (!$received_rows) 
 	{ 
-	    $received_rows = ''.$lang->usercp['no_requests'].''; 
+	    $received_rows = '<div class="ucp-list-empty"><i class="fa-regular fa-envelope-open"></i><span>'.$lang->usercp['no_requests'].'</span></div>'; 
 		
 	}
     
-	$received_requests = '<div class="card mb-4">
-	<div class="card-header bg-white text-dark border-bottom-0 text-19 fw-bold mt-2 pb-0">
-		'.$lang->usercp['buddyrequests_received'].'
-	</div>
-	<div class="card-body">
-		
-		'.$received_rows.'
-		
-	</div>
+	$received_count    = substr_count($received_rows, 'class="ucp-list-row"');
+	$received_requests = '<div class="card ucp-card">
+    <div class="card-header">
+        <span class="ucp-icon ucp-icon-received"><i class="fa-solid fa-inbox"></i></span>
+        <span>'.$lang->usercp['buddyrequests_received'].'</span>
+        <span class="ucp-count'.($received_count > 0 ? ' ucp-count-active' : '').'">'.$received_count.'</span>
+    </div>
+    <div class="card-body">
+        <div class="ucp-list">'.$received_rows.'</div>
+    </div>
 </div>';
 
 
@@ -4395,18 +4385,13 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
         $request['username'] = build_profile_link(htmlspecialchars_uni($request['username']), (int) $request['touid']);
         $request['date']     = my_datee('relative', $request['date']);
         
-		$sent_rows .= '<div class="mb-2 pb-3 border-bottom">
-<div class="row">
-	<div class="col-auto">
-		'.$request['username'].'
-	</div>
-	<div class="col-auto text-desc">
-		'.$request['date'].'
-	</div>
-	<div class="col text-end">
-		<a href="'.$BASEURL.'/usercp.php?action=cancelrequest&amp;id='.$request['id'].'&amp;my_post_key='.$mybb->post_code.'" class="links"><i class="fa-solid fa-xmark"></i> '.$lang->usercp['cancel'].'</a>
-	</div>
-	</div>
+		$sent_rows .= '<div class="ucp-list-row">
+    <span class="ucp-req-mark ucp-req-out"><i class="fa-solid fa-arrow-up"></i></span>
+    <div class="ucp-list-name">'.$request['username'].'<span class="ucp-list-date">'.$request['date'].'</span></div>
+    <div class="ucp-req-actions">
+        <span class="ucp-req-pending"><i class="fa-regular fa-clock me-1"></i>Pending</span>
+        <a href="'.$BASEURL.'/usercp.php?action=cancelrequest&amp;id='.(int)$request['id'].'&amp;my_post_key='.$mybb->post_code.'" class="ucp-list-remove" title="'.$lang->usercp['cancel'].'" aria-label="'.$lang->usercp['cancel'].'"><i class="fa-solid fa-xmark"></i></a>
+    </div>
 </div>';
 		
 		
@@ -4414,150 +4399,299 @@ $buddy_list .= '<div class="row border-bottom pb-2 mb-2">
     if (!$sent_rows) 
 	{ 
 
-         $sent_rows = ''.$lang->usercp['no_requests'].''; 
+         $sent_rows = '<div class="ucp-list-empty"><i class="fa-regular fa-paper-plane"></i><span>'.$lang->usercp['no_requests'].'</span></div>'; 
 		 
 	}
     
-	$sent_requests = '<div class="card">
-	<div class="card-header bg-white text-dark border-bottom-0 text-19 fw-bold mt-2 pb-0">
-	    '.$lang->usercp['buddyrequests_sent'].'
-	</div>
-	<div class="card-body">
-		
-		'.$sent_rows.'
-		
-	</div>
+	$sent_count    = substr_count($sent_rows, 'class="ucp-list-row"');
+	$sent_requests = '<div class="card ucp-card">
+    <div class="card-header">
+        <span class="ucp-icon ucp-icon-sent"><i class="fa-solid fa-paper-plane"></i></span>
+        <span>'.$lang->usercp['buddyrequests_sent'].'</span>
+        <span class="ucp-count">'.$sent_count.'</span>
+    </div>
+    <div class="card-body">
+        <div class="ucp-list">'.$sent_rows.'</div>
+    </div>
 </div>';
 
 
     $plugins->run_hooks('usercp_editlists_end');
 
-    stdhead('title');
+    stdhead($lang->usercp['edit_lists']);
     build_breadcrumb();
     
 	
+	$ucp_lang_js = json_encode([
+		'remove_buddy'    => $lang->usercp['confirm_remove_buddy'],
+		'remove_ignored'  => $lang->usercp['confirm_remove_ignored'],
+		'adding_buddy'    => $lang->usercp['adding_buddy'],
+		'adding_ignored'  => $lang->usercp['adding_ignored'],
+		'buddylist_error' => $lang->usercp['buddylist_error'],
+	], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE);
+
 	$_tpl_out = '
-	<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>'.$SITENAME.' - '.$lang->usercp['edit_lists'].'</title>
-	
-	
-	<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/buddy.css">
-    
-    <script type="text/javascript" src="'.$BASEURL.'/scripts/usercp.js?ver=1827"></script>
-    <script type="text/javascript">
-       lang.remove_buddy = "' . addslashes($lang->usercp['confirm_remove_buddy']) . '";
-       lang.remove_ignored = "' . addslashes($lang->usercp['confirm_remove_ignored']) . '";
-       lang.adding_buddy = "' . addslashes($lang->usercp['adding_buddy']) . '";
-       lang.adding_ignored = "' . addslashes($lang->usercp['adding_ignored']) . '";
-       lang.buddylist_error = "' . addslashes($lang->usercp['buddylist_error']) . '";
-    </script>
+<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/buddy.css">
+<style>
+/* ── Buddy / Ignore lists ───────────────────────────────────── */
+.ucp-lists .ucp-card {
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+    height: 100%;
+}
+.ucp-lists .ucp-card .card-header {
+    display: flex; align-items: center; gap: .75rem;
+    background: transparent;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    padding: .9rem 1.1rem;
+    font-weight: 600;
+}
+.ucp-lists .ucp-icon {
+    width: 38px; height: 38px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: .75rem;
+    font-size: 1rem;
+}
+.ucp-lists .ucp-icon-buddy   { color: var(--bs-success); background: rgba(var(--bs-success-rgb), .12); }
+.ucp-lists .ucp-icon-ignored { color: var(--bs-danger);  background: rgba(var(--bs-danger-rgb), .12); }
+.ucp-lists .ucp-icon-received { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); }
+.ucp-lists .ucp-icon-sent     { color: var(--bs-info);    background: rgba(var(--bs-info-rgb), .14); }
+.ucp-lists .ucp-count {
+    margin-left: auto;
+    font-size: .75rem; font-weight: 600;
+    padding: .2rem .6rem;
+    border-radius: 50rem;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    border: 1px solid var(--bs-border-color-translucent);
+}
+.ucp-lists .ucp-count-active {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+}
+.ucp-lists .ucp-help { font-size: .8rem; color: var(--bs-secondary-color); margin-bottom: .5rem; }
 
-  
- 
-    
-    
-</head>
-<body>
-    
-    <form action="usercp.php" method="post" id="buddy" onsubmit="return UserCP.addBuddy(\'buddy\');">
-        <input type="hidden" name="action" value="do_editlists" />
-        <input type="hidden" name="manage" value="buddy" />
-        <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-        
-        <div class="container-md">
-            <div class="row">
-                <div class="col-lg-3">
-                    '.$usercpnav.'
-                </div>
-                <div class="col">    
-                    
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <i class="fas fa-user-friends me-2"></i> '.$lang->usercp['edit_buddy_list'].'
-                        </div>
-                        <div class="card-body">
-                            
-                            <div class="mb-4">
-                                <div class="section-title">'.$lang->usercp['add_buddies'].'</div>
-                                <div class="mb-3">
-                                    <label class="form-label">'.$lang->usercp['username_or_usernames'].'</label>
-                                    <div class="help-text">'.$lang->usercp['add_buddies_desc'].'</div>
-                                    <div class="user-select" id="buddy_add_username"></div>
-<input type="hidden" name="add_username" id="buddy_add_username_input">
+/* Поле выбора пользователей (разметку создаёт usercp.js) */
+.ucp-lists .user-select {
+    position: relative;
+    display: flex; flex-wrap: wrap; align-items: center; gap: .35rem;
+    min-height: 44px;
+    padding: .35rem .5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+    background: var(--bs-body-bg);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ucp-lists .user-select:focus-within {
+    border-color: rgba(var(--bs-primary-rgb), .6);
+    box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .15);
+}
+.ucp-lists .user-select > input {
+    flex: 1 1 140px; min-width: 120px;
+    border: 0; outline: 0;
+    background: transparent;
+    color: var(--bs-body-color);
+    padding: .25rem;
+}
+.ucp-lists .user-tag {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .15rem .35rem .15rem .25rem;
+    border-radius: 50rem;
+    background: rgba(var(--bs-primary-rgb), .1);
+    border: 1px solid rgba(var(--bs-primary-rgb), .3);
+    color: var(--bs-primary);
+    font-size: .85rem; font-weight: 600;
+}
+.ucp-lists .user-tag img,
+.ucp-lists .user-option img {
+    width: 22px; height: 22px; border-radius: 50%; object-fit: cover;
+}
+.ucp-lists .user-tag-remove {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    cursor: pointer;
+    line-height: 1;
+    transition: background-color .15s ease;
+}
+.ucp-lists .user-tag-remove:hover { background: rgba(var(--bs-primary-rgb), .2); }
+.ucp-lists .user-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1050;
+    max-height: 260px; overflow-y: auto;
+    padding: .25rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+    box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .12);
+}
+.ucp-lists .user-dropdown[hidden] { display: none; }
+.ucp-lists .user-option {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .45rem .6rem;
+    border-radius: .5rem;
+    cursor: pointer;
+}
+.ucp-lists .user-option img { width: 28px; height: 28px; }
+.ucp-lists .user-option:hover { background: var(--bs-tertiary-bg); }
 
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <button type="button" class="btn btn-primary" id="buddy_search_btn">
-                                        <i class="fas fa-search me-1"></i> '.$lang->usercp['search_user'].'
-                                    </button>
-                                    <button type="submit" id="buddy_submit" class="btn btn-success">
-                                        <i class="fas fa-user-plus me-1"></i> '.$lang->usercp['add_to_buddies'].'
-                                    </button>
-                                </div>
+/* Список */
+.ucp-lists .ucp-list-title {
+    font-size: .75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: var(--bs-secondary-color);
+    margin: 1.25rem 0 .5rem;
+}
+.ucp-lists .ucp-list { max-height: 420px; overflow-y: auto; margin: 0 -.35rem; }
+.ucp-lists .ucp-list-row {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .5rem .6rem;
+    border-radius: .6rem;
+    transition: background-color .15s ease;
+}
+.ucp-lists .ucp-list-row:hover { background: var(--bs-tertiary-bg); }
+.ucp-lists .ucp-list-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ucp-lists .ucp-status { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #adb5bd; }
+.ucp-lists .ucp-status-online { background: #68c000; box-shadow: 0 0 0 3px rgba(104, 192, 0, .18); }
+.ucp-lists .ucp-ignored-mark { color: var(--bs-secondary-color); font-size: .8rem; width: 14px; text-align: center; }
+.ucp-lists .ucp-list-remove {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; flex-shrink: 0;
+    border-radius: 50%;
+    color: var(--bs-secondary-color);
+    text-decoration: none;
+    opacity: .6;
+    transition: opacity .15s ease, color .15s ease, background-color .15s ease;
+}
+.ucp-lists .ucp-list-row:hover .ucp-list-remove { opacity: 1; }
+.ucp-lists .ucp-list-remove:hover { color: var(--bs-danger); background: rgba(var(--bs-danger-rgb), .1); }
+.ucp-lists .ucp-list-date {
+    display: block;
+    font-size: .75rem; font-weight: 400;
+    color: var(--bs-secondary-color);
+}
+.ucp-lists .ucp-req-mark {
+    width: 26px; height: 26px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-size: .7rem;
+}
+.ucp-lists .ucp-req-in  { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .1); }
+.ucp-lists .ucp-req-out { color: var(--bs-info);    background: rgba(var(--bs-info-rgb), .12); }
+.ucp-lists .ucp-req-actions { display: flex; align-items: center; gap: .35rem; flex-shrink: 0; }
+.ucp-lists .ucp-req-pending {
+    font-size: .72rem; font-weight: 600;
+    padding: .15rem .55rem;
+    border-radius: 50rem;
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+}
+.ucp-lists .ucp-list-empty {
+    display: flex; flex-direction: column; align-items: center; gap: .4rem;
+    padding: 1.75rem 1rem;
+    text-align: center;
+    color: var(--bs-secondary-color);
+    font-size: .9rem;
+}
+.ucp-lists .ucp-list-empty i { font-size: 1.6rem; opacity: .5; }
+</style>
+
+<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1901"></script>
+<script type="text/javascript">
+    window.lang = Object.assign(window.lang || {}, ' . $ucp_lang_js . ');
+</script>
+
+<div class="container-md ucp-lists mt-3">
+    <div class="row g-4">
+        <div class="col-lg-3">
+            ' . $usercpnav . '
+        </div>
+
+        <div class="col-lg-9">
+            <div class="row g-4">
+
+                <!-- Buddy list -->
+                <div class="col-xl-6">
+                    <form action="usercp.php" method="post" id="buddy" onsubmit="return UserCP.addBuddy(\'buddy\');" class="h-100">
+                        <input type="hidden" name="action" value="do_editlists" />
+                        <input type="hidden" name="manage" value="buddy" />
+                        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+
+                        <div class="card ucp-card">
+                            <div class="card-header">
+                                <span class="ucp-icon ucp-icon-buddy"><i class="fas fa-user-friends"></i></span>
+                                <span>' . $lang->usercp['edit_buddy_list'] . '</span>
+                                <span class="ucp-count" title="' . htmlspecialchars_uni(strip_tags($current_buddies)) . '">' . (int)$buddy_count . '</span>
                             </div>
-                            
-                            <div class="user-list-container">
-                                <div class="section-title">'.$current_buddies.'</div>
-                                '.$buddy_list.'
+                            <div class="card-body">
+                                <label class="form-label fw-semibold mb-1" for="buddy_add_username">' . $lang->usercp['add_buddies'] . '</label>
+                                <div class="ucp-help">' . $lang->usercp['add_buddies_desc'] . '</div>
+
+                                <div class="user-select" id="buddy_add_username"></div>
+                                <input type="hidden" name="add_username" id="buddy_add_username_input">
+
+                                <div class="d-flex justify-content-between align-items-center gap-2 mt-3">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="buddy_search_btn">
+                                        <i class="fas fa-search me-1"></i> ' . $lang->usercp['search_user'] . '
+                                    </button>
+                                    <button type="submit" id="buddy_submit" class="btn btn-sm btn-success rounded-pill px-3">
+                                        <i class="fas fa-user-plus me-1"></i> ' . $lang->usercp['add_to_buddies'] . '
+                                    </button>
+                                </div>
+
+                                <div class="ucp-list-title">' . $current_buddies . '</div>
+                                <div class="ucp-list">' . $buddy_list . '</div>
                             </div>
-                            
                         </div>
-                    </div>
+                    </form>
                 </div>
+
+                <!-- Ignore list -->
+                <div class="col-xl-6">
+                    <form action="usercp.php" method="post" id="ignored" onsubmit="return UserCP.addBuddy(\'ignored\');" class="h-100">
+                        <input type="hidden" name="action" value="do_editlists" />
+                        <input type="hidden" name="manage" value="ignored" />
+                        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+
+                        <div class="card ucp-card">
+                            <div class="card-header">
+                                <span class="ucp-icon ucp-icon-ignored"><i class="fas fa-user-slash"></i></span>
+                                <span>' . $lang->usercp['edit_ignore_list'] . '</span>
+                                <span class="ucp-count" title="' . htmlspecialchars_uni(strip_tags($current_ignored_users)) . '">' . (int)$ignore_count . '</span>
+                            </div>
+                            <div class="card-body">
+                                <label class="form-label fw-semibold mb-1" for="ignored_add_username">' . $lang->usercp['add_ignored_users'] . '</label>
+                                <div class="ucp-help">' . $lang->usercp['add_ignored_users_desc'] . '</div>
+
+                                <div class="user-select" id="ignored_add_username"></div>
+                                <input type="hidden" name="add_username" id="ignored_add_username_input">
+
+                                <div class="d-flex justify-content-between align-items-center gap-2 mt-3">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="ignored_search_btn">
+                                        <i class="fas fa-search me-1"></i> ' . $lang->usercp['search_user'] . '
+                                    </button>
+                                    <button type="submit" id="ignored_submit" class="btn btn-sm btn-danger rounded-pill px-3">
+                                        <i class="fas fa-ban me-1"></i> ' . $lang->usercp['ignore_users'] . '
+                                    </button>
+                                </div>
+
+                                <div class="ucp-list-title">' . $current_ignored_users . '</div>
+                                <div class="ucp-list">' . $ignore_list . '</div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+            </div>
+
+            <div class="row g-4 mt-0">
+                <div class="col-xl-6">' . $received_requests . '</div>
+                <div class="col-xl-6">' . $sent_requests . '</div>
             </div>
         </div>
-    </form>
-    
-    <form action="usercp.php" method="post" id="ignored" onsubmit="return UserCP.addBuddy(\'ignored\');">
-        <input type="hidden" name="action" value="do_editlists" />
-        <input type="hidden" name="manage" value="ignored" />
-        <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-        
-        
-		<div class="container mt-3">
-		<div class="card mb-4">
-            <div class="card-header">
-                <i class="fas fa-user-slash me-2"></i> '.$lang->usercp['edit_ignore_list'].'
-            </div>
-            <div class="card-body">
-                
-                <div class="mb-4">
-                    <div class="section-title">'.$lang->usercp['add_ignored_users'].'</div>
-                    <div class="mb-3">
-                        <label class="form-label">'.$lang->usercp['username_or_usernames'].'</label>
-                        <div class="help-text">'.$lang->usercp['add_ignored_users_desc'].'</div>
-                        <div class="user-select" id="ignored_add_username"></div>
-<input type="hidden" name="add_username" id="ignored_add_username_input">
-
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center">
-                        <button type="button" class="btn btn-primary" id="ignored_search_btn">
-                            <i class="fas fa-search me-1"></i> '.$lang->usercp['search_user'].'
-                        </button>
-                        <button type="submit" id="ignored_submit" class="btn btn-danger">
-                            <i class="fas fa-ban me-1"></i> '.$lang->usercp['ignore_users'].'
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="user-list-container">
-                    <div class="section-title">'.$current_ignored_users.'</div>
-                    '.$ignore_list.'
-                </div>
-                
-            </div>
-        </div>
-		 </div>
-    </form>
-    
-    <div class="container mt-3">
-	'.$received_requests.'
-    '.$sent_requests.'
-	</div>
-</body>
-</html>';
+    </div>
+</div>';
 	
 	
 	echo $_tpl_out;
@@ -5449,7 +5583,7 @@ if ($mybb->input['action'] === 'attachments') {
 
 
 
-<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp_attachments.js"></script>';
+<script type="text/javascript" src="' . $BASEURL . '/scripts/usercp.js?ver=1901"></script>';
 
 
 

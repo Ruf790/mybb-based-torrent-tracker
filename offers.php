@@ -638,7 +638,7 @@ if ($action === 'create') {
             </ol>
         </nav>
 
-        <div class="card border-0 shadow-sm rounded-4 animate-fade-in-up">
+        <div class="card border-0 shadow-sm rounded-4">
             <div class="card-header bg-transparent border-0">
                 <h5 class="mb-0"><i class="fas fa-gift me-2 text-success"></i>Post a New Offer</h5>
                 <small class="text-muted">I have this and can upload it if people want it</small>

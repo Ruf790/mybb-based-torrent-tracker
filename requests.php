@@ -704,7 +704,7 @@ if ($action === 'create') {
                 <li class="breadcrumb-item active">New Request</li>
             </ol>
         </nav>
-        <div class="card border-0 shadow-sm rounded-4 animate-fade-in-up">
+        <div class="card border-0 shadow-sm rounded-4">
             <div class="card-header bg-transparent border-0">
                 <h5 class="mb-0"><i class="fas fa-plus-circle me-2 text-primary"></i>Create a New Request</h5>
             </div>

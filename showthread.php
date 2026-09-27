@@ -670,13 +670,13 @@ if ($canQuickReply) {
         $moderation_notice = '<div class="red_alert">' . $lang->showthread['moderation_user_posts'] . '</div>';
     }
 
-    $collapse = $collapsed = [];
-    if (!empty($mybb->cookies['collapsed'])) {
-        $collapse = explode("|", $mybb->cookies['collapsed']);
-        foreach ($collapse as $val) {
-            $collapsed[$val . "_e"] = "display: none;";
-        }
-    }
+    //$collapse = $collapsed = [];
+    //if (!empty($mybb->cookies['collapsed'])) {
+    //    $collapse = explode("|", $mybb->cookies['collapsed']);
+    //    foreach ($collapse as $val) {
+    //        $collapsed[$val . "_e"] = "display: none;";
+    //    }
+    //}
 
     $quickreply = render_quick_reply($tid, $reply_subject, (int)$last_pid, $posthash, $page, $CURUSER, $mybb->post_code, $closeoption, $moderation_notice, $lang, $BASEURL, $smilies ?? []);
 }

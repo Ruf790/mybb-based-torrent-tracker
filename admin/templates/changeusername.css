@@ -1,0 +1,42 @@
+/* Change Username (staff panel) — all rules scoped under .cu */
+.cu .cu-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.cu .cu-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
+.cu .cu-head-icon { width: 48px; height: 48px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: .85rem; font-size: 1.35rem; }
+.cu .ic-purple { color: #7c3aed; background: rgba(124,58,237,.12); }
+.cu .cu-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.cu .cu-sub { color: var(--bs-secondary-color); font-size: .95rem; }
+.cu .cu-muted { font-size: .88rem; color: var(--bs-secondary-color); }
+.cu .cu-ver { font-size: .78rem; font-weight: 700; padding: .25rem .65rem; border-radius: 50rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color-translucent); }
+.cu .btn { border-radius: 50rem; }
+.cu .form-label { font-weight: 600; }
+.cu .form-label i { width: 1.2rem; color: var(--bs-secondary-color); }
+.cu .form-control { border-radius: 0 .7rem .7rem 0; }
+.cu .input-group-text { border-radius: .7rem 0 0 .7rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+
+.cu .cu-preview { display: flex; align-items: center; gap: .85rem; padding: .85rem 1rem; border-radius: .9rem; background: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color); }
+.cu .cu-preview[hidden] { display: none; }
+.cu .cu-avatar { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); }
+.cu .cu-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.cu .cu-flag { font-size: .75rem; font-weight: 700; padding: .15rem .6rem; border-radius: 50rem; }
+.cu .cu-flag.is-danger { color: #b91c1c; background: rgba(239,68,68,.12); }
+.cu .cu-flag.is-warn { color: #b45309; background: rgba(245,158,11,.14); }
+
+.cu .cu-name { display: inline-block; padding: .2rem .7rem; border-radius: .6rem; font-weight: 700; font-family: var(--bs-font-monospace); overflow-wrap: anywhere; }
+.cu .cu-name.old { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); text-decoration: line-through; }
+.cu .cu-name.new { background: rgba(124,58,237,.1); color: #7c3aed; }
+
+.cu .cu-result { text-align: center; padding: 2rem 1.5rem; }
+.cu .cu-result-icon { width: 64px; height: 64px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 1.8rem; margin-bottom: .75rem; }
+.cu .is-success .cu-result-icon { color: #16a34a; background: rgba(34,197,94,.12); }
+.cu .is-warn .cu-result-icon { color: #d97706; background: rgba(245,158,11,.14); }
+.cu .cu-result-title { font-size: 1.35rem; font-weight: 700; margin-bottom: 1rem; }
+.cu .cu-swap { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .75rem; font-size: 1.15rem; margin-bottom: .5rem; }
+.cu .cu-swap > i { color: var(--bs-secondary-color); }
+.cu .cu-points { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .4rem .9rem; text-align: left; padding: .9rem 1rem; border-radius: .9rem; background: var(--bs-tertiary-bg); font-size: .92rem; }
+.cu .cu-points i { width: 1.3rem; color: var(--bs-secondary-color); }
+.cu .cu-confirm { display: flex; align-items: center; gap: .6rem; justify-content: center; padding: .7rem .9rem; border-radius: .8rem; border: 1px solid rgba(245,158,11,.4); background: rgba(245,158,11,.07); cursor: pointer; font-weight: 500; }
+.cu .cu-confirm .form-check-input { width: 1.2em; height: 1.2em; }
+.cu .cu-note { display: flex; gap: .7rem; padding: .85rem 1rem; border-radius: .9rem; text-align: left; }
+.cu .cu-note > i { margin-top: .2rem; font-size: 1.1rem; }
+.cu .cu-note.is-danger { border: 1px solid rgba(239,68,68,.35); background: rgba(239,68,68,.06); color: var(--bs-body-color); }
+.cu .cu-note.is-danger > i { color: #dc2626; }

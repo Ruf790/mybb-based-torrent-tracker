@@ -1,0 +1,81 @@
+/* Admin → Attachments (admin/attachments.php). Всё под .atm — глобальные .card/.table/.badge не трогаем */
+/* Всё привязано к .atm — раньше .card-header, .table th, .badge переопределялись на всю страницу */
+.atm .atm-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.atm .atm-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
+.atm .atm-head-icon, .atm .atm-stat-icon, .atm .atm-sec-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: .85rem; }
+.atm .atm-head-icon { width: 46px; height: 46px; font-size: 1.3rem; }
+.atm .atm-title { font-size: 1.35rem; font-weight: 700; margin: 0; }
+.atm .atm-sub { color: var(--bs-secondary-color); font-size: .93rem; }
+.atm .atm-muted { font-size: .86rem; color: var(--bs-secondary-color); }
+.atm .atm-help { display: block; font-size: .86rem; color: var(--bs-secondary-color); margin-top: .25rem; }
+.atm .form-label { font-weight: 600; margin-bottom: .25rem; }
+.atm .form-label i { width: 1.2rem; color: var(--bs-secondary-color); }
+
+.atm .ic-blue   { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.12); }
+.atm .ic-green  { color: #16a34a; background: rgba(34,197,94,.12); }
+.atm .ic-teal   { color: #0891b2; background: rgba(8,145,178,.12); }
+.atm .ic-amber  { color: #d97706; background: rgba(245,158,11,.14); }
+.atm .ic-red    { color: #dc2626; background: rgba(239,68,68,.12); }
+.atm .ic-purple { color: #7c3aed; background: rgba(124,58,237,.12); }
+.atm .ic-slate  { color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
+
+.atm .atm-stat { display: flex; align-items: center; gap: .8rem; padding: .9rem 1.1rem; height: 100%; }
+.atm .atm-stat-icon { width: 42px; height: 42px; font-size: 1.1rem; }
+.atm .atm-stat-label { font-size: .8rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.atm .atm-stat-value { font-size: 1.45rem; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+
+.atm .atm-sec-head { display: flex; align-items: center; gap: .6rem; padding: 1rem 1.1rem .75rem; font-weight: 700; font-size: 1.05rem; }
+.atm .atm-sec-head .atm-count { margin-left: auto; }
+.atm .atm-sec-icon { width: 32px; height: 32px; font-size: .9rem; border-radius: .6rem; }
+
+.atm .atm-toolbar { position: sticky; top: .5rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem 1rem; }
+.atm .atm-selinfo { font-size: .93rem; color: var(--bs-secondary-color); }
+.atm .atm-selinfo b { color: var(--bs-body-color); }
+.atm .atm-del[disabled] { opacity: .5; }
+
+.atm .atm-table { margin: 0; }
+.atm .atm-table thead th { font-size: .8rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); border-bottom: 1px solid var(--bs-border-color-translucent); white-space: nowrap; padding: .7rem .75rem; }
+.atm .atm-table thead th i { opacity: .7; margin-right: .35rem; }
+.atm .atm-table td { font-size: 1.035rem; vertical-align: middle; padding: .65rem .75rem; border-color: var(--bs-border-color-translucent); }
+.atm .atm-table tbody tr { transition: background-color .12s ease; }
+.atm .atm-selectable .atm-table tbody tr { cursor: pointer; }
+.atm .atm-table tbody tr:hover { background: rgba(var(--bs-primary-rgb), .04); }
+.atm .atm-table tbody tr.is-selected { background: rgba(var(--bs-danger-rgb), .06); box-shadow: inset 3px 0 0 var(--bs-danger); }
+.atm .atm-table .form-check-input { cursor: pointer; margin: 0; }
+.atm .atm-sort { color: inherit; text-decoration: none; }
+.atm .atm-sort:hover, .atm .atm-sort.is-active { color: var(--bs-primary); }
+.atm .atm-sort-on { opacity: 1 !important; margin: 0 0 0 .25rem !important; }
+
+.atm .atm-file { display: flex; align-items: center; gap: .65rem; min-width: 0; }
+.atm .atm-ficon, .atm .atm-thumb { width: 40px; height: 40px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: .6rem; background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); overflow: hidden; }
+.atm .atm-ficon i { font-size: 1.2rem !important; }
+.atm .atm-ficon[hidden], .atm .atm-thumb[hidden] { display: none; }
+.atm .atm-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.atm .atm-fname { font-weight: 600; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.atm .atm-mime { font-family: var(--bs-font-monospace); font-size: .8rem; padding: .05rem .4rem; border-radius: .35rem; background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); color: var(--bs-body-color); }
+.atm .atm-size { font-weight: 700; white-space: nowrap; }
+.atm .atm-dl { display: inline-flex; align-items: center; gap: .3rem; font-weight: 600; white-space: nowrap; }
+.atm .atm-dl i { color: var(--bs-secondary-color); font-size: .85em; }
+.atm .atm-link-trunc { display: inline-block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; text-decoration: none; }
+
+.atm .atm-tag { display: inline-flex; align-items: center; gap: .3rem; padding: .15rem .6rem; border-radius: 50rem; font-size: .8rem; font-weight: 600; white-space: nowrap; }
+.atm .t-std   { color: #0891b2; background: rgba(8,145,178,.1); border: 1px solid rgba(8,145,178,.3); }
+.atm .t-cf    { color: #7c3aed; background: rgba(124,58,237,.1); border: 1px solid rgba(124,58,237,.3); }
+.atm .t-draft { color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); }
+.atm .t-red   { color: #b91c1c; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); }
+.atm .t-amber { color: #b45309; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.35); }
+
+.atm .atm-rank-row { display: flex; align-items: center; gap: .75rem; padding: .6rem 0; border-bottom: 1px dashed var(--bs-border-color-translucent); }
+.atm .atm-rank-row:last-child { border-bottom: 0; }
+.atm .atm-rank { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 700; font-size: .85rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.atm .atm-rank.r1 { background: rgba(234,179,8,.18); color: #a16207; }
+.atm .atm-rank.r2 { background: rgba(148,163,184,.25); color: #475569; }
+.atm .atm-rank.r3 { background: rgba(217,119,6,.15); color: #9a3412; }
+.atm .atm-bar { height: 6px; border-radius: 50rem; background: var(--bs-secondary-bg); overflow: hidden; }
+.atm .atm-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+
+.atm .atm-quick { display: inline-flex; align-items: center; gap: .5rem; padding: .45rem .9rem; border-radius: 50rem; border: 1px solid var(--bs-border-color-translucent); background: var(--bs-body-bg); color: var(--bs-body-color); text-decoration: none; font-weight: 600; font-size: .93rem; }
+.atm .atm-quick:hover { border-color: rgba(var(--bs-primary-rgb), .5); }
+.atm .atm-empty { text-align: center; padding: 3rem 1rem; color: var(--bs-secondary-color); }
+.atm .atm-empty > i { font-size: 2.4rem; opacity: .5; display: block; margin-bottom: .6rem; }
+.atm .atm-section-empty { padding: 1.25rem; text-align: center; color: var(--bs-secondary-color); font-size: .93rem; }

@@ -1,0 +1,61 @@
+/* Upload Manager (uploadadd.php) — стили страницы, всё под .um */
+.um { font-size: 1.055rem; }
+.um .um-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.um .um-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
+.um .um-head-icon, .um .um-sec-icon, .um .um-kpi-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.um .um-head-icon { width: 50px; height: 50px; font-size: 1.4rem; border-radius: .9rem; color: var(--um-c); background: var(--um-bg); transition: color .2s, background-color .2s; }
+.um .um-title { font-size: 1.48rem; font-weight: 700; margin: 0; }
+.um .um-sub { color: var(--bs-secondary-color); font-size: 1rem; }
+.um .um-muted { font-size: .9rem; color: var(--bs-secondary-color); }
+.um .btn { border-radius: 50rem; }
+.um .btn:not(.btn-sm) { font-size: 1.055rem; }
+.um .form-control, .um .form-select, .um .input-group-text { font-size: 1.055rem; }
+.um .form-control, .um .form-select { border-radius: .7rem; }
+.um .input-group > :first-child { border-top-left-radius: .7rem !important; border-bottom-left-radius: .7rem !important; }
+.um .input-group > :last-child { border-top-right-radius: .7rem !important; border-bottom-right-radius: .7rem !important; }
+.um .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.um .form-label { font-weight: 600; }
+.um .form-label > i { width: 1.25rem; color: var(--bs-secondary-color); }
+
+/* Цвет режима: зелёный — добавить, красный — снять */
+.um[data-op="add"]    { --um-c: #16a34a; --um-bg: rgba(34,197,94,.12); --um-soft: rgba(34,197,94,.07); --um-line: rgba(34,197,94,.35); }
+.um[data-op="remove"] { --um-c: #dc2626; --um-bg: rgba(239,68,68,.12); --um-soft: rgba(239,68,68,.06); --um-line: rgba(239,68,68,.35); }
+.um .um-go { background: var(--um-c); border-color: var(--um-c); color: #fff; }
+.um .um-go:hover, .um .um-go:focus { background: var(--um-c); border-color: var(--um-c); color: #fff; filter: brightness(.93); }
+
+/* Переключатель режима */
+.um .um-mode { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.um .um-mode input { position: absolute; opacity: 0; pointer-events: none; }
+.um .um-mode label { display: flex; align-items: center; gap: .8rem; padding: .9rem 1.1rem; border-radius: 1rem; border: 2px solid var(--bs-border-color-translucent); background: var(--bs-body-bg); cursor: pointer; transition: border-color .15s, background-color .15s; }
+.um .um-mode label .um-sec-icon { width: 42px; height: 42px; }
+.um .um-mode #opAdd:checked + label    { border-color: #16a34a; background: rgba(34,197,94,.07); }
+.um .um-mode #opRemove:checked + label { border-color: #dc2626; background: rgba(239,68,68,.06); }
+.um .ic-green { color: #16a34a; background: rgba(34,197,94,.12); }
+.um .ic-red   { color: #dc2626; background: rgba(239,68,68,.12); }
+.um .ic-blue  { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.12); }
+.um .ic-amber { color: #d97706; background: rgba(245,158,11,.14); }
+.um .ic-slate { color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
+
+.um .um-kpi { display: flex; align-items: center; gap: .85rem; padding: 1rem 1.15rem; height: 100%; }
+.um .um-kpi-icon { width: 46px; height: 46px; border-radius: .85rem; font-size: 1.2rem; }
+.um .um-kpi-label { font-size: .84rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.um .um-kpi-value { font-size: 1.45rem; font-weight: 700; line-height: 1.2; }
+
+.um .um-sec-head { display: flex; align-items: center; gap: .7rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--bs-border-color-translucent); }
+.um .um-sec-icon { width: 40px; height: 40px; border-radius: .75rem; font-size: 1.05rem; }
+.um .um-sec-icon.mode { color: var(--um-c); background: var(--um-bg); }
+.um .um-sec-title { font-weight: 700; font-size: 1.12rem; margin: 0; }
+.um .um-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .45rem; }
+.um .um-chip { padding: .2rem .75rem; border-radius: 50rem; border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); font-size: .88rem; font-weight: 600; color: var(--bs-body-color); }
+.um .um-chip:hover { border-color: var(--um-line); color: var(--um-c); }
+.um .um-box { display: flex; align-items: center; gap: .8rem; padding: .8rem 1rem; border-radius: .9rem; background: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color); }
+.um .um-box[hidden] { display: none; }
+.um .um-box .v { font-family: var(--bs-font-monospace); font-weight: 700; }
+.um .um-box .v.res { color: var(--um-c); }
+.um .um-done { display: flex; align-items: center; gap: .9rem; padding: .9rem 1.1rem; border-radius: 1rem; border: 1px solid rgba(34,197,94,.35); background: rgba(34,197,94,.07); }
+.um .um-done > i { font-size: 1.4rem; color: #16a34a; }
+.um .um-log { list-style: none; margin: 0; padding: 0; }
+.um .um-log li { display: flex; align-items: center; gap: .6rem; padding: .55rem 1.25rem; border-top: 1px solid var(--bs-border-color-translucent); font-size: .95rem; }
+.um .um-log li:first-child { border-top: 0; }
+.um .um-min0 { min-width: 0; }
+.um .um-accent { color: var(--um-c); }

@@ -1,0 +1,194 @@
+/* ==========================================================================
+   spam_message.php — просмотр ЛС в модалке spam.php
+   Всё под .pmv, глобальные .card/.btn/.badge не трогаем.
+   Только CSS-переменные Bootstrap 5 — тёмная тема работает сама.
+   ========================================================================== */
+
+.pmv {
+  font-size: 1.055rem;
+  --pmv-radius: .75rem;
+}
+
+/* ---------- Участники: отправитель → получатель ---------- */
+.pmv .pmv-people {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: .75rem;
+  align-items: stretch;
+}
+
+.pmv .pmv-person {
+  --pmv-accent-rgb: var(--bs-primary-rgb);
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  min-width: 0;
+  padding: .85rem 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-left: 4px solid rgb(var(--pmv-accent-rgb));
+  border-radius: var(--pmv-radius);
+  background: var(--bs-tertiary-bg);
+}
+.pmv .pmv-person--to { --pmv-accent-rgb: var(--bs-success-rgb); }
+
+.pmv .pmv-avatar {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 3px rgba(var(--pmv-accent-rgb), .25);
+}
+.pmv .pmv-avatar--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  background: rgba(var(--pmv-accent-rgb), .14);
+  color: rgb(var(--pmv-accent-rgb));
+}
+
+.pmv .pmv-person-info { min-width: 0; }
+
+.pmv .pmv-role {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: rgb(var(--pmv-accent-rgb));
+}
+
+.pmv .pmv-name,
+.pmv .pmv-email {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pmv .pmv-name  { font-weight: 600; color: var(--bs-emphasis-color); }
+.pmv .pmv-email { font-size: .85rem; color: var(--bs-secondary-color); }
+.pmv .pmv-email i { width: 1em; margin-right: .3rem; opacity: .75; }
+
+.pmv .pmv-arrow {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--bs-secondary-bg);
+  color: var(--bs-secondary-color);
+}
+
+@media (max-width: 575.98px) {
+  .pmv .pmv-people { grid-template-columns: minmax(0, 1fr); }
+  .pmv .pmv-arrow  { justify-self: center; transform: rotate(90deg); }
+}
+
+/* ---------- Мета-чипы ---------- */
+.pmv .pmv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin: 1rem 0 1.1rem;
+}
+
+.pmv .pmv-chip {
+  --pmv-chip-rgb: var(--bs-secondary-rgb);
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .3rem .8rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 50rem;
+  background: var(--bs-secondary-bg);
+  font-size: .85rem;
+  color: var(--bs-body-color);
+}
+.pmv .pmv-chip i { color: rgb(var(--pmv-chip-rgb)); }
+.pmv .pmv-chip code { color: inherit; font-size: inherit; }
+
+.pmv .pmv-chip--status {
+  font-weight: 600;
+  border-color: rgba(var(--pmv-chip-rgb), .35);
+  background: rgba(var(--pmv-chip-rgb), .12);
+}
+.pmv .pmv-chip--unread    { --pmv-chip-rgb: var(--bs-warning-rgb); }
+.pmv .pmv-chip--read      { --pmv-chip-rgb: var(--bs-success-rgb); }
+.pmv .pmv-chip--replied   { --pmv-chip-rgb: var(--bs-info-rgb); }
+.pmv .pmv-chip--forwarded { --pmv-chip-rgb: var(--bs-primary-rgb); }
+
+/* ---------- Панель: вкладки + действия ---------- */
+.pmv .pmv-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.pmv .pmv-tabs {
+  display: inline-flex;
+  gap: .25rem;
+  padding: .25rem;
+  margin: 0;
+  list-style: none;
+  border-radius: 50rem;
+  background: var(--bs-secondary-bg);
+}
+.pmv .pmv-tabs .nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .35rem 1rem;
+  border: 0;
+  border-radius: 50rem;
+  background: transparent;
+  font-size: .9rem;
+  color: var(--bs-secondary-color);
+  transition: background-color .15s, color .15s;
+}
+.pmv .pmv-tabs .nav-link:hover  { color: var(--bs-emphasis-color); }
+.pmv .pmv-tabs .nav-link.active {
+  background: var(--bs-body-bg);
+  color: var(--bs-emphasis-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
+}
+
+.pmv .pmv-actions { display: flex; gap: .4rem; }
+.pmv .pmv-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .3rem .9rem;
+}
+
+/* ---------- Тело сообщения ---------- */
+.pmv .pmv-body {
+  margin-top: .75rem;
+  padding: 1rem 1.15rem;
+  max-height: 60vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--pmv-radius);
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
+}
+.pmv .pmv-body img,
+.pmv .pmv-body video,
+.pmv .pmv-body iframe { max-width: 100%; }
+.pmv .pmv-body img    { height: auto; }
+
+.pmv .pmv-raw { background: var(--bs-tertiary-bg); }
+.pmv .pmv-raw pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--bs-font-monospace);
+  font-size: .85rem;
+  color: var(--bs-body-color);
+}

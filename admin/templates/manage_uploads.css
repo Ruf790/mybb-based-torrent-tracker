@@ -1,0 +1,237 @@
+/* ── Media Library — всё скоупнуто под .mu-page / .mu-modal ── */
+.mu-page, .mu-modal { font-size: 1.055rem; }
+
+.mu-page .mu-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+
+/* soft tones */
+.mu-page .mu-tone-primary,   .mu-modal .mu-tone-primary   { background: rgba(var(--bs-primary-rgb),.12);   color: var(--bs-primary); }
+.mu-page .mu-tone-success,   .mu-modal .mu-tone-success   { background: rgba(var(--bs-success-rgb),.12);   color: var(--bs-success); }
+.mu-page .mu-tone-info,      .mu-modal .mu-tone-info      { background: rgba(var(--bs-info-rgb),.14);      color: var(--bs-info-text-emphasis); }
+.mu-page .mu-tone-warning,   .mu-modal .mu-tone-warning   { background: rgba(var(--bs-warning-rgb),.16);   color: var(--bs-warning-text-emphasis); }
+.mu-page .mu-tone-danger,    .mu-modal .mu-tone-danger    { background: rgba(var(--bs-danger-rgb),.12);    color: var(--bs-danger); }
+.mu-page .mu-tone-secondary, .mu-modal .mu-tone-secondary { background: rgba(var(--bs-secondary-rgb),.14); color: var(--bs-secondary-color); }
+
+/* header */
+.mu-page .mu-head { display: flex; align-items: center; gap: 1rem; padding: 1.25rem 1.5rem; flex-wrap: wrap; }
+.mu-page .mu-head-icon {
+    width: 58px; height: 58px; border-radius: 16px; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 1.55rem;
+}
+.mu-page .mu-head h1 { font-size: 1.55rem; font-weight: 700; margin: 0 0 .15rem; }
+.mu-page .mu-head p  { margin: 0; color: var(--bs-secondary-color); font-size: .95rem; }
+.mu-page .mu-head-actions { margin-left: auto; display: flex; gap: .5rem; flex-wrap: wrap; }
+
+/* pills */
+.mu-page .btn, .mu-modal .btn { border-radius: 50rem; }
+.mu-page .btn i, .mu-modal .btn i { width: 1.1em; text-align: center; }
+
+/* KPI */
+.mu-page .mu-kpi { display: flex; align-items: center; gap: .9rem; padding: 1rem 1.15rem; height: 100%; }
+.mu-page .mu-kpi-icon {
+    width: 48px; height: 48px; border-radius: 13px; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 1.2rem;
+}
+.mu-page .mu-kpi-value { font-size: 1.45rem; font-weight: 700; line-height: 1.15; }
+.mu-page .mu-kpi-label { font-size: .85rem; color: var(--bs-secondary-color); }
+.mu-page .mu-kpi-body  { min-width: 0; flex: 1; }
+.mu-page .mu-meter { height: 6px; border-radius: 50rem; background: var(--bs-tertiary-bg); overflow: hidden; margin-top: .4rem; }
+.mu-page .mu-meter > span { display: block; height: 100%; border-radius: inherit; }
+
+/* toolbar: search + chips */
+.mu-page .mu-search { position: relative; flex: 1; min-width: 220px; }
+.mu-page .mu-search > i {
+    position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);
+    color: var(--bs-secondary-color); pointer-events: none;
+}
+.mu-page .mu-search .form-control { padding-left: 2.6rem; border-radius: 50rem; }
+.mu-page .mu-input, .mu-modal .mu-input {
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color-translucent);
+}
+.mu-page .mu-input:focus, .mu-modal .mu-input:focus {
+    background: var(--bs-body-bg);
+    border-color: rgba(var(--bs-primary-rgb),.5);
+    box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb),.15);
+}
+.mu-page .mu-chips { display: flex; gap: .45rem; flex-wrap: wrap; }
+.mu-page .mu-chip {
+    display: inline-flex; align-items: center; gap: .45rem;
+    padding: .35rem .5rem .35rem .8rem; border-radius: 50rem;
+    border: 1px solid var(--bs-border-color); color: var(--bs-body-color);
+    text-decoration: none; font-size: .88rem; font-weight: 500;
+    transition: background-color .15s, border-color .15s;
+}
+.mu-page .mu-chip:hover { background: var(--bs-tertiary-bg); }
+.mu-page .mu-chip.active { background: rgba(var(--bs-primary-rgb),.12); border-color: rgba(var(--bs-primary-rgb),.45); color: var(--bs-primary); }
+.mu-page .mu-chip-count {
+    background: var(--bs-tertiary-bg); border-radius: 50rem;
+    padding: .05rem .5rem; font-size: .75rem; font-weight: 600; color: var(--bs-secondary-color);
+}
+.mu-page .mu-chip.active .mu-chip-count { background: rgba(var(--bs-primary-rgb),.18); color: var(--bs-primary); }
+
+/* sticky bulk bar */
+.mu-page .mu-bulkbar {
+    position: sticky; bottom: 1rem; z-index: 1020;
+    border-color: rgba(var(--bs-primary-rgb),.35);
+    box-shadow: 0 8px 28px rgba(0,0,0,.14);
+}
+
+/* table */
+.mu-page .mu-table { margin: 0; }
+.mu-page .mu-table > thead > tr > th {
+    background: var(--bs-tertiary-bg); color: var(--bs-secondary-color);
+    font-size: .82rem; font-weight: 600; white-space: nowrap; vertical-align: top;
+    border-bottom: 1px solid var(--bs-border-color); padding: .75rem .85rem;
+}
+.mu-page .mu-table > thead > tr > th i { margin-right: .35rem; opacity: .75; }
+.mu-page .mu-table > tbody > tr > td { vertical-align: middle; padding: .75rem .85rem; border-color: var(--bs-border-color-translucent); }
+.mu-page .mu-table > tbody > tr:has(.file-checkbox:checked) > td { background: rgba(var(--bs-primary-rgb),.06); }
+.mu-page .mu-thumb {
+    width: 76px; height: 76px; border-radius: 12px; object-fit: cover; display: block;
+    border: 1px solid var(--bs-border-color-translucent); cursor: zoom-in;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.mu-page .mu-thumb:hover { transform: scale(1.04); box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+.mu-page .mu-thumb-ph {
+    width: 76px; height: 76px; border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .3rem;
+    font-size: 1.6rem; border: 1px dashed var(--bs-border-color);
+}
+.mu-page .mu-thumb-ph small { font-size: .68rem; font-weight: 600; }
+.mu-page .mu-ftype {
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 1rem;
+}
+.mu-page .mu-fname { font-weight: 600; word-break: break-all; }
+.mu-page .mu-meta { color: var(--bs-secondary-color); font-size: .82rem; display: flex; gap: .85rem; flex-wrap: wrap; }
+.mu-page .mu-meta i { margin-right: .3rem; opacity: .8; }
+.mu-page .mu-badge {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .3rem .7rem; border-radius: 50rem; font-size: .8rem; font-weight: 600; white-space: nowrap;
+}
+.mu-page .mu-badge a { color: inherit; text-decoration: none; }
+.mu-page .mu-badge a:hover { text-decoration: underline; }
+.mu-page .mu-user { display: flex; align-items: center; gap: .6rem; }
+.mu-page .mu-user img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--bs-border-color-translucent); }
+.mu-page .mu-user a { text-decoration: none; font-size: .9rem; }
+.mu-page .mu-date { font-size: .84rem; color: var(--bs-secondary-color); line-height: 1.55; white-space: nowrap; }
+.mu-page .mu-date i { width: 1.1em; margin-right: .3rem; opacity: .8; }
+.mu-page .mu-new { font-size: .68rem; font-weight: 700; padding: .15rem .5rem; border-radius: 50rem; margin-bottom: .3rem; display: inline-block; }
+.mu-page .mu-actions { display: flex; gap: .35rem; justify-content: flex-end; }
+.mu-page .mu-iconbtn {
+    width: 34px; height: 34px; padding: 0; border-radius: 50%;
+    display: inline-grid; place-items: center;
+    background: var(--bs-tertiary-bg); color: var(--bs-body-color); border: 1px solid var(--bs-border-color-translucent);
+}
+.mu-page .mu-iconbtn:hover { background: rgba(var(--bs-primary-rgb),.12); color: var(--bs-primary); }
+.mu-page .mu-iconbtn.dropdown-toggle::after { display: none; }
+.mu-page .dropdown-menu { border-radius: .8rem; padding: .35rem; border-color: var(--bs-border-color-translucent); box-shadow: 0 10px 30px rgba(0,0,0,.15); }
+.mu-page .dropdown-item { border-radius: .5rem; padding: .45rem .75rem; font-size: .92rem; }
+.mu-page .dropdown-item i { width: 1.25em; text-align: center; margin-right: .5rem; }
+.mu-page .mu-empty { text-align: center; padding: 3.5rem 1rem; }
+.mu-page .mu-empty-icon { width: 72px; height: 72px; border-radius: 20px; display: inline-grid; place-items: center; font-size: 1.9rem; margin-bottom: 1rem; }
+.mu-page .mu-pager { padding: .9rem 1.15rem; border-top: 1px solid var(--bs-border-color-translucent); }
+
+/* modals */
+.mu-modal .modal-content { border-radius: 1.1rem; border: 1px solid var(--bs-border-color-translucent); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.mu-modal .modal-header { border-bottom: 1px solid var(--bs-border-color-translucent); padding: 1.1rem 1.4rem; }
+.mu-modal .modal-footer { border-top: 1px solid var(--bs-border-color-translucent); padding: .9rem 1.4rem; }
+.mu-modal .modal-body   { padding: 1.4rem; }
+.mu-modal .mu-mhead-icon {
+    width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 1.05rem;
+}
+.mu-modal .modal-title { font-weight: 700; font-size: 1.15rem; display: flex; align-items: center; gap: .75rem; }
+.mu-modal .form-label { font-weight: 500; font-size: .9rem; color: var(--bs-secondary-color); }
+.mu-modal .form-label i { width: 1.2em; margin-right: .25rem; }
+.mu-modal .mu-preview {
+    background: var(--bs-tertiary-bg); border-radius: .9rem; padding: .75rem;
+    display: flex; justify-content: center;
+}
+.mu-modal .mu-preview img { max-height: 150px; max-width: 100%; border-radius: .6rem; }
+.mu-modal .mu-note {
+    display: flex; gap: .65rem; align-items: flex-start;
+    padding: .75rem .9rem; border-radius: .8rem; font-size: .88rem;
+}
+.mu-modal .mu-note i { margin-top: .15rem; }
+.mu-modal .mu-danger-hero { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.mu-modal .mu-danger-hero .mu-mhead-icon { width: 56px; height: 56px; border-radius: 16px; font-size: 1.5rem; }
+.mu-modal .mu-filebox { background: var(--bs-tertiary-bg); border-radius: .9rem; padding: .85rem 1rem; }
+
+/* upload */
+.mu-modal .mu-steps { display: flex; align-items: center; justify-content: center; gap: .75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.mu-modal .mu-step { display: flex; align-items: center; gap: .55rem; font-size: .9rem; font-weight: 500; }
+.mu-modal .mu-step-dot { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; }
+.mu-modal .mu-step-line { width: 36px; height: 2px; background: var(--bs-border-color); border-radius: 2px; }
+.mu-modal .mu-drop {
+    border: 2px dashed rgba(var(--bs-primary-rgb),.45); border-radius: 1rem;
+    background: var(--bs-tertiary-bg); cursor: pointer; padding: 2.5rem 1.5rem;
+    transition: border-color .15s, background-color .15s;
+}
+.mu-modal .mu-drop:hover, .mu-modal .mu-drop.dragover, .mu-modal .mu-drop.drag-over {
+    border-color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.06);
+}
+.mu-modal .mu-drop-icons { display: flex; justify-content: center; gap: 1.1rem; font-size: 2.1rem; margin-bottom: 1rem; }
+.mu-modal .mu-drop-icons i { opacity: .55; }
+.mu-modal .mu-typecount { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; color: var(--bs-secondary-color); }
+.mu-modal .mu-typecount .badge { background: var(--bs-tertiary-bg); color: var(--bs-body-color); font-weight: 600; }
+.mu-modal .mu-bulk-grid {
+    max-height: 300px; overflow-y: auto; display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px;
+    padding: 10px; background: var(--bs-tertiary-bg); border-radius: .9rem;
+}
+
+/* состояния, которыми управляет manage_uploads.js */
+.mu-page .bulk-actions:not(.show) { display: none; }
+.mu-modal .preview-item {
+    position: relative; width: 80px; height: 80px; border-radius: .65rem; overflow: hidden;
+    background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent);
+}
+.mu-modal .mu-bulk-grid .preview-item { width: auto; height: auto; aspect-ratio: 1; background: var(--bs-body-bg); }
+.mu-modal .preview-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mu-modal .preview-overlay {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: .15rem .35rem;
+    font-size: .65rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    background: linear-gradient(transparent, rgba(0,0,0,.75));
+}
+.mu-modal .remove-preview {
+    position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; padding: 0; border: 0;
+    border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; font-size: .7rem;
+    display: grid; place-items: center; cursor: pointer;
+}
+.mu-modal .remove-preview:hover { background: var(--bs-danger); }
+.mu-modal .mu-tile {
+    width: 100%; height: 100%; padding: 5px; text-align: center; color: var(--bs-secondary-color);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.mu-modal .mu-tile small { font-size: .65rem; word-break: break-all; line-height: 1.2; }
+.mu-modal .mu-upload-item {
+    display: flex; justify-content: space-between; align-items: center; gap: .75rem;
+    background: var(--bs-tertiary-bg); border: 0; border-radius: .7rem !important;
+    padding: .5rem .85rem; margin-bottom: .35rem;
+}
+.mu-modal .mu-size-pill {
+    font-size: .75rem; font-weight: 600; padding: .2rem .6rem; border-radius: 50rem;
+    background: var(--bs-body-bg); color: var(--bs-secondary-color);
+}
+
+/* тонкий скроллбар в сетке превью bulk-delete и в списке файлов загрузки */
+.mu-modal .mu-bulk-grid, .mu-modal #selectedFilesListContainer { scrollbar-width: thin; scrollbar-color: var(--bs-border-color) transparent; }
+.mu-modal .mu-bulk-grid::-webkit-scrollbar, .mu-modal #selectedFilesListContainer::-webkit-scrollbar { width: 6px; }
+.mu-modal .mu-bulk-grid::-webkit-scrollbar-thumb, .mu-modal #selectedFilesListContainer::-webkit-scrollbar-thumb { background: var(--bs-border-color); border-radius: 10px; }
+
+/* класс из старого manage_uploads.css - на случай, если его использует modals_images.php */
+.preview-modal-img { max-height: 70vh; max-width: 100%; object-fit: contain; border-radius: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+    .mu-page *, .mu-modal * { transition: none !important; }
+}
+@media (max-width: 575.98px) {
+    .mu-page .mu-head-actions { margin-left: 0; width: 100%; }
+    .mu-page .mu-head-actions .btn { flex: 1; }
+}

@@ -1,0 +1,69 @@
+/* Шрифты страницы на ~5,5% крупнее (Bootstrap задаёт размеры в rem — поэтому явно) */
+.au { font-size: 1.055rem; }
+.au .form-control, .au .form-select, .au .input-group-text, .au .btn:not(.btn-sm), .au .form-check-label, .au .alert { font-size: 1.055rem; }
+.au .btn-sm, .au .form-control-sm, .au .input-group-sm > .form-control, .au .input-group-sm > .input-group-text, .au .small, .au small { font-size: 0.923rem; }
+.au h2.h4 { font-size: calc(1.3rem * 1.055); }
+.au .au-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.au .au-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
+.au .au-head-icon, .au .au-sec-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.au .au-head-icon { width: 48px; height: 48px; font-size: 1.424rem; border-radius: .85rem; color: #16a34a; background: rgba(34,197,94,.12); }
+.au .au-title { font-size: 1.477rem; font-weight: 700; margin: 0; }
+.au .au-sub { color: var(--bs-secondary-color); font-size: 1.002rem; }
+.au .au-muted { font-size: 0.907rem; color: var(--bs-secondary-color); }
+.au .btn { border-radius: 50rem; }
+.au .form-control, .au .form-select { border-radius: .7rem; }
+.au .input-group > .input-group-text:first-child { border-radius: .7rem 0 0 .7rem; }
+.au .input-group > :last-child:not(.invalid-feedback):not(.au-hint) { border-top-right-radius: .7rem !important; border-bottom-right-radius: .7rem !important; }
+.au .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.au .form-label { font-weight: 600; margin-bottom: .3rem; }
+.au .form-label i { width: 1.2rem; color: var(--bs-secondary-color); }
+.au .au-req { color: var(--bs-danger); }
+.au .au-opt { font-weight: 400; color: var(--bs-secondary-color); font-size: .85em; }
+
+.au .au-sec { padding: 1.1rem 1.25rem; border-top: 1px solid var(--bs-border-color-translucent); }
+.au .au-sec-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .9rem; font-weight: 700; font-size: 1.076rem; }
+.au .au-sec-icon { width: 32px; height: 32px; border-radius: .6rem; font-size: 0.95rem; }
+.au .ic-blue   { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.12); }
+.au .ic-green  { color: #16a34a; background: rgba(34,197,94,.12); }
+.au .ic-amber  { color: #d97706; background: rgba(245,158,11,.14); }
+.au .ic-purple { color: #7c3aed; background: rgba(124,58,237,.12); }
+.au .ic-teal   { color: #0891b2; background: rgba(8,145,178,.12); }
+
+.au .au-hint { font-size: 0.865rem; margin-top: .3rem; min-height: 1.1em; color: var(--bs-secondary-color); }
+.au .au-hint.ok  { color: #16a34a; }
+.au .au-hint.bad { color: #dc2626; }
+
+/* Индикатор надёжности пароля */
+.au .au-strength { height: 6px; border-radius: 50rem; background: var(--bs-secondary-bg); overflow: hidden; margin-top: .45rem; }
+.au .au-strength > span { display: block; height: 100%; width: 0; border-radius: 50rem; transition: width .2s ease, background-color .2s ease; }
+.au .au-genbox { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .6rem .85rem; border-radius: .8rem; background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.3); margin-top: .75rem; }
+.au .au-genbox code { font-size: 1.055rem; font-weight: 700; color: #15803d; overflow-wrap: anywhere; }
+
+/* Переключатели-опции */
+.au .au-switch { display: flex; align-items: center; gap: .75rem; padding: .7rem .9rem; border-radius: .8rem; border: 1px solid var(--bs-border-color-translucent); cursor: pointer; margin-bottom: .5rem; transition: border-color .15s ease, background-color .15s ease; }
+.au .au-switch:has(input:checked) { border-color: rgba(var(--bs-primary-rgb), .45); background: rgba(var(--bs-primary-rgb), .04); }
+.au .au-switch .form-check-input { width: 2.5em; height: 1.35em; margin: 0 0 0 auto; cursor: pointer; flex-shrink: 0; float: none; }
+.au .au-switch .au-sec-icon { width: 30px; height: 30px; border-radius: .55rem; }
+
+/* Аватар */
+.au .au-seg { display: inline-flex; padding: .2rem; border-radius: 50rem; background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); margin-bottom: .75rem; }
+.au .au-seg .nav-link { padding: .3rem .85rem; border-radius: 50rem; font-size: 0.928rem; font-weight: 600; color: var(--bs-secondary-color); border: 0; }
+.au .au-seg .nav-link.active { background: var(--bs-body-bg); color: var(--bs-body-color); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.au #avatar-dropzone { border: 2px dashed var(--bs-border-color); border-radius: .9rem; padding: 1.5rem; text-align: center; background: var(--bs-tertiary-bg); transition: border-color .15s ease, background-color .15s ease; }
+.au #avatar-dropzone.border-primary { border-color: var(--bs-primary) !important; background: rgba(var(--bs-primary-rgb), .05); }
+
+/* Карточка-превью будущего аккаунта */
+.au .au-preview { position: sticky; top: 90px; }
+.au .au-pv-top { text-align: center; padding: 1.5rem 1.25rem 1rem; }
+.au .au-pv-avatar { width: 96px; height: 96px; border-radius: 50%; margin: 0 auto .75rem; display: flex; align-items: center; justify-content: center; font-size: 2.321rem; font-weight: 700; color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); overflow: hidden; box-shadow: 0 0 0 4px var(--bs-body-bg), 0 0 0 5px var(--bs-border-color-translucent); }
+.au .au-pv-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.au .au-pv-name { font-size: 1.266rem; font-weight: 700; overflow-wrap: anywhere; }
+.au .au-pv-rows { padding: 0 1.25rem 1rem; }
+.au .au-pv-row { display: flex; justify-content: space-between; gap: .75rem; padding: .45rem 0; border-top: 1px dashed var(--bs-border-color-translucent); font-size: 0.971rem; }
+.au .au-pv-row span:first-child { color: var(--bs-secondary-color); }
+.au .au-pv-row span:first-child i { width: 1.2rem; }
+.au .au-pv-row b { text-align: right; overflow-wrap: anywhere; }
+
+.au .au-savebar { position: sticky; bottom: .75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem 1rem; margin-top: 1rem; box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.08); }
+.au .au-done { text-align: center; padding: 2rem 1.5rem; }
+.au .au-done-icon { width: 64px; height: 64px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 1.793rem; margin-bottom: .75rem; color: #16a34a; background: rgba(34,197,94,.12); }

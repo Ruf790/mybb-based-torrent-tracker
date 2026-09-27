@@ -1,0 +1,85 @@
+/* ═══════════════════════════════════════════════════════════════
+   Manage Torrents — дополнительные стили
+
+   Раньше этот файл менял всю страницу, а не только инструмент:
+   • .btn-sm и .btn с !important — кнопки в шапке и меню сайта;
+   • ::-webkit-scrollbar — синяя полоса прокрутки у ВСЕГО окна;
+   • .pagination — пагинация на всём сайте;
+   • :root-переменные с общими именами (--font-base и т.п.);
+   • .torrent-row:hover { transform } — строки «прыгали».
+   Основная вёрстка страницы теперь в самом manage_torrents.php (.mt);
+   здесь остались только блок ошибок, бейджи статусов и модалка.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Блок ошибок (TorrentManager::showErrors) ─────────────────── */
+.alert-modern { display: flex; align-items: flex-start; gap: .9rem; max-width: 1320px; margin: 1rem auto; padding: .9rem 1.15rem; border-radius: 1rem; border: 1px solid rgba(239,68,68,.35); background: rgba(239,68,68,.06); font-size: 1.02rem; }
+.alert-modern-warning { border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.07); }
+.alert-modern-icon { width: 40px; height: 40px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: .75rem; color: #dc2626; background: rgba(239,68,68,.12); font-size: 1.1rem; }
+.alert-modern-warning .alert-modern-icon { color: #d97706; background: rgba(245,158,11,.14); }
+.alert-modern-content { flex: 1; min-width: 0; }
+.alert-modern-title { margin: 0 0 .2rem; font-size: 1.05rem; font-weight: 700; }
+.alert-modern-message { margin: 0; color: var(--bs-secondary-color); line-height: 1.5; }
+.alert-modern-close { border: 0; background: none; color: var(--bs-secondary-color); padding: .25rem; line-height: 1; cursor: pointer; }
+.alert-modern-close:hover { color: #dc2626; }
+
+/* ── Бейджи статуса торрента (GetTorrentTags) ────────────────── */
+.flag-badge { display: inline-flex; align-items: center; gap: .35rem; padding: .15rem .6rem; border-radius: 50rem; font-size: .78rem; font-weight: 700; white-space: nowrap; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color-translucent); }
+.flag-badge i { font-size: .8em; }
+.flag-badge-active    { color: #15803d; background: rgba(34,197,94,.1);   border-color: rgba(34,197,94,.3); }
+.flag-badge-dead,
+.flag-badge-banned    { color: #b91c1c; background: rgba(239,68,68,.1);   border-color: rgba(239,68,68,.3); }
+.flag-badge-free      { color: #0e7490; background: rgba(8,145,178,.1);   border-color: rgba(8,145,178,.3); }
+.flag-badge-silver    { color: #475569; background: rgba(148,163,184,.15); border-color: rgba(148,163,184,.35); }
+.flag-badge-sticky    { color: #b45309; background: rgba(245,158,11,.12);  border-color: rgba(245,158,11,.35); }
+.flag-badge-anonymous { color: var(--bs-body-color); }
+.flag-badge-double    { color: #6d28d9; background: rgba(124,58,237,.1);  border-color: rgba(124,58,237,.3); }
+.flag-badge-internal  { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.1); border-color: rgba(var(--bs-primary-rgb),.3); }
+
+/* ── Выбранная строка (класс ставит manage_torrents.js) ─────── */
+.mt .torrent-row.selected { background: rgba(var(--bs-primary-rgb), .07); box-shadow: inset 3px 0 0 var(--bs-primary); }
+.mt .torrent-row { cursor: pointer; }
+
+/* ── Телефон: строки таблицы превращаются в карточки ────────── */
+@media (max-width: 767.98px) {
+    .mt .mt-table thead { display: none; }
+    .mt .mt-table, .mt .mt-table tbody { display: block; }
+    .mt .mt-table .torrent-row { display: grid; grid-template-columns: auto 1fr auto; gap: .35rem .6rem; padding: .8rem .9rem; border-bottom: 1px solid var(--bs-border-color-translucent); }
+    .mt .mt-table .torrent-row td { display: block; padding: 0; border: 0; }
+    .mt .mt-table .torrent-row td:nth-child(1) { grid-row: 1 / span 2; }          /* ⚙ */
+    .mt .mt-table .torrent-row td:nth-child(2) { grid-column: 2; }                  /* название */
+    .mt .mt-table .torrent-row td:nth-child(7) { grid-column: 3; grid-row: 1; }     /* галочка */
+    .mt .mt-table .torrent-row td:nth-child(4),
+    .mt .mt-table .torrent-row td:nth-child(6) { grid-column: 2 / span 2; font-size: .9rem; }
+    .mt #bulkActionsBar { bottom: .5rem; }
+}
+
+/* ── Печать ──────────────────────────────────────────────────── */
+@media print {
+    .mt .mt-kpi, .mt #searchForm, .mt #bulkActionsBar, .mt .pagination, .mt .btn, .modal { display: none !important; }
+}
+
+/* ── Модалка «Manage torrent» (HTML приходит из manage_torrents_ajax.php) ── */
+.torrent-info-modal { font-size: 1.02rem; }
+.torrent-info-modal .info-card,
+.torrent-info-modal .stats-card,
+.torrent-info-modal .poster-section { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+.torrent-info-modal .info-label { font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); margin-bottom: .45rem; }
+.torrent-info-modal h5 { font-size: 1.12rem; font-weight: 700; margin-bottom: .5rem; overflow-wrap: anywhere; }
+.torrent-info-modal .stats-card { text-align: center; }
+.torrent-info-modal .stats-value { font-size: 1.9rem; font-weight: 700; line-height: 1.2; color: var(--bs-primary); }
+.torrent-info-modal .stats-label { font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); margin-top: .25rem; }
+.torrent-info-modal .action-buttons { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--bs-border-color-translucent); }
+.torrent-info-modal .action-buttons .btn { border-radius: 50rem; }
+.torrent-info-modal .poster-wrapper { position: relative; border-radius: .9rem; overflow: hidden; background: var(--bs-secondary-bg); min-height: 200px; display: flex; align-items: center; justify-content: center; }
+.torrent-info-modal .torrent-poster { width: 100%; max-height: 300px; object-fit: cover; }
+.torrent-info-modal .poster-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); opacity: 0; transition: opacity .2s ease; }
+.torrent-info-modal .poster-wrapper:hover .poster-overlay { opacity: 1; }
+.torrent-info-modal .poster-zoom { width: 46px; height: 46px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #fff; color: var(--bs-primary); text-decoration: none; font-size: 1.1rem; }
+.torrent-info-modal .poster-zoom:hover { background: var(--bs-primary); color: #fff; }
+.torrent-info-modal .poster-placeholder { width: 100%; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--bs-secondary-color); background: var(--bs-secondary-bg); border-radius: .9rem; }
+.torrent-info-modal .poster-placeholder i { font-size: 3.2rem; opacity: .5; margin-bottom: .6rem; }
+.torrent-info-modal .form-control,
+.torrent-info-modal .form-select { border-radius: .7rem; }
+.torrent-info-modal .bg-purple { background-color: #6f42c1 !important; }
+.torrent-info-modal .badge { font-weight: 600; border-radius: 50rem; }
+.torrent-info-modal code { font-size: .88rem; overflow-wrap: anywhere; }

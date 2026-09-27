@@ -1,0 +1,299 @@
+/* Fix Torrent Hashes — всё скоупится под .fh-page */
+
+.fh-page {
+    font-size: 1.055rem;
+    --fh-radius: 1rem;
+    --fh-radius-sm: .6rem;
+    --fh-shadow: 0 .15rem .6rem rgba(var(--bs-body-color-rgb), .06);
+}
+
+/* ── Cards ─────────────────────────────────────────── */
+.fh-page .fh-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--fh-radius);
+    box-shadow: var(--fh-shadow);
+}
+
+/* ── Soft icon squares ─────────────────────────────── */
+.fh-page .fh-icon {
+    flex-shrink: 0;
+    width: 3rem;
+    height: 3rem;
+    border-radius: .85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+}
+.fh-page .fh-soft-primary   { background: var(--bs-primary-bg-subtle);   color: var(--bs-primary-text-emphasis); }
+.fh-page .fh-soft-info      { background: var(--bs-info-bg-subtle);      color: var(--bs-info-text-emphasis); }
+.fh-page .fh-soft-success   { background: var(--bs-success-bg-subtle);   color: var(--bs-success-text-emphasis); }
+.fh-page .fh-soft-danger    { background: var(--bs-danger-bg-subtle);    color: var(--bs-danger-text-emphasis); }
+.fh-page .fh-soft-secondary { background: var(--bs-secondary-bg-subtle); color: var(--bs-secondary-text-emphasis); }
+
+/* ── Header ────────────────────────────────────────── */
+.fh-page .fh-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+}
+.fh-page .fh-header-text { flex: 1; min-width: 0; }
+.fh-page .fh-title {
+    font-family: 'Oswald', var(--bs-font-sans-serif);
+    font-size: 1.65rem;
+    font-weight: 500;
+    margin: 0;
+    line-height: 1.2;
+}
+.fh-page .fh-subtitle {
+    margin: .2rem 0 0;
+    color: var(--bs-secondary-color);
+    font-size: .92em;
+}
+.fh-page .fh-version {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .3rem .8rem;
+    border-radius: 50rem;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-size: .8em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ── KPI tiles ─────────────────────────────────────── */
+.fh-page .fh-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.fh-page .fh-kpi {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    padding: 1rem 1.15rem;
+}
+.fh-page .fh-kpi-value {
+    font-family: 'Oswald', var(--bs-font-sans-serif);
+    font-size: 1.6rem;
+    line-height: 1.1;
+}
+.fh-page .fh-kpi-label {
+    color: var(--bs-secondary-color);
+    font-size: .85em;
+}
+
+/* ── Toolbar ───────────────────────────────────────── */
+.fh-page .fh-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .75rem 1.5rem;
+    padding: .85rem 1.25rem;
+    margin-bottom: 1rem;
+}
+.fh-page .fh-note {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    color: var(--bs-secondary-color);
+    font-size: .9em;
+}
+.fh-page .fh-note > i { color: var(--bs-info-text-emphasis); }
+.fh-page .fh-auto-form {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+.fh-page .fh-auto-form .form-check-input { cursor: pointer; }
+.fh-page .fh-auto-form .form-check-label { cursor: pointer; user-select: none; }
+
+/* ── Table ─────────────────────────────────────────── */
+.fh-page .fh-table-card { overflow: hidden; }
+.fh-page .fh-table { --bs-table-bg: transparent; }
+.fh-page .fh-table thead th {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-size: .82em;
+    font-weight: 600;
+    border-bottom-width: 1px;
+    padding: .75rem 1rem;
+    white-space: nowrap;
+}
+.fh-page .fh-table td { padding: .7rem 1rem; }
+.fh-page .fh-table tr.fh-row--mismatch { --bs-table-bg: var(--bs-danger-bg-subtle); }
+
+.fh-page .fh-name a {
+    color: var(--bs-emphasis-color);
+    font-weight: 600;
+    text-decoration: none;
+}
+.fh-page .fh-name a:hover { color: var(--bs-link-hover-color); text-decoration: underline; }
+.fh-page .fh-id {
+    display: block;
+    color: var(--bs-secondary-color);
+    font-size: .78em;
+}
+
+/* Hashes */
+.fh-page .fh-hash-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    max-width: 100%;
+}
+.fh-page .fh-hash {
+    font-family: var(--bs-font-monospace);
+    font-size: .8em;
+    padding: .22rem .5rem;
+    border-radius: .4rem;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    word-break: break-all;
+}
+.fh-page .fh-hash--ok    { color: var(--bs-success-text-emphasis); }
+.fh-page .fh-hash--good  { color: var(--bs-success-text-emphasis); background: var(--bs-success-bg-subtle); }
+.fh-page .fh-hash--bad   { color: var(--bs-danger-text-emphasis); text-decoration: line-through; text-decoration-thickness: 1px; }
+.fh-page .fh-hash--muted { color: var(--bs-secondary-color); }
+
+.fh-page .fh-copy {
+    border: 0;
+    background: transparent;
+    color: var(--bs-secondary-color);
+    padding: .2rem .4rem;
+    border-radius: .4rem;
+    line-height: 1;
+    opacity: .65;
+    transition: opacity .15s, background-color .15s;
+}
+.fh-page .fh-copy:hover,
+.fh-page .fh-copy:focus-visible { opacity: 1; background: var(--bs-secondary-bg); color: var(--bs-body-color); }
+.fh-page .fh-copy.is-copied { color: var(--bs-success-text-emphasis); opacity: 1; }
+
+.fh-page .fh-muted-note {
+    color: var(--bs-secondary-color);
+    font-style: italic;
+    font-size: .9em;
+}
+
+/* Badges */
+.fh-page .fh-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .3rem .75rem;
+    border-radius: 50rem;
+    font-size: .78em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.fh-page .fh-badge--success   { background: var(--bs-success-bg-subtle);   color: var(--bs-success-text-emphasis); }
+.fh-page .fh-badge--danger    { background: var(--bs-danger-bg-subtle);    color: var(--bs-danger-text-emphasis); border: 1px solid var(--bs-danger-border-subtle); }
+.fh-page .fh-badge--secondary { background: var(--bs-secondary-bg-subtle); color: var(--bs-secondary-text-emphasis); }
+.fh-page .fh-badge--warning   { background: var(--bs-warning-bg-subtle);   color: var(--bs-warning-text-emphasis); }
+.fh-page .fh-badge--info      { background: var(--bs-info-bg-subtle);      color: var(--bs-info-text-emphasis); }
+
+/* Empty state */
+.fh-page .fh-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .75rem;
+    padding: 3rem 1rem;
+    color: var(--bs-secondary-color);
+}
+.fh-page .fh-empty p { margin: 0; }
+
+/* ── Pagination ────────────────────────────────────── */
+.fh-page .fh-pager { margin: 1.25rem 0 0; }
+.fh-page .fh-pager .page-link {
+    border-radius: 50rem !important;
+    margin: 0 .15rem;
+    padding: .35rem .85rem;
+}
+
+/* ── Pills ─────────────────────────────────────────── */
+.fh-page .fh-pill {
+    border-radius: 50rem;
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+}
+
+/* ── Sticky action bar ─────────────────────────────── */
+.fh-page .fh-actionbar {
+    position: sticky;
+    bottom: .75rem;
+    z-index: 1020;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .75rem 1rem;
+    margin-top: 1.25rem;
+    padding: .8rem 1.1rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--fh-radius);
+    background: color-mix(in srgb, var(--bs-body-bg) 90%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 -.2rem 1rem rgba(var(--bs-body-color-rgb), .08);
+}
+.fh-page .fh-progress-wrap { flex: 1; min-width: 200px; }
+.fh-page .fh-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: .82em;
+    color: var(--bs-secondary-color);
+    margin-bottom: .35rem;
+}
+.fh-page .fh-progress {
+    height: .5rem;
+    border-radius: 50rem;
+    background: var(--bs-secondary-bg);
+}
+.fh-page .fh-progress .progress-bar {
+    background: var(--bs-info);
+    border-radius: 50rem;
+}
+
+/* Auto Fix status */
+.fh-page .fh-auto-status {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .3rem .8rem;
+    border-radius: 50rem;
+    background: var(--bs-info-bg-subtle);
+    color: var(--bs-info-text-emphasis);
+    font-size: .82em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.fh-page .fh-dot {
+    width: .5rem;
+    height: .5rem;
+    border-radius: 50%;
+    background: currentColor;
+    animation: fh-pulse 1.4s ease-in-out infinite;
+}
+@keyframes fh-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fh-page .fh-dot { animation: none; }
+}
+
+@media (max-width: 575.98px) {
+    .fh-page .fh-header { flex-wrap: wrap; }
+    .fh-page .fh-actionbar { bottom: 0; }
+    .fh-page #applyForm, .fh-page #applyBtn { width: 100%; }
+}

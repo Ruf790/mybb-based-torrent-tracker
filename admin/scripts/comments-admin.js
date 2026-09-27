@@ -1,0 +1,840 @@
+// Глобальные переменные состояния
+const commentManager = {
+    currentPage: 1,
+    deleteId: 0,
+    editId: 0,
+    selectedComments: [],
+    filters: {
+        username: '',
+        torrent: '',
+        date_from: '',
+        date_to: ''
+    },
+    isLoading: false
+};
+
+// Основная функция загрузки комментариев
+function loadComments(page = 1) {
+    if (commentManager.isLoading) return;
+    
+    commentManager.currentPage = page;
+    commentManager.isLoading = true;
+    
+    const commentsTable = document.getElementById('comments-table');
+    if (commentsTable) {
+        commentsTable.innerHTML = `
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 text-muted">Loading comments...</p>
+            </div>
+        `;
+    }
+    
+    const queryParams = new URLSearchParams();
+    queryParams.append('act', 'latest_comments');
+    queryParams.append('action', 'list');
+    queryParams.append('page', page);
+    
+    Object.entries(commentManager.filters).forEach(([key, value]) => {
+        if (value) queryParams.append(key, value);
+    });
+    
+    fetch(`index.php?${queryParams.toString()}`)
+        .then(response => {
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return response.text();
+        })
+        .then(data => {
+            if (commentsTable) {
+                commentsTable.innerHTML = data;
+            }
+            updateUrlWithFilters();
+            updateSelection();
+            bindBulkDeleteHandler();
+        })
+        .catch(error => {
+            console.error('Error loading comments:', error);
+            if (commentsTable) {
+                commentsTable.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle"></i> Failed to load comments: ${error.message}
+                    </div>
+                `;
+            }
+        })
+        .finally(() => {
+            commentManager.isLoading = false;
+        });
+}
+
+// Функции для управления выбором
+function updateSelection() {
+    const checkboxes = document.querySelectorAll('.comment-checkbox:checked');
+    commentManager.selectedComments = Array.from(checkboxes).map(checkbox => checkbox.value);
+
+    const selectedCount = document.getElementById('selectedCount');
+    const moveSelectedCount = document.getElementById('moveSelectedCount');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    const selectAll = document.getElementById('selectAll');
+
+    if (selectedCount) selectedCount.textContent = commentManager.selectedComments.length;
+    if (moveSelectedCount) moveSelectedCount.textContent = commentManager.selectedComments.length;
+    if (bulkDeleteBtn) bulkDeleteBtn.disabled = commentManager.selectedComments.length === 0;
+
+    // Сбрасываем выделение строк
+    document.querySelectorAll('tr[data-comment-id]').forEach(row => {
+        row.classList.remove('table-active');
+    });
+
+    // Выделяем выбранные строки
+    commentManager.selectedComments.forEach(id => {
+        const row = document.querySelector(`tr[data-comment-id="${id}"]`);
+        if (row) row.classList.add('table-active');
+    });
+
+    // Обновляем состояние "Выбрать все"
+    if (selectAll) {
+        const allCheckboxes = document.querySelectorAll('.comment-checkbox');
+        selectAll.checked = allCheckboxes.length > 0 && allCheckboxes.length === checkboxes.length;
+    }
+}
+
+// Обработчики для чекбоксов
+document.addEventListener('change', function(e) {
+    if (e.target.id === 'selectAll') {
+        const isChecked = e.target.checked;
+        document.querySelectorAll('.comment-checkbox').forEach(checkbox => {
+            checkbox.checked = isChecked;
+        });
+        updateSelection();
+    }
+    
+    if (e.target.classList.contains('comment-checkbox')) {
+        updateSelection();
+    }
+});
+
+document.addEventListener('click', function(e) {
+    if (e.target.id === 'selectAllBtn') {
+        const selectAll = document.getElementById('selectAll');
+        if (selectAll) {
+            selectAll.checked = true;
+            selectAll.dispatchEvent(new Event('change'));
+        }
+    }
+});
+
+
+// Функция массового удаления
+function bindBulkDeleteHandler() {
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    if (!bulkDeleteBtn) return;
+
+    // Удаляем старые обработчики
+    const newBulkDeleteBtn = bulkDeleteBtn.cloneNode(true);
+    bulkDeleteBtn.parentNode.replaceChild(newBulkDeleteBtn, bulkDeleteBtn);
+
+    newBulkDeleteBtn.addEventListener('click', function() {
+        if (commentManager.selectedComments.length === 0) {
+            showToast('Please select at least one comment', 'warning');
+            return;
+        }
+
+        const modalElement = document.getElementById('confirmBulkDeleteModal');
+        if (!modalElement) return;
+
+        const modal = new bootstrap.Modal(modalElement);
+        const count = commentManager.selectedComments.length;
+        const word = count === 1 ? 'comment' : 'comments';
+        const messageElement = document.getElementById('bulkDeleteMessage');
+        
+        if (messageElement) {
+            messageElement.textContent = `Are you sure you want to delete ${count} selected ${word}?`;
+        }
+
+        // Обработчик подтверждения удаления
+        const confirmBtn = document.getElementById('confirmBulkDeleteBtn');
+        if (confirmBtn) {
+            const handleConfirm = function() {
+                const btn = this;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Deleting...';
+
+                // ИСПРАВЛЕНИЕ: Отправляем ids как массив, а не JSON строку
+                const formData = new FormData();
+                
+                // Ключевое исправление: добавляем каждый ID отдельно
+                commentManager.selectedComments.forEach(id => {
+                    formData.append('ids[]', id); // Добавляем как массив
+                });
+                
+                // Альтернативный вариант: как строку через запятую
+                // formData.append('ids', commentManager.selectedComments.join(','));
+                
+                if (typeof my_post_key !== 'undefined') {
+                    formData.append('my_post_key', my_post_key);
+                }
+
+                // Для отладки - выводим данные в консоль
+                console.log('Отправляемые IDs:', commentManager.selectedComments);
+                console.log('Количество:', commentManager.selectedComments.length);
+
+                fetch('index.php?act=latest_comments&action=bulk_delete', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(response => {
+                    console.log('Ответ от сервера:', response);
+                    if (response.success) {
+                        showToast(`${response.deleted} comments deleted successfully`, 'success');
+                        loadComments(commentManager.currentPage);
+                        modal.hide();
+                    } else {
+                        showToast(response.error || 'Error deleting comments', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Bulk delete error:', error);
+                    showToast('Error: ' + error.message, 'error');
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-trash"></i> Delete Selected';
+                    confirmBtn.removeEventListener('click', handleConfirm);
+                });
+            };
+
+            confirmBtn.addEventListener('click', handleConfirm);
+        }
+
+        modal.show();
+    });
+}
+
+// Copy Comments
+document.addEventListener('click', async function(e) {
+    if (e.target.id === 'confirmCopyBtn') {
+        const targetInput = document.getElementById('copyTargetTorrent');
+        if (!targetInput) return;
+
+        const target = parseInt(targetInput.value);
+        if (!target || target <= 0) {
+            Swal.fire({ icon: 'warning', title: 'Please enter a valid target torrent ID' });
+            return;
+        }
+
+        const selectedComments = commentManager.selectedComments;
+        if (selectedComments.length === 0) {
+            Swal.fire({ icon: 'warning', title: 'Please select at least one comment to copy' });
+            return;
+        }
+
+        const confirmResult = await Swal.fire({
+            icon: 'question',
+            title: 'Copy comments?',
+            text: `Copy ${selectedComments.length} selected comment(s) to torrent ID ${target}?`,
+            showCancelButton: true,
+            confirmButtonText: 'Copy',
+            cancelButtonText: 'Cancel'
+        });
+        if (!confirmResult.isConfirmed) return;
+
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = 'Copying...';
+
+        const formData = new FormData();
+        formData.append('comment_ids', JSON.stringify(selectedComments));
+        formData.append('target_tid', target);
+        if (typeof my_post_key !== 'undefined') {
+            formData.append('my_post_key', my_post_key);
+        }
+
+        fetch('index.php?act=latest_comments&action=copy_comments', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.success) {
+                showToast(res.copied + " comment(s) copied successfully!", 'success');
+                const modal = bootstrap.Modal.getInstance(document.getElementById('copyCommentsModal'));
+                if (modal) modal.hide();
+                if (targetInput) targetInput.value = '';
+            } else {
+                showToast("Error: " + res.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Copy error:', error);
+            showToast("AJAX error: " + error.message, 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Copy Comments';
+        });
+    }
+});
+
+// Merge Selected Comments Into One (join texts, delete originals)
+document.addEventListener('click', async function(e) {
+    if (e.target.id === 'confirmMergeIntoOneBtn') {
+        const targetInput = document.getElementById('mergeTargetTorrent');
+        if (!targetInput) return;
+
+        const target = parseInt(targetInput.value);
+        if (!target || target <= 0) {
+            Swal.fire({ icon: 'warning', title: 'Please enter a valid target torrent ID' });
+            return;
+        }
+
+        const selectedComments = commentManager.selectedComments;
+        if (selectedComments.length < 2) {
+            Swal.fire({ icon: 'warning', title: 'Please select at least 2 comments to merge' });
+            return;
+        }
+
+        const confirmResult = await Swal.fire({
+            icon: 'warning',
+            title: 'Merge comments?',
+            text: `Merge ${selectedComments.length} selected comments into one, on torrent ID ${target}? This cannot be undone.`,
+            showCancelButton: true,
+            confirmButtonText: 'Merge',
+            cancelButtonText: 'Cancel'
+        });
+        if (!confirmResult.isConfirmed) return;
+
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = 'Merging...';
+
+        const formData = new FormData();
+        formData.append('comment_ids', JSON.stringify(selectedComments));
+        formData.append('target_tid', target);
+        if (typeof my_post_key !== 'undefined') {
+            formData.append('my_post_key', my_post_key);
+        }
+
+        fetch('index.php?act=latest_comments&action=merge_comments', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.success) {
+                showToast(res.merged + " comments merged into comment #" + res.new_comment_id + "!", 'success');
+                const modal = bootstrap.Modal.getInstance(document.getElementById('mergeIntoOneModal'));
+                if (modal) modal.hide();
+                loadComments(commentManager.currentPage);
+                if (targetInput) targetInput.value = '';
+            } else {
+                showToast("Error: " + res.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Merge error:', error);
+            showToast("AJAX error: " + error.message, 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Merge Comments';
+        });
+    }
+});
+
+// Move Comments
+document.addEventListener('click', async function(e) {
+    if (e.target.id === 'confirmMoveBtn') {
+        const targetInput = document.getElementById('targetTorrent');
+        if (!targetInput) return;
+
+        const target = parseInt(targetInput.value);
+        if (!target || target <= 0) {
+            Swal.fire({ icon: 'warning', title: 'Please enter a valid target torrent ID' });
+            return;
+        }
+
+        const selectedComments = commentManager.selectedComments;
+        if (selectedComments.length === 0) {
+            Swal.fire({ icon: 'warning', title: 'Please select at least one comment to move' });
+            return;
+        }
+
+        const confirmResult = await Swal.fire({
+            icon: 'question',
+            title: 'Move comments?',
+            text: `Are you sure you want to move ${selectedComments.length} selected comments to torrent ID ${target}?`,
+            showCancelButton: true,
+            confirmButtonText: 'Move',
+            cancelButtonText: 'Cancel'
+        });
+        if (!confirmResult.isConfirmed) return;
+
+        const btn = e.target;
+        btn.disabled = true;
+        btn.textContent = 'Moving...';
+
+        const formData = new FormData();
+        formData.append('comment_ids', JSON.stringify(selectedComments));
+        formData.append('target_tid', target);
+        if (typeof my_post_key !== 'undefined') {
+            formData.append('my_post_key', my_post_key);
+        }
+
+        fetch('index.php?act=latest_comments&action=move_comments', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.success) {
+                showToast(res.moved + " comments moved successfully!", 'success');
+                const modal = bootstrap.Modal.getInstance(document.getElementById('moveCommentsModal'));
+                if (modal) modal.hide();
+                loadComments(commentManager.currentPage);
+                if (targetInput) targetInput.value = '';
+            } else {
+                showToast("Error: " + res.error, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Move error:', error);
+            showToast("AJAX error: " + error.message, 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Move Comments';
+        });
+    }
+});
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (!urlParams.has('act')) {
+        urlParams.set('act', 'latest_comments');
+        window.history.replaceState({}, '', `?${urlParams.toString()}`);
+    }
+    
+    initFiltersFromUrl();
+    setupFilterHandlers();
+    loadComments(commentManager.currentPage);
+    
+    const confirmEditBtn = document.getElementById('confirmEditComment');
+    const editCommentText = document.getElementById('editCommentText');
+    
+    if (confirmEditBtn) {
+        confirmEditBtn.addEventListener('click', saveComment);
+    }
+    if (editCommentText) {
+        editCommentText.addEventListener('input', updatePreview);
+    }
+});
+
+// Остальные вспомогательные функции
+function initFiltersFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    urlParams.forEach((value, key) => {
+        if (key in commentManager.filters) {
+            commentManager.filters[key] = value;
+            const input = document.getElementById(key);
+            if (input) input.value = value;
+        }
+    });
+    
+    const page = urlParams.get('page');
+    if (page) commentManager.currentPage = parseInt(page);
+}
+
+function setupFilterHandlers() {
+    const filterForm = document.getElementById('filterForm');
+    const resetFiltersBtn = document.getElementById('resetFilters');
+    const usernameInput = document.getElementById('username');
+    const torrentInput = document.getElementById('torrent');
+    const dateFromInput = document.getElementById('date_from');
+    const dateToInput = document.getElementById('date_to');
+
+    if (filterForm) {
+        filterForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            applyFilters();
+        });
+    }
+
+    if (resetFiltersBtn) {
+        resetFiltersBtn.addEventListener('click', resetFilters);
+    }
+
+    let searchTimer;
+    [usernameInput, torrentInput].forEach(input => {
+        if (input) {
+            input.addEventListener('input', function() {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    applyFilters();
+                }, 500);
+            });
+        }
+    });
+
+    [dateFromInput, dateToInput].forEach(input => {
+        if (input) {
+            input.addEventListener('change', applyFilters);
+        }
+    });
+}
+
+function applyFilters() {
+    commentManager.filters = {
+        username: document.getElementById('username')?.value.trim() || '',
+        torrent: document.getElementById('torrent')?.value.trim() || '',
+        date_from: document.getElementById('date_from')?.value || '',
+        date_to: document.getElementById('date_to')?.value || ''
+    };
+    loadComments(1);
+}
+
+function resetFilters() {
+    const filterForm = document.getElementById('filterForm');
+    if (filterForm) filterForm.reset();
+    
+    commentManager.filters = {
+        username: '',
+        torrent: '',
+        date_from: '',
+        date_to: ''
+    };
+    loadComments(1);
+}
+
+function updateUrlWithFilters() {
+    const params = new URLSearchParams();
+    params.append('act', 'latest_comments');
+    params.append('page', commentManager.currentPage);
+    
+    Object.entries(commentManager.filters).forEach(([key, value]) => {
+        if (value) params.append(key, value);
+    });
+    
+    window.history.replaceState({}, '', `?${params.toString()}`);
+}
+
+// Функции редактирования комментариев
+function editComment(id) {
+    commentManager.editId = id;
+    
+    fetch(`index.php?act=latest_comments&action=edit&id=${id}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                Swal.fire({ icon: 'error', title: 'Error', text: data.error });
+                return;
+            }
+            const editCommentText = document.getElementById('editCommentText');
+            if (editCommentText) {
+                editCommentText.value = data.text;
+            }
+            updatePreview();
+            new bootstrap.Modal(document.getElementById('editCommentModal')).show();
+        })
+        .catch(error => {
+            console.error('Error loading comment:', error);
+            Swal.fire({ icon: 'error', title: 'Error loading comment', text: error.message });
+        });
+}
+
+function updatePreview() {
+    const editCommentText = document.getElementById('editCommentText');
+    if (!editCommentText) return;
+
+    const formData = new FormData();
+    formData.append('text', editCommentText.value);
+    if (typeof my_post_key !== 'undefined') {
+        formData.append('my_post_key', my_post_key);
+    }
+
+    fetch('index.php?act=latest_comments&action=preview', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.text())
+    .then(html => {
+        const preview = document.getElementById('bbcodePreview');
+        if (preview) preview.innerHTML = html;
+    })
+    .catch(error => {
+        console.error('Preview error:', error);
+        const preview = document.getElementById('bbcodePreview');
+        if (preview) preview.innerHTML = '<div class="text-danger">Preview generation failed</div>';
+    });
+}
+
+function saveComment() {
+    const editCommentText = document.getElementById('editCommentText');
+    if (!editCommentText) return;
+
+    const commentText = editCommentText.value.trim();
+    
+    // Клиентская валидация
+    if (commentText.length < 3) {
+        showToast('Comment must be at least 3 characters long', 'warning');
+        return;
+    }
+    
+    const cleanText = commentText.replace(/\s+/g, '');
+    if (cleanText.length < 3) {
+        showToast('Comment must contain meaningful text', 'warning');
+        return;
+    }
+    
+    const saveBtn = document.getElementById('confirmEditComment');
+    if (!saveBtn) return;
+
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+
+    const formData = new FormData();
+    formData.append('id', commentManager.editId);
+    formData.append('text', commentText);
+	
+	
+	if (typeof my_post_key !== 'undefined') {
+    formData.append('my_post_key', my_post_key);
+}
+	
+	
+
+    fetch('index.php?act=latest_comments&action=save', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(response => {
+        if (response && response.success) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editCommentModal'));
+            if (modal) modal.hide();
+            loadComments(commentManager.currentPage);
+            showToast('Comment updated successfully', 'success');
+        } else {
+            const errorMsg = response && response.error ? response.error : 'Unknown error occurred';
+            showToast(errorMsg, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Save comment error:', error);
+        let errorMsg = 'Error saving comment';
+        if (error.message.includes('Network')) {
+            errorMsg = 'Network error - please check your connection';
+        }
+        showToast(errorMsg, 'error');
+    })
+    .finally(() => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = 'Save Changes';
+    });
+}
+
+async function deleteComment(id) {
+    const confirmResult = await Swal.fire({
+        icon: 'warning',
+        title: 'Delete comment?',
+        text: 'Are you sure you want to delete this comment?',
+        showCancelButton: true,
+        confirmButtonText: 'Delete',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#d33'
+    });
+    if (!confirmResult.isConfirmed) return;
+
+    const formData = new FormData();
+    formData.append('id', id);
+	
+	if (typeof my_post_key !== 'undefined') {
+    formData.append('my_post_key', my_post_key);
+}
+
+    fetch('index.php?act=latest_comments&action=delete', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok) {
+            showToast('Comment deleted successfully', 'success');
+            loadComments(commentManager.currentPage);
+        } else {
+            throw new Error('Delete failed');
+        }
+    })
+    .catch(error => {
+        console.error('Delete error:', error);
+        showToast('Error deleting comment', 'error');
+    });
+}
+
+// BBCode редактор
+function wrapBBCode(startTag, endTag) {
+    const textarea = document.getElementById("editCommentText");
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+
+    textarea.value = text.substring(0, start) + startTag + text.substring(start, end) + endTag + text.substring(end);
+    textarea.focus();
+    updatePreview();
+}
+
+// Обновление количества выбранных комментов в модалке копирования
+document.addEventListener('show.bs.modal', function(e) {
+    if (e.target.id === 'copyCommentsModal') {
+        const copySelectedCount = document.getElementById('copySelectedCount');
+        if (copySelectedCount) {
+            copySelectedCount.textContent = commentManager.selectedComments.length;
+        }
+    }
+    if (e.target.id === 'mergeIntoOneModal') {
+        const mergeIntoOneSelectedCount = document.getElementById('mergeIntoOneSelectedCount');
+        if (mergeIntoOneSelectedCount) {
+            mergeIntoOneSelectedCount.textContent = commentManager.selectedComments.length;
+        }
+    }
+});
+
+
+document.addEventListener('click', function (e) {
+    const link = e.target.closest('#comments-table .pagination-wrapper a[href]');
+    if (!link) return;
+
+    e.preventDefault();
+
+    // Активная (текущая) страница рендерится как href="#" без номера -
+    // клик по ней не должен никуда переходить.
+    if (link.classList.contains('active')) return;
+
+    const href = link.getAttribute('href') || '';
+    const match = href.match(/[?&]page=(\d+)/);
+    const pageNum = match ? parseInt(match[1], 10) : 1;
+
+    loadComments(pageNum);
+});
+
+document.addEventListener('submit', function (e) {
+    const form = e.target.closest('#comments-table .dropdown-menu form');
+    if (!form) return;
+
+    const input = form.querySelector('input[name="page"]');
+    const pageNum = input ? (parseInt(input.value, 10) || 1) : 1;
+
+    e.preventDefault();
+    loadComments(pageNum);
+});
+
+// ── Torrent embed panel (модалка Edit Comment) ──────────────────────────────
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, function (ch) {
+        switch (ch) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+        }
+    });
+}
+
+// Извлекает ID из голого числа, полного URL (torrent-17.html), query-параметра
+// или произвольного вставленного текста со ссылкой внутри.
+function extractTorrentTagId(raw) {
+    raw = raw || '';
+    const m = raw.match(/torrent-(\d+)\.html/i)
+           || raw.match(/[?&](?:id|tid)=(\d+)/i)
+           || raw.match(/(\d+)/);
+    return m ? m[1] : '';
+}
+
+function insertTorrentTag(id) {
+    const ta = document.getElementById('editCommentText');
+    if (!ta) return;
+    const s = ta.selectionStart;
+    const e = ta.selectionEnd;
+    const tag = '[torrent=' + id + ']';
+    ta.value = ta.value.substring(0, s) + tag + ta.value.substring(e);
+    ta.focus();
+    ta.setSelectionRange(s + tag.length, s + tag.length);
+    if (typeof updatePreview === 'function') updatePreview();
+}
+
+function initTorrentTagPanel() {
+    const input   = document.getElementById('torrentIdInput');
+    const btn     = document.getElementById('insertTorrentBtn');
+    const preview = document.getElementById('torrentPreview');
+    if (!input || !btn) return;
+
+    let debounceTimer = null;
+
+    if (preview) {
+        input.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            const id = extractTorrentTagId(input.value);
+            if (!id) {
+                preview.innerHTML = '';
+                return;
+            }
+            debounceTimer = setTimeout(function () {
+                preview.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Loading preview...</div>';
+                // Мы в /admin/ - относительный путь резолвился бы в
+                // /admin/ajax_torrent_preview.php (404), файл лежит в
+                // корне сайта, нужен абсолютный путь.
+                fetch((window.commentsBaseUrl || '') + '/ajax_torrent_preview.php?id=' + encodeURIComponent(id))
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.error) {
+                            preview.innerHTML = '<div class="text-danger small">' + escapeHtml(data.error) + '</div>';
+                            return;
+                        }
+                        const img = data.image
+                            ? '<img src="' + escapeHtml(data.image) + '" class="card-img-top" style="height:100px;object-fit:cover;">'
+                            : '';
+                        preview.innerHTML = '<div class="card">' + img
+                            + '<div class="card-body py-2 px-3">'
+                            + '<div class="fw-bold text-truncate small"><i class="fa-solid fa-magnet me-1"></i>' + escapeHtml(data.name) + '</div>'
+                            + '<div class="text-muted small">' + escapeHtml(data.catname) + ' &middot; ' + escapeHtml(data.size)
+                            + ' &middot; <span class="text-success">' + data.seeders + ' seeders</span>'
+                            + ' &middot; <span class="text-danger">' + data.leechers + ' leechers</span>'
+                            + '</div></div>';
+                    })
+                    .catch(function () {
+                        preview.innerHTML = '<div class="text-danger small">Failed to load preview</div>';
+                    });
+            }, 400);
+        });
+    }
+
+    const doInsert = function () {
+        const id = extractTorrentTagId(input.value);
+        if (!id) {
+            input.focus();
+            return;
+        }
+        insertTorrentTag(id);
+        input.value = '';
+        if (preview) preview.innerHTML = '';
+    };
+
+    btn.addEventListener('click', doInsert);
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doInsert();
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    initTorrentTagPanel();
+});

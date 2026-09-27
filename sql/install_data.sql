@@ -403,7 +403,6 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (83, 'doubleupload', 'Manage Double Upload', 'doubleupload.php', '[8],[6],[10]'),
 (84, 'manage_vip', 'Manage VIP Accounts', 'manage_vip.php', '[8],[6],[10],[5]'),
 (85, 'hit_and_run', 'Detect Hit & Run', 'hit_and_run.php', '[5],[6],[8]'),
-(86, 'removeadd', 'Remove User Upload Amounts', 'removeadd.php', '[8],[6],[10],[5]'),
 (88, 'manage_avatars', 'Manage User Avatars', 'manage_avatars.php', '[5],[6],[8]'),
 (94, 'downloadadd', 'Update Users Downloaded Amounts', 'downloadadd.php', '[8],[6],[10],[5]'),
 (95, 'logmails', 'Mails Log', 'logmails.php', '[8],[6],[10],[5]'),

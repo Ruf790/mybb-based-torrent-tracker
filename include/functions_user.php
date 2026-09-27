@@ -357,7 +357,9 @@ function usercp_menu_misc(): void
     }
 
     $profile_link = get_profile_link($CURUSER['id']);
-    $expaltext = in_array("usercpmisc", $collapse) ? '[+]' : '[-]';
+    //$expaltext = in_array("usercpmisc", $collapse) ? '[+]' : '[-]';
+	
+	$expaltext = in_array("usercpmisc", $collapse ?? []) ? '[+]' : '[-]';
 
     $usercpmenu .= '
     <div class="user-cp-nav d-flex flex-column gap-2">

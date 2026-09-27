@@ -1,6 +1,6 @@
 <?php
 
-
+declare(strict_types=1);
 
 function send_pm(array $pm, int $fromid = 0, bool $admin_override = false): bool
 {
@@ -67,7 +67,8 @@ function send_pm(array $pm, int $fromid = 0, bool $admin_override = false): bool
     $pm_data['saveasdraft'] = 0;
 
     // Admin override
-    $pmhandler->admin_override = (int)$admin_override;
+    //$pmhandler->admin_override = (int)$admin_override;
+	$pmhandler->admin_override = $admin_override;
 
     $pmhandler->set_data($pm_data);
 

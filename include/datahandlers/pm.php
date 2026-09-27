@@ -124,7 +124,7 @@ class PMDataHandler extends DataHandler
 	 */
 function verify_recipient()
 {
-    global $cache, $db, $mybb, $lang;
+    global $cache, $db, $mybb, $lang, $SITENAME, $BASEURL;
 
     $pm = &$this->data;
 

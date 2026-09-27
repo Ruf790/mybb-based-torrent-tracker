@@ -1,662 +1,252 @@
 <?php
 declare(strict_types=1);
 
-
-
-if (!defined ('STAFF_PANEL')) 
-{
-    exit ('<div class="alert alert-danger" role="alert"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger" role="alert"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 
+$lang->load('settings');
+$L = static fn(string $k, string $d): string => (string)($lang->settings[$k] ?? $d);
 
+/** Типы промо: id => [ключ, подпись, иконка, цвет] */
+$PROMO = [
+    1 => ['normal',              $L('text_normal', 'Normal'),                  'fa-circle',           't-slate'],
+    2 => ['free',                $L('text_free', 'Free Leech'),                'fa-gift',             't-green'],
+    3 => ['twoup',               $L('text_two_times_up', '2X Upload'),         'fa-angles-up',        't-blue'],
+    4 => ['twoupfree',           $L('text_free_two_times_up', 'Free + 2X'),    'fa-star',             't-amber'],
+    5 => ['halfleech',           $L('text_half_down', '50% Leech'),            'fa-star-half-stroke', 't-teal'],
+    6 => ['twouphalfleech',      $L('text_half_down_two_up', '50% + 2X'),      'fa-bolt',             't-purple'],
+    7 => ['thirtypercentleech',  $L('text_thirty_percent_down', '30% Leech'),  'fa-percent',          't-indigo'],
+];
 
+// Значения по умолчанию — одни для чтения и сохранения.
+// Раньше они расходились: например largesize 12 при чтении и 20 при сохранении,
+// expirehalfleech 70 и 150, largepro 5 и 2
+$DEF = [
+    'prorules' => 'yes', 'uploaderdouble' => 'no', 'deldeadtorrent' => 'no',
+    'randomhalfleech' => 5, 'randomfree' => 2, 'randomtwoup' => 2, 'randomtwoupfree' => 1, 'randomtwouphalfdown' => 0, 'randomthirtypercentdown' => 0,
+    'largesize' => 20, 'largepro' => 2,
+    'expirehalfleech' => 150, 'expirefree' => 60, 'expiretwoup' => 60, 'expiretwoupfree' => 30, 'expiretwouphalfleech' => 30, 'expirethirtypercentleech' => 30, 'expirenormal' => 0,
+    'halfleechbecome' => 1, 'freebecome' => 1, 'twoupbecome' => 1, 'twoupfreebecome' => 1, 'twouphalfleechbecome' => 1, 'thirtypercentleechbecome' => 1, 'normalbecome' => 1,
+    'hotdays' => 7, 'hotseeder' => 5,
+];
+$YESNO = ['prorules', 'uploaderdouble', 'deldeadtorrent'];
 
-// Проверяем отправку формы
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_torrent_settings') {
-    if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+// ── Сохранение ───────────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_torrent_settings') {
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        echo 'Invalid security token';
-        exit;
+        stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
     }
-    save_torrent_settings();
-}
-
-
-$promo_settings = [];
-$q = $db->sql_query_prepared("SELECT name, value FROM settings WHERE name IN (
-    'prorules','randomhalfleech','randomfree','randomtwoup','randomtwoupfree',
-    'randomtwouphalfdown','randomthirtypercentdown','largesize','largepro',
-    'expirehalfleech','expirefree','expiretwoup','expiretwoupfree',
-    'expiretwouphalfleech','expirethirtypercentleech','expirenormal',
-    'halfleechbecome','freebecome','twoupbecome','twoupfreebecome',
-    'twouphalfleechbecome','thirtypercentleechbecome','normalbecome',
-    'hotdays','hotseeder','uploaderdouble','deldeadtorrent'
-)");
-while ($r = $db->fetch_array($q)) $promo_settings[$r['name']] = $r['value'];
-
-$prorules_torrent              = $promo_settings['prorules']                    ?? 'yes';
-$randomhalfleech_torrent       = $promo_settings['randomhalfleech']             ?? 5;
-$randomfree_torrent            = $promo_settings['randomfree']                  ?? 2;
-$randomtwoup_torrent           = $promo_settings['randomtwoup']                 ?? 2;
-$randomtwoupfree_torrent       = $promo_settings['randomtwoupfree']             ?? 1;
-$randomtwouphalfdown_torrent   = $promo_settings['randomtwouphalfdown']         ?? 0;
-$randomthirtypercentdown_torrent = $promo_settings['randomthirtypercentdown']   ?? 0;
-$largesize_torrent             = $promo_settings['largesize']                   ?? 12;
-$largepro_torrent              = (int)($promo_settings['largepro']              ?? 5);
-$expirehalfleech_torrent       = $promo_settings['expirehalfleech']             ?? 70;
-$expirefree_torrent            = $promo_settings['expirefree']                  ?? 60;
-$expiretwoup_torrent           = $promo_settings['expiretwoup']                 ?? 60;
-$expiretwoupfree_torrent       = $promo_settings['expiretwoupfree']             ?? 30;
-$expiretwouphalfleech_torrent  = $promo_settings['expiretwouphalfleech']        ?? 30;
-$expirethirtypercentleech_torrent = $promo_settings['expirethirtypercentleech'] ?? 30;
-$expirenormal_torrent          = $promo_settings['expirenormal']                ?? 0;
-$halfleechbecome_torrent       = (int)($promo_settings['halfleechbecome']       ?? 1);
-$freebecome_torrent            = (int)($promo_settings['freebecome']            ?? 1);
-$twoupbecome_torrent           = (int)($promo_settings['twoupbecome']           ?? 1);
-$twoupfreebecome_torrent       = (int)($promo_settings['twoupfreebecome']       ?? 1);
-$twouphalfleechbecome_torrent  = (int)($promo_settings['twouphalfleechbecome']  ?? 1);
-$thirtypercentleechbecome_torrent = (int)($promo_settings['thirtypercentleechbecome'] ?? 1);
-$normalbecome_torrent          = (int)($promo_settings['normalbecome']          ?? 1);
-$hotdays_torrent               = $promo_settings['hotdays']                     ?? 7;
-$hotseeder_torrent             = $promo_settings['hotseeder']                   ?? 5;
-$uploaderdouble_torrent        = $promo_settings['uploaderdouble']              ?? 'no';
-$deldeadtorrent_torrent        = $promo_settings['deldeadtorrent']              ?? 'no';
-
-
-
-
-
-function save_torrent_settings(): void 
-{
-    global $db, $lang, $_this_script_;
-    
-    $data = [
-        'prorules'                 => $_POST['prorules'] ?? 'no',
-        'randomhalfleech'          => (int)($_POST['randomhalfleech'] ?? 5),
-        'randomfree'               => (int)($_POST['randomfree'] ?? 2),
-        'randomtwoup'              => (int)($_POST['randomtwoup'] ?? 2),
-        'randomtwoupfree'          => (int)($_POST['randomtwoupfree'] ?? 1),
-        'randomtwouphalfdown'      => (int)($_POST['randomtwouphalfdown'] ?? 0),
-        'randomthirtypercentdown'  => (int)($_POST['randomthirtypercentdown'] ?? 0),
-        'largesize'                => (string)(float)($_POST['largesize'] ?? 20.0),
-        'largepro'                 => (int)($_POST['largepro'] ?? 2),
-        'expirehalfleech'  => (int)($_POST['expirehalfleech'] ?? 150),
-        'expirefree'       => (int)($_POST['expirefree'] ?? 60),
-        'expiretwoup'      => (int)($_POST['expiretwoup'] ?? 60),
-        'expiretwoupfree'  => (int)($_POST['expiretwoupfree'] ?? 30),
-        'expiretwouphalfleech'     => (int)($_POST['expiretwouphalfleech'] ?? 30),
-        'expirethirtypercentleech' => (int)($_POST['expirethirtypercentleech'] ?? 30),
-        'expirenormal'     => (int)($_POST['expirenormal'] ?? 0),
-        'halfleechbecome'          => (int)($_POST['halfleechbecome'] ?? 1),
-        'freebecome'               => (int)($_POST['freebecome'] ?? 1),
-        'twoupbecome'              => (int)($_POST['twoupbecome'] ?? 1),
-        'twoupfreebecome'          => (int)($_POST['twoupfreebecome'] ?? 1),
-        'twouphalfleechbecome'     => (int)($_POST['twouphalfleechbecome'] ?? 1),
-        'thirtypercentleechbecome' => (int)($_POST['thirtypercentleechbecome'] ?? 1),
-        'normalbecome'             => (int)($_POST['normalbecome'] ?? 1),
-        'hotdays'          => (int)($_POST['hotdays'] ?? 7),
-        'hotseeder'        => (int)($_POST['hotseeder'] ?? 5),
-        'uploaderdouble'   => $_POST['uploaderdouble'] ?? 'no',
-        'deldeadtorrent'   => $_POST['deldeadtorrent'] ?? 'no',
-    ];
-
-    foreach ($data as $name => $value) {
-        $db->sql_query_prepared('UPDATE settings SET value = ? WHERE name = ?', [(string)$value, $name]);
+    foreach ($DEF as $name => $def) {
+        if (in_array($name, $YESNO, true)) {
+            $v = ($_POST[$name] ?? 'no') === 'yes' ? 'yes' : 'no';
+        } elseif ($name === 'largesize') {
+            $v = (string)max(0.0, round((float)($_POST[$name] ?? $def), 2));
+        } elseif (str_starts_with($name, 'random')) {
+            $v = (string)max(0, min(100, (int)($_POST[$name] ?? $def)));   // шанс в %
+        } elseif (str_ends_with($name, 'become') || $name === 'largepro') {
+            $v = (string)(isset($PROMO[(int)($_POST[$name] ?? 0)]) ? (int)$_POST[$name] : $def);
+        } else {
+            $v = (string)max(0, (int)($_POST[$name] ?? $def));             // раньше отрицательные проходили
+        }
+        $db->sql_query_prepared('UPDATE settings SET value = ? WHERE name = ?', [$v, $name]);
     }
-    
     rebuild_settings();
-    
-    flash_message($lang->settings['settings_saved'] ?? 'Settings saved successfully!', 'success');
-    header("Location: " . $_this_script_);
+    write_log('Torrent promotion settings changed by ' . ($CURUSER['username'] ?? 'staff'), 'settings');
+    flash_message($L('settings_saved', 'Settings saved successfully!'), 'success');
+    function_exists('admin_redirect') ? admin_redirect($_this_script_) : header('Location: ' . $_this_script_);
     exit;
 }
 
+// ── Текущие значения ─────────────────────────────────────────────────
+$S = $DEF;
+$ph = implode(',', array_fill(0, count($DEF), '?'));
+$q = $db->sql_query_prepared("SELECT name, value FROM settings WHERE name IN ({$ph})", array_keys($DEF));
+while ($q && ($r = $db->fetch_array($q))) $S[$r['name']] = $r['value'];
 
+// Сейчас на промо (для плиток)
+$cnt = [];
+$cq = $db->sql_query_prepared("SELECT COALESCE(SUM(free = 'yes'),0) AS free, COALESCE(SUM(doubleupload = 'yes'),0) AS twoup, COALESCE(SUM(silver = 'yes'),0) AS half, COALESCE(SUM(thirtypercent = 'yes'),0) AS thirty FROM torrents");
+$cnt = $cq ? $db->fetch_array($cq) : [];
 
-
-stdhead('Torrent Promotion Settings');
-$lang->load('settings');
-
-// Показываем сообщение об успешном сохранении
-if (isset($_GET['saved'])) {
-    echo '<div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
-            <i class="fas fa-check-circle me-2"></i>' . ($lang->settings['settings_saved'] ?? 'Settings saved successfully!') . '
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-          </div>';
-}
-
-// Функция для создания селекта с Bootstrap классами
-function promotion_selection_bootstrap(int $selected = 0, string $name = '', int $hide = 0): string 
-{
-    global $lang;
-    
-    $options = [
-        1 => ['value' => 1, 'text' => $lang->settings['text_normal'] ?? 'Normal', 'badge' => 'secondary'],
-        2 => ['value' => 2, 'text' => $lang->settings['text_free'] ?? 'Free', 'badge' => 'success'],
-        3 => ['value' => 3, 'text' => $lang->settings['text_two_times_up'] ?? '2X Upload', 'badge' => 'info'],
-        4 => ['value' => 4, 'text' => $lang->settings['text_free_two_times_up'] ?? 'Free + 2X', 'badge' => 'warning'],
-        5 => ['value' => 5, 'text' => $lang->settings['text_half_down'] ?? '50% Leech', 'badge' => 'primary'],
-        6 => ['value' => 6, 'text' => $lang->settings['text_half_down_two_up'] ?? '50% + 2X', 'badge' => 'danger'],
-        7 => ['value' => 7, 'text' => $lang->settings['text_thirty_percent_down'] ?? '30% Leech', 'badge' => 'dark']
-    ];
-    
-    $html = '<select class="form-select" name="' . htmlspecialchars($name) . '">';
-    
-    foreach ($options as $key => $option) {
-        if ($hide === $key) {
-            continue;
-        }
-        
-        $isSelected = $selected === $option['value'] ? ' selected' : '';
-        
-        $html .= sprintf(
-            '<option value="%d"%s>%s</option>',
-            $option['value'],
-            $isSelected,
-            htmlspecialchars($option['text'])
-        );
+$e = static fn(mixed $v): string => htmlspecialchars((string)$v, ENT_QUOTES);
+$badge = static function (int $id) use ($PROMO, $e): string {
+    [, $label, $icon, $cls] = $PROMO[$id] ?? $PROMO[1];
+    return '<span class="tp-pill ' . $cls . '"><i class="fa-solid ' . $icon . '"></i>' . $e($label) . '</span>';
+};
+$select = static function (string $name, int $sel, int $hide = 0) use ($PROMO, $e): string {
+    $h = '<select class="form-select form-select-sm tp-promo-select" name="' . $e($name) . '">';
+    foreach ($PROMO as $id => [, $label]) {
+        if ($id === $hide) continue;
+        $h .= '<option value="' . $id . '"' . ($id === $sel ? ' selected' : '') . '>' . $e($label) . '</option>';
     }
-    
-    $html .= '</select>';
-    return $html;
-}
+    return $h . '</select>';
+};
+$sw = static function (string $name, string $icon, string $cls, string $title, string $desc) use ($S, $e): string {
+    return '<label class="tp-switch" for="' . $name . '"><span class="tp-sec-icon ' . $cls . '"><i class="fa-solid ' . $icon . '"></i></span>'
+         . '<span class="flex-grow-1"><b class="d-block">' . $e($title) . '</b><small class="tp-muted">' . $e($desc) . '</small></span>'
+         . '<input type="hidden" name="' . $name . '" value="no">'
+         . '<input class="form-check-input" type="checkbox" role="switch" id="' . $name . '" name="' . $name . '" value="yes"' . ($S[$name] === 'yes' ? ' checked' : '') . '></label>';
+};
 
-// Функция для безопасного вывода
-function safe_echo($value): string 
-{
-    return htmlspecialchars((string)$value);
-}
-
-// Функция для получения значения из массива $promo
-function get_torrent_setting(string $key, $default = '') 
-{
-    global $promo;
-    return $promo[$key] ?? $default;
-}
+stdhead('Torrent Promotions');
 ?>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/torrents_promo.css?v=20260926">
 
-<div class="container mt-3">
-    <div class="row">
-        <div class="col-lg-12">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0"><i class="fas fa-gift me-2"></i><?= safe_echo($lang->settings['head_torrent_settings'] ?? 'Torrent Settings') ?></h4>
+<div class="container mt-3 mb-4 tp">
+
+    <div class="tp-card mb-3"><div class="tp-head">
+        <span class="tp-head-icon"><i class="fa-solid fa-gift"></i></span>
+        <div style="min-width:0">
+            <h1 class="tp-title"><?= $e($L('head_torrent_settings', 'Torrent Promotions')) ?></h1>
+            <div class="tp-sub">Automatic freeleech and bonus rules — on upload, for big torrents, and when promotions expire</div>
+        </div>
+    </div></div>
+
+    <div class="row g-3 mb-3">
+        <?php foreach ([
+            ['fa-gift',             'ic-green',  'Free now',    (int)($cnt['free'] ?? 0)],
+            ['fa-angles-up',        'ic-blue',   '2X upload',   (int)($cnt['twoup'] ?? 0)],
+            ['fa-star-half-stroke', 'ic-teal',   '50% leech',   (int)($cnt['half'] ?? 0)],
+            ['fa-percent',          'ic-purple', '30% leech',   (int)($cnt['thirty'] ?? 0)],
+        ] as [$ic, $cls, $label, $n]): ?>
+        <div class="col-6 col-lg-3"><div class="tp-card tp-kpi"><span class="tp-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
+            <div><div class="tp-kpi-label"><?= $label ?></div><div class="tp-kpi-value"><?= number_format($n) ?></div></div></div></div>
+        <?php endforeach; ?>
+    </div>
+
+    <form method="post" action="<?= $e($_this_script_) ?>" id="tpForm">
+        <input type="hidden" name="action" value="save_torrent_settings">
+        <input type="hidden" name="my_post_key" value="<?= $e($mybb->post_code) ?>">
+
+        <!-- Общие переключатели -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-4"><?= $sw('prorules', 'fa-wand-magic-sparkles', 'ic-amber', $L('row_promotion_rules', 'Promotion rules'), $L('text_promotion_rules_note', 'Enable the automatic promotion rules below')) ?></div>
+            <div class="col-md-4"><?= $sw('uploaderdouble', 'fa-user-pen', 'ic-blue', 'Uploader double upload', 'Uploaders get 2× upload on their own torrents') ?></div>
+            <div class="col-md-4"><?= $sw('deldeadtorrent', 'fa-skull', 'ic-red', 'Delete dead torrents', 'Remove torrents with no seeders automatically') ?></div>
+        </div>
+
+        <div id="tpRules">
+        <div class="row g-3">
+            <!-- Случайное промо -->
+            <div class="col-lg-6">
+                <div class="tp-card h-100">
+                    <div class="tp-sec-head"><span class="tp-sec-icon ic-purple"><i class="fa-solid fa-dice"></i></span>
+                        <div><h2 class="tp-sec-title"><?= $e($L('row_random_promotion', 'Random promotion')) ?></h2>
+                        <div class="tp-muted"><?= $e($L('text_random_promotion_note_one', 'Torrents promoted randomly by system upon uploading.')) ?></div></div></div>
+                    <div class="tp-body">
+                        <?php foreach ([
+                            'randomhalfleech'         => [5, 'text_halfleech_chance_becoming'],
+                            'randomfree'              => [2, 'text_free_chance_becoming'],
+                            'randomtwoup'             => [3, 'text_twoup_chance_becoming'],
+                            'randomtwoupfree'         => [4, 'text_freetwoup_chance_becoming'],
+                            'randomtwouphalfdown'     => [6, 'text_twouphalfleech_chance_becoming'],
+                            'randomthirtypercentdown' => [7, 'text_thirtypercentleech_chance_becoming'],
+                        ] as $name => [$pid, $chanceKey]): $v = (int)$S[$name]; ?>
+                        <div class="tp-chance" data-cls="<?= $PROMO[$pid][3] ?>">
+                            <div class="d-flex flex-wrap align-items-center gap-2"><span class="tp-muted"><?= $e($L($chanceKey, '% chance becoming')) ?></span><?= $badge($pid) ?></div>
+                            <div class="input-group input-group-sm">
+                                <input type="number" class="form-control text-center tp-chance-num" name="<?= $name ?>" value="<?= $v ?>" min="0" max="100" step="1">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <input type="range" class="form-range tp-chance-range" min="0" max="100" step="1" value="<?= $v ?>" aria-label="Chance">
+                        </div>
+                        <?php endforeach; ?>
+                        <div class="tp-split" id="tpSplit"></div>
+                        <div class="tp-sum" id="tpSum"></div>
+                        <div class="tp-muted mt-2"><i class="fa-solid fa-circle-info me-1"></i><?= $e($L('text_random_promotion_note_two', "Set values to '0' to disable the rules.")) ?></div>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <form method="post" action="">
-                        <input type="hidden" name="action" value="save_torrent_settings">
-                        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
-                        
-                        <!-- Правила промо-акций -->
-                        <div class="row mb-4">
-                            <div class="col-md-12">
-                                <div class="form-check form-switch">
-                                   
-								   <input class="form-check-input" type="checkbox" role="switch" id="prorules" name="prorules" 
-                                      value="yes" <?= (($prorules_torrent ?? 'no') === 'yes') ? 'checked' : '' ?>>
-								   
-                                    <label class="form-check-label fw-bold" for="prorules">
-                                        <?= safe_echo($lang->settings['row_promotion_rules'] ?? 'Promotion Rules') ?>
-                                    </label>
-                                    <div class="form-text text-muted">
-                                        <?= safe_echo($lang->settings['text_promotion_rules_note'] ?? 'Enable some automatic promotion rules.') ?>
-                                    </div>
-                                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <!-- Крупные торренты -->
+                <div class="tp-card mb-3">
+                    <div class="tp-sec-head"><span class="tp-sec-icon ic-teal"><i class="fa-solid fa-hard-drive"></i></span>
+                        <div><h2 class="tp-sec-title"><?= $e($L('row_large_torrent_promotion', 'Large torrents')) ?></h2>
+                        <div class="tp-muted"><?= $e($L('text_by_system_upon_uploading', 'by system upon uploading.')) ?></div></div></div>
+                    <div class="tp-body">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span><?= $e($L('text_torrent_larger_than', 'Torrents larger than')) ?></span>
+                            <input type="number" class="form-control form-control-sm text-center" style="width:100px" name="largesize" id="tpLarge" value="<?= $e((float)$S['largesize']) ?>" min="0" step="0.5">
+                            <span><?= $e($L('text_gb_promoted_to', 'GB will be automatically promoted to')) ?></span>
+                            <div style="min-width:170px"><?= $select('largepro', (int)$S['largepro'], 1) ?></div>
+                            <span><?= $e($L('text_by_system_upon_uploading', 'by system upon uploading.')) ?></span>
+                        </div>
+                        <div class="tp-muted mt-2"><i class="fa-solid fa-circle-info me-1"></i><?= $e($L('text_large_torrent_promotion_note', "Default '20', 'free'. Set torrent size to '0' to disable the rule.")) ?></div>
+                    </div>
+                </div>
+                <!-- «Горячие» торренты -->
+                <div class="tp-card">
+                    <div class="tp-sec-head"><span class="tp-sec-icon ic-red"><i class="fa-solid fa-fire"></i></span>
+                        <div><h2 class="tp-sec-title">Hot torrents</h2><div class="tp-muted">When a torrent counts as “hot”</div></div></div>
+                    <div class="tp-body">
+                        <div class="row g-3">
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold small"><i class="fa-solid fa-calendar me-1 text-body-secondary"></i>Uploaded within</label>
+                                <div class="input-group input-group-sm"><input type="number" class="form-control" name="hotdays" value="<?= (int)$S['hotdays'] ?>" min="0"><span class="input-group-text">days</span></div>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold small"><i class="fa-solid fa-arrow-up me-1 text-body-secondary"></i>At least</label>
+                                <div class="input-group input-group-sm"><input type="number" class="form-control" name="hotseeder" value="<?= (int)$S['hotseeder'] ?>" min="0"><span class="input-group-text">seeders</span></div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
 
-                        <!-- Случайные промо-акции -->
-                        <div class="card mb-4">
-                            <div class="card-header bg-info text-white">
-                                <h5 class="mb-0"><i class="fas fa-random me-2"></i><?= safe_echo($lang->settings['row_random_promotion'] ?? 'Random Promotion') ?></h5>
+            <!-- Истечение промо -->
+            <div class="col-12">
+                <div class="tp-card">
+                    <div class="tp-sec-head"><span class="tp-sec-icon ic-amber"><i class="fa-solid fa-hourglass-half"></i></span>
+                        <div><h2 class="tp-sec-title"><?= $e($L('row_promotion_timeout', 'Promotion timeout')) ?></h2>
+                        <div class="tp-muted"><?= $e($L('text_promotion_timeout_note_one', 'Promotion for torrents will expire after some time.')) ?></div></div></div>
+                    <div class="tp-body">
+                        <?php foreach ([
+                            [5, 'expirehalfleech',          'halfleechbecome',          150],
+                            [2, 'expirefree',               'freebecome',               60],
+                            [3, 'expiretwoup',              'twoupbecome',              60],
+                            [4, 'expiretwoupfree',          'twoupfreebecome',          30],
+                            [6, 'expiretwouphalfleech',     'twouphalfleechbecome',     30],
+                            [7, 'expirethirtypercentleech', 'thirtypercentleechbecome', 30],
+                            [1, 'expirenormal',             'normalbecome',             0],
+                        ] as [$pid, $days, $become, $defDays]): $d = (int)$S[$days]; ?>
+                        <div class="tp-flow<?= $d === 0 ? ' tp-off' : '' ?>">
+                            <div><?= $badge($pid) ?></div>
+                            <i class="fa-solid fa-arrow-right-long arr"></i>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">after</span>
+                                <input type="number" class="form-control text-center tp-days" name="<?= $days ?>" value="<?= $d ?>" min="0" step="1">
+                                <span class="input-group-text">d</span>
                             </div>
-                            <div class="card-body">
-                                <p class="card-text"><?= safe_echo($lang->settings['text_random_promotion_note_one'] ?? 'Torrents promoted randomly by system upon uploading.') ?></p>
-                                
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
-                                        <tbody>
-                                            <!-- 50% Leech -->
-                                            <tr>
-                                                <td width="40%">
-                                                    <div class="input-group">
-                                                        <input type="number" class="form-control" name="randomhalfleech" 
-                                                               value="<?= $randomhalfleech_torrent ?>" min="0" max="100" step="1">
-                                                        <span class="input-group-text">%</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-primary"><?= safe_echo($lang->settings['text_half_down'] ?? '50% Leech') ?></span>
-                                                    <?= safe_echo($lang->settings['text_halfleech_chance_becoming'] ?? '% chance becoming') ?>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- Free Leech -->
-                                            <tr>
-                                                <td>
-                                                    <div class="input-group">
-                                                        <input type="number" class="form-control" name="randomfree" 
-                                                               value="<?= $randomfree_torrent ?>" min="0" max="100" step="1">
-                                                        <span class="input-group-text">%</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-success"><?= safe_echo($lang->settings['text_free'] ?? 'Free Leech') ?></span>
-                                                    <?= safe_echo($lang->settings['text_free_chance_becoming'] ?? '% chance becoming') ?>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- 2X Upload -->
-                                            <tr>
-                                                <td>
-                                                    <div class="input-group">
-                                                        <input type="number" class="form-control" name="randomtwoup" 
-                                                               value="<?= $randomtwoup_torrent ?>" min="0" max="100" step="1">
-                                                        <span class="input-group-text">%</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-info"><?= safe_echo($lang->settings['text_two_times_up'] ?? '2X Upload') ?></span>
-                                                    <?= safe_echo($lang->settings['text_twoup_chance_becoming'] ?? '% chance becoming') ?>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- Free + 2X -->
-                                            <tr>
-                                                <td>
-                                                    <div class="input-group">
-                                                        <input type="number" class="form-control" name="randomtwoupfree" 
-                                                               value="<?= $randomtwoupfree_torrent ?>" min="0" max="100" step="1">
-                                                        <span class="input-group-text">%</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-warning"><?= safe_echo($lang->settings['text_free_two_times_up'] ?? 'Free + 2X') ?></span>
-                                                    <?= safe_echo($lang->settings['text_freetwoup_chance_becoming'] ?? '% chance becoming') ?>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- 50% + 2X -->
-                                            <tr>
-                                                <td>
-                                                    <div class="input-group">
-                                                        <input type="number" class="form-control" name="randomtwouphalfdown" 
-                                                               value="<?= $randomtwouphalfdown_torrent ?>" min="0" max="100" step="1">
-                                                        <span class="input-group-text">%</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-danger"><?= safe_echo($lang->settings['text_half_down_two_up'] ?? '50% + 2X') ?></span>
-                                                    <?= safe_echo($lang->settings['text_twouphalfleech_chance_becoming'] ?? '% chance becoming') ?>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- 30% Leech -->
-                                            <tr>
-                                                <td>
-                                                    <div class="input-group">
-                                                        <input type="number" class="form-control" name="randomthirtypercentdown" 
-                                                               value="<?= $randomthirtypercentdown_torrent ?>" min="0" max="100" step="1">
-                                                        <span class="input-group-text">%</span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-dark"><?= safe_echo($lang->settings['text_thirty_percent_down'] ?? '30% Leech') ?></span>
-                                                    <?= safe_echo($lang->settings['text_thirtypercentleech_chance_becoming'] ?? '% chance becoming') ?>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                
-                                <div class="alert alert-warning mt-3">
-                                    <i class="fas fa-exclamation-triangle me-2"></i>
-                                    <?= safe_echo($lang->settings['text_random_promotion_note_two'] ?? "Set values to '0' to disable the rules.") ?>
-                                </div>
-                            </div>
+                            <i class="fa-solid fa-arrow-right-long arr a2"></i>
+                            <div><?= $select($become, (int)$S[$become], $pid) ?></div>
+                            <div class="def">Default: <?= $defDays ?> days → <?= $e($PROMO[1][1]) ?></div>
                         </div>
-
-                        <!-- Промо для больших торрентов -->
-                        <div class="card mb-4">
-                            <div class="card-header bg-success text-white">
-                                <h5 class="mb-0"><i class="fas fa-file-archive me-2"></i><?= safe_echo($lang->settings['row_large_torrent_promotion'] ?? 'Large Torrent Promotion') ?></h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row g-3 align-items-center">
-                                    <div class="col-auto">
-                                        <label class="col-form-label"><?= safe_echo($lang->settings['text_torrent_larger_than'] ?? 'Torrents larger than') ?></label>
-                                    </div>
-                                    <div class="col-auto">
-                                        <div class="input-group">
-                                            <input type="number" class="form-control" name="largesize" 
-                                                   value="<?= $largesize_torrent ?>" min="0" step="0.1">
-                                            <span class="input-group-text">GB</span>
-                                        </div>
-                                    </div>
-                                    <div class="col-auto">
-                                        <label class="col-form-label"><?= safe_echo($lang->settings['text_gb_promoted_to'] ?? 'GB will be automatically promoted to') ?></label>
-                                    </div>
-                                    <div class="col-auto">
-                                        <?= promotion_selection_bootstrap(
-                                            $largepro_torrent,
-                                            'largepro',
-                                            1
-                                        ) ?>
-                                    </div>
-                                </div>
-                                <div class="mt-3">
-                                    <?= safe_echo($lang->settings['text_by_system_upon_uploading'] ?? 'by system upon uploading.') ?>
-                                </div>
-                                <div class="alert alert-info mt-3">
-                                    <i class="fas fa-info-circle me-2"></i>
-                                    <?= safe_echo($lang->settings['text_large_torrent_promotion_note'] ?? "Default '20', 'free'. Set torrent size to '0' to disable the rule.") ?>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Истечение промо-акций -->
-                        <div class="card mb-4">
-                            <div class="card-header bg-warning text-dark">
-                                <h5 class="mb-0"><i class="fas fa-clock me-2"></i><?= safe_echo($lang->settings['row_promotion_timeout'] ?? 'Promotion Timeout') ?></h5>
-                            </div>
-                            <div class="card-body">
-                                <p class="card-text"><?= safe_echo($lang->settings['text_promotion_timeout_note_one'] ?? 'Promotion for torrents will expire after some time.') ?></p>
-                                
-                                <div class="table-responsive">
-                                    <table class="table table-striped">
-                                        <thead class="table-dark">
-                                            <tr>
-                                                <th>Promotion Type</th>
-                                                <th>Will Become</th>
-                                                <th>After (Days)</th>
-                                                <th>Default</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <!-- 50% Leech -->
-                                            <tr>
-                                                <td>
-                                                    <span class="badge bg-primary"><?= safe_echo($lang->settings['text_half_down'] ?? '50% Leech') ?></span>
-                                                </td>
-                                                <td>
-                                                    <?= promotion_selection_bootstrap(
-                                                        $halfleechbecome_torrent,
-                                                        'halfleechbecome',
-                                                        5
-                                                    ) ?>
-                                                </td>
-                                                <td>
-                                                    <input type="number" class="form-control" name="expirehalfleech" 
-                                                           value="<?= $expirehalfleech_torrent ?>" min="0" step="1">
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary"><?= safe_echo($lang->settings['text_normal'] ?? 'Normal') ?>, 150</span>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- Free Leech -->
-                                            <tr>
-                                                <td>
-                                                    <span class="badge bg-success"><?= safe_echo($lang->settings['text_free'] ?? 'Free Leech') ?></span>
-                                                </td>
-                                                <td>
-                                                    <?= promotion_selection_bootstrap(
-                                                        $freebecome_torrent,
-                                                        'freebecome',
-                                                        2
-                                                    ) ?>
-                                                </td>
-                                                <td>
-                                                    <input type="number" class="form-control" name="expirefree" 
-                                                           value="<?= $expirefree_torrent ?>" min="0" step="1">
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary"><?= safe_echo($lang->settings['text_normal'] ?? 'Normal') ?>, 60</span>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- 2X Upload -->
-                                            <tr>
-                                                <td>
-                                                    <span class="badge bg-info"><?= safe_echo($lang->settings['text_two_times_up'] ?? '2X Upload') ?></span>
-                                                </td>
-                                                <td>
-                                                    <?= promotion_selection_bootstrap(
-                                                        $twoupbecome_torrent,
-                                                        'twoupbecome',
-                                                        3
-                                                    ) ?>
-                                                </td>
-                                                <td>
-                                                    <input type="number" class="form-control" name="expiretwoup" 
-                                                           value="<?= $expiretwoup_torrent ?>" min="0" step="1">
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary"><?= safe_echo($lang->settings['text_normal'] ?? 'Normal') ?>, 60</span>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- Free + 2X -->
-                                            <tr>
-                                                <td>
-                                                    <span class="badge bg-warning"><?= safe_echo($lang->settings['text_free_two_times_up'] ?? 'Free + 2X') ?></span>
-                                                </td>
-                                                <td>
-                                                    <?= promotion_selection_bootstrap(
-                                                        $twoupfreebecome_torrent,
-                                                        'twoupfreebecome',
-                                                        4
-                                                    ) ?>
-                                                </td>
-                                                <td>
-                                                    <input type="number" class="form-control" name="expiretwoupfree" 
-                                                           value="<?= $expiretwoupfree_torrent ?>" min="0" step="1">
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary"><?= safe_echo($lang->settings['text_normal'] ?? 'Normal') ?>, 30</span>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- 50% + 2X -->
-                                            <tr>
-                                                <td>
-                                                    <span class="badge bg-danger"><?= safe_echo($lang->settings['text_half_down_two_up'] ?? '50% + 2X') ?></span>
-                                                </td>
-                                                <td>
-                                                    <?= promotion_selection_bootstrap(
-                                                        $twouphalfleechbecome_torrent,
-                                                        'twouphalfleechbecome',
-                                                        6
-                                                    ) ?>
-                                                </td>
-                                                <td>
-                                                    <input type="number" class="form-control" name="expiretwouphalfleech" 
-                                                           value="<?= $expiretwouphalfleech_torrent ?>" min="0" step="1">
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary"><?= safe_echo($lang->settings['text_normal'] ?? 'Normal') ?>, 30</span>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- 30% Leech -->
-                                            <tr>
-                                                <td>
-                                                    <span class="badge bg-dark"><?= safe_echo($lang->settings['text_thirty_percent_down'] ?? '30% Leech') ?></span>
-                                                </td>
-                                                <td>
-                                                    <?= promotion_selection_bootstrap(
-                                                        $thirtypercentleechbecome_torrent,
-                                                        'thirtypercentleechbecome',
-                                                        7
-                                                    ) ?>
-                                                </td>
-                                                <td>
-                                                    <input type="number" class="form-control" name="expirethirtypercentleech" 
-                                                           value="<?= $expirethirtypercentleech_torrent ?>" min="0" step="1">
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary"><?= safe_echo($lang->settings['text_normal'] ?? 'Normal') ?>, 30</span>
-                                                </td>
-                                            </tr>
-                                            
-                                            <!-- Normal -->
-                                            <tr>
-                                                <td>
-                                                    <span class="badge bg-secondary"><?= safe_echo($lang->settings['text_normal'] ?? 'Normal') ?></span>
-                                                </td>
-                                                <td>
-                                                    <?= promotion_selection_bootstrap(
-                                                        $normalbecome_torrent,
-                                                        'normalbecome',
-                                                        0
-                                                    ) ?>
-                                                </td>
-                                                <td>
-                                                    <input type="number" class="form-control" name="expirenormal" 
-                                                           value="<?= $expirenormal_torrent ?>" min="0" step="1">
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-secondary"><?= safe_echo($lang->settings['text_normal'] ?? 'Normal') ?>, 0</span>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                
-                                <div class="alert alert-warning mt-3">
-                                    <i class="fas fa-exclamation-triangle me-2"></i>
-                                    <?= safe_echo($lang->settings['text_promotion_timeout_note_two'] ?? 'Promotion for torrents will expire after some time.') ?>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Дополнительные настройки -->
-                        <div class="card mb-4">
-                            <div class="card-header bg-secondary text-white">
-                                <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Additional Settings</h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row g-3">
-                                    <!-- Hot Torrent Days -->
-                                    <div class="col-md-6">
-                                        <label for="hotdays" class="form-label">Hot Torrent Days</label>
-                                        <div class="input-group">
-                                            <input type="number" class="form-control" id="hotdays" name="hotdays" 
-                                                   value="<?= $hotdays_torrent ?>" min="0" step="1">
-                                            <span class="input-group-text">days</span>
-                                        </div>
-                                        <div class="form-text">Days to consider a torrent as "hot"</div>
-                                    </div>
-                                    
-                                    <!-- Hot Seeder Threshold -->
-                                    <div class="col-md-6">
-                                        <label for="hotseeder" class="form-label">Hot Seeder Threshold</label>
-                                        <div class="input-group">
-                                            <input type="number" class="form-control" id="hotseeder" name="hotseeder" 
-                                                   value="<?= $hotseeder_torrent ?>" min="0" step="1">
-                                            <span class="input-group-text">seeders</span>
-                                        </div>
-                                        <div class="form-text">Minimum seeders for hot torrent</div>
-                                    </div>
-                                    
-                                    <!-- Uploader Double Upload -->
-                                    <div class="col-md-6">
-                                        <div class="form-check form-switch mt-3">
-                                            
-											<input class="form-check-input" type="checkbox" role="switch" id="uploaderdouble" name="uploaderdouble" 
-       value="yes" <?= (($uploaderdouble_torrent ?? 'no') === 'yes') ? 'checked' : '' ?>>
-<label class="form-check-label fw-bold" for="uploaderdouble">
-  
-											
-											
-                                                Uploader Double Upload
-                                            </label>
-                                            <div class="form-text">Enable double upload for torrent uploaders</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- Delete Dead Torrents -->
-                                    <div class="col-md-6">
-                                        <div class="form-check form-switch mt-3">
-                                            
-											<input class="form-check-input" type="checkbox" role="switch" id="deldeadtorrent" name="deldeadtorrent" 
-       value="yes" <?= ($deldeadtorrent_torrent === 'yes') ? 'checked' : '' ?>>
-<label class="form-check-label fw-bold" for="deldeadtorrent">
-
-											
-											
-											
-                                                Delete Dead Torrents
-                                            </label>
-                                            <div class="form-text">Automatically delete torrents with no seeders</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Кнопки сохранения -->
-                        <div class="row mt-4">
-                            <div class="col-md-12 text-end">
-                                <button type="submit" class="btn btn-primary btn-lg">
-                                    <i class="fas fa-save me-2"></i><?= safe_echo('Save Settings') ?>
-                                </button>
-                                <button type="reset" class="btn btn-secondary btn-lg ms-2">
-                                    <i class="fas fa-undo me-2"></i><?= safe_echo('Reset') ?>
-                                </button>
-                            </div>
-                        </div>
-                    </form>
+                        <?php endforeach; ?>
+                        <div class="tp-muted mt-2"><i class="fa-solid fa-circle-info me-1"></i><?= $e($L('text_promotion_timeout_note_two', 'Promotion for torrents will expire after some time.')) ?></div>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+        </div>
+
+        <div class="tp-card tp-savebar">
+            <span class="tp-muted">
+                <span class="badge rounded-pill text-bg-warning me-2" id="tpDirty" hidden><i class="fa-solid fa-pen me-1"></i>Unsaved changes</span>
+                <i class="fa-solid fa-circle-info me-1"></i>Rules apply to new uploads and the next cleanup run
+            </span>
+            <div class="d-flex gap-2">
+                <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
+                <button type="submit" class="btn btn-primary px-4" id="tpSave"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>
+            </div>
+        </div>
+    </form>
 </div>
 
-
-<style>
-    .card {
-        border-radius: 10px;
-        border: none;
-        margin-bottom: 1.5rem;
-    }
-    .card-header {
-        border-radius: 10px 10px 0 0 !important;
-        font-size: 1.1rem;
-    }
-    .form-control:focus {
-        border-color: #86b7fe;
-        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-    }
-    .badge {
-        font-size: 0.85em;
-        padding: 0.4em 0.8em;
-        margin-right: 0.5em;
-    }
-    .table th {
-        background-color: #f8f9fa;
-        font-weight: 600;
-        vertical-align: middle;
-    }
-    .table td {
-        vertical-align: middle;
-    }
-    .input-group-text {
-        background-color: #e9ecef;
-        border-color: #ced4da;
-        min-width: 60px;
-        justify-content: center;
-    }
-    .form-text {
-        font-size: 0.875em;
-        color: #6c757d;
-        margin-top: 0.25rem;
-    }
-    .form-check-input:checked {
-        background-color: #0d6efd;
-        border-color: #0d6efd;
-    }
-</style>
-
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/torrents_promo.js?v=20260926"></script>
 <?php
 stdfoot();

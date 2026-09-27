@@ -6,6 +6,12 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
+/** Вкл/выкл из любого старого формата: true / 'yes' / 'on' / '1' */
+function sb_is_on(mixed $v): bool
+{
+    return $v === true || in_array(strtolower((string)$v), ['yes', 'on', '1', 'true'], true);
+}
+
 // ═══════════════════════════════════════════════════════════
 // CLASS
 // ═══════════════════════════════════════════════════════════
@@ -25,7 +31,7 @@ class SeedbonusSettings
     {
         global $db;
         $q = $db->sql_query_prepared('SELECT setting_key, setting_value, setting_type FROM seedbonus_settings');
-        while ($row = $db->fetch_array($q)) {
+        while ($q && ($row = $db->fetch_array($q))) {
             $this->settings[$row['setting_key']] = $this->castValue($row['setting_value'], $row['setting_type']);
         }
     }
@@ -134,7 +140,7 @@ class SeedbonusSettings
         $hourCap         = (float)$this->getSetting('hour_cap', 250);
         $multiplierType  = (string)$this->getSetting('torrent_multiplier_type', 'penalty');
         $cronInterval    = (int)$this->getSetting('cron_interval', 15);
-        $enableHeuristic = $this->getSetting('enable_heuristic', 'on') === 'on';
+        $enableHeuristic = sb_is_on($this->getSetting('enable_heuristic', true));
 
         $testTorrents = 42;
         $testRawBonus = 95.1;
@@ -308,501 +314,457 @@ $configCode = $seedbonus->generateConfigCode();
 $s = fn(string $k, mixed $d = null) => htmlspecialchars((string)$seedbonus->getSetting($k, $d));
 $n = fn(mixed $v, int $dec = 1)     => htmlspecialchars(number_format((float)$v, $dec));
 
+// Реальное число сидирующих пользователей — стартовое значение для прогноза инфляции
+// (раньше в одном блоке было «100 users», а в соседнем — «500 users»)
+$activeSeeders = 100;
+$q = $db->sql_query_prepared("SELECT COUNT(DISTINCT userid) AS n FROM peers WHERE seeder = 'yes'");
+if ($q && ($r = $db->fetch_array($q)) && (int)$r['n'] > 0) {
+    $activeSeeders = (int)$r['n'];
+}
+
+$enabled   = (bool)$seedbonus->getSetting('enabled', true);
+$heuristic = sb_is_on($seedbonus->getSetting('enable_heuristic', true));
+$cronMin   = max(1, (int)$seedbonus->getSetting('cron_interval', 15));
+$daily     = (float)$preview['daily'];
+$dailyAll  = $daily * $activeSeeders;
+
+$presetInfo = [
+    'conservative' => ['fa-shield-halved',  'ic-blue',   'Careful economy, slow growth'],
+    'balanced'     => ['fa-scale-balanced', 'ic-green',  'Recommended default'],
+    'generous'     => ['fa-gift',           'ic-amber',  'Rewards heavy seeders'],
+    'avistaz'      => ['fa-star',           'ic-purple', 'AvistaZ-style multipliers'],
+    'maximum'      => ['fa-rocket',         'ic-red',    'Very fast points — watch inflation'],
+];
+
 stdhead('Seedbonus System Settings');
 ?>
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/seedbonus_settings.css">
+<style>
+.sb .sb-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.sb .sb-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
+.sb .sb-head-icon, .sb .sb-sec-icon, .sb .sb-kpi-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sb .sb-head-icon { width: 48px; height: 48px; font-size: 1.35rem; border-radius: .85rem; }
+.sb .sb-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.sb .sb-sub { color: var(--bs-secondary-color); font-size: .95rem; }
+.sb .sb-muted { font-size: .86rem; color: var(--bs-secondary-color); }
+.sb .ic-blue   { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.12); }
+.sb .ic-green  { color: #16a34a; background: rgba(34,197,94,.12); }
+.sb .ic-amber  { color: #d97706; background: rgba(245,158,11,.14); }
+.sb .ic-red    { color: #dc2626; background: rgba(239,68,68,.12); }
+.sb .ic-purple { color: #7c3aed; background: rgba(124,58,237,.12); }
+.sb .ic-teal   { color: #0891b2; background: rgba(8,145,178,.12); }
+.sb .ic-slate  { color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
+.sb .btn { border-radius: 50rem; }
+.sb .form-control, .sb .form-select { border-radius: .6rem; }
+
+.sb .sb-status { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .8rem; border-radius: 50rem; font-weight: 700; font-size: .85rem; }
+.sb .sb-status.on  { color: #15803d; background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.35); }
+.sb .sb-status.off { color: #b91c1c; background: rgba(239,68,68,.1);  border: 1px solid rgba(239,68,68,.35); }
+
+/* KPI полоса */
+.sb .sb-kpi { display: flex; align-items: center; gap: .8rem; padding: .9rem 1.1rem; height: 100%; }
+.sb .sb-kpi-icon { width: 42px; height: 42px; border-radius: .8rem; font-size: 1.1rem; }
+.sb .sb-kpi-label { font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.sb .sb-kpi-value { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+
+/* Пресеты */
+.sb .sb-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .6rem; }
+.sb .config-badge.sb-preset { display: flex; align-items: center; gap: .65rem; padding: .7rem .8rem; border-radius: .85rem; border: 1px solid var(--bs-border-color-translucent); background: var(--bs-body-bg) !important; color: var(--bs-body-color) !important; cursor: pointer; text-align: left; white-space: normal; font-weight: 400; font-size: 1rem; transition: border-color .15s ease, box-shadow .15s ease; }
+.sb .config-badge.sb-preset:hover { border-color: rgba(var(--bs-primary-rgb), .45); box-shadow: 0 .3rem .8rem rgba(0,0,0,.06); }
+.sb .config-badge.sb-preset.is-active { border-color: var(--bs-primary); box-shadow: 0 0 0 .15rem rgba(var(--bs-primary-rgb), .15); }
+.sb .config-badge.sb-preset.is-active::after { content: '\f00c'; font: var(--fa-font-solid); margin-left: auto; color: var(--bs-primary); }
+.sb .sb-preset .sb-sec-icon { width: 34px; height: 34px; border-radius: .65rem; font-size: .9rem; }
+.sb .sb-preset b { display: block; font-size: .95rem; }
+.sb .sb-preset small { color: var(--bs-secondary-color); font-size: .78rem; line-height: 1.3; display: block; }
+
+/* Вкладки */
+.sb .sb-tabs { display: flex; gap: .3rem; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: .3rem; border-radius: 50rem; background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); width: max-content; max-width: 100%; margin: 0 0 1rem; }
+.sb .sb-tabs::-webkit-scrollbar { display: none; }
+.sb .sb-tabs .nav-link { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem 1rem; border-radius: 50rem; font-weight: 600; color: var(--bs-secondary-color); white-space: nowrap; border: 0; background: transparent; }
+.sb .sb-tabs .nav-link:hover { color: var(--bs-body-color); background: var(--bs-body-bg); }
+.sb .sb-tabs .nav-link.active { color: #fff; background: var(--bs-primary); box-shadow: 0 .25rem .75rem rgba(var(--bs-primary-rgb), .3); }
+
+/* Секции настроек */
+.sb .sb-sec { height: 100%; }
+.sb .sb-sec-head { display: flex; align-items: center; gap: .65rem; padding: .9rem 1.1rem; border-bottom: 1px solid var(--bs-border-color-translucent); }
+.sb .sb-sec-icon { width: 36px; height: 36px; border-radius: .7rem; font-size: .95rem; }
+.sb .sb-sec-title { font-weight: 700; font-size: 1.02rem; margin: 0; }
+.sb .sb-sec-body { padding: 1rem 1.1rem; }
+.sb .sb-group { font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); margin: 1rem 0 .5rem; }
+.sb .sb-group:first-child { margin-top: 0; }
+.sb .sb-field { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .35rem 0; }
+.sb .sb-field label { margin: 0; font-size: .93rem; }
+.sb .sb-field .input-group { width: 130px; flex-shrink: 0; }
+.sb .sb-field .form-control { text-align: center; }
+.sb .sb-field .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); font-size: .8rem; }
+
+.sb .sb-range-value { display: inline-block; min-width: 3.5rem; padding: .05rem .5rem; border-radius: .5rem; background: var(--bs-tertiary-bg); font-weight: 700; text-align: center; }
+.sb .sb-marks { display: flex; justify-content: space-between; font-size: .75rem; color: var(--bs-secondary-color); margin-top: .15rem; }
+
+/* Мастер-выключатель */
+.sb .sb-master { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.2rem; border-radius: 1rem; border: 2px solid; }
+.sb .sb-master.on  { border-color: rgba(34,197,94,.45); background: rgba(34,197,94,.05); }
+.sb .sb-master.off { border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.05); }
+.sb .sb-master .form-check-input { width: 3em; height: 1.6em; cursor: pointer; margin: 0; }
+
+/* Тип множителя — карточки-радио */
+.sb .sb-mtype { display: block; height: 100%; padding: .9rem 1rem; border-radius: .9rem; border: 2px solid var(--bs-border-color-translucent); cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
+.sb .sb-mtype:hover { border-color: rgba(var(--bs-primary-rgb), .35); }
+.sb .sb-mtype:has(input:checked) { border-color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .05); }
+.sb .sb-mtype .form-check-input { margin: 0 .5rem 0 0; }
+.sb .sb-mtype ul { list-style: none; padding: 0; margin: .5rem 0 0; font-size: .85rem; color: var(--bs-secondary-color); }
+.sb .sb-mtype li { display: flex; justify-content: space-between; padding: .1rem 0; }
+.sb .sb-mtype li b { color: var(--bs-body-color); }
+
+/* Превью */
+.sb .sb-row { display: flex; justify-content: space-between; padding: .45rem 0; border-bottom: 1px dashed var(--bs-border-color-translucent); font-size: .93rem; }
+.sb .sb-row:last-child { border-bottom: 0; }
+.sb .sb-big { text-align: center; padding: .9rem; border-radius: .9rem; background: var(--bs-tertiary-bg); height: 100%; }
+.sb .sb-big .v { font-size: 1.45rem; font-weight: 700; line-height: 1.2; }
+.sb .sb-savebar { position: sticky; bottom: .75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem 1rem; margin-top: 1rem; box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.08); }
+.sb pre.sb-code { margin: 0; padding: 1rem; border-radius: 0 0 1rem 1rem; background: var(--bs-tertiary-bg); font-size: .82rem; max-height: 360px; overflow: auto; }
+</style>
 <script>var myPostKey = <?= json_encode($mybb->post_code) ?>;</script>
 
-<div class="container py-5">
+<div class="container mt-3 mb-4 sb">
 
-    <!-- Header card -->
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <div><i class="bi bi-gear me-2"></i>Seedbonus System Settings</div>
-            <div>
-                <button class="btn btn-sm btn-light me-2" id="saveBtn"><i class="bi bi-save me-1"></i>Save</button>
-                <button class="btn btn-sm btn-warning" id="resetBtn"><i class="bi bi-arrow-clockwise me-1"></i>Reset</button>
-            </div>
+    <!-- Шапка -->
+    <div class="sb-card mb-3"><div class="sb-head">
+        <span class="sb-head-icon ic-amber"><i class="fa-solid fa-coins"></i></span>
+        <div style="min-width:0">
+            <h1 class="sb-title">Seedbonus Settings</h1>
+            <div class="sb-sub">How many bonus points seeders earn — rates, multipliers, limits and cron timing</div>
         </div>
-        <div class="card-body">
-
-            <!-- Presets -->
-            <h6 class="text-muted mb-3"><i class="bi bi-lightning me-2"></i>Quick Presets:</h6>
-            <div class="d-flex flex-wrap gap-2 mb-4">
-                <?php foreach ($seedbonus->getPresets() as $preset => $_): ?>
-                <span class="badge bg-secondary config-badge" data-preset="<?= htmlspecialchars($preset) ?>">
-                    <i class="bi bi-shield me-1"></i><?= ucfirst($preset) ?>
-                </span>
-                <?php endforeach; ?>
-            </div>
-
-            <!-- Tabs -->
-            <ul class="nav nav-tabs mb-4" role="tablist">
-                <?php foreach (['basic'=>['bi-sliders','Basic'],'multipliers'=>['bi-percent','Multipliers'],'time'=>['bi-clock','Time'],'preview'=>['bi-eye','Preview']] as $id=>[$icon,$label]): ?>
-                <li class="nav-item">
-                    <button class="nav-link <?= $id === 'basic' ? 'active' : '' ?>"
-                            data-bs-toggle="tab" data-bs-target="#<?= $id ?>" type="button">
-                        <i class="bi <?= $icon ?> me-1"></i><?= $label ?>
-                    </button>
-                </li>
-                <?php endforeach; ?>
-            </ul>
-
-            <div class="tab-content">
-
-                <!-- ── Tab: Basic ──────────────────────────────── -->
-                <div class="tab-pane fade show active" id="basic">
-                    <form id="basicForm">
-                        <div class="row">
-						
-						
-						     <!-- Master Switch -->
-<div class="col-12 mb-4">
-    <div class="card border-<?= $seedbonus->getSetting('enabled', true) ? 'success' : 'danger' ?>">
-        <div class="card-header bg-<?= $seedbonus->getSetting('enabled', true) ? 'success' : 'danger' ?> text-white">
-            <i class="bi bi-power me-2"></i>System Master Switch
+        <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
+            <span class="sb-status <?= $enabled ? 'on' : 'off' ?>"><i class="fa-solid fa-power-off"></i><?= $enabled ? 'System ON' : 'System OFF' ?></span>
+            <button type="button" class="btn btn-sm btn-outline-secondary px-3" id="resetBtn"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
+            <button type="button" class="btn btn-sm btn-primary px-3" id="saveBtn"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>
         </div>
-        <div class="card-body">
-            <p class="text-muted small mb-3">Enable or disable the entire seedbonus cron. When disabled, no bonus points are awarded at all, regardless of other settings.</p>
-            <div class="form-check form-switch">
-                <input type="hidden" name="seedbonus_enabled" value="no">
-                <input class="form-check-input" type="checkbox" id="systemEnabled"
-                       name="seedbonus_enabled" value="yes"
-                       <?= $seedbonus->getSetting('enabled', true) ? 'checked' : '' ?>>
-                <label class="form-check-label fw-bold" for="systemEnabled">
-                    Seedbonus System Enabled
-                </label>
+    </div></div>
+
+    <!-- KPI -->
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3"><div class="sb-card sb-kpi"><span class="sb-kpi-icon ic-amber"><i class="fa-solid fa-coins"></i></span>
+            <div><div class="sb-kpi-label">Base bonus</div><div class="sb-kpi-value"><?= $n($preview['base_bonus']) ?></div></div></div></div>
+        <div class="col-6 col-lg-3"><div class="sb-card sb-kpi"><span class="sb-kpi-icon ic-red"><i class="fa-solid fa-gauge-high"></i></span>
+            <div><div class="sb-kpi-label">Hour cap</div><div class="sb-kpi-value"><?= $n($preview['hour_cap'], 0) ?></div></div></div></div>
+        <div class="col-6 col-lg-3"><div class="sb-card sb-kpi"><span class="sb-kpi-icon ic-teal"><i class="fa-solid fa-clock"></i></span>
+            <div><div class="sb-kpi-label">Cron every</div><div class="sb-kpi-value"><?= $cronMin ?> min</div></div></div></div>
+        <div class="col-6 col-lg-3"><div class="sb-card sb-kpi"><span class="sb-kpi-icon ic-green"><i class="fa-solid fa-chart-line"></i></span>
+            <div><div class="sb-kpi-label">Test user / day</div><div class="sb-kpi-value"><?= number_format($daily) ?></div></div></div></div>
+    </div>
+
+    <!-- Пресеты -->
+    <div class="sb-card mb-3">
+        <div class="sb-sec-head"><span class="sb-sec-icon ic-purple"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+            <div><h2 class="sb-sec-title">Quick presets</h2><div class="sb-muted">One click fills rates and multipliers — review and Save</div></div></div>
+        <div class="sb-sec-body">
+            <div class="sb-presets">
+            <?php foreach ($seedbonus->getPresets() as $preset => $vals):
+                [$pi, $pc, $pd] = $presetInfo[$preset] ?? ['fa-sliders', 'ic-slate', '']; ?>
+                <!-- класс config-badge и data-preset — их слушает seedbonus_settings.js -->
+                <button type="button" class="config-badge sb-preset" data-preset="<?= htmlspecialchars($preset) ?>">
+                    <span class="sb-sec-icon <?= $pc ?>"><i class="fa-solid <?= $pi ?>"></i></span>
+                    <span><b><?= htmlspecialchars(ucfirst($preset)) ?></b><small><?= htmlspecialchars($pd) ?> · base <?= $vals['base_bonus'] ?>, cap <?= (int)$vals['hour_cap'] ?></small></span>
+                </button>
+            <?php endforeach; ?>
             </div>
         </div>
     </div>
-</div>
-						
-						
-						
-						
-						
-						
-                            <!-- Base Bonus -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card">
-                                    <div class="card-header bg-info text-white"><i class="bi bi-cash-coin me-2"></i>Base Bonus</div>
-                                    <div class="card-body">
-                                        <p class="text-muted small mb-3">Main bonus multiplier. Higher = more points for users.</p>
-                                        <label class="form-label">Bonus per hour: <span id="baseBonusValue"><?= $s('base_bonus', 10.0) ?></span> points</label>
-                                        <input type="range" class="form-range" id="baseBonus" name="seedbonus_base_bonus"
-                                               min="1" max="30" step="0.5" value="<?= $s('base_bonus', 10.0) ?>">
-                                        <div class="d-flex justify-content-between text-muted small">
-                                            <span>1.0</span><span>Conservative</span><span>15.0</span><span>Generous</span><span>30.0</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
 
-                            <!-- Hour Cap -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card">
-                                    <div class="card-header bg-warning text-white"><i class="bi bi-speedometer me-2"></i>Hour Cap</div>
-                                    <div class="card-body">
-                                        <p class="text-muted small mb-3">Maximum bonus per hour per user. Abuse protection.</p>
-                                        <label class="form-label">Max per hour: <span id="hourCapValue"><?= $s('hour_cap', 500.0) ?></span> points</label>
-                                        <input type="range" class="form-range" id="hourCap" name="seedbonus_hour_cap"
-                                               min="100" max="5000" step="50" value="<?= $s('hour_cap', 500.0) ?>">
-                                        <div class="d-flex justify-content-between text-muted small">
-                                            <span>100</span><span>Strict</span><span>1000</span><span>Generous</span><span>5000</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+    <!-- Вкладки -->
+    <ul class="nav sb-tabs" role="tablist">
+        <?php foreach (['basic'=>['fa-sliders','Basic'],'multipliers'=>['fa-percent','Multipliers'],'time'=>['fa-clock','Time'],'preview'=>['fa-eye','Preview']] as $id=>[$icon,$label]): ?>
+        <li class="nav-item">
+            <button class="nav-link <?= $id === 'basic' ? 'active' : '' ?>" data-bs-toggle="tab" data-bs-target="#<?= $id ?>" type="button" role="tab">
+                <i class="fa-solid <?= $icon ?>"></i><?= $label ?>
+            </button>
+        </li>
+        <?php endforeach; ?>
+    </ul>
 
-                            <!-- Torrent Multiplier Type -->
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-header bg-success text-white"><i class="bi bi-collection me-2"></i>Torrent Count Multiplier</div>
-                                    <div class="card-body">
-                                        <p class="text-muted mb-3">How the number of seeded torrents affects the bonus.</p>
-                                        <div class="row">
-                                            <?php
-                                            $types = [
-                                                'penalty' => ['Penalty for Many', '1-20: 100%<br>21-50: 90%<br>51-100: 80%<br>100+: 70%'],
-                                                'neutral' => ['Neutral',           '1-100: 100%<br>101+: 90%'],
-                                                'reward'  => ['Reward for Many',   '1-19: 90%<br>20-49: 100%<br>50-99: 110%<br>100+: 120%'],
-                                                'flat'    => ['Fixed',             'Always: '],
-                                            ];
-                                            $current = $seedbonus->getSetting('torrent_multiplier_type');
-                                            foreach ($types as $type => [$label, $desc]):
-                                            ?>
-                                            <div class="col-md-3 mb-3">
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="radio"
-                                                           name="seedbonus_torrent_multiplier_type"
-                                                           id="mult<?= ucfirst($type) ?>" value="<?= $type ?>"
-                                                           <?= $current === $type ? 'checked' : '' ?>>
-                                                    <label class="form-check-label" for="mult<?= ucfirst($type) ?>">
-                                                        <strong><?= $label ?></strong>
-                                                    </label>
-                                                    <div class="text-muted small">
-                                                        <?= $desc ?>
-                                                        <?php if ($type === 'flat'): ?>
-                                                        <input type="number" class="form-control form-control-sm d-inline w-50"
-                                                               name="seedbonus_flat_multiplier"
-                                                               value="<?= $s('flat_multiplier', 1.0) ?>"
-                                                               step="0.1" min="0.1" max="2.0"> ×100%
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    </div>
-                                </div>
+    <div class="tab-content">
+
+        <!-- ── Basic ─────────────────────────────────────── -->
+        <div class="tab-pane fade show active" id="basic" role="tabpanel">
+            <form id="basicForm">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="sb-master <?= $enabled ? 'on' : 'off' ?>" for="systemEnabled" id="sbMaster">
+                            <span class="sb-sec-icon <?= $enabled ? 'ic-green' : 'ic-red' ?>" style="width:44px;height:44px;font-size:1.15rem"><i class="fa-solid fa-power-off"></i></span>
+                            <span class="flex-grow-1">
+                                <span class="fw-bold d-block">Seedbonus system</span>
+                                <span class="sb-muted">When off, the cron awards no points at all, whatever the other settings are.</span>
+                            </span>
+                            <input type="hidden" name="seedbonus_enabled" value="no">
+                            <input class="form-check-input" type="checkbox" role="switch" id="systemEnabled" name="seedbonus_enabled" value="yes" <?= $enabled ? 'checked' : '' ?>>
+                        </label>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-amber"><i class="fa-solid fa-coins"></i></span>
+                                <div><h3 class="sb-sec-title">Base bonus</h3><div class="sb-muted">Main multiplier — higher means more points</div></div></div>
+                            <div class="sb-sec-body">
+                                <label class="form-label" for="baseBonus">Points per hour: <span class="sb-range-value" id="baseBonusValue"><?= $s('base_bonus', 10.0) ?></span></label>
+                                <input type="range" class="form-range" id="baseBonus" name="seedbonus_base_bonus" min="1" max="30" step="0.5" value="<?= $s('base_bonus', 10.0) ?>">
+                                <div class="sb-marks"><span>1</span><span>Conservative</span><span>15</span><span>Generous</span><span>30</span></div>
                             </div>
                         </div>
-                    </form>
-                </div>
+                    </div>
 
-                <!-- ── Tab: Multipliers ────────────────────────── -->
-                <div class="tab-pane fade" id="multipliers">
-                    <form id="multipliersForm">
-                        <div class="row">
-                            <!-- Leecher -->
-                            <div class="col-md-4 mb-4">
-                                <div class="card h-100">
-                                    <div class="card-header bg-danger text-white"><i class="bi bi-download me-2"></i>Leecher Multipliers</div>
-                                    <div class="card-body">
-                                        <p class="text-muted small mb-3">Encourage seeding torrents with leechers.</p>
-                                        <?php foreach (['leech_none'=>'No leechers','leech_few'=>'1-2 leechers','leech_many'=>'3+ leechers'] as $k=>$lbl): ?>
-                                        <div class="mb-3">
-                                            <label class="form-label"><?= $lbl ?>:</label>
-                                            <div class="input-group">
-                                                <input type="number" class="form-control" name="seedbonus_<?= $k ?>"
-                                                       value="<?= $s($k, 1.2) ?>" step="0.1" min="0.5" max="3.0">
-                                                <span class="input-group-text">×</span>
-                                            </div>
-                                        </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Size -->
-                            <div class="col-md-4 mb-4">
-                                <div class="card h-100">
-                                    <div class="card-header bg-primary text-white"><i class="bi bi-hdd me-2"></i>Size Multipliers</div>
-                                    <div class="card-body">
-                                        <p class="text-muted small mb-3">Encourage seeding large files.</p>
-                                        <?php foreach (['small'=>'&lt; 0.5 GB','medium'=>'&lt; 2 GB','large'=>'&lt; 8 GB','xlarge'=>'&lt; 20 GB','huge'=>'≥ 20 GB'] as $k=>$lbl): ?>
-                                        <div class="mb-3">
-                                            <label class="form-label"><?= $lbl ?>:</label>
-                                            <div class="input-group">
-                                                <input type="number" class="form-control" name="seedbonus_size_<?= $k ?>"
-                                                       value="<?= $s("size_$k", 1.0) ?>" step="0.1" min="0.5" max="3.0">
-                                                <span class="input-group-text">×</span>
-                                            </div>
-                                        </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Additional -->
-                            <div class="col-md-4 mb-4">
-                                <div class="card h-100">
-                                    <div class="card-header bg-success text-white"><i class="bi bi-star me-2"></i>Additional Multipliers</div>
-                                    <div class="card-body">
-                                        <h6 class="text-muted mb-2">Many Seeders Penalty:</h6>
-                                        <?php foreach (['seeders_many'=>['&gt;100 seeders',0.9],'seeders_medium'=>['&gt;50 seeders',0.95]] as $k=>[$lbl,$def]): ?>
-                                        <div class="mb-2">
-                                            <label class="form-label small"><?= $lbl ?>:</label>
-                                            <div class="input-group">
-                                                <input type="number" class="form-control" name="seedbonus_<?= $k ?>"
-                                                       value="<?= $s($k, $def) ?>" step="0.05" min="0.1" max="1.0">
-                                                <span class="input-group-text">×</span>
-                                            </div>
-                                        </div>
-                                        <?php endforeach; ?>
-
-                                        <h6 class="text-muted mb-2 mt-3">Age Bonus:</h6>
-                                        <?php foreach (['age_old'=>['&gt;180 days',1.5],'age_medium'=>['&gt;60 days',1.3]] as $k=>[$lbl,$def]): ?>
-                                        <div class="mb-2">
-                                            <label class="form-label small"><?= $lbl ?>:</label>
-                                            <div class="input-group">
-                                                <input type="number" class="form-control" name="seedbonus_<?= $k ?>"
-                                                       value="<?= $s($k, $def) ?>" step="0.1" min="1.0" max="3.0">
-                                                <span class="input-group-text">×</span>
-                                            </div>
-                                        </div>
-                                        <?php endforeach; ?>
-
-                                        <h6 class="text-muted mb-2 mt-3">Promo Torrents:</h6>
-                                        <?php foreach (['promo_free'=>['Freeleech',0.7],'promo_silver'=>['Silver (50%)',0.5],'promo_double'=>['Double Upload',0.5]] as $k=>[$lbl,$def]): ?>
-                                        <div class="mb-2">
-                                            <label class="form-label small"><?= $lbl ?>:</label>
-                                            <div class="input-group">
-                                                <input type="number" class="form-control" name="seedbonus_<?= $k ?>"
-                                                       value="<?= $s($k, $def) ?>" step="0.1" min="0" max="2.0">
-                                                <span class="input-group-text">+ bonus</span>
-                                            </div>
-                                        </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
+                    <div class="col-md-6">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-red"><i class="fa-solid fa-gauge-high"></i></span>
+                                <div><h3 class="sb-sec-title">Hour cap</h3><div class="sb-muted">Max points per user per hour — abuse protection</div></div></div>
+                            <div class="sb-sec-body">
+                                <label class="form-label" for="hourCap">Max per hour: <span class="sb-range-value" id="hourCapValue"><?= $s('hour_cap', 500.0) ?></span></label>
+                                <input type="range" class="form-range" id="hourCap" name="seedbonus_hour_cap" min="100" max="5000" step="50" value="<?= $s('hour_cap', 500.0) ?>">
+                                <div class="sb-marks"><span>100</span><span>Strict</span><span>1000</span><span>Generous</span><span>5000</span></div>
                             </div>
                         </div>
-                    </form>
-                </div>
+                    </div>
 
-                <!-- ── Tab: Time ───────────────────────────────── -->
-                <div class="tab-pane fade" id="time">
-                    <form id="timeForm">
-                        <div class="row">
-                            <!-- Intervals -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card">
-                                    <div class="card-header bg-info text-white"><i class="bi bi-clock-history me-2"></i>Intervals</div>
-                                    <div class="card-body">
-                                        <?php foreach ([
-    ['cronInterval',     'seedbonus_cron_interval',     'Cron interval',     'cronIntervalValue',     5, 60, 5, 15, ['5 min','Frequent','30 min','Rare','60 min']],
-    ['announceInterval', 'seedbonus_announce_interval', 'Announce interval', 'announceIntervalValue', 5, 60, 5, 15, ['5 min','15 min','30 min','60 min']],
-    ['historyDays',      'seedbonus_history_days',      'Activity history',  'historyDaysValue',      1, 30, 1, 1,  ['1','15','30']],
-] as [$id, $name, $lbl, $valId, $min, $max, $step, $def, $marks]):
-    $val = $s(substr($name, 10), $def);
-?>
-                                        <div class="mb-4">
-                                            <label class="form-label"><?= $lbl ?>: <span id="<?= $valId ?>"><?= $val ?></span> <?= $id === 'historyDays' ? 'days' : 'minutes' ?></label>
-                                            <input type="range" class="form-range" id="<?= $id ?>" name="<?= $name ?>"
-                                                   min="<?= $min ?>" max="<?= $max ?>" step="<?= $step ?>" value="<?= $val ?>">
-                                            <div class="d-flex justify-content-between text-muted small">
-                                                <?php foreach ($marks as $m): ?><span><?= $m ?></span><?php endforeach; ?>
+                    <div class="col-12">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-green"><i class="fa-solid fa-layer-group"></i></span>
+                                <div><h3 class="sb-sec-title">Torrent count multiplier</h3><div class="sb-muted">How the number of seeded torrents changes the bonus</div></div></div>
+                            <div class="sb-sec-body">
+                                <div class="row g-3">
+                                <?php
+                                $types = [
+                                    'penalty' => ['fa-arrow-trend-down', 'Penalty for many', ['1–20' => '100%', '21–50' => '90%', '51–100' => '80%', '100+' => '70%']],
+                                    'neutral' => ['fa-equals',           'Neutral',          ['1–100' => '100%', '101+' => '90%']],
+                                    'reward'  => ['fa-arrow-trend-up',   'Reward for many',  ['1–19' => '90%', '20–49' => '100%', '50–99' => '110%', '100+' => '120%']],
+                                    'flat'    => ['fa-lock',             'Fixed',            []],
+                                ];
+                                $current = $seedbonus->getSetting('torrent_multiplier_type', 'penalty');
+                                foreach ($types as $type => [$ic, $label, $rows]): ?>
+                                    <div class="col-sm-6 col-lg-3">
+                                        <label class="sb-mtype" for="mult<?= ucfirst($type) ?>">
+                                            <span class="d-flex align-items-center">
+                                                <input class="form-check-input" type="radio" name="seedbonus_torrent_multiplier_type" id="mult<?= ucfirst($type) ?>" value="<?= $type ?>" <?= $current === $type ? 'checked' : '' ?>>
+                                                <i class="fa-solid <?= $ic ?> me-2 text-body-secondary"></i><strong><?= $label ?></strong>
+                                            </span>
+                                            <?php if ($rows): ?>
+                                            <ul><?php foreach ($rows as $r => $v): ?><li><span><?= $r ?> torrents</span><b><?= $v ?></b></li><?php endforeach; ?></ul>
+                                            <?php else: ?>
+                                            <div class="input-group input-group-sm mt-2">
+                                                <span class="input-group-text">Always ×</span>
+                                                <input type="number" class="form-control" name="seedbonus_flat_multiplier" value="<?= $s('flat_multiplier', 1.0) ?>" step="0.1" min="0.1" max="2.0">
                                             </div>
-                                        </div>
-                                        <?php endforeach; ?>
+                                            <?php endif; ?>
+                                        </label>
                                     </div>
-                                </div>
-                            </div>
-
-                            <!-- Heuristic -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card">
-                                    <div class="card-header bg-warning text-white"><i class="bi bi-person-workspace me-2"></i>Seeding Time Heuristic</div>
-                                    <div class="card-body">
-                                        <p class="text-muted small mb-3">Automatic estimation of seeding time based on torrent count.</p>
-                                        <div class="form-check form-switch mb-3">
-                                            <input class="form-check-input" type="checkbox" id="enableHeuristic"
-                                                   name="seedbonus_enable_heuristic"
-                                                   <?= $seedbonus->getSetting('enable_heuristic', true) ? 'checked' : '' ?>>
-                                            <label class="form-check-label" for="enableHeuristic">Use heuristic (recommended)</label>
-                                        </div>
-                                        <table class="table table-sm">
-                                            <thead><tr><th>Torrents</th><th>Assumed Time</th><th>Setting</th></tr></thead>
-                                            <tbody>
-                                            <?php foreach (['50'=>'≥ 50','40'=>'≥ 40','30'=>'≥ 30','20'=>'≥ 20','10'=>'≥ 10','5'=>'≥ 5','1'=>'1-4'] as $k=>$lbl): ?>
-                                            <tr>
-                                                <td><?= $lbl ?></td>
-                                                <td><?= $s("heuristic_$k", 24.0) ?> h/day</td>
-                                                <td><input type="number" class="form-control form-control-sm"
-                                                           name="seedbonus_heuristic_<?= $k ?>"
-                                                           value="<?= $s("heuristic_$k", 24.0) ?>"
-                                                           step="1" min="1" max="24"></td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-
-                <!-- ── Tab: Preview ────────────────────────────── -->
-                <div class="tab-pane fade" id="preview">
-                    <div class="row">
-                        <!-- Test Calculation -->
-                        <div class="col-md-6 mb-4">
-                            <div class="card border-0 shadow-lg h-100">
-                                <div class="card-header bg-white border-0 py-3">
-                                    <div class="d-flex align-items-center">
-                                        <div class="bg-primary bg-opacity-10 p-2 rounded-circle me-3">
-                                            <i class="bi bi-calculator-fill text-primary fs-5"></i>
-                                        </div>
-                                        <div>
-                                            <h5 class="mb-0 fw-bold">Test Calculation</h5>
-                                            <small class="text-muted">Simulated user with 42 torrents</small>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body p-4">
-                                    <div class="row g-3 mb-4">
-                                        <div class="col-6">
-                                            <div class="text-center p-3 rounded-3 bg-white shadow-sm">
-                                                <div class="text-muted small mb-1"><i class="bi bi-hdd-stack me-1"></i>Torrents</div>
-                                                <div class="display-6 fw-bold text-primary"><?= $preview['torrents'] ?></div>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="text-center p-3 rounded-3 bg-white shadow-sm">
-                                                <div class="text-muted small mb-1"><i class="bi bi-gem me-1"></i>Raw Bonus</div>
-                                                <div class="display-6 fw-bold text-success"><?= $n($preview['raw_bonus']) ?></div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="card border-0 bg-white shadow-sm">
-                                        <div class="card-body p-4">
-                                            <h6 class="fw-bold mb-3"><i class="bi bi-calculator me-2"></i>Calculation Breakdown</h6>
-                                            <div class="row g-3">
-                                                <div class="col-6">
-                                                    <?php foreach ([
-                                                        ['Base Rate',         'text-dark',    $n($preview['base_bonus'])],
-                                                        ['Torrent Multiplier','text-warning', '×' . $n($preview['cap_mul'], 2)],
-                                                        ['Avg Seeding Time',  'text-info',    number_format($preview['avg_hours'] * 60, 0) . ' min'],
-                                                    ] as [$lbl, $cls, $val]): ?>
-                                                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-                                                        <div class="text-muted small"><?= $lbl ?></div>
-                                                        <div class="fw-bold <?= $cls ?>"><?= $val ?></div>
-                                                    </div>
-                                                    <?php endforeach; ?>
-                                                </div>
-                                                <div class="col-6">
-                                                    <?php foreach ([
-                                                        ['Hour Cap',           'text-danger',  $n($preview['hour_cap'])],
-                                                        ['Theoretical Hourly', 'text-primary', $n($preview['hourly_theoretical'])],
-                                                        ['Final Hourly',       'text-success', $n($preview['final_hourly'])],
-                                                    ] as [$lbl, $cls, $val]): ?>
-                                                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-                                                        <div class="text-muted small"><?= $lbl ?></div>
-                                                        <div class="fw-bold <?= $cls ?>"><?= $val ?></div>
-                                                    </div>
-                                                    <?php endforeach; ?>
-                                                </div>
-                                            </div>
-
-                                            <div class="row g-3 mt-3">
-                                                <?php foreach ([
-                                                    ['Per 15min Run','primary', $n($preview['per_run'])],
-                                                    ['Per Hour',     'success', $n($preview['per_run'] * 4)],
-                                                    ['Daily Total',  'warning', number_format($preview['daily'])],
-                                                ] as [$lbl, $color, $val]): ?>
-                                                <div class="col-4">
-                                                    <div class="text-center p-3 rounded-3 bg-<?= $color ?> bg-opacity-10 border border-<?= $color ?> border-opacity-25">
-                                                        <div class="text-muted small mb-1"><?= $lbl ?></div>
-                                                        <div class="h4 fw-bold text-<?= $color ?> mb-0"><?= $val ?></div>
-                                                        <small class="text-muted">points</small>
-                                                    </div>
-                                                </div>
-                                                <?php endforeach; ?>
-                                            </div>
-
-                                            <div class="alert alert-info border-0 mt-4 small">
-                                                <i class="bi bi-info-circle-fill text-info me-2"></i>
-                                                <strong>Note:</strong> Simulated calculation using optimized torrent mix. Real values may vary.
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Inflation Forecast -->
-                        <div class="col-md-6 mb-4">
-                            <div class="card border-0 shadow-lg h-100">
-                                <div class="card-header bg-transparent border-0 py-3">
-                                    <div class="d-flex align-items-center">
-                                        <div class="bg-dark bg-opacity-25 p-2 rounded-circle me-3">
-                                            <i class="bi bi-graph-up-arrow text-dark"></i>
-                                        </div>
-                                        <div>
-                                            <h5 class="mb-0 fw-bold">Inflation Forecast</h5>
-                                            <small class="text-muted">System-wide points emission</small>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body p-4">
-                                    <div class="row g-3 mb-4">
-                                        <div class="col-6">
-                                            <div class="p-3 rounded-3 bg-dark bg-opacity-10">
-                                                <label class="form-label small mb-1"><i class="bi bi-people me-1"></i>Active Users</label>
-                                                <input type="number" class="form-control" id="inflationUsers" value="100" min="1">
-                                                <div class="text-muted small mt-1">Adjust for simulation</div>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="p-3 rounded-3 bg-dark bg-opacity-10">
-                                                <div class="text-muted small mb-1"><i class="bi bi-cash-coin me-1"></i>Avg User Bonus</div>
-                                                <div class="display-6 fw-bold" id="inflationAvgBonus"><?= number_format($preview['daily']) ?></div>
-                                                <div class="text-muted small">points/day</div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="row g-3">
-                                        <?php foreach ([
-                                            ['Daily Release',   'sun',           'success', 'inflationDaily',   $preview['daily'] * 100,      'Points entering system daily'],
-                                            ['Monthly Release', 'calendar-month','warning', 'inflationMonthly', $preview['daily'] * 100 * 30, '30-day projection'],
-                                        ] as [$lbl, $icon, $color, $id, $val, $desc]): ?>
-                                        <div class="col-6">
-                                            <div class="p-4 rounded-3 bg-dark bg-opacity-10 border border-dark border-opacity-25">
-                                                <div class="d-flex align-items-center mb-2">
-                                                    <div class="bg-<?= $color ?> bg-opacity-25 p-2 rounded-circle me-3">
-                                                        <i class="bi bi-<?= $icon ?> text-dark fs-5"></i>
-                                                    </div>
-                                                    <div>
-                                                        <div class="text-muted small"><?= $lbl ?></div>
-                                                        <div class="h3 fw-bold mb-0" id="<?= $id ?>"><?= number_format($val) ?></div>
-                                                    </div>
-                                                </div>
-                                                <div class="text-muted small"><?= $desc ?></div>
-                                            </div>
-                                        </div>
-                                        <?php endforeach; ?>
-
-                                        <div class="col-12">
-                                            <div class="p-4 rounded-3 bg-dark bg-opacity-10 border border-dark border-opacity-25">
-                                                <div class="d-flex align-items-center mb-3">
-                                                    <div class="bg-info bg-opacity-25 p-2 rounded-circle me-3">
-                                                        <i class="bi bi-pie-chart text-dark fs-5"></i>
-                                                    </div>
-                                                    <div class="flex-grow-1">
-                                                        <div class="text-muted small">Average User Balance</div>
-                                                        <div class="h2 fw-bold mb-0" id="inflationAvgBalance">
-                                                            <?= number_format(($preview['daily'] * 100 * 30) / 500) ?>
-                                                        </div>
-                                                    </div>
-                                                    <div class="text-end">
-                                                        <div class="text-muted small">Based on</div>
-                                                        <div class="h5 fw-bold">500 users</div>
-                                                    </div>
-                                                </div>
-                                                <div class="progress" style="height:8px">
-                                                    <div class="progress-bar bg-info" style="width:<?= min(100, (($preview['daily'] * 100 * 30) / 500) / 1000 * 100) ?>%"></div>
-                                                </div>
-                                                <div class="d-flex justify-content-between mt-2">
-                                                    <small class="text-muted">Low</small>
-                                                    <small class="text-muted">Average Balance</small>
-                                                    <small class="text-muted">High</small>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="alert alert-warning border-0 mt-4 small">
-                                        <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
-                                        <strong>Monitor closely:</strong> High daily release may cause inflation.
-                                    </div>
+                                <?php endforeach; ?>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </form>
+        </div>
 
-            </div><!-- /tab-content -->
-        </div><!-- /card-body -->
-    </div><!-- /card -->
-</div><!-- /container -->
+        <!-- ── Multipliers ───────────────────────────────── -->
+        <div class="tab-pane fade" id="multipliers" role="tabpanel">
+            <form id="multipliersForm">
+                <div class="row g-3">
+                    <?php
+                    $field = function (string $name, string $label, mixed $def, float $step, float $min, float $max, string $unit = '×') use ($s): string {
+                        return '<div class="sb-field"><label for="f_' . $name . '">' . $label . '</label>'
+                             . '<div class="input-group input-group-sm"><input type="number" class="form-control" id="f_' . $name . '" name="seedbonus_' . $name . '" value="' . $s($name, $def) . '" step="' . $step . '" min="' . $min . '" max="' . $max . '">'
+                             . '<span class="input-group-text">' . $unit . '</span></div></div>';
+                    };
+                    ?>
+                    <div class="col-lg-4">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-red"><i class="fa-solid fa-download"></i></span>
+                                <div><h3 class="sb-sec-title">Leechers</h3><div class="sb-muted">Reward seeding what people are downloading</div></div></div>
+                            <div class="sb-sec-body">
+                                <?= $field('leech_none', '<i class="fa-solid fa-user-slash me-1 text-body-secondary"></i>No leechers', 1.2, 0.1, 0.5, 3.0) ?>
+                                <?= $field('leech_few',  '<i class="fa-solid fa-user me-1 text-body-secondary"></i>1–2 leechers', 1.5, 0.1, 0.5, 3.0) ?>
+                                <?= $field('leech_many', '<i class="fa-solid fa-users me-1 text-body-secondary"></i>3+ leechers', 1.8, 0.1, 0.5, 3.0) ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-blue"><i class="fa-solid fa-hard-drive"></i></span>
+                                <div><h3 class="sb-sec-title">Torrent size</h3><div class="sb-muted">Reward seeding big files</div></div></div>
+                            <div class="sb-sec-body">
+                                <?php foreach (['small'=>'&lt; 0.5 GB','medium'=>'&lt; 2 GB','large'=>'&lt; 8 GB','xlarge'=>'&lt; 20 GB','huge'=>'≥ 20 GB'] as $k=>$lbl): ?>
+                                <?= $field("size_$k", $lbl, 1.0, 0.1, 0.5, 3.0) ?>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-purple"><i class="fa-solid fa-star"></i></span>
+                                <div><h3 class="sb-sec-title">Extra modifiers</h3><div class="sb-muted">Swarm size, age and promotions</div></div></div>
+                            <div class="sb-sec-body">
+                                <div class="sb-group"><i class="fa-solid fa-people-group me-1"></i>Many seeders (penalty)</div>
+                                <?= $field('seeders_many',   '&gt; 100 seeders', 0.9,  0.05, 0.1, 1.0) ?>
+                                <?= $field('seeders_medium', '&gt; 50 seeders',  0.95, 0.05, 0.1, 1.0) ?>
+                                <div class="sb-group"><i class="fa-solid fa-hourglass-half me-1"></i>Torrent age</div>
+                                <?= $field('age_old',    '&gt; 180 days', 1.5, 0.1, 1.0, 3.0) ?>
+                                <?= $field('age_medium', '&gt; 60 days',  1.3, 0.1, 1.0, 3.0) ?>
+                                <div class="sb-group"><i class="fa-solid fa-tags me-1"></i>Promo torrents</div>
+                                <?= $field('promo_free',   'Freeleech',     0.7, 0.1, 0, 2.0, '+') ?>
+                                <?= $field('promo_silver', 'Silver (50%)',  0.5, 0.1, 0, 2.0, '+') ?>
+                                <?= $field('promo_double', 'Double upload', 0.5, 0.1, 0, 2.0, '+') ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
 
-<script>window.seedbonusPresets = <?= json_encode($seedbonus->getPresets()) ?>;</script>
+        <!-- ── Time ──────────────────────────────────────── -->
+        <div class="tab-pane fade" id="time" role="tabpanel">
+            <form id="timeForm">
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-teal"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                                <div><h3 class="sb-sec-title">Intervals</h3><div class="sb-muted">How often the cron runs and peers announce</div></div></div>
+                            <div class="sb-sec-body">
+                            <?php foreach ([
+                                ['cronInterval',     'seedbonus_cron_interval',     'Cron interval',     'cronIntervalValue',     5, 60, 5, 15, 'min',  ['5','15','30','45','60']],
+                                ['announceInterval', 'seedbonus_announce_interval', 'Announce interval', 'announceIntervalValue', 5, 60, 5, 15, 'min',  ['5','15','30','45','60']],
+                                ['historyDays',      'seedbonus_history_days',      'Activity history',  'historyDaysValue',      1, 30, 1, 1,  'days', ['1','15','30']],
+                            ] as [$id, $name, $lbl, $valId, $min, $max, $step, $def, $unit, $marks]):
+                                $val = $s(substr($name, 10), $def); ?>
+                                <div class="mb-4">
+                                    <label class="form-label" for="<?= $id ?>"><?= $lbl ?>: <span class="sb-range-value" id="<?= $valId ?>"><?= $val ?></span> <?= $unit ?></label>
+                                    <input type="range" class="form-range" id="<?= $id ?>" name="<?= $name ?>" min="<?= $min ?>" max="<?= $max ?>" step="<?= $step ?>" value="<?= $val ?>">
+                                    <div class="sb-marks"><?php foreach ($marks as $m): ?><span><?= $m ?></span><?php endforeach; ?></div>
+                                </div>
+                            <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-amber"><i class="fa-solid fa-user-clock"></i></span>
+                                <div><h3 class="sb-sec-title">Seeding time heuristic</h3><div class="sb-muted">Estimated hours per day by number of torrents</div></div></div>
+                            <div class="sb-sec-body">
+                                <div class="form-check form-switch mb-3">
+                                    <!-- Раньше у переключателя не было ни value, ни скрытого «no»:
+                                         включённый сохранялся строкой «on», а выключенный вообще
+                                         не отправлялся — отключить эвристику было невозможно -->
+                                    <input type="hidden" name="seedbonus_enable_heuristic" value="no">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="enableHeuristic" name="seedbonus_enable_heuristic" value="yes" <?= $heuristic ? 'checked' : '' ?>>
+                                    <label class="form-check-label fw-semibold" for="enableHeuristic">Use heuristic <span class="text-body-secondary fw-normal">(recommended)</span></label>
+                                </div>
+                                <?php foreach (['50'=>'≥ 50','40'=>'≥ 40','30'=>'≥ 30','20'=>'≥ 20','10'=>'≥ 10','5'=>'≥ 5','1'=>'1–4'] as $k=>$lbl): ?>
+                                <div class="sb-field">
+                                    <label for="h_<?= $k ?>"><i class="fa-solid fa-magnet me-1 text-body-secondary"></i><?= $lbl ?> torrents</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control" id="h_<?= $k ?>" name="seedbonus_heuristic_<?= $k ?>" value="<?= $s("heuristic_$k", 24.0) ?>" step="1" min="1" max="24">
+                                        <span class="input-group-text">h/day</span>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- ── Preview ───────────────────────────────────── -->
+        <div class="tab-pane fade" id="preview" role="tabpanel">
+            <div class="row g-3">
+                <div class="col-lg-6">
+                    <div class="sb-card sb-sec">
+                        <div class="sb-sec-head"><span class="sb-sec-icon ic-blue"><i class="fa-solid fa-calculator"></i></span>
+                            <div><h3 class="sb-sec-title">Test calculation</h3><div class="sb-muted">Simulated user with <?= (int)$preview['torrents'] ?> torrents, saved settings</div></div></div>
+                        <div class="sb-sec-body">
+                            <?php foreach ([
+                                ['fa-coins',          'Base rate',               $n($preview['base_bonus'])],
+                                ['fa-gem',            'Raw bonus',               $n($preview['raw_bonus'])],
+                                ['fa-layer-group',    'Torrent multiplier',      '×' . $n($preview['cap_mul'], 2)],
+                                ['fa-calculator',     'Theoretical per hour',    $n($preview['hourly_theoretical'])],
+                                ['fa-gauge-high',     'Hour cap',                $n($preview['hour_cap'], 0)],
+                                ['fa-check',          'Final per hour (capped)', $n($preview['final_hourly'])],
+                                ['fa-user-clock',     'Seeding per run',         number_format($preview['avg_hours'] * 60, 0) . ' min'],
+                            ] as [$ic, $lbl, $val]): ?>
+                            <div class="sb-row"><span class="text-body-secondary"><i class="fa-solid <?= $ic ?> me-2"></i><?= $lbl ?></span><b><?= $val ?></b></div>
+                            <?php endforeach; ?>
+                            <div class="row g-2 mt-2">
+                                <!-- Раньше подпись «Per 15min Run» и «Per Hour = run × 4» были зашиты,
+                                     хотя интервал cron настраивается -->
+                                <div class="col-4"><div class="sb-big"><div class="sb-muted">Per <?= $cronMin ?>-min run</div><div class="v text-primary"><?= $n($preview['per_run'], 2) ?></div></div></div>
+                                <div class="col-4"><div class="sb-big"><div class="sb-muted">Per hour</div><div class="v text-success"><?= $n($preview['real_hourly']) ?></div></div></div>
+                                <div class="col-4"><div class="sb-big"><div class="sb-muted">Per day</div><div class="v text-warning"><?= number_format($daily) ?></div></div></div>
+                            </div>
+                            <div class="sb-muted mt-3"><i class="fa-solid fa-circle-info me-1"></i>Uses the saved values — press Save after changing settings to update this.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="sb-card sb-sec">
+                        <div class="sb-sec-head"><span class="sb-sec-icon ic-red"><i class="fa-solid fa-chart-line"></i></span>
+                            <div><h3 class="sb-sec-title">Inflation forecast</h3><div class="sb-muted">Points entering the economy</div></div></div>
+                        <div class="sb-sec-body">
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="form-label small fw-semibold" for="inflationUsers"><i class="fa-solid fa-users me-1"></i>Active seeders</label>
+                                    <input type="number" class="form-control" id="inflationUsers" value="<?= $activeSeeders ?>" min="1">
+                                    <div class="sb-muted mt-1">Now seeding: <?= number_format($activeSeeders) ?></div>
+                                </div>
+                                <div class="col-6"><div class="sb-big"><div class="sb-muted">Per user / day</div><div class="v" id="inflationAvgBonus" data-daily="<?= (float)$daily ?>"><?= number_format($daily) ?></div></div></div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6"><div class="sb-big"><div class="sb-muted"><i class="fa-solid fa-sun me-1 text-warning"></i>Daily release</div><div class="v" id="inflationDaily"><?= number_format($dailyAll) ?></div></div></div>
+                                <div class="col-6"><div class="sb-big"><div class="sb-muted"><i class="fa-solid fa-calendar me-1 text-primary"></i>30-day release</div><div class="v" id="inflationMonthly"><?= number_format($dailyAll * 30) ?></div></div></div>
+                                <div class="col-12"><div class="sb-big text-start d-flex align-items-center gap-3">
+                                    <i class="fa-solid fa-wallet fa-lg text-info"></i>
+                                    <div class="flex-grow-1"><div class="sb-muted">Balance per seeder after 30 days</div><div class="v" id="inflationAvgBalance"><?= number_format($daily * 30) ?></div></div>
+                                </div></div>
+                            </div>
+                            <div class="alert alert-warning d-flex gap-2 mt-3 mb-0 rounded-4 small"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div>High daily release devalues the bonus shop over time — compare with what items cost.</div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="sb-card">
+                        <div class="sb-sec-head"><span class="sb-sec-icon ic-slate"><i class="fa-solid fa-code"></i></span>
+                            <div><h3 class="sb-sec-title">Generated cron config</h3><div class="sb-muted">For reference — the values the cron script uses</div></div>
+                            <div class="ms-auto d-flex gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="copyCodeBtn"><i class="fa-regular fa-copy me-1"></i>Copy</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="downloadCodeBtn"><i class="fa-solid fa-download me-1"></i>Download</button>
+                            </div></div>
+                        <pre class="sb-code" id="generatedCode"><?= htmlspecialchars($configCode) ?></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /tab-content -->
+
+    <div class="sb-card sb-savebar">
+        <span class="sb-muted">
+            <span class="badge rounded-pill text-bg-warning me-2" id="sbDirty" hidden><i class="fa-solid fa-pen me-1"></i>Unsaved changes</span>
+            <i class="fa-solid fa-circle-info me-1"></i>Changes apply from the next cron run
+        </span>
+        <button type="button" class="btn btn-primary px-4" id="sbSaveBar" onclick="document.getElementById('saveBtn').click()"><i class="fa-solid fa-floppy-disk me-1"></i>Save settings</button>
+    </div>
+</div>
+
+<script>
+window.seedbonusPresets = <?= json_encode($seedbonus->getPresets()) ?>;
+document.addEventListener('DOMContentLoaded', function () {
+    // Мастер-выключатель: цвет рамки меняется сразу
+    const sw = document.getElementById('systemEnabled'), box = document.getElementById('sbMaster');
+    sw && sw.addEventListener('change', () => { box.classList.toggle('on', sw.checked); box.classList.toggle('off', !sw.checked); });
+});
+</script>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
 <script src="<?= $BASEURL ?>/scripts/toast.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/seedbonus_settings.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/seedbonus_settings.js?ver=2"></script>
 
 <?php stdfoot(); ?>

@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 /**
  * Forum Management — optimized
  * Originally ~286 KB, refactored to ~110 KB
@@ -9,6 +11,13 @@
 if (!defined('IN_MYBB')) {
     die('Direct initialization of this file is not allowed.');
 }
+
+
+if (!defined('STAFF_PANEL')) {
+    exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization is not allowed.</div>');
+}
+
+
 
 // style.php больше не нужен - он определял только Page/Table/Form/
 // FormContainer, которые здесь больше нигде не используются.
@@ -51,7 +60,17 @@ function mgmt_render_breadcrumb(): string
         }
     }
 
-    return implode(' &raquo; ', $trailParts);
+    // Подряд идущие одинаковые пункты («Forum Management » Forum Management»)
+    // схлопываем: корневой пункт добавлялся и глобально, и внутри действия
+    $trailParts = array_values(array_filter($trailParts, static function ($p) {
+        static $prev = null;
+        $name = strip_tags($p);
+        $dup  = $name === $prev;
+        $prev = $name;
+        return !$dup;
+    }));
+
+    return implode(' <i class="fa-solid fa-chevron-right mx-1" style="font-size:.65rem;opacity:.5"></i> ', $trailParts);
 }
 
 // ── Форма (замена DefaultForm) ──────────────────────────────
@@ -96,10 +115,11 @@ function mgmt_output_submit_wrapper(array $buttons): void
 
 
 // ── generate_hidden_field ─────────────────────────────────────────────────────
-function generate_hidden_field(string $name, string $value, array $options = []): string
+/** $value может быть int (get_input INT, ID из БД) — приводим к строке, иначе TypeError под strict_types */
+function generate_hidden_field(string $name, int|string $value, array $options = []): string
 {
-    $id = isset($options['id']) ? " id=\"{$options['id']}\"" : '';
-    return "<input type=\"hidden\" name=\"{$name}\" value=\"" . htmlspecialchars_uni($value) . "\"{$id} />";
+    $id = isset($options['id']) ? ' id="' . htmlspecialchars_uni((string)$options['id']) . '"' : '';
+    return '<input type="hidden" name="' . htmlspecialchars_uni($name) . '" value="' . htmlspecialchars_uni((string)$value) . '"' . $id . ' />';
 }
 
 
@@ -196,19 +216,22 @@ function join_usergroup(int $uid, int $joingroup): bool
 
 
 // ── generate_check_box ────────────────────────────────────────────────────────
-function generate_check_box(string $name, string $value = '', string $label = '', array $options = []): string
+/** $value может быть int (например 1 для прав) — приводим к строке, иначе TypeError под strict_types */
+function generate_check_box(string $name, int|string $value = '', string $label = '', array $options = []): string
 {
-    $cls     = isset($options['class'])   ? ' ' . $options['class'] : '';
-    $id      = isset($options['id'])      ? " id=\"{$options['id']}\"" : '';
-    $forid   = isset($options['id'])      ? " for=\"{$options['id']}\"" : '';
-    $lbl_c   = isset($options['class'])   ? " class=\"label_{$options['class']}\"" : '';
+    $e = static fn($v): string => htmlspecialchars_uni((string)$v);
+
+    $cls     = isset($options['class'])   ? ' ' . $e($options['class']) : '';
+    $id      = isset($options['id'])      ? ' id="' . $e($options['id']) . '"' : '';
+    $forid   = isset($options['id'])      ? ' for="' . $e($options['id']) . '"' : '';
+    $lbl_c   = isset($options['class'])   ? ' class="label_' . $e($options['class']) . '"' : '';
     $chk     = !empty($options['checked']) ? ' checked="checked"' : '';
-    $onclick = isset($options['onclick']) ? " onclick=\"{$options['onclick']}\"" : '';
+    $onclick = isset($options['onclick']) ? ' onclick="' . $e($options['onclick']) . '"' : '';
 
     return "<label{$forid}{$lbl_c}>"
-        . "<input type=\"checkbox\" name=\"{$name}\" value=\"" . htmlspecialchars_uni($value) . "\""
+        . '<input type="checkbox" name="' . $e($name) . '" value="' . $e($value) . '"'
         . " class=\"form-check-input{$cls}\"{$id}{$chk}{$onclick} /> "
-        . ($label !== '' ? $label : '')
+        . $label   // $label — готовый HTML, как и раньше
         . '</label>';
 }
 
@@ -440,6 +463,214 @@ function build_parent_list(int $fid, string $column = 'fid', string $joiner = 'O
 }
 
 
+// ── get_post ──────────────────────────────────────────────────────────────────
+function get_post(int $pid): array|false
+{
+    global $db;
+    static $post_cache;
+
+    if (isset($post_cache[$pid])) {
+        return $post_cache[$pid];
+    }
+
+    $query = $db->sql_query_prepared("SELECT * FROM posts WHERE pid = ?", [$pid]);
+    $post  = $query ? $db->fetch_array($query) : null;
+    $post_cache[$pid] = $post ?: false;
+
+    return $post_cache[$pid];
+}
+
+
+// ── update_thread_counters ────────────────────────────────────────────────────
+function update_thread_counters(int $tid, array $changes = []): void
+{
+    global $db;
+
+    $counters = ['replies', 'unapprovedposts', 'attachmentcount'];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM threads WHERE tid = ?",
+        [$tid]
+    );
+    $thread = $query ? $db->fetch_array($query) : null;
+    $update = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $thread[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $tid;
+
+        $db->sql_query_prepared("UPDATE threads SET {$set} WHERE tid = ?", $params);
+    }
+}
+
+
+// ── update_user_counters ──────────────────────────────────────────────────────
+function update_user_counters(int|string $uid, array $changes = []): void
+{
+    global $db;
+
+    $uid = (int)$uid;
+    
+	$counters = ['postnum', 'threadnum'];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM users WHERE id = ?",
+        [$uid]
+    );
+    $user = $query ? $db->fetch_array($query) : null;
+
+    if (!$user) {
+        return;
+    }
+
+    $update = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $user[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        // Имена колонок берутся только из фиксированного списка $counters выше — не из ввода
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $uid;
+
+        $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
+    }
+}
+
+
+// ── update_forum_counters ─────────────────────────────────────────────────────
+function update_forum_counters(int|string $fid, array $changes = []): void
+{
+    global $db;
+
+    $fid = (int)$fid;
+	
+	$counters = ['threads', 'unapprovedthreads', 'posts', 'unapprovedposts'];
+    $query    = $db->sql_query_prepared(
+        "SELECT " . implode(',', $counters) . " FROM forums WHERE fid = ?",
+        [$fid]
+    );
+    $forum  = $query ? $db->fetch_array($query) : null;
+    $update = [];
+
+    foreach ($counters as $counter) {
+        if (!array_key_exists($counter, $changes)) {
+            continue;
+        }
+
+        $val = $changes[$counter];
+
+        if (str_starts_with((string)$val, '+-')) {
+            $val = substr((string)$val, 1);
+        }
+
+        $new = str_starts_with((string)$val, '+') || str_starts_with((string)$val, '-')
+            ? $forum[$counter] + (int)$val
+            : (int)$val;
+
+        $update[$counter] = max(0, $new);
+    }
+
+    if (!empty($update)) {
+        $set      = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($update)));
+        $params   = array_values($update);
+        $params[] = $fid;
+
+        $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
+    }
+
+    // Обновляем глобальную статистику
+    $stat_map = [
+        'threads'           => 'numthreads',
+        'unapprovedthreads' => 'numunapprovedthreads',
+        'posts'             => 'numposts',
+        'unapprovedposts'   => 'numunapprovedposts',
+    ];
+
+    $new_stats = [];
+    foreach ($stat_map as $counter => $stat) {
+        if (!isset($update[$counter])) {
+            continue;
+        }
+        $diff = $update[$counter] - $forum[$counter];
+        $new_stats[$stat] = ($diff >= 0 ? '+' : '') . $diff;
+    }
+
+    if (!empty($new_stats)) {
+        update_stats($new_stats);
+    }
+}
+
+
+// ── update_forum_lastpost ─────────────────────────────────────────────────────
+function update_forum_lastpost(int $fid): void
+{
+    global $db;
+
+    $query = $db->sql_query_prepared("
+        SELECT tid, lastpost, lastposter, lastposteruid, subject
+        FROM threads
+        WHERE fid = ? AND visible = '1' AND closed NOT LIKE 'moved|%'
+        ORDER BY lastpost DESC LIMIT 1
+    ", [$fid]);
+
+    if ($query && $db->num_rows($query) > 0) {
+        $last = $db->fetch_array($query);
+        $updated = [
+            'lastpost'        => (int)$last['lastpost'],
+            'lastposter'      => $last['lastposter'],
+            'lastposteruid'   => (int)$last['lastposteruid'],
+            'lastposttid'     => (int)$last['tid'],
+            'lastpostsubject' => $last['subject'],
+        ];
+    } else {
+        $updated = [
+            'lastpost' => 0, 'lastposter' => '', 'lastposteruid' => 0,
+            'lastposttid' => 0, 'lastpostsubject' => '',
+        ];
+    }
+
+    $set    = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($updated)));
+    $params = array_values($updated);
+    $params[] = $fid;
+
+    $db->sql_query_prepared("UPDATE forums SET {$set} WHERE fid = ?", $params);
+}
+
+
 
 
 
@@ -456,36 +687,63 @@ mgmt_add_breadcrumb('Forum Management', 'index.php?act=management');
 function fm_head_assets(): void
 {
     echo '<link rel="stylesheet" href="templates/forum_management.css">',
+         '<link rel="stylesheet" href="templates/forum_management2.css?ver=1">',
          '<link rel="stylesheet" href="templates/main.css?ver=1813">',
          '<link rel="stylesheet" href="templates/modal.css?ver=1813">',
          '<script src="scripts/admincp.js?ver=1821"></script>',
          '<script src="scripts/tabs.js"></script>',
          '<script src="scripts/popup.js"></script>',
-		 '<script src="scripts/quick_perm_editor.js"></script>',
-         '<style>.popup_button{display:none}</style>',
-         '<script>document.write(\'<style>.popup_button{display:inline}.popup_menu{display:none}<\/style>\')</script>';
+         '<script src="scripts/quick_perm_editor.js?ver=2"></script>',
+         '<script src="scripts/forum_management.js?ver=4"></script>';
 }
 
-/** Заголовок карточки страницы */
+/** Иконка группы: в usergroups.image здесь хранится HTML (<i …>) или путь к картинке */
+function fm_group_icon(array $ug): string
+{
+    $img = trim((string)($ug['image'] ?? ''));
+    if ($img === '') {
+        return '<span class="fm2-gicon"><i class="fa-solid fa-users"></i></span>';
+    }
+    if (str_starts_with($img, '<')) {
+        return '<span class="fm2-gicon">' . $img . '</span>';
+    }
+    return '<span class="fm2-gicon"><img src="' . htmlspecialchars_uni(str_replace('{lang}', 'english', $img)) . '" alt=""></span>';
+}
+
+/** Зоны Allowed / Denied для QuickPermEditor (id/классы прежние — их использует JS) */
+function fm_perm_zones(int $gid, string $enabled, string $disabled): string
+{
+    return '<div class="fm2-zones">'
+         . '<div><div class="fm2-zone-label is-on"><i class="fa-solid fa-circle-check"></i>Allowed</div>'
+         . '<div class="enabled-permissions" id="enabled-' . $gid . '">' . $enabled . '</div></div>'
+         . '<div><div class="fm2-zone-label is-off"><i class="fa-solid fa-circle-xmark"></i>Denied</div>'
+         . '<div class="disabled-permissions" id="disabled-' . $gid . '">' . $disabled . '</div></div>'
+         . '</div>';
+}
+
+function fm_perm_card_head(string $title, string $sub): string
+{
+    return '<div class="fm2-hdr"><span class="fm2-hdr-icon ic-amber"><i class="fas fa-shield-halved"></i></span>'
+         . '<div style="min-width:0"><h1>' . $title . '</h1><p>' . $sub . '</p></div>'
+         . '<div class="ms-auto d-flex flex-wrap gap-2 fm2-legend">'
+         . '<span class="fm2-tag t-on"><i class="fa-solid fa-hand-pointer"></i>Drag a permission to move it</span>'
+         . '</div></div>';
+}
+
+/** Заголовок карточки страницы (мягкий стиль вместо сплошной цветной полосы) */
 function fm_card_header(string $title, string $subtitle, string $icon, string $color = 'primary'): void
 {
-    $time = date('H:i');
+    $cls = match ($color) {
+        'info'    => 'ic-info',
+        'success' => 'ic-green',
+        'warning' => 'ic-amber',
+        'danger'  => 'ic-red',
+        default   => 'ic-blue',
+    };
     echo <<<HTML
-    <div class="card-header bg-{$color} text-white py-4 px-5">
-        <div class="d-flex align-items-center justify-content-between">
-            <div class="d-flex align-items-center">
-                <div class="header-icon bg-white bg-opacity-20 rounded-circle p-3 me-4">
-                    <i class="fas fa-{$icon} fa-2x"></i>
-                </div>
-                <div>
-                    <h1 class="h3 mb-1 fw-bold">{$title}</h1>
-                    <p class="mb-0 opacity-85">{$subtitle}</p>
-                </div>
-            </div>
-            <span class="badge bg-white bg-opacity-25 px-3 py-2">
-                <i class="fas fa-clock me-1"></i>{$time}
-            </span>
-        </div>
+    <div class="card-header fm2-hdr fm2">
+        <span class="fm2-hdr-icon {$cls}"><i class="fas fa-{$icon}"></i></span>
+        <div style="min-width:0"><h1>{$title}</h1><p>{$subtitle}</p></div>
     </div>
     HTML;
 }
@@ -520,15 +778,24 @@ function fm_section_header(string $icon, string $color, string $title, string $d
     </div>';
 }
 
-/** Блок ошибок */
+/** Ошибки формы — через showToast() из scripts/toast.js (подгружается, если его нет).
+ *  Сама логика — в scripts/forum_management.js, здесь только данные. */
 function fm_errors(array $errors): void
 {
+    global $BASEURL;
+
+    $errors = array_values(array_filter(array_map('strval', $errors), 'strlen'));
     if (!$errors) return;
-    echo '<div class="alert alert-danger border-0 rounded-3 shadow-sm mb-4"><div class="d-flex align-items-center"><i class="fas fa-exclamation-triangle fa-lg text-danger me-3"></i><div><h6 class="mb-1 fw-bold">Please fix the following errors:</h6>';
-    foreach ($errors as $e) {
-        echo '<p class="mb-1 small">' . htmlspecialchars_uni($e) . '</p>';
-    }
-    echo '</div></div></div>';
+
+    // showToast() вставляет текст через innerHTML — передаём уже экранированный HTML
+    $messages = json_encode(
+        array_map(static fn(string $e): string => htmlspecialchars_uni(trim(strip_tags(html_entity_decode($e, ENT_QUOTES, 'UTF-8')))), $errors),
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+    );
+    $toast_js = rtrim((string)$BASEURL, '/') . '/scripts/toast.js';
+
+    echo '<span hidden class="fm2-errors" data-messages="' . htmlspecialchars((string)$messages, ENT_QUOTES, 'UTF-8')
+       . '" data-toast-src="' . htmlspecialchars($toast_js, ENT_QUOTES, 'UTF-8') . '"></span>';
 }
 
 /** Блок переключателя "Additional Options" */
@@ -558,24 +825,6 @@ function fm_toggle_advanced_close(): void
     echo '</div></div></div>';
 }
 
-/** JS для toggleAdditionalOptions */
-function fm_toggle_js(): void
-{
-    echo <<<'JS'
-    <script>
-    function toggleAdditionalOptions(){
-        var l=document.getElementById('additional_options_link'),
-            o=document.getElementById('additional_options');
-        if(o.style.display==='block'||o.style.display===''){
-            l.style.display='block'; o.style.display='none';
-        } else {
-            l.style.display='none'; o.style.display='block';
-        }
-        return false;
-    }
-    </script>
-    JS;
-}
 
 /** Строки выбора типа форума (Forum / Category) */
 function fm_type_cards(string $current): void
@@ -614,42 +863,6 @@ function fm_type_cards(string $current): void
     HTML;
 }
 
-/** JS для selectType() */
-function fm_type_js(): void
-{
-    echo <<<'JS'
-    <script>
-    function selectType(type){
-        document.querySelectorAll('.type-card').forEach(function(c){
-            c.classList.remove('active');
-            c.querySelector('.type-check i').className='far fa-circle';
-            var r=c.querySelector('input[type="radio"]');
-            if(r) r.checked=false;
-        });
-        var card=document.querySelector('.type-card[data-type="'+type+'"]');
-        if(card){
-            card.classList.add('active');
-            card.querySelector('.type-check i').className='fas fa-check-circle';
-            var r=card.querySelector('input[type="radio"]');
-            if(r) r.checked=true;
-        }
-    }
-    document.addEventListener('DOMContentLoaded',function(){
-        // Инициализируем по уже отмеченному radio (серверный default)
-        var checked=document.querySelector('input[name="type"]:checked');
-        if(checked){
-            var card=checked.closest('.type-card');
-            if(card){
-                card.classList.add('active');
-                card.querySelector('.type-check i').className='fas fa-check-circle';
-            }
-        }
-        var d=document.getElementById('description'),c=document.getElementById('charCount');
-        if(d&&c) d.addEventListener('input',function(){c.textContent=Math.min(this.value.length,500);});
-    });
-    </script>
-    JS;
-}
 
 /** Поля базовой информации (title, disporder, description) */
 function fm_basic_fields(array $data): void
@@ -824,28 +1037,90 @@ function fm_clear_permission_modal(): void
             </div>
         </div>
     </div>
-    <script>
-    document.addEventListener('DOMContentLoaded',function(){
-        var cur={};
-        document.querySelectorAll('.clear-permission-btn').forEach(function(b){
-            b.addEventListener('click',function(e){
-                e.preventDefault();
-                cur={pid:this.dataset.pid,fid:this.dataset.fid,gid:this.dataset.gid,
-                     groupName:this.dataset.groupName,postKey:this.dataset.postKey};
-                document.getElementById('modalGroupName').textContent=cur.groupName;
-                new bootstrap.Modal(document.getElementById('clearPermissionModal')).show();
-            });
-        });
-        document.getElementById('confirmClearBtn').addEventListener('click',function(){
-            var f=document.createElement('form');
-            f.method='post'; f.action='index.php?act=management&action=clear_permission';
-            Object.entries({pid:cur.pid,fid:cur.fid,gid:cur.gid,my_post_key:cur.postKey})
-                  .forEach(function([n,v]){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);});
-            document.body.appendChild(f); f.submit();
-        });
-    });
-    </script>
     HTML;
+}
+
+/**
+ * Какие права действуют для группы в форуме: свои (forumpermissions) → кэш форума → права группы.
+ * @return array{0: array, 1: bool} [$perms, $default_checked]
+ */
+function fm_resolve_group_perms(array $usergroup, int $fid, array $existing_permissions, array $cached_forum_perms): array
+{
+    $gid = (int)$usergroup['gid'];
+    if (!empty($existing_permissions[$gid])) {
+        return [$existing_permissions[$gid], false];
+    }
+    if (!empty($cached_forum_perms[$fid][$gid])) {
+        return [$cached_forum_perms[$fid][$gid], true];
+    }
+    return [$usergroup, true];
+}
+
+/**
+ * Строка таблицы прав (вкладка Permissions). Одна разметка и для страницы,
+ * и для AJAX-ответа после сохранения в модалке — строка заменяется целиком.
+ */
+function fm_perm_row(array $usergroup, int $fid, array $perms, bool $default_checked): string
+{
+    global $mybb;
+
+    $field_list = ['canview' => 'View', 'canpostthreads' => 'Post Threads', 'canpostreplys' => 'Post Replies', 'canpostpolls' => 'Post Polls'];
+    $gid    = (int)$usergroup['gid'];
+    $utitle = htmlspecialchars_uni((string)$usergroup['title']);
+
+    $perms_checked = [];
+    foreach ($field_list as $fp => $_) {
+        $perms_checked[$fp] = ($perms[$fp] ?? 0) == 1 ? 1 : 0;
+    }
+
+    // Пустые зоны без текста «No permissions / No restrictions» — он мешал перетаскиванию
+    $enabled_html = $disabled_html = '';
+    foreach ($field_list as $perm => $label) {
+        $on = $perms_checked[$perm];
+        $badge = '<span class="badge ' . ($on ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger')
+               . ' me-1 mb-1 permission-badge" data-perm="' . $perm . '">' . $label . '</span>';
+        if ($on) $enabled_html .= $badge; else $disabled_html .= $badge;
+    }
+
+    $fields_val = implode(',', array_keys(array_filter($perms_checked)));
+    $source = $default_checked
+        ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-arrow-turn-down"></i>Inherited</span>'
+        : '<span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>Custom</span>';
+
+    $actions = '<a href="index.php?act=management&amp;action=permissions&amp;gid=' . $gid . '&amp;fid=' . $fid . '" class="fm2-act" title="Advanced permissions" onclick="popupWindow(this.href + \'&ajax=1\', null, true);return false;"><i class="fas fa-sliders"></i></a>';
+    if (!$default_checked) {
+        $actions .= '<a href="javascript:void(0);" class="fm2-act text-danger clear-permission-btn" title="Reset to inherited"'
+                  . ' data-pid="' . (int)$perms['pid'] . '" data-fid="' . $fid . '" data-gid="' . $gid . '"'
+                  . ' data-group-name="' . $utitle . '" data-post-key="' . $mybb->post_code . '"><i class="fas fa-rotate-left"></i></a>';
+    }
+
+    return '
+                            <tr data-group-id="' . $gid . '">
+                                <td><div class="d-flex align-items-center gap-3">' . fm_group_icon($usergroup)
+        . '<div><div class="fw-bold">' . $utitle . '</div><div class="fm2-gid">GID ' . $gid . '</div></div></div></td>
+                                <td>
+                                    <div class="permission-fields" id="permission-fields-' . $gid . '">
+                                        ' . fm_perm_zones($gid, $enabled_html, $disabled_html) . '
+                                        <input type="hidden" name="fields_' . $gid . '" id="fields_' . $gid . '" value="' . $fields_val . '">
+                                        <input type="hidden" name="fields_inherit_' . $gid . '" id="fields_inherit_' . $gid . '" value="' . (int)$default_checked . '">
+                                        <input type="hidden" name="fields_default_' . $gid . '" id="fields_default_' . $gid . '" value="' . $fields_val . '">
+                                    </div>
+                                </td>
+                                <td class="text-center">' . $source . '</td>
+                                <td class="text-end text-nowrap">' . $actions . '</td>
+                            </tr>';
+}
+
+/** JSON-ответ для AJAX-запросов и выход */
+function fm_json_response(array $data, int $status = 200): never
+{
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    http_response_code($status);
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
 }
 
 /** Модалка подтверждения удаления модератора */
@@ -866,25 +1141,6 @@ function fm_delete_mod_modal(): void
             </div>
         </div>
     </div>
-    <script>
-    document.addEventListener('DOMContentLoaded',function(){
-        var d={};
-        document.querySelectorAll('.delete-moderator-btn').forEach(function(b){
-            b.addEventListener('click',function(e){
-                e.preventDefault();
-                d={mid:this.dataset.mid,fid:this.dataset.fid,isgroup:this.dataset.isgroup,postKey:this.dataset.postKey};
-                new bootstrap.Modal(document.getElementById('deleteModeratorModal')).show();
-            });
-        });
-        document.getElementById('confirmDeleteModeratorBtn').addEventListener('click',function(){
-            var f=document.createElement('form');
-            f.method='post'; f.action='index.php?act=management&action=deletemod';
-            Object.entries({id:d.mid,fid:d.fid,isgroup:d.isgroup,my_post_key:d.postKey})
-                  .forEach(function([n,v]){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);});
-            document.body.appendChild(f); f.submit();
-        });
-    });
-    </script>
     HTML;
 }
 
@@ -1083,7 +1339,7 @@ if ($action === 'copy') {
 
     <div class="admin-container">
     <div class="container mt-3">
-        <div class="card border-0 -lg rounded-3 overflow-hidden">
+        <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
             <?php fm_card_header('Copy Forum Settings', 'Duplicate forum settings and permissions to another forum', 'clone', 'info'); ?>
 
             <div class="card-body px-5 py-4">
@@ -1176,7 +1432,7 @@ if ($action === 'copy') {
                 <!-- Sidebar -->
                 <div class="col-lg-4">
                     <div class="sticky-top" style="top:20px">
-                        <div class="card border-0 -sm mb-4">
+                        <div class="card border-0 shadow-sm mb-4">
                             <div class="card-header bg-info text-white py-3">
                                 <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Quick Tips</h6>
                             </div>
@@ -1194,40 +1450,7 @@ if ($action === 'copy') {
     </div>
     </div>
 
-    <script>
-    document.addEventListener('DOMContentLoaded',function(){
-        var toSel  = document.getElementById('to');
-        var cg     = document.getElementById('copygroups');
-        var newF   = document.getElementById('newForumSettings');
-        var copyS  = document.getElementById('copySettings');
-        var sgList = document.getElementById('selectedGroupsList');
-
-        function syncTo(){
-            var v=toSel.value;
-            newF.style.display  = v==='-1'  ? 'block':'none';
-            copyS.style.display = v!=='-1'&&v!=='' ? 'block':'none';
-        }
-        function syncGroups(){
-            var sel=Array.from(cg.selectedOptions);
-            sgList.innerHTML = sel.length
-                ? sel.map(o=>'<span class="badge bg-primary me-1 mb-1">'+o.text+'</span>').join('')
-                : '<p class="text-muted small mb-0">No groups selected</p>';
-        }
-        toSel.addEventListener('change', syncTo);
-        cg.addEventListener('change', syncGroups);
-        document.getElementById('selectAllGroups').addEventListener('click',function(){Array.from(cg.options).forEach(o=>o.selected=true);syncGroups();});
-        document.getElementById('deselectAllGroups').addEventListener('click',function(){Array.from(cg.options).forEach(o=>o.selected=false);syncGroups();});
-        syncTo(); syncGroups();
-
-        document.getElementById('copyForumForm').addEventListener('submit',function(e){
-            var btn=this.querySelector('button[type="submit"]');
-            btn.disabled=true;
-            btn.innerHTML='<i class="fas fa-spinner fa-spin me-2"></i>Copying...';
-        });
-    });
-    </script>
     <?php
-    fm_type_js();
     stdfoot();
 	exit;
 }
@@ -1270,7 +1493,7 @@ if($action == "editmod")
 		if(!$errors)
 		{
 			$fid = $mybb->get_input('fid', MyBB::INPUT_INT);
-			$forum = get_forum($fid, 1);
+			$forum = get_forum($fid, true);
 			if($mod_data['isgroup'])
 			{
 				$mod = $groupscache[$mod_data['id']];
@@ -1349,7 +1572,7 @@ if($action == "editmod")
 	
 
 	
-	stdhead('edit_mod');
+	stdhead('Edit Moderator');
 	
 	fm_head_assets();
 	
@@ -1357,134 +1580,114 @@ if($action == "editmod")
 	
 
 	
-echo '<div class="container mt-3">';
+echo '<div class="container mt-3 admin-container fm2">';
 	
 output_nav_tabs($sub_tabs, 'edit_mod');
+fm_errors($errors ?? []);
 
 mgmt_form_open("index.php?act=management&action=editmod", "post", "editModForm");
-echo generate_hidden_field("mid", $mod_data['mid']);
+echo generate_hidden_field("mid", (string)$mod_data['mid']);
 
 if($errors)
 {
-    output_inline_error($errors);
+    // output_inline_error() убран — ошибки показывает fm_errors() выше, после вкладок
     $mod_data = $mybb->input;
 }
 
-echo '<div class="card border-0 -sm">';
-    echo '<div class="card-header bg-primary text-white py-3">';
-        echo '<h5 class="mb-0"><i class="fas fa-user-edit me-2"></i>'.sprintf($lang->forum_management['edit_mod_for'], htmlspecialchars_uni($mod_data[$fieldname])).'</h5>';
-    echo '</div>';
-    echo '<div class="card-body">';
-
-// Форма выбора форума
-echo '<div class="mb-4">'; // Добавляем отступ вместо set_class
-$mgmt_row_content = '<label for="fid">' . $lang->forum_management['forum'] . '</label>'
-    . ($lang->forum_management['forum_desc'] !== '' ? "\n<div class=\"description\">{$lang->forum_management['forum_desc']}</div>\n" : '')
-    . '<div class="form_row">' . generate_forum_select('fid', $mod_data['fid'], array('id' => 'fid', 'class' => 'form-select')) . "</div>\n";
-// Воспроизводит точный вывод DefaultTable::construct_html() для одной
-// строки, без заголовка (heading='') - раньше это делал
-// new FormContainer('') + output_row() + end().
-echo '<div class="border_wrapper"><table class="general form_container " cellspacing="0">'
-   . "\n\t<tbody>\n\t\t<tr class=\"first\">\n\t\t\t<td class=\"first\">{$mgmt_row_content}</td>\n\t\t</tr>\n\t</tbody>\n</table></div>";
-echo '</div>';
-
-// Moderator Permissions
-echo '<div class="row mb-4">';
-    echo '<div class="col-12">';
-        echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-shield-alt me-2 text-warning"></i>'.$lang->forum_management['moderator_permissions'].'</h6>';
-        echo '<div class="row">';
-
-$moderator_permissions = array(
-    array('caneditposts', $lang->forum_management['can_edit_posts'], 'fa-edit', 'primary'),
-    array('cansoftdeleteposts', $lang->forum_management['can_soft_delete_posts'], 'fa-trash-alt', 'secondary'),
-    array('canrestoreposts', $lang->forum_management['can_restore_posts'], 'fa-undo', 'success'),
-    array('candeleteposts', $lang->forum_management['can_delete_posts'], 'fa-trash', 'danger'),
-    array('cansoftdeletethreads', $lang->forum_management['can_soft_delete_threads'], 'fa-trash-alt', 'secondary'),
-    array('canrestorethreads', $lang->forum_management['can_restore_threads'], 'fa-undo', 'success'),
-    array('candeletethreads', $lang->forum_management['can_delete_threads'], 'fa-trash', 'danger'),
-    array('canviewips', $lang->forum_management['can_view_ips'], 'fa-search', 'info'),
-    array('canviewunapprove', $lang->forum_management['can_view_unapprove'], 'fa-eye-slash', 'warning'),
-    array('canviewdeleted', $lang->forum_management['can_view_deleted'], 'fa-eye', 'info'),
-    array('canopenclosethreads', $lang->forum_management['can_open_close_threads'], 'fa-lock-open', 'success'),
-    array('canstickunstickthreads', $lang->forum_management['can_stick_unstick_threads'], 'fa-thumbtack', 'warning'),
-    array('canapproveunapprovethreads', $lang->forum_management['can_approve_unapprove_threads'], 'fa-check-circle', 'success'),
-    array('canapproveunapproveposts', $lang->forum_management['can_approve_unapprove_posts'], 'fa-check-circle', 'success'),
-    array('canapproveunapproveattachs', $lang->forum_management['can_approve_unapprove_attachments'], 'fa-check-circle', 'success'),
-    array('canmanagethreads', $lang->forum_management['can_manage_threads'], 'fa-tasks', 'primary'),
-    array('canmanagepolls', $lang->forum_management['can_manage_polls'], 'fa-chart-bar', 'info'),
-    array('canpostclosedthreads', $lang->forum_management['can_post_closed_threads'], 'fa-comment', 'success'),
-    array('canmovetononmodforum', $lang->forum_management['can_move_to_other_forums'], 'fa-exchange-alt', 'warning'),
-    array('canusecustomtools', $lang->forum_management['can_use_custom_tools'], 'fa-tools', 'primary')
-);
-
-foreach(array_chunk($moderator_permissions, 2) as $chunk)
-{
-    echo '<div class="col-md-6">';
-    foreach($chunk as $permission)
-    {
-        echo '<div class="form-check form-switch mb-3">';
-        echo generate_check_box($permission[0], 1, '', array(
-            'checked' => $mod_data[$permission[0]],
-            'id' => $permission[0],
-            'class' => 'form-check-input'
-        ));
-        echo '<label class="form-check-label" for="'.$permission[0].'">';
-        echo '<i class="fas '.$permission[2].' me-2 text-'.$permission[3].'"></i>';
-        echo htmlspecialchars_uni($permission[1]);
-        echo '</label>';
-        echo '</div>';
+// ── Оформление как в groups.php: строки-переключатели с иконкой ──────────
+$fm_sw = static function (string $name, string $label, string $icon, bool $danger = false) use ($mod_data): string {
+    $checked = !empty($mod_data[$name]) ? ' checked' : '';
+    return '<label class="fm2-sw' . ($danger ? ' is-danger' : '') . '" for="' . $name . '">'
+         . '<span class="fm2-sw-icon"><i class="fas ' . $icon . '"></i></span>'
+         . '<span class="fm2-sw-text">' . htmlspecialchars_uni($label) . '</span>'
+         . '<input type="checkbox" class="form-check-input" role="switch" name="' . $name . '" id="' . $name . '" value="1"' . $checked . '>'
+         . '</label>';
+};
+$L = $lang->forum_management;
+$fm_section = static function (string $icon, string $cls, string $title, array $items, string $desc = '') use ($fm_sw): string {
+    $html = '<div class="fm2-msec"><div class="fm2-msec-head">'
+          . '<span class="fm2-msec-icon ' . $cls . '"><i class="fas ' . $icon . '"></i></span><span class="fw-bold">' . $title . '</span>'
+          . '<span class="ms-auto d-flex gap-1">'
+          . '<button type="button" class="fm2-mini" data-sw-all="1" title="Enable all"><i class="fa-solid fa-check-double"></i></button>'
+          . '<button type="button" class="fm2-mini" data-sw-all="0" title="Disable all"><i class="fa-solid fa-xmark"></i></button>'
+          . '</span></div>'
+          . ($desc !== '' ? '<div class="fm2-muted mb-2">' . $desc . '</div>' : '')
+          . '<div class="fm2-sw-grid">';
+    foreach ($items as $it) {
+        $html .= $fm_sw($it[0], $it[1], $it[2], $it[3] ?? false);
     }
-    echo '</div>';
-}
+    return $html . '</div></div>';
+};
 
-echo '</div></div></div>';
+$mod_title = htmlspecialchars_uni($mod_data[$fieldname] ?? '');
 
-// Moderator CP Permissions
-echo '<div class="row mb-4">';
-    echo '<div class="col-12">';
-        echo '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-cog me-2 text-purple"></i>'.$lang->forum_management['moderator_cp_permissions'].'</h6>';
-        echo '<p class="text-muted mb-3">'.$lang->forum_management['moderator_cp_permissions_desc'].'</p>';
-        echo '<div class="row">';
+echo '<div class="card fm2-perm">';
+echo '<div class="fm2-hdr">'
+   . '<span class="fm2-hdr-icon ic-blue"><i class="fas fa-user-pen"></i></span>'
+   . '<div style="min-width:0"><h1>' . sprintf($L['edit_mod_for'], $mod_title) . '</h1>'
+   . '<p>What this moderator can do in the selected forum</p></div>'
+   . '<div class="ms-auto fm2-legend"><span class="fm2-tag t-on" id="fm2SwCount"><i class="fa-solid fa-toggle-on"></i>0 enabled</span></div>'
+   . '</div>';
 
-$moderator_cp_permissions = array(
-    array('canmanageannouncements', $lang->forum_management['can_manage_announcements'], 'fa-bullhorn', 'warning'),
-    array('canmanagereportedposts', $lang->forum_management['can_manage_reported_posts'], 'fa-flag', 'danger'),
-    array('canviewmodlog', $lang->forum_management['can_view_mod_log'], 'fa-history', 'info')
-);
+echo '<div class="p-3 p-md-4">';
 
-foreach(array_chunk($moderator_cp_permissions, 2) as $chunk)
-{
-    echo '<div class="col-md-6">';
-    foreach($chunk as $permission)
-    {
-        echo '<div class="form-check form-switch mb-3">';
-        echo generate_check_box($permission[0], 1, '', array(
-            'checked' => $mod_data[$permission[0]],
-            'id' => $permission[0],
-            'class' => 'form-check-input'
-        ));
-        echo '<label class="form-check-label" for="'.$permission[0].'">';
-        echo '<i class="fas '.$permission[2].' me-2 text-'.$permission[3].'"></i>';
-        echo htmlspecialchars_uni($permission[1]);
-        echo '</label>';
-        echo '</div>';
-    }
-    echo '</div>';
-}
+// Форум
+echo '<div class="fm2-msec"><div class="fm2-msec-head"><span class="fm2-msec-icon ic-amber"><i class="fas fa-comments"></i></span><span class="fw-bold">' . $L['forum'] . '</span></div>';
+if ($L['forum_desc'] !== '') echo '<div class="fm2-muted mb-2">' . $L['forum_desc'] . '</div>';
+echo '<div style="max-width:420px">' . generate_forum_select('fid', $mod_data['fid'], ['id' => 'fid', 'class' => 'form-select']) . '</div></div>';
 
-echo '</div></div></div>';
+echo '<div class="row g-3">';
+echo '<div class="col-lg-6">';
+echo $fm_section('fa-file-lines', 'ic-blue', 'Posts', [
+    ['caneditposts',       $L['can_edit_posts'],        'fa-pen'],
+    ['cansoftdeleteposts', $L['can_soft_delete_posts'], 'fa-trash-can'],
+    ['canrestoreposts',    $L['can_restore_posts'],     'fa-rotate-left'],
+    ['candeleteposts',     $L['can_delete_posts'],      'fa-trash', true],
+    ['canpostclosedthreads', $L['can_post_closed_threads'], 'fa-comment'],
+]);
+echo $fm_section('fa-list', 'ic-green', 'Threads', [
+    ['cansoftdeletethreads',   $L['can_soft_delete_threads'],   'fa-trash-can'],
+    ['canrestorethreads',      $L['can_restore_threads'],       'fa-rotate-left'],
+    ['candeletethreads',       $L['can_delete_threads'],        'fa-trash', true],
+    ['canopenclosethreads',    $L['can_open_close_threads'],    'fa-lock-open'],
+    ['canstickunstickthreads', $L['can_stick_unstick_threads'], 'fa-thumbtack'],
+]);
+echo '</div><div class="col-lg-6">';
+echo $fm_section('fa-eye', 'ic-teal', 'Visibility & approval', [
+    ['canviewunapprove',           $L['can_view_unapprove'],                'fa-eye-slash'],
+    ['canviewdeleted',             $L['can_view_deleted'],                  'fa-eye'],
+    ['canapproveunapprovethreads', $L['can_approve_unapprove_threads'],     'fa-circle-check'],
+    ['canapproveunapproveposts',   $L['can_approve_unapprove_posts'],       'fa-circle-check'],
+    ['canapproveunapproveattachs', $L['can_approve_unapprove_attachments'], 'fa-paperclip'],
+    ['canviewips',                 $L['can_view_ips'],                      'fa-network-wired', true],
+]);
+echo $fm_section('fa-screwdriver-wrench', 'ic-purple', 'Management', [
+    ['canmanagethreads',     $L['can_manage_threads'],       'fa-code-merge'],
+    ['canmanagepolls',       $L['can_manage_polls'],         'fa-chart-simple'],
+    ['canmovetononmodforum', $L['can_move_to_other_forums'], 'fa-right-left', true],
+    ['canusecustomtools',    $L['can_use_custom_tools'],     'fa-toolbox'],
+]);
+echo '</div></div>';
 
-echo '</div>'; // .card-body
-echo '<div class="card-footer bg-light">';
-    $buttons = array();
-    $buttons[] = mgmt_submit_button($lang->forum_management['save_mod'], array('class' => 'btn btn-primary px-4'));
-    $buttons[] = mgmt_reset_button($lang->reset, array('class' => 'btn btn-outline-secondary ms-2'));
-    echo '<div class="d-flex">';
-    mgmt_output_submit_wrapper($buttons);
-    echo '</div>';
-echo '</div>';
+echo $fm_section('fa-gauge-high', 'ic-red', $L['moderator_cp_permissions'], [
+    ['canmanageannouncements', $L['can_manage_announcements'],  'fa-bullhorn'],
+    ['canmanagereportedposts', $L['can_manage_reported_posts'], 'fa-flag'],
+    ['canviewmodlog',          $L['can_view_mod_log'],          'fa-clock-rotate-left'],
+], $L['moderator_cp_permissions_desc']);
+
+echo '</div>'; // p-3
+
+echo '<div class="fm2-savebar">'
+   . '<span class="fm2-muted"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>Red switches grant powerful rights</span>'
+   . '<div class="d-flex gap-2">'
+   . '<a href="index.php?act=management&amp;fid=' . (int)$mod_data['fid'] . '#tab_moderators" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back</a>'
+   . '<button type="reset" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-rotate-left me-1"></i>' . htmlspecialchars_uni($lang->reset ?? 'Reset') . '</button>'
+   . '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-1"></i>' . htmlspecialchars_uni($L['save_mod']) . '</button>'
+   . '</div></div>';
 
 echo '</div>'; // .card
+
+// Стили переключателей — templates/forum_management2.css, счётчик — scripts/forum_management.js
 
 mgmt_form_close();
 
@@ -1561,7 +1764,14 @@ if ($action === 'permissions') {
 
     // ── POST ─────────────────────────────────────────────────
     if ($mybb->request_method === 'post') {
-        verify_post_check($mybb->get_input('my_post_key'));
+        $is_ajax_post = (int)($mybb->input['ajax'] ?? 0) === 1;
+        if ($is_ajax_post) {
+            if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+                fm_json_response(['ok' => false, 'error' => 'Invalid security token. Reload the page and try again.'], 403);
+            }
+        } else {
+            verify_post_check($mybb->get_input('my_post_key'));
+        }
 
         $pid   = $mybb->get_input('pid', MyBB::INPUT_INT);
         $fid   = $mybb->get_input('fid', MyBB::INPUT_INT);
@@ -1613,15 +1823,14 @@ if ($action === 'permissions') {
         $cache->update_forumpermissions();
         log_admin_action($fid, $forum['name'] ?? '');
 
-        if ((int)($mybb->input['ajax'] ?? 0) === 1) {
-            $js = "<script type=\"text/javascript\">\n"
-                . "document.getElementById('row_{$gid}').innerHTML = '"
-                . str_replace(["'", "\t", "\n"], ["\\'", '', ''], retrieve_single_permissions_row($gid, $fid))
-                . "';\n"
-                . "if (typeof QuickPermEditor !== 'undefined') { QuickPermEditor.init({$gid}); }\n"
-                . '</script>';
-            echo json_encode($js);
-            exit;
+        if ($is_ajax_post) {
+            // popup.js заменяет tr[data-group-id=gid] на html и вызывает QuickPermEditor.init(gid)
+            fm_json_response([
+                'ok'   => true,
+                'gid'  => $gid,
+                'fid'  => $fid,
+                'html' => retrieve_single_permissions_row($gid, $fid),
+            ]);
         }
 
         flash_message($lang->forum_management['success_forum_permissions_saved'], 'success');
@@ -1669,53 +1878,9 @@ if ($action === 'permissions') {
 
         output_nav_tabs($sub_tabs, 'edit_permissions');
 
-    } else {
-        // ── AJAX mode: scripts for the modal ─────────────────
-        echo '<script src="scripts/popup.js"></script>';
-        echo '<script src="scripts/tabs.js"></script>';
-        echo '<script>
-document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("modal_form")?.addEventListener("click", e => {
-        const btn = e.target.id === "savePermissions"
-            ? e.target
-            : e.target.closest("#savePermissions");
-        if (!btn) return;
-        e.preventDefault();
-
-        const orig = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = \'<i class="fas fa-spinner fa-spin me-2"></i>Saving...\';
-
-        const form     = document.getElementById("modal_form");
-        const formData = new FormData(form);
-
-        fetch(form.action, { method: "POST", body: formData })
-            .then(r => r.json())
-            .then(data => {
-                if (typeof data === "string" && data.includes("<script>")) {
-                    (data.match(/<script[^>]*>([\s\S]*?)<\/script>/g) ?? []).forEach(s => {
-                        const code = s.replace(/<script[^>]*>([\s\S]*?)<\/script>/, "$1");
-                        try { new Function(code)(); } catch (err) { console.error(err); }
-                    });
-                }
-                bootstrap.Modal.getInstance(document.getElementById("dynamicModal"))?.hide();
-                btn.disabled  = false;
-                btn.innerHTML = orig;
-            })
-            .catch(err => {
-                console.error(err);
-                alert("Failed to save permissions. Please try again.");
-                btn.disabled  = false;
-                btn.innerHTML = orig;
-            });
-    });
-
-    document.querySelectorAll(\'#permissionTabs button[data-bs-toggle="tab"]\').forEach(btn => {
-        btn.addEventListener("click", e => { e.preventDefault(); new bootstrap.Tab(btn).show(); });
-    });
-});
-</script>';
     }
+    // AJAX mode: разметка вставляется через insertAdjacentHTML, <script> в ней не выполняются.
+    // Вкладки и сохранение #modal_form обрабатывает scripts/popup.js на родительской странице.
 
     // ── Modal with permission form ────────────────────────────
     $pid = $mybb->get_input('pid', MyBB::INPUT_INT);
@@ -1738,7 +1903,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div style="overflow-y:auto;max-height:400px">';
 
         mgmt_form_open(
-            "index.php?act=management&action=permissions&ajax=1&pid={$pid}&gid={$gid}&fid={$fid}",
+            "index.php?act=management&action=permissions" . ($is_ajax ? '&ajax=1' : '') . "&pid={$pid}&gid={$gid}&fid={$fid}",
             'post',
             'modal_form'
         );
@@ -1923,8 +2088,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!$is_ajax) {
         stdfoot();
-		exit;
     }
+    // AJAX: только разметка модалки — дальше ничего не выводим
+    exit;
 }
 
 
@@ -2045,7 +2211,8 @@ if ($action === 'add') {
     ];
 
     if ($errors ?? false) {
-        output_inline_error($errors);
+        // output_inline_error() убран: он печатал красный блок ДО stdhead(), в самом верху
+        // страницы. Ошибки показывает fm_errors() тостом (вызывается после вкладок).
         foreach ($forum_data as $k => $_) {
             if (isset($mybb->input[$k])) $forum_data[$k] = $mybb->input[$k];
         }
@@ -2053,8 +2220,9 @@ if ($action === 'add') {
 
     stdhead('Add New Forum');
 	
-    echo '<div class="container mt-3">';
-    echo '<div class="breadcrumb">' . mgmt_render_breadcrumb() . '</div>';
+    // admin-container: без него стили forum_management.css (они ограничены этим классом) сюда не применялись
+    echo '<div class="container mt-3 admin-container fm2">';
+    // Крошки убраны: дублировали вкладки ниже (View / Add Child / Edit / Copy)
     fm_head_assets();
 	
 	
@@ -2062,6 +2230,8 @@ if ($action === 'add') {
 	
     echo '<link rel="stylesheet" href="templates/forum.css?ver=1813">';
     output_nav_tabs($sub_tabs ?? [], 'add_forum');
+    // Раньше $errors собирались, но нигде не выводились — форма молча перезагружалась
+    fm_errors($errors ?? []);
 
     mgmt_form_open('index.php?act=management&action=add', 'post');
     ?>
@@ -2093,8 +2263,6 @@ if ($action === 'add') {
     </div>
 
     <?php
-    fm_type_js();
-    fm_toggle_js();
     fm_toggle_advanced_open();
     fm_extra_fields(array_merge(['active'=>1,'open'=>1,'usepostcounts'=>1,'usethreadcounts'=>1], $forum_data));
     fm_toggle_advanced_close();
@@ -2106,21 +2274,19 @@ if ($action === 'add') {
         'canpostreplys' => 'Post Replies',
         'canpostpolls'  => 'Post Polls',
     ];
-    $ids = [];
 
     $q = $db->sql_query_prepared("SELECT * FROM usergroups");
     while ($q && ($ug = $db->fetch_array($q))) $ugList[$ug['gid']] = $ug;
     ?>
 
-    <div class="card mt-4">
-        <div class="card-header bg-primary text-white py-3">
-            <h5 class="mb-0"><i class="fas fa-shield-alt me-2"></i>Forum Permissions Management</h5>
-        </div>
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
+    <div class="card fm2-perm mt-4">
+        <?= fm_perm_card_head('Initial Permissions', 'What each group can do in the new forum — you can change this later') ?>
+        <div class="table-responsive">
+        <table class="table fm2-table fm2-perm-table align-middle mb-0">
+            <thead>
                 <tr>
-                    <th class="ps-4 py-3" style="width:30%">User Group</th>
-                    <th class="py-3">Permissions</th>
+                    <th style="width:28%"><i class="fa-solid fa-users"></i>User group</th>
+                    <th><i class="fa-solid fa-key"></i>Permissions</th>
                 </tr>
             </thead>
             <tbody>
@@ -2148,37 +2314,21 @@ if ($action === 'add') {
             array_keys($field_list2)
         ));
 
-        $ids[] = $gid;
 
-        $group_icon = !empty($ug['image'])
-    ? $ug['image']
-    : '<div class="icon-compact default-group" data-tooltip="' . $title . '"><i class="bi bi-people-fill" style="color:#6c757d;"></i></div>';
+        $group_icon = fm_group_icon($ug);
+        $zones      = fm_perm_zones((int)$gid, $enabled_html, $disabled_html);
 
 echo <<<HTML
         <tr data-group-id="{$gid}">
-            <td class="ps-4">
-                <div class="d-flex align-items-center">
-                    <div class="group-icon me-3">{$group_icon}</div>
-                    <div>
-                        <strong class="d-block">{$title}</strong>
-                        <small class="text-muted">ID: {$gid}</small>
-                    </div>
+            <td>
+                <div class="d-flex align-items-center gap-3">
+                    {$group_icon}
+                    <div><div class="fw-bold">{$title}</div><div class="fm2-gid">GID {$gid}</div></div>
                 </div>
             </td>
             <td>
                 <div class="permission-fields" id="permission-fields-{$gid}">
-                    <div class="mb-2">
-                        <small class="text-muted d-block mb-1">Allowed:</small>
-                        <div class="enabled-permissions" id="enabled-{$gid}">
-                            {$enabled_html}
-                        </div>
-                    </div>
-                    <div>
-                        <small class="text-muted d-block mb-1">Denied:</small>
-                        <div class="disabled-permissions" id="disabled-{$gid}">
-                            {$disabled_html}
-                        </div>
-                    </div>
+                    {$zones}
                     <input type="hidden" name="fields_{$gid}" id="fields_{$gid}" value="{$hiddenVal}">
                 </div>
             </td>
@@ -2188,20 +2338,17 @@ echo <<<HTML
     ?>
             </tbody>
         </table>
-        <div class="card-footer bg-light py-3 text-end">
-            <button type="submit" name="save" class="btn btn-primary px-5">
-                <i class="fas fa-save me-2"></i>Save Forum Permissions
+        </div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
+            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>Permissions are saved together with the forum</span>
+            <button type="submit" name="save" class="btn btn-primary rounded-pill px-4">
+                <i class="fas fa-floppy-disk me-2"></i>Create Forum
             </button>
         </div>
     </div>
 
     <?php
-    // Инициализация QuickPermEditor для каждой группы
-    echo '<script>document.addEventListener("DOMContentLoaded",function(){';
-    foreach ($ids as $id) {
-        echo "if(typeof QuickPermEditor!=='undefined')QuickPermEditor.init({$id});";
-    }
-    echo '});</script>';
+    // QuickPermEditor инициализирует строки tr[data-group-id] сам (scripts/quick_perm_editor.js)
 
     mgmt_form_close();
     echo '</div>'; // container
@@ -2321,7 +2468,8 @@ if ($action === 'edit') {
     }
 
     if ($errors ?? false) {
-        output_inline_error($errors);
+        // output_inline_error() убран: он печатал красный блок ДО stdhead(), в самом верху
+        // страницы. Ошибки показывает fm_errors() тостом (вызывается после вкладок).
         $forum_data = array_merge($forum_data, $mybb->input);
     } else {
         $forum_data['title'] = $forum_data['name'];
@@ -2331,8 +2479,9 @@ if ($action === 'edit') {
     mgmt_add_breadcrumb('Edit Forum');
 
     stdhead('Edit Forum');
-    echo '<div class="container mt-3">';
-    echo '<div class="breadcrumb">' . mgmt_render_breadcrumb() . '</div>';
+    // admin-container: без него стили forum_management.css (они ограничены этим классом) сюда не применялись
+    echo '<div class="container mt-3 admin-container fm2">';
+    // Крошки убраны: дублировали вкладки ниже (View / Add Child / Edit / Copy)
   
     fm_head_assets();
 	
@@ -2343,13 +2492,15 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
 	
     echo '<link rel="stylesheet" href="templates/forum.css?ver=1813">';
     output_nav_tabs($sub_tabs ?? [], 'edit_forum_settings');
+    // Раньше $errors собирались, но нигде не выводились — форма молча перезагружалась
+    fm_errors($errors ?? []);
 
     mgmt_form_open('index.php?act=management&action=edit', 'post');
-    echo generate_hidden_field('fid', $fid);
+    echo generate_hidden_field('fid', (string)$fid);
     ?>
 
     <div class="container mt-4">
-    <div class="card border-0 -lg">
+    <div class="card border-0 shadow-sm">
         <?php fm_card_header('Edit Forum: ' . htmlspecialchars_uni($forum_data['title']), 'Update and configure your forum settings', 'edit'); ?>
         <div class="card-body p-4">
 
@@ -2375,8 +2526,6 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
     </div>
 
     <?php
-    fm_type_js();
-    fm_toggle_js();
     fm_toggle_advanced_open();
     fm_extra_fields($forum_data);
     fm_toggle_advanced_close();
@@ -2386,7 +2535,6 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
     // ── Permissions table (same as add, but with existing data) ──
     $cached_forum_perms = $cache->read('forumpermissions');
     $field_list2 = ['canview'=>'View','canpostthreads'=>'Post Threads','canpostreplys'=>'Post Replies','canpostpolls'=>'Post Polls'];
-    $ids = [];
     $existing_permissions = [];
 
     $q = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ?", [$fid]);
@@ -2396,17 +2544,16 @@ echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/
     while ($q && ($ug = $db->fetch_array($q))) $ugList2[$ug['gid']] = $ug;
     ?>
 
-    <div class="card mt-4">
-        <div class="card-header bg-primary text-white py-3">
-            <h5 class="mb-0"><i class="fas fa-shield-alt me-2"></i>Forum Permissions — <?= htmlspecialchars_uni($forum_data['name']) ?></h5>
-        </div>
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
+    <div class="card fm2-perm mt-4">
+        <?= fm_perm_card_head('Forum Permissions', htmlspecialchars_uni($forum_data['name']) . ' — inherited from the group unless customised') ?>
+        <div class="table-responsive">
+        <table class="table fm2-table fm2-perm-table align-middle mb-0">
+            <thead>
                 <tr>
-                    <th class="ps-4 py-3" style="width:25%">User Group</th>
-                    <th class="py-3" style="width:45%">Permissions</th>
-                    <th class="py-3" style="width:15%">Status</th>
-                    <th class="text-end pe-4 py-3" style="width:15%">Actions</th>
+                    <th style="width:24%"><i class="fa-solid fa-users"></i>User group</th>
+                    <th><i class="fa-solid fa-key"></i>Permissions</th>
+                    <th class="text-center" style="width:12%"><i class="fa-solid fa-code-branch"></i>Source</th>
+                    <th class="text-end" style="width:10%"><i class="fa-solid fa-bolt"></i>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -2438,46 +2585,32 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
 		
 		
         $hiddenVal = implode(',', array_keys(array_filter($pc)));
-        $status    = $default_checked ? 'Inherited' : 'Custom';
-        $statusCls = $default_checked ? 'bg-info bg-opacity-10 text-info' : 'bg-warning bg-opacity-10 text-warning';
-        $ids[]     = $gid;
+        $status    = $default_checked
+            ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-arrow-turn-down"></i>Inherited</span>'
+            : '<span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>Custom</span>';
     ?>
             <tr data-group-id="<?= $gid ?>">
-                <td class="ps-4">
-                    <div class="d-flex align-items-center">
-                        <div class="group-icon me-3">
-                            <?= !empty($ug['image']) ? $ug['image'] : '<div class="icon-compact default-group" data-tooltip="' . $title . '"><i class="bi bi-people-fill" style="color:#6c757d;"></i></div>' ?>
-                        </div>
-                        <div>
-                            <strong class="d-block"><?= $title ?></strong>
-                            <small class="text-muted">ID: <?= $gid ?></small>
-                        </div>
+                <td>
+                    <div class="d-flex align-items-center gap-3">
+                        <?= fm_group_icon($ug) ?>
+                        <div><div class="fw-bold"><?= $title ?></div><div class="fm2-gid">GID <?= $gid ?></div></div>
                     </div>
                 </td>
                 <td>
-                    <div class="d-flex gap-2">
-                        <div class="flex-fill border rounded p-2 bg-success bg-opacity-10">
-                            <small class="text-muted d-block mb-1">Allowed:</small>
-                            <div class="enabled-permissions" id="enabled-<?= $gid ?>"><?= $enabled ?: '<span class="text-muted">None</span>' ?></div>
-                        </div>
-                        <div class="flex-fill border rounded p-2 bg-danger bg-opacity-10">
-                            <small class="text-muted d-block mb-1">Denied:</small>
-                            <div class="disabled-permissions" id="disabled-<?= $gid ?>"><?= $disabled ?: '<span class="text-muted">None</span>' ?></div>
-                        </div>
-                    </div>
+                    <?= fm_perm_zones((int)$gid, $enabled, $disabled) ?>
                     <input type="hidden" name="fields_<?= $gid ?>" id="fields_<?= $gid ?>" value="<?= $hiddenVal ?>">
                     <input type="hidden" name="fields_inherit_<?= $gid ?>" value="<?= (int)$default_checked ?>">
                     <input type="hidden" name="fields_default_<?= $gid ?>" value="<?= $hiddenVal ?>">
                 </td>
-                <td><span class="badge <?= $statusCls ?> px-3 py-2"><?= $status ?></span></td>
-                <td class="text-end pe-4">
+                <td class="text-center"><?= $status ?></td>
+                <td class="text-end text-nowrap">
                     <?php if (!$default_checked): ?>
                     <a href="index.php?act=management&action=permissions&pid=<?= $perms['pid'] ?>"
-                       class="btn btn-outline-primary btn-sm"
-                       onclick="popupWindow(this.href,null,true);return false;">
-                        <i class="fas fa-edit"></i>
+                       class="fm2-act" title="Edit permissions"
+                       onclick="popupWindow(this.href + '&ajax=1', null, true);return false;">
+                        <i class="fas fa-pen"></i>
                     </a>
-                    <a href="javascript:void(0)" class="btn btn-outline-danger btn-sm ms-1 clear-permission-btn"
+                    <a href="javascript:void(0)" class="fm2-act text-danger clear-permission-btn" title="Reset to inherited"
                        data-pid="<?= $perms['pid'] ?>" data-fid="<?= $fid ?>"
                        data-gid="<?= $gid ?>" data-group-name="<?= addslashes($title) ?>"
                        data-post-key="<?= $mybb->post_code ?>">
@@ -2485,9 +2618,9 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
                     </a>
                     <?php else: ?>
                     <a href="index.php?act=management&action=permissions&gid=<?= $gid ?>&fid=<?= $fid ?>"
-                       class="btn btn-outline-secondary btn-sm"
-                       onclick="popupWindow(this.href,null,true);return false;">
-                        <i class="fas fa-cog"></i>
+                       class="fm2-act" title="Customise"
+                       onclick="popupWindow(this.href + '&ajax=1', null, true);return false;">
+                        <i class="fas fa-sliders"></i>
                     </a>
                     <?php endif; ?>
                 </td>
@@ -2495,19 +2628,17 @@ $disabled = implode('', array_map(fn($p) => !$pc[$p]
     <?php endforeach; ?>
             </tbody>
         </table>
-        <div class="card-footer bg-light py-3 d-flex justify-content-end">
-            <button type="submit" name="save_forum" class="btn btn-primary px-5">
-                <i class="fas fa-save me-2"></i>Save Permissions
+        </div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
+            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>Saved together with the forum settings above</span>
+            <button type="submit" name="save_forum" class="btn btn-primary rounded-pill px-4">
+                <i class="fas fa-floppy-disk me-2"></i>Save Changes
             </button>
         </div>
     </div>
 
     <?php
-    echo '<script>';
-    echo 'document.addEventListener("DOMContentLoaded",function(){';
-    foreach ($ids as $id) echo "if(typeof QuickPermEditor!=='undefined')QuickPermEditor.init({$id});";
-    echo '});';
-    echo '</script>';
+    // QuickPermEditor инициализирует строки tr[data-group-id] сам (scripts/quick_perm_editor.js)
 
     fm_clear_permission_modal();
     mgmt_form_close();
@@ -2734,7 +2865,7 @@ if ($action === 'delete')
 if (!$action) {
     $fid = $mybb->get_input('fid', MyBB::INPUT_INT);
     if ($fid) {
-        $forum = get_forum($fid, 1);
+        $forum = get_forum($fid, true);
     }
 
     $plugins->run_hooks('admin_forum_management_start');
@@ -2915,183 +3046,138 @@ if (!$action) {
     // а сам <form>-тег для этого раздела прописан вручную ниже в HTML.
 
     stdhead('Forum Management');
-    //echo $extra_header;
     fm_head_assets();
     echo '<link rel="stylesheet" href="templates/forum.css?ver=1813">';
-    echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css">';
-	
-	
-
-    echo '<div class="container mt-3"><div class="breadcrumb">' . mgmt_render_breadcrumb() . '</div></div>';
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css">';
 
     output_nav_tabs($sub_tabs, $fid ? 'view_forum' : 'forum_management');
 
-    $forum_name_esc = $fid && isset($forum_cache[$fid])
-        ? htmlspecialchars_uni($forum_cache[$fid]['name'])
-        : '';
+    $cur = ($fid && isset($forum_cache[$fid])) ? $forum_cache[$fid] : null;
+    $forum_name_esc = $cur ? htmlspecialchars_uni($cur['name']) : '';
+
+    // Сводка по всем форумам (для плиток)
+    $n_cat = $n_forum = $n_inactive = $n_threads = $n_posts = 0;
+    foreach ($forum_cache as $f) {
+        if (($f['type'] ?? '') === 'c') $n_cat++; else $n_forum++;
+        if ((int)($f['active'] ?? 1) === 0) $n_inactive++;
+    }
+    foreach (fm_forum_counts() as $c) {
+        $n_threads += (int)($c['threads'] ?? 0);
+        $n_posts   += (int)($c['posts'] ?? 0);
+    }
+
+    // Крошки: раньше выводились ДВЕ цепочки (mgmt_render_breadcrumb + nav.breadcrumb)
+    $crumbs = '<a href="index.php?act=management"><i class="fa-solid fa-sitemap me-1"></i>Forums</a>';
+    if ($cur) {
+        foreach (array_filter(array_map('intval', explode(',', (string)($cur['parentlist'] ?? '')))) as $pfid) {
+            if ($pfid === $fid || !isset($forum_cache[$pfid])) continue;
+            $crumbs .= '<i class="fa-solid fa-chevron-right fm2-sep"></i><a href="index.php?act=management&amp;fid=' . $pfid . '">' . htmlspecialchars_uni($forum_cache[$pfid]['name']) . '</a>';
+        }
+        $crumbs .= '<i class="fa-solid fa-chevron-right fm2-sep"></i><span class="fm2-cur">' . $forum_name_esc . '</span>';
+    }
+
+    $head_actions = $cur
+        ? '<a href="index.php?act=management&amp;action=edit&amp;fid=' . $fid . '" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-pen me-1"></i>Edit</a>'
+          . '<a href="index.php?act=management&amp;action=add&amp;pid=' . $fid . '" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>Add child</a>'
+        : '<a href="index.php?act=management&amp;action=add" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>Add Forum</a>';
+
+    $is_cat = $cur && ($cur['type'] ?? '') === 'c';
 
     echo '
-<div class="admin-container">
-<div class="container mt-3">
+<div class="admin-container fm2">
+<div class="container mt-3 mb-4">
 
-    <nav aria-label="breadcrumb" class="mb-4">
-        <ol class="breadcrumb bg-white rounded-3 py-2 px-3">'
-        . ($fid && isset($forum_cache[$fid]) ? '
-            <li class="breadcrumb-item">
-                <a href="index.php?act=management" class="text-decoration-none text-primary">
-                    <i class="fas fa-home me-1"></i>Forums
-                </a>
-            </li>
-            <li class="breadcrumb-item active" aria-current="page">
-                <i class="fas fa-folder me-1"></i>' . $forum_name_esc . '
-            </li>' : '
-            <li class="breadcrumb-item active" aria-current="page">
-                <i class="fas fa-tachometer-alt me-1"></i>Forum Management
-            </li>') . '
-        </ol>
-    </nav>
+    <nav class="fm2-crumbs" aria-label="breadcrumb">' . $crumbs . '</nav>
 
-    <div class="card border-0 rounded-3 overflow-hidden">
-
-        <div class="card-header bg-primary text-white py-4 px-5">
-            <div class="d-flex align-items-center justify-content-between">
-                <div class="d-flex align-items-center">
-                    <div class="header-icon bg-white bg-opacity-20 rounded-circle p-3 me-4">
-                        <i class="fas fa-sitemap fa-2x"></i>
-                    </div>
-                    <div>
-                        <h1 class="h3 mb-2 fw-bold">'
-                        . ($fid && isset($forum_cache[$fid])
-                            ? '<i class="fas fa-folder-open me-2"></i>Manage: ' . $forum_name_esc
-                            : '<i class="fas fa-layer-group me-2"></i>Forum Management') . '
-                        </h1>
-                        <p class="mb-0 opacity-85">
-                            <i class="fas fa-info-circle me-1"></i>'
-                            . ($fid ? 'Manage forum hierarchy, permissions and moderators'
-                                    : 'Organize your forum structure and settings') . '
-                        </p>
-                    </div>
-                </div>
-                <div class="status-badges">'
-                . ($fid ? '<span class="badge bg-white bg-opacity-25 px-3 py-2 me-2"><i class="fas fa-hashtag me-1"></i>ID: ' . $fid . '</span>' : '') . '
-                    <span class="badge bg-white bg-opacity-25 px-3 py-2">
-                        <i class="fas fa-clock me-1"></i>' . date('H:i') . '
-                    </span>
-                </div>
-            </div>
+    <div class="fm2-card mb-3"><div class="fm2-head">
+        <span class="fm2-head-icon ' . ($cur ? ($is_cat ? 'ic-amber' : 'ic-blue') : 'ic-purple') . '"><i class="fa-solid ' . ($cur ? ($is_cat ? 'fa-folder-open' : 'fa-comments') : 'fa-sitemap') . '"></i></span>
+        <div style="min-width:0">
+            <h1 class="fm2-title">' . ($cur ? $forum_name_esc : 'Forum Management') . '</h1>
+            <div class="fm2-sub">' . ($cur
+                ? '<span class="fm2-gid">FID ' . $fid . '</span> · ' . ($is_cat ? 'Category' : 'Forum') . ' — sub-forums, permissions and moderators'
+                : 'Categories, forums and their display order') . '</div>
         </div>
+        <div class="ms-auto d-flex flex-wrap gap-2">' . $head_actions . '</div>
+    </div></div>';
 
-        <!-- Nav tabs -->
-        <div class="card-body px-5 pt-4 pb-0">
-            <ul class="nav nav-tabs nav-tabs-modern border-0" id="forumTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="subforums-tab"
-                            data-bs-toggle="tab" data-bs-target="#subforums"
-                            type="button" role="tab">
-                        <i class="fas fa-folder-tree me-2"></i>'
-                        . ($fid ? 'Sub Forums' : 'All Forums') . '
-                    </button>
-                </li>'
-                . ($fid ? '
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="permissions-tab"
-                            data-bs-toggle="tab" data-bs-target="#permissions"
-                            type="button" role="tab">
-                        <i class="fas fa-shield-alt me-2"></i>Permissions
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="moderators-tab"
-                            data-bs-toggle="tab" data-bs-target="#moderators"
-                            type="button" role="tab">
-                        <i class="fas fa-user-shield me-2"></i>Moderators
-                    </button>
-                </li>' : '') . '
-            </ul>
-        </div>
+    if (!$cur) {
+        echo '<div class="row g-3 mb-3">';
+        foreach ([
+            ['fa-folder',        'ic-amber',  'Categories', ts_nf($n_cat)],
+            ['fa-comments',      'ic-blue',   'Forums',     ts_nf($n_forum)],
+            ['fa-file-lines',    'ic-green',  'Threads',    ts_nf($n_threads)],
+            ['fa-eye-slash',     'ic-slate',  'Inactive',   ts_nf($n_inactive)],
+        ] as [$ic, $cls, $label, $val]) {
+            echo '<div class="col-6 col-md-3"><div class="fm2-card fm2-stat"><span class="fm2-stat-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
+               . '<div><div class="fm2-stat-label">' . $label . '</div><div class="fm2-stat-value">' . $val . '</div></div></div></div>';
+        }
+        echo '</div>';
+    }
 
-        <div class="card-body">
-        <div class="tab-content" id="forumTabsContent">
+    // Вкладки. id панелей оставлены прежними (subforums / permissions / moderators) —
+    // на них ссылается существующий код и JS.
+    echo '
+    <ul class="nav fm2-tabs" id="forumTabs" role="tablist">
+        <li class="nav-item" role="presentation"><button class="nav-link active" id="subforums-tab" data-bs-toggle="tab" data-bs-target="#subforums" type="button" role="tab"><i class="fa-solid fa-folder-tree"></i>' . ($fid ? 'Sub-forums' : 'All forums') . '</button></li>'
+      . ($fid ? '
+        <li class="nav-item" role="presentation"><button class="nav-link" id="permissions-tab" data-bs-toggle="tab" data-bs-target="#permissions" type="button" role="tab"><i class="fa-solid fa-shield-halved"></i>Permissions</button></li>
+        <li class="nav-item" role="presentation"><button class="nav-link" id="moderators-tab" data-bs-toggle="tab" data-bs-target="#moderators" type="button" role="tab"><i class="fa-solid fa-user-shield"></i>Moderators</button></li>' : '') . '
+    </ul>
 
-            <!-- Tab: Forums -->
-            <div class="tab-pane fade show active" id="subforums" role="tabpanel">
-                <div class="mb-4">
-                    <h3 class="h5 mb-3 text-dark fw-bold">
-                        <i class="fas fa-list-ol me-2 text-primary"></i>Forum Structure
-                    </h3>
-                    <p class="text-muted mb-4">Use the input fields to reorder forums, then save.</p>
-                </div>
+    <div class="card border-0 bg-transparent"><div class="card-body p-0">
+    <div class="tab-content" id="forumTabsContent">
 
-                <form method="post" action="index.php?act=management">
-                    ' . generate_hidden_field('fid', $fid) . '
-                    ' . generate_hidden_field('my_post_key', $mybb->post_code) . '
+        <div class="tab-pane fade show active" id="subforums" role="tabpanel">
+            <form method="post" action="index.php?act=management">
+                ' . generate_hidden_field('fid', (string)$fid) . '
+                ' . generate_hidden_field('my_post_key', $mybb->post_code) . '
 
-                    <div class="table-container">
-                        <div class="table-responsive rounded-3 border">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="ps-4 py-3 fw-semibold text-dark" style="width:50%;">
-                                            <i class="fas fa-align-left me-2 text-muted"></i>Forum Details
-                                        </th>
-                                        <th class="text-center py-3 fw-semibold text-dark" style="width:20%;">
-                                            <i class="fas fa-sort-numeric-up me-2 text-muted"></i>Display Order
-                                        </th>
-                                        <th class="text-end pe-4 py-3 fw-semibold text-dark" style="width:30%;">
-                                            <i class="fas fa-sliders-h me-2 text-muted"></i>Quick Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>';
+                <div class="fm2-card overflow-hidden">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 border-bottom">
+                        <span class="fw-bold"><i class="fa-solid fa-list-ol me-2 text-body-secondary"></i>Structure</span>
+                        <div class="position-relative fm2-search"><i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="search" class="form-control form-control-sm" id="fm2Filter" placeholder="Filter forums…"></div>
+                    </div>
+                    <div class="table-responsive">
+                    <table class="table fm2-table">
+                        <thead><tr>
+                            <th><i class="fa-solid fa-comments"></i>Forum</th>
+                            <th class="text-center"><i class="fa-solid fa-chart-simple"></i>Content</th>
+                            <th class="text-center"><i class="fa-solid fa-arrow-down-1-9"></i>Order</th>
+                            <th class="text-end"><i class="fa-solid fa-bolt"></i>Actions</th>
+                        </tr></thead>
+                        <tbody>';
 
     build_admincp_forums_list($mgmt_row_count, $form, $fid);
 
     if ($mgmt_row_count === 0) {
-        echo '
-                                    <tr>
-                                        <td colspan="3" class="text-center py-5">
-                                            <div class="empty-state">
-                                                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                                                <h5 class="text-muted mb-2">No forums found</h5>
-                                                <p class="text-muted mb-0">Start by creating your first forum</p>
-                                            </div>
-                                        </td>
-                                    </tr>';
+        echo '<tr><td colspan="4"><div class="fm2-empty"><i class="fa-solid fa-inbox"></i>
+                <div class="fw-semibold">' . ($fid ? 'No sub-forums yet' : 'No forums yet') . '</div>
+                <a href="index.php?act=management&amp;action=add' . ($fid ? '&amp;pid=' . $fid : '') . '" class="btn btn-sm btn-primary rounded-pill px-3 mt-2"><i class="fa-solid fa-plus me-1"></i>Add ' . ($fid ? 'child forum' : 'forum') . '</a>
+              </div></td></tr>';
     }
 
-    echo '
-                                </tbody>
-                            </table>
-                        </div>
+    echo '<tr id="fm2NoMatch" hidden><td colspan="4"><div class="fm2-empty"><i class="fa-solid fa-magnifying-glass"></i><div class="fw-semibold">No matches</div></div></td></tr>';
+    echo '      </tbody>
+                    </table>
                     </div>';
 
     if ($mgmt_row_count > 0) {
         echo '
-                    <div class="mt-4">
-                        <div class="card border-0 bg-light-subtle">
-                            <div class="card-body py-3">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span class="text-muted">
-                                        <i class="fas fa-info-circle me-1"></i>
-                                        ' . $mgmt_row_count . ' forum(s) found
-                                    </span>
-                                    <div class="btn-group">
-                                        <button type="submit" name="save_forum_orders" class="btn btn-primary px-4 py-2">
-                                            <i class="fas fa-save me-2"></i>Save Changes
-                                        </button>
-                                        <button type="reset" class="btn btn-outline-secondary px-4 py-2 ms-2">
-                                            <i class="fas fa-undo me-2"></i>Reset
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
+                        <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>' . $mgmt_row_count . ' item(s) · change the numbers and save to reorder</span>
+                        <div class="d-flex gap-2">
+                            <button type="reset" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
+                            <button type="submit" name="save_forum_orders" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-floppy-disk me-1"></i>Save order</button>
                         </div>
                     </div>';
     }
 
     echo '
-                </form>
-            </div>';
+                </div>
+            </form>
+        </div>';
+
 
     // ── Permissions tab ───────────────────────────────────────
     if ($fid && isset($forum_cache[$fid])) {
@@ -3104,174 +3190,51 @@ if (!$action) {
         while ($query && ($ep = $db->fetch_array($query))) { $existing_permissions[$ep['gid']] = $ep; }
 
         $cached_forum_perms = $cache->read('forumpermissions');
-        $field_list  = ['canview'=>'Can view?','canpostthreads'=>'Can post threads?','canpostreplys'=>'Can post replies?','canpostpolls'=>'Can post polls?'];
-        $field_list2 = ['canview'=>'&#149; View','canpostthreads'=>'&#149; Post Threads','canpostreplys'=>'&#149; Post Replies','canpostpolls'=>'&#149; Post Polls'];
+        $n_custom = count(array_intersect_key($existing_permissions, $usergroups22));
 
         echo '
             <div class="tab-pane fade" id="permissions" role="tabpanel">
-                <div class="mb-4">
-                    <div class="d-flex align-items-center justify-content-between mb-3">
-                        <div>
-                            <h3 class="h5 mb-2 text-dark fw-bold">
-                                <i class="fas fa-key me-2 text-warning"></i>Forum Permissions
-                            </h3>
-                            <p class="text-muted mb-0">
-                                Configure access rights for: <strong>' . $forum_name_esc . '</strong>
-                            </p>
-                        </div>
-                        <span class="badge bg-warning bg-opacity-10 text-warning px-3 py-2">
-                            <i class="fas fa-users me-1"></i>' . count($usergroups22) . ' Groups
-                        </span>
-                    </div>
-                </div>
-
                 <form method="post" action="index.php?act=management" id="permissionsForm">
                     <input type="hidden" name="fid" value="' . $fid . '">
                     <input type="hidden" name="update" value="permissions">
                     <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
 
-                    <div class="table-responsive rounded-3 border">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="ps-4 py-3 fw-semibold text-dark" style="width:25%;">User Group</th>
-                                    <th class="py-3 fw-semibold text-dark" style="width:35%;">Allowed Permissions</th>
-                                    <th class="py-3 fw-semibold text-dark" style="width:25%;">Status</th>
-                                    <th class="text-end pe-4 py-3 fw-semibold text-dark" style="width:15%;">Actions</th>
-                                </tr>
-                            </thead>
+                    <div class="card fm2-perm">
+                        <div class="fm2-hdr">
+                            <span class="fm2-hdr-icon ic-amber"><i class="fas fa-shield-halved"></i></span>
+                            <div style="min-width:0"><h1>Forum Permissions</h1><p>Access rights in <strong>' . $forum_name_esc . '</strong> · drag a permission between the lists</p></div>
+                            <div class="ms-auto d-flex flex-wrap gap-2 fm2-legend">
+                                <span class="fm2-tag t-on"><i class="fa-solid fa-users"></i>' . count($usergroups22) . ' groups</span>
+                                <span class="fm2-tag t-cat"><i class="fa-solid fa-sliders"></i>' . $n_custom . ' custom</span>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                        <table class="table fm2-table fm2-perm-table align-middle mb-0">
+                            <thead><tr>
+                                <th style="width:24%"><i class="fa-solid fa-users"></i>User group</th>
+                                <th><i class="fa-solid fa-key"></i>Permissions</th>
+                                <th class="text-center" style="width:12%"><i class="fa-solid fa-code-branch"></i>Source</th>
+                                <th class="text-end" style="width:10%"><i class="fa-solid fa-bolt"></i>Actions</th>
+                            </tr></thead>
                             <tbody>';
 
         $perm_ids = [];
         foreach ($usergroups22 as $usergroup) {
-            $gid    = $usergroup['gid'];
-            $utitle = htmlspecialchars_uni($usergroup['title']);
-
-            if (!empty($existing_permissions[$gid])) {
-                $perms           = $existing_permissions[$gid];
-                $default_checked = false;
-            } elseif (!empty($cached_forum_perms[$fid][$gid])) {
-                $perms           = $cached_forum_perms[$fid][$gid];
-                $default_checked = true;
-            } else {
-                $perms           = $usergroup;
-                $default_checked = true;
-            }
-
-            $perms_checked = [];
-            foreach ($field_list as $fp => $fpt) {
-                $perms_checked[$fp] = ($perms[$fp] ?? 0) == 1 ? 1 : 0;
-            }
-
-            $inherited_text = $default_checked ? 'Inherited' : 'Custom';
-            $status_class   = $default_checked ? 'bg-info bg-opacity-10 text-info' : 'bg-warning bg-opacity-10 text-warning';
-            $status_icon    = $default_checked ? 'fas fa-link' : 'fas fa-pen';
-
-            $enabled_html  = '';
-            $disabled_html = '';
-            foreach ($field_list2 as $perm => $label) {
-                $badge = '<span class="badge ' . ($perms_checked[$perm]
-                    ? 'bg-success bg-opacity-10 text-success'
-                    : 'bg-danger bg-opacity-10 text-danger') . ' me-2 mb-1 permission-badge" data-perm="' . $perm . '">'
-                    . strip_tags($label) . '</span>';
-                if ($perms_checked[$perm]) { $enabled_html  .= $badge; }
-                else                       { $disabled_html .= $badge; }
-            }
-
-            $fields_val = implode(',', array_keys(array_filter($perms_checked)));
-
-            $group_icon = !empty($usergroup['image'])
-                ? $usergroup['image']
-                : '<div class="icon-compact default-group" data-tooltip="' . $utitle . '"><i class="bi bi-people-fill" style="color:#6c757d;"></i></div>';
-
-            echo "
-                            <tr data-group-id=\"{$gid}\">
-                                <td class=\"ps-4\">
-                                    <div class=\"d-flex align-items-center\">
-                                        <div class=\"group-icon me-3\">{$group_icon}</div>
-                                        <div>
-                                            <strong class=\"d-block\">{$utitle}</strong>
-                                            <small class=\"text-muted\">ID: {$gid}</small>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class=\"permission-fields\" id=\"permission-fields-{$gid}\">
-                                        <div class=\"mb-2\">
-                                            <small class=\"text-muted d-block mb-1\">Allowed:</small>
-                                            <div class=\"enabled-permissions\" id=\"enabled-{$gid}\">"
-                                            . ($enabled_html ?: '<span class="text-muted">No permissions</span>') . "
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <small class=\"text-muted d-block mb-1\">Denied:</small>
-                                            <div class=\"disabled-permissions\" id=\"disabled-{$gid}\">"
-                                            . ($disabled_html ?: '<span class="text-muted">No restrictions</span>') . "
-                                            </div>
-                                        </div>
-                                        <input type=\"hidden\" name=\"fields_{$gid}\" id=\"fields_{$gid}\" value=\"{$fields_val}\">
-                                        <input type=\"hidden\" name=\"fields_inherit_{$gid}\" id=\"fields_inherit_{$gid}\" value=\"" . (int)$default_checked . "\">
-                                        <input type=\"hidden\" name=\"fields_default_{$gid}\" id=\"fields_default_{$gid}\" value=\"{$fields_val}\">
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class=\"badge {$status_class} px-3 py-2\">
-                                        <i class=\"{$status_icon} me-1\"></i>{$inherited_text}
-                                    </span>
-                                </td>
-                                <td class=\"text-end pe-4\">
-                                    <div class=\"btn-group btn-group-sm\">
-                                        <a href=\"index.php?act=management&action=permissions&gid={$gid}&fid={$fid}\"
-                                           class=\"btn btn-outline-secondary btn-sm\"
-                                           data-bs-toggle=\"tooltip\" title=\"Set Custom Permissions\"
-                                           onclick=\"popupWindow(this.href,null,true);return false;\">
-                                            <i class=\"fas fa-cog\"></i>
-                                        </a>";
-
-            if (!$default_checked) {
-                echo "
-                                        <a href=\"javascript:void(0);\"
-                                           class=\"btn btn-outline-danger btn-sm ms-1 clear-permission-btn\"
-                                           data-pid=\"{$perms['pid']}\"
-                                           data-fid=\"{$fid}\"
-                                           data-gid=\"{$gid}\"
-                                           data-group-name=\"" . addslashes(htmlspecialchars_uni($usergroup['title'])) . "\"
-                                           data-post-key=\"{$mybb->post_code}\"
-                                           data-bs-toggle=\"tooltip\" title=\"Clear Custom Permissions\">
-                                            <i class=\"fas fa-trash\"></i>
-                                        </a>";
-            }
-
-            echo '
-                                    </div>
-                                </td>
-                            </tr>';
-
+            $gid = (int)$usergroup['gid'];
+            [$perms, $default_checked] = fm_resolve_group_perms($usergroup, $fid, $existing_permissions, is_array($cached_forum_perms) ? $cached_forum_perms : []);
+            echo fm_perm_row($usergroup, $fid, $perms, $default_checked);
             $perm_ids[] = $gid;
         }
 
         echo '
                             </tbody>
                         </table>
-                    </div>
-
-                    <div class="mt-4">
-                        <div class="card border-0 bg-light-subtle">
-                            <div class="card-body py-3">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span class="text-muted">
-                                        <i class="fas fa-info-circle me-1"></i>
-                                        Drag permissions between lists to enable/disable
-                                    </span>
-                                    <div class="btn-group">
-                                        <button type="submit" class="btn btn-warning px-4 py-2">
-                                            <i class="fas fa-save me-2"></i>Save Permissions
-                                        </button>
-                                        <button type="reset" class="btn btn-outline-secondary px-4 py-2 ms-2">
-                                            <i class="fas fa-undo me-2"></i>Reset
-                                        </button>
-                                    </div>
-                                </div>
+                        </div>
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
+                            <span class="fm2-muted"><i class="fa-solid fa-circle-info me-1"></i>Changed rows become “Custom” after saving; <i class="fa-solid fa-rotate-left mx-1"></i>returns a group to inherited</span>
+                            <div class="d-flex gap-2">
+                                <button type="reset" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fas fa-rotate-left me-1"></i>Reset</button>
+                                <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fas fa-floppy-disk me-1"></i>Save permissions</button>
                             </div>
                         </div>
                     </div>
@@ -3280,7 +3243,7 @@ if (!$action) {
 
         // ── Moderators tab ────────────────────────────────────
         $query = $db->sql_query_prepared("
-            SELECT m.mid, m.id, m.isgroup, u.username, g.title
+            SELECT m.mid, m.id, m.isgroup, u.username, u.usergroup, g.title
             FROM moderators m
             LEFT JOIN users u ON (m.isgroup='0' AND m.id=u.id)
             LEFT JOIN usergroups g ON (m.isgroup='1' AND m.id=g.gid)
@@ -3296,146 +3259,91 @@ if (!$action) {
 
         echo '
             <div class="tab-pane fade" id="moderators" role="tabpanel">
-                <div class="row">
+                <div class="row g-3">
                     <div class="col-lg-8">
-                        <div class="card border-0 mb-4">
-                            <div class="card-header bg-white border-bottom py-3">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0 fw-bold">
-                                        <i class="fas fa-user-shield me-2 text-primary"></i>Current Moderators
-                                    </h5>
-                                    <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-1">
-                                        ' . count($current_moderators) . ' moderator(s)
-                                    </span>
-                                </div>
+                        <div class="card fm2-perm">
+                            <div class="fm2-hdr">
+                                <span class="fm2-hdr-icon ic-blue"><i class="fas fa-user-shield"></i></span>
+                                <div style="min-width:0"><h1>Moderators</h1><p>Users and groups that moderate <strong>' . $forum_name_esc . '</strong></p></div>
+                                <div class="ms-auto fm2-legend"><span class="fm2-tag t-on"><i class="fa-solid fa-user-shield"></i>' . count($current_moderators) . '</span></div>
                             </div>
-                            <div class="card-body p-0">
-                                <div class="table-responsive">
-                                    <table class="table table-hover mb-0">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th class="ps-4 py-3">Moderator</th>
-                                                <th class="text-center py-3">Type</th>
-                                                <th class="text-end pe-4 py-3">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>';
+                            <div class="table-responsive">
+                            <table class="table fm2-table align-middle mb-0">
+                                <thead><tr>
+                                    <th><i class="fa-solid fa-user"></i>Moderator</th>
+                                    <th class="text-center"><i class="fa-solid fa-tag"></i>Type</th>
+                                    <th class="text-end"><i class="fa-solid fa-bolt"></i>Actions</th>
+                                </tr></thead>
+                                <tbody>';
 
         if (empty($current_moderators)) {
-            echo '
-                                            <tr>
-                                                <td colspan="3" class="text-center py-4 text-muted">
-                                                    <i class="fas fa-user-slash fa-2x mb-2"></i><br>
-                                                    No moderators assigned yet
-                                                </td>
-                                            </tr>';
+            echo '<tr><td colspan="3"><div class="fm2-empty"><i class="fa-solid fa-user-slash"></i><div class="fw-semibold">No moderators yet</div><div class="small">Add a user or a whole group on the right</div></div></td></tr>';
         } else {
             foreach ($current_moderators as $moderator) {
-                $type_badge = $moderator['isgroup']
-                    ? '<span class="badge bg-info bg-opacity-10 text-info px-2 py-1">Group</span>'
-                    : '<span class="badge bg-success bg-opacity-10 text-success px-2 py-1">User</span>';
-                $mod_name = $moderator['isgroup']
-                    ? htmlspecialchars_uni($moderator['title'] ?? '')
-                    : htmlspecialchars_uni($moderator['username'] ?? '');
-                $mod_icon = $moderator['isgroup'] ? 'fas fa-users' : 'fas fa-user';
+                $is_group = (int)$moderator['isgroup'] === 1;
+                $mod_name = htmlspecialchars_uni(($is_group ? $moderator['title'] : $moderator['username']) ?? '');
+                $display  = ($is_group || !function_exists('format_name')) ? $mod_name : format_name($mod_name, (int)($moderator['usergroup'] ?? 0));
+                $type     = $is_group
+                    ? '<span class="fm2-tag t-sub"><i class="fa-solid fa-users"></i>Group</span>'
+                    : '<span class="fm2-tag t-forum"><i class="fa-solid fa-user"></i>User</span>';
 
-                echo "
-                                            <tr>
-                                                <td class=\"ps-4\">
-                                                    <div class=\"d-flex align-items-center\">
-                                                        <div class=\"moderator-icon bg-primary bg-opacity-10 text-primary rounded-circle p-2 me-3\">
-                                                            <i class=\"{$mod_icon}\"></i>
-                                                        </div>
-                                                        <div>
-                                                            <strong class=\"d-block\">{$mod_name}</strong>
-                                                            <small class=\"text-muted\">ID: {$moderator['id']}</small>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td class=\"text-center\">{$type_badge}</td>
-                                                <td class=\"text-end pe-4\">
-                                                    <div class=\"btn-group btn-group-sm\">
-                                                        <a href=\"index.php?act=management&action=editmod&mid={$moderator['mid']}\"
-                                                           class=\"btn btn-outline-primary btn-sm\"
-                                                           data-bs-toggle=\"tooltip\" title=\"Edit Moderator\">
-                                                            <i class=\"fas fa-edit\"></i>
-                                                        </a>
-                                                        <a href=\"#\"
-                                                           class=\"btn btn-outline-danger btn-sm ms-1 delete-moderator-btn\"
-                                                           data-mid=\"{$moderator['id']}\"
-                                                           data-fid=\"{$fid}\"
-                                                           data-isgroup=\"{$moderator['isgroup']}\"
-                                                           data-post-key=\"{$mybb->post_code}\"
-                                                           data-bs-toggle=\"tooltip\" title=\"Remove Moderator\">
-                                                            <i class=\"fas fa-trash\"></i>
-                                                        </a>
-                                                    </div>
-                                                </td>
-                                            </tr>";
+                echo '
+                                <tr>
+                                    <td><div class="d-flex align-items-center gap-3">
+                                        <span class="fm2-gicon ' . ($is_group ? 'ic-teal' : 'ic-blue') . '"><i class="fas ' . ($is_group ? 'fa-users' : 'fa-user') . '"></i></span>
+                                        <div><div class="fw-bold">' . ($mod_name !== '' ? $display : '<em class="text-body-secondary">deleted</em>') . '</div><div class="fm2-gid">' . ($is_group ? 'GID ' : 'UID ') . (int)$moderator['id'] . '</div></div>
+                                    </div></td>
+                                    <td class="text-center">' . $type . '</td>
+                                    <td class="text-end text-nowrap">
+                                        <a href="index.php?act=management&amp;action=editmod&amp;mid=' . (int)$moderator['mid'] . '" class="fm2-act" title="Edit moderator permissions"><i class="fas fa-pen"></i></a>
+                                        <a href="#" class="fm2-act text-danger delete-moderator-btn" title="Remove moderator"
+                                           data-mid="' . (int)$moderator['id'] . '" data-fid="' . $fid . '" data-isgroup="' . (int)$moderator['isgroup'] . '"
+                                           data-post-key="' . $mybb->post_code . '"><i class="fas fa-trash"></i></a>
+                                    </td>
+                                </tr>';
             }
         }
 
+        $group_options = '';
+        foreach ($user_groups as $group) {
+            $group_options .= '<option value="' . (int)$group['gid'] . '">' . htmlspecialchars_uni($group['title']) . ' (GID ' . (int)$group['gid'] . ')</option>';
+        }
+
         echo '
-                                        </tbody>
-                                    </table>
-                                </div>
+                                </tbody>
+                            </table>
                             </div>
                         </div>
                     </div>
 
                     <div class="col-lg-4">
-                        <div class="sticky-top" style="top:20px">
-                            <div class="card border-0 mb-4">
-                                <div class="card-header bg-success text-white py-3">
-                                    <h6 class="mb-0"><i class="fas fa-users me-2"></i>Add User Group</h6>
-                                </div>
-                                <div class="card-body">
-                                    <form method="post" action="index.php?act=management">
-                                        <input type="hidden" name="fid" value="' . $fid . '">
-                                        <input type="hidden" name="add" value="moderators">
-                                        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">Select User Group</label>
-                                            <select name="usergroup" class="form-select" required>
-                                                <option value="">-- Select Group --</option>';
-
-        foreach ($user_groups as $group) {
-            echo '<option value="' . $group['gid'] . '">'
-                . htmlspecialchars_uni($group['title']) . ' (ID: ' . $group['gid'] . ')</option>';
-        }
-
-        echo '
-                                            </select>
-                                            <small class="text-muted">All users in this group will become moderators</small>
-                                        </div>
-                                        <button type="submit" class="btn btn-success w-100 py-2">
-                                            <i class="fas fa-plus me-2"></i>Add Group as Moderator
-                                        </button>
-                                    </form>
-                                </div>
+                        <div class="fm2-sticky">
+                            <div class="card fm2-perm mb-3">
+                                <div class="fm2-hdr py-3"><span class="fm2-hdr-icon ic-blue" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-user-plus"></i></span>
+                                    <div><h1 style="font-size:1.05rem">Add user</h1><p style="font-size:.85rem">A single member moderates this forum</p></div></div>
+                                <form method="post" action="index.php?act=management" class="p-3">
+                                    <input type="hidden" name="fid" value="' . $fid . '">
+                                    <input type="hidden" name="add" value="moderators">
+                                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
+                                    <label class="form-label" for="fm2ModUser"><i class="fa-solid fa-user me-1 text-body-secondary"></i>Username</label>
+                                    <input type="text" id="fm2ModUser" name="username" class="form-control mb-3" placeholder="Start typing…" required autocomplete="off"
+                                           data-autocomplete-url="../xmlhttp.php?action=get_users">
+                                    <button type="submit" class="btn btn-primary rounded-pill w-100"><i class="fas fa-user-plus me-1"></i>Add user</button>
+                                </form>
                             </div>
-
-                            <div class="card border-0">
-                                <div class="card-header bg-info text-white py-3">
-                                    <h6 class="mb-0"><i class="fas fa-user-plus me-2"></i>Add User</h6>
-                                </div>
-                                <div class="card-body">
-                                    <form method="post" action="index.php?act=management">
-                                        <input type="hidden" name="fid" value="' . $fid . '">
-                                        <input type="hidden" name="add" value="moderators">
-                                        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">Username</label>
-                                            <input type="text" name="username" class="form-control"
-                                                   placeholder="Enter username" required
-                                                   data-autocomplete-url="../xmlhttp.php?action=get_users">
-                                            <small class="text-muted">Type username and select from suggestions</small>
-                                        </div>
-                                        <button type="submit" class="btn btn-info w-100 py-2">
-                                            <i class="fas fa-user-plus me-2"></i>Add User as Moderator
-                                        </button>
-                                    </form>
-                                </div>
+                            <div class="card fm2-perm">
+                                <div class="fm2-hdr py-3"><span class="fm2-hdr-icon ic-teal" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-users"></i></span>
+                                    <div><h1 style="font-size:1.05rem">Add group</h1><p style="font-size:.85rem">Every member of the group moderates</p></div></div>
+                                <form method="post" action="index.php?act=management" class="p-3">
+                                    <input type="hidden" name="fid" value="' . $fid . '">
+                                    <input type="hidden" name="add" value="moderators">
+                                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
+                                    <label class="form-label" for="fm2ModGroup"><i class="fa-solid fa-users me-1 text-body-secondary"></i>User group</label>
+                                    <select id="fm2ModGroup" name="usergroup" class="form-select mb-3" required>
+                                        <option value="">— Select group —</option>' . $group_options . '
+                                    </select>
+                                    <button type="submit" class="btn btn-outline-primary rounded-pill w-100"><i class="fas fa-plus me-1"></i>Add group</button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -3455,6 +3363,7 @@ if (!$action) {
 
     $plugins->run_hooks('admin_forum_management_start_graph');
     echo '<script src="scripts/deleteForum.js"></script>';
+    // Поповеры, открытие вкладки по #tab_… и фильтр списка — в scripts/forum_management.js
 	stdfoot();
 	exit;
 }
@@ -3486,282 +3395,168 @@ if (!$action) {
 
 
 
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/popover.js"></script>';
+// popover.js: инициализация подсказок теперь внутри главной страницы (см. выше)
 
-function build_admincp_forums_list(&$mgmt_row_count, &$form, $pid=0, $depth=1)
+/**
+ * Живые счётчики тем/постов по форумам: [fid => ['threads' => n, 'posts' => n]].
+ * Два GROUP BY-запроса на всю страницу. Кэш форумов этих полей не содержит
+ * (или счётчики в таблице forums не обновляются) — колонка Content была пустой.
+ */
+function fm_forum_counts(): array
+{
+    global $db;
+    static $counts = null;
+    if ($counts !== null) return $counts;
+
+    $counts = [];
+    $q = $db->sql_query_prepared("SELECT fid, COUNT(*) AS n FROM threads WHERE visible = 1 GROUP BY fid");
+    while ($q && ($r = $db->fetch_array($q))) {
+        $counts[(int)$r['fid']]['threads'] = (int)$r['n'];
+    }
+    $q = $db->sql_query_prepared("SELECT fid, COUNT(*) AS n FROM posts WHERE visible = 1 GROUP BY fid");
+    while ($q && ($r = $db->fetch_array($q))) {
+        $counts[(int)$r['fid']]['posts'] = (int)$r['n'];
+    }
+    return $counts;
+}
+
+function build_admincp_forums_list(&$mgmt_row_count, &$form, $pid = 0, $depth = 1)
 {
     global $mybb, $lang, $db, $sub_forums;
     static $forums_by_parent;
 
-    if(!is_array($forums_by_parent))
-    {
+    if (!is_array($forums_by_parent)) {
         $forum_cache = cache_forums();
-        foreach($forum_cache as $forum)
-        {
+        foreach ($forum_cache as $forum) {
             $forums_by_parent[$forum['pid']][$forum['disporder']][$forum['fid']] = $forum;
         }
     }
 
-    if(!isset($forums_by_parent[$pid]) || !is_array($forums_by_parent[$pid]))
-    {
+    if (!isset($forums_by_parent[$pid]) || !is_array($forums_by_parent[$pid])) {
         return;
     }
-    
-    $subforumsindex = "2";
+
+    $subforumsindex = 2;
     $donecount = 0;
     $comma = '';
-    
-    foreach($forums_by_parent[$pid] as $children)
-    {
-        foreach($children as $forum)
-        {
-            $forum['name'] = preg_replace("#&(?!\#[0-9]+;)#si", "&amp;", $forum['name']);
-            
-            // Определяем иконку и цвет в зависимости от типа форума
-            if($forum['type'] == "c")
-            {
-                $icon = '<i class="fas fa-folder me-2 text-warning"></i>';
-                $badge = '<span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25">Category</span>';
-                $bg_class = $forum['active'] == 0 ? 'bg-light text-muted' : 'bg-white';
-            }
-            else
-            {
-                $icon = '<i class="fas fa-comments me-2 text-primary"></i>';
-                $badge = '<span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25">Forum</span>';
-                $bg_class = $forum['active'] == 0 ? 'bg-light text-muted opacity-75' : 'bg-white';
-            }
-            
-            // Форматируем имя форума
-            $forum_name = $forum['active'] == 0 ? "<em>{$forum['name']}</em>" : $forum['name'];
-			
-			$mgmt_row_count++;
-			
-            
-            if($forum['type'] == "c" && ($depth == 1 || $depth == 2))
-            {
-                $sub_forums = '';
-                if(isset($forums_by_parent[$forum['fid']]) && $depth == 2)
-                {
-                    build_admincp_forums_list($mgmt_row_count, $form, $forum['fid'], $depth+1);
+
+    foreach ($forums_by_parent[$pid] as $children) {
+        foreach ($children as $forum) {
+            $fid       = (int)$forum['fid'];
+            $raw_name  = (string)$forum['name'];
+            $forum['name'] = preg_replace("#&(?!\#[0-9]+;)#si", "&amp;", $raw_name);
+
+            if ($depth == 3) {
+                if ($donecount < $subforumsindex) {
+                    $sub_forums .= "{$comma}<a href=\"index.php?act=management&amp;fid={$fid}\" class=\"fm2-subchip\"><i class=\"fa-solid fa-turn-up fa-rotate-90\"></i>{$forum['name']}</a>";
+                    $comma = ' ';
                 }
-                if($sub_forums)
-                {
-                    $sub_forums = "<div class=\"text-muted small mt-1\"><i class=\"fas fa-sitemap me-1\"></i>Subforums: {$sub_forums}</div>";
-                }
-                
-                // Выводим категорию
-                echo '
-                <tr class="forum-row category-row">
-                    <td class="forum-name-cell">
-                        <div class="d-flex align-items-center ps-' . ($depth * 2) . '">
-                            
-							
-							
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center mb-1">
-                                    ' . $icon . '
-                                    <a href="index.php?act=management&fid=' . $forum['fid'] . '" class="forum-name-link fw-bold text-dark text-decoration-none">
-                                        ' . $forum_name . '
-                                    </a>
-                                    ' . $badge . '
-                                </div>
-                                ' . $sub_forums . '
-                            </div>
-                        </div>
-                    </td>
-                    
-                    <td class="align-middle">
-                        <div class="order-input-wrapper">
-                            <input type="number" 
-                                   name="disporder[' . $forum['fid'] . ']" 
-                                   value="' . $forum['disporder'] . '" 
-                                   min="0" 
-                                   class="form-control form-control-sm order-input" 
-                                   style="width: 80px;" />
-                        </div>
-                    </td>
-                    
-                    <td class="align-middle text-end">
-                        ' . generate_forum_actions($forum) . '
-                    </td>
-                </tr>';
-				
-				
-				$mgmt_row_count++;
-                
-                // Рекурсивно обрабатываем подфорумы
-                if(!empty($forums_by_parent[$forum['fid']]))
-                {
-                    build_admincp_forums_list($mgmt_row_count, $form, $forum['fid'], $depth+1);
-                }
-            }
-            elseif($forum['type'] == "f" && ($depth == 1 || $depth == 2))
-            {
-                if($forum['description'])
-                {
-                    $forum['description'] = preg_replace("#&(?!\#[0-9]+;)#si", "&amp;", $forum['description']);
-                    $description = '<div class="text-muted small mt-1"><i class="fas fa-align-left me-1"></i>' . $forum['description'] . '</div>';
-                }
-                else
-                {
-                    $description = '';
-                }
-                
-                $sub_forums = '';
-                if(isset($forums_by_parent[$forum['fid']]) && $depth == 2)
-                {
-                    build_admincp_forums_list($mgmt_row_count, $form, $forum['fid'], $depth+1);
-                }
-                if($sub_forums)
-                {
-                    $sub_forums = "<div class=\"text-muted small mt-1\"><i class=\"fas fa-sitemap me-1\"></i>Subforums: {$sub_forums}</div>";
-                }
-                
-                // Выводим форум
-                echo '
-                <tr class="forum-row ' . $bg_class . '">
-                    <td class="forum-name-cell">
-                        <div class="d-flex align-items-center ps-' . ($depth * 2) . '">
-                           
-						   
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center mb-1">
-                                    ' . $icon . '
-                                    <a href="index.php?act=management&fid=' . $forum['fid'] . '" class="forum-name-link text-dark text-decoration-none">
-                                        ' . $forum_name . '
-                                    </a>
-                                    ' . $badge . '
-                                </div>
-                                ' . $description . $sub_forums . '
-                            </div>
-                        </div>
-                    </td>
-                    
-                    <td class="align-middle">
-                        <div class="order-input-wrapper">
-                            <input type="number" 
-                                   name="disporder[' . $forum['fid'] . ']" 
-                                   value="' . $forum['disporder'] . '" 
-                                   min="0" 
-                                   class="form-control form-control-sm order-input" 
-                                   style="width: 80px;" />
-                        </div>
-                    </td>
-                    
-                    <td class="align-middle text-end">
-                        ' . generate_forum_actions($forum) . '
-                    </td>
-                </tr>';
-                
-                if(isset($forums_by_parent[$forum['fid']]) && $depth == 1)
-                {
-                    build_admincp_forums_list($mgmt_row_count, $form, $forum['fid'], $depth+1);
-                }
-            }
-            elseif($depth == 3)
-            {
-                if($donecount < $subforumsindex)
-                {
-                    $sub_forums .= "{$comma} <a href=\"index.php?act=management&fid={$forum['fid']}\" class=\"small\">{$forum['name']}</a>";
-                    $comma = ', ';
-                }
-                
                 ++$donecount;
-                if($donecount == $subforumsindex)
-                {
-                    if(subforums_count2($forums_by_parent[$pid]) > $donecount)
-                    {
-                        $sub_forums .= $comma . '...';
-                        return;
-                    }
+                if ($donecount == $subforumsindex && subforums_count2($forums_by_parent[$pid]) > $donecount) {
+                    $sub_forums .= ' <span class="fm2-subchip is-more">+' . (subforums_count2($forums_by_parent[$pid]) - $donecount) . '</span>';
+                    return;
                 }
+                continue;
+            }
+
+            if (!($depth == 1 || $depth == 2)) {
+                continue;
+            }
+
+            $is_cat   = $forum['type'] == 'c';
+            $inactive = (int)$forum['active'] === 0;
+            $closed   = isset($forum['open']) && (int)$forum['open'] === 0;
+
+            // Подфорумы третьего уровня собираются в $sub_forums рекурсивным вызовом
+            $sub_forums = '';
+            if (isset($forums_by_parent[$fid]) && $depth == 2) {
+                build_admincp_forums_list($mgmt_row_count, $form, $fid, $depth + 1);
+            }
+            $subs_html = $sub_forums ? '<div class="fm2-subs">' . $sub_forums . '</div>' : '';
+
+            $description = '';
+            if (!$is_cat && !empty($forum['description'])) {
+                $description = '<div class="fm2-muted fm2-desc">' . preg_replace("#&(?!\#[0-9]+;)#si", "&amp;", $forum['description']) . '</div>';
+            }
+
+            $children_n = isset($forums_by_parent[$fid]) ? subforums_count2($forums_by_parent[$fid]) : 0;
+
+            $tags = $is_cat
+                ? '<span class="fm2-tag t-cat"><i class="fa-solid fa-folder"></i>Category</span>'
+                : '<span class="fm2-tag t-forum"><i class="fa-solid fa-comments"></i>Forum</span>';
+            if ($inactive) $tags .= ' <span class="fm2-tag t-off"><i class="fa-solid fa-eye-slash"></i>Inactive</span>';
+            if ($closed)   $tags .= ' <span class="fm2-tag t-closed"><i class="fa-solid fa-lock"></i>Closed</span>';
+            if ($children_n) $tags .= ' <span class="fm2-tag t-sub"><i class="fa-solid fa-sitemap"></i>' . $children_n . '</span>';
+
+            $cnt     = fm_forum_counts()[$fid] ?? [];
+            $content = $is_cat
+                ? '<span class="fm2-muted">—</span>'
+                : '<div class="fm2-counts"><span title="Threads"><i class="fa-solid fa-file-lines"></i>' . number_format((int)($cnt['threads'] ?? 0)) . '</span>'
+                  . '<span title="Posts"><i class="fa-solid fa-comment"></i>' . number_format((int)($cnt['posts'] ?? 0)) . '</span></div>';
+
+            $icon = $is_cat
+                ? '<span class="fm2-ficon ic-amber"><i class="fa-solid fa-folder' . ($inactive ? '' : '-open') . '"></i></span>'
+                : '<span class="fm2-ficon ic-blue"><i class="fa-solid ' . ($closed ? 'fa-lock' : 'fa-comments') . '"></i></span>';
+
+            // Счётчик — один раз на строку (раньше у категорий увеличивался дважды,
+            // и «N forum(s) found» показывал завышенное число)
+            $mgmt_row_count++;
+
+            echo '
+            <tr class="forum-row' . ($is_cat ? ' is-cat' : '') . ($inactive ? ' is-off' : '') . '" data-search="' . htmlspecialchars_uni(my_strtolower(strip_tags(html_entity_decode($raw_name)))) . '">
+                <td>
+                    <div class="fm2-forum" style="--depth:' . ($depth - 1) . '">
+                        ' . ($depth > 1 ? '<span class="fm2-branch"></span>' : '') . $icon . '
+                        <div style="min-width:0">
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <a href="index.php?act=management&amp;fid=' . $fid . '" class="fm2-fname">' . ($inactive ? '<em>' . $forum['name'] . '</em>' : $forum['name']) . '</a>
+                                <span class="fm2-gid">#' . $fid . '</span>
+                            </div>
+                            <div class="fm2-tags">' . $tags . '</div>
+                            ' . $description . $subs_html . '
+                        </div>
+                    </div>
+                </td>
+                <td class="text-center">' . $content . '</td>
+                <td class="text-center">
+                    <input type="number" name="disporder[' . $fid . ']" value="' . (int)$forum['disporder'] . '" min="0" class="form-control form-control-sm fm2-order" aria-label="Display order">
+                </td>
+                <td class="text-end text-nowrap">' . generate_forum_actions($forum) . '</td>
+            </tr>';
+
+            if (!empty($forums_by_parent[$fid]) && ($is_cat || $depth == 1)) {
+                build_admincp_forums_list($mgmt_row_count, $form, $fid, $depth + 1);
             }
         }
     }
 }
 
 /**
- * Генерирует кнопки действий для форума
+ * Кнопки действий для форума
  */
 function generate_forum_actions($forum)
 {
-    global $mybb; // Добавьте это для my_post_key
-    
-    $actions = '
-    <div class="btn-group btn-group-sm forum-actions-dropdown" role="group">
-        
-        <a href="index.php?act=management&action=edit&fid=' . $forum['fid'] . '" 
-   class="btn btn-outline-primary" 
-   data-bs-toggle="popover" 
-   data-bs-trigger="hover focus"
-   data-bs-content="Edit Forum">
-    <i class="fas fa-edit"></i>
-</a>
+    $fid  = (int)$forum['fid'];
+    $name = htmlspecialchars_uni((string)$forum['name']);
 
-		
-		<a href="index.php?act=management&fid=' . $forum['fid'] . '" 
-   class="btn btn-outline-info" 
-   data-bs-toggle="popover" 
-   data-bs-trigger="hover focus"
-   data-bs-content="View Subforums">
-    <i class="fas fa-sitemap"></i>
-</a>
-
-
-        
-        
-        <div class="dropdown" style="position: static;">
-            <button class="btn btn-outline-secondary dropdown-toggle" 
-                    type="button" 
-                    id="dropdownMenuButton_' . $forum['fid'] . '"
-                    data-bs-toggle="dropdown" 
-                    aria-expanded="false"
-                    data-bs-boundary="viewport">
-                <i class="fas fa-cog"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" 
-                aria-labelledby="dropdownMenuButton_' . $forum['fid'] . '"
-                data-bs-popper="static">
-                <li>
-                    <a class="dropdown-item" href="index.php?act=management&fid=' . $forum['fid'] . '#tab_moderators">
-                        <i class="fas fa-user-shield me-2"></i>Moderators
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item" href="index.php?act=management&fid=' . $forum['fid'] . '#tab_permissions">
-                        <i class="fas fa-shield-alt me-2"></i>Permissions
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item" href="management.php?module=config-thread_prefixes&fid=' . $forum['fid'] . '">
-                        <i class="fas fa-tags me-2"></i>Thread Prefixes
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item" href="index.php?act=management&action=add&pid=' . $forum['fid'] . '">
-                        <i class="fas fa-plus-circle me-2"></i>Add Child Forum
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item" href="index.php?act=management&action=copy&fid=' . $forum['fid'] . '">
-                        <i class="fas fa-copy me-2"></i>Copy Forum
-                    </a>
-                </li>
+    return '
+    <div class="fm2-actions">
+        <a href="index.php?act=management&amp;action=edit&amp;fid=' . $fid . '" class="fm2-act" data-bs-toggle="popover" data-bs-content="Edit"><i class="fa-solid fa-pen"></i></a>
+        <a href="index.php?act=management&amp;fid=' . $fid . '#tab_permissions" class="fm2-act" data-bs-toggle="popover" data-bs-content="Permissions"><i class="fa-solid fa-shield-halved"></i></a>
+        <a href="index.php?act=management&amp;fid=' . $fid . '#tab_moderators" class="fm2-act" data-bs-toggle="popover" data-bs-content="Moderators"><i class="fa-solid fa-user-shield"></i></a>
+        <div class="dropdown d-inline-block">
+            <button class="fm2-act" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm border">
+                <li><a class="dropdown-item" href="index.php?act=management&amp;fid=' . $fid . '"><i class="fa-solid fa-sitemap fa-fw me-2"></i>Open / sub-forums</a></li>
+                <li><a class="dropdown-item" href="index.php?act=management&amp;action=add&amp;pid=' . $fid . '"><i class="fa-solid fa-circle-plus fa-fw me-2"></i>Add child forum</a></li>
+                <li><a class="dropdown-item" href="index.php?act=management&amp;action=copy&amp;fid=' . $fid . '"><i class="fa-solid fa-copy fa-fw me-2"></i>Copy forum</a></li>
                 <li><hr class="dropdown-divider"></li>
-                <li>
-                    <a class="dropdown-item text-danger delete_employee" 
-                       href="javascript:void(0)" 
-                       data-emp-id="' . $forum['fid'] . '"
-                       data-forum-name="' . htmlspecialchars_uni($forum['name']) . '">
-                        <i class="fas fa-trash me-2"></i>Delete Forum
-                    </a>
-                </li>
+                <li><a class="dropdown-item text-danger delete_employee" href="javascript:void(0)" data-emp-id="' . $fid . '" data-forum-name="' . $name . '"><i class="fa-solid fa-trash fa-fw me-2"></i>Delete forum</a></li>
             </ul>
         </div>
     </div>';
-    
-    return $actions;
 }
+
 
 /**
  * Подсчитывает количество подфорумов
@@ -3781,16 +3576,7 @@ function subforums_count2($forums)
 
 
 
-echo '<script>
-document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("[data-bs-toggle=popover]").forEach(el =>
-        new bootstrap.Popover(el, { container: "body", trigger: "hover focus", html: true })
-    );
-    document.querySelectorAll(".forum-row").forEach((row, i) =>
-        row.style.setProperty("--row-index", i)
-    );
-});
-</script>';
+// (инициализация popover перенесена в главную страницу)
 
 
 
@@ -3804,164 +3590,25 @@ document.addEventListener("DOMContentLoaded", () => {
  *
  * @return string
  */
+/** Готовая строка <tr> группы для AJAX-ответа (та же разметка, что на вкладке Permissions) */
 function retrieve_single_permissions_row(int $gid, int $fid): string
 {
-    global $cache, $db, $mybb;
+    global $cache, $db;
 
-    $ugq  = $db->sql_query_prepared("SELECT * FROM usergroups WHERE gid = ?", [$gid]);
-    $usergroup  = $ugq ? $db->fetch_array($ugq) : null;
-    $fq   = $db->sql_query_prepared("SELECT * FROM forums WHERE fid = ?", [$fid]);
-    $forum_data = $fq ? $db->fetch_array($fq) : null;
+    $ugq = $db->sql_query_prepared("SELECT * FROM usergroups WHERE gid = ?", [$gid]);
+    $usergroup = $ugq ? $db->fetch_array($ugq) : null;
+    if (!$usergroup) {
+        return '';
+    }
 
     $existing_permissions = [];
-    $q = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ?", [$fid]);
-    while ($q && ($row = $db->fetch_array($q))) {
-        $existing_permissions[$row['gid']] = $row;
+    $q = $db->sql_query_prepared("SELECT * FROM forumpermissions WHERE fid = ? AND gid = ?", [$fid, $gid]);
+    if ($q && ($row = $db->fetch_array($q))) {
+        $existing_permissions[$gid] = $row;
     }
 
     $cached_forum_perms = $cache->read('forumpermissions');
+    [$perms, $default_checked] = fm_resolve_group_perms($usergroup, $fid, $existing_permissions, is_array($cached_forum_perms) ? $cached_forum_perms : []);
 
-    $field_list2 = [
-        'canview'       => 'View',
-        'canpostthreads'=> 'Post Threads',
-        'canpostreplys' => 'Post Replies',
-        'canpostpolls'  => 'Post Polls',
-    ];
-
-    // Определяем права
-    if (!empty($existing_permissions[$gid])) {
-        $perms           = $existing_permissions[$gid];
-        $default_checked = false;
-    } elseif (!empty($cached_forum_perms[$forum_data['fid']][$gid])) {
-        $perms           = $cached_forum_perms[$forum_data['fid']][$gid];
-        $default_checked = true;
-    } elseif (!empty($cached_forum_perms[$forum_data['pid']][$gid])) {
-        $perms           = $cached_forum_perms[$forum_data['pid']][$gid];
-        $default_checked = true;
-    } else {
-        $perms           = $usergroup;
-        $default_checked = true;
-    }
-
-    $perms_checked = [];
-    foreach (array_keys($field_list2) as $fp) {
-        $perms_checked[$fp] = ($perms[$fp] ?? 0) == 1 ? 1 : 0;
-    }
-
-    $title          = htmlspecialchars_uni($usergroup['title']);
-    $inherited_text = $default_checked ? 'Inherited' : 'Custom';
-    $status_class   = $default_checked ? 'bg-info bg-opacity-10 text-info' : 'bg-warning bg-opacity-10 text-warning';
-    $fields_val     = implode(',', array_keys(array_filter($perms_checked)));
-
-    $group_icon = !empty($usergroup['image'])
-        ? $usergroup['image']
-        : '<div class="icon-compact default-group" data-tooltip="' . $title . '"><i class="bi bi-people-fill" style="color:#6c757d;"></i></div>';
-
-    $enabled_html  = '';
-    $disabled_html = '';
-    foreach ($field_list2 as $perm => $label) {
-        $badge = '<span class="badge '
-            . ($perms_checked[$perm] ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger')
-            . ' me-2 mb-1 permission-badge" data-perm="' . $perm . '">' . $label . '</span>';
-        if ($perms_checked[$perm]) $enabled_html  .= $badge;
-        else                       $disabled_html .= $badge;
-    }
-
-    $hidden_fields = '
-        <input type="hidden" name="fields_' . $gid . '" id="fields_' . $gid . '" value="' . $fields_val . '">
-        <input type="hidden" name="fields_inherit_' . $gid . '" id="fields_inherit_' . $gid . '" value="' . (int)$default_checked . '">
-        <input type="hidden" name="fields_default_' . $gid . '" id="fields_default_' . $gid . '" value="' . $fields_val . '">';
-
-    $actions = $default_checked
-        ? '<a href="index.php?act=management&action=permissions&gid=' . $gid . '&fid=' . $fid . '"
-               class="btn btn-outline-secondary btn-sm"
-               onclick="popupWindow(this.href,null,true);return false;">
-               <i class="fas fa-cog"></i>
-           </a>'
-        : '<a href="index.php?act=management&action=permissions&pid=' . $perms['pid'] . '"
-               class="btn btn-outline-primary btn-sm"
-               onclick="popupWindow(this.href,null,true);return false;">
-               <i class="fas fa-edit"></i>
-           </a>
-           <a href="javascript:void(0)" class="btn btn-outline-danger btn-sm ms-1 clear-permission-btn"
-               data-pid="' . $perms['pid'] . '" data-fid="' . $fid . '" data-gid="' . $gid . '"
-               data-group-name="' . addslashes($title) . '" data-post-key="' . $mybb->post_code . '">
-               <i class="fas fa-trash"></i>
-           </a>';
-
-    return '
-        <td class="ps-4">
-            <div class="d-flex align-items-center">
-                <div class="group-icon me-3">' . $group_icon . '</div>
-                <div>
-                    <strong class="d-block">' . $title . '</strong>
-                    <small class="text-muted">ID: ' . $gid . '</small>
-                </div>
-            </div>
-        </td>
-        <td>
-            <div class="permission-fields" id="permission-fields-' . $gid . '">
-                <div class="mb-2">
-                    <small class="text-muted d-block mb-1">Allowed:</small>
-                    <div class="enabled-permissions" id="enabled-' . $gid . '">'
-                    . ($enabled_html ?: '<span class="text-muted">No permissions</span>') . '
-                    </div>
-                </div>
-                <div>
-                    <small class="text-muted d-block mb-1">Denied:</small>
-                    <div class="disabled-permissions" id="disabled-' . $gid . '">'
-                    . ($disabled_html ?: '<span class="text-muted">No restrictions</span>') . '
-                    </div>
-                </div>
-                ' . $hidden_fields . '
-            </div>
-        </td>
-        <td>
-            <span class="badge ' . $status_class . ' px-3 py-2">' . $inherited_text . '</span>
-        </td>
-        <td class="text-end pe-4">
-            <div class="btn-group btn-group-sm">' . $actions . '</div>
-        </td>';
+    return fm_perm_row($usergroup, $fid, $perms, $default_checked);
 }
-
-
-
-
-
-
-?>
-<script>
-// Character counter for description
-const descriptionField = document.getElementById('description');
-if (descriptionField) {
-    descriptionField.addEventListener('input', function() {
-        const charCount = this.value.length;
-        const charCountElement = document.getElementById('charCount');
-        if (charCountElement) {
-            charCountElement.textContent = charCount;
-        }
-        
-        if (charCount > 500) {
-            this.value = this.value.substring(0, 500);
-            if (charCountElement) {
-                charCountElement.textContent = 500;
-            }
-        }
-    });
-}
-
-// Update preview when parent forum changes
-const parentSelect = document.getElementById('pid');
-if (parentSelect) {
-    parentSelect.addEventListener('change', function() {
-        const preview = document.querySelector('.hierarchy-tree .tree-item.active span');
-        if (preview && this.value) {
-            preview.textContent = 'Selected: ' + this.options[this.selectedIndex].text;
-        } else if (preview) {
-            preview.textContent = 'Top Level (No Parent)';
-        }
-    });
-}
-</script>
-
-<?php

@@ -158,6 +158,15 @@ function deduct_kps_for_comments(array $user_ids): void
 // HTML generators
 // ---------------------------------------------------------------------------
 
+/**
+ * Стабильный цвет аватара-инициала по UID.
+ */
+function lc_avatar_color(int $uid): string
+{
+    $hue = ($uid * 47) % 360;
+    return "hsl({$hue} 55% 48%)";
+}
+
 function generateCommentsTable(
     mixed  $res,
     int    $total_comments,
@@ -190,95 +199,149 @@ function generateCommentsTable(
 
         $pid          = (int)$row['id'];
         $tid          = (int)$row['torrent'];
-        $seo_user     = $BASEURL . '/' . get_profile_link((int)$row['uid']);
+        $uid          = (int)($row['uid'] ?? 0);
+        $seo_user     = $BASEURL . '/' . get_profile_link($uid);
         $seo_torrent  = $BASEURL . '/' . get_torrent_link($tid);
         $comment_link = $BASEURL . '/' . get_comment_link($pid, $tid);
-        $torrent_name = htmlspecialchars($row['torrent_name'] ?? '');
-        $username_fmt = format_name(htmlspecialchars($row['username'] ?? ''), $row['usergroup']);
         $date_str     = my_datee($dateformat, (int)$row['dateline']);
         $time_str     = my_datee($timeformat, (int)$row['dateline']);
 
+        // Автор
+        if ($row['username'] !== null) {
+            $raw_name     = (string)$row['username'];
+            $initial      = htmlspecialchars(mb_strtoupper(mb_substr($raw_name, 0, 1)));
+            $av_color     = lc_avatar_color($uid);
+            $username_fmt = format_name(htmlspecialchars($raw_name), $row['usergroup']);
+            $user_html    = <<<HTML
+            <div class="lc-user">
+                <span class="lc-avatar" style="--lc-av:{$av_color}">{$initial}</span>
+                <a href="{$seo_user}" class="lc-user-name">{$username_fmt}</a>
+            </div>
+            HTML;
+        } else {
+            $user_html = '<div class="lc-user"><span class="lc-avatar lc-avatar-ghost"><i class="fa-solid fa-user-slash"></i></span>'
+                       . '<span class="text-body-secondary fst-italic">Deleted user</span></div>';
+        }
+
+        // Торрент
+        if ($row['torrent_name'] !== null) {
+            $torrent_name = htmlspecialchars($row['torrent_name']);
+            $torrent_html = <<<HTML
+            <a href="{$seo_torrent}" class="lc-torrent" title="{$torrent_name}">
+                <i class="fa-solid fa-magnet"></i><span>{$torrent_name}</span>
+            </a>
+            HTML;
+        } else {
+            $torrent_html = "<span class=\"lc-badge lc-soft-danger\"><i class=\"fa-solid fa-triangle-exclamation\"></i> Deleted torrent #{$tid}</span>";
+        }
+
+        // Отметка о редактировании
+        $edited_html = '';
+        $edited_at   = (int)($row['editedat'] ?? 0);
+        if ($edited_at > 0) {
+            $edited_str  = my_datee($dateformat, $edited_at) . ' ' . my_datee($timeformat, $edited_at);
+            $edited_html = "<div class=\"lc-edited\"><i class=\"fa-solid fa-pen\"></i> edited {$edited_str}</div>";
+        }
+
         $rows .= <<<HTML
         <tr data-comment-id="{$pid}">
-            <td>
-                <div class="form-check form-switch d-inline-block">
+            <td class="lc-col-check">
+                <div class="form-check form-switch m-0">
                     <input class="form-check-input comment-checkbox" type="checkbox" value="{$pid}" id="comment{$pid}">
                     <label class="form-check-label" for="comment{$pid}"></label>
                 </div>
             </td>
-            <td class="fw-bold">
-                <a href="{$comment_link}#pid{$pid}" target="_blank">{$pid} <i class="bi bi-link-45deg"></i></a>
-            </td>
-            <td><a href="{$seo_user}">{$username_fmt}</a></td>
-            <td><a href="{$seo_torrent}">{$torrent_name}</a></td>
-            <td class="comment-text">{$parsed_text}</td>
             <td>
-                <span class="small text-muted"><i class="bi bi-calendar me-1"></i>{$date_str}</span><br>
-                <span class="small text-muted"><i class="bi bi-clock me-1"></i>{$time_str}</span>
+                <a class="lc-id-pill" href="{$comment_link}#pid{$pid}" target="_blank" rel="noopener" title="Open comment in new tab">
+                    #{$pid} <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </a>
             </td>
-            <td class="text-center">
-                <button class="btn btn-sm p-1 me-2" style="background:none;border:none;"
-                        onclick="editComment({$pid})" title="Edit">
-                    <i class="fa-solid fa-pen-to-square fa-xl" style="color:#0658e5;"></i>
-                </button>
-                <button class="btn btn-sm p-1" style="background:none;border:none;"
-                        onclick="deleteComment({$pid})" title="Delete">
-                    <i class="fa-solid fa-trash-can fa-xl" style="color:#eb0f0f;"></i>
-                </button>
+            <td>{$user_html}</td>
+            <td>{$torrent_html}</td>
+            <td class="comment-text">
+                <div class="lc-comment">{$parsed_text}</div>
+                {$edited_html}
+            </td>
+            <td class="lc-date">
+                <div><i class="fa-regular fa-calendar"></i>{$date_str}</div>
+                <div><i class="fa-regular fa-clock"></i>{$time_str}</div>
+            </td>
+            <td class="text-end">
+                <div class="lc-row-actions">
+                    <button type="button" class="lc-icon-btn lc-edit" onclick="editComment({$pid})" title="Edit comment">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <button type="button" class="lc-icon-btn lc-delete" onclick="deleteComment({$pid})" title="Delete comment">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
             </td>
         </tr>
         HTML;
     }
 
-    $start   = $offset + 1;
-    $end     = min($offset + $limit, $total_comments);
+    $start      = number_format($offset + 1);
+    $end        = number_format(min($offset + $limit, $total_comments));
+    $total_fmt  = number_format($total_comments);
     $pagination = multipage($total_comments, $limit, $page, '#', false);
 
     return <<<HTML
-    <div class="card shadow-sm border-0 bg-white">
-        <div class="card-header bg-light d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Comments Management</h5>
-            <div>
-                <button class="btn btn-sm btn-warning me-2" data-bs-toggle="modal" data-bs-target="#moveCommentsModal">
-                    <i class="bi bi-arrow-left-right"></i> Move Comments
-                </button>
-                <button class="btn btn-sm btn-info me-2" data-bs-toggle="modal" data-bs-target="#copyCommentsModal">
-                    <i class="bi bi-copy"></i> Copy Comments
-                </button>
-                <button class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#mergeIntoOneModal">
-                    <i class="bi bi-union"></i> Merge Comments
-                </button>
-                <button id="bulkDeleteBtn" class="btn btn-sm btn-danger me-2" disabled>
-                    <i class="bi bi-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
-                </button>
-                <button id="selectAllBtn" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-check-all"></i> Select All
-                </button>
+    <div class="lc-card lc-table-card">
+        <div class="lc-card-head">
+            <div class="d-flex align-items-center gap-3">
+                <span class="lc-icon-sq sm lc-soft-primary"><i class="fa-solid fa-list-ul"></i></span>
+                <div>
+                    <h5 class="lc-card-title">Comments</h5>
+                    <div class="lc-card-sub">Newest first · page {$page} of {$total_pages}</div>
+                </div>
             </div>
+            <span class="lc-badge lc-soft-primary"><i class="fa-solid fa-filter"></i> {$total_fmt} found</span>
         </div>
+
         <div class="table-responsive">
-            <table class="table table-striped table-hover align-middle mb-0">
-                <thead class="table-light">
+            <table class="table table-hover align-middle mb-0 lc-table">
+                <thead>
                     <tr>
-                        <th width="40">
-                            <div class="form-check form-switch d-inline-block">
-                                <input class="form-check-input" type="checkbox" id="selectAll">
+                        <th width="48">
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="selectAll" title="Select all on page">
                             </div>
                         </th>
-                        <th width="50">#</th>
-                        <th>User</th>
-                        <th>Torrent</th>
-                        <th>Comment</th>
-                        <th>Date</th>
-                        <th width="120" class="text-center">Actions</th>
+                        <th width="90"><i class="fa-solid fa-hashtag"></i> ID</th>
+                        <th><i class="fa-solid fa-user"></i> User</th>
+                        <th><i class="fa-solid fa-magnet"></i> Torrent</th>
+                        <th><i class="fa-solid fa-comment"></i> Comment</th>
+                        <th><i class="fa-regular fa-calendar"></i> Date</th>
+                        <th width="110" class="text-end"><i class="fa-solid fa-gear"></i> Actions</th>
                     </tr>
                 </thead>
                 <tbody>{$rows}</tbody>
             </table>
         </div>
+
+        <div class="lc-actionbar">
+            <button id="selectAllBtn" type="button" class="btn btn-sm lc-pill lc-btn-soft">
+                <i class="fa-solid fa-check-double"></i> Select All
+            </button>
+            <div class="lc-actionbar-group">
+                <button type="button" class="btn btn-sm lc-pill lc-btn-soft lc-warning" data-bs-toggle="modal" data-bs-target="#moveCommentsModal">
+                    <i class="fa-solid fa-right-left"></i> Move
+                </button>
+                <button type="button" class="btn btn-sm lc-pill lc-btn-soft lc-info" data-bs-toggle="modal" data-bs-target="#copyCommentsModal">
+                    <i class="fa-solid fa-copy"></i> Copy
+                </button>
+                <button type="button" class="btn btn-sm lc-pill lc-btn-soft lc-primary" data-bs-toggle="modal" data-bs-target="#mergeIntoOneModal">
+                    <i class="fa-solid fa-object-group"></i> Merge
+                </button>
+                <button id="bulkDeleteBtn" type="button" class="btn btn-sm lc-pill btn-danger" disabled>
+                    <i class="fa-solid fa-trash-can"></i> Delete Selected (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+        </div>
     </div>
-    <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
-        <div class="text-muted small">Showing <b>{$start}</b> – <b>{$end}</b> of <b>{$total_comments}</b> comments</div>
+
+    <div class="lc-pager">
+        <div><i class="fa-solid fa-layer-group"></i> Showing <b>{$start}</b> – <b>{$end}</b> of <b>{$total_fmt}</b> comments</div>
         {$pagination}
     </div>
     HTML;
@@ -360,9 +423,10 @@ if ($action === 'list') {
     $total_pages    = max(1, (int)ceil($total_comments / $limit));
 
     if ($total_comments === 0) {
-        echo '<div class="text-center py-5">
-            <i class="fa-regular fa-comments fa-4x text-muted mb-4"></i>
-            <h4 class="text-muted">No comments found</h4>
+        echo '<div class="lc-card lc-empty">
+            <span class="lc-icon-sq xl lc-soft-secondary"><i class="fa-regular fa-comments"></i></span>
+            <h4 class="lc-card-title">No comments found</h4>
+            <p class="lc-card-sub mb-0">Try changing or resetting the filters.</p>
         </div>';
         exit;
     }
@@ -855,225 +919,325 @@ json_exit(['error' => 'Unknown action'], 400);
 // ---------------------------------------------------------------------------
 render_page:
 
+// ── KPI-статистика (до stdhead — ничего не выводим) ─────────────────────────
+$lc_q = $db->sql_query_prepared(
+    'SELECT COUNT(*) AS total,
+            SUM(dateline >= ?) AS today,
+            SUM(dateline >= ?) AS week,
+            COUNT(DISTINCT CASE WHEN dateline >= ? THEN user END) AS authors
+     FROM comments',
+    [(int)strtotime('today'), TIMENOW - 7 * 86400, TIMENOW - 30 * 86400]
+);
+$lc_stats = ($lc_q ? $db->fetch_array($lc_q) : null) ?: [];
+$lc_kpis  = [
+    ['Total comments',       (int)($lc_stats['total']   ?? 0), 'fa-comments',    'primary'],
+    ['Today',                (int)($lc_stats['today']   ?? 0), 'fa-calendar-day', 'success'],
+    ['Last 7 days',          (int)($lc_stats['week']    ?? 0), 'fa-chart-line',  'info'],
+    ['Active authors (30d)', (int)($lc_stats['authors'] ?? 0), 'fa-user-pen',    'warning'],
+];
+
+// BBCode-панель: [open, close, icon-html, title]; null = разделитель
+$bbcode_buttons = [
+    ['[b]', '[/b]', '<i class="fa-solid fa-bold"></i>', 'Bold'],
+    ['[i]', '[/i]', '<i class="fa-solid fa-italic"></i>', 'Italic'],
+    ['[u]', '[/u]', '<i class="fa-solid fa-underline"></i>', 'Underline'],
+    ['[s]', '[/s]', '<i class="fa-solid fa-strikethrough"></i>', 'Strikethrough'],
+    null,
+    ['[left]', '[/left]', '<i class="fa-solid fa-align-left"></i>', 'Align left'],
+    ['[center]', '[/center]', '<i class="fa-solid fa-align-center"></i>', 'Align center'],
+    ['[right]', '[/right]', '<i class="fa-solid fa-align-right"></i>', 'Align right'],
+    null,
+    ['[color=red]', '[/color]', '<i class="fa-solid fa-palette lc-bb-red"></i>', 'Red color'],
+    ['[size=18]', '[/size]', '<i class="fa-solid fa-text-height"></i>', 'Font size'],
+    null,
+    ['[url]', '[/url]', '<i class="fa-solid fa-link"></i>', 'Link'],
+    ['[email]', '[/email]', '<i class="fa-solid fa-envelope"></i>', 'E-mail'],
+    ['[img]', '[/img]', '<i class="fa-solid fa-image"></i>', 'Image'],
+    ['[video]', '[/video]', '<i class="fa-solid fa-film"></i>', 'Video'],
+    ['[youtube]', '[/youtube]', '<i class="fa-brands fa-youtube lc-bb-red"></i>', 'YouTube'],
+    null,
+    ['[quote]', '[/quote]', '<i class="fa-solid fa-quote-right"></i>', 'Quote'],
+    ['[code]', '[/code]', '<i class="fa-solid fa-code"></i>', 'Code'],
+    ['[php]', '[/php]', '<i class="fa-brands fa-php"></i>', 'PHP code'],
+    ['[nfo]', '[/nfo]', '<i class="fa-solid fa-file-lines"></i>', 'NFO'],
+    ['[spoiler]', '[/spoiler]', '<i class="fa-solid fa-eye-slash"></i>', 'Spoiler'],
+    null,
+    ["[list]\n[*]", "\n[/list]", '<i class="fa-solid fa-list-ul"></i>', 'Bulleted list'],
+    ["[list=1]\n[*]", "\n[/list]", '<i class="fa-solid fa-list-ol"></i>', 'Numbered list'],
+    ['[*]', '', '<i class="fa-solid fa-asterisk"></i>', 'List item'],
+];
+
 stdhead('Comments Admin');
 ?>
+<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/admin/templates/latest-comments.css?v=1.0">
 
-<div class="container mt-4">
-    <h1 class="mb-4 text-dark"><i class="bi bi-chat-text"></i> Comments Admin</h1>
+<div class="lc-page">
+<div class="container mt-4 mb-5">
+
+    <!-- Заголовок -->
+    <div class="lc-card lc-header">
+        <span class="lc-icon-sq lg lc-soft-primary"><i class="fa-solid fa-comments"></i></span>
+        <div>
+            <h1 class="lc-title">Comments Admin</h1>
+            <p class="lc-subtitle">Moderate, edit, move, copy and merge comments across all torrents</p>
+        </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="lc-kpis">
+        <?php foreach ($lc_kpis as [$label, $value, $icon, $tone]): ?>
+        <div class="lc-card lc-kpi">
+            <span class="lc-icon-sq lc-soft-<?= $tone ?>"><i class="fa-solid <?= $icon ?>"></i></span>
+            <div>
+                <div class="lc-kpi-value"><?= number_format($value) ?></div>
+                <div class="lc-kpi-label"><?= $label ?></div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
 
     <!-- Фильтры -->
-    <div class="card mb-4 shadow-sm">
-        <div class="card-body">
-            <form id="filterForm" class="row g-3">
-                <div class="col-md-3">
-                    <label for="username" class="form-label">Username</label>
+    <div class="lc-card lc-filters">
+        <form id="filterForm" class="row g-3">
+            <div class="col-md-3">
+                <label for="username" class="form-label"><i class="fa-solid fa-user"></i> Username</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
                     <input type="text" class="form-control" id="username" name="username" placeholder="Search by user…">
                 </div>
-                <div class="col-md-3">
-                    <label for="torrent" class="form-label">Torrent</label>
+            </div>
+            <div class="col-md-3">
+                <label for="torrent" class="form-label"><i class="fa-solid fa-magnet"></i> Torrent</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                     <input type="text" class="form-control" id="torrent" name="torrent" placeholder="Search by torrent…">
                 </div>
-                <div class="col-md-2">
-                    <label for="date_from" class="form-label">Date From</label>
-                    <input type="date" class="form-control" id="date_from" name="date_from">
-                </div>
-                <div class="col-md-2">
-                    <label for="date_to" class="form-label">Date To</label>
-                    <input type="date" class="form-control" id="date_to" name="date_to">
-                </div>
-                <div class="col-md-2 d-flex align-items-end gap-2">
-                    <button type="submit" class="btn btn-primary flex-grow-1">
-                        <i class="bi bi-search"></i> Filter
-                    </button>
-                    <button type="button" id="resetFilters" class="btn btn-outline-secondary">
-                        <i class="bi bi-arrow-counterclockwise"></i>
-                    </button>
-                </div>
-            </form>
-        </div>
+            </div>
+            <div class="col-md-2">
+                <label for="date_from" class="form-label"><i class="fa-regular fa-calendar"></i> Date From</label>
+                <input type="date" class="form-control" id="date_from" name="date_from">
+            </div>
+            <div class="col-md-2">
+                <label for="date_to" class="form-label"><i class="fa-regular fa-calendar-check"></i> Date To</label>
+                <input type="date" class="form-control" id="date_to" name="date_to">
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-2">
+                <button type="submit" class="btn btn-primary lc-pill flex-grow-1">
+                    <i class="fa-solid fa-filter"></i> Filter
+                </button>
+                <button type="button" id="resetFilters" class="btn lc-pill lc-btn-soft lc-secondary" title="Reset filters">
+                    <i class="fa-solid fa-rotate-left"></i>
+                </button>
+            </div>
+        </form>
     </div>
 
     <!-- Таблица -->
     <div id="comments-table" class="fade-in">
-        <div class="text-center py-5">
+        <div class="lc-card lc-empty">
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading…</span>
             </div>
-            <p class="mt-2 text-muted">Loading comments…</p>
+            <p class="lc-card-sub mt-3 mb-0">Loading comments…</p>
         </div>
     </div>
 </div>
 
 <!-- Move Modal -->
-<div class="modal fade" id="moveCommentsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content shadow-sm">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title">Move Selected Comments</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+<div class="modal fade lc-modal" id="moveCommentsModal" tabindex="-1" aria-labelledby="moveCommentsTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="lc-icon-sq lc-soft-warning"><i class="fa-solid fa-right-left"></i></span>
+                    <div>
+                        <h5 class="modal-title" id="moveCommentsTitle">Move Selected Comments</h5>
+                        <div class="lc-card-sub">Reassign comments to another torrent</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <label for="targetTorrent" class="form-label">Target Torrent ID</label>
-                <input type="number" class="form-control" id="targetTorrent" placeholder="Enter target torrent ID">
-                <div class="alert alert-info small mt-3">
-                    <strong>Selected:</strong> <span id="moveSelectedCount">0</span> comments.<br>
-                    This action cannot be undone.
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-magnet"></i></span>
+                    <input type="number" class="form-control" id="targetTorrent" placeholder="Enter target torrent ID">
+                </div>
+                <div class="lc-note lc-soft-warning">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <div><strong>Selected:</strong> <span id="moveSelectedCount">0</span> comments.<br>This action cannot be undone.</div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button id="confirmMoveBtn" type="button" class="btn btn-warning">Move Comments</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button id="confirmMoveBtn" type="button" class="btn btn-warning lc-pill">
+                    <i class="fa-solid fa-right-left"></i> Move Comments
+                </button>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Copy Modal -->
-<div class="modal fade" id="copyCommentsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content shadow-sm">
-            <div class="modal-header bg-info text-dark">
-                <h5 class="modal-title">Copy Selected Comments</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+<div class="modal fade lc-modal" id="copyCommentsModal" tabindex="-1" aria-labelledby="copyCommentsTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="lc-icon-sq lc-soft-info"><i class="fa-solid fa-copy"></i></span>
+                    <div>
+                        <h5 class="modal-title" id="copyCommentsTitle">Copy Selected Comments</h5>
+                        <div class="lc-card-sub">Duplicate comments with attachments</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <label for="copyTargetTorrent" class="form-label">Target Torrent ID</label>
-                <input type="number" class="form-control" id="copyTargetTorrent" placeholder="Enter target torrent ID">
-                <div class="alert alert-info small mt-3">
-                    <strong>Selected:</strong> <span id="copySelectedCount">0</span> comments.<br>
-                    Originals remain intact.
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-magnet"></i></span>
+                    <input type="number" class="form-control" id="copyTargetTorrent" placeholder="Enter target torrent ID">
+                </div>
+                <div class="lc-note lc-soft-info">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <div><strong>Selected:</strong> <span id="copySelectedCount">0</span> comments.<br>Originals remain intact.</div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button id="confirmCopyBtn" type="button" class="btn btn-info">Copy Comments</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button id="confirmCopyBtn" type="button" class="btn btn-info lc-pill">
+                    <i class="fa-solid fa-copy"></i> Copy Comments
+                </button>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Merge Into One Modal -->
-<div class="modal fade" id="mergeIntoOneModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content shadow-sm">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">Merge Selected Comments Into One</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div class="modal fade lc-modal" id="mergeIntoOneModal" tabindex="-1" aria-labelledby="mergeIntoOneTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="lc-icon-sq lc-soft-primary"><i class="fa-solid fa-object-group"></i></span>
+                    <div>
+                        <h5 class="modal-title" id="mergeIntoOneTitle">Merge Into One Comment</h5>
+                        <div class="lc-card-sub">Join selected texts chronologically</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <label for="mergeTargetTorrent" class="form-label">Target Torrent ID</label>
-                <input type="number" class="form-control" id="mergeTargetTorrent" placeholder="Enter target torrent ID">
-                <div class="alert alert-primary small mt-3">
-                    <strong>Selected:</strong> <span id="mergeIntoOneSelectedCount">0</span> comments.<br>
-                    Texts are joined in chronological order into a single new comment on the target torrent;
-                    the author of the earliest selected comment becomes the author of the merged comment.
-                    Originals are deleted. This action cannot be undone.
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-magnet"></i></span>
+                    <input type="number" class="form-control" id="mergeTargetTorrent" placeholder="Enter target torrent ID">
+                </div>
+                <div class="lc-note lc-soft-primary">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <div>
+                        <strong>Selected:</strong> <span id="mergeIntoOneSelectedCount">0</span> comments.<br>
+                        Texts are joined in chronological order into a single new comment on the target torrent;
+                        the author of the earliest selected comment becomes the author of the merged comment.
+                        Originals are deleted. This action cannot be undone.
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button id="confirmMergeIntoOneBtn" type="button" class="btn btn-primary">Merge Comments</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button id="confirmMergeIntoOneBtn" type="button" class="btn btn-primary lc-pill">
+                    <i class="fa-solid fa-object-group"></i> Merge Comments
+                </button>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Edit Modal -->
-<div class="modal fade" id="editCommentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content shadow-sm rounded-3 border-0">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">Edit Comment</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div class="modal fade lc-modal" id="editCommentModal" tabindex="-1" aria-labelledby="editCommentTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="lc-icon-sq lc-soft-primary"><i class="fa-solid fa-pen-to-square"></i></span>
+                    <div>
+                        <h5 class="modal-title" id="editCommentTitle">Edit Comment</h5>
+                        <div class="lc-card-sub">BBCode supported · live preview below</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-2 d-flex flex-wrap gap-1">
+                <div class="lc-bb-toolbar">
                     <?php
-                    $bbcode_buttons = [
-                        ['[b]','[/b]','<b>B</b>'], ['[i]','[/i]','<i>I</i>'],
-                        ['[u]','[/u]','<u>U</u>'], ['[s]','[/s]','<s>S</s>'],
-                        ['[left]','[/left]','Left'], ['[center]','[/center]','Center'],
-                        ['[right]','[/right]','Right'], ['[color=red]','[/color]','Red'],
-                        ['[size=18]','[/size]','Size'], ['[url]','[/url]','URL'],
-                        ['[email]','[/email]','Email'],
-                        ['[img]','[/img]','IMG'], ['[video]','[/video]','Video'],
-                        ['[youtube]','[/youtube]','YouTube'], ['[quote]','[/quote]','Quote'],
-                        ['[code]','[/code]','Code'], ['[php]','[/php]','PHP'],
-                        ['[nfo]','[/nfo]','NFO'], ['[spoiler]','[/spoiler]','Spoiler'],
-                        ["[list]\n[*]","\n[/list]",'<i class="fas fa-list-ul"></i>'],
-                        ["[list=1]\n[*]","\n[/list]",'<i class="fas fa-list-ol"></i>'],
-                        ['[*]','','[*]'],
-                    ];
-                    foreach ($bbcode_buttons as [$open, $close, $label]) {
+                    foreach ($bbcode_buttons as $btn) {
+                        if ($btn === null) {
+                            echo "<span class=\"lc-bb-sep\"></span>\n";
+                            continue;
+                        }
+                        [$open, $close, $icon, $title] = $btn;
                         // Переносы строк ([list]/[*]) нужно экранировать как
                         // \n именно для JS-строки внутри onclick - буквальный
                         // перенос строки внутри '...' сломал бы синтаксис JS.
-                        $open_js   = str_replace("\n", '\\n', $open);
-                        $close_js  = str_replace("\n", '\\n', $close);
-                        $open_esc  = htmlspecialchars($open_js,  ENT_QUOTES);
-                        $close_esc = htmlspecialchars($close_js, ENT_QUOTES);
-                        echo "<button class=\"btn btn-sm btn-light\" onclick=\"wrapBBCode('{$open_esc}','{$close_esc}')\">{$label}</button>\n";
+                        $open_esc  = htmlspecialchars(str_replace("\n", '\\n', $open),  ENT_QUOTES);
+                        $close_esc = htmlspecialchars(str_replace("\n", '\\n', $close), ENT_QUOTES);
+                        $title_esc = htmlspecialchars($title, ENT_QUOTES);
+                        echo "<button type=\"button\" class=\"lc-bb\" title=\"{$title_esc}\" aria-label=\"{$title_esc}\" onclick=\"wrapBBCode('{$open_esc}','{$close_esc}')\">{$icon}</button>\n";
                     }
                     ?>
-                    <button type="button" class="btn btn-sm btn-light" id="torrentPanelToggle">
+                    <span class="lc-bb-sep"></span>
+                    <button type="button" class="lc-bb lc-bb-wide" id="torrentPanelToggle" title="Insert torrent">
                         <i class="fa-solid fa-magnet"></i> Torrent
                     </button>
                 </div>
 
                 <!-- Встроенная панель вставки торрента - скрыта, пока не нажата кнопка "Torrent".
                      initTorrentTagPanel() (comments-admin.js) уже слушает эти ID сама. -->
-                <div id="torrentPanel" class="border rounded p-2 mb-2 d-none">
-                    <label class="form-label small mb-1">Torrent ID or URL</label>
+                <div id="torrentPanel" class="lc-torrent-panel d-none">
+                    <label for="torrentIdInput" class="form-label"><i class="fa-solid fa-magnet"></i> Torrent ID or URL</label>
                     <div class="input-group input-group-sm">
                         <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput" placeholder="e.g. 17 or paste the torrent link">
-                        <button type="button" class="btn btn-primary" id="insertTorrentBtn">Insert</button>
+                        <button type="button" class="btn btn-primary" id="insertTorrentBtn"><i class="fa-solid fa-plus"></i> Insert</button>
                     </div>
                     <div id="torrentPreview" class="mt-2"></div>
                 </div>
 
-                <textarea id="editCommentText" class="form-control mb-3" rows="6" placeholder="Edit your comment…"></textarea>
-                <h6>Live Preview</h6>
-                <div id="bbcodePreview" class="border p-2 bg-light rounded" style="min-height:100px;"></div>
+                <textarea id="editCommentText" class="form-control lc-editor" rows="7" placeholder="Edit your comment…"></textarea>
+
+                <div class="lc-preview-label"><i class="fa-solid fa-eye"></i> Live Preview</div>
+                <div id="bbcodePreview" class="lc-preview"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button id="confirmEditComment" type="button" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button id="confirmEditComment" type="button" class="btn btn-primary lc-pill">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                </button>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-(function () {
-    const toggleBtn = document.getElementById('torrentPanelToggle');
-    const panel = document.getElementById('torrentPanel');
-    if (toggleBtn && panel) {
-        toggleBtn.addEventListener('click', function () {
-            panel.classList.toggle('d-none');
-            if (!panel.classList.contains('d-none')) {
-                const input = document.getElementById('torrentIdInput');
-                if (input) input.focus();
-            }
-        });
-    }
-})();
-</script>
-
 <!-- Bulk Delete Confirm Modal -->
-<div class="modal fade" id="confirmBulkDeleteModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade lc-modal" id="confirmBulkDeleteModal" tabindex="-1" aria-labelledby="bulkDeleteTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content shadow-sm">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Confirm Deletion</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="lc-icon-sq lc-soft-danger"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    <div>
+                        <h5 class="modal-title" id="bulkDeleteTitle">Confirm Deletion</h5>
+                        <div class="lc-card-sub">Attachments will be removed too</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p id="bulkDeleteMessage">Are you sure you want to delete the selected comments?</p>
+                <p id="bulkDeleteMessage" class="mb-0">Are you sure you want to delete the selected comments?</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button id="confirmBulkDeleteBtn" type="button" class="btn btn-danger">
-                    <i class="bi bi-trash"></i> Yes, Delete
+                <button type="button" class="btn lc-pill lc-btn-soft lc-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button id="confirmBulkDeleteBtn" type="button" class="btn btn-danger lc-pill">
+                    <i class="fa-solid fa-trash-can"></i> Yes, Delete
                 </button>
             </div>
         </div>
@@ -1082,18 +1246,16 @@ stdhead('Comments Admin');
 
 <!-- Toast -->
 <div id="toastContainer" class="position-fixed top-0 end-0 p-3" style="z-index:1100;"></div>
+</div><!-- /.lc-page -->
 
 
-<style>
-#selectAll, .comment-checkbox { transform: scale(1.2); cursor: pointer; }
-.table-active { background-color: rgba(0,123,255,.1) !important; }
-#bulkDeleteBtn:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,.1); }
-</style>
-
+<script src="<?= htmlspecialchars($BASEURL) ?>/scripts/sweetalert2.min.js"></script>
+<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/sweetalert2.min.css">
 <script src="<?= htmlspecialchars($BASEURL) ?>/scripts/toast.js"></script>
 <script>
     window.commentsBaseUrl = <?= json_encode($BASEURL) ?>;
 </script>
-<script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/comments-admin.js?v=1.1"></script>
+<script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/comments-admin.js?v=1.8"></script>
+<script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/latest-comments.js?v=1.0"></script>
 
 <?php stdfoot(); ?>

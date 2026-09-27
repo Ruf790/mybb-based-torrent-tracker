@@ -1,446 +1,428 @@
 <?php
 
-
 declare(strict_types=1);
 
-
 // Disallow direct access to this file for security reasons
-if(!defined("IN_MYBB"))
-{
+if (!defined("IN_MYBB")) {
     die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
 }
 
-// Initialize input parameters
 $mybb->input['action'] ??= '';
-$mybb->input['do'] ??= '';
+$mybb->input['do']     ??= '';
 $mybb->input['module'] ??= '';
-$mybb->input['title'] ??= '';
+$mybb->input['title']  ??= '';
 
 $plugins->run_hooks("admin_tools_cache_begin");
 
-switch($mybb->input['action']) {
-    case 'view':
-        handleCacheView();
-        break;
-        
+switch ($mybb->input['action']) {
+    case 'view':        handleCacheView();       break;
     case 'rebuild':
-    case 'reload':
-        handleCacheRebuild();
-        break;
-        
-    case 'rebuild_all':
-        handleCacheRebuildAll();
-        break;
-        
-    default:
-        handleCacheManager();
-        break;
+    case 'reload':      handleCacheRebuild();    break;
+    case 'rebuild_all': handleCacheRebuildAll(); break;
+    default:            handleCacheManager();    break;
+}
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+
+/** Короткие описания известных кэшей — чтобы было понятно, что это */
+function cacheDescription(string $title): string
+{
+    static $map = [
+        'settings'        => 'Board configuration settings',
+        'usergroups'      => 'User groups and their permissions',
+        'forums'          => 'Forum list and structure',
+        'forumpermissions'=> 'Per-forum group permissions',
+        'moderators'      => 'Forum moderators',
+        'attachtypes'     => 'Allowed attachment types',
+        'smilies'         => 'Smilies list',
+        'badwords'        => 'Word filters',
+        'bannedips'       => 'Banned IP addresses',
+        'bannedemails'    => 'Banned email addresses',
+        'birthdays'       => 'Upcoming birthdays',
+        'stats'           => 'Board statistics',
+        'statistics'      => 'Extended statistics',
+        'plugins'         => 'Active plugins',
+        'mycode'          => 'Custom MyCodes',
+        'posticons'       => 'Post icons',
+        'profilefields'   => 'Custom profile fields',
+        'reportedcontent' => 'Reported content counters',
+        'awaitingactivation' => 'Accounts awaiting activation',
+        'mostonline'      => 'Most users online record',
+        'spiders'         => 'Search engine spiders',
+        'tasks'           => 'Scheduled tasks',
+        'update_check'    => 'Version check result',
+        'version'         => 'Installed version',
+        'internal_settings' => 'Internal settings',
+        'threadprefixes'  => 'Thread prefixes',
+        'forumsdisplay'   => 'Forum display options',
+        'groupleaders'    => 'Group leaders',
+        'default_theme'   => 'Default theme',
+        'KPS'             => 'Karma / bonus points settings',
+    ];
+    return $map[$title] ?? '';
+}
+
+function cacheIcon(string $title): string
+{
+    static $map = [
+        'settings' => 'fa-sliders', 'usergroups' => 'fa-users', 'forums' => 'fa-comments', 'forumpermissions' => 'fa-shield-halved',
+        'moderators' => 'fa-user-shield', 'attachtypes' => 'fa-paperclip', 'smilies' => 'fa-face-smile', 'badwords' => 'fa-filter',
+        'bannedips' => 'fa-ban', 'bannedemails' => 'fa-envelope-circle-check', 'birthdays' => 'fa-cake-candles', 'stats' => 'fa-chart-simple',
+        'statistics' => 'fa-chart-line', 'plugins' => 'fa-plug', 'mycode' => 'fa-code', 'posticons' => 'fa-icons', 'profilefields' => 'fa-id-card',
+        'reportedcontent' => 'fa-flag', 'awaitingactivation' => 'fa-user-clock', 'mostonline' => 'fa-trophy', 'spiders' => 'fa-spider',
+        'tasks' => 'fa-clock', 'update_check' => 'fa-cloud-arrow-down', 'version' => 'fa-code-branch', 'threadprefixes' => 'fa-tag', 'KPS' => 'fa-coins',
+    ];
+    return $map[$title] ?? 'fa-database';
 }
 
 /**
- * Handle cache view action
+ * Какой метод перестроения доступен: ['rebuild'|'reload', callable-описание] или null.
+ * Раньше имя кэша из URL подставлялось в update_{title}() / reload_{title}() без
+ * проверки — можно было вызвать ЛЮБУЮ функцию с таким префиксом.
  */
+function cacheRebuildMethod(string $title): ?array
+{
+    global $cache;
+    if (!preg_match('/^[A-Za-z0-9_]+$/', $title)) return null;
+    if (method_exists($cache, "update_{$title}")) return ['rebuild', [$cache, "update_{$title}"]];
+    if (method_exists($cache, "reload_{$title}")) return ['reload',  [$cache, "reload_{$title}"]];
+    if (function_exists("update_{$title}"))       return ['rebuild', "update_{$title}"];
+    if (function_exists("reload_{$title}"))       return ['reload',  "reload_{$title}"];
+    return null;
+}
+
+function cacheExists(string $title): bool
+{
+    global $db;
+    if ($title === 'settings') return true;
+    $q = $db->sql_query_prepared("SELECT title FROM datacache WHERE title = ? LIMIT 1", [$title]);
+    return $q && $db->num_rows($q) > 0;
+}
+
+function cacheAssets(): void
+{
+    
+	global $BASEURL;
+	
+	echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/cache.css">';
+
+}
+
+// ═══════════════════════════════════════════════════════════
+// VIEW
+// ═══════════════════════════════════════════════════════════
+
 function handleCacheView(): void
 {
-    global $mybb, $db, $plugins;
-    
-    if(empty(trim($mybb->input['title'] ?? ''))) {
+    global $mybb, $plugins;
+
+    $title = trim((string)($mybb->input['title'] ?? ''));
+    if ($title === '') {
         flash_message('No cache specified', 'error');
         admin_redirect("index.php?act=cache");
     }
 
     $plugins->run_hooks("admin_tools_cache_view");
 
-    // Get cache item
-    $cacheItem = getCacheItem($mybb->input['title']);
-    
-    if(!$cacheItem) {
+    $cacheItem = getCacheItem($title);
+    if (!$cacheItem) {
         flash_message('Cache not found', 'error');
         admin_redirect("index.php?act=cache");
     }
 
-    // Process cache contents
-    $cacheContents = processCacheContents($cacheItem['cache']);
-
-    displayCacheView($cacheItem, $cacheContents);
+    displayCacheView($cacheItem, processCacheContents((string)$cacheItem['cache']));
 }
 
-/**
- * Get cache item data
- */
 function getCacheItem(string $title): ?array
 {
     global $db, $mybb;
-    
-    if($title === 'settings') {
+
+    if ($title === 'settings') {
         $cachedSettings = (array)$mybb->settings;
         unset($cachedSettings['internal']);
-        
-        return [
-            'title' => 'settings',
-            'cache' => my_serialize($cachedSettings)
-        ];
+        return ['title' => 'settings', 'cache' => my_serialize($cachedSettings)];
     }
-    
+
     $query = $db->sql_query_prepared("SELECT * FROM datacache WHERE title = ?", [$title]);
     return ($query ? $db->fetch_array($query) : null) ?: null;
 }
 
-/**
- * Process cache contents for display
- */
 function processCacheContents(string $cacheData): string
 {
     $cacheContents = native_unserialize($cacheData);
-    
-    if(empty($cacheContents)) {
-        return 'Cache is empty';
+    if (empty($cacheContents)) {
+        return '';
     }
-    
-    ob_start();
-    print_r($cacheContents);
-    $contents = htmlspecialchars_uni(ob_get_clean());
-    
-    return $contents;
+    return htmlspecialchars_uni(print_r($cacheContents, true));
 }
 
-/**
- * Display cache view
- */
 function displayCacheView(array $cacheItem, string $cacheContents): void
 {
-    stdhead();
-    
-    echo '
-    <div class="container mt-3">
-       
-            
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-primary text-white py-3">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="mb-0">
-                                <i class="fas fa-database me-2"></i>
-                                Cache: ' . htmlspecialchars_uni($cacheItem['title']) . '
-                            </h4>
-                            <a href="index.php?act=cache" class="btn btn-light btn-sm">
-                                <i class="fas fa-arrow-left me-1"></i> Back
-                            </a>
-                        </div>
-                    </div>
-                    <div class="card-body p-0">
-                        <div>
-                            <pre class="mb-0" style="font-size: 0.875rem; line-height: 1.4; max-height: 600px; overflow: auto;">' . $cacheContents . '</pre>
-                        </div>
-                    </div>
-                </div>
-           
-        
-    </div>';
-    
+    global $mybb;
+
+    $title   = (string)$cacheItem['title'];
+    $titleE  = htmlspecialchars_uni($title);
+    $bytes   = strlen((string)$cacheItem['cache']);
+    $lines   = $cacheContents === '' ? 0 : substr_count($cacheContents, "\n") + 1;
+    $method  = cacheRebuildMethod($title) ?? ($title === 'settings' ? ['reload', null] : null);
+    $desc    = cacheDescription($title);
+
+    stdhead('Cache: ' . $title);
+    cacheAssets();
+
+    $rebuildBtn = $method
+        ? '<a href="index.php?act=cache&amp;action=' . $method[0] . '&amp;title=' . urlencode($title) . '&amp;my_post_key=' . $mybb->post_code . '" class="btn btn-sm btn-outline-warning px-3"><i class="fa-solid ' . ($method[0] === 'rebuild' ? 'fa-hammer' : 'fa-rotate') . ' me-1"></i>' . ucfirst($method[0]) . '</a>'
+        : '';
+
+    echo '<div class="container mt-3 mb-4 cc">';
+    echo '<div class="cc-card mb-3"><div class="cc-head">'
+       . '<span class="cc-head-icon ic-blue"><i class="fa-solid ' . cacheIcon($title) . '"></i></span>'
+       . '<div style="min-width:0"><h1 class="cc-title font-monospace">' . $titleE . '</h1>'
+       . '<div class="cc-sub">' . ($desc !== '' ? htmlspecialchars_uni($desc) . ' · ' : '') . mksize($bytes) . ' · ' . number_format($lines) . ' lines</div></div>'
+       . '<div class="ms-auto d-flex flex-wrap gap-2">' . $rebuildBtn
+       . '<a href="index.php?act=cache" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back</a></div>'
+       . '</div></div>';
+
+    echo '<div class="cc-card">';
+    if ($cacheContents === '') {
+        echo '<div class="cc-empty"><i class="fa-solid fa-box-open fa-2x mb-2 d-block opacity-50"></i>This cache is empty</div>';
+    } else {
+        echo '<div class="cc-toolbar">'
+           . '<div class="position-relative cc-search flex-grow-1"><i class="fa-solid fa-magnifying-glass"></i>'
+           . '<input type="search" class="form-control form-control-sm" id="ccFind" placeholder="Highlight text…"></div>'
+           . '<span class="cc-muted" id="ccHits"></span>'
+           . '<div class="d-flex gap-2">'
+           . '<button type="button" class="btn btn-sm btn-outline-secondary" id="ccWrap"><i class="fa-solid fa-text-width me-1"></i>Wrap</button>'
+           . '<button type="button" class="btn btn-sm btn-outline-secondary" id="ccCopy"><i class="fa-regular fa-copy me-1"></i>Copy</button>'
+           . '</div></div>';
+        echo '<pre class="cc-pre" id="ccPre">' . $cacheContents . '</pre>';
+    }
+    echo '</div></div>';
+
+    echo <<<'HTML'
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const pre = document.getElementById('ccPre');
+    if (!pre) return;
+    const original = pre.textContent;
+    const find = document.getElementById('ccFind'), hits = document.getElementById('ccHits');
+    const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    let t;
+    find.addEventListener('input', function () {
+        clearTimeout(t);
+        t = setTimeout(function () {
+            const q = find.value;
+            if (!q) { pre.textContent = original; hits.textContent = ''; return; }
+            const parts = original.split(q);
+            pre.innerHTML = parts.map(esc).join('<mark>' + esc(q) + '</mark>');
+            hits.textContent = (parts.length - 1) + ' match(es)';
+            pre.querySelector('mark')?.scrollIntoView({ block: 'center' });
+        }, 200);
+    });
+    document.getElementById('ccWrap').addEventListener('click', function () {
+        pre.classList.toggle('is-wrap'); this.classList.toggle('active');
+    });
+    document.getElementById('ccCopy').addEventListener('click', function () {
+        navigator.clipboard?.writeText(original).then(() => {
+            this.innerHTML = '<i class="fa-solid fa-check me-1"></i>Copied';
+            setTimeout(() => { this.innerHTML = '<i class="fa-regular fa-copy me-1"></i>Copy'; }, 1500);
+        });
+    });
+});
+</script>
+HTML;
+
     stdfoot();
 }
 
-/**
- * Handle cache rebuild/reload actions
- */
+// ═══════════════════════════════════════════════════════════
+// REBUILD
+// ═══════════════════════════════════════════════════════════
+
 function handleCacheRebuild(): void
 {
-    global $mybb, $cache, $plugins;
-    
-    $title = $mybb->input['title'] ?? '';
-    $action = $mybb->input['action'];
-    
-    if(empty($title)) {
-        flash_message('No cache specified', 'error');
+    global $mybb, $plugins;
+
+    $title  = (string)($mybb->input['title'] ?? '');
+    $action = $mybb->input['action'] === 'rebuild' ? 'rebuild' : 'reload';
+
+    // Раньше ключ my_post_key передавался в ссылке, но НЕ проверялся — перестроение
+    // запускалось любой GET-ссылкой (CSRF)
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        flash_message('Invalid security token', 'error');
+        admin_redirect("index.php?act=cache");
+    }
+    if ($title === '' || !cacheExists($title)) {
+        flash_message('No such cache', 'error');
         admin_redirect("index.php?act=cache");
     }
 
     $plugins->run_hooks("admin_tools_cache_{$action}");
 
-    // Handle settings cache separately
-    if($title === 'settings') {
+    if ($title === 'settings') {
         rebuild_settings();
         $plugins->run_hooks("admin_tools_cache_rebuild_commit");
         log_admin_action($title);
-        flash_message('The cache has been reloaded successfully', 'success');
+        flash_message('The settings cache has been reloaded', 'success');
         admin_redirect("index.php?act=cache");
     }
 
-    // Try different rebuild methods (как в оригинале)
-    if(method_exists($cache, "update_{$title}")) {
-        $func = "update_{$title}";
-        $cache->$func();
-    }
-    elseif(method_exists($cache, "reload_{$title}")) {
-        $func = "reload_{$title}";
-        $cache->$func();
-    }
-    elseif(function_exists("update_{$title}")) {
-        $func = "update_{$title}";
-        $func();
-    }
-    elseif(function_exists("reload_{$title}")) {
-        $func = "reload_{$title}";
-        $func();
-    }
-    else {
+    $method = cacheRebuildMethod($title);
+    if (!$method) {
         flash_message('This cache cannot be rebuilt', 'error');
         admin_redirect("index.php?act=cache");
     }
+    call_user_func($method[1]);
 
     $plugins->run_hooks("admin_tools_cache_rebuild_commit");
     log_admin_action($title);
-    flash_message('The cache has been ' . ($action === 'rebuild' ? 'rebuilt' : 'reloaded') . ' successfully', 'success');
+    flash_message('Cache “' . $title . '” has been ' . ($method[0] === 'rebuild' ? 'rebuilt' : 'reloaded'), 'success');
     admin_redirect("index.php?act=cache");
 }
 
-/**
- * Handle rebuild all caches action
- */
 function handleCacheRebuildAll(): void
 {
-    global $db, $cache, $plugins, $mybb;
-    
-    if(!verify_post_check($mybb->get_input('my_post_key'))) {
+    global $db, $plugins, $mybb;
+
+    if ($mybb->request_method !== 'post' || !verify_post_check($mybb->get_input('my_post_key'), true)) {
         flash_message('Invalid security token', 'error');
         admin_redirect("index.php?act=cache");
     }
 
     $plugins->run_hooks("admin_tools_cache_rebuild_all");
 
-    // Rebuild all datacache items (как в оригинале)
-    $query = $db->sql_query_prepared("SELECT * FROM datacache");
-    while($query && ($cacheitem = $db->fetch_array($query))) {
-        if(method_exists($cache, "update_{$cacheitem['title']}")) {
-            $func = "update_{$cacheitem['title']}";
-            $cache->$func();
-        }
-        elseif(method_exists($cache, "reload_{$cacheitem['title']}")) {
-            $func = "reload_{$cacheitem['title']}";
-            $cache->$func();
-        }
-        elseif(function_exists("update_{$cacheitem['title']}")) {
-            $func = "update_{$cacheitem['title']}";
-            $func();
-        }
-        elseif(function_exists("reload_{$cacheitem['title']}")) {
-            $func = "reload_{$cacheitem['title']}";
-            $func();
+    $done = 0;
+    $query = $db->sql_query_prepared("SELECT title FROM datacache");
+    while ($query && ($row = $db->fetch_array($query))) {
+        if ($method = cacheRebuildMethod((string)$row['title'])) {
+            call_user_func($method[1]);
+            $done++;
         }
     }
-
-    // Rebuild settings
     rebuild_settings();
 
     $plugins->run_hooks("admin_tools_cache_rebuild_all_commit");
     log_admin_action();
-    flash_message('All caches have been rebuilt successfully', 'success');
+    flash_message(($done + 1) . ' caches have been rebuilt', 'success');
     admin_redirect("index.php?act=cache");
 }
 
-/**
- * Display main cache manager
- */
+// ═══════════════════════════════════════════════════════════
+// LIST
+// ═══════════════════════════════════════════════════════════
+
 function handleCacheManager(): void
 {
-    global $db, $cache, $plugins, $mybb;
-    
+    global $db, $plugins, $mybb;
+
     $plugins->run_hooks("admin_tools_cache_start");
-    
-    stdhead();
-    
-    echo '
-    <div class="container mt-3">
-        <div class="row mb-4">
-            <div class="col">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-primary text-white py-3 rounded">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h4 class="mb-0">
-                                    <i class="fas fa-tachometer-alt me-2"></i>
-                                    Cache Manager
-                                </h4>
-                                <small class="opacity-75">Manage system caches</small>
-                            </div>
-                            <form method="post" action="index.php?act=cache&action=rebuild_all" class="mb-0">
-                                <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-                                <button type="submit" class="btn btn-warning" onclick="return confirm(\'Are you sure you want to rebuild all caches?\')">
-                                    <i class="fas fa-sync-alt me-1"></i> Rebuild All Caches
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row">
-            <div class="col">
-                <div class="card shadow-sm border-0">
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="ps-4">
-                                            <i class="fas fa-cube me-2"></i>Cache Name
-                                        </th>
-                                        <th class="text-center">
-                                            <i class="fas fa-weight-hanging me-2"></i>Size
-                                        </th>
-                                        <th class="text-center">
-                                            <i class="fas fa-cogs me-2"></i>Controls
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>';
-    
-    // Display settings cache first
-    displaySettingsCacheRow();
-    
-    // Display other caches from database
-    $query = $db->sql_query_prepared("SELECT * FROM datacache ORDER BY title");
-    while($query && ($cacheitem = $db->fetch_array($query))) {
-        displayCacheRow($cacheitem);
+
+    $items = [];
+    $query = $db->sql_query_prepared("SELECT title, LENGTH(cache) AS bytes FROM datacache ORDER BY title");
+    while ($query && ($row = $db->fetch_array($query))) {
+        $items[] = ['title' => (string)$row['title'], 'bytes' => (int)$row['bytes']];
     }
-    
-    echo '
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>';
-    
+    $total   = array_sum(array_column($items, 'bytes'));
+    $max     = $items ? max(1, ...array_column($items, 'bytes')) : 1;
+    $largest = $items ? array_reduce($items, fn($c, $i) => ($c === null || $i['bytes'] > $c['bytes']) ? $i : $c) : null;
+    $rebuildable = count(array_filter($items, fn($i) => cacheRebuildMethod($i['title']) !== null)) + 1; // + settings
+
+    stdhead('Cache Manager');
+    cacheAssets();
+
+    echo '<div class="container mt-3 mb-4 cc">';
+    echo '<div class="cc-card mb-3"><div class="cc-head">'
+       . '<span class="cc-head-icon ic-teal"><i class="fa-solid fa-database"></i></span>'
+       . '<div><h1 class="cc-title">Cache Manager</h1><div class="cc-sub">Stored data caches — view contents or rebuild them from the database</div></div>'
+       . '<form method="post" action="index.php?act=cache&amp;action=rebuild_all" class="ms-auto mb-0" onsubmit="return confirm(\'Rebuild all ' . $rebuildable . ' caches now?\')">'
+       . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">'
+       . '<button type="submit" class="btn btn-warning px-3"><i class="fa-solid fa-arrows-rotate me-1"></i>Rebuild all</button></form>'
+       . '</div></div>';
+
+    echo '<div class="row g-3 mb-3">';
+    foreach ([
+        ['fa-layer-group',     'ic-blue',   'Caches',      number_format(count($items) + 1)],
+        ['fa-hard-drive',      'ic-green',  'Total size',  mksize($total)],
+        ['fa-hammer',          'ic-amber',  'Rebuildable', number_format($rebuildable)],
+        ['fa-weight-hanging',  'ic-purple', 'Largest',     $largest ? htmlspecialchars_uni($largest['title']) : '—'],
+    ] as [$ic, $cls, $label, $val]) {
+        echo '<div class="col-6 col-lg-3"><div class="cc-card cc-stat"><span class="cc-stat-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
+           . '<div style="min-width:0"><div class="cc-stat-label">' . $label . '</div><div class="cc-stat-value">' . $val . '</div></div></div></div>';
+    }
+    echo '</div>';
+
+    echo '<div class="cc-card overflow-hidden">'
+       . '<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-3 py-2 border-bottom">'
+       . '<span class="fw-bold"><i class="fa-solid fa-list me-2 text-body-secondary"></i>All caches</span>'
+       . '<div class="position-relative cc-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" class="form-control form-control-sm" id="ccFilter" placeholder="Filter caches…"></div>'
+       . '</div><div class="table-responsive"><table class="table cc-table"><thead><tr>'
+       . '<th><i class="fa-solid fa-cube"></i>Cache</th>'
+       . '<th><i class="fa-solid fa-weight-hanging"></i>Size</th>'
+       . '<th class="text-center"><i class="fa-solid fa-gears"></i>Rebuild</th>'
+       . '<th class="text-end"><i class="fa-solid fa-bolt"></i>Actions</th>'
+       . '</tr></thead><tbody>';
+
+    // settings — первым
+    echo cacheRow('settings', null, 1, ['reload', null], true);
+    foreach ($items as $it) {
+        echo cacheRow($it['title'], $it['bytes'], $max, cacheRebuildMethod($it['title']), false);
+    }
+    echo '<tr id="ccNoMatch" hidden><td colspan="4"><div class="cc-empty"><i class="fa-solid fa-magnifying-glass fa-2x mb-2 d-block opacity-50"></i>No matches</div></td></tr>';
+    echo '</tbody></table></div></div></div>';
+
+    echo <<<'HTML'
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const f = document.getElementById('ccFilter');
+    f && f.addEventListener('input', function () {
+        const q = f.value.trim().toLowerCase();
+        let shown = 0;
+        document.querySelectorAll('.cc .cc-table tbody tr[data-search]').forEach(tr => {
+            const ok = !q || tr.dataset.search.includes(q);
+            tr.hidden = !ok; if (ok) shown++;
+        });
+        document.getElementById('ccNoMatch').hidden = shown !== 0;
+    });
+});
+</script>
+HTML;
+
     stdfoot();
 }
 
-/**
- * Display settings cache row
- */
-function displaySettingsCacheRow(): void
+function cacheRow(string $title, ?int $bytes, int $max, ?array $method, bool $isSettings): string
 {
     global $mybb;
-    
-    echo '
-    <tr>
-        <td class="ps-4">
-            <div class="d-flex align-items-center">
-                <i class="fas fa-cogs text-success me-3"></i>
-                <div>
-                    <a href="index.php?act=cache&action=view&title=settings" 
-                       class="fw-bold text-decoration-none text-dark">
-                       settings
-                    </a>
-                    <br>
-                    <small class="text-muted">Forum configuration settings</small>
-                </div>
-            </div>
-        </td>
-        <td class="text-center">
-            <span class="badge bg-secondary">N/A</span>
-        </td>
-        <td class="text-center">
-            <a href="index.php?act=cache&action=view&title=settings" 
-               class="btn btn-sm btn-outline-primary me-1" 
-               title="View Cache">
-               <i class="fas fa-eye"></i>
-            </a>
-            <a href="index.php?act=cache&action=reload&title=settings&my_post_key=' . $mybb->post_code . '" 
-               class="btn btn-sm btn-outline-info" 
-               title="Reload Cache">
-               <i class="fas fa-sync-alt"></i>
-            </a>
-        </td>
-    </tr>';
-}
 
-/**
- * Display cache table row
- */
-function displayCacheRow(array $cacheitem): void
-{
-    global $cache, $mybb;
-    
-    $size = mksize(strlen($cacheitem['cache']));
-    $controls = getCacheControls($cacheitem['title']);
-    
-    echo '
-    <tr>
-        <td class="ps-4">
-            <div class="d-flex align-items-center">
-                <i class="fas fa-database text-primary me-3"></i>
-                <div>
-                    <a href="index.php?act=cache&action=view&title=' . urlencode($cacheitem['title']) . '" 
-                       class="fw-bold text-decoration-none text-dark">
-                       ' . htmlspecialchars_uni($cacheitem['title']) . '
-                    </a>
-                </div>
-            </div>
-        </td>
-        <td class="text-center">
-            <span class="badge bg-secondary">' . $size . '</span>
-        </td>
-        <td class="text-center">
-            ' . $controls . '
-        </td>
-    </tr>';
-}
+    $t    = htmlspecialchars_uni($title);
+    $u    = urlencode($title);
+    $desc = cacheDescription($title);
+    $cls  = $isSettings ? 'ic-green' : 'ic-blue';
+    $pct  = $bytes !== null ? (int)round($bytes / $max * 100) : 0;
 
-/**
- * Get cache control buttons (сохраняем логику оригинала)
- */
-function getCacheControls(string $title): string
-{
-    global $cache, $mybb;
-    
-    $controls = [];
-    
-    // View button (always available)
-    $controls[] = '
-    <a href="index.php?act=cache&action=view&title=' . urlencode($title) . '" 
-       class="btn btn-sm btn-outline-primary me-1" 
-       title="View Cache">
-       <i class="fas fa-eye"></i>
-    </a>';
-    
-    // Rebuild/Reload buttons (только если методы существуют - как в оригинале)
-    if(method_exists($cache, "update_{$title}")) {
-        $controls[] = '
-        <a href="index.php?act=cache&action=rebuild&title=' . urlencode($title) . '&my_post_key=' . $mybb->post_code . '" 
-           class="btn btn-sm btn-outline-warning" 
-           title="Rebuild Cache">
-           <i class="fas fa-hammer"></i>
-        </a>';
+    $size = $bytes === null
+        ? '<span class="cc-muted">live</span>'
+        : '<span class="cc-size">' . mksize($bytes) . '</span><div class="cc-bar' . ($pct >= 50 ? ' is-big' : '') . '" style="max-width:140px"><span style="width:' . max(2, $pct) . '%"></span></div>';
+
+    $tag = $method === null
+        ? '<span class="cc-tag t-static"><i class="fa-solid fa-lock"></i>static</span>'
+        : ($method[0] === 'rebuild'
+            ? '<span class="cc-tag t-rebuild"><i class="fa-solid fa-hammer"></i>rebuild</span>'
+            : '<span class="cc-tag t-reload"><i class="fa-solid fa-rotate"></i>reload</span>');
+
+    $actions = '<a href="index.php?act=cache&amp;action=view&amp;title=' . $u . '" class="cc-act" title="View contents"><i class="fa-solid fa-eye"></i></a>';
+    if ($method !== null) {
+        $actions .= '<a href="index.php?act=cache&amp;action=' . $method[0] . '&amp;title=' . $u . '&amp;my_post_key=' . $mybb->post_code . '" class="cc-act warn" title="' . ucfirst($method[0]) . '"><i class="fa-solid ' . ($method[0] === 'rebuild' ? 'fa-hammer' : 'fa-rotate') . '"></i></a>';
     }
-    elseif(method_exists($cache, "reload_{$title}")) {
-        $controls[] = '
-        <a href="index.php?act=cache&action=reload&title=' . urlencode($title) . '&my_post_key=' . $mybb->post_code . '" 
-           class="btn btn-sm btn-outline-info" 
-           title="Reload Cache">
-           <i class="fas fa-sync-alt"></i>
-        </a>';
-    }
-    elseif(function_exists("update_{$title}")) {
-        $controls[] = '
-        <a href="index.php?act=cache&action=rebuild&title=' . urlencode($title) . '&my_post_key=' . $mybb->post_code . '" 
-           class="btn btn-sm btn-outline-warning" 
-           title="Rebuild Cache">
-           <i class="fas fa-hammer"></i>
-        </a>';
-    }
-    elseif(function_exists("reload_{$title}")) {
-        $controls[] = '
-        <a href="index.php?act=cache&action=reload&title=' . urlencode($title) . '&my_post_key=' . $mybb->post_code . '" 
-           class="btn btn-sm btn-outline-info" 
-           title="Reload Cache">
-           <i class="fas fa-sync-alt"></i>
-        </a>';
-    }
-    // Если нет методов - оставляем пусто (как в оригинале)
-    
-    return implode('', $controls);
+
+    return '<tr data-search="' . htmlspecialchars_uni(strtolower($title . ' ' . $desc)) . '">'
+         . '<td><div class="d-flex align-items-center gap-3"><span class="cc-ico ' . $cls . '"><i class="fa-solid ' . cacheIcon($title) . '"></i></span>'
+         . '<div style="min-width:0"><a href="index.php?act=cache&amp;action=view&amp;title=' . $u . '" class="cc-name">' . $t . '</a>'
+         . ($desc !== '' ? '<div class="cc-muted">' . htmlspecialchars_uni($desc) . '</div>' : '') . '</div></div></td>'
+         . '<td>' . $size . '</td>'
+         . '<td class="text-center">' . $tag . '</td>'
+         . '<td class="text-end text-nowrap">' . $actions . '</td>'
+         . '</tr>';
 }

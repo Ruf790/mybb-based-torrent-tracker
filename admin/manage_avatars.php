@@ -1,60 +1,75 @@
 <?php
 
-
 declare(strict_types=1);
 
-if (!defined('IN_ADMIN_PANEL')) 
+if (!defined('IN_ADMIN_PANEL'))
 {
-    exit('<div class="alert alert-danger"><i class="fas fa-exclamation-triangle"></i> <strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
+    exit('<div class="alert alert-danger"><i class="fa-solid fa-triangle-exclamation"></i> <strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-define('M_AVATARS', 'v.3.0');
+define('M_AVATARS', 'v.3.2');
 define('AVATARS_PER_PAGE', 24);
 
 require_once INC_PATH . '/functions_multipage.php';
 
 
-
+/**
+ * Normalize an avatar path from DB or disk to a lookup key
+ * ("./uploads/avatars/avatar_5.png?dateline=123" -> "avatar_5.png")
+ */
+function avatar_key(string $path): string
+{
+    $path = explode('?', $path, 2)[0];
+    return strtolower(basename(str_replace('\\', '/', $path)));
+}
 
 /**
- * Scan image for malicious code
+ * Scan image for embedded markup / code.
+ * Looks for real tags and handlers, not bare words, to avoid false positives on binary data.
  */
-function scan_image(string $image): bool
+function scan_image(string $file): bool
 {
     global $_adir;
-    $image = trim(file_get_contents($_adir . $image));
-    if (!$image) {
+    $full = $_adir . $file;
+    if (!is_file($full)) {
         return false;
     }
 
-    $pattern = '#(onblur|onchange|onclick|onfocus|onload|onmouseover|onmouseup|onmousedown|onselect|onsubmit|onunload|onkeypress|onkeydown|onkeyup|onresize|alert|applet|basefont|base|behavior|bgsound|blink|body|embed|expression|form|frameset|frame|head|html|ilayer|iframe|input|layer|link|meta|object|plaintext|style|script|textarea|title)#is';
-    
-    return !preg_match($pattern, $image);
+    $data = @file_get_contents($full);
+    if ($data === false || $data === '') {
+        return false;
+    }
+
+    $pattern = '#<\s*/?\s*(script|iframe|object|embed|applet|html|body|meta|link|style|form|svg)\b'
+             . '|<\?php|<\?='
+             . '|(java|vb)script\s*:'
+             . '|\bon(load|error|click|focus|blur|mouse[a-z]+|key[a-z]+)\s*=#i';
+
+    return !preg_match($pattern, $data);
 }
 
 /**
  * Get image dimensions and mime type
  */
-function get_image_contents(string $image): array|false
+function get_image_contents(string $file): array|false
 {
     global $_adir;
-    $image = getimagesize($_adir . $image);
-    if (!$image) {
+    $info = @getimagesize($_adir . $file);
+    if (!$info) {
         return false;
     }
 
     return [
-        'width' => $image[0], 
-        'height' => $image[1], 
-        'mime' => $image['mime']
+        'width'  => (int)$info[0],
+        'height' => (int)$info[1],
+        'mime'   => (string)$info['mime'],
     ];
 }
-
 
 /**
  * Format file size
  */
-function format_file_size(int $bytes): string
+function format_file_size(int|float $bytes): string
 {
     $units = ['B', 'KB', 'MB', 'GB'];
     $i = 0;
@@ -62,733 +77,457 @@ function format_file_size(int $bytes): string
         $bytes /= 1024;
         $i++;
     }
-    return round($bytes, 2) . ' ' . $units[$i];
+    return round($bytes, $i === 0 ? 0 : 1) . ' ' . $units[$i];
 }
+
+$e = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+$asset_v = static fn(string $rel): string => (string)(@filemtime(TSDIR . $rel) ?: 1);
 
 // Initialize
-$_adir = TSDIR . '/uploads/avatars/';
-$_filetypes = ['gif', 'jpg', 'png', 'jpeg', 'webp'];
-$_avatars = [];
+$_adir      = TSDIR . '/uploads/avatars/';
+$_filetypes = ['gif', 'jpg', 'jpeg', 'png', 'webp'];
+$page       = max(1, (int)($_GET['page'] ?? 1));
 
-
-
-
-$show_swal      = false;
-$ok             = [];
-$skipped_shared = [];
-$not_found      = [];
-$unlink_failed  = [];
-$action_type    = '';
-
-if (!empty($_SESSION['swal_result'])) {
-    $show_swal      = true;
-    $data           = $_SESSION['swal_result'];
-    $action_type    = $data['type']           ?? '';
-    $ok             = $data['ok']             ?? [];
-    $skipped_shared = $data['skipped_shared'] ?? [];
-    $not_found      = $data['not_found']      ?? [];
-    $unlink_failed  = $data['unlink_failed']  ?? [];
-    unset($_SESSION['swal_result']);
+// Avatar -> owners map (one query, used by both delete and display)
+$owners = [];
+$res = $db->sql_query_prepared("SELECT id, username, usergroup, avatar FROM users WHERE avatar <> ''");
+while ($res && ($row = $db->fetch_array($res))) {
+    $owners[avatar_key((string)$row['avatar'])][] = [
+        'id'        => (int)$row['id'],
+        'username'  => (string)$row['username'],
+        'usergroup' => $row['usergroup'],
+    ];
 }
 
 
-
-
-
-// Process POST requests
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['avatars']) && in_array($_POST['action_type'] ?? '', ['delete'], true)) {
-    if (!verify_post_check($_POST['my_post_key'] ?? '')) {
+// ---------------------------------------------------------------------------
+// POST: delete selected avatars (PRG)
+// ---------------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action_type'] ?? '') === 'delete') {
+    if (!verify_post_check($_POST['my_post_key'] ?? '', true)) {
         http_response_code(403);
-        echo 'Invalid security token';
-        exit;
+        exit('Invalid security token');
     }
 
-    $action_avatars = $_POST['avatars'] ?? [];
-    $action_type    = $_POST['action_type'] ?? '';
-    
     $ok = $skipped_shared = $not_found = $unlink_failed = [];
-    $show_swal = false;
-    
-    if ($action_type === 'delete') {
+    $cleared  = 0;
+    $selected = array_unique(array_map('strval', (array)($_POST['avatars'] ?? [])));
+
+    $_adir_real = realpath($_adir);
+    if ($_adir_real !== false && $selected) {
+        $_adir_real .= DIRECTORY_SEPARATOR;
         require_once INC_PATH . '/functions_upload.php';
-        
-        $_adir_real = realpath($_adir) . DIRECTORY_SEPARATOR;
-        
-        // Build avatar to user mapping
-        $map = [];
-        $res = $db->sql_query_prepared("SELECT id, avatar FROM users WHERE avatar <> ''");
-        while ($res && ($row = $db->fetch_array($res))) {
-            $k = strtolower(basename($row['avatar']));
-            $map[$k][] = (int)$row['id'];
-        }
-        
-        foreach (array_unique($action_avatars) as $delete_avatar) {
-            $base = strtolower(basename($delete_avatar));
-            $ids  = $map[$base] ?? [];
-            
-            // Fallback: extract ID from filename (avatar_123.jpg)
-            if (!$ids && preg_match('/_(\d+)\.(gif|jpe?g|png|webp)$/i', $base, $m)) {
-                $ids = [(int)$m[1]];
+
+        foreach ($selected as $file) {
+            // Only plain file names from the avatars directory
+            if ($file === '' || basename($file) !== $file) {
+                $not_found[] = $file;
+                continue;
             }
-            
-            // Clear user profiles first
-            if ($ids) {
-                foreach ($ids as $uid) {
-                    $db->sql_query_prepared(
-                        "UPDATE users SET avatar = '', avatardimensions = '', avatartype = '' WHERE id = ?",
-                        [$uid]
-                    );
-                    
-                    if (function_exists('remove_avatars')) {
-                        remove_avatars($uid);
-                    }
+
+            $real = realpath($_adir . $file);
+            if ($real === false || !str_starts_with($real, $_adir_real) || !is_file($real)) {
+                $not_found[] = $file;
+                continue;
+            }
+
+            $users = $owners[avatar_key($file)] ?? [];
+
+            // Shared by several accounts: leave file and profiles untouched
+            if (count($users) > 1) {
+                $skipped_shared[] = $file;
+                continue;
+            }
+
+            // One owner: clear the profile first
+            if ($users) {
+                $uid = $users[0]['id'];
+                $db->sql_query_prepared(
+                    "UPDATE users SET avatar = '', avatardimensions = '', avatartype = '' WHERE id = ?",
+                    [$uid]
+                );
+                $cleared++;
+
+                if (function_exists('remove_avatars')) {
+                    remove_avatars($uid);
                 }
+            }
+
+            // Orphaned files (no owner) are deleted directly
+            clearstatcache(true, $real);
+            if (!is_file($real) || @unlink($real)) {
+                $ok[] = $file;
             } else {
-                $not_found[] = $delete_avatar;
-                continue;
-            }
-            
-            // Skip if file is shared by multiple users
-            if (!empty($map[$base]) && count($map[$base]) > 1) {
-                $skipped_shared[] = $delete_avatar;
-                continue;
-            }
-            
-            // Safe path validation
-            $full = $_adir . $delete_avatar;
-            $real = realpath($full);
-            if ($real === false || strpos($real, $_adir_real) !== 0 || !is_file($real)) {
-                $not_found[] = $delete_avatar;
-                continue;
-            }
-            
-            if (@unlink($real)) {
-                $ok[] = $delete_avatar;
-            } else {
-                $unlink_failed[] = $delete_avatar;
+                $unlink_failed[] = $file;
             }
         }
-        
-        $show_swal = !empty($ok) || !empty($unlink_failed) || !empty($skipped_shared) || !empty($not_found);
-		
-		
-       $_SESSION['swal_result'] = [
-            'type'           => 'delete',
-            'ok'             => $ok,
-            'skipped_shared' => $skipped_shared,
-            'not_found'      => $not_found,
-            'unlink_failed'  => $unlink_failed,
-        ];
-        admin_redirect($_this_script_ . '&page=' . $page);
-    
-		
-		
-		
-		
-		
-    } 
+    }
+
+    if ($ok || $unlink_failed) {
+        $who  = (string)($mybb->user['username'] ?? 'unknown');
+        $list = implode(', ', array_slice($ok, 0, 20)) . (count($ok) > 20 ? ', ...' : '');
+        write_log(sprintf(
+            'Manage Avatars: %s deleted %d avatar(s), cleared %d profile(s), %d failed [%s]',
+            $who, count($ok), $cleared, count($unlink_failed), $list
+        ));
+    }
+
+    $_SESSION['ma_result'] = [
+        'ok'             => $ok,
+        'cleared'        => $cleared,
+        'skipped_shared' => $skipped_shared,
+        'not_found'      => $not_found,
+        'unlink_failed'  => $unlink_failed,
+    ];
+
+    admin_redirect($_this_script_ . '&page=' . $page);
+    exit;
 }
 
-// Load avatar files
-if ($handle = opendir($_adir)) {
+// Flash result from previous POST
+$result = null;
+if (!empty($_SESSION['ma_result']) && is_array($_SESSION['ma_result'])) {
+    $result = $_SESSION['ma_result'];
+    unset($_SESSION['ma_result']);
+}
+
+
+// ---------------------------------------------------------------------------
+// Load avatar files + global stats
+// ---------------------------------------------------------------------------
+$_avatars      = [];
+$total_bytes   = 0;
+$orphans_total = 0;
+
+if (is_dir($_adir) && ($handle = opendir($_adir))) {
     while (false !== ($file = readdir($handle))) {
-        if ($file !== '.' && $file !== '..' && in_array(get_extension($file), $_filetypes, true)) {
-            $_avatars[] = $file;
+        if ($file === '.' || $file === '..') {
+            continue;
+        }
+        if (!in_array(strtolower(pathinfo($file, PATHINFO_EXTENSION)), $_filetypes, true)) {
+            continue;
+        }
+        $_avatars[]   = $file;
+        $total_bytes += (int)@filesize($_adir . $file);
+        if (empty($owners[avatar_key($file)])) {
+            $orphans_total++;
         }
     }
     closedir($handle);
 }
 
-// Sort and paginate
-natsort($_avatars);
+natcasesort($_avatars);
 $_avatars = array_values($_avatars);
 
-$per_page = AVATARS_PER_PAGE;
-$total = count($_avatars);
-$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-$pages = max(1, (int)ceil($total / $per_page));
-$page = min($page, $pages);
-
-$offset = ($page - 1) * $per_page;
+// Paginate
+$per_page     = AVATARS_PER_PAGE;
+$total        = count($_avatars);
+$pages        = max(1, (int)ceil($total / $per_page));
+$page         = min($page, $pages);
+$offset       = ($page - 1) * $per_page;
 $avatars_page = array_slice($_avatars, $offset, $per_page);
+$from         = $total > 0 ? $offset + 1 : 0;
+$to           = min($offset + $per_page, $total);
 
-// Load users with avatars
-$avatar_to_user = [];
-$sql = "SELECT id, username, usergroup, avatar
-        FROM users
-        WHERE avatar <> '' AND avatar REGEXP '\\.(gif|jpe?g|png|webp)$'";
-$res = $db->sql_query_prepared($sql);
+// Build card data for this page
+$items   = [];
+$counts  = ['all' => 0, 'owned' => 0, 'orphan' => 0, 'flagged' => 0];
 
-while ($res && ($u = $db->fetch_array($res))) {
-    $key = strtolower(basename($u['avatar']));
-    $avatar_to_user[$key] = '<a href="' . htmlspecialchars($BASEURL) . '/' . get_profile_link($u['id']) . '" class="text-decoration-none">
-        <i class="fas fa-user-circle me-1"></i>' . format_name($u['username'], $u['usergroup']) . '</a>';
+foreach ($avatars_page as $avatar) {
+    $info    = get_image_contents($avatar);
+    $clean   = scan_image($avatar);
+    $bytes   = (int)@filesize($_adir . $avatar);
+    $users   = $owners[avatar_key($avatar)] ?? [];
+    $flagged = !$clean || !$info;
+
+    $owner_html = '';
+    if ($users) {
+        $u = $users[0];
+        $owner_html = '<a href="' . $e($BASEURL . '/' . get_profile_link($u['id'])) . '" class="ma-owner-link">'
+                    . format_name($e($u['username']), $u['usergroup']) . '</a>';
+    }
+
+    $type = $info
+        ? strtoupper(substr((string)strrchr($info['mime'], '/'), 1))
+        : strtoupper(pathinfo($avatar, PATHINFO_EXTENSION));
+
+    $items[] = [
+        'file'       => $avatar,
+        'hash'       => md5($avatar),
+        'url'        => $BASEURL . '/uploads/avatars/' . rawurlencode($avatar),
+        'size'       => format_file_size($bytes),
+        'dims'       => $info ? $info['width'] . '×' . $info['height'] : null,
+        'type'       => $type,
+        'clean'      => $clean,
+        'is_image'   => (bool)$info,
+        'flagged'    => $flagged,
+        'owners'     => count($users),
+        'owner_html' => $owner_html,
+    ];
+
+    $counts['all']++;
+    $counts[$users ? 'owned' : 'orphan']++;
+    if ($flagged) {
+        $counts['flagged']++;
+    }
 }
 
-// Calculate display range
-$from = $total > 0 ? $offset + 1 : 0;
-$to = min($offset + $per_page, $total);
 
-// Page header
+// ---------------------------------------------------------------------------
+// Output
+// ---------------------------------------------------------------------------
 stdhead('Manage Avatars - ' . M_AVATARS);
 
 require_once INC_PATH . '/modals_images.php';
 
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/details_modal.js"></script>';
-echo '<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>';
+echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/include/templates/default/style/sweetalert2.min.css">';
+echo '<script src="' . $e($BASEURL) . '/scripts/sweetalert2.min.js"></script>';
+echo '<script src="' . $e($BASEURL) . '/scripts/details_modal.js"></script>';
+echo '<link rel="stylesheet" href="' . $e($BASEURL) . '/admin/templates/manage_avatars.css?v=' . $asset_v('/include/templates/default/style/manage_avatars.css') . '">';
 
 ?>
 
-<style>
-:root {
-    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --gradient-success: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
-    --gradient-danger: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
 
+<div class="container-lg my-4 ma-page">
 
-
-.fade-in-up {
-    animation: fadeInUp 0.5s ease-out;
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.avatar-card {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: none;
-    border-radius: 20px;
-    overflow: hidden;
-    cursor: pointer;
-    background: white;
-}
-
-.avatar-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 20px 30px -12px rgba(0, 0, 0, 0.2);
-}
-
-.avatar-card.selected {
-    border: 3px solid #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-}
-
-.avatar-image-wrapper {
-    position: relative;
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    padding: 25px;
-    text-align: center;
-}
-
-.avatar-image {
-    width: 140px;
-    height: 140px;
-    object-fit: cover;
-    border-radius: 50%;
-    border: 4px solid white;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-    transition: transform 0.3s ease;
-}
-
-.avatar-card:hover .avatar-image {
-    transform: scale(1.05);
-}
-
-.avatar-badge {
-    position: absolute;
-    top: 15px;
-    right: 15px;
-}
-
-.avatar-badge .form-check-input {
-    width: 24px;
-    height: 24px;
-    cursor: pointer;
-}
-
-.avatar-info {
-    padding: 18px;
-    background: white;
-}
-
-.avatar-filename {
-    font-size: 14px;
-    font-family: 'Courier New', monospace;
-    font-weight: 600;
-    color: #2d3748;
-    background: #f7fafc;
-    padding: 6px 10px;
-    border-radius: 10px;
-    word-break: break-all;
-    margin-bottom: 12px;
-}
-
-.stat-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 14px;
-    color: #4a5568;
-    margin-bottom: 8px;
-}
-
-.stat-item i {
-    width: 22px;
-    font-size: 15px;
-    color: #667eea;
-}
-
-.stat-item span, .stat-item a {
-    font-size: 14px;
-}
-
-.scan-passed {
-    color: #10b981;
-    font-weight: 600;
-}
-
-.scan-failed {
-    color: #ef4444;
-    font-weight: 600;
-}
-
-/* Кнопки */
-.btn-gradient {
-    background: var(--gradient-primary);
-    color: white;
-    border: none;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 10px 24px;
-    transition: all 0.3s ease;
-}
-
-.btn-gradient:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-    color: white;
-}
-
-.btn-gradient-sm {
-    padding: 6px 16px;
-    font-size: 13px;
-}
-
-/* Пагинация */
-.modern-pagination .page-link {
-    margin: 0 4px;
-    border-radius: 12px;
-    border: none;
-    color: #4a5568;
-    font-size: 15px;
-    font-weight: 500;
-    padding: 10px 16px;
-    transition: all 0.3s ease;
-}
-
-.modern-pagination .page-link:hover {
-    background: var(--gradient-primary);
-    color: white;
-    transform: translateY(-2px);
-}
-
-.modern-pagination .page-item.active .page-link {
-    background: var(--gradient-primary);
-    color: white;
-}
-
-/* Панель выбора */
-.selection-toolbar {
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-    border-radius: 16px;
-    padding: 16px 24px;
-}
-
-.selection-toolbar .form-check-label {
-    font-size: 15px;
-    font-weight: 600;
-}
-
-.selection-toolbar .form-select {
-    font-size: 14px;
-    padding: 8px 12px;
-}
-
-.stat-card {
-    background: white;
-    border-radius: 14px;
-    padding: 12px 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.stat-card div {
-    font-size: 15px;
-}
-
-.stat-card strong {
-    font-size: 18px;
-}
-
-/* Заголовок карточки */
-.card-header h4 {
-    font-size: 24px;
-}
-
-.card-header small {
-    font-size: 14px;
-}
-
-/* Модальное окно */
-.modal-title {
-    font-size: 20px;
-    font-weight: 600;
-}
-
-.modal-body .btn {
-    font-size: 14px;
-}
-
-/* Формы */
-.form-select, .form-control {
-    font-size: 14px;
-}
-
-/* Пустое состояние */
-.text-center h5 {
-    font-size: 18px;
-}
-
-.text-center p {
-    font-size: 15px;
-}
-
-/* Адаптивность */
-@media (max-width: 768px) {
-    body {
-        font-size: 14px;
-    }
-    
-    .avatar-image {
-        width: 100px;
-        height: 100px;
-    }
-    
-    .stat-item {
-        font-size: 12px;
-    }
-    
-    .stat-item i {
-        font-size: 13px;
-    }
-    
-    .avatar-filename {
-        font-size: 11px;
-    }
-    
-    .card-header h4 {
-        font-size: 18px;
-    }
-    
-    .btn-gradient {
-        font-size: 13px;
-        padding: 8px 16px;
-    }
-    
-    .selection-toolbar {
-        padding: 12px 16px;
-    }
-    
-    .modern-pagination .page-link {
-        padding: 6px 12px;
-        font-size: 13px;
-    }
-}
-</style>
-
-<div class="container-md my-4 fade-in-up">
-
-<?php if ($show_swal && isset($ok)): ?>
-<script>
-Swal.fire({
-    title: '<?= $action_type === 'delete' ? 'Avatars Deleted' : 'Avatars Resized' ?>',
-    icon: '<?= empty($unlink_failed) ? 'success' : 'warning' ?>',
-    html: `
-        <div class="text-start" style="font-size: 14px;">
-            <?php if (!empty($ok)): ?>
-            <div class="mb-2">
-                <i class="fas fa-check-circle text-success"></i> <strong>Processed (<?= count($ok) ?>):</strong><br>
-                <small class="text-muted"><?= implode(', ', array_map('htmlspecialchars', array_slice($ok, 0, 5))) ?><?= count($ok) > 5 ? '...' : '' ?></small>
+    <!-- Header -->
+    <div class="ma-header mb-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="ma-header-icon ma-tone-primary"><i class="fa-solid fa-user-astronaut"></i></div>
+            <div>
+                <h1 class="ma-title">Manage Avatars</h1>
+                <div class="ma-subtitle">Review uploaded avatar files, find orphaned or suspicious ones and delete them</div>
             </div>
-            <?php endif; ?>
-            
-            <?php if (!empty($skipped_shared)): ?>
-            <div class="mb-2">
-                <i class="fas fa-share-alt text-warning"></i> <strong>Skipped - Shared (<?= count($skipped_shared) ?>):</strong><br>
-                <small class="text-muted"><?= implode(', ', array_map('htmlspecialchars', array_slice($skipped_shared, 0, 3))) ?><?= count($skipped_shared) > 3 ? '...' : '' ?></small>
-            </div>
-            <?php endif; ?>
-            
-            <?php if (!empty($not_found)): ?>
-            <div class="mb-2">
-                <i class="fas fa-search text-info"></i> <strong>Not Found (<?= count($not_found) ?>):</strong><br>
-                <small class="text-muted"><?= implode(', ', array_map('htmlspecialchars', array_slice($not_found, 0, 3))) ?><?= count($not_found) > 3 ? '...' : '' ?></small>
-            </div>
-            <?php endif; ?>
-            
-            <?php if (!empty($unlink_failed)): ?>
-            <div class="mb-2">
-                <i class="fas fa-exclamation-triangle text-danger"></i> <strong>Failed to Delete (<?= count($unlink_failed) ?>):</strong><br>
-                <small class="text-danger"><?= implode(', ', array_map('htmlspecialchars', array_slice($unlink_failed, 0, 3))) ?><?= count($unlink_failed) > 3 ? '...' : '' ?></small>
-            </div>
-            <?php endif; ?>
         </div>
-    `,
-    confirmButtonText: '<i class="fas fa-check me-2"></i>OK',
-    confirmButtonColor: '#667eea'
-});
-</script>
-<?php endif; ?>
+        <div class="d-flex align-items-center gap-2">
+            <span class="ma-range"><i class="fa-solid fa-layer-group me-1"></i><?= $from ?>–<?= $to ?> of <?= $total ?></span>
+            <span class="ma-chip ma-tone-muted"><i class="fa-solid fa-code-branch"></i><?= $e(M_AVATARS) ?></span>
+        </div>
+    </div>
 
-<div class="card shadow-sm border-0">
-    <div class="card-header bg-primary text-white py-4">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
-            <div class="d-flex align-items-center gap-3">
-                <i class="fas fa-user-astronaut fa-2x"></i>
+    <!-- KPI tiles -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="ma-kpi">
+                <div class="ma-kpi-icon ma-tone-primary"><i class="fa-solid fa-images"></i></div>
                 <div>
-                    <h4 class="mb-0 fw-bold">Manage Avatars</h4>
-                    <small class="opacity-75">Manage user avatars - v.2.0</small>
+                    <div class="ma-kpi-value"><?= number_format($total) ?></div>
+                    <div class="ma-kpi-label">Avatar files</div>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="d-flex gap-4">
-                    <div><i class="fas fa-images text-primary me-1"></i> <strong><?= $total ?></strong> Total</div>
-                    <div><i class="fas fa-chart-line text-success me-1"></i> Page <?= $page ?> / <?= $pages ?></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="ma-kpi">
+                <div class="ma-kpi-icon ma-tone-info"><i class="fa-solid fa-hard-drive"></i></div>
+                <div>
+                    <div class="ma-kpi-value"><?= $e(format_file_size($total_bytes)) ?></div>
+                    <div class="ma-kpi-label">Disk usage</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="ma-kpi">
+                <div class="ma-kpi-icon ma-tone-warning"><i class="fa-solid fa-user-slash"></i></div>
+                <div>
+                    <div class="ma-kpi-value"><?= number_format($orphans_total) ?></div>
+                    <div class="ma-kpi-label">Orphaned files</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="ma-kpi">
+                <div class="ma-kpi-icon <?= $counts['flagged'] ? 'ma-tone-danger' : 'ma-tone-success' ?>">
+                    <i class="fa-solid <?= $counts['flagged'] ? 'fa-shield-virus' : 'fa-shield-halved' ?>"></i>
+                </div>
+                <div>
+                    <div class="ma-kpi-value"><?= $counts['flagged'] ?></div>
+                    <div class="ma-kpi-label">Flagged on this page</div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <form method="post" action="<?= htmlspecialchars($_this_script_ . '&page=' . $page) ?>" id="avatarForm">
-        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
-        <div class="card-body">
-            <div class="selection-toolbar mb-4">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                    <div class="d-flex gap-3 align-items-center">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="select_all" onchange="toggleAll(this.checked)" style="width: 20px; height: 20px;">
-                            <label class="form-check-label fw-semibold" for="select_all">
-                                <i class="fas fa-check-double me-1"></i>Select All
-                            </label>
+
+    <?php if ($result):
+        $rows = [
+            ['ok',             'fa-circle-check',         'ma-tone-success', 'Deleted'],
+            ['skipped_shared', 'fa-share-nodes',          'ma-tone-warning', 'Skipped, used by several accounts'],
+            ['not_found',      'fa-magnifying-glass',     'ma-tone-info',    'Not found'],
+            ['unlink_failed',  'fa-triangle-exclamation', 'ma-tone-danger',  'Could not delete, check folder permissions'],
+        ];
+    ?>
+    <div class="ma-result mb-4" role="status">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong><i class="fa-solid fa-clipboard-check me-2"></i>Deletion result</strong>
+            <?php if (!empty($result['cleared'])): ?>
+            <span class="ma-chip ma-tone-muted"><i class="fa-solid fa-user-xmark"></i><?= (int)$result['cleared'] ?> profile(s) cleared</span>
+            <?php endif; ?>
+        </div>
+        <?php foreach ($rows as [$key, $icon, $tone, $label]):
+            $list = (array)($result[$key] ?? []);
+            if (!$list) continue;
+        ?>
+        <div class="ma-result-row">
+            <div class="ma-kpi-icon <?= $tone ?>"><i class="fa-solid <?= $icon ?>"></i></div>
+            <div class="min-w-0">
+                <div class="fw-semibold"><?= $label ?> (<?= count($list) ?>)</div>
+                <div class="ma-result-files">
+                    <?= implode(', ', array_map($e, array_slice($list, 0, 8))) ?><?= count($list) > 8 ? ', …' : '' ?>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+    <form method="post" action="<?= $e($_this_script_ . '&page=' . $page) ?>" id="avatarForm">
+        <input type="hidden" name="my_post_key" value="<?= $e($mybb->post_code) ?>">
+        <input type="hidden" name="action_type" value="delete">
+
+        <?php if ($items): ?>
+        <!-- Toolbar -->
+        <div class="ma-toolbar">
+            <label class="ma-selectall" for="select_all">
+                <input class="form-check-input" type="checkbox" id="select_all">
+                <i class="fa-solid fa-check-double"></i> Select all shown
+            </label>
+            <div class="ma-filters" role="group" aria-label="Filter avatars">
+                <button type="button" class="ma-filter active" data-filter="all">
+                    <i class="fa-solid fa-border-all"></i>All <span class="ma-count"><?= $counts['all'] ?></span>
+                </button>
+                <button type="button" class="ma-filter" data-filter="owned">
+                    <i class="fa-solid fa-user-check"></i>In use <span class="ma-count"><?= $counts['owned'] ?></span>
+                </button>
+                <button type="button" class="ma-filter" data-filter="orphan">
+                    <i class="fa-solid fa-user-slash"></i>Orphaned <span class="ma-count"><?= $counts['orphan'] ?></span>
+                </button>
+                <button type="button" class="ma-filter" data-filter="flagged">
+                    <i class="fa-solid fa-shield-virus"></i>Flagged <span class="ma-count"><?= $counts['flagged'] ?></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Grid -->
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-4 g-3">
+            <?php foreach ($items as $it): ?>
+            <div class="col ma-item"
+                 data-owner="<?= $it['owners'] ? '1' : '0' ?>"
+                 data-flag="<?= $it['flagged'] ? '1' : '0' ?>">
+                <div class="ma-card<?= $it['flagged'] ? ' is-flagged' : '' ?>"
+                     id="card_<?= $it['hash'] ?>"
+                     tabindex="0"
+                     aria-label="<?= $e($it['file']) ?>">
+
+                    <div class="ma-thumb">
+                        <img src="<?= $e($it['url']) ?>"
+                             alt="<?= $e($it['file']) ?>"
+                             loading="lazy"
+                             data-bs-toggle="modal"
+                             data-bs-target="#universalImageModal"
+                             data-img-src="<?= $e($it['url']) ?>"
+                             data-fallback="<?= $e($BASEURL) ?>/images/default_avatar.png">
+
+                        <div class="ma-check">
+                            <input type="checkbox" name="avatars[]"
+                                   id="cb_<?= $it['hash'] ?>"
+                                   value="<?= $e($it['file']) ?>"
+                                   class="form-check-input"
+                                   aria-label="Select <?= $e($it['file']) ?>">
                         </div>
-                        <div class="vr"></div>
-                        <div class="text-muted">
-                            <i class="fas fa-info-circle me-1"></i>
-                            <span id="selectedCount" style="font-weight: 600;">0</span> avatar(s) selected
+
+                        <div class="ma-badges">
+                            <?php if (!$it['is_image']): ?>
+                                <span class="ma-chip ma-tone-danger"><i class="fa-solid fa-file-circle-xmark"></i>Not an image</span>
+                            <?php elseif (!$it['clean']): ?>
+                                <span class="ma-chip ma-tone-danger"><i class="fa-solid fa-bug"></i>Suspicious</span>
+                            <?php endif; ?>
+                            <?php if ($it['owners'] > 1): ?>
+                                <span class="ma-chip ma-tone-warning"><i class="fa-solid fa-share-nodes"></i>Shared ×<?= $it['owners'] ?></span>
+                            <?php elseif (!$it['owners']): ?>
+                                <span class="ma-chip ma-tone-warning"><i class="fa-solid fa-user-slash"></i>Orphaned</span>
+                            <?php endif; ?>
                         </div>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <select name="action_type" class="form-select" style="width: auto; font-size: 14px;" required>
-                            <option value="" disabled selected>Choose action</option>
-                            <option value="delete"><i class="fas fa-trash-alt me-2"></i>Delete Selected</option>
-                        </select>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-play me-2"></i>Apply
+
+                        <button type="button" class="ma-zoom"
+                                data-bs-toggle="modal"
+                                data-bs-target="#universalImageModal"
+                                data-img-src="<?= $e($it['url']) ?>"
+                                title="Open full size" aria-label="Open full size">
+                            <i class="fa-solid fa-magnifying-glass-plus"></i>
                         </button>
                     </div>
-                </div>
-            </div>
-            
-            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
-                <?php foreach ($avatars_page as $avatar): 
-                    $_exp = explode('_', preg_replace('/\.(gif|jpg|jpeg|png|webp)$/i', '', $avatar));
-                    $_userid = isset($_exp[1]) ? (int)$_exp[1] : 0;
-                    
-                    $_ad = get_image_contents($avatar);
-                    $passed = scan_image($avatar);
-                    $size = file_exists($_adir . $avatar) ? format_file_size(filesize($_adir . $avatar)) : 'Unknown';
-                    
-                    $key = strtolower(basename($avatar));
-                    $owner = $avatar_to_user[$key] ?? '<span class="text-muted"><i class="fas fa-question-circle"></i> Unknown</span>';
-                    
-                    $cardId = 'card_' . md5($avatar);
-                ?>
-                <div class="col">
-                    <div class="avatar-card" id="<?= $cardId ?>" onclick="toggleCard('<?= $cardId ?>', '<?= md5($avatar) ?>')">
-                        <div class="avatar-image-wrapper">
-    <img src="<?= htmlspecialchars($BASEURL . '/uploads/avatars/' . $avatar) ?>"
-         class="avatar-image"
-         alt="Avatar"
-         data-bs-toggle="modal"
-         data-bs-target="#universalImageModal"
-         data-img-src="<?= htmlspecialchars($BASEURL . '/uploads/avatars/' . $avatar) ?>"
-         onerror="this.src='<?= $BASEURL ?>/images/default_avatar.png'">
-    <div class="avatar-badge">
-        <input type="checkbox" name="avatars[]" id="cb_<?= md5($avatar) ?>"
-               value="<?= htmlspecialchars($avatar) ?>" class="form-check-input"
-               style="width:22px;height:22px;cursor:pointer;"
-               onclick="event.stopPropagation(); updateSelectedCount()">
-    </div>
-</div>
-                        <div class="avatar-info">
-                            <div class="avatar-filename text-truncate" title="<?= htmlspecialchars($avatar) ?>">
-                                <i class="fas fa-file-alt me-1"></i><?= htmlspecialchars($avatar) ?>
-                            </div>
-                            <div class="stat-item">
-                                <i class="fas fa-weight-hanging"></i>
-                                <span><?= $size ?></span>
-                            </div>
-                            <div class="stat-item">
-                                <i class="fas fa-arrows-alt"></i>
-                                <span><?= $_ad ? $_ad['width'] . 'x' . $_ad['height'] : 'N/A' ?></span>
-                            </div>
-                            <div class="stat-item">
-                                <i class="fas fa-shield-alt"></i>
-                                <span class="<?= $passed ? 'scan-passed' : 'scan-failed' ?>">
-                                    <i class="fas <?= $passed ? 'fa-check-circle' : 'fa-exclamation-triangle' ?>"></i>
-                                    <?= $passed ? 'Secure' : 'Suspicious' ?>
-                                </span>
-                            </div>
-                            <div class="stat-item">
-                                <i class="fas fa-user"></i>
-                                <?= $owner ?>
-                            </div>
+
+                    <div class="ma-body">
+                        <div class="ma-file" title="<?= $e($it['file']) ?>">
+                            <i class="fa-solid fa-file-image"></i><?= $e($it['file']) ?>
+                        </div>
+
+                        <div class="ma-meta">
+                            <span title="File size"><i class="fa-solid fa-weight-hanging"></i><?= $e($it['size']) ?></span>
+                            <span title="Dimensions"><i class="fa-solid fa-expand"></i><?= $it['dims'] ? $e($it['dims']) : 'N/A' ?></span>
+                            <span title="Type"><i class="fa-solid fa-file-code"></i><?= $e($it['type']) ?></span>
+                            <?php if ($it['clean'] && $it['is_image']): ?>
+                            <span class="text-success-emphasis" title="Content scan passed"><i class="fa-solid fa-shield-halved"></i>Clean</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="ma-owner">
+                            <?php if ($it['owners']): ?>
+                                <span class="ma-owner-icon ma-tone-primary"><i class="fa-solid fa-user"></i></span>
+                                <?= $it['owner_html'] ?>
+                                <?php if ($it['owners'] > 1): ?>
+                                    <span class="text-body-secondary small text-nowrap">+<?= $it['owners'] - 1 ?> more</span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="ma-owner-icon ma-tone-muted"><i class="fa-solid fa-user-slash"></i></span>
+                                <span class="text-body-secondary">No owner</span>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
-                <?php endforeach; ?>
             </div>
-            
-            <?php if (empty($avatars_page)): ?>
-            <div class="text-center py-5">
-                <i class="fas fa-folder-open fa-4x text-muted mb-3"></i>
-                <h5 class="text-muted">No avatars found</h5>
-                <p class="text-muted">Upload avatars to get started</p>
-            </div>
-            <?php endif; ?>
+            <?php endforeach; ?>
         </div>
+
+        <div class="ma-empty mt-3 d-none" id="filterEmpty">
+            <div class="ma-header-icon ma-tone-muted"><i class="fa-solid fa-filter-circle-xmark"></i></div>
+            <div class="fw-semibold mb-1">Nothing matches this filter on this page</div>
+            <div class="small">Switch to <strong>All</strong> or go to another page.</div>
+        </div>
+
+        <!-- Sticky action bar -->
+        <div class="ma-actionbar">
+            <div class="ma-actionbar-count">
+                <i class="fa-solid fa-list-check me-2"></i><span id="selectedCount">0</span> selected
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-warning rounded-pill px-3" id="selectOrphans" <?= $counts['orphan'] ? '' : 'disabled' ?>>
+                    <i class="fa-solid fa-user-slash me-2"></i>Select orphaned
+                </button>
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="clearSelection" disabled>
+                    <i class="fa-solid fa-xmark me-2"></i>Clear
+                </button>
+                <button type="submit" class="btn btn-danger rounded-pill px-4" id="deleteSelected" disabled>
+                    <i class="fa-solid fa-trash-can me-2"></i>Delete selected
+                </button>
+            </div>
+        </div>
+
+        <?php else: ?>
+        <div class="ma-empty">
+            <div class="ma-header-icon ma-tone-muted"><i class="fa-solid fa-folder-open"></i></div>
+            <div class="fw-semibold mb-1">No avatar files in /uploads/avatars/</div>
+            <div class="small">Avatars appear here as soon as members upload them.</div>
+        </div>
+        <?php endif; ?>
     </form>
+
+    <?php if ($pages > 1): ?>
+    <div class="ma-pagination">
+        <?= multipage($total, $per_page, $page, $_this_script_) ?>
+    </div>
+    <?php endif; ?>
 </div>
 
-<!-- Modern Pagination -->
-<?php if ($pages > 1): ?>
-<?= multipage($total, $per_page, $page, $_this_script_) ?>
-<?php endif; ?>
-
-
-
-
-<script>
-let selectedCards = new Set();
-
-function toggleCard(cardId, avatarId) {
-    const card = document.getElementById(cardId);
-    const checkbox = document.getElementById('cb_' + avatarId);
-    
-    if (checkbox.checked) {
-        checkbox.checked = false;
-        card.classList.remove('selected');
-        selectedCards.delete(avatarId);
-    } else {
-        checkbox.checked = true;
-        card.classList.add('selected');
-        selectedCards.add(avatarId);
-    }
-    updateSelectedCount();
-}
-
-function toggleAll(checked) {
-    const checkboxes = document.querySelectorAll('input[name="avatars[]"]');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = checked;
-        const cardId = 'card_' + checkbox.id.replace('cb_', '');
-        const card = document.getElementById(cardId);
-        if (card) {
-            if (checked) {
-                card.classList.add('selected');
-                selectedCards.add(checkbox.id.replace('cb_', ''));
-            } else {
-                card.classList.remove('selected');
-                selectedCards.clear();
-            }
-        }
-    });
-    updateSelectedCount();
-}
-
-function updateSelectedCount() {
-    const checked = document.querySelectorAll('input[name="avatars[]"]:checked');
-    const countSpan = document.getElementById('selectedCount');
-    if (countSpan) {
-        countSpan.textContent = checked.length;
-    }
-}
-
-
-
-// Initialize tooltips
-document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-    new bootstrap.Tooltip(el);
-});
-
-
-
-// Initialize selected count
-updateSelectedCount();
-
-// Form submit validation
-document.getElementById('avatarForm')?.addEventListener('submit', function(e) {
-    const selected = document.querySelectorAll('input[name="avatars[]"]:checked');
-    const action = document.querySelector('select[name="action_type"]').value;
-    
-    if (selected.length === 0) {
-        e.preventDefault();
-        Swal.fire({
-            icon: 'warning',
-            title: 'No selection',
-            text: 'Please select at least one avatar to process.',
-            confirmButtonText: '<i class="fas fa-check me-2"></i>OK'
-        });
-        return false;
-    }
-    
-    if (!action) {
-        e.preventDefault();
-        Swal.fire({
-            icon: 'warning',
-            title: 'No action selected',
-            text: 'Please choose an action to perform.',
-            confirmButtonText: '<i class="fas fa-check me-2"></i>OK'
-        });
-        return false;
-    }
-    
-    if (action === 'delete') {
-        e.preventDefault();
-        Swal.fire({
-            title: 'Confirm Deletion',
-            text: `Are you sure you want to delete ${selected.length} avatar(s)? This action cannot be undone!`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#dc3545',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: '<i class="fas fa-trash-alt me-2"></i>Yes, delete them!',
-            cancelButtonText: '<i class="fas fa-times me-2"></i>Cancel'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                this.submit();
-            }
-        });
-    }
-});
-</script>
+<script src="<?= $e($BASEURL) ?>/admin/scripts/manage_avatars.js?v=<?= $asset_v('/scripts/manage_avatars.js') ?>"></script>
 
 <?php stdfoot(); ?>

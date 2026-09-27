@@ -158,656 +158,342 @@ private function setAllNormal(): void
     
     /**
      * Show main interface
+     *
+     * Раньше: внутри страницы печатался второй <!DOCTYPE html><html data-bs-theme="dark">
+     * <head><body>, карточки «прыгали» через transform, а блоки «Before/After» с
+     * bg-light в тёмной теме были белыми пятнами.
      */
     private function showMainInterface(): void
     {
         global $mybb;
 
+        $stats    = $this->getTorrentStats();
+        $canAct   = $this->hasStaffAccess();
+        $recent   = $this->getRecentActions();
+        $key      = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
+        $url      = htmlspecialchars($this->scriptUrl, ENT_QUOTES);
+        $dPct     = round($stats['double_percent'], 1);
+        $nPct     = round($stats['normal_percent'], 1);
+        $mode     = $stats['total'] === 0 ? 'empty' : ($stats['double_count'] === $stats['total'] ? 'double' : ($stats['double_count'] === 0 ? 'normal' : 'mixed'));
+        $modeInfo = [
+            'double' => ['fa-rocket',       'du-mode-double', 'Double upload is ON for every torrent'],
+            'normal' => ['fa-circle-check', 'du-mode-normal', 'All torrents use normal upload'],
+            'mixed'  => ['fa-code-branch',  'du-mode-mixed',  'Mixed — some torrents have double upload'],
+            'empty'  => ['fa-inbox',        'du-mode-normal', 'No torrents yet'],
+        ][$mode];
+
         stdhead('Torrent Upload Mode Manager');
-		
-		// Get current statistics
-        $stats = $this->getTorrentStats();
-        
-        // Start output buffering
-        ob_start();
-        
         ?>
-        <!DOCTYPE html>
-        <html lang="en" data-bs-theme="dark">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Torrent Upload Mode Manager</title>
-           
-            <style>
-                
-                
-                .card-hover {
-                    transition: all 0.3s ease;
-                    cursor: pointer;
-                }
-                
-                .card-hover:hover {
-                    transform: translateY(-5px);
-                    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-                }
-                
-                .stat-card {
-                    border-left: 4px solid;
-                    border-radius: 0.375rem;
-                }
-                
-                .stat-double {
-                    border-left-color: var(--warning-color);
-                }
-                
-                .stat-normal {
-                    border-left-color: var(--primary-color);
-                }
-                
-                .btn-action {
-                    padding: 1.5rem;
-                    font-size: 1.1rem;
-                    font-weight: bold;
-                }
-                
-                .action-icon {
-                    font-size: 3rem;
-                    margin-bottom: 1rem;
-                }
-                
-	
+<style>
+.du .du-card, .du-modal .modal-content { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.du .du-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
+.du .du-head-icon, .du .du-stat-icon, .du .du-act-icon, .du-modal .du-mh-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.du .du-head-icon { width: 48px; height: 48px; font-size: 1.35rem; border-radius: .85rem; color: #d97706; background: rgba(245,158,11,.14); }
+.du .du-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.du .du-sub { color: var(--bs-secondary-color); font-size: .95rem; }
+.du .du-muted { font-size: .86rem; color: var(--bs-secondary-color); }
+.du .du-ver { font-size: .78rem; font-weight: 700; padding: .25rem .65rem; border-radius: 50rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color-translucent); }
+.du .btn, .du-modal .btn { border-radius: 50rem; }
+.du .ic-blue  { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.12); }
+.du .ic-amber { color: #d97706; background: rgba(245,158,11,.14); }
+.du .ic-slate { color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
 
+.du .du-mode { display: inline-flex; align-items: center; gap: .45rem; padding: .35rem .85rem; border-radius: 50rem; font-weight: 700; font-size: .88rem; }
+.du .du-mode-double { color: #b45309; background: rgba(245,158,11,.14); border: 1px solid rgba(245,158,11,.4); }
+.du .du-mode-normal { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.1); border: 1px solid rgba(var(--bs-primary-rgb),.3); }
+.du .du-mode-mixed  { color: #7c3aed; background: rgba(124,58,237,.1); border: 1px solid rgba(124,58,237,.3); }
 
+.du .du-stat { display: flex; align-items: center; gap: .85rem; padding: 1rem 1.15rem; height: 100%; }
+.du .du-stat-icon { width: 44px; height: 44px; font-size: 1.15rem; border-radius: .85rem; }
+.du .du-stat-label { font-size: .8rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.du .du-stat-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
 
-.confirmation-modal .display-1 i {
-    animation: iconPulse 1.6s infinite;
-}
+.du .du-split { height: 14px; border-radius: 50rem; overflow: hidden; display: flex; background: var(--bs-secondary-bg); }
+.du .du-split .n { background: linear-gradient(90deg, #60a5fa, #3b82f6); }
+.du .du-split .d { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+.du .du-legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: .5rem; font-size: .88rem; color: var(--bs-secondary-color); }
+.du .du-legend i { font-size: .7rem; margin-right: .3rem; }
 
-#successModal .display-4 i {
-    animation: successBounce 1.2s ease-out;
-}
+/* Карточки действий — без transform (подсветка рамкой и тенью) */
+.du .du-action { display: flex; flex-direction: column; height: 100%; padding: 1.4rem; border-radius: 1rem; border: 2px solid var(--bs-border-color-translucent); background: var(--bs-body-bg); text-align: left; width: 100%; color: inherit; transition: border-color .15s ease, box-shadow .15s ease; }
+.du .du-action:not(:disabled):hover { box-shadow: 0 .6rem 1.4rem rgba(0,0,0,.08); }
+.du .du-action.is-double:not(:disabled):hover { border-color: rgba(245,158,11,.6); }
+.du .du-action.is-normal:not(:disabled):hover { border-color: rgba(var(--bs-primary-rgb),.5); }
+.du .du-action:disabled { opacity: .55; cursor: not-allowed; }
+.du .du-act-icon { width: 56px; height: 56px; font-size: 1.5rem; border-radius: 1rem; margin-bottom: 1rem; }
+.du .du-action h3 { font-size: 1.15rem; font-weight: 700; margin-bottom: .35rem; }
+.du .du-action .du-cta { margin-top: auto; padding-top: 1rem; font-weight: 700; display: inline-flex; align-items: center; gap: .4rem; }
+.du .du-action.is-double .du-cta { color: #d97706; }
+.du .du-action.is-normal .du-cta { color: var(--bs-primary); }
 
+.du .du-guide { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .4rem 1rem; padding: 1rem 1.25rem; }
+.du .du-guide div { display: flex; align-items: flex-start; gap: .55rem; font-size: .93rem; }
+.du .du-guide i { margin-top: .2rem; width: 1.1rem; }
+.du .du-log { list-style: none; margin: 0; padding: 0; }
+.du .du-log li { display: flex; align-items: center; gap: .6rem; padding: .55rem 1.25rem; border-top: 1px solid var(--bs-border-color-translucent); font-size: .92rem; }
 
+.du-modal .modal-content { border: 0; overflow: hidden; }
+.du-modal .modal-header { border-bottom: 1px solid var(--bs-border-color-translucent); }
+.du-modal .du-mh-icon { width: 40px; height: 40px; border-radius: .75rem; margin-right: .75rem; }
+.du-modal .du-ba { display: grid; grid-template-columns: 1fr auto 1fr; gap: .75rem; align-items: center; text-align: center; }
+.du-modal .du-ba > div { padding: .9rem; border-radius: .9rem; background: var(--bs-tertiary-bg); }
+.du-modal .du-ba .v { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+.du-modal .du-note { display: flex; gap: .6rem; padding: .75rem .9rem; border-radius: .85rem; font-size: .92rem; margin-top: 1rem; }
+.du-modal .du-note.warn { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.35); }
+.du-modal .du-note.info { background: rgba(var(--bs-primary-rgb),.06); border: 1px solid rgba(var(--bs-primary-rgb),.25); }
+</style>
 
+<div class="container mt-3 mb-4 du">
 
-
-@keyframes iconPulse {
-    0%, 100% {
-        transform: scale(1);
-        opacity: 0.85;
-    }
-    50% {
-        transform: scale(1.12);
-        opacity: 1;
-    }
-}
-
-@keyframes successBounce {
-    0% {
-        transform: scale(0.5);
-        opacity: 0;
-    }
-    60% {
-        transform: scale(1.15);
-    }
-    100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-			
-
-				
-				
-				
-             
-                
-              
-            </style>
-			
-
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
-			
-        </head>
-        <body>
-            <div class="container mt-3">
-                <!-- Header -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="card bg-primary text-white shadow-lg">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h1 class="h3 mb-2">
-                                            <i class="fas fa-bolt me-2"></i>
-                                            Torrent Upload Mode Manager
-                                        </h1>
-                                        <p class="text-muted mb-0">
-                                            Manage double upload status for all torrents
-                                        </p>
-                                    </div>
-                                    <div class="text-end">
-                                        <span class="badge bg-primary fs-6">v2.0</span>
-                                        <div class="mt-2">
-                                            <small class="text-muted">
-                                                <i class="fas fa-user-shield me-1"></i>
-                                                <?= htmlspecialchars($this->currentUser['username'] ?? 'Admin') ?>
-                                            </small>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Statistics Cards -->
-                <div class="row mb-4">
-                    <div class="col-md-6 mb-3">
-                        <div class="card stat-card stat-normal h-100">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="card-title text-muted mb-2">
-                                            <i class="fas fa-upload me-2"></i>Normal Upload Torrents
-                                        </h6>
-                                        <h2 class="mb-0"><?= number_format($stats['normal_count']) ?></h2>
-                                        <small class="text-muted">
-                                            <?= number_format($stats['normal_percent'], 1) ?>% of total
-                                        </small>
-                                    </div>
-                                    <div class="display-4 text-primary">
-                                        <i class="fas fa-file-upload"></i>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <div class="card stat-card stat-double h-100">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <h6 class="card-title text-muted mb-2">
-                                            <i class="fas fa-forward me-2"></i>Double Upload Torrents
-                                        </h6>
-                                        <h2 class="mb-0"><?= number_format($stats['double_count']) ?></h2>
-                                        <small class="text-muted">
-                                            <?= number_format($stats['double_percent'], 1) ?>% of total
-                                        </small>
-                                    </div>
-                                    <div class="display-4 text-warning">
-                                        <i class="fas fa-tachometer-alt"></i>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Action Cards -->
-                <div class="row">
-                    <div class="col-lg-6 mb-4">
-                        <div class="card card-hover border-warning" 
-                             data-bs-toggle="modal" 
-                             data-bs-target="#confirmDoubleModal">
-                            <div class="card-body text-center py-5">
-                                <div class="action-icon text-warning">
-                                    <i class="fas fa-rocket"></i>
-                                </div>
-                                <h3 class="card-title mb-3">Enable Double Upload</h3>
-                                <p class="card-text text-muted mb-4">
-                                    Set ALL torrents to double upload mode. This will affect 
-                                    <strong><?= number_format($stats['normal_count']) ?></strong> torrents.
-                                </p>
-                                <div class="btn btn-warning btn-lg btn-action">
-                                    <i class="fas fa-bolt me-2"></i>
-                                    Activate Double Upload
-                                </div>
-                                <div class="mt-3">
-                                    <small class="text-muted">
-                                        <i class="fas fa-exclamation-triangle me-1"></i>
-                                        This action affects multiple torrents
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-lg-6 mb-4">
-                        <div class="card card-hover border-primary" 
-                             data-bs-toggle="modal" 
-                             data-bs-target="#confirmNormalModal">
-                            <div class="card-body text-center py-5">
-                                <div class="action-icon text-primary">
-                                    <i class="fas fa-sync"></i>
-                                </div>
-                                <h3 class="card-title mb-3">Revert to Normal</h3>
-                                <p class="card-text text-muted mb-4">
-                                    Set ALL torrents back to normal upload mode. This will affect 
-                                    <strong><?= number_format($stats['double_count']) ?></strong> torrents.
-                                </p>
-                                <div class="btn btn-primary btn-lg btn-action">
-                                    <i class="fas fa-undo me-2"></i>
-                                    Revert to Normal
-                                </div>
-                                <div class="mt-3">
-                                    <small class="text-muted">
-                                        <i class="fas fa-info-circle me-1"></i>
-                                        Restores default upload behavior
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Information Panel -->
-                <div class="row mt-4">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">
-                                    <i class="fas fa-info-circle me-2"></i>
-                                    Information & Guidelines
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <h6><i class="fas fa-lightbulb me-2"></i>How it works:</h6>
-                                        <ul class="mb-0">
-                                            <li><strong>Double Upload:</strong> Users get 2x upload credit</li>
-                                            <li><strong>Normal Upload:</strong> Standard upload credit</li>
-                                            <li>Changes apply to all active torrents</li>
-                                            <li>System logs all administrator actions</li>
-                                        </ul>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <h6><i class="fas fa-exclamation-triangle me-2"></i>Important:</h6>
-                                        <ul class="mb-0">
-                                            <li>These are system-wide changes</li>
-                                            <li>Cannot be undone automatically</li>
-                                            <li>Affects user ratios and statistics</li>
-                                            <li>Use with caution during peak hours</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Double Upload Confirmation Modal -->
-            <div class="modal fade confirmation-modal" id="confirmDoubleModal" tabindex="-1">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content modal-warning">
-                        <div class="modal-header bg-warning text-dark">
-                            <h5 class="modal-title">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                Confirm Double Upload Activation
-                            </h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="text-center mb-4">
-                                <div class="display-1 text-warning mb-3">
-                                    <i class="fas fa-bolt"></i>
-                                </div>
-                                <h4 class="mb-3">Enable Double Upload?</h4>
-                                <p class="lead">
-                                    This will set <strong><?= number_format($stats['normal_count']) ?> torrents</strong> 
-                                    to double upload mode.
-                                </p>
-                            </div>
-                            
-                            <div class="alert alert-warning">
-                                <div class="d-flex">
-                                    <div class="me-3">
-                                        <i class="fas fa-radiation fa-2x"></i>
-                                    </div>
-                                    <div>
-                                        <h6 class="alert-heading mb-1">System-wide Impact</h6>
-                                        <p class="mb-0">This action affects ALL torrents and cannot be undone automatically.</p>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="row mt-4">
-                                <div class="col-6">
-                                    <div class="text-center p-3 bg-light rounded">
-                                        <div class="h4 mb-2">Before</div>
-                                        <div class="h2 text-primary"><?= number_format($stats['normal_count']) ?></div>
-                                        <small class="text-muted">Normal torrents</small>
-                                    </div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="text-center p-3 bg-light rounded">
-                                        <div class="h4 mb-2">After</div>
-                                        <div class="h2 text-warning">0</div>
-                                        <small class="text-muted">Normal torrents</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                <i class="fas fa-times me-1"></i> Cancel
-                            </button>
-                           <form method="post"
-      action="<?= $this->scriptUrl ?>"
-      class="d-inline action-form"
-      data-action="setalldouble">
-
-    <input type="hidden" name="action" value="setalldouble">
-    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-
-    <button type="submit" class="btn btn-warning">
-        <i class="fas fa-check me-1"></i> Confirm & Proceed
-    </button>
-</form>
-
-                        </div>
-                    </div>
-                </div>
-            </div>
-			
-			
-			<div class="modal fade" id="successModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-success">
-      <div class="modal-header bg-success text-white">
-        <h5 class="modal-title" id="successTitle">Success</h5>
-      </div>
-      <div class="modal-body text-center">
-        <div class="display-4 text-success mb-3">
-          <i class="fas fa-check-circle"></i>
+    <!-- Шапка -->
+    <div class="du-card mb-3"><div class="du-head">
+        <span class="du-head-icon"><i class="fas fa-bolt"></i></span>
+        <div style="min-width:0">
+            <h1 class="du-title">Upload Mode Manager</h1>
+            <div class="du-sub">Turn double upload on or off for the whole tracker in one click</div>
         </div>
-        <p id="successMessage"></p>
-        <small class="text-muted">
-          Page will refresh automatically…
-        </small>
-      </div>
+        <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
+            <span class="du-mode <?= $modeInfo[1] ?>"><i class="fas <?= $modeInfo[0] ?>"></i><?= $modeInfo[2] ?></span>
+            <span class="du-ver"><i class="fas fa-code-branch me-1"></i>v2.1</span>
+        </div>
+    </div></div>
+
+    <!-- Статистика -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-4"><div class="du-card du-stat"><span class="du-stat-icon ic-slate"><i class="fas fa-magnet"></i></span>
+            <div><div class="du-stat-label">Total torrents</div><div class="du-stat-value"><?= number_format($stats['total']) ?></div></div></div></div>
+        <div class="col-md-4"><div class="du-card du-stat"><span class="du-stat-icon ic-blue"><i class="fas fa-upload"></i></span>
+            <div><div class="du-stat-label">Normal upload</div><div class="du-stat-value"><?= number_format($stats['normal_count']) ?></div><div class="du-muted"><?= $nPct ?>%</div></div></div></div>
+        <div class="col-md-4"><div class="du-card du-stat"><span class="du-stat-icon ic-amber"><i class="fas fa-angles-up"></i></span>
+            <div><div class="du-stat-label">Double upload ×2</div><div class="du-stat-value"><?= number_format($stats['double_count']) ?></div><div class="du-muted"><?= $dPct ?>%</div></div></div></div>
     </div>
-  </div>
+
+    <div class="du-card p-3 mb-3">
+        <div class="du-split" role="img" aria-label="<?= $nPct ?>% normal, <?= $dPct ?>% double">
+            <span class="n" style="width:<?= $nPct ?>%"></span><span class="d" style="width:<?= $dPct ?>%"></span>
+        </div>
+        <div class="du-legend">
+            <span><i class="fas fa-circle text-primary"></i>Normal · <?= number_format($stats['normal_count']) ?></span>
+            <span><i class="fas fa-circle text-warning"></i>Double · <?= number_format($stats['double_count']) ?></span>
+        </div>
+    </div>
+
+    <?php if (!$canAct): ?>
+    <div class="alert alert-warning d-flex gap-2 rounded-4"><i class="fas fa-lock mt-1"></i>
+        <div>Only <strong>Administrators</strong> and <strong>Sysops</strong> can change the upload mode — it affects the whole tracker.</div></div>
+    <?php endif; ?>
+
+    <!-- Действия -->
+    <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+            <button type="button" class="du-action is-double" data-bs-toggle="modal" data-bs-target="#confirmDoubleModal"
+                    <?= (!$canAct || $stats['normal_count'] === 0) ? 'disabled' : '' ?>>
+                <span class="du-act-icon ic-amber"><i class="fas fa-rocket"></i></span>
+                <h3>Enable double upload</h3>
+                <div class="du-muted">Every torrent counts upload ×2. Affects <strong><?= number_format($stats['normal_count']) ?></strong> torrent(s) that are still normal.</div>
+                <span class="du-cta"><?= $stats['normal_count'] === 0 ? '<i class="fas fa-check"></i>Already on everywhere' : '<i class="fas fa-bolt"></i>Activate' ?></span>
+            </button>
+        </div>
+        <div class="col-lg-6">
+            <button type="button" class="du-action is-normal" data-bs-toggle="modal" data-bs-target="#confirmNormalModal"
+                    <?= (!$canAct || $stats['double_count'] === 0) ? 'disabled' : '' ?>>
+                <span class="du-act-icon ic-blue"><i class="fas fa-rotate-left"></i></span>
+                <h3>Revert to normal</h3>
+                <div class="du-muted">Restore the standard upload credit. Affects <strong><?= number_format($stats['double_count']) ?></strong> torrent(s) with double upload.</div>
+                <span class="du-cta"><?= $stats['double_count'] === 0 ? '<i class="fas fa-check"></i>Nothing to revert' : '<i class="fas fa-rotate-left"></i>Revert' ?></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="du-card h-100">
+                <div class="du-head pb-0"><span class="du-stat-icon ic-slate" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-circle-info"></i></span><h2 class="h6 fw-bold mb-0">How it works</h2></div>
+                <div class="du-guide">
+                    <div><i class="fas fa-angles-up text-warning"></i>Double upload: users get 2× upload credit</div>
+                    <div><i class="fas fa-upload text-primary"></i>Normal: standard upload credit</div>
+                    <div><i class="fas fa-globe text-body-secondary"></i>Applies to every torrent at once</div>
+                    <div><i class="fas fa-clipboard-list text-body-secondary"></i>Every switch is written to the site log</div>
+                    <div><i class="fas fa-triangle-exclamation text-warning"></i>Credit already earned is not taken back</div>
+                    <div><i class="fas fa-user-lock text-danger"></i>Admins &amp; Sysops only</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="du-card h-100 overflow-hidden">
+                <div class="du-head pb-2"><span class="du-stat-icon ic-slate" style="width:38px;height:38px;font-size:1rem"><i class="fas fa-clock-rotate-left"></i></span><h2 class="h6 fw-bold mb-0">Recent switches</h2></div>
+                <?php if ($recent): ?>
+                <ul class="du-log">
+                    <?php foreach ($recent as $r):
+                        $on = str_contains((string)$r['txt'], 'enabled'); ?>
+                    <li><i class="fas <?= $on ? 'fa-rocket text-warning' : 'fa-rotate-left text-primary' ?>"></i>
+                        <span class="flex-grow-1"><?= htmlspecialchars((string)$r['txt']) ?></span>
+                        <span class="du-muted text-nowrap"><?= my_datee('relative', (int)$r['added']) ?></span></li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php else: ?>
+                <div class="du-muted px-4 pb-4">No switches logged yet.</div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
 </div>
 
-
-
-            
-            <!-- Normal Upload Confirmation Modal -->
-            <div class="modal fade confirmation-modal" id="confirmNormalModal" tabindex="-1">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content modal-info">
-                        <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title">
-                                <i class="fas fa-info-circle me-2"></i>
-                                Confirm Normal Upload Reversion
-                            </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="text-center mb-4">
-                                <div class="display-1 text-primary mb-3">
-                                    <i class="fas fa-sync"></i>
-                                </div>
-                                <h4 class="mb-3">Revert to Normal Upload?</h4>
-                                <p class="lead">
-                                    This will set <strong><?= number_format($stats['double_count']) ?> torrents</strong> 
-                                    back to normal upload mode.
-                                </p>
-                            </div>
-                            
-                            <div class="alert alert-info">
-                                <div class="d-flex">
-                                    <div class="me-3">
-                                        <i class="fas fa-history fa-2x"></i>
-                                    </div>
-                                    <div>
-                                        <h6 class="alert-heading mb-1">System Restoration</h6>
-                                        <p class="mb-0">This will restore default upload behavior for all torrents.</p>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="row mt-4">
-                                <div class="col-6">
-                                    <div class="text-center p-3 bg-light rounded">
-                                        <div class="h4 mb-2">Before</div>
-                                        <div class="h2 text-warning"><?= number_format($stats['double_count']) ?></div>
-                                        <small class="text-muted">Double upload torrents</small>
-                                    </div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="text-center p-3 bg-light rounded">
-                                        <div class="h4 mb-2">After</div>
-                                        <div class="h2 text-primary">0</div>
-                                        <small class="text-muted">Double upload torrents</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                <i class="fas fa-times me-1"></i> Cancel
-                            </button>
-                            <form method="post" action="<?= $this->scriptUrl ?>" class="d-inline" data-action="setallnormal">
-                                <input type="hidden" name="action" value="setallnormal">
-                                <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-check me-1"></i> Confirm & Revert
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
+<?php if ($canAct): ?>
+<!-- Подтверждение: включить -->
+<div class="modal fade du-modal" id="confirmDoubleModal" tabindex="-1" aria-labelledby="duDblTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header">
+            <span class="du-mh-icon ic-amber" style="color:#d97706;background:rgba(245,158,11,.14)"><i class="fas fa-rocket"></i></span>
+            <h5 class="modal-title fw-bold" id="duDblTitle">Enable double upload?</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <div class="du-ba">
+                <div><div class="du-muted">Double now</div><div class="v"><?= number_format($stats['double_count']) ?></div></div>
+                <i class="fas fa-arrow-right-long text-body-secondary"></i>
+                <div><div class="du-muted">Double after</div><div class="v text-warning"><?= number_format($stats['total']) ?></div></div>
             </div>
-            
-            <!-- Bootstrap JavaScript -->
+            <div class="du-note warn"><i class="fas fa-triangle-exclamation text-warning mt-1"></i>
+                <div><strong><?= number_format($stats['normal_count']) ?></strong> torrent(s) switch to ×2 upload right away, for every user.</div></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fas fa-xmark me-1"></i>Cancel</button>
+            <form method="post" action="<?= $url ?>" class="d-inline" data-action="setalldouble">
+                <input type="hidden" name="action" value="setalldouble">
+                <input type="hidden" name="my_post_key" value="<?= $key ?>">
+                <button type="submit" class="btn btn-warning px-4"><i class="fas fa-bolt me-1"></i>Enable ×2</button>
+            </form>
+        </div>
+    </div></div>
+</div>
+
+<!-- Подтверждение: вернуть -->
+<div class="modal fade du-modal" id="confirmNormalModal" tabindex="-1" aria-labelledby="duNrmTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header">
+            <span class="du-mh-icon" style="color:var(--bs-primary);background:rgba(var(--bs-primary-rgb),.12)"><i class="fas fa-rotate-left"></i></span>
+            <h5 class="modal-title fw-bold" id="duNrmTitle">Revert to normal upload?</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <div class="du-ba">
+                <div><div class="du-muted">Double now</div><div class="v text-warning"><?= number_format($stats['double_count']) ?></div></div>
+                <i class="fas fa-arrow-right-long text-body-secondary"></i>
+                <div><div class="du-muted">Double after</div><div class="v">0</div></div>
+            </div>
+            <div class="du-note info"><i class="fas fa-circle-info text-primary mt-1"></i>
+                <div>Upload credit returns to normal. Credit already earned stays with users.</div></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fas fa-xmark me-1"></i>Cancel</button>
+            <form method="post" action="<?= $url ?>" class="d-inline" data-action="setallnormal">
+                <input type="hidden" name="action" value="setallnormal">
+                <input type="hidden" name="my_post_key" value="<?= $key ?>">
+                <button type="submit" class="btn btn-primary px-4"><i class="fas fa-rotate-left me-1"></i>Revert</button>
+            </form>
+        </div>
+    </div></div>
+</div>
+
+<!-- Результат -->
+<div class="modal fade du-modal" id="successModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content text-center p-4">
+        <div class="mx-auto mb-3 d-inline-flex align-items-center justify-content-center rounded-circle" style="width:64px;height:64px;font-size:1.8rem;color:#16a34a;background:rgba(34,197,94,.12)"><i class="fas fa-circle-check"></i></div>
+        <h5 class="fw-bold mb-1" id="successTitle">Done</h5>
+        <p class="mb-2" id="successMessage"></p>
+        <small class="text-body-secondary"><i class="fas fa-rotate me-1"></i>Refreshing…</small>
+    </div></div>
+</div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Инициализация модальных окон Bootstrap
-    const modalElements = document.querySelectorAll('.modal');
-    modalElements.forEach(modalEl => {
-        if (!bootstrap.Modal.getInstance(modalEl)) {
-            new bootstrap.Modal(modalEl);
-        }
-    });
-    
-    // Обработка кликов по карточкам для открытия модальных окон
-    document.querySelectorAll('.card-hover').forEach(card => {
-        card.addEventListener('click', function(e) {
-            if (e.target.closest('button') || e.target.closest('form') || e.target.closest('a')) {
-                return;
-            }
-            const target = this.dataset.bsTarget;
-            if (target) {
-                const modalElement = document.querySelector(target);
-                if (modalElement) {
-                    const modal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
-                    modal.show();
-                }
-            }
-        });
-    });
-    
-    // Используйте селектор form[data-action] вместо .action-form
-    document.querySelectorAll('form[data-action]').forEach(form => {
-        form.addEventListener('submit', function(e) {
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.du-modal form[data-action]').forEach(form => {
+        form.addEventListener('submit', function (e) {
             e.preventDefault();
-            e.stopPropagation();
-            
-            // ВАЖНО: Получаем URL из атрибута формы, а не из свойства
-            const formAction = this.getAttribute('action');
-            
-            if (!formAction) {
-                console.error('Form has no action attribute');
-                alert('Form configuration error');
-                return;
-            }
-            
-            // Создаем FormData из формы
-            const formData = new FormData(this);
-            const action = this.dataset.action;
-            const modalEl = this.closest('.modal');
-            
-            console.log('Form action URL:', formAction);
-            console.log('Form data:', Array.from(formData.entries()));
-            
-            // Показываем индикатор загрузки
-            const submitBtn = this.querySelector('button[type="submit"]');
-            const originalText = submitBtn.innerHTML;
-            const originalDisabled = submitBtn.disabled;
-            
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Processing...';
-            submitBtn.disabled = true;
-            
-            // Отправляем AJAX запрос
-            fetch(formAction, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json'
-                }
-            })
-            .then(response => {
-                console.log('Response status:', response.status);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Response data:', data);
-                
-                // Восстанавливаем кнопку
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = originalDisabled;
-                
-                if (data.status === 'success') {
-                    // Закрываем текущую модалку
-                    if (modalEl) {
-                        const bsModal = bootstrap.Modal.getInstance(modalEl);
-                        if (bsModal) {
-                            bsModal.hide();
-                        }
-                    }
-                    
-                    // Показываем модалку успеха
-                    const successTitle = document.getElementById('successTitle');
-                    const successMessage = document.getElementById('successMessage');
-                    
-                    if (successTitle) successTitle.textContent = data.title;
-                    if (successMessage) successMessage.innerHTML = data.message;
-                    
-                    const successModalEl = document.getElementById('successModal');
-                    if (successModalEl) {
-                        const successModal = bootstrap.Modal.getInstance(successModalEl) || 
-                                           new bootstrap.Modal(successModalEl);
-                        successModal.show();
-                    }
-                    
-                    // Автообновление через 3 секунды
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 3000);
-                } else {
-                    alert('Error: ' + (data.message || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                console.error('Fetch error:', error);
-                
-                // Восстанавливаем кнопку
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = originalDisabled;
-                
-                alert('An error occurred: ' + error.message + '\nPlease try again.');
-            });
-            
-            return false;
+            const btn = form.querySelector('button[type="submit"]');
+            const html = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Working…';
+
+            fetch(form.getAttribute('action'), { method: 'POST', body: new FormData(form), headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+                // Раньше при ответе 500 текст ошибки сервера терялся («HTTP error! status: 500»)
+                .then(r => r.json().catch(() => ({ status: 'error', message: 'Unexpected server response (' + r.status + ')' })))
+                .then(data => {
+                    if (data.status !== 'success') throw new Error(data.message || 'Unknown error');
+                    bootstrap.Modal.getInstance(form.closest('.modal'))?.hide();
+                    document.getElementById('successTitle').textContent = data.title || 'Done';
+                    document.getElementById('successMessage').textContent = data.message || '';
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('successModal')).show();
+                    setTimeout(() => location.reload(), 1800);
+                })
+                .catch(err => {
+                    btn.disabled = false; btn.innerHTML = html;
+                    if (typeof showToast === 'function') showToast(String(err.message).replace(/[<>&]/g, ''), 'error');
+                    else alert(err.message);
+                });
         });
     });
 });
 </script>
-
-
-        </body>
-        </html>
-		
-		
-		
-		
-		
-		
+<?php endif; ?>
         <?php
-		
-		stdfoot();
-        
-        echo ob_get_clean();
+        stdfoot();
     }
-    
+
+    /** Может ли текущий пользователь переключать режим (Administrator 7, Sysop 8) */
+    private function hasStaffAccess(): bool
+    {
+        return in_array((int)($this->currentUser['usergroup'] ?? 0), [7, 8], true);
+    }
+
+    /** Последние переключения из журнала сайта */
+    private function getRecentActions(): array
+    {
+        $rows = [];
+        $q = $this->database->sql_query_prepared(
+            "SELECT txt, added FROM sitelog WHERE txt LIKE ? ORDER BY added DESC LIMIT 5",
+            ['% double upload for % torrents']
+        );
+        while ($q && ($r = $this->database->fetch_array($q))) {
+            $rows[] = $r;
+        }
+        return $rows;
+    }
+
     /**
-     * Get torrent statistics
+     * Get torrent statistics (один запрос вместо двух)
      */
     private function getTorrentStats(): array
     {
-        // Get total torrents
-        $totalQuery = "SELECT COUNT(*) as total FROM torrents";
-        $totalResult = $this->database->sql_query_prepared($totalQuery);
-        $totalData = $totalResult ? $this->database->fetch_array($totalResult) : null;
-        $totalTorrents = (int)($totalData['total'] ?? 0);
-        
-        // Get double upload count
-        $doubleQuery = "SELECT COUNT(*) as double_count FROM torrents WHERE doubleupload = 'yes'";
-        $doubleResult = $this->database->sql_query_prepared($doubleQuery);
-        $doubleData = $doubleResult ? $this->database->fetch_array($doubleResult) : null;
-        $doubleCount = (int)($doubleData['double_count'] ?? 0);
-        
-        // Calculate normal count
-        $normalCount = $totalTorrents - $doubleCount;
-        
-        // Calculate percentages
-        $doublePercent = $totalTorrents > 0 ? ($doubleCount / $totalTorrents) * 100 : 0;
-        $normalPercent = $totalTorrents > 0 ? ($normalCount / $totalTorrents) * 100 : 0;
-        
+        $res  = $this->database->sql_query_prepared(
+            "SELECT COUNT(*) AS total, COALESCE(SUM(doubleupload = 'yes'), 0) AS double_count FROM torrents"
+        );
+        $row  = $res ? $this->database->fetch_array($res) : null;
+        $total  = (int)($row['total'] ?? 0);
+        $double = (int)($row['double_count'] ?? 0);
+        $normal = $total - $double;
+
         return [
-            'total' => $totalTorrents,
-            'double_count' => $doubleCount,
-            'normal_count' => $normalCount,
-            'double_percent' => $doublePercent,
-            'normal_percent' => $normalPercent
+            'total'          => $total,
+            'double_count'   => $double,
+            'normal_count'   => $normal,
+            'double_percent' => $total > 0 ? $double / $total * 100 : 0,
+            'normal_percent' => $total > 0 ? $normal / $total * 100 : 0,
         ];
     }
-    
+
     /**
      * Validate staff access
      */
     private function validateStaffAccess(): void
     {
-        $userClass = (int)($this->currentUser['usergroup'] ?? 0);
-        
-        // Administrator(7), Sysop(8) — Moderator(6) сюда сознательно не входит,
-        // действие затрагивает весь трекер целиком.
-        if (!in_array($userClass, [7, 8], true)) {
+        // Moderator(6) сюда сознательно не входит — действие затрагивает весь трекер
+        if (!$this->hasStaffAccess()) {
             $this->jsonError('Insufficient privileges for this action');
         }
     }
+
 
     /**
      * Validate CSRF token for state-changing actions
@@ -847,96 +533,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * Show success message
-     */
-    private function showSuccess(string $title, string $message, string $icon = 'check'): void
-    {
-        
-		
-		ob_start();
-        ?>
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Success - Torrent Manager</title>
-           
-            <style>
-                .success-container {
-                    min-height: 100vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                }
-                
-                .success-card {
-                    max-width: 500px;
-                    animation: fadeIn 0.5s ease-out;
-                }
-                
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(20px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-                
-                .success-icon {
-                    font-size: 5rem;
-                    animation: bounce 1s infinite alternate;
-                }
-                
-                @keyframes bounce {
-                    from { transform: translateY(0); }
-                    to { transform: translateY(-10px); }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="success-container">
-                <div class="card success-card shadow-lg">
-                    <div class="card-body text-center p-5">
-                        <div class="text-success success-icon mb-4">
-                            <i class="fas fa-<?= $icon ?>"></i>
-                        </div>
-                        <h2 class="card-title mb-3"><?= $title ?></h2>
-                        <div class="card-text mb-4">
-                            <?= $message ?>
-                        </div>
-                        <div class="alert alert-light">
-                            <i class="fas fa-clock me-2"></i>
-                            Action completed at <?= date('H:i:s') ?>
-                        </div>
-                        <div class="mt-4">
-                            <a href="<?= $this->scriptUrl ?>" class="btn btn-primary btn-lg">
-                                <i class="fas fa-arrow-left me-2"></i> Return to Manager
-                            </a>
-                        </div>
-                        <div class="mt-3">
-                            <small class="text-muted">
-                                <i class="fas fa-history me-1"></i>
-                                This action has been logged in the system
-                            </small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            
-            <script>
-            // Auto-redirect after 10 seconds
-            setTimeout(() => {
-                window.location.href = '<?= $this->scriptUrl ?>';
-            }, 10000);
-            </script>
-        </body>
-        </html>
-        <?php
-        echo ob_get_clean();
-        exit;
-    }
-    
-    /**
      * Handle errors gracefully
      */
     private function handleError(Throwable $e): void
@@ -954,40 +550,11 @@ document.addEventListener('DOMContentLoaded', function() {
             write_log($logMessage);
         }
         
-        ob_start();
-        ?>
-        <div class="container-fluid py-5">
-            <div class="row justify-content-center">
-                <div class="col-md-6">
-                    <div class="card border-danger shadow">
-                        <div class="card-header bg-danger text-white">
-                            <h5 class="mb-0">
-                                <i class="fas fa-exclamation-triangle me-2"></i>
-                                System Error
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="text-center mb-4">
-                                <i class="fas fa-bug fa-4x text-danger mb-3"></i>
-                                <h4>An error occurred</h4>
-                                <p class="text-muted">The issue has been logged. Please contact the system administrator if it persists.</p>
-                            </div>
-                            
-                            <div class="text-center mt-4">
-                                <a href="<?= htmlspecialchars($this->scriptUrl) ?>" class="btn btn-primary">
-                                    <i class="fas fa-home me-2"></i> Return to Manager
-                                </a>
-                                <button onclick="window.location.reload()" class="btn btn-secondary">
-                                    <i class="fas fa-sync-alt me-2"></i> Try Again
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <?php
-        echo ob_get_clean();
+        // Раньше HTML ошибки печатался без stdhead() и даже в ответ на AJAX-запрос
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $this->jsonError('Unexpected error. The issue has been logged.');
+        }
+        stderr('System Error', 'An unexpected error occurred. The issue has been logged — please try again.');
         exit;
     }
 }

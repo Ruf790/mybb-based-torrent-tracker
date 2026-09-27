@@ -6,11 +6,10 @@ if (!defined('STAFF_PANEL')) {
 }
 
 require_once INC_PATH . '/functions_mkprettytime.php';
-
 require_once INC_PATH . '/functions_multipage.php';
 
-
-
+// DAY_IN_SECONDS is not defined in the admin panel context
+defined('DAY_IN_SECONDS') || define('DAY_IN_SECONDS', 86400);
 
 // ── fetch_ban_times ───────────────────────────────────────────────────────────
 function fetch_ban_times(): array
@@ -47,8 +46,6 @@ function ban_date2timestamp(string $date, int $stamp = 0): int
         (int)date('Y', $stamp) + $years
     );
 }
-
-
 
 // ── Nav tabs ──────────────────────────────────────────────────────────────────
 const BAN_NAV = [
@@ -88,6 +85,160 @@ if ($ban_type === 'users') {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  BanView — shared page chrome (header, KPI tiles, empty states, confirm page)
+// ═════════════════════════════════════════════════════════════════════════════
+final class BanView
+{
+    public const ASSET_VER = 1;
+
+    private const TONES = [
+        'ips'       => 'danger',
+        'users'     => 'primary',
+        'usernames' => 'warning',
+        'emails'    => 'info',
+    ];
+
+    public static function assets(): void
+    {
+        global $BASEURL;
+        $v = self::ASSET_VER;
+        ?>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/banning.css?ver=<?= $v ?>">
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/banning.js?ver=<?= $v ?>" defer></script>
+        <?php
+    }
+
+    /** Opens the page wrapper: assets, header card, nav tabs. Close with BanView::close(). */
+    public static function open(string $section, string $postKey): void
+    {
+        $nav  = BAN_NAV[$section] ?? BAN_NAV['ips'];
+        $tone = self::TONES[$section] ?? 'danger';
+        self::assets();
+        ?>
+<div class="bn-page bn-t-<?= $tone ?>" data-post-key="<?= htmlspecialchars_uni($postKey) ?>">
+  <div class="container py-4">
+    <header class="bn-head">
+      <div class="bn-head-icon" aria-hidden="true"><i class="<?= $nav['icon'] ?>"></i></div>
+      <div class="bn-head-text">
+        <h1 class="bn-title"><?= htmlspecialchars_uni($nav['title']) ?></h1>
+        <p class="bn-sub"><?= htmlspecialchars_uni($nav['description']) ?></p>
+      </div>
+    </header>
+        <?php
+        output_nav_tabs(BAN_NAV, $section);
+    }
+
+    public static function close(): void
+    {
+        echo "\n  </div>\n</div>\n";
+    }
+
+    /**
+     * @param list<array{icon:string,label:string,value:int|string,tone?:string,raw?:bool}> $tiles
+     *        icon without the fa-solid prefix; raw=true means value is trusted HTML
+     */
+    public static function kpis(array $tiles): void
+    {
+        echo '<div class="bn-kpis">';
+        foreach ($tiles as $t) {
+            $tone  = !empty($t['tone']) ? ' bn-t-' . $t['tone'] : '';
+            $isNum = is_int($t['value']);
+            $val   = match (true) {
+                $isNum          => number_format($t['value']),
+                !empty($t['raw']) => (string)$t['value'],
+                default         => htmlspecialchars_uni((string)$t['value']),
+            };
+            echo '<div class="bn-kpi' . $tone . '">'
+               . '<span class="bn-kpi-icon" aria-hidden="true"><i class="fa-solid ' . $t['icon'] . '"></i></span>'
+               . '<div class="bn-kpi-body">'
+               . '<div class="bn-kpi-val' . ($isNum ? '' : ' is-text') . '">' . $val . '</div>'
+               . '<div class="bn-kpi-label">' . htmlspecialchars_uni($t['label']) . '</div>'
+               . '</div></div>';
+        }
+        echo '</div>';
+    }
+
+    public static function errors(array $errors): void
+    {
+        if (empty($errors)) return;
+        echo '<div class="bn-alert" role="alert">'
+           . '<i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i><ul>';
+        foreach ($errors as $e) echo '<li>' . htmlspecialchars_uni((string)$e) . '</li>';
+        echo '</ul></div>';
+    }
+
+    public static function emptyState(string $icon, string $title, string $text): string
+    {
+        return '<div class="bn-empty">'
+             . '<div class="bn-empty-icon" aria-hidden="true"><i class="fa-solid ' . $icon . '"></i></div>'
+             . '<h3>' . htmlspecialchars_uni($title) . '</h3>'
+             . '<p>' . htmlspecialchars_uni($text) . '</p>'
+             . '</div>';
+    }
+
+    /** Ban filter with wildcards, CIDR suffix and @ highlighted. */
+    public static function pattern(string $raw, int $type): string
+    {
+        $s = htmlspecialchars_uni($raw);
+        if ($type === 1) {
+            $s = preg_replace('~/(\d{1,3})$~', '<span class="bn-cidr">/$1</span>', $s) ?? $s;
+        }
+        $s = str_replace('*', '<span class="bn-wild">*</span>', $s);
+        if ($type === 3) {
+            $s = str_replace('@', '<span class="bn-at">@</span>', $s);
+        }
+        return '<span class="bn-pattern">' . $s . '</span>';
+    }
+
+    /**
+     * No-JS fallback confirmation page (JS users get SweetAlert2 instead).
+     * @param array<string,string> $subject label => trusted HTML
+     */
+    public static function confirmPage(
+        string $postKey,
+        string $tone,
+        string $icon,
+        string $title,
+        string $message,
+        array  $subject,
+        string $actionUrl,
+        string $cancelUrl,
+        string $okLabel,
+        string $okIcon
+    ): void {
+        self::assets();
+        ?>
+<div class="bn-page bn-t-<?= $tone ?>" data-cancel-url="<?= htmlspecialchars_uni($cancelUrl) ?>">
+  <div class="bn-confirm-backdrop"></div>
+  <div class="bn-confirm" role="dialog" aria-modal="true" aria-labelledby="bn-confirm-title">
+    <div class="bn-confirm-icon" aria-hidden="true"><i class="fa-solid <?= $icon ?>"></i></div>
+    <h1 id="bn-confirm-title"><?= htmlspecialchars_uni($title) ?></h1>
+    <p class="bn-confirm-text"><?= htmlspecialchars_uni($message) ?></p>
+    <dl class="bn-confirm-subject">
+      <?php foreach ($subject as $label => $html): ?>
+      <div><dt><?= htmlspecialchars_uni($label) ?></dt><dd><?= $html ?></dd></div>
+      <?php endforeach; ?>
+    </dl>
+    <div class="bn-confirm-actions">
+      <a href="<?= htmlspecialchars_uni($cancelUrl) ?>" class="btn btn-outline-secondary rounded-pill px-4">
+        <i class="fa-solid fa-xmark me-2"></i>Cancel
+      </a>
+      <form action="<?= htmlspecialchars_uni($actionUrl) ?>" method="post" class="d-inline">
+        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars_uni($postKey) ?>">
+        <button type="submit" class="btn btn-<?= $tone ?> rounded-pill px-4" autofocus>
+          <i class="fa-solid <?= $okIcon ?> me-2"></i><?= htmlspecialchars_uni($okLabel) ?>
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+        <?php
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  BanManager — IP / usernames / emails
 // ═════════════════════════════════════════════════════════════════════════════
 class BanManager
@@ -101,10 +252,12 @@ class BanManager
     ];
 
     private const FORM_CONFIGS = [
-        1 => ['title' => 'Ban IP Address',         'label' => 'IP Address',     'description' => 'To ban a range use * (Ex: 127.0.0.*) or CIDR (Ex: 127.0.0.0/8)', 'button' => 'Ban IP Address',         'icon' => 'fa-ban',       'placeholder' => 'Enter IP address or range...'],
-        2 => ['title' => 'Disallow Username',       'label' => 'Username',       'description' => 'Use * for wildcard (Ex: admin*, *bot)',                             'button' => 'Disallow Username',      'icon' => 'fa-user-lock', 'placeholder' => 'Enter username pattern...'],
-        3 => ['title' => 'Disallow Email Address',  'label' => 'Email Address',  'description' => 'Use * for wildcard (Ex: *@spam.com)',                               'button' => 'Disallow Email Address', 'icon' => 'fa-envelope',  'placeholder' => 'Enter email pattern...'],
+        1 => ['title' => 'Ban IP Address',         'label' => 'IP Address',     'description' => 'To ban a range use * (Ex: 127.0.0.*) or CIDR (Ex: 127.0.0.0/8)', 'button' => 'Ban IP Address',         'icon' => 'fa-ban',       'input_icon' => 'fa-location-crosshairs', 'placeholder' => 'Enter IP address or range...'],
+        2 => ['title' => 'Disallow Username',       'label' => 'Username',       'description' => 'Use * for wildcard (Ex: admin*, *bot)',                             'button' => 'Disallow Username',      'icon' => 'fa-user-lock', 'input_icon' => 'fa-user',                'placeholder' => 'Enter username pattern...'],
+        3 => ['title' => 'Disallow Email Address',  'label' => 'Email Address',  'description' => 'Use * for wildcard (Ex: *@spam.com)',                               'button' => 'Disallow Email Address', 'icon' => 'fa-envelope',  'input_icon' => 'fa-at',                  'placeholder' => 'Enter email pattern...'],
     ];
+
+    private const PER_PAGE = 20;
 
     public function __construct(
         private readonly object $mybb,
@@ -147,8 +300,8 @@ class BanManager
             admin_redirect('index.php?act=banning' . ($cfg['redirect'] ? '&type=' . $cfg['redirect'] : ''));
         }
 
-        output_inline_error($errors);
-        $this->displayInterface();
+        // Errors are rendered inside the page (after stdhead), with the typed value kept
+        $this->displayInterface($errors, $filter, $type);
     }
 
     private function handleDelete(): void
@@ -184,16 +337,19 @@ class BanManager
         }
     }
 
-    private function displayInterface(): void
+    private function displayInterface(array $errors = [], string $value = '', int $type = 0): void
     {
         $this->plugins->run_hooks('admin_config_banning_start');
-        $typeConfig = $this->getCurrentTypeConfig();
-        $this->renderInterface($typeConfig);
+        $typeConfig = $type > 0 && isset(self::TYPE_CONFIGS[$type])
+            ? self::TYPE_CONFIGS[$type] + ['type' => $type, 'name' => $this->getTypeName($type)]
+            : $this->getCurrentTypeConfig();
+        $this->renderInterface($typeConfig, $errors, $value);
     }
 
     private function validateAdd(string $filter, int $type): array
     {
         $errors = [];
+        if (!isset(self::TYPE_CONFIGS[$type]))                 return ['Invalid ban type'];
         if (empty(trim($filter)))                              $errors[] = 'Please enter a value to ban';
         if ($this->isDuplicateFilter($filter, $type))          $errors[] = 'This filter already exists';
         if ($type === 1 && !$this->isValidIPFilter($filter))   $errors[] = 'Please enter a valid IP address or range';
@@ -268,51 +424,100 @@ class BanManager
         };
     }
 
-    private function renderInterface(array $tc): void
+    /** @return array{total:int,recent:int,triggered:int,lastuse:int} */
+    private function getStats(int $type): array
     {
+        $q = $this->db->sql_query_prepared(
+            "SELECT COUNT(*)                     AS total,
+                    COALESCE(SUM(dateline >= ?), 0) AS recent,
+                    COALESCE(SUM(lastuse > 0), 0)   AS triggered,
+                    COALESCE(MAX(lastuse), 0)       AS lastuse
+             FROM banfilters WHERE type = ?",
+            [TIMENOW - 7 * DAY_IN_SECONDS, $type]
+        );
+        $r = $q ? $this->db->fetch_array($q) : null;
+
+        return [
+            'total'     => (int)($r['total']     ?? 0),
+            'recent'    => (int)($r['recent']    ?? 0),
+            'triggered' => (int)($r['triggered'] ?? 0),
+            'lastuse'   => (int)($r['lastuse']   ?? 0),
+        ];
+    }
+
+    private function renderInterface(array $tc, array $errors = [], string $value = ''): void
+    {
+        $stats = $this->getStats($tc['type']);
+
         stdhead($tc['title']);
-        echo '<style>.ban-row:hover{background:#f8f9fa!important}.empty-state{padding:3rem 1rem;text-align:center;color:#6c757d}.empty-state i{font-size:3rem;opacity:.5}</style>';
-        output_nav_tabs(BAN_NAV, $tc['name']);
-        $this->outputAddForm($tc);
-        $this->outputBanList($tc);
+        BanView::open($tc['name'], (string)$this->mybb->post_code);
+
+        BanView::kpis([
+            ['icon' => $tc['icon'],            'label' => $tc['type'] === 1 ? 'Banned addresses' : 'Blocked patterns', 'value' => $stats['total']],
+            ['icon' => 'fa-calendar-plus',     'label' => 'Added in the last 7 days', 'value' => $stats['recent'],    'tone' => 'success'],
+            ['icon' => 'fa-bolt',              'label' => 'Triggered at least once',  'value' => $stats['triggered'], 'tone' => 'warning'],
+            ['icon' => 'fa-clock-rotate-left', 'label' => $tc['type'] === 1 ? 'Last blocked access' : 'Last blocked attempt',
+             'value' => $stats['lastuse'] > 0 ? my_datee('relative', $stats['lastuse']) : 'Never', 'raw' => true, 'tone' => 'secondary'],
+        ]);
+
+        BanView::errors($errors);
+        $this->outputAddForm($tc, $value);
+        $this->outputBanList($tc, $stats['total']);
+
+        BanView::close();
         stdfoot();
     }
 
-    private function outputAddForm(array $tc): void
+    private function outputAddForm(array $tc, string $value = ''): void
     {
         $cfg   = self::FORM_CONFIGS[$tc['type']];
         $color = $tc['color'];
-        echo "
-        <div class='container mt-4'>
-          <form action='index.php?act=banning&action=add' method='post' class='card border-0 shadow-sm'>
-            <input type='hidden' name='my_post_key' value='{$this->mybb->post_code}'>
-            <input type='hidden' name='type' value='{$tc['type']}'>
-            <div class='card-header bg-{$color} text-white'>
-              <h5 class='mb-0'><i class='fa-solid {$cfg['icon']} me-2'></i>{$cfg['title']}</h5>
-            </div>
-            <div class='card-body'>
-              <label class='form-label fw-semibold'>{$cfg['label']} <span class='text-danger'>*</span></label>
-              <div class='form-text text-muted mb-2'><i class='fa-solid fa-circle-info me-1'></i>{$cfg['description']}</div>
-              <input type='text' name='filter' class='form-control form-control-lg' placeholder='{$cfg['placeholder']}' required autofocus>
-            </div>
-            <div class='card-footer bg-light text-center py-3'>
-              <button type='submit' class='btn btn-{$color} btn-lg px-4'>
-                <i class='fa-solid {$cfg['icon']} me-2'></i>{$cfg['button']}
-              </button>
-            </div>
-          </form>
-        </div>";
+        ?>
+    <form action="index.php?act=banning&amp;action=add" method="post" class="bn-panel bn-t-<?= $color ?>" data-bn-form>
+      <input type="hidden" name="my_post_key" value="<?= htmlspecialchars_uni((string)$this->mybb->post_code) ?>">
+      <input type="hidden" name="type" value="<?= (int)$tc['type'] ?>">
+
+      <div class="bn-panel-head">
+        <span class="bn-chip-icon" aria-hidden="true"><i class="fa-solid <?= $cfg['icon'] ?>"></i></span>
+        <div>
+          <h2><?= htmlspecialchars_uni($cfg['title']) ?></h2>
+          <p>Takes effect immediately after saving.</p>
+        </div>
+      </div>
+
+      <div class="bn-panel-body">
+        <label for="bn-filter" class="bn-label">
+          <i class="fa-solid <?= $cfg['input_icon'] ?>" aria-hidden="true"></i><?= htmlspecialchars_uni($cfg['label']) ?>
+          <span class="bn-req" aria-hidden="true">*</span>
+        </label>
+        <div class="input-group input-group-lg bn-input">
+          <span class="input-group-text" aria-hidden="true"><i class="fa-solid <?= $cfg['input_icon'] ?>"></i></span>
+          <input type="text" id="bn-filter" name="filter" class="form-control"
+                 value="<?= htmlspecialchars_uni($value) ?>"
+                 placeholder="<?= htmlspecialchars_uni($cfg['placeholder']) ?>"
+                 aria-describedby="bn-filter-help" required autofocus autocomplete="off" spellcheck="false">
+        </div>
+        <div class="bn-help" id="bn-filter-help">
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i><span><?= htmlspecialchars_uni($cfg['description']) ?></span>
+        </div>
+      </div>
+
+      <div class="bn-actionbar">
+        <button type="submit" class="btn btn-<?= $color ?> rounded-pill" data-bn-submit>
+          <i class="fa-solid <?= $cfg['icon'] ?> me-2"></i><?= htmlspecialchars_uni($cfg['button']) ?>
+        </button>
+      </div>
+    </form>
+        <?php
     }
 
-    private function outputBanList(array $tc): void
+    private function outputBanList(array $tc, int $total): void
     {
-        $total_q = $this->db->sql_query_prepared("SELECT COUNT(fid) AS c FROM banfilters WHERE type = ?", [$tc['type']]);
-        $total   = $total_q ? (int)$this->db->fetch_field($total_q, 'c') : 0;
-        $page    = max(1, $this->mybb->get_input('page', MyBB::INPUT_INT));
-        $start   = ($page - 1) * 20;
-        $q       = $this->db->sql_query_prepared(
+        $page  = max(1, $this->mybb->get_input('page', MyBB::INPUT_INT));
+        $start = ($page - 1) * self::PER_PAGE;
+        $q     = $this->db->sql_query_prepared(
             "SELECT * FROM banfilters WHERE type = ? ORDER BY dateline DESC LIMIT ?, ?",
-            [$tc['type'], $start, 20]
+            [$tc['type'], $start, self::PER_PAGE]
         );
         $filters = [];
         while ($q && ($f = $this->db->fetch_array($q))) {
@@ -321,99 +526,108 @@ class BanManager
             $filters[] = $f;
         }
 
-        $headers = match ($tc['type']) {
-            2 => '<th>Username</th><th>Date Disallowed</th><th>Last Attempt</th>',
-            3 => '<th>Email</th><th>Date Disallowed</th><th>Last Attempt</th>',
-            default => '<th>IP Address</th><th>Ban Date</th><th>Last Access</th>',
+        [$colValue, $colDate, $colLast, $valueIcon] = match ($tc['type']) {
+            2       => ['Username', 'Disallowed', 'Last attempt', 'fa-user'],
+            3       => ['Email',    'Disallowed', 'Last attempt', 'fa-at'],
+            default => ['IP address / range', 'Banned', 'Last access', 'fa-location-crosshairs'],
         };
 
-        echo "
-        <div class='container mt-4'>
-          <div class='card border-0 shadow-sm'>
-            <div class='card-header bg-light py-3'>
-              <h5 class='mb-0'>
-                <i class='fa-solid {$tc['icon']} text-{$tc['color']} me-2'></i>
-                {$tc['title']} <span class='badge bg-{$tc['color']} ms-2'>{$total}</span>
-              </h5>
-            </div>
-            <div class='card-body p-0'>
-              <div class='table-responsive'>
-                <table class='table table-hover mb-0'>
-                  <thead class='table-light'><tr>{$headers}<th width='80' class='text-center'>Del</th></tr></thead>
-                  <tbody>";
+        $deleteText = match ($tc['type']) {
+            2       => '%s can be registered again.',
+            3       => '%s can be used to register again.',
+            default => '%s will be able to access the site again.',
+        };
 
-        if (empty($filters)) {
-            $icons = [1 => 'fa-network-wired', 2 => 'fa-user-slash', 3 => 'fa-envelope'];
-            echo "<tr><td colspan='4' class='empty-state'><i class='fa-solid {$icons[$tc['type']]}'></i><h5 class='text-muted'>No bans found</h5></td></tr>";
-        } else {
-            foreach ($filters as $f) {
-                $val     = htmlspecialchars_uni($f['filter']);
-                $date    = $f['dateline'] > 0 ? my_datee('relative', $f['dateline']) : 'N/A';
-                $lastuse = $f['lastuse']  > 0 ? my_datee('relative', $f['lastuse'])  : 'Never';
-                $new     = (TIMENOW - $f['dateline']) < 86400 ? '<span class="badge bg-success ms-1">New</span>' : '';
-                $delUrl  = "index.php?act=banning&action=delete&fid={$f['fid']}&my_post_key={$this->mybb->post_code}";
-                echo "
-                <tr class='ban-row align-middle'>
-                  <td><code>{$val}</code>{$new}</td>
-                  <td><small class='text-muted'>{$date}</small></td>
-                  <td><small class='text-muted'>{$lastuse}</small></td>
-                  <td class='text-center'>
-                    <a href='{$delUrl}' onclick='return AdminCP.deleteConfirmation(this, \"Are you sure you want to delete this ban?\")' class='btn btn-sm btn-outline-danger' title='Delete'>
-                      <i class='fa-solid fa-trash-can'></i>
-                    </a>
-                  </td>
-                </tr>";
-            }
+        $emptyText = match ($tc['type']) {
+            2       => 'Add a username pattern above to stop it being registered.',
+            3       => 'Add an email pattern above to stop it being used for sign-up.',
+            default => 'Add an IP address or range above to block it.',
+        };
+
+        $postKey = (string)$this->mybb->post_code;
+        ?>
+    <section class="bn-panel bn-panel-table">
+      <div class="bn-panel-head">
+        <span class="bn-chip-icon" aria-hidden="true"><i class="fa-solid <?= $tc['icon'] ?>"></i></span>
+        <div><h2><?= htmlspecialchars_uni($tc['title']) ?></h2></div>
+        <span class="bn-count" title="Total"><?= number_format($total) ?></span>
+      </div>
+
+      <?php if (empty($filters)): ?>
+        <?= BanView::emptyState($tc['icon'], 'Nothing blocked yet', $emptyText) ?>
+      <?php else: ?>
+      <div class="table-responsive">
+        <table class="table bn-table mb-0">
+          <thead>
+            <tr>
+              <th scope="col"><i class="fa-solid <?= $valueIcon ?>" aria-hidden="true"></i><?= $colValue ?></th>
+              <th scope="col"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i><?= $colDate ?></th>
+              <th scope="col"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><?= $colLast ?></th>
+              <th scope="col" class="text-end"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php foreach ($filters as $f):
+              $raw     = (string)$f['filter'];
+              $date    = $f['dateline'] > 0 ? my_datee('relative', $f['dateline']) : '—';
+              $isNew   = (TIMENOW - $f['dateline']) < DAY_IN_SECONDS;
+              $delUrl  = "index.php?act=banning&action=delete&fid={$f['fid']}&my_post_key={$postKey}";
+          ?>
+            <tr>
+              <td>
+                <?= BanView::pattern($raw, $f['type']) ?>
+                <?php if ($isNew): ?><span class="bn-tag bn-t-success ms-2"><i class="fa-solid fa-star" aria-hidden="true"></i>New</span><?php endif; ?>
+              </td>
+              <td class="bn-muted"><?= $date ?></td>
+              <td class="bn-muted">
+                <?php if ($f['lastuse'] > 0): ?>
+                  <span class="bn-hit"><i class="fa-solid fa-bolt" aria-hidden="true"></i><?= my_datee('relative', $f['lastuse']) ?></span>
+                <?php else: ?>
+                  Never
+                <?php endif; ?>
+              </td>
+              <td class="text-end">
+                <a href="<?= htmlspecialchars_uni($delUrl) ?>" class="bn-icon-btn bn-t-danger"
+                   title="Delete" aria-label="Delete <?= htmlspecialchars_uni($raw) ?>"
+                   data-bn-confirm data-tone="danger" data-ok="Delete"
+                   data-title="Delete this ban?"
+                   data-text="<?= htmlspecialchars_uni(sprintf($deleteText, '“' . $raw . '”')) ?>">
+                  <i class="fa-solid fa-trash-can"></i>
+                </a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
+    </section>
+        <?php
+        if ($total > self::PER_PAGE) {
+            echo '<nav class="bn-pager" aria-label="Pages">'
+               . multipage($total, self::PER_PAGE, $page, "index.php?act=banning&type={$tc['name']}&page={page}")
+               . '</nav>';
         }
-
-        echo "</tbody></table></div></div></div></div>";
-
-        if ($total > 20) {
-    echo "<div class='container mt-3 d-flex justify-content-center'>"
-       . multipage($total, 20, $page, "index.php?act=banning&type={$tc['name']}&page={page}")
-       . "</div>";
-}
-
     }
 
     private function showDeleteConfirmation(array $filter): void
     {
-        $tc      = self::TYPE_CONFIGS[$filter['type']];
-        $val     = htmlspecialchars_uni($filter['filter']);
-        $delUrl  = "index.php?act=banning&action=delete&fid={$filter['fid']}&my_post_key={$this->mybb->post_code}";
-        $canUrl  = "index.php?act=banning&type=" . $this->getTypeName((int)$filter['type']);
+        $tc      = self::TYPE_CONFIGS[$filter['type']] ?? self::TYPE_CONFIGS[1];
+        $postKey = (string)$this->mybb->post_code;
+        $delUrl  = "index.php?act=banning&action=delete&fid={$filter['fid']}&my_post_key={$postKey}";
+        $canUrl  = 'index.php?act=banning&type=' . $this->getTypeName((int)$filter['type']);
 
         stdhead('Confirm Deletion');
-        echo "
-        <div class='modal-backdrop' style='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1040'></div>
-        <div style='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1050;width:100%;max-width:460px'>
-          <div class='card border-0 shadow-lg' style='border-radius:16px;overflow:hidden'>
-            <div class='card-header bg-danger text-white text-center py-4'>
-              <i class='fas fa-exclamation-triangle fa-3x mb-2'></i>
-              <h4 class='mb-0'>Confirm Deletion</h4>
-            </div>
-            <div class='card-body text-center py-4'>
-              <p class='text-muted'>Are you sure you want to delete this ban?</p>
-              <div class='bg-light rounded p-3 mb-4 text-start'>
-                <strong>Filter:</strong> <code>{$val}</code><br>
-                <strong>Type:</strong> {$tc['title']}
-              </div>
-              <form action='{$delUrl}' method='post' class='d-inline'>
-                <input type='hidden' name='my_post_key' value='{$this->mybb->post_code}'>
-                <button type='submit' class='btn btn-danger btn-lg px-4 me-2'>
-                  <i class='fas fa-trash me-2'></i>Yes, Delete
-                </button>
-              </form>
-              <a href='{$canUrl}' class='btn btn-outline-secondary btn-lg px-4'>
-                <i class='fas fa-times me-2'></i>Cancel
-              </a>
-            </div>
-          </div>
-        </div>
-        <script>
-        document.querySelector('.modal-backdrop').addEventListener('click', () => location.href='{$canUrl}');
-        document.addEventListener('keydown', e => { if(e.key==='Escape') location.href='{$canUrl}'; });
-        </script>";
+        BanView::confirmPage(
+            $postKey, 'danger', 'fa-trash-can',
+            'Delete this ban?',
+            'The filter will stop blocking right away.',
+            [
+                'Filter' => BanView::pattern((string)$filter['filter'], (int)$filter['type']),
+                'List'   => '<i class="fa-solid ' . $tc['icon'] . ' me-1"></i>' . htmlspecialchars_uni($tc['title']),
+            ],
+            $delUrl, $canUrl, 'Delete', 'fa-trash-can'
+        );
         stdfoot();
         exit;
     }
@@ -424,6 +638,8 @@ class BanManager
 // ═════════════════════════════════════════════════════════════════════════════
 class BannedAccountsManager
 {
+    private const PER_PAGE = 20;
+
     public function __construct(
         private readonly object $mybb,
         private readonly object $db,
@@ -510,8 +726,9 @@ class BannedAccountsManager
             $this->showConfirmation($user,
                 "index.php?act=banning&type=users&action=prune&uid={$user['id']}",
                 'index.php?act=banning&type=users',
-                'Confirm Pruning',
-                'Are you sure you want to prune all threads and posts? This cannot be undone.'
+                'Prune all content?',
+                'Every thread and post by this user will be deleted. This cannot be undone.',
+                'danger', 'fa-broom', 'Prune content'
             );
         }
     }
@@ -556,8 +773,9 @@ class BannedAccountsManager
             $this->showConfirmation($user,
                 "index.php?act=banning&type=users&action=lift&uid={$ban['uid']}",
                 'index.php?act=banning&type=users',
-                'Confirm Lift Ban',
-                'Are you sure you want to lift the ban? The user will be restored to their original group.'
+                'Lift this ban?',
+                'The user will be moved back to their previous group.',
+                'success', 'fa-lock-open', 'Lift ban'
             );
         }
     }
@@ -741,171 +959,160 @@ class BannedAccountsManager
         return !empty($usergroups[(int)($user['usergroup'] ?? 0)]['isbannedgroup']);
     }
 
+    /** @return array{total:int,perm:int,soon:int,recent:int} */
+    private function getStats(): array
+    {
+        $q = $this->db->sql_query_prepared(
+            "SELECT COUNT(*) AS total,
+                    COALESCE(SUM(lifted = 0 OR bantime IN ('perm','---')), 0)                       AS perm,
+                    COALESCE(SUM(lifted > 0 AND bantime NOT IN ('perm','---') AND lifted <= ?), 0)   AS soon,
+                    COALESCE(SUM(dateline >= ?), 0)                                                   AS recent
+             FROM banned",
+            [TIMENOW + DAY_IN_SECONDS, TIMENOW - 7 * DAY_IN_SECONDS]
+        );
+        $r = $q ? $this->db->fetch_array($q) : null;
+
+        return [
+            'total'  => (int)($r['total']  ?? 0),
+            'perm'   => (int)($r['perm']   ?? 0),
+            'soon'   => (int)($r['soon']   ?? 0),
+            'recent' => (int)($r['recent'] ?? 0),
+        ];
+    }
+
     private function renderEditForm(array $ban, array $user, array $bannedGroups, array $banTimes, array $errors): void
     {
+        global $dateformat;
+
+        $isPerm  = $ban['lifted'] === 0 || in_array($ban['bantime'], ['perm', '---'], true);
+        $name    = htmlspecialchars_uni((string)$user['username']);
+        $length  = $banTimes[$ban['bantime']] ?? ($isPerm ? 'Permanent' : (string)$ban['bantime']);
+
         stdhead('Edit Ban');
-        output_nav_tabs(BAN_NAV, 'users');
-        $this->outputErrors($errors);
+        BanView::open('users', (string)$this->mybb->post_code);
+        BanView::errors($errors);
         ?>
-        <form action="index.php?act=banning&type=users&action=edit&uid=<?= $ban['uid'] ?>" method="post">
-          <input type="hidden" name="my_post_key" value="<?= $this->mybb->post_code ?>">
-          <div class="container mt-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-header bg-warning text-white">
-                <h5 class="mb-0"><i class="fa-solid fa-user-edit me-2"></i>Edit Ban — <?= htmlspecialchars_uni($user['username']) ?></h5>
-              </div>
-              <div class="card-body">
-                <div class="row g-3">
-                  <div class="col-12">
-                    <label class="form-label fw-semibold">Username</label>
-                    <div class="form-control bg-light"><?= htmlspecialchars_uni($user['username']) ?></div>
-                  </div>
-                  <div class="col-12">
-                    <label class="form-label fw-semibold">Reason</label>
-                    <textarea name="reason" class="form-control" rows="4" maxlength="255"><?= htmlspecialchars_uni($this->mybb->input['reason'] ?? $ban['reason']) ?></textarea>
-                  </div>
-                  <?php if (count($bannedGroups) > 1): ?>
-                  <div class="col-12">
-                    <label class="form-label fw-semibold">Banned Group</label>
-                    <?= $this->selectBox('usergroup', $bannedGroups, $this->mybb->input['usergroup'] ?? $ban['gid']) ?>
-                  </div>
-                  <?php endif; ?>
-                  <div class="col-12">
-                    <label class="form-label fw-semibold">Ban Length</label>
-                    <?= $this->selectBox('bantime', $this->prepareBanTimes($banTimes), $this->mybb->input['bantime'] ?? $ban['bantime'] ?? '---') ?>
-                  </div>
-                </div>
-              </div>
-              <div class="card-footer bg-light text-center py-3">
-                <button type="submit" class="btn btn-warning btn-lg px-4"><i class="fa-solid fa-save me-2"></i>Update Ban</button>
-                <a href="index.php?act=banning&type=users" class="btn btn-outline-secondary btn-lg ms-2"><i class="fa-solid fa-times me-2"></i>Cancel</a>
-              </div>
-            </div>
+    <form action="index.php?act=banning&amp;type=users&amp;action=edit&amp;uid=<?= $ban['uid'] ?>" method="post" class="bn-panel bn-t-warning" data-bn-form>
+      <input type="hidden" name="my_post_key" value="<?= htmlspecialchars_uni((string)$this->mybb->post_code) ?>">
+
+      <div class="bn-panel-head">
+        <span class="bn-avatar" aria-hidden="true"><?= htmlspecialchars_uni(mb_strtoupper(mb_substr((string)$user['username'], 0, 1))) ?></span>
+        <div>
+          <h2>Edit ban for <?= $name ?></h2>
+          <p>UID <?= (int)$user['id'] ?></p>
+        </div>
+      </div>
+
+      <div class="bn-panel-body">
+        <div class="bn-facts">
+          <span class="bn-tag bn-t-secondary"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i>Banned <?= my_datee($dateformat, $ban['dateline']) ?></span>
+          <span class="bn-tag bn-t-<?= $isPerm ? 'danger' : 'info' ?>">
+            <i class="fa-solid <?= $isPerm ? 'fa-infinity' : 'fa-hourglass-half' ?>" aria-hidden="true"></i>
+            <?= $isPerm ? 'Permanent' : 'Lifts ' . my_datee($dateformat, $ban['lifted']) ?>
+          </span>
+          <span class="bn-tag bn-t-secondary"><i class="fa-solid fa-ruler-horizontal" aria-hidden="true"></i><?= htmlspecialchars_uni($length) ?></span>
+        </div>
+
+        <div class="row g-3">
+          <div class="<?= count($bannedGroups) > 1 ? 'col-md-6' : 'col-12' ?>">
+            <label for="bn-bantime" class="bn-label"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Ban length</label>
+            <?= $this->selectBox('bantime', $this->prepareBanTimes($banTimes), $this->mybb->input['bantime'] ?? $ban['bantime'] ?? '---', 'bn-bantime') ?>
           </div>
-        </form>
+          <?php if (count($bannedGroups) > 1): ?>
+          <div class="col-md-6">
+            <label for="bn-usergroup" class="bn-label"><i class="fa-solid fa-users-rectangle" aria-hidden="true"></i>Banned group</label>
+            <?= $this->selectBox('usergroup', $bannedGroups, $this->mybb->input['usergroup'] ?? $ban['gid'], 'bn-usergroup') ?>
+          </div>
+          <?php endif; ?>
+          <div class="col-12">
+            <label for="bn-reason" class="bn-label"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i>Reason</label>
+            <textarea id="bn-reason" name="reason" class="form-control" rows="4" maxlength="255"
+                      data-bn-count="bn-reason-count"><?= htmlspecialchars_uni($this->mybb->input['reason'] ?? $ban['reason']) ?></textarea>
+            <div class="bn-counter" id="bn-reason-count" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bn-actionbar">
+        <span class="bn-actionbar-note"><i class="fa-solid fa-circle-info me-1" aria-hidden="true"></i>The new length counts from the original ban date.</span>
+        <a href="index.php?act=banning&amp;type=users" class="btn btn-outline-secondary rounded-pill"><i class="fa-solid fa-xmark me-2"></i>Cancel</a>
+        <button type="submit" class="btn btn-warning rounded-pill" data-bn-submit><i class="fa-solid fa-floppy-disk me-2"></i>Update ban</button>
+      </div>
+    </form>
         <?php
+        BanView::close();
         stdfoot();
     }
 
     private function renderMainInterface(array $bannedGroups, array $banTimes, array $errors): void
     {
+        $stats = $this->getStats();
+
         stdhead('Banned Accounts');
-        output_nav_tabs(BAN_NAV, 'users');
-        $this->outputErrors($errors);
+        BanView::open('users', (string)$this->mybb->post_code);
+
+        BanView::kpis([
+            ['icon' => 'fa-user-lock',    'label' => 'Banned accounts',          'value' => $stats['total']],
+            ['icon' => 'fa-infinity',     'label' => 'Permanent',                'value' => $stats['perm'],   'tone' => 'danger'],
+            ['icon' => 'fa-hourglass-end','label' => 'Lifting within 24 hours',  'value' => $stats['soon'],   'tone' => 'warning'],
+            ['icon' => 'fa-calendar-plus','label' => 'Banned in the last 7 days','value' => $stats['recent'], 'tone' => 'info'],
+        ]);
+
+        BanView::errors($errors);
         ?>
-        <form action="index.php?act=banning&type=users" method="post">
-          <input type="hidden" name="my_post_key" value="<?= $this->mybb->post_code ?>">
-          <div class="container mt-4">
-            <div class="card border-0 shadow-sm">
-              <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fa-solid fa-user-lock me-2"></i>Ban a User</h5>
+    <form action="index.php?act=banning&amp;type=users" method="post" class="bn-panel" data-bn-form>
+      <input type="hidden" name="my_post_key" value="<?= htmlspecialchars_uni((string)$this->mybb->post_code) ?>">
+
+      <div class="bn-panel-head">
+        <span class="bn-chip-icon" aria-hidden="true"><i class="fa-solid fa-gavel"></i></span>
+        <div>
+          <h2>Ban a user</h2>
+          <p>Moves the account into a banned group and clears its subscriptions.</p>
+        </div>
+      </div>
+
+      <div class="bn-panel-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="username" class="bn-label"><i class="fa-solid fa-user" aria-hidden="true"></i>Username <span class="bn-req" aria-hidden="true">*</span></label>
+            <div class="bn-suggest-wrap">
+              <div class="input-group bn-input">
+                <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <input type="text" name="username" id="username" class="form-control" autocomplete="off" spellcheck="false" required
+                       role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="usernameSuggestions"
+                       value="<?= htmlspecialchars_uni($this->mybb->get_input('username')) ?>"
+                       placeholder="Start typing a username…">
               </div>
-              <div class="card-body">
-                <div class="row g-3">
-                  <div class="col-12 position-relative">
-                    <label class="form-label fw-semibold">Username</label>
-                    <input type="text" name="username" id="username" class="form-control" autocomplete="off"
-                           value="<?= htmlspecialchars_uni($this->mybb->get_input('username')) ?>"
-                           placeholder="Enter username...">
-                    <div id="usernameSuggestions" class="list-group position-absolute w-100 shadow-sm"
-                         style="z-index:1050; display:none; max-height:220px; overflow-y:auto;"></div>
-                  </div>
-                  <div class="col-12">
-                    <label class="form-label fw-semibold">Reason</label>
-                    <textarea name="reason" class="form-control" rows="3" maxlength="255"
-                              placeholder="Enter ban reason..."><?= htmlspecialchars_uni($this->mybb->get_input('reason')) ?></textarea>
-                  </div>
-                  <?php if (count($bannedGroups) > 1): ?>
-                  <div class="col-12">
-                    <label class="form-label fw-semibold">Banned Group</label>
-                    <?= $this->selectBox('usergroup', $bannedGroups, $this->mybb->input['usergroup'] ?? array_key_first($bannedGroups)) ?>
-                  </div>
-                  <?php endif; ?>
-                  <div class="col-12">
-                    <label class="form-label fw-semibold">Ban Length</label>
-                    <?= $this->selectBox('bantime', $this->prepareBanTimes($banTimes), $this->mybb->input['bantime'] ?? '---') ?>
-                  </div>
-                </div>
-              </div>
-              <div class="card-footer bg-light text-center py-3">
-                <button type="submit" name="ban" value="1" class="btn btn-danger btn-lg px-4"><i class="fa-solid fa-ban me-2"></i>Ban User</button>
-              </div>
+              <div id="usernameSuggestions" class="bn-suggest" role="listbox"></div>
             </div>
           </div>
-        </form>
-        <script>
-        (function () {
-            const input = document.getElementById('username');
-            const box   = document.getElementById('usernameSuggestions');
-            if (!input || !box) return;
+          <div class="col-md-6">
+            <label for="bn-bantime" class="bn-label"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Ban length</label>
+            <?= $this->selectBox('bantime', $this->prepareBanTimes($banTimes), $this->mybb->input['bantime'] ?? '---', 'bn-bantime') ?>
+          </div>
+          <?php if (count($bannedGroups) > 1): ?>
+          <div class="col-12">
+            <label for="bn-usergroup" class="bn-label"><i class="fa-solid fa-users-rectangle" aria-hidden="true"></i>Banned group</label>
+            <?= $this->selectBox('usergroup', $bannedGroups, $this->mybb->input['usergroup'] ?? array_key_first($bannedGroups), 'bn-usergroup') ?>
+          </div>
+          <?php endif; ?>
+          <div class="col-12">
+            <label for="bn-reason" class="bn-label"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i>Reason</label>
+            <textarea id="bn-reason" name="reason" class="form-control" rows="3" maxlength="255"
+                      data-bn-count="bn-reason-count"
+                      placeholder="Shown to the user on their ban notice"><?= htmlspecialchars_uni($this->mybb->get_input('reason')) ?></textarea>
+            <div class="bn-counter" id="bn-reason-count" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
 
-            let debounceTimer = null;
-            let activeController = null;
-
-            function hideBox() {
-                box.style.display = 'none';
-                box.innerHTML = '';
-            }
-
-            function escapeHtml(str) {
-                return String(str ?? '').replace(/[&<>"']/g, function (ch) {
-                    switch (ch) {
-                        case '&': return '&amp;';
-                        case '<': return '&lt;';
-                        case '>': return '&gt;';
-                        case '"': return '&quot;';
-                        case "'": return '&#39;';
-                    }
-                });
-            }
-
-            input.addEventListener('input', function () {
-                const term = input.value.trim();
-                clearTimeout(debounceTimer);
-
-                if (term.length < 2) {
-                    hideBox();
-                    return;
-                }
-
-                debounceTimer = setTimeout(function () {
-                    if (activeController) activeController.abort();
-                    activeController = new AbortController();
-
-                    fetch('index.php?act=banning&type=users&action=search_username&q=' + encodeURIComponent(term), {
-                        signal: activeController.signal
-                    })
-                        .then(r => r.json())
-                        .then(users => {
-                            if (!Array.isArray(users) || users.length === 0) {
-                                hideBox();
-                                return;
-                            }
-                            box.innerHTML = users.map(u =>
-                                '<button type="button" class="list-group-item list-group-item-action py-2">'
-                                + escapeHtml(u.username) + '</button>'
-                            ).join('');
-                            box.style.display = 'block';
-                        })
-                        .catch(() => {});
-                }, 250);
-            });
-
-            box.addEventListener('click', function (e) {
-                const btn = e.target.closest('button');
-                if (!btn) return;
-                input.value = btn.textContent;
-                hideBox();
-                input.focus();
-            });
-
-            document.addEventListener('click', function (e) {
-                if (e.target !== input && !box.contains(e.target)) hideBox();
-            });
-        })();
-        </script>
+      <div class="bn-actionbar">
+        <button type="submit" name="ban" value="1" class="btn btn-danger rounded-pill" data-bn-submit><i class="fa-solid fa-ban me-2"></i>Ban user</button>
+      </div>
+    </form>
         <?php
         $this->outputBannedUsersList();
+        BanView::close();
         stdfoot();
     }
 
@@ -926,147 +1133,153 @@ class BannedAccountsManager
         $count_q   = $this->db->sql_query_prepared($count_sql, $userWhereParams);
         $row      = $count_q ? $this->db->fetch_array($count_q) : null;
         $banCount = (int)($row['cnt'] ?? 0);
-        $perPage  = 20;
+        $perPage  = self::PER_PAGE;
         $page     = max(1, $this->mybb->get_input('page', MyBB::INPUT_INT));
         $start    = ($page - 1) * $perPage;
+        $postKey  = (string)$this->mybb->post_code;
         ?>
-        <div class="container mt-4">
-          <div class="card border-0 shadow-sm">
-            <div class="card-header bg-light py-3">
-              <h5 class="mb-0">
-                <i class="fa-solid fa-users-slash text-danger me-2"></i>
-                Banned Accounts <span class="badge bg-danger ms-2"><?= $banCount ?></span>
-              </h5>
-            </div>
-            <div class="card-body p-0">
-            <?php if ($banCount === 0): ?>
-              <div class="text-center py-5">
-                <i class="fa-solid fa-users-slash fa-4x text-muted mb-3 d-block"></i>
-                <h5 class="text-muted">No Banned Users</h5>
-              </div>
-            <?php else: ?>
-              <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                  <thead class="table-light">
-                    <tr>
-                      <th>User</th>
-                      <th width="200">Lifts On</th>
-                      <th width="150">Time Left</th>
-                      <th width="80" class="text-center">Edit</th>
-                      <th width="80" class="text-center">Lift</th>
-                      <th width="80" class="text-center">Prune</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                  <?php
-                  $where = $userWhere ? "WHERE {$userWhere}" : '';
-                  $q = $this->db->sql_query_prepared("
-                      SELECT b.*, a.username AS adminuser, u.username
-                      FROM banned b
-                      LEFT JOIN users u ON b.uid   = u.id
-                      LEFT JOIN users a ON b.admin = a.id
-                      {$where}
-                      ORDER BY b.dateline DESC
-                      LIMIT ?, ?
-                  ", [...$userWhereParams, $start, $perPage]);
-                  while ($q && ($ban = $this->db->fetch_array($q))):
-                      $ban['uid']      = (int)$ban['uid'];
-                      $ban['dateline'] = (int)$ban['dateline'];
-                      $ban['lifted']   = (int)$ban['lifted'];
-                      $isPerm          = $ban['lifted'] === 0 || in_array($ban['bantime'], ['perm','---'], true);
-                      $liftsOn         = $isPerm ? 'Never' : my_datee($dateformat, $ban['lifted']);
-                      $remaining       = $ban['lifted'] - TIMENOW;
-                      $timeBadge       = $isPerm
-                          ? '<span class="badge bg-dark">Permanent</span>'
-                          : '<span class="badge bg-' . match(true) {
-                              $remaining < 3600   => 'danger',
-                              $remaining < 86400  => 'warning',
-                              $remaining < 604800 => 'info',
-                              default             => 'success',
-                          } . '">' . mkprettytime($remaining) . '</span>';
-                  ?>
-                  <tr>
-                    <td>
-                      <strong><?= build_profile_link(htmlspecialchars_uni($ban['username']), $ban['uid'], '_blank') ?></strong>
-                      <?php if (!empty($ban['reason'])): ?>
-                      <div class="small text-muted fst-italic"><?= htmlspecialchars_uni($ban['reason']) ?></div>
-                      <?php endif; ?>
-                    </td>
-                    <td><small class="text-muted"><?= $liftsOn ?></small></td>
-                    <td><?= $timeBadge ?></td>
-                    <td class="text-center">
-                      <a href="index.php?act=banning&type=users&action=edit&uid=<?= $ban['uid'] ?>" class="btn btn-sm btn-outline-primary">
-                        <i class="fa-solid fa-pen-to-square"></i>
-                      </a>
-                    </td>
-                     
-					 <td class="text-center">
-            <a href="index.php?act=banning&type=users&action=lift&uid=<?= $ban['uid'] ?>&my_post_key=<?= $this->mybb->post_code ?>"
-               onclick="return AdminCP.deleteConfirmation(this, 'Are you sure you want to lift this ban?');"
-               class="btn btn-sm btn-outline-success" title="Lift Ban">
-              <i class="fa-solid fa-lock-open"></i>
-            </a>
-          </td>
-					
-					
-                    <td class="text-center">
-                      <a href="index.php?act=banning&type=users&action=prune&uid=<?= $ban['uid'] ?>&my_post_key=<?= $this->mybb->post_code ?>"
-                         onclick="return confirm('Prune all content? Cannot be undone!')" class="btn btn-sm btn-outline-danger">
-                        <i class="fa-solid fa-trash"></i>
-                      </a>
-                    </td>
-                  </tr>
-                  <?php endwhile; ?>
-                  </tbody>
-                </table>
-              </div>
-            <?php endif; ?>
-            </div>
-          </div>
-        </div>
-        <?php
-       
-	   if ($banCount > $perPage) {
-    echo '<div class="container mt-3 d-flex justify-content-center">'
-       . multipage($banCount, $perPage, $page, 'index.php?act=banning&type=users&page={page}')
-       . '</div>';
-}
+    <section class="bn-panel bn-panel-table">
+      <div class="bn-panel-head">
+        <span class="bn-chip-icon bn-t-danger" aria-hidden="true"><i class="fa-solid fa-users-slash"></i></span>
+        <div><h2>Banned accounts</h2></div>
+        <span class="bn-count bn-t-danger" title="Total"><?= number_format($banCount) ?></span>
+      </div>
 
+      <?php if ($banCount === 0): ?>
+        <?= BanView::emptyState('fa-users-slash', 'No banned accounts', 'Use the form above to ban a user.') ?>
+      <?php else: ?>
+      <div class="table-responsive">
+        <table class="table bn-table mb-0">
+          <thead>
+            <tr>
+              <th scope="col"><i class="fa-solid fa-user" aria-hidden="true"></i>User</th>
+              <th scope="col"><i class="fa-solid fa-user-shield" aria-hidden="true"></i>Banned by</th>
+              <th scope="col"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Time left</th>
+              <th scope="col" class="text-end"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php
+          $where = $userWhere ? "WHERE {$userWhere}" : '';
+          $q = $this->db->sql_query_prepared("
+              SELECT b.*, a.username AS adminuser, u.username
+              FROM banned b
+              LEFT JOIN users u ON b.uid   = u.id
+              LEFT JOIN users a ON b.admin = a.id
+              {$where}
+              ORDER BY b.dateline DESC
+              LIMIT ?, ?
+          ", [...$userWhereParams, $start, $perPage]);
+          while ($q && ($ban = $this->db->fetch_array($q))):
+              $ban['uid']      = (int)$ban['uid'];
+              $ban['dateline'] = (int)$ban['dateline'];
+              $ban['lifted']   = (int)$ban['lifted'];
+              $rawName         = (string)($ban['username'] ?? '');
+              $name            = htmlspecialchars_uni($rawName !== '' ? $rawName : 'Deleted user');
+              $initial         = htmlspecialchars_uni(mb_strtoupper(mb_substr($rawName !== '' ? $rawName : '?', 0, 1)));
+              $isPerm          = $ban['lifted'] === 0 || in_array($ban['bantime'], ['perm','---'], true);
+              $remaining       = $ban['lifted'] - TIMENOW;
+
+              // Progress of the ban from start to lift
+              $span = max(1, $ban['lifted'] - $ban['dateline']);
+              $pct  = $isPerm ? 100 : (int)round(min(100, max(0, (TIMENOW - $ban['dateline']) / $span * 100)));
+              $tone = match (true) {
+                  $isPerm             => 'danger',
+                  $remaining <= 0     => 'secondary',
+                  $remaining < 3600   => 'success',
+                  $remaining < 86400  => 'info',
+                  $remaining < 604800 => 'warning',
+                  default             => 'danger',
+              };
+
+              $base    = "index.php?act=banning&type=users&uid={$ban['uid']}";
+              $editUrl = "{$base}&action=edit";
+              $liftUrl = "{$base}&action=lift&my_post_key={$postKey}";
+              $pruneUrl= "{$base}&action=prune&my_post_key={$postKey}";
+          ?>
+            <tr>
+              <td>
+                <div class="bn-user">
+                  <span class="bn-avatar" aria-hidden="true"><?= $initial ?></span>
+                  <div class="bn-user-text">
+                    <div class="bn-user-name"><?= build_profile_link($name, $ban['uid'], '_blank') ?></div>
+                    <?php if (!empty($ban['reason'])): ?>
+                    <div class="bn-reason"><i class="fa-solid fa-quote-left" aria-hidden="true"></i><span><?= htmlspecialchars_uni($ban['reason']) ?></span></div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="bn-by"><?= !empty($ban['adminuser']) ? htmlspecialchars_uni($ban['adminuser']) : '<span class="bn-muted">System</span>' ?></div>
+                <div class="bn-muted small"><?= my_datee($dateformat, $ban['dateline']) ?></div>
+              </td>
+              <td>
+                <div class="bn-remain bn-t-<?= $tone ?>">
+                  <?php if ($isPerm): ?>
+                    <div class="bn-remain-top"><strong><i class="fa-solid fa-infinity me-1" aria-hidden="true"></i>Permanent</strong><span>Never lifts</span></div>
+                  <?php elseif ($remaining <= 0): ?>
+                    <div class="bn-remain-top"><strong><i class="fa-solid fa-hourglass-end me-1" aria-hidden="true"></i>Expired</strong><span>Awaiting lift</span></div>
+                  <?php else: ?>
+                    <div class="bn-remain-top"><strong><?= mkprettytime($remaining) ?></strong><span><?= my_datee($dateformat, $ban['lifted']) ?></span></div>
+                  <?php endif; ?>
+                  <div class="bn-bar<?= $isPerm ? ' is-perm' : '' ?>" role="progressbar" aria-label="Ban served" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= $pct ?>">
+                    <span style="width:<?= $pct ?>%"></span>
+                  </div>
+                </div>
+              </td>
+              <td class="text-end">
+                <div class="bn-actions">
+                  <a href="<?= htmlspecialchars_uni($editUrl) ?>" class="bn-icon-btn bn-t-primary" title="Edit ban" aria-label="Edit ban for <?= $name ?>">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                  </a>
+                  <a href="<?= htmlspecialchars_uni($liftUrl) ?>" class="bn-icon-btn bn-t-success" title="Lift ban" aria-label="Lift ban for <?= $name ?>"
+                     data-bn-confirm data-tone="success" data-ok="Lift ban"
+                     data-title="Lift ban for <?= $name ?>?"
+                     data-text="The user will be moved back to their previous group.">
+                    <i class="fa-solid fa-lock-open"></i>
+                  </a>
+                  <a href="<?= htmlspecialchars_uni($pruneUrl) ?>" class="bn-icon-btn bn-t-danger" title="Prune content" aria-label="Prune content of <?= $name ?>"
+                     data-bn-confirm data-tone="danger" data-ok="Prune content"
+                     data-title="Prune all content by <?= $name ?>?"
+                     data-text="Every thread and post by this user will be deleted. This cannot be undone.">
+                    <i class="fa-solid fa-broom"></i>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          <?php endwhile; ?>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
+    </section>
+        <?php
+        if ($banCount > $perPage) {
+            echo '<nav class="bn-pager" aria-label="Pages">'
+               . multipage($banCount, $perPage, $page, 'index.php?act=banning&type=users&page={page}')
+               . '</nav>';
+        }
     }
 
-    private function showConfirmation(array $user, string $actionUrl, string $cancelUrl, string $title, string $message): void
-    {
+    private function showConfirmation(
+        array  $user,
+        string $actionUrl,
+        string $cancelUrl,
+        string $title,
+        string $message,
+        string $tone   = 'danger',
+        string $icon   = 'fa-triangle-exclamation',
+        string $okLabel = 'Yes, continue'
+    ): void {
         stdhead('Confirm Action');
-        ?>
-        <div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1040"></div>
-        <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1050;width:100%;max-width:480px">
-          <div class="card border-0 shadow-lg" style="border-radius:16px;overflow:hidden">
-            <div class="card-header bg-danger text-white text-center py-4">
-              <i class="fas fa-exclamation-triangle fa-3x mb-2 d-block"></i>
-              <h4 class="mb-0"><?= htmlspecialchars($title) ?></h4>
-            </div>
-            <div class="card-body text-center py-4">
-              <p class="text-muted mb-4"><?= htmlspecialchars($message) ?></p>
-              <div class="bg-light rounded p-3 mb-4 text-start">
-                <strong>User:</strong> <?= htmlspecialchars_uni($user['username']) ?>
-                <span class="text-muted ms-2">UID: <?= (int)$user['id'] ?></span>
-              </div>
-              <form action="<?= htmlspecialchars($actionUrl) ?>" method="post" class="d-inline">
-                <input type="hidden" name="my_post_key" value="<?= $this->mybb->post_code ?>">
-                <button type="submit" class="btn btn-danger btn-lg px-4 me-2">
-                  <i class="fas fa-check me-2"></i>Yes, Continue
-                </button>
-              </form>
-              <a href="<?= htmlspecialchars($cancelUrl) ?>" class="btn btn-outline-secondary btn-lg px-4">
-                <i class="fas fa-times me-2"></i>Cancel
-              </a>
-            </div>
-          </div>
-        </div>
-        <script>
-        document.addEventListener('keydown', e => { if(e.key==='Escape') location.href=<?= json_encode($cancelUrl) ?>; });
-        </script>
-        <?php
+        BanView::confirmPage(
+            (string)$this->mybb->post_code, $tone, $icon, $title, $message,
+            [
+                'User' => htmlspecialchars_uni((string)$user['username'])
+                        . ' <span class="bn-muted">UID ' . (int)$user['id'] . '</span>',
+            ],
+            $actionUrl, $cancelUrl, $okLabel, $icon
+        );
         stdfoot();
         exit;
     }
@@ -1083,22 +1296,15 @@ class BannedAccountsManager
         return $list;
     }
 
-    private function selectBox(string $name, array $options, mixed $selected, string $class = 'form-select'): string
+    private function selectBox(string $name, array $options, mixed $selected, string $id = '', string $class = 'form-select'): string
     {
-        $html = "<select name=\"{$name}\" class=\"{$class}\">";
+        $idAttr = $id !== '' ? " id=\"{$id}\"" : '';
+        $html   = "<select name=\"{$name}\"{$idAttr} class=\"{$class}\">";
         foreach ($options as $val => $label) {
             $sel   = $val == $selected ? ' selected' : '';
             $html .= '<option value="' . htmlspecialchars_uni((string)$val) . '"' . $sel . '>'
                    . htmlspecialchars_uni((string)$label) . '</option>';
         }
         return $html . '</select>';
-    }
-
-    private function outputErrors(array $errors): void
-    {
-        if (empty($errors)) return;
-        echo '<div class="container mt-3"><div class="alert alert-danger"><ul class="mb-0">';
-        foreach ($errors as $e) echo '<li>' . htmlspecialchars_uni($e) . '</li>';
-        echo '</ul></div></div>';
     }
 }

@@ -7,6 +7,12 @@ if (!defined('STAFF_PANEL')) {
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_image_recode.php';
 
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const DAY_IN_SECONDS  = 86400;
+
 // ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
@@ -326,6 +332,36 @@ switch ($_GET['action'] ?? 'list') {
 }
 
 // ═══════════════════════════════════════════════════════════
+// UI HELPERS (общие стили и шапка для всех страниц модуля)
+// ═══════════════════════════════════════════════════════════
+function scr_styles(): void
+{
+    global $BASEURL;
+    echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/manage_screenshots.css?ver=2">';
+}
+
+
+
+function scr_header(string $icon, string $title, string $subtitle, string $actions = ''): void
+{
+    echo '<div class="scr-panel scr-head d-flex flex-wrap align-items-center gap-3 mb-4">';
+    echo '<div class="scr-icon scr-tone-primary"><i class="fa-solid ' . $icon . '"></i></div>';
+    echo '<div class="me-auto"><h1>' . htmlspecialchars($title) . '</h1><p>' . htmlspecialchars($subtitle) . '</p></div>';
+    if ($actions !== '') {
+        echo '<div class="d-flex flex-wrap gap-2">' . $actions . '</div>';
+    }
+    echo '</div>';
+}
+
+function scr_kpi(string $icon, string $tone, string $value, string $label): string
+{
+    return '<div class="col-6 col-lg-3"><div class="scr-panel scr-kpi">'
+        . '<div class="scr-icon scr-icon-sm scr-tone-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></div>'
+        . '<div><div class="scr-kpi-value">' . $value . '</div><div class="scr-kpi-label">' . $label . '</div></div>'
+        . '</div></div>';
+}
+
+// ═══════════════════════════════════════════════════════════
 // SHOW LIST
 // ═══════════════════════════════════════════════════════════
 function show_list(): void
@@ -351,6 +387,17 @@ function show_list(): void
     $count_row = $db->fetch_array($count_res);
     $count     = (int)($count_row['cnt'] ?? 0);
 
+    // KPI — одним запросом по всей таблице (без учёта фильтра)
+    $stats_res = $db->sql_query_prepared(
+        "SELECT COUNT(*) AS total,
+                COUNT(DISTINCT torrent_id) AS torrents,
+                COALESCE(SUM(uploaded_at >= ?), 0) AS day,
+                COALESCE(SUM(uploaded_at >= ?), 0) AS week
+           FROM screenshots",
+        [TIMENOW - DAY_IN_SECONDS, TIMENOW - 7 * DAY_IN_SECONDS]
+    );
+    $stats = $db->fetch_array($stats_res) ?: [];
+
     [$page, $perpage] = scr_page_params();
     $pages = max(1, (int)ceil($count / $perpage));
     $page  = max(1, min($page, $pages));
@@ -362,94 +409,143 @@ function show_list(): void
 
     $list_params = array_merge($params, [$start, $perpage]);
     $result = $db->sql_query_prepared("SELECT * FROM screenshots $where_sql ORDER BY uploaded_at DESC LIMIT ?, ?", $list_params);
+    $has_rows = $db->num_rows($result) > 0;
+    $is_filtered = ($search !== '' || $torrent_id !== '');
 
     stdhead('Screenshot Management');
-   
-    echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/manage_screenshots.css">';
+
+  
+    scr_styles();
     echo '<script>var my_post_key = "' . $mybb->post_code . '"; var scr_script = "' . $_this_script_ . '";</script>';
 
-    echo '<div class="container mt-3">';
+    echo '<div class="container mt-3 scr-page">';
 
     // Header
-    echo '<div class="d-flex justify-content-between align-items-center mb-4">';
-    echo '<h1 class="mt-4"><i class="fas fa-images me-2"></i>Screenshot Management</h1>';
-    echo '<div class="d-flex gap-2">';
-    echo '<button type="button" class="btn btn-outline-secondary" id="selectAllBtn"><i class="fas fa-check-square me-2"></i>Select All</button>';
-    echo '<button type="button" class="btn btn-danger" id="deleteSelectedBtn" disabled><i class="fas fa-trash me-2"></i>Delete Selected</button>';
-    echo '<a href="' . $_this_script_ . '&action=add" class="btn btn-primary" id="addNewBtn" data-bs-toggle="modal" data-bs-target="#uploadScreenshotModal"><i class="fas fa-plus me-2"></i>Add New</a>';
-    echo '</div></div>';
+    scr_header(
+        'fa-images',
+        'Screenshot Management',
+        'Upload, replace and remove torrent screenshots',
+        '<a href="' . $_this_script_ . '&action=add" class="btn btn-primary rounded-pill px-4" id="addNewBtn" data-bs-toggle="modal" data-bs-target="#uploadScreenshotModal">'
+        . '<i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload screenshots</a>'
+    );
+
+    // KPI tiles
+    echo '<div class="row g-3 mb-4">';
+    echo scr_kpi('fa-images',        'primary', number_format((int)($stats['total'] ?? 0)),    'Total screenshots');
+    echo scr_kpi('fa-magnet',        'info',    number_format((int)($stats['torrents'] ?? 0)), 'Torrents with screenshots');
+    echo scr_kpi('fa-clock',         'success', number_format((int)($stats['day'] ?? 0)),      'Uploaded in 24 hours');
+    echo scr_kpi('fa-calendar-week', 'warning', number_format((int)($stats['week'] ?? 0)),     'Uploaded in 7 days');
+    echo '</div>';
 
     // Search
-    echo '<div class="card mb-4 shadow-sm"><div class="card-body bg-light">';
-    echo '<form method="get" action="index.php" class="row g-3">';
+    echo '<div class="scr-panel scr-filter mb-4">';
+    echo '<form method="get" action="index.php" class="row g-2 align-items-center">';
     echo '<input type="hidden" name="act" value="manage_screenshots">';
-    echo '<div class="col-md-4"><div class="input-group">';
-    echo '<span class="input-group-text"><i class="fas fa-search"></i></span>';
-    echo '<input type="text" class="form-control" name="search" placeholder="Search..." value="' . htmlspecialchars($search) . '">';
+    echo '<div class="col-md-5"><div class="input-group">';
+    echo '<span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>';
+    echo '<input type="text" class="form-control" name="search" placeholder="File name" aria-label="Search by file name" value="' . htmlspecialchars($search) . '">';
     echo '</div></div>';
     echo '<div class="col-md-3"><div class="input-group">';
-    echo '<span class="input-group-text"><i class="fas fa-hashtag"></i></span>';
-    echo '<input type="number" class="form-control" name="torrent_id" placeholder="Torrent ID" value="' . htmlspecialchars($torrent_id) . '">';
+    echo '<span class="input-group-text"><i class="fa-solid fa-hashtag"></i></span>';
+    echo '<input type="number" class="form-control" name="torrent_id" placeholder="Torrent ID" aria-label="Torrent ID" value="' . htmlspecialchars($torrent_id) . '">';
     echo '</div></div>';
-    echo '<div class="col-md-3 d-flex align-items-end">';
-    echo '<button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button>';
-    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary"><i class="fas fa-sync me-1"></i>Reset</a>';
-    echo '</div></form></div></div>';
+    echo '<div class="col-md-4 d-flex gap-2">';
+    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-filter me-2"></i>Filter</button>';
+    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-rotate-left me-2"></i>Reset</a>';
+    echo '</div></form>';
+    if ($is_filtered) {
+        echo '<div class="scr-meta mt-2"><i class="fa-solid fa-list-check"></i><span>Found: <strong>' . number_format($count) . '</strong></span></div>';
+    }
+    echo '</div>';
 
     scr_pagination($count, $perpage, $page, $page_url);
 
-    if ($db->num_rows($result) == 0) {
-        echo '
-<div class="text-center py-5">
-    <i class="fas fa-images fa-4x text-muted mb-3"></i>
-    <h5 class="text-muted">No screenshots found.</h5>
-</div>';
+    if (!$has_rows) {
+        echo '<div class="scr-panel scr-empty">';
+        if ($is_filtered) {
+            echo '<div class="scr-icon scr-tone-warning"><i class="fa-solid fa-magnifying-glass"></i></div>';
+            echo '<h5 class="fw-semibold">Nothing matches this filter</h5>';
+            echo '<p class="text-body-secondary mb-3">Try another file name or torrent ID.</p>';
+            echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-rotate-left me-2"></i>Reset filter</a>';
+        } else {
+            echo '<div class="scr-icon scr-tone-primary"><i class="fa-solid fa-images"></i></div>';
+            echo '<h5 class="fw-semibold">No screenshots yet</h5>';
+            echo '<p class="text-body-secondary mb-3">Upload the first screenshots for a torrent.</p>';
+            echo '<button type="button" class="btn btn-primary rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#uploadScreenshotModal"><i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload screenshots</button>';
+        }
+        echo '</div>';
     } else {
 
         echo '<form id="massDeleteForm" method="post" action="' . $_this_script_ . '&action=mass_delete">';
         echo '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">';
-        echo '<div class="row g-4">';
+        echo '<div class="row g-3" id="scrGrid">';
 
         while ($row = $db->fetch_array($result)) {
-            $img = get_image_path($row['filename']);
-            echo '<div class="col-xl-3 col-lg-4 col-md-6 screenshot-card">';
-            echo '<div class="card h-100 shadow-sm border-0 overflow-hidden">';
+            $id       = (int)$row['id'];
+            $tid      = (int)$row['torrent_id'];
+            $img      = htmlspecialchars(get_image_path($row['filename']));
+            $fname    = htmlspecialchars($row['filename']);
+            $ext      = strtoupper(pathinfo($row['filename'], PATHINFO_EXTENSION));
+            $date     = date('M d, Y H:i', (int)$row['uploaded_at']);
+
+            echo '<div class="col-xl-3 col-lg-4 col-sm-6 screenshot-card">';
+            echo '<div class="card h-100 scr-card">';
+
+            // Thumbnail
             echo '<div class="position-relative">';
-            echo '<div class="form-check position-absolute top-0 start-0 m-2 z-1">';
-            echo '<input class="form-check-input screenshot-checkbox" type="checkbox" name="ids[]" value="' . $row['id'] . '" data-img-src="' . htmlspecialchars($img) . '">';
+            echo '<div class="form-check scr-check">';
+            echo '<input class="form-check-input screenshot-checkbox" type="checkbox" name="ids[]" value="' . $id . '" data-img-src="' . $img . '" aria-label="Select screenshot #' . $id . '">';
             echo '</div>';
-            echo '<a href="#" data-bs-toggle="modal" data-bs-target="#universalImageModal" data-img-src="' . htmlspecialchars($img) . '" data-title="Torrent #' . $row['torrent_id'] . '">';
-            echo '<img src="' . htmlspecialchars($img) . '" class="card-img-top object-fit-cover" style="height:180px" alt="Screenshot">';
+            echo '<span class="scr-chip scr-chip-id">#' . $id . '</span>';
+            if ($ext !== '') {
+                echo '<span class="scr-chip scr-chip-ext"><i class="fa-solid fa-file-image me-1"></i>' . htmlspecialchars($ext) . '</span>';
+            }
+            echo '<a href="#" class="scr-thumb" data-bs-toggle="modal" data-bs-target="#universalImageModal" data-img-src="' . $img . '" data-title="Torrent #' . $tid . '" aria-label="View screenshot #' . $id . '">';
+            echo '<img src="' . $img . '" alt="Screenshot #' . $id . '" loading="lazy">';
+            echo '<span class="scr-thumb-zoom"><i class="fa-solid fa-magnifying-glass-plus"></i></span>';
             echo '</a>';
-            echo '<div class="position-absolute top-0 end-0 m-2"><span class="badge bg-dark opacity-75">#' . $row['id'] . '</span></div>';
             echo '</div>';
-            echo '<div class="card-body p-3">';
-            echo '<div class="d-flex justify-content-between align-items-start">';
-            echo '<div><h6 class="mb-0 fw-bold">Torrent #' . $row['torrent_id'] . '</h6>';
-            echo '<small class="text-muted">' . date('M d, Y H:i', $row['uploaded_at']) . '</small></div>';
-            echo '<div class="dropdown">';
-            echo '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"><i class="fas fa-ellipsis-v"></i></button>';
-            echo '<ul class="dropdown-menu dropdown-menu-end">';
-            echo '<li><a class="dropdown-item edit-screenshot-btn" href="' . $_this_script_ . '&action=edit&id=' . $row['id'] . '"'
-                . ' data-id="' . $row['id'] . '"'
-                . ' data-torrent-id="' . $row['torrent_id'] . '"'
-                . ' data-filename="' . htmlspecialchars($row['filename']) . '"'
-                . ' data-img-src="' . htmlspecialchars($img) . '"'
+
+            // Body
+            echo '<div class="scr-body">';
+            echo '<a class="scr-torrent d-inline-flex align-items-center gap-2 mb-1" href="' . $BASEURL . '/details.php?id=' . $tid . '" target="_blank" rel="noopener">'
+                . '<i class="fa-solid fa-magnet text-primary"></i>Torrent #' . $tid . '</a>';
+            echo '<div class="scr-meta" title="' . $fname . '"><i class="fa-solid fa-file-lines"></i><span>' . $fname . '</span></div>';
+            echo '<div class="scr-meta"><i class="fa-solid fa-clock"></i><span>' . $date . '</span></div>';
+
+            echo '<div class="scr-actions">';
+            echo '<a class="btn btn-sm btn-outline-primary rounded-pill edit-screenshot-btn" href="' . $_this_script_ . '&action=edit&id=' . $id . '"'
+                . ' data-id="' . $id . '"'
+                . ' data-torrent-id="' . $tid . '"'
+                . ' data-filename="' . $fname . '"'
+                . ' data-img-src="' . $img . '"'
                 . ' data-bs-toggle="modal" data-bs-target="#editScreenshotModal">'
-                . '<i class="fas fa-edit me-2"></i>Edit</a></li>';
-            echo '<li><a class="dropdown-item text-danger single-delete-btn" href="#"'
-                . ' data-id="' . $row['id'] . '"'
-                . ' data-filename="' . htmlspecialchars($row['filename']) . '"'
+                . '<i class="fa-solid fa-pen-to-square me-1"></i>Edit</a>';
+            echo '<a class="btn btn-sm btn-outline-danger rounded-pill single-delete-btn" href="#"'
+                . ' data-id="' . $id . '"'
+                . ' data-filename="' . $fname . '"'
                 . ' data-bs-toggle="modal" data-bs-target="#singleDeleteModal">'
-                . '<i class="fas fa-trash me-2"></i>Delete</a></li>';
-            echo '</ul></div></div></div></div></div>';
+                . '<i class="fa-solid fa-trash-can me-1"></i>Delete</a>';
+            echo '<a class="btn btn-sm btn-outline-secondary rounded-pill scr-open" href="' . $img . '" target="_blank" rel="noopener" title="Open original" aria-label="Open original">'
+                . '<i class="fa-solid fa-up-right-from-square"></i></a>';
+            echo '</div>';
+
+            echo '</div></div></div>';
         }
 
         echo '</div></form>';
+
+        // Sticky bulk-action bar
+        echo '<div class="scr-bar">';
+        echo '<div class="scr-bar-info"><i class="fa-solid fa-square-check"></i><span>Selected: <strong id="scrSelectedCount">0</strong></span></div>';
+        echo '<button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="selectAllBtn"><i class="fa-solid fa-check-double me-2"></i>Select all</button>';
+        echo '<button type="button" class="btn btn-danger rounded-pill px-3" id="deleteSelectedBtn" disabled><i class="fa-solid fa-trash-can me-2"></i>Delete selected</button>';
+        echo '</div>';
     }
 
-    echo '<br>';
+    echo '<div class="mt-3">';
     scr_pagination($count, $perpage, $page, $page_url);
+    echo '</div>';
 
     require_once INC_PATH . '/modals_images.php';
 
@@ -460,17 +556,14 @@ echo <<<HTML
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="singleDeleteModalLabel">
-          <i class="fas fa-exclamation-triangle me-2"></i> Confirm Deletion
+        <h5 class="modal-title fw-semibold" id="singleDeleteModalLabel">
+          <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>Confirm deletion
         </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <!-- Основная иконка и текст -->
         <div class="d-flex align-items-center mb-3">
-          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
-            <i class="fas fa-trash-alt text-danger fs-1"></i>
-          </div>
+          <div class="scr-icon scr-tone-danger me-3"><i class="fa-solid fa-trash-can"></i></div>
           <div>
             <h5 class="fw-bold mb-1" id="singleDeleteTitle">Delete Screenshot?</h5>
             <p class="text-muted mb-0" id="singleDeleteFilename"></p>
@@ -478,37 +571,33 @@ echo <<<HTML
         </div>
         <div id="singleDeletePreviewContainer" class="single-preview-container mb-3 text-center">
           <div class="preview-wrapper" style="display: inline-block; max-width: 100%;">
-            <img id="singleDeleteImage" src="" alt="Preview" 
-                 style="max-width: 100%; max-height: 200px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;" 
+            <img id="singleDeleteImage" src="" alt="Preview"
+                 style="max-width: 100%; max-height: 200px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;"
                  onerror="this.style.display='none';">
           </div>
         </div>
-        <div class="file-details bg-light p-3 rounded-3 mb-3">
+        <div class="file-details bg-body-tertiary p-3 rounded-3 mb-3">
           <div class="d-flex align-items-center">
-            <i class="fas fa-file-image text-primary me-3 fa-2x"></i>
+            <div class="scr-icon scr-icon-sm scr-tone-primary me-3"><i class="fa-solid fa-file-image"></i></div>
             <div class="overflow-hidden">
-              <div class="fw-bold" id="singleDeleteFileName">filename.jpg</div>
+              <div class="fw-bold text-truncate" id="singleDeleteFileName">filename.jpg</div>
               <div class="small text-muted" id="singleDeleteFileInfo">
-                <i class="fas fa-spinner fa-spin me-1"></i> Loading...
+                <i class="fa-solid fa-spinner fa-spin me-1"></i> Loading...
               </div>
             </div>
           </div>
         </div>
-        <div class="alert alert-warning mt-2 mb-0">
-          <div class="d-flex">
-            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
-            <div>
-              <strong>Warning:</strong> This action cannot be undone!
-            </div>
-          </div>
+        <div class="alert alert-warning d-flex mb-0">
+          <i class="fa-solid fa-circle-exclamation me-2 mt-1"></i>
+          <div><strong>This can't be undone.</strong> The file and its record will be removed.</div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-          <i class="fas fa-times me-1"></i> Cancel
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+          <i class="fa-solid fa-xmark me-1"></i> Cancel
         </button>
-        <button type="button" class="btn btn-danger" id="confirmSingleDeleteBtn">
-          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+        <button type="button" class="btn btn-danger rounded-pill px-4" id="confirmSingleDeleteBtn">
+          <i class="fa-solid fa-trash-can me-1"></i> Delete
         </button>
       </div>
     </div>
@@ -516,28 +605,25 @@ echo <<<HTML
 </div>
 HTML;
 
-
-
-
 echo <<<HTML
 <!-- Upload Screenshot Modal -->
 <div class="modal fade" id="uploadScreenshotModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content border-0">
+        <div class="modal-content border-0 shadow">
             <div class="modal-header border-0 p-4 pb-0">
-                <h5 class="modal-title fw-bold">
-                    <i class="fas fa-cloud-upload-alt text-primary me-2"></i>Upload Screenshots
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="scr-icon scr-icon-sm scr-tone-primary"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                    <h5 class="modal-title fw-semibold mb-0">Upload screenshots</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <div class="mb-4">
-                    <label class="form-label text-secondary mb-2"><i class="fas fa-hashtag me-1"></i>Torrent ID</label>
-                    <input type="number" class="form-control form-control-lg border-0 bg-light" id="scrTorrentId" placeholder="Enter Torrent ID" required>
+                    <label class="form-label text-body-secondary mb-2" for="scrTorrentId"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label>
+                    <input type="number" class="form-control form-control-lg bg-body-tertiary" id="scrTorrentId" placeholder="For example, 1542" required>
                 </div>
 
-                <div class="upload-area bg-light rounded-4 p-5 text-center position-relative"
-                     id="scrDropArea" style="border:2px dashed var(--bs-primary);cursor:pointer">
+                <div class="upload-area scr-drop p-5 text-center position-relative" id="scrDropArea" style="cursor:pointer">
                     <div class="upload-progress position-absolute top-0 start-0 end-0" style="display:none">
                         <div class="progress rounded-0 rounded-top-4" style="height:4px">
                             <div class="progress-bar bg-primary" id="scrUploadProgress" style="width:0%"></div>
@@ -547,28 +633,28 @@ echo <<<HTML
                         <div class="d-flex flex-wrap gap-2 justify-content-center" id="scrPreviewGrid"></div>
                     </div>
                     <div id="scrPlaceholder">
-                        <i class="fas fa-cloud-upload-alt fa-3x mb-3 opacity-50 text-primary"></i>
-                        <h5 class="fw-bold">Drag & drop screenshots here</h5>
-                        <p class="text-muted mb-4">or click to browse</p>
+                        <div class="scr-icon scr-tone-primary mx-auto mb-3" style="width:4.5rem;height:4.5rem;font-size:1.8rem;border-radius:50%"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                        <h5 class="fw-semibold">Drop screenshots here</h5>
+                        <p class="text-body-secondary mb-4"><i class="fa-solid fa-file-image me-1"></i>JPG, PNG, GIF or WEBP, up to 10 MB each</p>
                     </div>
                     <div class="file-count-badge position-absolute top-0 end-0 m-3" id="scrFileCountBadge" style="display:none">
                         <span class="badge bg-primary rounded-pill p-2" id="scrFileCount"></span>
                     </div>
                     <input type="file" class="d-none" id="scrFileInput" multiple accept="image/*">
                     <button class="btn btn-outline-primary btn-lg px-5 rounded-pill" onclick="document.getElementById('scrFileInput').click()" id="scrBrowseBtn">
-                        <i class="fas fa-folder-open me-2"></i>Browse
+                        <i class="fa-solid fa-folder-open me-2"></i>Choose files
                     </button>
                     <button class="btn btn-link text-danger mt-3 d-none" id="scrClearBtn">
-                        <i class="fas fa-times-circle me-1"></i>Clear all
+                        <i class="fa-solid fa-circle-xmark me-1"></i>Clear all
                     </button>
                 </div>
             </div>
-            <div class="modal-footer border-0 p-4">
-                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-1"></i>Cancel
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+                    <i class="fa-solid fa-xmark me-1"></i>Cancel
                 </button>
-                <button type="button" class="btn btn-primary px-5 position-relative" id="scrStartUploadBtn" disabled>
-                    <span class="upload-text"><i class="fas fa-cloud-upload-alt me-2"></i>Upload Now</span>
+                <button type="button" class="btn btn-primary rounded-pill px-5 position-relative" id="scrStartUploadBtn" disabled>
+                    <span class="upload-text"><i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload</span>
                     <span class="upload-loading d-none">
                         <span class="spinner-border spinner-border-sm me-2"></span>Uploading...
                     </span>
@@ -579,46 +665,45 @@ echo <<<HTML
 </div>
 HTML;
 
-
-
 echo <<<HTML
 <!-- Edit Screenshot Modal -->
 <div class="modal fade" id="editScreenshotModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content border-0">
+        <div class="modal-content border-0 shadow">
             <div class="modal-header border-0 p-4 pb-0">
-                <h5 class="modal-title fw-bold">
-                    <i class="fas fa-edit text-primary me-2"></i>Edit Screenshot
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="scr-icon scr-icon-sm scr-tone-primary"><i class="fa-solid fa-pen-to-square"></i></div>
+                    <h5 class="modal-title fw-semibold mb-0">Edit screenshot</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
                 <input type="hidden" id="editScreenshotId" value="">
                 <div class="row g-4 mb-3">
                     <div class="col-lg-6">
                         <div class="form-floating mb-3">
-                            <input type="number" class="form-control border-0 bg-light" id="editTorrentId" required>
-                            <label>Torrent ID</label>
+                            <input type="number" class="form-control bg-body-tertiary" id="editTorrentId" placeholder="Torrent ID" required>
+                            <label for="editTorrentId"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label text-secondary mb-2">New Screenshot File (optional)</label>
-                            <input type="file" class="form-control border-0 bg-light" id="editScreenshotFile" accept="image/*">
+                            <label class="form-label text-body-secondary mb-2" for="editScreenshotFile"><i class="fa-solid fa-arrow-right-arrow-left me-1"></i>Replace file (optional)</label>
+                            <input type="file" class="form-control bg-body-tertiary" id="editScreenshotFile" accept="image/*">
                             <div class="form-text" id="editCurrentFilename"></div>
                         </div>
                     </div>
                     <div class="col-lg-6">
-                        <div class="border rounded-4 p-3 text-center bg-light" style="min-height:220px">
+                        <div class="scr-drop p-3 text-center d-grid" style="min-height:220px;place-items:center">
                             <img id="editImagePreview" src="" class="img-fluid rounded" style="max-height:220px" alt="Preview">
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="modal-footer border-0 p-4">
-                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-1"></i>Cancel
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+                    <i class="fa-solid fa-xmark me-1"></i>Cancel
                 </button>
-                <button type="button" class="btn btn-primary px-5 position-relative" id="editSaveBtn">
-                    <span class="save-text"><i class="fas fa-save me-2"></i>Save Changes</span>
+                <button type="button" class="btn btn-primary rounded-pill px-5 position-relative" id="editSaveBtn">
+                    <span class="save-text"><i class="fa-solid fa-floppy-disk me-2"></i>Save changes</span>
                     <span class="save-loading d-none">
                         <span class="spinner-border spinner-border-sm me-2"></span>Saving...
                     </span>
@@ -629,60 +714,47 @@ echo <<<HTML
 </div>
 HTML;
 
-
-
 echo <<<HTML
 <!-- Mass Delete Modal -->
 <div class="modal fade" id="massDeleteModal" tabindex="-1" aria-labelledby="massDeleteModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title" id="massDeleteModalLabel">
-          <i class="fas fa-exclamation-triangle me-2"></i> Delete Confirmation
+        <h5 class="modal-title fw-semibold" id="massDeleteModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i>Confirm deletion
         </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
 
       <div class="modal-body">
-        <!-- Основная иконка и текст -->
         <div class="d-flex align-items-center mb-3">
-          <div class="bg-danger bg-opacity-10 p-3 rounded-circle me-3">
-            <i class="fas fa-trash-alt text-danger fs-1"></i>
-          </div>
+          <div class="scr-icon scr-tone-danger me-3"><i class="fa-solid fa-trash-can"></i></div>
           <div>
-            <h5 class="fw-bold mb-1">Delete <span id="deleteCount" class="text-danger">0</span> Screenshots?</h5>
-            <p class="text-muted mb-0">All selected screenshots will be permanently removed.</p>
+            <h5 class="fw-bold mb-1">Delete <span id="deleteCount" class="text-danger">0</span> screenshots?</h5>
+            <p class="text-muted mb-0">Files and records of all selected screenshots will be removed.</p>
           </div>
         </div>
 
-        <!-- Контейнер для превью -->
         <div id="massDeletePreview" class="selected-previews-container mb-3" style="display: none;">
           <div class="d-flex align-items-center mb-2">
-            <i class="fas fa-images text-primary me-2"></i>
+            <i class="fa-solid fa-images text-primary me-2"></i>
             <span class="fw-medium">Selected screenshots:</span>
           </div>
-          <div id="previewList" class="previews-grid">
-            <!-- Preview items will be inserted here -->
-          </div>
+          <div id="previewList" class="previews-grid"></div>
         </div>
 
-        <!-- Предупреждение -->
-        <div class="alert alert-warning mt-3 mb-0">
-          <div class="d-flex">
-            <i class="fas fa-exclamation-circle me-2 mt-1"></i>
-            <div>
-              <strong>Warning:</strong> This action cannot be undone! All selected screenshots will be permanently deleted.
-            </div>
-          </div>
+        <div class="alert alert-warning d-flex mt-3 mb-0">
+          <i class="fa-solid fa-circle-exclamation me-2 mt-1"></i>
+          <div><strong>This can't be undone.</strong> Deleted screenshots can't be restored.</div>
         </div>
       </div>
 
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-          <i class="fas fa-times me-1"></i> Cancel
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+          <i class="fa-solid fa-xmark me-1"></i> Cancel
         </button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
-          <i class="fas fa-trash-alt me-1"></i> Yes, Delete
+        <button type="button" class="btn btn-danger rounded-pill px-4" id="confirmDeleteBtn">
+          <i class="fa-solid fa-trash-can me-1"></i> Delete
         </button>
       </div>
     </div>
@@ -690,11 +762,34 @@ echo <<<HTML
 </div>
 HTML;
 
-
-
     echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
     echo '<script src="' . $BASEURL . '/scripts/details_modal.js"></script>';
     echo '<script src="' . $BASEURL . '/admin/scripts/manage_screenshots.js"></script>';
+
+    // Счётчик выбранных в нижней панели (не мешает manage_screenshots.js)
+    echo <<<'JS'
+<script>
+(function () {
+    var root = document.querySelector('.scr-page');
+    if (!root) return;
+    var out = document.getElementById('scrSelectedCount');
+    function update() {
+        var n = root.querySelectorAll('.screenshot-checkbox:checked').length;
+        if (out) out.textContent = n;
+        root.classList.toggle('scr-has-selection', n > 0);
+    }
+    root.addEventListener('change', function (e) {
+        if (e.target.classList && e.target.classList.contains('screenshot-checkbox')) update();
+    });
+    var selectAll = document.getElementById('selectAllBtn');
+    if (selectAll) selectAll.addEventListener('click', function () { setTimeout(update, 0); });
+    var grid = document.getElementById('scrGrid');
+    if (grid && 'MutationObserver' in window) new MutationObserver(update).observe(grid, { childList: true, subtree: true });
+    update();
+})();
+</script>
+JS;
+
     echo '</div>'; // container
     stdfoot();
 }
@@ -807,41 +902,78 @@ function handle_add(): void
     }
 
     stdhead('Add Screenshot');
-    echo '<div class="container mt-3">';
-    echo '<div class="d-flex justify-content-between align-items-center mb-4">';
-    echo '<h1><i class="fas fa-plus-circle me-2"></i>Add Screenshot</h1>';
-    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Back</a>';
-    echo '</div>';
-    if ($error) echo '<div class="alert ' . ($success_count > 0 ? 'alert-warning' : 'alert-danger') . '">' . htmlspecialchars($error) . '</div>';
+    scr_styles();
+    echo '<div class="container mt-3 scr-page">';
+    scr_header(
+        'fa-circle-plus',
+        'Add screenshots',
+        'Attach one or more images to a torrent',
+        '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>Back to list</a>'
+    );
+    if ($error) {
+        echo '<div class="alert ' . ($success_count > 0 ? 'alert-warning' : 'alert-danger') . ' d-flex align-items-start">'
+            . '<i class="fa-solid ' . ($success_count > 0 ? 'fa-circle-exclamation' : 'fa-circle-xmark') . ' me-2 mt-1"></i>'
+            . '<div>' . htmlspecialchars($error) . '</div></div>';
+    }
 
-    echo '<div class="card border-0 shadow-sm"><div class="card-body">';
     echo '<form method="post" enctype="multipart/form-data">';
     echo '<input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">';
-    echo '<div class="row g-4 mb-4">';
+    echo '<div class="scr-panel p-4"><div class="row g-4">';
 
     echo '<div class="col-lg-6">';
     echo '<div class="form-floating mb-3">';
-    echo '<input type="number" class="form-control" id="torrent_id" name="torrent_id" required>';
-    echo '<label>Torrent ID</label></div>';
+    echo '<input type="number" class="form-control" id="torrent_id" name="torrent_id" placeholder="Torrent ID" required>';
+    echo '<label for="torrent_id"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label></div>';
     echo '<div class="mb-3">';
-    echo '<label class="form-label">Screenshot File(s)</label>';
+    echo '<label class="form-label" for="screenshot"><i class="fa-solid fa-file-image me-1 text-primary"></i>Screenshot files</label>';
     echo '<input type="file" class="form-control" id="screenshot" name="screenshot[]" accept="image/*" multiple required>';
-    echo '<div class="form-text">Allowed: ' . implode(', ', $allowed_ext) . ' · You can select multiple files at once</div>';
+    echo '<div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>Allowed: ' . implode(', ', $allowed_ext) . '. You can select several files at once.</div>';
     echo '</div></div>';
 
     echo '<div class="col-lg-6">';
-    echo '<div class="border rounded-3 p-4 text-center bg-light" style="min-height:250px" id="dropArea">';
+    echo '<div class="scr-drop p-4 text-center d-grid" style="min-height:250px;place-items:center" id="dropArea">';
     echo '<div id="previewGrid" class="d-flex flex-wrap gap-2 justify-content-center"></div>';
-    echo '<div id="placeholderText" class="text-muted py-5">';
-    echo '<i class="fas fa-cloud-upload-alt fa-3x mb-3 opacity-50"></i>';
-    echo '<p>Image preview will appear here</p></div></div></div>';
+    echo '<div id="placeholderText" class="text-body-secondary">';
+    echo '<div class="scr-icon scr-tone-primary mx-auto mb-3" style="border-radius:50%"><i class="fa-solid fa-image"></i></div>';
+    echo '<p class="mb-0">Selected images will be previewed here</p></div></div></div>';
+
+    echo '</div></div>';
+
+    echo '<div class="scr-bar">';
+    echo '<div class="scr-bar-info"><i class="fa-solid fa-images"></i><span>Selected files: <strong id="scrFileTotal">0</strong></span></div>';
+    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-xmark me-2"></i>Cancel</a>';
+    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-2"></i>Save screenshots</button>';
+    echo '</div>';
+    echo '</form>';
+
+    echo <<<'JS'
+<script>
+(function () {
+    var input = document.getElementById('screenshot');
+    var grid  = document.getElementById('previewGrid');
+    var ph    = document.getElementById('placeholderText');
+    var total = document.getElementById('scrFileTotal');
+    if (!input || !grid) return;
+    input.addEventListener('change', function () {
+        grid.innerHTML = '';
+        var files = Array.prototype.filter.call(input.files, function (f) { return f.type.indexOf('image/') === 0; });
+        files.forEach(function (f) {
+            var img = document.createElement('img');
+            img.src = URL.createObjectURL(f);
+            img.alt = f.name;
+            img.title = f.name;
+            img.className = 'scr-mini';
+            img.onload = function () { URL.revokeObjectURL(img.src); };
+            grid.appendChild(img);
+        });
+        if (ph) ph.style.display = files.length ? 'none' : '';
+        if (total) total.textContent = files.length;
+    });
+})();
+</script>
+JS;
 
     echo '</div>';
-    echo '<div class="d-flex justify-content-end">';
-    echo '<button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-2"></i>Save Screenshot(s)</button>';
-    echo '</div></form></div></div></div>';
-
-
     stdfoot();
 }
 
@@ -857,7 +989,14 @@ function handle_edit(): void
     $row = $db->fetch_array($res);
 
     if (!$row) {
-        echo '<div class="container mt-3"><div class="alert alert-danger">Screenshot not found</div></div>';
+        stdhead('Edit Screenshot');
+        scr_styles();
+        echo '<div class="container mt-3 scr-page"><div class="scr-panel scr-empty">';
+        echo '<div class="scr-icon scr-tone-danger"><i class="fa-solid fa-image"></i></div>';
+        echo '<h5 class="fw-semibold">Screenshot not found</h5>';
+        echo '<p class="text-body-secondary mb-3">It may have been deleted already.</p>';
+        echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>Back to list</a>';
+        echo '</div></div>';
         stdfoot();
         return;
     }
@@ -921,39 +1060,62 @@ function handle_edit(): void
     }
 
     stdhead('Edit Screenshot');
-    echo '<div class="container mt-3">';
-    echo '<div class="d-flex justify-content-between align-items-center mb-4">';
-    echo '<h1><i class="fas fa-edit me-2"></i>Edit Screenshot</h1>';
-    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Back</a>';
-    echo '</div>';
-    if ($error) echo '<div class="alert alert-danger">' . $error . '</div>';
+    scr_styles();
+    echo '<div class="container mt-3 scr-page">';
+    scr_header(
+        'fa-pen-to-square',
+        'Edit screenshot #' . $id,
+        'Change the torrent or replace the image file',
+        '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-arrow-left me-2"></i>Back to list</a>'
+    );
+    if ($error) {
+        echo '<div class="alert alert-danger d-flex align-items-start"><i class="fa-solid fa-circle-xmark me-2 mt-1"></i><div>' . htmlspecialchars($error) . '</div></div>';
+    }
 
-    echo '<div class="card border-0 shadow-sm"><div class="card-body">';
     echo '<form method="post" enctype="multipart/form-data">';
     echo '<input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">';
-    echo '<div class="row g-4 mb-4">';
+    echo '<div class="scr-panel p-4"><div class="row g-4">';
 
     echo '<div class="col-lg-6">';
     echo '<div class="form-floating mb-3">';
-    echo '<input type="number" class="form-control" name="torrent_id" value="' . $row['torrent_id'] . '" required>';
-    echo '<label>Torrent ID</label></div>';
+    echo '<input type="number" class="form-control" id="torrent_id" name="torrent_id" placeholder="Torrent ID" value="' . (int)$row['torrent_id'] . '" required>';
+    echo '<label for="torrent_id"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label></div>';
     echo '<div class="mb-3">';
-    echo '<label class="form-label">New Screenshot File</label>';
+    echo '<label class="form-label" for="screenshot"><i class="fa-solid fa-arrow-right-arrow-left me-1 text-primary"></i>Replace file</label>';
     echo '<input type="file" class="form-control" id="screenshot" name="screenshot" accept="image/*">';
-    echo '<div class="form-text">Leave empty to keep: ' . htmlspecialchars($row['filename']) . '</div>';
+    echo '<div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>Leave empty to keep ' . htmlspecialchars($row['filename']) . '</div>';
     echo '</div></div>';
 
     echo '<div class="col-lg-6">';
-    echo '<div class="border rounded-3 p-4 text-center bg-light" style="min-height:250px">';
-    echo '<img id="imagePreview" src="' . get_image_path($row['filename']) . '" class="img-fluid" style="max-height:220px" alt="Preview">';
+    echo '<div class="scr-drop p-4 text-center d-grid" style="min-height:250px;place-items:center">';
+    echo '<img id="imagePreview" src="' . htmlspecialchars(get_image_path($row['filename'])) . '" class="img-fluid rounded" style="max-height:220px" alt="Preview">';
     echo '</div></div>';
 
+    echo '</div></div>';
+
+    echo '<div class="scr-bar">';
+    echo '<div class="scr-bar-info"><i class="fa-solid fa-file-image"></i><span class="text-truncate">' . htmlspecialchars($row['filename']) . '</span></div>';
+    echo '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary rounded-pill px-4"><i class="fa-solid fa-xmark me-2"></i>Cancel</a>';
+    echo '<button type="submit" class="btn btn-primary rounded-pill px-4"><i class="fa-solid fa-floppy-disk me-2"></i>Save changes</button>';
     echo '</div>';
-    echo '<div class="d-flex justify-content-end">';
-    echo '<button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-2"></i>Save Changes</button>';
-    echo '</div></form></div></div></div>';
+    echo '</form>';
 
+    echo <<<'JS'
+<script>
+(function () {
+    var input = document.getElementById('screenshot');
+    var img   = document.getElementById('imagePreview');
+    if (!input || !img) return;
+    var original = img.src;
+    input.addEventListener('change', function () {
+        var f = input.files && input.files[0];
+        img.src = (f && f.type.indexOf('image/') === 0) ? URL.createObjectURL(f) : original;
+    });
+})();
+</script>
+JS;
 
+    echo '</div>';
     stdfoot();
 }
 

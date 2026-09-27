@@ -3,47 +3,60 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger">Direct initialization of this file is not allowed.</div>');
 }
 
-
-
 @set_time_limit(0);
 @ini_set('memory_limit', '512M');
 @ignore_user_abort(true);
-define('FH_VERSION', '0.8');
+define('FH_VERSION', '0.9');
+const FH_ASSET_VER = 1; // поднимать вручную при изменении fixhash.css / fixhash.js
 
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once './include/global_config.php';
 
 use Arokettu\Torrent\TorrentFile;
 
+/**
+ * Проверка одного .torrent файла.
+ * status: ok | mismatch | missing | error | nov1 (v2-only торрент без v1 хеша)
+ */
+function fh_check_torrent(string $path, ?string $current): array
+{
+    if (!is_file($path)) {
+        return ['status' => 'missing', 'hash' => null];
+    }
+    try {
+        $hash = TorrentFile::load($path)->v1()->getInfoHash();
+    } catch (Throwable) {
+        return ['status' => 'error', 'hash' => null];
+    }
+    if (!$hash) {
+        // Раньше в этом случае статус оставался 'ok' и строка показывалась зелёной как "Matches"
+        return ['status' => 'nov1', 'hash' => null];
+    }
+    return ['status' => $hash === $current ? 'ok' : 'mismatch', 'hash' => $hash];
+}
+
 // Подсчёт общего числа торрентов
 $query = $db->sql_query_prepared('SELECT COUNT(id) as cnt FROM torrents');
 $row = $query ? $db->fetch_array($query) : null;
-$results = $row['cnt'] ?? 0;
+$results = (int)($row['cnt'] ?? 0);
 
-$perpage = (int)($config['fixhash_perpage'] ?? 10);
-$totalpages = max(1, ceil($results / $perpage));
+$perpage = max(1, (int)($config['fixhash_perpage'] ?? 10));
+$totalpages = max(1, (int)ceil($results / $perpage));
 
 $pagenumber = (isset($_GET['page']) && intval($_GET['page']) > 0) ? intval($_GET['page']) : 1;
-if ($pagenumber < 1) {
-    $pagenumber = 1;
-} elseif ($pagenumber > $totalpages) {
-    $pagenumber = $totalpages;
-}
+$pagenumber = min(max(1, $pagenumber), $totalpages);
 
 $limitlower = ($pagenumber - 1) * $perpage;
 
-// Автообновление (каждые 10 секунд) - теперь автоматически ПРИМЕНЯЕТ фиксы
-// текущей страницы (через POST+CSRF), а не просто перезагружает страницу.
+// Auto Fix: каждые 10 секунд применяет фиксы текущей страницы (POST+CSRF) и листает дальше
 $autoRefresh = isset($_GET['auto']) && $_GET['auto'] === '1';
 
 // ── Применение фиксов (POST + CSRF) ─────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'apply') {
     header('Content-Type: application/json; charset=utf-8');
 
-    // $silent=true — иначе при провале функция может сама вывести HTML
-    // (в зависимости от состояния IN_ADMINCP) вместо простого false, а этот
-    // эндпоинт уже отправил Content-Type: application/json и ждёт от JS
-    // валидный res.json() — HTML внутри JSON-ответа сломает fetch().then(r => r.json()).
+    // $silent=true — иначе при провале функция может вывести HTML вместо false,
+    // а JS ждёт валидный JSON.
     global $mybb, $CURUSER;
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
         http_response_code(403);
@@ -57,24 +70,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'apply') {
     $res = $db->sql_query_prepared("SELECT id, info_hash FROM torrents ORDER BY added DESC LIMIT ?, ?", [$applyLimit, $perpage]);
     $fixed = 0;
     $errors = 0;
+    $skipped = 0;
     $fixed_ids = [];
 
     while ($res && ($row = $db->fetch_array($res))) {
         $torrentPath = TSDIR . '/' . $torrent_dir . '/' . $row['id'] . '.torrent';
-        if (!file_exists($torrentPath)) {
-            continue;
-        }
-        try {
-            $torrent = TorrentFile::load($torrentPath);
-            $infoHash = $torrent->v1()->getInfoHash();
-            if ($infoHash && $infoHash !== $row['info_hash']) {
-                if ($db->sql_query_prepared("UPDATE torrents SET info_hash = ? WHERE id = ?", [$infoHash, $row['id']])) {
-                    $fixed++;
-                    $fixed_ids[] = (int)$row['id'];
+        $check = fh_check_torrent($torrentPath, isset($row['info_hash']) ? (string)$row['info_hash'] : null);
+
+        switch ($check['status']) {
+            case 'mismatch':
+                try {
+                    if ($db->sql_query_prepared("UPDATE torrents SET info_hash = ? WHERE id = ?", [$check['hash'], $row['id']])) {
+                        $fixed++;
+                        $fixed_ids[] = (int)$row['id'];
+                    } else {
+                        $errors++;
+                    }
+                } catch (Throwable) {
+                    // например, дубликат по уникальному индексу info_hash
+                    $errors++;
                 }
-            }
-        } catch (Exception $e) {
-            $errors++;
+                break;
+            case 'error':
+                $errors++;
+                break;
+            case 'nov1':
+            case 'missing':
+                $skipped++;
+                break;
         }
     }
 
@@ -90,224 +113,213 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'apply') {
         ), 'torrent');
     }
 
-    echo json_encode(['success' => true, 'fixed' => $fixed, 'errors' => $errors]);
+    echo json_encode(['success' => true, 'fixed' => $fixed, 'errors' => $errors, 'skipped' => $skipped]);
     exit;
 }
 
+// ── Сбор данных страницы (до вывода, чтобы KPI были сверху) ─────────────
+$rows = [];
+$stats = ['ok' => 0, 'mismatch' => 0, 'missing' => 0, 'error' => 0];
+
+$res = $db->sql_query_prepared("SELECT id, name, info_hash FROM torrents ORDER BY added DESC LIMIT ?, ?", [$limitlower, $perpage]);
+while ($res && ($row = $db->fetch_array($res))) {
+    $current = isset($row['info_hash']) && $row['info_hash'] !== '' ? (string)$row['info_hash'] : null;
+    $check = fh_check_torrent(TSDIR . '/' . $torrent_dir . '/' . $row['id'] . '.torrent', $current);
+
+    $stats[$check['status'] === 'nov1' ? 'error' : $check['status']]++;
+
+    $rows[] = [
+        'id'     => (int)$row['id'],
+        'name'   => (string)$row['name'],
+        'old'    => $current,
+        'new'    => $check['hash'],
+        'status' => $check['status'],
+    ];
+}
+$countMismatched = $stats['mismatch'];
+$progressPercent = (int)round(($pagenumber / $totalpages) * 100);
+
+$pageUrl = static fn(int $p, ?bool $auto = null): string =>
+    '?act=fixhash&page=' . $p . '&auto=' . (($auto ?? $autoRefresh) ? '1' : '0');
+
+$hashCell = static function (?string $hash, string $tone): string {
+    if ($hash === null) {
+        return '<span class="fh-muted-note"><i class="fa-solid fa-minus"></i></span>';
+    }
+    $h = htmlspecialchars($hash);
+    return '<span class="fh-hash-wrap">'
+         . '<code class="fh-hash fh-hash--' . $tone . '">' . $h . '</code>'
+         . '<button type="button" class="fh-copy" data-copy="' . $h . '" title="Copy hash" aria-label="Copy hash">'
+         . '<i class="fa-solid fa-copy"></i></button></span>';
+};
+
 stdhead('Fix Torrent Hashes');
 ?>
+<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/admin/templates/fixhash.css?ver=<?= FH_ASSET_VER ?>">
 
-<div class="container my-4">
-    <h1 class="mb-4 fw-light">Fix Torrent Hashes <small class="text-muted">v<?= FH_VERSION ?></small></h1>
+<div class="fh-page container my-4" id="fhPage"
+     data-page="<?= $pagenumber ?>"
+     data-total-pages="<?= $totalpages ?>"
+     data-mismatch="<?= $countMismatched ?>"
+     data-auto="<?= $autoRefresh ? '1' : '0' ?>"
+     data-stop-url="<?= htmlspecialchars($pageUrl($pagenumber, false)) ?>">
 
-    <div class="alert alert-info small">
-        <i class="fas fa-info-circle me-1"></i>
-        This page only <strong>previews</strong> hash differences. Nothing is written to the
-        database until you click <strong>Apply Fixes</strong> below.
+    <!-- Header -->
+    <div class="fh-card fh-header">
+        <span class="fh-icon fh-soft-primary"><i class="fa-solid fa-fingerprint"></i></span>
+        <div class="fh-header-text">
+            <h1 class="fh-title">Fix Torrent Hashes</h1>
+            <p class="fh-subtitle">Compares the info_hash stored in the database with the real v1 hash of each .torrent file.</p>
+        </div>
+        <span class="fh-version"><i class="fa-solid fa-code-branch"></i> v<?= FH_VERSION ?></span>
     </div>
 
-    <form method="get" action="index.php" class="d-flex align-items-center gap-3 flex-wrap mb-3">
-        <input type="hidden" name="act" value="fixhash" />
-        <input type="hidden" name="page" value="<?= $pagenumber ?>" id="page-input" />
-        <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="autoRefreshSwitch" name="auto" value="1" <?= $autoRefresh ? 'checked' : '' ?>>
-            <label class="form-check-label" for="autoRefreshSwitch">Auto Fix (every 10s)</label>
+    <!-- KPI -->
+    <div class="fh-kpis">
+        <div class="fh-card fh-kpi">
+            <span class="fh-icon fh-soft-info"><i class="fa-solid fa-database"></i></span>
+            <div><div class="fh-kpi-value"><?= ts_nf($results) ?></div><div class="fh-kpi-label">Torrents in total</div></div>
         </div>
-        <button type="submit" class="btn btn-outline-primary btn-sm">Apply Filter</button>
-    </form>
+        <div class="fh-card fh-kpi">
+            <span class="fh-icon fh-soft-danger"><i class="fa-solid fa-triangle-exclamation"></i></span>
+            <div><div class="fh-kpi-value"><?= ts_nf($stats['mismatch']) ?></div><div class="fh-kpi-label">Need fixing on this page</div></div>
+        </div>
+        <div class="fh-card fh-kpi">
+            <span class="fh-icon fh-soft-success"><i class="fa-solid fa-circle-check"></i></span>
+            <div><div class="fh-kpi-value"><?= ts_nf($stats['ok']) ?></div><div class="fh-kpi-label">Match on this page</div></div>
+        </div>
+        <div class="fh-card fh-kpi">
+            <span class="fh-icon fh-soft-secondary"><i class="fa-solid fa-file-circle-xmark"></i></span>
+            <div><div class="fh-kpi-value"><?= ts_nf($stats['missing'] + $stats['error']) ?></div><div class="fh-kpi-label">Missing or unreadable</div></div>
+        </div>
+    </div>
 
-<?php
+    <!-- Toolbar -->
+    <div class="fh-card fh-toolbar">
+        <div class="fh-note">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>This page only <strong>previews</strong> differences. Nothing is written to the database until you apply fixes.</span>
+        </div>
+        <form method="get" action="index.php" id="fhFilterForm" class="fh-auto-form">
+            <input type="hidden" name="act" value="fixhash">
+            <input type="hidden" name="page" value="<?= $pagenumber ?>" id="page-input">
+            <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="autoRefreshSwitch" name="auto" value="1" <?= $autoRefresh ? 'checked' : '' ?>>
+                <label class="form-check-label" for="autoRefreshSwitch">
+                    <i class="fa-solid fa-robot me-1"></i>Auto Fix every 10s
+                </label>
+            </div>
+            <noscript><button type="submit" class="btn btn-outline-primary btn-sm fh-pill">Apply</button></noscript>
+        </form>
+    </div>
 
-echo '<div class="table-responsive">';
-echo '<table class="table table-hover align-middle">';
-echo '<thead class="table-light"><tr>
-        <th>Torrent</th>
-        <th class="text-monospace" style="min-width:180px;">Current Hash</th>
-        <th class="text-monospace" style="min-width:180px;">Real Hash</th>
-        <th>Status</th>
-      </tr></thead><tbody>';
+    <!-- Table -->
+    <div class="fh-card fh-table-card">
+        <?php if (!$rows): ?>
+            <div class="fh-empty">
+                <span class="fh-icon fh-soft-secondary"><i class="fa-solid fa-box-open"></i></span>
+                <p>No torrents on this page.</p>
+            </div>
+        <?php else: ?>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 fh-table">
+                <thead>
+                <tr>
+                    <th><i class="fa-solid fa-file-arrow-down me-1"></i>Torrent</th>
+                    <th><i class="fa-solid fa-database me-1"></i>Stored hash</th>
+                    <th><i class="fa-solid fa-file-shield me-1"></i>Real hash</th>
+                    <th class="text-end"><i class="fa-solid fa-signal me-1"></i>Status</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($rows as $r):
+                    [$oldTone, $newTone] = match ($r['status']) {
+                        'mismatch' => ['bad', 'good'],
+                        'ok'       => ['ok', 'ok'],
+                        default    => ['muted', 'muted'],
+                    };
+                    $badge = match ($r['status']) {
+                        'ok'       => '<span class="fh-badge fh-badge--success"><i class="fa-solid fa-check"></i>Matches</span>',
+                        'mismatch' => '<span class="fh-badge fh-badge--danger"><i class="fa-solid fa-wrench"></i>Needs fix</span>',
+                        'missing'  => '<span class="fh-badge fh-badge--secondary"><i class="fa-solid fa-file-circle-question"></i>No file</span>',
+                        'nov1'     => '<span class="fh-badge fh-badge--info"><i class="fa-solid fa-code-fork"></i>v2 only</span>',
+                        default    => '<span class="fh-badge fh-badge--warning"><i class="fa-solid fa-bug"></i>Unreadable</span>',
+                    };
+                    $newCell = $r['status'] === 'missing'
+                        ? '<span class="fh-muted-note"><i class="fa-solid fa-ghost me-1"></i>File missing</span>'
+                        : $hashCell($r['new'], $newTone);
+                ?>
+                    <tr class="fh-row fh-row--<?= $r['status'] ?>">
+                        <td class="fh-name">
+                            <a href="<?= htmlspecialchars($BASEURL) . '/' . get_torrent_link($r['id']) ?>" target="_blank" rel="noopener">
+                                <?= htmlspecialchars_uni($r['name']) ?>
+                            </a>
+                            <span class="fh-id">#<?= $r['id'] ?></span>
+                        </td>
+                        <td><?= $hashCell($r['old'], $oldTone) ?></td>
+                        <td><?= $newCell ?></td>
+                        <td class="text-end"><?= $badge ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
 
-$countMismatched = 0;
+    <!-- Pagination -->
+    <nav aria-label="Page navigation" class="fh-pager">
+        <ul class="pagination pagination-sm justify-content-center mb-0">
+            <li class="page-item <?= $pagenumber <= 1 ? 'disabled' : '' ?>">
+                <a class="page-link" href="<?= $pageUrl(1) ?>" title="First page"><i class="fa-solid fa-angles-left"></i></a>
+            </li>
+            <li class="page-item <?= $pagenumber <= 1 ? 'disabled' : '' ?>">
+                <a class="page-link" href="<?= $pageUrl(max(1, $pagenumber - 1)) ?>"><i class="fa-solid fa-angle-left me-1"></i>Previous</a>
+            </li>
+            <li class="page-item active" aria-current="page">
+                <span class="page-link"><?= $pagenumber ?> / <?= $totalpages ?></span>
+            </li>
+            <li class="page-item <?= $pagenumber >= $totalpages ? 'disabled' : '' ?>">
+                <a class="page-link" href="<?= $pageUrl(min($totalpages, $pagenumber + 1)) ?>">Next<i class="fa-solid fa-angle-right ms-1"></i></a>
+            </li>
+            <li class="page-item <?= $pagenumber >= $totalpages ? 'disabled' : '' ?>">
+                <a class="page-link" href="<?= $pageUrl($totalpages) ?>" title="Last page"><i class="fa-solid fa-angles-right"></i></a>
+            </li>
+        </ul>
+    </nav>
 
-// Получаем торренты для текущей страницы
-$res = $db->sql_query_prepared("SELECT id, name, info_hash FROM torrents ORDER BY added DESC LIMIT ?, ?", [$limitlower, $perpage]);
+    <!-- Sticky action bar -->
+    <div class="fh-actionbar">
+        <div class="fh-progress-wrap">
+            <div class="fh-progress-meta">
+                <span><i class="fa-solid fa-layer-group me-1"></i>Page <strong><?= $pagenumber ?></strong> of <strong><?= $totalpages ?></strong></span>
+                <span id="fixSummary"><?= ts_nf($countMismatched) ?> to fix here</span>
+            </div>
+            <div class="progress fh-progress" role="progressbar" aria-valuenow="<?= $progressPercent ?>" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar" style="width: <?= $progressPercent ?>%"></div>
+            </div>
+        </div>
 
-while ($res && ($row = $db->fetch_array($res))) {
-    $torrentPath = TSDIR . '/' . $torrent_dir . '/' . $row['id'] . '.torrent';
-    $oldHash = $row['info_hash'] ?? 'N/A';
-    $newHash = 'N/A';
-    $newHashHtml = null; // если задано - выводим как готовый HTML, без повторного экранирования
-    $status = 'ok';
+        <?php if ($autoRefresh): ?>
+            <span class="fh-auto-status" id="fhAutoStatus"><span class="fh-dot"></span><span class="fh-auto-text">Auto Fix running</span></span>
+            <a href="<?= htmlspecialchars($pageUrl($pagenumber, false)) ?>" class="btn btn-outline-secondary btn-sm fh-pill">
+                <i class="fa-solid fa-pause me-1"></i>Stop
+            </a>
+        <?php endif; ?>
 
-    echo '<tr>';
-    echo '<td><a href="' . htmlspecialchars($BASEURL) . '/' . get_torrent_link($row['id']) . '" target="_blank" class="text-decoration-none fw-semibold">' . htmlspecialchars_uni($row['name']) . '</a></td>';
-
-    if (file_exists($torrentPath))
-    {
-        try
-        {
-            $torrent = TorrentFile::load($torrentPath);
-            $infoHash = $torrent->v1()->getInfoHash();
-            $newHash = $infoHash ?: 'Error';
-
-            if ($infoHash && $infoHash !== $oldHash) {
-                $status = 'mismatch';
-                $countMismatched++;
-            }
-        }
-        catch (Exception $e)
-        {
-            $newHash = 'Error';
-            $status = 'error';
-        }
-    }
-    else
-    {
-        $newHashHtml = '<span class="text-muted fst-italic">File missing</span>';
-        $status = 'missing';
-    }
-
-    $rowClass = match ($status) {
-        'mismatch' => 'text-danger',
-        'error', 'missing' => 'text-muted',
-        default => 'text-success',
-    };
-
-    echo '<td class="text-monospace ' . $rowClass . '">' . htmlspecialchars($oldHash) . '</td>';
-    echo '<td class="text-monospace ' . $rowClass . '">' . ($newHashHtml ?? htmlspecialchars($newHash)) . '</td>';
-
-    $statusBadge = match ($status) {
-        'ok'       => '<span class="badge bg-success">Matches</span>',
-        'mismatch' => '<span class="badge bg-danger">Needs Fix</span>',
-        'missing'  => '<span class="badge bg-secondary">No File</span>',
-        default    => '<span class="badge bg-warning text-dark">Error</span>',
-    };
-
-    echo '<td>' . $statusBadge . '</td>';
-    echo '</tr>';
-}
-
-echo '</tbody></table></div>';
-
-// Пагинация и прогресс
-echo '<div class="d-flex justify-content-between align-items-center my-3 small text-muted">';
-echo '<div>Page <strong>' . $pagenumber . '</strong> of <strong>' . $totalpages . '</strong></div>';
-echo '<div id="fixSummary">' . ts_nf($countMismatched) . ' torrent(s) on this page need fixing, total <strong>' . ts_nf($results) . '</strong></div>';
-echo '</div>';
-
-$progressPercent = intval(($pagenumber / $totalpages) * 100);
-echo '<div class="progress mb-3" style="height: 12px;">';
-echo '<div class="progress-bar bg-info" role="progressbar" style="width: ' . $progressPercent . '%;" aria-valuenow="' . $progressPercent . '" aria-valuemin="0" aria-valuemax="100"></div>';
-echo '</div>';
-
-// ── Кнопка Apply (POST + CSRF) ──────────────────────────────────────────
-echo '<form id="applyForm" method="post" class="mb-4">
-        <input type="hidden" name="do" value="apply">
-        <input type="hidden" name="page" value="' . $pagenumber . '">
-        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-        <button type="submit" class="btn btn-success" id="applyBtn"' . ($countMismatched === 0 ? ' disabled' : '') . '>
-            <i class="fas fa-wrench me-1"></i>Apply Fixes for This Page
-        </button>
-      </form>';
-
-// Навигация по страницам
-echo '<nav aria-label="Page navigation">';
-echo '<ul class="pagination justify-content-center pagination-sm">';
-echo '<li class="page-item ' . ($pagenumber <= 1 ? 'disabled' : '') . '">';
-echo '<a class="page-link" href="?act=fixhash&page=' . max(1, $pagenumber - 1) . '&auto=' . ($autoRefresh ? '1' : '0') . '" tabindex="-1">Previous</a></li>';
-
-echo '<li class="page-item disabled"><a class="page-link" href="#">Page ' . $pagenumber . ' of ' . $totalpages . '</a></li>';
-
-echo '<li class="page-item ' . ($pagenumber >= $totalpages ? 'disabled' : '') . '">';
-echo '<a class="page-link" href="?act=fixhash&page=' . min($totalpages, $pagenumber + 1) . '&auto=' . ($autoRefresh ? '1' : '0') . '">Next</a></li>';
-echo '</ul></nav>';
-
-// Ручной клик по "Apply Fixes for This Page" — тоже через AJAX, чтобы не
-// уходить на голый JSON-ответ (это происходило раньше при обычном сабмите
-// формы, до AJAX-обработчика). Работает всегда, не только при auto-refresh.
-echo <<<HTML
-<script>
-    (function () {
-        const applyForm = document.getElementById('applyForm');
-        if (!applyForm) return;
-        applyForm.addEventListener('submit', function (e) {
-            e.preventDefault();
-            const btn = document.getElementById('applyBtn');
-            const originalHtml = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Applying…';
-
-            const formData = new FormData(applyForm);
-            fetch(window.location.pathname + window.location.search, {
-                method: 'POST',
-                body: formData
-            })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Fixed ' + data.fixed + ' torrent(s), ' + data.errors + ' error(s).');
-                        window.location.reload();
-                    } else {
-                        alert('Error: ' + (data.error || 'Unknown error'));
-                        btn.disabled = false;
-                        btn.innerHTML = originalHtml;
-                    }
-                })
-                .catch(() => {
-                    alert('Request failed. Please try again.');
-                    btn.disabled = false;
-                    btn.innerHTML = originalHtml;
-                });
-        });
-    })();
-</script>
-HTML;
-
-// Скрипт автообновления - теперь реально применяет фиксы (через AJAX POST),
-// а не просто листает страницы вхолостую.
-if ($autoRefresh && $pagenumber <= $totalpages) {
-    echo <<<HTML
-<script>
-    (function () {
-        const applyForm = document.getElementById('applyForm');
-        const btn = document.getElementById('applyBtn');
-
-        function goToNextPage() {
-            const url = new URL(window.location.href);
-            let page = parseInt(url.searchParams.get('page') || '1', 10);
-            if (page < {$totalpages}) {
-                url.searchParams.set('page', page + 1);
-                window.location.href = url.toString();
-            }
-        }
-
-        function applyThenAdvance() {
-            const formData = new FormData(applyForm);
-            fetch(window.location.pathname + window.location.search, {
-                method: 'POST',
-                body: formData
-            })
-                .then(r => r.json())
-                .catch(() => null)
-                .finally(() => setTimeout(goToNextPage, 500));
-        }
-
-        // Если на странице есть что чинить - применяем автоматически, иначе просто листаем дальше.
-        setTimeout(function () {
-            if (btn && !btn.disabled) {
-                applyThenAdvance();
-            } else {
-                goToNextPage();
-            }
-        }, 10000);
-    })();
-</script>
-HTML;
-}
-
-?>
-
+        <form id="applyForm" method="post" class="m-0">
+            <input type="hidden" name="do" value="apply">
+            <input type="hidden" name="page" value="<?= $pagenumber ?>">
+            <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
+            <button type="submit" class="btn btn-success fh-pill" id="applyBtn"<?= $countMismatched === 0 ? ' disabled' : '' ?>>
+                <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Apply fixes for this page
+            </button>
+        </form>
+    </div>
 </div>
 
+<script src="<?= htmlspecialchars($BASEURL) ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= htmlspecialchars($BASEURL) ?>/admin/scripts/fixhash.js?ver=<?= FH_ASSET_VER ?>"></script>
 <?php
 stdfoot();

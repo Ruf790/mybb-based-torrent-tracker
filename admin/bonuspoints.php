@@ -8,17 +8,17 @@ if (!defined('STAFF_PANEL')) {
 
 require_once INC_PATH . '/functions_multipage.php';
 
-
-
 final class BonusPointsManager
 {
-    private const BS_VERSION    = 'v0.7';
+    private const BS_VERSION      = 'v0.8';
     private const ALLOWED_ACTIONS = [
         'showlist', 'edituser', 'updateuser', 'updatebonussystem',
         'updatebonussystemsave', 'adminpanel', 'add', 'add_save', 'resetall', 'reset'
     ];
+    private const UNITS = ['GB' => 1073741824, 'MB' => 1048576, 'TB' => 1099511627776, 'B' => 1];
 
     private string $script;
+    private static bool $assets = false;
 
     public function __construct(
         private object $db,
@@ -35,51 +35,45 @@ final class BonusPointsManager
         global $mybb;
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            // $silent=true — иначе при провале функция может сама вывести HTML
-            // (в зависимости от состояния IN_ADMINCP) вместо простого false.
             if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
                 http_response_code(403);
-                die('Invalid security token');
+                stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
             }
         }
 
-        $action = $this->getValidatedAction();
-        match ($action) {
-            'showlist'             => $this->showUserList(),
-            'edituser'             => $this->editUser(),
-            'updateuser'           => $this->updateUser(),
-            'updatebonussystem'    => $this->updateBonusSystem(),
-            'updatebonussystemsave'=> $this->updateBonusSystemSave(),
-            'add'                  => $this->addBonus(),
-            'add_save'             => $this->addBonusSave(),
-            'resetall'             => $this->resetAllPoints(),
-            'reset'                => $this->resetPointsForm(),
-            default                => $this->showAdminPanel(),
+        match ($this->getValidatedAction()) {
+            'showlist'              => $this->showUserList(),
+            'edituser'              => $this->editUser(),
+            'updateuser'            => $this->updateUser(),
+            'updatebonussystem'     => $this->updateBonusSystem(),
+            'updatebonussystemsave' => $this->updateBonusSystemSave(),
+            'add'                   => $this->addBonus(),
+            'add_save'              => $this->addBonusSave(),
+            'resetall'              => $this->resetAllPoints(),
+            'reset'                 => $this->resetPointsForm(),
+            default                 => $this->showAdminPanel(),
         };
     }
 
     private function getValidatedAction(): string
     {
-        $action = htmlspecialchars((string)($_POST['action'] ?? $_GET['action'] ?? 'adminpanel'));
-        return in_array($action, self::ALLOWED_ACTIONS) ? $action : 'adminpanel';
-    }
-	
-	
-
-	
-
-    // ── Shared helpers ───────────────────────────────────────
-
-    private function getTotalUsersWithBonus(): int
-    {
-        $res = $this->db->sql_query_prepared("SELECT COUNT(*) as total FROM users WHERE seedbonus > 0");
-        return $res ? (int)($this->db->fetch_array($res)['total'] ?? 0) : 0;
+        $action = (string)($_POST['action'] ?? $_GET['action'] ?? 'adminpanel');
+        return in_array($action, self::ALLOWED_ACTIONS, true) ? $action : 'adminpanel';
     }
 
-    private function getPagination(int $total): string
+    // ── Helpers ──────────────────────────────────────────────
+
+    private function e(mixed $v): string { return htmlspecialchars((string)$v, ENT_QUOTES); }
+    private function url(string $action = '', array $q = []): string
     {
-        $page  = max(1, (int)($_GET['page'] ?? 1));
-        return multipage($total, $this->perPage, $page, $this->script . '?act=bonuspoints&action=showlist&');
+        $u = $this->script . '?act=bonuspoints' . ($action !== '' ? '&amp;action=' . $action : '');
+        foreach ($q as $k => $v) $u .= '&amp;' . $k . '=' . rawurlencode((string)$v);
+        return $u;
+    }
+    private function pts(mixed $v): string
+    {
+        $f = (float)$v;
+        return number_format($f, fmod($f, 1.0) === 0.0 ? 0 : 1);
     }
 
     private function getValidatedUserId(): int
@@ -87,576 +81,482 @@ final class BonusPointsManager
         $id = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
         return is_valid_id($id) ? $id : 0;
     }
-
-    private function getValidatedBonusId(): int
-    {
-        return max(0, (int)($_POST['id'] ?? $_GET['id'] ?? 0));
-    }
-
-    private function getValidatedUserGroup(): int
-    {
-        return max(0, (int)($_POST['usergroup'] ?? $_GET['usergroup'] ?? 0));
-    }
+    private function getValidatedBonusId(): int  { return max(0, (int)($_POST['id'] ?? $_GET['id'] ?? 0)); }
+    private function getValidatedUserGroup(): int { return max(0, (int)($_POST['usergroup'] ?? $_GET['usergroup'] ?? 0)); }
 
     private function getUserById(int $id): ?array
     {
-        $res = $this->db->sql_query_prepared("SELECT id, username, seedbonus FROM users WHERE id = ?", [$id]);
+        $res = $this->db->sql_query_prepared("SELECT id, username, usergroup, seedbonus, uploaded, downloaded, avatar, avatardimensions FROM users WHERE id = ?", [$id]);
         return ($res && $this->db->num_rows($res) > 0) ? $this->db->fetch_array($res) : null;
     }
-
     private function getBonusById(int $id): ?array
     {
         $res = $this->db->sql_query_prepared("SELECT * FROM bonus WHERE id = ?", [$id]);
         return ($res && $this->db->num_rows($res) > 0) ? $this->db->fetch_array($res) : null;
     }
 
-    private function renderHeader(string $title, string $icon): string
+    /** Название группы. (string): в strict_types get_user_class_name(string) с int давала TypeError */
+    private function groupName(int $gid): string
     {
-        $total = $this->getTotalUsersWithBonus();
-        return <<<HTML
-<div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-light rounded">
-    <h2 class="text-primary mb-0"><i class="bi {$icon} me-2"></i>{$title}</h2>
-    <span class="badge bg-primary fs-6"><i class="bi bi-people-fill me-1"></i>{$total} Users</span>
-</div>
-HTML;
+        $n = function_exists('get_user_class_name') ? (string)get_user_class_name((string)$gid) : '';
+        return $n !== '' ? $n : 'Group ' . $gid;
     }
 
-    private function renderNavigation(): string
+    /** Трафик из «число + единица». Раньше количество вводилось только в байтах */
+    private function mengeFromPost(): int
     {
-        $s = $this->script;
-        return <<<HTML
-<div class="mt-4">
-    <div class="card border-0 shadow-sm">
-        <div class="card-body text-center py-3">
-            <div class="btn-group btn-group-lg" role="group">
-                <a href="{$s}?act=bonuspoints"                        class="btn btn-primary"><i class="bi bi-speedometer2 me-2"></i>Admin Panel</a>
-                <a href="{$s}?act=bonuspoints&action=add"             class="btn btn-success"><i class="bi bi-plus-circle me-2"></i>Add Bonus</a>
-                <a href="{$s}?act=bonuspoints&action=showlist"        class="btn btn-info"><i class="bi bi-people-fill me-2"></i>User List</a>
-                <a href="{$s}?act=bonuspoints&action=reset"           class="btn btn-warning"><i class="bi bi-arrow-clockwise me-2"></i>Reset Points</a>
-            </div>
-        </div>
-    </div>
-</div>
-HTML;
+        if (isset($_POST['menge_value'])) {
+            $mul = self::UNITS[strtoupper((string)($_POST['menge_unit'] ?? 'GB'))] ?? 1;
+            return (int)round(max(0.0, (float)$_POST['menge_value']) * $mul);
+        }
+        return max(0, (int)($_POST['menge'] ?? 0));
     }
 
-    // ── GB size reference (повторялось в 2 формах) ───────────
-
-    private function renderGbReference(): string
+    private function stats(): array
     {
-        return <<<HTML
-<div class="form-text">
-    <i class="bi bi-info-circle me-1"></i><strong>Common values:</strong><br>
-    <i class="bi bi-arrow-right me-2"></i>1 GB = 1,073,741,824<br>
-    <i class="bi bi-arrow-right me-2"></i>2.5 GB = 2,684,354,560<br>
-    <i class="bi bi-arrow-right me-2"></i>5 GB = 5,368,709,120<br>
-    <i class="bi bi-arrow-right me-2"></i>10 GB = 10,737,418,240
-</div>
-HTML;
+        $r = $this->db->sql_query_prepared("SELECT COUNT(*) AS users, COALESCE(SUM(seedbonus),0) AS total, COALESCE(MAX(seedbonus),0) AS top FROM users WHERE seedbonus > 0");
+        $a = $r ? $this->db->fetch_array($r) : [];
+        $r = $this->db->sql_query_prepared("SELECT COUNT(*) AS n FROM bonus");
+        $b = $r ? $this->db->fetch_array($r) : [];
+        return ['users' => (int)($a['users'] ?? 0), 'total' => (float)($a['total'] ?? 0), 'top' => (float)($a['top'] ?? 0), 'items' => (int)($b['n'] ?? 0)];
     }
 
-    // ── Unified bonus form (Add + Edit) ──────────────────────
+    // ── Layout ───────────────────────────────────────────────
 
-    private function renderBonusForm(string $action_url, array $data = [], bool $show_delete = false): string
+    private function page(string $title, string $active, string $body): void
     {
-        global $mybb;
+        stdhead('Bonus Points ' . self::BS_VERSION . ' — ' . $title);
+        $this->assets();
+        $st = $this->stats();
 
-        $name        = htmlspecialchars($data['bonusname']   ?? '');
-        $points      = htmlspecialchars((string)($data['points']  ?? ''));
-        $description = htmlspecialchars($data['description'] ?? '');
-        $menge       = htmlspecialchars((string)($data['menge']   ?? ''));
-        $hidden_id   = isset($data['id']) ? '<input type="hidden" name="id" value="' . (int)$data['id'] . '">' : '';
-		$hidden_action = htmlspecialchars($data['action'] ?? '');
-        $gb_ref      = $this->renderGbReference();
+        $tabs = [
+            'adminpanel' => ['fa-store',            'Shop items'],
+            'add'        => ['fa-circle-plus',      'Add item'],
+            'showlist'   => ['fa-users',            'Users'],
+            'reset'      => ['fa-rotate-left',      'Reset points'],
+        ];
+        $nav = '<nav class="bp-tabs">';
+        foreach ($tabs as $k => [$ic, $label]) {
+            $nav .= '<a href="' . ($k === 'adminpanel' ? $this->url() : $this->url($k)) . '" class="' . ($k === $active ? 'active' : '') . '"><i class="fa-solid ' . $ic . '"></i>' . $label . '</a>';
+        }
+        $nav .= '</nav>';
 
-        $delete_block = $show_delete ? '
-<div class="alert alert-warning border-warning">
-    <div class="form-check">
-        <input class="form-check-input" type="checkbox" name="delete" value="1" id="deleteCheck">
-        <label class="form-check-label fw-bold text-danger" for="deleteCheck">
-            <i class="bi bi-trash-fill me-1"></i>Delete this bonus item permanently
-        </label>
-    </div>
-</div>' : '';
-
-        $btn_label = $show_delete ? 'Update Bonus' : 'Add Bonus';
-        $btn_icon  = $show_delete ? 'bi-check-circle' : 'bi-plus-circle';
-
-        return <<<HTML
-<div class="container mt-3">
-    <div class="card shadow-sm border-primary">
-        <div class="card-body">
-            <form method="post" action="{$action_url}">
-                <input type="hidden" name="act" value="bonuspoints">
-                <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
-				<input type="hidden" name="action" value="{$hidden_action}">
-                {$hidden_id}
-				
-
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="bonusname" class="form-label fw-bold"><i class="bi bi-tag me-1"></i>Bonus Name</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-primary text-white"><i class="bi bi-tag"></i></span>
-                            <input type="text" class="form-control" id="bonusname" name="bonusname" value="{$name}" placeholder="Enter bonus name" required>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="points" class="form-label fw-bold"><i class="bi bi-coin me-1"></i>Points</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-primary text-white"><i class="bi bi-coin"></i></span>
-                            <input type="number" class="form-control" id="points" name="points" value="{$points}" min="0" step="0.1" required>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mb-3 mt-3">
-                    <label for="description" class="form-label fw-bold"><i class="bi bi-text-paragraph me-1"></i>Description</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-primary text-white"><i class="bi bi-chat-text"></i></span>
-                        <textarea class="form-control" id="description" name="description" rows="4" required>{$description}</textarea>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label for="menge" class="form-label fw-bold"><i class="bi bi-hdd me-1"></i>Amount (bytes)</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-primary text-white"><i class="bi bi-hdd"></i></span>
-                        <input type="number" class="form-control" id="menge" name="menge" value="{$menge}" placeholder="e.g. 1073741824">
-                    </div>
-                    {$gb_ref}
-                </div>
-
-                {$delete_block}
-
-                <div class="text-center">
-                    <button type="submit" class="btn btn-primary btn-lg px-4">
-                        <i class="bi {$btn_icon} me-2"></i>{$btn_label}
-                    </button>
-                    <a href="{$this->script}?act=bonuspoints" class="btn btn-secondary btn-lg px-4 ms-2">
-                        <i class="bi bi-x-circle me-2"></i>Cancel
-                    </a>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-HTML;
-    }
-
-    // ── Actions ──────────────────────────────────────────────
-
-    private function showUserList(): void
-    {
-        stdhead('Bonus Points ' . self::BS_VERSION . ' - User List');
-        $total = $this->getTotalUsersWithBonus();
-        $pager = $this->getPagination($total);
-        echo $this->renderHeader('User List', 'bi-people-fill');
-        echo $pager;
-        echo $this->renderUserTable();
-        echo $pager;
-        echo $this->renderNavigation();
+        echo '<div class="container mt-3 mb-4 bp">'
+           . '<div class="bp-card mb-3"><div class="bp-head">'
+           . '<span class="bp-head-icon"><i class="fa-solid fa-coins"></i></span>'
+           . '<div class="bp-minw0"><h1 class="bp-title">Bonus Points</h1><div class="bp-sub">Bonus shop items and user balances</div></div>'
+           . '<span class="bp-ver ms-auto"><i class="fa-solid fa-code-branch me-1"></i>' . self::BS_VERSION . '</span>'
+           . '</div></div>'
+           . '<div class="row g-3 mb-3">';
+        foreach ([
+            ['fa-store',   'ic-purple', 'Shop items',       number_format($st['items'])],
+            ['fa-users',   'ic-blue',   'Users with points', number_format($st['users'])],
+            ['fa-coins',   'ic-amber',  'Points in total',  $this->pts($st['total'])],
+            ['fa-trophy',  'ic-green',  'Top balance',      $this->pts($st['top'])],
+        ] as [$ic, $cls, $label, $val]) {
+            echo '<div class="col-6 col-lg-3"><div class="bp-card bp-kpi"><span class="bp-kpi-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
+               . '<div class="bp-minw0"><div class="bp-kpi-label">' . $label . '</div><div class="bp-kpi-value">' . $val . '</div></div></div></div>';
+        }
+        echo '</div>' . $nav . $body . '</div>';
         stdfoot();
     }
 
-    private function renderUserTable(): string
+    /** Результат действия — в общем стиле, со ссылками дальше */
+    private function result(bool $ok, string $title, string $text, string $active = 'adminpanel'): void
     {
-        $page  = max(1, (int)($_GET['page'] ?? 1));
-        $start = ($page - 1) * $this->perPage;
-
-        $res  = $this->db->sql_query_prepared(
-            "SELECT id, username, seedbonus, bonuscomment, uploaded
-             FROM users WHERE seedbonus > 0
-             ORDER BY seedbonus DESC LIMIT ?, ?",
-            [$start, $this->perPage]
-        );
-
-        $rows = '';
-        while ($res && ($u = $this->db->fetch_array($res))) {
-            $link   = $this->baseUrl . '/' . get_profile_link($u['id']);
-            $size   = mksize($u['uploaded']);
-            $edit   = $this->script . '?act=bonuspoints&action=edituser&id=' . $u['id'];
-            $safeUsername = htmlspecialchars($u['username']);
-            $safeComment  = htmlspecialchars($u['bonuscomment'] ?? '');
-            $rows  .= <<<HTML
-<tr>
-    <td class="text-center"><a href="{$link}" class="text-decoration-none"><i class="bi bi-person-badge me-1 text-muted"></i>{$u['id']}</a></td>
-    <td class="text-center"><a href="{$link}" class="text-decoration-none fw-bold"><i class="bi bi-person-circle me-1 text-primary"></i>{$safeUsername}</a></td>
-    <td class="text-center"><span class="badge bg-success fs-6"><i class="bi bi-coin me-1"></i>{$u['seedbonus']} points</span></td>
-    <td><textarea class="form-control form-control-sm" rows="2" readonly>{$safeComment}</textarea></td>
-    <td class="text-end"><i class="bi bi-cloud-upload text-info me-1"></i>{$size}</td>
-    <td class="text-center"><a href="{$edit}" class="btn btn-sm btn-primary"><i class="bi bi-pencil-square me-1"></i>Edit</a></td>
-</tr>
-HTML;
-        }
-
-        return <<<HTML
-<div class="container mt-3">
-    <div class="card shadow-sm border-primary">
-        <div class="card-header bg-primary text-white py-3">
-            <h5 class="card-title mb-0"><i class="bi bi-people-fill me-2"></i>Users with Bonus Points</h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-striped align-middle mb-0">
-                    <thead class="table-primary">
-                        <tr>
-                            <th class="text-center">User ID</th><th class="text-center">Username</th>
-                            <th class="text-center">Bonus Points</th><th class="text-center">Comment</th>
-                            <th class="text-center">Uploaded</th><th class="text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>{$rows}</tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-HTML;
+        $this->page($title, $active,
+            '<div class="bp-card bp-result ' . ($ok ? 'is-ok' : 'is-bad') . '">'
+            . '<span class="bp-result-icon"><i class="fa-solid ' . ($ok ? 'fa-circle-check' : 'fa-circle-xmark') . '"></i></span>'
+            . '<h2 class="h4 fw-bold mb-1">' . $this->e($title) . '</h2><div class="text-body-secondary mb-3">' . $text . '</div>'
+            . '<div class="d-flex flex-wrap justify-content-center gap-2">'
+            . '<a href="' . $this->url() . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-store me-1"></i>Shop items</a>'
+            . '<a href="' . $this->url('showlist') . '" class="btn btn-primary px-3"><i class="fa-solid fa-users me-1"></i>Users</a>'
+            . '</div></div>');
     }
 
-    private function editUser(): void
-    {
-        $user = $this->getUserById($this->getValidatedUserId());
-        if (!$user) { stderr('Error', 'User not found!'); return; }
-
-        $safeUsername = htmlspecialchars($user['username']);
-        stdhead('Bonus Points ' . self::BS_VERSION . " - Edit User ({$safeUsername})");
-        echo $this->renderHeader("Edit User: {$safeUsername}", 'bi-person-gear');
-        echo $this->renderEditUserForm($user);
-        echo $this->renderNavigation();
-        stdfoot();
-    }
-
-    private function renderEditUserForm(array $user): string
+    private function confirmPage(string $title, string $text, string $actionUrl, array $hidden, string $button, string $active): void
     {
         global $mybb;
-
-        $link = $this->baseUrl . '/userdetails.php?id=' . $user['id'];
-        $s    = $this->script;
-        $safeUsername = htmlspecialchars($user['username']);
-        return <<<HTML
-<div class="container mt-3">
-    <div class="card shadow-sm border-primary">
-        <div class="card-header bg-primary text-white py-3">
-            <h5 class="card-title mb-0"><i class="bi bi-person-gear me-2"></i>Edit User Points</h5>
-        </div>
-        <div class="card-body">
-            <form method="post" action="{$s}">
-                <input type="hidden" name="act" value="bonuspoints">
-                <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
-                <input type="hidden" name="action" value="updateuser">
-                <input type="hidden" name="id" value="{$user['id']}">
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">User ID</label>
-                        <div class="form-control"><a href="{$link}" class="fw-bold">{$user['id']}</a></div>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Username</label>
-                        <div class="form-control"><a href="{$link}" class="fw-bold">{$safeUsername}</a></div>
-                    </div>
-                    <div class="col-md-4">
-                        <label for="seedbonus" class="form-label fw-bold"><i class="bi bi-coin me-1"></i>Bonus Points</label>
-                        <input type="number" class="form-control form-control-lg" id="seedbonus" name="seedbonus"
-                               value="{$user['seedbonus']}" min="0" step="0.1" required>
-                    </div>
-                </div>
-                <div class="text-center mt-4">
-                    <button type="submit" class="btn btn-primary btn-lg px-4">
-                        <i class="bi bi-check-circle me-2"></i>Update Points
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-HTML;
+        $h = '<input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">';
+        foreach ($hidden as $k => $v) $h .= '<input type="hidden" name="' . $this->e($k) . '" value="' . $this->e($v) . '">';
+        $this->page($title, $active,
+            '<div class="bp-card bp-result is-bad">'
+            . '<span class="bp-result-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>'
+            . '<h2 class="h4 fw-bold mb-1">' . $this->e($title) . '</h2><div class="text-body-secondary mb-3">' . $text . '</div>'
+            . '<form method="post" action="' . $actionUrl . '" class="d-flex flex-wrap justify-content-center gap-2">' . $h
+            . '<a href="' . $this->url() . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>'
+            . '<button type="submit" class="btn btn-danger px-4"><i class="fa-solid fa-trash me-1"></i>' . $button . '</button></form></div>');
     }
 
-    private function updateUser(): void
+    private function assets(): void
     {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(403);
-            die('Invalid request method');
-        }
-
-        $id    = $this->getValidatedUserId();
-        $bonus = (float)($_POST['seedbonus'] ?? 0);
-        $ok    = $this->db->sql_query_prepared("UPDATE users SET seedbonus = ? WHERE id = ?", [$bonus, $id]);
-        $ok
-            ? stdok('User ID: ' . $id . ' successfully updated', 'Success', 'success')
-            : stdok('Unable to update user: ' . $id, 'Error', 'error');
+        if (self::$assets) return;
+        self::$assets = true;
+        $rel = '/admin/templates/bonuspoints.css';
+        $ver = @filemtime(TSDIR . $rel) ?: self::BS_VERSION;
+        echo '<link rel="stylesheet" href="' . $this->baseUrl . $rel . '?v=' . $this->e($ver) . '">';
     }
+
+    // ── Shop items ───────────────────────────────────────────
 
     private function showAdminPanel(): void
     {
-        stdhead('Bonus Points ' . self::BS_VERSION . ' - Admin Panel');
-        echo $this->renderHeader('Bonus System Configuration', 'bi-gear-fill');
-        echo $this->renderBonusList();
-        echo $this->renderNavigation();
-        stdfoot();
-    }
-
-    private function renderBonusList(): string
-    {
-        $res  = $this->db->sql_query_prepared('SELECT * FROM bonus ORDER BY id ASC');
-        $rows = '';
+        $res   = $this->db->sql_query_prepared('SELECT * FROM bonus ORDER BY points ASC, id ASC');
+        $rows  = '';
         $count = 0;
-
         while ($res && ($b = $this->db->fetch_array($res))) {
             $count++;
-            $edit  = $this->script . '?act=bonuspoints&action=updatebonussystem&id=' . $b['id'];
-            $safeBonusName   = htmlspecialchars($b['bonusname']);
-            $safeDescription = htmlspecialchars($b['description'] ?? '');
-            $rows .= <<<HTML
-<tr>
-    <td class="text-center fw-bold"><i class="bi bi-hash text-muted me-1"></i>{$b['id']}</td>
-    <td class="fw-bold text-primary"><i class="bi bi-tag me-1"></i>{$safeBonusName}</td>
-    <td class="text-center"><span class="badge bg-success fs-6"><i class="bi bi-coin me-1"></i>{$b['points']}</span></td>
-    <td><div class="alert alert-info mb-0 p-2 small"><i class="bi bi-info-circle me-1"></i>{$safeDescription}</div></td>
-    <td class="text-center"><a href="{$edit}" class="btn btn-sm btn-primary"><i class="bi bi-pencil-square"></i></a></td>
-</tr>
-HTML;
+            $traffic = (string)($b['art'] ?? '') === 'traffic';
+            $menge   = (int)($b['menge'] ?? 0);
+            $rows .= '<tr>'
+                . '<td><div class="d-flex align-items-center gap-3"><span class="bp-ico ' . ($traffic ? 'ic-teal' : 'ic-purple') . '"><i class="fa-solid ' . ($traffic ? 'fa-cloud-arrow-up' : 'fa-gift') . '"></i></span>'
+                . '<div class="bp-minw0"><div class="fw-bold">' . $this->e($b['bonusname']) . '</div>'
+                . '<div class="bp-comment">' . $this->e($b['description'] ?? '') . '</div></div></div></td>'
+                . '<td class="text-nowrap"><span class="bp-tag ' . ($traffic ? 't-traffic' : 't-other') . '">' . $this->e($b['art'] ?? '—') . '</span></td>'
+                // раньше количество не показывалось вовсе (или было бы голым числом байт)
+                . '<td class="text-nowrap fw-semibold">' . ($menge > 0 ? mksize($menge) : '<span class="bp-muted">—</span>') . '</td>'
+                . '<td class="text-nowrap"><span class="bp-pts"><i class="fa-solid fa-coins"></i>' . $this->pts($b['points']) . '</span></td>'
+                . '<td class="text-end"><a href="' . $this->url('updatebonussystem', ['id' => (int)$b['id']]) . '" class="bp-act" title="Edit"><i class="fa-solid fa-pen"></i></a></td>'
+                . '</tr>';
         }
 
-        return <<<HTML
-<div class="container mt-3">
-    <div class="card shadow-sm border-primary">
-        <div class="card-header bg-primary text-white py-3">
-            <h5 class="card-title mb-0">
-                <i class="bi bi-list-check me-2"></i>Bonus Items
-                <span class="badge bg-light text-primary ms-2 fs-6">{$count} Items</span>
-            </h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="table-primary">
-                        <tr>
-                            <th class="text-center">ID</th><th>Name</th>
-                            <th class="text-center">Points</th><th>Description</th>
-                            <th class="text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>{$rows}</tbody>
-                </table>
+        $body = '<div class="bp-card overflow-hidden"><div class="bp-sec-head">'
+              . '<span class="bp-sec-icon ic-purple"><i class="fa-solid fa-store"></i></span>'
+              . '<div><h2 class="bp-sec-title">Shop items</h2><div class="bp-muted">' . $count . ' item(s), cheapest first</div></div>'
+              . '<a href="' . $this->url('add') . '" class="btn btn-sm btn-primary px-3 ms-auto"><i class="fa-solid fa-plus me-1"></i>Add item</a></div>';
+        $body .= $count
+            ? '<div class="table-responsive"><table class="table bp-table"><thead><tr>'
+              . '<th><i class="fa-solid fa-tag"></i>Item</th><th><i class="fa-solid fa-shapes"></i>Type</th>'
+              . '<th><i class="fa-solid fa-hard-drive"></i>Amount</th><th><i class="fa-solid fa-coins"></i>Price</th><th></th>'
+              . '</tr></thead><tbody>' . $rows . '</tbody></table></div>'
+            : '<div class="bp-empty"><i class="fa-solid fa-store-slash"></i><div class="fw-semibold">No shop items yet</div></div>';
+        $body .= '</div>';
+
+        $this->page('Shop items', 'adminpanel', $body);
+    }
+
+    private function renderBonusForm(array $data = [], bool $isEdit = false): string
+    {
+        global $mybb;
+
+        $menge = (int)($data['menge'] ?? 0);
+        // Показываем количество в самой крупной «ровной» единице
+        [$val, $unit] = [0, 'GB'];
+        if ($menge > 0) {
+            foreach (['TB', 'GB', 'MB', 'B'] as $u) {
+                if ($menge % self::UNITS[$u] === 0 || $u === 'B') { $val = $menge / self::UNITS[$u]; $unit = $u; break; }
+            }
+            if ($unit === 'B' && $menge >= self::UNITS['MB']) { $val = round($menge / self::UNITS['GB'], 3); $unit = 'GB'; }
+        }
+        $unitSel = '<select class="form-select bp-unit-select" name="menge_unit">';
+        foreach (array_keys(self::UNITS) as $u) $unitSel .= '<option value="' . $u . '"' . ($u === $unit ? ' selected' : '') . '>' . $u . '</option>';
+        $unitSel .= '</select>';
+
+        $hidden = '<input type="hidden" name="act" value="bonuspoints">'
+                . '<input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">'
+                . '<input type="hidden" name="action" value="' . ($isEdit ? 'updatebonussystemsave' : 'add_save') . '">'
+                . ($isEdit ? '<input type="hidden" name="id" value="' . (int)$data['id'] . '">' : '');
+
+        $chips = '';
+        foreach ([1, 2.5, 5, 10, 25, 50] as $gb) $chips .= '<button type="button" class="bp-chip" data-gb="' . $gb . '">' . $gb . ' GB</button>';
+
+        $delete = $isEdit ? '
+            <label class="d-flex align-items-center gap-3 p-3 rounded-4 mt-3 bp-danger-zone" for="deleteCheck">
+                <span class="bp-sec-icon ic-red"><i class="fa-solid fa-trash"></i></span>
+                <span class="flex-grow-1"><b class="d-block text-danger">Delete this item</b><small class="bp-muted">You will be asked to confirm</small></span>
+                <input class="form-check-input m-0" type="checkbox" name="delete" value="1" id="deleteCheck">
+            </label>' : '';
+
+        return '<form method="post" action="' . $this->script . '" class="bp-card">' . $hidden . '
+            <div class="bp-sec-head"><span class="bp-sec-icon ' . ($isEdit ? 'ic-blue' : 'ic-green') . '"><i class="fa-solid ' . ($isEdit ? 'fa-pen-to-square' : 'fa-circle-plus') . '"></i></span>
+                <h2 class="bp-sec-title">' . ($isEdit ? 'Edit item: ' . $this->e($data['bonusname'] ?? '') : 'New shop item') . '</h2></div>
+            <div class="p-3 p-md-4">
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label class="form-label" for="bonusname"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="bonusname" name="bonusname" value="' . $this->e($data['bonusname'] ?? '') . '" placeholder="e.g. 5 GB Upload" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="points"><i class="fa-solid fa-coins"></i>Price <span class="text-danger">*</span></label>
+                        <div class="input-group"><input type="number" class="form-control" id="points" name="points" value="' . $this->e($data['points'] ?? '') . '" min="0" step="0.1" required><span class="input-group-text">points</span></div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="description"><i class="fa-solid fa-align-left"></i>Description <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="description" name="description" rows="3" required placeholder="What the user gets">' . $this->e($data['description'] ?? '') . '</textarea>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label" for="menge_value"><i class="fa-solid fa-hard-drive"></i>Traffic amount</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="menge_value" name="menge_value" value="' . ($val ?: '') . '" min="0" step="any" placeholder="0">
+                            ' . $unitSel . '
+                        </div>
+                        <div class="bp-chips">' . $chips . '</div>
+                        <div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>= <span id="bpBytes">0</span> bytes · raw bytes before: 1 GB = 1,073,741,824</div>
+                    </div>
+                </div>
+                ' . $delete . '
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="' . $this->url() . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+                    <button type="submit" class="btn ' . ($isEdit ? 'btn-primary' : 'btn-success') . ' px-4"><i class="fa-solid ' . ($isEdit ? 'fa-floppy-disk' : 'fa-plus') . ' me-1"></i>' . ($isEdit ? 'Save item' : 'Add item') . '</button>
+                </div>
             </div>
-        </div>
-    </div>
-</div>
-HTML;
+        </form>
+        <script>
+        (function () {
+            const v = document.getElementById("menge_value"), u = document.querySelector(".bp [name=menge_unit]"), out = document.getElementById("bpBytes");
+            const mul = { B: 1, MB: 1048576, GB: 1073741824, TB: 1099511627776 };
+            const calc = () => { out.textContent = Math.round((parseFloat(v.value) || 0) * mul[u.value]).toLocaleString("en-US"); };
+            v.addEventListener("input", calc); u.addEventListener("change", calc);
+            document.querySelectorAll(".bp .bp-chip[data-gb]").forEach(b => b.addEventListener("click", () => { v.value = b.dataset.gb; u.value = "GB"; calc(); }));
+            calc();
+        })();
+        </script>';
+    }
+
+    private function addBonus(): void
+    {
+        $this->page('Add item', 'add', $this->renderBonusForm());
+    }
+
+    private function addBonusSave(): void
+    {
+        global $CURUSER;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); stderr('Error', 'Invalid request method'); }
+
+        $name = trim((string)($_POST['bonusname'] ?? ''));
+        if ($name === '') { $this->result(false, 'Not saved', 'The item needs a name.', 'add'); return; }
+
+        $ok = $this->db->sql_query_prepared(
+            "INSERT INTO bonus (bonusname, points, description, menge, art) VALUES (?, ?, ?, ?, 'traffic')",
+            [$name, (float)($_POST['points'] ?? 0), (string)($_POST['description'] ?? ''), $this->mengeFromPost()]
+        );
+        if ($ok && function_exists('write_log')) write_log("Bonus shop item \"{$name}\" added by " . ($CURUSER['username'] ?? 'System'));
+        $this->result((bool)$ok, $ok ? 'Item added' : 'Could not add item', $ok ? '“' . $this->e($name) . '” is now in the bonus shop.' : 'Database error.', 'add');
     }
 
     private function updateBonusSystem(): void
     {
         $bonus = $this->getBonusById($this->getValidatedBonusId());
-        if (!$bonus) { stdok('Bonus item not found!', 'Error', 'error'); return; }
-
-        $safeBonusName = htmlspecialchars($bonus['bonusname']);
-        stdhead('Bonus Points ' . self::BS_VERSION . " - Update Bonus ({$safeBonusName})");
-        echo $this->renderHeader("Update Bonus: {$safeBonusName}", 'bi-pencil-square');
-        echo $this->renderBonusForm(
-            $this->script,
-            array_merge($bonus, ['action' => 'updatebonussystemsave']),
-            true
-        );
-        echo $this->renderNavigation();
-        stdfoot();
+        if (!$bonus) { $this->result(false, 'Not found', 'This shop item does not exist.'); return; }
+        $this->page('Edit item', 'adminpanel', $this->renderBonusForm($bonus, true));
     }
 
     private function updateBonusSystemSave(): void
     {
-        global $mybb;
-
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(403);
-            die('Invalid request method');
-        }
+        global $CURUSER;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); stderr('Error', 'Invalid request method'); }
 
         $id     = $this->getValidatedBonusId();
-        $delete = isset($_POST['delete']) && $_POST['delete'] == '1';
-        $sure   = (int)($_POST['sure'] ?? $_GET['sure'] ?? 0);
-        $postKey = htmlspecialchars($mybb->post_code);
+        $delete = ($_POST['delete'] ?? '') === '1';
+        $sure   = (int)($_POST['sure'] ?? 0);
+        $bonus  = $this->getBonusById($id);
+        if (!$bonus) { $this->result(false, 'Not found', 'This shop item does not exist.'); return; }
 
         if ($delete && !$sure) {
-            $url = $this->script . '?act=bonuspoints&action=updatebonussystemsave&id=' . $id;
-            stdok(
-                "<div class='text-center'>
-                    <i class='bi bi-exclamation-triangle-fill text-warning display-4 mb-3'></i>
-                    <h4>Confirm Deletion</h4>
-                    <p class='lead'>You are about to delete this bonus item permanently.</p>
-                    <div class='mt-4'>
-                        <form method='post' action='{$url}' class='d-inline'>
-                            <input type='hidden' name='my_post_key' value='{$postKey}'>
-                            <input type='hidden' name='delete' value='1'>
-                            <input type='hidden' name='sure' value='1'>
-                            <button type='submit' class='btn btn-danger btn-lg me-3'><i class='bi bi-trash-fill me-2'></i>Confirm Delete</button>
-                        </form>
-                        <a href='{$this->script}?act=bonuspoints' class='btn btn-secondary btn-lg'><i class='bi bi-x-circle me-2'></i>Cancel</a>
-                    </div>
-                </div>",
-                'Delete Confirmation', 'confirm'
-            );
+            $this->confirmPage('Delete shop item?',
+                '<strong>' . $this->e($bonus['bonusname']) . '</strong> will be removed from the bonus shop permanently.',
+                $this->url('updatebonussystemsave', ['id' => $id]), ['delete' => '1', 'sure' => '1', 'id' => $id], 'Yes, delete', 'adminpanel');
             return;
         }
-
         if ($delete && $sure) {
-            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-                http_response_code(403);
-                die('Invalid request method');
-            }
-
             $ok = $this->db->sql_query_prepared("DELETE FROM bonus WHERE id = ?", [$id]);
-            $ok
-                ? stdok('Bonus item successfully deleted.' . $this->renderNavigation(), 'Success', 'success')
-                : stdok('Unable to delete bonus item.', 'Error', 'error');
+            if ($ok && function_exists('write_log')) write_log("Bonus shop item \"{$bonus['bonusname']}\" deleted by " . ($CURUSER['username'] ?? 'System'));
+            $this->result((bool)$ok, $ok ? 'Item deleted' : 'Could not delete', $ok ? '“' . $this->e($bonus['bonusname']) . '” was removed.' : 'Database error.');
             return;
         }
 
         $ok = $this->db->sql_query_prepared(
             "UPDATE bonus SET bonusname = ?, points = ?, description = ?, menge = ? WHERE id = ?",
-            [
-                $_POST['bonusname']   ?? '',
-                (float)($_POST['points']      ?? 0),
-                $_POST['description'] ?? '',
-                (int)($_POST['menge']         ?? 0),
-                $id,
-            ]
+            [trim((string)($_POST['bonusname'] ?? '')), (float)($_POST['points'] ?? 0), (string)($_POST['description'] ?? ''), $this->mengeFromPost(), $id]
+        );
+        $this->result((bool)$ok, $ok ? 'Item saved' : 'Could not save', $ok ? 'Changes to “' . $this->e($_POST['bonusname'] ?? '') . '” are live.' : 'Database error.');
+    }
+
+    // ── Users ────────────────────────────────────────────────
+
+    private function showUserList(): void
+    {
+        $q     = trim((string)($_GET['q'] ?? ''));
+        $where = 'seedbonus > 0';
+        $par   = [];
+        if ($q !== '') { $where .= ' AND username LIKE ?'; $par[] = '%' . addcslashes($q, '%_\\') . '%'; }
+
+        $cnt   = $this->db->sql_query_prepared("SELECT COUNT(*) AS total FROM users WHERE {$where}", $par);
+        $total = $cnt ? (int)($this->db->fetch_array($cnt)['total'] ?? 0) : 0;
+        $page  = max(1, (int)($_GET['page'] ?? 1));
+        $start = ($page - 1) * $this->perPage;
+
+        $res = $this->db->sql_query_prepared(
+            "SELECT id, username, usergroup, seedbonus, bonuscomment, uploaded, avatar, avatardimensions
+             FROM users WHERE {$where} ORDER BY seedbonus DESC LIMIT ?, ?",
+            [...$par, $start, $this->perPage]
         );
 
-        $ok
-            ? stdok('Bonus item successfully updated.' . $this->renderNavigation(), 'Success', 'success')
-            : stdok('Unable to update bonus item.', 'Error', 'error');
-    }
-
-    private function addBonus(): void
-    {
-        stdhead('Bonus Points ' . self::BS_VERSION . ' - Add Bonus');
-        echo $this->renderHeader('Add New Bonus Item', 'bi-plus-circle');
-        echo $this->renderBonusForm($this->script, ['action' => 'add_save'], false);
-        echo $this->renderNavigation();
-        stdfoot();
-    }
-
-    private function addBonusSave(): void
-    {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(403);
-            die('Invalid request method');
+        $rows = '';
+        $rank = $start;
+        while ($res && ($u = $this->db->fetch_array($res))) {
+            $rank++;
+            $name = (string)$u['username'];
+            $av   = function_exists('format_avatar') ? format_avatar($u['avatar'] ?? '', $u['avatardimensions'] ?? '') : [];
+            $pic  = (!empty($av['image']) && empty($av['is_placeholder']))
+                ? '<img class="bp-avatar" src="' . $av['image'] . '" alt="" loading="lazy">'
+                : '<span class="bp-initial">' . $this->e(mb_strtoupper(mb_substr($name !== '' ? $name : '?', 0, 1))) . '</span>';
+            $rows .= '<tr>'
+                . '<td class="text-center bp-muted fw-bold">' . ($rank <= 3 ? ['', '🥇', '🥈', '🥉'][$rank] : '#' . $rank) . '</td>'
+                . '<td><div class="d-flex align-items-center gap-2">' . $pic . '<div class="bp-minw0">'
+                . '<a href="' . $this->baseUrl . '/' . get_profile_link((int)$u['id']) . '" class="fw-semibold text-decoration-none">' . (function_exists('format_name') ? format_name($this->e($name), (int)$u['usergroup']) : $this->e($name)) . '</a>'
+                . '<div class="bp-muted">ID ' . (int)$u['id'] . '</div></div></div></td>'
+                . '<td class="text-nowrap"><span class="bp-pts"><i class="fa-solid fa-coins"></i>' . $this->pts($u['seedbonus']) . '</span></td>'
+                . '<td class="text-nowrap"><i class="fa-solid fa-upload text-body-secondary me-1"></i>' . mksize((float)$u['uploaded']) . '</td>'
+                // раньше — readonly textarea в каждой строке
+                . '<td><div class="bp-comment" title="' . $this->e($u['bonuscomment'] ?? '') . '">' . nl2br($this->e($u['bonuscomment'] ?? '')) . '</div></td>'
+                . '<td class="text-end"><a href="' . $this->url('edituser', ['id' => (int)$u['id']]) . '" class="bp-act" title="Edit balance"><i class="fa-solid fa-pen"></i></a></td>'
+                . '</tr>';
         }
 
-        $ok = $this->db->sql_query_prepared(
-            "INSERT INTO bonus (bonusname, points, description, menge, art) VALUES (?, ?, ?, ?, 'traffic')",
-            [
-                $_POST['bonusname']  ?? '',
-                (float)($_POST['points']     ?? 0),
-                $_POST['description'] ?? '',
-                (int)($_POST['menge']       ?? 0),
-            ]
-        );
+        $pageUrl = $this->script . '?act=bonuspoints&action=showlist' . ($q !== '' ? '&q=' . rawurlencode($q) : '') . '&';
+        $pager   = $total > $this->perPage ? '<div class="d-flex justify-content-center py-2 border-top">' . multipage($total, $this->perPage, $page, $pageUrl) . '</div>' : '';
 
-        $ok
-            ? stdok('New bonus successfully added.' . $this->renderNavigation(), 'Success', 'success')
-            : stdok('Unable to add bonus!', 'Error', 'error');
+        $body = '<div class="bp-card overflow-hidden"><div class="bp-sec-head">'
+              . '<span class="bp-sec-icon ic-blue"><i class="fa-solid fa-ranking-star"></i></span>'
+              . '<div><h2 class="bp-sec-title">Users with points</h2><div class="bp-muted">' . number_format($total) . ' user(s), highest balance first</div></div>'
+              . '<form method="get" action="' . $this->script . '" class="ms-auto position-relative bp-search">'
+              . '<input type="hidden" name="act" value="bonuspoints"><input type="hidden" name="action" value="showlist">'
+              . '<i class="fa-solid fa-magnifying-glass"></i><input type="search" name="q" value="' . $this->e($q) . '" class="form-control form-control-sm" placeholder="Find user…"></form></div>';
+        $body .= $rows
+            ? '<div class="table-responsive"><table class="table bp-table"><thead><tr>'
+              . '<th class="text-center">#</th><th><i class="fa-solid fa-user"></i>User</th><th><i class="fa-solid fa-coins"></i>Points</th>'
+              . '<th><i class="fa-solid fa-upload"></i>Uploaded</th><th><i class="fa-solid fa-comment"></i>Bonus log</th><th></th>'
+              . '</tr></thead><tbody>' . $rows . '</tbody></table></div>' . $pager
+            : '<div class="bp-empty"><i class="fa-solid fa-user-slash"></i><div class="fw-semibold">' . ($q !== '' ? 'No user matches “' . $this->e($q) . '”' : 'Nobody has bonus points yet') . '</div></div>';
+        $body .= '</div>';
+
+        $this->page('Users', 'showlist', $body);
     }
+
+    private function editUser(): void
+    {
+        global $mybb;
+        $user = $this->getUserById($this->getValidatedUserId());
+        if (!$user) { $this->result(false, 'Not found', 'User not found.', 'showlist'); return; }
+
+        $name = (string)$user['username'];
+        $cur  = (float)$user['seedbonus'];
+        // Раньше ссылка вела на старый userdetails.php
+        $link = $this->baseUrl . '/' . get_profile_link((int)$user['id']);
+
+        $body = '<form method="post" action="' . $this->script . '" class="bp-card bp-narrow">
+            <input type="hidden" name="act" value="bonuspoints">
+            <input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">
+            <input type="hidden" name="action" value="updateuser">
+            <input type="hidden" name="id" value="' . (int)$user['id'] . '">
+            <div class="bp-sec-head"><span class="bp-sec-icon ic-blue"><i class="fa-solid fa-user-pen"></i></span>
+                <div><h2 class="bp-sec-title">Edit balance</h2><div class="bp-muted"><a href="' . $link . '" target="_blank">' . $this->e($name) . '</a> · ID ' . (int)$user['id'] . '</div></div>
+                <span class="ms-auto bp-pts"><i class="fa-solid fa-coins"></i>' . $this->pts($cur) . ' now</span></div>
+            <div class="p-3 p-md-4">
+                <label class="form-label" for="seedbonus"><i class="fa-solid fa-coins"></i>New balance</label>
+                <div class="input-group"><input type="number" class="form-control form-control-lg" id="seedbonus" name="seedbonus" value="' . $this->e($cur) . '" min="0" step="0.1" required><span class="input-group-text">points</span></div>
+                <div class="bp-chips">
+                    <button type="button" class="bp-chip" data-d="100">+100</button><button type="button" class="bp-chip" data-d="1000">+1 000</button>
+                    <button type="button" class="bp-chip" data-d="-100">−100</button><button type="button" class="bp-chip" data-d="-1000">−1 000</button>
+                    <button type="button" class="bp-chip" data-set="0">Set 0</button>
+                </div>
+                <div class="form-text" id="bpDiff"></div>
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="' . $this->url('showlist') . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+                    <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>Save balance</button>
+                </div>
+            </div>
+        </form>
+        <script>
+        (function () {
+            const i = document.getElementById("seedbonus"), d = document.getElementById("bpDiff"), cur = ' . json_encode($cur) . ';
+            const show = () => { const v = parseFloat(i.value) || 0, diff = v - cur;
+                d.innerHTML = diff === 0 ? "No change" : (diff > 0 ? "<span class=\"text-success\">+" : "<span class=\"text-danger\">") + diff.toLocaleString() + " points</span> compared to now"; };
+            document.querySelectorAll(".bp .bp-chip").forEach(b => b.addEventListener("click", () => {
+                i.value = b.dataset.set !== undefined ? b.dataset.set : Math.max(0, (parseFloat(i.value) || 0) + parseFloat(b.dataset.d)); show();
+            }));
+            i.addEventListener("input", show); show();
+        })();
+        </script>';
+
+        $this->page('Edit balance', 'showlist', $body);
+    }
+
+    private function updateUser(): void
+    {
+        global $CURUSER;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); stderr('Error', 'Invalid request method'); }
+
+        $id    = $this->getValidatedUserId();
+        $user  = $this->getUserById($id);
+        if (!$user) { $this->result(false, 'Not found', 'User not found.', 'showlist'); return; }
+        $bonus = max(0.0, (float)($_POST['seedbonus'] ?? 0));
+        $ok    = $this->db->sql_query_prepared("UPDATE users SET seedbonus = ? WHERE id = ?", [$bonus, $id]);
+        // Раньше изменение баланса нигде не фиксировалось
+        if ($ok && function_exists('write_log')) {
+            write_log("Bonus balance of {$user['username']} changed from {$this->pts($user['seedbonus'])} to {$this->pts($bonus)} by " . ($CURUSER['username'] ?? 'System'));
+        }
+        $this->result((bool)$ok, $ok ? 'Balance updated' : 'Could not update',
+            $ok ? $this->e($user['username']) . ': ' . $this->pts($user['seedbonus']) . ' → <strong>' . $this->pts($bonus) . '</strong> points' : 'Database error.', 'showlist');
+    }
+
+    // ── Reset ────────────────────────────────────────────────
 
     private function resetPointsForm(): void
     {
-        stdhead('Bonus Points ' . self::BS_VERSION . ' - Reset Points');
-        echo $this->renderHeader('Reset User Points', 'bi-arrow-clockwise');
-        echo $this->renderResetForm();
-        echo $this->renderNavigation();
-        stdfoot();
-    }
-
-    private function renderResetForm(): string
-    {
         global $mybb;
-
         $groups = _selectbox_('Usergroup', 'usergroup');
-        $s = $this->script;
-        return <<<HTML
-<div class="container mt-3">
-    <div class="card shadow-sm border-primary">
-        <div class="card-header bg-primary text-white py-3">
-            <h5 class="card-title mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Reset Bonus Points</h5>
-        </div>
-        <div class="card-body">
-            <div class="alert alert-danger border-danger">
-                <h6 class="alert-heading"><i class="bi bi-exclamation-octagon-fill me-2"></i>Warning!</h6>
-                <p class="mb-0">This action cannot be undone. All bonus points will be permanently reset.</p>
-            </div>
-            <form method="post" action="{$s}">
-                <input type="hidden" name="act" value="bonuspoints">
-                <input type="hidden" name="my_post_key" value="{$mybb->post_code}">
-                <input type="hidden" name="action" value="resetall">
-                <div class="row g-3">
-                    <div class="col-md-8">
-                        <label class="form-label fw-bold"><i class="bi bi-people-fill me-1"></i>Select User Group</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-primary text-white"><i class="bi bi-funnel"></i></span>
-                            {$groups}
-                        </div>
-                    </div>
-                    <div class="col-md-4 d-flex align-items-end">
-                        <button type="submit" class="btn btn-danger w-100 py-2"
-                                onclick="return confirm('Reset ALL bonus points? This cannot be undone!')">
-                            <i class="bi bi-arrow-clockwise me-2"></i>Reset Points
-                        </button>
-                    </div>
+        $body = '<form method="post" action="' . $this->script . '" class="bp-card bp-narrow">
+            <input type="hidden" name="act" value="bonuspoints">
+            <input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">
+            <input type="hidden" name="action" value="resetall">
+            <div class="bp-sec-head"><span class="bp-sec-icon ic-red"><i class="fa-solid fa-rotate-left"></i></span>
+                <div><h2 class="bp-sec-title">Reset bonus points</h2><div class="bp-muted">Sets the balance of active, confirmed users to 0</div></div></div>
+            <div class="p-3 p-md-4">
+                <div class="alert alert-danger d-flex gap-2 rounded-4"><i class="fa-solid fa-radiation mt-1"></i><div><strong>Can\'t be undone.</strong> Balances are wiped; you will be asked to confirm on the next screen.</div></div>
+                <label class="form-label"><i class="fa-solid fa-users"></i>Which group</label>
+                <div class="bp-group-select">' . $groups . '</div>
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="' . $this->url() . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+                    <button type="submit" class="btn btn-danger px-4"><i class="fa-solid fa-arrow-right me-1"></i>Continue</button>
                 </div>
-            </form>
-        </div>
-    </div>
-</div>
-HTML;
+            </div>
+        </form>
+        <script>document.querySelector(".bp .bp-group-select select")?.classList.add("form-select");</script>';
+        // Раньше перед страницей подтверждения был ещё и confirm() — подтверждать приходилось дважды
+        $this->page('Reset points', 'reset', $body);
     }
 
     private function resetAllPoints(): void
     {
-        global $mybb;
-
+        global $CURUSER;
         $group = $this->getValidatedUserGroup();
-        $sure  = (int)($_POST['sure'] ?? $_GET['sure'] ?? 0);
-        $postKey = htmlspecialchars($mybb->post_code);
+        $sure  = (int)($_POST['sure'] ?? 0);
+
+        $cq = $this->db->sql_query_prepared(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(seedbonus),0) AS s FROM users WHERE enabled = 'yes' AND ustatus = 'confirmed' AND seedbonus > 0" . ($group ? ' AND usergroup = ?' : ''),
+            $group ? [$group] : []
+        );
+        $c = $cq ? $this->db->fetch_array($cq) : [];
+        $who = $group ? '<strong>' . $this->e($this->groupName($group)) . '</strong>' : '<strong>ALL user groups</strong>';
 
         if (!$sure) {
-            $groupName  = $group ? '[' . get_user_class_name($group) . ']' : '[ALL User Groups]';
-            $confirmUrl = $this->script . '?act=bonuspoints&action=resetall';
-            stdok(
-                "<div class='text-center'>
-                    <i class='bi bi-exclamation-triangle-fill text-warning display-4 mb-3'></i>
-                    <h4>Reset Confirmation</h4>
-                    <p class='lead'>Reset all bonus points for: <b>{$groupName}</b></p>
-                    <div class='mt-4'>
-                        <form method='post' action='{$confirmUrl}' class='d-inline'>
-                            <input type='hidden' name='my_post_key' value='{$postKey}'>
-                            <input type='hidden' name='sure' value='1'>
-                            <input type='hidden' name='usergroup' value='{$group}'>
-                            <button type='submit' class='btn btn-danger btn-lg me-3'><i class='bi bi-trash-fill me-2'></i>Confirm Reset</button>
-                        </form>
-                        <a href='{$this->script}?act=bonuspoints' class='btn btn-secondary btn-lg'><i class='bi bi-x-circle me-2'></i>Cancel</a>
-                    </div>
-                </div>",
-                'Reset Confirmation', 'confirm'
-            );
+            $this->confirmPage('Reset bonus points?',
+                $who . ' — ' . number_format((int)($c['n'] ?? 0)) . ' user(s) lose ' . $this->pts($c['s'] ?? 0) . ' points in total.',
+                $this->url('resetall'), ['sure' => '1', 'usergroup' => $group, 'action' => 'resetall'], 'Yes, reset', 'reset');
             return;
         }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); stderr('Error', 'Invalid request method'); }
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(403);
-            die('Invalid request method');
-        }
-
-        $sql = "UPDATE users SET seedbonus = 0.0 WHERE enabled = 'yes' AND ustatus = 'confirmed'";
+        $sql    = "UPDATE users SET seedbonus = 0.0 WHERE enabled = 'yes' AND ustatus = 'confirmed'";
         $params = [];
         if ($group) { $sql .= " AND usergroup = ?"; $params[] = $group; }
-
         $ok = $this->db->sql_query_prepared($sql, $params);
-        $ok
-            ? stdok('All bonus points have been successfully reset.' . $this->renderNavigation(), 'Success', 'success')
-            : stdok('Unable to reset bonus points.' . $this->renderNavigation(), 'Error', 'error');
+        if ($ok && function_exists('write_log')) {
+            write_log('Bonus points reset for ' . ($group ? $this->groupName($group) : 'all groups') . ' by ' . ($CURUSER['username'] ?? 'System'));
+        }
+        $this->result((bool)$ok, $ok ? 'Points reset' : 'Could not reset', $ok ? $who . ' now have 0 points.' : 'Database error.', 'reset');
     }
 }
 

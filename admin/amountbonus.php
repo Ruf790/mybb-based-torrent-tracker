@@ -20,6 +20,29 @@ if (empty($CURUSER['id']) || !is_mod($usergroups)) {
 const AB_VERSION = 'Enhanced Amountbonus Module v0.8.5';
 const EOL = PHP_EOL;
 
+// ── AJAX: карточка пользователя с текущим балансом ─────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['lookup'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $q = $db->sql_query_prepared(
+        "SELECT u.id, u.username, u.usergroup, u.seedbonus, u.avatar, u.avatardimensions, g.title AS gtitle
+         FROM users u LEFT JOIN usergroups g ON g.gid = u.usergroup WHERE u.username = ? LIMIT 1",
+        [trim((string)$_GET['lookup'])]
+    );
+    $u = $q ? $db->fetch_array($q) : null;
+    if (!$u) { echo json_encode(['found' => false]); exit; }
+    $av = function_exists('format_avatar') ? format_avatar($u['avatar'] ?? '', $u['avatardimensions'] ?? '') : [];
+    echo json_encode([
+        'found'     => true,
+        'id'        => (int)$u['id'],
+        'username'  => (string)$u['username'],
+        'name_html' => format_name(htmlspecialchars_uni($u['username']), (int)$u['usergroup']),
+        'group'     => (string)($u['gtitle'] ?? ''),
+        'bonus'     => (float)$u['seedbonus'],
+        'avatar'    => (!empty($av['image']) && empty($av['is_placeholder'])) ? $av['image'] : '',
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Group IDs that must never be targeted by bulk distribution (Moderator, Administrator, Sysop — canstaffpanel=1)
 const PROTECTED_BULK_GROUPS = [6, 7, 8];
 
@@ -83,7 +106,7 @@ function processBonusDistribution(): bool
         return true;
     } catch (InvalidArgumentException | RuntimeException $e) {
         // Known, safe-to-display validation/business-logic errors
-        displayError('❌ ' . htmlspecialchars($e->getMessage(), ENT_QUOTES));
+        displayError('❌ ' . $e->getMessage()); // экранируется в renderFlashMessage()
         return false;
     } catch (Throwable $e) {
         // Unexpected/internal errors — don't leak details to the browser
@@ -111,7 +134,8 @@ function distributeToAll(int $points, ?int $group, string $comment, string $mode
     if ($group > 0) {
         $whereClause .= " AND usergroup = ?";
         $params[] = $group;
-        $targetDescription = get_user_class_name($group) . ' group';
+        // (string): get_user_class_name(string $class) — int давал TypeError в strict_types
+        $targetDescription = (get_user_class_name((string)$group) ?: 'Group ' . $group) . ' group';
     }
 
     // Using prepared statement
@@ -136,8 +160,8 @@ function distributeToUser(int $points, string $username, string $comment, string
 {
     global $db, $BASEURL;
     
-    if (strlen($username) < 3) {
-        throw new InvalidArgumentException('Username must be at least 3 characters long.');
+    if ($username === '') {
+        throw new InvalidArgumentException('Please enter a username.');
     }
     
     // Update user's bonus points - using prepared statement
@@ -149,7 +173,7 @@ function distributeToUser(int $points, string $username, string $comment, string
     
     // Check if user was updated
     if ($db->affected_rows() === 0) {
-        throw new RuntimeException("User '$username' not found.");
+        throw new RuntimeException("User '{$username}' not found.");
     }
     
     // Get user ID for redirection
@@ -190,6 +214,8 @@ function renderFlashMessage(): void
     if (!$flash) {
         return;
     }
+    // Текст приходит из cookie после редиректа — всегда экранируем при выводе
+    $flash['message'] = htmlspecialchars((string)$flash['message'], ENT_QUOTES);
 
     if ($flash['type'] === 'error') {
         echo <<<HTML
@@ -332,279 +358,256 @@ function displayStatistics(): void
     echo '</div>';
 }
 
-// Main execution
-try {
-    $processed = processBonusDistribution();
-} catch (Throwable $e) {
-    displayError('A critical error occurred. Please contact the administrator.');
-    $processed = false;
+/**
+ * Группы из базы (раньше — зашитый список 2…8, который мог разойтись с реальными группами).
+ * Защищёнными считаются группы с доступом к стафф-панели / настройкам / супермодераторы.
+ */
+function loadBonusGroups(): array
+{
+    global $db;
+    $groups = [];
+    $q = $db->sql_query_prepared("
+        SELECT g.gid, g.title, g.canstaffpanel, g.cansettingspanel, g.issupermod, g.isbannedgroup,
+               (SELECT COUNT(*) FROM users u WHERE u.usergroup = g.gid AND u.ustatus = 'confirmed') AS members
+        FROM usergroups g
+        ORDER BY g.gid
+    ");
+    while ($q && ($g = $db->fetch_array($q))) {
+        $gid = (int)$g['gid'];
+        $groups[$gid] = [
+            'title'     => (string)$g['title'],
+            'members'   => (int)$g['members'],
+            'protected' => in_array($gid, PROTECTED_BULK_GROUPS, true)
+                        || (int)$g['canstaffpanel'] === 1 || (int)$g['cansettingspanel'] === 1 || (int)$g['issupermod'] === 1,
+            'banned'    => (int)$g['isbannedgroup'] === 1,
+        ];
+    }
+    return $groups;
 }
 
-// Display page
-stdhead('🎁 Bonus Points Management System');
+/** Последние начисления этим инструментом (из site log) */
+function loadRecentBonusLog(int $limit = 8): array
+{
+    global $db;
+    $rows = [];
+    $q = $db->sql_query_prepared(
+        "SELECT txt, added FROM sitelog WHERE txt LIKE ? OR txt LIKE ? ORDER BY added DESC LIMIT " . (int)$limit,
+        ['% bonus points sent to % by %', '% bonus points distributed to % by %']
+    );
+    while ($q && ($r = $db->fetch_array($q))) $rows[] = $r;
+    return $rows;
+}
 
-// stdhead() уже выводит <!DOCTYPE html><html><head>...<body> - раньше
-// здесь выводился ВТОРОЙ, вложенный набор этих тегов поверх первого
-// (невалидный HTML), плюс принудительная тёмная тема через
-// data-bs-theme="dark" независимо от реальной темы сайта/пользователя.
+// ── Post/Redirect/Get ──────────────────────────────────────────────────
+// После POST сохраняем flash в короткоживущую cookie и делаем 303 на GET,
+// чтобы F5 не отправлял форму повторно (раньше бонусы начислялись снова).
+const AB_FLASH_COOKIE = 'ab_flash';
+
+function abCookieOptions(int $expires): array
+{
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+          || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    return ['expires' => $expires, 'path' => '/', 'secure' => $https, 'httponly' => true, 'samesite' => 'Lax'];
+}
+
+function abRedirectUrl(): string
+{
+    $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+    if ($uri === '' || $uri[0] !== '/') {
+        $uri = '/admin/index.php';
+    }
+    // act приходил скрытым полем POST — в GET он должен быть в строке запроса
+    if (!preg_match('/[?&]act=/', $uri)) {
+        $uri .= (str_contains($uri, '?') ? '&' : '?') . 'act=amountbonus';
+    }
+    return $uri;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        processBonusDistribution();
+    } catch (Throwable $e) {
+        displayError('A critical error occurred. Please contact the administrator.');
+    }
+
+    if (!headers_sent()) {
+        $flash = $GLOBALS['_bonus_flash'] ?? null;
+        if ($flash) {
+            setcookie(AB_FLASH_COOKIE, json_encode($flash, JSON_UNESCAPED_UNICODE), abCookieOptions(time() + 60));
+        }
+        header('Location: ' . abRedirectUrl(), true, 303);
+        exit;
+    }
+    // Если заголовки уже ушли — просто рендерим страницу с сообщением как раньше
+} elseif (isset($_COOKIE[AB_FLASH_COOKIE])) {
+    $flash = json_decode((string)$_COOKIE[AB_FLASH_COOKIE], true);
+    if (is_array($flash) && in_array($flash['type'] ?? '', ['error', 'success'], true) && isset($flash['message'])) {
+        setFlashMessage((string)$flash['type'], (string)$flash['message']);
+    }
+    if (!headers_sent()) {
+        setcookie(AB_FLASH_COOKIE, '', abCookieOptions(time() - 3600)); // показать один раз
+    }
+}
+
+$groups  = loadBonusGroups();
+$recent  = loadRecentBonusLog();
+$stq     = $db->sql_query_prepared("SELECT COUNT(*) AS total_users, COALESCE(SUM(seedbonus),0) AS total_bonus, COALESCE(AVG(seedbonus),0) AS avg_bonus, COALESCE(MAX(seedbonus),0) AS max_bonus FROM users WHERE ustatus = 'confirmed'");
+$stats   = $stq ? $db->fetch_array($stq) : [];
+$key     = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
+$self    = htmlspecialchars((string)($_SERVER['REQUEST_URI'] ?? ''), ENT_QUOTES);
+$me      = htmlspecialchars((string)($CURUSER['username'] ?? ''), ENT_QUOTES);
+$allCount = (int)($stats['total_users'] ?? 0);
+
+stdhead('Bonus Points Distribution');
 ?>
-<div class="container mt-3">
-    <div class="row justify-content-center">
-        <div class="col-xxl-10">
-            <!-- Header -->
-            <div class="text-center mb-5">
-                <h1 class="display-5 fw-bold mb-3">
-                    <i class="fas fa-gift text-gradient"></i>
-                    Bonus Points Distribution
-                </h1>
-                <p class="lead text-muted">
-                    <?= AB_VERSION ?>
-                </p>
-            </div>
-            
-            <!-- Flash message -->
-            <?php renderFlashMessage(); ?>
-            
-            <!-- Statistics -->
-            <?php displayStatistics(); ?>
-            
-            <!-- Main Card -->
-            <div class="card shadow-lg border-0">
-                <div class="card-header bg-primary text-white">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h4 class="mb-0">
-                            <i class="fas fa-rocket me-2"></i>
-                            Distribution Panel
-                        </h4>
-                        <span class="badge bg-light text-dark">
-                            <i class="fas fa-code-branch me-1"></i>
-                            Staff Access
-                        </span>
-                    </div>
+<?php
+// Ассеты страницы; ?v=filemtime — сброс кэша браузера при каждом изменении файла
+$abAsset = static function (string $rel): string {
+    $file = defined('TSDIR') ? TSDIR . $rel : '';
+    $ver  = ($file !== '' && is_file($file)) ? (string)filemtime($file) : AB_VERSION;
+    return htmlspecialchars(($GLOBALS['BASEURL'] ?? '') . $rel . '?v=' . rawurlencode($ver), ENT_QUOTES);
+};
+?>
+
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/amountbonus.css?ver=336">
+
+<div class="container mt-3 mb-4 ab" data-self="<?= $self ?>" data-me="<?= $me ?>">
+
+    <div class="ab-card mb-3"><div class="ab-head">
+        <span class="ab-head-icon"><i class="fa-solid fa-gift"></i></span>
+        <div style="min-width:0">
+            <h1 class="ab-title">Bonus Points Distribution</h1>
+            <div class="ab-sub">Give seed bonus points to one member or to a whole group</div>
+        </div>
+        <span class="ab-ver ms-auto"><i class="fa-solid fa-code-branch me-1"></i><?= htmlspecialchars(AB_VERSION) ?></span>
+    </div></div>
+
+    <?php renderFlashMessage(); ?>
+
+    <div class="row g-3 mb-3">
+        <?php foreach ([
+            ['fa-users',      'ic-blue',   'Confirmed users', number_format($allCount)],
+            ['fa-coins',      'ic-amber',  'Points in circulation', number_format((float)($stats['total_bonus'] ?? 0))],
+            ['fa-chart-line', 'ic-green',  'Average per user', number_format((float)($stats['avg_bonus'] ?? 0))],
+            ['fa-trophy',     'ic-purple', 'Richest balance', number_format((float)($stats['max_bonus'] ?? 0))],
+        ] as [$ic, $cls, $label, $val]): ?>
+        <div class="col-6 col-lg-3"><div class="ab-card ab-kpi"><span class="ab-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
+            <div><div class="ab-kpi-label"><?= $label ?></div><div class="ab-kpi-value"><?= $val ?></div></div></div></div>
+        <?php endforeach; ?>
+    </div>
+
+    <div class="row g-3">
+        <!-- ── Один пользователь ─────────────────────────── -->
+        <div class="col-lg-6">
+            <form method="POST" action="<?= $self ?>" class="ab-card h-100 needs-validation" novalidate id="abSingle">
+                <input type="hidden" name="act" value="amountbonus">
+                <input type="hidden" name="my_post_key" value="<?= $key ?>">
+                <div class="ab-sec-head">
+                    <span class="ab-sec-icon ic-blue"><i class="fa-solid fa-user"></i></span>
+                    <div><h2 class="ab-sec-title">Single user</h2><div class="ab-muted">Exact username</div></div>
                 </div>
-                
-                <div class="card-body p-4">
-                    <!-- Navigation Tabs -->
-                    <ul class="nav nav-tabs nav-fill mb-4" id="bonusTab" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="single-tab" data-bs-toggle="tab" 
-                                    data-bs-target="#single" type="button" role="tab">
-                                <i class="fas fa-user me-2"></i>Single User
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="bulk-tab" data-bs-toggle="tab" 
-                                    data-bs-target="#bulk" type="button" role="tab">
-                                <i class="fas fa-users me-2"></i>Bulk Distribution
-                            </button>
-                        </li>
-                    </ul>
-                    
-                    <!-- Tab Content -->
-                    <div class="tab-content" id="bonusTabContent">
-                        
-                        <!-- Single User Tab -->
-                        <div class="tab-pane fade show active" id="single" role="tabpanel">
-                            <form method="POST" action="" class="needs-validation" novalidate>
-                                <input type="hidden" name="act" value="amountbonus">
-                                <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                                
-                                <div class="row g-4">
-                                    <div class="col-md-6">
-                                        <label class="form-label">
-                                            <i class="fas fa-user-tag me-1"></i> Target User
-                                        </label>
-                                        <div class="input-group input-group-lg">
-                                            <span class="input-group-text">
-                                                <i class="fas fa-at"></i>
-                                            </span>
-                                            <input type="text" 
-                                                   class="form-control" 
-                                                   name="username" 
-                                                   placeholder="Enter exact username"
-                                                   pattern=".{3,50}"
-                                                   required>
-                                            <button class="btn btn-outline-secondary" type="button"
-                                                    onclick="document.querySelector('input[name=username]').value = '<?= htmlspecialchars($CURUSER['username'] ?? '') ?>'">
-                                                <i class="fas fa-user-check"></i>
-                                            </button>
-                                        </div>
-                                        <div class="form-text">
-                                            Enter the exact username (3-50 characters)
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="col-md-6">
-                                        <label class="form-label">
-                                            <i class="fas fa-coins me-1"></i> Bonus Points
-                                        </label>
-                                        <div class="input-group input-group-lg">
-                                            <input type="number" 
-                                                   class="form-control" 
-                                                   name="seedbonus" 
-                                                   min="1" 
-                                                   max="1000000"
-                                                   placeholder="Amount"
-                                                   required>
-                                            <span class="input-group-text">points</span>
-                                            <button class="btn btn-outline-secondary" type="button"
-                                                    onclick="document.querySelector('input[name=seedbonus]').value = 1000">
-                                                <i class="fas fa-bolt"></i> 1K
-                                            </button>
-                                        </div>
-                                        <div class="form-text">
-                                            Enter amount (1 - 1,000,000)
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="mt-4 pt-3 border-top">
-                                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                                        <button type="reset" class="btn btn-outline-secondary me-2">
-                                            <i class="fas fa-undo me-1"></i> Clear
-                                        </button>
-                                        <button type="submit" class="btn btn-primary px-5">
-                                            <i class="fas fa-paper-plane me-2"></i>
-                                            Send Bonus Points
-                                        </button>
-                                    </div>
-                                </div>
-                            </form>
+                <div class="ab-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="abUser"><i class="fa-solid fa-user-tag"></i>Username</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
+                            <input type="text" class="form-control" id="abUser" name="username" placeholder="Exact username" maxlength="50" required autocomplete="off">
+                            <button class="btn btn-outline-secondary" type="button" id="abMe" title="Myself" style="border-radius:0 .7rem .7rem 0"><i class="fa-solid fa-user-check"></i></button>
                         </div>
-                        
-                        <!-- Bulk Distribution Tab -->
-                        <div class="tab-pane fade" id="bulk" role="tabpanel">
-                            <form method="POST" action="" class="needs-validation" novalidate>
-                                <input type="hidden" name="act" value="amountbonus">
-                                <input type="hidden" name="toall" value="yes">
-                                <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                                
-                                <div class="row g-4">
-                                    <div class="col-md-6">
-                                        <label class="form-label">
-                                            <i class="fas fa-filter me-1"></i> Target Group
-                                        </label>
-                                        <?= generateGroupSelect('usergroup') ?>
-                                        <div class="form-text">
-                                            Select user group or leave for all users
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="col-md-6">
-                                        <label class="form-label">
-                                            <i class="fas fa-coins me-1"></i> Points Amount
-                                        </label>
-                                        <div class="input-group input-group-lg">
-                                            <input type="number" 
-                                                   class="form-control" 
-                                                   name="seedbonus" 
-                                                   min="1" 
-                                                   max="1000000"
-                                                   placeholder="Amount"
-                                                   required>
-                                            <span class="input-group-text">points</span>
-                                            <div class="input-group-append">
-                                                <button class="btn btn-outline-secondary dropdown-toggle" 
-                                                        type="button" data-bs-toggle="dropdown">
-                                                    Quick Set
-                                                </button>
-                                                <ul class="dropdown-menu">
-                                                    <li><a class="dropdown-item" href="#" onclick="setPoints(100)">100</a></li>
-                                                    <li><a class="dropdown-item" href="#" onclick="setPoints(500)">500</a></li>
-                                                    <li><a class="dropdown-item" href="#" onclick="setPoints(1000)">1,000</a></li>
-                                                    <li><hr class="dropdown-divider"></li>
-                                                    <li><a class="dropdown-item" href="#" onclick="setPoints(5000)">5,000</a></li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                        <div class="form-text">
-                                            Points will be added to each user in the selected group
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="alert alert-warning mt-4">
-                                    <div class="d-flex">
-                                        <i class="fas fa-exclamation-triangle me-3 fs-4"></i>
-                                        <div>
-                                            <strong>⚠️ Important:</strong> This action will affect ALL users in the selected group.
-                                            Please double-check before proceeding.
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="mt-4 pt-3 border-top">
-                                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                                        <button type="button" class="btn btn-outline-warning me-2"
-                                                onclick="confirmBulkDistribution()">
-                                            <i class="fas fa-shield-alt me-1"></i> Preview
-                                        </button>
-                                        <button type="submit" class="btn btn-success px-5">
-                                            <i class="fas fa-broadcast-tower me-2"></i>
-                                            Distribute to All
-                                        </button>
-                                    </div>
-                                </div>
-                            </form>
+                        <div class="ab-user" id="abUserCard" hidden>
+                            <span class="ab-avatar" id="abUserAv"><i class="fa-solid fa-user"></i></span>
+                            <div class="flex-grow-1" style="min-width:0"><div class="fw-bold" id="abUserName"></div><div class="ab-muted" id="abUserMeta"></div></div>
+                            <span class="fw-bold text-warning text-nowrap" id="abUserBonus"></span>
                         </div>
                     </div>
-                </div>
-                
-                <!-- Footer -->
-                <div class="card-footer bg-primary text-white">
-                    <div class="row align-items-center">
-                        <div class="col-md-6">
-                            <small class="text-white">
-                                <i class="fas fa-clock me-1"></i>
-                                Server Time: <?= date('Y-m-d H:i:s') ?>
-                            </small>
+                    <div class="mb-3">
+                        <label class="form-label" for="abAmount1"><i class="fa-solid fa-coins"></i>Points</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="abAmount1" name="seedbonus" min="1" max="1000000" placeholder="Amount" required>
+                            <span class="input-group-text" style="border-radius:0 .7rem .7rem 0">points</span>
                         </div>
-                        <div class="col-md-6 text-md-end">
-                            <small class="text-white">
-                                <i class="fas fa-user-shield me-1"></i>
-                                Logged in as: <strong><?= htmlspecialchars($CURUSER['username'] ?? 'Guest') ?></strong>
-                            </small>
+                        <div class="ab-chips" data-target="abAmount1">
+                            <?php foreach ([100, 500, 1000, 5000, 10000] as $v): ?><button type="button" class="ab-chip" data-v="<?= $v ?>"><?= number_format($v) ?></button><?php endforeach; ?>
                         </div>
                     </div>
-                </div>
-            </div>
-            
-            <!-- Quick Stats -->
-            <div class="row mt-4">
-                <div class="col-md-4">
-                    <div class="card stat-card border-primary">
-                        <div class="card-body text-center">
-                            <i class="fas fa-history fa-2x text-primary mb-3"></i>
-                            <h5>Recent Distributions</h5>
-                            <p class="text-muted">View distribution history</p>
-                        </div>
+                    <div class="d-flex justify-content-end gap-2 pt-2">
+                        <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-eraser me-1"></i>Clear</button>
+                        <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-paper-plane me-1"></i>Send points</button>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card stat-card border-success">
-                        <div class="card-body text-center">
-                            <i class="fas fa-chart-line fa-2x text-success mb-3"></i>
-                            <h5>Statistics</h5>
-                            <p class="text-muted">Detailed bonus analytics</p>
+            </form>
+        </div>
+
+        <!-- ── Группа ─────────────────────────────────────── -->
+        <div class="col-lg-6">
+            <form method="POST" action="<?= $self ?>" class="ab-card h-100 needs-validation" novalidate id="abBulk">
+                <input type="hidden" name="act" value="amountbonus">
+                <input type="hidden" name="toall" value="yes">
+                <input type="hidden" name="my_post_key" value="<?= $key ?>">
+                <div class="ab-sec-head">
+                    <span class="ab-sec-icon ic-amber"><i class="fa-solid fa-users"></i></span>
+                    <div><h2 class="ab-sec-title">Bulk distribution</h2><div class="ab-muted">Every confirmed member of a group</div></div>
+                </div>
+                <div class="ab-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="abGroup"><i class="fa-solid fa-filter"></i>Target group</label>
+                        <select name="usergroup" id="abGroup" class="form-select">
+                            <option value="" data-n="<?= $allCount ?>">All confirmed users (<?= number_format($allCount) ?>)</option>
+                            <?php foreach ($groups as $gid => $g): ?>
+                            <option value="<?= $gid ?>" data-n="<?= $g['members'] ?>" <?= $g['protected'] ? 'disabled' : '' ?>>
+                                <?= htmlspecialchars($g['title']) ?> (<?= number_format($g['members']) ?>)<?= $g['protected'] ? ' — staff, protected' : ($g['banned'] ? ' — banned group' : '') ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="abAmount2"><i class="fa-solid fa-coins"></i>Points per user</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="abAmount2" name="seedbonus" min="1" max="1000000" placeholder="Amount" required>
+                            <span class="input-group-text" style="border-radius:0 .7rem .7rem 0">points</span>
+                        </div>
+                        <div class="ab-chips" data-target="abAmount2">
+                            <?php foreach ([100, 500, 1000, 5000] as $v): ?><button type="button" class="ab-chip" data-v="<?= $v ?>"><?= number_format($v) ?></button><?php endforeach; ?>
                         </div>
                     </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card stat-card border-warning">
-                        <div class="card-body text-center">
-                            <i class="fas fa-cogs fa-2x text-warning mb-3"></i>
-                            <h5>Settings</h5>
-                            <p class="text-muted">Configure bonus system</p>
-                        </div>
+                    <div class="ab-impact mb-3">
+                        <span class="ab-sec-icon ic-slate"><i class="fa-solid fa-calculator"></i></span>
+                        <div><div class="ab-muted"><span id="abN">0</span> users × <span id="abPer">0</span> points</div><div class="ab-impact-v" id="abTotal">—</div></div>
+                    </div>
+                    <div class="ab-warn mb-3" id="abWarn"><i class="fa-solid fa-triangle-exclamation"></i><div id="abWarnText"></div></div>
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-warning px-4" id="abBulkBtn"><i class="fa-solid fa-tower-broadcast me-1"></i>Distribute</button>
                     </div>
                 </div>
+            </form>
+        </div>
+
+        <!-- ── Журнал ─────────────────────────────────────── -->
+        <div class="col-12">
+            <div class="ab-card overflow-hidden">
+                <div class="ab-sec-head"><span class="ab-sec-icon ic-slate"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                    <div><h2 class="ab-sec-title">Recent distributions</h2><div class="ab-muted">From the site log</div></div></div>
+                <?php if ($recent): ?>
+                <ul class="ab-log">
+                    <?php foreach ($recent as $r):
+                        $bulk = str_contains((string)$r['txt'], 'distributed to'); ?>
+                    <li><i class="fa-solid <?= $bulk ? 'fa-users text-warning' : 'fa-user text-primary' ?>"></i>
+                        <span class="flex-grow-1"><?= htmlspecialchars((string)$r['txt']) ?></span>
+                        <span class="ab-muted text-nowrap"><?= my_datee('relative', (int)$r['added']) ?></span></li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php else: ?>
+                <div class="ab-muted px-4 py-3">Nothing distributed yet.</div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
 </div>
 
 
-<script src="<?= $BASEURL ?>/admin/scripts/amountbonus.js"></script>
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/amountbonus.js?ver=3"></script>
 
 <?php
 stdfoot();

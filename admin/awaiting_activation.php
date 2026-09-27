@@ -7,8 +7,8 @@ if (!defined('STAFF_PANEL')) {
 }
 
 // Disallow direct access to this file for security reasons
-if (!defined("IN_MYBB")) {
-    die("Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.");
+if (!defined('IN_MYBB')) {
+    die('Direct initialization of this file is not allowed.<br /><br />Please make sure IN_MYBB is defined.');
 }
 
 require_once INC_PATH . '/functions_multipage.php';
@@ -17,38 +17,44 @@ require_once INC_PATH . '/datahandler.php';
 $lang->load('user_awaiting_activation');
 
 // Initialize input parameters
-$input_params = ['action', 'do', 'module'];
-foreach ($input_params as $input) {
+foreach (['action', 'do', 'module'] as $input) {
     $mybb->input[$input] ??= '';
 }
 
-$plugins->run_hooks("admin_user_awaiting_activation_begin");
+$plugins->run_hooks('admin_user_awaiting_activation_begin');
 
-if ($mybb->input['action'] == "activate" && $mybb->request_method == "post") {
+if ($mybb->input['action'] === 'activate' && $mybb->request_method === 'post') {
     if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
         flash_message('Security check failed. Please try again.', 'error');
         admin_redirect($_this_script_);
     }
 
-    $plugins->run_hooks("admin_user_awaiting_activation_activate");
+    $plugins->run_hooks('admin_user_awaiting_activation_activate');
 
-    $user_ids = process_user_activation();
+    process_user_activation();
+
+    // Post/Redirect/Get — F5 never repeats the action
     admin_redirect($_this_script_);
 }
 
-if (!$mybb->input['action']) {
-    display_awaiting_activation_page();
-}
+display_awaiting_activation_page();
+
+/* =====================================================================
+ *  ACTIONS
+ * ===================================================================== */
 
 /**
  * Process user activation or deletion
  */
 function process_user_activation(): void
 {
-    global $mybb, $db, $lang, $cache, $plugins, $SITENAME, $BASEURL;
+    global $mybb, $lang;
 
-    $users = (array)$mybb->input['user'];
-    $user_ids = array_map('intval', $users);
+    $raw = $mybb->input['user'] ?? [];
+    $user_ids = array_values(array_unique(array_filter(
+        array_map('intval', (array)$raw),
+        static fn(int $id): bool => $id > 0
+    )));
 
     if (empty($user_ids)) {
         flash_message($lang->user_awaiting_activation['no_users_selected'], 'error');
@@ -63,217 +69,243 @@ function process_user_activation(): void
 }
 
 /**
- * Process user deletion
+ * Process user deletion (only accounts that are still pending)
  */
 function process_user_deletion(array $user_ids): void
 {
-    global $db, $plugins;
+    global $db, $lang, $cache, $plugins;
 
-    $num_deleted = 0;
     $users_to_delete = [];
+    $names = [];
 
-    // Используем prepared statement с IN()
     $placeholders = implode(',', array_fill(0, count($user_ids), '?'));
     $query = $db->sql_query_prepared(
-        "SELECT id, ustatus FROM users WHERE id IN ({$placeholders})",
+        "SELECT id, username FROM users WHERE ustatus = 'pending' AND id IN ({$placeholders})",
         $user_ids
     );
 
     if ($query !== false) {
         while ($user = $db->fetch_array($query)) {
-            if ($user['ustatus'] == 'pending') {
-                ++$num_deleted;
-                $users_to_delete[] = (int)$user['id'];
-            }
+            $users_to_delete[] = (int)$user['id'];
+            $names[] = htmlspecialchars_uni((string)$user['username']);
         }
     }
 
-    if (!empty($users_to_delete)) {
-        require_once INC_PATH . '/datahandlers/user.php';
-        $userhandler = new UserDataHandler('delete');
-        $userhandler->delete_user($users_to_delete, true);
+    if (empty($users_to_delete)) {
+        flash_message('None of the selected accounts are pending anymore.', 'error');
+        return;
     }
 
-    $plugins->run_hooks("admin_user_awaiting_activation_activate_delete_commit");
+    require_once INC_PATH . '/datahandlers/user.php';
+    $userhandler = new UserDataHandler('delete');
+    $userhandler->delete_user($users_to_delete, true);
+
+    $cache->update_awaitingactivation();
+    $plugins->run_hooks('admin_user_awaiting_activation_activate_delete_commit');
+
+    $num_deleted = count($users_to_delete);
     log_admin_action('deleted', $num_deleted);
+    write_log('Awaiting activation: deleted ' . $num_deleted . ' pending account(s): ' . implode(', ', $names));
+
     flash_message($lang->user_awaiting_activation['success_users_deleted'], 'success');
 }
 
 /**
- * Process user activation
+ * Process user activation (only accounts that are still pending)
  */
 function process_user_activation_flow(array $user_ids): void
 {
-    global $db, $lang, $cache, $plugins, $SITENAME, $BASEURL;
+    global $db, $lang, $cache, $plugins;
 
-    $num_activated = 0;
+    $activated = [];
 
-    // Используем prepared statement с IN()
     $placeholders = implode(',', array_fill(0, count($user_ids), '?'));
     $query = $db->sql_query_prepared(
-        "SELECT id, ustatus, username, email, usergroup FROM users WHERE id IN ({$placeholders})",
+        "SELECT id, username, email FROM users WHERE ustatus = 'pending' AND id IN ({$placeholders})",
         $user_ids
     );
 
     if ($query !== false) {
         while ($user = $db->fetch_array($query)) {
-            ++$num_activated;
             activate_single_user($user);
+            $activated[] = htmlspecialchars_uni((string)$user['username']);
         }
     }
 
+    if (empty($activated)) {
+        flash_message('None of the selected accounts are pending anymore.', 'error');
+        return;
+    }
+
     $cache->update_awaitingactivation();
-    $plugins->run_hooks("admin_user_awaiting_activation_activate_commit");
+    $plugins->run_hooks('admin_user_awaiting_activation_activate_commit');
+
+    $num_activated = count($activated);
     log_admin_action('activated', $num_activated);
+    write_log('Awaiting activation: activated ' . $num_activated . ' account(s): ' . implode(', ', $activated));
+
     flash_message($lang->user_awaiting_activation['success_users_activated'], 'success');
 }
 
 /**
- * Activate a single user
+ * Activate a single user and notify them by e-mail
  */
 function activate_single_user(array $user): void
 {
     global $db, $lang, $SITENAME, $BASEURL;
 
-    $updated_user = [];
+    $uid = (int)$user['id'];
 
-    // Колонка coppauser больше не используется (удалена из БД) —
-    // просто снимаем запись из очереди подтверждения.
-    $db->sql_query_prepared("DELETE FROM awaitingactivation WHERE uid = ?", [$user['id']]);
-
-    if ($user['ustatus'] == 'pending') {
-        $updated_user['ustatus'] = 'confirmed';
-    }
-
-    if (!empty($updated_user)) {
-        // Обновляем статус пользователя
-        $updates = [];
-        $params = [];
-        foreach ($updated_user as $field => $value) {
-            $updates[] = "$field = ?";
-            $params[] = $value;
-        }
-        $params[] = $user['id'];
-        
-        $db->sql_query_prepared(
-            "UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?",
-            $params
-        );
-    }
+    // The coppauser column is gone — just drop the queue entry.
+    $db->sql_query_prepared('DELETE FROM awaitingactivation WHERE uid = ?', [$uid]);
+    $db->sql_query_prepared(
+        "UPDATE users SET ustatus = 'confirmed' WHERE id = ? AND ustatus = 'pending'",
+        [$uid]
+    );
 
     $message = sprintf(
         $lang->user_awaiting_activation['email_adminactivateaccount'],
-        htmlspecialchars_uni($user['username']),
+        htmlspecialchars_uni((string)$user['username']),
         $SITENAME,
         $BASEURL
     );
-
     $subject = sprintf($lang->user_awaiting_activation['emailsubject_activateaccount'], $SITENAME);
-    my_mail($user['email'], $subject, $message);
+
+    my_mail((string)$user['email'], $subject, $message);
 }
+
+/* =====================================================================
+ *  PAGE
+ * ===================================================================== */
 
 /**
  * Display the awaiting activation page
  */
 function display_awaiting_activation_page(): void
 {
-    global $db, $mybb, $lang, $plugins, $threadsperpage2, $_this_script_;
+    global $db, $mybb, $plugins, $threadsperpage2, $_this_script_;
 
-    $plugins->run_hooks("admin_user_awaiting_activation_start");
+    $plugins->run_hooks('admin_user_awaiting_activation_start');
 
-    // Get user count с использованием prepared statement
-    $query = $db->sql_query_prepared("SELECT COUNT(*) AS users FROM users WHERE ustatus = 'pending'");
-    $user_count = 0;
-    if ($query !== false) {
-        $row = $db->fetch_array($query);
-        $user_count = (int)($row['users'] ?? 0);
-    }
+    $stats = get_awaiting_stats();
+    $user_count = $stats['total'];
 
-    // Pagination setup
+    // Pagination
     $perpage = max(20, (int)($threadsperpage2 ?? 20));
     $page = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
-    $start = ($page - 1) * $perpage;
-    $pages = (int)ceil($user_count / $perpage);
-
+    $pages = max(1, (int)ceil($user_count / $perpage));
     if ($page > $pages) {
-        $start = 0;
         $page = 1;
     }
+    $start = ($page - 1) * $perpage;
 
-    $multipage = multipage($user_count, $perpage, $page, "{$_this_script_}&amp;page={page}");
+    $multipage = (string)multipage($user_count, $perpage, $page, "{$_this_script_}&amp;page={page}");
 
     stdhead();
-    render_page_header();
-    render_pagination_top($multipage);
-    render_user_table($start, $perpage, $user_count);
-    render_pagination_bottom($multipage);
+    render_page_assets();
+
+    echo '<div class="container my-3 ag-awaiting">';
+    render_page_header($user_count);
+    render_kpi_tiles($stats);
+    render_user_table($start, $perpage, $user_count, $multipage);
+    echo '</div>';
+
+    render_page_script();
     stdfoot();
+}
+
+/**
+ * Collect KPI numbers in one query
+ */
+function get_awaiting_stats(): array
+{
+    global $db;
+
+    $stats = ['total' => 0, 'email' => 0, 'admin' => 0, 'oldest' => null];
+
+    $query = $db->sql_query_prepared(
+        "SELECT COUNT(DISTINCT u.id) AS total,
+                COUNT(DISTINCT CASE WHEN a.type IN ('r','b') AND a.validated = 0 THEN u.id END) AS email_pending,
+                MIN(u.added) AS oldest
+         FROM users u
+         LEFT JOIN awaitingactivation a ON (a.uid = u.id)
+         WHERE u.ustatus = 'pending'"
+    );
+
+    if ($query !== false && ($row = $db->fetch_array($query))) {
+        $stats['total']  = (int)($row['total'] ?? 0);
+        $stats['email']  = (int)($row['email_pending'] ?? 0);
+        $stats['admin']  = max(0, $stats['total'] - $stats['email']);
+        $stats['oldest'] = $row['oldest'] ?? null;
+    }
+
+    return $stats;
 }
 
 /**
  * Render page header
  */
-function render_page_header(): void
+function render_page_header(int $user_count): void
 {
     global $lang;
 
-    echo '
-    <div class="container mt-3">
-        <div class="row">
-            <div class="col-12">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header bg-primary text-white py-3">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="mb-0">
-                                <i class="fas fa-users-cog me-2"></i>
-                                Unconfirmed User Accounts
-                            </h4>
-                            <span class="badge bg-light text-primary fs-6">' . $lang->user_awaiting_activation['manage_awaiting_activation'] . '</span>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted mb-0">
-                            <i class="fas fa-info-circle me-1"></i>
-                            Manage pending user registrations. Accounts awaiting confirmation will be automatically cleaned up based on system settings.
-                        </p>
-                    </div>
-                </div>
+    $manage = $lang->user_awaiting_activation['manage_awaiting_activation'];
+
+    echo <<<HTML
+    <div class="ag-card ag-head mb-3">
+        <div class="ag-icon-sq ag-soft-warning"><i class="fa-solid fa-user-clock"></i></div>
+        <div class="flex-grow-1 min-w-0">
+            <h1 class="ag-title">Unconfirmed User Accounts</h1>
+            <p class="ag-sub">
+                <i class="fa-solid fa-circle-info me-1"></i>
+                Manage pending registrations. Unconfirmed accounts are cleaned up automatically according to system settings.
+            </p>
+        </div>
+        <span class="ag-chip ag-soft-primary d-none d-md-inline-flex">
+            <i class="fa-solid fa-sliders"></i>{$manage}
+        </span>
+    </div>
+HTML;
+}
+
+/**
+ * Render the 4 KPI tiles
+ */
+function render_kpi_tiles(array $stats): void
+{
+    $oldest = $stats['oldest'] !== null && $stats['oldest'] !== ''
+        ? my_datee('relative', $stats['oldest'])
+        : '—';
+
+    $tiles = [
+        ['fa-hourglass-half',     'ag-soft-primary', number_format($stats['total']), 'Pending accounts'],
+        ['fa-envelope-open-text', 'ag-soft-warning', number_format($stats['email']), 'Awaiting e-mail confirmation'],
+        ['fa-user-shield',        'ag-soft-info',    number_format($stats['admin']), 'Awaiting staff activation'],
+        ['fa-clock-rotate-left',  'ag-soft-danger',  $oldest,                        'Oldest request'],
+    ];
+
+    echo '<div class="ag-kpis mb-3">';
+    foreach ($tiles as [$icon, $tone, $value, $label]) {
+        echo <<<HTML
+        <div class="ag-card ag-kpi">
+            <div class="ag-icon-sq ag-icon-sm {$tone}"><i class="fa-solid {$icon}"></i></div>
+            <div class="min-w-0">
+                <div class="ag-kpi-val">{$value}</div>
+                <div class="ag-kpi-label">{$label}</div>
             </div>
         </div>
-    </div>';
-}
-
-/**
- * Render top pagination
- */
-function render_pagination_top(string $multipage): void
-{
-    if (!empty($multipage)) {
-        echo '
-        <div class="container-fluid mb-4">
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body py-2">
-                            <div class="d-flex justify-content-center">
-                                ' . $multipage . '
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>';
+HTML;
     }
+    echo '</div>';
 }
 
 /**
- * Render user table
+ * Render user table (inside the activation form)
  */
-function render_user_table(int $start, int $perpage, int $user_count): void
+function render_user_table(int $start, int $perpage, int $user_count, string $multipage): void
 {
-    global $db, $lang, $_this_script_, $mybb;
+    global $db, $_this_script_, $mybb;
 
-    // Используем prepared statement с LIMIT и OFFSET
     $query = $db->sql_query_prepared(
         "SELECT u.id, u.username, u.added, u.regip, u.lastactive, u.email,
                 a.type AS reg_type, a.validated
@@ -285,40 +317,58 @@ function render_user_table(int $start, int $perpage, int $user_count): void
         [$perpage, $start]
     );
 
-    echo '
-    <div class="container mt-3">
-        <div class="row">
-            <div class="col-12">
-                <form action="' . $_this_script_ . '&action=activate" method="post" id="userActivationForm">
-                    <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-                    
-                    <div class="card shadow-sm">
-                        <div class="card-header bg-light py-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0 text-dark">
-                                    <i class="fas fa-list me-2"></i>
-                                    Pending Users (' . $user_count . ')
-                                </h5>
-                                <div class="form-check">
-                                    <input type="checkbox" id="selectAll" class="form-check-input">
-                                    <label for="selectAll" class="form-check-label small">Select All</label>
-                                </div>
-                            </div>
-                        </div>';
+    $has_rows = $query !== false && $db->num_rows($query) > 0;
+    $post_key = htmlspecialchars_uni((string)$mybb->post_code);
 
-    if ($query !== false && $db->num_rows($query) > 0) {
+    echo <<<HTML
+    <form action="{$_this_script_}&amp;action=activate" method="post" id="userActivationForm">
+        <input type="hidden" name="my_post_key" value="{$post_key}" />
+        <div class="ag-card overflow-hidden">
+            <div class="ag-toolbar">
+                <h2 class="ag-section-title">
+                    <i class="fa-solid fa-list-check me-2"></i>Pending users
+                    <span class="ag-chip ag-soft-secondary ms-1">{$user_count}</span>
+                </h2>
+HTML;
+
+    if ($has_rows) {
+        echo <<<HTML
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <label class="ag-search mb-0">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="search" id="agFilter" class="form-control form-control-sm" placeholder="Filter by name, e-mail or IP…" autocomplete="off">
+                    </label>
+                    <div class="form-check mb-0">
+                        <input type="checkbox" id="selectAll" class="form-check-input">
+                        <label for="selectAll" class="form-check-label small">Select all</label>
+                    </div>
+                </div>
+HTML;
+    }
+
+    echo '</div>';
+
+    if ($multipage !== '') {
+        echo '<div class="ag-pages ag-pages-top">' . $multipage . '</div>';
+    }
+
+    if ($has_rows) {
         render_users_table_content($query);
-        render_action_buttons();
     } else {
         render_empty_state();
     }
 
-    echo '
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>';
+    if ($multipage !== '') {
+        echo '<div class="ag-pages ag-pages-bottom">' . $multipage . '</div>';
+    }
+
+    echo '</div>';
+
+    if ($has_rows) {
+        render_action_buttons();
+    }
+
+    echo '</form>';
 }
 
 /**
@@ -326,34 +376,39 @@ function render_user_table(int $start, int $perpage, int $user_count): void
  */
 function render_users_table_content(object $query): void
 {
-    global $db, $lang;
+    global $db;
 
-    echo '
+    echo <<<HTML
     <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
+        <table class="table table-hover align-middle mb-0 ag-table">
+            <thead>
                 <tr>
-                    <th width="40" class="text-center">
-                        <input type="checkbox" id="mainCheckbox" class="form-check-input">
+                    <th class="text-center ag-col-check">
+                        <input type="checkbox" id="mainCheckbox" class="form-check-input" aria-label="Select all">
                     </th>
-                    <th>User</th>
-                    <th>Registration</th>
-                    <th>Last Active</th>
-                    <th>Contact</th>
-                    <th>IP Address</th>
-                    <th>Status</th>
+                    <th><i class="fa-solid fa-user me-1"></i>User</th>
+                    <th><i class="fa-solid fa-calendar-plus me-1"></i>Registered</th>
+                    <th class="d-none d-lg-table-cell"><i class="fa-solid fa-clock me-1"></i>Last active</th>
+                    <th class="d-none d-md-table-cell"><i class="fa-solid fa-network-wired me-1"></i>IP address</th>
+                    <th><i class="fa-solid fa-signal me-1"></i>Status</th>
+                    <th class="text-end"><i class="fa-solid fa-bolt me-1"></i>Actions</th>
                 </tr>
             </thead>
-            <tbody>';
+            <tbody>
+HTML;
 
     while ($user = $db->fetch_array($query)) {
         render_user_row($user);
     }
 
-    echo '
+    echo <<<HTML
             </tbody>
         </table>
-    </div>';
+        <div id="agNoMatch" class="ag-nomatch" hidden>
+            <i class="fa-solid fa-filter-circle-xmark me-2"></i>No users match the filter.
+        </div>
+    </div>
+HTML;
 }
 
 /**
@@ -361,119 +416,120 @@ function render_users_table_content(object $query): void
  */
 function render_user_row(array $user): void
 {
-    $user['username'] = htmlspecialchars_uni($user['username']);
-    $user['profilelink'] = build_profile_link($user['username'], $user['id'], "_blank");
-    $user['email'] = htmlspecialchars_uni($user['email']);
-    $user['added'] = my_datee('relative', $user['added']);
-    $user['lastactive'] = my_datee('relative', $user['lastactive']);
+    $uid        = (int)$user['id'];
+    $raw_name   = (string)$user['username'];
+    $username   = htmlspecialchars_uni($raw_name);
+    $profile    = build_profile_link($username, $uid, '_blank');
+    $email      = htmlspecialchars_uni((string)$user['email']);
+    $added      = my_datee('relative', $user['added']);
+    $lastactive = my_datee('relative', $user['lastactive']);
+    $ip_raw     = format_ip_address($user['regip'] ?? null);
+    $ip_html    = $ip_raw === ''
+        ? '<span class="text-body-secondary">N/A</span>'
+        : '<span class="ag-ip">' . htmlspecialchars_uni($ip_raw) . '</span>';
 
-    $user_type = determine_user_type($user);
-    $ip_address = format_ip_address($user['regip']);
-    $row_class = alt_trow();
+    $initial = htmlspecialchars_uni(mb_strtoupper(mb_substr($raw_name, 0, 1)) ?: '?');
+    $hue     = crc32($raw_name) % 360;
+    $search  = htmlspecialchars_uni(mb_strtolower($raw_name . ' ' . $user['email'] . ' ' . $ip_raw));
+    $status  = render_status_badge(is_email_pending($user));
 
-    echo '
-                <tr class="' . $row_class . '">
+    echo <<<HTML
+                <tr data-search="{$search}">
                     <td class="text-center">
-                        <input type="checkbox" name="user[' . $user['id'] . ']" value="' . $user['id'] . '" class="form-check-input user-checkbox">
+                        <input type="checkbox" name="user[{$uid}]" value="{$uid}" class="form-check-input user-checkbox" data-username="{$username}" aria-label="Select {$username}">
                     </td>
                     <td>
-                        <div class="d-flex align-items-center">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-user-circle text-muted fs-5"></i>
-                            </div>
-                            <div class="flex-grow-1 ms-3">
-                                <strong>' . $user['profilelink'] . '</strong>
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="ag-ava" style="--ag-hue: {$hue}">{$initial}</span>
+                            <div class="min-w-0">
+                                <div class="fw-semibold text-truncate">{$profile}</div>
+                                <a href="mailto:{$email}" class="ag-mail text-truncate">
+                                    <i class="fa-solid fa-envelope me-1"></i>{$email}
+                                </a>
                             </div>
                         </div>
                     </td>
-                    <td>
-                        <span class="text-muted small">' . $user['added'] . '</span>
+                    <td class="ag-muted">{$added}</td>
+                    <td class="ag-muted d-none d-lg-table-cell">{$lastactive}</td>
+                    <td class="d-none d-md-table-cell">{$ip_html}</td>
+                    <td>{$status}</td>
+                    <td class="text-end text-nowrap">
+                        <button type="button" class="ag-row-btn ag-row-ok" data-row-action="activate" data-uid="{$uid}" title="Activate {$username}">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                        <button type="button" class="ag-row-btn ag-row-del" data-row-action="delete" data-uid="{$uid}" title="Delete {$username}">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
                     </td>
-                    <td>
-                        <span class="text-muted small">' . $user['lastactive'] . '</span>
-                    </td>
-                    <td>
-                        <a href="mailto:' . $user['email'] . '" class="text-decoration-none">
-                            <i class="fas fa-envelope me-1 text-primary"></i>
-                            ' . $user['email'] . '
-                        </a>
-                    </td>
-                    <td>
-                        <code class="text-muted small">' . $ip_address . '</code>
-                    </td>
-                    <td>
-                        ' . render_status_badge($user_type) . '
-                    </td>
-                </tr>';
+                </tr>
+HTML;
 }
 
 /**
- * Determine user type
+ * Is the user still waiting for their own e-mail confirmation?
  */
-function determine_user_type(array $user): string
+function is_email_pending(array $user): bool
 {
-    global $lang;
-
-    if (($user['reg_type'] == 'r' || $user['reg_type'] == 'b') && $user['validated'] == 0) {
-        return 'Awaiting Email Activation';
-    } else {
-        return $lang->user_awaiting_activation['administrator_activation'];
-    }
+    return in_array($user['reg_type'] ?? null, ['r', 'b'], true)
+        && (int)($user['validated'] ?? 0) === 0;
 }
 
 /**
- * Format IP address
+ * Format IP address (plain text, escaped by caller)
  */
 function format_ip_address(?string $ip): string
 {
     global $db;
 
-    if (empty($ip)) {
-        return '<span class="text-muted">N/A</span>';
+    if ($ip === null || $ip === '') {
+        return '';
     }
 
-    return my_inet_ntop($db->unescape_binary($ip));
+    return (string)my_inet_ntop($db->unescape_binary($ip));
 }
 
 /**
  * Render status badge
  */
-function render_status_badge(string $type): string
+function render_status_badge(bool $email_pending): string
 {
-    $badge_class = match (true) {
-        str_contains($type, 'Email') => 'bg-warning text-dark',
-        default => 'bg-info text-white'
-    };
+    global $lang;
 
-    return '<span class="badge ' . $badge_class . ' small">' . $type . '</span>';
+    if ($email_pending) {
+        return '<span class="ag-chip ag-soft-warning"><i class="fa-solid fa-envelope-open-text"></i>Awaiting e-mail</span>';
+    }
+
+    return '<span class="ag-chip ag-soft-info"><i class="fa-solid fa-user-shield"></i>'
+        . $lang->user_awaiting_activation['administrator_activation'] . '</span>';
 }
 
 /**
- * Render action buttons
+ * Render sticky action bar
  */
 function render_action_buttons(): void
 {
     global $lang;
 
-    echo '
-    <div class="card-footer bg-light">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
-            <div class="d-flex align-items-center gap-2">
-                <span class="text-muted small">Selected:</span>
-                <span id="selectedCount" class="selected-count" style="display: none;">0</span>
-            </div>
-            <div class="d-flex gap-3">
-                <button type="button" class="btn btn-success px-4 py-2" onclick="confirmAction(\'activate\')">
-                    <i class="fas fa-check-circle me-2"></i>
-                    ' . $lang->user_awaiting_activation['activate_users'] . '
-                </button>
-                <button type="button" class="btn btn-danger px-4 py-2" onclick="confirmAction(\'delete\')">
-                    <i class="fas fa-trash-alt me-2"></i>
-                    ' . $lang->user_awaiting_activation['delete_users'] . '
-                </button>
-            </div>
+    $activate = $lang->user_awaiting_activation['activate_users'];
+    $delete   = $lang->user_awaiting_activation['delete_users'];
+
+    echo <<<HTML
+    <div class="ag-bar" id="agActionBar">
+        <div class="d-flex align-items-center gap-2">
+            <span class="ag-icon-sq ag-icon-xs ag-soft-secondary"><i class="fa-solid fa-check-double"></i></span>
+            <span class="ag-muted">Selected:</span>
+            <span id="selectedCount" class="selected-count ag-count">0</span>
         </div>
-    </div>';
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-success ag-pill" data-ag-action="activate" disabled>
+                <i class="fa-solid fa-circle-check me-2"></i>{$activate}
+            </button>
+            <button type="button" class="btn btn-outline-danger ag-pill" data-ag-action="delete" disabled>
+                <i class="fa-solid fa-trash-can me-2"></i>{$delete}
+            </button>
+        </div>
+    </div>
+HTML;
 }
 
 /**
@@ -481,315 +537,42 @@ function render_action_buttons(): void
  */
 function render_empty_state(): void
 {
-    echo '
-    <div class="card-body text-center py-5">
-        <div class="empty-state">
-            <i class="fas fa-users-slash fa-3x text-muted mb-3"></i>
-            <h4 class="text-muted">No Pending Users</h4>
-            <p class="text-muted mb-0">All user accounts have been confirmed.</p>
-        </div>
-    </div>';
+    echo <<<HTML
+    <div class="ag-empty">
+        <div class="ag-icon-sq ag-icon-lg ag-soft-success mx-auto mb-3"><i class="fa-solid fa-user-check"></i></div>
+        <h3 class="ag-empty-title">No pending users</h3>
+        <p class="ag-muted mb-0">Every account has been confirmed — nothing waiting in the queue.</p>
+    </div>
+HTML;
+}
+
+/* =====================================================================
+ *  ASSETS
+ * ===================================================================== */
+
+/**
+ * Scoped styles + SweetAlert2 stylesheet
+ */
+function render_page_assets(): void
+{
+   global $BASEURL;
+   
+   ?>
+
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/awaiting_activation.css?ver=339">
+
+<?php
 }
 
 /**
- * Render bottom pagination
+ * Page behaviour: selection, filter, SweetAlert2 confirmations
  */
-function render_pagination_bottom(string $multipage): void
+function render_page_script(): void
 {
-    if (!empty($multipage)) {
-        echo '
-        <div class="container-fluid mt-4">
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body py-2">
-                            <div class="d-flex justify-content-center">
-                                ' . $multipage . '
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>';
-    }
+    global $BASEURL;
+    ?>
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/awaiting_activation.js?ver=339"></script>
+<?php
 }
-
-// JavaScript for enhanced functionality
-echo '
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    // Enhanced select all functionality
-    const mainCheckbox = document.getElementById("mainCheckbox");
-    const selectAll = document.getElementById("selectAll");
-    const userCheckboxes = document.querySelectorAll(".user-checkbox");
-    
-    function updateSelectAllState() {
-        const checkedCount = document.querySelectorAll(".user-checkbox:checked").length;
-        const totalCount = userCheckboxes.length;
-        
-        if (selectAll) {
-            selectAll.checked = checkedCount === totalCount && totalCount > 0;
-            selectAll.indeterminate = checkedCount > 0 && checkedCount < totalCount;
-        }
-        if (mainCheckbox) {
-            mainCheckbox.checked = checkedCount === totalCount && totalCount > 0;
-            mainCheckbox.indeterminate = checkedCount > 0 && checkedCount < totalCount;
-        }
-        
-        // Update selected count display
-        const selectedCountEl = document.getElementById("selectedCount");
-        if (selectedCountEl) {
-            selectedCountEl.textContent = checkedCount;
-            selectedCountEl.style.display = checkedCount > 0 ? "inline" : "none";
-        }
-    }
-    
-    if (mainCheckbox) {
-        mainCheckbox.addEventListener("change", function() {
-            const isChecked = this.checked;
-            userCheckboxes.forEach(checkbox => {
-                checkbox.checked = isChecked;
-            });
-            updateSelectAllState();
-        });
-    }
-    
-    if (selectAll) {
-        selectAll.addEventListener("change", function() {
-            const isChecked = this.checked;
-            userCheckboxes.forEach(checkbox => {
-                checkbox.checked = isChecked;
-            });
-            updateSelectAllState();
-        });
-    }
-    
-    userCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener("change", updateSelectAllState);
-    });
-    
-    // Initialize selected count
-    updateSelectAllState();
-});
-
-function confirmAction(action) {
-    const selected = document.querySelectorAll(".user-checkbox:checked").length;
-    if (selected === 0) {
-        showAlertModal("No Users Selected", "Please select at least one user to proceed.");
-        return false;
-    }
-    
-    showConfirmationModal(action, selected);
-    return false;
-}
-
-function showConfirmationModal(action, selectedCount) {
-    const isActivate = action === "activate";
-    const title = isActivate ? "Activate Users" : "Delete Users";
-    const icon = isActivate ? "check-circle" : "exclamation-triangle";
-    const iconColor = isActivate ? "text-success" : "text-danger";
-    const buttonColor = isActivate ? "btn-success" : "btn-danger";
-    const buttonText = isActivate ? "Activate Users" : "Delete Users";
-    const buttonIcon = isActivate ? "check" : "trash-alt";
-    
-    const message = isActivate 
-        ? `You are about to activate <strong>${selectedCount}</strong> user(s). This will allow them to access the forum.`
-        : `You are about to permanently delete <strong>${selectedCount}</strong> user(s). <span class="text-danger fw-semibold">This action cannot be undone!</span>`;
-
-    const modalHTML = `
-        <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content border-0 shadow-lg">
-                    <div class="modal-header border-0 pb-0">
-                        <div class="d-flex align-items-center w-100">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-${icon} ${iconColor} fa-2x"></i>
-                            </div>
-                            <div class="flex-grow-1 ms-3">
-                                <h5 class="modal-title fw-bold text-dark" id="confirmationModalLabel">${title}</h5>
-                            </div>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                    </div>
-                    <div class="modal-body pt-0">
-                        <div class="alert ${isActivate ? "alert-info" : "alert-warning"} border-0 mb-0">
-                            <div class="d-flex">
-                                <i class="fas fa-info-circle me-2 mt-1"></i>
-                                <div>${message}</div>
-                            </div>
-                        </div>
-                        ${!isActivate ? `
-                        <div class="form-check mt-3">
-                            <input class="form-check-input" type="checkbox" id="confirmDelete">
-                            <label class="form-check-label text-danger fw-semibold small" for="confirmDelete">
-                                I understand this action is permanent and cannot be undone
-                            </label>
-                        </div>
-                        ` : ""}
-                    </div>
-                    <div class="modal-footer border-0 pt-0">
-                        <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">
-                            <i class="fas fa-times me-2"></i>Cancel
-                        </button>
-                        <button type="button" id="confirmActionBtn" class="btn ${buttonColor} px-4" ${isActivate ? "" : "disabled"}>
-                            <i class="fas fa-${buttonIcon} me-2"></i>${buttonText}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Remove existing modal
-    const existingModal = document.getElementById("confirmationModal");
-    if (existingModal) {
-        existingModal.remove();
-    }
-
-    // Add modal to body
-    document.body.insertAdjacentHTML("beforeend", modalHTML);
-
-    const modalElement = document.getElementById("confirmationModal");
-    const modal = new bootstrap.Modal(modalElement);
-    const confirmBtn = document.getElementById("confirmActionBtn");
-    const confirmDeleteCheckbox = document.getElementById("confirmDelete");
-
-    // Handle delete confirmation checkbox
-    if (!isActivate && confirmDeleteCheckbox) {
-        confirmDeleteCheckbox.addEventListener("change", function() {
-            confirmBtn.disabled = !this.checked;
-        });
-    }
-
-    // Confirm button handler
-    confirmBtn.addEventListener("click", function() {
-        modal.hide();
-        setTimeout(() => {
-            const form = document.getElementById("userActivationForm");
-            if (form) {
-                if (!isActivate) {
-                    // Add delete parameter for deletion
-                    const deleteInput = document.createElement("input");
-                    deleteInput.type = "hidden";
-                    deleteInput.name = "delete";
-                    deleteInput.value = "1";
-                    form.appendChild(deleteInput);
-                }
-                form.submit();
-            }
-        }, 300);
-    });
-
-    // Keyboard support
-    modalElement.addEventListener("keydown", function(e) {
-        if (e.key === "Escape") {
-            modal.hide();
-        }
-    });
-
-    // Clean up on hide
-    modalElement.addEventListener("hidden.bs.modal", function() {
-        this.remove();
-    });
-
-    modal.show();
-}
-
-function showAlertModal(title, message) {
-    const modalHTML = `
-        <div class="modal fade" id="alertModal" tabindex="-1" aria-labelledby="alertModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content border-0 shadow-lg">
-                    <div class="modal-header border-0 pb-0">
-                        <div class="d-flex align-items-center w-100">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-exclamation-circle text-warning fa-2x"></i>
-                            </div>
-                            <div class="flex-grow-1 ms-3">
-                                <h5 class="modal-title fw-bold text-dark" id="alertModalLabel">${title}</h5>
-                            </div>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                    </div>
-                    <div class="modal-body">
-                        <p class="mb-0 text-muted">${message}</p>
-                    </div>
-                    <div class="modal-footer border-0">
-                        <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">
-                            <i class="fas fa-check me-2"></i>OK
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    const existingModal = document.getElementById("alertModal");
-    if (existingModal) {
-        existingModal.remove();
-    }
-
-    document.body.insertAdjacentHTML("beforeend", modalHTML);
-
-    const modalElement = document.getElementById("alertModal");
-    const modal = new bootstrap.Modal(modalElement);
-
-    modalElement.addEventListener("keydown", function(e) {
-        if (e.key === "Escape" || e.key === "Enter") {
-            modal.hide();
-        }
-    });
-
-    modalElement.addEventListener("hidden.bs.modal", function() {
-        this.remove();
-    });
-
-    modal.show();
-}
-
-// Add enhanced styles
-const modalStyles = `
-<style>
-.modal-content {
-    border-radius: 12px;
-    border: none;
-}
-.modal-header {
-    padding: 1.5rem 1.5rem 0.5rem;
-}
-.modal-body {
-    padding: 1rem 1.5rem;
-}
-.modal-footer {
-    padding: 1rem 1.5rem 1.5rem;
-}
-.btn {
-    border-radius: 8px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-}
-.alert {
-    border-radius: 8px;
-    border: none;
-}
-.form-check-input:checked {
-    background-color: #dc3545;
-    border-color: #dc3545;
-}
-.selected-count {
-    background: #e9ecef;
-    border-radius: 12px;
-    padding: 4px 8px;
-    font-size: 0.875rem;
-    font-weight: 500;
-}
-</style>
-`;
-
-if (!document.getElementById("modalStyles")) {
-    const styleElement = document.createElement("style");
-    styleElement.id = "modalStyles";
-    styleElement.textContent = modalStyles;
-    document.head.appendChild(styleElement);
-}
-</script>';

@@ -3,14 +3,16 @@
 declare(strict_types=1);
 
 /**
- * reports.php - Report Management System
+ * reports.php - Report Management System (Staff Panel)
  */
 
-
-
 if (!defined('STAFF_PANEL')) {
-    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed2222222.</font>');
+    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
+
+// В админке init может не определять эти константы
+defined('DAY_IN_SECONDS') || define('DAY_IN_SECONDS', 86400);
+defined('TIMENOW')        || define('TIMENOW', time());
 
 require_once(INC_PATH . '/class_parser.php');
 
@@ -24,7 +26,7 @@ $parser_options = [
     'filter_badwords'  => 1,
 ];
 
-$action    = $_GET['action'] ?? 'list';
+$action    = is_string($_GET['action'] ?? null) ? $_GET['action'] : 'list';
 $report_id = (int)($_GET['id'] ?? 0);
 
 // ==================== КОНСТАНТЫ ====================
@@ -32,9 +34,9 @@ $report_id = (int)($_GET['id'] ?? 0);
 const REPORT_TYPES = ['torrent', 'user', 'comment', 'forumpost'];
 
 const RULES_MAP = [
-    'rule_1' => ['text' => 'Rule 1: No spamming or advertising',    'color' => 'bg-danger',  'icon' => 'fa-megaphone'],
+    'rule_1' => ['text' => 'Rule 1: No spamming or advertising',    'color' => 'bg-danger',  'icon' => 'fa-bullhorn'],
     'rule_2' => ['text' => 'Rule 2: No offensive language',         'color' => 'bg-danger',  'icon' => 'fa-comment-slash'],
-    'rule_3' => ['text' => 'Rule 3: No harassment or bullying',     'color' => 'bg-danger',  'icon' => 'fa-user-group-slash'],
+    'rule_3' => ['text' => 'Rule 3: No harassment or bullying',     'color' => 'bg-danger',  'icon' => 'fa-users-slash'],
     'rule_4' => ['text' => 'Rule 4: Stay on topic',                 'color' => 'bg-warning', 'icon' => 'fa-signs-post'],
     'rule_5' => ['text' => 'Rule 5: No warez or illegal content',   'color' => 'bg-danger',  'icon' => 'fa-ban'],
     'rule_6' => ['text' => 'Rule 6: Respect other members',         'color' => 'bg-warning', 'icon' => 'fa-handshake'],
@@ -62,6 +64,29 @@ const REASON_RECOMMENDATIONS = [
         'broken'        => 'Check tracker and seed status. Mark as broken if dead.',
         'inappropriate' => 'Review against content policies. Remove if violates guidelines.',
         'other'         => 'Review based on description provided.',
+    ],
+];
+
+const REPORT_MESSAGES = [
+    'success' => [
+        'resolved'        => 'Report marked as resolved',
+        'deleted'         => 'Report deleted',
+        'comment_deleted' => 'Comment deleted and report resolved',
+        'post_deleted'    => 'Forum post deleted and report resolved',
+        'post_gone'       => 'Forum post was already gone, report resolved',
+        'ignored'         => 'Report ignored and closed',
+        'cleared'         => 'Old resolved reports cleared',
+    ],
+    'error' => [
+        'invalid_id'        => 'Invalid report ID',
+        'not_found'         => 'Report not found',
+        'invalid_action'    => 'Invalid action',
+        'no_user'           => 'This report has no user to act on',
+        'csrf'              => 'Security token expired, reload the page and try again',
+        'bad_method'        => 'Actions must be submitted from the panel',
+        'wrong_type'        => 'This action does not match the report type',
+        'comment_not_found' => 'Comment not found',
+        'post_error'        => 'Could not delete the forum post, check the error log',
     ],
 ];
 
@@ -130,7 +155,7 @@ function get_report_reasons_map(?string $type = null): array
                 'copyright'     => ['text' => 'Copyright Infringement',  'color' => 'bg-danger',  'icon' => 'fa-copyright',        'severity' => 'high',    'category' => 'Legal Issues',    'description' => 'User is sharing copyrighted content',                'recommended_action' => 'Remove infringing content and issue warning'],
                 'malware'       => ['text' => 'Malware Distribution',    'color' => 'bg-danger',  'icon' => 'fa-bug',              'severity' => 'high',    'category' => 'Security Issues', 'description' => 'User is distributing malware/viruses',               'recommended_action' => 'Immediate ban and content removal'],
                 'racism'        => ['text' => 'Racism/Hate Speech',      'color' => 'bg-danger',  'icon' => 'fa-comment-slash',    'severity' => 'high',    'category' => 'Behavior Issues', 'description' => 'User is posting racist or hateful content',          'recommended_action' => 'Immediate suspension or ban'],
-                'threats'       => ['text' => 'Threats/Violence',        'color' => 'bg-danger',  'icon' => 'fa-exclamation-triangle', 'severity' => 'high', 'category' => 'Behavior Issues', 'description' => 'User is making threats or promoting violence',      'recommended_action' => 'Immediate permanent ban'],
+                'threats'       => ['text' => 'Threats/Violence',        'color' => 'bg-danger',  'icon' => 'fa-triangle-exclamation', 'severity' => 'high', 'category' => 'Behavior Issues', 'description' => 'User is making threats or promoting violence',      'recommended_action' => 'Immediate permanent ban'],
                 'underage'      => ['text' => 'Underage User',           'color' => 'bg-warning', 'icon' => 'fa-child',            'severity' => 'medium',  'category' => 'Account Issues',  'description' => 'User appears to be underage',                       'recommended_action' => 'Suspend until age verification'],
                 'cheating'      => ['text' => 'Cheating/Gaming System',  'color' => 'bg-warning', 'icon' => 'fa-gamepad',          'severity' => 'medium',  'category' => 'Behavior Issues', 'description' => 'User is cheating or exploiting the system',          'recommended_action' => 'Reset stats and issue warning'],
                 'other'         => ['text' => 'Other Reason',            'color' => 'bg-dark',    'icon' => 'fa-ellipsis',         'severity' => 'unknown', 'category' => 'Other Issues',    'description' => 'Select for other reasons',                           'recommended_action' => 'Review report description carefully'],
@@ -149,6 +174,22 @@ function get_report_reasons_map(?string $type = null): array
 }
 
 // ==================== ХЕЛПЕРЫ ====================
+
+function rp_h(mixed $value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function rp_get(string $key): string
+{
+    $v = $_GET[$key] ?? '';
+    return is_string($v) ? $v : '';
+}
+
+function rp_post_key(): string
+{
+    return (string)generate_post_check();
+}
 
 function truncateString(string $string, int $length = 30): string
 {
@@ -171,7 +212,7 @@ function getTypeColor(string $type): string
 function getTypeIcon(string $type): string
 {
     return match ($type) {
-        'torrent'   => 'fa-download',
+        'torrent'   => 'fa-magnet',
         'comment'   => 'fa-comment',
         'user'      => 'fa-user',
         'forumpost' => 'fa-comments',
@@ -179,122 +220,411 @@ function getTypeIcon(string $type): string
     };
 }
 
-function isAjaxRequest(): bool
+function getTypeLabel(string $type): string
 {
-    return isset($_SERVER['HTTP_X_REQUESTED_WITH'])
-        && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+    return match ($type) {
+        'torrent'   => 'Torrent',
+        'comment'   => 'Comment',
+        'user'      => 'User',
+        'forumpost' => 'Forum post',
+        default     => ucfirst($type),
+    };
 }
 
-function sendResponse(string $message, bool $success = true): never
+/** bg-danger → danger, bg-dark → secondary */
+function rp_tone(string $bg_class): string
+{
+    $tone = str_replace('bg-', '', $bg_class);
+    return in_array($tone, ['primary', 'success', 'warning', 'danger', 'info', 'secondary'], true) ? $tone : 'secondary';
+}
+
+function rp_severity_tone(string $sev): string
+{
+    return match ($sev) { 'high' => 'danger', 'medium' => 'warning', 'low' => 'info', default => 'secondary' };
+}
+
+function rp_severity_icon(string $sev): string
+{
+    return match ($sev) { 'high' => 'fa-fire', 'medium' => 'fa-hourglass-half', 'low' => 'fa-circle-info', default => 'fa-circle-question' };
+}
+
+function rp_type_chip(string $type): string
+{
+    return '<span class="rp-chip rp-tone-' . getTypeColor($type) . '"><i class="fa-solid ' . getTypeIcon($type) . '"></i>' . rp_h(getTypeLabel($type)) . '</span>';
+}
+
+function rp_reason_chip(?array $reason_data, string $raw_reason, int $max = 0): string
+{
+    if (!$reason_data) {
+        $text = $max > 0 ? truncateString($raw_reason, $max) : $raw_reason;
+        return '<span class="rp-chip rp-tone-secondary" title="' . rp_h($raw_reason) . '"><i class="fa-solid fa-circle-question"></i>' . rp_h($text) . '</span>';
+    }
+
+    $text = $max > 0 ? truncateString($reason_data['text'], $max) : $reason_data['text'];
+    return '<span class="rp-chip rp-tone-' . rp_tone($reason_data['color']) . '" title="' . rp_h($reason_data['text']) . '">'
+        . '<i class="fa-solid ' . rp_h($reason_data['icon']) . '"></i>' . rp_h($text) . '</span>';
+}
+
+function rp_severity_chip(string $sev): string
+{
+    if ($sev === 'unknown' || $sev === '') {
+        return '';
+    }
+    return '<span class="rp-chip rp-chip-outline rp-tone-' . rp_severity_tone($sev) . '"><i class="fa-solid ' . rp_severity_icon($sev) . '"></i>' . ucfirst($sev) . ' priority</span>';
+}
+
+function renderStatusBadge(bool $resolved): string
+{
+    return $resolved
+        ? '<span class="rp-chip rp-tone-success"><i class="fa-solid fa-circle-check"></i>Resolved</span>'
+        : '<span class="rp-chip rp-tone-warning"><i class="fa-solid fa-clock"></i>Pending</span>';
+}
+
+function rp_user_cell(int $id, ?string $name, string $tone, string $empty_label, string $empty_icon = 'fa-user-secret'): string
+{
+    if ($id <= 0) {
+        return '<span class="rp-muted"><i class="fa-solid ' . $empty_icon . ' me-1"></i>' . rp_h($empty_label) . '</span>';
+    }
+
+    $name    = ($name !== null && $name !== '') ? $name : 'User #' . $id;
+    $initial = mb_strtoupper(mb_substr($name, 0, 1));
+
+    return '<a class="rp-user" href="user-' . $id . '.html" target="_blank" rel="noopener">'
+        . '<span class="rp-avatar rp-tone-' . $tone . '">' . rp_h($initial) . '</span>'
+        . '<span class="rp-user-name">' . rp_h($name) . '</span></a>';
+}
+
+function rp_confirm_attrs(array $c): string
+{
+    $map = ['title' => 'confirm-title', 'text' => 'confirm-text', 'icon' => 'confirm-icon', 'btn' => 'confirm-btn', 'variant' => 'confirm-variant'];
+    $out = '';
+    foreach ($map as $k => $attr) {
+        if (isset($c[$k]) && $c[$k] !== '') {
+            $out .= ' data-' . $attr . '="' . rp_h($c[$k]) . '"';
+        }
+    }
+    return $out;
+}
+
+/** Hidden fields that tell the handler where to redirect after the action (PRG). */
+function rp_return_fields(string $return): string
+{
+    $out = '<input type="hidden" name="return" value="' . rp_h($return) . '">';
+    foreach (['type', 'status', 'search', 'priority', 'page'] as $k) {
+        $v = rp_get($k);
+        if ($v !== '') {
+            $out .= '<input type="hidden" name="rq[' . $k . ']" value="' . rp_h($v) . '">';
+        }
+    }
+    return $out;
+}
+
+/**
+ * Small POST form with a single button (resolve / delete / etc.).
+ * All state-changing actions go through POST + CSRF.
+ */
+function rp_action_button(string $do, int $id, array $o = []): string
 {
     global $_this_script_;
 
+    $o += [
+        'return'    => 'list',
+        'label'     => '',
+        'icon'      => 'fa-check',
+        'tone'      => 'primary',
+        'solid'     => false,
+        'small'     => true,
+        'icon_only' => false,
+        'confirm'   => null,
+        'ajax'      => false,
+        'class'     => '',
+        'btn_class' => '',
+    ];
+
+    $form_class = trim('rp-inline-form ' . ($o['ajax'] ? 'rp-ajax ' : '') . $o['class']);
+    $attrs      = $o['confirm'] ? ' data-confirm="1"' . rp_confirm_attrs($o['confirm']) : '';
+
+    $btn_class = 'rp-btn rp-tone-' . $o['tone']
+        . ($o['solid'] ? ' rp-btn-solid' : '')
+        . ($o['small'] ? ' rp-btn-sm' : '')
+        . ($o['icon_only'] ? ' rp-btn-icon' : '')
+        . ($o['btn_class'] ? ' ' . $o['btn_class'] : '');
+
+    $label = $o['icon_only'] ? '' : '<span>' . rp_h($o['label']) . '</span>';
+    $aria  = $o['icon_only'] ? ' title="' . rp_h($o['label']) . '" aria-label="' . rp_h($o['label']) . '"' : '';
+
+    return '<form method="post" action="' . rp_h($_this_script_) . '&amp;action=takeaction" class="' . $form_class . '"' . $attrs . '>'
+        . '<input type="hidden" name="my_post_key" value="' . rp_h(rp_post_key()) . '">'
+        . '<input type="hidden" name="do" value="' . rp_h($do) . '">'
+        . '<input type="hidden" name="id" value="' . $id . '">'
+        . rp_return_fields($o['return'])
+        . '<button type="submit" class="' . $btn_class . '" data-id="' . $id . '"' . $aria . '>'
+        . '<i class="fa-solid ' . $o['icon'] . '"></i>' . $label . '</button></form>';
+}
+
+function rp_link_button(string $href, string $label, string $icon, string $tone = 'secondary', array $o = []): string
+{
+    $o += ['solid' => false, 'small' => true, 'icon_only' => false, 'blank' => false, 'confirm' => null, 'class' => ''];
+
+    $class = 'rp-btn rp-tone-' . $tone
+        . ($o['solid'] ? ' rp-btn-solid' : '')
+        . ($o['small'] ? ' rp-btn-sm' : '')
+        . ($o['icon_only'] ? ' rp-btn-icon' : '')
+        . ($o['class'] ? ' ' . $o['class'] : '');
+
+    $attrs = $o['blank'] ? ' target="_blank" rel="noopener"' : '';
+    if ($o['confirm']) {
+        $attrs .= ' data-confirm="1"' . rp_confirm_attrs($o['confirm']);
+    }
+    if ($o['icon_only']) {
+        $attrs .= ' title="' . rp_h($label) . '" aria-label="' . rp_h($label) . '"';
+    }
+
+    return '<a href="' . rp_h($href) . '" class="' . $class . '"' . $attrs . '><i class="fa-solid ' . $icon . '"></i>'
+        . ($o['icon_only'] ? '' : '<span>' . rp_h($label) . '</span>') . '</a>';
+}
+
+function rp_fact(string $icon, string $label, string $value_html, string $tone = 'secondary'): string
+{
+    return '<div class="rp-fact"><span class="rp-ico rp-ico-sm rp-tone-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<div class="rp-fact-body"><div class="rp-fact-lbl">' . rp_h($label) . '</div><div class="rp-fact-val">' . $value_html . '</div></div></div>';
+}
+
+function rp_card_head(string $icon, string $tone, string $title, string $right_html = '', string $subtitle = ''): string
+{
+    return '<div class="rp-card-head"><span class="rp-ico rp-tone-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<div class="rp-card-heading"><h2 class="rp-card-title">' . $title . '</h2>'
+        . ($subtitle !== '' ? '<div class="rp-card-sub">' . $subtitle . '</div>' : '') . '</div>'
+        . ($right_html !== '' ? '<div class="rp-card-tools">' . $right_html . '</div>' : '') . '</div>';
+}
+
+function rp_empty(string $icon, string $tone, string $title, string $text = '', string $extra_html = ''): string
+{
+    return '<div class="rp-empty"><span class="rp-ico rp-ico-lg rp-tone-' . $tone . '"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<h3>' . rp_h($title) . '</h3>' . ($text !== '' ? '<p>' . rp_h($text) . '</p>' : '') . $extra_html . '</div>';
+}
+
+/** Splits "--- ADMIN NOTES ---" blocks appended by markReportResolved() off the description. */
+function rp_split_notes(string $description): array
+{
+    $parts = preg_split('/\R\R--- ADMIN NOTES ---\R/u', $description) ?: [$description];
+    $main  = (string)array_shift($parts);
+    return [$main, array_values(array_filter(array_map('trim', $parts), static fn($n) => $n !== ''))];
+}
+
+function rp_safe_url(string $url): ?string
+{
+    return preg_match('~^https?://~i', $url) ? $url : null;
+}
+
+/** SQL condition matching "high" severity reasons across all report types. */
+function buildHighSeveritySql(string $alias = ''): array
+{
+    $parts  = [];
+    $params = [];
+
+    foreach (get_report_reasons_map() as $type => $reasons) {
+        $high = array_keys(array_filter($reasons, static fn($r) => $r['severity'] === 'high'));
+        if (!$high) {
+            continue;
+        }
+        $parts[] = '(' . $alias . 'type = ? AND ' . $alias . 'reason IN (' . implode(',', array_fill(0, count($high), '?')) . '))';
+        $params[] = $type;
+        array_push($params, ...$high);
+    }
+
+    return [$parts ? '(' . implode(' OR ', $parts) . ')' : '0', $params];
+}
+
+function isAjaxRequest(): bool
+{
+    return isset($_SERVER['HTTP_X_REQUESTED_WITH'])
+        && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+}
+
+function sendResponse(string $code, bool $success = true, array $redirect = ['action' => 'list']): never
+{
+    global $_this_script_;
+
+    $message = REPORT_MESSAGES[$success ? 'success' : 'error'][$code] ?? ($success ? 'Done' : 'Something went wrong');
+
     if (isAjaxRequest()) {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => $success, 'message' => $message], JSON_THROW_ON_ERROR);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => $success, 'message' => $message, 'code' => $code], JSON_THROW_ON_ERROR);
         exit;
     }
 
-    $action = $_GET['action'] ?? 'list';
-    $id     = (int)($_GET['id'] ?? 0);
+    $redirect[$success ? 'success' : 'error'] = $code;
 
-    $params = ['action' => $action === 'takeaction' ? 'list' : $action];
+    header('Location: ' . $_this_script_ . '&' . http_build_query($redirect));
+    exit;
+}
 
-    $params[$success ? 'success' : 'error'] = match ($message) {
-        'Report resolved'                         => 'resolved',
-        'Report deleted'                          => 'deleted',
-        'Comment deleted and report resolved'     => 'comment_deleted',
-        'Report ignored'                          => 'ignored',
-        'Invalid report ID'                       => 'invalid_id',
-        'Report not found'                        => 'not_found',
-        'Invalid action'                          => 'invalid_action',
-        'No user to warn'                         => 'no_user',
-        default                                   => $success ? 'success' : 'error',
+function rp_return_target(int $report_id): array
+{
+    $ret = is_string($_POST['return'] ?? null) ? $_POST['return'] : 'list';
+
+    $target = match (true) {
+        $ret === 'view' && $report_id > 0                       => ['action' => 'view', 'id' => $report_id],
+        in_array($ret, ['list', 'pending', 'resolved', 'stats'], true) => ['action' => $ret],
+        default                                                 => ['action' => 'list'],
     };
 
-    if ($id > 0 && $action !== 'takeaction') {
-        $params['id'] = $id;
+    if ($target['action'] !== 'view' && is_array($_POST['rq'] ?? null)) {
+        foreach (['type', 'status', 'search', 'priority', 'page'] as $k) {
+            $v = $_POST['rq'][$k] ?? '';
+            if (is_string($v) && $v !== '') {
+                $target[$k] = $v;
+            }
+        }
     }
 
-    header('Location: ' . $_this_script_ . '&' . http_build_query($params));
-    exit;
+    return $target;
 }
 
 function getReportFromDb(int $report_id): array|false
 {
     global $db;
     $stmt = $db->sql_query_prepared("SELECT * FROM reports WHERE id = ?", [$report_id]);
-    return $stmt ? $db->fetch_array($stmt) : false;
+    $row  = $stmt ? $db->fetch_array($stmt) : false;
+    return $row ?: false;
 }
 
 function markReportResolved(int $report_id, string $notes = ''): void
 {
     global $db, $CURUSER;
 
-    $suffix = $notes ? "\n\n--- ADMIN NOTES ---\n" . $notes : '';
+    $suffix = $notes !== '' ? "\n\n--- ADMIN NOTES ---\n" . $notes : '';
 
     $db->sql_query_prepared(
         "UPDATE reports SET dealtwith = 1, dealtby = ?, updated_at = ?,
          description = CONCAT(COALESCE(description, ''), ?)
          WHERE id = ?",
-        [$CURUSER['id'], time(), $suffix, $report_id]
+        [$CURUSER['id'], TIMENOW, $suffix, $report_id]
     );
+}
+
+function rp_log(string $text): void
+{
+    global $CURUSER;
+    write_log($text . ' by ' . ($CURUSER['username'] ?? ('User #' . ($CURUSER['id'] ?? 0))));
 }
 
 // ==================== ОБРАБОТЧИКИ ДЕЙСТВИЙ ====================
 
 function handleAction(): never
 {
-    $do        = $_GET['do'] ?? $_POST['do'] ?? '';
-    $report_id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+    $report_id = (int)($_POST['id'] ?? 0);
+    $target    = rp_return_target($report_id);
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        sendResponse('bad_method', false, ['action' => 'list']);
+    }
+
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+        sendResponse('csrf', false, $target);
+    }
+
+    $do = is_string($_POST['do'] ?? null) ? $_POST['do'] : '';
+
+    if ($do === 'clearold') {
+        handleClearOld();
+    }
 
     if ($report_id <= 0) {
-        sendResponse('Invalid report ID', false);
+        sendResponse('invalid_id', false, $target);
     }
 
     $report = getReportFromDb($report_id);
 
     if (!$report) {
-        sendResponse('Report not found', false);
+        sendResponse('not_found', false, ['action' => 'list']);
     }
 
     match ($do) {
-        'resolve'         => handleResolve($report_id),
-        'delete'          => handleDelete($report_id),
-        'deletecomment'   => handleDeleteComment($report_id, $report),
-        'deleteforumpost' => handleDeleteForumPost($report_id, $report),
-        default           => sendResponse('Invalid action', false),
+        'resolve'         => handleResolve($report_id, $target),
+        'ignore'          => handleIgnore($report_id, $target),
+        'delete'          => handleDelete($report_id, $target),
+        'deletecomment'   => handleDeleteComment($report_id, $report, $target),
+        'deleteforumpost' => handleDeleteForumPost($report_id, $report, $target),
+        'warn_user'       => handleUserRedirect($report, 'warn', $target),
+        'ban_user'        => handleUserRedirect($report, 'ban', $target),
+        default           => sendResponse('invalid_action', false, $target),
     };
 }
 
-function handleResolve(int $report_id): never
+function handleResolve(int $report_id, array $target): never
 {
-    markReportResolved($report_id, trim($_POST['notes'] ?? ''));
-    sendResponse('Report resolved');
+    $notes = trim((string)($_POST['notes'] ?? ''));
+    markReportResolved($report_id, $notes);
+    rp_log("Report #$report_id resolved");
+    sendResponse('resolved', true, $target);
 }
 
-function handleDelete(int $report_id): never
+function handleIgnore(int $report_id, array $target): never
+{
+    $notes = trim((string)($_POST['notes'] ?? ''));
+    markReportResolved($report_id, '[Ignored]' . ($notes !== '' ? ' ' . $notes : ''));
+    rp_log("Report #$report_id ignored");
+    sendResponse('ignored', true, $target);
+}
+
+function handleDelete(int $report_id, array $target): never
 {
     global $db;
     $db->sql_query_prepared("DELETE FROM reports WHERE id = ?", [$report_id]);
-    sendResponse('Report deleted');
+    rp_log("Report #$report_id deleted");
+
+    // Report no longer exists, never go back to its view
+    if (($target['action'] ?? '') === 'view') {
+        $target = ['action' => 'list'];
+    }
+    sendResponse('deleted', true, $target);
 }
 
-function handleDeleteComment(int $report_id, array $report): never
+function handleClearOld(): never
 {
-    global $db, $CURUSER, $kpscomment;
+    global $db;
+
+    $cutoff = TIMENOW - 30 * DAY_IN_SECONDS;
+    $db->sql_query_prepared("DELETE FROM reports WHERE dealtwith = 1 AND updated_at < ?", [$cutoff]);
+    $count = (int)$db->affected_rows();
+
+    rp_log("Cleared $count resolved reports older than 30 days");
+    sendResponse('cleared', true, ['action' => 'stats']);
+}
+
+function handleUserRedirect(array $report, string $kind, array $target): never
+{
+    $uid = (int)($report['reported_user_id'] ?? 0);
+
+    if ($uid <= 0) {
+        sendResponse('no_user', false, $target);
+    }
+
+    $url = $kind === 'warn'
+        ? 'warn.php?uid=' . $uid . '&reason=' . urlencode('Report #' . $report['id'] . ': ' . $report['reason'])
+        : 'bans.php?action=add&uid=' . $uid;
+
+    header('Location: ' . $url);
+    exit;
+}
+
+function handleDeleteComment(int $report_id, array $report, array $target): never
+{
+    global $db, $kpscomment;
 
     if ($report['type'] !== 'comment') {
-        sendResponse('Invalid report type for comment deletion', false);
+        sendResponse('wrong_type', false, $target);
     }
 
     $comment_id = (int)$report['reported_id'];
 
     $res          = $db->sql_query_prepared('SELECT torrent, user FROM comments WHERE id = ?', [$comment_id]);
-    $comment_data = $db->fetch_array($res);
+    $comment_data = $res ? $db->fetch_array($res) : null;
 
     if (!$comment_data) {
-        sendResponse('Comment not found', false);
+        sendResponse('comment_not_found', false, $target);
     }
 
     $torrent_id = (int)$comment_data['torrent'];
@@ -322,15 +652,16 @@ function handleDeleteComment(int $report_id, array $report): never
     }
 
     markReportResolved($report_id);
-    sendResponse('Comment deleted and report resolved');
+    rp_log("Comment #$comment_id deleted via report #$report_id");
+    sendResponse('comment_deleted', true, $target);
 }
 
-function handleDeleteForumPost(int $report_id, array $report): never
+function handleDeleteForumPost(int $report_id, array $report, array $target): never
 {
-    global $db, $CURUSER;
+    global $db;
 
     if ($report['type'] !== 'forumpost') {
-        sendResponse('Invalid report type for forum post deletion', false);
+        sendResponse('wrong_type', false, $target);
     }
 
     $post_id    = (int)$report['reported_id'];
@@ -338,7 +669,8 @@ function handleDeleteForumPost(int $report_id, array $report): never
 
     if (!$post_check || $db->num_rows($post_check) === 0) {
         markReportResolved($report_id);
-        sendResponse('Forum post already deleted, report marked as resolved');
+        rp_log("Report #$report_id resolved (forum post #$post_id already gone)");
+        sendResponse('post_gone', true, $target);
     }
 
     if (!class_exists('Moderation')) {
@@ -348,28 +680,57 @@ function handleDeleteForumPost(int $report_id, array $report): never
     try {
         $moderation = new Moderation();
         $moderation->delete_post($post_id);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         error_log("Error deleting forum post #$post_id: " . $e->getMessage());
+        sendResponse('post_error', false, $target);
     }
 
     markReportResolved($report_id);
-    sendResponse('Forum post deleted and report resolved');
+    rp_log("Forum post #$post_id deleted via report #$report_id");
+    sendResponse('post_deleted', true, $target);
 }
 
 // ==================== ДАННЫЕ ====================
+
+function getHeaderStats(): array
+{
+    global $db;
+
+    [$high_sql, $high_params] = buildHighSeveritySql();
+
+    $res = $db->sql_query_prepared(
+        "SELECT COUNT(*) AS total,
+                COALESCE(SUM(dealtwith = 0), 0)                        AS pending,
+                COALESCE(SUM(dealtwith = 0 AND $high_sql), 0)          AS high_pending,
+                COALESCE(SUM(added > ?), 0)                            AS new_24h,
+                COALESCE(SUM(dealtwith = 1 AND updated_at > ?), 0)     AS resolved_30
+         FROM reports",
+        [...$high_params, TIMENOW - DAY_IN_SECONDS, TIMENOW - 30 * DAY_IN_SECONDS]
+    );
+
+    $row = $res ? $db->fetch_array($res) : null;
+    if ($res) {
+        $db->free_result($res);
+    }
+
+    return array_map('intval', array_merge(
+        ['total' => 0, 'pending' => 0, 'high_pending' => 0, 'new_24h' => 0, 'resolved_30' => 0],
+        is_array($row) ? $row : []
+    ));
+}
 
 function getForumPostData(int $post_id, array $report): ?array
 {
     global $db;
 
     $result = $db->sql_query_prepared(
-        "SELECT p.*, t.subject AS thread_subject, t.tid AS thread_id,
+        "SELECT p.*, t.subject AS thread_subject, t.tid AS thread_id, t.views AS thread_views,
                 f.name AS forum_name, f.fid AS forum_id,
                 u.username AS author_name, u.id AS author_id
          FROM posts p
          LEFT JOIN threads t ON p.tid = t.tid
          LEFT JOIN forums  f ON p.fid = f.fid
-         LEFT JOIN users       u ON p.uid = u.id
+         LEFT JOIN users   u ON p.uid = u.id
          WHERE p.pid = ?",
         [$post_id]
     );
@@ -381,8 +742,8 @@ function getForumPostData(int $post_id, array $report): ?array
     $data = $db->fetch_array($result);
     $db->free_result($result);
 
-    $data['report_forum_id']  = $report['forum_id']      ?? 0;
-    $data['report_thread_id'] = $report['thread_id']     ?? 0;
+    $data['report_forum_id']  = $report['forum_id']       ?? 0;
+    $data['report_thread_id'] = $report['thread_id']      ?? 0;
     $data['rule_violation']   = $report['rule_violation'] ?? '';
 
     return $data;
@@ -398,7 +759,7 @@ function parseUserReportDescription(string $description): array
 
     foreach (explode('=====', $description) as $section) {
         $section = trim($section);
-        if (str_contains($section, 'DESCRIPTION'))           $result['formatted_description'] = trim(str_replace('DESCRIPTION =====', '', $section));
+        if (str_contains($section, 'DESCRIPTION'))            $result['formatted_description'] = trim(str_replace('DESCRIPTION =====', '', $section));
         if (str_contains($section, 'ADDITIONAL INFORMATION')) $result['additional_info']       = trim(str_replace('ADDITIONAL INFORMATION =====', '', $section));
         if (str_contains($section, 'EVIDENCE LINKS'))         $result['evidence_links']        = trim(str_replace('EVIDENCE LINKS =====', '', $section));
     }
@@ -406,242 +767,12 @@ function parseUserReportDescription(string $description): array
     return $result;
 }
 
-// ==================== ТОЧКА ВХОДА ====================
-
-if ($action === 'takeaction' && $report_id) {
-    handleAction();
-}
-
-stdhead("Report Management - Admin Panel");
-echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js"></script>';
-
-?>
-
-<div class="container mt-3">
-    <h1 class="h3 mb-4">
-        <i class="fa-solid fa-flag text-danger me-2"></i>Report Management
-        <small class="text-muted fs-6">Admin Panel</small>
-    </h1>
-
-    <div class="btn-group mb-4" role="group">
-        <?php foreach (['list' => ['All Reports', 'fa-list'], 'pending' => ['Pending', 'fa-clock'], 'resolved' => ['Resolved', 'fa-check-circle'], 'stats' => ['Statistics', 'fa-chart-bar']] as $act => [$label, $icon]): ?>
-        <a href="<?= $_this_script_ ?>&action=<?= $act ?>"
-           class="btn btn-outline-primary <?= $action === $act ? 'active' : '' ?>">
-            <i class="fa-solid <?= $icon ?> me-1"></i><?= $label ?>
-        </a>
-        <?php endforeach; ?>
-    </div>
-
-    <?php
-    match ($action) {
-        'view'     => showReportDetails($report_id),
-        'pending'  => showPendingReports(),
-        'resolved' => showResolvedReports(),
-        'stats'    => showStatistics(),
-        default    => showAllReports(),
-    };
-    ?>
-</div>
-
-<?php stdfoot(); ?>
-
-<?php
-// ==================== ОТОБРАЖЕНИЕ ====================
-
-function showAllReports(): void
-{
-    global $db, $_this_script_;
-
-    $page    = max(1, (int)($_GET['page'] ?? 1));
-    $perpage = 20;
-    $offset  = ($page - 1) * $perpage;
-
-    $type   = $_GET['type']   ?? '';
-    $status = $_GET['status'] ?? '';
-    $search = trim($_GET['search'] ?? '');
-
-    [$where_sql, $params] = buildReportWhereClause($type, $status, $search);
-
-    $total_result = $db->sql_query_prepared(
-        "SELECT COUNT(*) AS total FROM reports r
-         LEFT JOIN users u1 ON r.addedby = u1.id
-         LEFT JOIN users u2 ON r.reported_user_id = u2.id
-         $where_sql",
-        $params
-    );
-    $total = $total_result ? (int)($db->fetch_array($total_result)['total'] ?? 0) : 0;
-
-    $result = $db->sql_query_prepared(
-        "SELECT r.*, u1.username AS reporter_name, u2.username AS reported_user_name,
-                u3.username AS dealtby_name, r.reason, r.rule_violation
-         FROM reports r
-         LEFT JOIN users u1 ON r.addedby = u1.id
-         LEFT JOIN users u2 ON r.reported_user_id = u2.id
-         LEFT JOIN users u3 ON r.dealtby = u3.id
-         $where_sql
-         ORDER BY r.added DESC LIMIT ?, ?",
-        [...$params, $offset, $perpage]
-    );
-
-    ?>
-    <div class="card mb-4">
-        <div class="card-body">
-            <form method="GET" action="<?= $_this_script_ ?>" class="row g-3">
-                <input type="hidden" name="act" value="reports">
-                <div class="col-md-3">
-                    <label class="form-label">Type</label>
-                    <select name="type" class="form-select">
-                        <option value="">All Types</option>
-                        <?php foreach (['torrent' => 'Torrent', 'comment' => 'Comment', 'user' => 'User', 'forumpost' => 'Forum Post'] as $v => $l): ?>
-                        <option value="<?= $v ?>" <?= $type === $v ? 'selected' : '' ?>><?= $l ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Status</label>
-                    <select name="status" class="form-select">
-                        <option value="">All</option>
-                        <option value="pending"  <?= $status === 'pending'  ? 'selected' : '' ?>>Pending</option>
-                        <option value="resolved" <?= $status === 'resolved' ? 'selected' : '' ?>>Resolved</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Search</label>
-                    <input type="text" name="search" class="form-control"
-                           placeholder="Search reason, description, usernames..."
-                           value="<?= htmlspecialchars($search) ?>">
-                </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fa-solid fa-filter me-1"></i> Filter
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Reports (<?= number_format($total) ?>)</h5>
-            <a href="<?= $_this_script_ ?>&action=list&export=csv" class="btn btn-sm btn-outline-secondary">
-                <i class="fa-solid fa-file-export me-1"></i> Export CSV
-            </a>
-        </div>
-
-        <div class="table-responsive">
-            <table class="table table-hover table-striped mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th><th>Type</th><th>Reason</th><th>Reporter</th>
-                        <th>Reported User</th><th>Date</th><th>Status</th><th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php if ($total > 0 && $result):
-                    while ($row = $db->fetch_array($result)):
-                        $reasons_map = get_report_reasons_map($row['type']);
-                        $reason_data = $reasons_map[$row['reason']] ?? null;
-                        $ads         = my_datee('relative', $row['added']);
-                ?>
-                <tr class="<?= $row['dealtwith'] ? 'table2-success' : 'table2-warning' ?>">
-                    <td>#<?= $row['id'] ?></td>
-                    <td><span class="badge bg-<?= getTypeColor($row['type']) ?>"><?= ucfirst($row['type']) ?></span></td>
-                    <td>
-                        <?php if ($reason_data): ?>
-                        <span class="badge <?= $reason_data['color'] ?>" title="<?= htmlspecialchars($reason_data['text']) ?>">
-                            <i class="fa-solid <?= $reason_data['icon'] ?> me-1"></i>
-                            <?= htmlspecialchars(truncateString($reason_data['text'], 25)) ?>
-                        </span>
-                        <?php if ($reason_data['severity'] === 'high' && !$row['dealtwith']): ?>
-                        <span class="badge bg-danger blink ms-1" title="High Priority"><i class="fa-solid fa-exclamation"></i></span>
-                        <?php endif; ?>
-                        <?php else: ?>
-                        <span class="badge bg-secondary"><?= htmlspecialchars(truncateString($row['reason'], 30)) ?></span>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <?php if ($row['addedby']): ?>
-                        <a href="user-<?= $row['addedby'] ?>.html" target="_blank" class="text-decoration-none">
-                            <?= htmlspecialchars($row['reporter_name'] ?? 'User #' . $row['addedby']) ?>
-                        </a>
-                        <?php else: ?><span class="text-muted">Guest</span><?php endif; ?>
-                    </td>
-                    <td>
-                        <?php if ($row['reported_user_id']): ?>
-                        <a href="user-<?= $row['reported_user_id'] ?>.html" target="_blank" class="text-decoration-none">
-                            <?= htmlspecialchars($row['reported_user_name'] ?? 'User #' . $row['reported_user_id']) ?>
-                        </a>
-                        <?php else: ?><span class="text-muted">N/A</span><?php endif; ?>
-                    </td>
-                    <td><?= $ads ?></td>
-                    <td>
-                        <?php if ($row['dealtwith']): ?>
-                        <span class="badge bg-success"><i class="fa-solid fa-check me-1"></i>Resolved</span>
-                        <?php if ($row['dealtby_name']): ?>
-                        <div class="small text-muted">by <?= htmlspecialchars($row['dealtby_name']) ?></div>
-                        <?php endif; ?>
-                        <?php else: ?>
-                        <span class="badge bg-warning text-dark"><i class="fa-solid fa-clock me-1"></i>Pending</span>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <div class="btn-group btn-group-sm">
-                            <a href="<?= htmlspecialchars($_this_script_) ?>&action=view&id=<?= $row['id'] ?>"
-                               class="btn btn-outline-primary" title="View Details">
-                                <i class="fa-solid fa-eye"></i>
-                            </a>
-                            <?php if (!$row['dealtwith']): ?>
-                            <a href="<?= $_this_script_ ?>&action=takeaction&do=resolve&id=<?= $row['id'] ?>"
-                               class="btn btn-outline-success btn-sm resolve-report" data-id="<?= $row['id'] ?>">
-                                <i class="fa-solid fa-check"></i>
-                            </a>
-                            <?php endif; ?>
-                            <a href="<?= $_this_script_ ?>&action=takeaction&do=delete&id=<?= $row['id'] ?>"
-                               class="btn btn-outline-danger btn-sm delete-report" data-id="<?= $row['id'] ?>">
-                                <i class="fa-solid fa-trash"></i>
-                            </a>
-                        </div>
-                    </td>
-                </tr>
-                <?php endwhile;
-                else: ?>
-                <tr>
-                    <td colspan="8" class="text-center text-muted py-5">
-                        <div class="empty-state">
-                            <i class="fa-solid fa-inbox fa-3x mb-3"></i>
-                            <h5>No reports found</h5>
-                            <p>Try adjusting your filters or check back later</p>
-                            <a href="<?= $_this_script_ ?>&action=list" class="btn btn-outline-primary btn-sm">
-                                <i class="fa-solid fa-sync-alt me-1"></i> Clear Filters
-                            </a>
-                        </div>
-                    </td>
-                </tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <?php if ($total > $perpage): ?>
-        <div class="card-footer">
-            <?php renderPagination($page, $total, $perpage, ['action' => 'list', 'type' => $type, 'status' => $status, 'search' => $search]); ?>
-        </div>
-        <?php endif; ?>
-    </div>
-
-    <?= getReportListStyles() ?>
-    <?= getDeleteModalScript() ?>
-
-    <?php
-    if ($result) $db->free_result($result);
-}
-
-function buildReportWhereClause(string $type, string $status, string $search): array
+function buildReportWhereClause(string $type, string $status, string $search, string $priority = ''): array
 {
     $where_parts = [];
     $params      = [];
 
-    if ($type && in_array($type, REPORT_TYPES, true)) {
+    if ($type !== '' && in_array($type, REPORT_TYPES, true)) {
         $where_parts[] = "r.type = ?";
         $params[]      = $type;
     }
@@ -652,9 +783,15 @@ function buildReportWhereClause(string $type, string $status, string $search): a
         $where_parts[] = "r.dealtwith = 1";
     }
 
-    if ($search) {
-        $like            = "%$search%";
-        $where_parts[]   = "(r.reason LIKE ? OR r.description LIKE ? OR u1.username LIKE ? OR u2.username LIKE ?)";
+    if ($priority === 'high') {
+        [$high_sql, $high_params] = buildHighSeveritySql('r.');
+        $where_parts[] = $high_sql;
+        array_push($params, ...$high_params);
+    }
+
+    if ($search !== '') {
+        $like          = '%' . $search . '%';
+        $where_parts[] = "(r.reason LIKE ? OR r.description LIKE ? OR u1.username LIKE ? OR u2.username LIKE ?)";
         array_push($params, $like, $like, $like, $like);
     }
 
@@ -663,66 +800,326 @@ function buildReportWhereClause(string $type, string $status, string $search): a
     return [$where_sql, $params];
 }
 
-function renderPagination(int $page, int $total, int $perpage, array $extra_params): void
+function exportReportsCsv(): never
 {
-    global $_this_script_;
+    global $db;
 
-    $totalPages = (int)ceil($total / $perpage);
-    $query      = http_build_query($extra_params);
+    [$where_sql, $params] = buildReportWhereClause(rp_get('type'), rp_get('status'), trim(rp_get('search')), rp_get('priority'));
 
-    echo '<nav><ul class="pagination justify-content-center mb-0">';
-
-    if ($page > 1) {
-        echo '<li class="page-item"><a class="page-link" href="' . $_this_script_ . '&' . $query . '&page=' . ($page - 1) . '"><i class="fa-solid fa-chevron-left"></i></a></li>';
-    }
-
-    for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++) {
-        $active = $i === $page ? ' active' : '';
-        echo "<li class=\"page-item$active\"><a class=\"page-link\" href=\"{$_this_script_}&{$query}&page={$i}\">{$i}</a></li>";
-    }
-
-    if ($page < $totalPages) {
-        echo '<li class="page-item"><a class="page-link" href="' . $_this_script_ . '&' . $query . '&page=' . ($page + 1) . '"><i class="fa-solid fa-chevron-right"></i></a></li>';
-    }
-
-    echo '</ul></nav>';
-}
-
-function showPendingReports(): void
-{
-    global $db, $_this_script_;
-
-    $result = $db->sql_query_prepared(
-        "SELECT r.*, u1.username AS reporter_name, u2.username AS reported_user_name
+    $res = $db->sql_query_prepared(
+        "SELECT r.id, r.type, r.reason, r.reported_id, r.description, r.added, r.dealtwith, r.updated_at,
+                u1.username AS reporter_name, u2.username AS reported_user_name, u3.username AS dealtby_name
          FROM reports r
          LEFT JOIN users u1 ON r.addedby = u1.id
          LEFT JOIN users u2 ON r.reported_user_id = u2.id
-         WHERE r.dealtwith = 0
-         ORDER BY r.added DESC LIMIT 100"
+         LEFT JOIN users u3 ON r.dealtby = u3.id
+         $where_sql
+         ORDER BY r.added DESC LIMIT 10000",
+        $params
     );
 
+    // Защита от CSV/formula injection в Excel
+    $cell = static function (mixed $v): string {
+        $v = (string)$v;
+        return preg_match('/^[=+\-@\t\r]/', $v) ? "'" . $v : $v;
+    };
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="reports-' . date('Ymd-His') . '.csv"');
+    header('X-Content-Type-Options: nosniff');
+
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, ['ID', 'Type', 'Reason', 'Item ID', 'Reporter', 'Reported user', 'Filed', 'Status', 'Resolved by', 'Resolved at', 'Description'], ',', '"', '');
+
+    while ($res && ($row = $db->fetch_array($res))) {
+        $reason_data = get_report_reasons_map((string)$row['type'])[$row['reason']] ?? null;
+        fputcsv($out, array_map($cell, [
+            $row['id'],
+            getTypeLabel((string)$row['type']),
+            $reason_data['text'] ?? $row['reason'],
+            $row['reported_id'],
+            $row['reporter_name'] ?? '',
+            $row['reported_user_name'] ?? '',
+            date('Y-m-d H:i', (int)$row['added']),
+            $row['dealtwith'] ? 'Resolved' : 'Pending',
+            $row['dealtby_name'] ?? '',
+            $row['dealtwith'] ? date('Y-m-d H:i', (int)$row['updated_at']) : '',
+            preg_replace('/\s+/u', ' ', (string)($row['description'] ?? '')),
+        ]), ',', '"', '');
+    }
+
+    fclose($out);
+    exit;
+}
+
+// ==================== ТОЧКА ВХОДА ====================
+
+if ($action === 'takeaction') {
+    handleAction();
+}
+
+if (rp_get('export') === 'csv') {
+    exportReportsCsv();
+}
+
+$header_stats = getHeaderStats();
+
+stdhead("Report Management - Admin Panel");
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">';
+echo '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>';
+echo '<script src="' . $BASEURL . '/scripts/toast.js"></script>';
+renderPageStyles();
+
+$tabs = [
+    'list'     => ['All reports', 'fa-layer-group', null],
+    'pending'  => ['Pending',     'fa-clock',       $header_stats['pending']],
+    'resolved' => ['Resolved',    'fa-circle-check', null],
+    'stats'    => ['Statistics',  'fa-chart-column', null],
+];
+
+?>
+
+<div class="rp-page container mt-3 mb-4">
+
+    <section class="rp-card rp-hero">
+        <div class="rp-hero-top">
+            <span class="rp-ico rp-ico-lg rp-tone-danger"><i class="fa-solid fa-flag"></i></span>
+            <div class="rp-hero-text">
+                <h1>Report Management</h1>
+                <p>Member reports on torrents, comments, profiles and forum posts</p>
+            </div>
+            <?php if ($header_stats['high_pending'] > 0): ?>
+            <a class="rp-alert-pill rp-tone-danger" href="<?= rp_h($_this_script_) ?>&amp;action=pending&amp;priority=high">
+                <span class="rp-dot"></span><?= $header_stats['high_pending'] ?> high priority waiting
+            </a>
+            <?php endif; ?>
+        </div>
+        <nav class="rp-tabs" aria-label="Report views">
+            <?php foreach ($tabs as $act => [$label, $icon, $count]): ?>
+            <a href="<?= rp_h($_this_script_) ?>&amp;action=<?= $act ?>"
+               class="rp-tab<?= $action === $act ? ' is-active' : '' ?>"<?= $action === $act ? ' aria-current="page"' : '' ?>>
+                <i class="fa-solid <?= $icon ?>"></i><?= $label ?>
+                <?php if ($count): ?><span class="rp-count"><?= number_format($count) ?></span><?php endif; ?>
+            </a>
+            <?php endforeach; ?>
+        </nav>
+    </section>
+
+    <?php if ($action !== 'stats'): ?>
+    <div class="rp-kpis">
+        <?= rp_kpi('warning', 'fa-inbox',        $header_stats['pending'],      'Pending reports',       $_this_script_ . '&action=pending') ?>
+        <?= rp_kpi('danger',  'fa-fire',         $header_stats['high_pending'], 'High priority pending', $_this_script_ . '&action=pending&priority=high') ?>
+        <?= rp_kpi('info',    'fa-bolt',         $header_stats['new_24h'],      'New in last 24 hours',  $_this_script_ . '&action=list') ?>
+        <?= rp_kpi('success', 'fa-circle-check', $header_stats['resolved_30'],  'Resolved in 30 days',   $_this_script_ . '&action=resolved') ?>
+    </div>
+    <?php endif; ?>
+
+    <?php
+    match ($action) {
+        'view'     => showReportDetails($report_id),
+        'pending'  => showReportList('pending'),
+        'resolved' => showReportList('resolved'),
+        'stats'    => showStatistics(),
+        default    => showReportList('list'),
+    };
     ?>
-    <div class="card">
-        <div class="card-header"><h5 class="mb-0">Pending Reports (Require Attention)</h5></div>
-        <?php if ($result && $db->num_rows($result) > 0): ?>
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-warning">
-                    <tr><th>ID</th><th>Type</th><th>Reason</th><th>Reporter</th><th>Reported User</th><th>Date</th><th>Actions</th></tr>
+</div>
+
+<?php renderPageAssets(); ?>
+
+<?php stdfoot(); ?>
+
+<?php
+// ==================== ОТОБРАЖЕНИЕ ====================
+
+function rp_kpi(string $tone, string $icon, int $value, string $label, ?string $href = null, string $hint = ''): string
+{
+    $tag   = $href ? 'a' : 'div';
+    $attrs = $href ? ' href="' . rp_h($href) . '"' : '';
+
+    return '<' . $tag . $attrs . ' class="rp-card rp-kpi rp-tone-' . $tone . '">'
+        . '<span class="rp-ico rp-ico-md"><i class="fa-solid ' . $icon . '"></i></span>'
+        . '<span class="rp-kpi-text"><span class="rp-kpi-val">' . number_format($value) . '</span>'
+        . '<span class="rp-kpi-lbl">' . rp_h($label) . '</span>'
+        . ($hint !== '' ? '<span class="rp-kpi-hint">' . rp_h($hint) . '</span>' : '')
+        . '</span></' . $tag . '>';
+}
+
+function showReportList(string $mode): void
+{
+    global $db, $_this_script_;
+
+    $page    = max(1, (int)rp_get('page'));
+    $perpage = 25;
+    $offset  = ($page - 1) * $perpage;
+
+    $type     = rp_get('type');
+    $status   = $mode === 'list' ? rp_get('status') : $mode;
+    $search   = trim(rp_get('search'));
+    $priority = rp_get('priority') === 'high' ? 'high' : '';
+
+    [$where_sql, $params] = buildReportWhereClause($type, $status, $search, $priority);
+
+    $total_result = $db->sql_query_prepared(
+        "SELECT COUNT(*) AS total FROM reports r
+         LEFT JOIN users u1 ON r.addedby = u1.id
+         LEFT JOIN users u2 ON r.reported_user_id = u2.id
+         $where_sql",
+        $params
+    );
+    $total = $total_result ? (int)($db->fetch_array($total_result)['total'] ?? 0) : 0;
+
+    $order = $mode === 'resolved' ? 'r.updated_at DESC' : 'r.added DESC';
+
+    $result = $db->sql_query_prepared(
+        "SELECT r.*, u1.username AS reporter_name, u2.username AS reported_user_name,
+                u3.username AS dealtby_name
+         FROM reports r
+         LEFT JOIN users u1 ON r.addedby = u1.id
+         LEFT JOIN users u2 ON r.reported_user_id = u2.id
+         LEFT JOIN users u3 ON r.dealtby = u3.id
+         $where_sql
+         ORDER BY $order LIMIT ?, ?",
+        [...$params, $offset, $perpage]
+    );
+
+    [$title, $icon, $tone] = match ($mode) {
+        'pending'  => ['Pending reports',  'fa-clock',        'warning'],
+        'resolved' => ['Resolved reports', 'fa-circle-check', 'success'],
+        default    => ['All reports',      'fa-layer-group',  'primary'],
+    };
+
+    $filter_params = array_filter(['type' => $type, 'status' => $mode === 'list' ? $status : '', 'search' => $search, 'priority' => $priority]);
+    $export_params = array_filter(['type' => $type, 'status' => $status, 'search' => $search, 'priority' => $priority, 'export' => 'csv']);
+    $has_filters   = $filter_params !== [];
+
+    // GET-форма теряет query string из action, поэтому переносим его в hidden-поля
+    $form_path   = strtok((string)$_this_script_, '?') ?: '';
+    $form_hidden = [];
+    parse_str((string)parse_url((string)$_this_script_, PHP_URL_QUERY), $form_hidden);
+    $form_hidden['action'] = $mode;
+
+    ?>
+    <section class="rp-card rp-mb">
+        <form method="get" action="<?= rp_h($form_path) ?>" class="rp-filters">
+            <?php foreach ($form_hidden as $k => $v): if (!is_string($v)) continue; ?>
+            <input type="hidden" name="<?= rp_h($k) ?>" value="<?= rp_h($v) ?>">
+            <?php endforeach; ?>
+
+            <div class="rp-field rp-field-wide">
+                <label class="rp-label" for="rp-search"><i class="fa-solid fa-magnifying-glass"></i>Search</label>
+                <div class="rp-input-icon">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="search" id="rp-search" name="search" class="form-control"
+                           placeholder="Reason, description, username..." value="<?= rp_h($search) ?>">
+                </div>
+            </div>
+            <div class="rp-field">
+                <label class="rp-label" for="rp-type"><i class="fa-solid fa-shapes"></i>Type</label>
+                <select id="rp-type" name="type" class="form-select">
+                    <option value="">All types</option>
+                    <?php foreach (REPORT_TYPES as $v): ?>
+                    <option value="<?= $v ?>" <?= $type === $v ? 'selected' : '' ?>><?= getTypeLabel($v) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php if ($mode === 'list'): ?>
+            <div class="rp-field">
+                <label class="rp-label" for="rp-status"><i class="fa-solid fa-signal"></i>Status</label>
+                <select id="rp-status" name="status" class="form-select">
+                    <option value="">Any status</option>
+                    <option value="pending"  <?= $status === 'pending'  ? 'selected' : '' ?>>Pending</option>
+                    <option value="resolved" <?= $status === 'resolved' ? 'selected' : '' ?>>Resolved</option>
+                </select>
+            </div>
+            <?php endif; ?>
+            <div class="rp-field">
+                <label class="rp-label" for="rp-priority"><i class="fa-solid fa-fire"></i>Priority</label>
+                <select id="rp-priority" name="priority" class="form-select">
+                    <option value="">Any priority</option>
+                    <option value="high" <?= $priority === 'high' ? 'selected' : '' ?>>High only</option>
+                </select>
+            </div>
+            <div class="rp-field rp-field-actions">
+                <button type="submit" class="rp-btn rp-btn-solid rp-tone-primary">
+                    <i class="fa-solid fa-filter"></i><span>Apply</span>
+                </button>
+                <?php if ($has_filters): ?>
+                <?= rp_link_button($_this_script_ . '&action=' . $mode, 'Reset filters', 'fa-rotate-left', 'secondary', ['small' => false, 'icon_only' => true]) ?>
+                <?php endif; ?>
+            </div>
+        </form>
+    </section>
+
+    <section class="rp-card">
+        <?= rp_card_head(
+            $icon,
+            $tone,
+            rp_h($title) . ' <span class="rp-count rp-count-soft">' . number_format($total) . '</span>',
+            rp_link_button($_this_script_ . '&' . http_build_query($export_params), 'Export CSV', 'fa-file-csv', 'secondary'),
+            $has_filters ? 'Filtered view' : ''
+        ) ?>
+
+        <?php if ($total > 0 && $result): ?>
+        <div class="rp-scroll">
+            <table class="rp-table">
+                <thead>
+                    <tr>
+                        <th><i class="fa-solid fa-hashtag"></i>ID</th>
+                        <th><i class="fa-solid fa-shapes"></i>Type</th>
+                        <th><i class="fa-solid fa-triangle-exclamation"></i>Reason</th>
+                        <th><i class="fa-solid fa-user-pen"></i>Reporter</th>
+                        <th><i class="fa-solid fa-user-xmark"></i>Reported user</th>
+                        <th><i class="fa-solid fa-calendar-day"></i><?= $mode === 'resolved' ? 'Resolved' : 'Filed' ?></th>
+                        <th><i class="fa-solid fa-signal"></i>Status</th>
+                        <th class="rp-th-actions"><i class="fa-solid fa-gavel"></i>Actions</th>
+                    </tr>
                 </thead>
                 <tbody>
-                <?php while ($row = $db->fetch_array($result)): ?>
-                <tr>
-                    <td>#<?= $row['id'] ?></td>
-                    <td><span class="badge bg-<?= getTypeColor($row['type']) ?>"><?= ucfirst($row['type']) ?></span></td>
-                    <td><?= htmlspecialchars(truncateString($row['reason'], 30)) ?></td>
-                    <td><?= htmlspecialchars($row['reporter_name'] ?? 'User #' . $row['addedby']) ?></td>
-                    <td><?= htmlspecialchars($row['reported_user_name'] ?? 'User #' . $row['reported_user_id']) ?></td>
-                    <td><?= date('Y-m-d H:i', (int)$row['added']) ?></td>
+                <?php while ($row = $db->fetch_array($result)):
+                    $rid         = (int)$row['id'];
+                    $done        = (bool)$row['dealtwith'];
+                    $reason_data = get_report_reasons_map((string)$row['type'])[$row['reason']] ?? null;
+                    $sev         = $reason_data['severity'] ?? 'unknown';
+                    $ts          = $mode === 'resolved' ? $row['updated_at'] : $row['added'];
+                ?>
+                <tr class="<?= $done ? 'rp-row-done' : 'rp-sev-' . $sev ?>">
+                    <td><a class="rp-id" href="<?= rp_h($_this_script_) ?>&amp;action=view&amp;id=<?= $rid ?>">#<?= $rid ?></a></td>
+                    <td><?= rp_type_chip((string)$row['type']) ?></td>
                     <td>
-                        <div class="btn-group btn-group-sm">
-                            <a href="<?= $_this_script_ ?>&action=view&id=<?= $row['id'] ?>" class="btn btn-outline-primary"><i class="fa-solid fa-eye"></i></a>
-                            <a href="<?= $_this_script_ ?>&action=takeaction&do=resolve&id=<?= $row['id'] ?>" class="btn btn-outline-success"><i class="fa-solid fa-check"></i></a>
+                        <div class="rp-reason-cell">
+                            <?= rp_reason_chip($reason_data, (string)$row['reason'], 26) ?>
+                            <?php if ($sev === 'high' && !$done): ?>
+                            <span class="rp-dot" title="High priority" aria-label="High priority"></span>
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                    <td><?= rp_user_cell((int)$row['addedby'], $row['reporter_name'] ?? null, 'info', 'Guest') ?></td>
+                    <td><?= rp_user_cell((int)$row['reported_user_id'], $row['reported_user_name'] ?? null, 'danger', 'None', 'fa-minus') ?></td>
+                    <td class="rp-nowrap" title="<?= date('Y-m-d H:i', (int)$ts) ?>">
+                        <i class="fa-solid fa-clock rp-muted me-1"></i><?= my_datee('relative', $ts) ?>
+                    </td>
+                    <td>
+                        <?= renderStatusBadge($done) ?>
+                        <?php if ($done && !empty($row['dealtby_name'])): ?>
+                        <div class="rp-sub"><i class="fa-solid fa-user-shield me-1"></i><?= rp_h($row['dealtby_name']) ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <div class="rp-row-actions">
+                            <?= rp_link_button($_this_script_ . '&action=view&id=' . $rid, 'View details', 'fa-eye', 'primary', ['icon_only' => true]) ?>
+                            <?php if (!$done): ?>
+                            <?= rp_action_button('resolve', $rid, [
+                                'return' => $mode, 'label' => 'Mark as resolved', 'icon' => 'fa-check', 'tone' => 'success',
+                                'icon_only' => true, 'btn_class' => 'resolve-report',
+                            ]) ?>
+                            <?php endif; ?>
+                            <?= rp_action_button('delete', $rid, [
+                                'return' => $mode, 'label' => 'Delete report', 'icon' => 'fa-trash-can', 'tone' => 'danger',
+                                'icon_only' => true, 'ajax' => true, 'btn_class' => 'delete-report',
+                                'confirm' => ['title' => 'Delete report #' . $rid . '?', 'text' => 'This cannot be undone.', 'btn' => 'Delete', 'variant' => 'danger'],
+                            ]) ?>
                         </div>
                     </td>
                 </tr>
@@ -730,188 +1127,174 @@ function showPendingReports(): void
                 </tbody>
             </table>
         </div>
-        <?php else: ?>
-        <div class="card-body text-center text-success py-5">
-            <i class="fa-solid fa-check-circle fa-3x mb-3"></i>
-            <h5>No pending reports!</h5>
-            <p class="mb-0">All reports have been resolved.</p>
+
+        <?php if ($total > $perpage): ?>
+        <div class="rp-card-foot">
+            <?php renderPagination($page, $total, $perpage, ['action' => $mode] + $filter_params); ?>
         </div>
         <?php endif; ?>
-    </div>
+
+        <?php elseif ($mode === 'pending' && !$has_filters): ?>
+            <?= rp_empty('fa-mug-hot', 'success', 'Inbox zero', 'Every report has been handled. Nice work.') ?>
+        <?php else: ?>
+            <?= rp_empty('fa-inbox', 'secondary', 'No reports found',
+                $has_filters ? 'Nothing matches these filters.' : 'There is nothing here yet.',
+                $has_filters ? rp_link_button($_this_script_ . '&action=' . $mode, 'Clear filters', 'fa-rotate-left', 'primary') : '') ?>
+        <?php endif; ?>
+    </section>
     <?php
     if ($result) $db->free_result($result);
 }
 
-function showResolvedReports(): void
+function renderPagination(int $page, int $total, int $perpage, array $extra_params): void
 {
-    global $db, $_this_script_;
+    global $_this_script_;
 
-    $result = $db->sql_query_prepared(
-        "SELECT r.*, u1.username AS reporter_name, u2.username AS reported_user_name, u3.username AS dealtby_name
-         FROM reports r
-         LEFT JOIN users u1 ON r.addedby = u1.id
-         LEFT JOIN users u2 ON r.reported_user_id = u2.id
-         LEFT JOIN users u3 ON r.dealtby = u3.id
-         WHERE r.dealtwith = 1
-         ORDER BY r.updated_at DESC LIMIT 50"
-    );
+    $totalPages = (int)ceil($total / $perpage);
+    $base       = $_this_script_ . '&' . http_build_query($extra_params) . '&page=';
 
-    ?>
-    <div class="card">
-        <div class="card-header"><h5 class="mb-0">Resolved Reports</h5></div>
-        <?php if ($result && $db->num_rows($result) > 0): ?>
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-success">
-                    <tr><th>ID</th><th>Type</th><th>Reason</th><th>Reporter</th><th>Reported User</th><th>Resolved By</th><th>Date Resolved</th><th>Actions</th></tr>
-                </thead>
-                <tbody>
-                <?php while ($row = $db->fetch_array($result)): ?>
-                <tr>
-                    <td>#<?= $row['id'] ?></td>
-                    <td><span class="badge bg-<?= getTypeColor($row['type']) ?>"><?= ucfirst($row['type']) ?></span></td>
-                    <td><?= htmlspecialchars(truncateString($row['reason'], 25)) ?></td>
-                    <td><?= htmlspecialchars($row['reporter_name'] ?? 'User #' . $row['addedby']) ?></td>
-                    <td><?= htmlspecialchars($row['reported_user_name'] ?? 'User #' . $row['reported_user_id']) ?></td>
-                    <td><?= htmlspecialchars($row['dealtby_name'] ?? '') ?></td>
-                    <td><?= date('Y-m-d H:i', (int)$row['updated_at']) ?></td>
-                    <td>
-                        <a href="<?= $_this_script_ ?>&action=view&id=<?= $row['id'] ?>" class="btn btn-sm btn-outline-primary">
-                            <i class="fa-solid fa-eye"></i> View
-                        </a>
-                    </td>
-                </tr>
-                <?php endwhile; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php else: ?>
-        <div class="card-body text-center text-muted py-5">
-            <i class="fa-solid fa-inbox fa-3x mb-3"></i>
-            <h5>No resolved reports found</h5>
-        </div>
-        <?php endif; ?>
-    </div>
-    <?php
-    if ($result) $db->free_result($result);
+    $link = static fn(int $p, string $inner, string $label = '') =>
+        '<a href="' . rp_h($base . $p) . '"' . ($label !== '' ? ' aria-label="' . $label . '"' : '') . '>' . $inner . '</a>';
+
+    echo '<nav class="rp-pager" aria-label="Pagination">';
+
+    if ($page > 1) {
+        echo $link($page - 1, '<i class="fa-solid fa-chevron-left"></i>', 'Previous page');
+    }
+
+    $from = max(1, $page - 2);
+    $to   = min($totalPages, $page + 2);
+
+    if ($from > 1) {
+        echo $link(1, '1');
+        if ($from > 2) echo '<span class="rp-pager-gap">&hellip;</span>';
+    }
+
+    for ($i = $from; $i <= $to; $i++) {
+        echo $i === $page
+            ? '<span class="is-active" aria-current="page">' . $i . '</span>'
+            : $link($i, (string)$i);
+    }
+
+    if ($to < $totalPages) {
+        if ($to < $totalPages - 1) echo '<span class="rp-pager-gap">&hellip;</span>';
+        echo $link($totalPages, (string)$totalPages);
+    }
+
+    if ($page < $totalPages) {
+        echo $link($page + 1, '<i class="fa-solid fa-chevron-right"></i>', 'Next page');
+    }
+
+    echo '</nav>';
 }
 
 function showStatistics(): void
 {
     global $db, $_this_script_;
 
-    $thirty_days_ago = time() - (30 * 24 * 60 * 60);
+    $thirty_days_ago = TIMENOW - 30 * DAY_IN_SECONDS;
 
     $stats_result = $db->sql_query_prepared(
         "SELECT COUNT(*) AS total,
-                SUM(CASE WHEN dealtwith = 1 THEN 1 ELSE 0 END) AS resolved,
-                SUM(CASE WHEN dealtwith = 0 THEN 1 ELSE 0 END) AS pending,
+                COALESCE(SUM(dealtwith = 1), 0) AS resolved,
+                COALESCE(SUM(dealtwith = 0), 0) AS pending,
                 COUNT(DISTINCT addedby) AS unique_reporters,
                 COUNT(DISTINCT reported_user_id) AS unique_reported_users
          FROM reports WHERE added > ?",
         [$thirty_days_ago]
     );
 
-    $stats = $stats_result
-        ? $db->fetch_array($stats_result)
-        : ['total' => 0, 'resolved' => 0, 'pending' => 0, 'unique_reporters' => 0, 'unique_reported_users' => 0];
+    $stats = array_map('intval', array_merge(
+        ['total' => 0, 'resolved' => 0, 'pending' => 0, 'unique_reporters' => 0, 'unique_reported_users' => 0],
+        ($stats_result ? $db->fetch_array($stats_result) : null) ?: []
+    ));
+
+    $rate = $stats['total'] > 0 ? (int)round($stats['resolved'] / $stats['total'] * 100) : 0;
 
     $type_stats_result = $db->sql_query_prepared(
-        "SELECT type, COUNT(*) AS count, SUM(CASE WHEN dealtwith = 1 THEN 1 ELSE 0 END) AS resolved
+        "SELECT type, COUNT(*) AS count, COALESCE(SUM(dealtwith = 1), 0) AS resolved
          FROM reports WHERE added > ? GROUP BY type ORDER BY count DESC",
         [$thirty_days_ago]
     );
 
     $top_reported_result = $db->sql_query_prepared(
-        "SELECT reported_user_id, u.username, COUNT(*) AS report_count
+        "SELECT r.reported_user_id, MAX(u.username) AS username, COUNT(*) AS report_count
          FROM reports r LEFT JOIN users u ON r.reported_user_id = u.id
-         WHERE reported_user_id > 0 GROUP BY reported_user_id ORDER BY report_count DESC LIMIT 10"
+         WHERE r.reported_user_id > 0 GROUP BY r.reported_user_id ORDER BY report_count DESC LIMIT 10"
     );
 
     $top_reporters_result = $db->sql_query_prepared(
-        "SELECT addedby, u.username, COUNT(*) AS report_count
+        "SELECT r.addedby, MAX(u.username) AS username, COUNT(*) AS report_count
          FROM reports r LEFT JOIN users u ON r.addedby = u.id
-         WHERE addedby > 0 GROUP BY addedby ORDER BY report_count DESC LIMIT 10"
+         WHERE r.addedby > 0 GROUP BY r.addedby ORDER BY report_count DESC LIMIT 10"
     );
 
     ?>
-    <div class="row">
-        <?php foreach ([
-            ['primary', 'Total Reports (30 days)', $stats['total']            ?? 0],
-            ['success', 'Resolved',                $stats['resolved']         ?? 0],
-            ['warning', 'Pending',                 $stats['pending']          ?? 0],
-            ['info',    'Unique Reporters',        $stats['unique_reporters'] ?? 0],
-        ] as [$color, $label, $value]): ?>
-        <div class="col-md-3 mb-4">
-            <div class="card bg-<?= $color ?> text-<?= $color === 'warning' ? 'dark' : 'white' ?>">
-                <div class="card-body text-center py-4">
-                    <div class="display-5 fw-bold"><?= $value ?></div>
-                    <div><?= $label ?></div>
-                </div>
-            </div>
-        </div>
-        <?php endforeach; ?>
+    <div class="rp-kpis">
+        <?= rp_kpi('primary', 'fa-flag',          $stats['total'],            'Reports in 30 days') ?>
+        <?= rp_kpi('success', 'fa-circle-check',  $stats['resolved'],         'Resolved', null, $rate . '% resolution rate') ?>
+        <?= rp_kpi('warning', 'fa-clock',         $stats['pending'],          'Still pending', $_this_script_ . '&action=pending') ?>
+        <?= rp_kpi('info',    'fa-users',         $stats['unique_reporters'], 'Unique reporters', null, $stats['unique_reported_users'] . ' users reported') ?>
     </div>
 
-    <div class="row">
-        <div class="col-md-6 mb-4">
-            <div class="card">
-                <div class="card-header"><h6 class="mb-0"><i class="fa-solid fa-chart-pie me-2"></i>Reports by Type (30 days)</h6></div>
-                <div class="card-body">
-                    <?php if ($type_stats_result && $db->num_rows($type_stats_result) > 0): ?>
-                    <table class="table table-sm">
-                        <thead><tr><th>Type</th><th>Total</th><th>Resolved</th><th>Pending</th><th>% Resolved</th></tr></thead>
-                        <tbody>
-                        <?php while ($row = $db->fetch_array($type_stats_result)):
-                            $pending = (int)$row['count'] - (int)$row['resolved'];
-                            $percent = $row['count'] > 0 ? round(((int)$row['resolved'] / (int)$row['count']) * 100) : 0;
-                        ?>
-                        <tr>
-                            <td><span class="badge bg-<?= getTypeColor($row['type']) ?>"><?= ucfirst($row['type']) ?></span></td>
-                            <td><?= $row['count'] ?></td>
-                            <td><span class="text-success"><?= $row['resolved'] ?></span></td>
-                            <td><span class="text-warning"><?= $pending ?></span></td>
-                            <td>
-                                <div class="progress" style="height:20px">
-                                    <div class="progress-bar bg-success" style="width:<?= $percent ?>%"><?= $percent ?>%</div>
-                                </div>
-                            </td>
-                        </tr>
-                        <?php endwhile; ?>
-                        </tbody>
-                    </table>
-                    <?php else: ?><p class="text-muted text-center">No type statistics available</p><?php endif; ?>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <section class="rp-card h-100">
+                <?= rp_card_head('fa-chart-pie', 'primary', 'Reports by type', '', 'Last 30 days') ?>
+                <div class="rp-card-body">
+                <?php if ($type_stats_result && $db->num_rows($type_stats_result) > 0): ?>
+                    <ul class="rp-typebars">
+                    <?php while ($row = $db->fetch_array($type_stats_result)):
+                        $count    = (int)$row['count'];
+                        $resolved = (int)$row['resolved'];
+                        $pending  = $count - $resolved;
+                        $percent  = $count > 0 ? (int)round($resolved / $count * 100) : 0;
+                    ?>
+                        <li>
+                            <div class="rp-typebar-top">
+                                <?= rp_type_chip((string)$row['type']) ?>
+                                <span class="rp-typebar-nums">
+                                    <span title="Total"><i class="fa-solid fa-layer-group"></i><?= $count ?></span>
+                                    <span class="rp-fg-success" title="Resolved"><i class="fa-solid fa-check"></i><?= $resolved ?></span>
+                                    <span class="rp-fg-warning" title="Pending"><i class="fa-solid fa-clock"></i><?= $pending ?></span>
+                                </span>
+                            </div>
+                            <div class="rp-bar" role="progressbar" aria-valuenow="<?= $percent ?>" aria-valuemin="0" aria-valuemax="100">
+                                <span style="width:<?= $percent ?>%"></span>
+                            </div>
+                            <div class="rp-sub"><?= $percent ?>% resolved</div>
+                        </li>
+                    <?php endwhile; ?>
+                    </ul>
+                <?php else: ?>
+                    <?= rp_empty('fa-chart-pie', 'secondary', 'No data for this period') ?>
+                <?php endif; ?>
                 </div>
-            </div>
+            </section>
         </div>
 
-        <div class="col-md-6 mb-4">
-            <?= renderTopUsersTable($top_reported_result, 'Most Reported Users', 'reported_user_id', 'fa-user-slash', 'danger') ?>
+        <div class="col-lg-6">
+            <?= renderTopUsersTable($top_reported_result, 'Most reported users', 'reported_user_id', 'fa-user-slash', 'danger') ?>
         </div>
-    </div>
 
-    <div class="row">
-        <div class="col-md-6">
-            <?= renderTopUsersTable($top_reporters_result, 'Top Reporters', 'addedby', 'fa-user-check', 'info') ?>
+        <div class="col-lg-6">
+            <?= renderTopUsersTable($top_reporters_result, 'Top reporters', 'addedby', 'fa-user-check', 'info') ?>
         </div>
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header"><h6 class="mb-0"><i class="fa-solid fa-bolt me-2"></i>Quick Actions</h6></div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        <a href="<?= $_this_script_ ?>&action=pending" class="btn btn-warning">
-                            <i class="fa-solid fa-clock me-2"></i>View Pending Reports
-                        </a>
-                        <a href="<?= $_this_script_ ?>&action=list&export=csv" class="btn btn-secondary">
-                            <i class="fa-solid fa-file-export me-2"></i>Export All Reports (CSV)
-                        </a>
-                        <button class="btn btn-danger"
-                                onclick="if(confirm('Clear all resolved reports?')) location.href='<?= htmlspecialchars($_this_script_) ?>&action=takeaction&do=clearold'">
-                            <i class="fa-solid fa-broom me-2"></i>Clear Old Resolved Reports
-                        </button>
-                    </div>
+
+        <div class="col-lg-6">
+            <section class="rp-card h-100">
+                <?= rp_card_head('fa-bolt', 'warning', 'Quick actions') ?>
+                <div class="rp-card-body rp-stack">
+                    <?= rp_link_button($_this_script_ . '&action=pending', 'Review pending reports', 'fa-clock', 'warning', ['small' => false, 'class' => 'rp-btn-block']) ?>
+                    <?= rp_link_button($_this_script_ . '&action=pending&priority=high', 'High priority only', 'fa-fire', 'danger', ['small' => false, 'class' => 'rp-btn-block']) ?>
+                    <?= rp_link_button($_this_script_ . '&export=csv', 'Export all reports (CSV)', 'fa-file-csv', 'secondary', ['small' => false, 'class' => 'rp-btn-block']) ?>
+                    <?= rp_action_button('clearold', 0, [
+                        'return' => 'stats', 'label' => 'Clear resolved reports older than 30 days', 'icon' => 'fa-broom',
+                        'tone' => 'danger', 'small' => false, 'btn_class' => 'rp-btn-block', 'class' => 'rp-block-form',
+                        'confirm' => ['title' => 'Clear old resolved reports?', 'text' => 'Resolved reports older than 30 days will be deleted permanently.', 'btn' => 'Clear them', 'variant' => 'danger'],
+                    ]) ?>
                 </div>
-            </div>
+            </section>
         </div>
     </div>
     <?php
@@ -920,39 +1303,39 @@ function showStatistics(): void
     }
 }
 
-function renderTopUsersTable($result, string $title, string $id_field, string $icon, string $badge_color): string
+function renderTopUsersTable($result, string $title, string $id_field, string $icon, string $tone): string
 {
     global $db, $_this_script_;
 
     ob_start(); ?>
-    <div class="card">
-        <div class="card-header"><h6 class="mb-0"><i class="fa-solid <?= $icon ?> me-2"></i><?= $title ?></h6></div>
-        <div class="card-body">
-            <?php if ($result && $db->num_rows($result) > 0): ?>
-            <table class="table table-sm">
-                <thead><tr><th>User</th><th>Count</th><th>Actions</th></tr></thead>
-                <tbody>
-                <?php while ($row = $db->fetch_array($result)): ?>
-                <tr>
-                    <td><a href="user-<?= $row[$id_field] ?>.html" target="_blank"><?= htmlspecialchars($row['username'] ?? 'User #' . $row[$id_field]) ?></a></td>
-                    <td><span class="badge bg-<?= $badge_color ?>"><?= $row['report_count'] ?></span></td>
-                    <td><a href="<?= $_this_script_ ?>&action=list&search=<?= urlencode($row['username'] ?? '') ?>" class="btn btn-sm btn-outline-primary">View Reports</a></td>
-                </tr>
-                <?php endwhile; ?>
-                </tbody>
-            </table>
-            <?php else: ?><p class="text-muted text-center">No data available</p><?php endif; ?>
+    <section class="rp-card h-100">
+        <?= rp_card_head($icon, $tone, rp_h($title), '', 'All time, top 10') ?>
+        <div class="rp-card-body">
+        <?php if ($result && $db->num_rows($result) > 0): ?>
+            <ol class="rp-rank">
+            <?php $n = 0; while ($row = $db->fetch_array($result)): $n++; ?>
+                <li>
+                    <span class="rp-rank-n"><?= $n ?></span>
+                    <span class="rp-rank-user"><?= rp_user_cell((int)$row[$id_field], $row['username'] ?? null, $tone, 'Unknown') ?></span>
+                    <span class="rp-chip rp-tone-<?= $tone ?>"><i class="fa-solid fa-flag"></i><?= (int)$row['report_count'] ?></span>
+                    <?= rp_link_button($_this_script_ . '&action=list&search=' . urlencode((string)($row['username'] ?? '')), 'Show reports', 'fa-magnifying-glass', 'primary', ['icon_only' => true]) ?>
+                </li>
+            <?php endwhile; ?>
+            </ol>
+        <?php else: ?>
+            <?= rp_empty('fa-users', 'secondary', 'No data yet') ?>
+        <?php endif; ?>
         </div>
-    </div>
-    <?php return ob_get_clean();
+    </section>
+    <?php return (string)ob_get_clean();
 }
 
 function showReportDetails(int $report_id): void
 {
-    global $db, $_this_script_;
+    global $db, $_this_script_, $BASEURL;
 
     if ($report_id <= 0) {
-        echo '<div class="alert alert-danger">Invalid report ID</div>';
+        echo '<section class="rp-card">' . rp_empty('fa-circle-exclamation', 'danger', 'Invalid report ID') . '</section>';
         return;
     }
 
@@ -971,504 +1354,352 @@ function showReportDetails(int $report_id): void
          LEFT JOIN users u3     ON r.dealtby = u3.id
          LEFT JOIN torrents t   ON r.type = 'torrent'   AND r.reported_id = t.id
          LEFT JOIN comments c   ON r.type = 'comment'   AND r.reported_id = c.id
-         LEFT JOIN forums f ON r.type = 'forumpost' AND r.forum_id = f.fid
-         LEFT JOIN threads th ON r.type = 'forumpost' AND r.thread_id = th.tid
+         LEFT JOIN forums f     ON r.type = 'forumpost' AND r.forum_id = f.fid
+         LEFT JOIN threads th   ON r.type = 'forumpost' AND r.thread_id = th.tid
          WHERE r.id = ?",
         [$report_id]
     );
 
-    if (!$result) { echo '<div class="alert alert-danger">Error loading report</div>'; return; }
+    $report = $result ? $db->fetch_array($result) : null;
 
-    $report = $db->fetch_array($result);
+    if (!$report) {
+        echo '<section class="rp-card">' . rp_empty('fa-magnifying-glass', 'secondary', 'Report not found', 'It may have been deleted already.',
+            rp_link_button($_this_script_ . '&action=list', 'Back to reports', 'fa-arrow-left', 'primary')) . '</section>';
+        return;
+    }
 
-    if (!$report) { echo '<div class="alert alert-danger">Report not found</div>'; return; }
+    $rid      = (int)$report['id'];
+    $done     = (bool)$report['dealtwith'];
+    $item_url = rp_item_url($report);
 
     ?>
-    <div class="row">
-        <div class="col-md-8">
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Report Details #<?= $report['id'] ?></h5>
-                    <div class="btn-group">
-                        <?php if (!$report['dealtwith']): ?>
-                        <a href="<?= $_this_script_ ?>&action=takeaction&do=resolve&id=<?= $report['id'] ?>" class="btn btn-success btn-sm">
-                            <i class="fa-solid fa-check me-1"></i> Mark as Resolved
-                        </a>
-                        <?php endif; ?>
-                        <a href="<?= $_this_script_ ?>&action=list" class="btn btn-secondary btn-sm">
-                            <i class="fa-solid fa-arrow-left me-1"></i> Back to List
-                        </a>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <?= renderReportDetails($report) ?>
-                </div>
-            </div>
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <?= renderReportDetails($report) ?>
+            <?php
+            if ($report['type'] === 'forumpost') echo renderForumPostDetails($report);
+            if ($report['type'] === 'user')      echo renderUserReportDetails($report);
+            ?>
         </div>
 
-        <div class="col-md-4">
-            <div class="card mb-4">
-                <div class="card-header"><h6 class="mb-0"><i class="fa-solid fa-cogs me-2"></i>Actions</h6></div>
-                <div class="card-body"><?= renderActionForm($report['id'], $report['type']) ?></div>
+        <div class="col-lg-4">
+            <div class="rp-side">
+                <section class="rp-card rp-mb">
+                    <?= rp_card_head('fa-gavel', 'primary', 'Take action', '', $done ? 'This report is already closed' : 'Pick what to do with it') ?>
+                    <div class="rp-card-body"><?= renderActionForm($rid, (string)$report['type'], (int)$report['reported_user_id'], $done) ?></div>
+                </section>
+                <?php if ((int)$report['reported_user_id'] > 0): ?>
+                <?= renderUserReportStats((int)$report['reported_user_id'], $report['reported_user_name'] ?? null) ?>
+                <?php endif; ?>
             </div>
-            <?php if ($report['reported_user_id']): ?>
-            <?= renderUserReportStats($report['reported_user_id'], $report['reported_user_name']) ?>
-            <?php endif; ?>
         </div>
     </div>
 
+    <div class="rp-actionbar">
+        <span class="rp-actionbar-info">
+            <i class="fa-solid <?= getTypeIcon((string)$report['type']) ?>"></i>
+            Report #<?= $rid ?> is <?= $done ? 'resolved' : 'pending' ?>
+        </span>
+        <?= rp_link_button($_this_script_ . '&action=list', 'Back to list', 'fa-arrow-left', 'secondary', ['small' => false]) ?>
+        <?php if ($item_url): ?>
+        <?= rp_link_button($item_url, 'Open reported item', 'fa-arrow-up-right-from-square', 'primary', ['small' => false, 'blank' => true]) ?>
+        <?php endif; ?>
+        <?php if (!$done): ?>
+        <?= rp_action_button('resolve', $rid, ['return' => 'view', 'label' => 'Mark as resolved', 'icon' => 'fa-check', 'tone' => 'success', 'solid' => true, 'small' => false]) ?>
+        <?php endif; ?>
+        <?= rp_action_button('delete', $rid, [
+            'return' => 'list', 'label' => 'Delete', 'icon' => 'fa-trash-can', 'tone' => 'danger', 'small' => false,
+            'confirm' => ['title' => 'Delete report #' . $rid . '?', 'text' => 'This cannot be undone.', 'btn' => 'Delete', 'variant' => 'danger'],
+        ]) ?>
+    </div>
     <?php
-    if ($report['type'] === 'forumpost') echo renderForumPostDetails($report);
-    if ($report['type'] === 'user')      echo renderUserReportDetails($report);
 
     $db->free_result($result);
 }
 
+function rp_item_url(array $report): ?string
+{
+    global $BASEURL;
+
+    $id = (int)$report['reported_id'];
+
+    return match ($report['type']) {
+        'torrent'   => !empty($report['torrent_name']) ? $BASEURL . '/' . get_torrent_link($id) : null,
+        'comment'   => !empty($report['comment_torrent_id']) ? $BASEURL . '/' . get_comment_link($id, $report['comment_torrent_id']) . '#pid' . $id : null,
+        'forumpost' => !empty($report['thread_db_id']) ? $BASEURL . '/' . get_post_link($id, $report['thread_db_id']) . '#pid' . $id : null,
+        'user'      => (int)$report['reported_user_id'] > 0 ? 'user-' . (int)$report['reported_user_id'] . '.html' : null,
+        default     => null,
+    };
+}
+
 function renderReportDetails(array $report): string
 {
-    global $BASEURL, $parser, $parser_options, $_this_script_;
+    global $parser, $parser_options, $_this_script_;
 
-    $reasons_map = get_report_reasons_map($report['type']);
-    $reason_data = $reasons_map[$report['reason']] ?? null;
+    $type        = (string)$report['type'];
+    $reason_data = get_report_reasons_map($type)[$report['reason']] ?? null;
+    $sev         = $reason_data['severity'] ?? 'unknown';
+    $done        = (bool)$report['dealtwith'];
+    $item_url    = rp_item_url($report);
 
-    $commentlink = $BASEURL . '/' . get_comment_link($report['reported_id'], $report['comment_torrent_id']) . '#pid' . $report['reported_id'];
-    $torrentLink = $BASEURL . '/' . get_torrent_link($report['reported_id']);
-    $adss        = my_datee('relative', $report['added']);
-    $resolveds   = my_datee('relative', $report['updated_at']);
+    [$description, $notes] = rp_split_notes((string)($report['description'] ?? ''));
 
-    ob_start(); ?>
-    <div class="row mb-3">
-        <div class="col-md-6">
-            <h6>Basic Information</h6>
-            <table class="table table-sm">
-                <tr><th width="40%">Report ID:</th><td>#<?= $report['id'] ?></td></tr>
-                <tr>
-                    <th>Type:</th>
-                    <td>
-                        <span class="badge bg-<?= getTypeColor($report['type']) ?>">
-                            <i class="fa-solid <?= getTypeIcon($report['type']) ?> me-1"></i>
-                            <?= ucfirst($report['type']) ?>
-                        </span>
-                    </td>
-                </tr>
-                <tr>
-                    <th>Reported Item ID:</th>
-                    <td>
-                        <?= $report['reported_id'] ?>
-                        <?php if ($report['type'] === 'torrent' && !empty($report['torrent_name'])): ?>
-                        <a href="<?= $torrentLink ?>" class="btn btn-sm btn-outline-primary ms-2">
-                            <i class="fa-solid fa-external-link-alt"></i> View Torrent
-                        </a>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <tr><th>Reason:</th><td><?= renderReasonBadge($reason_data, $report['reason']) ?></td></tr>
-                <tr><th>Status:</th><td><?= renderStatusBadge((bool)$report['dealtwith']) ?></td></tr>
-            </table>
-        </div>
-
-        <div class="col-md-6">
-            <h6>Timestamps</h6>
-            <table class="table table-sm">
-                <tr><th width="40%">Reported:</th><td><?= $adss ?></td></tr>
-                <tr>
-                    <th>IP Address:</th>
-                    <td>
-                        <?= htmlspecialchars($report['ip_address'] ?? '') ?>
-                        <?php if (!empty($report['ip_address'])): ?>
-                        <a href="<?= $_this_script_ ?>&action=iplookup&ip=<?= urlencode($report['ip_address']) ?>" class="btn btn-sm btn-outline-info ms-1">
-                            <i class="fa-solid fa-search"></i>
-                        </a>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php if ($report['dealtwith']): ?>
-                <tr><th>Resolved:</th><td><?= $resolveds ?></td></tr>
-                <?php if ($report['dealtby_name']): ?>
-                <tr><th>Resolved by:</th><td><?= htmlspecialchars($report['dealtby_name']) ?></td></tr>
-                <?php endif; ?>
-                <?php endif; ?>
-            </table>
-        </div>
-    </div>
-
-    <?php if ($reason_data): ?>
-    <?= renderPriorityAlert($reason_data, $report) ?>
-    <?php endif; ?>
-
-    <div class="row mb-3">
-        <div class="col-md-6">
-            <h6>Reporter Information</h6>
-            <table class="table table-sm">
-                <tr>
-                    <th width="40%">Username:</th>
-                    <td>
-                        <?php if ($report['addedby']): ?>
-                        <a href="user-<?= $report['addedby'] ?>.html" target="_blank">
-                            <?= htmlspecialchars($report['reporter_name'] ?? 'User #' . $report['addedby']) ?>
-                        </a>
-                        <?php else: ?><span class="text-muted">Guest</span><?php endif; ?>
-                    </td>
-                </tr>
-                <tr><th>User ID:</th><td><?= $report['addedby'] ?: 'N/A' ?></td></tr>
-                <?php if (!empty($report['reporter_email'])): ?>
-                <tr><th>Email:</th><td><a href="mailto:<?= htmlspecialchars($report['reporter_email']) ?>"><?= htmlspecialchars($report['reporter_email']) ?></a></td></tr>
-                <?php endif; ?>
-            </table>
-        </div>
-
-        <div class="col-md-6">
-            <h6>Reported User</h6>
-            <table class="table table-sm">
-                <?php if ($report['reported_user_id']): ?>
-                <tr>
-                    <th width="40%">Username:</th>
-                    <td>
-                        <a href="user-<?= $report['reported_user_id'] ?>.html" target="_blank">
-                            <?= htmlspecialchars($report['reported_user_name'] ?? 'User #' . $report['reported_user_id']) ?>
-                        </a>
-                    </td>
-                </tr>
-                <tr><th>User ID:</th><td><?= $report['reported_user_id'] ?></td></tr>
-                <?php if (!empty($report['reported_user_email'])): ?>
-                <tr><th>Email:</th><td><a href="mailto:<?= htmlspecialchars($report['reported_user_email']) ?>"><?= htmlspecialchars($report['reported_user_email']) ?></a></td></tr>
-                <?php endif; ?>
-                <?php else: ?>
-                <tr><td colspan="2" class="text-muted text-center">No user information available</td></tr>
-                <?php endif; ?>
-            </table>
-        </div>
-    </div>
-
-    <h6>Report Description</h6>
-    <div class="card bg-light mb-3">
-        <div class="card-body">
-            <?php if (!empty($report['description'])): ?>
-            <?= $parser->parse_message($report['description'], $parser_options) ?>
-            <?php else: ?><span class="text-muted">No additional details provided</span><?php endif; ?>
-        </div>
-    </div>
-
-    <?php if ($report['type'] === 'comment' && !empty($report['comment_text'])): ?>
-    <?= renderCommentContent($report, $reason_data, $commentlink) ?>
-    <?php endif; ?>
-
-    <?php return ob_get_clean();
-}
-
-function renderReasonBadge(?array $reason_data, string $raw_reason): string
-{
-    if (!$reason_data) {
-        return '<span class="badge bg-secondary"><i class="fa-solid fa-question me-1"></i>' . htmlspecialchars($raw_reason) . '</span>';
-    }
-
-    $sev_color = match ($reason_data['severity']) {
-        'high'   => 'danger',
-        'medium' => 'warning',
-        'low'    => 'info',
-        default  => 'secondary',
+    // Reported item
+    $item_label = match ($type) {
+        'torrent'   => !empty($report['torrent_name']) ? $report['torrent_name'] : 'Torrent #' . $report['reported_id'] . ' (deleted)',
+        'comment'   => 'Comment #' . $report['reported_id'] . (empty($report['comment_text']) ? ' (deleted)' : ''),
+        'forumpost' => !empty($report['thread_subject']) ? $report['thread_subject'] : 'Post #' . $report['reported_id'],
+        'user'      => $report['reported_user_name'] ?? ('User #' . $report['reported_id']),
+        default     => '#' . $report['reported_id'],
     };
+    $item_html = $item_url
+        ? '<a href="' . rp_h($item_url) . '" target="_blank" rel="noopener">' . rp_h($item_label) . ' <i class="fa-solid fa-arrow-up-right-from-square rp-ext"></i></a>'
+        : rp_h($item_label);
+
+    $reporter_html = rp_user_cell((int)$report['addedby'], $report['reporter_name'] ?? null, 'info', 'Guest')
+        . (!empty($report['reporter_email']) ? '<div class="rp-sub"><i class="fa-solid fa-envelope me-1"></i><a href="mailto:' . rp_h($report['reporter_email']) . '">' . rp_h($report['reporter_email']) . '</a></div>' : '');
+
+    $reported_html = rp_user_cell((int)$report['reported_user_id'], $report['reported_user_name'] ?? null, 'danger', 'No user attached', 'fa-minus')
+        . (!empty($report['reported_user_email']) ? '<div class="rp-sub"><i class="fa-solid fa-envelope me-1"></i><a href="mailto:' . rp_h($report['reported_user_email']) . '">' . rp_h($report['reported_user_email']) . '</a></div>' : '');
+
+    $filed_html = my_datee('relative', $report['added']) . '<div class="rp-sub">' . date('Y-m-d H:i', (int)$report['added']) . '</div>';
+
+    $ip_html = !empty($report['ip_address'])
+        ? '<code class="rp-code">' . rp_h($report['ip_address']) . '</code> '
+          . rp_link_button($_this_script_ . '&action=iplookup&ip=' . urlencode((string)$report['ip_address']), 'Look up IP', 'fa-magnifying-glass-location', 'info', ['icon_only' => true])
+        : '<span class="rp-muted">Not recorded</span>';
 
     ob_start(); ?>
-    <div class="d-flex align-items-center flex-wrap gap-2">
-        <span class="badge <?= $reason_data['color'] ?> text-white px-3 py-2">
-            <i class="fa-solid <?= $reason_data['icon'] ?> me-2"></i>
-            <span class="fw-medium"><?= htmlspecialchars($reason_data['text']) ?></span>
-        </span>
-        <?php if ($reason_data['severity'] !== 'unknown'): ?>
-        <span class="badge bg-<?= $sev_color ?>-subtle text-<?= $sev_color ?> border border-<?= $sev_color ?>">
-            <?= ucfirst($reason_data['severity']) ?> Priority
-        </span>
-        <?php endif; ?>
-        <span class="badge bg-light text-dark border">
-            <i class="fa-solid fa-tag me-1"></i><?= htmlspecialchars($reason_data['category']) ?>
-        </span>
-    </div>
-    <?php return ob_get_clean();
-}
+    <section class="rp-card rp-mb">
+        <?= rp_card_head(
+            getTypeIcon($type),
+            getTypeColor($type),
+            'Report #' . (int)$report['id'],
+            renderStatusBadge($done),
+            rp_h(getTypeLabel($type)) . ' report'
+        ) ?>
+        <div class="rp-card-body">
+            <div class="rp-summary">
+                <?= rp_reason_chip($reason_data, (string)$report['reason']) ?>
+                <?= rp_severity_chip($sev) ?>
+                <?php if ($reason_data): ?>
+                <span class="rp-chip rp-chip-outline rp-tone-secondary"><i class="fa-solid fa-tag"></i><?= rp_h($reason_data['category']) ?></span>
+                <?php endif; ?>
+            </div>
 
-function renderStatusBadge(bool $resolved): string
-{
-    return $resolved
-        ? '<span class="badge bg-success"><i class="fa-solid fa-check me-1"></i>Resolved</span>'
-        : '<span class="badge bg-warning text-dark"><i class="fa-solid fa-clock me-1"></i>Pending</span>';
+            <?php if ($reason_data && !$done): ?>
+            <?= renderPriorityAlert($reason_data, $report) ?>
+            <?php endif; ?>
+
+            <div class="rp-facts">
+                <?= rp_fact('fa-user-pen',   'Reporter',       $reporter_html, 'info') ?>
+                <?= rp_fact('fa-user-xmark', 'Reported user',  $reported_html, 'danger') ?>
+                <?= rp_fact(getTypeIcon($type), 'Reported item', $item_html, getTypeColor($type)) ?>
+                <?= rp_fact('fa-calendar-day', 'Filed',        $filed_html, 'secondary') ?>
+                <?= rp_fact('fa-network-wired', 'Reporter IP', $ip_html, 'secondary') ?>
+                <?php if ($done): ?>
+                <?= rp_fact('fa-user-shield', 'Resolved',
+                    my_datee('relative', $report['updated_at'])
+                    . (!empty($report['dealtby_name']) ? '<div class="rp-sub">by ' . rp_h($report['dealtby_name']) . '</div>' : ''),
+                    'success') ?>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($type !== 'user'): ?>
+            <h3 class="rp-section-title"><i class="fa-solid fa-quote-left"></i>What the reporter wrote</h3>
+            <?php if (trim($description) !== ''): ?>
+            <div class="rp-quote"><?= $parser->parse_message($description, $parser_options) ?></div>
+            <?php else: ?>
+            <div class="rp-quote rp-muted">No details provided.</div>
+            <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if ($notes): ?>
+            <h3 class="rp-section-title"><i class="fa-solid fa-note-sticky"></i>Staff notes</h3>
+            <?php foreach ($notes as $note): ?>
+            <div class="rp-note rp-tone-success"><i class="fa-solid fa-user-shield"></i><div><?= nl2br(rp_h($note)) ?></div></div>
+            <?php endforeach; ?>
+            <?php endif; ?>
+
+            <?php if ($type === 'comment' && !empty($report['comment_text'])): ?>
+            <?= renderCommentContent($report, $reason_data, $item_url) ?>
+            <?php endif; ?>
+        </div>
+    </section>
+    <?php return (string)ob_get_clean();
 }
 
 function renderPriorityAlert(array $reason_data, array $report): string
 {
     $sev      = $reason_data['severity'];
-    $color    = match ($sev) { 'high' => 'danger', 'medium' => 'warning', default => 'info' };
-    $icon     = match ($sev) { 'high' => 'fire',   'medium' => 'clock',   default => 'info-circle' };
-    $headline = match ($sev) { 'high' => '🚨 High Priority Action Required', 'medium' => '⚠️ Medium Priority Review', default => 'ℹ️ Standard Review' };
-    $urgency  = match ($sev) { 'high' => 'Requires immediate attention.', 'medium' => 'Review within 24 hours.', default => 'Review when available.' };
+    $tone     = rp_severity_tone($sev);
+    $headline = match ($sev) { 'high' => 'High priority, act now', 'medium' => 'Medium priority, review within 24 hours', default => 'Standard review' };
 
-    $recommendation = REASON_RECOMMENDATIONS[$report['type']][$report['reason']]
+    $recommendation = $reason_data['recommended_action']
+        ?? REASON_RECOMMENDATIONS[$report['type']][$report['reason']]
         ?? 'Review based on provided information.';
 
-    ob_start(); ?>
-    <div class="alert alert-<?= $color ?> mt-3 mb-3">
-        <div class="d-flex align-items-start">
-            <i class="fa-solid fa-<?= $icon ?> fa-2x me-3 mt-1"></i>
-            <div>
-                <h6 class="alert-heading mb-2"><?= $headline ?></h6>
-                <p class="mb-1"><strong>Recommended Action:</strong> <?= $recommendation ?></p>
-                <p class="mb-0"><strong>Urgency:</strong> <?= $urgency ?></p>
-                <hr class="my-2">
-                <p class="mb-0 small">
-                    <strong>Category:</strong> <?= htmlspecialchars($reason_data['category']) ?>
-                    | <strong>Type:</strong> <?= ucfirst($report['type']) ?>
-                    | <strong>Reported:</strong> <?= date('H:i', (int)$report['added']) ?>
-                </p>
-            </div>
-        </div>
-    </div>
-    <?php return ob_get_clean();
+    return '<div class="rp-callout rp-tone-' . $tone . '">'
+        . '<span class="rp-ico rp-ico-md rp-callout-ico"><i class="fa-solid ' . rp_severity_icon($sev) . '"></i></span>'
+        . '<div><div class="rp-callout-title">' . rp_h($headline) . '</div>'
+        . '<div class="rp-callout-text"><i class="fa-solid fa-lightbulb me-1"></i>' . rp_h($recommendation) . '</div></div></div>';
 }
 
-function renderCommentContent(array $report, ?array $reason_data, string $commentlink): string
+function renderCommentContent(array $report, ?array $reason_data, ?string $commentlink): string
 {
     global $parser, $parser_options, $_this_script_;
 
-    $severity      = $reason_data['severity'] ?? 'low';
-    $header_color  = $severity === 'high' ? 'danger' : 'warning';
-    $delete_class  = in_array($severity, ['high', 'medium'], true) ? 'btn-danger' : 'btn-outline-light';
+    $rid      = (int)$report['id'];
+    $severity = $reason_data['severity'] ?? 'low';
+    $tone     = $severity === 'high' ? 'danger' : 'warning';
 
     ob_start(); ?>
-    <h6>Comment Content</h6>
-    <div class="card border-<?= $header_color ?> mb-3">
-        <div class="card-header bg-<?= $header_color ?> text-white d-flex justify-content-between align-items-center">
-            <span>
-                <i class="fa-solid <?= $reason_data['icon'] ?? 'fa-comment' ?> me-1"></i>
-                Reported Comment<?= $reason_data ? ': ' . $reason_data['text'] : '' ?>
-            </span>
-            <div class="btn-group btn-group-sm">
-                <a href="<?= $commentlink ?>" class="btn btn-outline-light" target="_blank">
-                    <i class="fa-solid fa-external-link-alt me-1"></i> View
-                </a>
-                <a href="<?= $_this_script_ ?>&action=takeaction&do=deletecomment&id=<?= $report['id'] ?>"
-                   class="btn <?= $delete_class ?>" onclick="return confirm('Delete this comment?')">
-                    <i class="fa-solid fa-trash me-1"></i> Delete
-                </a>
-                <?php if ($report['reported_user_id'] && $severity === 'high'): ?>
-                <a href="warn.php?uid=<?= $report['reported_user_id'] ?>&reason=<?= urlencode($reason_data['text'] ?? '') ?>"
-                   class="btn btn-warning" target="_blank">
-                    <i class="fa-solid fa-exclamation-triangle me-1"></i> Warn
-                </a>
-                <?php endif; ?>
-            </div>
-        </div>
-        <div class="card-body">
-            <?= $parser->parse_message($report['comment_text'], $parser_options) ?>
-            <?php if (!empty($report['comment_torrent_id'])): ?>
-            <div class="mt-3">
-                <a href="<?= $commentlink ?>" target="_blank" class="btn btn-sm btn-outline-primary">
-                    <i class="fa-solid fa-external-link-alt me-1"></i> View in Context
-                </a>
-                <a href="<?= $_this_script_ ?>&action=takeaction&do=deletecomment&id=<?= $report['id'] ?>"
-                   class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this comment?')">
-                    <i class="fa-solid fa-trash me-1"></i> Delete Comment
-                </a>
-            </div>
-            <?php endif; ?>
-        </div>
+    <h3 class="rp-section-title"><i class="fa-solid fa-comment-dots"></i>Reported comment</h3>
+    <div class="rp-quote rp-quote-<?= $tone ?>">
+        <?= $parser->parse_message((string)$report['comment_text'], $parser_options) ?>
     </div>
-    <?php return ob_get_clean();
+    <div class="rp-btnrow">
+        <?php if ($commentlink): ?>
+        <?= rp_link_button($commentlink, 'View in context', 'fa-arrow-up-right-from-square', 'primary', ['blank' => true]) ?>
+        <?php endif; ?>
+        <?php if (!$report['dealtwith']): ?>
+        <?= rp_action_button('deletecomment', $rid, [
+            'return' => 'view', 'label' => 'Delete comment', 'icon' => 'fa-trash-can', 'tone' => 'danger',
+            'solid' => in_array($severity, ['high', 'medium'], true),
+            'confirm' => ['title' => 'Delete this comment?', 'text' => 'The comment and its attachments will be removed and the report resolved.', 'btn' => 'Delete comment', 'variant' => 'danger'],
+        ]) ?>
+        <?php endif; ?>
+        <?php if ((int)$report['reported_user_id'] > 0 && $severity === 'high'): ?>
+        <?= rp_link_button('warn.php?uid=' . (int)$report['reported_user_id'] . '&reason=' . urlencode($reason_data['text'] ?? ''), 'Warn author', 'fa-triangle-exclamation', 'warning', ['blank' => true]) ?>
+        <?php endif; ?>
+    </div>
+    <?php return (string)ob_get_clean();
 }
 
 function renderForumPostDetails(array $report): string
 {
-    global $BASEURL, $parser, $parser_options, $_this_script_;
+    global $BASEURL, $parser, $parser_options;
 
     $post_id   = (int)$report['reported_id'];
     $post_data = getForumPostData($post_id, $report);
 
     if (!$post_data) {
-        return '<div class="alert alert-warning mt-4">Forum post data not found (post may have been deleted)</div>';
+        return '<section class="rp-card rp-mb">' . rp_empty('fa-ghost', 'warning', 'Forum post not found', 'The post may have been deleted already.') . '</section>';
     }
 
-    $postlink = $BASEURL . '/' . get_post_link($post_data['pid'], $post_data['thread_id']) . '#pid' . $post_data['pid'];
-    $postdate = my_datee('relative', $post_data['dateline']);
+    $pid       = (int)$post_data['pid'];
+    $postlink  = $BASEURL . '/' . get_post_link($pid, $post_data['thread_id']) . '#pid' . $pid;
+    $rule_code = (string)($post_data['rule_violation'] ?? '');
+    $rule_data = RULES_MAP[$rule_code] ?? null;
 
-    $rule_code = $post_data['rule_violation'] ?? '';
-    $rule_data = isset(RULES_MAP[$rule_code]) ? RULES_MAP[$rule_code] : null;
-
-    $visible_map = [0 => ['Deleted/Hidden', 'danger'], 1 => ['Visible', 'success'], 2 => ['Unapproved', 'warning']];
+    $visible_map = [0 => ['Deleted / hidden', 'danger', 'fa-eye-slash'], 1 => ['Visible', 'success', 'fa-eye'], 2 => ['Awaiting approval', 'warning', 'fa-hourglass-half']];
+    [$vis_text, $vis_tone, $vis_icon] = isset($post_data['visible'])
+        ? ($visible_map[(int)$post_data['visible']] ?? ['Unknown', 'secondary', 'fa-circle-question'])
+        : ['Unknown', 'secondary', 'fa-circle-question'];
 
     ob_start(); ?>
-    <div class="card mt-4 border-success">
-        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-            <h6 class="mb-0"><i class="fa-solid fa-comments me-2"></i> Forum Post Details</h6>
-            <span class="badge bg-light text-dark"><i class="fa-solid fa-hashtag me-1"></i> Post ID: <?= $post_data['pid'] ?></span>
-        </div>
-        <div class="card-body">
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <h6>Post Information</h6>
-                    <table class="table table-sm">
-                        <tr><th width="40%">Post ID:</th><td>#<?= $post_data['pid'] ?></td></tr>
-                        <tr>
-                            <th>Author:</th>
-                            <td>
-                                <a href="user-<?= $post_data['author_id'] ?>.html" target="_blank" class="text-decoration-none">
-                                    <i class="fa-solid fa-user me-1"></i>
-                                    <?= htmlspecialchars($post_data['author_name'] ?? 'Unknown') ?>
-                                </a>
-                            </td>
-                        </tr>
-                        <tr><th>Post Date:</th><td><?= $postdate ?></td></tr>
-                        <?php if (!empty($post_data['subject'])): ?>
-                        <tr><th>Subject:</th><td><strong><?= htmlspecialchars($post_data['subject']) ?></strong></td></tr>
-                        <?php endif; ?>
-                    </table>
-                </div>
-                <div class="col-md-6">
-                    <h6>Forum Information</h6>
-                    <table class="table table-sm">
-                        <tr>
-                            <th width="40%">Forum:</th>
-                            <td>
-                                <a href="forumdisplay.php?fid=<?= $post_data['forum_id'] ?>" target="_blank" class="text-decoration-none">
-                                    <i class="fa-solid fa-comments me-1"></i>
-                                    <?= htmlspecialchars($post_data['forum_name'] ?? 'Unknown Forum') ?>
-                                </a>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th>Thread:</th>
-                            <td>
-                                <a href="showthread.php?tid=<?= $post_data['thread_id'] ?>" target="_blank" class="text-decoration-none">
-                                    <?= htmlspecialchars($post_data['thread_subject'] ?? 'Unknown Thread') ?>
-                                </a>
-                            </td>
-                        </tr>
-                        <tr><th>Thread ID:</th><td><?= $post_data['thread_id'] ?></td></tr>
-                        <?php if ($rule_data): ?>
-                        <tr>
-                            <th>Rule Violation:</th>
-                            <td>
-                                <span class="badge <?= $rule_data['color'] ?> text-white">
-                                    <i class="fa-solid <?= $rule_data['icon'] ?> me-1"></i>
-                                    <?= htmlspecialchars($rule_data['text']) ?>
-                                </span>
-                                <?php if ($rule_code === 'rule_7'): ?>
-                                <small class="text-muted ms-2"><i class="fa-solid fa-circle-info"></i> Posting multiple times in a row</small>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endif; ?>
-                    </table>
-                </div>
-            </div>
-
-            <h6>Post Content</h6>
-            <div class="card border-warning mb-3">
-                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
-                    <span><i class="fa-solid fa-comment-dots me-1"></i> Reported Post Content</span>
-                    <span class="badge bg-dark"><i class="fa-solid fa-eye me-1"></i> Views: <?= (int)$post_data['views'] ?></span>
-                </div>
-                <div class="card-body">
-                    <?php if (!empty($post_data['message'])): ?>
-                    <div class="forum-post-content">
-                        <?= $parser->parse_message($post_data['message'], $parser_options) ?>
-                    </div>
-                    <?php else: ?><div class="text-muted">Post content is empty</div><?php endif; ?>
-                </div>
-            </div>
-
-            <h6>Post Actions</h6>
-            <div class="row g-2">
-                <div class="col-md-6">
-                    <a href="<?= htmlspecialchars($postlink) ?>" target="_blank" class="btn btn-outline-primary w-100">
-                        <i class="fa-solid fa-external-link-alt me-1"></i> View in Forum
-                    </a>
-                </div>
-                <div class="col-md-6">
-                    <div class="dropdown">
-                        <button class="btn btn-outline-danger w-100 dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                            <i class="fa-solid fa-trash me-1"></i> Moderate Post
-                        </button>
-                        <ul class="dropdown-menu w-100">
-                            <li>
-                                <a class="dropdown-item text-danger" href="#"
-                                   onclick="if(confirm('Delete this forum post permanently?')) window.location.href='<?= htmlspecialchars($_this_script_) ?>&action=takeaction&do=deleteforumpost&id=<?= $report['id'] ?>'">
-                                    <i class="fa-solid fa-trash me-2"></i> Delete Post
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item text-warning" href="#"
-                                   onclick="if(confirm('Edit this forum post?')) window.open('editpost.php?pid=<?= $post_data['pid'] ?>', '_blank')">
-                                    <i class="fa-solid fa-edit me-2"></i> Edit Post
-                                </a>
-                            </li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li>
-                                <a class="dropdown-item text-info" href="#"
-                                   onclick="if(confirm('Warn the author of this post?')) window.open('warn.php?uid=<?= $post_data['author_id'] ?>', '_blank')">
-                                    <i class="fa-solid fa-exclamation-triangle me-2"></i> Warn Author
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <?php if (isset($post_data['visible'])): ?>
-            <?php [$vis_text, $vis_color] = $visible_map[(int)$post_data['visible']] ?? ['Unknown', 'secondary']; ?>
-            <div class="alert alert-info mt-3 small">
-                <i class="fa-solid fa-info-circle me-1"></i>
-                <strong>Post Status:</strong> <span class="badge bg-<?= $vis_color ?>"><?= $vis_text ?></span>
+    <section class="rp-card rp-mb">
+        <?= rp_card_head('fa-comments', 'success', 'Forum post #' . $pid,
+            '<span class="rp-chip rp-tone-' . $vis_tone . '"><i class="fa-solid ' . $vis_icon . '"></i>' . $vis_text . '</span>',
+            !empty($post_data['subject']) ? rp_h($post_data['subject']) : '') ?>
+        <div class="rp-card-body">
+            <div class="rp-facts">
+                <?= rp_fact('fa-user', 'Author', rp_user_cell((int)$post_data['author_id'], $post_data['author_name'] ?? null, 'danger', 'Unknown'), 'danger') ?>
+                <?= rp_fact('fa-calendar-day', 'Posted', my_datee('relative', $post_data['dateline']), 'secondary') ?>
+                <?= rp_fact('fa-folder-open', 'Forum',
+                    '<a href="forumdisplay.php?fid=' . (int)$post_data['forum_id'] . '" target="_blank" rel="noopener">' . rp_h($post_data['forum_name'] ?? 'Unknown forum') . '</a>', 'success') ?>
+                <?= rp_fact('fa-comments', 'Thread',
+                    '<a href="showthread.php?tid=' . (int)$post_data['thread_id'] . '" target="_blank" rel="noopener">' . rp_h($post_data['thread_subject'] ?? 'Unknown thread') . '</a>'
+                    . '<div class="rp-sub"><i class="fa-solid fa-eye me-1"></i>' . number_format((int)($post_data['thread_views'] ?? 0)) . ' views</div>', 'success') ?>
+                <?php if ($rule_data): ?>
+                <?= rp_fact('fa-scale-balanced', 'Rule broken',
+                    '<span class="rp-chip rp-tone-' . rp_tone($rule_data['color']) . '"><i class="fa-solid ' . $rule_data['icon'] . '"></i>' . rp_h($rule_data['text']) . '</span>', 'warning') ?>
+                <?php endif; ?>
                 <?php if (!empty($post_data['moderated'])): ?>
-                <br><strong>Moderated:</strong> <?= htmlspecialchars($post_data['moderated']) ?>
+                <?= rp_fact('fa-shield-halved', 'Moderated', rp_h($post_data['moderated']), 'secondary') ?>
                 <?php endif; ?>
             </div>
+
+            <h3 class="rp-section-title"><i class="fa-solid fa-comment-dots"></i>Post content</h3>
+            <?php if (!empty($post_data['message'])): ?>
+            <div class="rp-quote rp-quote-warning"><?= $parser->parse_message((string)$post_data['message'], $parser_options) ?></div>
+            <?php else: ?>
+            <div class="rp-quote rp-muted">The post is empty.</div>
             <?php endif; ?>
+
+            <div class="rp-btnrow">
+                <?= rp_link_button($postlink, 'View in forum', 'fa-arrow-up-right-from-square', 'primary', ['blank' => true]) ?>
+                <?= rp_link_button('editpost.php?pid=' . $pid, 'Edit post', 'fa-pen-to-square', 'secondary', ['blank' => true]) ?>
+                <?php if ((int)$post_data['author_id'] > 0): ?>
+                <?= rp_link_button('warn.php?uid=' . (int)$post_data['author_id'], 'Warn author', 'fa-triangle-exclamation', 'warning', [
+                    'blank' => true,
+                    'confirm' => ['title' => 'Warn the author?', 'text' => 'The warning form opens in a new tab.', 'btn' => 'Open warning form', 'variant' => 'warning'],
+                ]) ?>
+                <?php endif; ?>
+                <?php if (!$report['dealtwith']): ?>
+                <?= rp_action_button('deleteforumpost', (int)$report['id'], [
+                    'return' => 'view', 'label' => 'Delete post', 'icon' => 'fa-trash-can', 'tone' => 'danger', 'solid' => true,
+                    'confirm' => ['title' => 'Delete this forum post?', 'text' => 'The post is removed permanently and the report resolved.', 'btn' => 'Delete post', 'variant' => 'danger'],
+                ]) ?>
+                <?php endif; ?>
+            </div>
         </div>
-    </div>
-    <style>
-    .forum-post-content { max-height: 400px; overflow-y: auto; padding: 15px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6; }
-    .forum-post-content img { max-width: 100%; height: auto; }
-    .forum-post-content pre { background: #2b2b2b; color: #f8f8f2; padding: 10px; border-radius: 3px; overflow-x: auto; }
-    </style>
-    <?php return ob_get_clean();
+    </section>
+    <?php return (string)ob_get_clean();
 }
 
-function renderActionForm(int $report_id, string $report_type): string
+function renderActionForm(int $report_id, string $report_type, int $reported_user_id, bool $done): string
 {
     global $_this_script_;
 
+    $choices = [
+        ['resolve', 'Mark as resolved', 'Close the report, nothing else changes', 'fa-circle-check', 'success',
+            ['title' => 'Resolve this report?', 'icon' => 'question', 'btn' => 'Resolve', 'variant' => 'success']],
+    ];
+
+    if ($report_type === 'forumpost') {
+        $choices[] = ['deleteforumpost', 'Delete forum post', 'Remove the post and resolve', 'fa-trash-can', 'danger',
+            ['title' => 'Delete this forum post?', 'text' => 'This cannot be undone.', 'btn' => 'Delete post', 'variant' => 'danger']];
+    } elseif ($report_type === 'comment') {
+        $choices[] = ['deletecomment', 'Delete comment', 'Remove the comment and resolve', 'fa-trash-can', 'danger',
+            ['title' => 'Delete this comment?', 'text' => 'This cannot be undone.', 'btn' => 'Delete comment', 'variant' => 'danger']];
+    }
+
+    if ($reported_user_id > 0) {
+        $choices[] = ['warn_user', 'Warn reported user', 'Opens the warning form', 'fa-triangle-exclamation', 'warning',
+            ['title' => 'Go to the warning form?', 'icon' => 'question', 'btn' => 'Continue', 'variant' => 'warning']];
+        $choices[] = ['ban_user', 'Ban reported user', 'Opens the ban form', 'fa-ban', 'danger',
+            ['title' => 'Go to the ban form?', 'text' => 'You can still review the details before banning.', 'btn' => 'Continue', 'variant' => 'danger']];
+    }
+
+    $choices[] = ['ignore', 'Ignore report', 'Close it as not actionable', 'fa-eye-slash', 'secondary',
+        ['title' => 'Ignore this report?', 'icon' => 'question', 'btn' => 'Ignore', 'variant' => 'secondary']];
+
     ob_start(); ?>
-    <form method="POST" action="<?= $_this_script_ ?>&action=takeaction&id=<?= $report_id ?>">
+    <form method="post" action="<?= rp_h($_this_script_) ?>&amp;action=takeaction" data-confirm="choice" class="rp-action-form">
+        <input type="hidden" name="my_post_key" value="<?= rp_h(rp_post_key()) ?>">
         <input type="hidden" name="id" value="<?= $report_id ?>">
-        <div class="mb-3">
-            <label class="form-label">Action</label>
-            <select name="do" class="form-select" required>
-                <option value="">Select action...</option>
-                <option value="resolve">Mark as Resolved</option>
-                <?php if ($report_type === 'forumpost'): ?>
-                <option value="deleteforumpost">Delete Forum Post</option>
-                <?php elseif ($report_type === 'comment'): ?>
-                <option value="deletecomment">Delete Comment</option>
-                <?php endif; ?>
-                <option value="warn_user">Warn Reported User</option>
-                <option value="ban_user">Ban Reported User</option>
-                <option value="ignore">Ignore Report</option>
-            </select>
+        <input type="hidden" name="return" value="view">
+
+        <div class="rp-choices" role="radiogroup" aria-label="Action">
+            <?php foreach ($choices as $i => [$value, $label, $hint, $icon, $tone, $confirm]): ?>
+            <label class="rp-choice rp-tone-<?= $tone ?>">
+                <input type="radio" name="do" value="<?= $value ?>" <?= $i === 0 && !$done ? 'checked' : '' ?><?= rp_confirm_attrs($confirm) ?>>
+                <span class="rp-ico rp-ico-sm"><i class="fa-solid <?= $icon ?>"></i></span>
+                <span class="rp-choice-text"><strong><?= rp_h($label) ?></strong><small><?= rp_h($hint) ?></small></span>
+                <i class="fa-solid fa-circle-check rp-choice-mark"></i>
+            </label>
+            <?php endforeach; ?>
         </div>
-        <div class="mb-3">
-            <label class="form-label">Notes (Optional)</label>
-            <textarea name="notes" class="form-control" rows="3" placeholder="Add notes about how this report was handled..."></textarea>
-        </div>
-        <div class="d-grid gap-2">
-            <button type="submit" class="btn btn-primary">
-                <i class="fa-solid fa-check me-1"></i> Apply Action
-            </button>
-            <a href="<?= $_this_script_ ?>&action=takeaction&do=delete&id=<?= $report_id ?>"
-               class="btn btn-outline-danger" onclick="return confirm('Delete this report permanently?')">
-                <i class="fa-solid fa-trash me-1"></i> Delete Report
-            </a>
-        </div>
+
+        <label class="rp-label mt-3" for="rp-notes"><i class="fa-solid fa-note-sticky"></i>Notes (optional)</label>
+        <textarea id="rp-notes" name="notes" class="form-control" rows="3" placeholder="How was this report handled?"></textarea>
+
+        <button type="submit" class="rp-btn rp-btn-solid rp-tone-primary rp-btn-block mt-3">
+            <i class="fa-solid fa-paper-plane"></i><span>Apply action</span>
+        </button>
     </form>
-    <?php return ob_get_clean();
+    <?php return (string)ob_get_clean();
 }
 
 function renderUserReportStats(int $user_id, ?string $username): string
@@ -1477,349 +1708,210 @@ function renderUserReportStats(int $user_id, ?string $username): string
 
     $r = $db->sql_query_prepared(
         "SELECT COUNT(*) AS total_reports,
-                SUM(CASE WHEN dealtwith = 1 THEN 1 ELSE 0 END) AS resolved,
-                SUM(CASE WHEN dealtwith = 0 THEN 1 ELSE 0 END) AS pending
+                COALESCE(SUM(dealtwith = 1), 0) AS resolved,
+                COALESCE(SUM(dealtwith = 0), 0) AS pending
          FROM reports WHERE reported_user_id = ?",
         [$user_id]
     );
 
-    $s = $r ? $db->fetch_array($r) : ['total_reports' => 0, 'resolved' => 0, 'pending' => 0];
+    $s = array_map('intval', array_merge(['total_reports' => 0, 'resolved' => 0, 'pending' => 0], ($r ? $db->fetch_array($r) : null) ?: []));
     if ($r) $db->free_result($r);
 
     ob_start(); ?>
-    <div class="card">
-        <div class="card-header"><h6 class="mb-0"><i class="fa-solid fa-chart-bar me-2"></i>User Report History</h6></div>
-        <div class="card-body">
-            <div class="text-center">
-                <div class="display-6 text-primary"><?= $s['total_reports'] ?></div>
-                <div class="text-muted">Total Reports</div>
+    <section class="rp-card">
+        <?= rp_card_head('fa-clock-rotate-left', 'danger', 'User report history', '', rp_h($username ?? ('User #' . $user_id))) ?>
+        <div class="rp-card-body">
+            <div class="rp-mini">
+                <div class="rp-tone-primary"><strong><?= $s['total_reports'] ?></strong><span><i class="fa-solid fa-flag"></i>Total</span></div>
+                <div class="rp-tone-success"><strong><?= $s['resolved'] ?></strong><span><i class="fa-solid fa-check"></i>Resolved</span></div>
+                <div class="rp-tone-warning"><strong><?= $s['pending'] ?></strong><span><i class="fa-solid fa-clock"></i>Pending</span></div>
             </div>
-            <div class="row mt-3">
-                <div class="col-6 text-center">
-                    <div class="text-success fw-bold"><?= $s['resolved'] ?></div>
-                    <small class="text-muted">Resolved</small>
-                </div>
-                <div class="col-6 text-center">
-                    <div class="text-warning fw-bold"><?= $s['pending'] ?></div>
-                    <small class="text-muted">Pending</small>
-                </div>
-            </div>
-            <div class="mt-3">
-                <a href="<?= $_this_script_ ?>&action=list&search=<?= urlencode($username ?? '') ?>"
-                   class="btn btn-sm btn-outline-primary w-100">
-                    <i class="fa-solid fa-list me-1"></i> View All Reports for this User
-                </a>
-            </div>
+            <?= rp_link_button($_this_script_ . '&action=list&search=' . urlencode($username ?? ''), 'All reports for this user', 'fa-list', 'primary', ['class' => 'rp-btn-block mt-3']) ?>
         </div>
-    </div>
-    <?php return ob_get_clean();
+    </section>
+    <?php return (string)ob_get_clean();
 }
 
 function renderUserReportDetails(array $report): string
 {
-    global $BASEURL, $parser, $parser_options, $_this_script_, $db;
+    global $parser, $parser_options, $_this_script_, $db;
 
     $user_id = (int)$report['reported_user_id'];
+    $rid     = (int)$report['id'];
 
-    $user_result = $db->sql_query_prepared(
-        "SELECT u.*,
-                COUNT(r2.id)                                          AS total_reports,
-                COUNT(CASE WHEN r2.dealtwith = 1 THEN 1 END)         AS resolved_reports,
-                COUNT(CASE WHEN r2.dealtwith = 0 THEN 1 END)         AS pending_reports
-         FROM users u LEFT JOIN reports r2 ON u.id = r2.reported_user_id
-         WHERE u.id = ? GROUP BY u.id",
-        [$user_id]
-    );
+    $user_info = null;
+    $user_result = null;
+    if ($user_id > 0) {
+        $user_result = $db->sql_query_prepared(
+            "SELECT u.*,
+                    COUNT(r2.id)                                  AS total_reports,
+                    COUNT(CASE WHEN r2.dealtwith = 1 THEN 1 END)  AS resolved_reports,
+                    COUNT(CASE WHEN r2.dealtwith = 0 THEN 1 END)  AS pending_reports
+             FROM users u LEFT JOIN reports r2 ON u.id = r2.reported_user_id
+             WHERE u.id = ? GROUP BY u.id",
+            [$user_id]
+        );
+        $user_info = $user_result ? ($db->fetch_array($user_result) ?: null) : null;
+    }
 
-    $user_info = $user_result ? $db->fetch_array($user_result) : null;
-
-    $recent_result = $db->sql_query_prepared(
+    $recent_result = $user_id > 0 ? $db->sql_query_prepared(
         "SELECT r.*, u.username AS reporter_name FROM reports r
          LEFT JOIN users u ON r.addedby = u.id
          WHERE r.reported_user_id = ? AND r.id != ?
          ORDER BY r.added DESC LIMIT 5",
-        [$user_id, $report['id']]
-    );
+        [$user_id, $rid]
+    ) : null;
 
-    $parsed_data = parseUserReportDescription($report['description'] ?? '');
+    [$description] = rp_split_notes((string)($report['description'] ?? ''));
+    $parsed_data   = parseUserReportDescription($description);
+    $main_text     = $parsed_data['formatted_description'] ?: $description;
 
     ob_start(); ?>
-    <?php if ($user_info): ?>
-    <div class="card border-primary mb-4">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h6 class="mb-0"><i class="fa-solid fa-user-circle me-2"></i> User Information</h6>
-            <a href="user-<?= $user_id ?>.html" target="_blank" class="btn btn-sm btn-light">
-                <i class="fa-solid fa-external-link-alt me-1"></i> View Profile
-            </a>
+    <section class="rp-card rp-mb">
+        <?= rp_card_head('fa-file-lines', 'info', 'Report contents', '', 'Submitted through the user report form') ?>
+        <div class="rp-card-body">
+            <h3 class="rp-section-title rp-mt0"><i class="fa-solid fa-quote-left"></i>What the reporter wrote</h3>
+            <?php if (trim($main_text) !== ''): ?>
+            <div class="rp-quote"><?= $parser->parse_message($main_text, $parser_options) ?></div>
+            <?php else: ?>
+            <div class="rp-quote rp-muted">No details provided.</div>
+            <?php endif; ?>
+
+            <?php if ($parsed_data['additional_info'] !== ''): ?>
+            <h3 class="rp-section-title"><i class="fa-solid fa-circle-info"></i>Additional information</h3>
+            <div class="rp-quote"><?= nl2br(rp_h($parsed_data['additional_info'])) ?></div>
+            <?php endif; ?>
+
+            <?php if ($parsed_data['evidence_links'] !== ''): ?>
+            <h3 class="rp-section-title"><i class="fa-solid fa-link"></i>Evidence links</h3>
+            <ul class="rp-links">
+                <?php foreach (array_filter(array_map('trim', explode("\n", $parsed_data['evidence_links']))) as $link):
+                    $safe = rp_safe_url($link); ?>
+                <li>
+                    <?php if ($safe): ?>
+                    <a href="<?= rp_h($safe) ?>" target="_blank" rel="noopener noreferrer nofollow">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i><?= rp_h(truncateString($link, 70)) ?>
+                    </a>
+                    <?php else: ?>
+                    <span class="rp-muted" title="Not a http(s) link, shown as text"><i class="fa-solid fa-link-slash"></i><?= rp_h(truncateString($link, 70)) ?></span>
+                    <?php endif; ?>
+                </li>
+                <?php endforeach; ?>
+            </ul>
+            <?php endif; ?>
         </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <h6>User Details</h6>
-                    <table class="table table-sm">
-                        <tr><th width="40%">Username:</th><td><a href="user-<?= $user_id ?>.html" target="_blank" class="fw-bold"><?= htmlspecialchars($user_info['username'] ?? 'Unknown') ?></a></td></tr>
-                        <tr><th>User ID:</th><td><?= $user_id ?></td></tr>
-                        <tr>
-                            <th>Email:</th>
-                            <td>
-                                <?php if (!empty($user_info['email'])): ?>
-                                <a href="mailto:<?= htmlspecialchars($user_info['email']) ?>"><?= htmlspecialchars($user_info['email']) ?></a>
-                                <?php else: ?><span class="text-muted">Not available</span><?php endif; ?>
-                            </td>
-                        </tr>
-                        <tr><th>Registered:</th><td><?= my_datee('relative', $user_info['added']) ?></td></tr>
-                        <tr><th>Status:</th><td><?= $user_info['enabled'] === 'yes' ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-danger">Disabled</span>' ?></td></tr>
-                    </table>
-                </div>
-                <div class="col-md-6">
-                    <h6>Report Statistics</h6>
-                    <table class="table table-sm">
-                        <tr><th width="40%">Total Reports:</th><td><span class="badge bg-primary"><?= $user_info['total_reports'] ?? 0 ?></span></td></tr>
-                        <tr><th>Resolved:</th><td><span class="badge bg-success"><?= $user_info['resolved_reports'] ?? 0 ?></span></td></tr>
-                        <tr><th>Pending:</th><td><span class="badge bg-warning"><?= $user_info['pending_reports'] ?? 0 ?></span></td></tr>
-                        <tr>
-                            <th>Report Rate:</th>
-                            <td><?php
-                                $days = max(1, floor((time() - $user_info['added']) / 86400));
-                                echo number_format(($user_info['total_reports'] ?? 0) / $days, 2);
-                            ?> reports/day</td>
-                        </tr>
-                    </table>
-                    <div class="d-grid gap-2 mt-3">
-                        <a href="<?= $_this_script_ ?>&action=list&search=<?= urlencode($user_info['username'] ?? '') ?>" class="btn btn-sm btn-outline-primary">
-                            <i class="fa-solid fa-list me-1"></i> View All Reports
-                        </a>
-                        <a href="warn.php?uid=<?= $user_id ?>&reason=<?= urlencode($report['reason']) ?>" class="btn btn-sm btn-outline-warning" target="_blank">
-                            <i class="fa-solid fa-exclamation-triangle me-1"></i> Warn User
-                        </a>
-                        <button class="btn btn-sm btn-outline-danger"
-                                onclick="if(confirm('Ban user <?= htmlspecialchars($user_info['username'] ?? '') ?>?')) window.open('bans.php?action=add&uid=<?= $user_id ?>', '_blank')">
-                            <i class="fa-solid fa-ban me-1"></i> Ban User
-                        </button>
-                    </div>
-                </div>
+    </section>
+
+    <?php if ($user_info):
+        $uname = (string)($user_info['username'] ?? 'Unknown');
+        $days  = max(1, (int)floor((TIMENOW - (int)$user_info['added']) / DAY_IN_SECONDS));
+        $rate  = number_format((int)($user_info['total_reports'] ?? 0) / $days, 2);
+        $enabled = ($user_info['enabled'] ?? '') === 'yes';
+    ?>
+    <section class="rp-card rp-mb">
+        <?= rp_card_head('fa-user-large', 'warning', rp_user_cell($user_id, $uname, 'danger', 'Unknown'),
+            $enabled
+                ? '<span class="rp-chip rp-tone-success"><i class="fa-solid fa-user-check"></i>Active</span>'
+                : '<span class="rp-chip rp-tone-danger"><i class="fa-solid fa-user-lock"></i>Disabled</span>',
+            'Reported account') ?>
+        <div class="rp-card-body">
+            <div class="rp-facts">
+                <?= rp_fact('fa-id-badge', 'User ID', (string)$user_id, 'secondary') ?>
+                <?= rp_fact('fa-envelope', 'Email', !empty($user_info['email'])
+                    ? '<a href="mailto:' . rp_h($user_info['email']) . '">' . rp_h($user_info['email']) . '</a>'
+                    : '<span class="rp-muted">Not available</span>', 'secondary') ?>
+                <?= rp_fact('fa-calendar-plus', 'Registered', my_datee('relative', $user_info['added']), 'secondary') ?>
+                <?= rp_fact('fa-gauge-high', 'Report rate', rp_h($rate) . ' per day', 'warning') ?>
+            </div>
+
+            <h3 class="rp-section-title"><i class="fa-solid fa-shield-halved"></i>Moderation</h3>
+            <div class="rp-btnrow">
+                <?= rp_link_button('warn.php?uid=' . $user_id . '&reason=' . rawurlencode('Report #' . $rid . ': ' . $report['reason']), 'Issue warning', 'fa-triangle-exclamation', 'warning', ['blank' => true]) ?>
+                <?= rp_link_button('edituser.php?action=edituser&userid=' . $user_id, 'Edit user', 'fa-user-pen', 'info', ['blank' => true]) ?>
+                <?= rp_link_button('staff.php?act=users&do=suspend&uid=' . $user_id, 'Suspend', 'fa-user-clock', 'danger', [
+                    'blank' => true,
+                    'confirm' => ['title' => 'Suspend ' . $uname . '?', 'text' => 'The suspension form opens in a new tab.', 'btn' => 'Continue', 'variant' => 'danger'],
+                ]) ?>
+                <?= rp_link_button('bans.php?action=add&uid=' . $user_id, 'Ban user', 'fa-ban', 'danger', [
+                    'solid' => true, 'blank' => true,
+                    'confirm' => ['title' => 'Ban ' . $uname . '?', 'text' => 'The ban form opens in a new tab.', 'btn' => 'Continue', 'variant' => 'danger'],
+                ]) ?>
             </div>
         </div>
-    </div>
+    </section>
     <?php endif; ?>
 
-    <div class="card mb-4">
-        <div class="card-header bg-info text-white"><h6 class="mb-0"><i class="fa-solid fa-flag me-2"></i> Report Details</h6></div>
-        <div class="card-body">
-            <h6>Report Description</h6>
-            <div class="card bg-light mb-3">
-                <div class="card-body">
-                    <?= $parser->parse_message($parsed_data['formatted_description'] ?: ($report['description'] ?? ''), $parser_options) ?>
-                </div>
-            </div>
-
-            <?php if (!empty($parsed_data['additional_info']) || !empty($parsed_data['evidence_links'])): ?>
-            <h6>Additional Information</h6>
-            <div class="row">
-                <?php if (!empty($parsed_data['additional_info'])): ?>
-                <div class="col-md-6 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-light"><h6 class="mb-0"><i class="fa-solid fa-info-circle me-2"></i>Additional Info</h6></div>
-                        <div class="card-body"><?= nl2br(htmlspecialchars($parsed_data['additional_info'])) ?></div>
-                    </div>
-                </div>
-                <?php endif; ?>
-                <?php if (!empty($parsed_data['evidence_links'])): ?>
-                <div class="col-md-6 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-light"><h6 class="mb-0"><i class="fa-solid fa-link me-2"></i>Evidence Links</h6></div>
-                        <div class="card-body">
-                            <?php foreach (array_filter(array_map('trim', explode("\n", $parsed_data['evidence_links']))) as $link): ?>
-                            <div class="mb-2">
-                                <a href="<?= htmlspecialchars($link) ?>" target="_blank" class="text-decoration-none">
-                                    <i class="fa-solid fa-external-link-alt me-1"></i>
-                                    <?= htmlspecialchars(truncateString($link, 50)) ?>
-                                </a>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                </div>
-                <?php endif; ?>
-            </div>
-            <?php endif; ?>
-
-            <?php if ($user_id && $recent_result && $db->num_rows($recent_result) > 0): ?>
-            <h6>Recent Reports for This User</h6>
-            <div class="table-responsive">
-                <table class="table table-sm">
-                    <thead><tr><th>Date</th><th>Type</th><th>Reason</th><th>Reporter</th><th>Status</th><th>Action</th></tr></thead>
-                    <tbody>
-                    <?php while ($r = $db->fetch_array($recent_result)): ?>
+    <?php if ($user_id > 0): ?>
+    <section class="rp-card rp-mb">
+        <?= rp_card_head('fa-clock-rotate-left', 'secondary', 'Other reports about this user') ?>
+        <?php if ($recent_result && $db->num_rows($recent_result) > 0): ?>
+        <div class="rp-scroll">
+            <table class="rp-table rp-table-compact">
+                <thead>
                     <tr>
-                        <td><?= date('Y-m-d', (int)$r['added']) ?></td>
-                        <td><span class="badge bg-<?= getTypeColor($r['type']) ?>"><?= ucfirst($r['type']) ?></span></td>
-                        <td><?= htmlspecialchars(truncateString($r['reason'], 20)) ?></td>
-                        <td><?= htmlspecialchars($r['reporter_name'] ?? 'User #' . $r['addedby']) ?></td>
-                        <td><?= renderStatusBadge((bool)$r['dealtwith']) ?></td>
-                        <td><a href="<?= $_this_script_ ?>&action=view&id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-eye"></i></a></td>
+                        <th><i class="fa-solid fa-calendar-day"></i>Date</th>
+                        <th><i class="fa-solid fa-shapes"></i>Type</th>
+                        <th><i class="fa-solid fa-triangle-exclamation"></i>Reason</th>
+                        <th><i class="fa-solid fa-user-pen"></i>Reporter</th>
+                        <th><i class="fa-solid fa-signal"></i>Status</th>
+                        <th></th>
                     </tr>
-                    <?php endwhile; ?>
-                    </tbody>
-                </table>
-            </div>
-            <?php elseif ($user_id): ?>
-            <div class="alert alert-info"><i class="fa-solid fa-info-circle me-2"></i>This is the only report for this user.</div>
-            <?php endif; ?>
+                </thead>
+                <tbody>
+                <?php while ($r = $db->fetch_array($recent_result)):
+                    $rd = get_report_reasons_map((string)$r['type'])[$r['reason']] ?? null; ?>
+                <tr>
+                    <td class="rp-nowrap"><?= date('Y-m-d', (int)$r['added']) ?></td>
+                    <td><?= rp_type_chip((string)$r['type']) ?></td>
+                    <td><?= rp_reason_chip($rd, (string)$r['reason'], 22) ?></td>
+                    <td><?= rp_user_cell((int)$r['addedby'], $r['reporter_name'] ?? null, 'info', 'Guest') ?></td>
+                    <td><?= renderStatusBadge((bool)$r['dealtwith']) ?></td>
+                    <td><?= rp_link_button($_this_script_ . '&action=view&id=' . (int)$r['id'], 'View', 'fa-eye', 'primary', ['icon_only' => true]) ?></td>
+                </tr>
+                <?php endwhile; ?>
+                </tbody>
+            </table>
         </div>
-    </div>
-
-    <div class="card border-danger">
-        <div class="card-header bg-danger text-white"><h6 class="mb-0"><i class="fa-solid fa-shield-alt me-2"></i>Moderation Actions</h6></div>
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <a href="warn.php?uid=<?= $user_id ?>&reason=Report%20#<?= $report['id'] ?>:<?= urlencode($report['reason']) ?>" class="btn btn-warning w-100" target="_blank">
-                        <i class="fa-solid fa-exclamation-triangle me-1"></i> Issue Warning
-                    </a>
-                </div>
-                <div class="col-md-6">
-                    <a href="edituser.php?action=edituser&userid=<?= $user_id ?>" class="btn btn-info w-100" target="_blank">
-                        <i class="fa-solid fa-user-edit me-1"></i> Edit User
-                    </a>
-                </div>
-                <div class="col-md-6">
-                    <button class="btn btn-outline-danger w-100"
-                            onclick="if(confirm('Temporarily suspend this user?')) window.open('staff.php?act=users&do=suspend&uid=<?= $user_id ?>', '_blank')">
-                        <i class="fa-solid fa-clock me-1"></i> Suspend User
-                    </button>
-                </div>
-                <div class="col-md-6">
-                    <button class="btn btn-danger w-100"
-                            onclick="if(confirm('Permanently ban this user?')) window.open('bans.php?action=add&uid=<?= $user_id ?>', '_blank')">
-                        <i class="fa-solid fa-ban me-1"></i> Ban User
-                    </button>
-                </div>
-            </div>
-
-            <hr>
-
-            <form method="POST" action="<?= $_this_script_ ?>&action=takeaction" class="mt-3">
-                <input type="hidden" name="do" value="resolve">
-                <input type="hidden" name="id" value="<?= $report['id'] ?>">
-                <div class="mb-3">
-                    <label class="form-label">Resolution Notes</label>
-                    <textarea name="notes" class="form-control" rows="3" placeholder="Add notes about how this user report was handled..."></textarea>
-                </div>
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-success">
-                        <i class="fa-solid fa-check me-1"></i> Mark as Resolved
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
+        <?php else: ?>
+        <?= rp_empty('fa-circle-info', 'info', 'This is the only report about this user') ?>
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
 
     <?php
-    if (isset($user_result))   $db->free_result($user_result);
-    if (isset($recent_result)) $db->free_result($recent_result);
+    if ($user_result)   $db->free_result($user_result);
+    if ($recent_result) $db->free_result($recent_result);
 
-    return ob_get_clean();
+    return (string)ob_get_clean();
 }
 
 // ==================== СТИЛИ И СКРИПТЫ ====================
 
-function getReportListStyles(): string
+function rp_asset(string $rel): string
 {
-    return '
-<style>
-.empty-state { padding: 2rem 0; text-align: center; }
-.empty-state i { opacity: 0.5; transition: opacity 0.3s ease; margin-bottom: 1rem; }
-.empty-state:hover i { opacity: 0.8; }
-.empty-state h5 { font-weight: 500; color: #495057; }
-.empty-state p { font-size: 0.95rem; max-width: 300px; margin: 0 auto 1rem; color: #6c757d; }
-.table-hover tbody tr:hover { transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,.05); transition: all .2s ease; }
-tr { transition: opacity .3s ease, transform .3s ease; }
-.blink { animation: blink-animation 1s infinite; }
-@keyframes blink-animation { 0%,50% { opacity:1; } 51%,100% { opacity:.5; } }
-</style>';
+    global $BASEURL;
+
+    $root = defined('TSDIR') ? rtrim((string)TSDIR, '/\\') : dirname(__DIR__);
+    $file = $root . '/' . ltrim($rel, '/');
+    $ver  = is_file($file) ? '?v=' . filemtime($file) : '';
+
+    return rp_h($BASEURL . '/' . ltrim($rel, '/') . $ver);
 }
 
-function getDeleteModalScript(): string
+function renderPageStyles(): void
 {
-    return '
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    const deleteModal = new bootstrap.Modal(document.getElementById("deleteModal"));
-    let currentBtn = null, currentUrl = null;
+   global $BASEURL;
+   
+	echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/reports.css?ver=2">';
+}
 
-    document.querySelectorAll(".delete-report").forEach(btn => {
-        btn.addEventListener("click", function(e) {
-            e.preventDefault();
-            currentBtn  = this;
-            currentUrl  = this.href;
-            document.getElementById("reportIdText").textContent = "#" + this.dataset.id;
-            deleteModal.show();
-        });
-    });
-
-    document.getElementById("confirmDelete").addEventListener("click", function() {
-        const spinner = this.querySelector(".spinner-border");
-        spinner.classList.remove("d-none");
-        this.disabled = true;
-
-        fetch(currentUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } })
-            .then(r => r.json())
-            .then(data => {
-                deleteModal.hide();
-                if (data.success) {
-                    const row = currentBtn.closest("tr");
-                    if (row) {
-                        row.style.transition = "all .3s ease";
-                        row.style.opacity    = "0";
-                        setTimeout(() => row.remove(), 300);
-                    }
-                    showToast(data.message || "Report deleted", "success");
-                } else {
-                    showToast(data.error || "Failed to delete report", "danger");
-                }
-            })
-            .catch(() => showToast("Connection error, please try again", "warning"))
-            .finally(() => { spinner.classList.add("d-none"); this.disabled = false; });
-    });
-
-    document.getElementById("deleteModal").addEventListener("hidden.bs.modal", () => { currentBtn = null; });
-});
-</script>
-
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const msgs = { resolved:"Report marked as resolved", deleted:"Report deleted successfully", comment_deleted:"Comment deleted and report resolved" };
-    const errs = { invalid_id:"Invalid report ID", not_found:"Report not found", invalid_action:"Invalid action" };
-    if (urlParams.has("success") && msgs[urlParams.get("success")]) showToast(msgs[urlParams.get("success")], "success");
-    if (urlParams.has("error")   && errs[urlParams.get("error")])   showToast(errs[urlParams.get("error")],   "danger");
-});
-</script>
-
-<script type="text/javascript" src="<?= htmlspecialchars($BASEURL ?? "") ?>/scripts/toast.js"></script>
-<script type="text/javascript" src="<?= htmlspecialchars($BASEURL ?? "") ?>/scripts/popover.js"></script>
-
-<!-- Modal -->
-<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2"></i>Confirm Deletion</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to delete report <strong id="reportIdText"></strong>?</p>
-                <p class="text-danger small"><i class="bi bi-info-circle me-1"></i>This action cannot be undone.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmDelete">
-                    <span class="spinner-border spinner-border-sm d-none" role="status"></span>
-                    <i class="bi bi-trash"></i> Delete Report
-                </button>
-            </div>
-        </div>
-    </div>
-</div>';
+function renderPageAssets(): void
+{
+    global $BASEURL;
+	
+	$messages = json_encode(REPORT_MESSAGES, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    ?>
+<script type="application/json" id="rp-messages"><?= $messages ?></script>
+<script src="<?= $BASEURL ?>/admin/scripts/reports.js?ver=2"></script>
+    <?php
 }

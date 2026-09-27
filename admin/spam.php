@@ -20,19 +20,24 @@ $page = isset($_POST['page']) ? max(1, (int)$_POST['page'])
 $offset = ($page - 1) * $perPage;
 
 // Search and filter parameters
-$search = isset($_GET['q']) ? trim($_GET['q']) : "";
-$filterFrom = isset($_GET['from']) ? (int)$_GET['from'] : 0;
-$filterTo   = isset($_GET['to'])   ? (int)$_GET['to']   : 0;
-$filterStatus = isset($_GET['status']) ? $_GET['status'] : 'all';
+// is_string() - под strict_types ?q[]=1 иначе валит trim() в TypeError
+$search       = isset($_GET['q']) && is_string($_GET['q']) ? trim($_GET['q']) : '';
+$filterFrom   = isset($_GET['from']) ? max(0, (int)$_GET['from']) : 0;
+$filterTo     = isset($_GET['to'])   ? max(0, (int)$_GET['to'])   : 0;
+$filterStatus = isset($_GET['status']) && in_array($_GET['status'], ['all', 'read', 'unread'], true)
+              ? $_GET['status'] : 'all';
 
 // Build WHERE conditions
 $where = [];
 $where_params = [];
 
-if (!empty($search)) {
+if ($search !== '') {
+    // Экранируем спецсимволы LIKE, иначе "%" или "_" в запросе
+    // работают как маски и находят всё подряд
+    $like = '%' . addcslashes($search, '\\%_') . '%';
     $where[] = "(pm.subject LIKE ? OR pm.message LIKE ?)";
-    $where_params[] = "%$search%";
-    $where_params[] = "%$search%";
+    $where_params[] = $like;
+    $where_params[] = $like;
 }
 
 if ($filterFrom > 0) {
@@ -45,23 +50,43 @@ if ($filterTo > 0) {
     $where_params[] = $filterTo;
 }
 
-if ($filterStatus !== 'all') {
-    $where[] = "pm.status = ?";
-    $where_params[] = $filterStatus === 'read' ? 1 : 0;
+// "Read" = всё, что открыто получателем: 1 (прочитано), 3 (отвечено),
+// 4 (переслано). Раньше было status = 1, и отвеченные/пересланные
+// не попадали ни в "Read", ни в "Unread".
+if ($filterStatus === 'read') {
+    $where[] = "pm.status <> 0";
+} elseif ($filterStatus === 'unread') {
+    $where[] = "pm.status = 0";
 }
 
 $whereClause = $where ? "WHERE " . implode(" AND ", $where) : "";
+$hasFilters  = (bool)$where;
 
-// Get total messages count
-$totalQuery = "SELECT COUNT(*) as c FROM privatemessages pm $whereClause";
-$totalRes   = $db->sql_query_prepared($totalQuery, $where_params);
-$totalRow   = $db->fetch_array($totalRes);
-$total      = $totalRow['c'];
+// Get total messages count (с учётом фильтров)
+$totalRow = $db->fetch_array($db->sql_query_prepared(
+    "SELECT COUNT(*) AS c FROM privatemessages pm $whereClause",
+    $where_params
+));
+$total = (int)$totalRow['c'];
+
+// KPI - по всей таблице, без фильтров
+$statsRow = $db->fetch_array($db->sql_query_prepared(
+    "SELECT COUNT(*) AS total,
+            COALESCE(SUM(status = 0), 0)   AS unread,
+            COALESCE(SUM(dateline >= ?), 0) AS last24
+       FROM privatemessages",
+    [TIMENOW - 86400]
+));
+$kpiTotal  = (int)$statsRow['total'];
+$kpiUnread = (int)$statsRow['unread'];
+$kpiLast24 = (int)$statsRow['last24'];
 
 // Get messages with user names
-$query = "SELECT pm.*, 
-                 u.username AS sender_name, u.avatar AS sender_avatar, u.avatardimensions AS sender_avatardimensions, 
-                 u2.username AS receiver_name, u2.avatar AS receiver_avatar, u2.avatardimensions AS receiver_avatardimensions
+$query = "SELECT pm.*,
+                 u.username  AS sender_name,   u.usergroup  AS sender_group,
+                 u.avatar    AS sender_avatar, u.avatardimensions  AS sender_avatardimensions,
+                 u2.username AS receiver_name, u2.usergroup AS receiver_group,
+                 u2.avatar   AS receiver_avatar, u2.avatardimensions AS receiver_avatardimensions
           FROM privatemessages pm
           LEFT JOIN users u  ON pm.fromid = u.id
           LEFT JOIN users u2 ON pm.toid   = u2.id
@@ -71,16 +96,17 @@ $query = "SELECT pm.*,
 
 $res = $db->sql_query_prepared($query, array_merge($where_params, [(int)$offset, (int)$perPage]));
 
+$rows = [];
+while ($r = $db->fetch_array($res)) {
+    $rows[] = $r;
+}
 
 
-
-
-
-
-
-// Если не задан — берём текущий путь + QS
+// Если не задан — берём текущий путь + QS.
+// SCRIPT_NAME вместо PHP_SELF: PHP_SELF включает PATH_INFO
+// (index.php/"><script>...), а этот путь попадает в ссылки.
 if (empty($_this_script_)) {
-    $_this_script_ = $_SERVER['PHP_SELF'] . (isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? '?'.$_SERVER['QUERY_STRING'] : '');
+    $_this_script_ = $_SERVER['SCRIPT_NAME'] . (isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? '?'.$_SERVER['QUERY_STRING'] : '');
 }
 
 /**
@@ -127,440 +153,321 @@ function build_url(array $overrides = []): string {
     return $path . ($qs ? '?'.$qs : '');
 }
 
+/** URL, экранированный для href */
+function spam_href(array $overrides = []): string {
+    return htmlspecialchars(build_url($overrides), ENT_QUOTES);
+}
 
+/** Бинарный IP -> строка ('' если пусто/битое) */
+function spam_ip(mixed $bin): string {
+    $bin = (string)$bin;
+    if (strlen($bin) !== 4 && strlen($bin) !== 16) {
+        return '';
+    }
+    $ip = inet_ntop($bin);
+    return $ip === false ? '' : $ip;
+}
 
+/** Статус ЛС (MyBB): [label, fa-иконка, модификатор класса] */
+function spam_status(int $status): array {
+    return match ($status) {
+        0       => ['Unread',    'fa-envelope',      'unread'],
+        1       => ['Read',      'fa-envelope-open', 'read'],
+        3       => ['Replied',   'fa-reply',         'replied'],
+        4       => ['Forwarded', 'fa-share',         'forwarded'],
+        default => ['#' . $status, 'fa-circle-question', ''],
+    };
+}
 
+/** Аватар или заглушка */
+function spam_avatar(mixed $avatar, mixed $dims, bool $system = false): string {
+    if (!empty($avatar)) {
+        // 'image' уже экранирован внутри format_avatar()
+        $a = format_avatar((string)$avatar, (string)$dims, '36x36');
+        return '<img src="' . $a['image'] . '" class="sp-avatar" alt="" loading="lazy">';
+    }
+    return '<span class="sp-avatar sp-avatar--empty"><i class="fa-solid ' . ($system ? 'fa-robot' : 'fa-user') . '"></i></span>';
+}
 
+/** Имя пользователя: экранируем ДО format_name() */
+function spam_name(mixed $name, mixed $group, string $fallback): string {
+    if ($name === null || $name === '') {
+        return '<span class="sp-muted fst-italic">' . htmlspecialchars($fallback) . '</span>';
+    }
+    return format_name(htmlspecialchars((string)$name), (int)$group);
+}
 
-
-
-
+// act для скрытого поля формы - GET-форма заменяет весь query string,
+// и без него фильтр уводил с ?act=spam на главную админки
+$act = isset($_GET['act']) && is_string($_GET['act']) ? $_GET['act'] : 'spam';
 
 
 stdhead();
 
-
-
 ?>
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/spam.css?ver=1">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/spam_message.css?ver=1">
+<script src="<?= $BASEURL ?>/admin/scripts/spam.js?ver=1" defer></script>
 
+<div class="spam-page container mt-3">
 
-  <title>Admin: Private Messages</title>
+  <!-- Header -->
+  <div class="sp-card sp-head">
+    <div class="sp-head-icon"><i class="fa-solid fa-comments"></i></div>
+    <div class="sp-head-text">
+      <h1 class="sp-title">Private Messages</h1>
+      <div class="sp-subtitle">Staff review of user conversations and spam reports</div>
+    </div>
+  </div>
 
-  
-  <style>
-    .avatar-sm {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      object-fit: cover;
-    }
-    .message-preview {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 200px;
-    }
-    .unread {
-      background-color: #f8f9fa;
-      font-weight: 500;
-    }
-    .status-badge {
-      font-size: 0.75rem;
-    }
-    .user-link {
-      text-decoration: none;
-      color: inherit;
-    }
-    .user-link:hover {
-      color: #0d6efd;
-    }
-  </style>
-
-
-<div class="container mt-3">
-
-
-
-
-
-<div class="container-fluid py-4">
-  <div class="card shadow-sm">
-    <div class="card-header bg-primary text-white">
-      <div class="d-flex justify-content-between align-items-center">
-        <h4 class="mb-0">
-          <i class="bi bi-chat-left-text me-2"></i>Private Messages
-        </h4>
-        <span class="badge bg-light text-dark">Total: <?=ts_nf($total)?></span>
+  <!-- KPI -->
+  <div class="sp-kpis">
+    <div class="sp-kpi sp-kpi--primary">
+      <div class="sp-kpi-icon"><i class="fa-solid fa-envelopes-bulk"></i></div>
+      <div>
+        <div class="sp-kpi-value"><?= ts_nf($kpiTotal) ?></div>
+        <div class="sp-kpi-label">Total messages</div>
       </div>
     </div>
-    
-    <div class="card-body">
-      <!-- Search and filter form -->
-      <form class="mb-4">
-        <div class="row g-3">
-          <div class="col-md-4">
-            <input type="text" name="q" class="form-control" placeholder="Search by subject or text" value="<?=htmlspecialchars($search)?>">
-          </div>
-          <div class="col-md-2">
-            <select name="from" class="form-select">
-              <option value="0">All Senders</option>
-              <?php if ($filterFrom > 0): ?>
-                <option value="<?=$filterFrom?>" selected>UID: <?=$filterFrom?></option>
-              <?php endif; ?>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <select name="to" class="form-select">
-              <option value="0">All Recipients</option>
-              <?php if ($filterTo > 0): ?>
-                <option value="<?=$filterTo?>" selected>UID: <?=$filterTo?></option>
-              <?php endif; ?>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <select name="status" class="form-select">
-              <option value="all" <?=$filterStatus==='all'?'selected':''?>>All Statuses</option>
-              <option value="read" <?=$filterStatus==='read'?'selected':''?>>Read</option>
-              <option value="unread" <?=$filterStatus==='unread'?'selected':''?>>Unread</option>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <button type="submit" class="btn btn-primary w-100">
-              <i class="bi bi-funnel"></i> Filter
-            </button>
-          </div>
-        </div>
-      </form>
+    <div class="sp-kpi sp-kpi--warning">
+      <div class="sp-kpi-icon"><i class="fa-solid fa-envelope"></i></div>
+      <div>
+        <div class="sp-kpi-value"><?= ts_nf($kpiUnread) ?></div>
+        <div class="sp-kpi-label">Unread</div>
+      </div>
+    </div>
+    <div class="sp-kpi sp-kpi--success">
+      <div class="sp-kpi-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+      <div>
+        <div class="sp-kpi-value"><?= ts_nf($kpiLast24) ?></div>
+        <div class="sp-kpi-label">Last 24 hours</div>
+      </div>
+    </div>
+    <div class="sp-kpi sp-kpi--info">
+      <div class="sp-kpi-icon"><i class="fa-solid fa-filter"></i></div>
+      <div>
+        <div class="sp-kpi-value"><?= ts_nf($total) ?></div>
+        <div class="sp-kpi-label"><?= $hasFilters ? 'Matching filters' : 'Shown (no filters)' ?></div>
+      </div>
+    </div>
+  </div>
 
-      <!-- Messages table -->
+  <!-- Filters -->
+  <div class="sp-card">
+    <form method="get" class="sp-filters">
+      <input type="hidden" name="act" value="<?= htmlspecialchars($act, ENT_QUOTES) ?>">
+
+      <div class="sp-field sp-field--grow">
+        <label class="sp-label" for="sp-q">Search</label>
+        <div class="sp-input-icon">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="sp-q" name="q" class="form-control"
+                 placeholder="Subject or message text" value="<?= htmlspecialchars($search, ENT_QUOTES) ?>">
+        </div>
+      </div>
+
+      <div class="sp-field">
+        <label class="sp-label" for="sp-from">Sender UID</label>
+        <div class="sp-input-icon">
+          <i class="fa-solid fa-paper-plane"></i>
+          <input type="number" min="0" id="sp-from" name="from" class="form-control"
+                 placeholder="Any" value="<?= $filterFrom > 0 ? $filterFrom : '' ?>">
+        </div>
+      </div>
+
+      <div class="sp-field">
+        <label class="sp-label" for="sp-to">Recipient UID</label>
+        <div class="sp-input-icon">
+          <i class="fa-solid fa-inbox"></i>
+          <input type="number" min="0" id="sp-to" name="to" class="form-control"
+                 placeholder="Any" value="<?= $filterTo > 0 ? $filterTo : '' ?>">
+        </div>
+      </div>
+
+      <div class="sp-field">
+        <label class="sp-label" for="sp-status">Status</label>
+        <select id="sp-status" name="status" class="form-select">
+          <option value="all"    <?= $filterStatus === 'all'    ? 'selected' : '' ?>>All statuses</option>
+          <option value="unread" <?= $filterStatus === 'unread' ? 'selected' : '' ?>>Unread</option>
+          <option value="read"   <?= $filterStatus === 'read'   ? 'selected' : '' ?>>Read / replied</option>
+        </select>
+      </div>
+
+      <div class="sp-field sp-field--actions">
+        <button type="submit" class="btn btn-primary rounded-pill">
+          <i class="fa-solid fa-filter me-1"></i>Filter
+        </button>
+        <?php if ($hasFilters): ?>
+          <a href="<?= spam_href(['q' => null, 'from' => null, 'to' => null, 'status' => null, 'page' => null]) ?>"
+             class="btn btn-outline-secondary rounded-pill">
+            <i class="fa-solid fa-rotate-left me-1"></i>Reset
+          </a>
+        <?php endif; ?>
+      </div>
+    </form>
+
+    <?php if ($hasFilters): ?>
+      <div class="sp-active">
+        <span class="sp-active-label"><i class="fa-solid fa-sliders"></i>Active:</span>
+        <?php if ($search !== ''): ?>
+          <a class="sp-tag" href="<?= spam_href(['q' => null, 'page' => null]) ?>" title="Remove">
+            <i class="fa-solid fa-magnifying-glass"></i>“<?= htmlspecialchars(mb_strimwidth($search, 0, 40, '…')) ?>”<i class="fa-solid fa-xmark sp-tag-x"></i>
+          </a>
+        <?php endif; ?>
+        <?php if ($filterFrom > 0): ?>
+          <a class="sp-tag" href="<?= spam_href(['from' => null, 'page' => null]) ?>" title="Remove">
+            <i class="fa-solid fa-paper-plane"></i>From UID <?= $filterFrom ?><i class="fa-solid fa-xmark sp-tag-x"></i>
+          </a>
+        <?php endif; ?>
+        <?php if ($filterTo > 0): ?>
+          <a class="sp-tag" href="<?= spam_href(['to' => null, 'page' => null]) ?>" title="Remove">
+            <i class="fa-solid fa-inbox"></i>To UID <?= $filterTo ?><i class="fa-solid fa-xmark sp-tag-x"></i>
+          </a>
+        <?php endif; ?>
+        <?php if ($filterStatus !== 'all'): ?>
+          <a class="sp-tag" href="<?= spam_href(['status' => null, 'page' => null]) ?>" title="Remove">
+            <i class="fa-solid fa-circle-half-stroke"></i><?= $filterStatus === 'read' ? 'Read' : 'Unread' ?><i class="fa-solid fa-xmark sp-tag-x"></i>
+          </a>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <!-- Messages table -->
+  <div class="sp-card sp-card--flush">
+    <?php if (!$rows): ?>
+      <div class="sp-empty">
+        <div class="sp-empty-icon"><i class="fa-solid fa-inbox"></i></div>
+        <div class="sp-empty-title">No messages found</div>
+        <div class="sp-muted"><?= $hasFilters ? 'Try changing or resetting the filters.' : 'There are no private messages yet.' ?></div>
+      </div>
+    <?php else: ?>
       <div class="table-responsive">
-        <table class="table table-hover table-sm">
-          <thead class="table-light">
+        <table class="table sp-table mb-0">
+          <thead>
             <tr>
-              <th width="80">ID</th>
+              <th class="sp-col-id">#</th>
               <th>Sender</th>
               <th>Recipient</th>
               <th>Subject</th>
-              <th width="150">Date</th>
-              <th width="120">Status</th>
-              <th width="120">IP</th>
-              <th width="80"></th>
+              <th class="sp-col-date">Date</th>
+              <th class="sp-col-status">Status</th>
+              <th class="sp-col-ip">IP</th>
+              <th class="sp-col-act"></th>
             </tr>
           </thead>
           <tbody>
-          <?php while($row = $db->fetch_array($res)): ?>
-            <tr class="<?=$row['status'] == 0 ? 'unread' : ''?>">
-              <td>#<?=$row['pmid']?></td>
+          <?php foreach ($rows as $row):
+              $pmid   = (int)$row['pmid'];
+              $fromid = (int)$row['fromid'];
+              $toid   = (int)$row['toid'];
+              $status = (int)$row['status'];
+              [$stLabel, $stIcon, $stMod] = spam_status($status);
+              $subject = (string)($row['subject'] ?? '');
+              $ip      = spam_ip($row['ipaddress'] ?? '');
+              $ts      = (int)$row['dateline'];
+          ?>
+            <tr class="<?= $status === 0 ? 'sp-row--unread' : '' ?>">
+              <td class="sp-col-id sp-muted">#<?= $pmid ?></td>
+
               <td>
-                
-				
-
-<?php
-$max_dimensions = '34x34';
-$avatar = format_avatar($row['sender_avatar'], $row['sender_avatardimensions'], $max_dimensions);
-
-$sender_avatar = $avatar['image'];
-
-
-?>
-
-<div class="d-flex align-items-center">
- <?php if ($row['sender_avatar']): ?> 
- <img src="<?= $sender_avatar ?>" class="avatar-sm me-2"> 
- <?php else: ?> <div class="avatar-sm bg-secondary me-2 d-flex align-items-center justify-content-center"> 
- <i class="bi bi-person text-white"></i> </div> 
- <?php endif; ?> 
- <a href="index.php?act=spam&from=<?=$row['fromid']?>" class="user-link"> <?=htmlspecialchars($row['sender_name'] ?? "System ")?> </a> 
- 
-
- 
- 
- </div>
- 
- 
- 
- 
- 
-
- 
- 
- 
- 
- 
-
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
-
-
-
-
-				
-				
+                <a href="<?= spam_href(['from' => $fromid, 'page' => null]) ?>" class="sp-user"
+                   data-bs-toggle="tooltip" title="Show all from this sender">
+                  <?= spam_avatar($row['sender_avatar'], $row['sender_avatardimensions'], $fromid <= 0) ?>
+                  <span class="sp-user-name">
+                    <?= spam_name($row['sender_name'], $row['sender_group'], $fromid <= 0 ? 'System' : 'Deleted #' . $fromid) ?>
+                  </span>
+                </a>
               </td>
+
               <td>
-			  
-			  
-			  
-			  
-			  
-			  <?php
-$max_dimensions = '34x34';
-$avatar = format_avatar($row['receiver_avatar'], $row['receiver_avatardimensions'], $max_dimensions);
+                <a href="<?= spam_href(['to' => $toid, 'page' => null]) ?>" class="sp-user"
+                   data-bs-toggle="tooltip" title="Show all to this recipient">
+                  <?= spam_avatar($row['receiver_avatar'], $row['receiver_avatardimensions']) ?>
+                  <span class="sp-user-name">
+                    <?= spam_name($row['receiver_name'], $row['receiver_group'], 'Deleted #' . $toid) ?>
+                  </span>
+                </a>
+              </td>
 
-$receiver_avatar = $avatar['image'];
-
-
-?>
-			  
-			  
-			  
-			  
-                <div class="d-flex align-items-center">
-                  <?php if ($row['receiver_avatar']): ?>
-                    
-					
-				<img src="<?= $receiver_avatar ?>" class="avatar-sm me-2"> 
-					
-					
-                  <?php else: ?>
-                    <div class="avatar-sm bg-secondary me-2 d-flex align-items-center justify-content-center">
-                      <i class="bi bi-person text-white"></i>
-                    </div>
-                  <?php endif; ?>
-                 
-				 <a href="<?=htmlspecialchars($_this_script_, ENT_QUOTES)?><?=strpos($_this_script_,'?')!==false?'&':'?'?>to=<?= (int)$row['toid'] ?>"class="user-link">
-				 
-				 
-				 
-                    <?=htmlspecialchars($row['receiver_name'] ?? "UID ".$row['toid'])?>
-                  </a>
+              <td>
+                <div class="sp-subject" title="<?= htmlspecialchars($subject, ENT_QUOTES) ?>">
+                  <?= $subject !== '' ? htmlspecialchars($subject) : '<span class="sp-muted fst-italic">(no subject)</span>' ?>
                 </div>
               </td>
-              <td>
-                <div class="message-preview" title="<?=htmlspecialchars($row['subject'])?>">
-                  <?=htmlspecialchars($row['subject'])?>
+
+              <td class="sp-col-date">
+                <div title="<?= date('Y-m-d H:i:s', $ts) ?>">
+                  <?= date('d.m.Y', $ts) ?>
+                  <div class="sp-time"><i class="fa-regular fa-clock"></i><?= date('H:i', $ts) ?></div>
                 </div>
               </td>
-              <td>
-                <span title="<?=date("Y-m-d H:i:s", (int)$row['dateline'])?>">
-                  <?=date("d.m.Y H:i", (int)$row['dateline'])?>
+
+              <td class="sp-col-status">
+                <span class="sp-status sp-status--<?= $stMod ?>">
+                  <i class="fa-solid <?= $stIcon ?>"></i><?= $stLabel ?>
                 </span>
               </td>
-              <td>
-                <span class="badge status-badge <?=$row['status'] == 1 ? 'bg-success' : 'bg-warning text-dark'?>">
-                  <?=$row['status'] == 1 ? 'Read' : 'Unread'?>
-                </span>
+
+              <td class="sp-col-ip">
+                <?= $ip !== '' ? '<code class="sp-ip">' . htmlspecialchars($ip) . '</code>' : '<span class="sp-muted">—</span>' ?>
               </td>
-              <td>
-                <small class="text-muted"><?=inet_ntop($row['ipaddress'])?></small>
+
+              <td class="sp-col-act">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill sp-view"
+                        data-bs-toggle="modal" data-bs-target="#msgModal"
+                        data-pmid="<?= $pmid ?>"
+                        data-subject="<?= htmlspecialchars($subject, ENT_QUOTES) ?>">
+                  <i class="fa-solid fa-eye"></i><span class="d-none d-xl-inline ms-1">View</span>
+                </button>
               </td>
-              
-			  
-			  <td class="text-end">
-  <button
-    class="btn btn-sm btn-outline-primary"
-    data-bs-toggle="modal"
-    data-bs-target="#msgModal"
-    onclick='loadMessage(<?=$row["pmid"]?>, <?=json_encode((string)$row["subject"], JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT)?>)'>
-    <i class="bi bi-eye"></i>
-  </button>
-</td>
-			  
-			  
-			  
-			  
-			  
-			  
-			  
             </tr>
-          <?php endwhile; ?>
+          <?php endforeach; ?>
           </tbody>
         </table>
       </div>
-
-      
-	  
-
-
-
-
-<!-- Pagination -->
-<?php if ($total > $perPage): ?>
-  <?= multipage((int)$total, $perPage, $page, build_url(['page' => null])) ?>
-<?php endif; ?>
-
-
-
-  <script>
-    document.addEventListener("DOMContentLoaded", function () {
-      var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-      tooltipTriggerList.map(function (el) {
-        return new bootstrap.Tooltip(el)
-      });
-    });
-  </script>
-
-
-
-
-
-
-
-
-	  
-	  
-    </div>
+    <?php endif; ?>
   </div>
-</div>
+
+  <!-- Pagination -->
+  <?php if ($total > $perPage): ?>
+    <div class="sp-pager">
+      <?= multipage($total, $perPage, $page, build_url(['page' => null])) ?>
+    </div>
+  <?php endif; ?>
 
 
-</div>
-
-
-
-
-<!-- Modal for viewing a message -->
-<div class="modal fade" id="msgModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="msgModalTitle">Subject</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="msgModalBody">
-        Loading...
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+  <!-- Modal for viewing a message (id'ы используются spam.js) -->
+  <div class="modal fade sp-modal" id="msgModal" tabindex="-1" aria-labelledby="msgModalTitle" aria-hidden="true"
+       data-endpoint="spam_message.php">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="sp-modal-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
+          <h5 class="modal-title" id="msgModalTitle">Message</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="msgModalBody"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">
+            <i class="fa-solid fa-xmark me-1"></i>Close
+          </button>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Toast (global) -->
-<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1080;">
-  <div id="copyToast" class="toast align-items-center text-bg-success border-0" role="status" aria-live="polite" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body">Done</div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+  <!-- Toast (global) -->
+  <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1080;">
+    <div id="copyToast" class="toast align-items-center text-bg-success border-0" role="status" aria-live="polite" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body"><i class="fa-solid fa-circle-check me-2"></i><span class="sp-toast-text">Done</span></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
     </div>
   </div>
+
 </div>
-
-<script>
-// Load full message via AJAX
-function loadMessage(pmid, subject) {
-  const titleEl = document.getElementById('msgModalTitle');
-  const bodyEl  = document.getElementById('msgModalBody');
-
-  titleEl.textContent = subject;
-  bodyEl.innerHTML = `
-    <div class="d-flex align-items-center justify-content-center py-5">
-      <div class="spinner-border me-3" role="status" aria-hidden="true"></div>
-      <span>Loading message…</span>
-    </div>`;
-
-  fetch(`spam_message.php?id=${encodeURIComponent(pmid)}`, { credentials: 'same-origin' })
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-    .then(html => {
-      bodyEl.innerHTML = html;
-
-      // re-init tooltips inside the modal content
-      if (window.bootstrap) {
-        document.querySelectorAll('#msgModalBody [data-bs-toggle="tooltip"]').forEach(el => {
-          new bootstrap.Tooltip(el);
-        });
-      }
-    })
-    .catch(err => {
-      bodyEl.innerHTML = `<div class="alert alert-danger mb-0">
-        Failed to load message. ${String(err).replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}
-      </div>`;
-    });
-}
-
-// Global helpers for Raw tab (buttons inside fetched HTML call these)
-window.copyRawMessage = function () {
-  const pre = document.querySelector('#msgModalBody #rawMessage');
-  if (!pre) return;
-
-  const text = pre.innerText || pre.textContent || '';
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard')).catch(fallbackCopy);
-  } else {
-    fallbackCopy();
-  }
-
-  function fallbackCopy() {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.focus(); ta.select();
-    try { document.execCommand('copy'); showToast('Copied to clipboard'); } catch(e) {}
-    document.body.removeChild(ta);
-  }
-};
-
-window.downloadRawMessage = function () {
-  // wrapper with data attributes from get_message.php
-  const wrap = document.querySelector('#msgModalBody .message-content[data-pmid][data-sent]') 
-            || document.querySelector('#msgModalBody .message-content');
-  const pre  = document.querySelector('#msgModalBody #rawMessage');
-  if (!pre) return;
-
-  const id   = wrap?.getAttribute('data-pmid')  || 'unknown';
-  const sent = wrap?.getAttribute('data-sent')  || new Date().toISOString().replace(/[:T]/g,'-').slice(0,19);
-  const name = `pm-${id}-${sent}.txt`;
-
-  const text = pre.innerText || pre.textContent || '';
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url; a.download = name;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-
-  showToast(`Saved ${name}`);
-};
-
-// Bootstrap tooltip init (outside modal too)
-document.addEventListener('DOMContentLoaded', function() {
-  if (window.bootstrap) {
-    document.querySelectorAll('[data-bs-toggle="tooltip"], [title]').forEach(el => {
-      new bootstrap.Tooltip(el);
-    });
-  }
-});
-
-// Toast helper
-function showToast(msg) {
-  const toastEl = document.getElementById('copyToast');
-  if (!toastEl || !window.bootstrap) return console.log(msg);
-  toastEl.querySelector('.toast-body').textContent = msg;
-  new bootstrap.Toast(toastEl, { delay: 1400 }).show();
-}
-</script>
-
 
 <?php
 stdfoot();
-?>

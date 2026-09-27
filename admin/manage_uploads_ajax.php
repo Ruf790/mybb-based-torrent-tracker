@@ -1,6 +1,5 @@
 <?php
 
-
 declare(strict_types=1);
 
 if (empty($CURUSER['id']) || !is_mod($usergroups)) {
@@ -8,126 +7,89 @@ if (empty($CURUSER['id']) || !is_mod($usergroups)) {
     exit('<div class="alert alert-danger">Error! You do not have permission to access this page.</div>');
 }
 
-// Helper functions at the beginning of the file
-function getFileTypeClass($ext) 
+// ── Helpers ──────────────────────────────────────────────
+function getFileTypeClass($ext)
 {
-    $imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-    $docExts = ['doc', 'docx', 'odt'];
-    $pdfExts = ['pdf'];
-    $zipExts = ['zip', 'rar', '7z'];
-    
-    if (in_array($ext, $imageExts)) return 'image';
-    if (in_array($ext, $docExts)) return 'doc';
-    if (in_array($ext, $pdfExts)) return 'pdf';
-    if (in_array($ext, $zipExts)) return 'zip';
+    $ext = strtolower((string)$ext);
+    if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp'], true)) return 'image';
+    if (in_array($ext, ['doc', 'docx', 'odt'], true)) return 'doc';
+    if ($ext === 'pdf') return 'pdf';
+    if (in_array($ext, ['zip', 'rar', '7z'], true)) return 'zip';
     return 'other';
 }
 
-function isNewFile($date) 
+/** [иконка FA, тон] для типа файла */
+function mu_file_icon(string $class): array
 {
-    $uploadTime = strtotime($date);
-    return (time() - $uploadTime) < 86400; // 24 hours
+    return match ($class) {
+        'image' => ['fa-file-image',  'info'],
+        'pdf'   => ['fa-file-pdf',    'danger'],
+        'doc'   => ['fa-file-word',   'primary'],
+        'zip'   => ['fa-file-zipper', 'warning'],
+        default => ['fa-file',        'secondary'],
+    };
 }
 
-
-
-
-
-// ВАЖНО: укажи абсолютный путь к папке загрузок
-$storage_path = $_SERVER['DOCUMENT_ROOT'] . '/uploads'; // например: D:/web/uploads
-
-function folderSize($dir) 
+function isNewFile($date)
 {
-    $size = 0;
-    if (!is_dir($dir)) 
-	{
-        return 0; // если папка не существует
-    }
-    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $file) 
-	{
-        if ($file->isFile()) 
-		{
-            $size += $file->getSize();
-        }
-    }
-    return $size;
+    return (time() - (int)strtotime((string)$date)) < 86400; // 24 часа
 }
 
-// Пример: лимит 5 GB
-$total_space = 5 * 1024 * 1024 * 1024;
-$used_space = folderSize($storage_path);
+// ── Prefetch ссылок (вместо запроса на каждую строку) ────
+$mu_comment_torrent = [];
+$mu_post_tid        = [];
 
-$storage_percentage = $total_space > 0
-    ? round(($used_space / $total_space) * 100, 2)
-    : 0;
+$mu_cids = array_values(array_unique(array_filter(array_map(static fn($f) => (int)($f['comment_id'] ?? 0), $files))));
+if ($mu_cids) {
+    $ph = implode(',', array_fill(0, count($mu_cids), '?'));
+    $r  = $db->sql_query_prepared("SELECT id, torrent FROM comments WHERE id IN ({$ph})", $mu_cids);
+    while ($r && ($row = $db->fetch_array($r))) {
+        $mu_comment_torrent[(int)$row['id']] = (int)$row['torrent'];
+    }
+}
 
-
-
-
-
+$mu_pids = array_values(array_unique(array_filter(array_map(static fn($f) => (int)($f['post_id'] ?? 0), $files))));
+if ($mu_pids) {
+    $ph = implode(',', array_fill(0, count($mu_pids), '?'));
+    $r  = $db->sql_query_prepared("SELECT pid, tid FROM posts WHERE pid IN ({$ph})", $mu_pids);
+    while ($r && ($row = $db->fetch_array($r))) {
+        $mu_post_tid[(int)$row['pid']] = (int)$row['tid'];
+    }
+}
 ?>
 
-
-
-<div class="card mb-3">
-    <div class="card-body">
-        <h6 class="card-title d-flex justify-content-between align-items-center">
-            Storage Usage
-            <span class="badge bg-secondary"><?= $storage_percentage ?>%</span>
-        </h6>
-        
-        <div class="progress mb-1" style="height: 18px;">
-            <div class="progress-bar <?= $storage_percentage > 80 ? 'bg-danger' : ($storage_percentage > 50 ? 'bg-warning' : 'bg-success') ?>" 
-                 role="progressbar" 
-                 style="width: <?= $storage_percentage ?>%" 
-                 aria-valuenow="<?= $storage_percentage ?>" 
-                 aria-valuemin="0" 
-                 aria-valuemax="100">
-            </div>
-        </div>
-        
-        <small class="text-muted">
-            Used <strong><?= mksize($used_space) ?></strong> of <strong><?= mksize($total_space) ?></strong> 
-            (<?= $storage_percentage ?>%)
-        </small>
-    </div>
-</div>
-
-
-
-
-
-
 <div class="table-responsive">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover align-middle mu-table">
         <thead>
             <tr>
-                <th width="40"><input type="checkbox" id="selectAll" class="form-check-input"></th>
-                <th>Preview</th>
-                <th>
+                <th style="width:44px"><input type="checkbox" id="selectAll" class="form-check-input" title="Select all on this page"></th>
+                <th><i class="fa-solid fa-eye"></i>Preview</th>
+                <th style="min-width:230px">
                     <div class="d-flex flex-column">
-                        <span>File Info</span>
-                        <input type="text" class="form-control form-control-sm mt-1" placeholder="Search by name" id="nameFilter">
+                        <span><i class="fa-solid fa-file"></i>File</span>
+                        <input type="text" class="form-control form-control-sm mu-input mt-2" placeholder="Filter by name" id="nameFilter" style="border-radius:50rem">
                     </div>
                 </th>
-                <th>Dimensions</th>
+                <th><i class="fa-solid fa-expand"></i>Dimensions</th>
                 <th>
                     <div class="d-flex flex-column">
-                        <span>Linked To</span>
-                        <select class="form-select form-select-sm mt-1" id="typeFilter">
+                        <span><i class="fa-solid fa-link"></i>Linked to</span>
+                        <select class="form-select form-select-sm mu-input mt-2" id="typeFilter" style="border-radius:50rem">
                             <option value="">All types</option>
-                            <option value="torrent" <?= $typeFilter === 'torrent' ? 'selected' : '' ?>>Torrents</option>
-<option value="news" <?= $typeFilter === 'news' ? 'selected' : '' ?>>News</option>
-<option value="comment" <?= $typeFilter === 'comment' ? 'selected' : '' ?>>Comments</option>
-<option value="post" <?= $typeFilter === 'post' ? 'selected' : '' ?>>Posts</option>
-<option value="message" <?= $typeFilter === 'message' ? 'selected' : '' ?>>Messages</option>
+                            <option value="torrent"  <?= $typeFilter === 'torrent'  ? 'selected' : '' ?>>Torrents</option>
+                            <option value="news"     <?= $typeFilter === 'news'     ? 'selected' : '' ?>>News</option>
+                            <option value="comment"  <?= $typeFilter === 'comment'  ? 'selected' : '' ?>>Comments</option>
+                            <option value="post"     <?= $typeFilter === 'post'     ? 'selected' : '' ?>>Posts</option>
+                            <option value="message"  <?= $typeFilter === 'message'  ? 'selected' : '' ?>>Messages</option>
+                            <option value="unlinked" <?= $typeFilter === 'unlinked' ? 'selected' : '' ?>>Unlinked</option>
                         </select>
                     </div>
                 </th>
+                <th><i class="fa-solid fa-user"></i>Uploader</th>
                 <th>
                     <div class="d-flex flex-column">
-                        <span>Uploaded</span>
-                        <select class="form-select form-select-sm mt-1" id="dateFilter">
+                        <span><i class="fa-solid fa-calendar-days"></i>Uploaded</span>
+                        <select class="form-select form-select-sm mu-input mt-2" id="dateFilter" style="border-radius:50rem">
                             <option value="">All dates</option>
                             <option value="today">Today</option>
                             <option value="week">This week</option>
@@ -135,334 +97,254 @@ $storage_percentage = $total_space > 0
                         </select>
                     </div>
                 </th>
-                <th>Actions</th>
+                <th class="text-end">Actions</th>
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($files as $file): 
-                $dimensions = strpos($file['file_type'], 'image/') === 0 ? 
-                    getFileDimensions($file['file_path']) : 'N/A';
-                $file_ext = pathinfo($file['file_name'], PATHINFO_EXTENSION);
+            <?php foreach ($files as $file):
+                $is_image        = strpos((string)$file['file_type'], 'image/') === 0;
+                $dimensions      = $is_image ? getFileDimensions($file['file_path']) : 'N/A';
+                $file_ext        = strtolower(pathinfo((string)$file['file_name'], PATHINFO_EXTENSION));
                 $file_type_class = getFileTypeClass($file_ext);
+                [$ficon, $ftone] = mu_file_icon($file_type_class);
+
+                $file_path_on_disk = $_SERVER['DOCUMENT_ROOT'] . parse_url((string)$file['file_url'], PHP_URL_PATH);
+                $image_exists      = $is_image && is_file($file_path_on_disk);
+
+                $row_type = $file['comment_id'] ? 'comment'
+                    : ($file['news_id'] ? 'news'
+                    : ($file['torrent_id'] ? 'torrent'
+                    : ($file['post_id'] ? 'post'
+                    : ($file['messages_id'] ? 'message' : ''))));
+
+                $f_url  = htmlspecialchars((string)$file['file_url']);
+                $f_name = htmlspecialchars((string)$file['file_name']);
             ?>
-            
-            <tr data-id="<?= $file['id'] ?>" 
-                data-file-type="<?= 
-                    $file['comment_id'] ? 'comment' : 
-                    ($file['news_id'] ? 'news' : 
-                    ($file['torrent_id'] ? 'torrent' : 
-                    ($file['post_id'] ? 'post' : '')))
-                ?>" 
-                data-upload-date="<?= $file['uploaded_at'] ?>">
+            <tr data-id="<?= $file['id'] ?>" data-file-type="<?= $row_type ?>" data-upload-date="<?= $file['uploaded_at'] ?>"
+                data-file-name="<?= $f_name ?>" data-file-size="<?= (int)$file['file_size'] ?>">
                 <td>
                     <input type="checkbox" class="form-check-input file-checkbox" name="selected_files[]" value="<?= $file['id'] ?>">
                 </td>
-                 
-				 
-				 
-				 
-				 
-<td>
-<?php
-$file_path_on_disk = $_SERVER['DOCUMENT_ROOT'] . parse_url($file['file_url'], PHP_URL_PATH);
-$image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path_on_disk);
-?>
-<?php if (strpos($file['file_type'], 'image/') === 0): ?>
-    <?php if ($image_exists): ?>
-        <img src="<?= htmlspecialchars($file['file_url']) ?>" 
-             class="img-preview"
-             alt="<?= htmlspecialchars($file['file_name']) ?>"
-             data-bs-toggle="modal"
-             data-bs-target="#universalImageModal"
-             data-img-src="<?= htmlspecialchars($file['file_url']) ?>"
-             data-title="<?= htmlspecialchars($file['file_name']) ?>">
-    <?php else: ?>    
-       
-	   
-	   
-	   
-<div class="d-flex flex-column align-items-center justify-content-center text-muted border rounded 
-            bg-light hover-shadow transition-all" 
-     style="width: 80px; height: 80px; cursor: default;">
-    <i class="bi bi-image-fill fs-3 mb-2 text-secondary opacity-75"></i>
-    <div class="small text-center text-truncate px-1 w-100">Not Found</div>
-</div>
 
-	   
-	   
-	   
-    <?php endif; ?>
-<?php else: ?>
-    <div class="d-flex align-items-center justify-content-center" 
-         style="width:80px; height:80px;">
-        <?php if ($file_ext === 'pdf'): ?>
-            <i class="bi bi-file-earmark-pdf file-icon pdf"></i>
-        <?php elseif (in_array($file_ext, ['doc', 'docx'])): ?>
-            <i class="bi bi-file-earmark-word file-icon doc"></i>
-        <?php elseif (in_array($file_ext, ['zip', 'rar', '7z'])): ?>
-            <i class="bi bi-file-earmark-zip file-icon zip"></i>
-        <?php else: ?>
-            <i class="bi bi-file-earmark file-icon"></i>
-        <?php endif; ?>
-    </div>
-<?php endif; ?>
-</td>
-
-				 
-				 
-				 
-				 
-				 
-				 
-				 
-				 
-				 
+                <!-- Preview -->
                 <td>
-                    <div class="d-flex align-items-center">
-                        <span class="file-type-indicator file-type-<?= $file_type_class ?>"></span>
-                        <div>
-                            <div class="fw-semibold"><?= cutename($file['file_name'], 27) ?></div>
-                            <div class="text-muted small">
-                                <i class="bi bi-hdd me-1"></i> <?= mksize($file['file_size']) ?>
-                            </div>
-                            <div class="text-muted small">
-                                <i class="bi bi-filetype-<?= $file_ext ?> me-1"></i> <?= htmlspecialchars($file['file_type']) ?>
+                    <?php if ($is_image && $image_exists): ?>
+                        <img src="<?= $f_url ?>"
+                             class="img-preview mu-thumb"
+                             loading="lazy"
+                             alt="<?= $f_name ?>"
+                             data-bs-toggle="modal"
+                             data-bs-target="#universalImageModal"
+                             data-img-src="<?= $f_url ?>"
+                             data-title="<?= $f_name ?>">
+                    <?php elseif ($is_image): ?>
+                        <div class="mu-thumb-ph mu-tone-danger" title="File is missing on disk">
+                            <i class="fa-solid fa-image"></i>
+                            <small>Not found</small>
+                        </div>
+                    <?php else: ?>
+                        <div class="mu-thumb-ph mu-tone-<?= $ftone ?>">
+                            <i class="fa-solid <?= $ficon ?>"></i>
+                            <small><?= htmlspecialchars(strtoupper($file_ext ?: 'file')) ?></small>
+                        </div>
+                    <?php endif; ?>
+                </td>
+
+                <!-- File info -->
+                <td>
+                    <div class="d-flex align-items-start gap-2">
+                        <span class="mu-ftype mu-tone-<?= $ftone ?>"><i class="fa-solid <?= $ficon ?>"></i></span>
+                        <div class="min-w-0">
+                            <div class="mu-fname" title="<?= $f_name ?>"><?= htmlspecialchars((string)cutename($file['file_name'], 27)) ?></div>
+                            <div class="mu-meta mt-1">
+                                <span><i class="fa-solid fa-weight-hanging"></i><?= mksize($file['file_size']) ?></span>
+                                <span><i class="fa-solid fa-tag"></i><?= htmlspecialchars((string)$file['file_type']) ?></span>
                             </div>
                         </div>
                     </div>
                 </td>
+
+                <!-- Dimensions -->
                 <td>
                     <?php if ($dimensions !== 'N/A'): ?>
-                        <span class="badge bg-light text-dark">
-                            <i class="bi bi-aspect-ratio me-1"></i> <?= $dimensions ?>
-                        </span>
+                        <span class="mu-badge mu-tone-secondary"><i class="fa-solid fa-expand"></i><?= $dimensions ?></span>
                     <?php else: ?>
-                        <span class="badge bg-light text-muted">N/A</span>
+                        <span class="text-body-secondary small">—</span>
                     <?php endif; ?>
                 </td>
+
+                <!-- Linked to -->
                 <td>
-                    
-					
-					
-					
-					<?php if ($file['comment_id']): ?>
-    <?php 
-    // Получаем torrent из таблицы comments
-    $torrent_result = $db->sql_query_prepared("SELECT torrent FROM comments WHERE id = ?", [(int)$file['comment_id']]);
-    $torrent_row = $torrent_result ? $db->fetch_array($torrent_result) : null;
-    $torrent_id = $torrent_row['torrent'] ?? 0;
-    
-    // Формируем ссылку
-    if ($torrent_id > 0) {
-        // Ссылка вида: torrent-50-comment-1320.html#pid1320
-        $comment_link = $BASEURL . '/torrent-' . $torrent_id . '-comment-' . $file['comment_id'] . '.html#pid' . $file['comment_id'];
-    } else {
-        // Если нет torrent, просто ссылка на комментарий
-        $comment_link = $BASEURL . '/comment-' . $file['comment_id'] . '.html#pid' . $file['comment_id'];
-    }
-    ?>
-    <span class="badge text-success bg-success bg-opacity-10">
-        <i class="fas fa-comment me-1"></i> 
-        <a href="<?= $comment_link ?>" target="_blank" class="text-decoration-none text-success">
-            Comment #<?= $file['comment_id'] ?>
-        </a>
-    </span>
-<?php endif; ?>
-					
-					
-					
-					
-					
+                    <div class="d-flex flex-column align-items-start gap-1">
+                    <?php if ($file['comment_id']):
+                        $cid        = (int)$file['comment_id'];
+                        $tid_of_cmt = $mu_comment_torrent[$cid] ?? 0;
+                        $comment_link = $tid_of_cmt > 0
+                            ? $BASEURL . '/torrent-' . $tid_of_cmt . '-comment-' . $cid . '.html#pid' . $cid
+                            : $BASEURL . '/comment-' . $cid . '.html#pid' . $cid;
+                    ?>
+                        <span class="mu-badge mu-tone-success">
+                            <i class="fa-solid fa-comment"></i>
+                            <a href="<?= htmlspecialchars($comment_link) ?>" target="_blank" rel="noopener">Comment #<?= $cid ?></a>
+                        </span>
+                    <?php endif; ?>
 
                     <?php if ($file['news_id']): ?>
-                        <span class="badge text-warning bg-warning bg-opacity-10">
-                            <i class="fas fa-newspaper me-1"></i> News #<?= $file['news_id'] ?>
+                        <span class="mu-badge mu-tone-warning">
+                            <i class="fa-solid fa-newspaper"></i> News #<?= (int)$file['news_id'] ?>
                         </span>
                     <?php endif; ?>
 
-                    
-					
-					<?php if ($file['torrent_id']): ?>
-    <?php 
-   
-    $torrent_link = $BASEURL . '/' . get_torrent_link($file['torrent_id']);
-    ?>
-    <span class="badge text-info bg-info bg-opacity-10">
-        <i class="fas fa-download me-1"></i> 
-        <a href="<?= $torrent_link ?>" target="_blank" class="text-decoration-none text-info">
-            Torrent #<?= $file['torrent_id'] ?>
-        </a>
-    </span>
-<?php endif; ?>
-					
-					
-					
-					
-					
+                    <?php if ($file['torrent_id']): ?>
+                        <span class="mu-badge mu-tone-info">
+                            <i class="fa-solid fa-download"></i>
+                            <a href="<?= htmlspecialchars($BASEURL . '/' . get_torrent_link($file['torrent_id'])) ?>" target="_blank" rel="noopener">Torrent #<?= (int)$file['torrent_id'] ?></a>
+                        </span>
+                    <?php endif; ?>
 
-                   
-<?php if ($file['post_id']): ?>
-    <?php 
-    // Получаем tid из таблицы posts
-    $post_result = $db->sql_query_prepared("SELECT tid FROM posts WHERE pid = ?", [(int)$file['post_id']]);
-    $post_row = $post_result ? $db->fetch_array($post_result) : null;
-    $tid = $post_row['tid'] ?? 0;
-    
-    // Получаем ссылку на пост и добавляем якорь #pid
-    $post_link = $BASEURL . '/' . get_post_link($file['post_id'], $tid) . '#pid' . $file['post_id'];
-    ?>
-    <span class="badge text-primary bg-primary bg-opacity-10">
-        <i class="fas fa-file-alt me-1"></i> 
-        <a href="<?= $post_link ?>" target="_blank" class="text-decoration-none text-primary">
-            Post #<?= $file['post_id'] ?>
-        </a>
-    </span>
-<?php endif; ?>
-				   
-				   
-				   
-				   
-					
-					
-					<?php if ($file['messages_id']): ?>
-    <span class="badge text-primary bg-primary bg-opacity-10">
-        <i class="fas fa-envelope-open-text me-1"></i> Message #<?= $file['messages_id'] ?>
-    </span>
-<?php endif; ?>
+                    <?php if ($file['post_id']):
+                        $pid       = (int)$file['post_id'];
+                        $post_link = $BASEURL . '/' . get_post_link($file['post_id'], $mu_post_tid[$pid] ?? 0) . '#pid' . $pid;
+                    ?>
+                        <span class="mu-badge mu-tone-primary">
+                            <i class="fa-solid fa-file-lines"></i>
+                            <a href="<?= htmlspecialchars($post_link) ?>" target="_blank" rel="noopener">Post #<?= $pid ?></a>
+                        </span>
+                    <?php endif; ?>
 
-                    
-					
-					
-					
-					
-					<?php if ($file['username']): ?>
-    <?php 
-    $useravatar = format_avatar($file['avatar'], $file['avatardimensions']);
-    $avatarUrl = $useravatar['image']; 
-    $profileUrl = $BASEURL .'/'.get_profile_link($file['user_id']); 
-    ?>
-    <div class="d-flex flex-column align-items-center">
-        <a href="<?= $profileUrl ?>" class="mb-1">
-            <img src="<?= htmlspecialchars($avatarUrl) ?>" 
-                 class="rounded-circle" 
-                 width="50" 
-                 height="50" 
-                 alt="<?= htmlspecialchars($file['username']) ?>">
-        </a>
+                    <?php if ($file['messages_id']): ?>
+                        <span class="mu-badge mu-tone-secondary">
+                            <i class="fa-solid fa-envelope-open-text"></i> Message #<?= (int)$file['messages_id'] ?>
+                        </span>
+                    <?php endif; ?>
 
-        <a href="<?= $profileUrl ?>" 
-           class="small text-muted text-center text-decoration-none">
-            <?= format_name($file['username'], $file['usergroup']) ?>
-        </a>
-    </div>
-<?php endif; ?>
-					
-					
-					
-					
-					
+                    <?php if ($row_type === ''): ?>
+                        <span class="mu-badge mu-tone-danger" title="Not attached to any content">
+                            <i class="fa-solid fa-link-slash"></i> Unlinked
+                        </span>
+                    <?php endif; ?>
+                    </div>
                 </td>
-                
-				
-				<td>
-    <div class="d-flex flex-column align-items-start">
-        <?php if (isNewFile($file['uploaded_at'])): ?>
-            <span class="badge bg-danger mb-1">NEW</span>
-        <?php endif; ?>
-        
-        <span class="small text-muted">
-            <i class="bi bi-calendar me-1"></i> <?= date('M j, Y', strtotime($file['uploaded_at'])) ?>
-        </span>
-        <span class="small text-muted">
-            <i class="bi bi-clock me-1"></i> <?= date('H:i', strtotime($file['uploaded_at'])) ?>
-        </span>
-    </div>
-</td>
-			
 
-			
-				
-				
-               <td>
-    <div class="dropdown">
-        <button class="btn btn-sm btn-light dropdown-toggle" 
-                type="button" 
-                id="dropdownMenu<?= $file['id'] ?>" 
-                data-bs-toggle="dropdown" 
-                aria-expanded="false">
-            <i class="bi bi-three-dots-vertical"></i>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenu<?= $file['id'] ?>">
-            <li>
-                <a class="dropdown-item edit-btn" 
-                   href="#" 
-                   data-bs-toggle="modal" 
-                   data-bs-target="#editModal"
-                   data-id="<?= $file['id'] ?>"
-                   data-comment-id="<?= $file['comment_id'] ?? '' ?>"
-                   data-news-id="<?= $file['news_id'] ?? '' ?>"
-                   data-torrent-id="<?= $file['torrent_id'] ?? '' ?>"
-                   data-post-id="<?= $file['post_id'] ?? '' ?>"
-                   data-user-id="<?= $file['user_id'] ?? '' ?>">
-                    <i class="bi bi-pencil me-2"></i> Edit
-                </a>
-            </li>
-            <li>
-                <a class="dropdown-item move-btn" 
-                   href="#" 
-                   data-bs-toggle="modal" 
-                   data-bs-target="#moveModal"
-                   data-id="<?= $file['id'] ?>"
-                   data-file-name="<?= htmlspecialchars($file['file_name']) ?>"
-                   data-file-url="<?= htmlspecialchars($file['file_url']) ?>">
-                    <i class="bi bi-arrows-move me-2 text-primary"></i> Move
-                </a>
-            </li>
-            <li>
-                <a class="dropdown-item copy-btn" 
-                   href="#" 
-                   data-bs-toggle="modal" 
-                   data-bs-target="#copyModal"
-                   data-id="<?= $file['id'] ?>"
-                   data-file-name="<?= htmlspecialchars($file['file_name']) ?>"
-                   data-file-url="<?= htmlspecialchars($file['file_url']) ?>">
-                    <i class="bi bi-files me-2 text-info"></i> Copy
-                </a>
-            </li>
-            <li>
-                <a class="dropdown-item btn-delete" 
-                   href="#" 
-                   data-id="<?= htmlspecialchars((string)$file['id']) ?>">
-                    <i class="bi bi-trash me-2 text-danger"></i> Delete
-                </a>
-            </li>
-            <li>
-                <a class="dropdown-item" 
-                   href="<?= htmlspecialchars($file['file_url']) ?>" 
-                   download="<?= htmlspecialchars($file['file_name']) ?>">
-                    <i class="bi bi-download me-2 text-success"></i> Download
-                </a>
-            </li>
-        </ul>
-    </div>
-</td>
+                <!-- Uploader -->
+                <td>
+                    <?php if (!empty($file['username'])):
+                        $useravatar = format_avatar($file['avatar'], $file['avatardimensions']);
+                        $profileUrl = $BASEURL . '/' . get_profile_link($file['user_id']);
+                    ?>
+                        <div class="mu-user">
+                            <a href="<?= htmlspecialchars($profileUrl) ?>">
+                                <img src="<?= htmlspecialchars((string)$useravatar['image']) ?>" alt="<?= htmlspecialchars((string)$file['username']) ?>" loading="lazy">
+                            </a>
+                            <a href="<?= htmlspecialchars($profileUrl) ?>">
+                                <?= format_name(htmlspecialchars((string)$file['username']), $file['usergroup']) ?>
+                            </a>
+                        </div>
+                    <?php else: ?>
+                        <span class="text-body-secondary small"><i class="fa-solid fa-user-slash me-1"></i>Unknown</span>
+                    <?php endif; ?>
+                </td>
 
-				
-				
-				
+                <!-- Uploaded -->
+                <td>
+                    <?php if (isNewFile($file['uploaded_at'])): ?>
+                        <span class="mu-new mu-tone-danger"><i class="fa-solid fa-bolt me-1"></i>NEW</span>
+                    <?php endif; ?>
+                    <div class="mu-date">
+                        <div><i class="fa-regular fa-calendar"></i><?= date('M j, Y', strtotime((string)$file['uploaded_at'])) ?></div>
+                        <div><i class="fa-regular fa-clock"></i><?= date('H:i', strtotime((string)$file['uploaded_at'])) ?></div>
+                    </div>
+                </td>
+
+                <!-- Actions -->
+                <td>
+                    <div class="mu-actions">
+                        <a class="btn mu-iconbtn" href="<?= $f_url ?>" target="_blank" rel="noopener" title="Open in new tab">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                        </a>
+                        <div class="dropdown">
+                            <button class="btn mu-iconbtn dropdown-toggle"
+                                    type="button"
+                                    id="dropdownMenu<?= $file['id'] ?>"
+                                    data-bs-toggle="dropdown"
+                                    data-bs-popper-config='{"strategy":"fixed"}'
+                                    aria-expanded="false"
+                                    title="More actions">
+                                <i class="fa-solid fa-ellipsis-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenu<?= $file['id'] ?>">
+                                <li>
+                                    <a class="dropdown-item edit-btn"
+                                       href="#"
+                                       data-bs-toggle="modal"
+                                       data-bs-target="#editModal"
+                                       data-id="<?= $file['id'] ?>"
+                                       data-file-name="<?= $f_name ?>"
+                                       data-comment-id="<?= $file['comment_id'] ?? '' ?>"
+                                       data-news-id="<?= $file['news_id'] ?? '' ?>"
+                                       data-torrent-id="<?= $file['torrent_id'] ?? '' ?>"
+                                       data-post-id="<?= $file['post_id'] ?? '' ?>"
+                                       data-user-id="<?= $file['user_id'] ?? '' ?>">
+                                        <i class="fa-solid fa-pen text-warning"></i>Edit
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item move-btn"
+                                       href="#"
+                                       data-bs-toggle="modal"
+                                       data-bs-target="#moveModal"
+                                       data-id="<?= $file['id'] ?>"
+                                       data-file-name="<?= $f_name ?>"
+                                       data-file-url="<?= $f_url ?>">
+                                        <i class="fa-solid fa-arrows-up-down-left-right text-primary"></i>Move
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item copy-btn"
+                                       href="#"
+                                       data-bs-toggle="modal"
+                                       data-bs-target="#copyModal"
+                                       data-id="<?= $file['id'] ?>"
+                                       data-file-name="<?= $f_name ?>"
+                                       data-file-url="<?= $f_url ?>">
+                                        <i class="fa-solid fa-copy text-info"></i>Copy
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item"
+                                       href="<?= $f_url ?>"
+                                       download="<?= $f_name ?>">
+                                        <i class="fa-solid fa-download text-success"></i>Download
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item btn-delete text-danger"
+                                       href="#"
+                                       data-id="<?= htmlspecialchars((string)$file['id']) ?>">
+                                        <i class="fa-solid fa-trash-can"></i>Delete
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </td>
             </tr>
-           <?php endforeach; ?>
+            <?php endforeach; ?>
+
             <?php if (empty($files)): ?>
             <tr>
-                <td colspan="7">
-                    <div class="text-center py-5">
-                        <i class="bi bi-images fs-1 text-muted mb-3 d-block"></i>
-                        <h5 class="text-muted">No files found.</h5>
+                <td colspan="8">
+                    <div class="mu-empty">
+                        <div class="mu-empty-icon mu-tone-secondary"><i class="fa-solid fa-images"></i></div>
+                        <h5 class="fw-bold mb-1">No files found</h5>
                         <?php if ($search || $typeFilter): ?>
-                            <p class="text-muted small">Try clearing your search or filter.</p>
-                            <a href="index.php?act=manage_uploads" class="btn btn-outline-secondary btn-sm">
-                                <i class="bi bi-x-circle me-1"></i> Clear filters
+                            <p class="text-body-secondary small mb-3">Nothing matches the current search or filter.</p>
+                            <a href="index.php?act=manage_uploads" class="btn btn-outline-secondary btn-sm" style="border-radius:50rem">
+                                <i class="fa-solid fa-filter-circle-xmark me-1"></i> Clear filters
                             </a>
+                        <?php else: ?>
+                            <p class="text-body-secondary small mb-0">Uploaded files will appear here.</p>
                         <?php endif; ?>
                     </div>
                 </td>
@@ -472,57 +354,18 @@ $image_exists = strpos($file['file_type'], 'image/') === 0 && is_file($file_path
     </table>
 </div>
 
-
-
 <?php
-// Update $this_script2 to include all filters (search + type)
 $this_script2 = "index.php?act=manage_uploads"
-    . ($search ? "&search=" . urlencode($search) : "")
-    . ($typeFilter ? "&type=" . urlencode($typeFilter) : "");
+    . ($search     ? "&search=" . urlencode($search)     : "")
+    . ($typeFilter ? "&type="   . urlencode($typeFilter) : "");
 ?>
 
 <?php if ($total_pages > 1): ?>
-<div class="card-footer">
-    <?= multipage((int)$total_files, (int)$per_page, (int)$page, $this_script2) ?>
+<div class="mu-pager d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span class="text-body-secondary small">
+        <i class="fa-solid fa-layer-group me-1"></i>
+        Page <?= (int)$page ?> of <?= (int)$total_pages ?>, <?= ts_nf((int)$total_files) ?> files
+    </span>
+    <div><?= multipage((int)$total_files, (int)$per_page, (int)$page, $this_script2) ?></div>
 </div>
 <?php endif; ?>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const typeFilter = document.getElementById('typeFilter');
-
-    typeFilter.addEventListener('change', function () {
-        const selectedType = this.value;
-        const nameFilter = document.getElementById('nameFilter')?.value || '';
-
-        const url = new URL(window.location.href);
-        if (selectedType) {
-            url.searchParams.set('type', selectedType);
-        } else {
-            url.searchParams.delete('type');
-        }
-
-        if (nameFilter) {
-            url.searchParams.set('search', nameFilter);
-        } else {
-            url.searchParams.delete('search');
-        }
-
-        url.searchParams.delete('page'); // сбросить на первую страницу
-        window.location.href = url.toString();
-    });
-});
-</script>

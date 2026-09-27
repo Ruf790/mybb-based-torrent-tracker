@@ -249,7 +249,10 @@ define('MT_VERSION', 'v1.0 by xam');
 // Process form data
 $do = $_POST['do'] ?? $_GET['do'] ?? '';
 $browsecategory = (int)($_GET['browsecategory'] ?? $_POST['browsecategory'] ?? 0);
-$searchword = htmlspecialchars($_GET['searchword'] ?? $_POST['searchword'] ?? '');
+// Сырая строка — для SQL, экранированная — только для вывода.
+// Раньше htmlspecialchars() применялся ДО поиска: «A&B» искалось как «A&amp;B»
+$searchword_raw = trim((string)($_GET['searchword'] ?? $_POST['searchword'] ?? ''));
+$searchword     = htmlspecialchars($searchword_raw);
 $searchtype = $_GET['searchtype'] ?? $_POST['searchtype'] ?? '';
 
 // Build query conditions
@@ -287,7 +290,8 @@ $queryBuilder = new class {
     public function addSearchCondition(string $searchword): void {
         if (!empty($searchword)) {
             $this->conditions[] = "t.name LIKE ?";
-            $this->params[] = "%$searchword%";
+            // % и _ в запросе ищутся буквально
+            $this->params[] = '%' . addcslashes($searchword, '%_\\') . '%';
             $this->extralink .= "searchword=" . urlencode($searchword) . "&amp;";
         }
     }
@@ -338,7 +342,7 @@ $queryBuilder = new class {
 };
 
 $queryBuilder->addCategoryCondition($browsecategory);
-$queryBuilder->addSearchCondition($searchword);
+$queryBuilder->addSearchCondition($searchword_raw);
 $queryBuilder->addSearchTypeCondition($searchtype);
 
 // Безопасен ли return_address для редиректа. Раньше принимались ТОЛЬКО
@@ -472,209 +476,159 @@ if ($do === 'quick_edit') {
 
 stdhead('Manage Torrents', true, 'supernote');
 
-echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/manage_torrents.css">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/manage_torrents.css?ver=2">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/manage_torrents_ui.css?ver=1">';
 
 $torrentManager->showErrors();
 
 // Build ordering
 $orderBy = 't.added DESC';
-$allowedOrders = ['name', 'owner', 'category', 'added'];
+$allowedOrders = ['name', 'owner', 'category', 'added', 'size', 'seeders'];
 $currentOrder = $_GET['orderby'] ?? '';
-$currentWhat = $_GET['what'] ?? 'desc';
-$nextWhat = $currentWhat === 'desc' ? 'asc' : 'desc';
+$currentWhat  = ($_GET['what'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
+$nextWhat     = $currentWhat === 'desc' ? 'asc' : 'desc';
 
-if (isset($_GET['orderby']) && in_array($_GET['orderby'], $allowedOrders)) {
-    $what = $currentWhat === 'desc' ? 'DESC' : 'ASC';
-    $orderBy = "t.{$_GET['orderby']} $what";
-    $orderLink = "orderby={$_GET['orderby']}&amp;what=$nextWhat&amp;";
+if (in_array($currentOrder, $allowedOrders, true)) {
+    $orderBy   = "t.{$currentOrder} " . strtoupper($currentWhat);
+    $orderLink = "orderby={$currentOrder}&amp;what={$currentWhat}&amp;";
+} else {
+    $currentOrder = '';
 }
 
-// Get torrent count and setup pagination
-$startTime = microtime(true);
-$countQuery = $db->sql_query_prepared($queryBuilder->getCountQuery(), $queryBuilder->getParams());
+// Count + pagination
+$startTime     = microtime(true);
+$countQuery    = $db->sql_query_prepared($queryBuilder->getCountQuery(), $queryBuilder->getParams());
 $totalTorrents = $countQuery ? (int)$db->fetch_field($countQuery, 'total') : 0;
-$queryTime = round((microtime(true) - $startTime) * 1000, 2);
+$queryTime     = round((microtime(true) - $startTime) * 1000, 2);
 
-// Adaptive pagination based on performance
 $torrentsPerPage = max(20, (int)($CURUSER['torrentsperpage'] ?? $ts_perpage ?? 50));
 if ($queryTime > 1000 && $totalTorrents > 1000) {
     $torrentsPerPage = min($torrentsPerPage, 25);
 }
-
-$page = max(1, (int)($_GET['page'] ?? 1));
+$page  = max(1, (int)($_GET['page'] ?? 1));
 $start = ($page - 1) * $torrentsPerPage;
-
 $multipage = multipage($totalTorrents, $torrentsPerPage, $page, $_this_script_ . '' . ($orderLink ?? '') . $queryBuilder->extralink);
 
-// Build dropdowns
+// Сводка по всему трекеру (один проход по таблице) — для плиток и счётчиков фильтров
+$sq = $db->sql_query_prepared("
+    SELECT COUNT(*) AS total, COALESCE(SUM(size),0) AS bytes,
+           COALESCE(SUM(free = 'yes'),0) AS free, COALESCE(SUM(silver = 'yes'),0) AS silver,
+           COALESCE(SUM(thirtypercent = 'yes'),0) AS thirtypercent, COALESCE(SUM(sticky = 'yes'),0) AS recommend,
+           COALESCE(SUM(doubleupload = 'yes'),0) AS doubleuploads,
+           COALESCE(SUM(visible = 'no' OR (seeders = 0 AND leechers = 0)),0) AS deadonly
+    FROM torrents
+");
+$sum = $sq ? $db->fetch_array($sq) : [];
+
 require_once INC_PATH . '/functions_category.php';
-$categoryDropdown = ts_category_list('browsecategory', $browsecategory, '<option value="0">📁 All Categories</option>');
+$categoryDropdown = ts_category_list('browsecategory', $browsecategory, '<option value="0">All categories</option>');
 
-$searchTypeDropdown = '
-<select class="form-select form-select-sm border" name="searchtype" style="border-radius: 0.5rem;">
-    <option value="">⚡ All Types</option>
-    <option value="free"' . ($searchtype === 'free' ? ' selected' : '') . '>🎁 Free Torrents</option>
-    <option value="silver"' . ($searchtype === 'silver' ? ' selected' : '') . '>⭐ Silver Torrents</option>
-    <option value="thirtypercent"' . ($searchtype === 'thirtypercent' ? ' selected' : '') . '>🟣 30% Leech</option>
-    <option value="recommend"' . ($searchtype === 'recommend' ? ' selected' : '') . '>📌 Sticky Torrents</option>
-    <option value="doubleuploads"' . ($searchtype === 'doubleuploads' ? ' selected' : '') . '>⚡ 2x Upload</option>
-    <option value="deadonly"' . ($searchtype === 'deadonly' ? ' selected' : '') . '>💀 Dead Torrents</option>
-</select>';
+// База для ссылок сортировки. Раньше к $_this_script_ (уже с «?act=…»)
+// дописывалось ещё одно «?act=manage_torrents» — получался «…??act=…».
+$base = htmlspecialchars((string)$_SERVER['SCRIPT_NAME']) . '?act=manage_torrents&amp;';
+$sortTh = static function (string $field, string $icon, string $label, string $cls = '') use ($base, $currentOrder, $currentWhat, $queryBuilder): string {
+    $active = $currentOrder === $field;
+    $next   = ($active && $currentWhat === 'desc') ? 'asc' : 'desc';
+    $arrow  = $active ? ' <i class="fa-solid fa-arrow-' . ($currentWhat === 'desc' ? 'down-wide-short' : 'up-short-wide') . ' mt-sort-on"></i>' : '';
+    return '<th class="' . $cls . '"><a class="mt-sort' . ($active ? ' is-active' : '') . '" href="' . $base . 'orderby=' . $field . '&amp;what=' . $next . '&amp;' . $queryBuilder->extralink . '"><i class="fa-solid ' . $icon . '"></i>' . $label . $arrow . '</a></th>';
+};
 
-// Main interface
-echo '
-<div class="container mt-3">
-    <!-- Hero Header -->
-    <div class="hero-header text-white">
-        <div class="row align-items-center">
-            <div class="col-md-7">
-                <h1 class="display-5 fw-bold mb-3">
-                    <i class="fas fa-cogs me-3"></i>
-                    Torrent Management
-                </h1>
-                <p class="lead mb-0 opacity-90">
-                    <i class="fas fa-database me-2"></i>
-                    Managing <strong>' . number_format($totalTorrents) . '</strong> torrents
-                    <span class="badge bg-white bg-opacity-25 ms-2">
-                        <i class="fas fa-tachometer-alt me-1"></i>' . $queryTime . 'ms
-                    </span>
-                </p>
-            </div>
-            <div class="col-md-5">
-                <div class="hero-stats">
-                    <div class="hero-stat-card">
-                        <div class="hero-stat-value">' . number_format($totalTorrents) . '</div>
-                        <div class="hero-stat-label">Total Torrents</div>
-                    </div>
-                    <div class="hero-stat-card">
-                        <div class="hero-stat-value">' . $torrentsPerPage . '</div>
-                        <div class="hero-stat-label">Per Page</div>
-                    </div>
-                </div>
-            </div>
+$filters = [
+    ''              => ['fa-layer-group',  'All',      (int)($sum['total'] ?? 0)],
+    'free'          => ['fa-gift',         'Free',     (int)($sum['free'] ?? 0)],
+    'silver'        => ['fa-star-half-stroke', 'Silver', (int)($sum['silver'] ?? 0)],
+    'thirtypercent' => ['fa-percent',      '30%',      (int)($sum['thirtypercent'] ?? 0)],
+    'doubleuploads' => ['fa-angles-up',    '2× Up',    (int)($sum['doubleuploads'] ?? 0)],
+    'recommend'     => ['fa-thumbtack',    'Sticky',   (int)($sum['recommend'] ?? 0)],
+    'deadonly'      => ['fa-skull',        'Dead',     (int)($sum['deadonly'] ?? 0)],
+];
+$filterLinkBase = $base . ($browsecategory ? 'browsecategory=' . $browsecategory . '&amp;' : '') . ($searchword !== '' ? 'searchword=' . urlencode($searchword_raw) . '&amp;' : '');
+?>
+
+<div class="container mt-3 mb-4 mt">
+
+    <div class="mt-card mb-3"><div class="mt-head">
+        <span class="mt-head-icon"><i class="fa-solid fa-magnet"></i></span>
+        <div class="mt-head-text">
+            <h1 class="mt-title">Manage Torrents</h1>
+            <div class="mt-sub">Search, filter and apply bulk actions to torrents</div>
         </div>
+        <span class="ms-auto mt-muted"><i class="fa-solid fa-gauge-high me-1"></i><?= $queryTime ?> ms</span>
+    </div></div>
+
+    <div class="row g-3 mb-3">
+        <?php foreach ([
+            ['fa-magnet',     'ic-blue',   'Torrents',    number_format((int)($sum['total'] ?? 0))],
+            ['fa-hard-drive', 'ic-purple', 'Total size',  mksize((float)($sum['bytes'] ?? 0))],
+            ['fa-gift',       'ic-green',  'Freeleech',   number_format((int)($sum['free'] ?? 0))],
+            ['fa-skull',      'ic-red',    'Dead / hidden', number_format((int)($sum['deadonly'] ?? 0))],
+        ] as [$ic, $cls, $label, $val]): ?>
+        <div class="col-6 col-lg-3"><div class="mt-card mt-kpi"><span class="mt-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
+            <div><div class="mt-kpi-label"><?= $label ?></div><div class="mt-kpi-value"><?= $val ?></div></div></div></div>
+        <?php endforeach; ?>
     </div>
 
-    <!-- Search Card -->
-    <div class="search-card">
-        <form method="get" action="' . $_this_script_ . '" id="searchForm" class="row g-3 align-items-end">
+    <!-- Поиск -->
+    <div class="mt-card p-3 mb-3">
+        <form method="get" action="<?= htmlspecialchars((string)$_SERVER['SCRIPT_NAME']) ?>" id="searchForm" class="row g-3 align-items-end">
             <input type="hidden" name="act" value="manage_torrents">
-            
-            <div class="col-12 col-md-4">
-                <label class="form-label fw-semibold small text-muted text-uppercase mb-2">
-                    <i class="fas fa-search me-1"></i>Search Torrents
-                </label>
+            <?php if ($searchtype !== ''): ?><input type="hidden" name="searchtype" value="<?= htmlspecialchars($searchtype) ?>"><?php endif; ?>
+            <div class="col-md-6">
+                <label class="form-label" for="torrent-search"><i class="fa-solid fa-magnifying-glass"></i>Name</label>
                 <div class="input-group">
-                    <span class="input-group-text bg-light border-end-0">
-                        <i class="fas fa-search text-primary"></i>
-                    </span>
-                    <input type="text" class="form-control border-start-0" name="searchword" 
-                           value="' . $searchword . '" placeholder="Enter torrent name..." 
-                           id="torrent-search" style="border-radius: 0 0.5rem 0.5rem 0;">
-                    <button type="button" class="btn btn-outline-secondary" onclick="clearSearch()" title="Clear">
-                        <i class="fas fa-times"></i>
-                    </button>
+                    <input type="text" class="form-control mt-search-input" name="searchword" value="<?= $searchword ?>" placeholder="Part of the torrent name…" id="torrent-search">
+                    <button type="button" class="btn btn-outline-secondary mt-search-clear" data-mt-call="clearSearch" data-mt-args="[]" title="Clear"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <small class="text-muted">Minimum 2 characters</small>
             </div>
-            
-            <div class="col-6 col-md-3">
-                <label class="form-label fw-semibold small text-muted text-uppercase mb-2">
-                    <i class="fas fa-folder me-1"></i>Category
-                </label>
-                ' . $categoryDropdown . '
+            <div class="col-md-4">
+                <label class="form-label"><i class="fa-solid fa-folder-tree"></i>Category</label>
+                <?= $categoryDropdown ?>
             </div>
-            
-            <div class="col-6 col-md-3">
-                <label class="form-label fw-semibold small text-muted text-uppercase mb-2">
-                    <i class="fas fa-filter me-1"></i>Filter
-                </label>
-                ' . $searchTypeDropdown . '
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1" id="searchBtn"><i class="fa-solid fa-filter me-1"></i>Apply</button>
+                <button type="button" class="btn btn-outline-secondary" data-mt-call="resetFilters" data-mt-args="[]" title="Reset"><i class="fa-solid fa-rotate-left"></i></button>
             </div>
-            
-            <div class="col-12 col-md-2">
-                <button type="submit" class="btn btn-primary w-100 mb-2" id="searchBtn">
-                    <i class="fas fa-filter me-2"></i>Apply Filters
-                </button>
-                <button type="button" class="btn btn-outline-secondary w-100 btn-sm" onclick="resetFilters()">
-                    <i class="fas fa-redo-alt me-2"></i>Reset
-                </button>
+            <div class="col-12">
+                <!-- Раньше фильтр был выпадающим списком; теперь кнопки со счётчиками -->
+                <div class="mt-filters">
+                    <?php foreach ($filters as $k => [$ic, $lbl, $n]): ?>
+                    <a href="<?= $filterLinkBase . ($k !== '' ? 'searchtype=' . $k : '') ?>" class="mt-filter<?= $searchtype === $k ? ' active' : '' ?>"><i class="fa-solid <?= $ic ?>"></i><?= $lbl ?><span class="n"><?= number_format($n) ?></span></a>
+                    <?php endforeach; ?>
+                </div>
             </div>
         </form>
     </div>
 
-    ' . ($totalTorrents > 5000 ? '
-    <div class="alert-modern alert-modern-warning mb-4">
-        <div class="alert-modern-icon"><i class="fas fa-exclamation-triangle"></i></div>
-        <div class="alert-modern-content">
-            <h5 class="alert-modern-title">Large Dataset Warning</h5>
-            <p class="alert-modern-message">' . number_format($totalTorrents) . ' torrents found. Use specific filters for better performance.</p>
-        </div>
-        <button type="button" class="alert-modern-close" data-dismiss="alert"><i class="fas fa-times"></i></button>
-    </div>' : '') . '
-
-    <!-- Pagination Top -->
-    <div class="mb-4" id="paginationTop">' . $multipage . '</div>
-
-    <!-- Torrents Table -->
-    <form method="post" action="' . $_this_script_ . '" name="update" id="torrentForm">
+    <form method="post" action="<?= $_this_script_ ?>" name="update" id="torrentForm">
         <input type="hidden" name="do" value="update">
-        <input type="hidden" name="page" value="' . $page . '">
-        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-        
-        <div class="torrent-table-container">
-            <div class="d-flex justify-content-between align-items-center p-3 bg-light border-bottom">
-                <h5 class="mb-0 text-primary">
-                    <i class="fas fa-list me-2"></i>
-                    Torrent List
-                    <small class="text-muted fw-normal ms-2">Page ' . $page . '</small>
-                </h5>
-                <div class="d-flex align-items-center gap-3">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="selectAll" onclick="toggleAllSelection(this)">
-                        <label class="form-check-label small" for="selectAll">Select All</label>
-                    </div>
-                    <span class="badge bg-primary rounded-pill px-3 py-2">
-                        <i class="fas fa-database me-1"></i>' . number_format($totalTorrents) . '
-                    </span>
-                </div>
-            </div>
-            
-            <div class="table-responsive">
-                <table class="torrent-table">
-                    <thead>
-                        <tr>
-                            <th class="ps-4" style="width: 35%">
-                                <a href="' . $_this_script_ . '?act=manage_torrents&amp;orderby=name&amp;what=' . $nextWhat . '&amp;' . $queryBuilder->extralink . '" 
-                                   class="text-decoration-none text-dark sort-link">
-                                    <i class="fas fa-file-alt me-2"></i>Torrent Name
-                                    ' . ($currentOrder === 'name' ? '<i class="fas fa-sort-' . ($currentWhat === 'desc' ? 'down' : 'up') . ' ms-1"></i>' : '') . '
-                                </a>
-                            </th>
-                            <th class="mobile-hidden" style="width: 15%">Status</th>
-                            <th style="width: 15%">
-                                <a href="' . $_this_script_ . '?act=manage_torrents&amp;orderby=owner&amp;what=' . $nextWhat . '&amp;' . $queryBuilder->extralink . '" 
-                                   class="text-decoration-none text-dark sort-link">
-                                    <i class="fas fa-user me-2"></i>Uploader
-                                    ' . ($currentOrder === 'owner' ? '<i class="fas fa-sort-' . ($currentWhat === 'desc' ? 'down' : 'up') . ' ms-1"></i>' : '') . '
-                                </a>
-                            </th>
-                            <th class="mobile-hidden" style="width: 12%">Category</th>
-                            <th style="width: 15%">
-                                <a href="' . $_this_script_ . '?act=manage_torrents&amp;orderby=added&amp;what=' . $nextWhat . '&amp;' . $queryBuilder->extralink . '" 
-                                   class="text-decoration-none text-dark sort-link">
-                                    <i class="fas fa-calendar me-2"></i>Added
-                                    ' . ($currentOrder === 'added' ? '<i class="fas fa-sort-' . ($currentWhat === 'desc' ? 'down' : 'up') . ' ms-1"></i>' : '') . '
-                                </a>
-                            </th>
-                            <th class="pe-4 text-center" style="width: 8%">
-                                <i class="fas fa-check-square text-muted"></i>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody id="torrentTableBody">';
+        <input type="hidden" name="page" value="<?= $page ?>">
+        <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
 
-// Fetch and display torrents
+        <div class="mt-card overflow-hidden">
+            <div class="mt-toolbar">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="form-check form-switch m-0">
+                        <input class="form-check-input" type="checkbox" id="selectAll" data-mt-call="toggleAllSelection">
+                        <label class="form-check-label fw-semibold" for="selectAll">Select page</label>
+                    </div>
+                    <span class="mt-muted"><?= number_format($totalTorrents) ?> found · page <?= $page ?></span>
+                </div>
+                <div id="paginationTop"><?= $multipage ?></div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="mt-table">
+                    <thead><tr>
+                        <th class="mt-col-toggle"></th>
+                        <?= $sortTh('name', 'fa-file-lines', 'Torrent') ?>
+                        <th class="mobile-hidden"><i class="fa-solid fa-flag"></i>Status</th>
+                        <?= $sortTh('owner', 'fa-user', 'Uploader') ?>
+                        <?= $sortTh('category', 'fa-folder', 'Category', 'mobile-hidden') ?>
+                        <?= $sortTh('added', 'fa-calendar', 'Added') ?>
+                        <th class="text-center mt-col-check"><i class="fa-solid fa-square-check"></i></th>
+                    </tr></thead>
+                    <tbody id="torrentTableBody">
+<?php
 $queryStart = microtime(true);
 $query = $db->sql_query_prepared(
     $queryBuilder->getMainQuery($orderBy, $start, $torrentsPerPage),
@@ -684,280 +638,156 @@ $queryTime = round((microtime(true) - $queryStart) * 1000, 2);
 
 $torrentCount = 0;
 $totalSize = 0;
-
 while ($query && ($torrent = $db->fetch_array($query))) {
     $torrentCount++;
-    $totalSize += $torrent['size'];
+    $totalSize += (float)$torrent['size'];
+    $tid   = (int)$torrent['id'];
     $flags = GetTorrentTags($torrent);
-    $userAvatar = format_avatar($torrent['avatar'] ?? '', $torrent['avatardimensions'] ?? '');
-    
-    echo '
-    <tr class="torrent-row" data-id="' . $torrent['id'] . '" data-size="' . $torrent['size'] . '">
-        <td class="ps-4" data-label="Torrent Name">
-            <div class="d-flex align-items-start gap-2">
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-circle torrent-btn"
-                        data-bs-toggle="modal" data-bs-target="#manageTorrentModal"
-                        data-id="' . $torrent['id'] . '"
-                        data-name="' . htmlspecialchars($torrent['name']) . '"
-                        data-image="' . htmlspecialchars($torrent['t_image'] ?? '') . '"
-                        data-infohash="' . htmlspecialchars($torrent['info_hash']) . '"
-                        data-seeders="' . $torrent['seeders'] . '"
-                        data-leechers="' . $torrent['leechers'] . '"
-                        data-completed="' . $torrent['times_completed'] . '"
-                        style="width: 32px; height: 32px;">
-                    <i class="fas fa-cog fa-sm"></i>
-                </button>
-                <div>
-                    <a href="' . $BASEURL . '/' . get_torrent_link($torrent['id']) . '" 
-                       class="torrent-name-link d-block mb-1">
-                       ' . htmlspecialchars($torrent['name']) . '
-                    </a>
-                    <div class="text-muted small">
-                        <span class="me-3"><i class="fas fa-hdd me-1"></i>' . mksize($torrent['size']) . '</span>
-                        <span><i class="fas fa-download me-1"></i>' . ts_nf($torrent['times_completed']) . '</span>
-                        <span class="ms-2"><i class="fas fa-chart-line me-1"></i>S:' . $torrent['seeders'] . ' L:' . $torrent['leechers'] . '</span>
-                    </div>
-                    <div class="mt-2 mobile-visible d-md-none">
-                        ' . $flags . '
-                    </div>
-                </div>
-            </div>
-        </td>
-        <td class="mobile-hidden" data-label="Status">
-            <div class="d-flex flex-wrap gap-1">' . $flags . '</div>
-        </td>
-        <td data-label="Uploader">
-            <div class="d-flex align-items-center gap-2">
-                ' . ($userAvatar['image'] ? '<img src="' . $userAvatar['image'] . '" class="rounded-circle" width="28" height="28" alt="" loading="lazy">' : '<div class="rounded-circle bg-light d-flex align-items-center justify-content-center" style="width:28px;height:28px;"><i class="fas fa-user text-muted fa-sm"></i></div>') . '
-                <a href="' . $BASEURL . '/' . get_profile_link($torrent['owner']) . '" class="text-decoration-none small fw-semibold">
-                    ' . format_name($torrent['username'], $torrent['usergroup']) . '
-                </a>
-            </div>
-        </td>
-        <td class="mobile-hidden" data-label="Category">
-            <span class="badge bg-light text-dark rounded-pill px-3 py-2">
-                <i class="fas fa-tag me-1"></i>' . htmlspecialchars($torrent['category_name']) . '
-            </span>
-        </td>
-        <td data-label="Added">
-            <div class="text-muted small">
-                <div><i class="far fa-calendar me-1"></i>' . my_datee($dateformat, $torrent['added']) . '</div>
-                <div class="mobile-hidden"><i class="far fa-clock me-1"></i>' . my_datee($timeformat, $torrent['added']) . '</div>
-            </div>
-        </td>
-        <td class="pe-4 text-center" data-label="Select">
-            <input type="checkbox" class="torrent-checkbox" name="torrentid[]" 
-                   value="' . $torrent['id'] . '" onchange="updateSelectionCounter()">
-        </td>
-    </tr>';
+    $av    = format_avatar($torrent['avatar'] ?? '', $torrent['avatardimensions'] ?? '');
+    $avatar = (!empty($av['image']) && empty($av['is_placeholder']))
+        ? '<img src="' . $av['image'] . '" class="mt-av" alt="" loading="lazy">'
+        : '<span class="mt-av-ph"><i class="fa-solid fa-user"></i></span>';
+    // Ник раньше передавался в format_name() без экранирования
+    $owner = $torrent['username'] !== null
+        ? '<a href="' . $BASEURL . '/' . get_profile_link((int)$torrent['owner']) . '" class="text-decoration-none fw-semibold">' . format_name(htmlspecialchars((string)$torrent['username']), (int)$torrent['usergroup']) . '</a>'
+        : '<em class="text-body-secondary">deleted user</em>';
+    ?>
+                        <tr class="torrent-row" data-id="<?= $tid ?>" data-size="<?= (float)$torrent['size'] ?>">
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-primary torrent-btn" title="Manage"
+                                        data-bs-toggle="modal" data-bs-target="#manageTorrentModal"
+                                        data-id="<?= $tid ?>"
+                                        data-name="<?= htmlspecialchars((string)$torrent['name']) ?>"
+                                        data-image="<?= htmlspecialchars((string)($torrent['t_image'] ?? '')) ?>"
+                                        data-infohash="<?= htmlspecialchars((string)$torrent['info_hash']) ?>"
+                                        data-seeders="<?= (int)$torrent['seeders'] ?>"
+                                        data-leechers="<?= (int)$torrent['leechers'] ?>"
+                                        data-completed="<?= (int)$torrent['times_completed'] ?>">
+                                    <i class="fa-solid fa-gear"></i>
+                                </button>
+                            </td>
+                            <td data-label="Torrent">
+                                <a href="<?= $BASEURL . '/' . get_torrent_link($tid) ?>" class="mt-tname"><?= htmlspecialchars((string)$torrent['name']) ?></a>
+                                <div class="mt-meta">
+                                    <span><i class="fa-solid fa-hard-drive me-1"></i><?= mksize((float)$torrent['size']) ?></span>
+                                    <span class="s"><i class="fa-solid fa-arrow-up me-1"></i><?= (int)$torrent['seeders'] ?></span>
+                                    <span class="l"><i class="fa-solid fa-arrow-down me-1"></i><?= (int)$torrent['leechers'] ?></span>
+                                    <span><i class="fa-solid fa-circle-check me-1"></i><?= ts_nf($torrent['times_completed']) ?></span>
+                                </div>
+                                <div class="mt-flags d-md-none"><?= $flags ?></div>
+                            </td>
+                            <td class="mobile-hidden" data-label="Status"><div class="mt-flags mt-0"><?= $flags ?></div></td>
+                            <td data-label="Uploader"><div class="d-flex align-items-center gap-2"><?= $avatar ?><?= $owner ?></div></td>
+                            <td class="mobile-hidden" data-label="Category"><span class="mt-cat"><i class="fa-solid fa-tag"></i><?= htmlspecialchars((string)($torrent['category_name'] ?? '—')) ?></span></td>
+                            <td data-label="Added" class="text-nowrap">
+                                <div><?= my_datee('relative', (int)$torrent['added']) ?></div>
+                                <div class="mt-muted mobile-hidden"><?= my_datee($dateformat, (int)$torrent['added']) ?></div>
+                            </td>
+                            <td class="text-center" data-label="Select">
+                                <input type="checkbox" class="form-check-input torrent-checkbox" name="torrentid[]" value="<?= $tid ?>" data-mt-call="updateSelectionCounter" data-mt-args="[]" aria-label="Select">
+                            </td>
+                        </tr>
+<?php
 }
 
 if ($torrentCount === 0) {
-    echo '
-    <tr>
-        <td colspan="6" class="text-center py-5">
-            <div class="text-muted">
-                <i class="fas fa-inbox fa-4x mb-3 opacity-25"></i>
-                <h5 class="mb-2">No torrents found</h5>
-                <p class="mb-3">Try adjusting your search criteria</p>
-                <button type="button" class="btn btn-outline-primary" onclick="resetFilters()">
-                    <i class="fas fa-redo-alt me-2"></i>Reset Filters
-                </button>
-            </div>
-        </td>
-    </table>';
+    // Раньше здесь печатался лишний </table> — таблица закрывалась дважды
+    echo '<tr><td colspan="7"><div class="mt-empty"><i class="fa-solid fa-inbox"></i><div class="fw-semibold">No torrents found</div>'
+       . '<div class="small mb-3">Try other filters</div>'
+       . '<button type="button" class="btn btn-sm btn-outline-primary px-3" data-mt-call="resetFilters" data-mt-args="[]"><i class="fa-solid fa-rotate-left me-1"></i>Reset filters</button></div></td></tr>';
 }
-
-echo '
+?>
                     </tbody>
                 </table>
             </div>
-            
-            <!-- Bulk Actions Bar -->
-            <div class="bulk-actions-bar" id="bulkActionsBar">
-                <div class="row align-items-center">
-                    <div class="col-md-8">
-                        <div class="d-flex flex-wrap gap-3 align-items-center">
-                            <div class="me-2">
-                                <span class="fw-semibold">Bulk Actions:</span>
-                                <span class="badge bg-primary ms-2" id="selectedCounter">0 selected</span>
-                            </div>
-                            <select class="form-select form-select-sm w-auto" name="actiontype" id="actionType" 
-                                    onchange="toggleMoveCategory(this)" style="border-radius: 0.5rem;">
-                                <option value="">— Select Action —</option>
-                                <option value="move">📁 Move Torrents</option>
-                                <option value="delete">🗑️ Delete Torrents</option>
-                                <option value="sticky">📌 Toggle Sticky</option>
-                                <option value="free">🎁 Toggle Free</option>
-                                <option value="silver">⭐ Toggle Silver</option>
-								<option value="thirtypercent">🟣 Toggle 30% Leech</option>
-                                <option value="visible">👁️ Toggle Visibility</option>
-                                <option value="anonymous">🕵️ Toggle Anonymous</option>
-                                <option value="banned">🚫 Toggle Ban</option>
-                                <option value="doubleupload">⚡ Toggle 2x Upload</option>
-                            </select>
-                            <div id="moveCategory" style="display: none;">
-                                ' . ts_category_list('category', 0, '<option value="0">📁 Select Category...</option>') . '
-                            </div>
-                            <button type="submit" class="btn btn-primary btn-sm" id="executeBtn" disabled>
-                                <i class="fas fa-play me-2"></i>Execute
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearSelection()">
-                                <i class="fas fa-times me-2"></i>Clear
-                            </button>
-                        </div>
-                    </div>
-                    <div class="col-md-4 text-md-end mt-3 mt-md-0">
-                        <div class="text-muted small">
-                            <div><i class="fas fa-chart-bar me-1"></i>' . number_format($torrentCount) . ' items • ' . mksize($totalSize) . '</div>
-                            <div><i class="fas fa-tachometer-alt me-1"></i>' . $queryTime . 'ms load time</div>
-                        </div>
-                    </div>
-                </div>
+        </div>
+
+        <!-- Массовые действия (id/имена — для manage_torrents.js) -->
+        <div id="bulkActionsBar">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <span class="badge rounded-pill text-bg-primary px-3 py-2" id="selectedCounter">0 selected</span>
+                <select class="form-select form-select-sm w-auto" name="actiontype" id="actionType" data-mt-call="toggleMoveCategory">
+                    <option value="">— Choose action —</option>
+                    <optgroup label="Organise">
+                        <option value="move">Move to category</option>
+                        <option value="sticky">Toggle sticky</option>
+                        <option value="visible">Toggle visible</option>
+                        <option value="anonymous">Toggle anonymous</option>
+                    </optgroup>
+                    <optgroup label="Promotions">
+                        <option value="free">Toggle freeleech</option>
+                        <option value="silver">Toggle silver (50%)</option>
+                        <option value="thirtypercent">Toggle 30% leech</option>
+                        <option value="doubleupload">Toggle 2× upload</option>
+                    </optgroup>
+                    <optgroup label="Danger">
+                        <option value="banned">Toggle banned</option>
+                        <option value="delete">Delete torrents</option>
+                    </optgroup>
+                </select>
+                <div id="moveCategory" style="display:none;"><?= ts_category_list('category', 0, '<option value="0">Choose category…</option>') ?></div>
+                <button type="submit" class="btn btn-primary btn-sm px-3" id="executeBtn" disabled><i class="fa-solid fa-play me-1"></i>Apply</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-mt-call="clearSelection" data-mt-args="[]"><i class="fa-solid fa-xmark me-1"></i>Clear</button>
+            </div>
+            <div class="mt-muted text-end">
+                <i class="fa-solid fa-list me-1"></i><?= number_format($torrentCount) ?> on page · <?= mksize($totalSize) ?>
+                <span class="ms-2"><i class="fa-solid fa-gauge-high me-1"></i><?= $queryTime ?> ms</span>
             </div>
         </div>
     </form>
 
-    <!-- Bottom Pagination -->
-    <div class="mt-4">' . $multipage . '</div>
-</div>';
+    <div class="d-flex justify-content-center mt-3"><?= $multipage ?></div>
+</div>
 
-// Modal
-echo '
-<div class="modal fade" id="manageTorrentModal" tabindex="-1" aria-hidden="true">
+<!-- Модалка управления торрентом (содержимое грузит manage_torrents.js) -->
+<div class="modal fade mt-modal" id="manageTorrentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content border-0 shadow-xl rounded-4">
-            <div class="modal-header bg-gradient-primary text-white border-0 rounded-top-4">
-                <h5 class="modal-title"><i class="fas fa-cog me-2"></i>Manage Torrent</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="mt-mh-icon ic-blue"><i class="fa-solid fa-gear"></i></span>
+                <h5 class="modal-title fw-bold">Manage torrent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-4" id="manageTorrentContent">
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-3 text-muted">Loading torrent information...</p>
-                </div>
+                <div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>
+                    <p class="mt-3 text-body-secondary">Loading torrent information…</p></div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Bulk Action Confirm Modal -->
-<div class="modal fade" id="bulkConfirmModal" tabindex="-1" aria-hidden="true">
+<!-- Подтверждение опасных действий -->
+<div class="modal fade mt-modal" id="bulkConfirmModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-xl rounded-4">
-            <div class="modal-header bg-danger text-white border-0 rounded-top-4">
-                <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Confirm Action</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="mt-mh-icon ic-red"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                <h5 class="modal-title fw-bold" id="bulkConfirmTitle">Are you sure?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body p-4 text-center">
-                <i class="fas fa-trash-alt fa-3x text-danger mb-3"></i>
-                <h5 id="bulkConfirmTitle" class="mb-2">Are you sure?</h5>
-                <p id="bulkConfirmMessage" class="text-muted mb-0">This action cannot be undone.</p>
-            </div>
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-2"></i>Cancel
-                </button>
-                <button type="button" class="btn btn-danger" id="bulkConfirmBtn">
-                    <i class="fas fa-check me-2"></i>Confirm
-                </button>
+            <div class="modal-body"><p id="bulkConfirmMessage" class="text-body-secondary mb-0">This action cannot be undone.</p></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
+                <button type="button" class="btn btn-danger px-3" id="bulkConfirmBtn"><i class="fa-solid fa-check me-1"></i>Confirm</button>
             </div>
         </div>
     </div>
-</div>';
+</div>
 
-if (isset($_SESSION['action_success'])): ?>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const toast = document.createElement('div');
-    toast.className = 'position-fixed bottom-0 end-0 p-3';
-    toast.style.zIndex = '9999';
-    toast.innerHTML = `
-        <div class="toast show bg-success text-white border-0 shadow-lg" role="alert">
-            <div class="toast-header bg-success text-white border-0">
-                <i class="fas fa-check-circle me-2"></i>
-                <strong class="me-auto">Success</strong>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
-            </div>
-            <div class="toast-body"><?= htmlspecialchars($_SESSION['action_success']) ?></div>
-        </div>
-    `;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 5000);
-});
-</script>
-<?php unset($_SESSION['action_success']); endif; ?>
-
-<script>
-window.manageBaseUrl = "<?= $BASEURL ?>";
-window.manageTorrentScript = "<?= $_this_script_ ?>";
-window.torrentCount = <?= $torrentCount ?>;
-window.totalTorrents = <?= $totalTorrents ?>;
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const form = document.getElementById('torrentForm');
-    const actionSelect = document.getElementById('actionType');
-    const confirmModalEl = document.getElementById('bulkConfirmModal');
-    const confirmTitle = document.getElementById('bulkConfirmTitle');
-    const confirmMessage = document.getElementById('bulkConfirmMessage');
-    const confirmBtn = document.getElementById('bulkConfirmBtn');
-    if (!form || !actionSelect || !confirmModalEl) return;
-
-    const confirmModal = new bootstrap.Modal(confirmModalEl);
-
-    // Действия, требующие явного подтверждения перед выполнением
-    const destructiveActions = {
-        delete: {
-            title: 'Delete selected torrents?',
-            message: 'This will permanently delete the torrent file(s), associated images, screenshots, comments and all related data. This action cannot be undone.',
-        },
-        nuke: {
-            title: 'Nuke selected torrents?',
-            message: 'This will mark the torrent(s) as nuked, notifying downloaders of a rule violation.',
-        },
-        banned: {
-            title: 'Toggle ban on selected torrents?',
-            message: 'This will change the banned status of the selected torrent(s).',
-        },
-    };
-
-    let confirmed = false;
-
-    form.addEventListener('submit', function (e) {
-        if (confirmed) {
-            confirmed = false;
-            return; // уже подтверждено — пропускаем реальный сабмит дальше
-        }
-
-        const action = actionSelect.value;
-        if (destructiveActions[action]) {
-            e.preventDefault();
-
-            const count = document.querySelectorAll('.torrent-checkbox:checked').length;
-            const cfg = destructiveActions[action];
-
-            confirmTitle.textContent = cfg.title;
-            confirmMessage.textContent = cfg.message + ' (' + count + ' torrent' + (count === 1 ? '' : 's') + ' selected)';
-
-            confirmModal.show();
-        }
-    });
-
-    confirmBtn.addEventListener('click', function () {
-        confirmed = true;
-        confirmModal.hide();
-        form.requestSubmit();
-    });
-});
-</script>
-
-<script src="<?= $BASEURL ?>/admin/scripts/manage_torrents.js"></script>
-
+<?php
+// Данные для JS — JSON, не код; флаги JSON_HEX_* не дают закрыть </script>
+$mtConfig = [
+    'baseUrl'       => (string)$BASEURL,
+    'script'        => (string)$_this_script_,
+    'torrentCount'  => $torrentCount,
+    'totalTorrents' => $totalTorrents,
+    'successMsg'    => !empty($_SESSION['action_success']) ? (string)$_SESSION['action_success'] : null,
+];
+unset($_SESSION['action_success']);
+?>
+<script type="application/json" id="mtConfig"><?= json_encode($mtConfig, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?></script>
+<script src="<?= $BASEURL ?>/admin/scripts/manage_torrents_ui.js?ver=1"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/manage_torrents.js?ver=2"></script>
 
 <?php
 stdfoot();
-?>

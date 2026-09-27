@@ -1,627 +1,252 @@
 <?php
 declare(strict_types=1);
 
-
-
 if (!defined('STAFF_PANEL')) {
     http_response_code(403);
-    exit('<div class="alert alert-danger m-3" role="alert">
-            <h4 class="alert-heading"><i class="fas fa-ban me-2"></i>Access Denied</h4>
-            <p class="mb-0">Direct initialization of this file is not allowed.</p>
-          </div>');
+    exit('<div class="alert alert-danger m-3" role="alert"><strong>Access denied.</strong> Direct initialization of this file is not allowed.</div>');
 }
-
-
 
 use function htmlspecialchars as e;
 
-// ── AJAX: поиск юзера для автокомплита (username -> id) ─────────────────────
+/**
+ * «1.5 GB», «512MB», «1073741824», «2 TiB» → байты. null — если не разобрать.
+ * Раньше подсказки в форме обещали ввод с единицами («1GB»), а сервер принимал
+ * только голые числа и отвечал «must be numeric».
+ */
+function rt_parse_bytes(string $input): ?int
+{
+    $input = str_replace([',', ' '], ['.', ''], trim($input));
+    if (!preg_match('/^(\d+(?:\.\d+)?)(B|KB|KIB|MB|MIB|GB|GIB|TB|TIB|PB|PIB)?$/i', $input, $m)) {
+        return null;
+    }
+    $pow = ['B' => 0, 'KB' => 1, 'MB' => 2, 'GB' => 3, 'TB' => 4, 'PB' => 5][str_replace('I', '', strtoupper($m[2] ?? 'B'))] ?? 0;
+    $bytes = (float)$m[1] * (1024 ** $pow);
+    return $bytes > PHP_INT_MAX ? null : (int)round($bytes);
+}
+
+function rt_ratio(float $up, float $down): string
+{
+    return $down > 0 ? number_format($up / $down, 2) : '∞';
+}
+
+// ── AJAX: автокомплит ника ────────────────────────────────────────────
 if (($_GET['action'] ?? '') === 'search_user') {
     header('Content-Type: application/json; charset=utf-8');
-    $term = trim($_GET['term'] ?? '');
-    if ($term === '' || mb_strlen($term) < 2) {
-        echo json_encode([]);
-        exit;
-    }
+    $term = trim((string)($_GET['term'] ?? ''));
+    if (mb_strlen($term) < 2) { echo json_encode([]); exit; }
 
-    // Для prepared LIKE экранируем только \, % и _ (чтобы они искались буквально),
-    // затем оборачиваем в %. Сам prepared statement позаботится о кавычках.
-    $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
-
+    $like  = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
     $query = $db->sql_query_prepared(
-        "SELECT id, username, uploaded, downloaded FROM users WHERE username LIKE ? ORDER BY username ASC LIMIT 20",
+        "SELECT id, username, usergroup, uploaded, downloaded FROM users WHERE username LIKE ? ORDER BY username ASC LIMIT 20",
         ['%' . $like . '%']
     );
-
     $results = [];
-    while ($row = $db->fetch_array($query)) {
-        $ratio = (int)$row['downloaded'] > 0
-            ? number_format((int)$row['uploaded'] / (int)$row['downloaded'], 2)
-            : '∞';
+    while ($query && ($row = $db->fetch_array($query))) {
         $results[] = [
-            'id'   => $row['username'],
-            'text' => $row['username'] . '  (↑' . mksize((float)$row['uploaded']) . ' / ↓' . mksize((float)$row['downloaded']) . ', ratio ' . $ratio . ')',
+            'id'         => (int)$row['id'],
+            'username'   => (string)$row['username'],
+            'name_html'  => function_exists('format_name') ? format_name(e((string)$row['username']), (int)$row['usergroup']) : e((string)$row['username']),
+            'uploaded'   => (int)$row['uploaded'],
+            'downloaded' => (int)$row['downloaded'],
+            'up_h'       => mksize((float)$row['uploaded']),
+            'down_h'     => mksize((float)$row['downloaded']),
+            'ratio'      => rt_ratio((float)$row['uploaded'], (float)$row['downloaded']),
         ];
     }
-
-    echo json_encode($results);
+    echo json_encode($results, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// Initialize variables
-$action = $_POST['action'] ?? '';
-$value = null;
 $error = null;
-$success = null;
+// Итог прошлого сохранения — показывается один раз после перенаправления
+$done  = $_SESSION['rt_done'] ?? null;
+unset($_SESSION['rt_done']);
 
-// Process form submissions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if ($action === 'update') {
-        try {
-            global $mybb;
-            if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-                throw new InvalidArgumentException('Security check failed. Please refresh the page and try again.');
-            }
-
-            $username = trim($_POST['username'] ?? '');
-            $uploaded = trim($_POST['uploaded'] ?? '');
-            $downloaded = trim($_POST['downloaded'] ?? '');
-            
-            // Validate input
-            if (empty($username) || empty($uploaded) || empty($downloaded)) {
-                throw new InvalidArgumentException('Please fill in all required fields.');
-            }
-            
-            if (!is_numeric($uploaded) || !is_numeric($downloaded)) {
-                throw new InvalidArgumentException('Uploaded and downloaded values must be numeric.');
-            }
-            
-            $uploaded = (int)$uploaded;
-            $downloaded = (int)$downloaded;
-            
-            if ($uploaded < 0 || $downloaded < 0) {
-                throw new InvalidArgumentException('Values cannot be negative.');
-            }
-
-            // Старые значения — нужны для лога и редиректа
-            $beforeQuery = $db->sql_query_prepared(
-                "SELECT id, uploaded, downloaded FROM users WHERE username = ?",
-                [$username]
-            );
-            $before = $beforeQuery ? $db->fetch_array($beforeQuery) : null;
-            if (!$before) {
-                throw new RuntimeException('User not found.');
-            }
-            
-            // Update database
-            $result = $db->sql_query_prepared(
-                "UPDATE users SET uploaded = ?, downloaded = ? WHERE username = ?",
-                [$uploaded, $downloaded, $username]
-            );
-            
-            if ($result === false) {
-                throw new RuntimeException('Database update failed.');
-            }
-
-            write_log(sprintf(
-                'Ratio Manager: %s (UID %d) changed stats for user "%s" (UID %d): uploaded %s -> %s, downloaded %s -> %s',
-                $CURUSER['username'],
-                (int)$CURUSER['id'],
-                $username,
-                (int)$before['id'],
-                mksize((float)$before['uploaded']),
-                mksize((float)$uploaded),
-                mksize((float)$before['downloaded']),
-                mksize((float)$downloaded)
-            ), 'ratio');
-            
-            // Редирект — ID уже известен из $before
-            $success = "User statistics updated successfully!";
-            $member  = get_profile_link((int)$before['id']);
-            
-            echo '<script>
-                    setTimeout(function() {
-                        window.location.href = "' . $BASEURL . '/' . $member . '";
-                    }, 2000);
-                  </script>';
-            
-        } catch (InvalidArgumentException $e) {
-            $error = $e->getMessage();
-        } catch (RuntimeException $e) {
-            $error = $e->getMessage();
-        } catch (Exception $e) {
-            $error = 'An unexpected error occurred.';
-            write_log('Ratio Manager error: ' . $e->getMessage(), 'error');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update') {
+    try {
+        if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+            throw new InvalidArgumentException('Security check failed. Please refresh the page and try again.');
         }
-        
-    } elseif ($action === 'calculate') {
-        $inputValue = trim($_POST['value'] ?? '');
-        if (!empty($inputValue)) {
-            $value = calculateValue($inputValue);
-        }
-    }
-}
 
-/**
- * Calculate value helper function
- */
-function calculateValue(string $input): string {
-    // Add your calculation logic here
-    $input = trim($input);
-    
-    // Example: Convert to bytes if contains units
-    if (preg_match('/^(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)?$/i', $input, $matches)) {
-        $num = (float)$matches[1];
-        $unit = strtoupper($matches[2] ?? 'B');
-        
-        $multipliers = [
-            'GB' => 1024 * 1024 * 1024,
-            'MB' => 1024 * 1024,
-            'KB' => 1024,
-            'B' => 1
+        $username = trim((string)($_POST['username'] ?? ''));
+        $upRaw    = trim((string)($_POST['uploaded'] ?? ''));
+        $downRaw  = trim((string)($_POST['downloaded'] ?? ''));
+        $mode     = in_array($_POST['mode'] ?? 'set', ['set', 'add', 'sub'], true) ? $_POST['mode'] : 'set';
+
+        // Раньше empty() считал «0» пустым значением — обнулить downloaded было невозможно
+        if ($username === '') {
+            throw new InvalidArgumentException('Please choose a user.');
+        }
+        if ($upRaw === '' && $downRaw === '') {
+            throw new InvalidArgumentException('Enter at least one value.');
+        }
+        $upVal   = $upRaw   === '' ? null : rt_parse_bytes($upRaw);
+        $downVal = $downRaw === '' ? null : rt_parse_bytes($downRaw);
+        if (($upRaw !== '' && $upVal === null) || ($downRaw !== '' && $downVal === null)) {
+            throw new InvalidArgumentException('Use a number with an optional unit, e.g. 1073741824, 512 MB or 1.5 GB.');
+        }
+
+        $bq     = $db->sql_query_prepared("SELECT id, username, uploaded, downloaded FROM users WHERE username = ?", [$username]);
+        $before = $bq ? $db->fetch_array($bq) : null;
+        if (!$before) {
+            throw new RuntimeException('User not found.');
+        }
+
+        $oldUp   = (int)$before['uploaded'];
+        $oldDown = (int)$before['downloaded'];
+        $apply = static fn(int $old, ?int $v): int => $v === null ? $old : match ($mode) {
+            'add'   => $old + $v,
+            'sub'   => max(0, $old - $v),
+            default => $v,
+        };
+        $newUp   = $apply($oldUp, $upVal);
+        $newDown = $apply($oldDown, $downVal);
+
+        if ($db->sql_query_prepared("UPDATE users SET uploaded = ?, downloaded = ? WHERE id = ?", [$newUp, $newDown, (int)$before['id']]) === false) {
+            throw new RuntimeException('Database update failed.');
+        }
+
+        write_log(sprintf(
+            'Ratio Manager: %s changed stats of "%s" (UID %d): uploaded %s -> %s, downloaded %s -> %s',
+            $CURUSER['username'] ?? 'staff', $before['username'], (int)$before['id'],
+            mksize((float)$oldUp), mksize((float)$newUp), mksize((float)$oldDown), mksize((float)$newDown)
+        ), 'ratio');
+
+        $done = [
+            'id' => (int)$before['id'], 'username' => (string)$before['username'],
+            'oldUp' => $oldUp, 'newUp' => $newUp, 'oldDown' => $oldDown, 'newDown' => $newDown,
         ];
-        
-        $bytes = $num * ($multipliers[$unit] ?? 1);
-        
-        // Format nicely
-        if ($bytes >= 1099511627776) { // 1 TB
-            return number_format($bytes / 1099511627776, 2) . ' TB';
-        } elseif ($bytes >= 1073741824) { // 1 GB
-            return number_format($bytes / 1073741824, 2) . ' GB';
-        } elseif ($bytes >= 1048576) { // 1 MB
-            return number_format($bytes / 1048576, 2) . ' MB';
-        } elseif ($bytes >= 1024) { // 1 KB
-            return number_format($bytes / 1024, 2) . ' KB';
-        }
-        
-        return number_format($bytes) . ' B';
+
+        // Post/Redirect/Get: раньше итог показывался прямо в ответ на POST, и F5
+        // отправлял форму повторно — в режимах Add/Subtract изменение применялось ещё раз
+        $_SESSION['rt_done'] = $done;
+        function_exists('admin_redirect') ? admin_redirect($_this_script_) : header('Location: ' . $_this_script_);
+        exit;
+    } catch (InvalidArgumentException | RuntimeException $ex) {
+        $error = $ex->getMessage();
+    } catch (Throwable $ex) {
+        $error = 'An unexpected error occurred.';
+        write_log('Ratio Manager error: ' . $ex->getMessage(), 'error');
     }
-    
-    return "Invalid input format";
 }
 
-// Start output
-stdhead('Update User Statistics');
-
+stdhead('Ratio Manager');
+$self = (string)$_this_script_;
+$v = static fn(string $p): string => (string)(defined('TSDIR') ? (@filemtime(TSDIR . $p) ?: 1) : 1);
 ?>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/ratio.css?v=<?= $v('/include/templates/default/style/ratio.css') ?>">
 
-<div class="container mt-3">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-primary text-white rounded-0">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-chart-line fa-lg me-3"></i>
-                        <div>
-                            <h1 class="h4 mb-0">User Statistics Manager</h1>
-                            <p class="small mb-0 opacity-75">Update user upload/download statistics</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+<div class="container mt-3 mb-4 rt" data-self="<?= e($self) ?>">
+
+    <div class="rt-card mb-3"><div class="rt-head">
+        <span class="rt-head-icon"><i class="fa-solid fa-scale-balanced"></i></span>
+        <div style="min-width:0">
+            <h1 class="rt-title">Ratio Manager</h1>
+            <div class="rt-sub">Set, add or subtract a member's uploaded / downloaded traffic</div>
         </div>
-    </div>
+    </div></div>
 
-    <!-- Notifications -->
     <?php if ($error): ?>
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
-                    <i class="fas fa-exclamation-circle me-2"></i>
-                    <?= e($error) ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            </div>
-        </div>
-    <?php endif; ?>
-    
-    <?php if ($success): ?>
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
-                    <i class="fas fa-check-circle me-2"></i>
-                    <?= e($success) ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            </div>
-        </div>
+    <div class="alert alert-danger d-flex gap-2 rounded-4"><i class="fa-solid fa-circle-exclamation mt-1"></i><div><?= e($error) ?></div></div>
     <?php endif; ?>
 
-    <!-- Update Form -->
-    <div class="row mb-5">
-        <div class="col-lg-8">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-primary text-white rounded-0">
-                    <h2 class="h5 mb-0">
-                        <i class="fas fa-user-edit me-2"></i>Update User Statistics
-                    </h2>
-                </div>
-                <div class="card-body p-4">
-                    <form method="post" action="<?= $_this_script_ ?>" id="updateForm">
-                        <input type="hidden" name="action" value="update">
-                        <input type="hidden" name="my_post_key" value="<?= e($mybb->post_code ?? '') ?>">
-                        
-                        <div class="row g-4">
-                            <!-- Username -->
-                            <div class="col-md-12 position-relative">
-                                <label for="username" class="form-label fw-semibold">
-                                    <i class="fas fa-user me-2"></i>Username
-                                </label>
-                                <input type="text"
-                                       class="form-control"
-                                       name="username"
-                                       id="username"
-                                       value="<?= e($_POST['username'] ?? '') ?>"
-                                       placeholder="Start typing a username…"
-                                       autocomplete="off"
-                                       required
-                                       autofocus>
-                                <div id="usernameSuggestions" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:1050; max-height:280px; overflow-y:auto;"></div>
-                                <div class="form-text">Start typing at least 2 characters to search.</div>
-                            </div>
-                            
-                            <!-- Uploaded -->
-                            <div class="col-md-6">
-                                <div class="form-floating">
-                                    <input type="text" 
-                                           class="form-control <?= isset($_POST['uploaded']) && !is_numeric($_POST['uploaded']) ? 'is-invalid' : '' ?>"
-                                           name="uploaded" 
-                                           id="uploaded"
-                                           value="<?= e($_POST['uploaded'] ?? '') ?>"
-                                           placeholder=" "
-                                           required
-                                           data-bs-toggle="tooltip"
-                                           title="Enter value in bytes or with unit (e.g., 1.5GB)">
-                                    <label for="uploaded" class="form-label">
-                                        <i class="fas fa-cloud-upload-alt me-2"></i>Uploaded
-                                    </label>
-                                    <div class="invalid-feedback">
-                                        Please enter a valid number
-                                    </div>
-                                    <div class="form-text small">
-                                        <i class="fas fa-info-circle me-1"></i>Example: 1073741824 or 1GB
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Downloaded -->
-                            <div class="col-md-6">
-                                <div class="form-floating">
-                                    <input type="text" 
-                                           class="form-control <?= isset($_POST['downloaded']) && !is_numeric($_POST['downloaded']) ? 'is-invalid' : '' ?>"
-                                           name="downloaded" 
-                                           id="downloaded"
-                                           value="<?= e($_POST['downloaded'] ?? '') ?>"
-                                           placeholder=" "
-                                           required
-                                           data-bs-toggle="tooltip"
-                                           title="Enter value in bytes or with unit (e.g., 500MB)">
-                                    <label for="downloaded" class="form-label">
-                                        <i class="fas fa-cloud-download-alt me-2"></i>Downloaded
-                                    </label>
-                                    <div class="invalid-feedback">
-                                        Please enter a valid number
-                                    </div>
-                                    <div class="form-text small">
-                                        <i class="fas fa-info-circle me-1"></i>Example: 536870912 or 512MB
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Submit Button -->
-                            <div class="col-12">
-                                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                                    <button type="reset" class="btn btn-outline-secondary me-md-2">
-                                        <i class="fas fa-redo me-2"></i>Reset
-                                    </button>
-                                    <button type="submit" class="btn btn-primary px-5">
-                                        <i class="fas fa-save me-2"></i>Update Statistics
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
+    <?php if ($done):
+        $profile = $BASEURL . '/' . get_profile_link($done['id']); ?>
+    <!-- Раньше: сообщение и автоматический переход в профиль через 2 секунды,
+         JS-редирект печатался ещё ДО шапки страницы -->
+    <div class="rt-card rt-done mb-3">
+        <span class="rt-done-icon"><i class="fa-solid fa-circle-check"></i></span>
+        <h2 class="h5 fw-bold mb-1">Statistics of <?= e($done['username']) ?> updated</h2>
+        <div class="rt-muted mb-2">
+            <i class="fa-solid fa-upload me-1"></i><?= mksize((float)$done['oldUp']) ?> → <strong><?= mksize((float)$done['newUp']) ?></strong>
+            <span class="mx-2">·</span>
+            <i class="fa-solid fa-download me-1"></i><?= mksize((float)$done['oldDown']) ?> → <strong><?= mksize((float)$done['newDown']) ?></strong>
+            <span class="mx-2">·</span>
+            <i class="fa-solid fa-scale-balanced me-1"></i><?= rt_ratio((float)$done['oldUp'], (float)$done['oldDown']) ?> → <strong><?= rt_ratio((float)$done['newUp'], (float)$done['newDown']) ?></strong>
         </div>
-        
-        <!-- Information Panel -->
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-info text-white">
-                    <h3 class="h5 mb-0">
-                        <i class="fas fa-lightbulb me-2"></i>Quick Information
-                    </h3>
-                </div>
-                <div class="card-body p-4">
-                    <div class="alert alert-info">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        <strong>Important:</strong> Changes are irreversible
-                    </div>
-                    
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex align-items-center border-0 py-2">
-                            <i class="fas fa-database text-primary me-3 fa-fw"></i>
-                            <div>
-                                <small class="text-muted">Current Database</small>
-                                <div class="fw-bold">MySQL</div>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex align-items-center border-0 py-2">
-                            <i class="fas fa-shield-alt text-success me-3 fa-fw"></i>
-                            <div>
-                                <small class="text-muted">Security Level</small>
-                                <div class="fw-bold">Staff Only</div>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex align-items-center border-0 py-2">
-                            <i class="fas fa-history text-warning me-3 fa-fw"></i>
-                            <div>
-                                <small class="text-muted">Last Updated</small>
-                                <div class="fw-bold"><?= date('Y-m-d H:i:s') ?></div>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
+        <a href="<?= e($profile) ?>" class="btn btn-sm btn-outline-primary px-3"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Open profile</a>
     </div>
+    <?php endif; ?>
 
-    <!-- Calculator Form -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-primary text-white rounded-0">
-                    <h2 class="h5 mb-0">
-                        <i class="fas fa-calculator me-2"></i>Byte Calculator
-                    </h2>
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <form method="post" action="<?= e($self) ?>" id="updateForm" class="rt-card h-100" novalidate>
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" name="my_post_key" value="<?= e((string)($mybb->post_code ?? '')) ?>">
+                <div class="rt-sec-head"><span class="rt-sec-icon ic-blue"><i class="fa-solid fa-user-pen"></i></span>
+                    <div><h2 class="rt-sec-title">Change traffic</h2><div class="rt-muted">Values accept units: 1073741824, 512 MB, 1.5 GB, 2 TB</div></div></div>
+                <div class="p-3 p-md-4">
+                    <div class="mb-3 position-relative">
+                        <label for="username" class="form-label"><i class="fa-solid fa-user"></i>User</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                            <input type="text" class="form-control" name="username" id="username" value="<?= e((string)($_POST['username'] ?? '')) ?>" placeholder="Start typing a username…" autocomplete="off" required autofocus>
+                        </div>
+                        <div id="usernameSuggestions" class="list-group position-absolute w-100 d-none"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label d-block"><i class="fa-solid fa-sliders"></i>Operation</label>
+                        <div class="rt-seg" role="radiogroup">
+                            <?php $m = $_POST['mode'] ?? 'set';
+                            foreach (['set' => ['fa-equals', 'Set to'], 'add' => ['fa-plus', 'Add'], 'sub' => ['fa-minus', 'Subtract']] as $k => [$ic, $lbl]): ?>
+                            <input type="radio" name="mode" id="mode_<?= $k ?>" value="<?= $k ?>" <?= $m === $k ? 'checked' : '' ?>><label for="mode_<?= $k ?>"><i class="fa-solid <?= $ic ?>"></i><?= $lbl ?></label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <?php foreach (['uploaded' => ['fa-upload', 'Uploaded', 'text-success'], 'downloaded' => ['fa-download', 'Downloaded', 'text-danger']] as $f => [$ic, $lbl, $cls]): ?>
+                        <div class="col-md-6">
+                            <label for="<?= $f ?>" class="form-label"><i class="fa-solid <?= $ic ?> <?= $cls ?>"></i><?= $lbl ?></label>
+                            <input type="text" class="form-control font-monospace" name="<?= $f ?>" id="<?= $f ?>" value="<?= e((string)($_POST[$f] ?? '')) ?>" placeholder="e.g. 10 GB" autocomplete="off">
+                            <div class="rt-hint" id="<?= $f ?>Hint">Empty = leave unchanged</div>
+                            <div class="rt-chips" data-for="<?= $f ?>">
+                                <?php foreach (['0', '1 GB', '10 GB', '50 GB', '100 GB', '1 TB'] as $v): ?><button type="button" class="rt-chip" data-v="<?= $v ?>"><?= $v ?></button><?php endforeach; ?>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
+                        <button type="submit" class="btn btn-primary px-4" id="rtSave"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>
+                    </div>
                 </div>
-                <div class="card-body p-4">
-                    <form method="post" action="<?= $_this_script_ ?>" class="row g-3 align-items-end">
-                        <input type="hidden" name="action" value="calculate">
-                        
-                        <div class="col-md-8">
-                            <div class="form-floating">
-                                <input type="text" 
-                                       class="form-control" 
-                                       name="value" 
-                                       id="calcValue"
-                                       value="<?= e($_POST['value'] ?? '') ?>"
-                                       placeholder=" "
-                                       required>
-                                <label for="calcValue" class="form-label">
-                                    <i class="fas fa-keyboard me-2"></i>Enter value to calculate
-                                </label>
-                                <div class="form-text small">
-                                    Supports: 1.5GB, 1024MB, 500KB, 1024
-                                </div>
-                            </div>
+            </form>
+        </div>
+
+        <!-- Превью: было «Current Database: MySQL» и «Last Updated» = текущее время -->
+        <div class="col-lg-5">
+            <div class="rt-card h-100">
+                <div class="rt-sec-head"><span class="rt-sec-icon ic-amber"><i class="fa-solid fa-eye"></i></span>
+                    <div><h2 class="rt-sec-title">Preview</h2><div class="rt-muted">Current values and the result</div></div></div>
+                <div class="p-3 p-md-4">
+                    <div id="rtEmpty" class="rt-empty"><i class="fa-solid fa-user-large"></i>Choose a user to see their stats</div>
+                    <div id="rtPreview" hidden>
+                        <div class="rt-user">
+                            <span class="rt-avatar" id="rtAv">?</span>
+                            <div style="min-width:0"><div class="fw-bold" id="rtName"></div><div class="rt-muted" id="rtMeta"></div></div>
                         </div>
-                        
-                        <div class="col-md-4">
-                            <button type="submit" class="btn btn-success w-100 h-100 py-3">
-                                <i class="fas fa-calculator me-2"></i>Calculate
-                            </button>
+                        <div class="rt-cmp">
+                            <span class="l"><i class="fa-solid fa-upload text-success me-1"></i>Up</span><span class="v" id="rtUpOld"></span><span class="arrow"><i class="fa-solid fa-arrow-right-long"></i></span><span class="v" id="rtUpNew"></span>
+                            <span class="l"><i class="fa-solid fa-download text-danger me-1"></i>Down</span><span class="v" id="rtDownOld"></span><span class="arrow"><i class="fa-solid fa-arrow-right-long"></i></span><span class="v" id="rtDownNew"></span>
                         </div>
-                        
-                        <?php if ($value !== null): ?>
-                            <div class="col-12 mt-4">
-                                <div class="alert alert-success">
-                                    <div class="d-flex align-items-center">
-                                        <i class="fas fa-check-circle fa-2x me-3 text-success"></i>
-                                        <div>
-                                            <h5 class="mb-1">Calculation Result</h5>
-                                            <p class="mb-0 fs-4">
-                                                <code class="bg-light px-3 py-2 rounded"><?= e($value) ?></code>
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-                    </form>
+                        <div class="rt-ratio-big">
+                            <div class="text-center"><div class="k">Ratio now</div><div class="n" id="rtRatioOld">—</div></div>
+                            <i class="fa-solid fa-arrow-right-long fa-lg text-body-secondary"></i>
+                            <div class="text-center"><div class="k">After</div><div class="n" id="rtRatioNew">—</div></div>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning d-flex gap-2 rounded-4 mt-3 mb-0 small"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div>Every change is written to the site log with the old and new values.</div></div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- JavaScript Enhancements -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Автокомплит поиска юзера на чистом JS
-    (function () {
-        const input = document.getElementById('username');
-        const box   = document.getElementById('usernameSuggestions');
-        if (!input || !box) return;
-
-        let debounceTimer = null;
-        let activeIndex = -1;
-
-        function hideBox() {
-            box.classList.add('d-none');
-            box.innerHTML = '';
-            activeIndex = -1;
-        }
-
-        function renderResults(results) {
-            box.innerHTML = '';
-            if (!results.length) {
-                box.classList.add('d-none');
-                return;
-            }
-            results.forEach((r, i) => {
-                const item = document.createElement('button');
-                item.type = 'button';
-                item.className = 'list-group-item list-group-item-action py-2';
-                item.textContent = r.text;
-                item.dataset.username = r.id;
-                item.addEventListener('click', () => {
-                    input.value = r.id;
-                    hideBox();
-                });
-                box.appendChild(item);
-            });
-            box.classList.remove('d-none');
-        }
-
-        input.addEventListener('input', function () {
-            const term = input.value.trim();
-            clearTimeout(debounceTimer);
-            if (term.length < 2) {
-                hideBox();
-                return;
-            }
-            debounceTimer = setTimeout(() => {
-                fetch('<?= $_this_script_ ?>&action=search_user&term=' + encodeURIComponent(term))
-                    .then(r => r.json())
-                    .then(renderResults)
-                    .catch(() => hideBox());
-            }, 250);
-        });
-
-        input.addEventListener('keydown', function (e) {
-            const items = box.querySelectorAll('.list-group-item');
-            if (!items.length) return;
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                activeIndex = Math.min(activeIndex + 1, items.length - 1);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                activeIndex = Math.max(activeIndex - 1, 0);
-            } else if (e.key === 'Enter' && activeIndex >= 0) {
-                e.preventDefault();
-                items[activeIndex].click();
-                return;
-            } else {
-                return;
-            }
-            items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
-        });
-
-        document.addEventListener('click', function (e) {
-            if (e.target !== input && !box.contains(e.target)) hideBox();
-        });
-    })();
-
-    const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-    tooltips.forEach(tooltip => new bootstrap.Tooltip(tooltip));
-    
-    const formatInput = function(input) {
-        const value = input.value.trim();
-        if (value.match(/^\d+(\.\d+)?[GMK]?B?$/i)) {
-            input.classList.remove('is-invalid');
-            input.classList.add('is-valid');
-        } else if (value.match(/^\d+$/)) {
-            input.classList.remove('is-invalid');
-            input.classList.remove('is-valid');
-        } else if (value) {
-            input.classList.add('is-invalid');
-        }
-    };
-    
-    document.getElementById('uploaded').addEventListener('blur', function() {
-        formatInput(this);
-    });
-    
-    document.getElementById('downloaded').addEventListener('blur', function() {
-        formatInput(this);
-    });
-    
-    document.getElementById('updateForm').addEventListener('submit', function(e) {
-        const username = document.getElementById('username').value.trim();
-        if (!confirm(`Are you sure you want to update statistics for "${username}"?`)) {
-            e.preventDefault();
-        }
-    });
-});
-</script>
-
-<style>
-#usernameSuggestions {
-    background-color: var(--bs-body-bg, #fff);
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    border-radius: 0.375rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.25);
-}
-#usernameSuggestions .list-group-item {
-    background-color: var(--bs-body-bg, #fff);
-    border-color: rgba(0, 0, 0, 0.08);
-}
-#usernameSuggestions .list-group-item:hover,
-#usernameSuggestions .list-group-item.active {
-    background-color: var(--bs-tertiary-bg, #f1f3f5);
-}
-.card {
-    border-radius: 12px;
-    overflow: hidden;
-    transition: transform 0.2s;
-}
-
-.card:hover {
-    transform: translateY(-2px);
-}
-
-.card-header {
-    border-bottom: none;
-    font-weight: 600;
-}
-
-.form-control:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-}
-
-.alert {
-    border: none;
-    border-radius: 8px;
-}
-
-.list-group-item {
-    background: transparent;
-}
-
-.btn {
-    border-radius: 6px;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.btn-primary {
-    background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
-    border: none;
-}
-
-.btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
-}
-
-.form-floating > label {
-    padding-left: 2.5rem;
-}
-
-.form-floating > .form-control:focus ~ label,
-.form-floating > .form-control:not(:placeholder-shown) ~ label {
-    padding-left: 0.5rem;
-}
-
-.form-floating > .fas {
-    position: absolute;
-    left: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 3;
-    color: #6c757d;
-}
-
-.form-floating > .form-control:focus ~ .fas {
-    color: #0d6efd;
-}
-</style>
-
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/ratio.js?v=2"></script>
 <?php
 stdfoot();
-unset($value, $error, $success, $action);
-?>

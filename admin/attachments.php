@@ -5,6 +5,7 @@ declare(strict_types=1);
 
 
 require_once INC_PATH . '/functions_multipage.php';
+require_once INC_PATH . '/functions_icons.php';
 
 if (!function_exists('escape_like_pattern')) {
     /**
@@ -90,7 +91,8 @@ $plugins->run_hooks("admin_forum_attachments_begin");
 $uploadspath = TSDIR . '/uploads/';
 $uploadspath_abs = mk_path_abs22($uploadspath);
 $default_perpage = 20;
-$perpage = $mybb->get_input('perpage', MyBB::INPUT_INT) ?: $default_perpage;
+// Ограничиваем: perpage=100000 в адресе иначе выгружал бы всю таблицу
+$perpage = min(200, max(1, $mybb->get_input('perpage', MyBB::INPUT_INT) ?: $default_perpage));
 
 // Navigation tabs
 $sub_tabs = [
@@ -117,25 +119,42 @@ $sub_tabs = [
 ];
 
 /**
- * Handle attachment deletion
+ * Handle attachment deletion (POST only, CSRF-protected)
+ *
+ * Раньше POST-ветка удаляла файлы БЕЗ проверки my_post_key (CSRF), а GET-ветка
+ * печатала модалку без stdhead() — bootstrap не загружен, модалка не открывалась,
+ * а ссылка «Delete» вела обратно на GET той же страницы.
  */
 if ($mybb->input['action'] === "delete") {
     $plugins->run_hooks("admin_forum_attachments_delete");
 
-    $aids = is_array($mybb->input['aids'] ?? null) 
-        ? array_map('intval', $mybb->input['aids'])
+    $return_to = in_array($mybb->get_input('return'), ['comment_attachments'], true)
+        ? 'index.php?act=attachments&action=' . $mybb->get_input('return')
+        : 'index.php?act=attachments';
+
+    if ($mybb->request_method !== "post") {
+        admin_redirect($return_to);
+    }
+    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        flash_message('Security check failed. Please try again.', 'error');
+        admin_redirect($return_to);
+    }
+
+    $aids = is_array($mybb->input['aids'] ?? null)
+        ? array_values(array_filter(array_map('intval', $mybb->input['aids'])))
         : array_filter([$mybb->get_input('aid', MyBB::INPUT_INT)]);
 
     $cf_ids = is_array($mybb->input['cf_ids'] ?? null)
-        ? array_map('intval', $mybb->input['cf_ids'])
+        ? array_values(array_filter(array_map('intval', $mybb->input['cf_ids'])))
         : [];
 
     if (empty($aids) && empty($cf_ids)) {
         flash_message('No attachments selected for deletion', 'error');
-        admin_redirect("index.php?act=attachments");
+        admin_redirect($return_to);
     }
 
-    if ($mybb->request_method === "post") {
+    {
+
         require_once INC_PATH . "/functions_upload.php";
 
         if (!empty($aids)) {
@@ -180,33 +199,13 @@ while ($query && ($attachment = $db->fetch_array($query))) {
         }
 
 
+
         $plugins->run_hooks("admin_forum_attachments_delete_commit");
         flash_message('Selected attachments have been deleted successfully', 'success');
-        admin_redirect("index.php?act=attachments");
-    } else {
-        $aids_param = implode('&amp;aids[]=', $aids);
-        $cf_ids_param = !empty($cf_ids) ? '&amp;cf_ids[]=' . implode('&amp;cf_ids[]=', $cf_ids) : '';
-        echo "
-        <div class='modal fade' id='confirmModal' tabindex='-1'>
-            <div class='modal-dialog'>
-                <div class='modal-content'>
-                    <div class='modal-header'>
-                        <h5 class='modal-title'>Confirm Deletion</h5>
-                    </div>
-                    <div class='modal-body'>
-                        <p>Are you sure you want to delete the selected attachments?</p>
-                    </div>
-                    <div class='modal-footer'>
-                        <a href='index.php?act=attachments' class='btn btn-secondary'>Cancel</a>
-                        <a href='index.php?act=attachments&amp;action=delete&amp;aids={$aids_param}{$cf_ids_param}&amp;my_post_key={$mybb->post_code}' class='btn btn-danger'>Delete</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <script>new bootstrap.Modal(document.getElementById('confirmModal')).show();</script>";
-        exit;
+        admin_redirect($return_to);
     }
 }
+
 
 /**
  * Display attachment statistics
@@ -214,81 +213,55 @@ while ($query && ($attachment = $db->fetch_array($query))) {
 if ($mybb->input['action'] === "stats") {
     $plugins->run_hooks("admin_forum_attachments_stats");
 
-    $query = $db->sql_query_prepared("SELECT COUNT(*) AS total_attachments, SUM(filesize) as disk_usage, SUM(downloads*filesize) as bandwidthused FROM attachments WHERE visible='1'");
+    $query = $db->sql_query_prepared("
+        SELECT COUNT(*) AS total_attachments,
+               COALESCE(SUM(filesize), 0) AS disk_usage,
+               COALESCE(SUM(downloads * filesize), 0) AS bandwidthused,
+               COALESCE(SUM(downloads), 0) AS total_downloads,
+               COALESCE(SUM(comment_id > 0), 0) AS comment_count
+        FROM attachments WHERE visible = '1'
+    ");
     $attachment_stats = $query ? $db->fetch_array($query) : null;
 
-    // Convert string values to integers to avoid type errors
     $total_attachments = (int)($attachment_stats['total_attachments'] ?? 0);
-    $disk_usage = (float)($attachment_stats['disk_usage'] ?? 0);
-    $bandwidthused = (float)($attachment_stats['bandwidthused'] ?? 0);
-    
-    $average_size = $total_attachments > 0 ? $disk_usage / $total_attachments : 0;
+    $disk_usage        = (float)($attachment_stats['disk_usage'] ?? 0);
+    $bandwidthused     = (float)($attachment_stats['bandwidthused'] ?? 0);
+    $total_downloads   = (int)($attachment_stats['total_downloads'] ?? 0);
+    $comment_count     = (int)($attachment_stats['comment_count'] ?? 0);
+    $average_size      = $total_attachments > 0 ? $disk_usage / $total_attachments : 0;
 
     render_header('Attachments - Attachment Statistics');
     output_nav_tabs($sub_tabs, 'stats');
 
+    echo '<div class="container mt-3 mb-4 atm">';
+    echo atm_hero('fa-chart-pie', 'ic-purple', 'Attachment Statistics', 'Storage, traffic and the heaviest files across forum and comment attachments');
+
     if ($total_attachments === 0) {
-        echo '
-        <div class="container mt-4">
-            <div class="card shadow-sm">
-                <div class="card-body text-center py-5">
-                    <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary bg-opacity-10 mb-3" style="width:72px;height:72px;">
-                        <i class="fas fa-chart-pie text-primary" style="font-size:28px;"></i>
-                    </div>
-                    <h5 class="mb-1">No Attachments Yet</h5>
-                    <p class="text-muted mb-0">There are no attachments on your forum yet. Once an attachment is posted you will be able to access this section.</p>
-                </div>
-            </div>
-        </div>';
+        echo atm_empty('fa-chart-pie', 'No attachments yet', 'Once something is uploaded, statistics will appear here.');
+        echo '</div>';
         stdfoot();
         exit;
     }
 
-    // General Statistics Card
-    echo '
-    <div class="container mt-4">
-        <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>General Statistics</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <div class="stat-card">
-                            <div class="stat-value text-primary">' . ts_nf($total_attachments) . '</div>
-                            <div class="stat-label">Uploaded Attachments</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <div class="stat-card">
-                            <div class="stat-value text-success">' . mksize($disk_usage) . '</div>
-                            <div class="stat-label">Disk Space Used</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <div class="stat-card">
-                            <div class="stat-value text-info">' . mksize($bandwidthused) . '</div>
-                            <div class="stat-label">Bandwidth Usage</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <div class="stat-card">
-                            <div class="stat-value text-warning">' . mksize($average_size) . '</div>
-                            <div class="stat-label">Average Attachment Size</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>';
+    echo atm_stats([
+        ['fa-paperclip',       'ic-blue',   'Attachments',     ts_nf($total_attachments), ts_nf($comment_count) . ' in comments'],
+        ['fa-hard-drive',      'ic-green',  'Disk space',      mksize($disk_usage),       'on the server'],
+        ['fa-cloud-arrow-down','ic-teal',   'Bandwidth',       mksize($bandwidthused),    ts_nf($total_downloads) . ' downloads'],
+        ['fa-scale-balanced',  'ic-amber',  'Average size',    mksize($average_size),     'per file'],
+    ]);
 
-    // Top Attachments Sections
-    render_top_attachments_section('Most Popular Attachments', 'downloads DESC', 'text-success', 'fa-trophy');
-    render_top_attachments_section('Largest Attachments', 'filesize DESC', 'text-danger', 'fa-weight-hanging');
+    echo '<div class="row g-3">';
+    echo '<div class="col-lg-6">';
+    render_top_attachments_section('Most downloaded', 'downloads DESC', 'ic-green', 'fa-trophy', 'downloads');
+    echo '</div><div class="col-lg-6">';
+    render_top_attachments_section('Largest files', 'filesize DESC', 'ic-red', 'fa-weight-hanging', 'filesize');
+    echo '</div><div class="col-12">';
     render_top_users_section();
+    echo '</div></div></div>';
 
     stdfoot();
 }
+
 
 /**
  * Handle orphaned attachments deletion
@@ -421,9 +394,109 @@ if (!$mybb->input['action']) {
     }
 }
 
-/**
- * Handle comment attachments view
- */
+// ═══════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════
+
+function atm_hero(string $icon, string $cls, string $title, string $sub, string $right = ''): string
+{
+    return '<div class="atm-card mb-3"><div class="atm-head">'
+         . '<span class="atm-head-icon ' . $cls . '"><i class="fa-solid ' . $icon . '"></i></span>'
+         . '<div><h1 class="atm-title">' . $title . '</h1><div class="atm-sub">' . $sub . '</div></div>'
+         . ($right !== '' ? '<div class="ms-auto d-flex flex-wrap gap-2">' . $right . '</div>' : '')
+         . '</div></div>';
+}
+
+/** @param array<array{0:string,1:string,2:string,3:string,4?:string}> $cards */
+function atm_stats(array $cards): string
+{
+    $html = '<div class="row g-3 mb-3">';
+    foreach ($cards as $c) {
+        $html .= '<div class="col-6 col-md-3"><div class="atm-card atm-stat">'
+               . '<span class="atm-stat-icon ' . $c[1] . '"><i class="fa-solid ' . $c[0] . '"></i></span>'
+               . '<div style="min-width:0"><div class="atm-stat-label">' . $c[2] . '</div><div class="atm-stat-value">' . $c[3] . '</div>'
+               . (!empty($c[4]) ? '<div class="atm-muted">' . $c[4] . '</div>' : '')
+               . '</div></div></div>';
+    }
+    return $html . '</div>';
+}
+
+function atm_empty(string $icon, string $title, string $text, string $extra = ''): string
+{
+    return '<div class="atm-card"><div class="atm-empty"><i class="fa-solid ' . $icon . '"></i>'
+         . '<div class="fw-semibold">' . $title . '</div><div class="small">' . $text . '</div>' . $extra . '</div></div>';
+}
+
+/** Иконка / превью файла. Раньше fallback делал outerHTML='…addslashes($icon)…' —
+ *  двойные кавычки иконки ломали атрибут onerror, и подмена не срабатывала. */
+function atm_file_visual(string $filename, string $filetype, ?string $thumb_url): string
+{
+    $icon = '<span class="atm-ficon">' . get_attachment_icon(get_extension($filename)) . '</span>';
+    if ($thumb_url !== null && str_starts_with($filetype, 'image/')) {
+        return '<span class="atm-thumb"><img src="' . $thumb_url . '" alt="" loading="lazy" onerror="this.parentNode.hidden=true;this.parentNode.nextElementSibling.hidden=false;"></span>'
+             . str_replace('<span class="atm-ficon">', '<span class="atm-ficon" hidden>', $icon);
+    }
+    return $icon;
+}
+
+function atm_file_cell(string $visual, string $name_html, string $meta = ''): string
+{
+    return '<div class="atm-file">' . $visual . '<div style="min-width:0"><div class="atm-fname">' . $name_html . '</div>'
+         . ($meta !== '' ? '<div class="atm-muted">' . $meta . '</div>' : '') . '</div></div>';
+}
+
+function atm_mime(string $mime): string
+{
+    return $mime !== '' ? '<span class="atm-mime">' . htmlspecialchars_uni($mime) . '</span>' : '';
+}
+
+/** Прилипающая панель выбора + кнопка удаления (открывает модалку подтверждения) */
+function atm_toolbar(string $label, int $total): string
+{
+    return '<div class="atm-card atm-toolbar mb-3">'
+         . '<div class="atm-selinfo"><i class="fa-solid fa-square-check me-1"></i>Selected: <b class="atm-selcount">0</b> · ' . $label . ': ' . ts_nf($total) . '</div>'
+         . '<button type="button" class="btn btn-sm btn-danger rounded-pill px-3 atm-del" disabled><i class="fa-solid fa-trash me-1"></i>Delete selected</button>'
+         . '</div>';
+}
+
+function atm_check_all(string $name): string
+{
+    return '<div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" data-check-all="' . $name . '" aria-label="Select all"></div>';
+}
+
+function atm_check(string $name, string $value): string
+{
+    return '<div class="form-check form-switch m-0"><input class="form-check-input atm-cb" type="checkbox" role="switch" name="' . $name . '" value="' . $value . '" aria-label="Select"></div>';
+}
+
+function atm_user_link(int $uid, string $username, $usergroup = 0): string
+{
+    global $BASEURL;
+    if ($uid <= 0 || $username === '') {
+        return '<span class="atm-muted"><i class="fa-solid fa-user-secret me-1"></i>Guest</span>';
+    }
+    // Ник экранируем до format_name() — раньше он вставлялся как есть
+    return '<a href="' . $BASEURL . '/' . get_profile_link($uid) . '" target="_blank" class="text-decoration-none fw-semibold">'
+         . format_name(htmlspecialchars_uni($username), (int)$usergroup) . '</a>';
+}
+
+/** Где «живёт» вложение: тема форума, комментарий к торренту или черновик */
+function atm_location(array $a): string
+{
+    if (!empty($a['pid']) && !empty($a['tid'])) {
+        return '<a href="../' . get_post_link((int)$a['pid']) . '" target="_blank" class="text-decoration-none"><i class="fa-solid fa-comments me-1 text-body-secondary"></i>'
+             . htmlspecialchars_uni($a['subject'] ?? 'No subject') . '</a>';
+    }
+    if (!empty($a['comment_id'])) {
+        return '<span class="atm-muted"><i class="fa-solid fa-comment-dots me-1"></i>Comment #' . (int)$a['comment_id'] . '</span>';
+    }
+    return '<span class="atm-tag t-draft"><i class="fa-solid fa-file-pen"></i>Draft</span>';
+}
+
+// ═══════════════════════════════════════════════════════════
+// COMMENT ATTACHMENTS
+// ═══════════════════════════════════════════════════════════
+
 function handle_comment_attachments(): void {
     global $mybb, $db, $perpage, $BASEURL;
 
@@ -440,7 +513,6 @@ function handle_comment_attachments(): void {
 
     $att_filter = 'comment_id > 0';
     $cf_filter  = 'comment_id IS NOT NULL';
-    $union_params = [];
     $att_params = [];
     $cf_params  = [];
 
@@ -464,8 +536,7 @@ function handle_comment_attachments(): void {
     }
     $union_params = [...$att_params, ...$cf_params];
 
-    // UNION ALL нормализует колонки обеих таблиц под общие имена, чтобы можно
-    // было сортировать/пагинировать результат как единый набор
+    // UNION ALL нормализует колонки обеих таблиц под общие имена
     $union_sql = "
         SELECT aid AS id, filename, filesize, filetype, thumbnail, uid,
                comment_id, dateuploaded AS dateuploaded_ts, downloads,
@@ -482,11 +553,9 @@ function handle_comment_attachments(): void {
         WHERE {$cf_filter}
     ";
 
-    // Count
     $query = $db->sql_query_prepared("SELECT COUNT(*) AS num_results FROM ({$union_sql}) x", $union_params);
     $num_results = $query ? (int)$db->fetch_field($query, 'num_results') : 0;
 
-    // Aggregate stats (across full comment-attachment set из обеих таблиц, без учёта фильтров поиска)
     $stats_query = $db->sql_query_prepared("
         SELECT COUNT(*) AS total_count, SUM(filesize) AS total_size, SUM(downloads) AS total_downloads, AVG(filesize) AS avg_size
         FROM (
@@ -495,130 +564,61 @@ function handle_comment_attachments(): void {
             SELECT file_size AS filesize, 0 AS downloads FROM comment_files WHERE comment_id IS NOT NULL
         ) s
     ");
-    $stats          = $stats_query ? $db->fetch_array($stats_query) : null;
-    $stat_count     = (int)($stats['total_count'] ?? 0);
-    $stat_size      = mksize((float)($stats['total_size'] ?? 0));
-    $stat_downloads = (int)($stats['total_downloads'] ?? 0);
-    $stat_avg       = mksize((float)($stats['avg_size'] ?? 0));
+    $stats = $stats_query ? $db->fetch_array($stats_query) : null;
 
     render_header('Attachments - Comment Attachments');
     output_nav_tabs($GLOBALS['sub_tabs'], 'comment_attachments');
 
-    // Stats header + row (usercp-style)
-    echo '
-    <div class="container mt-4">
-        <div class="att-page-header">
-            <h2><i class="fas fa-paperclip"></i> Comment Attachments</h2>
-            <p>' . ts_nf($stat_count) . ' attachments &bull; ' . $stat_size . ' used &bull; includes both attachments and comment_files storage</p>
-        </div>
-        <div class="att-stats-row">
-            <div class="att-stat-card">
-                <div class="att-stat-icon is-primary"><i class="fas fa-file"></i></div>
-                <div>
-                    <div class="att-stat-value">' . ts_nf($stat_count) . '</div>
-                    <div class="att-stat-label">Comment Attachments</div>
-                </div>
-            </div>
-            <div class="att-stat-card">
-                <div class="att-stat-icon is-success"><i class="fas fa-hdd"></i></div>
-                <div>
-                    <div class="att-stat-value">' . $stat_size . '</div>
-                    <div class="att-stat-label">Space Used</div>
-                </div>
-            </div>
-            <div class="att-stat-card">
-                <div class="att-stat-icon is-info"><i class="fas fa-download"></i></div>
-                <div>
-                    <div class="att-stat-value">' . ts_nf($stat_downloads) . '</div>
-                    <div class="att-stat-label">Total Downloads</div>
-                </div>
-            </div>
-            <div class="att-stat-card">
-                <div class="att-stat-icon is-warning"><i class="fas fa-chart-line"></i></div>
-                <div>
-                    <div class="att-stat-value">' . $stat_avg . '</div>
-                    <div class="att-stat-label">Average Size</div>
-                </div>
-            </div>
-        </div>
-    </div>';
+    echo '<div class="container mt-3 mb-4 atm">';
+    echo atm_hero('fa-comment-dots', 'ic-blue', 'Comment Attachments', 'Files attached to torrent comments — both the <code>attachments</code> and <code>comment_files</code> storage');
+    echo atm_stats([
+        ['fa-file',        'ic-blue',  'Files',         ts_nf((int)($stats['total_count'] ?? 0))],
+        ['fa-hard-drive',  'ic-green', 'Space used',    mksize((float)($stats['total_size'] ?? 0))],
+        ['fa-download',    'ic-teal',  'Downloads',     ts_nf((int)($stats['total_downloads'] ?? 0))],
+        ['fa-chart-line',  'ic-amber', 'Average size',  mksize((float)($stats['avg_size'] ?? 0))],
+    ]);
 
-    // Search form
+    $fv = static fn(string $k): string => htmlspecialchars_uni($mybb->input[$k] ?? '');
+    $has_filter = $filename_val !== '' || $mimetype_val !== '' || !empty($mybb->input['username']);
     echo '
-    <div class="container mt-4 mb-3">
-        <div class="card shadow-sm">
-            <div class="card-header bg-secondary text-white">
-                <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filter Comment Attachments</h5>
-            </div>
-            <div class="card-body">
-                <form method="get" action="index.php" class="row g-3">
-                    <input type="hidden" name="act" value="attachments">
-                    <input type="hidden" name="action" value="comment_attachments">
-                    <div class="col-md-4">
-                        <label class="form-label">Filename</label>
-                        <input type="text" class="form-control" name="filename" value="' . htmlspecialchars_uni($mybb->input['filename'] ?? '') . '">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Username</label>
-                        <input type="text" class="form-control" name="username" value="' . htmlspecialchars_uni($mybb->input['username'] ?? '') . '">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">MIME Type</label>
-                        <input type="text" class="form-control" name="mimetype" placeholder="e.g. image/" value="' . htmlspecialchars_uni($mybb->input['mimetype'] ?? '') . '">
-                    </div>
-                    <div class="col-12">
-                        <button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Search</button>
-                        <a href="index.php?act=attachments&action=comment_attachments" class="btn btn-secondary ms-2">Reset</a>
-                    </div>
-                </form>
+    <form method="get" action="index.php" class="atm-card p-3 mb-3">
+        <input type="hidden" name="act" value="attachments">
+        <input type="hidden" name="action" value="comment_attachments">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4"><label class="form-label"><i class="fa-solid fa-file-signature"></i>File name</label><input type="text" class="form-control" name="filename" value="' . $fv('filename') . '" placeholder="contains…"></div>
+            <div class="col-md-3"><label class="form-label"><i class="fa-solid fa-user"></i>Username</label><input type="text" class="form-control" name="username" value="' . $fv('username') . '"></div>
+            <div class="col-md-3"><label class="form-label"><i class="fa-solid fa-code"></i>MIME type</label><input type="text" class="form-control" name="mimetype" value="' . $fv('mimetype') . '" placeholder="e.g. image/"></div>
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary rounded-pill flex-grow-1"><i class="fa-solid fa-magnifying-glass me-1"></i>Filter</button>
+                ' . ($has_filter ? '<a href="index.php?act=attachments&amp;action=comment_attachments" class="btn btn-outline-secondary rounded-pill" title="Reset"><i class="fa-solid fa-xmark"></i></a>' : '') . '
             </div>
         </div>
-    </div>';
+    </form>';
 
     if ($num_results === 0) {
-        echo '
-        <div class="container mt-4">
-            <div class="card shadow-sm">
-                <div class="card-body text-center py-5">
-                    <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-warning bg-opacity-10 mb-3" style="width:72px;height:72px;">
-                        <i class="fas fa-magnifying-glass text-warning" style="font-size:28px;"></i>
-                    </div>
-                    <h5 class="mb-1">No Comment Attachments Found</h5>
-                    <p class="text-muted mb-0">No matching results — try adjusting your search or filters.</p>
-                </div>
-            </div>
-        </div>';
+        echo atm_empty('fa-magnifying-glass', 'No comment attachments found', 'Try adjusting the filters.');
+        echo '</div>';
         stdfoot();
         exit;
     }
 
-    $page  = $mybb->get_input('page', MyBB::INPUT_INT) ?: 1;
+    $page  = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
     $start = ($page - 1) * $perpage;
 
-    echo '
-    <form action="index.php?act=attachments&amp;action=delete" method="post">
+    echo '<form action="index.php?act=attachments&amp;action=delete" method="post" class="atm-selectable">
         <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-        <div class="container">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="fas fa-paperclip me-2"></i>Comment Attachments — ' . ts_nf($num_results) . ' found</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th width="50"><label class="form-switch-custom"><input type="checkbox" class="checkall" onclick="checkAll(this)"><span class="switch-slider"></span></label></th>
-                                    <th>File</th>
-                                    <th class="text-center">Size</th>
-                                    <th class="text-center">Type</th>
-                                    <th class="text-center">Storage</th>
-                                    <th class="text-center">Uploaded By</th>
-                                    <th class="text-center">Comment</th>
-                                    <th class="text-center">Date</th>
-                                </tr>
-                            </thead>
-                            <tbody>';
+        <input type="hidden" name="return" value="comment_attachments">'
+        . atm_toolbar('found', $num_results) . '
+        <div class="atm-card overflow-hidden"><div class="table-responsive"><table class="table atm-table">
+            <thead><tr>
+                <th style="width:48px">' . atm_check_all('*') . '</th>
+                <th><i class="fa-solid fa-file"></i>File</th>
+                <th class="text-center"><i class="fa-solid fa-weight-hanging"></i>Size</th>
+                <th class="text-center"><i class="fa-solid fa-database"></i>Storage</th>
+                <th><i class="fa-solid fa-user"></i>Uploaded by</th>
+                <th><i class="fa-solid fa-magnet"></i>Torrent</th>
+                <th class="text-end"><i class="fa-solid fa-clock"></i>Date</th>
+            </tr></thead><tbody>';
 
     $query = $db->sql_query_prepared("
         SELECT x.*, u.username AS user_username, u.id AS user_pk, u.enabled, u.donor, u.warned, u.leechwarn, u.usergroup, u.canupload, u.candownload, u.cancomment,
@@ -632,140 +632,89 @@ function handle_comment_attachments(): void {
     ", [...$union_params, $start, $perpage]);
 
     while ($query && ($att = $db->fetch_array($query))) {
-        $is_cf     = $att['source'] === 'comment_files';
-        $date      = $att['dateuploaded_ts'] > 0 ? my_datee('relative', $att['dateuploaded_ts']) : 'Unknown';
-        $username  = $att['user_username'] ?: 'Guest';
-        $group     = $att['usergroup'] ?: 'Guest';
+        $is_cf   = $att['source'] === 'comment_files';
+        $att_url = $is_cf
+            ? htmlspecialchars_uni((string)$att['file_url_override'])
+            : '../uploads/attachments/' . rawurlencode((string)$att['attachname']);
+        $thumb   = $is_cf ? $att_url
+                 : ((!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL') ? '../uploads/attachments/' . rawurlencode($att['thumbnail']) : $att_url);
 
-        $profile_url = get_profile_link((int)$att['user_pk']);
-        $display_name = format_name($username, $group);
-        $user_link = '<a href="' . $BASEURL . '/' . $profile_url . '">' . $display_name . '</a>' . get_user_icons($att);
+        $visual  = atm_file_visual((string)$att['filename'], (string)$att['filetype'], $thumb);
+        $name    = '<a href="' . $att_url . '" target="_blank" class="text-decoration-none">' . htmlspecialchars_uni((string)$att['filename']) . '</a>';
+        $meta    = atm_mime((string)$att['filetype']) . ((int)$att['downloads'] > 0 ? ' <span class="ms-1"><i class="fa-solid fa-download me-1"></i>' . ts_nf((int)$att['downloads']) . '</span>' : '');
 
-        $size      = mksize((float)$att['filesize']);
-        $icon      = get_attachment_icon(get_extension($att['filename']));
+        $storage = $is_cf
+            ? '<span class="atm-tag t-cf" title="comment_files table"><i class="fa-solid fa-box-archive"></i>.attach</span>'
+            : '<span class="atm-tag t-std" title="attachments table"><i class="fa-solid fa-paperclip"></i>standard</span>';
 
-        // comment_files хранит готовый file_url, attachments — собираем путь сами
-        $att_url   = $is_cf
-            ? htmlspecialchars_uni($att['file_url_override'])
-            : '../uploads/attachments/' . rawurlencode($att['attachname']);
-        $file_link = '<a href="' . $att_url . '" target="_blank">' . htmlspecialchars_uni($att['filename']) . '</a>';
-        $mime      = '<span class="badge bg-light text-dark border">' . htmlspecialchars_uni((string)$att['filetype']) . '</span>';
-        $storage_badge = $is_cf
-            ? '<span class="badge bg-secondary" title="comment_files table">.attach</span>'
-            : '<span class="badge bg-info text-dark" title="attachments table">standard</span>';
+        $user = atm_user_link((int)$att['user_pk'], (string)($att['user_username'] ?? ''), $att['usergroup'] ?? 0)
+              . ((int)$att['user_pk'] > 0 ? get_user_icons($att) : '');
 
-        // Image preview thumbnail (только для attachments — у comment_files нет thumbnail-колонки)
-        $is_image = str_starts_with((string)($att['filetype'] ?? ''), 'image/');
-        if ($is_image && !$is_cf) {
-            $thumb_url = (!empty($att['thumbnail']) && $att['thumbnail'] !== 'SMALL')
-                ? '../uploads/attachments/' . rawurlencode($att['thumbnail'])
-                : $att_url;
-            $file_icon_html = '<a href="' . $att_url . '" target="_blank" class="ca-thumb-link">
-                <img src="' . $thumb_url . '" class="ca-thumb" alt="" loading="lazy"
-                     onerror="this.closest(\'.ca-thumb-link\').outerHTML=\'' . addslashes($icon) . '\'">
-            </a>';
-        } elseif ($is_image) {
-            $file_icon_html = '<a href="' . $att_url . '" target="_blank" class="ca-thumb-link">
-                <img src="' . $att_url . '" class="ca-thumb" alt="" loading="lazy"
-                     onerror="this.closest(\'.ca-thumb-link\').outerHTML=\'' . addslashes($icon) . '\'">
-            </a>';
-        } else {
-            $file_icon_html = $icon;
-        }
+        $torrent = ($att['comment_id'] && $att['torrent_id'])
+            ? '<a href="../details.php?id=' . (int)$att['torrent_id'] . '#pid' . (int)$att['comment_id'] . '" target="_blank" class="atm-link-trunc"><i class="fa-solid fa-magnet text-danger me-1"></i>'
+              . htmlspecialchars_uni($att['torrent_name'] ?? 'Torrent #' . $att['torrent_id']) . '</a>'
+            : '<span class="atm-muted">—</span>';
 
-        // Comment link
-        if ($att['comment_id'] && $att['torrent_id']) {
-            $comment_link = '<a href="../details.php?id=' . (int)$att['torrent_id'] . '#pid' . (int)$att['comment_id'] . '" target="_blank" class="text-decoration-none">'
-                . htmlspecialchars_uni($att['torrent_name'] ?? 'Torrent #' . $att['torrent_id'])
-                . '</a>';
-        } else {
-            $comment_link = '<span class="text-muted">—</span>';
-        }
+        $date = $att['dateuploaded_ts'] > 0 ? my_datee('relative', (int)$att['dateuploaded_ts']) : 'Unknown';
 
-        $checkbox_name = $is_cf ? 'cf_ids[]' : 'aids[]';
-        $checkbox_value = $is_cf ? (int)$att['id'] : (int)$att['id'];
-
-        echo '
-                                <tr>
-                                    <td><label class="form-switch-custom"><input type="checkbox" name="' . $checkbox_name . '" value="' . $checkbox_value . '"><span class="switch-slider"></span></label></td>
-                                    <td>' . $file_icon_html . ' ' . $file_link . '</td>
-                                    <td class="text-center"><span class="badge bg-secondary">' . $size . '</span></td>
-                                    <td class="text-center">' . $mime . '</td>
-                                    <td class="text-center">' . $storage_badge . '</td>
-                                    <td class="text-center">' . $user_link . '</td>
-                                    <td class="text-center">' . $comment_link . '</td>
-                                    <td class="text-center"><small class="text-muted">' . $date . '</small></td>
-                                </tr>';
+        echo '<tr>'
+           . '<td>' . atm_check($is_cf ? 'cf_ids[]' : 'aids[]', (string)(int)$att['id']) . '</td>'
+           . '<td>' . atm_file_cell($visual, $name, $meta) . '</td>'
+           . '<td class="text-center"><span class="atm-size">' . mksize((float)$att['filesize']) . '</span></td>'
+           . '<td class="text-center">' . $storage . '</td>'
+           . '<td>' . $user . '</td>'
+           . '<td>' . $torrent . '</td>'
+           . '<td class="text-end atm-muted text-nowrap">' . $date . '</td>'
+           . '</tr>';
     }
 
-    echo '
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card-footer text-center">
-                    <button type="submit" class="btn btn-danger"><i class="fas fa-trash me-2"></i>Delete Selected</button>
-                </div>
-            </div>
-        </div>
-    </form>';
+    echo '</tbody></table></div></div></form>';
 
     if ($num_results > $perpage) {
         $search_url = "index.php?act=attachments&amp;action=comment_attachments";
-        foreach (['filename','username','mimetype'] as $p) {
+        foreach (['filename', 'username', 'mimetype'] as $p) {
             if ($mybb->get_input($p)) $search_url .= "&amp;{$p}=" . urlencode($mybb->input[$p]);
         }
-        $pagination = multipage($num_results, $perpage, $page, $search_url . "&amp;page={page}");
-        echo '<div class="container mt-3"><div class="card"><div class="card-body text-center">' . $pagination . '</div></div></div>';
+        echo '<div class="d-flex justify-content-center mt-3">' . multipage($num_results, $perpage, $page, $search_url . "&amp;page={page}") . '</div>';
     }
 
+    echo '</div>';
     stdfoot();
     exit;
 }
 
-/**
- * Handle attachments search results
- */
+// ═══════════════════════════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════════════════════════
+
 function handle_attachments_search(): void {
     global $mybb, $db, $perpage;
-    
-    $search_sql = '1=1';
-    $errors = [];
 
-    // Build search URL for pagination
-    $search_url = "index.php?act=attachments&amp;results=1";
-    
-    // Add search parameters to URL
-    $search_params = [
-        'filename', 'mimetype', 'username', 'user_types', 'sortby', 'order', 'perpage'
-    ];
-    
-    foreach ($search_params as $param) {
+    $search_sql = '1=1';
+
+    // Параметры поиска для ссылок пагинации/сортировки
+    $url_params = [];
+    foreach (['filename', 'mimetype', 'username', 'user_types', 'perpage'] as $param) {
         if ($mybb->get_input($param)) {
-            $search_url .= "&amp;{$param}=" . urlencode($mybb->input[$param]);
+            $url_params[] = "{$param}=" . urlencode((string)$mybb->input[$param]);
         }
     }
-    
-    // Add forum parameters
     if (!empty($mybb->input['forum']) && is_array($mybb->input['forum'])) {
         foreach ($mybb->input['forum'] as $fid) {
-            $search_url .= "&amp;forum[]=" . (int)$fid;
+            $url_params[] = 'forum[]=' . (int)$fid;
         }
     }
+    $base_url = 'index.php?act=attachments&amp;results=1' . ($url_params ? '&amp;' . implode('&amp;', $url_params) : '');
 
-    // Build search conditions
     $search_params = [];
     if ($mybb->get_input('filename')) {
         $search_sql .= " AND a.filename LIKE ?";
         $search_params[] = '%' . escape_like_pattern($mybb->input['filename']) . '%';
     }
-    
     if ($mybb->get_input('mimetype')) {
         $search_sql .= " AND a.filetype LIKE ?";
         $search_params[] = '%' . escape_like_pattern($mybb->input['mimetype']) . '%';
     }
-    
-    // Username search
     if (!empty($mybb->input['username'])) {
         $user = get_user_by_username($mybb->input['username']);
         if ($user) {
@@ -776,14 +725,12 @@ function handle_attachments_search(): void {
             $search_params[] = '%' . escape_like_pattern($mybb->input['username']) . '%';
         }
     }
-
-    // Forum search
     if (!empty($mybb->input['forum']) && is_array($mybb->input['forum'])) {
-        $forum_ids = array_map('intval', $mybb->input['forum']);
-        $search_sql .= " AND p.fid IN (" . implode(",", $forum_ids) . ")";
+        $forum_ids = array_values(array_filter(array_map('intval', $mybb->input['forum'])));
+        if ($forum_ids) {
+            $search_sql .= " AND p.fid IN (" . implode(",", $forum_ids) . ")";
+        }
     }
-
-    // User type filter
     $user_types = $mybb->get_input('user_types', MyBB::INPUT_INT);
     if ($user_types === 1) {
         $search_sql .= " AND a.uid > 0";
@@ -791,67 +738,65 @@ function handle_attachments_search(): void {
         $search_sql .= " AND a.uid = 0";
     }
 
-    // Check for results
     $query = $db->sql_query_prepared("
-        SELECT COUNT(a.aid) AS num_results
+        SELECT COUNT(a.aid) AS num_results, COALESCE(SUM(a.filesize), 0) AS total_size
         FROM attachments a
         LEFT JOIN posts p ON (p.pid=a.pid)
         WHERE {$search_sql}
     ", $search_params);
-    $num_results = $query ? (int)$db->fetch_field($query, "num_results") : 0;
+    $counts      = $query ? $db->fetch_array($query) : [];
+    $num_results = (int)($counts['num_results'] ?? 0);
 
     if (!$num_results) {
-        $errors[] = 'No attachments were found with the specified search criteria';
-    }
-
-    if (!empty($errors)) {
-        render_search_form($errors);
+        render_search_form(['No attachments were found with the specified search criteria']);
         return;
     }
 
-    // Display results
     render_header('Attachments - Search Results');
     output_nav_tabs($GLOBALS['sub_tabs'], 'find_attachments');
-    
-    $page = $mybb->get_input('page', MyBB::INPUT_INT) ?: 1;
+
+    $page  = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
     $start = ($page - 1) * $perpage;
-    
-    $sort_field = match($mybb->input['sortby'] ?? '') {
-        'filesize' => 'a.filesize',
-        'downloads' => 'a.downloads',
+
+    $sortby = in_array($mybb->input['sortby'] ?? '', ['filename', 'filesize', 'downloads', 'dateuploaded', 'username'], true) ? $mybb->input['sortby'] : 'filename';
+    $sort_field = match ($sortby) {
+        'filesize'     => 'a.filesize',
+        'downloads'    => 'a.downloads',
         'dateuploaded' => 'a.dateuploaded',
-        'username' => 'u.username',
-        default => 'a.filename'
+        'username'     => 'u.username',
+        default        => 'a.filename',
     };
-    
     $order = ($mybb->input['order'] ?? 'asc') === 'desc' ? 'DESC' : 'ASC';
 
-    echo '
-    <form action="index.php?act=attachments&amp;action=delete" method="post">
-        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-        <div class="container mt-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="fas fa-search me-2"></i>Search Results - ' . ts_nf($num_results) . ' attachments found</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped">
-                            <thead class="table-light">
-                                <tr>
-                                    <th width="30"><input type="checkbox" class="form-check-input checkall" onclick="checkAll(this)"></th>
-                                    <th>Attachment</th>
-                                    <th class="text-center">Size</th>
-                                    <th class="text-center">Posted By</th>
-                                    <th class="text-center">Thread</th>
-                                    <th class="text-center">Downloads</th>
-                                    <th class="text-center">Date Uploaded</th>
-                                </tr>
-                            </thead>
-                            <tbody>';
+    // Кликабельные заголовки колонок: повторный клик меняет направление
+    $sort_th = static function (string $field, string $icon, string $label, string $align = '') use ($sortby, $order, $base_url): string {
+        $active = $sortby === $field;
+        $next   = ($active && $order === 'ASC') ? 'desc' : 'asc';
+        $arrow  = $active ? ($order === 'ASC' ? ' <i class="fa-solid fa-arrow-up-short-wide atm-sort-on"></i>' : ' <i class="fa-solid fa-arrow-down-wide-short atm-sort-on"></i>') : '';
+        return '<th class="' . $align . '"><a class="atm-sort' . ($active ? ' is-active' : '') . '" href="' . $base_url . '&amp;sortby=' . $field . '&amp;order=' . $next . '"><i class="fa-solid ' . $icon . '"></i>' . $label . $arrow . '</a></th>';
+    };
+
+    echo '<div class="container mt-3 mb-4 atm">';
+    echo atm_hero('fa-magnifying-glass', 'ic-blue', 'Search Results',
+        ts_nf($num_results) . ' attachment(s) · ' . mksize((float)($counts['total_size'] ?? 0)) . ' total',
+        '<a href="index.php?act=attachments" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-sliders me-1"></i>New search</a>');
+
+    echo '<form action="index.php?act=attachments&amp;action=delete" method="post" class="atm-selectable">
+        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+        . atm_toolbar('found', $num_results) . '
+        <div class="atm-card overflow-hidden"><div class="table-responsive"><table class="table atm-table">
+            <thead><tr>
+                <th style="width:48px">' . atm_check_all('aids[]') . '</th>'
+                . $sort_th('filename', 'fa-file', 'Attachment')
+                . $sort_th('filesize', 'fa-weight-hanging', 'Size', 'text-center')
+                . $sort_th('username', 'fa-user', 'Posted by')
+                . '<th><i class="fa-solid fa-location-dot"></i>Location</th>'
+                . $sort_th('downloads', 'fa-download', 'Downloads', 'text-center')
+                . $sort_th('dateuploaded', 'fa-clock', 'Uploaded', 'text-end') . '
+            </tr></thead><tbody>';
 
     $query = $db->sql_query_prepared("
-        SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
+        SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username, u.usergroup
         FROM attachments a
         LEFT JOIN posts p ON (p.pid=a.pid)
         LEFT JOIN threads t ON (t.tid=p.tid)
@@ -861,150 +806,113 @@ function handle_attachments_search(): void {
         LIMIT ?, ?
     ", [...$search_params, $start, $perpage]);
 
-    while ($query && ($attachment = $db->fetch_array($query))) {
-        $date = $attachment['dateuploaded'] > 0 ? my_datee('relative', $attachment['dateuploaded']) : 'Unknown';
-        $username = $attachment['user_username'] ?: $attachment['username'];
-        $user_link = $attachment['uid'] ? build_profile_link(htmlspecialchars_uni($username), $attachment['uid'], "_blank") : htmlspecialchars_uni($username);
-        $size = mksize((float)$attachment['filesize']);
-        $downloads = ts_nf($attachment['downloads']);
-        $attachment_icon = get_attachment_icon(get_extension($attachment['filename']));
-        $attachment_link = '<a href="../attachment.php?aid=' . $attachment['aid'] . '" target="_blank" class="text-decoration-none">' . htmlspecialchars_uni($attachment['filename']) . '</a>';
-        $thread_link = $attachment['tid'] ? "<a href=\"../" . get_post_link($attachment['pid']) . "\" target=\"_blank\" class=\"text-decoration-none\">" . htmlspecialchars_uni($attachment['subject'] ?? 'No Subject') . "</a>" : 'N/A';
+    while ($query && ($a = $db->fetch_array($query))) {
+        $username = (string)($a['user_username'] ?: $a['username']);
+        $visual   = atm_file_visual((string)$a['filename'], (string)$a['filetype'], null);
+        $name     = '<a href="../attachment.php?aid=' . (int)$a['aid'] . '" target="_blank" class="text-decoration-none">' . htmlspecialchars_uni((string)$a['filename']) . '</a>';
 
-        echo '
-                                <tr>
-                                    <td><input type="checkbox" name="aids[]" value="' . $attachment['aid'] . '" class="form-check-input"></td>
-                                    <td>' . $attachment_icon . ' ' . $attachment_link . '</td>
-                                    <td class="text-center"><span class="badge bg-secondary">' . $size . '</span></td>
-                                    <td class="text-center">' . $user_link . '</td>
-                                    <td class="text-center">' . $thread_link . '</td>
-                                    <td class="text-center"><span class="badge bg-info">' . $downloads . '</span></td>
-                                    <td class="text-center"><small class="text-muted">' . $date . '</small></td>
-                                </tr>';
+        echo '<tr>'
+           . '<td>' . atm_check('aids[]', (string)(int)$a['aid']) . '</td>'
+           . '<td>' . atm_file_cell($visual, $name, atm_mime((string)$a['filetype'])) . '</td>'
+           . '<td class="text-center"><span class="atm-size">' . mksize((float)$a['filesize']) . '</span></td>'
+           . '<td>' . atm_user_link((int)$a['uid'], $username, $a['usergroup'] ?? 0) . '</td>'
+           . '<td>' . atm_location($a) . '</td>'
+           . '<td class="text-center"><span class="atm-dl"><i class="fa-solid fa-download"></i>' . ts_nf((int)$a['downloads']) . '</span></td>'
+           . '<td class="text-end atm-muted text-nowrap">' . ($a['dateuploaded'] > 0 ? my_datee('relative', (int)$a['dateuploaded']) : 'Unknown') . '</td>'
+           . '</tr>';
     }
 
-    echo '
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card-footer text-center">
-                    <button type="submit" class="btn btn-danger"><i class="fas fa-trash me-2"></i>Delete Selected Attachments</button>
-                </div>
-            </div>
-        </div>
-    </form>';
+    echo '</tbody></table></div></div></form>';
 
-    // Pagination using your multipage function
     if ($num_results > $perpage) {
-        $pagination = multipage($num_results, $perpage, $page, $search_url . "&amp;page={page}");
-        echo '
-        <div class="container mt-3">
-            <div class="card">
-                <div class="card-body text-center">
-                    ' . $pagination . '
-                </div>
-            </div>
-        </div>';
+        $url = $base_url . '&amp;sortby=' . $sortby . '&amp;order=' . strtolower($order);
+        echo '<div class="d-flex justify-content-center mt-3">' . multipage($num_results, $perpage, $page, $url . "&amp;page={page}") . '</div>';
     }
 
+    echo '</div>';
     stdfoot();
 }
 
-/**
- * Render search form
- */
 function render_search_form(array $errors = []): void {
     global $mybb, $db, $perpage;
 
     render_header('Attachments - Find Attachments');
     output_nav_tabs($GLOBALS['sub_tabs'], 'find_attachments');
 
+    echo '<div class="container mt-3 mb-4 atm">';
+    echo atm_hero('fa-paperclip', 'ic-blue', 'Find Attachments', 'Search files that users have attached to forum posts and comments');
+
     if (!empty($errors)) {
-        output_inline_error($errors);
+        echo '<div class="alert alert-warning d-flex align-items-center gap-2 rounded-4"><i class="fa-solid fa-circle-exclamation"></i>' . implode('<br>', array_map('htmlspecialchars_uni', $errors)) . '</div>';
     }
 
-    $sort_options = [
-        "filename" => 'File Name',
-        "filesize" => 'File Size', 
-        "downloads" => 'Download Count',
-        "dateuploaded" => 'Date Uploaded',
-        "username" => 'Post Username'
-    ];
+    $v = static fn(string $k): string => htmlspecialchars((string)($mybb->input[$k] ?? ''));
 
-    $user_types = [
-        '0' => 'User or Guest', 
-        '1' => 'Users Only', 
-        '-1' => 'Guests Only'
-    ];
+    $sort_options = ['filename' => 'File name', 'filesize' => 'File size', 'downloads' => 'Downloads', 'dateuploaded' => 'Date uploaded', 'username' => 'Username'];
+    $user_types   = ['0' => 'User or guest', '1' => 'Users only', '-1' => 'Guests only'];
 
     echo '
     <form action="index.php?act=attachments" method="post">
         <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
-        
-        <div class="container mt-4">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="fas fa-search me-2"></i>Find Attachments</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="filename" class="form-label">File name contains</label>
-                            <input type="text" name="filename" value="' . htmlspecialchars($mybb->input['filename'] ?? '') . '" class="form-control" id="filename">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="mimetype" class="form-label">File type contains</label>
-                            <input type="text" name="mimetype" value="' . htmlspecialchars($mybb->input['mimetype'] ?? '') . '" class="form-control" id="mimetype">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="username" class="form-label">Posters username is</label>
-                            <input type="text" name="username" value="' . htmlspecialchars($mybb->input['username'] ?? '') . '" class="form-control" id="username">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="user_types" class="form-label">Poster is</label>
-                            ' . generate_select_box('user_types', $user_types, $mybb->input['user_types'] ?? '', ['id' => 'user_types', 'class' => 'form-select']) . '
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="forum" class="form-label">Forum</label>
-                            ' . generate_forum_select('forum[]', $mybb->input['forum'] ?? '', ['multiple' => true, 'size' => 5, 'id' => 'forum', 'class' => 'form-select']) . '
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="perpage" class="form-label">Results per page</label>
-                            <input type="number" name="perpage" value="' . $perpage . '" class="form-control" id="perpage" min="1">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="sortby" class="form-label">Sort results by</label>
-                            ' . generate_select_box('sortby', $sort_options, $mybb->input['sortby'] ?? '', ['id' => 'sortby', 'class' => 'form-select']) . '
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="order" class="form-label">Sort order</label>
-                            ' . generate_select_box('order', ['asc' => 'Ascending', 'desc' => 'Descending'], $mybb->input['order'] ?? '', ['id' => 'order', 'class' => 'form-select']) . '
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="atm-card h-100">
+                    <div class="atm-sec-head"><span class="atm-sec-icon ic-blue"><i class="fa-solid fa-filter"></i></span>What to look for</div>
+                    <div class="p-3 pt-0">
+                        <div class="row g-3">
+                            <div class="col-md-6"><label for="filename" class="form-label"><i class="fa-solid fa-file-signature"></i>File name contains</label>
+                                <input type="text" name="filename" value="' . $v('filename') . '" class="form-control" id="filename" placeholder="e.g. screenshot"></div>
+                            <div class="col-md-6"><label for="mimetype" class="form-label"><i class="fa-solid fa-code"></i>File type contains</label>
+                                <input type="text" name="mimetype" value="' . $v('mimetype') . '" class="form-control" id="mimetype" placeholder="e.g. image/ or pdf"></div>
+                            <div class="col-md-6"><label for="username" class="form-label"><i class="fa-solid fa-user"></i>Poster username</label>
+                                <input type="text" name="username" value="' . $v('username') . '" class="form-control" id="username"></div>
+                            <div class="col-md-6"><label for="user_types" class="form-label"><i class="fa-solid fa-user-group"></i>Poster is</label>
+                                ' . generate_select_box('user_types', $user_types, $mybb->input['user_types'] ?? '', ['id' => 'user_types', 'class' => 'form-select']) . '</div>
+                            <div class="col-12"><label for="forum" class="form-label"><i class="fa-solid fa-comments"></i>In forums</label>
+                                ' . generate_forum_select('forum[]', $mybb->input['forum'] ?? '', ['multiple' => true, 'size' => 6, 'id' => 'forum', 'class' => 'form-select']) . '
+                                <span class="atm-help"><i class="fa-solid fa-keyboard me-1"></i>Leave empty for all forums · Ctrl-click to select several</span></div>
                         </div>
                     </div>
                 </div>
-                <div class="card-footer text-center">
-                    <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-search me-2"></i>Find Attachments</button>
+            </div>
+            <div class="col-lg-5">
+                <div class="atm-card h-100 d-flex flex-column">
+                    <div class="atm-sec-head"><span class="atm-sec-icon ic-purple"><i class="fa-solid fa-arrow-down-wide-short"></i></span>Results</div>
+                    <div class="p-3 pt-0 flex-grow-1">
+                        <div class="mb-3"><label for="sortby" class="form-label"><i class="fa-solid fa-sort"></i>Sort by</label>
+                            ' . generate_select_box('sortby', $sort_options, $mybb->input['sortby'] ?? '', ['id' => 'sortby', 'class' => 'form-select']) . '</div>
+                        <div class="mb-3"><label for="order" class="form-label"><i class="fa-solid fa-arrow-up-wide-short"></i>Order</label>
+                            ' . generate_select_box('order', ['asc' => 'Ascending', 'desc' => 'Descending'], $mybb->input['order'] ?? '', ['id' => 'order', 'class' => 'form-select']) . '</div>
+                        <div><label for="perpage" class="form-label"><i class="fa-solid fa-list-ol"></i>Per page</label>
+                            <input type="number" name="perpage" value="' . (int)$perpage . '" class="form-control" id="perpage" min="1" max="200"></div>
+                    </div>
+                    <div class="p-3 pt-0">
+                        <button type="submit" class="btn btn-primary rounded-pill w-100 py-2"><i class="fa-solid fa-magnifying-glass me-2"></i>Find Attachments</button>
+                    </div>
                 </div>
             </div>
         </div>
-    </form>';
+    </form>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+        <a href="index.php?act=attachments&amp;action=comment_attachments" class="atm-quick"><i class="fa-solid fa-comment-dots text-primary"></i>Comment attachments</a>
+        <a href="index.php?act=attachments&amp;action=orphans" class="atm-quick"><i class="fa-solid fa-broom text-warning"></i>Find orphans</a>
+        <a href="index.php?act=attachments&amp;action=stats" class="atm-quick"><i class="fa-solid fa-chart-pie text-success"></i>Statistics</a>
+    </div>
+    </div>';
 
     stdfoot();
 }
 
+// ═══════════════════════════════════════════════════════════
+// STATS SECTIONS
+// ═══════════════════════════════════════════════════════════
 
-
-
-
-/**
- * Render top attachments section
- */
-function render_top_attachments_section(string $title, string $order, string $text_color, string $icon): void {
+function render_top_attachments_section(string $title, string $order, string $cls, string $icon, string $metric): void {
     global $db;
 
+    // $order передаётся только из кода (не из запроса) — whitelisting не нужен
     $query = $db->sql_query_prepared("
-        SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username
+        SELECT a.*, p.tid, p.fid, t.subject, p.uid, p.username, u.username AS user_username, u.usergroup
         FROM attachments a
         LEFT JOIN posts p ON (p.pid=a.pid)
         LEFT JOIN threads t ON (t.tid=p.tid)
@@ -1013,308 +921,130 @@ function render_top_attachments_section(string $title, string $order, string $te
         LIMIT 5
     ");
 
-    echo '
-    <div class="container mt-4">
-        <div class="card shadow-sm">
-            <div class="card-header ' . $text_color . '">
-                <h5 class="mb-0"><i class="fas ' . $icon . ' me-2"></i>' . $title . '</h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover table-striped">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Attachment</th>
-                                <th class="text-center">Size</th>
-                                <th class="text-center">Posted By</th>
-                                <th class="text-center">Thread</th>
-                                <th class="text-center">Downloads</th>
-                                <th class="text-center">Date Uploaded</th>
-                            </tr>
-                        </thead>
-                        <tbody>';
+    echo '<div class="atm-card h-100"><div class="atm-sec-head"><span class="atm-sec-icon ' . $cls . '"><i class="fa-solid ' . $icon . '"></i></span>' . $title . '</div><div class="px-3 pb-3">';
 
-    while ($query && ($attachment = $db->fetch_array($query))) {
-        $date = $attachment['dateuploaded'] > 0 ? my_datee('relative', $attachment['dateuploaded']) : 'Unknown';
-        $username = $attachment['user_username'] ?: $attachment['username'];
-        
-		
-		
-		$user_link = !empty($attachment['uid']) 
-    ? build_profile_link(htmlspecialchars_uni($username), $attachment['uid'], "_blank")
-    : htmlspecialchars_uni($username); // просто текст
-		
-		
-		
-		
-		
-        $size = mksize($attachment['filesize']);
-        $downloads = ts_nf($attachment['downloads']);
-        $attachment_icon = get_attachment_icon(get_extension($attachment['filename']));
-        $attachment_link = '<a href="../attachment.php?aid=' . $attachment['aid'] . '" target="_blank" class="text-decoration-none">' . htmlspecialchars_uni($attachment['filename']) . '</a>';
-        $thread_link = "<a href=\"../" . get_post_link($attachment['pid']) . "\" target=\"_blank\" class=\"text-decoration-none\">" . htmlspecialchars_uni($attachment['subject'] ?? 'No Subject') . "</a>";
+    $rank = 0;
+    while ($query && ($a = $db->fetch_array($query))) {
+        $rank++;
+        $username = (string)($a['user_username'] ?: $a['username']);
+        $value = $metric === 'downloads'
+            ? '<span class="atm-dl"><i class="fa-solid fa-download"></i>' . ts_nf((int)$a['downloads']) . '</span>'
+            : '<span class="atm-size">' . mksize((float)$a['filesize']) . '</span>';
 
-        echo '
-                            <tr>
-                                <td>' . $attachment_icon . ' ' . $attachment_link . '</td>
-                                <td class="text-center"><span class="badge bg-secondary">' . $size . '</span></td>
-                                <td class="text-center">' . $user_link . '</td>
-                                <td class="text-center">' . $thread_link . '</td>
-                                <td class="text-center"><span class="badge bg-info">' . $downloads . '</span></td>
-                                <td class="text-center"><small class="text-muted">' . $date . '</small></td>
-                            </tr>';
+        echo '<div class="atm-rank-row">'
+           . '<span class="atm-rank r' . min($rank, 4) . '">' . $rank . '</span>'
+           . atm_file_cell(
+                atm_file_visual((string)$a['filename'], (string)$a['filetype'], null),
+                '<a href="../attachment.php?aid=' . (int)$a['aid'] . '" target="_blank" class="text-decoration-none">' . htmlspecialchars_uni((string)$a['filename']) . '</a>',
+                atm_user_link((int)$a['uid'], $username, $a['usergroup'] ?? 0) . ' · ' . atm_location($a)
+             )
+           . '<span class="ms-auto">' . $value . '</span>'
+           . '</div>';
     }
-
-    echo '
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>';
+    if ($rank === 0) {
+        echo '<div class="atm-muted text-center py-3">Nothing here yet.</div>';
+    }
+    echo '</div></div>';
 }
 
-/**
- * Render top users section
- */
 function render_top_users_section(): void {
     global $db;
 
-    echo '
-    <div class="container mt-4">
-        <div class="card shadow-sm">
-            <div class="card-header text-warning">
-                <h5 class="mb-0"><i class="fas fa-users me-2"></i>Top Users Using the Most Disk Space</h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover table-striped">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Username</th>
-                                <th class="text-center">Total Disk Usage</th>
-                            </tr>
-                        </thead>
-                        <tbody>';
-
     $query = $db->sql_query_prepared("
-        SELECT a.uid, u.username, SUM(a.filesize) as totalsize
+        SELECT a.uid, u.username, u.usergroup, SUM(a.filesize) AS totalsize, COUNT(*) AS files
         FROM attachments a
         LEFT JOIN users u ON (u.id=a.uid)
-        GROUP BY a.uid, u.username
+        GROUP BY a.uid, u.username, u.usergroup
         ORDER BY totalsize DESC
         LIMIT 5
     ");
 
-    while ($query && ($user = $db->fetch_array($query))) {
-        $username = $user['username'] ?: 'N/A';
-        $user_link = $user['uid'] ? build_profile_link(htmlspecialchars_uni($username), $user['uid'], "_blank") : htmlspecialchars_uni($username);
-        $size_link = "<a href=\"index.php?act=attachments&amp;results=1&amp;username=" . urlencode($username) . "\" target=\"_blank\" class=\"text-decoration-none\">" . mksize($user['totalsize']) . "</a>";
-
-        echo '
-                            <tr>
-                                <td>' . $user_link . '</td>
-                                <td class="text-center"><span class="badge bg-warning text-dark">' . $size_link . '</span></td>
-                            </tr>';
+    $rows = [];
+    while ($query && ($r = $db->fetch_array($query))) {
+        $rows[] = $r;
     }
+    $max = $rows ? max(1.0, (float)$rows[0]['totalsize']) : 1.0;
 
-    echo '
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>';
+    echo '<div class="atm-card"><div class="atm-sec-head"><span class="atm-sec-icon ic-amber"><i class="fa-solid fa-users"></i></span>Users using the most disk space</div><div class="px-3 pb-3">';
+    foreach ($rows as $i => $u) {
+        $pct  = (int)round((float)$u['totalsize'] / $max * 100);
+        $name = (string)($u['username'] ?? '');
+        echo '<div class="atm-rank-row">'
+           . '<span class="atm-rank r' . min($i + 1, 4) . '">' . ($i + 1) . '</span>'
+           . '<div class="flex-grow-1" style="min-width:0">'
+           .   '<div class="d-flex justify-content-between gap-2">' . atm_user_link((int)$u['uid'], $name, $u['usergroup'] ?? 0)
+           .   '<a href="index.php?act=attachments&amp;results=1&amp;username=' . urlencode($name) . '" class="atm-size text-decoration-none" title="Show this user\'s attachments">' . mksize((float)$u['totalsize']) . '</a></div>'
+           .   '<div class="atm-bar mt-1"><span style="width:' . $pct . '%"></span></div>'
+           .   '<div class="atm-muted mt-1">' . ts_nf((int)$u['files']) . ' file(s)</div>'
+           . '</div></div>';
+    }
+    if (!$rows) {
+        echo '<div class="atm-muted text-center py-3">Nothing here yet.</div>';
+    }
+    echo '</div></div>';
 }
 
-/**
- * Render page header with styles
- */
+// ═══════════════════════════════════════════════════════════
+// LAYOUT
+// ═══════════════════════════════════════════════════════════
+
 function render_header(string $title): void {
     stdhead($title);
+
+    global $BASEURL;
+	// CSS и JS вынесены в отдельные файлы; ?v=filemtime — сброс кеша после правок
     
-    echo '
-    <!-- Bootstrap 5 CSS -->
-    
-    <!-- Font Awesome -->
-   
-    <!-- Custom Styles -->
-    <style>
-        .stat-card {
-            text-align: center;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            transition: transform 0.2s;
-        }
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-bottom: 0.5rem;
-        }
-        .stat-label {
-            font-size: 0.875rem;
-            color: #6c757d;
-        }
-        .card-header {
-            border-bottom: 2px solid rgba(0,0,0,.125);
-        }
-        .table th {
-            border-top: none;
-            font-weight: 600;
-            background-color: #f8f9fa;
-        }
-        .badge {
-            font-size: 0.75em;
-        }
-        .checkall {
-            cursor: pointer;
-        }
-        .ca-thumb-link {
-            display: inline-block;
-            width: 36px;
-            height: 36px;
-            vertical-align: middle;
-            border-radius: 6px;
-            overflow: hidden;
-            border: 1px solid #dee2e6;
-            margin-right: 4px;
-        }
-        .ca-thumb {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-            transition: transform .2s ease;
-        }
-        .ca-thumb-link:hover .ca-thumb {
-            transform: scale(1.15);
-        }
+	echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/admin_attachments.css?ver=2">';
 
-        /* Page header (gradient) */
-        .att-page-header {
-            background: linear-gradient(135deg, #0d6efd 0%, #0a4fc4 100%);
-            border-radius: 16px;
-            padding: 1.75rem 2rem;
-            color: #fff;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 8px 24px rgba(13,110,253,.25);
-        }
-        .att-page-header h2 {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1.5rem;
-        }
-        .att-page-header h2 i {
-            margin-right: .5rem;
-            opacity: .9;
-        }
-        .att-page-header p {
-            margin: .35rem 0 0;
-            opacity: .85;
-            font-size: .9rem;
-        }
+    echo <<<'HTML'
+<!-- Подтверждение удаления -->
+<div class="modal fade" id="atmConfirm" tabindex="-1" aria-labelledby="atmConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 overflow-hidden">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="atmConfirmLabel"><i class="fa-solid fa-trash me-2"></i>Delete attachments</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex gap-3 align-items-start">
+                    <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger-subtle text-danger flex-shrink-0" style="width:44px;height:44px"><i class="fa-solid fa-file-circle-xmark"></i></span>
+                    <div>
+                        <div class="fw-semibold">Permanently delete <span id="atmConfirmCount">0</span> item(s)?</div>
+                        <div class="small text-body-secondary">Files are removed from the disk together with their database records. This cannot be undone.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
+                <button type="button" class="btn btn-danger rounded-pill px-3" id="atmConfirmBtn"><i class="fa-solid fa-trash me-1"></i>Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+HTML;
 
-        /* Stats row */
-        .att-stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 14px;
-            margin-bottom: 1.5rem;
-        }
-        .att-stat-card {
-            background: #fff;
-            border: 1px solid #eef0f2;
-            border-radius: 14px;
-            padding: 1.1rem 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            transition: transform .2s ease, box-shadow .2s ease;
-        }
-        .att-stat-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 24px rgba(0,0,0,.07);
-        }
-        .att-stat-icon {
-            width: 46px;
-            height: 46px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.15rem;
-            flex-shrink: 0;
-        }
-        .att-stat-icon.is-primary { background: rgba(13,110,253,.1); color: #0d6efd; }
-        .att-stat-icon.is-success { background: rgba(25,135,84,.1);  color: #198754; }
-        .att-stat-icon.is-info    { background: rgba(13,202,240,.12); color: #0aa2c0; }
-        .att-stat-icon.is-warning { background: rgba(255,193,7,.12);  color: #cc9a06; }
-        .att-stat-icon.is-danger  { background: rgba(220,53,69,.1);   color: #dc3545; }
-        .att-stat-value {
-            font-size: 1.2rem;
-            font-weight: 700;
-            line-height: 1.1;
-            color: #212529;
-        }
-        .att-stat-label {
-            font-size: .78rem;
-            color: #8a8f98;
-            margin-top: 2px;
-        }
-
-        @media (max-width: 768px) {
-            .att-page-header { padding: 1.25rem 1.5rem; }
-        }
-
-        /* Toggle switch (replaces checkboxes) */
-        .form-switch-custom {
-            position: relative;
-            display: inline-block;
-            width: 42px;
-            height: 24px;
-            margin: 0;
-            cursor: pointer;
-        }
-        .form-switch-custom input { opacity: 0; width: 0; height: 0; }
-        .switch-slider {
-            position: absolute; inset: 0;
-            background-color: #dadfe4;
-            transition: .25s;
-            border-radius: 24px;
-        }
-        .switch-slider:before {
-            position: absolute; content: "";
-            height: 18px; width: 18px; left: 3px; bottom: 3px;
-            background-color: #fff;
-            transition: .25s;
-            border-radius: 50%;
-            box-shadow: 0 1px 3px rgba(0,0,0,.2);
-        }
-        .form-switch-custom input:checked + .switch-slider { background-color: #0d6efd; }
-        .form-switch-custom input:checked + .switch-slider:before { transform: translateX(18px); }
-    </style>
-    <script>
-        function checkAll(source) {
-            const checkboxes = document.querySelectorAll(\'input[name="aids[]"]\');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = source.checked;
-            });
-        }
-        function checkAllByName(source, name) {
-            document.querySelectorAll(\'input[name="\' + name + \'"]\').forEach(checkbox => {
-                checkbox.checked = source.checked;
-            });
-        }
-    </script>';
+    //echo atm_asset_js('/scripts/admin_attachments.js') . "\n";
+	
+	echo '<script src="' . $BASEURL . '/admin/scripts/admin_attachments.js"></script>';
 }
 
+/** URL статического файла с версией по времени изменения (кеш-бастинг) */
+function atm_asset_url(string $rel): string
+{
+    global $BASEURL;
+    $mtime = @filemtime(rtrim(TSDIR, '/\\') . $rel);
+    return htmlspecialchars_uni($BASEURL . $rel . ($mtime ? '?v=' . $mtime : ''));
+}
 
+function atm_asset_css(string $rel): string
+{
+    return '<link rel="stylesheet" href="' . atm_asset_url($rel) . '">';
+}
+
+function atm_asset_js(string $rel): string
+{
+    return '<script src="' . atm_asset_url($rel) . '" defer></script>';
+}
 
 
 /**
@@ -1467,7 +1197,7 @@ function scan_stale_draft_attachments($db, int $cutoffDays = 7): array
         ORDER BY dateuploaded ASC
     ", [$cutoff]);
     $rows = [];
-    while ($row = $db->fetch_array($q)) {
+    while ($q && ($row = $db->fetch_array($q))) {
         $row['reason'] = 'stale_draft';
         $rows[] = $row;
     }
@@ -1556,10 +1286,9 @@ function scan_orphaned_comment_files($db): array
     return $orphans;
 }
 
+
 /**
- * Единая страница результатов сканирования — заменяет фейковые
- * handle_orphans_step1/2/3(). Никакой анимации: запросы быстрые
- * (LEFT JOIN, не N+1), показываем результат сразу.
+ * Единая страница результатов сканирования сирот
  */
 function handle_orphans_scan(): void {
     global $mybb, $db;
@@ -1573,179 +1302,92 @@ function handle_orphans_scan(): void {
     $orphanedFiles = scan_orphaned_files($uploadDir, TSDIR . '/uploads/', $db);
     $orphanedRows  = scan_orphaned_db_rows($db, $uploadDir);
     $staleDrafts   = scan_stale_draft_attachments($db, $staleDays);
-    $orphanedCommentFiles = scan_orphaned_comment_files($db);
-    $staleDraftCommentFiles = scan_stale_draft_comment_files($db, $staleDays);
-    $orphanedCommentFiles = [...$orphanedCommentFiles, ...$staleDraftCommentFiles];
+    $orphanedCommentFiles = [...scan_orphaned_comment_files($db), ...scan_stale_draft_comment_files($db, $staleDays)];
 
-    $totalFound = count($orphanedFiles) + count($orphanedRows) + count($staleDrafts) + count($orphanedCommentFiles);
+    $dbRows     = [...$orphanedRows, ...$staleDrafts];
+    $totalFound = count($orphanedFiles) + count($dbRows) + count($orphanedCommentFiles);
+    $sumSize    = static fn(array $rows, string $k): float => array_sum(array_map(fn($r) => (float)($r[$k] ?? 0), $rows));
+    $reclaim    = $sumSize($orphanedFiles, 'size') + $sumSize($dbRows, 'filesize') + $sumSize($orphanedCommentFiles, 'file_size');
+
+    $days_form = '<form method="get" action="index.php" class="d-flex align-items-center gap-2">
+        <input type="hidden" name="act" value="attachments"><input type="hidden" name="action" value="orphans">
+        <label class="atm-muted text-nowrap" for="stale_days"><i class="fa-solid fa-hourglass-half me-1"></i>Drafts older than</label>
+        <div class="input-group input-group-sm" style="width:130px"><input type="number" min="1" max="365" class="form-control" id="stale_days" name="stale_days" value="' . $staleDays . '"><span class="input-group-text">days</span></div>
+        <button type="submit" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="fa-solid fa-rotate me-1"></i>Rescan</button>
+    </form>';
+
+    echo '<div class="container mt-3 mb-4 atm">';
+    echo atm_hero('fa-broom', 'ic-amber', 'Orphaned Attachments', 'Files and records that lost their counterpart — safe candidates for cleanup', $days_form);
+
+    echo atm_stats([
+        ['fa-file-circle-question', 'ic-slate',  'Files w/o record',  ts_nf(count($orphanedFiles))],
+        ['fa-database',             'ic-red',    'Broken records',    ts_nf(count($orphanedRows))],
+        ['fa-box-archive',          'ic-purple', 'comment_files',     ts_nf(count($orphanedCommentFiles))],
+        ['fa-hard-drive',           'ic-green',  'Can be freed',      mksize($reclaim), ts_nf(count($staleDrafts)) . ' stale draft(s)'],
+    ]);
 
     if ($totalFound === 0) {
-        echo '
-        <div class="container mt-4">
-            <div class="card shadow-sm">
-                <div class="card-body text-center py-5">
-                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
-                    <h4>No Orphaned Attachments Found</h4>
-                    <p class="text-muted">Files on disk, database records, and drafts are all in sync.</p>
-                    <a href="index.php?act=attachments" class="btn btn-primary">Return to Attachments</a>
-                </div>
-            </div>
-        </div>';
+        echo atm_empty('fa-circle-check', 'Everything is in sync', 'Files on disk, database records and drafts all match.',
+            '<a href="index.php?act=attachments" class="btn btn-sm btn-primary rounded-pill px-3 mt-3"><i class="fa-solid fa-arrow-left me-1"></i>Back to attachments</a>');
+        echo '</div>';
         stdfoot();
         return;
     }
 
-    $reasonLabels = [
-        'missing_post'    => ['label' => 'Post Deleted',    'class' => 'bg-danger'],
-        'missing_comment' => ['label' => 'Comment Deleted', 'class' => 'bg-danger'],
-        'missing_torrent' => ['label' => 'Torrent Deleted', 'class' => 'bg-danger'],
-        'missing_file'    => ['label' => 'File Missing',    'class' => 'bg-warning text-dark'],
-        'stale_draft'     => ['label' => 'Stale Draft',     'class' => 'bg-secondary'],
+    $reasons = [
+        'missing_post'    => ['fa-comments',     'Post deleted',    't-red'],
+        'missing_comment' => ['fa-comment-slash','Comment deleted', 't-red'],
+        'missing_torrent' => ['fa-magnet',       'Torrent deleted', 't-red'],
+        'missing_file'    => ['fa-file-circle-exclamation', 'File missing', 't-amber'],
+        'stale_draft'     => ['fa-file-pen',     'Stale draft',     't-draft'],
     ];
+    $reason = static function (string $r) use ($reasons): string {
+        [$ic, $lbl, $cls] = $reasons[$r] ?? ['fa-question', $r, 't-draft'];
+        return '<span class="atm-tag ' . $cls . '"><i class="fa-solid ' . $ic . '"></i>' . htmlspecialchars_uni($lbl) . '</span>';
+    };
 
-    echo '
-    <div class="container mt-4">
-        <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle me-2"></i>
-            Found <strong>' . ts_nf($totalFound) . '</strong> orphaned item(s):
-            ' . count($orphanedFiles) . ' file(s) without a DB record,
-            ' . count($orphanedRows) . ' attachments record(s) pointing nowhere,
-            ' . count($orphanedCommentFiles) . ' comment_files record(s) (broken links or abandoned drafts),
-            ' . count($staleDrafts) . ' stale draft(s) older than ' . $staleDays . ' day(s).
-        </div>
-    </div>
-
-    <form action="index.php?act=attachments&amp;action=delete_orphans" method="post">
-        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
-        <div class="container">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-database me-2"></i>Database Records</h5>
-                    <label class="form-switch-custom" title="Select All"><input type="checkbox" onclick="checkAllByName(this, \'orphaned_attachments[]\')"><span class="switch-slider"></span></label>
-                </div>
-                <div class="card-body p-0">';
-
-    if (empty($orphanedRows) && empty($staleDrafts)) {
-        echo '<div class="p-4 text-center text-muted">No broken database records found.</div>';
-    } else {
-        echo '
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th width="40"></th>
-                                    <th>File</th>
-                                    <th class="text-center">Size</th>
-                                    <th class="text-center">Reason</th>
-                                </tr>
-                            </thead>
-                            <tbody>';
-
-        foreach ([...$orphanedRows, ...$staleDrafts] as $row) {
-            $reason = $reasonLabels[$row['reason']] ?? ['label' => $row['reason'], 'class' => 'bg-secondary'];
-            echo '
-                                <tr>
-                                    <td><label class="form-switch-custom"><input type="checkbox" name="orphaned_attachments[]" value="' . (int)$row['aid'] . '"><span class="switch-slider"></span></label></td>
-                                    <td>' . htmlspecialchars_uni($row['filename']) . '</td>
-                                    <td class="text-center">' . mksize((float)$row['filesize']) . '</td>
-                                    <td class="text-center"><span class="badge ' . $reason['class'] . '">' . $reason['label'] . '</span></td>
-                                </tr>';
+    $section = static function (string $icon, string $cls, string $title, string $name, array $rows, callable $row_html, string $empty): string {
+        $html = '<div class="atm-card overflow-hidden mb-3">'
+              . '<div class="atm-sec-head"><span class="atm-sec-icon ' . $cls . '"><i class="fa-solid ' . $icon . '"></i></span>' . $title
+              . '<span class="atm-count atm-tag t-draft">' . count($rows) . '</span></div>';
+        if (!$rows) {
+            return $html . '<div class="atm-section-empty border-top"><i class="fa-solid fa-circle-check text-success me-1"></i>' . $empty . '</div></div>';
         }
-
-        echo '
-                            </tbody>
-                        </table>
-                    </div>';
-    }
-
-    echo '
-                </div>
-            </div>
-
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-file-shield me-2"></i>comment_files Records</h5>
-                    <label class="form-switch-custom" title="Select All"><input type="checkbox" onclick="checkAllByName(this, \'cf_ids[]\')"><span class="switch-slider"></span></label>
-                </div>
-                <div class="card-body p-0">';
-
-    if (empty($orphanedCommentFiles)) {
-        echo '<div class="p-4 text-center text-muted">No broken comment_files records found.</div>';
-    } else {
-        echo '
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th width="40"></th>
-                                    <th>File</th>
-                                    <th class="text-center">Size</th>
-                                    <th class="text-center">Reason</th>
-                                </tr>
-                            </thead>
-                            <tbody>';
-
-        foreach ($orphanedCommentFiles as $row) {
-            $reason = $reasonLabels[$row['reason']] ?? ['label' => $row['reason'], 'class' => 'bg-secondary'];
-            echo '
-                                <tr>
-                                    <td><label class="form-switch-custom"><input type="checkbox" name="cf_ids[]" value="' . (int)$row['id'] . '"><span class="switch-slider"></span></label></td>
-                                    <td>' . htmlspecialchars_uni($row['file_name']) . '</td>
-                                    <td class="text-center">' . mksize((float)$row['file_size']) . '</td>
-                                    <td class="text-center"><span class="badge ' . $reason['class'] . '">' . $reason['label'] . '</span></td>
-                                </tr>';
+        $html .= '<div class="table-responsive"><table class="table atm-table"><thead><tr>'
+               . '<th style="width:48px">' . atm_check_all($name) . '</th>'
+               . '<th><i class="fa-solid fa-file"></i>File</th><th class="text-center"><i class="fa-solid fa-weight-hanging"></i>Size</th><th class="text-end"><i class="fa-solid fa-circle-info"></i>Reason</th>'
+               . '</tr></thead><tbody>';
+        foreach ($rows as $r) {
+            $html .= $row_html($r);
         }
+        return $html . '</tbody></table></div></div>';
+    };
 
-        echo '
-                            </tbody>
-                        </table>
-                    </div>';
-    }
+    echo '<form action="index.php?act=attachments&amp;action=delete_orphans" method="post" class="atm-selectable">
+        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">'
+        . atm_toolbar('orphans found', $totalFound);
 
-    echo '
-                </div>
-            </div>
+    echo $section('fa-database', 'ic-red', 'Attachment records', 'orphaned_attachments[]', $dbRows,
+        fn(array $r): string => '<tr><td>' . atm_check('orphaned_attachments[]', (string)(int)$r['aid']) . '</td>'
+            . '<td>' . atm_file_cell(atm_file_visual((string)$r['filename'], '', null), htmlspecialchars_uni((string)$r['filename']), 'ID ' . (int)$r['aid']) . '</td>'
+            . '<td class="text-center"><span class="atm-size">' . mksize((float)$r['filesize']) . '</span></td>'
+            . '<td class="text-end">' . $reason((string)$r['reason']) . '</td></tr>',
+        'No broken attachment records.');
 
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-file-circle-question me-2"></i>Files Without Database Record</h5>
-                    <label class="form-switch-custom" title="Select All"><input type="checkbox" onclick="checkAllByName(this, \'orphaned_files[]\')"><span class="switch-slider"></span></label>
-                </div>
-                <div class="card-body p-0">';
+    echo $section('fa-box-archive', 'ic-purple', 'comment_files records', 'cf_ids[]', $orphanedCommentFiles,
+        fn(array $r): string => '<tr><td>' . atm_check('cf_ids[]', (string)(int)$r['id']) . '</td>'
+            . '<td>' . atm_file_cell(atm_file_visual((string)$r['file_name'], '', null), htmlspecialchars_uni((string)$r['file_name']), 'ID ' . (int)$r['id']) . '</td>'
+            . '<td class="text-center"><span class="atm-size">' . mksize((float)$r['file_size']) . '</span></td>'
+            . '<td class="text-end">' . $reason((string)$r['reason']) . '</td></tr>',
+        'No broken comment_files records.');
 
-    if (empty($orphanedFiles)) {
-        echo '<div class="p-4 text-center text-muted">No orphaned physical files found.</div>';
-    } else {
-        echo '
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0">
-                            <thead class="table-light">
-                                <tr><th width="40"></th><th>File</th><th class="text-center">Size</th></tr>
-                            </thead>
-                            <tbody>';
-        foreach ($orphanedFiles as $file) {
-            echo '
-                                <tr>
-                                    <td><label class="form-switch-custom"><input type="checkbox" name="orphaned_files[]" value="' . htmlspecialchars_uni($file['name']) . '"><span class="switch-slider"></span></label></td>
-                                    <td>' . htmlspecialchars_uni($file['name']) . '</td>
-                                    <td class="text-center">' . mksize((float)$file['size']) . '</td>
-                                </tr>';
-        }
-        echo '
-                            </tbody>
-                        </table>
-                    </div>';
-    }
+    echo $section('fa-file-circle-question', 'ic-slate', 'Files on disk without a record', 'orphaned_files[]', $orphanedFiles,
+        fn(array $f): string => '<tr><td>' . atm_check('orphaned_files[]', htmlspecialchars_uni((string)$f['name'])) . '</td>'
+            . '<td>' . atm_file_cell(atm_file_visual((string)$f['name'], '', null), '<span class="font-monospace">' . htmlspecialchars_uni((string)$f['name']) . '</span>') . '</td>'
+            . '<td class="text-center"><span class="atm-size">' . mksize((float)$f['size']) . '</span></td>'
+            . '<td class="text-end"><span class="atm-tag t-amber"><i class="fa-solid fa-link-slash"></i>No DB record</span></td></tr>',
+        'No orphaned files on disk.');
 
-    echo '
-                </div>
-            </div>
-
-            <button type="submit" class="btn btn-danger" onclick="return confirm(\'Permanently delete the selected orphaned items?\');">
-                <i class="fas fa-trash-alt me-1"></i>Delete Selected
-            </button>
-        </div>
-    </form>';
-
+    echo '</form></div>';
     stdfoot();
 }

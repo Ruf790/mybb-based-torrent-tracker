@@ -234,7 +234,7 @@ $seedRatio = $torrent['seeders'] > 0
                             <input type="text" class="form-control font-monospace"
                                    value="<?= htmlspecialchars($torrent['info_hash']) ?>" readonly>
                             <button class="btn btn-outline-secondary" type="button"
-                                    onclick="navigator.clipboard.writeText(this.previousElementSibling.value).then(()=>this.innerHTML='<i class=\'fas fa-check\'></i>')">
+                                    data-mt-copy title="Copy">
                                 <i class="fas fa-copy"></i>
                             </button>
                         </div>
@@ -248,7 +248,7 @@ $seedRatio = $torrent['seeders'] > 0
                                 <i class="fas fa-magnet"></i>
                             </a>
                             <button class="btn btn-outline-secondary" type="button"
-                                    onclick="navigator.clipboard.writeText(this.previousElementSibling.previousElementSibling.value).then(()=>this.innerHTML='<i class=\'fas fa-check\'></i>')">
+                                    data-mt-copy title="Copy">
                                 <i class="fas fa-copy"></i>
                             </button>
                         </div>
@@ -264,7 +264,7 @@ $seedRatio = $torrent['seeders'] > 0
         <div class="col-12">
             <div class="info-card">
                 <div class="info-label"><i class="fas fa-align-left me-1"></i>Description</div>
-                <div class="small" style="max-height:150px;overflow-y:auto;">
+                <div class="small mt-descr">
                     <?= nl2br(htmlspecialchars($torrent['descr'])) ?>
                 </div>
             </div>
@@ -275,17 +275,18 @@ $seedRatio = $torrent['seeders'] > 0
     <!-- ── Action buttons ──────────────────────────────────── -->
     <div class="action-buttons">
         <?php
+        $tid = (int)$torrent['id'];
         $actions = [
-            ['btn-outline-primary',   'fa-thumbtack', 'Sticky',         "toggleTorrentField({$torrent['id']}, 'sticky')"],
-            ['btn-outline-success',   'fa-gift',       'Free',           "toggleTorrentField({$torrent['id']}, 'free')"],
-            ['btn-outline-secondary', 'fa-star',       'Silver',         "toggleTorrentField({$torrent['id']}, 'silver')"],
-            ['btn-outline-warning',   'fa-bolt',       '2x Upload',      "toggleTorrentField({$torrent['id']}, 'doubleupload')"],
-            ['btn-outline-info',      'fa-eye',        'Toggle Visible', "toggleTorrentField({$torrent['id']}, 'visible')"],
-            ['btn-outline-danger',    'fa-trash',      'Delete',         "deleteTorrentQuick({$torrent['id']})"],
+            ['btn-outline-primary',   'fa-thumbtack', 'Sticky',         'toggleTorrentField', [$tid, 'sticky']],
+            ['btn-outline-success',   'fa-gift',       'Free',           'toggleTorrentField', [$tid, 'free']],
+            ['btn-outline-secondary', 'fa-star',       'Silver',         'toggleTorrentField', [$tid, 'silver']],
+            ['btn-outline-warning',   'fa-bolt',       '2x Upload',      'toggleTorrentField', [$tid, 'doubleupload']],
+            ['btn-outline-info',      'fa-eye',        'Toggle Visible', 'toggleTorrentField', [$tid, 'visible']],
+            ['btn-outline-danger',    'fa-trash',      'Delete',         'deleteTorrentQuick', [$tid]],
         ];
-        foreach ($actions as [$cls, $icon, $label, $onclick]):
+        foreach ($actions as [$cls, $icon, $label, $fn, $args]):
         ?>
-        <button class="btn btn-sm <?= $cls ?>" onclick="<?= $onclick ?>">
+        <button type="button" class="btn btn-sm <?= $cls ?>" data-mt-call="<?= $fn ?>" data-mt-args="<?= htmlspecialchars(json_encode($args), ENT_QUOTES) ?>">
             <i class="fas <?= $icon ?> me-1"></i><?= $label ?>
         </button>
         <?php endforeach; ?>

@@ -2,1244 +2,597 @@
 
 declare(strict_types=1);
 
-
-
 if (!defined('STAFF_PANEL')) {
     exit('<div class="error-message">❌ Error! Direct initialization of this file is not allowed.</div>');
 }
 
-define('IPS_VERSION', 'v0.2');
+define('IPS_VERSION', 'v0.3');
 
 /**
- * IP Search Manager with varbinary(16) support
+ * IP Search Manager (users.regip = varbinary(16), login_log.ip = varchar(45))
  */
-class IPSearchManager
+final class IPSearchManager
 {
     private $db;
     private string $baseUrl;
-    private string $picBaseUrl;
-    private string $scriptUrl;
-    
-    public function __construct($database, string $baseUrl, string $picBaseUrl)
+    private string $selfUrl;     // ссылка на эту страницу (?act=ipsearch), НЕ html-escaped
+    private string $scriptName;  // SCRIPT_NAME - action для GET-формы поиска
+    private ?string $postKey = null;
+
+    public function __construct($database, string $baseUrl, string $selfUrl, string $scriptName)
     {
-        $this->db = $database;
-        $this->baseUrl = $baseUrl;
-        $this->picBaseUrl = $picBaseUrl;
-        $this->scriptUrl = $_SERVER['SCRIPT_NAME'] ?? '';
+        $this->db         = $database;
+        $this->baseUrl    = rtrim($baseUrl, '/');
+        $this->selfUrl    = $selfUrl;
+        $this->scriptName = $scriptName;
     }
-    
-    /**
-     * Get action from request
-     */
-    public function getAction(): string
-    {
-        return $_POST['do'] ?? $_GET['do'] ?? '';
-    }
-    
-    /**
-     * Get IP from request
-     */
+
+    /* ------------------------------------------------------------------ */
+    /*  Input / IP helpers                                                */
+    /* ------------------------------------------------------------------ */
+
     public function getIpAddress(): string
     {
         $ip = $_POST['ip'] ?? $_GET['ip'] ?? '';
-        return trim($ip);
+        return is_string($ip) ? trim($ip) : '';
     }
-    
-    /**
-     * Validate IP address (both IPv4 and IPv6)
-     */
+
     public function validateIp(string $ip): bool
     {
-        if (empty($ip)) {
-            return false;
-        }
-        
-        // Try IPv4 first
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            return true;
-        }
-        
-        // Try IPv6
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-            return true;
-        }
-        
-        return false;
+        return $ip !== '' && filter_var($ip, FILTER_VALIDATE_IP) !== false;
     }
-    
+
     /**
-     * Convert IP to varbinary(16) format for MySQL
+     * Каноническая форма IP (2001:0DB8:0:0::1 -> 2001:db8::1).
+     * login_log.ip сравнивается как текст, поэтому без нормализации
+     * развёрнутый/заглавный IPv6 из формы ничего бы не нашёл.
      */
-    public function ipToBinary(string $ip): string
+    public function normalizeIp(string $ip): string
+    {
+        if (!$this->validateIp($ip)) {
+            return $ip;
+        }
+        $bin = inet_pton($ip);
+        if ($bin === false) {
+            return $ip;
+        }
+        $text = inet_ntop($bin);
+        return $text !== false ? $text : $ip;
+    }
+
+    private function ipType(string $ip): string
     {
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            // IPv4 to binary (INET6_ATON compatible)
-            $binary = inet_pton($ip);
-            return $binary ? $binary : '';
+            return 'IPv4';
         }
-        
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-            // IPv6 to binary
-            $binary = inet_pton($ip);
-            return $binary ? $binary : '';
+            return 'IPv6';
         }
-        
-        return '';
+        return '?';
     }
-    
-    /**
-     * Convert binary IP to readable format
-     */
-    public function binaryToIp(string $binary): string
+
+    private function ipScope(string $ip): string
     {
-        if (empty($binary)) {
-            return 'N/A';
-        }
-        
-        $ip = inet_ntop($binary);
-        return $ip ? $ip : bin2hex($binary);
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false
+            ? 'Private / reserved'
+            : 'Public';
     }
-    
+
     /**
-     * Search IP in database with varbinary(16) support
+     * users.ip может быть как текстом, так и бинарным (4/16 байт) - приводим к тексту.
+     * Возвращает НЕэкранированную строку, экранирование при выводе.
      */
-    public function searchIp(string $ip): array
+    private function userIpToText(array $user): string
     {
-        $results = [
-            'users_table' => null,
-            'ip_log_table' => null,
-            'error' => null
-        ];
-        
-        // Convert IP to binary format
-        $ipBinary = $this->ipToBinary($ip);
-        if (empty($ipBinary)) {
-            $results['error'] = 'Invalid IP address format.';
-            return $results;
+        $raw = (string)($user['ip'] ?? '');
+        if ($raw === '') {
+            return '';
         }
-        
-        // Search in users table (registration IP) - using binary comparison
-        $query1 = $this->db->sql_query_prepared(
-            "SELECT u.*, g.namestyle 
-             FROM users u 
-             LEFT JOIN usergroups g ON (u.usergroup = g.gid) 
-             WHERE u.regip = ?",
-            [$ipBinary]
-        );
-        
-        // Search in login_log table (login IP history).
-        // login_log.ip хранится как обычный varchar(45), не varbinary(16) -
-        // поэтому сюда идёт $ip (текстовый вид), а не $ipBinary.
-        $query2 = $this->db->sql_query_prepared(
-            "SELECT DISTINCT u.*, g.namestyle 
-             FROM login_log i 
-             LEFT JOIN users u ON (i.uid = u.id) 
-             LEFT JOIN usergroups g ON (u.usergroup = g.gid) 
-             WHERE i.ip = ?",
-            [$ip]
-        );
-        
-        if (!$query1 || !$query2 || ($this->db->num_rows($query1) === 0 && $this->db->num_rows($query2) === 0)) {
-            $results['error'] = 'No registered users found with this IP address.';
-        } else {
-            $results['users_table'] = $query1;
-            $results['ip_log_table'] = $query2;
+        if (filter_var($raw, FILTER_VALIDATE_IP) !== false) {
+            return $raw;
         }
-        
-        return $results;
+        if (in_array(strlen($raw), [4, 16], true)) {
+            $text = inet_ntop($raw);
+            if ($text !== false) {
+                return $text;
+            }
+        }
+        return bin2hex($raw);
     }
-    
-    /**
-     * Escape binary data for SQL query
-     */
-    private function escapeBinary(string $binary): string
-    {
-        // Use MySQL's UNHEX function for binary data
-        $hex = bin2hex($binary);
-        return "UNHEX('{$hex}')";
-    }
-    
-    /**
-     * Format date for display
-     */
+
     private function formatDateTime(int|string|null $dateTime, string $format = 'Y-m-d H:i:s'): string
     {
         if ($dateTime === null || $dateTime === '' || $dateTime === 0 || $dateTime === '0' || $dateTime === '0000-00-00 00:00:00') {
-            return 'N/A';
+            return '—';
         }
-        
+
         try {
-            // users.added/lastactive хранятся как unix-timestamp (int из
-            // sql_query_prepared через binary-протокол, либо числовая
-            // строка) - DateTime интерпретирует такое значение как
-            // timestamp только с явным префиксом '@', иначе пытается
-            // распарсить его как обычную дату и либо падает, либо даёт
-            // неверный результат.
+            // users.added/lastactive - unix-timestamp: DateTime понимает его
+            // только с префиксом '@', и всегда в UTC -> переводим в таймзону приложения.
             $date = is_numeric($dateTime)
                 ? new DateTime('@' . $dateTime)
                 : new DateTime((string)$dateTime);
-
-            // DateTime('@timestamp') всегда создаётся в UTC независимо от
-            // конфигурации сервера - переключаем на таймзону приложения,
-            // иначе время разъедется с остальным интерфейсом.
             $date->setTimezone(new DateTimeZone(date_default_timezone_get()));
-
             return $date->format($format);
-        } catch (Exception $e) {
-            return 'Invalid Date';
+        } catch (Exception) {
+            return 'Invalid date';
         }
     }
-    
-    /**
-     * Format IP for display (convert from binary if needed)
-     */
-    private function formatIpForDisplay($user): string
+
+    private static function url(string $base, array $params): string
     {
-        // Check if ip field is binary
-        if (isset($user['ip']) && !empty($user['ip'])) {
-            // If it looks like binary data, convert it
-            if (strlen($user['ip']) <= 16 && !preg_match('/^[0-9.]+$/', $user['ip'])) {
-                return $this->binaryToIp($user['ip']);
+        $params = array_filter($params, static fn($v) => $v !== null && $v !== '');
+        if ($params === []) {
+            return $base;
+        }
+        return $base . (str_contains($base, '?') ? '&' : '?') . http_build_query($params);
+    }
+
+    private static function e(string $s): string
+    {
+        return htmlspecialchars_uni($s);
+    }
+
+    private function postKey(): string
+    {
+        if ($this->postKey === null) {
+            global $mybb;
+            $this->postKey = function_exists('generate_post_check')
+                ? (string)generate_post_check()
+                : (string)($mybb->post_code ?? '');
+        }
+        return $this->postKey;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Data                                                              */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * @return array{registered: array<int, array>, logins: array<int, array>}
+     */
+    public function searchIp(string $ip, string $rawIp): array
+    {
+        $out = ['registered' => [], 'logins' => []];
+
+        $ipBinary = inet_pton($ip);
+        if ($ipBinary === false) {
+            return $out;
+        }
+
+        // Регистрация (users.regip - varbinary(16))
+        $q1 = $this->db->sql_query_prepared(
+            "SELECT u.*, g.namestyle
+               FROM users u
+          LEFT JOIN usergroups g ON (u.usergroup = g.gid)
+              WHERE u.regip = ?
+           ORDER BY u.added DESC",
+            [$ipBinary]
+        );
+        if ($q1) {
+            while ($row = $this->db->fetch_array($q1)) {
+                $out['registered'][] = $row;
             }
-            return htmlspecialchars_uni($user['ip']);
         }
-        return 'N/A';
+
+        // История входов (login_log.ip - varchar(45), текст).
+        // Ищем и по канонической форме, и по введённой - на случай если
+        // в логе IP записан не в канонической форме.
+        // INNER JOIN: записи без реального аккаунта (uid не найден) не нужны.
+        $q2 = $this->db->sql_query_prepared(
+            "SELECT DISTINCT u.*, g.namestyle
+               FROM login_log i
+         INNER JOIN users u ON (i.uid = u.id)
+          LEFT JOIN usergroups g ON (u.usergroup = g.gid)
+              WHERE i.ip IN (?, ?)
+           ORDER BY u.lastactive DESC",
+            [$ip, $rawIp]
+        );
+        if ($q2) {
+            while ($row = $this->db->fetch_array($q2)) {
+                if ($row['username'] !== null) {
+                    $out['logins'][] = $row;
+                }
+            }
+        }
+
+        return $out;
     }
-    
+
     /**
-     * Render user table
+     * POST: сброс passkey. CSRF + write_log + PRG, всегда заканчивается редиректом.
      */
-    public function renderUserTable($query, string $title = ''): string
+    public function handlePasskeyReset(): never
     {
-        global $dateformat, $timeformat;
-        
-        $html = '';
-        
-        if ($title) {
-            $html .= <<<HTML
-                <div class="results-section">
-                    <h3 class="section-title">
-                        <i class="fas fa-search"></i> {$title}
-                    </h3>
+        $uid    = (int)($_POST['uid'] ?? 0);
+        $backIp = $this->normalizeIp($this->getIpAddress());
+        $status = 'fail';
+
+        if ($uid > 0 && verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+            $q   = $this->db->sql_query_prepared('SELECT id, username FROM users WHERE id = ? LIMIT 1', [$uid]);
+            $row = $q ? $this->db->fetch_array($q) : null;
+
+            if ($row) {
+                $newKey = bin2hex(random_bytes(16));
+                $this->db->sql_query_prepared('UPDATE users SET passkey = ? WHERE id = ?', [$newKey, $uid]);
+
+                $staff = (string)($GLOBALS['CURUSER']['username'] ?? $GLOBALS['mybb']->user['username'] ?? 'unknown');
+                write_log(sprintf(
+                    'Passkey reset for %s (ID %d) via IP Search by %s',
+                    (string)$row['username'],
+                    $uid,
+                    $staff
+                ));
+                $status = 'ok';
+            }
+        }
+
+        header('Location: ' . self::url($this->selfUrl, ['ip' => $backIp, 'reset' => $status]));
+        exit;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Rendering                                                         */
+    /* ------------------------------------------------------------------ */
+
+    public function renderPage(): string
+    {
+        $ip   = $this->getIpAddress();
+        $html = $this->renderHeader();
+        $html .= $this->renderFlash();
+
+        if ($ip === '') {
+            return $html . $this->renderSearchCard('', true);
+        }
+
+        if (!$this->validateIp($ip)) {
+            $html .= $this->renderAlert('danger', 'fa-triangle-exclamation', 'Invalid IP address',
+                'Please enter a valid IPv4 or IPv6 address.');
+            return $html . $this->renderSearchCard($ip, true);
+        }
+
+        $norm    = $this->normalizeIp($ip);
+        $results = $this->searchIp($norm, $ip);
+
+        $html .= $this->renderSearchCard($norm, false);
+        $html .= $this->renderKpis($results, $norm);
+
+        if ($results['registered'] === [] && $results['logins'] === []) {
+            $html .= $this->renderEmptyState($norm);
+        } else {
+            $html .= $this->renderUserTable(
+                $results['registered'], 'Registered from this IP', 'fa-user-plus', 'primary', $norm,
+                'Nobody registered from this IP.'
+            );
+            $html .= $this->renderUserTable(
+                $results['logins'], 'Logged in from this IP', 'fa-right-to-bracket', 'success', $norm,
+                'No logins from this IP in the log.'
+            );
+        }
+
+        return $html . $this->renderActionBar($norm);
+    }
+
+    private function renderHeader(): string
+    {
+        $version = self::e(IPS_VERSION);
+        return <<<HTML
+            <div class="ips-card ips-header">
+                <div class="ips-header__icon"><i class="fa-solid fa-magnifying-glass-location"></i></div>
+                <div class="ips-header__text">
+                    <h1 class="ips-header__title">IP Address Search</h1>
+                    <div class="ips-header__sub">Find accounts by registration IP and login history &middot; IPv4 &amp; IPv6</div>
+                </div>
+                <span class="ips-pill ips-tone-secondary"><i class="fa-solid fa-code-branch"></i> {$version}</span>
+            </div>
+        HTML;
+    }
+
+    private function renderFlash(): string
+    {
+        return match ($_GET['reset'] ?? '') {
+            'ok'   => $this->renderAlert('success', 'fa-circle-check', 'Passkey reset',
+                        'A new passkey was generated. The user has to re-download their .torrent files.'),
+            'fail' => $this->renderAlert('danger', 'fa-triangle-exclamation', 'Passkey was not reset',
+                        'Security token expired or the user no longer exists. Please try again.'),
+            default => '',
+        };
+    }
+
+    private function renderAlert(string $tone, string $icon, string $title, string $text): string
+    {
+        $title = self::e($title);
+        $text  = self::e($text);
+        return <<<HTML
+            <div class="ips-alert ips-tone-{$tone}" role="alert">
+                <i class="fa-solid {$icon} ips-alert__icon"></i>
+                <div><strong>{$title}</strong><div>{$text}</div></div>
+            </div>
+        HTML;
+    }
+
+    private function renderSearchCard(string $currentIp, bool $withExamples): string
+    {
+        $action   = self::e($this->scriptName);
+        $value    = self::e($currentIp);
+        $examples = '';
+
+        if ($withExamples) {
+            $examples = <<<HTML
+                <div class="ips-hint">
+                    <i class="fa-solid fa-circle-info"></i>
+                    Registration IP (users) and login history (login_log) are searched. Try:
+                    <button type="button" class="ips-chip ips-tone-primary" data-ip="192.168.1.1"><i class="fa-solid fa-4"></i> 192.168.1.1</button>
+                    <button type="button" class="ips-chip ips-tone-info" data-ip="2001:db8::1"><i class="fa-solid fa-6"></i> 2001:db8::1</button>
+                </div>
             HTML;
         }
-        
-       $html .= <<<HTML
-    <div class="table-responsive">
-        <table class="users-table">
-            <thead>
-                <tr>
-                    <th><i class="fas fa-user"></i> Username</th>
-                    <th><i class="fas fa-envelope"></i> Email</th>
-                    <th><i class="fas fa-network-wired"></i> IP</th>
-                    <th><i class="fas fa-key"></i> Passkey</th>
-                    <th><i class="fas fa-clock"></i> Last Seen</th>
-                    <th><i class="fas fa-calendar-plus"></i> Registered</th>
-                    <th><i class="fas fa-arrow-up"></i> Uploaded</th>
-                    <th><i class="fas fa-arrow-down"></i> Downloaded</th>
-                    <th><i class="fas fa-percentage"></i> Ratio</th>
-                </tr>
-            </thead>
-            <tbody>
-HTML;
-        
-        if ($this->db->num_rows($query) === 0) {
-            $html .= <<<HTML
-                <tr>
-                    <td colspan="9" class="no-results">
-                        <i class="fas fa-search-minus"></i> No results found
-                    </td>
-                </tr>
+
+        return <<<HTML
+            <div class="ips-card ips-search-card">
+                <form method="get" action="{$action}" class="ips-search" id="ip-search-form" novalidate>
+                    <input type="hidden" name="act" value="ipsearch">
+                    <label class="ips-search__field" for="ip-address">
+                        <i class="fa-solid fa-network-wired"></i>
+                        <input type="text" id="ip-address" name="ip" value="{$value}"
+                               placeholder="Enter IPv4 or IPv6 address" autocomplete="off" spellcheck="false" required>
+                    </label>
+                    <button type="submit" class="ips-btn ips-btn--primary">
+                        <i class="fa-solid fa-magnifying-glass"></i><span>Search</span>
+                    </button>
+                </form>
+                {$examples}
+            </div>
+        HTML;
+    }
+
+    private function renderKpis(array $results, string $ip): string
+    {
+        $reg    = count($results['registered']);
+        $logins = count($results['logins']);
+        $ids    = array_map(static fn($u) => (int)$u['id'], array_merge($results['registered'], $results['logins']));
+        $unique = count(array_unique($ids));
+        $type   = self::e($this->ipType($ip));
+        $scope  = self::e($this->ipScope($ip));
+
+        return <<<HTML
+            <div class="ips-kpis">
+                <div class="ips-card ips-kpi">
+                    <div class="ips-kpi__icon ips-tone-primary"><i class="fa-solid fa-user-plus"></i></div>
+                    <div><div class="ips-kpi__value">{$reg}</div><div class="ips-kpi__label">Registered from IP</div></div>
+                </div>
+                <div class="ips-card ips-kpi">
+                    <div class="ips-kpi__icon ips-tone-success"><i class="fa-solid fa-right-to-bracket"></i></div>
+                    <div><div class="ips-kpi__value">{$logins}</div><div class="ips-kpi__label">Logged in from IP</div></div>
+                </div>
+                <div class="ips-card ips-kpi">
+                    <div class="ips-kpi__icon ips-tone-warning"><i class="fa-solid fa-users"></i></div>
+                    <div><div class="ips-kpi__value">{$unique}</div><div class="ips-kpi__label">Unique accounts</div></div>
+                </div>
+                <div class="ips-card ips-kpi">
+                    <div class="ips-kpi__icon ips-tone-info"><i class="fa-solid fa-globe"></i></div>
+                    <div><div class="ips-kpi__value">{$type}</div><div class="ips-kpi__label">{$scope}</div></div>
+                </div>
+            </div>
+        HTML;
+    }
+
+    private function renderEmptyState(string $ip): string
+    {
+        $ip = self::e($ip);
+        return <<<HTML
+            <div class="ips-card ips-empty">
+                <div class="ips-empty__icon"><i class="fa-solid fa-user-slash"></i></div>
+                <h3>No accounts found</h3>
+                <p>Nobody registered or logged in from <code>{$ip}</code>.</p>
+            </div>
+        HTML;
+    }
+
+    private function renderUserTable(array $rows, string $title, string $icon, string $tone, string $searchIp, string $emptyText): string
+    {
+        global $dateformat, $timeformat;
+
+        $count     = count($rows);
+        $title     = self::e($title);
+        $emptyText = self::e($emptyText);
+        $selfAttr  = self::e($this->selfUrl);
+        $ipAttr    = self::e($searchIp);
+        $postKey   = self::e($this->postKey());
+        $dtFormat  = trim("{$dateformat} {$timeformat}") ?: 'Y-m-d H:i';
+        $body      = '';
+
+        if ($rows === []) {
+            $body = <<<HTML
+                <tr><td colspan="9" class="ips-table__empty"><i class="fa-solid fa-circle-minus"></i> {$emptyText}</td></tr>
             HTML;
         } else {
             require_once INC_PATH . '/functions_ratio.php';
-            
-            while ($user = $this->db->fetch_array($query)) {
-                // login_log логирует все попытки входа, включая неудачные
-                // (status='fail') - для такой записи LEFT JOIN к users не
-                // находит совпадения, и вся u.* часть строки будет NULL.
-                // Это не реальный аккаунт, показывать тут нечего - пропускаем.
-                if ($user['username'] === null) {
-                    continue;
+
+            foreach ($rows as $user) {
+                $id           = (int)$user['id'];
+                $safeName     = self::e((string)$user['username']);
+                $usernameHtml = format_name($safeName, (string)($user['usergroup'] ?? ''));
+                $profileUrl   = self::e("{$this->baseUrl}/userdetails.php?id={$id}");
+
+                $emailRaw = (string)($user['email'] ?? '');
+                $email    = self::e($emailRaw);
+                $emailCell = $emailRaw !== ''
+                    ? "<a class=\"ips-muted-link\" href=\"mailto:{$email}\" title=\"{$email}\">{$email}</a>"
+                    : '<span class="ips-dim">—</span>';
+
+                // Последний известный IP пользователя + быстрый поиск по нему
+                $lastIpRaw = $this->userIpToText($user);
+                if ($lastIpRaw === '') {
+                    $ipCell = '<span class="ips-dim">—</span>';
+                } else {
+                    $lastIp   = self::e($lastIpRaw);
+                    $typeTone = $this->ipType($lastIpRaw) === 'IPv6' ? 'info' : 'primary';
+                    $typeText = self::e($this->ipType($lastIpRaw));
+                    $isMatch  = $this->normalizeIp($lastIpRaw) === $searchIp;
+                    $match    = $isMatch
+                        ? '<span class="ips-badge ips-tone-success" title="Same as searched IP"><i class="fa-solid fa-equals"></i></span>'
+                        : '';
+                    $ipLink   = $this->validateIp($lastIpRaw) && !$isMatch
+                        ? '<a class="ips-icon-btn" href="' . self::e(self::url($this->selfUrl, ['ip' => $lastIpRaw])) . '" title="Search this IP"><i class="fa-solid fa-magnifying-glass"></i></a>'
+                        : '';
+                    $ipCell = <<<HTML
+                        <div class="ips-inline">
+                            <span class="ips-mono ips-ellipsis" title="{$lastIp}">{$lastIp}</span>
+                            <span class="ips-badge ips-tone-{$typeTone}">{$typeText}</span>
+                            {$match}{$ipLink}
+                        </div>
+                    HTML;
                 }
 
-                $lastSeen = $this->formatDateTime($user['lastactive'], "$dateformat $timeformat");
-                $joinDate = $this->formatDateTime($user['added'], "$dateformat $timeformat");
-                
-                $usernameHtml = format_name((string)$user['username'], $user['usegroup'] ?? '');
-                $email = htmlspecialchars_uni($user['email'] ?? '');
-                $ip = $this->formatIpForDisplay($user);
-                $passkey = htmlspecialchars_uni($user['passkey'] ?? '');
-                $uploaded = mksize($user['uploaded'] ?? 0);
+                $passkeyRaw   = (string)($user['passkey'] ?? '');
+                $passkey      = self::e($passkeyRaw);
+                $passkeyShort = $passkeyRaw !== '' ? self::e(substr($passkeyRaw, 0, 8)) . '…' : '—';
+                $copyBtn      = $passkeyRaw !== ''
+                    ? "<button type=\"button\" class=\"ips-icon-btn\" data-copy=\"{$passkey}\" title=\"Copy passkey\"><i class=\"fa-solid fa-copy\"></i></button>"
+                    : '';
+
+                $lastSeen   = self::e($this->formatDateTime($user['lastactive'] ?? null, $dtFormat));
+                $joinDate   = self::e($this->formatDateTime($user['added'] ?? null, $dtFormat));
+                $uploaded   = mksize($user['uploaded'] ?? 0);
                 $downloaded = mksize($user['downloaded'] ?? 0);
-                $ratio = get_user_ratio($user['uploaded'] ?? 0, $user['downloaded'] ?? 0);
-                
-                $resetPasskeyUrl = "{$this->scriptUrl}&do=2&passkey=" . urlencode($passkey);
-                
-                $html .= <<<HTML
+                $ratio      = get_user_ratio($user['uploaded'] ?? 0, $user['downloaded'] ?? 0);
+                $upVal      = self::e((string)($user['uploaded'] ?? 0));
+                $downVal    = self::e((string)($user['downloaded'] ?? 0));
+
+                $body .= <<<HTML
                     <tr class="user-row">
-                        <td class="username-cell">
-                            <a href="{$this->baseUrl}/userdetails.php?id={$user['id']}" class="user-link">
-                                {$usernameHtml}
-                            </a>
-                        </td>
-                        <td class="email-cell" title="{$email}">{$email}</td>
-                        <td class="ip-cell">
-                            <span class="ip-address" title="{$ip}">{$ip}</span>
-                            <span class="ip-type-badge" data-ip-type="{$this->getIpType($ip)}">
-                                {$this->getIpTypeBadge($ip)}
-                            </span>
-                        </td>
-                        <td class="passkey-cell">
-                            <div class="passkey-container">
-                                <span class="passkey-value" title="{$passkey}">
-                                    {$passkey}
-                                </span>
-                                <a href="{$resetPasskeyUrl}" class="reset-link" title="Reset Passkey">
-                                    <i class="fas fa-redo"></i>
-                                </a>
+                        <td>
+                            <div class="ips-inline">
+                                <a href="{$profileUrl}" class="ips-user-link">{$usernameHtml}</a>
+                                <span class="ips-dim ips-small">#{$id}</span>
                             </div>
                         </td>
-                        <td class="lastseen-cell">{$lastSeen}</td>
-                        <td class="registered-cell">{$joinDate}</td>
-                        <td class="uploaded-cell" data-value="{$user['uploaded']}">{$uploaded}</td>
-                        <td class="downloaded-cell" data-value="{$user['downloaded']}">{$downloaded}</td>
-                        <td class="ratio-cell">{$ratio}</td>
+                        <td class="ips-ellipsis-cell">{$emailCell}</td>
+                        <td>{$ipCell}</td>
+                        <td>
+                            <div class="ips-inline">
+                                <span class="ips-mono ips-dim" title="{$passkey}">{$passkeyShort}</span>
+                                {$copyBtn}
+                                <form method="post" action="{$selfAttr}" class="ips-reset-form" data-username="{$safeName}">
+                                    <input type="hidden" name="act" value="ipsearch">
+                                    <input type="hidden" name="do" value="resetpasskey">
+                                    <input type="hidden" name="uid" value="{$id}">
+                                    <input type="hidden" name="ip" value="{$ipAttr}">
+                                    <input type="hidden" name="my_post_key" value="{$postKey}">
+                                    <button type="submit" class="ips-icon-btn ips-icon-btn--danger" title="Reset passkey"><i class="fa-solid fa-rotate"></i></button>
+                                </form>
+                            </div>
+                        </td>
+                        <td class="ips-nowrap"><i class="fa-regular fa-clock ips-dim"></i> {$lastSeen}</td>
+                        <td class="ips-nowrap"><i class="fa-regular fa-calendar ips-dim"></i> {$joinDate}</td>
+                        <td class="ips-nowrap ips-up" data-value="{$upVal}"><i class="fa-solid fa-arrow-up"></i> {$uploaded}</td>
+                        <td class="ips-nowrap ips-down" data-value="{$downVal}"><i class="fa-solid fa-arrow-down"></i> {$downloaded}</td>
+                        <td class="ips-nowrap ips-ratio">{$ratio}</td>
                     </tr>
                 HTML;
             }
         }
-        
-        $html .= <<<HTML
-                    </tbody>
-                </table>
-            </div>
-        HTML;
-        
-        if ($title) {
-            $html .= '</div>';
-        }
-        
-        return $html;
-    }
-    
-    /**
-     * Get IP type (IPv4/IPv6)
-     */
-    private function getIpType(string $ip): string
-    {
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            return 'ipv4';
-        }
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-            return 'ipv6';
-        }
-        return 'unknown';
-    }
-    
-    /**
-     * Get badge for IP type
-     */
-    private function getIpTypeBadge(string $ip): string
-    {
-        $type = $this->getIpType($ip);
-        $badges = [
-            'ipv4' => '<span class="ipv4-badge">IPv4</span>',
-            'ipv6' => '<span class="ipv6-badge">IPv6</span>',
-            'unknown' => '<span class="unknown-badge">?</span>'
-        ];
-        return $badges[$type] ?? '';
-    }
-    
-    /**
-     * Render search form
-     */
-    public function renderSearchForm(string $currentIp = ''): string
-    {
-        $loadingLayer = <<<HTML
-            <div id="loading-layer" class="loading-overlay">
-                <div class="loading-content">
-                    <div class="loading-spinner">
-                        <i class="fas fa-circle-notch fa-spin"></i>
-                    </div>
-                    <div class="loading-text">Scanning Database...</div>
-                </div>
-            </div>
-        HTML;
-        
+
         return <<<HTML
-            <div class="container mt-3">
-                <div class="search-header">
-                    <h2><i class="fas fa-search-location"></i> IP Address Search</h2>
-                    <p class="search-description">
-                        Search for users by IP address (supports both IPv4 and IPv6)
-                    </p>
+            <div class="ips-card ips-section">
+                <div class="ips-section__head">
+                    <div class="ips-section__icon ips-tone-{$tone}"><i class="fa-solid {$icon}"></i></div>
+                    <h3 class="ips-section__title">{$title}</h3>
+                    <span class="ips-pill ips-tone-{$tone}">{$count}</span>
                 </div>
-                
-                <div class="search-form-container">
-                    {$loadingLayer}
-                    
-                    <form method="post" action="{$this->scriptUrl}" class="search-form" id="ip-search-form">
-                        <input type="hidden" name="act" value="ipsearch">
-                        <input type="hidden" name="do" value="1">
-                        
-                        <div class="form-group">
-                            <label for="ip-address">
-                                <i class="fas fa-ip-address"></i> IP Address
-                            </label>
-                            <div class="input-with-button">
-                                <input type="text" 
-                                       id="ip-address" 
-                                       name="ip" 
-                                       value="{$currentIp}"
-                                       placeholder="Enter IPv4 or IPv6 address"
-                                       class="form-control"
-                                       required
-                                       pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$|^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$"
-                                       title="Enter a valid IPv4 or IPv6 address">
-                                <button type="submit" 
-                                        class="btn btn-primary"
-                                        onclick="showLoadingLayer()">
-                                    <i class="fas fa-search"></i> Search IP
-                                </button>
-                            </div>
-                            <div class="form-hint">
-                                <i class="fas fa-info-circle"></i> Supports both IPv4 (192.168.1.1) and IPv6 (2001:db8::1)
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                
-                <div class="search-examples">
-                    <h4><i class="fas fa-lightbulb"></i> Examples:</h4>
-                    <div class="example-container">
-                        <div class="ip-type-group">
-                            <div class="ip-type-label">IPv4 Examples:</div>
-                            <div class="example-ips">
-                                <span class="example-ip ipv4-example" data-ip="192.168.1.1">192.168.1.1</span>
-                                <span class="example-ip ipv4-example" data-ip="10.0.0.1">10.0.0.1</span>
-                                <span class="example-ip ipv4-example" data-ip="172.16.0.1">172.16.0.1</span>
-                            </div>
-                        </div>
-                        <div class="ip-type-group">
-                            <div class="ip-type-label">IPv6 Examples:</div>
-                            <div class="example-ips">
-                                <span class="example-ip ipv6-example" data-ip="2001:db8::1">2001:db8::1</span>
-                                <span class="example-ip ipv6-example" data-ip="fe80::1">fe80::1</span>
-                                <span class="example-ip ipv6-example" data-ip="::1">::1</span>
-                            </div>
-                        </div>
-                    </div>
+                <div class="ips-table-wrap">
+                    <table class="ips-table">
+                        <thead>
+                            <tr>
+                                <th><i class="fa-solid fa-user"></i> Username</th>
+                                <th><i class="fa-solid fa-envelope"></i> Email</th>
+                                <th><i class="fa-solid fa-location-dot"></i> Last IP</th>
+                                <th><i class="fa-solid fa-key"></i> Passkey</th>
+                                <th><i class="fa-solid fa-clock"></i> Last seen</th>
+                                <th><i class="fa-solid fa-calendar-plus"></i> Registered</th>
+                                <th><i class="fa-solid fa-cloud-arrow-up"></i> Uploaded</th>
+                                <th><i class="fa-solid fa-cloud-arrow-down"></i> Downloaded</th>
+                                <th><i class="fa-solid fa-scale-balanced"></i> Ratio</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {$body}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         HTML;
     }
-    
-    /**
-     * Render error message
-     */
-    public function renderErrorMessage(string $message): string
+
+    private function renderActionBar(string $ip): string
     {
+        $newUrl  = self::e($this->selfUrl);
+        $ipAttr  = self::e($ip);
+        $infoUrl = self::e('https://ipinfo.io/' . rawurlencode($ip));
+
         return <<<HTML
-            <div class="error-container">
-                <div class="error-icon">
-                    <i class="fas fa-exclamation-triangle"></i>
+            <div class="ips-actionbar">
+                <div class="ips-actionbar__ip">
+                    <i class="fa-solid fa-crosshairs"></i>
+                    <span class="ips-mono">{$ipAttr}</span>
                 </div>
-                <div class="error-content">
-                    <h3>Search Error</h3>
-                    <p>{$message}</p>
+                <div class="ips-actionbar__buttons">
+                    <button type="button" class="ips-btn ips-btn--soft" data-copy="{$ipAttr}">
+                        <i class="fa-solid fa-copy"></i><span>Copy IP</span>
+                    </button>
+                    <a href="{$infoUrl}" target="_blank" rel="noopener noreferrer" class="ips-btn ips-btn--soft">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i><span>ipinfo.io</span>
+                    </a>
+                    <a href="{$newUrl}" class="ips-btn ips-btn--primary">
+                        <i class="fa-solid fa-magnifying-glass-plus"></i><span>New search</span>
+                    </a>
                 </div>
             </div>
         HTML;
-    }
-    
-    /**
-     * Get JavaScript for loading layer and IP examples
-     */
-    public function getLoadingJavaScript(): string
-    {
-        return <<<JAVASCRIPT
-            <script>
-                function showLoadingLayer() {
-                    const loadingLayer = document.getElementById('loading-layer');
-                    if (loadingLayer) {
-                        loadingLayer.style.display = 'flex';
-                        // Hide after 3 seconds if still showing
-                        setTimeout(() => {
-                            loadingLayer.style.display = 'none';
-                        }, 3000);
-                    }
-                }
-                
-                // Hide loading layer when page loads
-                document.addEventListener('DOMContentLoaded', function() {
-                    const loadingLayer = document.getElementById('loading-layer');
-                    if (loadingLayer) {
-                        loadingLayer.style.display = 'none';
-                    }
-                    
-                    // Add click handlers to example IPs
-                    document.querySelectorAll('.example-ip').forEach(ipElement => {
-                        ipElement.addEventListener('click', function() {
-                            const ip = this.getAttribute('data-ip');
-                            const input = document.getElementById('ip-address');
-                            if (input) {
-                                input.value = ip;
-                                input.focus();
-                            }
-                        });
-                    });
-                });
-                
-                // Form submission handler
-                document.getElementById('ip-search-form')?.addEventListener('submit', function(e) {
-                    const ipInput = document.getElementById('ip-address');
-                    if (ipInput && !ipInput.checkValidity()) {
-                        ipInput.reportValidity();
-                        e.preventDefault();
-                        return false;
-                    }
-                    showLoadingLayer();
-                    return true;
-                });
-                
-                // Auto-format IPv6 addresses
-                document.getElementById('ip-address')?.addEventListener('blur', function() {
-                    let ip = this.value.trim();
-                    if (ip.includes(':') && !ip.includes('::')) {
-                        // Check if it's a valid IPv6 without compression
-                        if (/^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/.test(ip)) {
-                            // Compress the IPv6 address
-                            const parts = ip.split(':');
-                            let longestZeroStart = -1;
-                            let longestZeroLength = 0;
-                            let currentZeroStart = -1;
-                            let currentZeroLength = 0;
-                            
-                            for (let i = 0; i < parts.length; i++) {
-                                if (parts[i] === '0000' || parts[i] === '0') {
-                                    if (currentZeroStart === -1) {
-                                        currentZeroStart = i;
-                                    }
-                                    currentZeroLength++;
-                                } else {
-                                    if (currentZeroLength > longestZeroLength) {
-                                        longestZeroLength = currentZeroLength;
-                                        longestZeroStart = currentZeroStart;
-                                    }
-                                    currentZeroStart = -1;
-                                    currentZeroLength = 0;
-                                }
-                            }
-                            
-                            if (currentZeroLength > longestZeroLength) {
-                                longestZeroLength = currentZeroLength;
-                                longestZeroStart = currentZeroStart;
-                            }
-                            
-                            if (longestZeroLength > 1) {
-                                const compressedParts = [];
-                                for (let i = 0; i < parts.length; i++) {
-                                    if (i === longestZeroStart) {
-                                        if (i === 0) {
-                                            compressedParts.push('');
-                                        }
-                                        compressedParts.push('');
-                                        i += longestZeroLength - 1;
-                                        if (i === parts.length - 1) {
-                                            compressedParts.push('');
-                                        }
-                                    } else {
-                                        // Remove leading zeros from each part
-                                        let part = parts[i];
-                                        part = part.replace(/^0+/, '');
-                                        compressedParts.push(part || '0');
-                                    }
-                                }
-                                this.value = compressedParts.join(':');
-                            }
-                        }
-                    }
-                });
-            </script>
-        JAVASCRIPT;
     }
 }
 
 // Main execution
 function main(): void
 {
-    global $db, $BASEURL, $pic_base_url, $_this_script_;
-    
+    global $db, $BASEURL, $_this_script_;
+
+    $scriptName = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+    $selfUrl    = html_entity_decode((string)($_this_script_ ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    if ($selfUrl === '') {
+        $selfUrl = $scriptName . '?act=ipsearch';
+    }
+
+    $manager = new IPSearchManager($db, (string)$BASEURL, $selfUrl, $scriptName);
+
+    // Изменения - только POST, до stdhead(), всегда PRG-редирект
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['do'] ?? '') === 'resetpasskey') {
+        $manager->handlePasskeyReset();
+    }
+
     stdhead('IP Search');
-    
-    echo '<div class="ip-search-container">';
-    
+    ?>
+    <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+    <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/ipsearch.css?ver=1">
+    <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+
+    <div class="ips-page">
+    <?php
     try {
-        $manager = new IPSearchManager($db, $BASEURL, $pic_base_url ?? '');
-        $action = $manager->getAction();
-        $ip = $manager->getIpAddress();
-        
-        echo '<div class="container mt-4">';
-		echo '<div class="card">';
-        echo '<div class="card-header">';
-        echo '<h1><i class="fas fa-address-card"></i> IP Address Search</h1>';
-        echo '<div class="version">' . IPS_VERSION . '</div>';
-        echo '</div>';
-        echo '<div class="card-body">';
-        
-        if ($action === '1' || !empty($_GET['ip'])) {
-            if (!$manager->validateIp($ip)) {
-                echo $manager->renderErrorMessage('Please enter a valid IPv4 or IPv6 address.');
-                echo $manager->renderSearchForm($ip);
-            } else {
-                $results = $manager->searchIp($ip);
-                
-                if ($results['error']) {
-                    echo $manager->renderErrorMessage($results['error']);
-                    echo $manager->renderSearchForm($ip);
-                } else {
-                    // Show results from users table
-                    if ($results['users_table']) {
-                        echo $manager->renderUserTable(
-                            $results['users_table'],
-                            "Search Results in Users Table: " . htmlspecialchars($ip)
-                        );
-                    }
-                    
-                    // Show results from iplog table
-                    if ($results['ip_log_table']) {
-                        echo '<div class="results-spacer"></div>';
-                        echo $manager->renderUserTable(
-                            $results['ip_log_table'],
-                            "Search Results in IP Log Table: " . htmlspecialchars($ip)
-                        );
-                    }
-                    
-                    echo '<div class="new-search-link">';
-                    echo '<a href="' . $_this_script_ . '" class="btn btn-primary">';
-                    echo '<i class="fas fa-search-plus"></i> New Search';
-                    echo '</a>';
-                    echo '</div>';
-                }
-            }
-        } else {
-            echo $manager->renderSearchForm();
-        }
-        
-        echo '</div>';
-        echo '</div>';
-        
-        echo $manager->getLoadingJavaScript();
-        
-    } catch (Exception $e) {
-        echo '<div class="error-message">';
-        echo '<i class="fas fa-exclamation-triangle"></i> Error: ' . htmlspecialchars($e->getMessage());
-        echo '</div>';
+        echo $manager->renderPage();
+    } catch (Throwable $e) {
+        echo '<div class="ips-alert ips-tone-danger" role="alert">'
+            . '<i class="fa-solid fa-triangle-exclamation ips-alert__icon"></i>'
+            . '<div><strong>Error</strong><div>' . htmlspecialchars_uni($e->getMessage()) . '</div></div>'
+            . '</div>';
     }
-    
-    echo '</div>';
-	 echo '</div>';
-    
+    ?>
+    </div>
 
-
-echo '</div>';
-
-// Add CSS styles with consistent indentation
-echo <<<CSS
-<style>
-    .ip-search-container {
-        max-width: 1400px;
-        margin: 2rem auto;
-        padding: 0 1rem;
-    }
-    
-    .main-card {
-        background: white;
-        border-radius: 20px;
-        box-shadow: 0 15px 35px rgba(50, 50, 93, 0.1), 0 5px 15px rgba(0, 0, 0, 0.07);
-        overflow: hidden;
-    }
-    
-   
-    
-    .card-header h1 {
-        margin: 0;
-        font-size: 2rem;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    
-    .version {
-        background: rgba(255, 255, 255, 0.2);
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 0.9rem;
-        font-weight: 500;
-    }
-    
-   
-    
-    .search-container {
-        padding: 2rem 0;
-    }
-    
-    .search-header {
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    
-    .search-header h2 {
-        color: #374151;
-        margin-bottom: 0.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-    }
-    
-    .search-description {
-        color: #6b7280;
-        font-size: 1.1rem;
-        max-width: 600px;
-        margin: 0 auto;
-    }
-    
-    .search-form-container {
-        max-width: 600px;
-        margin: 0 auto 3rem;
-        position: relative;
-    }
-    
-    .loading-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(255, 255, 255, 0.9);
-        backdrop-filter: blur(5px);
-        display: none;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        border-radius: 15px;
-    }
-    
-    .loading-content {
-        text-align: center;
-    }
-    
-    .loading-spinner {
-        font-size: 3rem;
-        color: #6366f1;
-        margin-bottom: 1rem;
-    }
-    
-    .loading-text {
-        font-weight: 600;
-        color: #374151;
-    }
-    
-    .form-group {
-        margin-bottom: 1.5rem;
-    }
-    
-    .form-group label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-weight: 600;
-        color: #374151;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .input-with-button {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 0.5rem;
-    }
-    
-    .form-control {
-        flex: 1;
-        padding: 14px 20px;
-        border: 2px solid #e5e7eb;
-        border-radius: 12px;
-        font-size: 16px;
-        transition: all 0.3s;
-        font-family: 'Courier New', monospace;
-    }
-    
-    .form-control:focus {
-        outline: none;
-        border-color: #6366f1;
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-    
-    .search-button {
-        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-        color: white;
-        border: none;
-        padding: 14px 28px;
-        border-radius: 12px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        white-space: nowrap;
-    }
-    
-    .search-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
-    }
-    
-    .form-hint {
-        color: #9ca3af;
-        font-size: 0.9rem;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 0.5rem;
-    }
-    
-    .search-examples {
-        background: #f9fafb;
-        padding: 1.5rem;
-        border-radius: 12px;
-        border: 1px solid #e5e7eb;
-    }
-    
-    .search-examples h4 {
-        margin: 0 0 1rem 0;
-        color: #374151;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .example-container {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .ip-type-group {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    
-    .ip-type-label {
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: #6b7280;
-    }
-    
-    .example-ips {
-        display: flex;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-    }
-    
-    .example-ip {
-        background: white;
-        padding: 6px 12px;
-        border-radius: 8px;
-        border: 1px solid #e5e7eb;
-        font-family: 'Courier New', monospace;
-        font-size: 0.9rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    
-    .ipv4-example {
-        color: #3b82f6;
-        border-color: #93c5fd;
-    }
-    
-    .ipv4-example:hover {
-        background: #dbeafe;
-        border-color: #3b82f6;
-    }
-    
-    .ipv6-example {
-        color: #8b5cf6;
-        border-color: #c4b5fd;
-    }
-    
-    .ipv6-example:hover {
-        background: #ede9fe;
-        border-color: #8b5cf6;
-    }
-    
-    .results-section {
-        margin-bottom: 3rem;
-    }
-    
-    .results-spacer {
-        height: 2rem;
-    }
-    
-    .section-title {
-        color: #374151;
-        margin-bottom: 1.5rem;
-        padding-bottom: 1rem;
-        border-bottom: 2px solid #e5e7eb;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    
-    .table-responsive {
-        overflow-x: auto;
-        border-radius: 12px;
-        border: 1px solid #e5e7eb;
-        margin-bottom: 2rem;
-    }
-    
-    .users-table {
-        width: 100%;
-        border-collapse: collapse;
-        background: white;
-        min-width: 1000px;
-    }
-    
-    .users-table thead {
-        background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-    }
-    
-    .users-table th {
-        padding: 16px 20px;
-        text-align: left;
-        font-weight: 600;
-        color: #374151;
-        border-bottom: 2px solid #e5e7eb;
-        white-space: nowrap;
-        display: table-cell;
-        vertical-align: middle;
-    }
-    
-    .users-table th i {
-        margin-right: 8px;
-        color: #6366f1;
-    }
-    
-    .users-table tbody tr {
-        transition: background-color 0.2s;
-        border-bottom: 1px solid #f3f4f6;
-    }
-    
-    .users-table tbody tr:hover {
-        background-color: #f9fafb;
-    }
-    
-    .users-table td {
-        padding: 14px 20px;
-        color: #4b5563;
-        vertical-align: middle;
-        border-bottom: 1px solid #f3f4f6;
-    }
-    
-    .no-results {
-        text-align: center;
-        color: #9ca3af;
-        padding: 3rem !important;
-        display: table-cell;
-    }
-    
-    .no-results i {
-        margin-right: 8px;
-    }
-    
-    .username-cell {
-        min-width: 150px;
-    }
-    
-    .user-link {
-        color: #374151;
-        text-decoration: none;
-        font-weight: 500;
-        transition: color 0.2s;
-    }
-    
-    .user-link:hover {
-        color: #6366f1;
-    }
-    
-    .email-cell,
-    .ip-cell {
-        max-width: 200px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    
-    .ip-cell {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .ip-address {
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-family: 'Courier New', monospace;
-    }
-    
-    .ip-type-badge {
-        flex-shrink: 0;
-    }
-    
-    .ipv4-badge {
-        background: #dbeafe;
-        color: #1d4ed8;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .ipv6-badge {
-        background: #ede9fe;
-        color: #5b21b6;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .unknown-badge {
-        background: #f3f4f6;
-        color: #6b7280;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    .passkey-cell {
-        min-width: 250px;
-    }
-    
-    .passkey-container {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    
-    .passkey-value {
-        flex: 1;
-        font-family: 'Courier New', monospace;
-        font-size: 0.9rem;
-        color: #6b7280;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    
-    .reset-link {
-        color: #ef4444;
-        text-decoration: none;
-        padding: 4px 8px;
-        border-radius: 4px;
-        transition: background-color 0.2s;
-        display: inline-block;
-    }
-    
-    .reset-link:hover {
-        background-color: #fee2e2;
-    }
-    
-    .lastseen-cell,
-    .registered-cell {
-        min-width: 140px;
-        white-space: nowrap;
-    }
-    
-    .uploaded-cell,
-    .downloaded-cell {
-        font-weight: 500;
-        font-family: 'Courier New', monospace;
-    }
-    
-    .uploaded-cell {
-        color: #10b981;
-    }
-    
-    .downloaded-cell {
-        color: #ef4444;
-    }
-    
-    .ratio-cell {
-        font-weight: 600;
-        color: #6366f1;
-    }
-    
-    .error-container {
-        background: #fef2f2;
-        border: 1px solid #fecaca;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-    
-    .error-icon {
-        color: #dc2626;
-        font-size: 2rem;
-    }
-    
-    .error-content h3 {
-        margin: 0 0 0.5rem 0;
-        color: #dc2626;
-    }
-    
-    .error-content p {
-        margin: 0;
-        color: #7f1d1d;
-    }
-    
-    .error-message {
-        background: #fef2f2;
-        color: #dc2626;
-        padding: 1.5rem;
-        border-radius: 12px;
-        border-left: 4px solid #dc2626;
-        margin: 2rem 0;
-    }
-    
-    .new-search-link {
-        text-align: center;
-        margin-top: 3rem;
-        padding-top: 2rem;
-        border-top: 1px solid #e5e7eb;
-    }
-    
-    .new-search-button {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: #6366f1;
-        color: white;
-        padding: 12px 24px;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: 600;
-        transition: transform 0.2s, background-color 0.2s;
-    }
-    
-    .new-search-button:hover {
-        background: #4f46e5;
-        transform: translateY(-2px);
-    }
-    
-    /* Мобильная адаптация */
-    @media (max-width: 768px) {
-        .card-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 1rem;
-        }
-        
-        .version {
-            align-self: flex-start;
-        }
-        
-        .input-with-button {
-            flex-direction: column;
-        }
-        
-        .search-button {
-            width: 100%;
-            justify-content: center;
-        }
-        
-        .table-responsive {
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-        }
-        
-        .users-table {
-            min-width: 1200px;
-        }
-        
-        .users-table th,
-        .users-table td {
-            padding: 12px 15px;
-            font-size: 0.9rem;
-        }
-        
-        .users-table th i {
-            margin-right: 6px;
-            font-size: 0.9rem;
-        }
-        
-        .passkey-cell {
-            min-width: 200px;
-        }
-        
-        .ip-cell {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 4px;
-        }
-    }
-    
-    @media (max-width: 480px) {
-        .card-body {
-            padding: 1rem;
-        }
-        
-        .users-table {
-            min-width: 1400px;
-            font-size: 0.85rem;
-        }
-        
-        .users-table th,
-        .users-table td {
-            padding: 10px 12px;
-        }
-        
-        .users-table th i {
-            font-size: 0.85rem;
-        }
-        
-        .search-examples {
-            padding: 1rem;
-        }
-        
-        .example-ips {
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        
-        .passkey-value {
-            font-size: 0.8rem;
-        }
-    }
-</style>
-
-
-CSS;
-
-
-    
+    <script src="<?= $BASEURL ?>/admin/scripts/ipsearch.js?ver=1"></script>
+    <?php
     stdfoot();
 }
 
-// Run the application
 main();
-
-?>

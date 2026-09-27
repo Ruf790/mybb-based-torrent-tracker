@@ -683,377 +683,288 @@ function showForm(): void
         $categories[] = ['id' => (int)$cat['id'], 'name' => $cat['name']];
     }
     $categoriesJson = json_encode($categories, JSON_UNESCAPED_UNICODE);
-    $postKey = htmlspecialchars($mybb->post_code);
-    $scriptUrl = htmlspecialchars($mybb->input['_this_script_'] ?? $_this_script_ ?? '');
+    $postKey        = htmlspecialchars($mybb->post_code);
+    $scriptUrl      = htmlspecialchars($mybb->input['_this_script_'] ?? $_this_script_ ?? '');
+    $maxScreens     = (int)($mybb->usergroup['max_screenshots'] ?? 3);
+    $maxImageMb     = (int)(MAX_IMAGE_SIZE / 1024 / 1024);
+
+    $batchAnnounceURL = trim(($announce_urls[0] ?? '') . '?passkey=' . $CURUSER['passkey']);
+
+    // Шаблон CSV - с необязательной 5-й колонкой tags (её понимает parseCSV())
+    $csvTemplate = 'data:text/csv;charset=utf-8,' . rawurlencode(
+        "torrent_filename,name,category,description,tags\n"
+        . "movie.torrent,My Movie,1,Description,\"Action, Drama\"\n"
+    );
     ?>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/batch_upload.css?ver=422">
 
-<div class="container mt-4">
-  <h2 class="mb-4">
-    <i class="fa-solid fa-layer-group me-2 text-primary"></i>Batch Torrent Upload
-  </h2>
+<div class="bu-page container mt-4">
 
-  <div class="row mb-3">
-    <div class="col-md-4">
-      <div class="card shadow-sm h-100">
-        <div class="card-header bg-info text-white"><h6 class="mb-0">Instructions</h6></div>
-        <div class="card-body">
-          <ol class="mb-0 small">
-            <li class="mb-2">Drag & drop or select .torrent files</li>
-            <li class="mb-2">Add poster images for each torrent</li>
-            <li class="mb-2">Set categories and descriptions</li>
-            <li class="mb-2">Optional: Import metadata from CSV</li>
-            <li>Click "Upload"</li>
-          </ol>
+  <!-- ── Header ─────────────────────────────────────────── -->
+  <div class="bu-card bu-header mb-3">
+    <div class="bu-square bu-square-lg bu-soft-primary"><i class="fa-solid fa-layer-group"></i></div>
+    <div class="bu-header-text">
+      <h1 class="bu-title">Batch Torrent Upload</h1>
+      <div class="bu-subtitle">Upload up to <?= MAX_BATCH_SIZE ?> torrents at once with posters, screenshots, tags and IMDb info</div>
+    </div>
+    <span class="bu-chip bu-soft-success"><i class="fa-solid fa-circle-check me-1"></i>Torrent parser ready</span>
+  </div>
+
+  <!-- ── KPI ────────────────────────────────────────────── -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3">
+      <div class="bu-card bu-kpi">
+        <div class="bu-square bu-soft-primary"><i class="fa-solid fa-boxes-stacked"></i></div>
+        <div>
+          <div class="bu-kpi-value"><?= MAX_BATCH_SIZE ?></div>
+          <div class="bu-kpi-label">Torrents per batch</div>
         </div>
       </div>
     </div>
-
-    <div class="col-md-4">
-      <div class="card shadow-sm h-100">
-        <div class="card-header bg-success text-white"><h6 class="mb-0">System Status</h6></div>
-        <div class="card-body">
-          <ul class="list-unstyled mb-0 small">
-            <li class="mb-2"><i class="fa-solid fa-check-circle text-success me-2"></i>Torrent Parser: Available</li>
-            <li class="mb-2"><i class="fa-solid fa-hdd me-2 text-primary"></i>Maximum Files: <?= MAX_BATCH_SIZE ?></li>
-            <li><i class="fa-solid fa-image me-2 text-info"></i>Max Image Size: 5MB</li>
-          </ul>
+    <div class="col-6 col-lg-3">
+      <div class="bu-card bu-kpi">
+        <div class="bu-square bu-soft-info"><i class="fa-solid fa-image"></i></div>
+        <div>
+          <div class="bu-kpi-value"><?= $maxImageMb ?> MB</div>
+          <div class="bu-kpi-label">Max image size</div>
         </div>
       </div>
     </div>
-
-    <div class="col-md-4">
-      <div class="card shadow-sm h-100">
-        <div class="card-header bg-warning text-white"><h6 class="mb-0">CSV Template</h6></div>
-        <div class="card-body">
-          <a href="data:text/csv;charset=utf-8,torrent_filename,name,category,description%0Amovie.torrent,My%20Movie,1,Description"
-             download="torrent_template.csv" class="btn btn-sm btn-outline-warning">
-            <i class="fa-solid fa-download me-1"></i>Download Template
-          </a>
+    <div class="col-6 col-lg-3">
+      <div class="bu-card bu-kpi">
+        <div class="bu-square bu-soft-warning"><i class="fa-solid fa-images"></i></div>
+        <div>
+          <div class="bu-kpi-value"><?= $maxScreens ?></div>
+          <div class="bu-kpi-label">Screenshots per torrent</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="bu-card bu-kpi">
+        <div class="bu-square bu-soft-success"><i class="fa-solid fa-folder-tree"></i></div>
+        <div>
+          <div class="bu-kpi-value"><?= count($categories) ?></div>
+          <div class="bu-kpi-label">Categories</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="row">
-    <div class="col-md-12">
-      <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">
-          <h5 class="mb-0"><i class="fa-solid fa-upload me-2"></i>Upload Multiple Torrents</h5>
-        </div>
-        <div class="card-body">
+  <!-- ── Announce URL ───────────────────────────────────── -->
+  <div class="bu-card bu-announce mb-3">
+    <div class="bu-square bu-soft-info"><i class="fa-solid fa-satellite-dish"></i></div>
+    <div class="bu-announce-body">
+      <div class="bu-announce-label">Your announce URL</div>
+      <code id="batchAnnounceUrl" class="bu-announce-url"><?= htmlspecialchars_uni($batchAnnounceURL) ?></code>
+    </div>
+    <button type="button" class="btn btn-sm rounded-pill bu-btn-soft-primary" id="buCopyAnnounce">
+      <i class="fa-solid fa-copy me-1"></i><span>Copy</span>
+    </button>
+  </div>
 
-          <!-- Announce URL -->
-          <?php
-          $batchAnnounceURL = trim($announce_urls[0] . "?passkey=" . $CURUSER["passkey"]);
-          ?>
-          <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
-            <div>
-              <i class="fa-solid fa-satellite-dish me-2"></i>
-              <strong>Your Announce URL:</strong>
-              <code id="batchAnnounceUrl" class="ms-2"><?= $batchAnnounceURL ?></code>
-            </div>
-            <button type="button" class="btn btn-sm btn-outline-primary"
-                    onclick="navigator.clipboard.writeText(document.getElementById('batchAnnounceUrl').textContent).then(()=>this.textContent='Copied!').catch(()=>{})">
-              <i class="fa-solid fa-copy me-1"></i>Copy
-            </button>
+  <form id="batchUploadForm" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="my_post_key" value="<?= $postKey ?>">
+
+    <!-- ── Info & settings (top row) ─────────────────────── -->
+    <div class="row g-3 mb-3">
+      <div class="col-md-6 col-lg-4">
+        <div class="bu-card h-100">
+          <div class="bu-card-head">
+            <div class="bu-square bu-soft-info"><i class="fa-solid fa-list-check"></i></div>
+            <div><h2 class="bu-card-title">How it works</h2></div>
           </div>
-
-          <form id="batchUploadForm" method="post" enctype="multipart/form-data">
-            <input type="hidden" name="my_post_key" value="<?= $postKey ?>">
-
-            <!-- Drag & Drop -->
-            <div class="drop-zone mb-4 p-5 border rounded text-center" style="border-color:#6c757d;background:#f8f9fa;cursor:pointer">
-              <i class="fa-solid fa-cloud-upload fa-3x text-muted mb-3"></i>
-              <h5>Drag & Drop Torrent Files Here</h5>
-              <p class="text-muted mb-0">or click to browse</p>
-              <input type="file" id="dragDropFiles" style="display:none" multiple accept=".torrent">
-            </div>
-
-            <!-- Торренты -->
-            <div id="torrentContainer">
-              <div class="torrent-item mb-3 border p-3 rounded">
-                <?= torrentItemHtml(0) ?>
-              </div>
-            </div>
-
-            <div class="mb-3">
-              <button type="button" id="addMore" class="btn btn-outline-primary">
-                <i class="fa-solid fa-plus"></i> Add Another Torrent
-              </button>
-            </div>
-
-            <!-- CSV -->
-            <div class="mb-3">
-              <label class="form-label fw-bold">
-                <i class="fa-solid fa-file-csv me-1"></i>Import Metadata from CSV (Optional)
+          <div class="bu-card-body">
+            <ol class="bu-steps">
+              <li><i class="fa-solid fa-file-arrow-up"></i><span>Drop or select .torrent files</span></li>
+              <li><i class="fa-solid fa-image"></i><span>Add a poster and screenshots to each</span></li>
+              <li><i class="fa-solid fa-folder-tree"></i><span>Set category, description and tags</span></li>
+              <li><i class="fa-brands fa-imdb"></i><span>Optionally fetch info from IMDb</span></li>
+              <li><i class="fa-solid fa-cloud-arrow-up"></i><span>Press <b>Upload all</b></span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-4">
+        <div class="bu-card h-100">
+          <div class="bu-card-head">
+            <div class="bu-square bu-soft-secondary"><i class="fa-solid fa-sliders"></i></div>
+            <div><h2 class="bu-card-title">Global settings</h2></div>
+          </div>
+          <div class="bu-card-body">
+            <div class="form-check form-switch bu-switch">
+              <input class="form-check-input" type="checkbox" id="batch_anonymous" name="batch_anonymous" value="yes">
+              <label class="form-check-label" for="batch_anonymous">
+                <i class="fa-solid fa-user-secret me-1"></i>Anonymous upload
               </label>
-              <input class="form-control" type="file" name="csvImport" accept=".csv">
-              <div class="form-text">CSV format: torrent_filename, name, category, description</div>
             </div>
-
-            <!-- Глобальные настройки -->
-            <div class="card mb-3">
-              <div class="card-header bg-light">
-                <h6 class="mb-0">Global Settings</h6>
-              </div>
-              <div class="card-body">
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="batch_anonymous" name="batch_anonymous" value="yes">
-                  <label class="form-check-label" for="batch_anonymous">Anonymous Upload</label>
-                </div>
-              </div>
+            <div class="bu-hint mt-1">Applies to every torrent in this batch</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-12 col-lg-4">
+        <div class="bu-card h-100">
+          <div class="bu-card-head">
+            <div class="bu-square bu-soft-warning"><i class="fa-solid fa-file-csv"></i></div>
+            <div>
+              <h2 class="bu-card-title">CSV metadata</h2>
+              <div class="bu-card-sub">Optional, overrides the form fields</div>
             </div>
-
-            <div class="d-flex justify-content-end gap-2">
-              <button type="button" class="btn btn-secondary" onclick="history.back()">
-                <i class="fa-solid fa-arrow-left me-1"></i>Back
-              </button>
-              <button type="submit" class="btn btn-primary" id="batchUploadBtn">
-                <i class="fa-solid fa-cloud-upload me-1"></i>Upload
-              </button>
+          </div>
+          <div class="bu-card-body">
+            <input class="form-control" type="file" name="csvImport" accept=".csv">
+            <div class="bu-hint mt-2">
+              Columns: <code>torrent_filename, name, category, description, tags</code> (tags optional)
             </div>
-          </form>
+            <a href="<?= $csvTemplate ?>" download="torrent_template.csv"
+               class="btn btn-sm rounded-pill bu-btn-soft-warning mt-3">
+              <i class="fa-solid fa-download me-1"></i>Download template
+            </a>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-</div>
 
-<!-- Progress Modal -->
-<div class="modal fade" id="batchProgressModal" tabindex="-1" data-bs-backdrop="static">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content">
-      <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title"><i class="fa-solid fa-spinner fa-spin me-2"></i>Processing Upload</h5>
-      </div>
-      <div class="modal-body">
-        <div class="mb-3">
-          <div class="d-flex justify-content-between mb-2">
-            <span>Overall Progress</span>
-            <span id="overallProgressPercent" class="fw-bold">0%</span>
-          </div>
-          <div class="progress" style="height:10px">
-            <div class="progress-bar progress-bar-striped progress-bar-animated" id="overallProgressBar" style="width:0%"></div>
-          </div>
-        </div>
-        <div id="fileProgressContainer" class="mb-3"></div>
-        <div id="resultsContainer" style="display:none">
-          <h6 class="border-bottom pb-2 mb-3">Results</h6>
-          <div id="resultsList"></div>
+    <!-- ── Torrents (full width) ──────────────────────────── -->
+    <div class="bu-card">
+      <div class="bu-card-head">
+        <div class="bu-square bu-soft-primary"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+        <div>
+          <h2 class="bu-card-title">Torrents</h2>
+          <div class="bu-card-sub">Drop several files at once or add them one by one</div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="closeModalBtn" style="display:none">Close</button>
-        <button type="button" class="btn btn-primary" id="viewTorrentsBtn" style="display:none">
-          <i class="fa-solid fa-eye me-1"></i>View Torrents
+      <div class="bu-card-body">
+
+        <!-- Drag & Drop -->
+        <div class="drop-zone mb-3" tabindex="0" role="button" aria-label="Select torrent files">
+          <div class="bu-drop-icon"><i class="fa-solid fa-file-arrow-up"></i></div>
+          <div class="bu-drop-title">Drag &amp; drop .torrent files here</div>
+          <div class="bu-drop-sub">or <span class="bu-drop-link">click to browse</span>, up to <?= MAX_BATCH_SIZE ?> files</div>
+          <input type="file" id="dragDropFiles" style="display:none" multiple accept=".torrent">
+        </div>
+
+        <!-- Торренты -->
+        <div id="torrentContainer">
+          <div class="torrent-item mb-3">
+            <?= torrentItemHtml(0) ?>
+          </div>
+        </div>
+
+        <button type="button" id="addMore" class="btn rounded-pill bu-btn-dashed w-100">
+          <i class="fa-solid fa-plus me-1"></i>Add another torrent
         </button>
       </div>
     </div>
-  </div>
-</div>
 
-<style>
-.drop-zone:hover { border-color:#0d6efd!important; background:#e7f1ff!important; }
-.torrent-item { transition: border-color .2s; }
-.torrent-item:hover { border-color:#0d6efd; background:#f8f9fa; }
-</style>
+    <!-- ── Sticky action bar ────────────────────────────── -->
+    <div class="bu-actionbar">
+      <div class="bu-actionbar-info">
+        <i class="fa-solid fa-boxes-stacked me-2"></i>In batch: <b class="bu-count"></b> / <?= MAX_BATCH_SIZE ?>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="button" class="btn rounded-pill bu-btn-soft-secondary" onclick="history.back()">
+          <i class="fa-solid fa-arrow-left me-1"></i>Back
+        </button>
+        <button type="submit" class="btn btn-primary rounded-pill px-4" id="batchUploadBtn">
+          <i class="fa-solid fa-cloud-arrow-up me-1"></i>Upload all
+        </button>
+      </div>
+    </div>
+  </form>
+
+  <!-- ── Progress Modal ─────────────────────────────────── -->
+  <div class="modal fade bu-modal" id="batchProgressModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="bu-square bu-soft-primary me-2"><i class="fa-solid fa-spinner fa-spin"></i></div>
+          <h5 class="modal-title">Processing upload</h5>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <div class="d-flex justify-content-between mb-2">
+              <span><i class="fa-solid fa-gauge-high me-1 text-primary"></i>Overall progress</span>
+              <span id="overallProgressPercent" class="fw-bold">0%</span>
+            </div>
+            <div class="progress bu-progress">
+              <div class="progress-bar progress-bar-striped progress-bar-animated" id="overallProgressBar" style="width:0%"></div>
+            </div>
+          </div>
+          <div id="fileProgressContainer" class="mb-3"></div>
+          <div id="resultsContainer" style="display:none">
+            <h6 class="bu-results-title"><i class="fa-solid fa-clipboard-check me-2"></i>Results</h6>
+            <div id="resultsList"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn rounded-pill bu-btn-soft-secondary" id="closeModalBtn" style="display:none">
+            <i class="fa-solid fa-xmark me-1"></i>Close
+          </button>
+          <button type="button" class="btn btn-primary rounded-pill" id="viewTorrentsBtn" style="display:none">
+            <i class="fa-solid fa-eye me-1"></i>View torrents
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Floating BBCode Toolbar ────────────────────────── -->
+  <div id="bbToolbar" class="bu-bbbar d-none" role="toolbar" aria-label="BBCode">
+    <span class="bu-bbbar-label"><i class="fa-solid fa-pen-to-square"></i></span>
+    <button type="button" class="bu-bb" title="Bold" onclick="batchBB('[b]','[/b]')"><i class="fa-solid fa-bold"></i></button>
+    <button type="button" class="bu-bb" title="Italic" onclick="batchBB('[i]','[/i]')"><i class="fa-solid fa-italic"></i></button>
+    <button type="button" class="bu-bb" title="Underline" onclick="batchBB('[u]','[/u]')"><i class="fa-solid fa-underline"></i></button>
+    <button type="button" class="bu-bb" title="Strikethrough" onclick="batchBB('[s]','[/s]')"><i class="fa-solid fa-strikethrough"></i></button>
+    <span class="bu-bb-sep"></span>
+    <button type="button" class="bu-bb" title="Link" onclick="batchBB('[url]','[/url]')"><i class="fa-solid fa-link"></i></button>
+    <button type="button" class="bu-bb" title="Image" onclick="batchBB('[img]','[/img]')"><i class="fa-solid fa-image"></i></button>
+    <button type="button" class="bu-bb" title="YouTube" onclick="batchBB('[video=youtube]','[/video]')"><i class="fa-brands fa-youtube"></i></button>
+    <span class="bu-bb-sep"></span>
+    <button type="button" class="bu-bb" title="Align left" onclick="batchBB('[left]','[/left]')"><i class="fa-solid fa-align-left"></i></button>
+    <button type="button" class="bu-bb" title="Center" onclick="batchBB('[center]','[/center]')"><i class="fa-solid fa-align-center"></i></button>
+    <button type="button" class="bu-bb" title="Align right" onclick="batchBB('[right]','[/right]')"><i class="fa-solid fa-align-right"></i></button>
+    <span class="bu-bb-sep"></span>
+    <button type="button" class="bu-bb" title="Quote" onclick="batchBB('[quote]','[/quote]')"><i class="fa-solid fa-quote-right"></i></button>
+    <button type="button" class="bu-bb" title="Code" onclick="batchBB('[code]','[/code]')"><i class="fa-solid fa-code"></i></button>
+    <button type="button" class="bu-bb" title="Spoiler" onclick="batchBB('[spoiler]','[/spoiler]')"><i class="fa-solid fa-eye-slash"></i></button>
+    <span class="bu-bb-sep"></span>
+    <button type="button" class="btn btn-sm rounded-pill bu-btn-soft-warning" onclick="batchPreview()">
+      <i class="fa-solid fa-eye me-1"></i>Preview
+    </button>
+    <button type="button" class="bu-bb bu-bb-close" title="Hide toolbar" onclick="hideBBToolbar()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <!-- ── BBCode Preview Modal ───────────────────────────── -->
+  <div class="modal fade bu-modal" id="batchPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="bu-square bu-soft-warning me-2"><i class="fa-solid fa-eye"></i></div>
+          <h5 class="modal-title">Description preview</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="batchPreviewBody">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+</div>
 
 <script>
 // Конфигурация передаётся из PHP в JS через единый объект
 const BATCH_CONFIG = {
-    categories:    <?= $categoriesJson ?>,
-    maxTorrents:   <?= MAX_BATCH_SIZE ?>,
-    maxImageBytes: <?= MAX_IMAGE_SIZE ?>,
-    maxScreenshots: <?= (int)($mybb->usergroup['max_screenshots'] ?? 3) ?>,
-    scriptUrl:     <?= json_encode($scriptUrl) ?>,
+    categories:     <?= $categoriesJson ?>,
+    maxTorrents:    <?= MAX_BATCH_SIZE ?>,
+    maxImageBytes:  <?= MAX_IMAGE_SIZE ?>,
+    maxScreenshots: <?= $maxScreens ?>,
+    scriptUrl:      <?= json_encode($scriptUrl) ?>,
+    postKey:        <?= json_encode($mybb->post_code) ?>,
 };
 </script>
-<script src="<?= $BASEURL ?>/admin/scripts/batch_upload.js"></script>
-
-<!-- Floating BBCode Toolbar -->
-<div id="bbToolbar" class="card shadow border-0 d-none"
-     style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9990;min-width:560px;">
-  <div class="card-body p-2 d-flex flex-wrap gap-1 align-items-center">
-    <small class="text-muted me-1"><i class="fas fa-edit"></i></small>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[b]','[/b]')"><strong>B</strong></button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[i]','[/i]')"><em>I</em></button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[u]','[/u]')"><u>U</u></button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[s]','[/s]')">S</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[url]','[/url]')">URL</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[img]','[/img]')"><i class="fas fa-image"></i></button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[center]','[/center]')">Center</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[left]','[/left]')">Left</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[right]','[/right]')">Right</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[quote]','[/quote]')">Quote</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[code]','[/code]')">Code</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[spoiler]','[/spoiler]')">Spoiler</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="batchBB('[video=youtube]','[/video]')">YouTube</button>
-    <button type="button" class="btn btn-sm btn-outline-warning" onclick="batchPreview()"><i class="fas fa-eye"></i> Preview</button>
-    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" onclick="hideBBToolbar()"><i class="fas fa-times"></i></button>
-  </div>
-</div>
-
-<!-- BBCode Preview Modal -->
-<div class="modal fade" id="batchPreviewModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fas fa-eye me-2"></i>Description Preview</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="batchPreviewBody">Loading...</div>
-    </div>
-  </div>
-</div>
-
-<script>
-let _batchActiveTextarea = null;
-
-document.addEventListener('focusin', function(e) {
-    if (!e.target.matches('textarea[name="descriptions[]"]')) return;
-    _batchActiveTextarea = e.target;
-    document.getElementById('bbToolbar').classList.remove('d-none');
-});
-
-document.addEventListener('focusout', function(e) {
-    if (!e.target.matches('textarea[name="descriptions[]"]')) return;
-    setTimeout(() => {
-        if (!document.activeElement?.closest('#bbToolbar') &&
-            !document.activeElement?.matches('textarea[name="descriptions[]"]')) {
-            document.getElementById('bbToolbar').classList.add('d-none');
-        }
-    }, 200);
-});
-
-function hideBBToolbar() {
-    document.getElementById('bbToolbar').classList.add('d-none');
-    _batchActiveTextarea = null;
-}
-
-function batchBB(open, close) {
-    const ta = _batchActiveTextarea;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end   = ta.selectionEnd;
-    const sel   = ta.value.substring(start, end);
-    ta.value    = ta.value.substring(0, start) + open + sel + close + ta.value.substring(end);
-    ta.selectionStart = start + open.length;
-    ta.selectionEnd   = start + open.length + sel.length;
-    ta.focus();
-}
-
-// ── Постер и скриншоты - превью при выборе файлов ───────────
-document.getElementById('batchUploadForm')?.addEventListener('change', function (e) {
-    const target = e.target;
-    if (!(target instanceof HTMLInputElement) || target.type !== 'file') return;
-
-    // Постер (один файл)
-    if (target.name === 'posters[]') {
-        const container = target.closest('.row');
-        const previewDiv = container?.querySelector('.image-preview');
-        const img = previewDiv?.querySelector('img');
-        if (!previewDiv || !img) return;
-
-        const file = target.files[0];
-        if (!file) { previewDiv.style.display = 'none'; img.src = ''; return; }
-
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            img.src = ev.target.result;
-            previewDiv.style.display = 'block';
-        };
-        reader.readAsDataURL(file);
-        return;
-    }
-
-    // Скриншоты (несколько файлов сразу)
-    if (target.name.startsWith('screenshots_') && target.name.endsWith('[]')) {
-        const container = target.closest('.row');
-        const previewDiv = container?.querySelector('.screenshots-preview');
-        if (!previewDiv) return;
-
-        previewDiv.innerHTML = '';
-        Array.from(target.files).forEach(file => {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = document.createElement('img');
-                img.src = ev.target.result;
-                img.className = 'rounded border';
-                img.style.cssText = 'width:70px;height:70px;object-fit:cover;';
-                previewDiv.appendChild(img);
-            };
-            reader.readAsDataURL(file);
-        });
-    }
-});
-
-// ── Genre tag buttons (per torrent row) ─────────────────────
-function toggleBatchGenreTag(btn) {
-    const container = btn.closest('.row');
-    const input = container?.querySelector('.batch-tags-input');
-    if (!input) return;
-
-    const genre = btn.dataset.genre;
-    const color = btn.dataset.color;
-    let current = input.value.split(',').map(s => s.trim()).filter(Boolean);
-
-    const idx = current.indexOf(genre);
-    if (idx === -1) {
-        current.push(genre);
-        btn.classList.add('batch-genre-active');
-        btn.style.background = color;
-        btn.style.color = 'white';
-    } else {
-        current.splice(idx, 1);
-        btn.classList.remove('batch-genre-active');
-        btn.style.background = 'transparent';
-        btn.style.color = color;
-    }
-
-    input.value = current.join(', ');
-}
-
-function clearBatchTags(btn) {
-    const container = btn.closest('.row');
-    if (!container) return;
-
-    const input = container.querySelector('.batch-tags-input');
-    if (input) input.value = '';
-
-    container.querySelectorAll('.batch-genre-tag-btn').forEach(b => {
-        b.classList.remove('batch-genre-active');
-        b.style.background = 'transparent';
-        b.style.color = b.dataset.color;
-    });
-}
-
-function batchPreview() {
-    const ta = _batchActiveTextarea;
-    if (!ta) return;
-    const modal = new bootstrap.Modal(document.getElementById('batchPreviewModal'));
-    document.getElementById('batchPreviewBody').innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i></div>';
-    modal.show();
-
-    fetch('<?= htmlspecialchars($scriptUrl ?? '') ?>&action=bbcode_preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'text=' + encodeURIComponent(ta.value) + '&my_post_key=<?= $mybb->post_code ?>'
-    })
-    .then(r => r.text())
-    .then(text => {
-        const match = text.match(/\{[\s\S]*\}/);
-        if (match) {
-            const data = JSON.parse(match[0]);
-            document.getElementById('batchPreviewBody').innerHTML = data.html || ta.value;
-        } else {
-            document.getElementById('batchPreviewBody').innerHTML = '<pre>' + escapeHtml(ta.value) + '</pre>';
-        }
-    })
-    .catch(() => {
-        document.getElementById('batchPreviewBody').innerHTML = '<pre>' + escapeHtml(ta.value) + '</pre>';
-    });
-}
-</script>
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/batch_upload.js?ver=3"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/batch_upload_ui.js?ver=2"></script>
 
 <?php
     stdfoot();
@@ -1063,127 +974,130 @@ function batchPreview() {
 
 function torrentItemHtml(int $idx): string
 {
-    global $usergroups, $mybb;
+    global $mybb;
     $max_screenshots = (int)($mybb->usergroup['max_screenshots'] ?? 3);
+
+    $batchGenres = [
+        ['Action',      'fa-solid fa-bolt',              '#ff4757'],
+        ['Adventure',   'fa-solid fa-compass',           '#ffa502'],
+        ['Animation',   'fa-solid fa-film',              '#2ed573'],
+        ['Biography',   'fa-solid fa-user-graduate',     '#70a1ff'],
+        ['Comedy',      'fa-solid fa-face-laugh-squint', '#ff6b81'],
+        ['Crime',       'fa-solid fa-gavel',             '#8395a7'],
+        ['Documentary', 'fa-solid fa-video',             '#a4b0be'],
+        ['Drama',       'fa-solid fa-masks-theater',     '#9b8ea9'],
+        ['Family',      'fa-solid fa-people-roof',       '#ff7f50'],
+        ['Fantasy',     'fa-solid fa-dragon',            '#a29bfe'],
+        ['History',     'fa-solid fa-landmark',          '#cd84f1'],
+        ['Horror',      'fa-solid fa-ghost',             '#ff4d4d'],
+        ['Music',       'fa-solid fa-music',             '#1e90ff'],
+        ['Mystery',     'fa-solid fa-magnifying-glass',  '#8e44ad'],
+        ['Romance',     'fa-solid fa-heart',             '#ff6b6b'],
+        ['Sci-Fi',      'fa-solid fa-rocket',            '#00cec9'],
+        ['Sport',       'fa-solid fa-trophy',            '#e1b12c'],
+        ['Thriller',    'fa-solid fa-skull',             '#e17055'],
+        ['War',         'fa-solid fa-person-rifle',      '#7f8c8d'],
+        ['Western',     'fa-solid fa-hat-cowboy',        '#f39c12'],
+    ];
+
     ob_start();
     ?>
-    <div class="row">
+    <button type="button" class="bu-remove-item" title="Remove this torrent" aria-label="Remove this torrent">
+      <i class="fa-solid fa-trash-can"></i>
+    </button>
+    <div class="row g-3">
       <div class="col-md-6">
-        <label class="form-label fw-bold"><i class="fa-solid fa-file-archive me-1"></i>Torrent File *</label>
+        <label class="form-label"><i class="fa-solid fa-file-zipper bu-ic bu-ic-primary"></i>Torrent file <span class="bu-req">*</span></label>
         <input class="form-control" type="file" name="torrentFiles[]" accept=".torrent" required>
         <div class="torrent-name mt-1 small text-muted"></div>
       </div>
       <div class="col-md-6">
-        <label class="form-label fw-bold"><i class="fa-solid fa-image me-1"></i>Poster Image (Optional)</label>
+        <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>Poster <span class="bu-opt">optional</span></label>
         <input class="form-control" type="file" name="posters[]" accept="image/*">
         <div class="image-preview mt-2" style="max-width:150px;display:none">
-          <img src="" class="img-thumbnail" style="max-height:100px">
+          <img src="" class="img-thumbnail" style="max-height:100px" alt="">
         </div>
       </div>
     </div>
-    <div class="row mt-2">
-      <div class="col-md-6">
-        <label class="form-label fw-bold"><i class="fa-solid fa-images me-1"></i>Screenshots (Optional, up to <?= $max_screenshots ?>)</label>
+
+    <div class="row g-3 mt-0">
+      <div class="col-12">
+        <label class="form-label"><i class="fa-solid fa-images bu-ic bu-ic-warning"></i>Screenshots <span class="bu-opt">optional, up to <?= $max_screenshots ?></span></label>
         <input class="form-control" type="file" name="screenshots_<?= $idx ?>[]" accept="image/*" multiple>
         <div class="screenshots-preview mt-2 d-flex flex-wrap gap-2"></div>
       </div>
     </div>
-    <div class="row mt-2">
+
+    <div class="row g-3 mt-0">
       <div class="col-md-6">
-        <label class="form-label">Torrent Name <span class="text-muted fw-normal small">(Optional — uses filename if empty)</span></label>
-        <input type="text" class="form-control torrent-name-input" name="torrent_names[]" placeholder="Leave empty to use filename...">
+        <label class="form-label"><i class="fa-solid fa-heading bu-ic bu-ic-primary"></i>Torrent name <span class="bu-opt">filename if empty</span></label>
+        <input type="text" class="form-control torrent-name-input" name="torrent_names[]" placeholder="Leave empty to use the filename">
       </div>
       <div class="col-md-6">
-        <label class="form-label">Category</label>
+        <label class="form-label"><i class="fa-solid fa-folder-tree bu-ic bu-ic-success"></i>Category</label>
         <?= ts_category_list('batch_categories[]', 0) ?>
       </div>
     </div>
-    <div class="row mt-2">
-      <div class="col-md-12">
-        <label class="form-label">Description</label>
+
+    <div class="row g-3 mt-0">
+      <div class="col-12">
+        <label class="form-label"><i class="fa-solid fa-align-left bu-ic bu-ic-secondary"></i>Description <span class="bu-opt">BBCode supported</span></label>
         <textarea class="form-control batch-desc" name="descriptions[]" rows="5" placeholder="Description..."></textarea>
       </div>
     </div>
-    <div class="row mt-2">
-      <div class="col-md-12">
-        <label class="form-label">Tags <span class="text-muted fw-normal small">(overridden by CSV "tags" column if provided)</span></label>
+
+    <div class="row g-3 mt-0">
+      <div class="col-12">
+        <label class="form-label"><i class="fa-solid fa-tags bu-ic bu-ic-danger"></i>Tags <span class="bu-opt">overridden by the CSV tags column</span></label>
         <div class="input-group mb-2">
-          <span class="input-group-text bg-light border-0"><i class="fas fa-tag text-primary"></i></span>
+          <span class="input-group-text bu-addon"><i class="fa-solid fa-tag"></i></span>
           <input type="text" class="form-control batch-tags-input" name="tags_manual[]" placeholder="Action, Comedy, Drama...">
-          <button type="button" class="btn btn-outline-secondary" onclick="clearBatchTags(this)">
-            <i class="fas fa-eraser me-1"></i>Clear
+          <button type="button" class="btn bu-btn-soft-secondary" onclick="clearBatchTags(this)">
+            <i class="fa-solid fa-eraser me-1"></i>Clear
           </button>
         </div>
-        <div class="d-flex flex-wrap gap-2 mb-2 batch-genre-buttons">
-          <?php
-          $batchGenres = [
-              ['Action',      'fas fa-bolt',              '#ff4757'],
-              ['Adventure',   'fas fa-compass',           '#ffa502'],
-              ['Animation',   'fas fa-film',              '#7bed9f'],
-              ['Biography',   'fas fa-user-graduate',     '#70a1ff'],
-              ['Comedy',      'fas fa-laugh-squint',      '#ff6b81'],
-              ['Crime',       'fas fa-gavel',             '#2f3542'],
-              ['Documentary', 'fas fa-video',             '#a4b0be'],
-              ['Drama',       'fas fa-mask',              '#57606f'],
-              ['Family',      'fas fa-users',             '#ff7f50'],
-              ['Fantasy',     'fas fa-dragon',            '#dfe6e9'],
-              ['History',     'fas fa-landmark',          '#cd84f1'],
-              ['Horror',      'fas fa-ghost',             '#ff4d4d'],
-              ['Music',       'fas fa-music',             '#1e90ff'],
-              ['Mystery',     'fas fa-search',            '#8e44ad'],
-              ['Romance',     'fas fa-heart',             '#ff6b6b'],
-              ['Sci-Fi',      'fas fa-rocket',            '#00cec9'],
-              ['Sport',       'fas fa-trophy',            '#fdcb6e'],
-              ['Thriller',    'fas fa-skull',             '#e17055'],
-              ['War',         'fas fa-fist-raised',       '#636e72'],
-              ['Western',     'fas fa-horse-head',        '#f39c12'],
-          ];
-          foreach ($batchGenres as [$label, $icon, $color]):
-          ?>
+        <div class="d-flex flex-wrap gap-2 batch-genre-buttons">
+          <?php foreach ($batchGenres as [$label, $icon, $color]): ?>
           <button type="button"
                   class="btn btn-sm batch-genre-tag-btn"
                   data-genre="<?= $label ?>"
                   data-color="<?= $color ?>"
                   onclick="toggleBatchGenreTag(this)"
-                  style="border: 1px solid <?= $color ?>80; color: <?= $color ?>;">
+                  style="border-color: <?= $color ?>80; color: <?= $color ?>;">
               <i class="<?= $icon ?> me-1"></i><?= $label ?>
           </button>
           <?php endforeach; ?>
         </div>
       </div>
     </div>
-    <div class="row mt-2">
-      <div class="col-md-12">
-        <label class="form-label fw-bold">
-          <i class="fab fa-imdb text-warning me-1"></i>IMDb URL
-          <span class="text-muted fw-normal small">(Optional)</span>
-        </label>
+
+    <div class="row g-3 mt-0">
+      <div class="col-12">
+        <label class="form-label"><i class="fa-brands fa-imdb bu-ic bu-ic-imdb"></i>IMDb URL <span class="bu-opt">optional</span></label>
         <div class="input-group">
-          <span class="input-group-text bg-light"><i class="fas fa-link"></i></span>
+          <span class="input-group-text bu-addon"><i class="fa-solid fa-link"></i></span>
           <input type="url" class="form-control imdb-url-input" name="imdb_urls[]"
                  placeholder="https://www.imdb.com/title/tt0000000/">
-          <button type="button" class="btn btn-warning btn-fetch-imdb">
-            <i class="fab fa-imdb me-1"></i>Fetch Info
+          <button type="button" class="btn bu-btn-imdb btn-fetch-imdb">
+            <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Fetch info
           </button>
         </div>
         <div class="imdb-preview mt-2" style="display:none;">
-          <div class="card border-0 bg-light">
-            <div class="card-body p-2">
-              <div class="d-flex gap-2 align-items-start">
-                <img class="imdb-poster" src="" alt="Poster"
-                     style="width:50px;height:75px;object-fit:cover;border-radius:4px;display:none;">
-                <div class="flex-grow-1">
-                  <div class="fw-bold imdb-title small">—</div>
-                  <div class="d-flex gap-1 mt-1 flex-wrap">
-                    <span class="badge bg-warning text-dark imdb-year" style="display:none;"></span>
-                    <span class="badge bg-secondary imdb-genre" style="display:none;"></span>
-                    <span class="badge bg-success imdb-rating" style="display:none;"></span>
-                  </div>
-                  <p class="small text-muted mt-1 mb-1 imdb-plot"></p>
-                  <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 btn-imdb-apply-desc">
-                    <i class="fas fa-paste me-1"></i>Add to Description
-                  </button>
+          <div class="bu-imdb-card">
+            <div class="d-flex gap-3 align-items-start">
+              <img class="imdb-poster" src="" alt="Poster"
+                   style="width:56px;height:84px;object-fit:cover;border-radius:6px;display:none;">
+              <div class="flex-grow-1 min-w-0">
+                <div class="fw-bold imdb-title">—</div>
+                <div class="d-flex gap-1 mt-1 flex-wrap">
+                  <span class="badge bu-badge bu-soft-warning imdb-year" style="display:none;"></span>
+                  <span class="badge bu-badge bu-soft-secondary imdb-genre" style="display:none;"></span>
+                  <span class="badge bu-badge bu-soft-success imdb-rating" style="display:none;"></span>
                 </div>
+                <p class="small text-muted mt-2 mb-2 imdb-plot"></p>
+                <button type="button" class="btn btn-sm rounded-pill bu-btn-soft-primary btn-imdb-apply-desc">
+                  <i class="fa-solid fa-paste me-1"></i>Add to description
+                </button>
               </div>
             </div>
           </div>

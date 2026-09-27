@@ -1,13 +1,11 @@
 <?php
 declare(strict_types=1);
 
-
-
 if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-define('C_VERSION', '2.0');
+define('C_VERSION', '2.2');
 
 /**
  * Category Management Module
@@ -16,32 +14,43 @@ class CategoryManager
 {
     private array $errors = [];
     private string $baseScript;
-    
+    private static bool $assetsPrinted = false;
+
+    /** Готовые иконки для выбора (клик в панели вставляет классы в поле) */
+    private const ICONS = [
+        'fa-solid fa-film', 'fa-solid fa-film fa-shake', 'fa-solid fa-clapperboard', 'fa-solid fa-video',
+        'fa-solid fa-photo-film', 'fa-solid fa-tv', 'fa-solid fa-satellite-dish', 'fa-solid fa-compact-disc fa-spin',
+        'fa-solid fa-music', 'fa-solid fa-headphones', 'fa-solid fa-microphone', 'fa-solid fa-gamepad',
+        'fa-solid fa-dice-d20', 'fa-solid fa-book', 'fa-solid fa-book-open', 'fa-solid fa-graduation-cap',
+        'fa-solid fa-laptop-code', 'fa-solid fa-mobile-screen', 'fa-brands fa-windows', 'fa-brands fa-apple',
+        'fa-brands fa-linux', 'fa-brands fa-android', 'fa-solid fa-image', 'fa-solid fa-palette',
+        'fa-solid fa-futbol', 'fa-solid fa-child-reaching', 'fa-solid fa-dragon', 'fa-solid fa-ghost',
+        'fa-solid fa-box-archive', 'fa-solid fa-star', 'fa-solid fa-fire', 'fa-solid fa-question',
+    ];
+
     public function __construct(private $db)
     {
         $this->baseScript = $_SERVER['SCRIPT_NAME'] . '?act=category';
     }
-    
-    /**
-     * Update categories cache
-     */
+
+    // ═══════════════════════════════════════════════════════════
+    // CACHE
+    // ═══════════════════════════════════════════════════════════
+
     public function updateCategoriesCache(): void
     {
         $categoriesC = [];
         $categoriesS = [];
-        
-        // Fetch main categories
+
         $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE type = 'c' ORDER BY name, id");
         while ($query && ($row = $this->db->fetch_array($query))) {
             $categoriesC[] = $row;
         }
-        
-        // Fetch subcategories
         $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE type = 's' ORDER BY name, id");
         while ($query && ($row = $this->db->fetch_array($query))) {
             $categoriesS[] = $row;
         }
-        
+
         $cacheContent = '<?php
 /**
  * Generated Cache#7 - Do Not Alter
@@ -58,164 +67,169 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             $this->addError('Failed to write cache file');
         }
     }
-    
+
+    // ═══════════════════════════════════════════════════════════
+    // UI HELPERS
+    // ═══════════════════════════════════════════════════════════
+
+    private function e(mixed $v): string
+    {
+        return htmlspecialchars((string)$v, ENT_QUOTES);
+    }
+
+    /** Иконка с запасным вариантом — раньше пустое поле icon давало пустое место */
+    private function icon(?string $cls, string $fallback = 'fa-solid fa-folder'): string
+    {
+        $cls = trim((string)$cls);
+        return '<i class="' . $this->e($cls !== '' ? $cls : $fallback) . '"></i>';
+    }
+
     /**
-     * Get icon selector HTML
+     * Поле иконки с живым предпросмотром и сеткой готовых иконок.
+     * Раньше пункт меню делал document.querySelector('input[name=icon]') — на
+     * странице три таких поля (добавление, подкатегория, редактирование), и
+     * выбранная иконка всегда попадала в ПЕРВОЕ, а не в открытую форму.
      */
     public function getIconSelector(string $selected = ''): string
     {
-        $icons = [
-            'fa-solid fa-film fa-shake',
-            'fa-solid fa-compact-disc fa-spin',
-            'fa-solid fa-satellite-dish',
-            'fa-solid fa-clapperboard',
-            'fa-solid fa-tv',
-            'fa-solid fa-question',
-            'fa-solid fa-video',
-            'fa-solid fa-photo-film',
-            'fa-solid fa-music',
-            'fa-solid fa-gamepad'
-        ];
-        
-        $html = '<div class="input-group mb-3">
-            <input type="text" class="form-control" name="icon" value="' . htmlspecialchars($selected, ENT_QUOTES) . '" 
-                   placeholder="Enter Font Awesome icon classes">
-            <button class="btn btn-outline-secondary dropdown-toggle" type="button" 
-                    data-bs-toggle="dropdown" aria-expanded="false">
-                Select Icon
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">';
-        
-        foreach ($icons as $icon) {
-            $html .= '<li>
-                <a class="dropdown-item" href="#" 
-                   onclick="document.querySelector(\'input[name=icon]\').value=\'' . htmlspecialchars($icon, ENT_QUOTES) . '\'; return false;">
-                   <i class="' . htmlspecialchars($icon, ENT_QUOTES) . ' me-2"></i>' . htmlspecialchars($icon, ENT_QUOTES) . '
-                </a>
-            </li>';
+        $grid = '';
+        foreach (self::ICONS as $icon) {
+            $grid .= '<button type="button" class="cm-ico-opt" data-icon="' . $this->e($icon) . '" title="' . $this->e($icon) . '"><i class="' . $this->e($icon) . '"></i></button>';
         }
-        
-        $html .= '</ul>
+
+        return '<div class="cm-icon-picker">
+            <div class="input-group">
+                <span class="input-group-text cm-ico-preview">' . $this->icon($selected, 'fa-solid fa-icons') . '</span>
+                <input type="text" class="form-control font-monospace" name="icon" value="' . $this->e($selected) . '" placeholder="fa-solid fa-film" autocomplete="off">
+                <button class="btn btn-outline-secondary cm-ico-toggle" type="button"><i class="fa-solid fa-table-cells me-1"></i>Pick</button>
             </div>
-            <small class="text-muted">Example: fa-solid fa-film fa-shake. Use <a href="https://fontawesome.com/search" target="_blank">Font Awesome</a> to find icons.</small>';
-        
-        return $html;
+            <div class="cm-ico-grid" hidden>' . $grid . '</div>
+            <div class="form-text"><i class="fa-solid fa-circle-info me-1"></i>Font Awesome classes, e.g. <code>fa-solid fa-film</code> · <a href="https://fontawesome.com/search" target="_blank" rel="noopener">browse icons</a></div>
+        </div>';
     }
-    
-    /**
-     * Get category dropdown list
-     */
-    public function getCategoryDropdown(int $selectedId = 0, string $selectName = 'cid', bool $includeAll = false): string
+
+    public function getCategoryDropdown(int $selectedId = 0, string $selectName = 'cid', bool $includeAll = false, int $excludeId = 0): string
     {
-        $html = '<select name="' . htmlspecialchars($selectName, ENT_QUOTES) . '" 
-                class="form-select form-select-sm border pe-5 w-auto">';
-        
-        if ($includeAll) {
-            $html .= '<option value="0">-- All Categories --</option>';
-        } else {
-            $html .= '<option value="0">-- Select Category --</option>';
-        }
-        
+        $html = '<select name="' . $this->e($selectName) . '" class="form-select">';
+        $html .= '<option value="0">' . ($includeAll ? '— All categories —' : '— None (main category) —') . '</option>';
+
         $query = $this->db->sql_query_prepared("SELECT id, name FROM categories WHERE type = 'c' ORDER BY name");
         while ($query && ($cat = $this->db->fetch_array($query))) {
-            $selected = ($selectedId == (int)$cat['id']) ? ' selected' : '';
+            if ($excludeId && (int)$cat['id'] === $excludeId) continue;
             $html .= sprintf(
                 '<option value="%d"%s>%s</option>',
                 (int)$cat['id'],
-                $selected,
-                htmlspecialchars($cat['name'], ENT_QUOTES)
+                $selectedId === (int)$cat['id'] ? ' selected' : '',
+                $this->e($cat['name'])
             );
         }
-        
-        $html .= '</select>';
-        return $html;
+        return $html . '</select>';
     }
-    
-    /**
-     * Display errors
-     */
+
     public function showErrors(): void
     {
-        global $lang;
-        
         if (empty($this->errors)) {
             return;
         }
-        
-        $errorHtml = implode('<br>', array_map('htmlspecialchars', $this->errors));
-        
-        echo '
-        <div class="container mt-3">
-            <div class="alert alert-danger" role="alert">
-                <h5 class="alert-heading">
-                    <i class="fas fa-exclamation-triangle me-2"></i>' . htmlspecialchars($lang->global['error'] ?? 'Error') . '
-                </h5>
-                <hr>
-                <p class="mb-0">' . $errorHtml . '</p>
-            </div>
-        </div>';
+        echo '<div class="alert alert-danger d-flex gap-2 rounded-4"><i class="fa-solid fa-triangle-exclamation mt-1"></i><div>'
+           . implode('<br>', array_map([$this, 'e'], $this->errors)) . '</div></div>';
     }
-    
-    /**
-     * Add error message
-     */
+
     private function addError(string $message): void
     {
         $this->errors[] = $message;
     }
-    
-    /**
-     * Validate and sanitize input
-     */
+
+    /** URL ассета с cache-busting по mtime файла */
+    private function assetUrl(string $path): string
+    {
+        global $BASEURL;
+        $file = TSDIR . $path;
+        $ver  = is_file($file) ? (string)filemtime($file) : C_VERSION;
+        return $this->e($BASEURL . $path . '?v=' . $ver);
+    }
+
+    private function assets(): void
+    {
+        if (self::$assetsPrinted) return;
+        self::$assetsPrinted = true;
+       
+		   
+		global $BASEURL;
+	
+	   echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/admin_category.css">';  
+	   echo '<script src="' . $BASEURL . '/admin/scripts/admin_category.js"></script>';
+		   
+		   
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // SAVE
+    // ═══════════════════════════════════════════════════════════
+
     private function sanitizeInput(array $input): array
     {
         return [
             'name' => trim((string)($input['name'] ?? '')),
             'icon' => trim((string)($input['icon'] ?? '')),
             'type' => !empty($input['cid']) ? 's' : 'c',
-            'pid' => max(0, (int)($input['cid'] ?? 0))
+            'pid'  => max(0, (int)($input['cid'] ?? 0)),
         ];
     }
-    
-    /**
-     * Save category
-     */
+
     private function saveCategory(array $data, ?int $id = null): bool
     {
-        if (empty($data['name'])) {
+        if ($data['name'] === '') {
             $this->addError('Category name cannot be empty');
             return false;
         }
-        
+
+        if ($data['pid'] > 0) {
+            // Родитель должен существовать и быть главной категорией (дерево в 2 уровня)
+            if (!$this->validateCategoryId($data['pid'], 'c')) {
+                $this->addError('Selected parent category does not exist');
+                return false;
+            }
+            if ($id !== null && $data['pid'] === $id) {
+                $this->addError('A category cannot be its own parent');
+                return false;
+            }
+            // Раньше главную категорию с подкатегориями можно было сделать подкатегорией —
+            // её подкатегории оставались ссылаться на неё и получался третий уровень,
+            // который browse.php и кэш не умеют показывать
+            if ($id !== null && $this->getSubcategoryCount($id) > 0) {
+                $this->addError('This category has subcategories — move or delete them before making it a subcategory');
+                return false;
+            }
+        }
+
         if ($id === null) {
-            // Insert new category
             $sql    = "INSERT INTO categories (name, icon, type, pid) VALUES (?, ?, ?, ?)";
             $params = [$data['name'], $data['icon'], $data['type'], (int)$data['pid']];
         } else {
-            // Update existing category
             $sql    = "UPDATE categories SET name = ?, icon = ?, type = ?, pid = ? WHERE id = ?";
             $params = [$data['name'], $data['icon'], $data['type'], (int)$data['pid'], (int)$id];
         }
-        
-        $result = $this->db->sql_query_prepared($sql, $params);
-        if (!$result) {
+
+        if (!$this->db->sql_query_prepared($sql, $params)) {
             $this->addError('Database error while saving category');
             return false;
         }
-        
+
         $this->updateCategoriesCache();
         return true;
     }
-    
-    /**
-     * Handle form submission
-     */
+
+    // ═══════════════════════════════════════════════════════════
+    // ROUTING
+    // ═══════════════════════════════════════════════════════════
+
     public function handleRequest(): void
     {
         $action = $_GET['do'] ?? $_POST['do'] ?? '';
-        $what = $_GET['what'] ?? $_POST['what'] ?? '';
-        $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
-        $cid = (int)($_GET['cid'] ?? $_POST['cid'] ?? 0);
+        $what   = $_GET['what'] ?? $_POST['what'] ?? '';
+        $id     = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+        $cid    = (int)($_GET['cid'] ?? $_POST['cid'] ?? 0);
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!verify_post_check($_POST['my_post_key'] ?? '')) {
@@ -226,87 +240,62 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
         }
 
         switch ($action) {
-            case 'new':
-                $this->handleNew($what);
-                break;
-            case 'edit':
-                $this->handleEdit($what, $id);
-                break;
-            case 'delete':
-                $this->handleDelete($what, $id);
-                break;
-            case 'add_subcategory':
-                $this->handleAddSubcategory($what, $cid);
-                break;
-            case 'ajax_get_category':
-                $this->ajaxGetCategory($id);
-                break;
-            default:
-                $this->showCategoryList();
-                break;
+            case 'new':             $this->handleNew((string)$what); break;
+            case 'edit':            $this->handleEdit((string)$what, $id); break;
+            case 'delete':          $this->handleDelete((string)$what, $id); break;
+            case 'add_subcategory': $this->handleAddSubcategory((string)$what, $cid); break;
+            case 'ajax_get_category': $this->ajaxGetCategory($id); break;
+            default:                $this->showCategoryList(); break;
         }
     }
-    
-    /**
-     * Handle new category creation
-     */
+
+    // Раньше redirect('admin/index.php?act=category') — из /admin/ это /admin/admin/…
+    private function done(string $message = ''): never
+    {
+        redirect($this->baseScript, $message);
+        exit;
+    }
+
     private function handleNew(string $what): void
     {
         if ($what === 'save') {
             $data = $this->sanitizeInput($_POST);
-            
             if ($this->saveCategory($data)) {
-                redirect('admin/index.php?act=category', 'New category has been successfully added!');
-                exit;
+                $this->done('New category has been successfully added!');
             }
         }
-        
         $this->showCategoryForm('Add Category');
     }
-    
-    /**
-     * Handle category editing
-     */
+
     private function handleEdit(string $what, int $id): void
     {
         if (!$this->validateCategoryId($id)) {
             stderr('Error', 'Category with this ID was not found!');
             return;
         }
-        
         if ($what === 'save') {
             $data = $this->sanitizeInput($_POST);
-            
             if ($this->saveCategory($data, $id)) {
-                redirect($this->baseScript);
-                exit;
+                $this->done('Category has been updated!');
             }
         }
-        
         $category = $this->getCategory($id);
         $this->showCategoryForm('Edit Category', $category);
     }
-    
-    /**
-     * AJAX: Get category data
-     */
+
     private function ajaxGetCategory(int $id): void
     {
+        header('Content-Type: application/json');
         if (!$this->validateCategoryId($id)) {
-            header('Content-Type: application/json');
             echo json_encode(['error' => 'Category not found']);
             exit;
         }
-        
         $category = $this->getCategory($id);
-        header('Content-Type: application/json');
+        $category['has_subs'] = $this->getSubcategoryCount($id) > 0;
         echo json_encode($category);
         exit;
     }
-    
-    /**
-     * Handle category deletion
-     */
+
     private function handleDelete(string $what, int $id): void
     {
         global $mybb;
@@ -316,622 +305,359 @@ $_categoriesS = ' . var_export($categoriesS, true) . ';
             return;
         }
 
-        // Раньше категория удалялась без проверки, используется ли она ещё
-        // раздачами - те оставались бы с "битым" category-ID, указывающим
-        // в никуда (browse.php показывал бы пустое название категории).
         $torrentCount = $this->getTorrentCountForCategory($id);
         if ($torrentCount > 0) {
             stderr('Error', "This category still has {$torrentCount} torrent(s) assigned to it. Please reassign or remove them before deleting the category.");
+            return;
+        }
+        // Раньше главную категорию можно было удалить вместе с «повисшими» подкатегориями
+        $subCount = $this->getSubcategoryCount($id);
+        if ($subCount > 0) {
+            stderr('Error', "This category still has {$subCount} subcategory(ies). Delete or move them first.");
             return;
         }
 
         if ($what === 'sure' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $this->db->sql_query_prepared("DELETE FROM categories WHERE id = ? LIMIT 1", [$id]);
             $this->updateCategoriesCache();
-            redirect('admin/index.php?act=category', 'Category has been successfully deleted!');
-        } else {
-            $category = $this->getCategory($id);
-            
-            echo '<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-header bg-danger text-white">
-                                <h5 class="modal-title" id="deleteModalLabel">
-                                    <i class="fas fa-exclamation-triangle me-2"></i>Delete Confirmation
-                                </h5>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="alert alert-warning">
-                                    <i class="fas fa-warning me-2"></i>
-                                    <strong>Warning!</strong> This action cannot be undone.
-                                </div>
-                                <p>Are you sure you want to delete the category:</p>
-                                <div class="alert alert-light">
-                                    <h6 class="mb-1"><i class="' . htmlspecialchars($category['icon']) . ' me-2"></i>' . htmlspecialchars($category['name']) . '</h6>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                    <i class="fas fa-times me-1"></i>Cancel
-                                </button>
-                                <form method="post" action="' . $this->baseScript . '" class="d-inline">
-                                    <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-                                    <input type="hidden" name="do" value="delete">
-                                    <input type="hidden" name="id" value="' . (int)$id . '">
-                                    <input type="hidden" name="what" value="sure">
-                                    <button type="submit" class="btn btn-danger">
-                                        <i class="fas fa-trash me-1"></i>Delete
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>';
-				
-				
-				echo '
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    var modalEl = document.getElementById("deleteModal");
-    if (modalEl) {
-        var deleteModal = new bootstrap.Modal(modalEl);
-        deleteModal.show();
-    }
-});
-</script>
-';
-				
-				
-            
-            // Return to category list
-            $this->showCategoryList();
+            $this->done('Category has been successfully deleted!');
         }
+
+        $category = $this->getCategory($id);
+        $this->deleteModalHtml = '
+<div class="modal fade cm-modal" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="cm-mh-icon ic-red"><i class="fa-solid fa-trash"></i></span>
+                <h5 class="modal-title fw-bold" id="deleteModalLabel">Delete category</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="cm-note mb-3"><span class="cm-mh-icon cm-mh-sm ic-blue m-0">' . $this->icon($category['icon'] ?? '') . '</span>
+                    <div><div class="fw-bold">' . $this->e($category['name']) . '</div><div class="text-body-secondary small">ID ' . (int)$id . ' · no torrents, no subcategories</div></div></div>
+                <div class="text-body-secondary"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>This action cannot be undone.</div>
+            </div>
+            <div class="modal-footer">
+                <a href="' . $this->baseScript . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+                <form method="post" action="' . $this->baseScript . '" class="d-inline">
+                    <input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">
+                    <input type="hidden" name="do" value="delete">
+                    <input type="hidden" name="id" value="' . (int)$id . '">
+                    <input type="hidden" name="what" value="sure">
+                    <button type="submit" class="btn btn-danger px-3"><i class="fa-solid fa-trash me-1"></i>Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>';
+        // Раньше модалка печаталась ДО stdhead() — то есть до <html>
+        $this->showCategoryList();
     }
-    
-    /**
-     * Handle subcategory addition
-     */
+
+    private string $deleteModalHtml = '';
+
     private function handleAddSubcategory(string $what, int $cid): void
     {
         if (!$this->validateCategoryId($cid, 'c')) {
             stderr('Error', 'Main category with this ID was not found!');
             return;
         }
-        
         if ($what === 'save') {
             $data = $this->sanitizeInput($_POST);
             $data['type'] = 's';
-            $data['pid'] = $cid;
-            
+            $data['pid']  = $cid;
             if ($this->saveCategory($data)) {
-                redirect('admin/index.php?act=category', 'New subcategory has been successfully added!');
-                exit;
+                $this->done('New subcategory has been successfully added!');
             }
         }
-        
-        $parentCategory = $this->getCategory($cid);
-        $this->showSubcategoryForm($parentCategory);
+        $this->showSubcategoryForm($this->getCategory($cid));
     }
-    
-    /**
-     * Show category form (for standalone pages)
-     */
+
+    // ═══════════════════════════════════════════════════════════
+    // STANDALONE FORMS (используются при ошибке сохранения)
+    // ═══════════════════════════════════════════════════════════
+
+    private function pageHero(string $icon, string $cls, string $title, string $sub, string $right = ''): string
+    {
+        return '<div class="cm-card mb-3"><div class="cm-head">'
+             . '<span class="cm-head-icon ' . $cls . '"><i class="fa-solid ' . $icon . '"></i></span>'
+             . '<div class="cm-minw0"><h1 class="cm-title">' . $title . '</h1><div class="cm-sub">' . $sub . '</div></div>'
+             . ($right !== '' ? '<div class="ms-auto d-flex gap-2">' . $right . '</div>' : '')
+             . '</div></div>';
+    }
+
     private function showCategoryForm(string $title, ?array $category = null): void
     {
-        global $lang, $mybb;
-        
+        global $mybb;
+
         $isEdit = ($category !== null);
-        $data = $category ?? [
-            'name' => '',
-            'icon' => '',
-            'type' => 'c',
-            'pid' => 0
-        ];
-        
+        $data = $category ?? ['name' => '', 'icon' => '', 'type' => 'c', 'pid' => 0];
+        if (!empty($_POST['what'])) {           // после ошибки — то, что ввёл пользователь
+            $data['name'] = (string)($_POST['name'] ?? $data['name']);
+            $data['icon'] = (string)($_POST['icon'] ?? $data['icon']);
+            $data['pid']  = (int)($_POST['cid'] ?? $data['pid']);
+        }
+
         stdhead('Manage Categories - ' . $title);
-        
-        echo '<div class="container mt-4">
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="admin/index.php?act=category">Categories</a></li>
-                    <li class="breadcrumb-item active">' . htmlspecialchars($title) . '</li>
-                </ol>
-            </nav>
-            
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3 mb-0">
-                    <i class="fas fa-folder' . ($isEdit ? '-open' : '-plus') . ' me-2"></i>' . htmlspecialchars($title) . '
-                </h1>
-                <a href="' . $this->baseScript . '" class="btn btn-outline-secondary">
-                    <i class="fas fa-times me-1"></i>Cancel
-                </a>
-            </div>';
-        
+        $this->assets();
+
+        echo '<div class="container mt-3 mb-4 cm cm-narrow">';
+        echo $this->pageHero($isEdit ? 'fa-pen-to-square' : 'fa-folder-plus', 'ic-blue', $this->e($title),
+            $isEdit ? 'ID ' . (int)$category['id'] . ' · ' . $this->e($category['name']) : 'Create a main category or a subcategory',
+            '<a href="' . $this->baseScript . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back</a>');
         $this->showErrors();
-        
-        echo '<div class="card shadow-sm">
-                <div class="card-body">
-                    <form method="post" action="' . $this->baseScript . '" novalidate>
-                        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-                        <input type="hidden" name="do" value="' . ($isEdit ? 'edit' : 'new') . '">
-                        <input type="hidden" name="what" value="save">';
-        
-        if ($isEdit) {
-            echo '<input type="hidden" name="id" value="' . (int)$category['id'] . '">';
-        }
-        
-        echo '<div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="name" class="form-label">Category Name *</label>
-                                <input type="text" class="form-control" id="name" name="name" 
-                                       value="' . htmlspecialchars($data['name']) . '" required>
-                                <div class="invalid-feedback">Please enter category name</div>
-                            </div>';
-        
-        if ($isEdit || !$data['pid']) {
-            echo '<div class="col-md-6">
-                                <label class="form-label">Parent Category</label>
-                                ' . $this->getCategoryDropdown((int)$data['pid']) . '
-                            </div>';
-        }
-        
-        echo '<div class="col-md-6">
-                                <label class="form-label">Category Icon</label>
-                                ' . $this->getIconSelector($data['icon']) . '
-                            </div>
-                            
-                            <div class="col-12">
-                                <hr>
-                                <div class="d-flex justify-content-between">
-                                    <button type="submit" class="btn btn-primary px-4">
-                                        <i class="fas fa-save me-2"></i>Save
-                                    </button>
-                                    <button type="reset" class="btn btn-secondary">
-                                        <i class="fas fa-undo me-2"></i>Reset Fields
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
+
+        echo '<form method="post" action="' . $this->baseScript . '" class="cm-card p-3 p-md-4">
+            <input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">
+            <input type="hidden" name="do" value="' . ($isEdit ? 'edit' : 'new') . '">
+            <input type="hidden" name="what" value="save">'
+            . ($isEdit ? '<input type="hidden" name="id" value="' . (int)$category['id'] . '">' : '') . '
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="name" class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="name" name="name" value="' . $this->e($data['name']) . '" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label"><i class="fa-solid fa-sitemap"></i>Parent category</label>
+                    ' . $this->getCategoryDropdown((int)$data['pid'], 'cid', false, $isEdit ? (int)$category['id'] : 0) . '
+                </div>
+                <div class="col-12">
+                    <label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>
+                    ' . $this->getIconSelector((string)$data['icon']) . '
                 </div>
             </div>
-        </div>';
-        
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i>Reset</button>
+                <button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>
+            </div>
+        </form></div>';
+
         stdfoot();
         exit;
     }
-    
-    /**
-     * Show subcategory form
-     */
+
     private function showSubcategoryForm(array $parentCategory): void
     {
         global $mybb;
 
         stdhead('Add Subcategory');
-        
-        echo '<div class="container mt-4">
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="admin/index.php?act=category">Categories</a></li>
-                    <li class="breadcrumb-item active">Add Subcategory</li>
-                </ol>
-            </nav>
-            
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-folder-plus me-2"></i>
-                        Add Subcategory to "' . htmlspecialchars($parentCategory['name']) . '"
-                    </h5>
-                </div>
-                <div class="card-body">';
-        
+        $this->assets();
+
+        echo '<div class="container mt-3 mb-4 cm cm-narrow">';
+        echo $this->pageHero('fa-folder-plus', 'ic-green', 'Add subcategory',
+            'Inside <strong>' . $this->e($parentCategory['name']) . '</strong>',
+            '<a href="' . $this->baseScript . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back</a>');
         $this->showErrors();
-        
-        echo '<form method="post" action="' . $this->baseScript . '">
-                        <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-                        <input type="hidden" name="do" value="add_subcategory">
-                        <input type="hidden" name="what" value="save">
-                        <input type="hidden" name="cid" value="' . (int)$parentCategory['id'] . '">
-                        
-                        <div class="mb-3">
-                            <label for="name" class="form-label">Subcategory Name *</label>
-                            <input type="text" class="form-control" id="name" name="name" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Icon</label>
-                            ' . $this->getIconSelector() . '
-                        </div>
-                        
-                        <div class="d-flex justify-content-between mt-4">
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-plus-circle me-2"></i>Add Subcategory
-                            </button>
-                            <a href="' . $this->baseScript . '" class="btn btn-outline-secondary">Cancel</a>
-                        </div>
-                    </form>
-                </div>
+
+        echo '<form method="post" action="' . $this->baseScript . '" class="cm-card p-3 p-md-4">
+            <input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">
+            <input type="hidden" name="do" value="add_subcategory">
+            <input type="hidden" name="what" value="save">
+            <input type="hidden" name="cid" value="' . (int)$parentCategory['id'] . '">
+            <div class="mb-3">
+                <label for="name" class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="name" name="name" value="' . $this->e($_POST['name'] ?? '') . '" required>
             </div>
-        </div>';
-        
+            <div class="mb-3">
+                <label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>
+                ' . $this->getIconSelector((string)($_POST['icon'] ?? '')) . '
+            </div>
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <a href="' . $this->baseScript . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+                <button type="submit" class="btn btn-success px-4"><i class="fa-solid fa-plus me-1"></i>Add subcategory</button>
+            </div>
+        </form></div>';
+
         stdfoot();
         exit;
     }
-    
-    /**
-     * Show category list with modals
-     */
+
+    // ═══════════════════════════════════════════════════════════
+    // LIST
+    // ═══════════════════════════════════════════════════════════
+
+    private function modal(string $id, string $icon, string $cls, string $title, string $body, string $submit, string $formId = '', string $extraHidden = ''): string
+    {
+        global $mybb;
+        return '
+<div class="modal fade cm-modal" id="' . $id . '" tabindex="-1" aria-labelledby="' . $id . 'Label" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="cm-mh-icon ' . $cls . '"><i class="fa-solid ' . $icon . '"></i></span>
+                <h5 class="modal-title fw-bold" id="' . $id . 'Label">' . $title . '</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="' . $this->baseScript . '"' . ($formId ? ' id="' . $formId . '"' : '') . '>
+                <input type="hidden" name="my_post_key" value="' . $this->e($mybb->post_code) . '">' . $extraHidden . '
+                ' . $body . '
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
+                    ' . $submit . '
+                </div>
+            </form>
+        </div>
+    </div>
+</div>';
+    }
+
     private function showCategoryList(): void
     {
-        global $BASEURL, $mybb;
-        
-        stdhead('Manage Tracker Categories');
-        
-        // Add Category Modal
-        echo '<div class="modal fade" id="addCategoryModal" tabindex="-1" aria-labelledby="addCategoryModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content">
-                        <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title" id="addCategoryModalLabel">
-                                <i class="fas fa-plus-circle me-2"></i>Add New Category
-                            </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <form method="post" action="' . $this->baseScript . '">
-                            <div class="modal-body">
-                                <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-                                <input type="hidden" name="do" value="new">
-                                <input type="hidden" name="what" value="save">
-                                
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label for="modal_name" class="form-label">Category Name *</label>
-                                        <input type="text" class="form-control" id="modal_name" name="name" required>
-                                    </div>
-                                    
-                                    <div class="col-md-6">
-                                        <label class="form-label">Parent Category</label>
-                                        ' . $this->getCategoryDropdown(0, 'cid') . '
-                                    </div>
-                                    
-                                    <div class="col-md-6">
-                                        <label class="form-label">Category Icon</label>
-                                        ' . $this->getIconSelector() . '
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                    <i class="fas fa-times me-1"></i>Cancel
-                                </button>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save me-1"></i>Save
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>';
-        
-        // Edit Category Modal
-        echo '<div class="modal fade" id="editCategoryModal" tabindex="-1" aria-labelledby="editCategoryModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content">
-                        <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title" id="editCategoryModalLabel">
-                                <i class="fas fa-edit me-2"></i>Edit Category
-                            </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <form method="post" action="' . $this->baseScript . '" id="editCategoryForm">
-                            <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-                            <div class="modal-body" id="editCategoryModalBody">
-                                <div class="text-center py-5">
-                                    <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                    <p class="mt-3">Loading category data...</p>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                    <i class="fas fa-times me-1"></i>Cancel
-                                </button>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save me-1"></i>Save Changes
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>';
-        
-        // Add Subcategory Modal
-        echo '<div class="modal fade" id="addSubcategoryModal" tabindex="-1" aria-labelledby="addSubcategoryModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-lg">
-                    <div class="modal-content">
-                        <div class="modal-header bg-success text-white">
-                            <h5 class="modal-title" id="addSubcategoryModalLabel">
-                                <i class="fas fa-plus-circle me-2"></i>Add Subcategory
-                            </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <form method="post" action="' . $this->baseScript . '" id="addSubcategoryForm">
-                            <div class="modal-body">
-                                <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-                                <input type="hidden" name="do" value="add_subcategory">
-                                <input type="hidden" name="what" value="save">
-                                <input type="hidden" name="cid" id="parentCategoryId" value="">
-                                
-                                <div class="alert alert-info">
-                                    <i class="fas fa-info-circle me-2"></i>
-                                    Adding subcategory to: <strong id="parentCategoryName"></strong>
-                                </div>
-                                
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label for="sub_name" class="form-label">Subcategory Name *</label>
-                                        <input type="text" class="form-control" id="sub_name" name="name" required>
-                                    </div>
-                                    
-                                    <div class="col-12">
-                                        <label class="form-label">Subcategory Icon</label>
-                                        ' . $this->getIconSelector() . '
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                                    <i class="fas fa-times me-1"></i>Cancel
-                                </button>
-                                <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-plus-circle me-1"></i>Add Subcategory
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>';
-        
-        echo '<div class="container mt-3">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h1 class="h3 mb-0">
-                        <i class="fas fa-folder-tree me-2"></i>Manage Categories
-                    </h1>
-                    <p class="text-muted mb-0">Manage tracker categories and subcategories</p>
-                </div>
-                <div>
-                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
-                        <i class="fas fa-plus-circle me-2"></i>Add Category
-                    </button>
-                </div>
-            </div>';
-        
-        $this->showErrors();
-        
-        // Fetch categories with their subcategories
-        $categories = [];
-        $subcategories = [];
-        
-        // Get main categories
+        global $BASEURL;
+
+        // Данные: категории, подкатегории, количество раздач (один GROUP BY)
+        $categories = $subcategories = $counts = [];
         $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE type = 'c' ORDER BY name");
         while ($query && ($cat = $this->db->fetch_array($query))) {
-            $categories[$cat['id']] = $cat;
+            $categories[(int)$cat['id']] = $cat;
         }
-        
-        // Get subcategories grouped by parent
         $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE type = 's' ORDER BY name");
         while ($query && ($sub = $this->db->fetch_array($query))) {
-            $subcategories[$sub['pid']][] = $sub;
+            $subcategories[(int)$sub['pid']][] = $sub;
         }
-        
+        $query = $this->db->sql_query_prepared("SELECT category, COUNT(*) AS n FROM torrents GROUP BY category");
+        while ($query && ($r = $this->db->fetch_array($query))) {
+            $counts[(int)$r['category']] = (int)$r['n'];
+        }
+        $n_subs     = array_sum(array_map('count', $subcategories));
+        $n_torrents = array_sum($counts);
+        $all_ids    = array_keys($categories);
+        foreach ($subcategories as $list) {
+            foreach ($list as $s) $all_ids[] = (int)$s['id'];
+        }
+        $n_empty    = count(array_filter($all_ids, fn($cid) => empty($counts[$cid])));
+
+        stdhead('Manage Tracker Categories');
+        $this->assets();
+
+        // ── Модалки ────────────────────────────────────────────
+        echo $this->modal('addCategoryModal', 'fa-folder-plus', 'ic-blue', 'Add category',
+            '<div class="modal-body"><div class="row g-3">
+                <div class="col-md-6"><label for="modal_name" class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="modal_name" name="name" required></div>
+                <div class="col-md-6"><label class="form-label"><i class="fa-solid fa-sitemap"></i>Parent category</label>' . $this->getCategoryDropdown(0, 'cid') . '
+                    <div class="form-text">Leave “None” for a main category</div></div>
+                <div class="col-12"><label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>' . $this->getIconSelector() . '</div>
+            </div></div>',
+            '<button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>',
+            '', '<input type="hidden" name="do" value="new"><input type="hidden" name="what" value="save">');
+
+        echo $this->modal('editCategoryModal', 'fa-pen-to-square', 'ic-blue', 'Edit category',
+            '<div class="modal-body" id="editCategoryModalBody"><div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div></div></div>',
+            '<button type="submit" class="btn btn-primary px-4"><i class="fa-solid fa-floppy-disk me-1"></i>Save changes</button>',
+            'editCategoryForm');
+
+        echo $this->modal('addSubcategoryModal', 'fa-folder-plus', 'ic-green', 'Add subcategory',
+            '<div class="modal-body">
+                <div class="cm-note mb-3"><i class="fa-solid fa-sitemap text-success mt-1"></i><div>Inside <strong id="parentCategoryName"></strong></div></div>
+                <div class="mb-3"><label for="sub_name" class="form-label"><i class="fa-solid fa-tag"></i>Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="sub_name" name="name" required></div>
+                <div><label class="form-label"><i class="fa-solid fa-icons"></i>Icon</label>' . $this->getIconSelector() . '</div>
+            </div>',
+            '<button type="submit" class="btn btn-success px-4"><i class="fa-solid fa-plus me-1"></i>Add subcategory</button>',
+            'addSubcategoryForm',
+            '<input type="hidden" name="do" value="add_subcategory"><input type="hidden" name="what" value="save"><input type="hidden" name="cid" id="parentCategoryId" value="">');
+
+        echo $this->deleteModalHtml;
+
+        // ── Страница ───────────────────────────────────────────
+        echo '<div class="container mt-3 mb-4 cm">';
+        echo $this->pageHero('fa-folder-tree', 'ic-purple', 'Tracker Categories', 'Main categories and their subcategories as shown on Browse',
+            '<button type="button" class="btn btn-primary px-3" data-bs-toggle="modal" data-bs-target="#addCategoryModal"><i class="fa-solid fa-plus me-1"></i>Add category</button>');
+
+        $this->showErrors();
+
+        echo '<div class="row g-3 mb-3">';
+        foreach ([
+            ['fa-folder',      'ic-blue',   'Main categories', count($categories)],
+            ['fa-sitemap',     'ic-green',  'Subcategories',   $n_subs],
+            ['fa-magnet',      'ic-amber',  'Torrents',        $n_torrents],
+            ['fa-folder-open', 'ic-purple', 'Empty',           $n_empty],
+        ] as [$ic, $cls, $label, $val]) {
+            echo '<div class="col-6 col-lg-3"><div class="cm-card cm-stat"><span class="cm-stat-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
+               . '<div><div class="cm-stat-label">' . $label . '</div><div class="cm-stat-value">' . number_format((int)$val) . '</div></div></div></div>';
+        }
+        echo '</div>';
+
         if (empty($categories)) {
-            echo '<div class="alert alert-info">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-info-circle fa-2x me-3"></i>
-                        <div>
-                            <h5 class="alert-heading">No categories created yet</h5>
-                            <p class="mb-0">Start by adding your first category using the button above.</p>
-                        </div>
-                    </div>
-                </div>';
+            echo '<div class="cm-card"><div class="cm-empty"><i class="fa-solid fa-folder-plus"></i><div class="fw-semibold">No categories yet</div>'
+               . '<div class="small mb-3">Create the first one to start organising torrents.</div>'
+               . '<button type="button" class="btn btn-primary px-3" data-bs-toggle="modal" data-bs-target="#addCategoryModal"><i class="fa-solid fa-plus me-1"></i>Add category</button></div></div>';
         } else {
-            echo '<div class="row">';
-            
-            foreach ($categories as $category) {
-                echo '<div class="col-md-6 col-lg-4 mb-4">
-                        <div class="card h-100 shadow-sm">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <div>
-                                    <i class="' . htmlspecialchars($category['icon'] ?? 'fas fa-folder') . ' me-2"></i>
-                                    <strong>' . htmlspecialchars($category['name']) . '</strong>
-                                </div>
-                                <div class="btn-group btn-group-sm">
-                                    <a href="' . $BASEURL . '/browse.php?cat=' . (int)$category['id'] . '" 
-                                       class="btn btn-outline-success" title="View" target="_blank">
-                                        <i class="fas fa-eye"></i>
-                                    </a>
-                                    <button type="button" class="btn btn-outline-primary edit-category-btn" 
-                                            data-id="' . (int)$category['id'] . '" title="Edit">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    <a href="' . $this->baseScript . '&do=delete&id=' . (int)$category['id'] . '" 
-                                       class="btn btn-outline-danger" title="Delete">
-                                        <i class="fas fa-trash"></i>
-                                    </a>
-                                </div>
-                            </div>
-                            
-                            <div class="card-body">
-                                <div class="d-flex justify-content-end align-items-center mb-3">
-                                    <button type="button" class="btn btn-sm btn-outline-success add-subcategory-btn" 
-                                            data-id="' . (int)$category['id'] . '" data-name="' . htmlspecialchars($category['name'], ENT_QUOTES) . '">
-                                        <i class="fas fa-plus me-1"></i>Add Subcategory
-                                    </button>
-                                </div>';
-                
-                // Show subcategories
-                if (!empty($subcategories[$category['id']])) {
-                    echo '<div class="border-top pt-3">
-                            <h6 class="mb-3">
-                                <i class="fas fa-sitemap me-2"></i>Subcategories
-                                <span class="badge bg-primary rounded-pill ms-2">' . count($subcategories[$category['id']]) . '</span>
-                            </h6>
-                            <div class="list-group list-group-flush">';
-                    
-                    foreach ($subcategories[$category['id']] as $sub) {
-                        echo '<div class="list-group-item d-flex justify-content-between align-items-center">
-                                <div>
-                                    <i class="' . htmlspecialchars($sub['icon'] ?? 'fas fa-folder') . ' me-2"></i>
-                                    ' . htmlspecialchars($sub['name']) . '
-                                </div>
-                                <div class="btn-group btn-group-sm">
-                                    <a href="' . $BASEURL . '/browse.php?cat=' . (int)$sub['id'] . '" 
-                                       class="btn btn-sm btn-outline-success" target="_blank">
-                                        <i class="fas fa-eye"></i>
-                                    </a>
-                                    <button type="button" class="btn btn-sm btn-outline-primary edit-category-btn" 
-                                            data-id="' . (int)$sub['id'] . '">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    <a href="' . $this->baseScript . '&do=delete&id=' . (int)$sub['id'] . '" 
-                                       class="btn btn-sm btn-outline-danger">
-                                        <i class="fas fa-trash"></i>
-                                    </a>
-                                </div>
-                              </div>';
+            echo '<div class="d-flex justify-content-end mb-3"><div class="position-relative cm-search"><i class="fa-solid fa-magnifying-glass"></i>'
+               . '<input type="search" class="form-control form-control-sm" id="cmFilter" placeholder="Filter categories…"></div></div>';
+            echo '<div class="row g-3" id="cmGrid">';
+
+            foreach ($categories as $cid => $category) {
+                $subs     = $subcategories[$cid] ?? [];
+                $own      = $counts[$cid] ?? 0;
+                $total    = $own + array_sum(array_map(fn($s) => $counts[(int)$s['id']] ?? 0, $subs));
+                $name     = $this->e($category['name']);
+                $locked   = $own > 0 || $subs;
+                $lock_why = $own > 0 ? 'Has torrents — reassign them first' : 'Has subcategories — remove them first';
+                $search   = mb_strtolower($category['name'] . ' ' . implode(' ', array_column($subs, 'name')));
+
+                echo '<div class="col-md-6 col-xl-4 cm-cat-col" data-search="' . $this->e($search) . '"><div class="cm-card cm-cat">';
+                echo '<div class="cm-cat-head"><span class="cm-cat-icon">' . $this->icon($category['icon'] ?? '') . '</span>'
+                   . '<div class="cm-grow"><div class="cm-cat-name">' . $name . '</div>'
+                   . '<div class="d-flex flex-wrap align-items-center gap-2 mt-1"><span class="cm-id">#' . $cid . '</span>'
+                   . '<span class="cm-count' . ($total ? ' has' : '') . '" title="Torrents in this category and its subcategories"><i class="fa-solid fa-magnet"></i>' . number_format($total) . '</span>'
+                   . '<span class="cm-count"><i class="fa-solid fa-sitemap"></i>' . count($subs) . '</span></div></div>'
+                   . '<div class="d-flex flex-shrink-0">'
+                   . '<a href="' . $BASEURL . '/browse.php?cat=' . $cid . '" class="cm-act" title="View on Browse" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>'
+                   . '<button type="button" class="cm-act edit-category-btn" data-id="' . $cid . '" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+                   . ($locked
+                       ? '<span class="cm-act locked" title="' . $this->e($lock_why) . '"><i class="fa-solid fa-lock"></i></span>'
+                       : '<a href="' . $this->baseScript . '&amp;do=delete&amp;id=' . $cid . '" class="cm-act danger" title="Delete"><i class="fa-solid fa-trash"></i></a>')
+                   . '</div></div>';
+
+                echo '<div class="cm-subs">';
+                if ($subs) {
+                    foreach ($subs as $sub) {
+                        $sid = (int)$sub['id'];
+                        $n   = $counts[$sid] ?? 0;
+                        echo '<div class="cm-subrow"><span class="cm-sub-icon">' . $this->icon($sub['icon'] ?? '', 'fa-solid fa-folder') . '</span>'
+                           . '<span class="cm-sub-name" title="' . $this->e($sub['name']) . '">' . $this->e($sub['name']) . '</span>'
+                           . '<span class="cm-count' . ($n ? ' has' : '') . '"><i class="fa-solid fa-magnet"></i>' . number_format($n) . '</span>'
+                           . '<a href="' . $BASEURL . '/browse.php?cat=' . $sid . '" class="cm-act" title="View" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>'
+                           . '<button type="button" class="cm-act edit-category-btn" data-id="' . $sid . '" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+                           . ($n > 0
+                               ? '<span class="cm-act locked" title="Has torrents — reassign them first"><i class="fa-solid fa-lock"></i></span>'
+                               : '<a href="' . $this->baseScript . '&amp;do=delete&amp;id=' . $sid . '" class="cm-act danger" title="Delete"><i class="fa-solid fa-trash"></i></a>')
+                           . '</div>';
                     }
-                    
-                    echo '</div></div>';
                 } else {
-                    echo '<div class="text-center py-3 text-muted">
-                            <i class="fas fa-inbox fa-2x mb-2"></i>
-                            <p class="mb-0">No subcategories</p>
-                          </div>';
+                    echo '<div class="cm-subs-empty"><i class="fa-solid fa-inbox"></i>No subcategories</div>';
                 }
-                
-                echo '</div></div></div>';
+                echo '</div>';
+
+                echo '<div class="cm-cat-foot"><button type="button" class="btn btn-sm btn-outline-success w-100 add-subcategory-btn" data-id="' . $cid . '" data-name="' . $name . '">'
+                   . '<i class="fa-solid fa-plus me-1"></i>Add subcategory</button></div>';
+                echo '</div></div>';
             }
-            
             echo '</div>';
+            echo '<div class="cm-card mt-3" id="cmNoMatch" hidden><div class="cm-empty"><i class="fa-solid fa-magnifying-glass"></i><div class="fw-semibold">No matches</div></div></div>';
         }
-        
-        echo '</div>'; // container
-    
-
-
-	
-		
-		
-		
-        
-        // JavaScript for modal windows
-        ?>
-        <script>
-document.addEventListener('DOMContentLoaded', function () {
-
-    // Safely JSON-encoded from PHP - immune to backticks/${...} that a raw
-    // addslashes() embed into a template literal would NOT have protected against.
-    const _categoryDropdownHtml = <?php echo json_encode($this->getCategoryDropdown(0, 'cid')); ?>;
-    const _iconSelectorHtml = <?php echo json_encode($this->getIconSelector()); ?>;
-
-    function escapeHtml(text) {
-        if (text === null || text === undefined) return '';
-        return String(text)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-
-    document.querySelectorAll('.edit-category-btn').forEach(function(btn) {
-        btn.addEventListener('click', function () {
-            const categoryId = this.dataset.id;
-            const modalEl = document.getElementById('editCategoryModal');
-            const modalBody = document.getElementById('editCategoryModalBody');
-            const modalLabel = document.getElementById('editCategoryModalLabel');
-
-            const editModal = new bootstrap.Modal(modalEl);
-            editModal.show();
-
-            modalBody.innerHTML = `
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-3">Loading category data...</p>
-                </div>
-            `;
-
-            fetch('<?php echo $this->baseScript; ?>&do=ajax_get_category&id=' + categoryId)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        modalBody.innerHTML = `<div class="alert alert-danger">${escapeHtml(data.error)}</div>`;
-                        return;
-                    }
-
-                    let formHtml = `
-                        <input type="hidden" name="do" value="edit">
-                        <input type="hidden" name="what" value="save">
-                        <input type="hidden" name="id" value="${escapeHtml(data.id)}">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Category Name *</label>
-                                <input type="text" class="form-control" name="name" value="${escapeHtml(data.name)}" required>
-                            </div>
-                            
-                            <div class="col-md-6">
-                                <label class="form-label">Parent Category</label>
-                                ${_categoryDropdownHtml}
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Category Icon</label>
-                                ${_iconSelectorHtml}
-                            </div>
-                        </div>
-                    `;
-
-                    modalBody.innerHTML = formHtml;
-
-                    const selectCid = modalBody.querySelector('select[name="cid"]');
-                    if (selectCid) selectCid.value = data.pid || 0;
-
-                    const inputIcon = modalBody.querySelector('input[name="icon"]');
-                    if (inputIcon) inputIcon.value = data.icon || '';
-
-                    modalLabel.innerHTML = `<i class="fas fa-edit me-2"></i>Edit Category "${escapeHtml(data.name)}"`;
-                })
-                .catch(err => {
-                    modalBody.innerHTML = `<div class="alert alert-danger">Error loading category data</div>`;
-                    console.error(err);
-                });
-        });
-    });
-});
-</script>
-        <?php
-        
+        echo '</div>';
+        // Данные для admin_category.js (шаблоны для модалки редактирования)
+        echo '<script type="application/json" id="cmConfig">' . json_encode([
+            'dropdownHtml'     => $this->getCategoryDropdown(0, 'cid'),
+            'iconSelectorHtml' => $this->getIconSelector(),
+            'baseScript'       => $this->baseScript,
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) . '</script>';
         stdfoot();
     }
-    
-    /**
-     * Get category by ID
-     */
+
+    // ═══════════════════════════════════════════════════════════
+    // DATA
+    // ═══════════════════════════════════════════════════════════
+
     private function getCategory(int $id): ?array
     {
         $query = $this->db->sql_query_prepared("SELECT * FROM categories WHERE id = ?", [$id]);
         if ($query && ($row = $this->db->fetch_array($query))) {
-            // sql_query_prepared() использует нативные prepared statements —
-            // числовые колонки (id, pid) возвращаются как настоящий PHP int,
-            // а не как строка (в отличие от старого mysqli_query()). Явно
-            // приводим обратно к строке, чтобы JSON-ответ AJAX-эндпоинта
-            // (ajaxGetCategory) не менял тип данных для фронтенда.
+            // prepared statements отдают int — для JSON фронтенда оставляем строки, как раньше
             if (isset($row['id']))  $row['id']  = (string)$row['id'];
             if (isset($row['pid'])) $row['pid'] = (string)$row['pid'];
             return $row;
@@ -939,22 +665,18 @@ document.addEventListener('DOMContentLoaded', function () {
         return null;
     }
 
-    /**
-     * Count how many torrents currently use this category - защита перед
-     * удалением, чтобы не оставлять раздачи с "битым" category-ID.
-     */
     private function getTorrentCountForCategory(int $id): int
     {
         $query = $this->db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM torrents WHERE category = ?", [$id]);
-        if ($query && ($row = $this->db->fetch_array($query))) {
-            return (int)$row['cnt'];
-        }
-        return 0;
+        return ($query && ($row = $this->db->fetch_array($query))) ? (int)$row['cnt'] : 0;
     }
-    
-    /**
-     * Validate category ID
-     */
+
+    private function getSubcategoryCount(int $id): int
+    {
+        $query = $this->db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM categories WHERE type = 's' AND pid = ?", [$id]);
+        return ($query && ($row = $this->db->fetch_array($query))) ? (int)$row['cnt'] : 0;
+    }
+
     private function validateCategoryId(int $id, ?string $type = null): bool
     {
         $sql    = "SELECT id FROM categories WHERE id = ?";
@@ -963,7 +685,6 @@ document.addEventListener('DOMContentLoaded', function () {
             $sql .= " AND type = ?";
             $params[] = $type;
         }
-        
         $query = $this->db->sql_query_prepared($sql, $params);
         return $query ? $this->db->num_rows($query) > 0 : false;
     }

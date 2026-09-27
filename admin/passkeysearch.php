@@ -1,974 +1,317 @@
 <?php
 declare(strict_types=1);
 
-
-
 // Access check
 if (!defined('STAFF_PANEL')) {
     http_response_code(403);
-    exit('<div class="alert alert-danger" role="alert">
-        <i class="fas fa-exclamation-triangle"></i> <strong>Error!</strong> Direct initialization of this file is not allowed.
-    </div>');
+    exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-// Define version
-define('PS_VERSION', 'v0.1 by xam');
+define('PS_VERSION', 'v0.2');
 
-// Initialize
-$do = $_POST['do'] ?? $_GET['do'] ?? 0;
-$do = htmlspecialchars((string)$do);
+$do      = (string)($_POST['do'] ?? $_GET['do'] ?? '0');
 $passkey = '';
-$error = null;
-$title = 'Search Results: ';
-
-// Page header
-stdhead('Passkey Search');
-
-
-echo '<link rel="stylesheet" href="'.$BASEURL.'/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
-
-// Handle actions
-if ($do == '2') {
-    handlePasskeyReset();
-} elseif ($do == '1') {
-    handlePasskeySearch();
-}
-
-// Display results or errors
-if (!empty($error)) {
-    displayError($error);
-}
-
-// Display search form
-displaySearchForm();
-
-stdfoot();
+$notice  = null;   // ['type' => success|warning|danger, 'text' => ..., 'icon' => ...]
+$found   = null;
 
 /**
- * Handle passkey reset
+ * Достаём passkey из того, что вставили: сам ключ, announce-URL
+ * (…/announce.php?passkey=…) или ссылку на .torrent — раньше принимался
+ * только «голый» ключ из 32 символов.
  */
-function handlePasskeyReset(): void
+function ps_extract_passkey(string $raw): string
 {
-    global $db, $mybb, $error, $title, $passkey;
+    $raw = strtolower(trim($raw));
+    if (preg_match('/passkey=([a-f0-9]{32})/', $raw, $m)) return $m[1];
+    if (preg_match('/\b([a-f0-9]{32})\b/', $raw, $m))      return $m[1];
+    return $raw;
+}
 
-    // Явная проверка метода - раньше полагались только на verify_post_check(),
-    // а my_post_key читается через get_input(), который принимает значения
-    // и из GET, и из POST. Токен сам по себе всё ещё нужен (обычная CSRF-атака
-    // его не узнает заранее), но GET-ссылка с уже известным токеном (например,
-    // случайно засветившаяся в логах/Referer) могла бы сработать в обход
-    // "только через форму". Доп. барьер, не критичная дыра.
+// ── Действия ─────────────────────────────────────────────────────────
+if ($do === '2') {
+    // Сброс — только POST + CSRF
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        $error = 'Invalid request method.';
-        return;
-    }
-
-    if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
-        $error = 'Security check failed. Please refresh the page and try again.';
-        return;
-    }
-
-    $title = 'Passkey Reset: ';
-    $passkey = trim(strtolower($_POST['passkey'] ?? ''));
-    
-    if (empty($passkey)) {
-        $error = 'Please enter passkey!';
-        return;
-    }
-    
-    if (strlen($passkey) != 32) {
-        $error = 'Invalid Passkey!';
-        return;
-    }
-    
-    $db->sql_query_prepared("UPDATE users SET passkey = '' WHERE passkey = ?", [$passkey]);
-    $affected = $db->affected_rows();
-    
-    if ($affected > 0) {
-        write_log('Passkey reset by staff for passkey: ' . substr($passkey, 0, 8) . '...', 'security', 1);
-        $error = '<i class="fas fa-check-circle text-success"></i> Passkey has been successfully reset for the user!';
+        $notice = ['danger', 'Invalid request method.', 'fa-ban'];
+    } elseif (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+        $notice = ['danger', 'Security check failed. Please refresh the page and try again.', 'fa-shield-halved'];
     } else {
-        $error = '<i class="fas fa-exclamation-circle text-warning"></i> No user found with this passkey.';
-    }
-}
-
-/**
- * Handle passkey search
- */
-function handlePasskeySearch(): void
-{
-    global $db, $error, $title, $passkey, $BASEURL, $_this_script_;
-    
-    $title = 'Passkey Search: ';
-    $passkey = trim(strtolower($_POST['passkey'] ?? ''));
-    
-    if (empty($passkey)) {
-        $error = 'Please enter passkey!';
-        return;
-    }
-    
-    if (strlen($passkey) != 32) {
-        $error = 'Invalid Passkey! Passkey must be exactly 32 characters.';
-        return;
-    }
-    
-    $query = $db->sql_query_prepared('SELECT u.*, g.namestyle FROM users u 
-                            LEFT JOIN usergroups g ON (u.usergroup=g.gid) 
-                            WHERE u.passkey = ?', [$passkey]);
-    
-    if (!$query || $db->num_rows($query) == 0) {
-        $error = '<i class="fas fa-user-slash text-warning"></i> No registered user found with this passkey!';
-        return;
-    }
-    
-    $user = $db->fetch_array($query);
-    displayUserDetails($user);
-}
-
-/**
- * Display user details
- */
-function displayUserDetails(array $user): void
-{
-    global $passkey, $BASEURL, $_this_script_, $mybb;
-    
-    include_once INC_PATH . '/functions_ratio.php';
-    
-    // Format dates
-    $lastseen = formatDateTime($user['lastactive'] ?? 0);
-    $joindate = formatDateTime($user['added'] ?? 0);
-    $ratio = get_user_ratio((float)($user['uploaded'] ?? 0), (float)($user['downloaded'] ?? 0));
-    
-    // Format avatar
-    $avatar_html = '<i class="fas fa-user fa-4x text-primary bg-light p-4 rounded-circle"></i>';
-    if (isset($user['avatar']) && function_exists('format_avatar')) {
-        $useravatar = format_avatar($user['avatar'], $user['avatardimensions'] ?? '');
-        
-        if (!empty($useravatar['image'])) {
-            if (str_starts_with($useravatar['image'], '<')) {
-                $avatar_html = $useravatar['image'];
+        $passkey = ps_extract_passkey((string)($_POST['passkey'] ?? ''));
+        if (!preg_match('/^[a-f0-9]{32}$/', $passkey)) {
+            $notice = ['danger', 'Invalid passkey — it must be 32 hexadecimal characters.', 'fa-circle-xmark'];
+        } else {
+            $uq   = $db->sql_query_prepared("SELECT id, username FROM users WHERE passkey = ? LIMIT 1", [$passkey]);
+            $user = $uq ? $db->fetch_array($uq) : null;
+            $db->sql_query_prepared("UPDATE users SET passkey = '' WHERE passkey = ?", [$passkey]);
+            if ($db->affected_rows() > 0) {
+                write_log('Passkey of ' . ($user['username'] ?? 'unknown') . ' reset by ' . ($CURUSER['username'] ?? 'staff') . ' (' . substr($passkey, 0, 8) . '…)', 'security', 1);
+                $notice = ['success', 'The passkey of <strong>' . htmlspecialchars((string)($user['username'] ?? 'the user')) . '</strong> has been reset. They need a new passkey and must re-download their .torrent files.', 'fa-circle-check'];
+                $passkey = '';
             } else {
-                $avatar_html = '<img class="rounded-circle img-fluid border border-3 border-primary" src="' . 
-                               htmlspecialchars($useravatar['image']) . '" alt="User Avatar" ' . 
-                               ($useravatar['width_height'] ?? 'width="128" height="128"') . ' />';
+                $notice = ['warning', 'No user has this passkey (maybe it was already reset).', 'fa-user-slash'];
             }
         }
     }
-    
-    // Get member's permissions
-    $memperms = [];
-    if (function_exists('user_permissions')) {
-        $perms = user_permissions((int)($user['id'] ?? 0));
-        if (is_array($perms)) {
-            $memperms = $perms;
+} elseif ($do === '1') {
+    $passkey = ps_extract_passkey((string)($_POST['passkey'] ?? $_GET['passkey'] ?? ''));
+    if ($passkey === '') {
+        $notice = ['danger', 'Please enter a passkey.', 'fa-keyboard'];
+    } elseif (!preg_match('/^[a-f0-9]{32}$/', $passkey)) {
+        $notice = ['danger', 'Invalid passkey — it must be exactly 32 hexadecimal characters (0-9, a-f).', 'fa-circle-xmark'];
+    } else {
+        $q = $db->sql_query_prepared('SELECT u.*, g.title AS gtitle, g.image AS gimage FROM users u LEFT JOIN usergroups g ON (u.usergroup = g.gid) WHERE u.passkey = ?', [$passkey]);
+        $found = ($q && $db->num_rows($q) > 0) ? $db->fetch_array($q) : null;
+        if (!$found) {
+            $notice = ['warning', 'No registered user has this passkey.', 'fa-user-slash'];
         }
     }
-    
-    // Set display group
-    $displaygroupfields = ["title", "description", "namestyle", "usertitle", "stars", "starimage", "image"];
-    
-    if (empty($user['displaygroup'])) {
-        $user['displaygroup'] = $user['usergroup'] ?? 0;
-    }
-    
-    if (function_exists('usergroup_displaygroup')) {
-        $display_group = usergroup_displaygroup((int)($user['displaygroup']));
-        
-        if (is_array($display_group)) {
-            $memperms = array_merge($memperms, $display_group);
-        }
-    }
-    
-    // Safely get usertitle
-    $usertitle = $memperms['image'] ?? '';
-    $username_formatted = htmlspecialchars($user['username'] ?? '');
-    
-    if (function_exists('format_name')) {
-        $username_formatted = format_name($user['username'] ?? '', $user['usergroup'] ?? 0);
-    }
-    
-    // Get profile link
-    $profile_link = '#';
-    if (function_exists('get_profile_link')) {
-        $profile_link = get_profile_link($user['id'] ?? 0);
-    }
-    
-    echo '
-    <div class="container mt-4">
-        <!-- Header -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card border-0 bg-primary text-white shadow-lg">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h4 class="card-title mb-1">
-                                    <i class="fas fa-key me-2"></i>Passkey Search Results
-                                </h4>
-                                <p class="mb-0 opacity-75">
-                                    <i class="fas fa-fingerprint me-1"></i>
-                                    <code class="text-light bg-primary bg-opacity-25 px-2 py-1 rounded">' . 
-                                    htmlspecialchars($passkey) . '</code>
-                                </p>
-                            </div>
-                            <div class="text-end">
-                                <span class="badge bg-light text-primary fs-6 shadow-sm">
-                                    <i class="fas fa-check-circle me-1"></i> User Found
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- User Info Card -->
-        <div class="row mb-4">
-            <div class="col-lg-4">
-                <div class="card border-0 shadow-lg h-100">
-                    <div class="card-header bg-white border-0 py-4">
-                        <h5 class="mb-0 text-center">
-                            <i class="fas fa-user-circle me-2 text-primary"></i>User Profile
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="text-center mb-4">
-                            <div class="user-avatar mb-3 position-relative d-inline-block">
-                                <div class="avatar-wrapper">
-                                    ' . $avatar_html . '
-                                </div>
-                                <div class="online-status position-absolute bottom-0 end-0">
-                                    ' . (($lastseen['full'] !== 'Never' && time() - (int)($user['lastactive'] ?? 0) < 300) ? 
-                                    '<span class="badge bg-success p-1"><i class="fas fa-circle"></i> Online</span>' : 
-                                    '<span class="badge bg-secondary p-1"><i class="fas fa-circle"></i> Offline</span>') . '
-                                </div>
-                            </div>
-                            <h4 class="mb-2 fw-bold">' . $username_formatted . '</h4>
-                            <div class="mb-3">
-                                ' . (!empty($usertitle) ? '<div class="badge bg-primary bg-opacity-10 text-primary">' . $usertitle . '</div>' : '') . '
-                            </div>
-                            <a href="' . htmlspecialchars($BASEURL) . '/' . $profile_link . '" 
-                               class="btn btn-primary btn-sm shadow-sm">
-                               <i class="fas fa-external-link-alt me-1"></i> View Full Profile
-                            </a>
-                        </div>
-                        <div class="list-group list-group-flush">
-                            <div class="list-group-item d-flex justify-content-between align-items-center py-3">
-                                <span class="text-muted"><i class="fas fa-envelope me-2"></i>Email</span>
-                                <span class="fw-medium text-truncate" style="max-width: 180px;" title="' . 
-                                htmlspecialchars($user['email'] ?? '') . '">
-                                    ' . htmlspecialchars($user['email'] ?? '') . '
-                                </span>
-                            </div>
-                            <div class="list-group-item d-flex justify-content-between align-items-center py-3">
-                                <span class="text-muted"><i class="fas fa-network-wired me-2"></i>IP Address</span>
-                                <span class="fw-medium">
-                                    <code class="bg-light px-2 py-1 rounded">' . htmlspecialchars($user['ipaddress'] ?? '') . '</code>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            
-            <!-- Statistics -->
-          
-            <div class="col-lg-8">
-                <div class="card border-0 shadow-lg h-100">
-                    <div class="card-header bg-white border-0 py-4">
-                        <h5 class="mb-0">
-                            <i class="fas fa-chart-line me-2 text-success"></i>User Statistics
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <div class="card border-0 bg-opacity-10 h-100">
-                                    <div class="card-body text-center p-4">
-                                        <div class="text-success mb-3">
-                                            <i class="fas fa-upload fa-3x"></i>
-                                        </div>
-                                        <h2 class="mb-2 fw-bold">' . mksize($user['uploaded'] ?? 0) . '</h2>
-                                        <p class="text-muted mb-0">Total Uploaded</p>
-                                        <div class="mt-3">
-                                            <small class="text-success">
-                                                <i class="fas fa-arrow-up me-1"></i>
-                                                ' . mksize($user['uploaded'] ?? 0) . '
-                                            </small>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="card border-0 bg-opacity-10 h-100">
-                                    <div class="card-body text-center p-4">
-                                        <div class="text-danger mb-3">
-                                            <i class="fas fa-download fa-3x"></i>
-                                        </div>
-                                        <h2 class="mb-2 fw-bold">' . mksize($user['downloaded'] ?? 0) . '</h2>
-                                        <p class="text-muted mb-0">Total Downloaded</p>
-                                        <div class="mt-3">
-                                            <small class="text-danger">
-                                                <i class="fas fa-arrow-down me-1"></i>
-                                                ' . mksize($user['downloaded'] ?? 0) . '
-                                            </small>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Ratio Card -->
-                        
-						 <div class="row mt-4">
-                            <div class="col-12">
-                            <div class="col-12">
-                                <div class="card border-light">
-                                    <div class="card-body text-center">
-                                        <div class="mb-2">
-                                            <i class="fas fa-balance-scale fa-2x ' . getRatioColorClass($ratio) . '"></i>
-                                        </div>
-                                        <h2 class="mb-1 ' . getRatioColorClass($ratio) . '">' . $ratio . '</h2>
-                                        <p class="text-muted mb-0">Current Ratio</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-						</div>
-						
-						
-						
-                    </div>
-                </div>
-            </div>
-        </div>
-			
-			
-        
-        
-        <!-- Details Table -->
-        <div class="card border-0 shadow-lg">
-            <div class="card-header bg-white border-0 py-4">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">
-                        <i class="fas fa-info-circle me-2 text-info"></i>Detailed Information
-                    </h5>
-                    <div class="btn-group">
-                        <form method="post" action="' . htmlspecialchars($_this_script_) . '" style="display:inline">
-                            <input type="hidden" name="do" value="2">
-                            <input type="hidden" name="passkey" value="' . htmlspecialchars($passkey) . '">
-                            <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">
-                            <button type="submit" class="btn btn-outline-danger btn-sm"
-                               onclick="return confirm(\'⚠️ Are you sure you want to reset this passkey?\\\\n\\\\nThis will:\\\\n• Invalidate current passkey\\\\n• Require user to generate new one\\\\n• Disrupt active downloads\')">
-                               <i class="fas fa-key me-1"></i> Reset Passkey
-                            </button>
-                        </form>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="copyToClipboard(\'' . 
-                        htmlspecialchars($passkey) . '\')">
-                            <i class="fas fa-copy me-1"></i> Copy Passkey
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th><i class="fas fa-calendar-plus me-1"></i> Registration</th>
-                                <th><i class="fas fa-clock me-1"></i> Last Activity</th>
-                                <th><i class="fas fa-key me-1"></i> Passkey Status</th>
-                                <th><i class="fas fa-users me-1"></i> User Group</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="me-3 text-primary bg-primary bg-opacity-10 p-2 rounded">
-                                            <i class="fas fa-user-plus"></i>
-                                        </div>
-                                        <div>
-                                            <div class="fw-medium">' . $joindate['date'] . '</div>
-                                            <small class="text-muted d-block">' . $joindate['time'] . '</small>
-                                            <small class="text-muted">' . getTimeAgo($user['added'] ?? 0) . '</small>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="me-3 text-warning bg-warning bg-opacity-10 p-2 rounded">
-                                            <i class="fas fa-eye"></i>
-                                        </div>
-                                        <div>
-                                            <div class="fw-medium">' . $lastseen['date'] . '</div>
-                                            <small class="text-muted d-block">' . $lastseen['time'] . '</small>
-                                            <small class="text-muted">' . getTimeAgo($user['lastactive'] ?? 0) . '</small>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="me-3 text-success bg-success bg-opacity-10 p-2 rounded">
-                                            <i class="fas fa-check-circle"></i>
-                                        </div>
-                                        <div>
-                                            <div class="fw-medium">Active & Valid</div>
-                                            <small class="text-muted d-block">
-                                                <code class="bg-light p-1 rounded font-monospace">' . 
-                                                substr(htmlspecialchars($passkey), 0, 8) . '...' . substr(htmlspecialchars($passkey), -8) . 
-                                                '</code>
-                                            </small>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                       
-                                        <div>
-                                            <div class="fw-medium">' . htmlspecialchars($memperms['title'] ?? 'Member') . '</div>
-                                            ' . (!empty($usertitle) ? 
-                                            '<small class="text-muted d-block">' . $usertitle . '</small>' : '') . '
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Passkey Security Notice -->
-    <div class="container mt-4">
-        <div class="alert alert-warning border-warning">
-            <div class="d-flex">
-                <div class="flex-shrink-0">
-                    <i class="fas fa-exclamation-triangle fa-2x text-warning"></i>
-                </div>
-                <div class="flex-grow-1 ms-3">
-                    <h5 class="alert-heading">⚠️ Security Notice</h5>
-                    <p class="mb-2">This passkey is actively linked to a user account. Resetting it will:</p>
-                    <ul class="mb-2">
-                        <li>Invalidate all current torrent downloads using this passkey</li>
-                        <li>Require the user to generate a new passkey from their profile</li>
-                        <li>Disrupt any active seeding/leeching sessions</li>
-                    </ul>
-                    <div class="row mt-3">
-                        <div class="col-md-6">
-                            <p class="mb-1"><strong>Passkey Format:</strong></p>
-                            <code class="d-block bg-light p-2 rounded font-monospace">32-character hexadecimal (a-f, 0-9)</code>
-                        </div>
-                        <div class="col-md-6">
-                            <p class="mb-1"><strong>Passkey Preview:</strong></p>
-                            <code class="d-block bg-light p-2 rounded font-monospace">
-                                ' . chunk_split(htmlspecialchars($passkey), 8, ' ') . '
-                            </code>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- JavaScript -->
-    <script>
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(function() {
-            // Show success message
-            const alert = document.createElement("div");
-            alert.className = "alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3";
-            alert.innerHTML = `
-                <i class="fas fa-check-circle me-2"></i>
-                <strong>Passkey copied to clipboard!</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            document.body.appendChild(alert);
-            
-            // Auto remove after 3 seconds
-            setTimeout(() => {
-                alert.remove();
-            }, 3000);
-        }).catch(function(err) {
-            alert("Failed to copy: " + err);
-        });
-    }
-    
-    // Add animation to ratio bar
-    document.addEventListener("DOMContentLoaded", function() {
-        const ratioBar = document.querySelector(".progress-bar");
-        if (ratioBar) {
-            setTimeout(() => {
-                ratioBar.style.transition = "width 1.5s ease-in-out";
-            }, 500);
-        }
-    });
-    </script>
-    
-    <style>
-    .user-avatar .avatar-wrapper {
-        position: relative;
-        display: inline-block;
-    }
-    .user-avatar img {
-        border: 3px solid #4361ee;
-        box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
-        transition: transform 0.3s ease;
-    }
-    .user-avatar img:hover {
-        transform: scale(1.05);
-    }
-    .online-status .badge {
-        font-size: 0.7rem;
-        padding: 0.25rem 0.5rem;
-        border: 2px solid white;
-    }
-    .bg-gradient-primary {
-        background: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
-    }
-    .bg-gradient-success {
-        background: linear-gradient(135deg, #4ade80 0%, #16a34a 100%);
-    }
-    .bg-gradient-danger {
-        background: linear-gradient(135deg, #f87171 0%, #dc2626 100%);
-    }
-    .card {
-        border-radius: 15px;
-        overflow: hidden;
-    }
-    .list-group-item {
-        border-left: none;
-        border-right: none;
-        transition: background-color 0.2s;
-    }
-    .list-group-item:hover {
-        background-color: rgba(67, 97, 238, 0.05);
-    }
-    .ratio-display {
-        animation: float 3s ease-in-out infinite;
-    }
-    @keyframes float {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-10px); }
-    }
-    </style>';
 }
 
-/**
- * Get ratio background class
- */
-function getRatioBgClass(string $ratio): string
-{
-    $numeric = (float)str_replace(['∞', '---'], ['999', '0'], $ratio);
-    
-    if ($numeric >= 2.0) return 'bg-success bg-opacity-10';
-    if ($numeric >= 1.0) return 'bg-primary bg-opacity-10';
-    if ($numeric >= 0.5) return 'bg-warning bg-opacity-10';
-    return 'bg-danger bg-opacity-10';
-}
+stdhead('Passkey Search');
+echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/userclass.css" type="text/css" media="screen" />';
+ps_styles();
 
-/**
- * Get ratio progress class
- */
-function getRatioProgressClass(string $ratio): string
-{
-    $numeric = (float)str_replace(['∞', '---'], ['999', '0'], $ratio);
-    
-    if ($numeric >= 2.0) return 'bg-success';
-    if ($numeric >= 1.0) return 'bg-primary';
-    if ($numeric >= 0.5) return 'bg-warning';
-    return 'bg-danger';
-}
-
-/**
- * Get ratio percentage for progress bar
- */
-function getRatioPercentage(string $ratio): float
-{
-    $numeric = (float)str_replace(['∞', '---'], ['999', '0'], $ratio);
-    
-    if ($numeric >= 2.0) return 100;
-    if ($numeric >= 1.0) return 75;
-    if ($numeric >= 0.5) return 50;
-    if ($numeric > 0) return 25;
-    return 0;
-}
-
-/**
- * Get time ago string
- */
-function getTimeAgo(int|string $datetime): string
-{
-    // added/lastactive хранятся как Unix-timestamp (int) - та же причина
-    // TypeError, что была в formatDateTime(). strtotime() ожидает строку
-    // с датой, а не готовый timestamp, поэтому применяем её только если
-    // реально пришла строка.
-    if (empty($datetime) || $datetime === '0000-00-00 00:00:00') {
-        return 'Never';
-    }
-    
-    $time = is_int($datetime) ? $datetime : strtotime($datetime);
-    if ($time === false) {
-        return 'Never';
-    }
-    $diff = time() - $time;
-    
-    if ($diff < 60) return 'Just now';
-    if ($diff < 3600) return floor($diff / 60) . ' minutes ago';
-    if ($diff < 86400) return floor($diff / 3600) . ' hours ago';
-    if ($diff < 604800) return floor($diff / 86400) . ' days ago';
-    if ($diff < 2592000) return floor($diff / 604800) . ' weeks ago';
-    if ($diff < 31536000) return floor($diff / 2592000) . ' months ago';
-    return floor($diff / 31536000) . ' years ago';
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
- * Format date and time
- */
-function formatDateTime(int|string $datetime): array
-{
-    global $dateformat, $timeformat;
-
-    // lastactive/added в БД хранятся как Unix-timestamp (int), не строка
-    // даты - раньше сигнатура ожидала string, что и давало TypeError.
-    // '0' - тот же смысл "нет значения", что раньше был у
-    // '0000-00-00 00:00:00' для строкового варианта.
-    if (empty($datetime) || $datetime === '0000-00-00 00:00:00') {
-        return [
-            'date' => '<span class="text-muted">N/A</span>',
-            'time' => '',
-            'full' => '<span class="text-muted">Never</span>'
-        ];
-    }
-    
-    return [
-        'date' => my_datee($dateformat, $datetime),
-        'time' => my_datee($timeformat, $datetime),
-        'full' => my_datee($dateformat, $datetime) . ' ' . my_datee($timeformat, $datetime)
-    ];
-}
-
-/**
- * Get ratio color class
- */
-function getRatioColorClass(string $ratio): string
-{
-    $numeric = (float)str_replace(['∞', '---'], ['999', '0'], $ratio);
-    
-    if ($numeric >= 2.0) return 'text-success';
-    if ($numeric >= 1.0) return 'text-primary';
-    if ($numeric >= 0.5) return 'text-warning';
-    return 'text-danger';
-}
-
-/**
- * Display error message
- */
-function displayError(string $error): void
-{
-    global $title, $passkey;
-    
-    $isError = str_contains($error, 'Error') || str_contains($error, 'Invalid') || str_contains($error, 'Please');
-    $alertClass = $isError ? 'danger' : 'warning';
-    $icon = $isError ? 'exclamation-circle' : 'exclamation-triangle';
-    
-    echo '
-    <div class="container mt-4">
-        <div class="card border-' . $alertClass . ' shadow-sm">
-            <div class="card-header bg-' . $alertClass . ' text-white border-0">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">
-                        <i class="fas fa-' . $icon . ' me-2"></i>' . $title . '
-                    </h5>
-                    ' . (!empty($passkey) ? '
-                    <span class="badge bg-light text-dark">
-                        <i class="fas fa-fingerprint me-1"></i>' . substr($passkey, 0, 8) . '...' . '
-                    </span>' : '') . '
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="alert alert-' . $alertClass . ' mb-0">
-                    <div class="d-flex align-items-center">
-                        <div class="me-3">
-                            <i class="fas fa-' . $icon . ' fa-2x"></i>
-                        </div>
-                        <div>
-                            ' . $error . '
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>';
-}
-
-/**
- * Display search form
- */
-function displaySearchForm(): void
-{
-    global $passkey;
-    
-    echo '
-    <div class="container mt-4">
-        <!-- Search Header -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card border-0 bg-primary text-white shadow-lg">
-                    <div class="card-body text-center py-5">
-                        <i class="fas fa-search fa-4x mb-4 opacity-50"></i>
-                        <h1 class="display-6 mb-3">Passkey Search Tool</h1>
-                        <p class="lead mb-0 opacity-75">
-                            Search user accounts by their unique 32-character passkey
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Search Form -->
-        <div class="row justify-content-center">
-            <div class="col-lg-8">
-                <div class="card border-0 shadow-lg">
-                    <div class="card-header bg-white border-0 py-4">
-                        <h3 class="text-center mb-0">
-                            <i class="fas fa-key me-2 text-primary"></i>Enter Passkey
-                        </h3>
-                    </div>
-                    <div class="card-body p-5">
-                        <form method="post" action="' . htmlspecialchars($_SERVER['SCRIPT_NAME']) . '" id="passkeyForm">
-                            <input type="hidden" name="act" value="passkeysearch">
-                            <input type="hidden" name="do" value="1">
-                            
-                            <div class="mb-4">
-                                <label for="passkeyInput" class="form-label fw-bold">
-                                    <i class="fas fa-fingerprint me-1"></i>Passkey (32 characters)
-                                </label>
-                                <div class="input-group input-group-lg">
-                                    <span class="input-group-text bg-light border-end-0">
-                                        <i class="fas fa-key text-muted"></i>
-                                    </span>
-                                    <input type="text" 
-                                           id="passkeyInput"
-                                           name="passkey" 
-                                           class="form-control border-start-0 form-control-lg" 
-                                           placeholder="Enter 32-character passkey..."
-                                           value="' . htmlspecialchars($passkey) . '"
-                                           pattern="[a-f0-9]{32}"
-                                           maxlength="32"
-                                           required>
-                                    <button class="btn btn-primary" type="button" id="generateSample">
-                                        <i class="fas fa-random"></i>
-                                    </button>
-                                </div>
-                                <div class="form-text">
-                                    <i class="fas fa-info-circle me-1"></i>
-                                    Enter the exact 32-character hexadecimal passkey (a-f, 0-9)
-                                </div>
-                            </div>
-                            
-                            <div class="d-grid gap-3">
-                                <button type="submit" class="btn btn-primary btn-lg">
-                                    <i class="fas fa-search me-2"></i> Search Passkey
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary" id="clearForm">
-                                    <i class="fas fa-eraser me-2"></i> Clear Form
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Info Cards -->
-        <div class="row mt-5">
-            <div class="col-md-4 mb-4">
-                <div class="card border-0 h-100 shadow-sm">
-                    <div class="card-body text-center">
-                        <div class="text-primary mb-3">
-                            <i class="fas fa-user-secret fa-3x"></i>
-                        </div>
-                        <h5 class="card-title">User Identification</h5>
-                        <p class="card-text text-muted">
-                            Each user has a unique 32-character passkey for secure torrent access
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-4">
-                <div class="card border-0 h-100 shadow-sm">
-                    <div class="card-body text-center">
-                        <div class="text-success mb-3">
-                            <i class="fas fa-shield-alt fa-3x"></i>
-                        </div>
-                        <h5 class="card-title">Security</h5>
-                        <p class="card-text text-muted">
-                            Passkeys enhance security by providing unique identifiers for each user
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-4">
-                <div class="card border-0 h-100 shadow-sm">
-                    <div class="card-body text-center">
-                        <div class="text-warning mb-3">
-                            <i class="fas fa-exclamation-triangle fa-3x"></i>
-                        </div>
-                        <h5 class="card-title">Reset Caution</h5>
-                        <p class="card-text text-muted">
-                            Resetting a passkey will require the user to generate a new one
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- JavaScript -->
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const passkeyInput = document.getElementById("passkeyInput");
-        const generateBtn = document.getElementById("generateSample");
-        const clearBtn = document.getElementById("clearForm");
-        const form = document.getElementById("passkeyForm");
-        
-        // Generate sample passkey
-        if (generateBtn) {
-            generateBtn.addEventListener("click", function() {
-                const chars = "0123456789abcdef";
-                let result = "";
-                for (let i = 0; i < 32; i++) {
-                    result += chars.charAt(Math.floor(Math.random() * chars.length));
-                }
-                passkeyInput.value = result;
-                passkeyInput.focus();
-                passkeyInput.select();
-            });
-        }
-        
-        // Clear form
-        if (clearBtn) {
-            clearBtn.addEventListener("click", function() {
-                passkeyInput.value = "";
-                passkeyInput.focus();
-            });
-        }
-        
-        // Validate passkey format
-        if (form) {
-            form.addEventListener("submit", function(e) {
-                const value = passkeyInput.value.trim();
-                if (value.length !== 32) {
-                    e.preventDefault();
-                    alert("Passkey must be exactly 32 characters!");
-                    passkeyInput.focus();
-                    return false;
-                }
-                if (!/^[a-f0-9]{32}$/i.test(value)) {
-                    e.preventDefault();
-                    alert("Passkey must contain only hexadecimal characters (0-9, a-f)!");
-                    passkeyInput.focus();
-                    return false;
-                }
-                return true;
-            });
-        }
-        
-        // Auto-format passkey
-        if (passkeyInput) {
-            passkeyInput.addEventListener("input", function() {
-                this.value = this.value.toLowerCase().replace(/[^a-f0-9]/g, "").slice(0, 32);
-            });
-        }
-    });
-    </script>
-    
-    <style>
-    .bg-gradient-dark {
-        background: linear-gradient(135deg, #2c3e50 0%, #4a6491 100%);
-    }
-    .bg-gradient-primary {
-        background: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
-    }
-    .user-avatar {
-        display: inline-block;
-        position: relative;
-    }
-    .user-avatar::after {
-        content: "";
-        position: absolute;
-        top: -5px;
-        left: -5px;
-        right: -5px;
-        bottom: -5px;
-        background: linear-gradient(45deg, #4361ee, #4cc9f0);
-        border-radius: 50%;
-        z-index: -1;
-        opacity: 0.3;
-    }
-    .card {
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    .card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
-    }
-    .table th {
-        border-top: none;
-        border-bottom: 2px solid #e9ecef;
-        font-weight: 600;
-        text-transform: uppercase;
-        font-size: 0.85rem;
-        letter-spacing: 0.5px;
-    }
-    .list-group-item {
-        border-left: none;
-        border-right: none;
-        padding: 1rem 0;
-    }
-    .list-group-item:first-child {
-        border-top: none;
-    }
-    .list-group-item:last-child {
-        border-bottom: none;
-    }
-    </style>';
-}
+$self = htmlspecialchars((string)($_this_script_ ?? $_SERVER['SCRIPT_NAME']));
+$key  = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
 ?>
+<div class="container mt-3 mb-4 ps">
+
+    <div class="ps-card mb-3"><div class="ps-head">
+        <span class="ps-head-icon"><i class="fa-solid fa-fingerprint"></i></span>
+        <div style="min-width:0">
+            <h1 class="ps-title">Passkey Search</h1>
+            <div class="ps-sub">Find the account behind a passkey — paste the key, an announce URL or a .torrent link</div>
+        </div>
+        <span class="ps-ver ms-auto"><i class="fa-solid fa-code-branch me-1"></i><?= PS_VERSION ?></span>
+    </div></div>
+
+    <form method="post" action="<?= $self ?>" class="ps-card p-3 mb-3" id="passkeyForm">
+        <input type="hidden" name="act" value="passkeysearch">
+        <input type="hidden" name="do" value="1">
+        <div class="input-group input-group-lg">
+            <span class="input-group-text"><i class="fa-solid fa-key"></i></span>
+            <input type="text" id="passkeyInput" name="passkey" class="form-control font-monospace"
+                   placeholder="32-character passkey or announce URL…" value="<?= htmlspecialchars($passkey) ?>" required autocomplete="off" spellcheck="false">
+            <button class="btn btn-outline-secondary" type="button" id="clearForm" title="Clear"><i class="fa-solid fa-xmark"></i></button>
+            <button class="btn btn-primary px-4" type="submit" id="psGo"><i class="fa-solid fa-magnifying-glass me-1"></i>Search</button>
+        </div>
+        <div class="ps-hint mt-2" id="psHint"><i class="fa-solid fa-circle-info me-1"></i>32 hexadecimal characters (0-9, a-f)</div>
+    </form>
+
+<?php if ($notice): [$ntype, $ntext, $nicon] = $notice; ?>
+    <div class="ps-notice is-<?= $ntype ?> mb-3"><i class="fa-solid <?= $nicon ?>"></i><div><?= $ntext ?></div></div>
+<?php endif; ?>
+
+<?php if ($found):
+    include_once INC_PATH . '/functions_ratio.php';
+    $u        = $found;
+    $uid      = (int)$u['id'];
+    $name     = (string)$u['username'];
+    $up       = (float)($u['uploaded'] ?? 0);
+    $down     = (float)($u['downloaded'] ?? 0);
+    $ratio    = get_user_ratio($up, $down);
+    $rnum     = (float)str_replace(['∞', '---', ','], ['999', '0', ''], strip_tags((string)$ratio));
+    $rcls     = $rnum >= 2 ? 'is-good' : ($rnum >= 1 ? 'is-ok' : ($rnum >= .5 ? 'is-warn' : 'is-bad'));
+    $last     = (int)($u['lastactive'] ?? 0);
+    $online   = $last > 0 && TIMENOW - $last < 300;
+    // format_name получал ник без экранирования
+    $nameHtml = function_exists('format_name') ? format_name(htmlspecialchars($name), (int)$u['usergroup']) : htmlspecialchars($name);
+    $profile  = $BASEURL . '/' . (function_exists('get_profile_link') ? get_profile_link($uid) : 'userdetails.php?id=' . $uid);
+
+    $av = function_exists('format_avatar') ? format_avatar($u['avatar'] ?? '', $u['avatardimensions'] ?? '') : [];
+    $avatar = (!empty($av['image']) && empty($av['is_placeholder']) && !str_starts_with((string)$av['image'], '<'))
+        ? '<img src="' . htmlspecialchars((string)$av['image']) . '" alt="">'
+        : htmlspecialchars(mb_strtoupper(mb_substr($name !== '' ? $name : '?', 0, 1)));
+
+    // Активные раздачи с этим аккаунтом (для оценки, что сломает сброс)
+    $seed = $leech = 0;
+    $pq = $db->sql_query_prepared("SELECT seeder, COUNT(*) AS n FROM peers WHERE userid = ? GROUP BY seeder", [$uid]);
+    while ($pq && ($p = $db->fetch_array($pq))) {
+        if ($p['seeder'] === 'yes') $seed = (int)$p['n']; else $leech = (int)$p['n'];
+    }
+    $dt = static fn(int $t): string => $t > 0 ? my_datee('relative', $t) : '<span class="text-body-secondary">never</span>';
+?>
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <div class="ps-card h-100 ps-profile">
+                <div class="ps-avatar-wrap">
+                    <span class="ps-avatar"><?= $avatar ?></span>
+                    <span class="ps-dot <?= $online ? 'on' : '' ?>" title="<?= $online ? 'Online' : 'Offline' ?>"></span>
+                </div>
+                <div class="ps-name"><?= $nameHtml ?></div>
+                <div class="ps-muted mb-2">
+                    <?= htmlspecialchars((string)($u['gtitle'] ?? 'Member')) ?> · ID <?= $uid ?>
+                    <?php if (!empty($u['gimage']) && str_starts_with(trim((string)$u['gimage']), '<')): ?><span class="ms-1"><?= $u['gimage'] ?></span><?php endif; ?>
+                </div>
+                <span class="ps-tag <?= $online ? 't-on' : 't-off' ?> mb-3"><i class="fa-solid fa-circle"></i><?= $online ? 'Online now' : 'Last seen ' . strip_tags($dt($last)) ?></span>
+                <a href="<?= htmlspecialchars($profile) ?>" class="btn btn-primary btn-sm px-3" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Open profile</a>
+                <div class="ps-rows mt-3">
+                    <div class="ps-row"><span><i class="fa-solid fa-envelope"></i>Email</span><b title="<?= htmlspecialchars((string)($u['email'] ?? '')) ?>"><?= htmlspecialchars((string)($u['email'] ?? '—')) ?></b></div>
+                    <div class="ps-row"><span><i class="fa-solid fa-network-wired"></i>IP</span><b class="font-monospace"><?= htmlspecialchars((string)($u['ipaddress'] ?? '—')) ?></b></div>
+                    <div class="ps-row"><span><i class="fa-solid fa-user-plus"></i>Joined</span><b><?= $dt((int)($u['added'] ?? 0)) ?></b></div>
+                    <div class="ps-row"><span><i class="fa-solid fa-eye"></i>Last active</span><b><?= $dt($last) ?></b></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-green"><i class="fa-solid fa-upload"></i></span><div><div class="ps-kpi-label">Uploaded</div><div class="ps-kpi-value"><?= mksize($up) ?></div></div></div></div>
+                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-red"><i class="fa-solid fa-download"></i></span><div><div class="ps-kpi-label">Downloaded</div><div class="ps-kpi-value"><?= mksize($down) ?></div></div></div></div>
+                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-blue"><i class="fa-solid fa-scale-balanced"></i></span><div><div class="ps-kpi-label">Ratio</div><div class="ps-kpi-value ps-ratio <?= $rcls ?>"><?= $ratio ?></div></div></div></div>
+                <div class="col-6 col-md-3"><div class="ps-card ps-kpi"><span class="ps-kpi-icon ic-teal"><i class="fa-solid fa-tower-broadcast"></i></span><div><div class="ps-kpi-label">Active now</div><div class="ps-kpi-value"><?= $seed ?> <small class="ps-muted">seed</small> · <?= $leech ?> <small class="ps-muted">leech</small></div></div></div></div>
+            </div>
+
+            <div class="ps-card">
+                <div class="ps-sec-head"><span class="ps-sec-icon ic-purple"><i class="fa-solid fa-key"></i></span>
+                    <div><h2 class="ps-sec-title">Passkey</h2><div class="ps-muted">Linked to this account</div></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="psCopy" data-key="<?= htmlspecialchars($passkey) ?>"><i class="fa-regular fa-copy me-1"></i>Copy</button></div>
+                <div class="p-3">
+                    <!-- Раньше формат ключа показывался дважды, а статус «Active & Valid» был зашит -->
+                    <div class="ps-key"><?= htmlspecialchars(trim(chunk_split($passkey, 8, ' '))) ?></div>
+
+                    <div class="ps-notice is-warning mt-3 mb-0">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <div>
+                            <div class="fw-bold mb-1">Resetting the passkey</div>
+                            <ul class="mb-2 ps-3">
+                                <li>stops every .torrent downloaded with it — <strong><?= $seed + $leech ?></strong> active session(s) right now;</li>
+                                <li>the user needs to re-download their .torrent files;</li>
+                                <li>is logged in the site log.</li>
+                            </ul>
+                            <form method="post" action="<?= $self ?>" id="psResetForm" class="d-inline">
+                                <input type="hidden" name="act" value="passkeysearch">
+                                <input type="hidden" name="do" value="2">
+                                <input type="hidden" name="passkey" value="<?= htmlspecialchars($passkey) ?>">
+                                <input type="hidden" name="my_post_key" value="<?= $key ?>">
+                                <button type="submit" class="btn btn-danger btn-sm px-3"><i class="fa-solid fa-rotate me-1"></i>Reset passkey</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    document.getElementById('psResetForm').addEventListener('submit', function (e) {
+        // Раньше строка confirm() была экранирована так, что вместо переносов выводилось «\\n»
+        if (!confirm('Reset the passkey of <?= addslashes(htmlspecialchars($name)) ?>?\n\n• All their .torrent files stop working\n• <?= $seed + $leech ?> active session(s) will be dropped')) e.preventDefault();
+    });
+    document.getElementById('psCopy').addEventListener('click', function () {
+        navigator.clipboard?.writeText(this.dataset.key).then(() => {
+            this.innerHTML = '<i class="fa-solid fa-check me-1"></i>Copied';
+            setTimeout(() => { this.innerHTML = '<i class="fa-regular fa-copy me-1"></i>Copy'; }, 1500);
+        });
+    });
+    </script>
+<?php elseif (!$notice): ?>
+    <div class="row g-3">
+        <?php foreach ([
+            ['fa-user-secret',  'ic-blue',  'Who is it?',  'Every account has its own 32-character passkey inside each .torrent it downloads.'],
+            ['fa-link',         'ic-green', 'Paste a URL', 'An announce URL like …/announce.php?passkey=… works too — the key is extracted.'],
+            ['fa-rotate',       'ic-amber', 'Leaked key?', 'Reset it from the result: old .torrent files stop working right away.'],
+        ] as [$ic, $cls, $t, $d]): ?>
+        <div class="col-md-4"><div class="ps-card ps-kpi align-items-start"><span class="ps-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
+            <div><div class="fw-bold mb-1"><?= $t ?></div><div class="ps-muted"><?= $d ?></div></div></div></div>
+        <?php endforeach; ?>
+    </div>
+<?php endif; ?>
+</div>
+
+<script>
+(function () {
+    const input = document.getElementById('passkeyInput'), hint = document.getElementById('psHint');
+    // Из вставленного URL вытаскиваем ключ прямо в браузере
+    function normalize() {
+        const v = input.value.trim().toLowerCase();
+        const m = v.match(/passkey=([a-f0-9]{32})/) || v.match(/\b([a-f0-9]{32})\b/);
+        if (m && m[1] !== v) input.value = m[1];
+        const k = input.value.trim().toLowerCase();
+        const ok = /^[a-f0-9]{32}$/.test(k);
+        input.classList.toggle('is-valid', ok);
+        input.classList.toggle('is-invalid', k.length > 0 && !ok && k.length >= 32);
+        hint.className = 'ps-hint mt-2' + (ok ? ' ok' : '');
+        hint.innerHTML = ok ? '<i class="fa-solid fa-circle-check me-1"></i>Looks like a valid passkey'
+                            : '<i class="fa-solid fa-circle-info me-1"></i>32 hexadecimal characters (0-9, a-f)' + (k ? ' · ' + k.length + '/32' : '');
+    }
+    input.addEventListener('input', normalize);
+    input.addEventListener('paste', () => setTimeout(normalize, 0));
+    document.getElementById('clearForm').addEventListener('click', () => { input.value = ''; normalize(); input.focus(); });
+    document.getElementById('passkeyForm').addEventListener('submit', e => {
+        normalize();
+        if (!/^[a-f0-9]{32}$/.test(input.value.trim().toLowerCase())) { e.preventDefault(); input.classList.add('is-invalid'); input.focus(); }
+    });
+    // Раньше тут была кнопка «сгенерировать случайный ключ» — поиск по случайному ключу ничего не находит
+    normalize();
+})();
+</script>
+<?php
+stdfoot();
+
+/**
+ * Стили страницы. Раньше стили меняли .card (с transform при наведении),
+ * .table th и .list-group-item на всей странице, включая шапку сайта.
+ */
+function ps_styles(): void
+{
+    echo <<<'HTML'
+<style>
+.ps { font-size: 1.055rem; }
+.ps .ps-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.ps .ps-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
+.ps .ps-head-icon, .ps .ps-kpi-icon, .ps .ps-sec-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ps .ps-head-icon { width: 50px; height: 50px; font-size: 1.4rem; border-radius: .9rem; color: #7c3aed; background: rgba(124,58,237,.12); }
+.ps .ps-title { font-size: 1.48rem; font-weight: 700; margin: 0; }
+.ps .ps-sub { color: var(--bs-secondary-color); font-size: 1rem; }
+.ps .ps-muted { font-size: .9rem; color: var(--bs-secondary-color); }
+.ps .ps-ver { font-size: .82rem; font-weight: 700; padding: .25rem .7rem; border-radius: 50rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color-translucent); }
+.ps .ic-blue   { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.12); }
+.ps .ic-green  { color: #16a34a; background: rgba(34,197,94,.12); }
+.ps .ic-amber  { color: #d97706; background: rgba(245,158,11,.14); }
+.ps .ic-red    { color: #dc2626; background: rgba(239,68,68,.12); }
+.ps .ic-purple { color: #7c3aed; background: rgba(124,58,237,.12); }
+.ps .ic-teal   { color: #0891b2; background: rgba(8,145,178,.12); }
+.ps .btn { border-radius: 50rem; }
+.ps .input-group-lg > .form-control { font-size: 1.1rem; }
+.ps .input-group > :first-child { border-top-left-radius: 50rem !important; border-bottom-left-radius: 50rem !important; padding-left: 1.1rem; }
+.ps .input-group > :last-child { border-top-right-radius: 50rem !important; border-bottom-right-radius: 50rem !important; }
+.ps .input-group > .btn:not(:last-child) { border-radius: 0; }
+.ps .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.ps .ps-hint { font-size: .88rem; color: var(--bs-secondary-color); }
+.ps .ps-hint.ok { color: #16a34a; }
+
+.ps .ps-notice { display: flex; gap: .8rem; padding: .9rem 1.1rem; border-radius: 1rem; border: 1px solid; }
+.ps .ps-notice > i { font-size: 1.2rem; margin-top: .15rem; }
+.ps .ps-notice.is-success { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.07); } .ps .ps-notice.is-success > i { color: #16a34a; }
+.ps .ps-notice.is-warning { border-color: rgba(245,158,11,.4);  background: rgba(245,158,11,.07); } .ps .ps-notice.is-warning > i { color: #d97706; }
+.ps .ps-notice.is-danger  { border-color: rgba(239,68,68,.4);   background: rgba(239,68,68,.06); } .ps .ps-notice.is-danger > i { color: #dc2626; }
+
+.ps .ps-profile { text-align: center; padding: 1.5rem 1.25rem; }
+.ps .ps-avatar-wrap { position: relative; display: inline-block; margin-bottom: .75rem; }
+.ps .ps-avatar { width: 104px; height: 104px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; font-size: 2.4rem; font-weight: 700; color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); box-shadow: 0 0 0 4px var(--bs-body-bg), 0 0 0 5px var(--bs-border-color-translucent); }
+.ps .ps-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ps .ps-dot { position: absolute; right: 6px; bottom: 6px; width: 18px; height: 18px; border-radius: 50%; background: #9ca3af; box-shadow: 0 0 0 3px var(--bs-body-bg); }
+.ps .ps-dot.on { background: #22c55e; }
+.ps .ps-name { font-size: 1.3rem; font-weight: 700; overflow-wrap: anywhere; }
+.ps .ps-tag { display: inline-flex; align-items: center; gap: .35rem; padding: .15rem .65rem; border-radius: 50rem; font-size: .82rem; font-weight: 600; }
+.ps .ps-tag i { font-size: .5rem; }
+.ps .t-on  { color: #15803d; background: rgba(34,197,94,.1); }
+.ps .t-off { color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
+.ps .ps-rows { text-align: left; }
+.ps .ps-row { display: flex; justify-content: space-between; gap: .75rem; padding: .5rem 0; border-top: 1px dashed var(--bs-border-color-translucent); font-size: .95rem; }
+.ps .ps-row span { color: var(--bs-secondary-color); white-space: nowrap; }
+.ps .ps-row span i { width: 1.3rem; }
+.ps .ps-row b { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+
+.ps .ps-kpi { display: flex; align-items: center; gap: .8rem; padding: .9rem 1.05rem; height: 100%; }
+.ps .ps-kpi-icon { width: 44px; height: 44px; border-radius: .8rem; font-size: 1.1rem; }
+.ps .ps-kpi-label { font-size: .8rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.ps .ps-kpi-value { font-size: 1.3rem; font-weight: 700; line-height: 1.2; }
+.ps .ps-ratio.is-good { color: #16a34a; } .ps .ps-ratio.is-ok { color: var(--bs-primary); } .ps .ps-ratio.is-warn { color: #d97706; } .ps .ps-ratio.is-bad { color: #dc2626; }
+
+.ps .ps-sec-head { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--bs-border-color-translucent); }
+.ps .ps-sec-icon { width: 40px; height: 40px; border-radius: .75rem; font-size: 1.05rem; }
+.ps .ps-sec-title { font-weight: 700; font-size: 1.12rem; margin: 0; }
+.ps .ps-key { font-family: var(--bs-font-monospace); font-size: 1.25rem; font-weight: 700; letter-spacing: .06em; padding: .8rem 1rem; border-radius: .85rem; background: var(--bs-tertiary-bg); text-align: center; overflow-wrap: anywhere; }
+</style>
+HTML;
+}

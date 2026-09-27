@@ -3,9 +3,14 @@
 declare(strict_types=1);
 
 /*******************************************************************************
- * Max Login Attempts Manager v3.0
- * PHP 8.5+ Modernized Version
- * Enhanced with AJAX, Live Search, Filters & SweetAlert2
+ * Login Security Manager v3.2
+ * Failed login attempts + login history (login_log)
+ * PHP 8.5+ · AJAX · live search · filters · SweetAlert2
+ *
+ * Assets (no inline CSS/JS in this file):
+ *   /admin/templates/maxlogin.css   — all page styles
+ *   /admin/scripts/maxlogin-ui.js   — config bootstrap, copy IP, empty-state buttons
+ *   /admin/scripts/maxlogin.js      — AJAX table logic (both tabs)
  ******************************************************************************/
 
 // Security check
@@ -14,13 +19,189 @@ if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><b>Access Denied:</b> Direct access not permitted.</div>');
 }
 
+/**
+ * One maxlogin.js serves both tabs (attempts + log). Previously the attempts
+ * tab loaded /admin/scripts/maxlogin.js and the log tab /scripts/maxlogin.js,
+ * so one of them always returned 404.
+ */
+const MAXLOGIN_JS = '/admin/scripts/maxlogin.js';
+const MAXLOGIN_UI_JS = '/admin/scripts/maxlogin-ui.js';
+const MAXLOGIN_CSS = '/admin/templates/maxlogin.css';
+const MAXLOGIN_ASSET_VER = '3.2';
 
+/**
+ * Public URL of a local asset with a cache-busting ?v= (file mtime,
+ * falls back to MAXLOGIN_ASSET_VER if the file can't be found on disk).
+ */
+function maxlogin_asset_url(string $path): string
+{
+    global $BASEURL;
+
+    $root = rtrim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''), '/\\');
+    $file = $root . $path;
+    $ver = ($root !== '' && is_file($file)) ? (string) filemtime($file) : MAXLOGIN_ASSET_VER;
+
+    return htmlspecialchars($BASEURL . $path . '?v=' . $ver, ENT_QUOTES);
+}
+
+/**
+ * Page config for maxlogin.js as a non-executable JSON block
+ * (read by maxlogin-ui.js into window[...]). JSON_HEX_* keep "</script>"
+ * and quotes from breaking out of the block.
+ */
+function maxlogin_config_tag(string $elementId, array $config): string
+{
+    $json = json_encode(
+        $config,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
+    );
+
+    return "<script type=\"application/json\" id=\"{$elementId}\">{$json}</script>";
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SHARED UI HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Page stylesheet (scoped under .ml-wrap), printed once per page.
+ * The CSS itself lives in /admin/templates/maxlogin.css.
+ */
+function maxlogin_styles(): string
+{
+    static $printed = false;
+    if ($printed) {
+        return '';
+    }
+    $printed = true;
+
+    $href = maxlogin_asset_url(MAXLOGIN_CSS);
+
+    return "<link rel=\"stylesheet\" href=\"{$href}\">\n";
+}
+
+/**
+ * Loads SweetAlert2 + the post key once per page (previously it was loaded
+ * twice: sweetalert2.all.min.js in the router and sweetalert2.min.js here).
+ */
+function maxlogin_assets(): string
+{
+    static $printed = false;
+    if ($printed) {
+        return '';
+    }
+    $printed = true;
+
+    global $mybb, $BASEURL;
+    $postKey = htmlspecialchars((string) $mybb->post_code, ENT_QUOTES);
+
+    return <<<HTML
+    <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/sweetalert2.min.css">
+    <script src="{$BASEURL}/scripts/sweetalert2.min.js"></script>
+    <input type="hidden" id="maxloginPostKey" value="{$postKey}">
+    HTML;
+}
+
+/** Sort header link with an active-state arrow. */
+function maxlogin_sort_link(string $class, string $key, string $label, string $current, string $dir): string
+{
+    $isActive = $key === $current;
+    $icon = $isActive ? ($dir === 'ASC' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort';
+    $active = $isActive ? ' is-active' : '';
+
+    // maxlogin.js rewrites every <i> inside a sort link (and takes the first one
+    // as the arrow), so decorative label icons are rendered as <span>.
+    $label = str_replace(['<i ', '</i>'], ['<span ', '</span>'], $label);
+
+    return "<a href=\"#\" class=\"ml-sort {$class}{$active}\" data-order=\"{$key}\">{$label} <i class=\"fa-solid {$icon}\"></i></a>";
+}
+
+/** Pill pagination; $linkClass keeps the class the external JS listens to. */
+function maxlogin_pager(int $current, int $total, int $totalRows, string $linkClass): string
+{
+    $fmt = number_format($totalRows);
+
+    if ($total <= 1) {
+        return "<div class=\"ml-pager\"><span class=\"ml-muted\"><i class=\"fa-solid fa-list-ol me-2\"></i>{$fmt} records</span></div>";
+    }
+
+    $pages = '';
+    $start = max(1, $current - 2);
+    $end   = min($total, $current + 2);
+    for ($i = $start; $i <= $end; $i++) {
+        $active = $i === $current ? ' active' : '';
+        $aria   = $i === $current ? ' aria-current="page"' : '';
+        $pages .= "<li class=\"page-item{$active}\"><a class=\"page-link {$linkClass}\" href=\"#\" data-page=\"{$i}\"{$aria}>{$i}</a></li>";
+    }
+
+    $prevDis = $current === 1 ? ' disabled' : '';
+    $nextDis = $current === $total ? ' disabled' : '';
+    $prev    = max(1, $current - 1);
+    $next    = min($total, $current + 1);
+
+    return <<<HTML
+    <div class="ml-pager">
+        <span class="ml-muted"><i class="fa-solid fa-book-open me-2"></i>Page {$current} of {$total}, {$fmt} records</span>
+        <nav aria-label="Page navigation">
+            <ul class="pagination">
+                <li class="page-item{$prevDis}">
+                    <a class="page-link {$linkClass}" href="#" data-page="{$prev}" aria-label="Previous"><i class="fa-solid fa-chevron-left"></i></a>
+                </li>
+                {$pages}
+                <li class="page-item{$nextDis}">
+                    <a class="page-link {$linkClass}" href="#" data-page="{$next}" aria-label="Next"><i class="fa-solid fa-chevron-right"></i></a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    HTML;
+}
+
+/** Four KPI tiles: [ [icon, tone, value, label], ... ] */
+function maxlogin_kpis(array $tiles): string
+{
+    $html = '<div class="ml-kpis">';
+    foreach ($tiles as [$icon, $tone, $value, $label]) {
+        $val = number_format((int) $value);
+        $html .= <<<HTML
+        <div class="ml-kpi">
+            <span class="ml-ico ml-soft-{$tone}"><i class="fa-solid {$icon}"></i></span>
+            <div>
+                <div class="ml-kpi-val">{$val}</div>
+                <div class="ml-kpi-lbl">{$label}</div>
+            </div>
+        </div>
+        HTML;
+    }
+    return $html . '</div>';
+}
+
+/** Page header card: icon in a soft square + title + subtitle. */
+function maxlogin_page_header(string $icon, string $tone, string $title, string $subtitle, string $side = ''): string
+{
+    return <<<HTML
+    <div class="ml-card">
+        <div class="ml-head">
+            <span class="ml-ico ml-soft-{$tone}"><i class="fa-solid {$icon}"></i></span>
+            <div class="ml-head-main">
+                <h4 class="ml-title">{$title}</h4>
+                <p class="ml-sub">{$subtitle}</p>
+            </div>
+            <div class="ml-head-side">{$side}</div>
+        </div>
+    </div>
+    HTML;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FAILED LOGIN ATTEMPTS — loginattempts table
+// ══════════════════════════════════════════════════════════════════════════════
 
 class LoginAttemptsManager
 {
-    private const VERSION = '3.0';
+    private const VERSION = '3.1';
     private const PER_PAGE = 20;
-    
+
     private string $action;
     private ?int $id;
     private ?string $update;
@@ -30,12 +211,12 @@ class LoginAttemptsManager
     private ?string $filterBanned;
     private ?string $filterType;
     private ?string $searchIp;
-    
+
     public function __construct()
     {
         $this->initialize();
     }
-    
+
     private function initialize(): void
     {
         $this->action = $this->getRequest('action', 'showlist');
@@ -45,60 +226,99 @@ class LoginAttemptsManager
         $this->filterBanned = $this->getRequest('filter_banned');
         $this->filterType = $this->getRequest('filter_type');
         $this->searchIp = $this->getRequest('search_ip');
-        
-        $order = $this->getRequest('order', 'added');
-        $this->orderBy = match($order) {
-            'id', 'ip', 'added', 'attempts', 'type' => $order,
-            'status' => 'banned',
-            default => 'added'
-        };
-        
+
+        $this->orderBy = $this->normalizeOrder($this->getRequest('order', 'added'));
         $this->orderType = $this->getRequest('otype') === 'DESC' ? 'ASC' : 'DESC';
     }
-    
+
+    /** ORDER BY whitelist — used for every source of the sort column. */
+    private function normalizeOrder(string $order): string
+    {
+        return match ($order) {
+            'id', 'ip', 'added', 'attempts', 'type' => $order,
+            'status', 'banned' => 'banned',
+            default => 'added'
+        };
+    }
+
+    /** Totals for KPI tiles and the tab counter. */
+    public function getStats(): array
+    {
+        global $db;
+
+        $result = $db->sql_query_prepared(
+            "SELECT COUNT(*) AS total,
+                    COALESCE(SUM(banned = 'yes'), 0) AS banned,
+                    COALESCE(SUM(type = 'recover'), 0) AS recover,
+                    COALESCE(SUM(attempts), 0) AS attempts
+             FROM loginattempts"
+        );
+        $row = $result ? $db->fetch_array($result) : null;
+
+        return [
+            'total'    => (int) ($row['total'] ?? 0),
+            'banned'   => (int) ($row['banned'] ?? 0),
+            'recover'  => (int) ($row['recover'] ?? 0),
+            'attempts' => (int) ($row['attempts'] ?? 0),
+        ];
+    }
+
+    public function renderKpis(array $s): string
+    {
+        return maxlogin_kpis([
+            ['fa-network-wired', 'primary', $s['total'],    'Tracked IPs'],
+            ['fa-ban',           'danger',  $s['banned'],   'Banned IPs'],
+            ['fa-key',           'warning', $s['recover'],  'Recovery attempts'],
+            ['fa-repeat',        'info',    $s['attempts'], 'Failed attempts total'],
+        ]);
+    }
+
     /**
-     * Render only the inner content (filters + table) without stdhead/stdfoot.
+     * Render only the inner content (card with filters + table) without stdhead/stdfoot.
      * Used by the tabbed layout.
      */
     public function executeInner(): void
     {
         echo $this->includeJavaScriptLibraries();
+        echo '<div class="ml-card">';
+        echo $this->renderHeader();
         echo $this->renderFiltersAndSearch();
         echo '<div id="attempts-table-container">';
         echo $this->renderTableContent();
+        echo '</div>';
         echo '</div>';
     }
 
     public function execute(): void
     {
-        // AJAX обработчики
+        // AJAX handlers
         if ($this->action === 'ajax_ban' || $this->action === 'ajax_unban') {
             $this->handleAjaxToggleBan();
             return;
         }
-        
+
         if ($this->action === 'ajax_delete') {
             $this->handleAjaxDelete();
             return;
         }
-        
+
         if ($this->action === 'ajax_search') {
             $this->handleAjaxSearch();
             return;
         }
-        
+
         if ($this->action === 'ajax_get_page') {
             $this->handleAjaxGetPage();
             return;
         }
-        
+
         if ($this->action === 'ajax_get_count') {
             $this->handleAjaxGetCount();
             return;
         }
-        
-        // Обычные обработчики
-        match($this->action) {
+
+        // Regular handlers
+        match ($this->action) {
             'showlist' => $this->showList(),
             'ban' => $this->ban(),
             'unban' => $this->unban(),
@@ -109,85 +329,85 @@ class LoginAttemptsManager
             default => $this->showError('Invalid Action')
         };
     }
-    
+
     private function showList(): void
     {
-        global $db, $dateformat, $timeformat, $BASEURL;
-        
         stdhead('Login Attempts Manager - View List');
-        
-        // Подключаем SweetAlert2 и необходимые скрипты
-        echo $this->includeJavaScriptLibraries();
-        
-        echo $this->renderHeader();
-        
+
+        echo maxlogin_styles();
+        echo maxlogin_assets();
+        echo '<div class="ml-wrap container-xl py-3">';
+        echo maxlogin_page_header('fa-shield-halved', 'primary', 'Failed login attempts', 'Track and manage suspicious login activity');
+
         if ($this->update) {
             echo $this->renderSuccessMessage($this->update);
         }
-        
-        // Фильтры и поиск
-        echo $this->renderFiltersAndSearch();
-        
-        // Контейнер для таблицы с AJAX
-        echo '<div id="attempts-table-container">';
-        echo $this->renderTableContent();
+
+        echo $this->renderKpis($this->getStats());
+        $this->executeInner();
         echo '</div>';
-        
+
         stdfoot();
     }
-    
+
     private function renderTableContent(): string
     {
         global $db, $dateformat, $timeformat, $BASEURL;
-        
+
         [$whereClause, $whereParams] = $this->buildWhereClause();
         $totalRows = $this->getTotalRows($whereClause, $whereParams);
-        
+
         if ($totalRows === 0) {
             return $this->renderEmptyState();
         }
-        
+
         $pagination = $this->getPagination($totalRows);
         $query = $this->buildQuery($whereClause, $pagination['offset']);
-        
+
         $result = $db->sql_query_prepared($query, [...$whereParams, $pagination['offset'], self::PER_PAGE]);
-        
+
         if (!$result) {
             return $this->renderEmptyState();
         }
-        
+
         $output = $this->renderTable($result, $dateformat, $timeformat, $BASEURL);
         $output .= $this->renderPagination($pagination, $totalRows);
-        
+
         return $output;
     }
-    
+
+    private function statusBadge(bool $isBanned): string
+    {
+        return $isBanned
+            ? '<span class="ml-chip ml-soft-danger"><i class="fa-solid fa-ban"></i>Banned</span>'
+            : '<span class="ml-chip ml-soft-success"><i class="fa-solid fa-circle-check"></i>Active</span>';
+    }
+
     private function handleAjaxToggleBan(): void
     {
         global $db;
-        
+
         header('Content-Type: application/json');
-        
+
         try {
             $id = (int) ($_POST['id'] ?? 0);
             $action = $_POST['ajax_action'] ?? '';
-            
+
             if (!$id || !is_valid_id($id)) {
                 throw new Exception('Invalid ID');
             }
-            
+
             $newStatus = $action === 'ban' ? 'yes' : 'no';
             $message = $action === 'ban' ? 'Ban' : 'Unban';
-            
+
             $db->sql_query_prepared("UPDATE loginattempts SET banned = ? WHERE id = ?", [$newStatus, $id]);
-            
-            // Получаем обновленные данные
+
             $result = $db->sql_query_prepared("SELECT * FROM loginattempts WHERE id = ?", [$id]);
             $row = $result ? $db->fetch_array($result) : null;
             if (!$row) {
                 throw new Exception('Record not found after update');
             }
-            
+
             echo json_encode([
                 'success' => true,
                 'message' => "IP {$message}ned successfully!",
@@ -195,89 +415,86 @@ class LoginAttemptsManager
                     'id' => $row['id'],
                     'ip' => $row['ip'],
                     'banned' => $row['banned'],
-                    'status_badge' => $row['banned'] === 'yes' ? 
-                        '<span class="badge bg-danger">Banned</span>' : 
-                        '<span class="badge bg-success">Active</span>',
+                    'status_badge' => $this->statusBadge($row['banned'] === 'yes'),
                     'ban_button' => $this->renderBanButton($row),
                     'is_banned' => $row['banned'] === 'yes'
                 ]
             ]);
-            
+
         } catch (Exception $e) {
             echo json_encode([
                 'success' => false,
                 'error' => $e->getMessage()
             ]);
         }
-        
+
         exit;
     }
-    
+
     private function handleAjaxDelete(): void
     {
         global $db;
-        
+
         header('Content-Type: application/json');
-        
+
         try {
             $id = (int) ($_POST['id'] ?? 0);
-            
+
             if (!$id || !is_valid_id($id)) {
                 throw new Exception('Invalid ID');
             }
-            
-            // Получаем IP перед удалением для сообщения
+
             $result = $db->sql_query_prepared("SELECT ip FROM loginattempts WHERE id = ?", [$id]);
             $row = $result ? $db->fetch_array($result) : null;
-            $ip = $row['ip'] ?? '';
-            
+            $ip = htmlspecialchars((string) ($row['ip'] ?? ''), ENT_QUOTES);
+
             $db->sql_query_prepared("DELETE FROM loginattempts WHERE id = ?", [$id]);
-            
+
             echo json_encode([
                 'success' => true,
                 'message' => "Attempt from IP {$ip} deleted successfully!",
                 'id' => $id
             ]);
-            
+
         } catch (Exception $e) {
             echo json_encode([
                 'success' => false,
                 'error' => $e->getMessage()
             ]);
         }
-        
+
         exit;
     }
-    
+
     private function handleAjaxSearch(): void
     {
         global $db, $dateformat, $timeformat, $BASEURL;
-        
+
         header('Content-Type: application/json');
-        
+
         try {
             $searchTerm = trim($_POST['search'] ?? '');
             $filterBanned = $_POST['filter_banned'] ?? '';
             $filterType = $_POST['filter_type'] ?? '';
-            
+
             $whereParts = [];
             $params = [];
-            
+
             if (!empty($searchTerm)) {
                 $whereParts[] = "ip LIKE ?";
                 $params[] = '%' . $this->likeEscape($searchTerm) . '%';
             }
-            
+
             if (!empty($filterBanned) && $filterBanned !== 'all') {
                 $whereParts[] = "banned = ?";
                 $params[] = $filterBanned;
             }
-            
+
             if (!empty($filterType) && $filterType !== 'all') {
                 $whereParts[] = "type = ?";
                 $params[] = $filterType;
             }
-            
+
             $whereClause = empty($whereParts) ? '' : 'WHERE ' . implode(' AND ', $whereParts);
             $query = sprintf(
                 "SELECT * FROM loginattempts %s ORDER BY %s %s LIMIT 50",
@@ -285,168 +502,146 @@ class LoginAttemptsManager
                 $this->orderBy,
                 $this->orderType
             );
-            
+
             $result = $db->sql_query_prepared($query, $params);
             $count = $result ? $db->num_rows($result) : 0;
-            
+
             if ($count === 0) {
                 $html = $this->renderEmptySearch($searchTerm);
             } else {
-                $html = '<table class="table table-hover table-striped align-middle">
-                    <thead class="table-dark">
-                        <tr>
-                            <th style="width: 5%">ID</th>
-                            <th style="width: 20%">IP Address</th>
-                            <th style="width: 20%">Action Time</th>
-                            <th style="width: 10%">Attempts</th>
-                            <th style="width: 15%">Type</th>
-                            <th style="width: 20%">Status</th>
-                            <th style="width: 10%" class="text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
-                
+                $rows = '';
                 while ($row = $db->fetch_array($result)) {
-                    $html .= $this->renderTableRow($row, $dateformat, $timeformat, $BASEURL);
+                    $rows .= $this->renderTableRow($row, $dateformat, $timeformat, $BASEURL);
                 }
-                
-                $html .= '</tbody></table>';
+                $html = $this->wrapTable($rows);
             }
-            
+
             echo json_encode([
                 'success' => true,
                 'html' => $html,
                 'count' => $count
             ]);
-            
+
         } catch (Exception $e) {
             echo json_encode([
                 'success' => false,
                 'error' => $e->getMessage()
             ]);
         }
-        
+
         exit;
     }
-    
+
     private function handleAjaxGetPage(): void
     {
-        global $db, $dateformat, $timeformat, $BASEURL;
-        
         header('Content-Type: application/json');
-        
+
         try {
-            $page = (int) ($_POST['page'] ?? 1);
-            $filterBanned = $_POST['filter_banned'] ?? '';
-            $filterType = $_POST['filter_type'] ?? '';
-            $searchIp = $_POST['search_ip'] ?? '';
-            $order = $_POST['order'] ?? $this->orderBy;
-            $otype = $_POST['otype'] ?? $this->orderType;
-            
-            $this->page = $page;
-            $this->filterBanned = $filterBanned;
-            $this->filterType = $filterType;
-            $this->searchIp = $searchIp;
-            $this->orderBy = $order;
-            $this->orderType = $otype;
-            
-            $html = $this->renderTableContent();
-            
+            $this->page = (int) ($_POST['page'] ?? 1);
+            $this->filterBanned = (string) ($_POST['filter_banned'] ?? '');
+            $this->filterType = (string) ($_POST['filter_type'] ?? '');
+            $this->searchIp = (string) ($_POST['search_ip'] ?? '');
+
+            // SECURITY: these two go straight into ORDER BY — whitelist them.
+            // Previously any POSTed value was concatenated into the SQL.
+            $this->orderBy = $this->normalizeOrder((string) ($_POST['order'] ?? $this->orderBy));
+            $this->orderType = strtoupper((string) ($_POST['otype'] ?? $this->orderType)) === 'ASC' ? 'ASC' : 'DESC';
+
             echo json_encode([
                 'success' => true,
-                'html' => $html,
-                'page' => $page
+                'html' => $this->renderTableContent(),
+                'page' => $this->page
             ]);
-            
+
         } catch (Exception $e) {
             echo json_encode([
                 'success' => false,
                 'error' => $e->getMessage()
             ]);
         }
-        
+
         exit;
     }
-    
+
     private function handleAjaxGetCount(): void
     {
         global $db;
-        
+
         header('Content-Type: application/json');
-        
+
         try {
             $filterBanned = $this->getRequest('filter_banned', 'all');
             $filterType = $this->getRequest('filter_type', 'all');
             $searchIp = $this->getRequest('search_ip', '');
-            
+
             $whereParts = [];
             $params = [];
-            
+
             if (!empty($searchIp)) {
                 $whereParts[] = "ip LIKE ?";
                 $params[] = '%' . $this->likeEscape($searchIp) . '%';
             }
-            
+
             if (!empty($filterBanned) && $filterBanned !== 'all') {
                 $whereParts[] = "banned = ?";
                 $params[] = $filterBanned;
             }
-            
+
             if (!empty($filterType) && $filterType !== 'all') {
                 $whereParts[] = "type = ?";
                 $params[] = $filterType;
             }
-            
+
             $whereClause = empty($whereParts) ? '' : 'WHERE ' . implode(' AND ', $whereParts);
             $query = "SELECT COUNT(*) as count FROM loginattempts " . $whereClause;
-            
+
             $result = $db->sql_query_prepared($query, $params);
             $row = $result ? $db->fetch_array($result) : null;
-            
+
             echo json_encode([
                 'success' => true,
                 'count' => (int) ($row['count'] ?? 0)
             ]);
-            
+
         } catch (Exception $e) {
             echo json_encode([
                 'success' => false,
                 'error' => $e->getMessage()
             ]);
         }
-        
+
         exit;
     }
-    
+
     private function buildWhereClause(): array
     {
         $whereParts = [];
         $params = [];
-        
+
         if (!empty($this->searchIp)) {
             $whereParts[] = "ip LIKE ?";
             $params[] = '%' . $this->likeEscape($this->searchIp) . '%';
         }
-        
+
         if (!empty($this->filterBanned) && $this->filterBanned !== 'all') {
             $whereParts[] = "banned = ?";
             $params[] = $this->filterBanned;
         }
-        
+
         if (!empty($this->filterType) && $this->filterType !== 'all') {
             $whereParts[] = "type = ?";
             $params[] = $this->filterType;
         }
-        
+
         $sql = empty($whereParts) ? '' : 'WHERE ' . implode(' AND ', $whereParts);
         return [$sql, $params];
     }
-    
+
     private function likeEscape(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
-    
+
     private function buildQuery(string $whereClause, int $offset): string
     {
         return sprintf(
@@ -456,24 +651,24 @@ class LoginAttemptsManager
             $this->orderType
         );
     }
-    
+
     private function getTotalRows(string $whereClause, array $whereParams = []): int
     {
         global $db;
-        
+
         $query = "SELECT COUNT(*) as count FROM loginattempts " . $whereClause;
         $result = $db->sql_query_prepared($query, $whereParams);
         $row = $result ? $db->fetch_array($result) : null;
-        
+
         return (int) ($row['count'] ?? 0);
     }
-    
+
     private function getPagination(int $totalRows): array
     {
         $totalPages = (int) ceil($totalRows / self::PER_PAGE);
         $currentPage = max(1, min($this->page, $totalPages));
         $offset = ($currentPage - 1) * self::PER_PAGE;
-        
+
         return [
             'current' => $currentPage,
             'total' => $totalPages,
@@ -482,693 +677,582 @@ class LoginAttemptsManager
             'total_rows' => $totalRows
         ];
     }
-    
+
+    /** Card head of the attempts section (keeps #loading-spinner / #total-count for JS). */
     private function renderHeader(): string
     {
         return <<<HTML
-        <div class="container mt-3">
-            <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header bg-primary text-white rounded-top">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h5 class="mb-0">
-                                <i class="fas fa-shield-alt me-2"></i>
-                                Failed Login Attempts Manager
-                            </h5>
-                            <small class="text-white-50">Track and manage suspicious login activities</small>
-                        </div>
-                        <div class="d-flex align-items-center">
-                            <div class="spinner-border spinner-border-sm text-white me-2 d-none" 
-                                 id="loading-spinner" 
-                                 role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <span class="badge bg-light text-dark" id="total-count">Loading...</span>
-                        </div>
-                    </div>
+        <div class="ml-head">
+            <span class="ml-ico ml-ico-sm ml-soft-danger"><i class="fa-solid fa-user-lock"></i></span>
+            <div class="ml-head-main">
+                <h5 class="ml-title">Failed attempts</h5>
+                <p class="ml-sub">IPs that failed to log in or recover a password</p>
+            </div>
+            <div class="ml-head-side">
+                <div class="spinner-border spinner-border-sm text-primary d-none" id="loading-spinner" role="status">
+                    <span class="visually-hidden">Loading...</span>
                 </div>
-                <div class="card-body">
+                <span class="ml-chip ml-soft-primary"><i class="fa-solid fa-database"></i><span id="total-count">Loading...</span></span>
+            </div>
+        </div>
         HTML;
     }
-    
+
     private function renderFiltersAndSearch(): string
     {
         $bannedSelected = htmlspecialchars($this->filterBanned ?? 'all');
         $typeSelected = htmlspecialchars($this->filterType ?? 'all');
         $searchValue = htmlspecialchars($this->searchIp ?? '');
-        
+
         return <<<HTML
-        <div class="row mb-4">
-            <div class="col-md-8">
-                <div class="input-group">
-                    <span class="input-group-text">
-                        <i class="fas fa-search"></i>
-                    </span>
-                    <input type="text" 
-                           class="form-control" 
-                           id="live-search" 
-                           placeholder="Search by IP address (live search)" 
-                           value="{$searchValue}"
-                           autocomplete="off">
-                    <button class="btn btn-outline-secondary" type="button" id="clear-search">
-                        <i class="fas fa-times"></i>
+        <div class="ml-toolbar">
+            <div class="row g-2 align-items-start">
+                <div class="col-lg-6">
+                    <div class="input-group ml-pill-group">
+                        <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                        <input type="text"
+                               class="form-control"
+                               id="live-search"
+                               placeholder="Search by IP address"
+                               value="{$searchValue}"
+                               autocomplete="off">
+                        <button class="btn btn-outline-secondary" type="button" id="clear-search" title="Clear search">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="ml-hint"><i class="fa-solid fa-bolt me-1"></i>Results update as you type</div>
+                </div>
+
+                <div class="col-sm-6 col-lg-2">
+                    <div class="input-group ml-pill-group">
+                        <span class="input-group-text"><i class="fa-solid fa-shield-halved"></i></span>
+                        <select class="form-select" id="filter-banned" aria-label="Status filter">
+                            <option value="all" {$this->selected($bannedSelected === 'all')}>All status</option>
+                            <option value="yes" {$this->selected($bannedSelected === 'yes')}>Banned</option>
+                            <option value="no" {$this->selected($bannedSelected === 'no')}>Active</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="col-sm-6 col-lg-2">
+                    <div class="input-group ml-pill-group">
+                        <span class="input-group-text"><i class="fa-solid fa-tag"></i></span>
+                        <select class="form-select" id="filter-type" aria-label="Type filter">
+                            <option value="all" {$this->selected($typeSelected === 'all')}>All types</option>
+                            <option value="login" {$this->selected($typeSelected === 'login')}>Login</option>
+                            <option value="recover" {$this->selected($typeSelected === 'recover')}>Recovery</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="col-lg-2 d-flex gap-2">
+                    <button type="button" class="btn btn-outline-primary ml-btn flex-fill" id="refresh-btn" title="Refresh">
+                        <i class="fa-solid fa-rotate"></i><span class="d-lg-none d-xl-inline">Refresh</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-danger ml-btn" id="clear-filters" title="Clear filters">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
                     </button>
                 </div>
-                <div class="form-text">Start typing to search instantly</div>
             </div>
-            
-            <div class="col-md-2">
-                <select class="form-select" id="filter-banned">
-                    <option value="all" {$this->selected($bannedSelected === 'all')}>All Status</option>
-                    <option value="yes" {$this->selected($bannedSelected === 'yes')}>Banned Only</option>
-                    <option value="no" {$this->selected($bannedSelected === 'no')}>Active Only</option>
-                </select>
-            </div>
-            
-            <div class="col-md-2">
-                <select class="form-select" id="filter-type">
-                    <option value="all" {$this->selected($typeSelected === 'all')}>All Types</option>
-                    <option value="login" {$this->selected($typeSelected === 'login')}>Login Only</option>
-                    <option value="recover" {$this->selected($typeSelected === 'recover')}>Recovery Only</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="btn-group" role="group">
-                <button type="button" class="btn btn-outline-primary btn-sm" id="refresh-btn">
-                    <i class="fas fa-sync-alt me-1"></i> Refresh
-                </button>
-                <button type="button" class="btn btn-outline-danger btn-sm" id="clear-filters">
-                    <i class="fas fa-filter-circle-xmark me-1"></i> Clear Filters
-                </button>
-            </div>
-            
-            <div class="text-muted small">
-                <span id="filter-info"></span>
-            </div>
+            <div class="ml-muted small mt-2"><span id="filter-info"></span></div>
         </div>
         HTML;
     }
-    
-    private function renderTable(object $result, string $dateformat, string $timeformat, string $baseUrl): string
+
+    private function wrapTable(string $rows): string
     {
-        global $db;
-        
-        $output = <<<HTML
-        <div class="container mt-3">
-            <table class="table table-hover table-striped align-middle">
-                <thead class="table-dark">
+        $o = $this->orderBy;
+        $d = $this->orderType;
+        $s = fn(string $k, string $l) => maxlogin_sort_link('sort-header', $k, $l, $o === 'banned' ? 'status' : $o, $d);
+
+        return <<<HTML
+        <div class="table-responsive">
+            <table class="table table-hover align-middle ml-table">
+                <thead>
                     <tr>
-                        <th style="width: 5%">
-                            <a href="#" class="text-white text-decoration-none sort-header" data-order="id">
-                                ID <i class="fas fa-sort"></i>
-                            </a>
-                        </th>
-                        <th style="width: 20%">
-                            <a href="#" class="text-white text-decoration-none sort-header" data-order="ip">
-                                IP Address <i class="fas fa-sort"></i>
-                            </a>
-                        </th>
-                        <th style="width: 20%">
-                            <a href="#" class="text-white text-decoration-none sort-header" data-order="added">
-                                Action Time <i class="fas fa-sort"></i>
-                            </a>
-                        </th>
-                        <th style="width: 10%">
-                            <a href="#" class="text-white text-decoration-none sort-header" data-order="attempts">
-                                Attempts <i class="fas fa-sort"></i>
-                            </a>
-                        </th>
-                        <th style="width: 15%">
-                            <a href="#" class="text-white text-decoration-none sort-header" data-order="type">
-                                Type <i class="fas fa-sort"></i>
-                            </a>
-                        </th>
-                        <th style="width: 20%">
-                            <a href="#" class="text-white text-decoration-none sort-header" data-order="status">
-                                Status <i class="fas fa-sort"></i>
-                            </a>
-                        </th>
-                        <th style="width: 10%" class="text-center">Actions</th>
+                        <th class="ml-w-6">{$s('id', 'ID')}</th>
+                        <th class="ml-w-22">{$s('ip', '<i class="fa-solid fa-network-wired"></i> IP address')}</th>
+                        <th class="ml-w-18">{$s('added', '<i class="fa-regular fa-clock"></i> Last attempt')}</th>
+                        <th class="ml-w-10">{$s('attempts', '<i class="fa-solid fa-repeat"></i> Attempts')}</th>
+                        <th class="ml-w-14">{$s('type', '<i class="fa-solid fa-tag"></i> Type')}</th>
+                        <th class="ml-w-14">{$s('status', '<i class="fa-solid fa-shield-halved"></i> Status')}</th>
+                        <th class="ml-w-16 text-end">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
-        HTML;
-        
-        while ($row = $db->fetch_array($result)) {
-            $output .= $this->renderTableRow($row, $dateformat, $timeformat, $baseUrl);
-        }
-        
-        $output .= <<<HTML
-                </tbody>
+                <tbody>{$rows}</tbody>
             </table>
         </div>
         HTML;
-        
-        return $output;
     }
-    
+
+    private function renderTable(object $result, string $dateformat, string $timeformat, string $baseUrl): string
+    {
+        global $db;
+
+        $rows = '';
+        while ($row = $db->fetch_array($result)) {
+            $rows .= $this->renderTableRow($row, $dateformat, $timeformat, $baseUrl);
+        }
+
+        return $this->wrapTable($rows);
+    }
+
     private function renderTableRow(array $row, string $dateformat, string $timeformat, string $baseUrl): string
     {
-        $ip = htmlspecialchars($row['ip'], ENT_QUOTES);
+        $id = (int) $row['id'];
+        $ip = htmlspecialchars((string) $row['ip'], ENT_QUOTES);
+        $ipUrl = urlencode((string) $row['ip']);
         $date = my_datee($dateformat, $row['added']);
         $time = my_datee($timeformat, $row['added']);
-        $type = $row['type'] === 'recover' ? 'Recover Password' : 'Login';
-        $typeClass = $row['type'] === 'recover' ? 'warning' : 'primary';
-        $isBanned = $row['banned'] === 'yes';
-        $statusBadge = $isBanned ? 
-            '<span class="badge bg-danger">Banned</span>' : 
-            '<span class="badge bg-success">Active</span>';
-        
+        $attempts = (int) $row['attempts'];
+
+        $isRecover = $row['type'] === 'recover';
+        $typeChip = $isRecover
+            ? '<span class="ml-chip ml-soft-warning attempt-type"><i class="fa-solid fa-key"></i>Recover password</span>'
+            : '<span class="ml-chip ml-soft-primary attempt-type"><i class="fa-solid fa-right-to-bracket"></i>Login</span>';
+
+        // Severity color for the attempts counter
+        $tone = match (true) {
+            $attempts >= 5 => 'danger',
+            $attempts >= 3 => 'warning',
+            default => 'secondary'
+        };
+
+        $statusBadge = $this->statusBadge($row['banned'] === 'yes');
+
         return <<<HTML
-        <tr id="row-{$row['id']}">
-            <td class="fw-bold">#{$row['id']}</td>
+        <tr id="row-{$id}">
+            <td class="ml-id">#{$id}</td>
             <td>
-                <div class="d-flex justify-content-between align-items-center">
-                    <code class="text-dark ip-address">{$ip}</code>
-                    <a href="{$baseUrl}/admin/index.php?act=ipsearch&do=1&ip={$ip}" 
-                       target="_blank" 
-                       class="btn btn-sm btn-outline-info" 
-                       title="Search in database">
-                        <i class="fas fa-search"></i>
+                <div class="ml-ipcell">
+                    <code class="ml-ip ip-address">{$ip}</code>
+                    <button type="button" class="btn ml-btn-icon ml-mini ml-soft-secondary ml-copy" data-copy="{$ip}" title="Copy IP">
+                        <i class="fa-regular fa-copy"></i>
+                    </button>
+                    <a href="{$baseUrl}/admin/index.php?act=ipsearch&amp;do=1&amp;ip={$ipUrl}"
+                       target="_blank" rel="noopener"
+                       class="btn ml-btn-icon ml-mini ml-soft-info"
+                       title="Search this IP in the database">
+                        <i class="fa-solid fa-magnifying-glass-location"></i>
                     </a>
                 </div>
             </td>
             <td>
-                <div class="text-nowrap">
-                    <i class="fas fa-calendar-alt me-1 text-muted"></i> {$date}<br>
-                    <i class="fas fa-clock me-1 text-muted"></i> {$time}
+                <div class="ml-when">
+                    <i class="fa-regular fa-calendar"></i>{$date}<br>
+                    <i class="fa-regular fa-clock"></i>{$time}
                 </div>
             </td>
             <td>
-                <span class="badge bg-secondary rounded-pill px-3 attempts-count">{$row['attempts']}</span>
+                <span class="ml-chip ml-num ml-soft-{$tone} attempts-count">{$attempts}</span>
             </td>
-            <td>
-                <span class="badge bg-{$typeClass} attempt-type">{$type}</span>
-            </td>
-            <td class="status-cell">
-                {$statusBadge}
-            </td>
-            <td class="text-center">
-                <div class="btn-group btn-group-sm" role="group">
+            <td>{$typeChip}</td>
+            <td class="status-cell">{$statusBadge}</td>
+            <td class="text-end">
+                <div class="ml-actions" role="group">
                     {$this->renderBanButton($row)}
-                    <a href="?act=maxlogin&action=edit&id={$row['id']}" 
-                       class="btn btn-outline-primary" 
+                    <a href="?act=maxlogin&amp;action=edit&amp;id={$id}"
+                       class="btn ml-btn-icon ml-soft-primary"
                        title="Edit">
-                        <i class="fas fa-edit"></i>
+                        <i class="fa-solid fa-pen"></i>
                     </a>
-                    <button class="btn btn-outline-danger delete-btn" 
-                            data-id="{$row['id']}" 
+                    <button type="button" class="btn ml-btn-icon ml-soft-danger delete-btn"
+                            data-id="{$id}"
                             data-ip="{$ip}"
                             title="Delete">
-                        <i class="fas fa-trash"></i>
+                        <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>
             </td>
         </tr>
         HTML;
     }
-    
+
     private function renderBanButton(array $row): string
     {
+        $id = (int) $row['id'];
+        $ip = htmlspecialchars((string) $row['ip'], ENT_QUOTES); // was unescaped in the attribute
         $isBanned = $row['banned'] === 'yes';
         $banText = $isBanned ? 'Unban' : 'Ban';
-        $banClass = $isBanned ? 'success' : 'danger';
-        $banIcon = $isBanned ? 'unlock' : 'lock';
+        $banTone = $isBanned ? 'success' : 'warning';
+        $banIcon = $isBanned ? 'fa-lock-open' : 'fa-lock';
         $action = $isBanned ? 'unban' : 'ban';
-        
+
         return <<<HTML
-        <button class="btn btn-outline-{$banClass} ban-btn" 
-                data-id="{$row['id']}" 
+        <button type="button" class="btn ml-btn-icon ml-soft-{$banTone} ban-btn"
+                data-id="{$id}"
                 data-action="{$action}"
-                data-ip="{$row['ip']}"
+                data-ip="{$ip}"
                 title="{$banText} IP">
-            <i class="fas fa-{$banIcon}"></i>
+            <i class="fa-solid {$banIcon}"></i>
         </button>
         HTML;
     }
-    
+
     private function renderPagination(array $pagination, int $totalRows): string
     {
-        $current = $pagination['current'];
-        $total = $pagination['total'];
-        $totalRowsFormatted = number_format($totalRows);
-        
-        if ($total <= 1) {
-            return '<div class="text-center text-muted mt-3">Total records: ' . $totalRowsFormatted . '</div>';
-        }
-        
-        $pages = [];
-        $start = max(1, $current - 2);
-        $end = min($total, $current + 2);
-        
-        // Previous button
-        $prevDisabled = $current === 1 ? 'disabled' : '';
-        $prevPage = max(1, $current - 1);
-        
-        // Page numbers
-        for ($i = $start; $i <= $end; $i++) {
-            $active = $i === $current;
-            $pages[] = sprintf(
-                '<li class="page-item %s">
-                    <a class="page-link pagination-page" href="#" data-page="%d">%d</a>
-                </li>',
-                $active ? 'active' : '',
-                $i,
-                $i
-            );
-        }
-        
-        // Next button
-        $nextDisabled = $current === $total ? 'disabled' : '';
-        $nextPage = min($total, $current + 1);
-        
-        return sprintf(
-            '<div class="d-flex justify-content-between align-items-center mt-4">
-                <div class="text-muted">
-                    Showing page %d of %d (Total: %s records)
-                </div>
-                <nav aria-label="Page navigation">
-                    <ul class="pagination mb-0">
-                        <li class="page-item %s">
-                            <a class="page-link pagination-page" href="#" data-page="%d" aria-label="Previous">
-                                <span aria-hidden="true">&laquo;</span>
-                            </a>
-                        </li>
-                        %s
-                        <li class="page-item %s">
-                            <a class="page-link pagination-page" href="#" data-page="%d" aria-label="Next">
-                                <span aria-hidden="true">&raquo;</span>
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
-            </div>',
-            $current,
-            $total,
-            $totalRowsFormatted,
-            $prevDisabled,
-            $prevPage,
-            implode('', $pages),
-            $nextDisabled,
-            $nextPage
-        );
+        return maxlogin_pager($pagination['current'], $pagination['total'], $totalRows, 'pagination-page');
     }
-    
 
+    private function includeJavaScriptLibraries(): string
+    {
+        $config = maxlogin_config_tag('maxlogin-config', [
+            'orderBy'      => $this->orderBy,
+            'orderType'    => $this->orderType,
+            'filterBanned' => $this->filterBanned ?? 'all',
+            'filterType'   => $this->filterType ?? 'all',
+            'searchTerm'   => $this->searchIp ?? '',
+        ]);
 
+        $assets = maxlogin_assets();
+        $uiJs = maxlogin_ui_js();
+        $js = maxlogin_asset_url(MAXLOGIN_JS);
 
+        // Order matters: config block -> maxlogin-ui.js (reads it) -> maxlogin.js
+        return <<<HTML
+        {$assets}
+        {$config}
+        {$uiJs}
+        <script src="{$js}"></script>
+        HTML;
+    }
 
-private function includeJavaScriptLibraries(): string
-{
-    global $mybb, $BASEURL;
-
-    // Получаем текущие значения фильтров
-    $currentBanned = $this->filterBanned ?? 'all';
-    $currentType = $this->filterType ?? 'all';
-    $currentSearch = $this->searchIp ?? '';
-    
-    // Экранируем значения для JavaScript
-    $currentBanned = addslashes($currentBanned);
-    $currentType = addslashes($currentType);
-    $currentSearch = addslashes($currentSearch);
-    $orderBy = addslashes($this->orderBy);
-    $orderType = addslashes($this->orderType);
-    $postKey = htmlspecialchars($mybb->post_code);
-    
-    return <<<HTML
-    <!-- SweetAlert2 - самохостится, не с CDN -->
-    <script src="{$BASEURL}/scripts/sweetalert2.min.js"></script>
-    <link rel="stylesheet" href="{$BASEURL}/admin/templates/maxlogin.css">
-    <input type="hidden" id="maxloginPostKey" value="{$postKey}">
-    
-    <!-- JavaScript для AJAX функционала -->
-    <script>window.maxloginConfig = {orderBy: '{$orderBy}', orderType: '{$orderType}', filterBanned: '{$currentBanned}', filterType: '{$currentType}', searchTerm: '{$currentSearch}'};</script>
-    <script src="{$BASEURL}/admin/scripts/maxlogin.js"></script>
-    
-    HTML;
-}
-
-
-
-
-
-
-
-
-
-
-
-    
     private function renderEmptyState(): string
     {
-        $hasFilters = !empty($this->filterBanned) || !empty($this->filterType) || !empty($this->searchIp);
-        
+        $hasFilters = !empty($this->filterBanned) && $this->filterBanned !== 'all'
+            || !empty($this->filterType) && $this->filterType !== 'all'
+            || !empty($this->searchIp);
+
         if ($hasFilters) {
             return <<<HTML
-            <div class="text-center py-5">
-                <i class="fas fa-search fa-4x text-warning mb-3"></i>
-                <h4 class="text-warning">No Matching Records</h4>
-                <p class="text-muted">No login attempts match your current filters.</p>
-                <button class="btn btn-outline-primary mt-2" id="clear-filters-btn">
-                    <i class="fas fa-filter-circle-xmark me-2"></i> Clear Filters
+            <div class="ml-empty">
+                <span class="ml-ico ml-soft-warning"><i class="fa-solid fa-filter"></i></span>
+                <h4>No matching records</h4>
+                <p class="ml-muted">Nothing matches the current filters. Clear them to see every record.</p>
+                <button type="button" class="btn btn-outline-primary ml-btn mt-2" id="clear-filters-btn" data-ml-trigger="#clear-filters">
+                    <i class="fa-solid fa-filter-circle-xmark"></i> Clear filters
                 </button>
             </div>
-            <script>
-            $('#clear-filters-btn').click(function() {
-                $('#clear-filters').click();
-            });
-            </script>
             HTML;
         }
-        
+
         return <<<HTML
-        <div class="text-center py-5">
-            <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
-            <h4 class="text-muted">No login attempts found</h4>
-            <p class="text-muted">There are no failed login attempts in the system.</p>
+        <div class="ml-empty">
+            <span class="ml-ico ml-soft-success"><i class="fa-solid fa-shield-heart"></i></span>
+            <h4>No failed attempts</h4>
+            <p class="ml-muted">Nobody has failed to log in. New failures will appear here.</p>
         </div>
         HTML;
     }
-    
+
     private function renderEmptySearch(string $searchTerm): string
     {
         $searchTermHtml = htmlspecialchars($searchTerm);
-        
+
         return <<<HTML
-        <div class="text-center py-5">
-            <i class="fas fa-search fa-4x text-warning mb-3"></i>
-            <h4 class="text-warning">No Results Found</h4>
-            <p class="text-muted">No login attempts found for: <code>{$searchTermHtml}</code></p>
-            <button class="btn btn-outline-primary mt-2" onclick="$('#clear-search').click()">
-                <i class="fas fa-times me-2"></i> Clear Search
+        <div class="ml-empty">
+            <span class="ml-ico ml-soft-warning"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <h4>No results</h4>
+            <p class="ml-muted">No attempts found for <code class="ml-ip">{$searchTermHtml}</code></p>
+            <button type="button" class="btn btn-outline-primary ml-btn mt-2" data-ml-trigger="#clear-search">
+                <i class="fa-solid fa-xmark"></i> Clear search
             </button>
         </div>
         HTML;
     }
-    
-    // Стандартные методы (без AJAX) - они должны быть объявлены ТОЛЬКО ОДИН РАЗ
-    
+
+    // ── Non-AJAX actions ──────────────────────────────────────────────────────
+
     private function ban(): void
     {
         $this->validateId();
         $this->updateRecord('banned', 'yes', 'Ban');
     }
-    
+
     private function unban(): void
     {
         $this->validateId();
         $this->updateRecord('banned', 'no', 'Unban');
     }
-    
+
     private function delete(): void
     {
         $this->validateId();
-        
-        if (isset($_GET['return'])) {
-            $this->deleteRecord(true);
-        } else {
-            $this->deleteRecord();
-        }
+        $this->deleteRecord(isset($_GET['return']));
     }
-    
+
     private function edit(): void
     {
         global $db;
-        
+
         $this->validateId();
-        stdhead('Login Attempts - Edit');
-        
+
         $result = $db->sql_query_prepared("SELECT * FROM loginattempts WHERE id = ?", [$this->id]);
         $attempt = $result ? $db->fetch_array($result) : null;
-        
+
+        if (!$attempt) {
+            stderr('Error', 'Login attempt not found');
+        }
+
+        stdhead('Login Attempts - Edit');
+        echo maxlogin_styles();
         echo $this->renderEditForm($attempt);
         stdfoot();
     }
-    
+
     private function save(): void
     {
         global $db;
-        
+
         $id = (int) $_POST['id'];
         $attempts = (int) $_POST['attempts'];
         $type = trim($_POST['type'] ?? '');
         $banned = trim($_POST['banned'] ?? '');
-        
+
         $this->validateId($id);
         $this->validateAttempts($attempts);
-        
+
+        // Only allow the enum values the table actually uses
+        $type = $type === 'recover' ? 'recover' : 'login';
+        $banned = $banned === 'yes' ? 'yes' : 'no';
+
         $db->sql_query_prepared(
             "UPDATE loginattempts SET attempts = ?, type = ?, banned = ? WHERE id = ? LIMIT 1",
             [$attempts, $type, $banned, $id]
         );
-        
+
         if (!empty($_POST['returnto'])) {
             redirect($_POST['returnto']);
         }
-        
+
         redirect($_SERVER['PHP_SELF'] . '?act=maxlogin&update=Edit');
     }
-    
+
     private function searchIp(): void
     {
         global $db, $dateformat, $timeformat, $BASEURL;
-        
+
         $ip = trim($_POST['ip'] ?? '');
         stdhead('Login Attempts - Search Results');
-        
+
+        echo maxlogin_styles();
+        echo maxlogin_assets();
+        echo '<div class="ml-wrap container-xl py-3">';
+        echo maxlogin_page_header('fa-magnifying-glass-location', 'info', 'IP search', 'Failed attempts matching <code class="ml-ip">' . htmlspecialchars($ip) . '</code>');
+        echo '<div class="ml-card mt-3">';
+
         $result = $db->sql_query_prepared("SELECT * FROM loginattempts WHERE ip LIKE ?", ['%' . $this->likeEscape($ip) . '%']);
-        
+
         if (!$result || $db->num_rows($result) === 0) {
             echo $this->renderEmptySearch($ip);
         } else {
             echo $this->renderTable($result, $dateformat, $timeformat, $BASEURL);
         }
-        
+
+        echo '</div>';
         echo $this->renderSearchForm();
+        echo '</div>';
+        echo maxlogin_ui_js();
         stdfoot();
     }
-    
-    // Вспомогательные методы
-    
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
     private function validateId(?int $id = null): void
     {
         $id = $id ?? $this->id;
-        
+
         if (!$id || !is_valid_id($id)) {
             stderr('Error', 'Invalid ID');
         }
     }
-    
+
     private function validateAttempts(int $attempts): void
     {
         if ($attempts < 0 || $attempts > 1000) {
             stderr('Error', 'Invalid attempts value');
         }
     }
-    
+
     private function updateRecord(string $field, string $value, string $message): void
     {
         global $db;
-        
+
         $db->sql_query_prepared("UPDATE loginattempts SET {$field} = ? WHERE id = ?", [$value, $this->id]);
         redirect($_SERVER['PHP_SELF'] . "?act=maxlogin&update=$message");
     }
-    
+
     private function deleteRecord(bool $returnToRequests = false): void
     {
         global $db;
-        
+
         $db->sql_query_prepared("DELETE FROM loginattempts WHERE id = ?", [$this->id]);
-        
+
         if ($returnToRequests) {
             redirect('admin.php?act=viewunbaniprequest');
         }
-        
+
         redirect($_SERVER['PHP_SELF'] . '?act=maxlogin&update=Delete');
     }
-    
+
     private function renderEditForm(array $attempt): string
     {
         global $mybb;
 
+        $id = (int) $attempt['id'];
+        $ip = htmlspecialchars((string) $attempt['ip'], ENT_QUOTES); // was printed raw
+        $attempts = (int) $attempt['attempts'];
         $added = my_datee('relative', $attempt['added']);
-        $returnHidden = isset($_GET['return']) && $_GET['return'] === 'yes' ? 
-            '<input type="hidden" name="returnto" value="admin.php?act=viewunbaniprequest">' : '';
-        $postKey = htmlspecialchars($mybb->post_code);
-        
+        $fromRequests = isset($_GET['return']) && $_GET['return'] === 'yes';
+        $returnHidden = $fromRequests
+            ? '<input type="hidden" name="returnto" value="admin.php?act=viewunbaniprequest">'
+            : '';
+        $cancelUrl = $fromRequests ? 'admin.php?act=viewunbaniprequest' : '?act=maxlogin';
+        $postKey = htmlspecialchars((string) $mybb->post_code, ENT_QUOTES);
+        $status = $this->statusBadge($attempt['banned'] === 'yes');
+
+        $header = maxlogin_page_header(
+            'fa-pen-to-square',
+            'primary',
+            "Edit login attempt #{$id}",
+            'Change the counter, the attempt type or the ban status',
+            $status
+        );
+
         return <<<HTML
-        <div class="container-md">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-edit me-2"></i>
-                        Edit Login Attempt #{$attempt['id']}
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <div class="card border">
-                                <div class="card-body">
-                                    <h6 class="card-subtitle mb-2 text-muted">IP Address</h6>
-                                    <p class="card-text">
-                                        <code class="fs-5">{$attempt['ip']}</code>
-                                    </p>
+        <div class="ml-wrap container-lg py-3">
+            {$header}
+
+            <form method="post" action="?act=maxlogin&amp;action=save" class="ml-form">
+                <input type="hidden" name="action" value="save">
+                <input type="hidden" name="id" value="{$id}">
+                <input type="hidden" name="ip" value="{$ip}">
+                <input type="hidden" name="my_post_key" value="{$postKey}">
+                {$returnHidden}
+
+                <div class="ml-card mt-3">
+                    <div class="p-4">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <div class="ml-info">
+                                    <span class="ml-ico ml-ico-sm ml-soft-info"><i class="fa-solid fa-network-wired"></i></span>
+                                    <div>
+                                        <div class="ml-info-lbl">IP address</div>
+                                        <code class="ml-ip fs-6">{$ip}</code>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="ml-info">
+                                    <span class="ml-ico ml-ico-sm ml-soft-secondary"><i class="fa-regular fa-clock"></i></span>
+                                    <div>
+                                        <div class="ml-info-lbl">Last attempt</div>
+                                        <div class="fw-semibold">{$added}</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="card border">
-                                <div class="card-body">
-                                    <h6 class="card-subtitle mb-2 text-muted">Action Time</h6>
-                                    <p class="card-text">
-                                        <i class="fas fa-clock text-primary me-2"></i>
-                                        {$added}
-                                    </p>
-                                </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="attempts" class="form-label">
+                                    <i class="fa-solid fa-repeat"></i> Attempts
+                                </label>
+                                <input type="number" class="form-control" id="attempts" name="attempts"
+                                       value="{$attempts}" min="0" max="1000" required>
+                                <div class="form-text">From 0 to 1000</div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="type" class="form-label">
+                                    <i class="fa-solid fa-tag"></i> Type
+                                </label>
+                                <select class="form-select" id="type" name="type" required>
+                                    <option value="login" {$this->selected($attempt['type'] === 'login')}>Login</option>
+                                    <option value="recover" {$this->selected($attempt['type'] === 'recover')}>Password recovery</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="banned" class="form-label">
+                                    <i class="fa-solid fa-shield-halved"></i> Status
+                                </label>
+                                <select class="form-select" id="banned" name="banned" required>
+                                    <option value="yes" {$this->selected($attempt['banned'] === 'yes')}>Banned</option>
+                                    <option value="no" {$this->selected($attempt['banned'] === 'no')}>Active</option>
+                                </select>
                             </div>
                         </div>
                     </div>
-                    
-                    <form method="post" action="?act=maxlogin&action=save" class="needs-validation" novalidate>
-                        <input type="hidden" name="action" value="save">
-                        <input type="hidden" name="id" value="{$attempt['id']}">
-                        <input type="hidden" name="ip" value="{$attempt['ip']}">
-                        <input type="hidden" name="my_post_key" value="{$postKey}">
-                        {$returnHidden}
-                        
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="attempts" class="form-label">
-                                    <i class="fas fa-retweet me-1"></i> Attempts Count
-                                </label>
-                                <input type="number" 
-                                       class="form-control" 
-                                       id="attempts" 
-                                       name="attempts" 
-                                       value="{$attempt['attempts']}" 
-                                       min="0" 
-                                       max="1000" 
-                                       required>
-                                <div class="invalid-feedback">
-                                    Please enter a valid number between 0 and 1000.
-                                </div>
-                            </div>
-                            
-                            <div class="col-md-6">
-                                <label for="type" class="form-label">
-                                    <i class="fas fa-key me-1"></i> Attempt Type
-                                </label>
-                                <select class="form-select" id="type" name="type" required>
-                                    <option value="login" {$this->selected($attempt['type'] === 'login')}>
-                                        Login Attempt
-                                    </option>
-                                    <option value="recover" {$this->selected($attempt['type'] === 'recover')}>
-                                        Password Recovery Attempt
-                                    </option>
-                                </select>
-                            </div>
-                            
-                            <div class="col-md-6">
-                                <label for="banned" class="form-label">
-                                    <i class="fas fa-ban me-1"></i> Status
-                                </label>
-                                <select class="form-select" id="banned" name="banned" required>
-                                    <option value="yes" {$this->selected($attempt['banned'] === 'yes')}>
-                                        <span class="text-danger">Banned</span>
-                                    </option>
-                                    <option value="no" {$this->selected($attempt['banned'] === 'no')}>
-                                        <span class="text-success">Not Banned</span>
-                                    </option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="mt-4">
-                            <button type="submit" class="btn btn-primary px-4">
-                                <i class="fas fa-save me-2"></i> Save Changes
-                            </button>
-                            <a href="?" class="btn btn-outline-secondary ms-2">
-                                <i class="fas fa-times me-2"></i> Cancel
-                            </a>
-                        </div>
-                    </form>
                 </div>
-            </div>
+
+                <div class="ml-actionbar">
+                    <span class="ml-sub"><i class="fa-solid fa-circle-info me-1"></i>Changes apply immediately after saving</span>
+                    <a href="{$cancelUrl}" class="btn btn-outline-secondary ml-btn">
+                        <i class="fa-solid fa-xmark"></i> Cancel
+                    </a>
+                    <button type="submit" class="btn btn-primary ml-btn px-4">
+                        <i class="fa-solid fa-floppy-disk"></i> Save changes
+                    </button>
+                </div>
+            </form>
         </div>
-        
         HTML;
     }
-    
+
     private function renderSearchForm(): string
     {
         return <<<HTML
-        <div class="container-md mt-4">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-info text-white">
-                    <h6 class="mb-0">
-                        <i class="fas fa-search me-2"></i>
-                        Search IP Address
-                    </h6>
+        <div class="ml-card mt-3">
+            <div class="ml-head">
+                <span class="ml-ico ml-ico-sm ml-soft-info"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <div class="ml-head-main">
+                    <h5 class="ml-title">Search another IP</h5>
                 </div>
-                <div class="card-body">
-                    <form method="post" action="?action=searchip" class="row g-3 align-items-center">
-                        <input type="hidden" name="action" value="searchip">
-                        
-                        <div class="col-md-8">
-                            <label for="searchIp" class="visually-hidden">IP Address</label>
-                            <div class="input-group">
-                                <span class="input-group-text">
-                                    <i class="fas fa-address-card"></i>
-                                </span>
-                                <input type="text" 
-                                       class="form-control" 
-                                       id="searchIp" 
-                                       name="ip" 
-                                       placeholder="Enter IP address (e.g., 192.168.1.1)" 
-                                       required 
-                                       pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$">
-                                <div class="invalid-feedback">
-                                    Please enter a valid IP address.
-                                </div>
-                            </div>
+            </div>
+            <div class="px-4 pb-4">
+                <form method="post" action="?act=maxlogin&amp;action=searchip" class="row g-2 align-items-center">
+                    <input type="hidden" name="action" value="searchip">
+                    <div class="col-md-9">
+                        <label for="searchIp" class="visually-hidden">IP address</label>
+                        <div class="input-group ml-pill-group">
+                            <span class="input-group-text"><i class="fa-solid fa-network-wired"></i></span>
+                            <input type="text" class="form-control" id="searchIp" name="ip"
+                                   placeholder="For example 192.168.1.1" required>
                         </div>
-                        
-                        <div class="col-md-4">
-                            <button type="submit" class="btn btn-info w-100">
-                                <i class="fas fa-search me-2"></i> Search
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-info ml-btn w-100">
+                            <i class="fa-solid fa-magnifying-glass"></i> Search
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
         HTML;
     }
-    
+
     private function renderSuccessMessage(string $action): string
     {
         return <<<HTML
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="fas fa-check-circle me-2"></i>
-            <strong>Success!</strong> Operation "{$action}" completed successfully.
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="alert alert-success alert-dismissible fade show d-flex align-items-center gap-2 mt-3 mb-0 ml-alert" role="alert">
+            <i class="fa-solid fa-circle-check"></i>
+            <div><strong>Done.</strong> "{$action}" completed.</div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
         HTML;
     }
-    
+
     private function showError(string $message): void
     {
         stderr('Error', $message);
     }
-    
+
     private function getRequest(string $key, string $default = ''): string
     {
-        return htmlspecialchars($_REQUEST[$key] ?? $default, ENT_QUOTES, 'UTF-8');
+        return htmlspecialchars((string) ($_REQUEST[$key] ?? $default), ENT_QUOTES, 'UTF-8');
     }
-    
+
     private function getRequestInt(string $key, int $default = 0): int
     {
         $value = $_REQUEST[$key] ?? $default;
@@ -1176,11 +1260,28 @@ private function includeJavaScriptLibraries(): string
             'options' => ['default' => $default]
         ]);
     }
-    
+
     private function selected(bool $condition): string
     {
         return $condition ? 'selected' : '';
     }
+}
+
+/**
+ * maxlogin-ui.js (config bootstrap, copy IP, empty-state buttons), once per page.
+ * Must come after the config block and before maxlogin.js.
+ */
+function maxlogin_ui_js(): string
+{
+    static $printed = false;
+    if ($printed) {
+        return '';
+    }
+    $printed = true;
+
+    $src = maxlogin_asset_url(MAXLOGIN_UI_JS);
+
+    return "<script src=\"{$src}\"></script>";
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1206,17 +1307,53 @@ class LoginLogManager
         $this->filterStatus     = $this->req('filter_status', 'all');
         $this->filterSuspicious = $this->req('filter_suspicious', 'all');
         $this->searchIp         = $this->req('search_log_ip', '');
-        $order                  = $this->req('lorder', 'datetime');
-        $this->orderBy          = match($order) {
-            'id','uid','ip','country','city','datetime','status','suspicious','banned','type' => $order,
+        $this->orderBy          = $this->normalizeOrder($this->req('lorder', 'datetime'));
+        $this->orderType        = $this->req('lotype') === 'ASC' ? 'ASC' : 'DESC';
+    }
+
+    private function normalizeOrder(string $order): string
+    {
+        return match ($order) {
+            'id', 'uid', 'ip', 'country', 'city', 'datetime', 'status', 'suspicious', 'banned', 'type' => $order,
             default => 'datetime'
         };
-        $this->orderType = $this->req('lotype') === 'ASC' ? 'ASC' : 'DESC';
     }
 
     private function req(string $key, string $default = ''): string
     {
-        return htmlspecialchars($_REQUEST[$key] ?? $default, ENT_QUOTES, 'UTF-8');
+        return htmlspecialchars((string) ($_REQUEST[$key] ?? $default), ENT_QUOTES, 'UTF-8');
+    }
+
+    /** Totals for KPI tiles and the tab counter. */
+    public function getStats(): array
+    {
+        global $db;
+
+        $result = $db->sql_query_prepared(
+            "SELECT COUNT(*) AS total,
+                    COALESCE(SUM(status = 'success'), 0) AS success,
+                    COALESCE(SUM(status = 'fail'), 0) AS fail,
+                    COALESCE(SUM(suspicious = 'yes'), 0) AS suspicious
+             FROM login_log"
+        );
+        $row = $result ? $db->fetch_array($result) : null;
+
+        return [
+            'total'      => (int) ($row['total'] ?? 0),
+            'success'    => (int) ($row['success'] ?? 0),
+            'fail'       => (int) ($row['fail'] ?? 0),
+            'suspicious' => (int) ($row['suspicious'] ?? 0),
+        ];
+    }
+
+    public function renderKpis(array $s): string
+    {
+        return maxlogin_kpis([
+            ['fa-clock-rotate-left',  'primary', $s['total'],      'Log entries'],
+            ['fa-circle-check',       'success', $s['success'],    'Successful logins'],
+            ['fa-circle-xmark',       'danger',  $s['fail'],       'Failed logins'],
+            ['fa-triangle-exclamation','warning', $s['suspicious'], 'Suspicious'],
+        ]);
     }
 
     public function renderTab(): void
@@ -1238,12 +1375,12 @@ class LoginLogManager
     {
         header('Content-Type: application/json');
         try {
-            match($this->action) {
-                'log_ajax_get_page'  => $this->ajaxGetPage(),
-                'log_ajax_get_count' => $this->ajaxGetCount(),
+            match ($this->action) {
+                'log_ajax_get_page'   => $this->ajaxGetPage(),
+                'log_ajax_get_count'  => $this->ajaxGetCount(),
                 'log_ajax_delete'     => $this->ajaxDelete(),
                 'log_ajax_delete_all' => $this->ajaxDeleteAll(),
-                default              => throw new Exception('Unknown action')
+                default               => throw new Exception('Unknown action')
             };
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -1254,14 +1391,10 @@ class LoginLogManager
     private function ajaxGetPage(): void
     {
         $this->page             = max(1, (int)($_POST['lpage'] ?? 1));
-        $this->filterStatus     = htmlspecialchars($_POST['filter_status']     ?? 'all', ENT_QUOTES, 'UTF-8');
-        $this->filterSuspicious = htmlspecialchars($_POST['filter_suspicious'] ?? 'all', ENT_QUOTES, 'UTF-8');
-        $this->searchIp         = htmlspecialchars($_POST['search_log_ip']     ?? '',    ENT_QUOTES, 'UTF-8');
-        $order                  = $_POST['lorder'] ?? 'datetime';
-        $this->orderBy          = match($order) {
-            'id','uid','ip','country','city','datetime','status','suspicious','banned','type' => $order,
-            default => 'datetime'
-        };
+        $this->filterStatus     = htmlspecialchars((string) ($_POST['filter_status']     ?? 'all'), ENT_QUOTES, 'UTF-8');
+        $this->filterSuspicious = htmlspecialchars((string) ($_POST['filter_suspicious'] ?? 'all'), ENT_QUOTES, 'UTF-8');
+        $this->searchIp         = htmlspecialchars((string) ($_POST['search_log_ip']     ?? ''),    ENT_QUOTES, 'UTF-8');
+        $this->orderBy          = $this->normalizeOrder((string) ($_POST['lorder'] ?? 'datetime'));
         $this->orderType        = ($_POST['lotype'] ?? 'DESC') === 'ASC' ? 'ASC' : 'DESC';
 
         echo json_encode(['success' => true, 'html' => $this->renderTableContent()]);
@@ -1285,7 +1418,8 @@ class LoginLogManager
         $row = $result ? $db->fetch_array($result) : null;
         if (!$row) throw new Exception('Log entry not found');
         $db->sql_query_prepared("DELETE FROM login_log WHERE id=?", [$id]);
-        echo json_encode(['success' => true, 'message' => "Log entry #{$id} ({$row['ip']}) deleted.", 'id' => $id]);
+        $ip = htmlspecialchars((string) $row['ip'], ENT_QUOTES);
+        echo json_encode(['success' => true, 'message' => "Log entry #{$id} ({$ip}) deleted.", 'id' => $id]);
     }
 
     private function ajaxDeleteAll(): void
@@ -1293,7 +1427,7 @@ class LoginLogManager
         global $db;
         $scope = $_POST['scope'] ?? 'all';
 
-        $where = match($scope) {
+        $where = match ($scope) {
             'fail'       => "WHERE status = 'fail'",
             'success'    => "WHERE status = 'success'",
             'suspicious' => "WHERE suspicious = 'yes'",
@@ -1320,10 +1454,13 @@ class LoginLogManager
     private function showList(): void
     {
         echo $this->renderLogJS();
+        echo '<div class="ml-card">';
         echo $this->renderLogHeader();
-        echo $this->renderLogFilters(); // opens <div id="log-table-container">
+        echo $this->renderLogFilters();
+        echo '<div id="log-table-container">';
         echo $this->renderTableContent();
-        echo '</div>'; // close log-table-container
+        echo '</div>';
+        echo '</div>';
     }
 
     private function renderTableContent(): string
@@ -1356,7 +1493,7 @@ class LoginLogManager
             $rows .= $this->renderRow($row);
         }
 
-        return $this->renderTable($rows) . $this->renderPager($currentPage, $totalPages, $total);
+        return $this->renderTable($rows) . maxlogin_pager($currentPage, $totalPages, $total, 'log-page');
     }
 
     private function buildWhere(): array
@@ -1388,21 +1525,25 @@ class LoginLogManager
 
     private function renderTable(string $rows): string
     {
+        $o = $this->orderBy;
+        $d = $this->orderType;
+        $s = fn(string $k, string $l) => maxlogin_sort_link('log-sort', $k, $l, $o, $d);
+
         return <<<HTML
-        <div class="container mt-3">
-            <table class="table table-hover table-striped align-middle">
-                <thead class="table-dark">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle ml-table">
+                <thead>
                     <tr>
-                        <th style="width:4%"><a href="#" class="text-white text-decoration-none log-sort" data-order="id">ID <i class="fas fa-sort"></i></a></th>
-                        <th style="width:10%"><a href="#" class="text-white text-decoration-none log-sort" data-order="uid">User <i class="fas fa-sort"></i></a></th>
-                        <th style="width:13%"><a href="#" class="text-white text-decoration-none log-sort" data-order="ip">IP <i class="fas fa-sort"></i></a></th>
-                        <th style="width:13%"><a href="#" class="text-white text-decoration-none log-sort" data-order="country">Location <i class="fas fa-sort"></i></a></th>
-                        <th style="width:17%">User-Agent</th>
-                        <th style="width:13%"><a href="#" class="text-white text-decoration-none log-sort" data-order="datetime">Time <i class="fas fa-sort"></i></a></th>
-                        <th style="width:8%"><a href="#" class="text-white text-decoration-none log-sort" data-order="type">Type <i class="fas fa-sort"></i></a></th>
-                        <th style="width:8%"><a href="#" class="text-white text-decoration-none log-sort" data-order="status">Status <i class="fas fa-sort"></i></a></th>
-                        <th style="width:8%"><a href="#" class="text-white text-decoration-none log-sort" data-order="suspicious">Suspicious <i class="fas fa-sort"></i></a></th>
-                        <th style="width:6%" class="text-center">Del</th>
+                        <th class="ml-w-5">{$s('id', 'ID')}</th>
+                        <th class="ml-w-11">{$s('uid', '<i class="fa-solid fa-user"></i> User')}</th>
+                        <th class="ml-w-14">{$s('ip', '<i class="fa-solid fa-network-wired"></i> IP')}</th>
+                        <th class="ml-w-13">{$s('country', '<i class="fa-solid fa-earth-europe"></i> Location')}</th>
+                        <th class="ml-w-15"><i class="fa-solid fa-display me-1"></i> Device</th>
+                        <th class="ml-w-12">{$s('datetime', '<i class="fa-regular fa-clock"></i> Time')}</th>
+                        <th class="ml-w-8">{$s('type', 'Type')}</th>
+                        <th class="ml-w-8">{$s('status', 'Result')}</th>
+                        <th class="ml-w-9">{$s('suspicious', 'Suspicious')}</th>
+                        <th class="ml-w-5 text-end"></th>
                     </tr>
                 </thead>
                 <tbody>{$rows}</tbody>
@@ -1411,141 +1552,143 @@ class LoginLogManager
         HTML;
     }
 
+    /** Browser + OS icons from the user agent string. */
+    private function parseUserAgent(string $ua): array
+    {
+        $browser = match (true) {
+            $ua === ''                                        => ['fa-solid fa-circle-question', 'Unknown'],
+            (bool) preg_match('~bot|crawl|spider|curl|wget|python|httpclient~i', $ua) => ['fa-solid fa-robot', 'Bot / script'],
+            str_contains($ua, 'Edg/')                          => ['fa-brands fa-edge', 'Edge'],
+            str_contains($ua, 'OPR/') || str_contains($ua, 'Opera') => ['fa-brands fa-opera', 'Opera'],
+            str_contains($ua, 'YaBrowser')                     => ['fa-brands fa-yandex-international', 'Yandex'],
+            str_contains($ua, 'Firefox/')                      => ['fa-brands fa-firefox-browser', 'Firefox'],
+            str_contains($ua, 'Chrome/')                       => ['fa-brands fa-chrome', 'Chrome'],
+            str_contains($ua, 'Safari/')                       => ['fa-brands fa-safari', 'Safari'],
+            default                                           => ['fa-solid fa-globe', 'Other'],
+        };
+
+        $os = match (true) {
+            str_contains($ua, 'Windows')                        => ['fa-brands fa-windows', 'Windows'],
+            str_contains($ua, 'Android')                        => ['fa-brands fa-android', 'Android'],
+            (bool) preg_match('~iPhone|iPad|Macintosh|Mac OS~', $ua) => ['fa-brands fa-apple', 'Apple'],
+            str_contains($ua, 'Linux')                          => ['fa-brands fa-linux', 'Linux'],
+            default                                            => ['fa-solid fa-desktop', ''],
+        };
+
+        return [$browser, $os];
+    }
+
     private function renderRow(array $r): string
     {
         global $dateformat, $timeformat, $BASEURL;
 
-        $ip       = htmlspecialchars($r['ip'],       ENT_QUOTES);
-        $country  = htmlspecialchars($r['country'],  ENT_QUOTES);
-        $city     = htmlspecialchars($r['city'],     ENT_QUOTES);
-        $ua       = htmlspecialchars(substr($r['user_agent'] ?? '', 0, 60), ENT_QUOTES);
-        $uaFull   = htmlspecialchars($r['user_agent'] ?? '', ENT_QUOTES);
+        $id       = (int) $r['id'];
+        $ip       = htmlspecialchars((string) $r['ip'], ENT_QUOTES);
+        $ipUrl    = urlencode((string) $r['ip']);
+        $country  = htmlspecialchars((string) ($r['country'] ?? ''), ENT_QUOTES);
+        $city     = htmlspecialchars((string) ($r['city'] ?? ''), ENT_QUOTES);
+        $uaRaw    = (string) ($r['user_agent'] ?? '');
+        $uaFull   = htmlspecialchars($uaRaw, ENT_QUOTES);
         $date     = my_datee($dateformat, $r['datetime']);
         $time     = my_datee($timeformat, $r['datetime']);
-        $username = $r['username'] ? htmlspecialchars($r['username'], ENT_QUOTES) : '<span class="text-muted">—</span>';
-        $uid      = (int)$r['uid'];
+        $uid      = (int) $r['uid'];
 
-        // Status badge
+        [[$bIcon, $bName], [$oIcon, $oName]] = $this->parseUserAgent($uaRaw);
+        $device = $oName !== '' ? "{$bName} on {$oName}" : $bName;
+
         $statusBadge = $r['status'] === 'success'
-            ? '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Success</span>'
-            : '<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Fail</span>';
+            ? '<span class="ml-chip ml-soft-success"><i class="fa-solid fa-check"></i>Success</span>'
+            : '<span class="ml-chip ml-soft-danger"><i class="fa-solid fa-xmark"></i>Fail</span>';
 
-        // Suspicious badge
         $suspBadge = $r['suspicious'] === 'yes'
-            ? '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle me-1"></i>Yes</span>'
-            : '<span class="badge bg-secondary">No</span>';
+            ? '<span class="ml-chip ml-soft-warning"><i class="fa-solid fa-triangle-exclamation"></i>Yes</span>'
+            : '<span class="ml-chip ml-soft-secondary"><i class="fa-solid fa-minus"></i>No</span>';
 
-        // Type badge
         $typeBadge = $r['type'] === 'recover'
-            ? '<span class="badge bg-info text-dark">Recover</span>'
-            : '<span class="badge bg-primary">Login</span>';
+            ? '<span class="ml-chip ml-soft-info" title="Password recovery"><i class="fa-solid fa-key"></i>Recover</span>'
+            : '<span class="ml-chip ml-soft-primary"><i class="fa-solid fa-right-to-bracket"></i>Login</span>';
 
-        // Location
         $location = $country
-            ? "<i class='fas fa-map-marker-alt me-1 text-muted'></i>{$country}" . ($city ? ", {$city}" : '')
-            : '<span class="text-muted">—</span>';
+            ? "<i class=\"fa-solid fa-location-dot me-1 ml-muted\"></i>{$country}" . ($city ? "<div class=\"ml-muted small\">{$city}</div>" : '')
+            : '<span class="ml-muted">—</span>';
 
-        // User profile link
-        $userCell = $uid > 0
-            ? "<a href='{$BASEURL}/member.php?action=profile&uid={$uid}'>{$username}</a>"
-            : $username;
+        if ($uid > 0 && !empty($r['username'])) {
+            $username = htmlspecialchars((string) $r['username'], ENT_QUOTES);
+            $userCell = "<div class=\"ml-user\"><span class=\"ml-ico ml-mini ml-soft-primary\"><i class=\"fa-solid fa-user\"></i></span>"
+                      . "<a href=\"{$BASEURL}/member.php?action=profile&amp;uid={$uid}\">{$username}</a></div>";
+        } else {
+            $userCell = "<div class=\"ml-user ml-muted\"><span class=\"ml-ico ml-mini ml-soft-secondary\"><i class=\"fa-solid fa-user-secret\"></i></span>Unknown</div>";
+        }
 
         return <<<HTML
-        <tr id="log-row-{$r['id']}">
-            <td class="fw-bold text-muted">#{$r['id']}</td>
+        <tr id="log-row-{$id}">
+            <td class="ml-id">#{$id}</td>
             <td>{$userCell}</td>
             <td>
-                <div class="d-flex justify-content-between align-items-center gap-1">
-                    <code class="text-dark">{$ip}</code>
-                    <a href="{$BASEURL}/admin/index.php?act=ipsearch&do=1&ip={$ip}" target="_blank"
-                       class="btn btn-sm btn-outline-info py-0 px-1" title="IP Search">
-                        <i class="fas fa-search"></i>
+                <div class="ml-ipcell">
+                    <code class="ml-ip">{$ip}</code>
+                    <button type="button" class="btn ml-btn-icon ml-mini ml-soft-secondary ml-copy" data-copy="{$ip}" title="Copy IP">
+                        <i class="fa-regular fa-copy"></i>
+                    </button>
+                    <a href="{$BASEURL}/admin/index.php?act=ipsearch&amp;do=1&amp;ip={$ipUrl}" target="_blank" rel="noopener"
+                       class="btn ml-btn-icon ml-mini ml-soft-info" title="Search this IP in the database">
+                        <i class="fa-solid fa-magnifying-glass-location"></i>
                     </a>
                 </div>
             </td>
-            <td><small>{$location}</small></td>
-            <td><small title="{$uaFull}" style="cursor:help">{$ua}…</small></td>
+            <td class="small">{$location}</td>
             <td>
-                <small>
-                    <i class="fas fa-calendar-alt me-1 text-muted"></i>{$date}<br>
-                    <i class="fas fa-clock me-1 text-muted"></i>{$time}
-                </small>
+                <div class="ml-ua" title="{$uaFull}">
+                    <i class="{$bIcon}"></i><i class="{$oIcon}"></i><span>{$device}</span>
+                </div>
+            </td>
+            <td>
+                <div class="ml-when">
+                    <i class="fa-regular fa-calendar"></i>{$date}<br>
+                    <i class="fa-regular fa-clock"></i>{$time}
+                </div>
             </td>
             <td>{$typeBadge}</td>
             <td>{$statusBadge}</td>
             <td>{$suspBadge}</td>
-            <td class="text-center">
-                <button class="btn btn-sm btn-outline-danger log-delete-btn"
-                        data-id="{$r['id']}" data-ip="{$ip}" title="Delete">
-                    <i class="fas fa-trash"></i>
+            <td class="text-end">
+                <button type="button" class="btn ml-btn-icon ml-soft-danger log-delete-btn"
+                        data-id="{$id}" data-ip="{$ip}" title="Delete">
+                    <i class="fa-solid fa-trash-can"></i>
                 </button>
             </td>
         </tr>
         HTML;
     }
 
-    private function renderPager(int $current, int $total, int $totalRows): string
-    {
-        $fmt = number_format($totalRows);
-        if ($total <= 1) {
-            return "<div class='text-center text-muted mt-3'>Total records: {$fmt}</div>";
-        }
-
-        $pages = '';
-        $start = max(1, $current - 2);
-        $end   = min($total, $current + 2);
-        for ($i = $start; $i <= $end; $i++) {
-            $active  = $i === $current ? 'active' : '';
-            $pages  .= "<li class='page-item {$active}'><a class='page-link log-page' href='#' data-page='{$i}'>{$i}</a></li>";
-        }
-
-        $prevDis = $current === 1      ? 'disabled' : '';
-        $nextDis = $current === $total ? 'disabled' : '';
-        $prev    = max(1, $current - 1);
-        $next    = min($total, $current + 1);
-
-        return <<<HTML
-        <div class="d-flex justify-content-between align-items-center mt-4">
-            <div class="text-muted">Page {$current} of {$total} &nbsp;·&nbsp; {$fmt} records</div>
-            <nav><ul class="pagination mb-0">
-                <li class="page-item {$prevDis}"><a class="page-link log-page" href="#" data-page="{$prev}">&laquo;</a></li>
-                {$pages}
-                <li class="page-item {$nextDis}"><a class="page-link log-page" href="#" data-page="{$next}">&raquo;</a></li>
-            </ul></nav>
-        </div>
-        HTML;
-    }
-
     private function renderEmpty(): string
     {
         return <<<HTML
-        <div class="text-center py-5">
-            <i class="fas fa-history fa-4x text-muted mb-3"></i>
-            <h4 class="text-muted">No login history yet</h4>
-            <p class="text-muted">Entries will appear here after users log in.</p>
+        <div class="ml-empty">
+            <span class="ml-ico ml-soft-secondary"><i class="fa-solid fa-clock-rotate-left"></i></span>
+            <h4>No login history</h4>
+            <p class="ml-muted">Entries appear here after users log in.</p>
         </div>
         HTML;
     }
 
+    /** Card head of the log section (keeps #log-spinner / #log-total-count for JS). */
     private function renderLogHeader(): string
     {
         return <<<HTML
-        <div class="container mt-3">
-            <div class="card-header bg-dark text-white rounded-top">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h5 class="mb-0">
-                            <i class="fas fa-history me-2"></i>Login History Log
-                        </h5>
-                        <small class="text-white-50">All login attempts with geolocation — success &amp; failed</small>
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="spinner-border spinner-border-sm text-white d-none" id="log-spinner" role="status"></div>
-                        <span class="badge bg-light text-dark" id="log-total-count">Loading…</span>
-                    </div>
-                </div>
+        <div class="ml-head">
+            <span class="ml-ico ml-ico-sm ml-soft-primary"><i class="fa-solid fa-clock-rotate-left"></i></span>
+            <div class="ml-head-main">
+                <h5 class="ml-title">Login history</h5>
+                <p class="ml-sub">Every login, successful or failed, with location and device</p>
             </div>
-            <div class="card-body">
+            <div class="ml-head-side">
+                <div class="spinner-border spinner-border-sm text-primary d-none" id="log-spinner" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <span class="ml-chip ml-soft-primary"><i class="fa-solid fa-database"></i><span id="log-total-count">Loading…</span></span>
+            </div>
+        </div>
         HTML;
     }
 
@@ -1555,73 +1698,83 @@ class LoginLogManager
         $suspSel   = $this->filterSuspicious;
         $searchVal = $this->searchIp;
 
-        $selAll = fn(string $v, string $c) => $v === $c ? 'selected' : '';
+        $sel = fn(string $v, string $c) => $v === $c ? 'selected' : '';
 
         return <<<HTML
-        <div class="row g-2 mb-3">
-            <div class="col-md-6">
-                <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-search"></i></span>
-                    <input type="text" class="form-control" id="log-search" placeholder="Search by IP…"
-                           value="{$searchVal}" autocomplete="off">
-                    <button class="btn btn-outline-secondary" id="log-clear-search" type="button">
-                        <i class="fas fa-times"></i>
-                    </button>
+        <div class="ml-toolbar">
+            <div class="row g-2 align-items-center">
+                <div class="col-lg-5">
+                    <div class="input-group ml-pill-group">
+                        <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                        <input type="text" class="form-control" id="log-search" placeholder="Search by IP address"
+                               value="{$searchVal}" autocomplete="off">
+                        <button class="btn btn-outline-secondary" id="log-clear-search" type="button" title="Clear search">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-2">
-                <select class="form-select" id="log-filter-status">
-                    <option value="all"     {$selAll($statusSel,'all')}>All Status</option>
-                    <option value="success" {$selAll($statusSel,'success')}>✅ Success</option>
-                    <option value="fail"    {$selAll($statusSel,'fail')}>❌ Failed</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <select class="form-select" id="log-filter-suspicious">
-                    <option value="all" {$selAll($suspSel,'all')}>All</option>
-                    <option value="yes" {$selAll($suspSel,'yes')}>⚠️ Suspicious</option>
-                    <option value="no"  {$selAll($suspSel,'no')}>Normal</option>
-                </select>
-            </div>
-            <div class="col-md-2 d-flex gap-2">
-                <button class="btn btn-outline-primary btn-sm w-50" id="log-refresh">
-                    <i class="fas fa-sync-alt me-1"></i>Refresh
-                </button>
-                <button class="btn btn-outline-danger btn-sm w-50" id="log-clear-filters">
-                    <i class="fas fa-filter-circle-xmark"></i>
-                </button>
-            </div>
-            <div class="col-md-2">
-                <div class="dropdown">
-                    <button class="btn btn-danger btn-sm w-100 dropdown-toggle" type="button" id="log-delete-all-btn" data-bs-toggle="dropdown">
-                        <i class="fas fa-trash me-1"></i>Delete All
+                <div class="col-sm-6 col-lg-2">
+                    <div class="input-group ml-pill-group">
+                        <span class="input-group-text"><i class="fa-solid fa-circle-half-stroke"></i></span>
+                        <select class="form-select" id="log-filter-status" aria-label="Result filter">
+                            <option value="all"     {$sel($statusSel, 'all')}>All results</option>
+                            <option value="success" {$sel($statusSel, 'success')}>Success</option>
+                            <option value="fail"    {$sel($statusSel, 'fail')}>Failed</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <div class="input-group ml-pill-group">
+                        <span class="input-group-text"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                        <select class="form-select" id="log-filter-suspicious" aria-label="Suspicious filter">
+                            <option value="all" {$sel($suspSel, 'all')}>All entries</option>
+                            <option value="yes" {$sel($suspSel, 'yes')}>Suspicious</option>
+                            <option value="no"  {$sel($suspSel, 'no')}>Normal</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-3 d-flex gap-2">
+                    <button type="button" class="btn btn-outline-primary ml-btn" id="log-refresh" title="Refresh">
+                        <i class="fa-solid fa-rotate"></i>
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item log-delete-all" href="#" data-scope="all"><i class="fas fa-trash-alt me-2 text-danger"></i>All records</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item log-delete-all" href="#" data-scope="fail"><i class="fas fa-times me-2 text-danger"></i>Failed only</a></li>
-                        <li><a class="dropdown-item log-delete-all" href="#" data-scope="success"><i class="fas fa-check me-2 text-success"></i>Success only</a></li>
-                        <li><a class="dropdown-item log-delete-all" href="#" data-scope="suspicious"><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Suspicious only</a></li>
-                    </ul>
+                    <button type="button" class="btn btn-outline-secondary ml-btn" id="log-clear-filters" title="Clear filters">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
+                    </button>
+                    <div class="dropdown flex-fill">
+                        <button class="btn btn-danger ml-btn w-100 dropdown-toggle" type="button" id="log-delete-all-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa-solid fa-trash-can"></i> Delete
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow ml-dropdown">
+                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="all"><i class="fa-solid fa-dumpster me-2 text-danger"></i>All records</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="fail"><i class="fa-solid fa-circle-xmark me-2 text-danger"></i>Failed only</a></li>
+                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="success"><i class="fa-solid fa-circle-check me-2 text-success"></i>Successful only</a></li>
+                            <li><a class="dropdown-item log-delete-all" href="#" data-scope="suspicious"><i class="fa-solid fa-triangle-exclamation me-2 text-warning"></i>Suspicious only</a></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
-        </div><!-- /card-body -->
-        </div><!-- /card -->
-
-        <div id="log-table-container">
         HTML;
     }
 
     private function renderLogJS(): string
     {
-        global $BASEURL;
-        $orderBy   = addslashes($this->orderBy);
-        $orderType = addslashes($this->orderType);
+        $config = maxlogin_config_tag('maxlogin-log-config', [
+            'orderBy'   => $this->orderBy,
+            'orderType' => $this->orderType,
+        ]);
 
+        $assets = maxlogin_assets();
+        $uiJs   = maxlogin_ui_js();
+        $js     = maxlogin_asset_url(MAXLOGIN_JS);
+
+        // Order matters: config block -> maxlogin-ui.js (reads it) -> maxlogin.js
         return <<<HTML
-        <script>window.maxloginLogConfig = {orderBy: '{$orderBy}', orderType: '{$orderType}'};</script>
-        <script src="{$BASEURL}/scripts/maxlogin.js"></script>
+        {$assets}
+        {$config}
+        {$uiJs}
+        <script src="{$js}"></script>
         HTML;
     }
 }
@@ -1632,53 +1785,58 @@ class LoginLogManager
 
 function maxlogin_render_tabs(): void
 {
-    $tab = htmlspecialchars($_REQUEST['tab'] ?? 'attempts', ENT_QUOTES, 'UTF-8');
-    $update = htmlspecialchars($_REQUEST['update'] ?? '', ENT_QUOTES, 'UTF-8');
+    $tab = ($_REQUEST['tab'] ?? 'attempts') === 'log' ? 'log' : 'attempts';
+    $update = htmlspecialchars((string) ($_REQUEST['update'] ?? ''), ENT_QUOTES, 'UTF-8');
+
+    $attemptsMgr = new LoginAttemptsManager();
+    $logMgr      = new LoginLogManager();
+    $attStats    = $attemptsMgr->getStats();
+    $logStats    = $logMgr->getStats();
 
     stdhead('Login Security Manager');
 
-    // SweetAlert2 (нужен для обоих вкладок) - самохостится, не с CDN
-    global $BASEURL;
-    echo '<script src="' . $BASEURL . '/scripts/sweetalert2.all.min.js"></script>';
+    echo maxlogin_styles();
+    echo maxlogin_assets();
 
-    global $mybb;
-    echo '<input type="hidden" id="maxloginPostKey" value="' . htmlspecialchars($mybb->post_code) . '">';
+    $attCount = number_format($attStats['total']);
+    $logCount = number_format($logStats['total']);
+    $tabAttempts = $tab === 'attempts' ? 'active' : '';
+    $tabLog      = $tab === 'log' ? 'active' : '';
+
+    echo '<div class="ml-wrap container-xl py-3">';
+    echo maxlogin_page_header(
+        'fa-shield-halved',
+        'primary',
+        'Login security',
+        'Failed attempts, IP bans and the full login history'
+    );
 
     if ($update) {
-        echo '<div class="alert alert-success alert-dismissible fade show mx-3 mt-3" role="alert">'
-           . '<i class="fas fa-check-circle me-2"></i><strong>Success!</strong> Operation "' . $update . '" completed.'
-           . '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+        echo '<div class="alert alert-success alert-dismissible fade show d-flex align-items-center gap-2 mt-3 mb-0 ml-alert" role="alert">'
+           . '<i class="fa-solid fa-circle-check"></i><div><strong>Done.</strong> "' . $update . '" completed.</div>'
+           . '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>';
     }
 
-    $tab_attempts_active = $tab === 'attempts' ? 'active' : '';
-    $tab_log_active      = $tab === 'log'      ? 'active' : '';
-
     echo <<<HTML
-    <div class="container mt-3">
-        <ul class="nav nav-tabs mb-4" id="loginTabs">
-            <li class="nav-item">
-                <a class="nav-link {$tab_attempts_active}" href="?act=maxlogin&tab=attempts">
-                    <i class="fas fa-ban me-1"></i> Failed Attempts
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {$tab_log_active}" href="?act=maxlogin&tab=log">
-                    <i class="fas fa-history me-1"></i> Login History
-                </a>
-            </li>
-        </ul>
+    <nav class="ml-tabs" id="loginTabs">
+        <a class="{$tabAttempts}" href="?act=maxlogin&amp;tab=attempts">
+            <i class="fa-solid fa-user-lock"></i> Failed attempts <span class="ml-count">{$attCount}</span>
+        </a>
+        <a class="{$tabLog}" href="?act=maxlogin&amp;tab=log">
+            <i class="fa-solid fa-clock-rotate-left"></i> Login history <span class="ml-count">{$logCount}</span>
+        </a>
+    </nav>
     HTML;
 
     if ($tab === 'log') {
-        $logMgr = new LoginLogManager();
+        echo $logMgr->renderKpis($logStats);
         $logMgr->renderTab();
-        echo '</div>'; // close container-fluid
     } else {
-        // Render existing attempts table (reuse LoginAttemptsManager internals via output buffer)
-        $mgr = new LoginAttemptsManager();
-        $mgr->executeInner();
-        echo '</div>'; // close container-fluid
+        echo $attemptsMgr->renderKpis($attStats);
+        $attemptsMgr->executeInner();
     }
+
+    echo '</div>'; // .ml-wrap
 
     stdfoot();
 }
@@ -1687,10 +1845,7 @@ function maxlogin_render_tabs(): void
 try {
     $rawAction = $_REQUEST['action'] ?? '';
 
-    // ── CSRF-защита для всех мутирующих действий ────────────────────────
-    // Раньше любое из этих действий (бан/анбан/удаление, включая массовое
-    // удаление ВСЕЙ истории логинов) принималось через $_REQUEST - то есть
-    // срабатывало по простой GET-ссылке, без токена вообще.
+    // ── CSRF protection for every mutating action ─────────────────────────
     $mutatingActions = [
         'ajax_ban', 'ajax_unban', 'ajax_delete',
         'ban', 'unban', 'delete', 'save',
@@ -1710,23 +1865,23 @@ try {
         }
     }
 
-    // Check if we handle an AJAX request for the log tab — bypass tab wrapper
+    // AJAX for the log tab — bypass the tab wrapper
     if (str_starts_with($rawAction, 'log_ajax_')) {
         $logMgr = new LoginLogManager();
         $logMgr->renderTab();
         exit;
     }
 
-    // Check if LoginAttemptsManager AJAX
-    $ajaxActions = ['ajax_ban','ajax_unban','ajax_delete','ajax_search','ajax_get_page','ajax_get_count'];
+    // LoginAttemptsManager AJAX
+    $ajaxActions = ['ajax_ban', 'ajax_unban', 'ajax_delete', 'ajax_search', 'ajax_get_page', 'ajax_get_count'];
     if (in_array($rawAction, $ajaxActions, true)) {
         $manager = new LoginAttemptsManager();
         $manager->execute();
         exit;
     }
 
-    // Check if non-list actions (edit/save/ban/unban/delete for attempts)
-    $nonListActions = ['ban','unban','delete','edit','save','searchip'];
+    // Non-list actions (edit/save/ban/unban/delete/searchip for attempts)
+    $nonListActions = ['ban', 'unban', 'delete', 'edit', 'save', 'searchip'];
     if (in_array($rawAction, $nonListActions, true)) {
         $manager = new LoginAttemptsManager();
         $manager->execute();

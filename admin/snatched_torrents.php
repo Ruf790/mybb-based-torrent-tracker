@@ -2,716 +2,486 @@
 
 declare(strict_types=1);
 
-
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/functions_icons.php';
 
 if (!defined('STAFF_PANEL')) {
-    exit('<div class="alert alert-light border m-3"><i class="fas fa-exclamation-triangle me-2 text-warning"></i><b class="text-dark">Error!</b> Direct initialization of this file is not allowed.</div>');
+    exit('<div class="alert alert-light border m-3"><i class="fa-solid fa-triangle-exclamation me-2 text-warning"></i><b>Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 
+define('ST_VERSION', '0.8');
 
+// ---------------------------------------------------------------------
+// Search input
+// ---------------------------------------------------------------------
+$search_user       = isset($_GET['search_user']) ? trim((string)$_GET['search_user']) : '';
+$search_torrent    = isset($_GET['search_torrent']) ? trim((string)$_GET['search_torrent']) : '';
+$search_user_id    = isset($_GET['search_user_id']) ? (int)$_GET['search_user_id'] : 0;
+$search_torrent_id = isset($_GET['search_torrent_id']) ? (int)$_GET['search_torrent_id'] : 0;
 
-define('ST_VERSION', '0.7');
+$where_conditions = [];
+$where_params     = [];
+$search_params    = []; // key => value, for pagination & filter chips
+
+if ($search_user !== '') {
+    $where_conditions[] = 'u.username LIKE ?';
+    $where_params[]     = '%' . $db->escape_string_like($search_user) . '%';
+    $search_params['search_user'] = $search_user;
+}
+if ($search_torrent !== '') {
+    $where_conditions[] = 't.name LIKE ?';
+    $where_params[]     = '%' . $db->escape_string_like($search_torrent) . '%';
+    $search_params['search_torrent'] = $search_torrent;
+}
+if ($search_user_id > 0) {
+    $where_conditions[] = 's.userid = ?';
+    $where_params[]     = $search_user_id;
+    $search_params['search_user_id'] = $search_user_id;
+}
+if ($search_torrent_id > 0) {
+    $where_conditions[] = 's.torrentid = ?';
+    $where_params[]     = $search_torrent_id;
+    $search_params['search_torrent_id'] = $search_torrent_id;
+}
+
+$where_clause = $where_conditions ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
+$has_filter   = !empty($where_conditions);
+
+// ---------------------------------------------------------------------
+// Totals for KPI tiles (one query instead of a bare COUNT)
+// ---------------------------------------------------------------------
+$res_stats = $db->sql_query_prepared(
+    "SELECT COUNT(*) AS cnt,
+            COALESCE(SUM(s.completedat > 0), 0)  AS completed,
+            COALESCE(SUM(s.seeder = 'yes'), 0)   AS seeding,
+            COALESCE(SUM(s.uploaded), 0)         AS up_total,
+            COALESCE(SUM(s.downloaded), 0)       AS down_total
+       FROM snatched s
+  LEFT JOIN torrents t ON (s.torrentid = t.id)
+  LEFT JOIN users u    ON (s.userid = u.id)
+     {$where_clause}",
+    $where_params
+);
+$stats = $db->fetch_array($res_stats);
+
+$count        = (int)$stats['cnt'];
+$stat_done    = (int)$stats['completed'];
+$stat_seeding = (int)$stats['seeding'];
+$stat_up      = (int)$stats['up_total'];
+$stat_down    = (int)$stats['down_total'];
+$done_pct     = $count > 0 ? round($stat_done / $count * 100) : 0;
+$seed_pct     = $count > 0 ? round($stat_seeding / $count * 100) : 0;
+
+// ---------------------------------------------------------------------
+// Pagination
+// ---------------------------------------------------------------------
+$perpage = (int)(!empty($CURUSER['torrentsperpage']) ? $CURUSER['torrentsperpage'] : $ts_perpage);
+if ($perpage < 1) {
+    $perpage = 20;
+}
+
+$page  = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
+$pages = max(1, (int)ceil($count / $perpage));
+if ($page > $pages) {
+    $page = 1;
+}
+$start = ($page - 1) * $perpage;
+
+$search_url = '';
+foreach ($search_params as $k => $v) {
+    $search_url .= '&' . $k . '=' . urlencode((string)$v);
+}
+$multipage = multipage($count, $perpage, $page, $_this_script_ . $search_url);
+
+// URL of this page with one filter removed (for the chips)
+$url_without = static function (string $drop) use ($search_params, $_this_script_): string {
+    $url = $_this_script_;
+    foreach ($search_params as $k => $v) {
+        if ($k !== $drop) {
+            $url .= '&' . $k . '=' . urlencode((string)$v);
+        }
+    }
+    return htmlspecialchars($url, ENT_QUOTES);
+};
+
+$filter_labels = [
+    'search_user'       => ['fa-user',          'User'],
+    'search_user_id'    => ['fa-id-badge',      'User ID'],
+    'search_torrent'    => ['fa-file-lines',    'Torrent'],
+    'search_torrent_id' => ['fa-hashtag',       'Torrent ID'],
+];
+
+// ---------------------------------------------------------------------
+// Main query
+// ---------------------------------------------------------------------
+$result = $db->sql_query_prepared(
+    "SELECT s.*, t.name, t.size, t.added,
+            u.username AS uname, u.id AS uid, u.usergroup, u.avatar, u.avatardimensions,
+            u.donor, u.enabled, u.warned, u.leechwarn
+       FROM snatched s
+  LEFT JOIN torrents t ON (s.torrentid = t.id)
+  LEFT JOIN users u    ON (s.userid = u.id)
+     {$where_clause}
+   ORDER BY s.to_go DESC
+      LIMIT ?, ?",
+    array_merge($where_params, [(int)$start, (int)$perpage])
+);
+$num_rows = (int)$db->num_rows($result);
+
 stdhead('All Snatched Torrents');
 
-// Обработка поиска
-$search_user = isset($_GET['search_user']) ? trim($_GET['search_user']) : '';
-$search_torrent = isset($_GET['search_torrent']) ? trim($_GET['search_torrent']) : '';
-$search_user_id = isset($_GET['search_user_id']) ? intval($_GET['search_user_id']) : 0;
-$search_torrent_id = isset($_GET['search_torrent_id']) ? intval($_GET['search_torrent_id']) : 0;
-
-
-
-// Формируем условия поиска
-$where_conditions = [];
-$where_params = [];
-$search_params = [];
-
-if (!empty($search_user)) {
-    $where_conditions[] = "u.username LIKE ?";
-    $where_params[] = '%' . $db->escape_string_like($search_user) . '%';
-    $search_params[] = "search_user=" . urlencode($search_user);
-}
-
-if (!empty($search_torrent)) {
-    $where_conditions[] = "t.name LIKE ?";
-    $where_params[] = '%' . $db->escape_string_like($search_torrent) . '%';
-    $search_params[] = "search_torrent=" . urlencode($search_torrent);
-}
-
-if ($search_user_id > 0) {
-    $where_conditions[] = "s.userid = ?";
-    $where_params[] = $search_user_id;
-    $search_params[] = "search_user_id=" . $search_user_id;
-}
-
-if ($search_torrent_id > 0) {
-    $where_conditions[] = "s.torrentid = ?";
-    $where_params[] = $search_torrent_id;
-    $search_params[] = "search_torrent_id=" . $search_torrent_id;
-}
-
-$where_clause = '';
-if (!empty($where_conditions)) {
-    $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
-}
-
-// Получаем общее количество
-$count_query = "SELECT COUNT(*) AS cnt FROM snatched s 
-               LEFT JOIN torrents t ON (s.torrentid=t.id) 
-               LEFT JOIN users u ON (s.userid=u.id) 
-               " . $where_clause;
-
-$res1 = $db->sql_query_prepared($count_query, $where_params);
-$row1 = $db->fetch_array($res1);
-$count = $row1['cnt'];
-$count1 = number_format((int)$count);
-
-
-
-
-
-// Добавляем параметры поиска в URL пагинации
-$search_url = !empty($search_params) ? '&' . implode('&', $search_params) : '';
-
-
-echo '<script type="text/javascript" src="'.$BASEURL.'/scripts/popover.js"></script>';
-
-
-
-
-
-
+echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/snatched_torrents.css?v=' . ST_VERSION . '">';
+echo '<script src="' . $BASEURL . '/scripts/popover.js"></script>';
+echo '<script src="' . $BASEURL . '/admin/scripts/snatched_torrents.js?v=' . ST_VERSION . '" defer></script>';
 ?>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    
-    
-    // Сортировка таблицы
-    const sortableHeaders = document.querySelectorAll('.sortable');
-    sortableHeaders.forEach(header => {
-        header.style.cursor = 'pointer';
-        header.addEventListener('click', function() {
-            const table = this.closest('table');
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.rows);
-            const columnIndex = Array.from(this.parentElement.cells).indexOf(this);
-            const isAsc = !this.classList.contains('asc');
-            
-            // Сортируем строки
-            rows.sort((a, b) => {
-                const valA = a.cells[columnIndex].textContent.trim();
-                const valB = b.cells[columnIndex].textContent.trim();
-                
-                // Проверяем, являются ли значения числовыми
-                const numA = parseFloat(valA);
-                const numB = parseFloat(valB);
-                
-                if (!isNaN(numA) && !isNaN(numB)) {
-                    return isAsc ? numA - numB : numB - numA;
-                } else {
-                    return isAsc ? 
-                        valA.localeCompare(valB) : 
-                        valB.localeCompare(valA);
-                }
-            });
-            
-            // Очищаем tbody и добавляем отсортированные строки
-            while (tbody.firstChild) {
-                tbody.removeChild(tbody.firstChild);
-            }
-            
-            rows.forEach(row => {
-                tbody.appendChild(row);
-            });
-            
-            // Обновляем индикаторы сортировки
-            sortableHeaders.forEach(h => {
-                h.classList.remove('asc', 'desc');
-                h.querySelector('.sort-indicator')?.remove();
-            });
-            
-            this.classList.add(isAsc ? 'asc' : 'desc');
-            
-            // Добавляем индикатор сортировки
-            const indicator = document.createElement('span');
-            indicator.className = 'sort-indicator ms-1';
-            indicator.textContent = isAsc ? '↑' : '↓';
-            this.appendChild(indicator);
-        });
-    });
-    
-    // Очистка поиска
-    const clearSearchBtn = document.getElementById('clearSearch');
-    if (clearSearchBtn) {
-        clearSearchBtn.addEventListener('click', function() {
-            window.location.href = '<?php echo $_this_script_; ?>';
-        });
-    }
-});
+<div class="container mt-3 py-4 stn-page">
 
-// Вспомогательная функция для проверки числового значения
-function isNumeric(value) {
-    return !isNaN(parseFloat(value)) && isFinite(value);
-}
-</script>
+    <!-- Header -->
+    <div class="stn-card stn-head mb-3">
+        <div class="stn-head__icon"><i class="fa-solid fa-cloud-arrow-down"></i></div>
+        <div class="flex-grow-1">
+            <h1 class="stn-title">Snatched Torrents</h1>
+            <p>Who downloaded what, how much they transferred and whether they are still seeding.</p>
+        </div>
+        <?php if ($has_filter): ?>
+            <span class="stn-badge stn-soft-info d-none d-md-inline-flex"><i class="fa-solid fa-filter"></i>Filtered view</span>
+        <?php endif; ?>
+    </div>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
-
-<style>
-:root {
-    --rules-accent: var(--bs-primary);
-    --rules-accent-strong: var(--bs-primary-text-emphasis, var(--bs-primary));
-    --rules-accent-soft: var(--bs-primary-bg-subtle, rgba(13, 110, 253, .12));
-}
-
-.st-masthead {
-    padding: 1.75rem 1.5rem;
-    margin-bottom: 1.25rem;
-    background: var(--bs-body-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: .75rem;
-}
-
-.st-masthead__eyebrow {
-    display: inline-block;
-    font-family: 'Oswald', sans-serif;
-    font-weight: 600;
-    font-size: .72rem;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--rules-accent-strong);
-    background: var(--rules-accent-soft);
-    border: 1px solid var(--rules-accent);
-    border-radius: 999px;
-    padding: .3rem .85rem;
-    margin-bottom: .75rem;
-}
-
-.st-masthead__title {
-    font-family: 'Oswald', sans-serif;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .01em;
-    font-size: clamp(1.5rem, 3.4vw, 2rem);
-    color: var(--bs-emphasis-color);
-    margin: 0;
-}
-
-.st-panel {
-    border: 1px solid var(--bs-border-color) !important;
-    border-radius: .75rem;
-    background: var(--bs-body-bg);
-    overflow: hidden;
-}
-
-.st-panel .card-header {
-    background: transparent !important;
-    color: var(--bs-emphasis-color) !important;
-    border-bottom: 1px solid var(--bs-border-color);
-    border-left: 4px solid var(--rules-accent);
-    border-radius: 0 !important;
-}
-
-.st-panel .card-header h4 {
-    font-family: 'Oswald', sans-serif;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .03em;
-    font-size: 1.05rem;
-}
-
-.st-count-badge {
-    font-family: 'Oswald', sans-serif;
-    font-size: .75rem;
-    font-weight: 600;
-    letter-spacing: .04em;
-    color: var(--rules-accent-strong) !important;
-    background: var(--rules-accent-soft) !important;
-    border: 1px solid var(--rules-accent) !important;
-}
-
-.st-panel table thead th {
-    font-family: 'Oswald', sans-serif;
-    font-size: .78rem;
-    font-weight: 600;
-    letter-spacing: .05em;
-    text-transform: uppercase;
-    color: var(--bs-secondary-color) !important;
-    background: var(--bs-tertiary-bg) !important;
-    border-top: none;
-    border-bottom: 1px solid var(--bs-border-color) !important;
-}
-
-.st-panel .table-hover tbody tr:hover {
-    background-color: var(--rules-accent-soft) !important;
-    transform: translateY(-1px);
-    transition: all .2s ease;
-}
-
-.sortable {
-    position: relative;
-    user-select: none;
-}
-
-.sortable:hover {
-    background-color: var(--rules-accent-soft) !important;
-}
-
-.sort-indicator {
-    font-weight: bold;
-    color: var(--rules-accent);
-}
-
-.asc .sort-indicator {
-    color: #198754;
-}
-
-.desc .sort-indicator {
-    color: #dc3545;
-}
-
-.st-panel .progress {
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-.nav-avatar {
-    border-radius: 50%;
-    border: 2px solid var(--bs-border-color);
-    object-fit: cover;
-}
-</style>
-
-
-<div class="container mt-3">
-<div class="container-fluid py-4">
-    <div class="row">
-        <div class="col-12">
-
-            <div class="st-masthead">
-                <span class="st-masthead__eyebrow">Admin / Torrents</span>
-                <h1 class="st-masthead__title"><i class="fas fa-download me-2" style="color: var(--rules-accent)"></i>All Snatched Torrents</h1>
+    <!-- KPI tiles -->
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="stn-card stn-kpi">
+                <div class="stn-kpi__icon stn-soft-primary"><i class="fa-solid fa-database"></i></div>
+                <div>
+                    <div class="stn-kpi__value"><?php echo number_format($count); ?></div>
+                    <div class="stn-kpi__label">Total snatches</div>
+                </div>
             </div>
-
-            <!-- Header Card -->
-            <div class="card st-panel shadow-sm mb-4">
-                <div class="card-header">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h4 class="mb-0">
-                            <i class="fas fa-download me-2" style="color: var(--rules-accent)"></i>All Snatched Torrents
-                        </h4>
-                        <span class="badge st-count-badge fs-6">
-                            <i class="fas fa-database me-1"></i>Total: <?php echo $count1; ?> snatched
-                        </span>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stn-card stn-kpi">
+                <div class="stn-kpi__icon stn-soft-success"><i class="fa-solid fa-circle-check"></i></div>
+                <div>
+                    <div class="stn-kpi__value"><?php echo number_format($stat_done); ?></div>
+                    <div class="stn-kpi__label">Completed <span class="stn-kpi__sub">(<?php echo $done_pct; ?>%)</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stn-card stn-kpi">
+                <div class="stn-kpi__icon stn-soft-info"><i class="fa-solid fa-seedling"></i></div>
+                <div>
+                    <div class="stn-kpi__value"><?php echo number_format($stat_seeding); ?></div>
+                    <div class="stn-kpi__label">Seeding now <span class="stn-kpi__sub">(<?php echo $seed_pct; ?>%)</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="stn-card stn-kpi">
+                <div class="stn-kpi__icon stn-soft-warning"><i class="fa-solid fa-right-left"></i></div>
+                <div>
+                    <div class="stn-kpi__value stn-kpi__value--sm">
+                        <i class="fa-solid fa-arrow-up text-success stn-ico-sm"></i> <?php echo mksize($stat_up); ?>
+                    </div>
+                    <div class="stn-kpi__sub">
+                        <i class="fa-solid fa-arrow-down text-danger"></i> <?php echo mksize($stat_down); ?> downloaded
                     </div>
                 </div>
-                
-                <!-- Search Form -->
-                <div class="card-body bg-light">
-                    <form method="GET" action="<?php echo $_this_script_; ?>" id="searchForm">
-					
-					    <input type="hidden" name="act" value="snatched_torrents">
-						
-                        <div class="row g-3">
-                            <div class="col-md-3">
-                                <label class="form-label small text-muted">Search by Username</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="fas fa-user"></i></span>
-                                    <input type="text" class="form-control" name="search_user" 
-                                           value="<?php echo htmlspecialchars($search_user); ?>" 
-                                           placeholder="Username...">
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small text-muted">Search by User ID</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="fas fa-id-card"></i></span>
-                                    <input type="number" class="form-control" name="search_user_id" 
-                                           value="<?php echo $search_user_id ?: ''; ?>" 
-                                           placeholder="User ID...">
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small text-muted">Search by Torrent</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="fas fa-file-alt"></i></span>
-                                    <input type="text" class="form-control" name="search_torrent" 
-                                           value="<?php echo htmlspecialchars($search_torrent); ?>" 
-                                           placeholder="Torrent name...">
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small text-muted">Search by Torrent ID</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="fas fa-hashtag"></i></span>
-                                    <input type="number" class="form-control" name="search_torrent_id" 
-                                           value="<?php echo $search_torrent_id ?: ''; ?>" 
-                                           placeholder="Torrent ID...">
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="d-flex gap-2">
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="fas fa-search me-1"></i>Search
-                                    </button>
-                                    <button type="button" id="clearSearch" class="btn btn-outline-secondary">
-                                        <i class="fas fa-times me-1"></i>Clear
-                                    </button>
-                                    <?php if (!empty($where_conditions)): ?>
-                                    <span class="badge bg-info align-self-center">
-                                        <i class="fas fa-filter me-1"></i>Filter active
-                                    </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <div class="stn-card stn-search mb-3">
+        <form method="get" action="<?php echo $_this_script_; ?>" id="searchForm">
+            <input type="hidden" name="act" value="snatched_torrents">
+            <div class="row g-3 align-items-end">
+                <div class="col-sm-6 col-lg">
+                    <label class="form-label" for="stn_user"><i class="fa-solid fa-user me-1"></i>Username</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+                        <input type="text" class="form-control" id="stn_user" name="search_user"
+                               value="<?php echo htmlspecialchars($search_user, ENT_QUOTES); ?>" placeholder="Username...">
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg">
+                    <label class="form-label" for="stn_uid"><i class="fa-solid fa-id-badge me-1"></i>User ID</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fa-solid fa-id-badge"></i></span>
+                        <input type="number" min="1" class="form-control" id="stn_uid" name="search_user_id"
+                               value="<?php echo $search_user_id ?: ''; ?>" placeholder="User ID...">
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg">
+                    <label class="form-label" for="stn_tname"><i class="fa-solid fa-file-lines me-1"></i>Torrent name</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                        <input type="text" class="form-control" id="stn_tname" name="search_torrent"
+                               value="<?php echo htmlspecialchars($search_torrent, ENT_QUOTES); ?>" placeholder="Torrent name...">
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg">
+                    <label class="form-label" for="stn_tid"><i class="fa-solid fa-hashtag me-1"></i>Torrent ID</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fa-solid fa-hashtag"></i></span>
+                        <input type="number" min="1" class="form-control" id="stn_tid" name="search_torrent_id"
+                               value="<?php echo $search_torrent_id ?: ''; ?>" placeholder="Torrent ID...">
+                    </div>
+                </div>
+                <div class="col-12 col-lg-auto d-flex gap-2">
+                    <button type="submit" class="btn btn-primary stn-pill">
+                        <i class="fa-solid fa-magnifying-glass me-1"></i>Search
+                    </button>
+                    <a href="<?php echo $_this_script_; ?>" id="clearSearch" class="btn btn-outline-secondary stn-pill">
+                        <i class="fa-solid fa-rotate-left me-1"></i>Reset
+                    </a>
+                </div>
+            </div>
+
+            <?php if ($has_filter): ?>
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                <span class="stn-meta"><i class="fa-solid fa-filter me-1"></i>Active filters:</span>
+                <?php foreach ($search_params as $key => $val):
+                    [$ico, $lbl] = $filter_labels[$key]; ?>
+                    <a class="stn-chip stn-soft-primary" href="<?php echo $url_without($key); ?>" title="Remove filter">
+                        <i class="fa-solid <?php echo $ico; ?>"></i>
+                        <?php echo $lbl; ?>: <b><?php echo htmlspecialchars((string)$val, ENT_QUOTES); ?></b>
+                        <i class="fa-solid fa-xmark"></i>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </form>
+    </div>
+
+    <!-- Table -->
+    <div class="stn-card overflow-hidden">
+    <?php if ($num_rows > 0): ?>
+
+        <div class="stn-toolbar">
+            <span><i class="fa-solid fa-list me-1"></i>Showing <b><?php echo number_format($start + 1); ?>–<?php echo number_format(min($start + $perpage, $count)); ?></b> of <b><?php echo number_format($count); ?></b></span>
+            <?php if ($count > $perpage) { echo '<div>' . $multipage . '</div>'; } ?>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table stn-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-type="text"><i class="fa-solid fa-user"></i>User<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="text"><i class="fa-solid fa-magnet"></i>Torrent<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable text-end" data-type="num"><i class="fa-solid fa-arrow-up"></i>Uploaded<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable text-end" data-type="num"><i class="fa-solid fa-arrow-down"></i>Downloaded<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable text-center" data-type="num"><i class="fa-solid fa-scale-balanced"></i>Ratio<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="num"><i class="fa-solid fa-play"></i>Started<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="num"><i class="fa-solid fa-flag-checkered"></i>Completed<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable text-center" data-type="num"><i class="fa-solid fa-seedling"></i>Seeding<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                        <th class="sortable" data-type="num"><i class="fa-solid fa-bars-progress"></i>Progress<i class="fa-solid fa-sort stn-sort-ico"></i></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php
+                while ($row = $db->fetch_array($result)) {
+                    $uploaded    = (int)($row['uploaded'] ?? 0);
+                    $downloaded  = (int)($row['downloaded'] ?? 0);
+                    $size        = (int)($row['size'] ?? 0);
+                    $to_go       = (int)($row['to_go'] ?? 0);
+                    $startdat    = (int)($row['startdat'] ?? 0);
+                    $completedat = (int)($row['completedat'] ?? 0);
+                    $is_seeder   = ($row['seeder'] ?? '') === 'yes';
+
+                    // Progress: finished => 100, otherwise from bytes left (to_go)
+                    if ($completedat > 0) {
+                        $progress = 100;
+                    } elseif ($size > 0) {
+                        $progress = (int)max(0, min(100, round(($size - $to_go) / $size * 100)));
+                    } else {
+                        $progress = 0;
+                    }
+                    $progress_class = match (true) {
+                        $progress >= 100 => 'bg-success',
+                        $progress >= 50  => 'bg-info',
+                        $progress > 0    => 'bg-warning',
+                        default          => 'bg-secondary',
+                    };
+
+                    // Ratio
+                    if ($downloaded > 0) {
+                        $ratio_val  = $uploaded / $downloaded;
+                        $ratio_txt  = number_format($ratio_val, 2);
+                        $ratio_soft = $ratio_val >= 1 ? 'stn-soft-success' : ($ratio_val >= 0.5 ? 'stn-soft-warning' : 'stn-soft-danger');
+                    } else {
+                        $ratio_val  = $uploaded > 0 ? PHP_INT_MAX : 0;
+                        $ratio_txt  = $uploaded > 0 ? '&infin;' : '—';
+                        $ratio_soft = $uploaded > 0 ? 'stn-soft-success' : 'stn-soft-muted';
+                    }
+
+                    // User (may be deleted)
+                    $user_exists = !empty($row['uid']);
+                    $uname_safe  = htmlspecialchars_uni((string)($row['uname'] ?? ''));
+                    $useravatar  = format_avatar((string)($row['avatar'] ?? ''), (string)($row['avatardimensions'] ?? ''));
+                    $user_avatar = '<img class="nav-avatar" src="' . $useravatar['image'] . '" alt="" loading="lazy">';
+
+                    // Torrent (may be deleted)
+                    $torrent_exists = $row['name'] !== null;
+                    $raw_name       = (string)($row['name'] ?? '');
+                    $torrent_name   = htmlspecialchars_uni($raw_name);
+                    $short_name     = htmlspecialchars_uni(cutename($raw_name));
+                    $torrent_link   = $BASEURL . '/' . get_torrent_link((int)$row['torrentid']);
+                    $torrent_added  = !empty($row['added']) ? date('Y-m-d H:i', (int)$row['added']) : 'N/A';
+
+                    $popover_title   = htmlspecialchars('<i class="fa-solid fa-folder-open me-1"></i>' . htmlspecialchars_uni(cutename($raw_name, 30)), ENT_QUOTES);
+                    $popover_content = htmlspecialchars(
+                        '<div class="small text-break mb-2">' . $torrent_name . '</div>'
+                        . '<div class="d-flex justify-content-between gap-3 border-top pt-2 small text-body-secondary">'
+                        . '<span><i class="fa-solid fa-hard-drive me-1"></i>' . mksize($size) . '</span>'
+                        . '<span><i class="fa-solid fa-calendar-plus me-1"></i>' . $torrent_added . '</span>'
+                        . '</div>',
+                        ENT_QUOTES
+                    );
+
+                    $progress_content = htmlspecialchars(
+                        '<div class="small">'
+                        . ($progress >= 100
+                            ? '<i class="fa-solid fa-circle-check text-success me-1"></i>Download completed'
+                            : '<i class="fa-solid fa-spinner text-warning me-1"></i>' . $progress . '% &mdash; ' . mksize($to_go) . ' left')
+                        . '</div>',
+                        ENT_QUOTES
+                    );
+                ?>
+                    <tr>
+                        <!-- User -->
+                        <td data-sort="<?php echo htmlspecialchars(mb_strtolower((string)($row['uname'] ?? '')), ENT_QUOTES); ?>">
+                            <div class="d-flex align-items-center gap-2 stn-user">
+                                <?php echo $user_avatar; ?>
+                                <div class="lh-sm">
+                                    <?php if ($user_exists): ?>
+                                        <a href="<?php echo $BASEURL . '/' . get_profile_link((int)$row['uid']); ?>">
+                                            <?php echo format_name($uname_safe, (int)$row['usergroup']); ?>
+                                        </a>
+                                        <?php echo get_user_icons($row); ?>
+                                        <div class="stn-meta"><i class="fa-solid fa-id-badge me-1"></i><?php echo (int)$row['uid']; ?></div>
+                                    <?php else: ?>
+                                        <span class="stn-meta"><i class="fa-solid fa-user-slash me-1"></i>Deleted user</span>
+                                        <div class="stn-meta">#<?php echo (int)$row['userid']; ?></div>
                                     <?php endif; ?>
                                 </div>
                             </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
+                        </td>
 
-            <?php
-            // Pagination settings
-            $torrentsperpage = (int)($CURUSER['torrentsperpage'] <> 0 ? intval($CURUSER['torrentsperpage']) : $ts_perpage);
-
-            if($torrentsperpage < 1)
-			{
-                 $torrentsperpage = 20;
-            }
-
-            $perpage = $torrentsperpage;
-            
-            if($mybb->get_input('page', MyBB::INPUT_INT) > 0) {
-                $page = $mybb->get_input('page', MyBB::INPUT_INT);
-                $start = ($page-1) * $perpage;
-                $pages = ceil($count / $perpage);
-                if($page > $pages || $page <= 0) {
-                    $start = 0;
-                    $page = 1;
-                }
-            } else {
-                $start = 0;
-                $page = 1;
-            }
-            
-            
-			
-			
-			//$page_url = str_replace($_this_script_ . $search_url);
-			$page_url = str_replace('', '', $_this_script_ . $search_url);
-            $multipage = multipage((int)$count, $perpage, $page, $page_url);
-			
-			
-            
-            // Display pagination
-            if($count > $perpage) {
-                echo '<div class="card st-panel mb-3">';
-                echo '<div class="card-body py-2">';
-                echo '<div class="d-flex justify-content-between align-items-center">';
-                echo '<div class="small text-muted">Showing ' . ($start + 1) . ' to ' . min($start + $perpage, $count) . ' of ' . $count . ' records</div>';
-                echo '<div>' . $multipage . '</div>';
-                echo '</div>';
-                echo '</div>';
-                echo '</div>';
-            }
-            
-            // Main query
-            $sql = "SELECT s.*, t.name, t.size, t.added, u.username as uname, u.id as uid, u.usergroup, u.avatar, u.avatardimensions, 
-                           u.donor, u.enabled, u.warned, u.leechwarn
-                    FROM snatched s 
-                    LEFT JOIN torrents t ON (s.torrentid=t.id) 
-                    LEFT JOIN users u ON (s.userid=u.id) 
-                    " . $where_clause . "
-                    ORDER BY s.to_go DESC 
-                    LIMIT ?, ?";
-            
-            $result = $db->sql_query_prepared($sql, array_merge($where_params, [(int)$start, (int)$perpage]));
-            
-            if ($db->num_rows($result) != 0) {
-            ?>
-            
-            <!-- Main Data Card -->
-            <div class="card st-panel shadow-sm">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th class="sortable text-dark" style="cursor: pointer;">
-                                        <i class="fas fa-user me-1 text-muted"></i>User
-                                        <i class="fas fa-sort ms-1 text-muted"></i>
-                                    </th>
-                                    <th class="sortable text-dark" style="cursor: pointer;">
-                                        <i class="fas fa-file-alt me-1 text-muted"></i>Torrent
-                                        <i class="fas fa-sort ms-1 text-muted"></i>
-                                    </th>
-                                    <th class="sortable text-end text-dark" style="cursor: pointer;">
-                                        <i class="fas fa-upload me-1 text-muted"></i>Uploaded
-                                        <i class="fas fa-sort ms-1 text-muted"></i>
-                                    </th>
-                                    <th class="sortable text-end text-dark" style="cursor: pointer;">
-                                        <i class="fas fa-download me-1 text-muted"></i>Downloaded
-                                        <i class="fas fa-sort ms-1 text-muted"></i>
-                                    </th>
-                                    <th class="sortable text-dark" style="cursor: pointer;">
-                                        <i class="fas fa-play me-1 text-muted"></i>Started
-                                        <i class="fas fa-sort ms-1 text-muted"></i>
-                                    </th>
-                                    <th class="sortable text-dark" style="cursor: pointer;">
-                                        <i class="fas fa-check-circle me-1 text-muted"></i>Completed
-                                        <i class="fas fa-sort ms-1 text-muted"></i>
-                                    </th>
-                                    <th class="sortable text-center text-dark" style="cursor: pointer;">
-                                        <i class="fas fa-seedling me-1 text-muted"></i>Seeding
-                                        <i class="fas fa-sort ms-1 text-muted"></i>
-                                    </th>
-                                    <th class="text-center text-dark">Progress</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                while ($row = $db->fetch_array($result)) {
-                                    $progress = 0;
-                                    if ($row['downloaded'] > 0 && $row['size'] > 0) {
-                                        $progress = min(100, round(($row['downloaded'] / $row['size']) * 100));
-                                    }
-                                    
-                                    // Получаем аватар пользователя
-                                   $useravatar = format_avatar($row['avatar'], $row['avatardimensions']);
-                                   $user_avatar = '<img class="nav-avatar" src="'.$useravatar['image'].'" alt="" '.$useravatar['width_height'].' />';
-								   
-								   
-								   
-								   $torrent_name = htmlspecialchars_uni($row['name'] ?? '');
-                                   $short_name = cutename($torrent_name);
-                                   $torrent_link = $BASEURL . '/' . get_torrent_link($row['torrentid']);
-                                   $formatted_name = isset($row['uname']) ? htmlspecialchars($row['uname'], ENT_QUOTES) : 'Anonymous';
-                                   $torrent_added = isset($row['added']) ? date('Y-m-d H:i', $row['added']) : 'N/A';
-
-
-                                   $popover_title = '📁 ' . htmlspecialchars(cutename($torrent_name, 20), ENT_QUOTES);
-
-
-                                   $popover_content = htmlspecialchars('
-                                      <div class="torrent-popover">
-                                   <div class="mb-2">
-                                  <strong>📂 Full Name:</strong><br>
-                                  <span class="text-break small">' . $torrent_name . '</span>
-                                  </div>
-                                  <div class="d-flex justify-content-between align-items-center border-top pt-2 mt-2 small text-muted">
-                                  <span><i class="fas fa-user me-1"></i>' . $formatted_name . '</span>
-                                  <span><i class="fas fa-clock me-1"></i>' . $torrent_added . '</span>
-                                  </div>
-                                  </div>
-                                  ', ENT_QUOTES);
-								  
-								  
-								  
-								  
-								  $progress_title = "Download Progress";
-$progress_content = htmlspecialchars("
-    <div class='progress-popover'>
-        <strong>Current Progress:</strong><br>
-        <span class='badge " . ($progress == 100 ? 'bg-success' : 'bg-warning') . "'>$progress%</span>
-        <div class='mt-2 small text-muted'>
-            " . ($progress == 100 ? '✅ Download completed' : '🔄 Download in progress') . "
-        </div>
-    </div>
-", ENT_QUOTES);
-					
-
-
-			$completed_status = $progress > 0 ? "{$progress}% complete" : "Not started";
-
-
-$badge_title = "Completion Status";
-$badge_content = htmlspecialchars('
-    <div class="completion-popover">
-        <div class="d-flex align-items-center mb-2">
-            <i class="fas fa-times text-danger me-2"></i>
-            <strong>Status:</strong>
-        </div>
-        <div class="small">
-            <span class="text-danger">❌ ' . ($progress > 0 ? "Not completed ({$progress}%)" : 'Not started') . '</span>
-            <div class="mt-1 text-muted">
-                <i class="fas fa-info-circle me-1"></i>This torrent download is not finished yet.
-            </div>
-        </div>
-    </div>
-', ENT_QUOTES);			
-								  
-								  
-								  
-								  
-								  
-								  
-   
-
-
-                                ?>
-                                <tr class="border-bottom">
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <div class="flex-shrink-0">
-                                                <?php echo $user_avatar; ?>
-                                            </div>
-                                            <div class="flex-grow-1 ms-3">
-                                                <a href="<?php echo $BASEURL . '/' . get_profile_link($row['uid']); ?>" 
-                                                   class="text-decoration-none fw-semibold text-dark d-block">
-                                                    <?php echo format_name($row['uname'], $row['usergroup']); ?>
-                                                </a>
-                                                <div class="small text-muted mt-1">
-                                                    <?php echo get_user_icons($row); ?>
-                                                </div>
-                                                <small class="text-muted">ID: <?php echo $row['uid']; ?></small>
-                                            </div>
+                        <!-- Torrent -->
+                        <td data-sort="<?php echo htmlspecialchars(mb_strtolower($raw_name), ENT_QUOTES); ?>">
+                            <div class="d-flex align-items-center gap-2">
+                                <?php if ($torrent_exists): ?>
+                                    <span class="stn-torrent-ico stn-soft-danger"><i class="fa-solid fa-magnet"></i></span>
+                                    <div class="lh-sm">
+                                        <a href="<?php echo $torrent_link; ?>" class="stn-torrent torrent-link"
+                                           data-bs-toggle="popover" data-bs-placement="top" data-bs-trigger="hover focus"
+                                           data-bs-html="true"
+                                           data-bs-title="<?php echo $popover_title; ?>"
+                                           data-bs-content="<?php echo $popover_content; ?>"><?php echo $short_name; ?></a>
+                                        <div class="stn-meta">
+                                            <i class="fa-solid fa-hashtag"></i><?php echo (int)$row['torrentid']; ?>
+                                            <span class="ms-2"><i class="fa-solid fa-hard-drive me-1"></i><?php echo mksize($size); ?></span>
                                         </div>
-                                    </td>
-                                    <td>
-                                        
-										
-								    <a href="<?php echo $torrent_link; ?>" 
-                                       class="text-decoration-none torrent-link" 
-                                       data-bs-toggle="popover" 
-                                       data-bs-placement="top"
-                                       data-bs-title="<?php echo $popover_title; ?>"
-                                       data-bs-content="<?php echo $popover_content; ?>"
-                                       data-bs-html="true">
-                                       <i class="fas fa-magnet text-danger me-1"></i>
-                                       <?php echo $short_name; ?>
-                                    </a>
-										
+                                    </div>
+                                <?php else: ?>
+                                    <span class="stn-torrent-ico stn-soft-muted"><i class="fa-solid fa-trash-can"></i></span>
+                                    <div class="lh-sm">
+                                        <span class="stn-meta">Deleted torrent</span>
+                                        <div class="stn-meta"><i class="fa-solid fa-hashtag"></i><?php echo (int)$row['torrentid']; ?></div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </td>
 
-										
-                                        <br>
-                                        <small class="text-muted">ID: <?php echo $row['torrentid']; ?></small>
-                                    </td>
-                                    <td class="text-end fw-semibold text-success">
-                                        <?php echo mksize($row['uploaded']); ?>
-                                    </td>
-                                    <td class="text-end fw-semibold text-danger">
-                                        <?php echo mksize($row['downloaded']); ?>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25">
-                                            <?php echo my_datee($dateformat, $row['startdat']); ?>
-                                        </span>
-                                        <br>
-                                        <small class="text-muted"><?php echo my_datee($timeformat, $row['startdat']); ?></small>
-                                    </td>
-                                    <td>
-                                        <?php if ($row['completedat'] > 0) { ?>
-                                            <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">
-                                                <?php echo my_datee($dateformat, $row['completedat']); ?>
-                                            </span>
-                                            <br>
-                                            <small class="text-muted"><?php echo my_datee($timeformat, $row['completedat']); ?></small>
-                                        <?php } else { ?>
-                                            
-											
-											<span class="badge bg-light text-muted border completion-badge" 
-      data-bs-toggle="popover" 
-      data-bs-title="<?php echo $badge_title; ?>"
-      data-bs-content="<?php echo $badge_content; ?>"
-      data-bs-html="true"
-      data-bs-trigger="hover focus">
-    <i class="fas fa-times me-1 text-danger"></i><?php echo htmlspecialchars($completed_status, ENT_QUOTES); ?>
-</span>
-											
-											
-											
-                                        <?php } ?>
-                                    </td>
-                                    <td class="text-center">
-                                        <?php if ($row['seeder'] == 'yes') { ?>
-                                            <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-3 py-2">
-                                                <i class="fas fa-check me-1"></i>YES
-                                            </span>
-                                        <?php } else { ?>
-                                            <span class="badge bg-light text-muted border px-3 py-2">
-                                                <i class="fas fa-times me-1"></i>NO
-                                            </span>
-                                        <?php } ?>
-                                    </td>
-                                    <td>
-                                       
-									   
-									   
-									   <div class="progress bg-light" style="height: 8px;" 
-     data-bs-toggle="popover" 
-     data-bs-title="<?php echo $progress_title; ?>"
-     data-bs-content="<?php echo $progress_content; ?>"
-     data-bs-html="true">
-    <div class="progress-bar <?php echo $progress == 100 ? 'bg-success' : 'bg-warning'; ?>" 
-         role="progressbar" 
-         style="width: <?php echo $progress; ?>%" 
-         aria-valuenow="<?php echo $progress; ?>" 
-         aria-valuemin="0" 
-         aria-valuemax="100">
-    </div>
-</div>
-									   
-									   
-									   
-									   
-									   
-									   
-									   
-									   
-                                        <small class="text-muted d-block text-center"><?php echo $progress; ?>%</small>
-                                    </td>
-                                </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+                        <!-- Traffic -->
+                        <td class="text-end stn-traffic text-success" data-sort="<?php echo $uploaded; ?>">
+                            <i class="fa-solid fa-arrow-up me-1 stn-ico-sm"></i><?php echo mksize($uploaded); ?>
+                        </td>
+                        <td class="text-end stn-traffic text-danger" data-sort="<?php echo $downloaded; ?>">
+                            <i class="fa-solid fa-arrow-down me-1 stn-ico-sm"></i><?php echo mksize($downloaded); ?>
+                        </td>
 
-            <?php
-            } else {
-                echo '<div class="card st-panel shadow-sm">';
-                echo '<div class="card-body text-center py-5">';
-                echo '<i class="fas fa-inbox fa-3x text-muted mb-3"></i>';
-                if (!empty($where_conditions)) {
-                    echo '<h4 class="text-muted">No results found</h4>';
-                    echo '<p class="text-muted">No snatched torrents match your search criteria.</p>';
-                } else {
-                    echo '<h4 class="text-muted">No snatched torrents found</h4>';
-                    echo '<p class="text-muted">There are currently no snatched torrents in the database.</p>';
-                }
-                echo '</div>';
-                echo '</div>';
-            }
+                        <!-- Ratio -->
+                        <td class="text-center" data-sort="<?php echo $ratio_val; ?>">
+                            <span class="stn-badge <?php echo $ratio_soft; ?>"><?php echo $ratio_txt; ?></span>
+                        </td>
 
-            // Bottom pagination
-            if($count > $perpage) {
-                echo '<div class="card st-panel mt-3">';
-                echo '<div class="card-body py-2">';
-                echo '<div class="d-flex justify-content-between align-items-center">';
-                echo '<div class="small text-muted">Showing ' . ($start + 1) . ' to ' . min($start + $perpage, $count) . ' of ' . $count . ' records</div>';
-                echo '<div>' . $multipage . '</div>';
-                echo '</div>';
-                echo '</div>';
-                echo '</div>';
-            }
-            ?>
-         </div>
+                        <!-- Started -->
+                        <td class="stn-date" data-sort="<?php echo $startdat; ?>">
+                            <?php if ($startdat > 0): ?>
+                                <div><i class="fa-solid fa-calendar-day"></i><?php echo my_datee($dateformat, $startdat); ?></div>
+                                <div class="stn-meta"><i class="fa-regular fa-clock"></i><?php echo my_datee($timeformat, $startdat); ?></div>
+                            <?php else: ?>
+                                <span class="stn-meta">—</span>
+                            <?php endif; ?>
+                        </td>
+
+                        <!-- Completed -->
+                        <td class="stn-date" data-sort="<?php echo $completedat; ?>">
+                            <?php if ($completedat > 0): ?>
+                                <span class="stn-badge stn-soft-success"><i class="fa-solid fa-flag-checkered"></i><?php echo my_datee($dateformat, $completedat); ?></span>
+                                <div class="stn-meta mt-1 ms-1"><i class="fa-regular fa-clock"></i><?php echo my_datee($timeformat, $completedat); ?></div>
+                            <?php elseif ($progress > 0): ?>
+                                <span class="stn-badge stn-soft-warning"><i class="fa-solid fa-hourglass-half"></i>In progress</span>
+                            <?php else: ?>
+                                <span class="stn-badge stn-soft-muted"><i class="fa-solid fa-circle-pause"></i>Not started</span>
+                            <?php endif; ?>
+                        </td>
+
+                        <!-- Seeding -->
+                        <td class="text-center" data-sort="<?php echo $is_seeder ? 1 : 0; ?>">
+                            <?php if ($is_seeder): ?>
+                                <span class="stn-badge stn-soft-success"><i class="fa-solid fa-seedling"></i>Yes</span>
+                            <?php else: ?>
+                                <span class="stn-badge stn-soft-muted"><i class="fa-solid fa-circle-minus"></i>No</span>
+                            <?php endif; ?>
+                        </td>
+
+                        <!-- Progress -->
+                        <td data-sort="<?php echo $progress; ?>">
+                            <div class="progress stn-progress"
+                                 data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-html="true"
+                                 data-bs-title="<?php echo htmlspecialchars('<i class="fa-solid fa-bars-progress me-1"></i>Download progress', ENT_QUOTES); ?>"
+                                 data-bs-content="<?php echo $progress_content; ?>">
+                                <div class="progress-bar <?php echo $progress_class; ?>" role="progressbar"
+                                     style="width: <?php echo $progress; ?>%"
+                                     aria-valuenow="<?php echo $progress; ?>" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                            <div class="stn-meta text-center mt-1"><?php echo $progress; ?>%</div>
+                        </td>
+                    </tr>
+                <?php } ?>
+                </tbody>
+            </table>
         </div>
+
+        <?php if ($count > $perpage): ?>
+        <div class="stn-toolbar stn-toolbar--bottom">
+            <span>Page <b><?php echo $page; ?></b> of <b><?php echo $pages; ?></b></span>
+            <div><?php echo $multipage; ?></div>
+        </div>
+        <?php endif; ?>
+
+    <?php else: ?>
+        <div class="stn-empty">
+            <div class="stn-empty__icon <?php echo $has_filter ? 'stn-soft-warning' : 'stn-soft-muted'; ?>">
+                <i class="fa-solid <?php echo $has_filter ? 'fa-magnifying-glass-minus' : 'fa-inbox'; ?>"></i>
+            </div>
+            <?php if ($has_filter): ?>
+                <h4 class="stn-title">No results found</h4>
+                <p class="text-body-secondary mb-3">No snatched torrents match your search criteria.</p>
+                <a href="<?php echo $_this_script_; ?>" class="btn btn-outline-secondary stn-pill"><i class="fa-solid fa-rotate-left me-1"></i>Reset filters</a>
+            <?php else: ?>
+                <h4 class="stn-title">No snatched torrents yet</h4>
+                <p class="text-body-secondary mb-0">There are currently no snatched torrents in the database.</p>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
     </div>
 </div>
-
-<style>
-.input-group-text {
-    background: var(--bs-tertiary-bg);
-    border-color: var(--bs-border-color);
-}
-</style>
 
 <?php
 stdfoot();
-?>

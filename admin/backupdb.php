@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+if (!defined('STAFF_PANEL')) {
+    exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+}
 
 // Disallow direct access to this file for security reasons
 if(!defined("IN_MYBB"))
@@ -65,6 +68,54 @@ function render_inline_error($error="", $title="")
     </style>';
 }
 
+/** Общие стили страницы (всё под .bk) */
+function bk_styles(): void
+{
+    global $BASEURL;
+	
+	echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/backupdb.css">';
+	
+}
+
+/** Скрипты страницы (выбор таблиц + модалка удаления) */
+function bk_scripts(): void
+{
+    global $BASEURL;
+
+    $v = (int)@filemtime(ADMIN_DIR . 'templates/backupdb.js');
+    echo '<script src="' . $BASEURL . '/admin/scripts/backupdb.js?v=' . $v . '" defer></script>';
+}
+
+/** Шапка страницы */
+function bk_hero(string $sub, string $right = ''): void
+{
+    echo '<div class="bk-card mb-3"><div class="bk-head">'
+       . '<span class="bk-head-icon"><i class="fa-solid fa-database"></i></span>'
+       . '<div style="min-width:0"><h1 class="bk-title">Database Backups</h1><div class="bk-sub">' . $sub . '</div></div>'
+       . ($right !== '' ? '<div class="ms-auto d-flex flex-wrap gap-2">' . $right . '</div>' : '')
+       . '</div></div>';
+}
+
+/** Список файлов бэкапов. Раньше ключом массива было время изменения файла —
+ *  два бэкапа, созданные в одну секунду, затирали друг друга в списке. */
+function bk_list_backups(): array
+{
+    $list = [];
+    $dir  = ADMIN_DIR . 'backup/';
+    if (is_dir($dir) && ($h = opendir($dir)) !== false) {
+        while (($file = readdir($h)) !== false) {
+            if (@filetype($dir . $file) !== 'file') continue;
+            $ext = get_extension($file);
+            if ($ext !== 'gz' && $ext !== 'sql') continue;
+            $list[] = ['file' => $file, 'time' => (int)@filemtime($dir . $file), 'size' => (int)@filesize($dir . $file), 'type' => $ext];
+        }
+        closedir($h);
+    }
+    usort($list, fn($a, $b) => $b['time'] <=> $a['time']);
+    return $list;
+}
+
+
 /**
  * Allows us to refresh cache to prevent over flowing
  */
@@ -126,8 +177,9 @@ if($mybb->input['action'] == "dlbackup")
         // Log admin action
         log_admin_action($file);
 
-        header('Content-disposition: attachment; filename='.$file);
-        header("Content-type: ".$ext);
+        header('Content-Disposition: attachment; filename="'.$file.'"');
+        // Раньше Content-type был просто «gz» / «sql» — не MIME-тип
+        header('Content-Type: '.($ext == 'gz' ? 'application/gzip' : 'application/sql'));
         header("Content-length: ".filesize(ADMIN_DIR.'backup/'.$file));
 
         $handle = fopen(ADMIN_DIR.'backup/'.$file, 'rb');
@@ -136,6 +188,7 @@ if($mybb->input['action'] == "dlbackup")
             echo fread($handle, 8192);
         }
         fclose($handle);
+        exit;
     }
     else
     {
@@ -191,42 +244,24 @@ if($mybb->input['action'] == "delete")
     }
     else
     {
-        // Выводим модалку вместо стандартного подтверждения
-        stdhead();
-        
-        echo '<div class="container mt-4">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-danger text-white rounded-top">
-                    <h5 class="mb-0">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        Confirm Deletion
-                    </h5>
-                </div>
-                <div class="card-body text-center py-5">
-                    <div class="mb-4">
-                        <i class="fas fa-trash-alt fa-4x text-danger mb-3"></i>
-                        <h4 class="text-danger">Are you sure you wish to delete this backup?</h4>
-                        <p class="text-muted">File: <strong>'.$file.'</strong></p>
-                        <p class="text-muted">This action cannot be undone.</p>
-                    </div>
-                    
-                    <form action="' . $_this_script_ . '&action=delete&amp;file='.$file.'" method="post">
-                        <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-                        <button type="submit" class="btn btn-danger btn-lg me-3">
-                            <i class="fas fa-trash me-2"></i>Yes, Delete Backup
-                        </button>
-                        <a href="' . $_this_script_ . '" class="btn btn-secondary btn-lg">
-                            <i class="fas fa-times me-2"></i>Cancel
-                        </a>
-                    </form>
-                </div>
-            </div>
-        </div>';
-        
+        stdhead('Delete backup');
+        bk_styles();
+        $fileE = htmlspecialchars($file, ENT_QUOTES);
+        echo '<div class="container mt-3 mb-4 bk"><div class="bk-card bk-confirm">'
+           . '<span class="bk-confirm-icon"><i class="fa-solid fa-trash-can"></i></span>'
+           . '<h2 class="h4 fw-bold mb-1">Delete this backup?</h2>'
+           . '<div class="text-body-secondary">The file is removed from the server. This can\'t be undone.</div>'
+           . '<div class="bk-target"><i class="fa-solid fa-file-zipper me-2 text-body-secondary"></i>' . $fileE . '</div>'
+           . '<form action="' . $_this_script_ . '&amp;action=delete&amp;file=' . rawurlencode($file) . '" method="post" class="d-flex flex-wrap justify-content-center gap-2">'
+           . '<input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />'
+           . '<a href="' . $_this_script_ . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>'
+           . '<button type="submit" class="btn btn-danger px-4"><i class="fa-solid fa-trash me-1"></i>Yes, delete</button>'
+           . '</form></div></div>';
         stdfoot();
         exit;
     }
 }
+
 
 
 
@@ -241,6 +276,11 @@ if($mybb->input['action'] == "backup")
             http_response_code(403);
             die('Invalid security token');
         }
+
+        $mybb->input['method']          = $mybb->get_input('method') === 'disk' ? 'disk' : 'download';
+        $mybb->input['filetype']        = $mybb->get_input('filetype') === 'gzip' ? 'gzip' : 'plain';
+        $mybb->input['contents']        = in_array($mybb->get_input('contents'), ['both', 'structure', 'data'], true) ? $mybb->get_input('contents') : 'both';
+        $mybb->input['analyzeoptimize'] = (int)$mybb->get_input('analyzeoptimize') === 1 ? 1 : 0;
 
         if(empty($mybb->input['tables']) || !is_array($mybb->input['tables']))
         {
@@ -480,357 +520,190 @@ flash_message('
         exit;
     }
 
-    stdhead();
-    
-    $ss = "<script type=\"text/javascript\">
-    function changeSelection(action, prefix)
-    {
-        var select_box = document.getElementById('table_select');
+    stdhead('New database backup');
+    bk_styles();
 
-        for(var i = 0; i < select_box.length; i++)
-        {
-            if(action == 'select')
-            {
-                select_box[i].selected = true;
-            }
-            else if(action == 'deselect')
-            {
-                select_box[i].selected = false;
-            }
-            else if(action == 'forum' && prefix != 0)
-            {
-                select_box[i].selected = false;
-                var row = select_box[i].value;
-                var subString = row.substring(prefix.length, 0);
-                if(subString == prefix)
-                {
-                    select_box[i].selected = true;
-                }
-            }
+    $cannot_write = !is_writable(ADMIN_DIR . 'backup');
+    $has_gzip     = function_exists('gzopen');
+
+    // Таблицы с размером и числом строк (одна команда SHOW TABLE STATUS)
+    $tables = [];
+    foreach ($db->list_tables($config['database']['database']) as $t) {
+        $tables[(string)$t] = ['rows' => null, 'size' => null];
+    }
+    $st = @$db->sql_query_prepared('SHOW TABLE STATUS');
+    while ($st && ($r = $db->fetch_array($st))) {
+        $n = (string)($r['Name'] ?? '');
+        if (isset($tables[$n])) {
+            $tables[$n] = ['rows' => (int)($r['Rows'] ?? 0), 'size' => (int)($r['Data_length'] ?? 0) + (int)($r['Index_length'] ?? 0)];
         }
     }
-    </script>\n";
-    
-    echo $ss;
+    $db_size = array_sum(array_map(fn($t) => (int)$t['size'], $tables));
 
-    echo '<div class="container mt-4">
-        <div class="card shadow-sm border-0">
-            <div class="card-header bg-primary text-white rounded-top">
-                <h5 class="mb-0">
-                    <i class="fas fa-database me-2"></i>
-                    Database Backups
-                    <span class="float-end">
-                        <a href="' . $_this_script_ . '&action=backup" class="btn btn-light btn-sm">
-                            <i class="fas fa-plus me-1"></i>New Backup
-                        </a>
-                    </span>
-                </h5>
-            </div>
-        </div>
-    </div>';
+    echo '<div class="container mt-3 mb-4 bk">';
+    bk_hero('Choose tables and options, then create a backup', '<a href="' . $_this_script_ . '" class="btn btn-sm btn-outline-secondary px-3"><i class="fa-solid fa-arrow-left me-1"></i>Back to list</a>');
 
-    // Check if file is writable
-    if(!is_writable(ADMIN_DIR."/backup"))
-    {
-        render_inline_error('Your backups directory (within the Admin CP directory) is not writable. You cannot save backups on the server');
-        $cannot_write = true;
+    if ($cannot_write) {
+        echo '<div class="alert alert-warning d-flex gap-2 rounded-4"><i class="fa-solid fa-folder-closed mt-1"></i><div>The <code>admin/backup</code> folder is not writable — backups can only be <strong>downloaded</strong>, not saved on the server.</div></div>';
+    }
+    if (!$has_gzip) {
+        echo '<div class="alert alert-info d-flex gap-2 rounded-4"><i class="fa-solid fa-circle-info mt-1"></i><div>PHP zlib is not enabled — GZIP compression is unavailable.</div></div>';
     }
 
-    $table_selects = array();
-    $table_list = $db->list_tables($config['database']['database']);
-    foreach($table_list as $id => $table_name)
-    {
-        $table_selects[$table_name] = $table_name;
+    echo '<form action="' . $_this_script_ . '&amp;action=backup" method="post" id="table_selection">
+        <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="bk-card overflow-hidden h-100">
+                    <div class="bk-sec-head">
+                        <span class="bk-sec-icon ic-blue"><i class="fa-solid fa-table-list"></i></span>
+                        <div><h2 class="bk-sec-title">Tables</h2><div class="bk-muted"><span id="bkSel">0</span> of ' . count($tables) . ' selected · <span id="bkSelSize">0 B</span></div></div>
+                        <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
+                            <div class="position-relative bk-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" class="form-control form-control-sm" id="bkFilter" placeholder="Filter tables…"></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-sel="all"><i class="fa-solid fa-check-double me-1"></i>All</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-sel="none"><i class="fa-solid fa-xmark me-1"></i>None</button>
+                        </div>
+                    </div>
+                    <div class="bk-tables">';
+    // Раньше: список <select multiple> на 20 строк, выбор только с зажатым Ctrl
+    foreach ($tables as $name => $t) {
+        $nE = htmlspecialchars($name, ENT_QUOTES);
+        echo '<label class="bk-trow" data-name="' . strtolower($nE) . '">'
+           . '<input type="checkbox" class="form-check-input" name="tables[]" value="' . $nE . '" data-size="' . (int)$t['size'] . '" checked>'
+           . '<span class="n">' . $nE . '</span>'
+           . ($t['rows'] !== null ? '<span class="s">' . number_format((int)$t['rows']) . ' rows</span><span class="s">' . mksize((float)$t['size']) . '</span>' : '')
+           . '</label>';
     }
-
-    $construct_cell = "\n<br />
-    <br />\n<a href=\"javascript:changeSelection('select', 0);\" class=\"btn btn-sm btn-outline-primary me-2\">Select All</a>\n<a href=\"javascript:changeSelection('deselect', 0);\" class=\"btn btn-sm btn-outline-secondary\">Deselect All</a>
-    \n\n<br /><br />\n";
-    
-    $box = generate_select_box("tables[]", $table_selects, false, array('multiple' => true, 'id' => 'table_select', 'size' => 20, 'class' => 'form-select'));
-    
-    echo '
-    <div class="container mt-4">
-        <div class="card shadow-sm border-0">
-            <div class="card-header bg-light">
-                <h6 class="mb-0"><i class="fas fa-plus-circle me-2"></i>New Database Backup</h6>
+    echo '      </div>
+                </div>
             </div>
-            <div class="card-body">
-                <form action="' . $_this_script_ . '&action=backup" method="post" name="table_selection" id="table_selection">
-                    <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-                    
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">Table Selection</label>
-                                <p class="text-muted small">You may select the database tables you wish to perform this action on here. Hold down CTRL to select multiple tables</p>
-                                '.$construct_cell.'
-                                '.$box.'
-                            </div>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <div class="mb-4">
-                                <label class="form-label fw-bold">File Type</label>
-                                <p class="text-muted small">Select the file type you would like the database backup saved as</p>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="filetype" value="gzip" id="gzip" checked>
-                                    <label class="form-check-label" for="gzip">GZIP Compressed</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="filetype" value="plain" id="plain">
-                                    <label class="form-check-label" for="plain">Plain Text</label>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-4">
-                                <label class="form-label fw-bold">Save Method</label>
-                                <p class="text-muted small">Select the method you would like to use to save the backup</p>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="method" value="disk" id="disk">
-                                    <label class="form-check-label" for="disk">Backup Directory</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="method" value="download" id="download" checked>
-                                    <label class="form-check-label" for="download">Download</label>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-4">
-                                <label class="form-label fw-bold">Backup Contents</label>
-                                <p class="text-muted small">Select the information that you would like included in the backup</p>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="contents" value="both" id="both" checked>
-                                    <label class="form-check-label" for="both">Structure and Data</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="contents" value="structure" id="structure">
-                                    <label class="form-check-label" for="structure">Structure Only</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="contents" value="data" id="data">
-                                    <label class="form-check-label" for="data">Data only</label>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-4">
-                                <label class="form-label fw-bold">Analyze and Optimize Selected Tables</label>
-                                <p class="text-muted small">Would you like the selected tables to be analyzed and optimized during the backup?</p>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="analyzeoptimize" value="1" id="optimize_yes" checked>
-                                    <label class="form-check-label" for="optimize_yes">Yes</label>
-                                </div>
-                                <div class="form-check form-check-inline">
-                                    <input class="form-check-input" type="radio" name="analyzeoptimize" value="0" id="optimize_no">
-                                    <label class="form-check-label" for="optimize_no">No</label>
-                                </div>
-                            </div>
-                        </div>
+            <div class="col-lg-5">
+                <div class="bk-card h-100 p-3">
+                    <div class="bk-grp"><i class="fa-solid fa-file-zipper me-1"></i>File type</div>
+                    <div class="row g-2">
+                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="filetype" value="gzip" ' . ($has_gzip ? 'checked' : 'disabled') . '><i class="fa-solid fa-file-zipper"></i><b>GZIP</b><small>Compressed · much smaller</small></label></div>
+                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="filetype" value="plain" ' . ($has_gzip ? '' : 'checked') . '><i class="fa-solid fa-file-code"></i><b>Plain SQL</b><small>Readable text file</small></label></div>
                     </div>
-                    
-                    <div class="text-center mt-4">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="fas fa-download me-2"></i>Perform Backup
-                        </button>
+                    <div class="bk-grp"><i class="fa-solid fa-floppy-disk me-1"></i>Save to</div>
+                    <div class="row g-2">
+                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="method" value="download" checked><i class="fa-solid fa-download"></i><b>Download</b><small>Straight to your computer</small></label></div>
+                        <div class="col-6"><label class="bk-opt position-relative"><input type="radio" name="method" value="disk" ' . ($cannot_write ? 'disabled' : '') . '><i class="fa-solid fa-server"></i><b>Server</b><small>admin/backup folder</small></label></div>
                     </div>
-                </form>
+                    <div class="bk-grp"><i class="fa-solid fa-layer-group me-1"></i>Contents</div>
+                    <div class="row g-2">
+                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="both" checked><i class="fa-solid fa-cubes"></i><b>Full</b><small>Structure + data</small></label></div>
+                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="structure"><i class="fa-solid fa-sitemap"></i><b>Structure</b><small>Tables only</small></label></div>
+                        <div class="col-4"><label class="bk-opt position-relative"><input type="radio" name="contents" value="data"><i class="fa-solid fa-table"></i><b>Data</b><small>Rows only</small></label></div>
+                    </div>
+                    <div class="bk-grp"><i class="fa-solid fa-broom me-1"></i>Maintenance</div>
+                    <label class="d-flex align-items-center gap-2 p-2 rounded-3" style="border:1px solid var(--bs-border-color-translucent);cursor:pointer">
+                        <input type="hidden" name="analyzeoptimize" value="0">
+                        <input class="form-check-input m-0" type="checkbox" role="switch" name="analyzeoptimize" value="1" checked style="width:2.5em;height:1.35em">
+                        <span><b class="d-block">Analyze &amp; optimize</b><small class="bk-muted">Runs OPTIMIZE / ANALYZE on each selected table first</small></span>
+                    </label>
+                </div>
             </div>
         </div>
+        <div class="bk-card bk-savebar">
+            <span class="bk-muted"><i class="fa-solid fa-circle-info me-1"></i>Large databases can take a while — keep the page open</span>
+            <button type="submit" class="btn btn-primary px-4" id="bkGo"><i class="fa-solid fa-play me-1"></i>Create backup</button>
+        </div>
+    </form>
     </div>';
+    bk_scripts();
 
     stdfoot();
 }
 
+
 // Main page - list backups
 if(!$mybb->input['action'])
 {
-    stdhead();
+    stdhead('Database Backups');
+    bk_styles();
     $plugins->run_hooks("admin_tools_backupdb_start");
 
-    echo '<div class="container mt-4">
-        <div class="card shadow-sm border-0">
-            <div class="card-header bg-primary text-white rounded-top">
-                <h5 class="mb-0">
-                    <i class="fas fa-database me-2"></i>
-                    Database Backups
-                    <span class="float-end">
-                        <a href="' . $_this_script_ . '&action=backup" class="btn btn-light btn-sm">
-                            <i class="fas fa-plus me-1"></i>New Backup
-                        </a>
-                    </span>
-                </h5>
-            </div>
-        </div>
-    </div>';
+    $backups   = bk_list_backups();
+    $total     = array_sum(array_column($backups, 'size'));
+    $latest    = $backups[0]['time'] ?? 0;
+    $writable  = is_writable(ADMIN_DIR . 'backup');
+    $age_cls   = !$latest ? 'ic-slate' : ((TIMENOW - $latest) < 7 * 86400 ? 'ic-green' : ((TIMENOW - $latest) < 30 * 86400 ? 'ic-amber' : 'ic-purple'));
 
-    echo '<div class="container mt-4">
-        <div class="card shadow-sm border-0">
-            <div class="card-header bg-light">
-                <h6 class="mb-0"><i class="fas fa-list me-2"></i>Existing Database Backups</h6>
-            </div>
-        </div>
-    </div>';
+    echo '<div class="container mt-3 mb-4 bk">';
+    bk_hero('Create, download and remove SQL backups of the tracker database',
+        '<a href="' . $_this_script_ . '&amp;action=backup" class="btn btn-primary px-3"><i class="fa-solid fa-plus me-1"></i>New backup</a>');
 
-    $backups = array();
-    $dir = ADMIN_DIR.'backup/';
-    $handle = opendir($dir);
+    if (!$writable) {
+        echo '<div class="alert alert-warning d-flex gap-2 rounded-4"><i class="fa-solid fa-folder-closed mt-1"></i><div>The <code>admin/backup</code> folder is not writable — new backups can only be downloaded.</div></div>';
+    }
 
-    if($handle !== false)
-    {
-        while(($file = readdir($handle)) !== false)
-        {
-            if(filetype(ADMIN_DIR.'backup/'.$file) == 'file')
-            {
-                $ext = get_extension($file);
-                if($ext == 'gz' || $ext == 'sql')
-                {
-                    $backups[@filemtime(ADMIN_DIR.'backup/'.$file)] = array(
-                        "file" => $file,
-                        "time" => @filemtime(ADMIN_DIR.'backup/'.$file),
-                        "type" => $ext
-                    );
-                }
-            }
+    echo '<div class="row g-3 mb-3">';
+    foreach ([
+        ['fa-box-archive', 'ic-blue',  'Backups',      number_format(count($backups))],
+        ['fa-hard-drive',  'ic-teal',  'Space used',   mksize((float)$total)],
+        ['fa-clock',       $age_cls,   'Latest',       $latest ? my_datee('relative', $latest) : 'never'],
+        ['fa-folder-open', $writable ? 'ic-green' : 'ic-amber', 'Folder', $writable ? 'Writable' : 'Read-only'],
+    ] as [$ic, $cls, $label, $val]) {
+        echo '<div class="col-6 col-lg-3"><div class="bk-card bk-kpi"><span class="bk-kpi-icon ' . $cls . '"><i class="fa-solid ' . $ic . '"></i></span>'
+           . '<div style="min-width:0"><div class="bk-kpi-label">' . $label . '</div><div class="bk-kpi-value">' . $val . '</div></div></div></div>';
+    }
+    echo '</div>';
+
+    if (!$backups) {
+        echo '<div class="bk-card"><div class="bk-empty"><i class="fa-solid fa-inbox"></i><div class="fw-semibold">No backups yet</div>'
+           . '<div class="small mb-3">Backups saved to the server show up here.</div>'
+           . '<a href="' . $_this_script_ . '&amp;action=backup" class="btn btn-primary px-3"><i class="fa-solid fa-plus me-1"></i>Create the first backup</a></div></div>';
+    } else {
+        echo '<div class="bk-card overflow-hidden"><div class="bk-sec-head"><span class="bk-sec-icon ic-slate"><i class="fa-solid fa-list"></i></span>'
+           . '<h2 class="bk-sec-title">Saved backups</h2></div>'
+           . '<div class="table-responsive"><table class="table bk-table"><thead><tr>'
+           . '<th><i class="fa-solid fa-file"></i>File</th><th><i class="fa-solid fa-weight-hanging"></i>Size</th>'
+           . '<th><i class="fa-solid fa-clock"></i>Created</th><th class="text-end"><i class="fa-solid fa-bolt"></i></th>'
+           . '</tr></thead><tbody>';
+        foreach ($backups as $i => $b) {
+            $dl    = $_this_script_ . '&amp;action=dlbackup&amp;file=' . rawurlencode($b['file']) . '&amp;my_post_key=' . $mybb->post_code;
+            $fileE = htmlspecialchars($b['file'], ENT_QUOTES);
+            $gz    = $b['type'] === 'gz';
+            echo '<tr>'
+               . '<td><div class="d-flex align-items-center gap-3"><span class="bk-ficon ' . ($gz ? 'ic-amber' : 'ic-teal') . '"><i class="fa-solid ' . ($gz ? 'fa-file-zipper' : 'fa-file-code') . '"></i></span>'
+               . '<div style="min-width:0"><a href="' . $dl . '" class="bk-fname">' . $fileE . '</a>'
+               . '<div class="mt-1"><span class="bk-tag ' . ($gz ? 't-gz' : 't-sql') . '">' . ($gz ? 'GZIP' : 'SQL') . '</span>'
+               . ($i === 0 ? ' <span class="bk-tag t-new"><i class="fa-solid fa-star"></i>latest</span>' : '') . '</div></div></div></td>'
+               . '<td class="text-nowrap fw-semibold">' . mksize((float)$b['size']) . '</td>'   // раньше — голое число байт
+               . '<td class="text-nowrap bk-muted" title="' . htmlspecialchars(date('Y-m-d H:i:s', $b['time'])) . '">' . ($b['time'] ? my_datee('relative', $b['time']) : '—') . '</td>'
+               . '<td class="text-end text-nowrap">'
+               . '<a href="' . $dl . '" class="bk-act" title="Download"><i class="fa-solid fa-download"></i></a>'
+               // data-атрибуты вместо id с именем файла: точки в «backup_….sql.gz»
+               // ломали селектор data-bs-target="#deleteModal…", и модалка не открывалась
+               . '<button type="button" class="bk-act danger bk-del" title="Delete" data-file="' . $fileE . '" data-url="' . $_this_script_ . '&amp;action=delete&amp;file=' . rawurlencode($b['file']) . '"><i class="fa-solid fa-trash"></i></button>'
+               . '</td></tr>';
         }
-        closedir($handle);
+        echo '</tbody></table></div></div>';
     }
+    echo '</div>';
 
-    $count = count($backups);
-    krsort($backups);
-
-    $show_backup = '';
-
-    foreach($backups as $backup)
-    {
-        $time = "-";
-        if($backup['time'])
-        {
-            $time = my_datee('relative', $backup['time']);
-        }
-
-        $file_size = ts_nf(filesize(ADMIN_DIR.'backup/'.$backup['file']));
-        
-        $show_backup .= '<tr>
-            <td>
-                <i class="fas fa-file-'.($backup['type'] == 'gz' ? 'archive text-warning' : 'alt text-info').' me-2"></i>
-                <a href="' . $_this_script_ . '&action=dlbackup&amp;file='.$backup['file'].'&amp;my_post_key='.$mybb->post_code.'" class="text-decoration-none">
-                    '.$backup['file'].'
-                </a>
-            </td>
-            <td>'.$file_size.'</td>
-            <td>'.$time.'</td>
-            <td class="text-center">
-                <a href="' . $_this_script_ . '&action=dlbackup&amp;file='.$backup['file'].'&amp;my_post_key='.$mybb->post_code.'" class="btn btn-sm btn-success me-1" title="Download">
-                    <i class="fas fa-download"></i>
-                </a>
-               
-			   
-			   
-			   <button type="button" 
-        class="btn btn-sm btn-danger" 
-        title="Delete"
-        data-bs-toggle="modal" 
-        data-bs-target="#deleteModal'.$backup['file'].'">
-    <i class="fas fa-trash"></i>
-</button>
-
-<!-- Modal for Delete Confirmation -->
-<div class="modal fade" id="deleteModal'.$backup['file'].'" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    Confirm Deletion
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center">
-                <div class="mb-3">
-                    <i class="fas fa-trash-alt fa-3x text-danger"></i>
-                </div>
-                <h5 class="text-danger mb-3">Are you sure you want to delete this backup?</h5>
-                <p class="text-muted">File: <strong>'.$backup['file'].'</strong></p>
-                <p class="text-muted"><small>This action cannot be undone.</small></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-2"></i>Cancel
-                </button>
-                <form method="post" action="' . $_this_script_ . '&action=delete&amp;file='.$backup['file'].'" class="d-inline">
-                    <input type="hidden" name="my_post_key" value="'.$mybb->post_code.'" />
-                    <button type="submit" class="btn btn-danger">
-                        <i class="fas fa-trash me-2"></i>Delete Backup
-                    </button>
-                </form>
-            </div>
+    // Одна модалка на все строки
+    echo '<div class="modal fade bk-modal" id="bkDelModal" tabindex="-1" aria-labelledby="bkDelTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header">
+          <span class="bk-mh-icon"><i class="fa-solid fa-trash-can"></i></span>
+          <h5 class="modal-title fw-bold" id="bkDelTitle">Delete backup?</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-    </div>
-</div>
-				
-				
-            </td>
-        </tr>';
-    }
-
-    if($show_backup)
-    {
-        echo '<div class="container mt-4">
-            <div class="card shadow-sm border-0">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th><i class="fas fa-file me-1"></i>Backup Filename</th>
-                                    <th><i class="fas fa-weight-hanging me-1"></i>File Size</th>
-                                    <th><i class="fas fa-clock me-1"></i>Creation Date</th>
-                                    <th class="text-center"><i class="fas fa-cogs me-1"></i>Controls</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                '.$show_backup.'
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>';
-    }
-
-    if($count == 0)
-    {
-        echo '<div class="container mt-4">
-            <div class="card shadow-sm border-0">
-                <div class="card-body text-center py-5">
-                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                    <h5 class="text-muted">No Backups Found</h5>
-                    <p class="text-muted">There are currently no backups made yet.</p>
-                    <a href="' . $_this_script_ . '&action=backup" class="btn btn-primary mt-2">
-                        <i class="fas fa-plus me-2"></i>Create Your First Backup
-                    </a>
-                </div>
-            </div>
-        </div>';
-    }
-	
-	
-	
-	
-	
-echo "<script>
-// Initialize modals
-document.addEventListener('DOMContentLoaded', function() {
-    var deleteModals = document.querySelectorAll('.modal');
-    deleteModals.forEach(function(modal) {
-        new bootstrap.Modal(modal);
-    });
-});
-</script>";
-	
-	
-	
-	
+        <div class="modal-body">
+          <div class="font-monospace p-2 rounded-3 bg-body-tertiary text-break" id="bkDelFile"></div>
+          <div class="text-body-secondary small mt-2"><i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>The file is removed from the server. This can\'t be undone.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
+          <form method="post" action="" id="bkDelForm" class="d-inline">
+            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '" />
+            <button type="submit" class="btn btn-danger px-3"><i class="fa-solid fa-trash me-1"></i>Delete</button>
+          </form>
+        </div>
+      </div></div>
+    </div>';
+    bk_scripts();
 
     stdfoot();
 }

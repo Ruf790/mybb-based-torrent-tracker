@@ -76,8 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($act2 === 'save' || $act2 === 'save_new') && (is_valid_id($cronid) || $act2 === 'save_new')) {
         if (!verify_post_check($_POST['my_post_key'] ?? '')) {
             http_response_code(403);
-            echo 'Invalid security token';
-            exit;
+            stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
         }
 
         $rawFilename = trim($_POST['filename'] ?? '');
@@ -97,6 +96,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($_POST['days']))    $minutes += $dsecs  * (int)$_POST['days'];
         if (!empty($_POST['hours']))   $minutes += $hsecs  * (int)$_POST['hours'];
         if (!empty($_POST['minutes'])) $minutes += $msecs  * (int)$_POST['minutes'];
+
+        // Интервал 0 означал бы запуск задачи на каждом обращении к cron.php
+        if ($minutes < 60) {
+            flash_message("Please choose a run interval of at least 1 minute.", "error");
+            admin_redirect($_this_script_);
+            exit();
+        }
 
         $act2ive  = !empty($_POST['active'])   ? 1 : 0;
         $loglevel = !empty($_POST['loglevel']) ? 1 : 0;
@@ -125,8 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($act2, ['run', 'active', 'disable', 'delete'], true)) {
     if (!verify_post_check($_POST['my_post_key'] ?? '')) {
         http_response_code(403);
-        echo 'Invalid security token';
-        exit;
+        stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
     }
 
     if ($act2 === 'run' && is_valid_id($cronid)) {
@@ -188,482 +193,335 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($act2, ['run', 'active', '
     }
 }
 
-stdhead('⚡ Cron Jobs Management');
+stdhead('Cron Jobs');
 
-// Prepare time selectors HTML helper
-$timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minutes' => 60];
-?>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
-<style>
-    :root {
-        --rules-accent: var(--bs-primary);
-        --rules-accent-strong: var(--bs-primary-text-emphasis, var(--bs-primary));
-        --rules-accent-soft: var(--bs-primary-bg-subtle, rgba(13, 110, 253, .12));
-    }
-
-    .cron-masthead {
-        padding: 1.75rem 1.5rem;
-        margin-bottom: 1.5rem;
-        background: var(--bs-body-bg);
-        border: 1px solid var(--bs-border-color);
-        border-radius: .75rem;
-    }
-
-    .cron-masthead__eyebrow {
-        display: inline-block;
-        font-family: 'Oswald', sans-serif;
-        font-weight: 600;
-        font-size: .72rem;
-        letter-spacing: .14em;
-        text-transform: uppercase;
-        color: var(--rules-accent-strong);
-        background: var(--rules-accent-soft);
-        border: 1px solid var(--rules-accent);
-        border-radius: 999px;
-        padding: .3rem .85rem;
-        margin-bottom: .75rem;
-    }
-
-    .cron-masthead__title {
-        font-family: 'Oswald', sans-serif;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: .01em;
-        font-size: clamp(1.5rem, 3.4vw, 2rem);
-        color: var(--bs-emphasis-color);
-        margin: 0;
-    }
-
-    .cron-panel {
-        background: var(--bs-body-bg);
-        border: 1px solid var(--bs-border-color) !important;
-        border-radius: .75rem;
-        overflow: hidden;
-    }
-
-    .cron-panel .card-header {
-        background: transparent !important;
-        color: var(--bs-emphasis-color) !important;
-        border-bottom: 1px solid var(--bs-border-color);
-        border-left: 4px solid var(--rules-accent);
-    }
-
-    .cron-panel .card-header h5,
-    .cron-panel .card-header h6 {
-        font-family: 'Oswald', sans-serif;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: .03em;
-        font-size: .95rem;
-    }
-
-    .cron-panel .card-header i {
-        color: var(--rules-accent);
-    }
-
-    .cron-count-badge {
-        font-family: 'Oswald', sans-serif;
-        font-size: .7rem;
-        font-weight: 600;
-        letter-spacing: .06em;
-        text-transform: uppercase;
-        color: var(--rules-accent-strong) !important;
-        background: var(--rules-accent-soft) !important;
-        border: 1px solid var(--rules-accent);
-        border-radius: 999px;
-    }
-
-    .cron-panel table thead th {
-        font-family: 'Oswald', sans-serif;
-        font-size: .72rem;
-        font-weight: 600;
-        letter-spacing: .06em;
-        text-transform: uppercase;
-        color: var(--bs-secondary-color) !important;
-        background: var(--bs-tertiary-bg) !important;
-        border-bottom: 1px solid var(--bs-border-color);
-    }
-
-    .cron-panel table tbody tr:hover {
-        background-color: var(--rules-accent-soft);
-    }
-</style>
-
-<div class="container py-4">
-
-    <div class="cron-masthead">
-        <span class="cron-masthead__eyebrow">Admin / Automation</span>
-        <h1 class="cron-masthead__title"><i class="fas fa-bolt me-2" style="color: var(--rules-accent)"></i>Cron Jobs Management</h1>
-    </div>
-
-    <!-- Breadcrumb -->
-    <nav aria-label="breadcrumb" class="mb-4">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="<?= $BASEURL ?>/admin/index.php"><i class="fas fa-home"></i> Dashboard</a></li>
-            <li class="breadcrumb-item active">⚡ Cron Jobs</li>
-        </ol>
-    </nav>
-
-    <!-- ─── Cron Jobs List ─────────────────────────────────────────────── -->
-    <div class="card cron-panel shadow-sm border-0 mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <i class="fas fa-tasks me-2"></i>
-                <h5 class="mb-0 d-inline-block">Cron Jobs</h5>
-                <span class="badge cron-count-badge ms-2">
-                    <?php
-                    $count_result = $db->sql_query_prepared("SELECT COUNT(*) as total FROM cron");
-                    $count_row = $count_result ? $db->fetch_array($count_result) : null;
-                    echo (int)($count_row['total'] ?? 0);
-                    ?> jobs
-                </span>
-            </div>
-            <button type="button" class="btn btn-sm" style="background: var(--rules-accent); border-color: var(--rules-accent); color: #fff; font-weight: 600;" onclick="openCreateModal()">
-                <i class="fas fa-plus-circle me-1"></i> Create New
-            </button>
-        </div>
-        <div class="card-body table-responsive">
-            <?php
-            $result = $db->sql_query_prepared("
+// ── Данные ───────────────────────────────────────────────────────────
+$jobs = [];
+$result = $db->sql_query_prepared("
     SELECT c.*,
-           cl.runtime    AS last_runtime,
-           cl.executetime AS last_executetime
+           cl.runtime     AS last_runtime,
+           cl.executetime AS last_executetime,
+           cl.querycount  AS last_querycount
     FROM cron c
     LEFT JOIN cron_log cl ON cl.filename = c.filename
-        AND cl.runtime = (
-            SELECT MAX(cl2.runtime) FROM cron_log cl2 WHERE cl2.filename = c.filename
-        )
+        AND cl.runtime = (SELECT MAX(cl2.runtime) FROM cron_log cl2 WHERE cl2.filename = c.filename)
     ORDER BY c.cronid
 ");
-            if ($result && $db->num_rows($result) > 0):
+while ($result && ($row = $db->fetch_array($result))) $jobs[] = $row;
+
+$logs = [];
+$q = $db->sql_query_prepared('SELECT * FROM cron_log ORDER BY runtime DESC LIMIT 50');
+while ($q && ($row = $db->fetch_array($q))) $logs[] = $row;
+
+$cronDir   = TSDIR . '/cron/';
+$checkDir  = is_dir($cronDir);                       // проверяем файлы, только если папка есть
+$n_active  = count(array_filter($jobs, fn($j) => (int)$j['active'] === 1));
+$n_overdue = count(array_filter($jobs, fn($j) => (int)$j['active'] === 1 && (int)$j['nextrun'] > 0 && (int)$j['nextrun'] < TIMENOW - 300));
+$avg_exec  = $logs ? array_sum(array_map(fn($l) => (float)$l['executetime'], $logs)) / count($logs) : 0.0;
+
+$timeFields = ['months' => 12, 'weeks' => 4, 'days' => 31, 'hours' => 24, 'minutes' => 60];
+$key = htmlspecialchars((string)$mybb->post_code);
+
+/** Цвет длительности выполнения */
+$execCls = static fn(float $t): string => $t > 5 ? 'is-bad' : ($t > 2 ? 'is-warn' : 'is-good');
+?>
+
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/cronjobs.css?ver=336">
+
+<div class="container mt-3 mb-4 cj">
+
+    <div class="cj-card mb-3"><div class="cj-head">
+        <span class="cj-head-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+        <div style="min-width:0">
+            <h1 class="cj-title">Cron Jobs</h1>
+            <div class="cj-sub">Scheduled tasks that keep the tracker ticking — intervals, runs and timings</div>
+        </div>
+        <button type="button" class="btn btn-primary px-3 ms-auto" onclick="openCreateModal()"><i class="fa-solid fa-plus me-1"></i>New job</button>
+    </div></div>
+
+    <div class="row g-3 mb-3">
+        <?php foreach ([
+            ['fa-list-check',          'ic-blue',   'Jobs',          count($jobs)],
+            ['fa-circle-play',         'ic-green',  'Active',        $n_active],
+            ['fa-triangle-exclamation', $n_overdue ? 'ic-red' : 'ic-slate', 'Overdue', $n_overdue],
+            ['fa-stopwatch',           'ic-amber',  'Avg run time',  number_format($avg_exec, 2) . ' s'],
+        ] as [$ic, $cls, $label, $val]): ?>
+        <div class="col-6 col-lg-3"><div class="cj-card cj-kpi"><span class="cj-kpi-icon <?= $cls ?>"><i class="fa-solid <?= $ic ?>"></i></span>
+            <div><div class="cj-kpi-label"><?= $label ?></div><div class="cj-kpi-value"><?= $val ?></div></div></div></div>
+        <?php endforeach; ?>
+    </div>
+
+    <!-- ── Задачи ─────────────────────────────────────────────── -->
+    <div class="cj-card overflow-hidden mb-3">
+        <div class="cj-sec-head"><span class="cj-sec-icon ic-purple"><i class="fa-solid fa-gears"></i></span>
+            <div><h2 class="cj-sec-title">Scheduled jobs</h2><div class="cj-muted"><?= count($jobs) ?> job(s) · <?= $n_active ?> active</div></div></div>
+        <?php if ($jobs): ?>
+        <div class="table-responsive"><table class="table cj-table">
+            <thead><tr>
+                <th><i class="fa-solid fa-file-code"></i>Job</th>
+                <th><i class="fa-solid fa-hourglass-half"></i>Every</th>
+                <th><i class="fa-solid fa-clock-rotate-left"></i>Last run</th>
+                <th><i class="fa-solid fa-calendar-check"></i>Next run</th>
+                <th><i class="fa-solid fa-power-off"></i>Status</th>
+                <th class="text-end"><i class="fa-solid fa-bolt"></i></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($jobs as $cron):
+                $id      = (int)$cron['cronid'];
+                $active  = (int)$cron['active'] === 1;
+                $next    = (int)$cron['nextrun'];
+                $late    = $active && $next > 0 && $next < TIMENOW - 300;
+                $missing = $checkDir && !is_file($cronDir . basename((string)$cron['filename']));
+                $fileE   = htmlspecialchars((string)$cron['filename']);
             ?>
-            <table class="table table-hover table-striped align-middle">
-                <thead>
-                    <tr>
-                        <th><i class="fas fa-file me-1"></i> Filename</th>
-                        <th><i class="fas fa-align-left me-1"></i> Description</th>
-                        <th><i class="fas fa-clock me-1"></i> Run Period</th>
-                        <th><i class="fas fa-history me-1"></i> Last Run</th>
-                        <th><i class="fas fa-calendar-check me-1"></i> Next Run</th>
-                        <th><i class="fas fa-clipboard-list me-1"></i> Logging</th>
-                        <th><i class="fas fa-power-off me-1"></i> Status</th>
-                        <th class="text-center"><i class="fas fa-cog me-1"></i> Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php while ($cron = $db->fetch_array($result)): ?>
-                    <tr>
-                        <td><code class="text-primary"><?= htmlspecialchars($cron['filename']) ?></code></td>
-                        <td><?= htmlspecialchars($cron['description']) ?></td>
-                        <td>
-                            <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25">
-                                <i class="fas fa-hourglass-half me-1"></i><?= mkprettytime((int)$cron['minutes']) ?>
-                            </span>
-                        </td>
-                        <td>
-                            <?php if (!empty($cron['last_runtime'])): ?>
-                                <span class="fw-semibold"><?= my_datee($dateformat, (int)$cron['last_runtime']) ?></span>
-                                <br><small class="text-muted"><?= my_datee($timeformat, (int)$cron['last_runtime']) ?></small>
-                            <?php else: ?>
-                                <small class="text-muted fst-italic">Never</small>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <span class="fw-semibold"><?= my_datee($dateformat, $cron['nextrun']) ?></span>
-                            <br><small class="text-muted"><?= my_datee($timeformat, $cron['nextrun']) ?></small>
-                        </td>
-                        <td><?= render_status_badge((bool)$cron['loglevel'], 'log') ?></td>
-                        <td><?= render_status_badge((bool)$cron['active'], 'status') ?></td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <form method="post" action="<?= $_this_script_ ?>" class="d-inline">
-                                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
-                                    <input type="hidden" name="act2" value="run">
-                                    <input type="hidden" name="cronid" value="<?= (int)$cron['cronid'] ?>">
-                                    <button type="submit" class="btn btn-outline-primary" title="Run Now" data-bs-toggle="tooltip">
-                                        <i class="fas fa-play"></i>
-                                    </button>
-                                </form>
-                                <button type="button" class="btn btn-outline-secondary"
-                                        title="Edit" data-bs-toggle="tooltip"
-                                        onclick="openEditModal(<?= (int)$cron['cronid'] ?>)">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <form method="post" action="<?= $_this_script_ ?>" class="d-inline">
-                                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
-                                    <input type="hidden" name="act2" value="<?= $cron['active'] ? 'disable' : 'active' ?>">
-                                    <input type="hidden" name="cronid" value="<?= (int)$cron['cronid'] ?>">
-                                    <button type="submit" class="btn btn-outline-<?= $cron['active'] ? 'warning' : 'success' ?>"
-                                            title="<?= $cron['active'] ? 'Disable' : 'Enable' ?>" data-bs-toggle="tooltip">
-                                        <i class="fas fa-power-off"></i>
-                                    </button>
-                                </form>
-                                <form method="post" action="<?= $_this_script_ ?>" class="d-inline"
-                                      onsubmit="return confirm('Delete cron job: <?= addslashes(htmlspecialchars($cron['filename'])) ?>?')">
-                                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
-                                    <input type="hidden" name="act2" value="delete">
-                                    <input type="hidden" name="cronid" value="<?= (int)$cron['cronid'] ?>">
-                                    <button type="submit" class="btn btn-outline-danger" title="Delete" data-bs-toggle="tooltip">
-                                        <i class="fas fa-trash-alt"></i>
-                                    </button>
-                                </form>
+                <tr class="<?= $active ? '' : 'is-off' ?>">
+                    <td><div class="d-flex align-items-center gap-3">
+                        <span class="cj-ico <?= $active ? 'ic-purple' : 'ic-slate' ?>"><i class="fa-solid fa-file-code"></i></span>
+                        <div style="min-width:0">
+                            <div class="cj-file"><?= $fileE ?>
+                                <?php if ($missing): ?><span class="cj-tag t-miss ms-1" title="File not found in /cron/"><i class="fa-solid fa-file-circle-exclamation"></i>missing</span><?php endif; ?>
+                                <?php if ((int)$cron['loglevel'] === 1): ?><i class="fa-solid fa-clipboard-list text-body-secondary ms-1" title="Execution is logged"></i><?php endif; ?>
                             </div>
-                        </td>
-                    </tr>
-                <?php endwhile; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-            <div class="text-center py-5">
-                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                <h5 class="text-muted">No cron jobs found</h5>
-                <p class="text-muted">
-                    <button class="btn btn-primary btn-sm" onclick="openCreateModal()">
-                        <i class="fas fa-plus me-1"></i>Create your first cron job
-                    </button>
-                </p>
-            </div>
-            <?php endif; ?>
-        </div>
+                            <div class="cj-muted"><?= htmlspecialchars((string)$cron['description']) ?></div>
+                        </div>
+                    </div></td>
+                    <td><span class="cj-tag t-int"><i class="fa-solid fa-rotate"></i><?= mkprettytime((int)$cron['minutes']) ?></span></td>
+                    <td class="text-nowrap">
+                        <?php if (!empty($cron['last_runtime'])): ?>
+                            <div><?= my_datee('relative', (int)$cron['last_runtime']) ?></div>
+                            <?php if ($cron['last_executetime'] !== null): $t = (float)$cron['last_executetime']; ?>
+                            <div class="cj-muted"><span class="cj-time <?= $execCls($t) ?>"><?= number_format($t, 3) ?> s</span> · <?= number_format((int)$cron['last_querycount']) ?> queries</div>
+                            <?php endif; ?>
+                        <?php else: ?><span class="cj-muted fst-italic">never</span><?php endif; ?>
+                    </td>
+                    <td class="text-nowrap">
+                        <?php if (!$active): ?><span class="cj-muted">—</span>
+                        <?php elseif ($late): ?><span class="cj-tag t-late" title="<?= htmlspecialchars(my_datee($dateformat, $next) . ' ' . my_datee($timeformat, $next)) ?>"><i class="fa-solid fa-triangle-exclamation"></i>overdue</span>
+                        <?php else: ?>
+                            <div><?= my_datee('relative', $next) ?></div>
+                            <div class="cj-muted"><?= my_datee($dateformat, $next) ?> <?= my_datee($timeformat, $next) ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <td><?= $active ? '<span class="cj-tag t-on"><i class="fa-solid fa-circle-check"></i>Active</span>' : '<span class="cj-tag t-off"><i class="fa-solid fa-circle-pause"></i>Disabled</span>' ?></td>
+                    <td class="text-end text-nowrap">
+                        <form method="post" action="<?= $_this_script_ ?>" class="d-inline">
+                            <input type="hidden" name="my_post_key" value="<?= $key ?>"><input type="hidden" name="act2" value="run"><input type="hidden" name="cronid" value="<?= $id ?>">
+                            <button type="submit" class="cj-act" title="Run now"><i class="fa-solid fa-play"></i></button>
+                        </form>
+                        <button type="button" class="cj-act" title="Edit" onclick="openEditModal(<?= $id ?>)"><i class="fa-solid fa-pen"></i></button>
+                        <form method="post" action="<?= $_this_script_ ?>" class="d-inline">
+                            <input type="hidden" name="my_post_key" value="<?= $key ?>"><input type="hidden" name="act2" value="<?= $active ? 'disable' : 'active' ?>"><input type="hidden" name="cronid" value="<?= $id ?>">
+                            <button type="submit" class="cj-act <?= $active ? 'amber' : 'green' ?>" title="<?= $active ? 'Disable' : 'Enable' ?>"><i class="fa-solid <?= $active ? 'fa-pause' : 'fa-power-off' ?>"></i></button>
+                        </form>
+                        <form method="post" action="<?= $_this_script_ ?>" class="d-inline cj-del" data-file="<?= $fileE ?>">
+                            <input type="hidden" name="my_post_key" value="<?= $key ?>"><input type="hidden" name="act2" value="delete"><input type="hidden" name="cronid" value="<?= $id ?>">
+                            <button type="submit" class="cj-act danger" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table></div>
+        <?php else: ?>
+        <div class="cj-empty"><i class="fa-solid fa-inbox"></i><div class="fw-semibold">No cron jobs yet</div>
+            <button class="btn btn-primary btn-sm mt-3 px-3" onclick="openCreateModal()"><i class="fa-solid fa-plus me-1"></i>Create the first job</button></div>
+        <?php endif; ?>
     </div>
 
-    <!-- ─── Execution Logs ──────────────────────────────────────────────── -->
-    <div class="card cron-panel shadow-sm border-0">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <i class="fas fa-history me-2"></i>
-                <h6 class="mb-0 d-inline-block">Execution Logs</h6>
-                <span class="badge cron-count-badge ms-2">Last 50 entries</span>
-            </div>
+    <!-- ── Журнал выполнения ──────────────────────────────────── -->
+    <div class="cj-card overflow-hidden">
+        <div class="cj-sec-head"><span class="cj-sec-icon ic-slate"><i class="fa-solid fa-clock-rotate-left"></i></span>
+            <div><h2 class="cj-sec-title">Execution log</h2><div class="cj-muted">Last 50 runs</div></div>
+            <?php if ($logs): ?><div class="ms-auto cj-filter"><input type="search" class="form-control form-control-sm" id="cjLogFilter" placeholder="Filter by file…"></div><?php endif; ?>
         </div>
-        <div class="card-body table-responsive">
-            <?php
-            $query = $db->sql_query_prepared('SELECT * FROM cron_log ORDER BY runtime DESC LIMIT 50');
-            if ($query && $db->num_rows($query) > 0):
-            ?>
-            <table class="table table-sm table-hover table-striped">
-                <thead>
-                    <tr>
-                        <th><i class="fas fa-file me-1"></i> Filename</th>
-                        <th class="text-center"><i class="fas fa-database me-1"></i> Queries</th>
-                        <th class="text-center"><i class="fas fa-stopwatch me-1"></i> Execute Time</th>
-                        <th class="text-center"><i class="fas fa-calendar me-1"></i> Last Run</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php while ($log = $db->fetch_array($query)):
-                    $exec_time  = (float)$log['executetime'];
-                    $time_class = $exec_time > 5 ? 'text-danger' : ($exec_time > 2 ? 'text-warning' : 'text-success');
-                ?>
-                    <tr>
-                        <td><code class="text-primary"><?= htmlspecialchars($log['filename']) ?></code></td>
-                        <td class="text-center">
-                            <span class="badge bg-info bg-opacity-10 text-info"><?= ts_nf($log['querycount']) ?></span>
-                        </td>
-                        <td class="text-center">
-                            <span class="<?= $time_class ?> fw-semibold"><?= $exec_time ?> sec</span>
-                        </td>
-                        <td class="text-center">
-                            <span><?= date($dateformat, (int)$log['runtime']) ?></span>
-                            <br><small class="text-muted"><?= date($timeformat, (int)$log['runtime']) ?></small>
-                        </td>
-                    </tr>
-                <?php endwhile; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-            <div class="text-center py-4">
-                <i class="fas fa-clipboard-list fa-2x text-muted mb-2"></i>
-                <p class="text-muted mb-0">No execution logs yet</p>
-            </div>
-            <?php endif; ?>
-        </div>
+        <?php if ($logs): ?>
+        <div class="table-responsive"><table class="table cj-table" id="cjLog">
+            <thead><tr>
+                <th><i class="fa-solid fa-file-code"></i>File</th>
+                <th class="text-center"><i class="fa-solid fa-database"></i>Queries</th>
+                <th class="text-center"><i class="fa-solid fa-stopwatch"></i>Duration</th>
+                <th class="text-end"><i class="fa-solid fa-calendar"></i>When</th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($logs as $log): $t = (float)$log['executetime']; ?>
+                <tr data-f="<?= htmlspecialchars(strtolower((string)$log['filename'])) ?>">
+                    <td class="cj-file"><?= htmlspecialchars((string)$log['filename']) ?></td>
+                    <td class="text-center"><?= ts_nf($log['querycount']) ?></td>
+                    <!-- раньше время выводилось «как есть», с 10+ знаками после запятой -->
+                    <td class="text-center"><span class="cj-time <?= $execCls($t) ?>"><?= number_format($t, 3) ?> s</span></td>
+                    <!-- раньше date() — без учёта часового пояса пользователя, в отличие от остальных дат -->
+                    <td class="text-end text-nowrap"><span title="<?= htmlspecialchars(my_datee($dateformat, (int)$log['runtime']) . ' ' . my_datee($timeformat, (int)$log['runtime'])) ?>"><?= my_datee('relative', (int)$log['runtime']) ?></span></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table></div>
+        <?php else: ?>
+        <div class="cj-empty"><i class="fa-solid fa-clipboard-list"></i><div class="fw-semibold">No runs logged yet</div></div>
+        <?php endif; ?>
     </div>
-
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     MODAL: Create / Edit Cron Job
-     ══════════════════════════════════════════════════════════════════════ -->
-<div class="modal fade" id="cronModal" tabindex="-1" aria-labelledby="cronModalLabel" aria-hidden="true">
+<!-- ══ MODAL: Create / Edit ══════════════════════════════════════════ -->
+<div class="modal fade cj-modal" id="cronModal" tabindex="-1" aria-labelledby="cronModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-
-            <div class="modal-header border-0 pb-0">
-                <div class="d-flex align-items-center gap-2">
-                    <div class="rounded-circle d-flex align-items-center justify-content-center"
-                         id="modalIconWrap" style="width:36px;height:36px;background:var(--rules-accent-soft)">
-                        <i class="fas fa-plus" id="modalIcon" style="color: var(--rules-accent-strong)"></i>
-                    </div>
-                    <h5 class="modal-title mb-0" id="cronModalLabel">Create New Cron Job</h5>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="cj-mh-icon" id="modalIconWrap"><i class="fa-solid fa-plus" id="modalIcon"></i></span>
+                <h5 class="modal-title fw-bold" id="cronModalLabel">New cron job</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-
-            <div class="modal-body pt-3">
-                <div id="modalLoader" class="text-center py-4 d-none">
-                    <div class="spinner-border spinner-border-sm text-primary me-2"></div>
-                    Loading...
-                </div>
+            <div class="modal-body">
+                <div id="modalLoader" class="text-center py-4 d-none"><span class="spinner-border spinner-border-sm text-primary me-2"></span>Loading…</div>
 
                 <form id="cronForm" method="POST" action="">
-                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
+                    <input type="hidden" name="my_post_key" value="<?= $key ?>">
                     <input type="hidden" id="formCronId" name="cronid" value="999">
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold small">
-                                <i class="fas fa-file me-1 text-muted"></i>Filename
-                            </label>
-                            <input type="text" class="form-control form-control-sm font-monospace"
-                                   name="filename" id="modalFilename"
-                                   placeholder="seedbonus.php" required>
-                            <div class="form-text">PHP file in /cron/ directory</div>
+                            <label class="form-label" for="modalFilename"><i class="fa-solid fa-file-code"></i>File</label>
+                            <input type="text" class="form-control font-monospace" name="filename" id="modalFilename" placeholder="seedbonus.php" required pattern="[A-Za-z0-9_\-]+\.php">
+                            <div class="form-text">PHP file in the <code>/cron/</code> folder — no paths</div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold small">
-                                <i class="fas fa-align-left me-1 text-muted"></i>Description
-                            </label>
-                            <input type="text" class="form-control form-control-sm"
-                                   name="description" id="modalDescription"
-                                   placeholder="What does this job do?" required>
+                            <label class="form-label" for="modalDescription"><i class="fa-solid fa-align-left"></i>Description</label>
+                            <input type="text" class="form-control" name="description" id="modalDescription" placeholder="What does this job do?" required>
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold small">
-                            <i class="fas fa-clock me-1 text-muted"></i>Run Interval
-                        </label>
-                        <div class="row g-2">
-                            <?php foreach ($timeFields as $name => $max): ?>
-                            <div class="col">
-                                <label class="form-label small text-muted mb-1 text-capitalize"><?= $name ?></label>
-                                <select class="form-select form-select-sm" name="<?= $name ?>" id="modal_<?= $name ?>">
-                                    <?php for ($i = 0; $i <= $max; $i++): ?>
-                                    <option value="<?= $i ?>"><?= $i ?></option>
-                                    <?php endfor; ?>
-                                </select>
-                            </div>
-                            <?php endforeach; ?>
+                    <label class="form-label"><i class="fa-solid fa-hourglass-half"></i>Run every</label>
+                    <div class="cj-units">
+                        <?php foreach ($timeFields as $name => $max): ?>
+                        <div class="cj-unit">
+                            <label for="modal_<?= $name ?>" class="d-block"><?= $name ?></label>
+                            <select class="form-select" name="<?= $name ?>" id="modal_<?= $name ?>">
+                                <?php for ($i = 0; $i <= $max; $i++): ?><option value="<?= $i ?>"><?= $i ?></option><?php endfor; ?>
+                            </select>
                         </div>
+                        <?php endforeach; ?>
                     </div>
+                    <div class="cj-presets">
+                        <?php foreach (['5 min' => [0,0,0,0,5], '15 min' => [0,0,0,0,15], '30 min' => [0,0,0,0,30], '1 hour' => [0,0,0,1,0], '6 hours' => [0,0,0,6,0], '1 day' => [0,0,1,0,0], '1 week' => [0,1,0,0,0]] as $lbl => $v): ?>
+                        <button type="button" class="cj-preset" data-v="<?= implode(',', $v) ?>"><?= $lbl ?></button>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="cj-sum" id="cjSum"></div>
 
-                    <div class="row g-3 mb-1">
+                    <div class="row g-3 mt-1">
                         <div class="col-md-6">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="modalActive" name="active" value="1">
-                                <label class="form-check-label fw-semibold small" for="modalActive">
-                                    <i class="fas fa-power-off me-1 text-muted"></i>Active
-                                </label>
-                            </div>
+                            <label class="cj-switch" for="modalActive">
+                                <i class="fa-solid fa-power-off text-success"></i>
+                                <span><b class="d-block">Active</b><small class="text-body-secondary">Runs on schedule</small></span>
+                                <input class="form-check-input" type="checkbox" role="switch" id="modalActive" name="active" value="1">
+                            </label>
                         </div>
                         <div class="col-md-6">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="modalLoglevel" name="loglevel" value="1">
-                                <label class="form-check-label fw-semibold small" for="modalLoglevel">
-                                    <i class="fas fa-clipboard-list me-1 text-muted"></i>Log Execution
-                                </label>
-                            </div>
+                            <label class="cj-switch" for="modalLoglevel">
+                                <i class="fa-solid fa-clipboard-list text-primary"></i>
+                                <span><b class="d-block">Log runs</b><small class="text-body-secondary">Duration and queries in the log</small></span>
+                                <input class="form-check-input" type="checkbox" role="switch" id="modalLoglevel" name="loglevel" value="1">
+                            </label>
                         </div>
                     </div>
                 </form>
             </div>
-
-            <div class="modal-footer border-0 pt-0">
-                <button type="button" class="btn btn-outline-secondary btn-sm px-4" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-1"></i>Cancel
-                </button>
-                <button type="button" class="btn btn-primary btn-sm px-4" id="modalSaveBtn" onclick="submitCronForm()">
-                    <i class="fas fa-save me-1"></i><span id="modalSaveBtnText">Create Job</span>
-                </button>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary px-3" data-bs-dismiss="modal"><i class="fa-solid fa-xmark me-1"></i>Cancel</button>
+                <button type="button" class="btn btn-primary px-4" id="modalSaveBtn" onclick="submitCronForm()"><i class="fa-solid fa-floppy-disk me-1"></i><span id="modalSaveBtnText">Create job</span></button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-const cronModal    = new bootstrap.Modal(document.getElementById('cronModal'));
-const thisScript   = <?= json_encode($_this_script_) ?>;
+const cronModal  = bootstrap.Modal.getOrCreateInstance(document.getElementById('cronModal'));
+const thisScript = <?= json_encode(html_entity_decode((string)$_this_script_)) ?>;
+const UNITS = ['months', 'weeks', 'days', 'hours', 'minutes'];
+const SECS  = { months: 2678400, weeks: 604800, days: 86400, hours: 3600, minutes: 60 };
+
+function intervalSeconds() {
+    return UNITS.reduce((s, u) => s + (parseInt(document.getElementById('modal_' + u).value, 10) || 0) * SECS[u], 0);
+}
+function updateSum() {
+    const s = intervalSeconds(), el = document.getElementById('cjSum');
+    if (s < 60) { el.innerHTML = '<span class="text-danger"><i class="fa-solid fa-circle-xmark me-1"></i>Choose an interval of at least 1 minute</span>'; return; }
+    const parts = UNITS.map(u => [u, parseInt(document.getElementById('modal_' + u).value, 10) || 0]).filter(([, v]) => v)
+        .map(([u, v]) => v + ' ' + (v === 1 ? u.slice(0, -1) : u));
+    el.innerHTML = '<i class="fa-solid fa-rotate me-1 text-body-secondary"></i>Runs every <strong>' + parts.join(' ') + '</strong>';
+}
+UNITS.forEach(u => document.getElementById('modal_' + u).addEventListener('change', updateSum));
+document.querySelectorAll('.cj-preset').forEach(b => b.addEventListener('click', () => {
+    b.dataset.v.split(',').forEach((v, i) => { document.getElementById('modal_' + UNITS[i]).value = v; });
+    updateSum();
+}));
+
+function setModalMode(edit) {
+    document.getElementById('cronModalLabel').textContent = edit ? 'Edit cron job' : 'New cron job';
+    document.getElementById('modalIcon').className = 'fa-solid ' + (edit ? 'fa-pen' : 'fa-plus');
+    document.getElementById('modalSaveBtnText').textContent = edit ? 'Save changes' : 'Create job';
+}
 
 function openCreateModal() {
-    // Reset form
-    document.getElementById('cronForm').reset();
+    const f = document.getElementById('cronForm');
+    f.reset();
+    // Раньше после неудачной загрузки задачи форма оставалась скрытой и при «Create»
+    f.classList.remove('d-none');
+    document.getElementById('modalLoader').classList.add('d-none');
     document.getElementById('formCronId').value = '999';
-    document.getElementById('cronForm').action  = thisScript + '&act2=save_new&cronid=999';
-
-    // Update UI
-    document.getElementById('cronModalLabel').textContent = 'Create New Cron Job';
-    document.getElementById('modalIcon').className        = 'fas fa-plus';
-    document.getElementById('modalIcon').style.color      = 'var(--rules-accent-strong)';
-    document.getElementById('modalIconWrap').style.background = 'var(--rules-accent-soft)';
-    document.getElementById('modalSaveBtnText').textContent   = 'Create Job';
-
+    f.action = thisScript + '&act2=save_new&cronid=999';
+    document.getElementById('modalActive').checked = true;   // новая задача по умолчанию включена
+    document.getElementById('modalLoglevel').checked = true;
+    document.getElementById('modal_hours').value = '1';
+    setModalMode(false);
+    updateSum();
     cronModal.show();
 }
 
 function openEditModal(cronid) {
-    // Update UI to "edit" state
-    document.getElementById('cronModalLabel').textContent = 'Edit Cron Job';
-    document.getElementById('modalIcon').className        = 'fas fa-pen text-success';
-    document.getElementById('modalIcon').style.color      = '';
-    document.getElementById('modalIconWrap').style.background = 'rgba(32,201,151,.1)';
-    document.getElementById('modalSaveBtnText').textContent   = 'Save Changes';
+    setModalMode(true);
     document.getElementById('modalLoader').classList.remove('d-none');
     document.getElementById('cronForm').classList.add('d-none');
-
     cronModal.show();
 
-    // Load cron data via AJAX
-    fetch(thisScript + '&act2=get_cron_data&cronid=' + cronid)
+    fetch(thisScript + '&act2=get_cron_data&cronid=' + cronid, { credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
-            if (!data.success) {
-                alert('Failed to load cron job data');
-                cronModal.hide();
-                return;
-            }
-
-            // Populate form
-            document.getElementById('formCronId').value         = data.cronid;
-            document.getElementById('modalFilename').value      = data.filename;
-            document.getElementById('modalDescription').value   = data.description;
-            document.getElementById('modalActive').checked      = data.active === 1;
-            document.getElementById('modalLoglevel').checked    = data.loglevel === 1;
-
-            // Set time selectors
-            ['months','weeks','days','hours','minutes'].forEach(f => {
-                const sel = document.getElementById('modal_' + f);
-                if (sel) sel.value = (data.tarray[f] ?? 0).toString();
-            });
-
+            if (!data.success) throw new Error('not found');
+            document.getElementById('formCronId').value       = data.cronid;
+            document.getElementById('modalFilename').value    = data.filename;
+            document.getElementById('modalDescription').value = data.description;
+            document.getElementById('modalActive').checked    = data.active === 1;
+            document.getElementById('modalLoglevel').checked  = data.loglevel === 1;
+            UNITS.forEach(u => { document.getElementById('modal_' + u).value = String(data.tarray[u] ?? 0); });
             document.getElementById('cronForm').action = thisScript + '&act2=save&cronid=' + data.cronid;
-
-            // Show form
             document.getElementById('modalLoader').classList.add('d-none');
             document.getElementById('cronForm').classList.remove('d-none');
+            updateSum();
         })
         .catch(() => {
-            alert('Network error loading cron job');
             cronModal.hide();
+            (typeof showToast === 'function') ? showToast('Could not load the cron job', 'error') : alert('Could not load the cron job');
         });
 }
 
 function submitCronForm() {
     const form = document.getElementById('cronForm');
-    if (!form.checkValidity()) {
-        form.reportValidity();
-        return;
-    }
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    if (intervalSeconds() < 60) { updateSum(); return; }
+    const b = document.getElementById('modalSaveBtn');
+    b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
     form.submit();
 }
 
-// Init tooltips
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el =>
-        new bootstrap.Tooltip(el)
-    );
+// Удаление — подтверждение с именем файла (раньше имя подставлялось прямо в JS-строку onsubmit)
+document.querySelectorAll('.cj-del').forEach(f => f.addEventListener('submit', e => {
+    if (!confirm('Delete cron job ' + f.dataset.file + '?')) e.preventDefault();
+}));
+
+// Фильтр журнала
+document.getElementById('cjLogFilter')?.addEventListener('input', function () {
+    const q = this.value.trim().toLowerCase();
+    document.querySelectorAll('#cjLog tbody tr').forEach(tr => { tr.hidden = q && !tr.dataset.f.includes(q); });
 });
 </script>
 

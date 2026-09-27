@@ -5,27 +5,85 @@ declare(strict_types=1);
 // Include our base data handler class
 require_once INC_PATH . '/datahandler.php';
 
-
-
 if (!defined('STAFF_PANEL')) {
-    exit('<div class="error-message">❌ Error! Direct initialization of this file is not allowed.</div>');
+    exit('<div class="alert alert-danger m-3"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
-define('CU_VERSION', '0.4');
+define('CU_VERSION', '0.6');
 
-// Initialize variables
-$formSubmitted = false;
+/** Найти пользователя по ID или по текущему нику */
+function cu_find_user(string $idOrName): ?array
+{
+    global $db;
+    $idOrName = trim($idOrName);
+    if ($idOrName === '') return null;
+
+    $q = ctype_digit($idOrName)
+        ? $db->sql_query_prepared('SELECT id, username, usergroup, avatar, avatardimensions, added, lastactive FROM users WHERE id = ? LIMIT 1', [(int)$idOrName])
+        : $db->sql_query_prepared('SELECT id, username, usergroup, avatar, avatardimensions, added, lastactive FROM users WHERE username = ? LIMIT 1', [$idOrName]);
+    $row = $q ? $db->fetch_array($q) : null;
+    return $row ?: null;
+}
+
+function cu_can_edit(int $targetId): bool
+{
+    global $CURUSER;
+    return !(is_super_admin($targetId) && (int)$CURUSER['id'] !== $targetId && !is_super_admin((int)$CURUSER['id']));
+}
+
+/** URL ассета с cache-busting по filemtime */
+function cu_asset(string $rel): string
+{
+    global $BASEURL;
+    $file = rtrim(TSDIR, '/\\') . $rel;
+    $ver  = is_file($file) ? (string)filemtime($file) : CU_VERSION;
+    return htmlspecialchars($BASEURL . $rel . '?v=' . $ver);
+}
+
+// ── AJAX: предпросмотр пользователя по ID/нику ─────────────────────────
+if (isset($_GET['lookup'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $u = cu_find_user((string)$_GET['lookup']);
+    if (!$u) {
+        echo json_encode(['found' => false]);
+        exit;
+    }
+    $av = function_exists('format_avatar') ? format_avatar($u['avatar'] ?? '', $u['avatardimensions'] ?? '') : [];
+    echo json_encode([
+        'found'     => true,
+        'id'        => (int)$u['id'],
+        'username'  => (string)$u['username'],
+        'name_html' => format_name(htmlspecialchars_uni($u['username']), (int)$u['usergroup']),
+        'avatar'    => (!empty($av['image']) && empty($av['is_placeholder'])) ? $av['image'] : '',
+        'joined'    => my_datee('relative', (int)$u['added']),
+        'protected' => !cu_can_edit((int)$u['id']),
+        'super'     => is_super_admin((int)$u['id']),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ── AJAX: занят ли ник ─────────────────────────────────────────────────
+if (isset($_GET['check'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $name = trim((string)$_GET['check']);
+    $exclude = (int)($_GET['uid'] ?? 0);
+    $q = $db->sql_query_prepared('SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1', [$name, $exclude]);
+    echo json_encode(['taken' => $q && $db->num_rows($q) > 0]);
+    exit;
+}
+
+$formSubmitted      = false;
 $confirmationNeeded = false;
-$success = false;
-$message = '';
-$userId = '';
-$oldUsername = '';
-$newUsername = '';
-$currentUsername = '';
-$validationErrors = [];
+$success            = false;
+$message            = '';
+$userId             = '';
+$oldUsername        = '';
+$newUsername        = '';
+$currentUsername    = '';
+$validationErrors   = [];
+$targetUser         = null;
 
-// Check if form was submitted
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act'] === 'changeusername') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'changeusername') {
     if (!verify_post_check($_POST['my_post_key'] ?? '')) {
         http_response_code(403);
         echo 'Invalid security token';
@@ -33,1272 +91,214 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act']) && $_POST['act
     }
 
     $formSubmitted = true;
-    
-    $userId = trim($_POST['id'] ?? '');
-    $newUsername = trim($_POST['username'] ?? '');
-    $sure = $_POST['sure'] ?? '';
-    $oldUsername = $_POST['oldusername'] ?? '';
-    
-    // Validate user ID is numeric
-    if (!is_numeric($userId)) {
-        $message = 'Invalid user ID format. Must be a number.';
-    }
-    // Check super admin permissions
-    elseif (is_super_admin((int)$userId) && $CURUSER['id'] != $userId && !is_super_admin($CURUSER['id'])) {
-        $message = 'You do not have permission to change a super administrator\'s username.';
-    }
-    // Validate inputs
-    elseif (empty($userId) || empty($newUsername)) {
+    $rawTarget     = trim((string)($_POST['id'] ?? ''));
+    $newUsername   = trim((string)($_POST['username'] ?? ''));
+    $sure          = $_POST['sure'] ?? '';
+
+    // Поле «кого меняем» принимает ID ИЛИ текущий ник
+    $targetUser = cu_find_user($rawTarget);
+    $userId     = $targetUser ? (string)(int)$targetUser['id'] : $rawTarget;
+
+    if ($rawTarget === '' || $newUsername === '') {
         $message = 'Please fill in all required fields.';
-    } elseif (!is_valid_id($userId)) {
-        $message = 'Invalid user ID format.';
+    } elseif (!$targetUser) {
+        $message = 'No user found with this ID or username.';
+    } elseif (!cu_can_edit((int)$targetUser['id'])) {
+        $message = "You do not have permission to change a super administrator's username.";
+    } elseif (mb_strlen($newUsername) < 3 || mb_strlen($newUsername) > 25) {
+        $message = 'Username must be between 3 and 25 characters.';
+    } elseif ($newUsername === $targetUser['username']) {
+        $message = 'The new username is the same as the current one.';
     } else {
-        if ($sure === 'yes' && !empty($oldUsername)) {
-            // Confirmation given, update username using UserDataHandler
+        // Раньше: проверка «ник занят» находила самого пользователя — поменять
+        // только регистр («bob» → «Bob») было нельзя. Себя из проверки исключаем.
+        $taken = $db->sql_query_prepared('SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1', [$newUsername, (int)$targetUser['id']]);
+        if ($taken && $db->num_rows($taken) > 0) {
+            $message = 'This username is already taken.';
+        } elseif ($sure === 'yes') {
+            // Подтверждено — меняем через UserDataHandler (он же проверяет формат по настройкам форума).
+            // Раньше до этого шага ещё была проверка ^[a-zA-Z0-9]+$ — ники с «_», «-»,
+            // кириллицей и т.п. отклонялись, хотя сам форум их допускает.
             try {
-                // Include MyBB user handler
-                require_once INC_PATH . "/datahandlers/user.php";
+                require_once INC_PATH . '/datahandlers/user.php';
                 $userhandler = new UserDataHandler('update');
-                
-                // Check if user exists
-                $userQuery = $db->sql_query_prepared('SELECT id, username FROM users WHERE id = ? LIMIT 1', [(int)$userId]);
-                
-                if (!$userQuery || $db->num_rows($userQuery) === 0) {
-                    $message = 'No user found with this ID.';
+                $oldUsername = (string)$targetUser['username'];
+
+                $userhandler->set_data(['uid' => (int)$targetUser['id'], 'username' => $newUsername]);
+
+                if (!$userhandler->validate_user()) {
+                    $validationErrors = $userhandler->get_friendly_errors();
+                    $message = 'Validation failed.';
+                } elseif ($userhandler->update_user()) {
+                    $success = true;
+                    write_log(sprintf(
+                        "%s's account name has been changed to %s by %s (Change Username Tool)",
+                        $oldUsername, $newUsername, $CURUSER['username'] ?? 'System'
+                    ));
+                    $message = 'Username successfully updated.';
                 } else {
-                    $user = $db->fetch_array($userQuery);
-                    $oldUsername = $user['username'];
-                    
-                    // Set the data for the user update
-                    $updated_user = [
-                        "uid" => (int)$userId,
-                        "username" => $newUsername
-                    ];
-                    
-                    $userhandler->set_data($updated_user);
-                    
-                    // Validate the user
-                    if (!$userhandler->validate_user()) {
-                        $errors = $userhandler->get_friendly_errors();
-                        $validationErrors = $errors;
-                        $message = 'Validation failed: ' . implode(', ', $errors);
-                    } else {
-                        // Update the user
-                        $user_info = $userhandler->update_user();
-                        
-                        if ($user_info) {
-                            $success = true;
-                            
-                            // Log the action
-                            $logMessage = sprintf(
-                                "%s's account name has been changed to %s by %s (Change Username Tool)",
-                                $oldUsername,
-                                $newUsername,
-                                $CURUSER['username'] ?? 'System'
-                            );
-                            write_log($logMessage);
-                            
-                            $message = 'Username successfully updated.';
-                        } else {
-                            $message = 'Failed to update username using UserDataHandler.';
-                        }
-                    }
+                    $message = 'Failed to update username using UserDataHandler.';
                 }
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 $message = 'System error: ' . $e->getMessage();
             }
         } else {
-            // Need confirmation - get current username
-            $userQuery = $db->sql_query_prepared('SELECT id, username FROM users WHERE id = ? LIMIT 1', [(int)$userId]);
-            
-            if (!$userQuery || $db->num_rows($userQuery) === 0) {
-                $message = 'No user found with this ID.';
-            } else {
-                $user = $db->fetch_array($userQuery);
-                
-                // Check super admin permissions before showing confirmation
-                if (is_super_admin((int)$userId) && $CURUSER['id'] != $userId && !is_super_admin($CURUSER['id'])) {
-                    $message = 'You do not have permission to change a super administrator\'s username.';
-                } else {
-                    // Validate username format before confirmation
-                    if (!preg_match('/^[a-zA-Z0-9]+$/', $newUsername)) {
-                        $message = 'Invalid username format. Only letters and numbers are allowed.';
-                    } elseif (strlen($newUsername) < 3 || strlen($newUsername) > 25) {
-                        $message = 'Username must be between 3 and 25 characters.';
-                    } else {
-                        // Check if username already exists (basic check before UserDataHandler)
-                        $usernameCheck = $db->sql_query_prepared('SELECT id FROM users WHERE username = ? LIMIT 1', [$newUsername]);
-                        if ($usernameCheck && $db->num_rows($usernameCheck) > 0) {
-                            $message = 'This username is already taken.';
-                        } else {
-                            $confirmationNeeded = true;
-                            $currentUsername = $user['username'];
-                            $oldUsername = $user['username'];
-                        }
-                    }
-                }
-            }
+            $confirmationNeeded = true;
+            $currentUsername    = (string)$targetUser['username'];
         }
     }
 }
 
-// Start output
+// ═══════════════════════════════════════════════════════════════════════
+// OUTPUT
+// ═══════════════════════════════════════════════════════════════════════
+
 stdhead('Change Username');
 
-echo '<div class="username-change-container">';
-echo '<div class="main-card">';
-echo '<div class="card-header bg-primary text-white">';
-echo '<h1><i class="fas fa-user-edit"></i> Change Username</h1>';
-echo '<div class="version">' . CU_VERSION . '</div>';
-echo '</div>';
-echo '<div class="card-body">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/changeusername.css?ver=2">';
 
-if ($formSubmitted) {
-    if ($success) {
-        // Success message
-        $profileLink = $BASEURL.'/'.get_profile_link($userId).'';
-        ?>
-        <div class="success-container">
-            <div class="success-icon">
-                <i class="fas fa-check-circle"></i>
-            </div>
-            <div class="success-content">
-                <h3>✓ Username Changed Successfully!</h3>
-                <div class="success-details">
-                    <div class="detail-item">
-                        <span class="detail-label">User ID:</span>
-                        <span class="detail-value"><?= htmlspecialchars($userId) ?></span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Old Username:</span>
-                        <span class="detail-value"><?= htmlspecialchars($oldUsername) ?></span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">New Username:</span>
-                        <span class="detail-value success-value"><?= htmlspecialchars($newUsername) ?></span>
-                    </div>
-                </div>
-                <div class="success-note">
-                    <i class="fas fa-info-circle"></i> This change has been logged in the system.
-                </div>
-                <div class="success-actions">
-                    <a href="<?= $_this_script_ ?>" class="btn-secondary">
-                        <i class="fas fa-redo"></i> Change Another Username
-                    </a>
-                    <a href="<?= $profileLink ?>" class="btn-primary" target="_blank">
-                        <i class="fas fa-external-link-alt"></i> View User Profile
-                    </a>
-                </div>
-            </div>
-        </div>
-        <?php
-    } elseif ($confirmationNeeded) {
-        // Check if user is super admin
-        $isSuperAdminUser = is_super_admin((int)$userId);
-        
-        // Confirmation required
-        ?>
-        <div class="confirmation-container">
-            <div class="confirmation-icon">
-                <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <div class="confirmation-content">
-                <h3>⚠️ Confirm Username Change</h3>
-                <p class="confirmation-warning">
-                    <i class="fas fa-warning"></i> You are about to change the username for user ID 
-                    <strong><?= htmlspecialchars($userId) ?></strong> from 
-                    "<strong><?= htmlspecialchars($currentUsername) ?></strong>" to 
-                    "<strong><?= htmlspecialchars($newUsername) ?></strong>".
-                </p>
-                
-                <?php if ($isSuperAdminUser): ?>
-                <div class="super-admin-warning">
-                    <div class="super-admin-icon">
-                        <i class="fas fa-crown"></i>
-                    </div>
-                    <div class="super-admin-text">
-                        <strong>⚠️ Super Administrator Account</strong>
-                        <p>This user is a Super Administrator. Changing their username may affect system permissions.</p>
-                    </div>
-                </div>
-                <?php endif; ?>
-                
-                <div class="confirmation-details">
-                    <p><i class="fas fa-info-circle"></i> Please review this change carefully:</p>
-                    <ul class="confirmation-list">
-                        <li>User will need to use the new username to log in</li>
-                        <li>All references to the old username will be updated</li>
-                        <li>This action cannot be undone</li>
-                        <li>The change will be logged for security purposes</li>
-                        <li><strong>Advanced Validation:</strong> Username will be validated using MyBB's UserDataHandler</li>
-                        <?php if ($isSuperAdminUser): ?>
-                        <li><strong>Special Note:</strong> Super Admin accounts have elevated permissions</li>
-                        <?php endif; ?>
-                    </ul>
-                </div>
-                <form method="post" action="<?= $_this_script_ ?>" class="confirmation-form">
-                    <input type="hidden" name="act" value="changeusername">
-                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
-                    <input type="hidden" name="id" value="<?= htmlspecialchars($userId) ?>">
-                    <input type="hidden" name="username" value="<?= htmlspecialchars($newUsername) ?>">
-                    <input type="hidden" name="oldusername" value="<?= htmlspecialchars($currentUsername) ?>">
-                    <input type="hidden" name="sure" value="yes">
-                    
-                    <div class="confirmation-checkbox">
-                        <label>
-                            <input type="checkbox" name="confirm" value="1" required>
-                            <span class="checkbox-label">
-                                I understand this action is permanent and cannot be undone
-                            </span>
-                        </label>
-                    </div>
-                    
-                    <div class="confirmation-actions">
-                        <button type="submit" class="confirm-button">
-                            <i class="fas fa-check"></i> Yes, Change Username
-                        </button>
-                        <a href="<?= $_this_script_ ?>" class="cancel-button">
-                            <i class="fas fa-times"></i> Cancel
-                        </a>
-                    </div>
-                </form>
-            </div>
-        </div>
-        <?php
-    } else {
-        // Error message
-        ?>
-        <div class="error-container">
-            <div class="error-icon">
-                <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <div class="error-content">
-                <h3>Error</h3>
-                <p><?= htmlspecialchars($message) ?></p>
-                
-                <?php if (!empty($validationErrors)): ?>
-                <div class="validation-errors">
-                    <h4>Validation Errors:</h4>
-                    <ul>
-                        <?php foreach ($validationErrors as $error): ?>
-                        <li><?= htmlspecialchars($error) ?></li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php
-        // Show form again with saved values
-        showUsernameChangeForm($userId, $newUsername);
-    }
-} else {
-    // Show initial form
-    showUsernameChangeForm();
-}
+$self = htmlspecialchars($_this_script_ ?? ($_SERVER['SCRIPT_NAME'] ?? ''));
+$key  = htmlspecialchars((string)$mybb->post_code);
 
-echo '</div>';
-echo '<div class="card-footer">';
-echo '<div class="footer-note">';
-echo '<i class="fas fa-history"></i> All username changes are logged for security purposes.';
-echo '</div>';
-echo '</div>';
-echo '</div>';
-echo '</div>';
+echo '<div class="container mt-3 mb-4 cu">';
+echo '<div class="cu-card mb-3"><div class="cu-head">'
+   . '<span class="cu-head-icon ic-purple"><i class="fa-solid fa-user-pen"></i></span>'
+   . '<div><h1 class="cu-title">Change Username</h1><div class="cu-sub">Rename an account — validated by the forum\'s own user rules</div></div>'
+   . '<span class="cu-ver ms-auto"><i class="fa-solid fa-code-branch me-1"></i>v' . CU_VERSION . '</span>'
+   . '</div></div>';
 
-// Add CSS and JavaScript
-addUsernameChangeStyles();
-addUsernameChangeJavaScript();
-
-stdfoot();
-
-// Helper functions
-function showUsernameChangeForm(string $userId = '', string $username = ''): void
-{
-    global $mybb;
-
-    $scriptUrl = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '');
-    $userIdValue = htmlspecialchars($userId);
-    $usernameValue = htmlspecialchars($username);
+if ($success) {
+    $profileLink = $BASEURL . '/' . get_profile_link((int)$userId);
     ?>
-    <div class="username-change-form">
-        <div class="form-header">
-            <h2><i class="fas fa-user-pen"></i> Change Username</h2>
-            <p class="form-description">
-                Update a user's username using MyBB's UserDataHandler for advanced validation.
-            </p>
-            <div class="features-list">
-                <div class="feature-item">
-                    <i class="fas fa-check-circle"></i>
-                    <span>Advanced validation using MyBB UserDataHandler</span>
-                </div>
-                <div class="feature-item">
-                    <i class="fas fa-check-circle"></i>
-                    <span>Full MyBB permission checks</span>
-                </div>
-                <div class="feature-item">
-                    <i class="fas fa-check-circle"></i>
-                    <span>Super Admin protection</span>
-                </div>
-            </div>
+    <div class="cu-card cu-result is-success">
+        <span class="cu-result-icon"><i class="fa-solid fa-circle-check"></i></span>
+        <h2 class="cu-result-title">Username changed</h2>
+        <div class="cu-swap">
+            <span class="cu-name old"><?= htmlspecialchars($oldUsername) ?></span>
+            <i class="fa-solid fa-arrow-right-long"></i>
+            <span class="cu-name new"><?= htmlspecialchars($newUsername) ?></span>
         </div>
-        
-        <form method="post" action="<?= $scriptUrl ?>" class="change-username-form" id="username-change-form">
+        <div class="cu-muted mb-3"><i class="fa-solid fa-id-card me-1"></i>User ID <?= (int)$userId ?> · <i class="fa-solid fa-clipboard-list ms-1 me-1"></i>written to the site log</div>
+        <div class="d-flex flex-wrap justify-content-center gap-2">
+            <a href="<?= $self ?>" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-rotate-left me-1"></i>Change another</a>
+            <a href="<?= htmlspecialchars($profileLink) ?>" class="btn btn-primary px-3" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>View profile</a>
+        </div>
+    </div>
+    <?php
+} elseif ($confirmationNeeded) {
+    $isSuper = is_super_admin((int)$userId);
+    ?>
+    <div class="cu-card cu-result is-warn">
+        <span class="cu-result-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+        <h2 class="cu-result-title">Confirm the change</h2>
+        <div class="cu-swap">
+            <span class="cu-name old"><?= htmlspecialchars($currentUsername) ?></span>
+            <i class="fa-solid fa-arrow-right-long"></i>
+            <span class="cu-name new"><?= htmlspecialchars($newUsername) ?></span>
+        </div>
+        <div class="cu-muted mb-3"><i class="fa-solid fa-id-card me-1"></i>User ID <?= (int)$userId ?></div>
+
+        <?php if ($isSuper): ?>
+        <div class="cu-note is-danger mb-3"><i class="fa-solid fa-crown"></i>
+            <div><strong>Super Administrator account.</strong> Double-check before renaming.</div></div>
+        <?php endif; ?>
+
+        <div class="cu-points mb-3">
+            <div><i class="fa-solid fa-right-to-bracket"></i>The user logs in with the new name from now on</div>
+            <div><i class="fa-solid fa-link"></i>Posts, comments and profile show the new name</div>
+            <div><i class="fa-solid fa-clipboard-list"></i>The change is written to the site log</div>
+            <div><i class="fa-solid fa-rotate-left"></i>To undo it, rename the account back manually</div>
+        </div>
+
+        <form method="post" action="<?= $self ?>" class="text-start">
             <input type="hidden" name="act" value="changeusername">
-            <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code) ?>">
-            
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="user-id">
-                        <i class="fas fa-id-card"></i> User ID
-                        <span class="required">*</span>
-                    </label>
-                    <input type="text" 
-                           id="user-id" 
-                           name="id" 
-                           value="<?= $userIdValue ?>"
-                           class="form-control"
-                           placeholder="Enter user ID"
-                           required
-                           pattern="[0-9]+"
-                           title="Enter a valid user ID (numbers only)"
-                           autocomplete="off"
-                           autofocus>
-                    <div class="form-hint">
-                        <i class="fas fa-info-circle"></i> Enter the numeric user ID
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="username">
-                        <i class="fas fa-user"></i> New Username
-                        <span class="required">*</span>
-                    </label>
-                    <input type="text" 
-                           id="username" 
-                           name="username" 
-                           value="<?= $usernameValue ?>"
-                           class="form-control"
-                           placeholder="Enter new username"
-                           required
-                           minlength="3"
-                           maxlength="25"
-                           autocomplete="off">
-                    <div class="form-hint">
-                        <i class="fas fa-info-circle"></i> 3-25 characters (MyBB will validate further)
-                    </div>
-                </div>
-            </div>
-            
-            <div class="form-actions">
-                <button type="submit" class="submit-button">
-                    <i class="fas fa-user-check"></i> Change Username
-                </button>
-                <button type="reset" class="reset-button">
-                    <i class="fas fa-undo"></i> Clear Form
-                </button>
-            </div>
-            
-            <div class="form-note">
-                <i class="fas fa-shield-alt"></i> This tool uses MyBB's UserDataHandler for maximum security and validation.
+            <input type="hidden" name="my_post_key" value="<?= $key ?>">
+            <input type="hidden" name="id" value="<?= (int)$userId ?>">
+            <input type="hidden" name="username" value="<?= htmlspecialchars($newUsername) ?>">
+            <input type="hidden" name="sure" value="yes">
+            <label class="cu-confirm mb-3">
+                <input type="checkbox" class="form-check-input m-0" name="confirm" value="1" required id="cuConfirm">
+                <span>I've checked the new name and want to rename this account</span>
+            </label>
+            <div class="d-flex flex-wrap justify-content-center gap-2">
+                <a href="<?= $self ?>" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+                <button type="submit" class="btn btn-warning px-4" id="cuConfirmBtn" disabled><i class="fa-solid fa-check me-1"></i>Yes, rename</button>
             </div>
         </form>
     </div>
     <?php
+} else {
+    if ($formSubmitted) {
+        echo '<div class="cu-note is-danger mb-3"><i class="fa-solid fa-circle-exclamation"></i><div><strong>' . htmlspecialchars($message) . '</strong>';
+        if ($validationErrors) {
+            echo '<ul class="mb-0 mt-1 ps-3">';
+            foreach ($validationErrors as $err) echo '<li>' . htmlspecialchars((string)$err) . '</li>';
+            echo '</ul>';
+        }
+        echo '</div></div>';
+    }
+    cu_form($self, $key, $formSubmitted ? (string)($_POST['id'] ?? '') : (string)($_GET['id'] ?? ''), $newUsername);
 }
 
-function addUsernameChangeStyles(): void
-{
-    ?>
-    <style>
-        .username-change-container {
-            max-width: 800px;
-            margin: 2rem auto;
-            padding: 0 1rem;
-        }
-        
-        .main-card {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(50, 50, 93, 0.1), 0 5px 15px rgba(0, 0, 0, 0.07);
-            overflow: hidden;
-        }
-        
-        .card-header {
-            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-            color: white;
-            padding: 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .card-header h1 {
-            margin: 0;
-            font-size: 2rem;
-            display: flex;
-                align-items: center;
-            gap: 12px;
-        }
-        
-        .version {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.9rem;
-            font-weight: 500;
-        }
-        
-        .card-body {
-            padding: 2rem;
-        }
-        
-        .card-footer {
-            background: #f9fafb;
-            padding: 1.5rem 2rem;
-            border-top: 1px solid #e5e7eb;
-        }
-        
-        .footer-note {
-            color: #6b7280;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            justify-content: center;
-        }
-        
-        .username-change-form {
-            padding: 1rem 0;
-        }
-        
-        .form-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        
-        .form-header h2 {
-            color: #374151;
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-        
-        .form-description {
-            color: #6b7280;
-            font-size: 1.1rem;
-            max-width: 600px;
-            margin: 0 auto 1.5rem;
-        }
-        
-        .features-list {
-            background: #f0f9ff;
-            border-radius: 10px;
-            padding: 1.25rem;
-            margin-bottom: 1.5rem;
-            border: 1px solid #e0f2fe;
-            max-width: 500px;
-            margin: 0 auto 1.5rem;
-        }
-        
-        .feature-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 0.75rem;
-            color: #0369a1;
-        }
-        
-        .feature-item:last-child {
-            margin-bottom: 0;
-        }
-        
-        .feature-item i {
-            color: #0ea5e9;
-            flex-shrink: 0;
-        }
-        
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
-        
-        @media (min-width: 768px) {
-            .form-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-        }
-        
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 0.75rem;
-            font-weight: 600;
-            color: #374151;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .required {
-            color: #ef4444;
-            margin-left: 4px;
-        }
-        
-        .form-control {
-            width: 100%;
-            padding: 14px 20px;
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
-            font-size: 16px;
-            transition: all 0.3s;
-            background: white;
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-        }
-        
-        .form-control:focus {
-            outline: none;
-            border-color: #8b5cf6;
-            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
-        }
-        
-        .form-control.invalid {
-            border-color: #ef4444;
-            background-color: #fef2f2;
-        }
-        
-        .form-control.valid {
-            border-color: #8b5cf6;
-            background-color: #f5f3ff;
-        }
-        
-        .form-control::placeholder {
-            color: #9ca3af;
-        }
-        
-        .form-hint {
-            color: #9ca3af;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-top: 0.5rem;
-        }
-        
-        .form-actions {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-        }
-        
-        .submit-button {
-            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-            color: white;
-            border: none;
-            padding: 14px 28px;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 1;
-            min-width: 200px;
-            justify-content: center;
-        }
-        
-        .submit-button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(139, 92, 246, 0.3);
-        }
-        
-        .submit-button:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-        
-        .reset-button {
-            background: white;
-            color: #374151;
-            border: 2px solid #e5e7eb;
-            padding: 14px 28px;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 1;
-            min-width: 150px;
-            justify-content: center;
-        }
-        
-        .reset-button:hover {
-            background: #f9fafb;
-            border-color: #d1d5db;
-        }
-        
-        .form-note {
-            background: #f5f3ff;
-            color: #5b21b6;
-            padding: 1rem;
-            border-radius: 8px;
-            border-left: 4px solid #8b5cf6;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 0.9rem;
-        }
-        
-        .success-container {
-            background: #f0fdf4;
-            border: 2px solid #10b981;
-            border-radius: 16px;
-            padding: 2.5rem;
-            margin-bottom: 2rem;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .success-container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #10b981, #059669);
-        }
-        
-        .success-icon {
-            color: #10b981;
-            font-size: 4rem;
-            text-align: center;
-            margin-bottom: 1.5rem;
-            animation: successPulse 2s infinite;
-        }
-        
-        @keyframes successPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        
-        .success-content h3 {
-            margin: 0 0 1.5rem 0;
-            color: #065f46;
-            font-size: 1.8rem;
-            text-align: center;
-        }
-        
-        .success-details {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            border: 1px solid #e5e7eb;
-        }
-        
-        .detail-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.75rem 0;
-            border-bottom: 1px solid #f3f4f6;
-        }
-        
-        .detail-item:last-child {
-            border-bottom: none;
-        }
-        
-        .detail-label {
-            font-weight: 600;
-            color: #374151;
-            min-width: 120px;
-        }
-        
-        .detail-value {
-            color: #6b7280;
-            font-family: 'Courier New', monospace;
-            word-break: break-all;
-            text-align: right;
-        }
-        
-        .success-value {
-            color: #10b981;
-            font-weight: 600;
-        }
-        
-        .success-note {
-            background: #ecfdf5;
-            color: #047857;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 0.9rem;
-        }
-        
-        .success-actions {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        
-        .btn-primary {
-            background: #8b5cf6;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            transition: background-color 0.2s, transform 0.2s;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        
-        .btn-primary:hover {
-            background: #7c3aed;
-            transform: translateY(-2px);
-        }
-        
-        .btn-secondary {
-            background: white;
-            color: #374151;
-            padding: 12px 24px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            border: 2px solid #e5e7eb;
-            transition: all 0.2s;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        
-        .btn-secondary:hover {
-            background: #f9fafb;
-            border-color: #d1d5db;
-            transform: translateY(-2px);
-        }
-        
-        .confirmation-container {
-            background: #fffbeb;
-            border: 2px solid #f59e0b;
-            border-radius: 16px;
-            padding: 2.5rem;
-            margin-bottom: 2rem;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .confirmation-container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #f59e0b, #d97706);
-        }
-        
-        .super-admin-warning {
-            background: #fef3c7;
-            border: 2px solid #f59e0b;
-            border-radius: 10px;
-            padding: 1.25rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-        
-        .super-admin-icon {
-            color: #f59e0b;
-            font-size: 2.5rem;
-            flex-shrink: 0;
-        }
-        
-        .super-admin-text {
-            flex: 1;
-        }
-        
-        .super-admin-text strong {
-            color: #92400e;
-            font-size: 1.1rem;
-            display: block;
-            margin-bottom: 0.5rem;
-        }
-        
-        .super-admin-text p {
-            color: #92400e;
-            margin: 0;
-            font-size: 0.95rem;
-            line-height: 1.5;
-        }
-        
-        .confirmation-icon {
-            color: #f59e0b;
-            font-size: 4rem;
-            text-align: center;
-            margin-bottom: 1.5rem;
-            animation: warningPulse 2s infinite;
-        }
-        
-        @keyframes warningPulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-        
-        .confirmation-content h3 {
-            margin: 0 0 1.5rem 0;
-            color: #92400e;
-            font-size: 1.8rem;
-            text-align: center;
-        }
-        
-        .confirmation-warning {
-            background: #fef3c7;
-            color: #92400e;
-            padding: 1.25rem;
-            border-radius: 10px;
-            margin-bottom: 1.5rem;
-            font-size: 1.1rem;
-            line-height: 1.6;
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            border-left: 4px solid #f59e0b;
-        }
-        
-        .confirmation-warning i {
-            margin-top: 3px;
-            flex-shrink: 0;
-        }
-        
-        .confirmation-details {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            border: 1px solid #f3f4f6;
-        }
-        
-        .confirmation-details p {
-            margin: 0 0 1rem 0;
-            color: #374151;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .confirmation-list {
-            margin: 0;
-            padding-left: 1.5rem;
-            color: #6b7280;
-        }
-        
-        .confirmation-list li {
-            margin-bottom: 0.5rem;
-            line-height: 1.5;
-        }
-        
-        .confirmation-list li:last-child {
-            margin-bottom: 0;
-        }
-        
-        .confirmation-checkbox {
-            background: #fef3c7;
-            padding: 1.25rem;
-            border-radius: 10px;
-            margin-bottom: 1.5rem;
-            border: 1px solid #fde68a;
-        }
-        
-        .confirmation-checkbox label {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            cursor: pointer;
-            color: #92400e;
-            font-weight: 500;
-        }
-        
-        .confirmation-checkbox input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            accent-color: #f59e0b;
-            flex-shrink: 0;
-        }
-        
-        .confirmation-actions {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        
-        .confirm-button {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            color: white;
-            border: none;
-            padding: 14px 28px;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            min-width: 200px;
-            justify-content: center;
-        }
-        
-        .confirm-button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(245, 158, 11, 0.3);
-        }
-        
-        .confirm-button:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-        
-        .cancel-button {
-            background: white;
-            color: #374151;
-            padding: 14px 28px;
-            border-radius: 12px;
-            text-decoration: none;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            border: 2px solid #e5e7eb;
-            transition: all 0.2s;
-            min-width: 150px;
-            justify-content: center;
-        }
-        
-        .cancel-button:hover {
-            background: #f9fafb;
-            border-color: #d1d5db;
-            transform: translateY(-2px);
-        }
-        
-        .error-container {
-            background: #fef2f2;
-            border: 2px solid #ef4444;
-            border-radius: 12px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            display: flex;
-            align-items: flex-start;
-            gap: 1.5rem;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .error-container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #ef4444, #dc2626);
-        }
-        
-        .error-icon {
-            color: #ef4444;
-            font-size: 2.5rem;
-            flex-shrink: 0;
-        }
-        
-        .error-content h3 {
-            margin: 0 0 0.75rem 0;
-            color: #dc2626;
-            font-size: 1.5rem;
-        }
-        
-        .error-content p {
-            margin: 0;
-            color: #7f1d1d;
-            font-size: 1.1rem;
-            line-height: 1.5;
-        }
-        
-        .validation-errors {
-            background: #fee2e2;
-            border: 1px solid #fca5a5;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-top: 1rem;
-        }
-        
-        .validation-errors h4 {
-            margin: 0 0 0.5rem 0;
-            color: #b91c1c;
-            font-size: 1rem;
-        }
-        
-        .validation-errors ul {
-            margin: 0;
-            padding-left: 1.5rem;
-            color: #7f1d1d;
-        }
-        
-        .validation-errors li {
-            margin-bottom: 0.25rem;
-            line-height: 1.4;
-        }
-        
-        @media (max-width: 768px) {
-            .card-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem;
-            }
-            
-            .version {
-                align-self: flex-start;
-            }
-            
-            .card-body {
-                padding: 1.5rem;
-            }
-            
-            .form-actions {
-                flex-direction: column;
-            }
-            
-            .submit-button,
-            .reset-button,
-            .confirm-button,
-            .cancel-button {
-                width: 100%;
-            }
-            
-            .success-container,
-            .confirmation-container {
-                padding: 1.5rem;
-            }
-            
-            .success-details,
-            .confirmation-details {
-                padding: 1rem;
-            }
-            
-            .detail-item {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 0.5rem;
-            }
-            
-            .detail-value {
-                text-align: left;
-                width: 100%;
-            }
-            
-            .success-actions,
-            .confirmation-actions {
-                flex-direction: column;
-            }
-            
-            .btn-primary,
-            .btn-secondary {
-                width: 100%;
-                justify-content: center;
-            }
-            
-            .super-admin-warning {
-                flex-direction: column;
-                text-align: center;
-                gap: 0.75rem;
-            }
-            
-            .features-list {
-                padding: 1rem;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .card-body {
-                padding: 1rem;
-            }
-            
-            .form-grid {
-                gap: 1.5rem;
-            }
-            
-            .form-control {
-                padding: 12px 16px;
-            }
-            
-            .success-container,
-            .error-container,
-            .confirmation-container {
-                padding: 1.25rem;
-            }
-            
-            .success-icon,
-            .confirmation-icon {
-                font-size: 3rem;
-            }
-            
-            .success-content h3,
-            .confirmation-content h3 {
-                font-size: 1.5rem;
-            }
-        }
-    </style>
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <?php
-}
+echo '<div class="cu-muted text-center mt-3"><i class="fa-solid fa-shield-halved me-1"></i>Super administrators can only be renamed by another super administrator · every change is logged</div>';
+echo '</div>';
 
-function addUsernameChangeJavaScript(): void
+
+echo '<script src="' . $BASEURL . '/admin/scripts/changeusername.js"></script>';
+
+stdfoot();
+
+// ═══════════════════════════════════════════════════════════════════════
+// VIEW HELPERS
+// ═══════════════════════════════════════════════════════════════════════
+
+function cu_form(string $self, string $key, string $target, string $username): void
 {
     ?>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('username-change-form');
-            const userIdInput = document.getElementById('user-id');
-            const usernameInput = document.getElementById('username');
-            const submitButton = form?.querySelector('.submit-button');
-            
-            if (!form) return;
-            
-            // Real-time user ID validation
-            userIdInput.addEventListener('input', function() {
-                const userId = this.value.trim();
-                const isValid = /^[0-9]+$/.test(userId);
-                
-                if (userId && !isValid) {
-                    this.setCustomValidity('User ID can only contain numbers.');
-                    this.classList.add('invalid');
-                    this.classList.remove('valid');
-                } else if (userId) {
-                    this.setCustomValidity('');
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                } else {
-                    this.setCustomValidity('');
-                    this.classList.remove('invalid', 'valid');
-                }
-            });
-            
-            // Real-time username validation (basic)
-            usernameInput.addEventListener('input', function() {
-                const username = this.value.trim();
-                const isValid = username.length >= 3 && username.length <= 25;
-                
-                if (username && !isValid) {
-                    this.setCustomValidity('Username must be 3-25 characters.');
-                    this.classList.add('invalid');
-                    this.classList.remove('valid');
-                } else if (username) {
-                    this.setCustomValidity('');
-                    this.classList.remove('invalid');
-                    this.classList.add('valid');
-                } else {
-                    this.setCustomValidity('');
-                    this.classList.remove('invalid', 'valid');
-                }
-            });
-            
-            // Form submission
-            form.addEventListener('submit', function(e) {
-                // Clear any previous custom validity
-                userIdInput.setCustomValidity('');
-                usernameInput.setCustomValidity('');
-                
-                // Validate user ID
-                const userId = userIdInput.value.trim();
-                if (!userId) {
-                    userIdInput.setCustomValidity('User ID is required.');
-                    userIdInput.reportValidity();
-                    e.preventDefault();
-                    return false;
-                }
-                
-                if (!/^[0-9]+$/.test(userId)) {
-                    userIdInput.setCustomValidity('User ID can only contain numbers.');
-                    userIdInput.reportValidity();
-                    e.preventDefault();
-                    return false;
-                }
-                
-                // Validate username
-                const username = usernameInput.value.trim();
-                if (!username) {
-                    usernameInput.setCustomValidity('Username is required.');
-                    usernameInput.reportValidity();
-                    e.preventDefault();
-                    return false;
-                }
-                
-                if (username.length < 3 || username.length > 25) {
-                    usernameInput.setCustomValidity('Username must be between 3 and 25 characters.');
-                    usernameInput.reportValidity();
-                    e.preventDefault();
-                    return false;
-                }
-                
-                // Show loading state
-                if (submitButton) {
-                    const originalHtml = submitButton.innerHTML;
-                    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
-                    submitButton.disabled = true;
-                    
-                    // Restore button state after 5 seconds (in case of error)
-                    setTimeout(() => {
-                        submitButton.innerHTML = originalHtml;
-                        submitButton.disabled = false;
-                    }, 5000);
-                }
-                
-                return true;
-            });
-            
-            // Reset button
-            const resetButton = form.querySelector('.reset-button');
-            if (resetButton) {
-                resetButton.addEventListener('click', function() {
-                    userIdInput.setCustomValidity('');
-                    usernameInput.setCustomValidity('');
-                    userIdInput.classList.remove('invalid', 'valid');
-                    usernameInput.classList.remove('invalid', 'valid');
-                });
-            }
-            
-            // Auto-focus user ID field
-            if (!userIdInput.value) {
-                userIdInput.focus();
-            }
-        });
-    </script>
+    <form method="post" action="<?= $self ?>" class="cu-card p-3 p-md-4" id="username-change-form" data-self="<?= $self ?>" novalidate>
+        <input type="hidden" name="act" value="changeusername">
+        <input type="hidden" name="my_post_key" value="<?= $key ?>">
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label for="user-id" class="form-label"><i class="fa-solid fa-magnifying-glass"></i>User <span class="text-danger">*</span></label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-id-card"></i></span>
+                    <input type="text" id="user-id" name="id" value="<?= htmlspecialchars($target) ?>" class="form-control"
+                           placeholder="ID or current username" required autocomplete="off" autofocus>
+                </div>
+                <div class="form-text">Numeric ID or the exact current name</div>
+            </div>
+            <div class="col-md-6">
+                <label for="username" class="form-label"><i class="fa-solid fa-signature"></i>New username <span class="text-danger">*</span></label>
+                <div class="input-group has-validation">
+                    <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+                    <input type="text" id="username" name="username" value="<?= htmlspecialchars($username) ?>" class="form-control"
+                           placeholder="New name" required minlength="3" maxlength="25" autocomplete="off">
+                </div>
+                <div class="form-text" id="cuNameHint">3–25 characters; the forum's name rules apply</div>
+            </div>
+        </div>
+
+        <!-- Живой предпросмотр: кого переименовываем и во что -->
+        <div class="cu-preview mt-3" id="cuPreview" hidden>
+            <span class="cu-avatar" id="cuAvatar"><i class="fa-solid fa-user"></i></span>
+            <div class="flex-grow-1" style="min-width:0">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="fw-bold" id="cuCurrent"></span>
+                    <i class="fa-solid fa-arrow-right-long text-body-secondary"></i>
+                    <span class="cu-name new" id="cuNew">—</span>
+                </div>
+                <div class="cu-muted" id="cuMeta"></div>
+            </div>
+            <span class="cu-flag" id="cuFlag" hidden></span>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+            <button type="reset" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-eraser me-1"></i>Clear</button>
+            <button type="submit" class="btn btn-primary px-4 submit-button"><i class="fa-solid fa-arrow-right me-1"></i>Continue</button>
+        </div>
+    </form>
+
     <?php
 }

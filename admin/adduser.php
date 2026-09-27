@@ -12,7 +12,7 @@ if (!defined('STAFF_PANEL')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
 
-define('AU_VERSION', '1.1 by xam');
+define('AU_VERSION', '2.0');
 
 
 
@@ -52,18 +52,20 @@ class UserRegistrationHandler
     {
         global $lang, $db, $minnamelength, $maxnamelength, $illegalusernames;
 
-        if (strlen($username) < $minnamelength) {
+        if (mb_strlen($username) < $minnamelength) {
             $this->errors[] = "Username must be at least {$minnamelength} characters long";
             return false;
         }
 
-        if (strlen($username) > $maxnamelength) {
+        if (mb_strlen($username) > $maxnamelength) {
             $this->errors[] = "Username cannot be longer than {$maxnamelength} characters";
             return false;
         }
 
-        if (!preg_match('/^[a-zA-Z0-9]+$/', $username)) {
-            $this->errors[] = "Username can only contain letters and numbers";
+        // Раньше — только [a-zA-Z0-9]: ники с «_», «-», «.», кириллицей и т.п.
+        // отклонялись, хотя обычная регистрация их принимает
+        if (preg_match('/[<>&"\'\\\\\x00-\x1F\x7F]/u', $username)) {
+            $this->errors[] = "Username contains characters that are not allowed";
             return false;
         }
 
@@ -105,7 +107,7 @@ class UserRegistrationHandler
 
         // Проверка существования email с подготовленным запросом
         $query = $db->sql_query_prepared(
-            "SELECT email FROM users WHERE email = ? LIMIT 1",
+            "SELECT email FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1",
             [$email]
         );
         
@@ -324,12 +326,16 @@ class UserRegistrationHandler
 
         $invites = (int)($post_data['invites'] ?? 0);
 
+        // Единицы измерения трафика (раньше — только байты)
+        $unitMul = static fn(string $u): int => match (strtoupper($u)) {
+            'TB' => 1024 ** 4, 'GB' => 1024 ** 3, 'MB' => 1024 ** 2, default => 1,
+        };
         $uploaded_raw = trim((string)($post_data['uploaded'] ?? ''));
         $uploaded = $uploaded_raw !== ''
-            ? (int)$uploaded_raw
+            ? (int)round(max(0.0, (float)$uploaded_raw) * $unitMul((string)($post_data['uploaded_unit'] ?? 'B')))
             : ($autogigsignup > 0 ? (int)$autogigsignup * 1024 * 1024 * 1024 : 0);
 
-        $downloaded = (int)($post_data['downloaded'] ?? 0);
+        $downloaded = (int)round(max(0.0, (float)($post_data['downloaded'] ?? 0)) * $unitMul((string)($post_data['downloaded_unit'] ?? 'B')));
         $confirm = trim($post_data['confirm'] ?? '');
         $send_credentials = trim($post_data['sendcredentials'] ?? '') === 'yes';
         $avatar_url = trim($post_data['avatar_url'] ?? '');
@@ -525,6 +531,23 @@ if (!empty($_FILES['avatar_file']['tmp_name'])) {
     }
 }
 
+// ── AJAX: занят ли ник / email (живая проверка в форме) ────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && (isset($_GET['check_name']) || isset($_GET['check_email']))) {
+    header('Content-Type: application/json; charset=utf-8');
+    if (isset($_GET['check_name'])) {
+        $v = trim((string)$_GET['check_name']);
+        $q = $db->sql_query_prepared('SELECT id FROM users WHERE username = ? LIMIT 1', [$v]);
+        $taken = $q && $db->num_rows($q) > 0;
+        echo json_encode(['taken' => $taken, 'banned' => !$taken && $v !== '' && is_banned_username($v, true)]);
+    } else {
+        $v = trim((string)$_GET['check_email']);
+        $valid = (bool)filter_var($v, FILTER_VALIDATE_EMAIL);
+        $q = $valid ? $db->sql_query_prepared('SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1', [$v]) : null;
+        echo json_encode(['valid' => $valid, 'taken' => $q && $db->num_rows($q) > 0, 'banned' => $valid && is_banned_email($v, true)]);
+    }
+    exit;
+}
+
 // Обработка формы
 $registration_handler = new UserRegistrationHandler();
 
@@ -532,591 +555,457 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_post_check($_POST['my_post_key'] ?? '');
 
     if ($registration_handler->processRegistration($_POST)) {
-        $user_data      = $registration_handler->getUserData();
+        $user_data       = $registration_handler->getUserData();
         $post_create_err = $registration_handler->getErrors();
-        $profile_url    = $BASEURL . '/' . get_profile_link($user_data['id']);
+        $profile_url     = $BASEURL . '/' . get_profile_link($user_data['id']);
 
-        // Аккаунт уже создан к этому моменту - ошибки на этом этапе (например,
-        // не удалось привязать аватар) не должны выглядеть как провал
-        // регистрации, но админ обязательно должен их увидеть. Редирект на
-        // member.php/checkuser.php уводит со страниц стафф-панели, где
-        // flash_message() гарантированно рендерится, поэтому в этом случае
-        // остаёмся на adduser.php и показываем предупреждение здесь.
+        // Аккаунт создан; если были некритичные ошибки (аватар, письмо) — показываем их здесь
         if (empty($post_create_err)) {
             redirect($profile_url);
             exit();
         }
 
         stdhead($lang->adduser['title']);
-        
-        echo '<div class="container mt-3">';
-        echo '<div class="alert alert-success"><i class="fas fa-check-circle me-2"></i>Account "'
-            . htmlspecialchars_uni($user_data['username']) . '" was created successfully.</div>';
-        echo inline_error($post_create_err);
-        echo '<a href="' . $profile_url . '" class="btn btn-primary">'
-            . '<i class="fas fa-arrow-right me-2"></i>Go to profile</a>';
-        echo '</div>';
+        au_styles();
+        echo '<div class="container mt-3 mb-4 au" style="max-width:720px"><div class="au-card au-done">'
+           . '<span class="au-done-icon"><i class="fa-solid fa-user-check"></i></span>'
+           . '<h2 class="h4 fw-bold mb-1">Account created</h2>'
+           . '<div class="text-body-secondary mb-3"><strong>' . htmlspecialchars_uni($user_data['username']) . '</strong> can log in now, but something needs your attention:</div>'
+           . '<div class="alert alert-warning text-start rounded-4"><ul class="mb-0 ps-3">';
+        foreach ($post_create_err as $e) echo '<li>' . htmlspecialchars_uni((string)$e) . '</li>';
+        echo '</ul></div>'
+           . '<div class="d-flex flex-wrap justify-content-center gap-2">'
+           . '<a href="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '" class="btn btn-outline-secondary px-3"><i class="fa-solid fa-user-plus me-1"></i>Add another</a>'
+           . '<a href="' . $profile_url . '" class="btn btn-primary px-3"><i class="fa-solid fa-arrow-right me-1"></i>Go to profile</a>'
+           . '</div></div></div>';
         stdfoot();
         exit();
     }
 }
 
+// ═══════════════════════════════════════════════════════════
+// ФОРМА
+// ═══════════════════════════════════════════════════════════
 
-
-// Отображение формы
-stdhead($lang->adduser['title']);
-
-
-$errors = $registration_handler->getErrors();
-if (!empty($errors)) {
-   
-   $send_errors = inline_error($errors);
-
-   echo '<link href="'.$BASEURL.'/include/templates/default/style/bootstrap-icons.css" rel="stylesheet">';
-   echo '<div class="container mt-3">'.$send_errors.'</div>';
-	
-	
+// Раньше стили задавали .card, .card-header, .btn-primary (с transform), .form-label
+// и .text-danger для ВСЕЙ страницы, включая шапку сайта
+function au_styles(): void
+{
+    global $BASEURL;
+	echo '<link rel="stylesheet" href="' . htmlspecialchars($BASEURL, ENT_QUOTES, 'UTF-8')
+       . '/admin/templates/add_user.css?ver=336">';
 }
 
 
 
 
-$allowed_groups = $registration_handler->getAllowedUsergroups();
+stdhead($lang->adduser['title']);
+au_styles();
 
-echo '
-<div class="container mt-4">
-    <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white rounded-top">
-            <h4 class="mb-0"><i class="fas fa-user-plus me-2"></i>' . $lang->adduser['title'] . '</h4>
-            <small class="opacity-75">Username: ' . $minnamelength . '-' . $maxnamelength . ' chars • Password: ' . $minpasswordlength . '-' . $maxpasswordlength . ' chars' . 
-            ($requirecomplexpasswords ? ' (letters & numbers required)' : '') . '</small>
+$errors         = $registration_handler->getErrors();
+$allowed_groups = $registration_handler->getAllowedUsergroups();
+$p              = static fn(string $k, string $d = ''): string => htmlspecialchars_uni((string)($_POST[$k] ?? $d));
+$defaultGroup   = (int)($_d_usergroup ?: 2);
+$defaultUpGb    = (int)($autogigsignup ?? 0);
+$defaultBonus   = (int)($autosbsignup ?? 0);
+$self           = htmlspecialchars($_SERVER['REQUEST_URI']);
+$unit           = static fn(string $name, string $sel) => '<select class="form-select" name="' . $name . '" style="max-width:90px">'
+    . implode('', array_map(fn($u) => '<option value="' . $u . '"' . ($sel === $u ? ' selected' : '') . '>' . $u . '</option>', ['GB', 'MB', 'TB', 'B']))
+    . '</select>';
+?>
+<div class="container mt-3 mb-4 au">
+
+    <div class="au-card mb-3"><div class="au-head">
+        <span class="au-head-icon"><i class="fa-solid fa-user-plus"></i></span>
+        <div style="min-width:0">
+            <h1 class="au-title"><?= htmlspecialchars_uni($lang->adduser['title']) ?></h1>
+            <div class="au-sub">Create an account by hand — it is confirmed immediately unless you ask for email activation</div>
         </div>
-        
-        <form method="POST" action="' . htmlspecialchars($_SERVER['REQUEST_URI']) . '" class="needs-validation" novalidate enctype="multipart/form-data">
-            <input type="hidden" name="act" value="adduser">
-            <input type="hidden" name="my_post_key" value="' . $mybb->post_code . '">
-            
-            <div class="card-body">
-                <!-- Basic Information -->
-                <div class="row g-3 mb-4">
-                    <!-- Username (обязательный) -->
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="text" 
-                                   class="form-control" 
-                                   id="input_username" 
-                                   name="username" 
-                                   value="' . htmlspecialchars_uni($_POST['username'] ?? '') . '" 
-                                   required
-                                   minlength="' . $minnamelength . '"
-                                   maxlength="' . $maxnamelength . '"
-                                   pattern="[a-zA-Z0-9]+"
-                                   placeholder="Username">
-                            <label for="input_username" class="form-label">
-                                <i class="fas fa-user me-2 text-primary"></i>Username <span class="text-danger">*</span>
-                            </label>
-                            <div class="invalid-feedback">Username must be ' . $minnamelength . '-' . $maxnamelength . ' characters, letters and numbers only.</div>
-                            <div class="form-text text-muted">
-                                <small>' . $minnamelength . '-' . $maxnamelength . ' characters, letters and numbers only</small>
+        <span class="ms-auto au-muted"><i class="fa-solid fa-code-branch me-1"></i>v<?= htmlspecialchars(AU_VERSION) ?></span>
+    </div></div>
+
+    <?php if ($errors): ?>
+    <div class="alert alert-danger d-flex gap-2 rounded-4"><i class="fa-solid fa-triangle-exclamation mt-1"></i>
+        <div><div class="fw-semibold mb-1">The account was not created:</div><ul class="mb-0 ps-3">
+        <?php foreach ($errors as $e): ?><li><?= htmlspecialchars_uni((string)$e) ?></li><?php endforeach; ?>
+        </ul></div></div>
+    <?php endif; ?>
+
+    <form method="POST" action="<?= $self ?>" class="needs-validation" novalidate enctype="multipart/form-data" id="auForm">
+        <input type="hidden" name="act" value="adduser">
+        <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="au-card">
+
+                    <!-- Аккаунт -->
+                    <div class="au-sec" style="border-top:0">
+                        <div class="au-sec-head"><span class="au-sec-icon ic-blue"><i class="fa-solid fa-id-card"></i></span>Account</div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_username"><i class="fa-solid fa-user"></i>Username <span class="au-req">*</span></label>
+                                <div class="input-group has-validation">
+                                    <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
+                                    <input type="text" class="form-control" id="input_username" name="username" value="<?= $p('username') ?>"
+                                           required minlength="<?= (int)$minnamelength ?>" maxlength="<?= (int)$maxnamelength ?>" autocomplete="off" placeholder="New username">
+                                </div>
+                                <div class="au-hint" id="hint_username"><?= (int)$minnamelength ?>–<?= (int)$maxnamelength ?> characters</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_email"><i class="fa-solid fa-envelope"></i>Email <span class="au-req">*</span></label>
+                                <div class="input-group has-validation">
+                                    <span class="input-group-text"><i class="fa-solid fa-at"></i></span>
+                                    <input type="email" class="form-control" id="input_email" name="email" value="<?= $p('email') ?>" required autocomplete="off" placeholder="user@example.com">
+                                </div>
+                                <div class="au-hint" id="hint_email">Used for login, notifications and activation</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_usergroup"><i class="fa-solid fa-users"></i>User group <span class="au-opt">(optional)</span></label>
+                                <select class="form-select" id="input_usergroup" name="usergroup">
+                                    <option value="">Default — <?= htmlspecialchars_uni($allowed_groups[$defaultGroup] ?? 'registration group') ?></option>
+                                    <?php foreach ($allowed_groups as $gid => $title): ?>
+                                    <option value="<?= (int)$gid ?>" <?= (string)($_POST['usergroup'] ?? '') === (string)$gid ? 'selected' : '' ?>><?= htmlspecialchars_uni($title) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="au-hint">Staff groups can't be assigned here</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_modcomment"><i class="fa-solid fa-comment-dots"></i>Moderator note <span class="au-opt">(optional)</span></label>
+                                <input type="text" class="form-control" id="input_modcomment" name="modcomment" value="<?= $p('modcomment') ?>" maxlength="255" placeholder="e.g. Invited by forum post #123">
+                                <div class="au-hint">Stored in the user's mod comment with today's date</div>
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Usergroup (обязательный) -->
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <select class="form-select" id="input_usergroup" name="usergroup">
-                                <option value="">Choose usergroup... (default: registration group)</option>';
-                                foreach ($allowed_groups as $gid => $title) {
-                                    $selected = ($_POST['usergroup'] ?? '') == $gid ? 'selected' : '';
-                                    echo '<option value="' . $gid . '" ' . $selected . '>' . htmlspecialchars_uni($title) . '</option>';
-                                }
-echo '                      </select>
-                            <label for="input_usergroup" class="form-label">
-                                <i class="fas fa-users me-2 text-primary"></i>Usergroup <span class="text-danger">*</span>
-                            </label>
-                            <div class="invalid-feedback">Please select a usergroup.</div>
+
+                    <!-- Пароль -->
+                    <div class="au-sec">
+                        <div class="au-sec-head"><span class="au-sec-icon ic-purple"><i class="fa-solid fa-key"></i></span>Password
+                            <button type="button" class="btn btn-sm btn-outline-primary ms-auto" onclick="generatePassword()"><i class="fa-solid fa-dice me-1"></i>Generate</button></div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_password"><i class="fa-solid fa-lock"></i>Password <span class="au-req">*</span></label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="input_password" name="password" required
+                                           minlength="<?= (int)$minpasswordlength ?>" maxlength="<?= (int)$maxpasswordlength ?>" autocomplete="new-password">
+                                    <button class="btn btn-outline-secondary" type="button" data-toggle-pw="input_password" aria-label="Show password" style="border-radius:0 .7rem .7rem 0"><i class="fa-solid fa-eye"></i></button>
+                                </div>
+                                <div class="au-strength"><span id="au_strength"></span></div>
+                                <div class="au-hint" id="hint_password"><?= (int)$minpasswordlength ?>–<?= (int)$maxpasswordlength ?> characters<?= $requirecomplexpasswords ? ', letters and numbers' : '' ?></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_password2"><i class="fa-solid fa-lock"></i>Confirm <span class="au-req">*</span></label>
+                                <input type="password" class="form-control" id="input_password2" name="password2" required
+                                       minlength="<?= (int)$minpasswordlength ?>" maxlength="<?= (int)$maxpasswordlength ?>" autocomplete="new-password">
+                                <div class="au-hint" id="hint_password2"></div>
+                            </div>
+                        </div>
+                        <div class="au-genbox" id="generated_password_box" style="display:none">
+                            <span><i class="fa-solid fa-circle-check text-success me-2"></i>Generated: <code id="generated_password_text"></code></span>
+                            <button type="button" class="btn btn-sm btn-outline-success" onclick="copyGeneratedPassword()"><i class="fa-regular fa-copy me-1"></i>Copy</button>
                         </div>
                     </div>
-                </div>
 
-                <!-- Password Section -->
-                <div class="row g-3 mb-2">
-                    <div class="col-12 d-flex justify-content-between align-items-center">
-                        <span class="form-text text-muted mb-0">
-                            ' . $minpasswordlength . '-' . $maxpasswordlength . ' characters' . 
-                            ($requirecomplexpasswords ? ', must contain letters and numbers' : '') . '
-                        </span>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="generatePassword()">
-                            <i class="fas fa-dice me-1"></i>Generate Password
-                        </button>
-                    </div>
-                </div>
-                <div class="row g-3 mb-2">
-                    <!-- Password (обязательный) -->
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="password" 
-                                   class="form-control" 
-                                   id="input_password" 
-                                   name="password" 
-                                   required
-                                   minlength="' . $minpasswordlength . '"
-                                   maxlength="' . $maxpasswordlength . '"
-                                   placeholder="Password">
-                            <label for="input_password" class="form-label">
-                                <i class="fas fa-lock me-2 text-primary"></i>Password <span class="text-danger">*</span>
-                            </label>
-                            <div class="invalid-feedback">Password must be ' . $minpasswordlength . '-' . $maxpasswordlength . ' characters long.</div>
+                    <!-- Трафик и бонусы -->
+                    <div class="au-sec">
+                        <div class="au-sec-head"><span class="au-sec-icon ic-teal"><i class="fa-solid fa-arrow-right-arrow-left"></i></span>Traffic &amp; bonus</div>
+                        <div class="row g-3">
+                            <!-- Раньше трафик вводился только в БАЙТАХ: 10 GB = 10737418240 -->
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_uploaded"><i class="fa-solid fa-upload"></i>Uploaded</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="input_uploaded" name="uploaded" min="0" step="any" value="<?= $p('uploaded') ?>" placeholder="<?= $defaultUpGb > 0 ? 'Default: ' . $defaultUpGb . ' GB' : '0' ?>">
+                                    <?= $unit('uploaded_unit', (string)($_POST['uploaded_unit'] ?? 'GB')) ?>
+                                </div>
+                                <div class="au-hint">Empty = site signup bonus<?= $defaultUpGb > 0 ? ' (' . $defaultUpGb . ' GB)' : '' ?></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_downloaded"><i class="fa-solid fa-download"></i>Downloaded</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="input_downloaded" name="downloaded" min="0" step="any" value="<?= $p('downloaded', '0') ?>">
+                                    <?= $unit('downloaded_unit', (string)($_POST['downloaded_unit'] ?? 'GB')) ?>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_seedbonus"><i class="fa-solid fa-coins"></i>Seed bonus</label>
+                                <input type="number" class="form-control" id="input_seedbonus" name="seedbonus" min="0" value="<?= $p('seedbonus') ?>" placeholder="<?= $defaultBonus > 0 ? 'Default: ' . $defaultBonus : '0' ?>">
+                                <div class="au-hint">Empty = site signup bonus</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="input_invites"><i class="fa-solid fa-ticket"></i>Invites</label>
+                                <input type="number" class="form-control" id="input_invites" name="invites" min="0" value="<?= $p('invites', '0') ?>">
+                            </div>
                         </div>
                     </div>
-                    
-                    <!-- Confirm Password (обязательный) -->
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="password" 
-                                   class="form-control" 
-                                   id="input_password2" 
-                                   name="password2" 
-                                   required
-                                   minlength="' . $minpasswordlength . '"
-                                   maxlength="' . $maxpasswordlength . '"
-                                   placeholder="Confirm Password">
-                            <label for="input_password2" class="form-label">
-                                <i class="fas fa-lock me-2 text-primary"></i>Confirm Password <span class="text-danger">*</span>
-                            </label>
-                            <div class="invalid-feedback">Please confirm your password.</div>
+
+                    <!-- Аватар -->
+                    <div class="au-sec">
+                        <div class="au-sec-head"><span class="au-sec-icon ic-amber"><i class="fa-solid fa-image"></i></span>Avatar <span class="au-opt ms-1">(optional)</span></div>
+                        <ul class="nav au-seg" id="avatarTabs">
+                            <li class="nav-item"><button class="nav-link active" id="tab-url" type="button" onclick="switchAvatarTab('url')"><i class="fa-solid fa-link me-1"></i>URL</button></li>
+                            <li class="nav-item"><button class="nav-link" id="tab-file" type="button" onclick="switchAvatarTab('file')"><i class="fa-solid fa-upload me-1"></i>Upload</button></li>
+                        </ul>
+                        <div id="avatar-panel-url">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fa-solid fa-link"></i></span>
+                                <input type="url" class="form-control" id="input_avatar" name="avatar_url" value="<?= $p('avatar_url') ?>" placeholder="https://example.com/avatar.jpg">
+                            </div>
+                            <div class="au-hint">Direct link to a JPG, PNG, GIF or WEBP image</div>
+                        </div>
+                        <div id="avatar-panel-file" style="display:none">
+                            <div id="avatar-dropzone"
+                                 ondragover="event.preventDefault();this.classList.add('border-primary')"
+                                 ondragleave="this.classList.remove('border-primary')"
+                                 ondrop="handleAvatarDrop(event)">
+                                <i class="fa-solid fa-cloud-arrow-up fa-2x text-body-secondary mb-2"></i>
+                                <p class="mb-2 text-body-secondary">Drag &amp; drop an image here or</p>
+                                <label class="btn btn-outline-primary btn-sm mb-0" for="input_avatar_file"><i class="fa-solid fa-folder-open me-1"></i>Choose file</label>
+                                <input type="file" class="d-none" id="input_avatar_file" name="avatar_file" accept="image/jpeg,image/png,image/gif,image/webp">
+                                <!-- Раньше было «max 500KB», хотя лимит берётся из настроек аватаров -->
+                                <p class="au-muted mt-2 mb-0">JPG, PNG, GIF, WEBP — size limit from the avatar settings</p>
+                                <p id="avatar-filename" class="text-success mt-1 mb-0 fw-semibold small" style="display:none"></p>
+                            </div>
+                        </div>
+                        <div id="avatar_preview" hidden>
+                            <img id="avatar_preview_img" src="" alt="" hidden>
+                            <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="clearAvatar()"><i class="fa-solid fa-xmark me-1"></i>Remove avatar</button>
                         </div>
                     </div>
-                </div>
-                <div class="row g-3 mb-4">
-                    <div class="col-12" id="generated_password_box" style="display:none">
-                        <div class="alert alert-success d-flex align-items-center justify-content-between py-2 px-3 mb-0">
-                            <span><i class="fas fa-check-circle me-2"></i>Generated password: <code id="generated_password_text" class="fw-bold"></code></span>
-                            <button type="button" class="btn btn-sm btn-outline-success" onclick="copyGeneratedPassword()">
-                                <i class="fas fa-copy me-1"></i>Copy
-                            </button>
-                        </div>
+
+                    <!-- Опции -->
+                    <div class="au-sec">
+                        <div class="au-sec-head"><span class="au-sec-icon ic-green"><i class="fa-solid fa-sliders"></i></span>Options</div>
+                        <label class="au-switch" for="sendcredentials">
+                            <span class="au-sec-icon ic-purple"><i class="fa-solid fa-paper-plane"></i></span>
+                            <span><span class="fw-semibold d-block"><?= htmlspecialchars_uni($lang->adduser['sendcredentials']) ?></span><span class="au-muted">The username and password are emailed to the user</span></span>
+                            <input type="checkbox" class="form-check-input" role="switch" name="sendcredentials" id="sendcredentials" value="yes" <?= (($_POST['sendcredentials'] ?? 'yes') === 'yes') ? 'checked' : '' ?>>
+                        </label>
+                        <label class="au-switch" for="confirm">
+                            <span class="au-sec-icon ic-amber"><i class="fa-solid fa-envelope-circle-check"></i></span>
+                            <span><span class="fw-semibold d-block"><?= htmlspecialchars_uni($lang->adduser['o1']) ?></span><span class="au-muted">Account stays “pending” until the user clicks the activation link</span></span>
+                            <input type="checkbox" class="form-check-input" role="switch" name="confirm" id="confirm" value="yes" <?= (($_POST['confirm'] ?? '') === 'yes') ? 'checked' : '' ?>>
+                        </label>
                     </div>
-                </div>
-
-                <!-- Contact Information -->
-                <div class="row g-3 mb-4">
-                    <!-- Email (обязательный) -->
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="email" 
-                                   class="form-control" 
-                                   id="input_email" 
-                                   name="email" 
-                                   value="' . htmlspecialchars_uni($_POST['email'] ?? '') . '" 
-                                   required
-                                   pattern="[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-                                   placeholder="Email Address">
-                            <label for="input_email" class="form-label">
-                                <i class="fas fa-envelope me-2 text-primary"></i>Email Address <span class="text-danger">*</span>
-                            </label>
-                            <div class="invalid-feedback">Please provide a valid email address.</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Seed Bonus (необязательный) -->
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="number" 
-                                   class="form-control" 
-                                   id="input_seedbonus" 
-                                   name="seedbonus" 
-                                   value="' . htmlspecialchars_uni($_POST['seedbonus'] ?? '') . '"
-                                   placeholder="Seed Bonus (default: site signup bonus)">
-                            <label for="input_seedbonus" class="form-label">
-                                <i class="fas fa-coins me-2 text-primary"></i>Seed Bonus
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                
-
-                <!-- Traffic Stats -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="number" 
-                                   class="form-control" 
-                                   id="input_uploaded" 
-                                   name="uploaded" 
-                                   value="' . htmlspecialchars_uni($_POST['uploaded'] ?? '') . '"
-                                   placeholder="Uploaded (default: site signup bonus)">
-                            <label for="input_uploaded" class="form-label">
-                                <i class="fas fa-upload me-2 text-primary"></i>Uploaded (bytes)
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="number" 
-                                   class="form-control" 
-                                   id="input_downloaded" 
-                                   name="downloaded" 
-                                   value="' . htmlspecialchars_uni($_POST['downloaded'] ?? '0') . '"
-                                   placeholder="Downloaded">
-                            <label for="input_downloaded" class="form-label">
-                                <i class="fas fa-download me-2 text-primary"></i>Downloaded (bytes)
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Additional Information -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="text" 
-                                   class="form-control" 
-                                   id="input_modcomment" 
-                                   name="modcomment" 
-                                   value="' . htmlspecialchars_uni($_POST['modcomment'] ?? '') . '"
-                                   placeholder="Moderator Comment">
-                            <label for="input_modcomment" class="form-label">
-                                <i class="fas fa-comment me-2 text-primary"></i>Moderator Comment
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="col-md-6">
-                        <div class="form-floating">
-                            <input type="number" 
-                                   class="form-control" 
-                                   id="input_invites" 
-                                   name="invites" 
-                                   value="' . htmlspecialchars_uni($_POST['invites'] ?? '0') . '"
-                                   placeholder="Invites">
-                            <label for="input_invites" class="form-label">
-                                <i class="fas fa-ticket-alt me-2 text-primary"></i>Invites
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-               
-				
-				
-				
-				
-				<!-- Avatar -->
-<div class="mb-4">
-    <label class="form-label fw-semibold">
-        <i class="fas fa-image me-1 text-primary"></i>Avatar
-    </label>
-
-    <!-- Tabs -->
-    <ul class="nav nav-pills mb-3" id="avatarTabs">
-        <li class="nav-item">
-            <button class="nav-link active" id="tab-url" type="button" onclick="switchAvatarTab(\'url\')">
-                <i class="fas fa-link me-1"></i>URL
-            </button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="tab-file" type="button" onclick="switchAvatarTab(\'file\')">
-                <i class="fas fa-upload me-1"></i>Upload file
-            </button>
-        </li>
-    </ul>
-
-    <!-- URL panel -->
-    <div id="avatar-panel-url">
-        <div class="form-floating">
-            <input type="url"
-                   class="form-control"
-                   id="input_avatar"
-                   name="avatar_url"
-                   value="' . htmlspecialchars_uni($_POST['avatar_url'] ?? '') . '"
-                   placeholder="https://example.com/avatar.jpg">
-            <label for="input_avatar"><i class="fas fa-link me-1"></i>Image URL</label>
-        </div>
-        <div class="form-text">Direct link to JPG, PNG, GIF or WEBP image</div>
-    </div>
-
-    <!-- File panel -->
-    <div id="avatar-panel-file" style="display:none">
-        <div class="border rounded-3 p-4 text-center bg-light" id="avatar-dropzone"
-             ondragover="event.preventDefault();this.classList.add(\'border-primary\')"
-             ondragleave="this.classList.remove(\'border-primary\')"
-             ondrop="handleAvatarDrop(event)">
-            <i class="fas fa-cloud-upload-alt fa-2x text-muted mb-2"></i>
-            <p class="mb-2 text-muted">Drag & drop image here or</p>
-            <label class="btn btn-outline-primary btn-sm mb-0" for="input_avatar_file">
-                <i class="fas fa-folder-open me-1"></i>Choose file
-            </label>
-            <input type="file"
-                   class="d-none"
-                   id="input_avatar_file"
-                   name="avatar_file"
-                   accept="image/jpeg,image/png,image/gif,image/webp">
-            <p class="text-muted mt-2 mb-0" style="font-size:.8rem">JPG, PNG, GIF, WEBP — max 500KB</p>
-            <p id="avatar-filename" class="text-success mt-1 mb-0 fw-semibold" style="font-size:.85rem;display:none"></p>
-        </div>
-    </div>
-
-    <!-- Preview -->
-    <div id="avatar_preview" class="mt-3 d-flex align-items-center gap-3" style="display:none!important">
-        <img id="avatar_preview_img" src="" class="rounded-circle border shadow-sm"
-             style="width:150px;height:150px;object-fit:cover;">
-        <div>
-            <div class="fw-semibold small">Preview</div>
-            <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearAvatar()">
-                <i class="fas fa-times me-1"></i>Remove
-            </button>
-        </div>
-    </div>
-</div>
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-
-                <!-- Options -->
-                <div class="form-check mb-3">
-                    <input type="checkbox" class="form-check-input" name="sendcredentials" id="sendcredentials" value="yes" 
-                           ' . (($_POST['sendcredentials'] ?? 'yes') === 'yes' ? 'checked' : '') . '>
-                    <label for="sendcredentials" class="form-check-label">
-                        <i class="fas fa-key me-2 text-primary"></i>' . $lang->adduser['sendcredentials'] . '
-                    </label>
-                </div>
-                <div class="form-check mb-4">
-                    <input type="checkbox" class="form-check-input" name="confirm" id="confirm" value="yes" 
-                           ' . (($_POST['confirm'] ?? '') === 'yes' ? 'checked' : '') . '>
-                    <label for="confirm" class="form-check-label">
-                        <i class="fas fa-envelope me-2 text-primary"></i>' . $lang->adduser['o1'] . '
-                    </label>
                 </div>
             </div>
-            
-            <div class="card-footer bg-light text-center py-4">
-                <button type="submit" class="btn btn-primary btn-lg px-5">
-                    <i class="fas fa-user-plus me-2"></i>' . $lang->adduser['title'] . '
-                </button>
+
+            <!-- Превью будущего аккаунта -->
+            <div class="col-lg-4">
+                <div class="au-card au-preview">
+                    <div class="au-pv-top">
+                        <div class="au-pv-avatar" id="pvAvatar">?</div>
+                        <div class="au-pv-name" id="pvName">New user</div>
+                        <div class="au-muted" id="pvEmail">no email yet</div>
+                    </div>
+                    <div class="au-pv-rows">
+                        <div class="au-pv-row"><span><i class="fa-solid fa-users"></i>Group</span><b id="pvGroup"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-upload"></i>Uploaded</span><b id="pvUp"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-download"></i>Downloaded</span><b id="pvDown"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-scale-balanced"></i>Ratio</span><b id="pvRatio"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-coins"></i>Bonus</span><b id="pvBonus"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-ticket"></i>Invites</span><b id="pvInv"></b></div>
+                        <div class="au-pv-row"><span><i class="fa-solid fa-circle-check"></i>Status</span><b id="pvStatus"></b></div>
+                    </div>
+                </div>
             </div>
-        </form>
-    </div>
+        </div>
+
+        <div class="au-card au-savebar">
+            <span class="au-muted"><i class="fa-solid fa-circle-info me-1"></i>A welcome PM is sent automatically</span>
+            <button type="submit" class="btn btn-success px-4" id="auSubmit"><i class="fa-solid fa-user-plus me-1"></i><?= htmlspecialchars_uni($lang->adduser['title']) ?></button>
+        </div>
+    </form>
 </div>
 
 <script>
-// Bootstrap валидация формы
 (function () {
-    \'use strict\'
-    
-    const forms = document.querySelectorAll(\'.needs-validation\')
-    
-    Array.from(forms).forEach(form => {
-        form.addEventListener(\'submit\', event => {
-            if (!form.checkValidity()) {
-                event.preventDefault()
-                event.stopPropagation()
-            }
-            
-            form.classList.add(\'was-validated\')
-        }, false)
-    })
-})();
+    'use strict';
+    const cfg = {
+        minName: <?= (int)$minnamelength ?>, maxName: <?= (int)$maxnamelength ?>,
+        minPw: <?= (int)$minpasswordlength ?>, maxPw: <?= (int)$maxpasswordlength ?>,
+        complex: <?= $requirecomplexpasswords ? 'true' : 'false' ?>,
+        defUpGb: <?= $defaultUpGb ?>, defBonus: <?= $defaultBonus ?>,
+        self: <?= json_encode(html_entity_decode($self)) ?>,
+    };
+    const $ = id => document.getElementById(id);
+    const sep = cfg.self.includes('?') ? '&' : '?';
+    const units = { B: 1, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 };
+    const fmt = b => { const u = ['B','KB','MB','GB','TB','PB']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(2) : b) + ' ' + u[i]; };
+    const hint = (id, text, cls) => { const h = $(id); if (h) { h.className = 'au-hint' + (cls ? ' ' + cls : ''); h.innerHTML = text; } };
 
-// Username валидация в реальном времени
-document.getElementById(\'input_username\').addEventListener(\'input\', function() {
-    const minLength = ' . $minnamelength . ';
-    const maxLength = ' . $maxnamelength . ';
-    const value = this.value;
-    
-    if (!/^[a-zA-Z0-9]+$/.test(value)) {
-        this.setCustomValidity(\'Only letters and numbers allowed\');
-    } else if (value.length < minLength) {
-        this.setCustomValidity(`Username must be at least ${minLength} characters`);
-    } else if (value.length > maxLength) {
-        this.setCustomValidity(`Username cannot exceed ${maxLength} characters`);
-    } else {
-        this.setCustomValidity(\'\');
-    }
-});
-
-// Password валидация в реальном времени
-document.getElementById(\'input_password\').addEventListener(\'input\', function() {
-    const minLength = ' . $minpasswordlength . ';
-    const maxLength = ' . $maxpasswordlength . ';
-    const requireComplex = ' . ($requirecomplexpasswords ? 'true' : 'false') . ';
-    const value = this.value;
-    
-    if (value.length < minLength) {
-        this.setCustomValidity(`Password must be at least ${minLength} characters`);
-    } else if (value.length > maxLength) {
-        this.setCustomValidity(`Password cannot exceed ${maxLength} characters`);
-    } else if (requireComplex && (!/[a-zA-Z]/.test(value) || !/[0-9]/.test(value))) {
-        this.setCustomValidity(\'Password must contain both letters and numbers\');
-    } else {
-        this.setCustomValidity(\'\');
-    }
-});
-
-// Пароль подтверждения
-document.getElementById(\'input_password2\').addEventListener(\'input\', function() {
-    const password = document.getElementById(\'input_password\').value;
-    const confirmPassword = this.value;
-    
-    if (password !== confirmPassword) {
-        this.setCustomValidity(\'Passwords do not match\');
-    } else {
-        this.setCustomValidity(\'\');
-    }
-});
-
-// Генерация случайного пароля
-function generatePassword() {
-    const minLength = ' . $minpasswordlength . ';
-    const length = Math.max(minLength, 12);
-    const letters = \'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\';
-    const digits = \'0123456789\';
-    const symbols = \'!@#$%^&*\';
-    const charset = letters + digits + symbols;
-
-    let password = letters[Math.floor(Math.random() * letters.length)]
-                  + digits[Math.floor(Math.random() * digits.length)];
-
-    for (let i = password.length; i < length; i++) {
-        password += charset[Math.floor(Math.random() * charset.length)];
-    }
-
-    password = password.split(\'\').sort(() => Math.random() - 0.5).join(\'\');
-
-    const passField = document.getElementById(\'input_password\');
-    const pass2Field = document.getElementById(\'input_password2\');
-    passField.value = password;
-    pass2Field.value = password;
-    passField.dispatchEvent(new Event(\'input\'));
-    pass2Field.dispatchEvent(new Event(\'input\'));
-
-    document.getElementById(\'generated_password_text\').textContent = password;
-    document.getElementById(\'generated_password_box\').style.display = \'\';
-}
-
-function copyGeneratedPassword() {
-    const text = document.getElementById(\'generated_password_text\').textContent;
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-        if (typeof showToast === \'function\') {
-            showToast(\'Password copied to clipboard\', \'success\');
-        }
+    // ── Bootstrap-валидация ─────────────────────────────────
+    const form = $('auForm');
+    form.addEventListener('submit', e => {
+        if (!form.checkValidity()) { e.preventDefault(); e.stopPropagation(); form.classList.add('was-validated'); return; }
+        const b = $('auSubmit'); b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Creating…';
     });
-}
+
+    // ── Ник: длина + живая проверка занятости ───────────────
+    // Раньше разрешались только a-z и цифры (и в браузере, и на сервере)
+    let tName, tMail;
+    $('input_username').addEventListener('input', function () {
+        const v = this.value.trim();
+        const len = [...v].length;
+        if (!v) { this.setCustomValidity(''); hint('hint_username', cfg.minName + '–' + cfg.maxName + ' characters'); update(); return; }
+        if (len < cfg.minName || len > cfg.maxName) {
+            this.setCustomValidity('length'); hint('hint_username', '<i class="fa-solid fa-circle-xmark me-1"></i>' + cfg.minName + '–' + cfg.maxName + ' characters', 'bad'); update(); return;
+        }
+        if (/[<>&"'\\\x00-\x1f]/.test(v)) {
+            this.setCustomValidity('chars'); hint('hint_username', '<i class="fa-solid fa-circle-xmark me-1"></i>Characters &lt; &gt; &amp; " \' \\ are not allowed', 'bad'); update(); return;
+        }
+        this.setCustomValidity('');
+        clearTimeout(tName);
+        tName = setTimeout(() => fetch(cfg.self + sep + 'check_name=' + encodeURIComponent(v), { credentials: 'same-origin' })
+            .then(r => r.json()).then(d => {
+                if ($('input_username').value.trim() !== v) return;
+                if (d.taken)       { $('input_username').setCustomValidity('taken');  hint('hint_username', '<i class="fa-solid fa-circle-xmark me-1"></i>Already taken', 'bad'); }
+                else if (d.banned) { $('input_username').setCustomValidity('banned'); hint('hint_username', '<i class="fa-solid fa-ban me-1"></i>Disallowed by a ban filter', 'bad'); }
+                else hint('hint_username', '<i class="fa-solid fa-circle-check me-1"></i>Available', 'ok');
+            }).catch(() => {}), 300);
+        update();
+    });
+
+    // ── Email: формат + занятость + бан ─────────────────────
+    $('input_email').addEventListener('input', function () {
+        const v = this.value.trim();
+        update();
+        if (!v) { hint('hint_email', 'Used for login, notifications and activation'); return; }
+        clearTimeout(tMail);
+        tMail = setTimeout(() => fetch(cfg.self + sep + 'check_email=' + encodeURIComponent(v), { credentials: 'same-origin' })
+            .then(r => r.json()).then(d => {
+                if ($('input_email').value.trim() !== v) return;
+                const bad = !d.valid || d.taken || d.banned;
+                $('input_email').setCustomValidity(bad ? 'bad' : '');
+                hint('hint_email', !d.valid ? '<i class="fa-solid fa-circle-xmark me-1"></i>Not a valid address'
+                    : d.taken  ? '<i class="fa-solid fa-circle-xmark me-1"></i>Used by another account'
+                    : d.banned ? '<i class="fa-solid fa-ban me-1"></i>Disallowed by a ban filter'
+                    : '<i class="fa-solid fa-circle-check me-1"></i>Available', bad ? 'bad' : 'ok');
+            }).catch(() => {}), 350);
+    });
+
+    // ── Пароль: правила + индикатор надёжности ──────────────
+    function checkPw() {
+        const p = $('input_password'), p2 = $('input_password2'), v = p.value;
+        let err = '';
+        if (v.length < cfg.minPw) err = 'At least ' + cfg.minPw + ' characters';
+        else if (v.length > cfg.maxPw) err = 'At most ' + cfg.maxPw + ' characters';
+        else if (cfg.complex && (!/[a-zA-Z]/.test(v) || !/[0-9]/.test(v))) err = 'Needs letters and numbers';
+        else if (v && v === $('input_username').value.trim()) err = 'Must differ from the username';
+        p.setCustomValidity(err);
+
+        let score = 0;
+        if (v.length >= 8) score++; if (v.length >= 12) score++;
+        if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++; if (/\d/.test(v)) score++; if (/[^A-Za-z0-9]/.test(v)) score++;
+        const bar = $('au_strength'), colors = ['#ef4444', '#ef4444', '#f59e0b', '#eab308', '#22c55e', '#16a34a'];
+        bar.style.width = v ? (Math.max(1, score) / 5 * 100) + '%' : '0';
+        bar.style.backgroundColor = colors[score];
+        hint('hint_password', v ? (err ? '<i class="fa-solid fa-circle-xmark me-1"></i>' + err : ['Very weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong'][score]) : cfg.minPw + '–' + cfg.maxPw + ' characters' + (cfg.complex ? ', letters and numbers' : ''), v ? (err ? 'bad' : (score >= 3 ? 'ok' : '')) : '');
+
+        const match = p2.value === v;
+        p2.setCustomValidity(match ? '' : 'mismatch');
+        hint('hint_password2', p2.value ? (match ? '<i class="fa-solid fa-circle-check me-1"></i>Passwords match' : '<i class="fa-solid fa-circle-xmark me-1"></i>Passwords do not match') : '', p2.value ? (match ? 'ok' : 'bad') : '');
+    }
+    $('input_password').addEventListener('input', checkPw);
+    $('input_password2').addEventListener('input', checkPw);
+    document.querySelectorAll('[data-toggle-pw]').forEach(b => b.addEventListener('click', () => {
+        const f = $(b.dataset.togglePw), show = f.type === 'password';
+        f.type = show ? 'text' : 'password'; $('input_password2').type = f.type;
+        b.innerHTML = '<i class="fa-solid ' + (show ? 'fa-eye-slash' : 'fa-eye') + '"></i>';
+    }));
+
+    // Генерация пароля — криптостойкий генератор вместо Math.random()
+    window.generatePassword = function () {
+        const letters = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ', digits = '23456789', symbols = '!@#$%^&*';
+        const all = letters + digits + symbols;
+        const len = Math.min(cfg.maxPw, Math.max(cfg.minPw, 14));
+        const rnd = n => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
+        const chars = [letters[rnd(letters.length)], digits[rnd(digits.length)], symbols[rnd(symbols.length)]];
+        while (chars.length < len) chars.push(all[rnd(all.length)]);
+        for (let i = chars.length - 1; i > 0; i--) { const j = rnd(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+        const pw = chars.join('');
+        $('input_password').value = pw; $('input_password2').value = pw; checkPw();
+        $('generated_password_text').textContent = pw;
+        $('generated_password_box').style.display = '';
+    };
+    window.copyGeneratedPassword = function () {
+        const t = $('generated_password_text').textContent;
+        if (t) navigator.clipboard?.writeText(t).then(() => { if (typeof showToast === 'function') showToast('Password copied to clipboard', 'success'); });
+    };
+
+    // ── Аватар ──────────────────────────────────────────────
+    window.switchAvatarTab = function (tab) {
+        $('avatar-panel-url').style.display  = tab === 'url'  ? '' : 'none';
+        $('avatar-panel-file').style.display = tab === 'file' ? '' : 'none';
+        $('tab-url').classList.toggle('active',  tab === 'url');
+        $('tab-file').classList.toggle('active', tab === 'file');
+    };
+    function showAvatar(src) {
+        const box = $('pvAvatar');
+        box.replaceChildren();
+        if (src) {
+            const img = document.createElement('img'); img.alt = ''; img.src = src;
+            img.onerror = () => { box.textContent = initial(); };
+            box.appendChild(img);
+            $('avatar_preview').hidden = false;
+        } else {
+            box.textContent = initial();
+            $('avatar_preview').hidden = true;
+        }
+    }
+    const initial = () => ([...$('input_username').value.trim()][0] || '?').toUpperCase();
+    window.clearAvatar = function () {
+        $('input_avatar').value = ''; $('input_avatar_file').value = '';
+        $('avatar-filename').style.display = 'none';
+        showAvatar('');
+    };
+    window.handleAvatarDrop = function (e) {
+        e.preventDefault();
+        $('avatar-dropzone').classList.remove('border-primary');
+        if (e.dataTransfer.files[0]) setAvatarFile(e.dataTransfer.files[0]);
+    };
+    function setAvatarFile(file) {
+        const dt = new DataTransfer(); dt.items.add(file);
+        $('input_avatar_file').files = dt.files;
+        $('avatar-filename').textContent = file.name; $('avatar-filename').style.display = 'block';
+        const r = new FileReader(); r.onload = e => showAvatar(e.target.result); r.readAsDataURL(file);
+    }
+    $('input_avatar_file').addEventListener('change', function () { if (this.files[0]) setAvatarFile(this.files[0]); });
+    $('input_avatar').addEventListener('input', function () { showAvatar(/^https?:\/\//i.test(this.value) ? this.value : ''); });
+
+    // ── Карточка-превью ─────────────────────────────────────
+    function bytes(field, unitName, def) {
+        const raw = $(field).value.trim();
+        const u = document.querySelector('[name="' + unitName + '"]').value;
+        return raw === '' ? def : Math.max(0, parseFloat(raw) || 0) * units[u];
+    }
+    function update() {
+        const name = $('input_username').value.trim();
+        $('pvName').textContent = name || 'New user';
+        $('pvEmail').textContent = $('input_email').value.trim() || 'no email yet';
+        if (!$('pvAvatar').querySelector('img')) $('pvAvatar').textContent = initial();
+        const g = $('input_usergroup');
+        $('pvGroup').textContent = g.options[g.selectedIndex].text.replace(/^Default — /, '');
+        const up = bytes('input_uploaded', 'uploaded_unit', cfg.defUpGb * units.GB);
+        const down = bytes('input_downloaded', 'downloaded_unit', 0);
+        $('pvUp').textContent = fmt(up); $('pvDown').textContent = fmt(down);
+        $('pvRatio').textContent = down > 0 ? (up / down).toFixed(2) : '∞';
+        const sb = $('input_seedbonus').value.trim();
+        $('pvBonus').textContent = (sb === '' ? cfg.defBonus : parseInt(sb, 10) || 0).toLocaleString();
+        $('pvInv').textContent = (parseInt($('input_invites').value, 10) || 0).toLocaleString();
+        $('pvStatus').innerHTML = $('confirm').checked
+            ? '<span class="text-warning"><i class="fa-solid fa-hourglass-half me-1"></i>Pending activation</span>'
+            : '<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i>Confirmed</span>';
+    }
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+
+    // Начальное состояние (после ошибки поля уже заполнены)
+    if ($('input_avatar').value) showAvatar($('input_avatar').value);
+    if ($('input_username').value) $('input_username').dispatchEvent(new Event('input'));
+    if ($('input_email').value) $('input_email').dispatchEvent(new Event('input'));
+    update();
+})();
 </script>
-
-<style>
-.card { 
-    border: none; 
-    border-radius: 16px; 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-}
-.card-header { 
-    border-radius: 16px 16px 0 0 !important; 
-    padding: 1.5rem;
-}
-.form-label { 
-    color: #495057; 
-    font-weight: 500;
-}
-.form-floating {
-    margin-bottom: 1rem;
-}
-.btn-primary {
-    border: none;
-    border-radius: 12px;
-    font-weight: 600;
-    padding: 12px 40px;
-    transition: all 0.3s ease;
-}
-.btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-}
-.was-validated .form-control:valid {
-    border-color: #198754;
-    background-image: url("data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 8 8\'%3e%3cpath fill=\'%23198754\' d=\'M2.3 6.73.6 4.53c-.4-1.04.46-1.4 1.1-.8l1.1 1.4 3.4-3.8c.6-.63 1.6-.27 1.2.7l-4 4.6c-.43.5-.8.4-1.1.1z\'/%3e%3c/svg%3e");
-}
-.was-validated .form-control:invalid {
-    border-color: #dc3545;
-    background-image: url("data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 12 12\' width=\'12\' height=\'12\' fill=\'none\' stroke=\'%23dc3545\'%3e%3ccircle cx=\'6\' cy=\'6\' r=\'4.5\'/%3e%3cpath d=\'m5.8 3.6.4.4.4-.4\'/%3e%3cpath d=\'M6 7v1\'/%3e%3c/svg%3e");
-}
-.text-danger {
-    color: #dc3545 !important;
-}
-</style>';
-
-
-
-
-
-
-?>
-<script>
-function switchAvatarTab(tab) {
-    document.getElementById("avatar-panel-url").style.display  = tab === "url"  ? "" : "none";
-    document.getElementById("avatar-panel-file").style.display = tab === "file" ? "" : "none";
-    document.getElementById("tab-url").classList.toggle("active",  tab === "url");
-    document.getElementById("tab-file").classList.toggle("active", tab === "file");
-}
-
-function showAvatarPreview(src) {
-    const preview = document.getElementById("avatar_preview");
-    document.getElementById("avatar_preview_img").src = src;
-    preview.style.display = "flex";
-}
-
-function clearAvatar() {
-    document.getElementById("avatar_preview").style.display = "none";
-    document.getElementById("input_avatar").value = "";
-    document.getElementById("input_avatar_file").value = "";
-    document.getElementById("avatar-filename").style.display = "none";
-}
-
-function handleAvatarDrop(e) {
-    e.preventDefault();
-    document.getElementById("avatar-dropzone").classList.remove("border-primary");
-    const file = e.dataTransfer.files[0];
-    if (file) setAvatarFile(file);
-}
-
-function setAvatarFile(file) {
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    document.getElementById("input_avatar_file").files = dt.files;
-    const name = document.getElementById("avatar-filename");
-    name.textContent = file.name;
-    name.style.display = "block";
-    const reader = new FileReader();
-    reader.onload = e => showAvatarPreview(e.target.result);
-    reader.readAsDataURL(file);
-}
-
-document.getElementById("input_avatar_file").addEventListener("change", function() {
-    if (this.files[0]) setAvatarFile(this.files[0]);
-});
-
-document.getElementById("input_avatar").addEventListener("input", function() {
-    if (this.value) showAvatarPreview(this.value);
-    else document.getElementById("avatar_preview").style.display = "none";
-});
-</script>
-<?
-
-
+<?php
 
 stdfoot();
-?>

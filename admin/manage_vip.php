@@ -2,237 +2,253 @@
 
 declare(strict_types=1);
 
-
 if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><strong>Error!</strong> Direct initialization of this file is not allowed.</div>');
 }
 
 require_once INC_PATH . '/functions_multipage.php';
+require_once INC_PATH . '/functions_mkprettytime.php';
 
+// ---------------------------------------------------------------------------
 // Constants
-const M_VIP_VERSION = 'v0.5';
+// ---------------------------------------------------------------------------
+const M_VIP_VERSION    = 'v0.6';
 const VIP_USERGROUP_ID = 4;
 const DEFAULT_PER_PAGE = 20;
-const ALLOWED_SORT_FIELDS = ['username', 'seedbonus', 'invites'];
+const VIP_DAY_SECONDS  = 86400;
 
-// Helper functions
-function getVipUserPopoverContent(array $user): string
+/** sortby value => SQL expression (whitelist) + default direction */
+const VIP_SORT_FIELDS = [
+    'username'  => ['sql' => 'u.username',  'dir' => 'ASC'],
+    'vip_until' => ['sql' => 'COALESCE(NULLIF(av.vip_until, 0), 4294967295)', 'dir' => 'ASC'],
+    'seedbonus' => ['sql' => 'u.seedbonus', 'dir' => 'DESC'],
+    'invites'   => ['sql' => 'u.invites',   'dir' => 'DESC'],
+];
+
+/** Bulk actions: label, unit for the amount, icon, upper limit, colour tone */
+const VIP_ACTIONS = [
+    'donoruntil' => ['label' => 'Extend VIP',        'unit' => 'weeks',   'icon' => 'fa-calendar-plus', 'max' => 520,      'tone' => 'primary'],
+    'seedbonus'  => ['label' => 'Give bonus points', 'unit' => 'points',  'icon' => 'fa-coins',         'max' => 10000000, 'tone' => 'warning'],
+    'invites'    => ['label' => 'Give invites',      'unit' => 'invites', 'icon' => 'fa-envelope',      'max' => 1000,     'tone' => 'info'],
+    'remove_vip' => ['label' => 'Remove VIP',        'unit' => '',        'icon' => 'fa-user-slash',    'max' => 0,        'tone' => 'danger'],
+];
+
+/** Base WHERE shared by every query: VIP group, no staff groups */
+const VIP_BASE_WHERE = "u.usergroup = ?
+          AND g.cansettingspanel = '0'
+          AND g.canstaffpanel = '0'
+          AND g.issupermod = '0'";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function vipH(mixed $value): string
 {
-    global $lang, $dateformat, $timeformat, $BASEURL, $mybb;
-    
-    $lastseen = my_datee($dateformat, $user['lastactive']) . ' ' . my_datee($timeformat, $user['lastactive']);
-    $downloaded = mksize($user['downloaded']);
-    $uploaded = mksize($user['uploaded']);
-    $ratio = get_user_ratio($user['uploaded'], $user['downloaded']);
-    
-    $lang->load('tsf_forums');
-    require_once INC_PATH . '/functions_mkprettytime.php';
-    
-    // Получаем аватар пользователя через вашу функцию
-    $avatarData = format_avatar($user['avatar'] ?? null, '100|100', '100|100');
-    $avatarHtml = $avatarData['html'] ?? '';
-    
-    // Формируем контент popover
-    $content = '<div class="popover-content">';
-    $content .= '<div class="popover-header bg-light border-bottom">';
-    $content .= '<div class="d-flex align-items-center">';
-    
-    // Аватар
-    $content .= '<div class="flex-shrink-0 me-3">';
-    if ($avatarHtml && !$avatarData['is_html']) {
-        // Если это обычное изображение
-        $content .= str_replace('class="', 'class="rounded-circle ', $avatarHtml);
-    } elseif ($avatarHtml) {
-        // Если это SVG или HTML
-        $content .= '<div style="width: 50px; height: 50px; overflow: hidden; border-radius: 50%;">' . $avatarHtml . '</div>';
-    } else {
-        // Дефолтный аватар
-        $content .= '<div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center" 
-                         style="width: 50px; height: 50px;">
-                        <i class="fas fa-user text-white" style="font-size: 1.5rem;"></i>
-                     </div>';
-    }
-    $content .= '</div>';
-    
-    // Информация о пользователе
-    $content .= '<div class="flex-grow-1">';
-    $content .= '<h6 class="mb-0 fw-bold">' . htmlspecialchars($user['username'] ?? '') . '</h6>';
-    $content .= '<small class="text-muted">' . htmlspecialchars($user['title'] ?? 'VIP Member') . '</small>';
-    
-    // Статус онлайн/офлайн
-    $isOnline = ($user['lastactive'] ?? 0) > (time() - 300); // 5 минут
-    $content .= '<div class="mt-1">';
-    $content .= '<span class="badge ' . ($isOnline ? 'bg-success' : 'bg-secondary') . ' badge-sm">';
-    $content .= $isOnline ? '<i class="fas fa-circle me-1" style="font-size: 0.6em;"></i>Online' : 'Offline';
-    $content .= '</span>';
-    $content .= '</div>';
-    $content .= '</div>';
-    $content .= '</div>';
-    $content .= '</div>';
-    
-    // Тело popover
-    $content .= '<div class="popover-body">';
-    
-    // Основная информация
-    $content .= '<div class="mb-3">';
-    $content .= '<div class="row g-2">';
-    
-    // Дата регистрации
-    $content .= '<div class="col-12">';
-    $content .= '<small class="text-muted"><i class="fas fa-calendar-plus me-1"></i>Joined</small>';
-    $content .= '<div class="fw-semibold">' . my_datee($dateformat, $user['added']) . '</div>';
-    $content .= '</div>';
-    
-    // Последний вход
-    $content .= '<div class="col-12">';
-    $content .= '<small class="text-muted"><i class="fas fa-clock me-1"></i>Last seen</small>';
-    $content .= '<div class="fw-semibold">' . $lastseen . '</div>';
-    $content .= '</div>';
-    $content .= '</div>';
-    $content .= '</div>';
-    
-    // Статистика
-    $content .= '<div class="border-top pt-3">';
-    $content .= '<h6 class="mb-2"><i class="fas fa-chart-bar me-1"></i>Statistics</h6>';
-    $content .= '<div class="row g-2">';
-    
-    // Ratio
-    $ratioClass = '';
-    if ($ratio >= 1.0) {
-        $ratioClass = 'text-success';
-    } elseif ($ratio >= 0.5) {
-        $ratioClass = 'text-warning';
-    } else {
-        $ratioClass = 'text-danger';
-    }
-    
-    $content .= '<div class="col-6">';
-    $content .= '<small class="text-muted">Ratio</small>';
-    $content .= '<div class="fw-bold ' . $ratioClass . '">' . $ratio . '</div>';
-    $content .= '</div>';
-    
-    // Загружено
-    $content .= '<div class="col-6">';
-    $content .= '<small class="text-muted"><i class="fas fa-upload me-1"></i>Uploaded</small>';
-    $content .= '<div class="fw-semibold">' . $uploaded . '</div>';
-    $content .= '</div>';
-    
-    // Скачано
-    $content .= '<div class="col-6">';
-    $content .= '<small class="text-muted"><i class="fas fa-download me-1"></i>Downloaded</small>';
-    $content .= '<div class="fw-semibold">' . $downloaded . '</div>';
-    $content .= '</div>';
-    
-    // Сидбонус
-    $content .= '<div class="col-6">';
-    $content .= '<small class="text-muted"><i class="fas fa-coins me-1"></i>Bonus Points</small>';
-    $content .= '<div class="fw-semibold text-primary">' . ts_nf($user['seedbonus'] ?? 0) . '</div>';
-    $content .= '</div>';
-    $content .= '</div>';
-    $content .= '</div>';
-    
-    // Приглашения
-    $content .= '<div class="border-top pt-3 mt-3">';
-    $content .= '<div class="row g-2">';
-    $content .= '<div class="col-12">';
-    $content .= '<small class="text-muted"><i class="fas fa-envelope me-1"></i>Invites</small>';
-    $content .= '<div class="fw-semibold">' . ts_nf($user['invites'] ?? 0) . ' available</div>';
-    $content .= '</div>';
-    $content .= '</div>';
-    $content .= '</div>';
-    
-    $content .= '</div>'; // popover-body
-    
-    
-    $content .= '</div>'; // popover-content
-    
-    return $content;
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
-function getAvatarForTable(array $user): string
+/** Raw (not HTML-escaped) URL: base + query, empty values dropped */
+function vipUrl(string $base, array $query = []): string
 {
-    $avatarData = format_avatar($user['avatar'] ?? null, '32|32', '32|32');
-    $avatarHtml = $avatarData['html'] ?? '';
-    
-    if ($avatarHtml && !$avatarData['is_html']) {
-        // Если это обычное изображение
-        return str_replace('class="', 'class="rounded-circle ', $avatarHtml);
-    } elseif ($avatarHtml) {
-        // Если это SVG или HTML - оборачиваем в контейнер
-        return '<div style="width: 32px; height: 32px; overflow: hidden; border-radius: 50%;">' . $avatarHtml . '</div>';
-    } else {
-        // Дефолтный аватар
-        return '<div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center" 
-                    style="width: 32px; height: 32px;">
-                   <i class="fas fa-user text-white" style="font-size: 0.9rem;"></i>
-                </div>';
+    $query = array_filter($query, static fn($v) => $v !== null && $v !== '' && $v !== 0);
+    if (!$query) {
+        return $base;
     }
+    return $base . (str_contains($base, '?') ? '&' : '?') . http_build_query($query);
+}
+
+/** Post/Redirect/Get */
+function vipRedirect(string $base, array $query): never
+{
+    header('Location: ' . vipUrl($base, $query), true, 303);
+    exit;
+}
+
+/** Wraps any avatar markup in a round clipping frame (no inline styles: popover sanitizer strips them) */
+function vipAvatar(array $user, int $size): string
+{
+    $dim        = $size . '|' . $size;
+    $avatarData = format_avatar($user['avatar'] ?? null, $dim, $dim);
+    $avatarHtml = $avatarData['html'] ?? '';
+    $sizeClass  = $size >= 64 ? 'vm-avatar-lg' : 'vm-avatar-sm';
+
+    if ($avatarHtml === '') {
+        $avatarHtml = '<i class="fa-solid fa-user"></i>';
+        $sizeClass .= ' vm-avatar-empty';
+    }
+
+    return '<span class="vm-avatar ' . $sizeClass . '">' . $avatarHtml . '</span>';
+}
+
+function getVipUserPopoverContent(array $user): string
+{
+    global $lang, $dateformat, $timeformat;
+
+    $lang->load('tsf_forums');
+
+    $lastseen   = my_datee($dateformat, $user['lastactive']) . ' ' . my_datee($timeformat, $user['lastactive']);
+    $downloaded = mksize($user['downloaded']);
+    $uploaded   = mksize($user['uploaded']);
+    $ratio      = get_user_ratio($user['uploaded'], $user['downloaded']);
+    $isOnline   = (int) ($user['lastactive'] ?? 0) > (TIMENOW - 300);
+
+    $ratioNum  = is_numeric($ratio) ? (float) $ratio : null;
+    $ratioTone = match (true) {
+        $ratioNum === null => 'secondary',
+        $ratioNum >= 1.0   => 'success',
+        $ratioNum >= 0.5   => 'warning',
+        default            => 'danger',
+    };
+
+    $stat = static fn(string $icon, string $label, string $value, string $extra = ''): string =>
+        '<div class="vp-stat">'
+        . '<span class="vp-stat-label"><i class="fa-solid ' . $icon . '"></i>' . $label . '</span>'
+        . '<span class="vp-stat-value ' . $extra . '">' . $value . '</span>'
+        . '</div>';
+
+    $html  = '<div class="vp">';
+    $html .= '<div class="vp-head">';
+    $html .= vipAvatar($user, 64);
+    $html .= '<div class="vp-id">';
+    $html .= '<div class="vp-name">' . vipH($user['username'] ?? '') . '</div>';
+    $html .= '<div class="vp-title">' . vipH($user['title'] ?? 'VIP Member') . '</div>';
+    $html .= $isOnline
+        ? '<span class="vm-pill vm-tone-success"><i class="fa-solid fa-circle vp-dot"></i>Online</span>'
+        : '<span class="vm-pill vm-tone-secondary"><i class="fa-regular fa-circle vp-dot"></i>Offline</span>';
+    $html .= '</div></div>';
+
+    $html .= '<div class="vp-grid">';
+    $html .= $stat('fa-calendar-plus', 'Joined', my_datee($dateformat, $user['added']));
+    $html .= $stat('fa-clock', 'Last seen', $lastseen);
+    $html .= $stat('fa-scale-balanced', 'Ratio', (string) $ratio, 'vm-text-' . $ratioTone);
+    $html .= $stat('fa-coins', 'Bonus points', ts_nf($user['seedbonus'] ?? 0));
+    $html .= $stat('fa-arrow-up', 'Uploaded', $uploaded, 'vm-text-success');
+    $html .= $stat('fa-arrow-down', 'Downloaded', $downloaded, 'vm-text-danger');
+    $html .= $stat('fa-envelope', 'Invites', ts_nf($user['invites'] ?? 0) . ' available');
+    $html .= '</div></div>';
+
+    return $html;
 }
 
 function getVipUntilDisplay(?int $vipUntil): string
 {
-    if (empty($vipUntil)) {
-        return '<span class="badge bg-success"><i class="fas fa-infinity me-1"></i>Unlimited</span>';
-    }
+    global $dateformat;
 
-    global $dateformat, $timeformat;
+    if (empty($vipUntil)) {
+        return '<span class="vm-pill vm-tone-success"><i class="fa-solid fa-infinity"></i>Unlimited</span>';
+    }
 
     $timeLeft = $vipUntil - TIMENOW;
-    $daysLeft = floor($timeLeft / (60 * 60 * 24));
+    $daysLeft = (int) floor($timeLeft / VIP_DAY_SECONDS);
 
-    // Определяем цвет в зависимости от оставшегося времени
-    if ($daysLeft <= 0) {
-        $badgeClass = 'bg-danger';
-    } elseif ($daysLeft <= 7) {
-        $badgeClass = 'bg-warning text-dark';
-    } elseif ($daysLeft <= 30) {
-        $badgeClass = 'bg-info';
-    } else {
-        $badgeClass = 'bg-primary';
-    }
+    [$tone, $icon] = match (true) {
+        $timeLeft <= 0  => ['danger',  'fa-circle-exclamation'],
+        $daysLeft <= 7  => ['warning', 'fa-hourglass-end'],
+        $daysLeft <= 30 => ['info',    'fa-hourglass-half'],
+        default         => ['primary', 'fa-hourglass-start'],
+    };
 
-    return '<span class="badge ' . $badgeClass . '">
-                <i class="fas fa-clock me-1"></i>' . 
-                my_datee($dateformat, $vipUntil) . '<br>
-                <small>' . ($daysLeft > 0 ? mkprettytime(max(0, $timeLeft)) . ' left' : 'Expired (pending cron)') . '</small>
-            </span>';
+    $sub = $timeLeft > 0
+        ? mkprettytime($timeLeft) . ' left'
+        : 'Expired, waiting for cron';
+
+    return '<div class="vm-until">'
+        . '<span class="vm-pill vm-tone-' . $tone . '"><i class="fa-solid ' . $icon . '"></i>' . my_datee($dateformat, $vipUntil) . '</span>'
+        . '<small class="vm-until-sub vm-text-' . $tone . '">' . $sub . '</small>'
+        . '</div>';
 }
 
-// Main processing
-$action = trim($_GET['do'] ?? $_POST['do'] ?? '');
+// ---------------------------------------------------------------------------
+// Request state
+// ---------------------------------------------------------------------------
+$baseUrl = html_entity_decode((string) $_this_script_, ENT_QUOTES, 'UTF-8');
+$src     = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 
-// Handle update action
-if ($action === 'update') {
-    verify_post_check($mybb->get_input('my_post_key'));
+$username    = trim((string) ($src['username'] ?? ''));
+$sortField   = (string) ($src['sortby'] ?? 'username');
+$sortField   = isset(VIP_SORT_FIELDS[$sortField]) ? $sortField : 'username';
+$sortOrder   = strtoupper((string) ($src['type'] ?? VIP_SORT_FIELDS[$sortField]['dir'])) === 'DESC' ? 'DESC' : 'ASC';
+$currentPage = max(1, (int) ($src['page'] ?? 1));
 
-    $addType = trim($_POST['add'] ?? '');
-    $limit = (int) ($_POST['limit'] ?? 0);
-    $userIds = array_filter($_POST['userids'] ?? [], 'is_numeric');
-    $page = (int) ($_POST['page'] ?? 1);
-    
-    if (!empty($userIds) && ($limit > 0 || $addType === 'remove_vip')) {
-        $userIds = array_map('intval', $userIds);
+/** State carried through links and redirects */
+$state = [
+    'username' => $username,
+    'sortby'   => $sortField === 'username' && $sortOrder === 'ASC' ? '' : $sortField,
+    'type'     => $sortField === 'username' && $sortOrder === 'ASC' ? '' : $sortOrder,
+];
+
+// ---------------------------------------------------------------------------
+// POST handling (always ends in a redirect)
+// ---------------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = trim((string) ($_POST['do'] ?? ''));
+
+    // Search: turn the POST into a bookmarkable GET
+    if ($action === 'search_user') {
+        vipRedirect($baseUrl, $state);
+    }
+
+    if ($action === 'update') {
+        $back = $state + ['page' => $currentPage > 1 ? $currentPage : ''];
+
+        if (!verify_post_check($mybb->get_input('my_post_key'), true)) {
+            vipRedirect($baseUrl, $back + ['vipmsg' => 'csrf']);
+        }
+
+        $addType = (string) ($_POST['add'] ?? '');
+        if (!isset(VIP_ACTIONS[$addType])) {
+            vipRedirect($baseUrl, $back + ['vipmsg' => 'bad_action']);
+        }
+
+        $limit = (int) ($_POST['limit'] ?? 0);
+        if ($addType !== 'remove_vip' && ($limit < 1 || $limit > VIP_ACTIONS[$addType]['max'])) {
+            vipRedirect($baseUrl, $back + ['vipmsg' => 'bad_amount', 'act' => $addType]);
+        }
+
+        $userIds = [];
+        foreach ((array) ($_POST['userids'] ?? []) as $raw) {
+            if (is_scalar($raw) && ctype_digit((string) $raw) && (int) $raw > 0) {
+                $userIds[(int) $raw] = (int) $raw;
+            }
+        }
+
+        // Only act on accounts that really are listed here (VIP, not staff)
+        if ($userIds) {
+            $ph = implode(',', array_fill(0, count($userIds), '?'));
+            $q  = $db->sql_query_prepared(
+                "SELECT u.id FROM users u
+                 LEFT JOIN usergroups g ON u.usergroup = g.gid
+                 WHERE u.id IN ({$ph}) AND " . VIP_BASE_WHERE,
+                [...array_values($userIds), VIP_USERGROUP_ID]
+            );
+            $valid = [];
+            while ($q && ($row = $db->fetch_array($q))) {
+                $valid[] = (int) $row['id'];
+            }
+            $userIds = $valid;
+        }
+
+        if (!$userIds) {
+            vipRedirect($baseUrl, $back + ['vipmsg' => 'none_selected']);
+        }
 
         switch ($addType) {
             case 'donoruntil':
-                $extendSeconds = $limit * 7 * 86400;
+                $extendSeconds = $limit * 7 * VIP_DAY_SECONDS;
 
                 foreach ($userIds as $uid) {
-                    $existingQ = $db->sql_query_prepared(
-                        'SELECT vip_until, old_gid FROM auto_vip WHERE userid = ?',
-                        [$uid]
-                    );
-                    $existing = $existingQ ? $db->fetch_array($existingQ) : null;
+                    $existingQ = $db->sql_query_prepared('SELECT vip_until, old_gid FROM auto_vip WHERE userid = ?', [$uid]);
+                    $existing  = $existingQ ? $db->fetch_array($existingQ) : null;
 
                     if ($existing) {
-                        $newUntil = max((int)$existing['vip_until'], TIMENOW) + $extendSeconds;
+                        $newUntil = max((int) $existing['vip_until'], TIMENOW) + $extendSeconds;
                         $db->sql_query_prepared('UPDATE auto_vip SET vip_until = ? WHERE userid = ?', [$newUntil, $uid]);
                     } else {
                         $currentGroupQ = $db->sql_query_prepared('SELECT usergroup FROM users WHERE id = ?', [$uid]);
-                        $currentGroup = $currentGroupQ ? $db->fetch_array($currentGroupQ) : null;
-                        $oldGid = ((int)($currentGroup['usergroup'] ?? 0) === VIP_USERGROUP_ID)
+                        $currentGroup  = $currentGroupQ ? $db->fetch_array($currentGroupQ) : null;
+                        $oldGid = ((int) ($currentGroup['usergroup'] ?? 0) === VIP_USERGROUP_ID)
                             ? UC_USER
-                            : (int)($currentGroup['usergroup'] ?? UC_USER);
+                            : (int) ($currentGroup['usergroup'] ?? UC_USER);
 
                         $db->sql_query_prepared(
                             'INSERT INTO auto_vip (userid, vip_until, old_gid) VALUES (?, ?, ?)',
@@ -245,24 +261,24 @@ if ($action === 'update') {
 
                 write_log('VIP time extended by ' . $limit . ' week(s) for users: ' . implode(', ', $userIds), 'general', 1);
                 break;
-                
+
             case 'seedbonus':
-                $placeholders = implode(',', array_fill(0, count($userIds), '?'));
-                $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id IN ({$placeholders})", [$limit, ...$userIds]);
+                $ph = implode(',', array_fill(0, count($userIds), '?'));
+                $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id IN ({$ph})", [$limit, ...$userIds]);
                 write_log('Gave ' . $limit . ' bonus points to users: ' . implode(', ', $userIds), 'general', 1);
                 break;
-                
+
             case 'invites':
-                $placeholders = implode(',', array_fill(0, count($userIds), '?'));
-                $db->sql_query_prepared("UPDATE users SET invites = invites + ? WHERE id IN ({$placeholders})", [$limit, ...$userIds]);
+                $ph = implode(',', array_fill(0, count($userIds), '?'));
+                $db->sql_query_prepared("UPDATE users SET invites = invites + ? WHERE id IN ({$ph})", [$limit, ...$userIds]);
                 write_log('Gave ' . $limit . ' invite(s) to users: ' . implode(', ', $userIds), 'general', 1);
                 break;
 
             case 'remove_vip':
                 foreach ($userIds as $uid) {
                     $existingQ = $db->sql_query_prepared('SELECT old_gid FROM auto_vip WHERE userid = ?', [$uid]);
-                    $existing = $existingQ ? $db->fetch_array($existingQ) : null;
-                    $newGid = ($existing && (int)$existing['old_gid'] > 0) ? (int)$existing['old_gid'] : UC_USER;
+                    $existing  = $existingQ ? $db->fetch_array($existingQ) : null;
+                    $newGid    = ($existing && (int) $existing['old_gid'] > 0) ? (int) $existing['old_gid'] : UC_USER;
 
                     $db->sql_query_prepared('UPDATE users SET usergroup = ? WHERE id = ?', [$newGid, $uid]);
                     $db->sql_query_prepared('DELETE FROM auto_vip WHERE userid = ?', [$uid]);
@@ -271,444 +287,334 @@ if ($action === 'update') {
                 write_log('VIP status manually removed by staff for users: ' . implode(', ', $userIds), 'general', 1);
                 break;
         }
+
+        // After a removal the current page may be past the end — the GET clamps it
+        vipRedirect($baseUrl, $back + ['vipmsg' => $addType, 'n' => count($userIds), 'amt' => $limit]);
     }
 }
 
-// Build search conditions
-$searchConditions = '';
+// ---------------------------------------------------------------------------
+// Flash message (from PRG redirect)
+// ---------------------------------------------------------------------------
+$flash    = null;
+$flashKey = (string) ($_GET['vipmsg'] ?? '');
+$flashN   = max(0, (int) ($_GET['n'] ?? 0));
+$flashAmt = max(0, (int) ($_GET['amt'] ?? 0));
+$flashAct = (string) ($_GET['act'] ?? '');
+
+$flash = match ($flashKey) {
+    'donoruntil'    => ['success', 'fa-calendar-check', 'VIP extended by ' . ts_nf($flashAmt) . ' week(s) for ' . ts_nf($flashN) . ' account(s).'],
+    'seedbonus'     => ['success', 'fa-coins',          ts_nf($flashAmt) . ' bonus points given to ' . ts_nf($flashN) . ' account(s).'],
+    'invites'       => ['success', 'fa-envelope-circle-check', ts_nf($flashAmt) . ' invite(s) given to ' . ts_nf($flashN) . ' account(s).'],
+    'remove_vip'    => ['success', 'fa-user-check',     'VIP removed from ' . ts_nf($flashN) . ' account(s). Their previous group was restored.'],
+    'none_selected' => ['warning', 'fa-hand-pointer',   'Nothing was changed: select at least one VIP account in the table.'],
+    'bad_amount'    => ['warning', 'fa-hashtag',        'Nothing was changed: enter an amount from 1 to '
+                            . ts_nf(VIP_ACTIONS[$flashAct]['max'] ?? 1) . (isset(VIP_ACTIONS[$flashAct]) ? ' ' . VIP_ACTIONS[$flashAct]['unit'] : '') . '.'],
+    'bad_action'    => ['danger',  'fa-circle-xmark',   'Nothing was changed: unknown action.'],
+    'csrf'          => ['danger',  'fa-shield-halved',  'Nothing was changed: the form has expired. Reload the page and try again.'],
+    default         => null,
+};
+
+// ---------------------------------------------------------------------------
+// KPI stats (whole VIP group, ignores search)
+// ---------------------------------------------------------------------------
+$kpiQ = $db->sql_query_prepared(
+    "SELECT COUNT(*) AS total,
+            SUM(CASE WHEN av.vip_until IS NULL OR av.vip_until = 0 THEN 1 ELSE 0 END) AS unlimited,
+            SUM(CASE WHEN av.vip_until > ? AND av.vip_until <= ? THEN 1 ELSE 0 END)   AS expiring,
+            SUM(CASE WHEN av.vip_until > 0 AND av.vip_until <= ? THEN 1 ELSE 0 END)   AS expired
+       FROM users u
+       LEFT JOIN usergroups g ON u.usergroup = g.gid
+       LEFT JOIN auto_vip av  ON av.userid = u.id
+      WHERE " . VIP_BASE_WHERE,
+    [TIMENOW, TIMENOW + 7 * VIP_DAY_SECONDS, TIMENOW, VIP_USERGROUP_ID]
+);
+$kpiRow = $kpiQ ? $db->fetch_array($kpiQ) : [];
+$kpi = [
+    'total'     => (int) ($kpiRow['total'] ?? 0),
+    'unlimited' => (int) ($kpiRow['unlimited'] ?? 0),
+    'expiring'  => (int) ($kpiRow['expiring'] ?? 0),
+    'expired'   => (int) ($kpiRow['expired'] ?? 0),
+];
+
+// ---------------------------------------------------------------------------
+// Search + count
+// ---------------------------------------------------------------------------
+$searchSql    = '';
 $searchParams = [];
-$username = trim($_GET['username'] ?? $_POST['username'] ?? '');
+if ($username !== '') {
+    $searchSql    = ' AND (u.username = ? OR u.username LIKE ?) ';
+    $searchParams = [$username, '%' . addcslashes($username, '%_\\') . '%'];
 
-if ($action === 'search_user' && !empty($username)) {
-    $searchConditions = " AND (u.username = ? OR u.username LIKE ?) ";
-    $searchParams = [$username, "%{$username}%"];
-    $linkParams = 'username=' . htmlspecialchars($username) . '&amp;do=search_user&amp;';
+    $countQ     = $db->sql_query_prepared(
+        "SELECT COUNT(*) AS total FROM users u
+         LEFT JOIN usergroups g ON u.usergroup = g.gid
+         WHERE " . VIP_BASE_WHERE . $searchSql,
+        [VIP_USERGROUP_ID, ...$searchParams]
+    );
+    $countRow   = $countQ ? $db->fetch_array($countQ) : [];
+    $totalUsers = (int) ($countRow['total'] ?? 0);
 } else {
-    $linkParams = '';
+    $totalUsers = $kpi['total'];
 }
 
-// Get total count using prepared statement
-$sql = "SELECT COUNT(*) as total 
-        FROM users u 
-        LEFT JOIN usergroups g ON u.usergroup = g.gid 
-        WHERE u.usergroup = ? 
-        AND g.cansettingspanel = '0' 
-        AND g.canstaffpanel = '0' 
-        AND g.issupermod = '0' 
-        {$searchConditions}";
-
-$params = [VIP_USERGROUP_ID];
-if (!empty($searchParams)) {
-    $params = array_merge($params, $searchParams);
-}
-
-$countResult = $db->sql_query_prepared($sql, $params);
-if ($countResult) {
-    $countData = $db->fetch_array($countResult);
-    $totalUsers = (int) ($countData['total'] ?? 0);
-} else {
-    $totalUsers = 0;
-}
-
-// Pagination
-$perPage = $torrentsperpage ?? DEFAULT_PER_PAGE;
-$currentPage = max(1, (int) ($_GET['page'] ?? 1));
-$totalPages = max(1, ceil($totalUsers / $perPage));
+// ---------------------------------------------------------------------------
+// Pagination + list
+// ---------------------------------------------------------------------------
+$perPage = (int) ($torrentsperpage ?? 0);
+$perPage = $perPage > 0 ? $perPage : DEFAULT_PER_PAGE;
+$totalPages  = max(1, (int) ceil($totalUsers / $perPage));
 $currentPage = min($currentPage, $totalPages);
-$start = ($currentPage - 1) * $perPage;
+$start       = ($currentPage - 1) * $perPage;
 
-// Sorting
-$sortField = $_GET['sortby'] ?? 'username';
-$sortField = in_array($sortField, ALLOWED_SORT_FIELDS, true) ? $sortField : 'username';
-$sortOrder = ($_GET['type'] ?? 'ASC') === 'DESC' ? 'ASC' : 'DESC';
-$sortIcon = $sortOrder === 'ASC' ? '↑' : '↓';
+$orderSql = VIP_SORT_FIELDS[$sortField]['sql'] . ' ' . $sortOrder . ', u.id ASC';
 
-// Build main query using prepared statement
-$mainQuery = "SELECT u.*, g.namestyle, g.title, av.vip_until, av.old_gid
-              FROM users u 
-              LEFT JOIN usergroups g ON u.usergroup = g.gid 
-              LEFT JOIN auto_vip av ON av.userid = u.id
-              WHERE u.usergroup = ? 
-              AND g.cansettingspanel = '0' 
-              AND g.canstaffpanel = '0' 
-              AND g.issupermod = '0' 
-              {$searchConditions} 
-              ORDER BY u.{$sortField} {$sortOrder} 
-              LIMIT ?, ?";
+$listQ = $db->sql_query_prepared(
+    "SELECT u.*, g.namestyle, g.title, av.vip_until, av.old_gid
+       FROM users u
+       LEFT JOIN usergroups g ON u.usergroup = g.gid
+       LEFT JOIN auto_vip av  ON av.userid = u.id
+      WHERE " . VIP_BASE_WHERE . $searchSql . "
+      ORDER BY {$orderSql}
+      LIMIT ?, ?",
+    [VIP_USERGROUP_ID, ...$searchParams, $start, $perPage]
+);
 
-$params = [VIP_USERGROUP_ID];
-if (!empty($searchParams)) {
-    $params = array_merge($params, $searchParams);
+$vipRows = [];
+while ($listQ && ($row = $db->fetch_array($listQ))) {
+    $vipRows[] = $row;
 }
-$params[] = $start;
-$params[] = $perPage;
 
-$vipUsers = $db->sql_query_prepared($mainQuery, $params);
-$vipUsersCount = $vipUsers ? $db->num_rows($vipUsers) : 0;
+$pageUrl   = vipH(vipUrl($baseUrl, $state)) . '&amp;';
+$multipage = $totalPages > 1 ? multipage($totalUsers, $perPage, $currentPage, $pageUrl) : '';
 
-// Generate pagination
-$pageUrl = $_this_script_ . '&amp;' . $linkParams;
-$multipage = multipage($totalUsers, $perPage, $currentPage, $pageUrl);
+$shownFrom = $vipRows ? $start + 1 : 0;
+$shownTo   = $start + count($vipRows);
 
-// Output HTML
-stdhead("Manage VIP Accounts (Total " . ts_nf($totalUsers) . " VIP Accounts found)");
+/** Sortable header link */
+$sortLink = static function (string $field, string $label, string $icon, string $align = '') use ($baseUrl, $username, $sortField, $sortOrder): string {
+    $active  = $sortField === $field;
+    $nextDir = $active ? ($sortOrder === 'ASC' ? 'DESC' : 'ASC') : VIP_SORT_FIELDS[$field]['dir'];
+    $href    = vipUrl($baseUrl, ['username' => $username, 'sortby' => $field, 'type' => $nextDir]);
+    $caret   = $active ? ($sortOrder === 'ASC' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort';
+
+    return '<a href="' . vipH($href) . '" class="vm-sort' . ($active ? ' is-active' : '') . ($align ? ' ' . $align : '') . '"'
+        . ($active ? ' aria-sort="' . ($sortOrder === 'ASC' ? 'ascending' : 'descending') . '"' : '') . '>'
+        . '<i class="fa-solid ' . $icon . '"></i><span>' . $label . '</span>'
+        . '<i class="fa-solid ' . $caret . ' vm-caret"></i></a>';
+};
+
+// ---------------------------------------------------------------------------
+// Output
+// ---------------------------------------------------------------------------
+stdhead('Manage VIP Accounts (Total ' . ts_nf($totalUsers) . ' VIP Accounts found)');
 ?>
+<link rel="stylesheet" href="<?= vipH($BASEURL) ?>/include/templates/default/style/sweetalert2.min.css">
 
-<div class="container mt-3">
+<div class="container mt-3 vm-page">
+
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-primary text-white rounded-top">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h4 class="mb-0">
-                                <i class="fas fa-crown me-2"></i>Manage VIP Accounts
-                            </h4>
-                            <small class="opacity-75">VIP Members Management Panel</small>
-                        </div>
-                        <span class="badge bg-light text-dark fs-6">
-                            <i class="fas fa-users me-1"></i><?= ts_nf($totalUsers) ?> accounts
-                        </span>
+    <div class="card vm-card vm-header mb-3">
+        <div class="card-body d-flex align-items-center gap-3 flex-wrap">
+            <span class="vm-icon-square vm-tone-warning"><i class="fa-solid fa-crown"></i></span>
+            <div class="flex-grow-1">
+                <h1 class="vm-title">Manage VIP accounts</h1>
+                <p class="vm-subtitle mb-0">Extend VIP time, give bonus points or invites, or remove VIP from selected members.</p>
+            </div>
+            <span class="vm-pill vm-tone-secondary" title="Module version"><i class="fa-solid fa-code-branch"></i><?= vipH(M_VIP_VERSION) ?></span>
+        </div>
+    </div>
+
+    <!-- KPI tiles -->
+    <div class="row g-3 mb-3">
+        <?php
+        $tiles = [
+            ['primary', 'fa-users',               $kpi['total'],     'VIP accounts'],
+            ['success', 'fa-infinity',            $kpi['unlimited'], 'Unlimited'],
+            ['warning', 'fa-hourglass-end',       $kpi['expiring'],  'Expire within 7 days'],
+            ['danger',  'fa-circle-exclamation',  $kpi['expired'],   'Expired, waiting for cron'],
+        ];
+        foreach ($tiles as [$tone, $icon, $value, $label]): ?>
+        <div class="col-6 col-lg-3">
+            <div class="card vm-card vm-kpi h-100">
+                <div class="card-body d-flex align-items-center gap-3">
+                    <span class="vm-icon-square vm-icon-square-sm vm-tone-<?= $tone ?>"><i class="fa-solid <?= $icon ?>"></i></span>
+                    <div class="min-w-0">
+                        <div class="vm-kpi-value"><?= ts_nf($value) ?></div>
+                        <div class="vm-kpi-label"><?= $label ?></div>
                     </div>
                 </div>
             </div>
         </div>
+        <?php endforeach; ?>
     </div>
 
-    <!-- Search Form -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <form method="post" action="<?= $_this_script_ ?>" class="row g-3 align-items-end">
-                        <input type="hidden" name="do" value="search_user">
-                        
-                        <div class="col-md-8">
-                            <label for="username" class="form-label fw-semibold">
-                                <i class="fas fa-search me-1"></i>Search Username
-                            </label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light">
-                                    <i class="fas fa-user"></i>
-                                </span>
-                                <input type="text" 
-                                       class="form-control" 
-                                       id="username" 
-                                       name="username" 
-                                       value="<?= htmlspecialchars($username) ?>"
-                                       placeholder="Enter username or part of username...">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-search me-1"></i>Search
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="col-md-4 text-end">
-                            <?php if (!empty($username)): ?>
-                                <a href="<?= $_this_script_ ?>" class="btn btn-outline-secondary">
-                                    <i class="fas fa-times me-1"></i>Clear Search
-                                </a>
-                            <?php endif; ?>
-                            <button type="button" class="btn btn-outline-info" data-bs-toggle="popover" 
-                                    data-bs-placement="bottom" data-bs-html="true"
-                                    data-bs-content="<small>Search for VIP users by username. You can search for exact matches or partial matches.</small>">
-                                <i class="fas fa-info-circle"></i>
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Pagination Top -->
-    <?php if ($totalPages > 1): ?>
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="d-flex justify-content-center">
-                <nav aria-label="VIP users pagination">
-                    <?= $multipage ?>
-                </nav>
-            </div>
-        </div>
+    <?php if ($flash): [$fTone, $fIcon, $fText] = $flash; ?>
+    <div class="vm-flash vm-tone-<?= $fTone ?> mb-3" role="<?= $fTone === 'success' ? 'status' : 'alert' ?>">
+        <i class="fa-solid <?= $fIcon ?>"></i>
+        <span class="flex-grow-1"><?= vipH($fText) ?></span>
+        <button type="button" class="vm-flash-close" aria-label="Dismiss" onclick="this.parentElement.remove()"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <?php endif; ?>
 
-    <!-- VIP Users Table -->
-    <form method="post" action="<?= $_this_script_ ?>" name="update">
-        <input type="hidden" name="do" value="update">
-        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) ?>">
-        <input type="hidden" name="page" value="<?= $currentPage ?>">
-        
-        <div class="row">
-            <div class="col-12">
-                <div class="card shadow-sm border-0">
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th width="20">
-                                            <div class="form-check">
-                                                <input class="form-check-input" 
-                                                       type="checkbox" 
-                                                       checkall="group" 
-                                                       onclick="select_deselectAll('update', this, 'group')">
-                                            </div>
-                                        </th>
-                                        <th>
-                                            <a href="<?= $_this_script_ ?>&amp;sortby=username&amp;type=<?= $sortField === 'username' ? $sortOrder : 'ASC' ?>"
-                                               class="text-decoration-none text-dark d-flex align-items-center">
-                                                <i class="fas fa-user me-1"></i>
-                                                Username <?= $sortField === 'username' ? $sortIcon : '' ?>
-                                            </a>
-                                        </th>
-                                        <th>VIP Status</th>
-                                        <th>
-                                            <a href="<?= $_this_script_ ?>&amp;sortby=seedbonus&amp;type=<?= $sortField === 'seedbonus' ? $sortOrder : 'ASC' ?>"
-                                               class="text-decoration-none text-dark d-flex align-items-center">
-                                                <i class="fas fa-coins me-1"></i>
-                                                Points <?= $sortField === 'seedbonus' ? $sortIcon : '' ?>
-                                            </a>
-                                        </th>
-                                        <th>
-                                            <a href="<?= $_this_script_ ?>&amp;sortby=invites&amp;type=<?= $sortField === 'invites' ? $sortOrder : 'ASC' ?>"
-                                               class="text-decoration-none text-dark d-flex align-items-center">
-                                                <i class="fas fa-envelope me-1"></i>
-                                                Invites <?= $sortField === 'invites' ? $sortIcon : '' ?>
-                                            </a>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if ($vipUsers && $vipUsersCount > 0): ?>
-                                        <?php while ($vipUsers && ($vip = $db->fetch_array($vipUsers))): ?>
-                                        <tr class="align-middle">
-                                            <td>
-                                                <div class="form-check">
-                                                    <input class="form-check-input" 
-                                                           type="checkbox" 
-                                                           name="userids[]" 
-                                                           value="<?= (int) ($vip['id'] ?? 0) ?>" 
-                                                           checkme="group">
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <a href="<?= $BASEURL . '/' . get_profile_link($vip['id'] ?? 0) ?>" 
-                                                   target="_blank"
-                                                   class="text-decoration-none d-flex align-items-center user-popover-link"
-                                                   data-bs-toggle="popover"
-                                                   data-bs-custom-class="user-popover"
-                                                   data-bs-html="true"
-                                                   data-bs-content="<?= htmlspecialchars(getVipUserPopoverContent($vip), ENT_QUOTES) ?>"
-                                                   data-bs-placement="auto"
-                                                   data-bs-trigger="hover focus">
-                                                    <div class="flex-shrink-0 me-2">
-                                                        <?= getAvatarForTable($vip) ?>
-                                                    </div>
-                                                    <div class="flex-grow-1">
-                                                        <div class="fw-semibold"><?= format_name($vip['username'] ?? '', $vip['usergroup'] ?? 0) ?></div>
-                                                        <small class="text-muted"><?= htmlspecialchars($vip['title'] ?? 'VIP Member') ?></small>
-                                                    </div>
-                                                    <i class="fas fa-info-circle text-info ms-2" style="font-size: 0.8em;"></i>
-                                                </a>
-                                            </td>
-                                            <td><?= getVipUntilDisplay(isset($vip['vip_until']) ? (int)$vip['vip_until'] : null) ?></td>
-                                            <td class="text-center">
-                                                <span class="badge bg-warning text-dark">
-                                                    <i class="fas fa-coins me-1"></i><?= ts_nf($vip['seedbonus'] ?? 0) ?>
-                                                </span>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-secondary">
-                                                    <i class="fas fa-envelope me-1"></i><?= ts_nf($vip['invites'] ?? 0) ?>
-                                                </span>
-                                            </td>
-                                        </tr>
-                                        <?php endwhile; ?>
-                                    <?php else: ?>
-                                    <tr>
-                                        <td colspan="5" class="text-center py-5">
-                                            <div class="text-muted">
-                                                <i class="fas fa-users fa-3x mb-3 opacity-50"></i>
-                                                <h5 class="mb-2">No VIP users found</h5>
-                                                <p class="mb-0">Try adjusting your search criteria</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+    <!-- Toolbar: search + range -->
+    <div class="card vm-card mb-3">
+        <div class="card-body">
+            <form method="post" action="<?= vipH($baseUrl) ?>" class="vm-toolbar">
+                <input type="hidden" name="do" value="search_user">
+                <input type="hidden" name="sortby" value="<?= vipH($sortField) ?>">
+                <input type="hidden" name="type" value="<?= vipH($sortOrder) ?>">
+
+                <div class="vm-search">
+                    <i class="fa-solid fa-magnifying-glass vm-search-icon"></i>
+                    <input type="search" class="form-control vm-input" id="username" name="username"
+                           value="<?= vipH($username) ?>" placeholder="Find a VIP by username"
+                           autocomplete="off" aria-label="Username">
                 </div>
+                <button type="submit" class="btn btn-primary vm-btn"><i class="fa-solid fa-magnifying-glass me-1"></i>Search</button>
+                <?php if ($username !== ''): ?>
+                <a href="<?= vipH(vipUrl($baseUrl, ['sortby' => $state['sortby'], 'type' => $state['type']])) ?>" class="btn btn-outline-secondary vm-btn">
+                    <i class="fa-solid fa-xmark me-1"></i>Clear
+                </a>
+                <?php endif; ?>
+
+                <span class="vm-range ms-auto">
+                    <i class="fa-solid fa-list-ol"></i>
+                    <?php if ($totalUsers > 0): ?>
+                        <?= ts_nf($shownFrom) ?>–<?= ts_nf($shownTo) ?> of <?= ts_nf($totalUsers) ?>
+                    <?php else: ?>
+                        0 found
+                    <?php endif; ?>
+                </span>
+            </form>
+        </div>
+    </div>
+
+    <?php if ($multipage !== ''): ?>
+    <nav class="vm-pager mb-3" aria-label="VIP users pagination"><?= $multipage ?></nav>
+    <?php endif; ?>
+
+    <!-- VIP table + sticky action bar -->
+    <form method="post" action="<?= vipH($baseUrl) ?>" name="update" id="vmUpdateForm">
+        <input type="hidden" name="do" value="update">
+        <input type="hidden" name="my_post_key" value="<?= vipH($mybb->post_code ?? '') ?>">
+        <input type="hidden" name="page" value="<?= $currentPage ?>">
+        <input type="hidden" name="username" value="<?= vipH($username) ?>">
+        <input type="hidden" name="sortby" value="<?= vipH($sortField) ?>">
+        <input type="hidden" name="type" value="<?= vipH($sortOrder) ?>">
+
+        <div class="card vm-card">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 vm-table">
+                    <thead>
+                        <tr>
+                            <th class="vm-col-check">
+                                <input class="form-check-input" type="checkbox" checkall="group" id="vmCheckAll"
+                                       aria-label="Select all on this page"
+                                       onclick="if (typeof select_deselectAll === 'function') select_deselectAll('update', this, 'group')">
+                            </th>
+                            <th><?= $sortLink('username', 'Member', 'fa-user') ?></th>
+                            <th><?= $sortLink('vip_until', 'VIP until', 'fa-crown') ?></th>
+                            <th class="text-end"><?= $sortLink('seedbonus', 'Bonus points', 'fa-coins', 'justify-content-end') ?></th>
+                            <th class="text-end"><?= $sortLink('invites', 'Invites', 'fa-envelope', 'justify-content-end') ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php if ($vipRows): ?>
+                        <?php foreach ($vipRows as $vip):
+                            $uid = (int) ($vip['id'] ?? 0); ?>
+                        <tr class="vm-row">
+                            <td class="vm-col-check">
+                                <input class="form-check-input" type="checkbox" name="userids[]" value="<?= $uid ?>"
+                                       checkme="group" id="vmUser<?= $uid ?>"
+                                       aria-label="Select <?= vipH($vip['username'] ?? '') ?>">
+                            </td>
+                            <td>
+                                <div class="vm-member">
+                                    <?= vipAvatar($vip, 32) ?>
+                                    <div class="min-w-0">
+                                        <a href="<?= vipH($BASEURL . '/' . get_profile_link($uid)) ?>" target="_blank" rel="noopener"
+                                           class="vm-member-name user-popover-link"
+                                           data-bs-toggle="popover"
+                                           data-bs-custom-class="user-popover"
+                                           data-bs-html="true"
+                                           data-bs-content="<?= vipH(getVipUserPopoverContent($vip)) ?>"
+                                           data-bs-placement="auto"
+                                           data-bs-trigger="hover focus"><?= format_name(htmlspecialchars_uni((string) ($vip['username'] ?? '')), (int) ($vip['usergroup'] ?? 0)) ?></a>
+                                        <div class="vm-member-title"><?= vipH($vip['title'] ?? 'VIP Member') ?></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td><?= getVipUntilDisplay(isset($vip['vip_until']) ? (int) $vip['vip_until'] : null) ?></td>
+                            <td class="text-end">
+                                <span class="vm-num"><i class="fa-solid fa-coins vm-text-warning"></i><?= ts_nf($vip['seedbonus'] ?? 0) ?></span>
+                            </td>
+                            <td class="text-end">
+                                <span class="vm-num"><i class="fa-solid fa-envelope vm-text-info"></i><?= ts_nf($vip['invites'] ?? 0) ?></span>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="5" class="vm-empty">
+                                <span class="vm-icon-square vm-tone-secondary mb-3"><i class="fa-solid <?= $username !== '' ? 'fa-magnifying-glass' : 'fa-crown' ?>"></i></span>
+                                <?php if ($username !== ''): ?>
+                                    <h2 class="vm-empty-title">No VIP account matches “<?= vipH($username) ?>”</h2>
+                                    <p class="mb-3">Check the spelling or search for part of the name.</p>
+                                    <a href="<?= vipH($baseUrl) ?>" class="btn btn-outline-secondary vm-btn"><i class="fa-solid fa-xmark me-1"></i>Clear search</a>
+                                <?php else: ?>
+                                    <h2 class="vm-empty-title">There are no VIP accounts yet</h2>
+                                    <p class="mb-0">Members appear here once they buy VIP or staff move them into the VIP group.</p>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- Bulk Actions -->
-        <?php if ($totalUsers > 0): ?>
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-light">
-                        <h6 class="mb-0"><i class="fas fa-tasks me-2"></i>Bulk Actions</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-3 align-items-center">
-                            <div class="col-md-3" id="limitFormGroup">
-                                <label for="limit" class="form-label fw-semibold">
-                                    <i class="fas fa-hashtag me-1"></i>Amount:
-                                </label>
-                                <input type="number" 
-                                       class="form-control" 
-                                       id="limit" 
-                                       name="limit" 
-                                       min="1" 
-                                       placeholder="Enter amount">
-                            </div>
-                            
-                            <div class="col-md-4">
-                                <label for="add" class="form-label fw-semibold">
-                                    <i class="fas fa-cog me-1"></i>Action:
-                                </label>
-                                <select class="form-select" id="add" name="add" onchange="
-                                    var isRemove = this.value === 'remove_vip';
-                                    document.getElementById('limitFormGroup').style.display = isRemove ? 'none' : '';
-                                    document.getElementById('limit').required = !isRemove;
-                                ">
-                                    <option value="donoruntil"><i class="fas fa-calendar-plus me-1"></i>Add Extra Donor Time (weeks)</option>
-                                    <option value="seedbonus"><i class="fas fa-coins me-1"></i>Give Extra Karma Points</option>
-                                    <option value="invites"><i class="fas fa-envelope me-1"></i>Give Extra Invites</option>
-                                    <option value="remove_vip"><i class="fas fa-user-slash me-1"></i>Remove VIP Now</option>
-                                </select>
-                            </div>
-                            
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold invisible">Submit</label>
-                                <button type="submit" class="btn btn-primary w-100" onclick="
-                                    if (document.getElementById('add').value === 'remove_vip') {
-                                        return confirm('Remove VIP status from all selected users immediately? This cannot be undone.');
-                                    }
-                                ">
-                                    <i class="fas fa-sync-alt me-1"></i>Update Selected Accounts
-                                </button>
-                            </div>
-                            
-                            <div class="col-md-2">
-                                <div class="card bg-light border">
-                                    <div class="card-body text-center p-2">
-                                        <small class="text-muted d-block">Selected</small>
-                                        <span id="selectedCount" class="fw-bold text-primary fs-5">0</span>
-                                        <small class="text-muted d-block">users</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <?php if ($vipRows): ?>
+        <div class="vm-actionbar" id="vmActionBar">
+            <span class="vm-selected" title="Selected accounts">
+                <i class="fa-solid fa-check-double"></i><span id="selectedCount">0</span> selected
+            </span>
+
+            <div class="vm-seg" role="radiogroup" aria-label="Action">
+                <?php $first = true; foreach (VIP_ACTIONS as $key => $a): ?>
+                <input type="radio" class="btn-check" name="add" id="vmAct_<?= $key ?>" value="<?= $key ?>"
+                       data-unit="<?= vipH($a['unit']) ?>" data-max="<?= (int) $a['max'] ?>" data-label="<?= vipH($a['label']) ?>"
+                       autocomplete="off"<?= $first ? ' checked' : '' ?>>
+                <label class="vm-seg-btn vm-tone-<?= $a['tone'] ?>" for="vmAct_<?= $key ?>">
+                    <i class="fa-solid <?= $a['icon'] ?>"></i><span><?= vipH($a['label']) ?></span>
+                </label>
+                <?php $first = false; endforeach; ?>
             </div>
+
+            <div class="vm-amount" id="limitFormGroup">
+                <input type="number" class="form-control vm-input" id="limit" name="limit" min="1"
+                       max="<?= (int) VIP_ACTIONS['donoruntil']['max'] ?>" placeholder="Amount" required aria-label="Amount">
+                <span class="vm-unit" id="vmUnit"><?= vipH(VIP_ACTIONS['donoruntil']['unit']) ?></span>
+            </div>
+
+            <button type="submit" class="btn btn-primary vm-btn ms-auto" id="vmSubmit" disabled>
+                <i class="fa-solid fa-bolt me-1"></i>Apply to selected
+            </button>
         </div>
         <?php endif; ?>
     </form>
 
-    <!-- Pagination Bottom -->
-    <?php if ($totalPages > 1): ?>
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-center">
-                <nav aria-label="VIP users pagination bottom">
-                    <?= $multipage ?>
-                </nav>
-            </div>
-        </div>
-    </div>
+    <?php if ($multipage !== ''): ?>
+    <nav class="vm-pager mt-3" aria-label="VIP users pagination bottom"><?= $multipage ?></nav>
     <?php endif; ?>
 </div>
 
+<script src="<?= vipH($BASEURL) ?>/scripts/popover.js"></script>
+<script src="<?= vipH($BASEURL) ?>/scripts/sweetalert2.min.js"></script>
 
-<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/popover.js"></script>
+<script src="<?= vipH($BASEURL) ?>/admin/scripts/manage_vip.js?ver=336"></script>
 
-<script>
-// Update selected count
-document.addEventListener('DOMContentLoaded', function() {
-    const checkboxes = document.querySelectorAll('input[name="userids[]"]');
-    const selectedCount = document.getElementById('selectedCount');
-    
-    function updateSelectedCount() {
-        const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
-        selectedCount.textContent = checked;
-        
-        // Обновляем цвет в зависимости от количества
-        if (checked > 0) {
-            selectedCount.parentElement.classList.add('bg-selected');
-        } else {
-            selectedCount.parentElement.classList.remove('bg-selected');
-        }
-    }
-    
-    if (checkboxes.length > 0) {
-        checkboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', updateSelectedCount);
-        });
-        
-        // Инициализация счетчика
-        updateSelectedCount();
-    }
-    
-   
-});
-</script>
-
-<style>
-.user-popover {
-    max-width: 400px;
-    min-width: 350px;
-}
-.user-popover .popover-header {
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
-    padding: 1rem;
-}
-.user-popover .popover-body {
-    padding: 1.25rem;
-}
-.user-popover .popover-footer {
-    background-color: #f8f9fa;
-    border-top: 1px solid #dee2e6;
-    padding: 0.75rem;
-}
-.user-popover .border-top {
-    border-top: 1px solid #dee2e6 !important;
-}
-.user-popover .border-bottom {
-    border-bottom: 1px solid #dee2e6 !important;
-}
-.user-popover .badge-sm {
-    font-size: 0.75em;
-    padding: 0.25em 0.5em;
-}
-.user-popover .row {
-    margin: 0 -0.5rem;
-}
-.user-popover .col-6, .user-popover .col-12 {
-    padding: 0 0.5rem;
-}
-.bg-selected {
-    background-color: #e7f3ff !important;
-    border-color: #0d6efd !important;
-}
-.table tbody tr:hover {
-    background-color: rgba(13, 110, 253, 0.05);
-}
-.user-popover-link:hover {
-    background-color: transparent !important;
-}
-.avatar-ring2 {
-    width: 100%;
-    height: 100%;
-}
-</style>
+<link rel="stylesheet" href="<?= vipH($BASEURL) ?>/admin/templates/manage_vip.css?ver=336">
 
 <?php
 stdfoot();

@@ -218,32 +218,138 @@ foreach (['action', 'do', 'module'] as $input) {
 }
 
 
-function output_auto_redirect(string $form, string $prompt): void
+/**
+ * Описание всех задач: используется и в меню, и на странице прогресса.
+ * action => [section, icon, color-class, title, description, per-page input, default per page]
+ */
+function rr_tasks(): array
 {
-    global $lang;
-    echo <<<HTML
-<div class="container mt-3">
-    <p>{$prompt}</p>
-    <br />
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const button = document.getElementById('proceed_button');
-            if (button) {
-                button.value = 'Automatically Redirecting\u2026';
-                button.disabled = true;
-                button.style.color = '#aaa';
-                button.style.borderColor = '#aaa';
-                const form = button.closest('form');
-                if (form) form.submit();
-            }
-        });
-    </script>
-    <button class="btn btn-primary" type="button" id="proceed_button" disabled>
-        Automatically Redirecting&hellip;
-    </button>
-</div>
+    return [
+        'do_rebuildforumcounters'   => ['forums', 'fa-folder-tree',  'ic-blue',   'Forum counters',        'Post/thread counters and last post of every forum.',                         'forumcounters',  50],
+        'do_rebuildthreadcounters'  => ['forums', 'fa-comments',     'ic-blue',   'Thread counters',       'Reply/view counters and last post of every thread.',                         'threadcounters', 500],
+        'do_rebuildpollcounters'    => ['forums', 'fa-chart-pie',    'ic-blue',   'Poll counters',         'Vote counters and totals of every poll.',                                    'pollcounters',   500],
+        'do_recountthreadratings'   => ['forums', 'fa-star',         'ic-amber',  'Thread ratings',        'Average rating and vote count cached on each thread.',                       'threadratings',  500],
+        'do_recountuserposts'       => ['users',  'fa-file-lines',   'ic-green',  'User post counts',      'Post count of each user from the posts in the database.',                    'userposts',      500],
+        'do_recountuserthreads'     => ['users',  'fa-clone',        'ic-green',  'User thread counts',    'Thread count of each user from the threads in the database.',                'userthreads',    500],
+        'do_comments'               => ['users',  'fa-comment',      'ic-green',  'User comment counts',   'Torrent comment count of each user.',                                        'comments',       500],
+        'do_recountprivatemessages' => ['users',  'fa-envelope',     'ic-green',  'Private messages',      'Private message counters of each user.',                                     'privatemessages',500],
+        'do_rebuildattachmentthumbs'        => ['media', 'fa-image',  'ic-purple', 'Attachment thumbnails',         'Regenerate forum attachment thumbnails at the current size.', 'attachmentthumbs',        20],
+        'do_rebuildcommentattachmentthumbs' => ['media', 'fa-images', 'ic-purple', 'Comment attachment thumbnails', 'Regenerate comment attachment thumbnails at the current size.', 'commentattachmentthumbs', 20],
+        'do_recounttorrentcomments' => ['site',   'fa-magnet',       'ic-red',    'Torrent comment counts','Comment count cached on each torrent.',                                      'torrentcomments',500],
+        'do_recountstats'           => ['site',   'fa-chart-column', 'ic-teal',   'Board statistics',      'Totals on the forum index and statistics pages. Runs in one step.',          '',               0],
+    ];
+}
+
+function rr_styles(): void
+{
+    echo <<<'HTML'
+<style>
+.rr .rr-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.rr .rr-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
+.rr .rr-head-icon, .rr .rr-ico, .rr .rr-sec-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rr .rr-head-icon { width: 48px; height: 48px; font-size: 1.35rem; border-radius: .85rem; }
+.rr .rr-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.rr .rr-sub { color: var(--bs-secondary-color); font-size: .95rem; }
+.rr .rr-muted { font-size: .86rem; color: var(--bs-secondary-color); }
+.rr .ic-blue   { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.12); }
+.rr .ic-green  { color: #16a34a; background: rgba(34,197,94,.12); }
+.rr .ic-amber  { color: #d97706; background: rgba(245,158,11,.14); }
+.rr .ic-purple { color: #7c3aed; background: rgba(124,58,237,.12); }
+.rr .ic-red    { color: #dc2626; background: rgba(239,68,68,.12); }
+.rr .ic-teal   { color: #0891b2; background: rgba(8,145,178,.12); }
+.rr .btn { border-radius: 50rem; }
+
+.rr .rr-sec { display: flex; align-items: center; gap: .6rem; margin: 1.5rem 0 .75rem; font-weight: 700; font-size: 1.05rem; }
+.rr .rr-sec:first-of-type { margin-top: .25rem; }
+.rr .rr-sec-icon { width: 32px; height: 32px; border-radius: .6rem; font-size: .9rem; }
+
+/* Без transform на hover: раньше .card { transform } действовал на ВСЕ карточки сайта */
+.rr .rr-task { display: flex; flex-direction: column; height: 100%; padding: 1rem 1.1rem; transition: border-color .15s ease, box-shadow .15s ease; }
+.rr .rr-task:hover { border-color: rgba(var(--bs-primary-rgb), .35); box-shadow: 0 .4rem 1rem rgba(0,0,0,.06); }
+.rr .rr-ico { width: 40px; height: 40px; border-radius: .75rem; font-size: 1rem; }
+.rr .rr-task h3 { font-size: 1.02rem; font-weight: 700; margin: 0; }
+.rr .rr-task p { font-size: .9rem; color: var(--bs-secondary-color); margin: .5rem 0 .9rem; flex: 1; }
+.rr .rr-run { display: flex; align-items: center; gap: .5rem; }
+.rr .rr-run .input-group { width: 150px; }
+.rr .rr-run .form-control { border-radius: .6rem 0 0 .6rem; text-align: center; }
+.rr .rr-run .input-group-text { border-radius: 0 .6rem .6rem 0; font-size: .78rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+.rr .rr-onestep { font-size: .82rem; color: var(--bs-secondary-color); display: inline-flex; align-items: center; gap: .3rem; }
+
+.rr .rr-progress { max-width: 560px; margin: 2rem auto; padding: 2rem 1.5rem; text-align: center; }
+.rr .rr-progress .rr-head-icon { margin: 0 auto 1rem; width: 64px; height: 64px; border-radius: 50%; font-size: 1.6rem; }
+.rr .rr-bar { height: 12px; border-radius: 50rem; background: var(--bs-secondary-bg); overflow: hidden; margin: 1.25rem 0 .5rem; }
+.rr .rr-bar > span { display: block; height: 100%; border-radius: 50rem; background: linear-gradient(90deg, #60a5fa, #3b82f6); transition: width .4s ease; }
+</style>
 HTML;
 }
+
+/**
+ * Промежуточная страница пакетной обработки: прогресс-бар и автопродолжение.
+ * Раньше: пустая страница с одной кнопкой «Automatically Redirecting…» без
+ * указания, что за задача и сколько осталось.
+ */
+function check_proceed(
+    int $current,
+    int $finish,
+    int $next_page,
+    int $per_page,
+    string $name,
+    string $name2,
+    ?string $message = null
+): void {
+    global $mybb, $_this_script_;
+
+    $message ??= 'The recount has been completed successfully';
+
+    if ($finish >= $current) {
+        flash_message($message, 'success');
+        admin_redirect("index.php?act=recount_rebuild");
+    }
+
+    $task  = rr_tasks()[$name2] ?? ['', 'fa-rotate', 'ic-blue', 'Recount', '', $name, $per_page];
+    $done  = max(0, min($finish, $current));
+    $pct   = $current > 0 ? (int)floor($done / $current * 100) : 0;
+    $key   = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
+    $self  = htmlspecialchars((string)$_this_script_, ENT_QUOTES);
+    $nameE = htmlspecialchars($name, ENT_QUOTES);
+    $act   = htmlspecialchars($name2, ENT_QUOTES);
+
+    stdhead($task[3] . ' — ' . $pct . '%');
+    rr_styles();
+    echo <<<HTML
+<div class="container mt-3 mb-4 rr">
+  <div class="rr-card rr-progress">
+    <span class="rr-head-icon {$task[2]}"><i class="fa-solid {$task[1]}"></i></span>
+    <h2 class="h4 fw-bold mb-1">{$task[3]}</h2>
+    <div class="rr-muted">Processing batch {$next_page} · {$per_page} per step</div>
+    <div class="rr-bar" role="progressbar" aria-valuenow="{$pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:{$pct}%"></span></div>
+    <div class="d-flex justify-content-between rr-muted"><span><strong class="text-body">{$done}</strong> / {$current}</span><span><strong class="text-body">{$pct}%</strong></span></div>
+
+    <form action="{$self}" method="post" id="rrContinue" class="mt-4">
+      <input type="hidden" name="my_post_key" value="{$key}">
+      <input type="hidden" name="page" value="{$next_page}">
+      <input type="hidden" name="{$nameE}" value="{$per_page}">
+      <input type="hidden" name="{$act}" value="Go">
+      <div class="d-flex flex-wrap justify-content-center gap-2">
+        <a href="index.php?act=recount_rebuild" class="btn btn-outline-secondary px-3" id="rrStop"><i class="fa-solid fa-stop me-1"></i>Stop</a>
+        <button type="submit" class="btn btn-primary px-4" id="rrGo"><span class="spinner-border spinner-border-sm me-2"></span>Continuing…</button>
+      </div>
+    </form>
+    <div class="rr-muted mt-3"><i class="fa-solid fa-circle-info me-1"></i>Keep this tab open — the next batch starts automatically.</div>
+  </div>
+</div>
+<script>
+(function () {
+    let stopped = false;
+    document.getElementById('rrStop').addEventListener('click', () => { stopped = true; });
+    setTimeout(() => { if (!stopped) document.getElementById('rrContinue').submit(); }, 400);
+})();
+</script>
+HTML;
+    stdfoot();
+    exit;
+}
+
 
 $plugins->run_hooks("admin_tools_recount_rebuild");
 
@@ -841,48 +947,6 @@ function acp_rebuild_comment_attachment_thumbnails(): void
 
 
 
-function check_proceed(
-    int $current, 
-    int $finish, 
-    int $next_page, 
-    int $per_page, 
-    string $name, 
-    string $name2, 
-    ?string $message = null
-): void {
-    global $page, $lang, $mybb, $_this_script_;
-
-    // Устанавливаем значение по умолчанию если message is null
-    $message = $message ?? 'success_rebuilt';
-
-
-    if ($finish >= $current) {
-        flash_message($message, 'success');
-        admin_redirect("index.php?act=recount_rebuild");
-    } else {
-       stdhead();
-
-        $form = <<<HTML
-       <form action="{$_this_script_}" method="post">
-            <input type="hidden" name="my_post_key" value="{$mybb->post_code}" />
-            <input type="hidden" name="page" value="{$next_page}" />
-            <input type="hidden" name="{$name}" value="{$per_page}" />
-            <input type="hidden" name="{$name2}" value="Go" />
-HTML;
-        
-        echo $form;
-        output_auto_redirect($form, 'Click "Proceed" to continue the recount and rebuild process');
-        echo '</form>';
-
-        stdfoot();
-        exit;
-    }
-}
-
-
-
-
-
 if (!$mybb->input['action']) {
     $plugins->run_hooks("admin_tools_recount_rebuild_start");
 
@@ -894,7 +958,7 @@ if (!$mybb->input['action']) {
         // 12 мутирующих действий этого файла (foreach ниже + do_recountstats).
         if (!verify_post_check($mybb->get_input('my_post_key'))) {
             http_response_code(403);
-            die("Invalid security token. Please refresh the page and try again.");
+            stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
         }
 
         $mybb->input['page'] = max(1, $mybb->get_input('page', MyBB::INPUT_INT));
@@ -1002,292 +1066,75 @@ if (!$mybb->input['action']) {
         }
     }
 
-    stdhead();
+    stdhead('Recount & Rebuild');
+    rr_styles();
+
+    $sections = [
+        'forums' => ['fa-comments',      'ic-blue',   'Forums & threads'],
+        'users'  => ['fa-users',         'ic-green',  'Users'],
+        'media'  => ['fa-photo-film',    'ic-purple', 'Attachments'],
+        'site'   => ['fa-magnet',        'ic-red',    'Torrents & statistics'],
+    ];
+    $tasks = rr_tasks();
+    $key   = htmlspecialchars((string)$mybb->post_code, ENT_QUOTES);
+    $self  = htmlspecialchars((string)$_this_script_, ENT_QUOTES);
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recount & Rebuild</title>
-   
-   
- <style>
-       
-        .card {
-            border-radius: 10px;
-            transition: transform 0.2s, box-shadow 0.2s;
-            border: none;
-        }
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1) !important;
-        }
-        .card-header {
-            border-radius: 10px 10px 0 0 !important;
-            font-weight: 600;
-        }
-        .card-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-        .card-text {
-            font-size: 0.9rem;
-            color: #6c757d;
-        }
-        .btn-primary {
-            background-color: #4e73df;
-            border-color: #4e73df;
-            border-radius: 6px;
-            font-weight: 500;
-        }
-        .btn-primary:hover {
-            background-color: #3a56c4;
-            border-color: #3a56c4;
-        }
-        .form-control {
-            border-radius: 6px;
-            border: 1px solid #d1d3e2;
-        }
-        .page-header {
-            color: #4e73df;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-        }
-        .description {
-            font-size: 0.85rem;
-            color: #6c757d;
-            margin-top: 0.5rem;
-        }
-    </style>
-   
-   
-</head>
-<body>
-<div class="container mt-3">
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-primary text-white py-3">
-                    <h5 class="mb-0"><i class="fas fa-sync-alt me-2"></i>Recount & Rebuild</h5>
+<div class="container mt-3 mb-4 rr">
+
+    <div class="rr-card mb-3"><div class="rr-head">
+        <span class="rr-head-icon ic-teal"><i class="fa-solid fa-arrows-rotate"></i></span>
+        <div>
+            <h1 class="rr-title">Recount &amp; Rebuild</h1>
+            <div class="rr-sub">Fix counters and caches that drifted out of sync. Big jobs run in batches with a progress bar.</div>
+        </div>
+        <span class="ms-auto rr-muted"><i class="fa-solid fa-layer-group me-1"></i><?= count($tasks) ?> tools</span>
+    </div></div>
+
+<?php foreach ($sections as $sec => [$sicon, $scls, $stitle]): ?>
+    <div class="rr-sec"><span class="rr-sec-icon <?= $scls ?>"><i class="fa-solid <?= $sicon ?>"></i></span><?= $stitle ?></div>
+    <div class="row g-3">
+    <?php foreach ($tasks as $action => [$tsec, $icon, $cls, $title, $desc, $input, $default]):
+        if ($tsec !== $sec) continue; ?>
+        <div class="col-md-6 col-xl-4">
+            <!-- Отдельная форма на каждую задачу: раньше все инструменты были в ОДНОЙ форме,
+                 и Enter в любом поле количества запускал первую кнопку — «Forum counters» -->
+            <form action="<?= $self ?>" method="post" class="rr-card rr-task">
+                <input type="hidden" name="my_post_key" value="<?= $key ?>">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="rr-ico <?= $cls ?>"><i class="fa-solid <?= $icon ?>"></i></span>
+                    <h3><?= htmlspecialchars($title) ?></h3>
                 </div>
-                <div class="card-body p-0">
-                    <div class="p-4 border-bottom bg-light">
-                        <p class="text-muted mb-0">Use these tools to recount and rebuild various aspects of your forum. For large forums, this may take some time.</p>
+                <p><?= htmlspecialchars($desc) ?></p>
+                <div class="rr-run">
+                    <?php if ($input !== ''): ?>
+                    <div class="input-group input-group-sm" title="Items per batch">
+                        <input type="number" class="form-control" name="<?= $input ?>" value="<?= (int)$default ?>" min="1" aria-label="Items per batch">
+                        <span class="input-group-text">/ step</span>
                     </div>
-                    
-                    <form action="<?php echo $_this_script_; ?>" method="post">
-                        <input type="hidden" name="my_post_key" value="<?php echo $mybb->post_code; ?>" />
-                        
-                        <div class="row p-4">
-                            <!-- Rebuild Forum Counters -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-folder-tree me-2"></i>Rebuild Forum Counters
-                                        </h5>
-                                        <p class="card-text text-muted small">When this is run, the post/thread counters and last post of each forum will be updated to reflect the correct values.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="forumcounters" value="50" min="1">
-                                            <button type="submit" name="do_rebuildforumcounters" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Rebuild Thread Counters -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-comments me-2"></i>Rebuild Thread Counters
-                                        </h5>
-                                        <p class="card-text text-muted small">When this is run, the post/view counters and last post of each thread will be updated to reflect the correct values.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="threadcounters" value="500" min="1">
-                                            <button type="submit" name="do_rebuildthreadcounters" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Rebuild Poll Counters -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-chart-pie me-2"></i>Rebuild Poll Counters
-                                        </h5>
-                                        <p class="card-text text-muted small">When this is run, the vote counters and total number of votes of each poll will be updated to reflect the correct values.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="pollcounters" value="500" min="1">
-                                            <button type="submit" name="do_rebuildpollcounters" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Recount User Post Counts -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-file-alt me-2"></i>Recount User Post Counts
-                                        </h5>
-                                        <p class="card-text text-muted small">When this is run, the post count for each user will be updated to reflect its current live value based on the posts in the database.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="userposts" value="500" min="1">
-                                            <button type="submit" name="do_recountuserposts" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Recount User Thread Counts -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-clone me-2"></i>Recount User Thread Counts
-                                        </h5>
-                                        <p class="card-text text-muted small">When this is run, the thread count for each user will be updated to reflect its current live value based on the threads in the database.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="userthreads" value="500" min="1">
-                                            <button type="submit" name="do_recountuserthreads" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Rebuild Attachment Thumbnails -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-image me-2"></i>Rebuild Attachment Thumbnails
-                                        </h5>
-                                        <p class="card-text text-muted small">This will rebuild attachment thumbnails to ensure they're using the current width and height dimensions.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="attachmentthumbs" value="20" min="1">
-                                            <button type="submit" name="do_rebuildattachmentthumbs" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-							
-							
-							<!-- Rebuild Comment Attachment Thumbnails -->
-<div class="col-md-6 mb-4">
-    <div class="card h-100 border-0 shadow-sm">
-        <div class="card-body">
-            <h5 class="card-title text-primary">
-                <i class="fas fa-comments me-2"></i>Rebuild Comment Attachment Thumbnails
-            </h5>
-            <p class="card-text text-muted small">This will rebuild comment attachment thumbnails to ensure they're using the current width and height dimensions.</p>
-            <div class="d-flex align-items-center mt-3">
-                <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="commentattachmentthumbs" value="20" min="1">
-                <button type="submit" name="do_rebuildcommentattachmentthumbs" class="btn btn-primary btn-sm">Run</button>
-            </div>
-        </div>
-    </div>
-</div>
-							
-							
-							
-							
-							
-                            
-                            <!-- Recount Statistics -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-chart-bar me-2"></i>Recount Statistics
-                                        </h5>
-                                        <p class="card-text text-muted small">This will recount and update your forum statistics on the forum index and statistics pages.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <span class="text-muted small me-2">N/A</span>
-                                            <button type="submit" name="do_recountstats" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Recount Private Messages -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-envelope me-2"></i>Recount Private Messages
-                                        </h5>
-                                        <p class="card-text text-muted small">This will recount the private message count for each user.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="privatemessages" value="500" min="1">
-                                            <button type="submit" name="do_recountprivatemessages" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Recount User Comments -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-comment me-2"></i>Recount User Comments
-                                        </h5>
-                                        <p class="card-text text-muted small">This will recount the comments count for each user.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="comments" value="500" min="1">
-                                            <button type="submit" name="do_comments" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Recount Thread Ratings -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-star me-2"></i>Recount Thread Ratings
-                                        </h5>
-                                        <p class="card-text text-muted small">This will recalculate the average rating and vote count cached on each thread from the actual threadratings records.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="threadratings" value="500" min="1">
-                                            <button type="submit" name="do_recountthreadratings" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Recount Torrent Comment Counts -->
-                            <div class="col-md-6 mb-4">
-                                <div class="card h-100 border-0 shadow-sm">
-                                    <div class="card-body">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-magnet me-2"></i>Recount Torrent Comment Counts
-                                        </h5>
-                                        <p class="card-text text-muted small">This will recalculate the comment count cached on each torrent from the actual comments in the database.</p>
-                                        <div class="d-flex align-items-center mt-3">
-                                            <input type="number" class="form-control form-control-sm me-2" style="width: 100px;" name="torrentcomments" value="500" min="1">
-                                            <button type="submit" name="do_recounttorrentcomments" class="btn btn-primary btn-sm">Run</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
+                    <?php else: ?>
+                    <span class="rr-onestep"><i class="fa-solid fa-bolt"></i>single step</span>
+                    <?php endif; ?>
+                    <button type="submit" name="<?= $action ?>" value="Go" class="btn btn-sm btn-primary px-3 ms-auto rr-go">
+                        <i class="fa-solid fa-play me-1"></i>Run
+                    </button>
                 </div>
-            </div>
+            </form>
         </div>
+    <?php endforeach; ?>
     </div>
+<?php endforeach; ?>
+
+    <div class="rr-muted text-center mt-4"><i class="fa-solid fa-circle-info me-1"></i>Smaller batches are slower but safer on a busy server; thumbnails are the heaviest job.</div>
 </div>
-
-
-</body>
-</html>
+<script>
+document.querySelectorAll('.rr .rr-task').forEach(f => f.addEventListener('submit', function () {
+    const b = f.querySelector('.rr-go');
+    // name/value кнопки нужно сохранить — после disabled браузер его не отправит
+    const h = document.createElement('input'); h.type = 'hidden'; h.name = b.name; h.value = b.value; f.appendChild(h);
+    b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting…';
+}));
+</script>
 <?php
     stdfoot();
+
 }

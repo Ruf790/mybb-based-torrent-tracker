@@ -695,41 +695,43 @@
 /* -----------------------------------------------
    23. Dark Mode Enhancements
    ----------------------------------------------- */
-@media (prefers-color-scheme: dark) {
-    .bg-light {
-        background-color: #2d3748 !important;
-        color: #e2e8f0;
-    }
-    
-    .text-dark {
-        color: #e2e8f0 !important;
-    }
-    
-    .text-muted {
-        color: #a0aec0 !important;
-    }
-    
-    .card {
-        background-color: #2d3748;
-        border-color: #4a5568;
-    }
-    
-    .magnet-loading-overlay {
-        background: rgba(26, 32, 44, 0.95);
-    }
-    
-    .magnet-loading-content {
-        background: #2d3748;
-        border-color: #4a5568;
-    }
-    
-    .magnet-loading-text {
-        color: #e2e8f0;
-    }
-    
-    .magnet-spinner {
-        border-color: #4a5568;
-    }
+/* Реагирует на реальный переключатель темы сайта ([data-bs-theme="dark"]
+   на <html>), не на настройку ОС/браузера - раньше был
+   @media (prefers-color-scheme: dark), никак не связанный с самим
+   переключателем на сайте. */
+[data-bs-theme="dark"] .bg-light {
+    background-color: #2d3748 !important;
+    color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .text-dark {
+    color: #e2e8f0 !important;
+}
+
+[data-bs-theme="dark"] .text-muted {
+    color: #a0aec0 !important;
+}
+
+[data-bs-theme="dark"] .card {
+    background-color: #2d3748;
+    border-color: #4a5568;
+}
+
+[data-bs-theme="dark"] .magnet-loading-overlay {
+    background: rgba(26, 32, 44, 0.95);
+}
+
+[data-bs-theme="dark"] .magnet-loading-content {
+    background: #2d3748;
+    border-color: #4a5568;
+}
+
+[data-bs-theme="dark"] .magnet-loading-text {
+    color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .magnet-spinner {
+    border-color: #4a5568;
 }
 
 /* -----------------------------------------------
@@ -783,4 +785,526 @@
 
 .similar-torrent-card:hover img {
     transform: scale(1.05);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   details-extras.css - вынесенные позже дополнения (вынос из инлайна,
+   hero-блок, тёмная тема)
+   ══════════════════════════════════════════════════════════════════ */
+
+/* details-extras.css — вынесено из details.php */
+
+/* ══════════════════════════════════════════════════════════════════
+   DETAILS PAGE — CLEANED STYLES
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Breadcrumb ─────────────────────────────────────────────────── */
+.torrent-breadcrumb {
+    background: linear-gradient(90deg, #f8f9ff 0%, #ffffff 100%) !important;
+    border: 1px solid #eef0f5;
+}
+.torrent-breadcrumb .breadcrumb-item a {
+    color: #5a6b85;
+    font-weight: 500;
+    transition: color .16s ease;
+}
+.torrent-breadcrumb .breadcrumb-item a:hover {
+    color: #0d6efd;
+}
+.torrent-breadcrumb .breadcrumb-item.active {
+    color: #18233b;
+    font-weight: 600;
+}
+.breadcrumb-item + .breadcrumb-item::before {
+    content: "›";
+    color: #adb5bd;
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+/* ── Header / Hero icon ─────────────────────────────────────────── */
+.torrent-hero-icon {
+    flex: 0 0 72px;
+    width: 72px; height: 72px;
+    display: grid; place-items: center;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #eef4ff, #dbe7ff);
+    color: #0d6efd;
+    font-size: 2rem;
+    box-shadow: 0 8px 20px rgba(13, 110, 253, .15);
+    transition: transform .25s ease;
+}
+.torrent-hero-icon:hover {
+    transform: scale(1.05) rotate(-4deg);
+    color: #6657e8;
+}
+
+/* ── Meta badges ────────────────────────────────────────────────── */
+.torrent-meta-badges .meta-badge {
+    padding: .5em .85em;
+    font-weight: 600;
+    font-size: .78rem;
+    border-radius: 9px;
+    letter-spacing: .01em;
+    transition: transform .16s ease, box-shadow .16s ease;
+}
+.torrent-meta-badges .meta-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+}
+.torrent-meta-badges .meta-badge i {
+    filter: grayscale(100%);
+    opacity: .85;
+    transition: opacity .18s ease;
+}
+.torrent-meta-badges .meta-badge:hover i { opacity: 1; }
+
+.meta-badge-id      { background: #f1f3f5; color: #495057; border: 1px solid #dee2e6; }
+.meta-badge-size    { background: rgba(102,87,232,.1); color: #6657e8; border: 1px solid rgba(102,87,232,.25); }
+.meta-badge-files   { background: rgba(255,193,7,.15); color: #997404; border: 1px solid rgba(255,193,7,.3); }
+.meta-badge-date    { background: rgba(108,117,125,.12); color: #495057; border: 1px solid rgba(108,117,125,.25); }
+.meta-badge-snatched{ background: rgba(13,202,240,.15); color: #0aa2c0; border: 1px solid rgba(13,202,240,.3); }
+
+/* ── Action card ────────────────────────────────────────────────── */
+.action-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
+    border: 1px solid #eef0f5;
+}
+.action-icon {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #0d6efd 0%, #4f8eff 100%);
+    color: #fff;
+    font-size: 1.75rem;
+    box-shadow: 0 8px 20px rgba(13,110,253,.25);
+    flex-shrink: 0;
+}
+.btn-download-pulse {
+    background: linear-gradient(135deg, #0d6efd, #4d94ff) !important;
+    border: none !important;
+    box-shadow: 0 8px 20px rgba(13,110,253,.3);
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+.btn-download-pulse:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 26px rgba(13,110,253,.45);
+}
+
+/* ── Health progress ────────────────────────────────────────────── */
+.health-progress-wrap { padding: 0 .25rem; }
+.health-progress {
+    height: 10px;
+    border-radius: 6px;
+    background: #f1f3f5;
+    overflow: hidden;
+}
+.health-progress .progress-bar {
+    border-radius: 6px;
+    transition: width .4s ease;
+}
+
+/* ── Stat tiles ─────────────────────────────────────────────────── */
+.stat-tile {
+    display: flex; align-items: center; gap: 12px;
+    padding: 1rem 1.1rem;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid #eef0f5;
+    transition: transform .2s, box-shadow .2s;
+    height: 100%;
+}
+.stat-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(0,0,0,.06);
+}
+.stat-tile-icon {
+    width: 44px; height: 44px;
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    transition: transform .2s ease;
+}
+.stat-tile:hover .stat-tile-icon { transform: scale(1.08) rotate(-4deg); }
+.stat-tile-success   .stat-tile-icon { background: linear-gradient(135deg, #d1e7dd, #a3d9b8); color: #0f5132; }
+.stat-tile-warning   .stat-tile-icon { background: linear-gradient(135deg, #fff3cd, #ffe69c); color: #997404; }
+.stat-tile-info      .stat-tile-icon { background: linear-gradient(135deg, #cff4fc, #9eeaf9); color: #055160; }
+.stat-tile-secondary .stat-tile-icon { background: linear-gradient(135deg, #e2e3e5, #cfd2d5); color: #41464b; }
+.stat-tile-value { font-size: 1.25rem; font-weight: 700; line-height: 1.1; color: #18233b; }
+.stat-tile-label { font-size: .78rem; color: #8a8f98; margin-top: 2px; }
+.stat-tile-label i { opacity: .8; }
+
+/* ── Tabs ───────────────────────────────────────────────────────── */
+.nav-tabs-scrollable {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-bottom: 1px solid #eef0f5;
+}
+.nav-tabs-scrollable::-webkit-scrollbar { display: none; }
+.nav-tabs-scrollable .nav-link {
+    white-space: nowrap;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #6c757d;
+    font-weight: 500;
+    padding: .85rem 1.25rem;
+    transition: all .2s;
+}
+.nav-tabs-scrollable .nav-link i { transition: transform .18s ease; }
+.nav-tabs-scrollable .nav-link:hover {
+    color: #0d6efd;
+    background: #f8f9ff;
+    border-bottom-color: #e0e9ff;
+}
+.nav-tabs-scrollable .nav-link:hover i { transform: scale(1.15); }
+.nav-tabs-scrollable .nav-link.active {
+    color: #0d6efd;
+    background: transparent;
+    border-bottom-color: #0d6efd;
+}
+
+/* ── Info tab (2-col layout) ────────────────────────────────────── */
+.info-grid {
+    background: #ffffff;
+    border: 1px solid #eef0f5;
+    border-radius: 14px;
+    padding: .25rem 1rem;
+    height: 100%;
+    transition: box-shadow .2s ease;
+}
+.info-grid:hover { box-shadow: 0 6px 20px rgba(0,0,0,.04); }
+
+.info-item { transition: background .16s ease; }
+.info-item:hover { background: #fafbff; border-radius: 8px; }
+.info-item:last-child { border-bottom: none !important; }
+
+.info-item > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: .88rem;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+.info-item > span:last-child {
+    max-width: 65%;
+    word-break: break-word;
+    text-align: right;
+    font-size: .9rem;
+}
+
+/* Чёрно-белые иконки */
+.info-item > span:first-child i,
+.tag-section h6 i {
+    color: #1a1a1a !important;
+    opacity: .65;
+    filter: grayscale(100%);
+    transition: color .18s ease, opacity .18s ease, transform .18s ease;
+    font-size: 1rem;
+    vertical-align: -1px;
+}
+.info-item:hover > span:first-child i {
+    color: #000 !important;
+    opacity: 1;
+    transform: scale(1.15);
+}
+
+/* Бейджи в правой колонке */
+.info-item .badge.bg-light {
+    background: #f1f3f5 !important;
+    border: 1px solid #e6e8eb;
+    color: #1a1a1a !important;
+    font-weight: 600;
+    font-size: .82rem;
+    padding: .35em .8em;
+    border-radius: 7px;
+    transition: background .16s ease, transform .16s ease;
+}
+.info-item .badge.bg-light:hover {
+    background: #e9ecef !important;
+    transform: translateY(-1px);
+}
+.info-item .badge.bg-light a { color: #1a1a1a !important; font-weight: 700; }
+
+.info-item .font-monospace {
+    font-size: .78rem;
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 5px;
+    word-break: break-all;
+}
+
+/* ── Tags section ───────────────────────────────────────────────── */
+.tag-section { padding-top: .5rem; }
+.tag-section .tag-badge {
+    background: linear-gradient(135deg, #0d6efd, #4d94ff) !important;
+    border-radius: 8px;
+    padding: .5em .85em;
+    font-weight: 600;
+    font-size: .78rem;
+    color: #fff !important;
+    text-decoration: none;
+    transition: transform .16s ease, box-shadow .16s ease;
+}
+.tag-section .tag-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(13,110,253,.3);
+}
+
+/* ── Rating ─────────────────────────────────────────────────────── */
+.rating-panel {
+    padding: 1.25rem 1.5rem;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
+    border: 1px solid #e5e7f0;
+}
+.rating-panel-header {
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: .85rem;
+    border-bottom: 1px solid #eef0f5;
+    font-weight: 600;
+    color: #18233b;
+}
+.rating-score-wrap {
+    text-align: center;
+    padding: 0 1rem;
+    border-right: 1px solid #e5e7f0;
+}
+/* .rating-score, .rating-star-filled, .rating-star-empty, .user-star -
+   убраны отсюда, конфликтовали с details.css (тот побеждал по порядку
+   загрузки, но эти правила были мёртвым дублем, путающим при правке).
+   Актуальные версии теперь только в details.css. */
+.rating-score-max {
+    font-size: .9rem;
+    color: #495057;
+    opacity: .7;
+    margin-top: .1rem;
+}
+.rating-votes { font-size: .75rem; }
+.rating-stars-wrap { padding-left: .5rem; }
+.rating-stars i { font-size: 1.25rem; }
+
+/* ── Similar torrents ───────────────────────────────────────────── */
+.similar-wrapper { border-radius: 14px; overflow: hidden; }
+.similar-header {
+    background: linear-gradient(90deg, #f8f9ff, #ffffff);
+    border-bottom: 1px solid #eef0f5;
+}
+/* .similar-torrent-card, .similar-overlay - тоже убраны, та же причина -
+   актуальные версии в details.css. */
+
+/* ── File tree ──────────────────────────────────────────────────── */
+.file-tree .accordion-item {
+    border: 1px solid #eef0f5;
+    margin-bottom: .35rem;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.file-tree .accordion-button {
+    padding: .65rem 1rem;
+    font-size: .9rem;
+    background: #fafbfc;
+    box-shadow: none;
+}
+.file-tree .accordion-button:not(.collapsed) {
+    background: #f0f6ff;
+    color: #0d6efd;
+}
+.file-tree .accordion-body { padding: .65rem 1rem; }
+
+/* ── Poster strip ───────────────────────────────────────────────── */
+.poster-strip {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: .5rem 0;
+}
+.poster-strip > a {
+    display: block;
+    line-height: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 14px rgba(0,0,0,.08);
+    transition: transform .25s ease, box-shadow .25s ease;
+    max-width: 400px;
+}
+.poster-strip > a:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 10px 26px rgba(0,0,0,.15);
+}
+.poster-strip img {
+    display: block; width: 100%; height: auto;
+    max-height: 720px;
+    object-fit: cover;
+    border-radius: 12px;
+}
+
+/* ── Manage icons ───────────────────────────────────────────────── */
+.manage-btn { transition: transform .18s ease; }
+.manage-btn:hover { transform: rotate(90deg); }
+.manage-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: 9px;
+    background: #f8f9fa;
+    border: 1px solid #eef0f5;
+    margin: 0 2px;
+    transition: background .18s ease, transform .18s ease;
+    text-decoration: none;
+    cursor: pointer;
+    vertical-align: middle;
+}
+.manage-icon-btn:hover { background: #eef4ff; transform: translateY(-2px); }
+.manage-icon-btn i { font-size: 1.1rem; }
+.manage-icon-btn button { background: none; border: none; padding: 0; }
+
+/* ── Hit & Run warning ──────────────────────────────────────────── */
+.hitrun-alert {
+    background: linear-gradient(135deg, #fff5f5, #ffe0e0);
+    border: 1px solid #f5c2c7;
+    border-left: 4px solid #dc3545;
+    color: #842029;
+    padding: 1rem 1.25rem;
+    border-radius: 12px;
+    font-size: .9rem;
+}
+
+/* ── Comments empty ─────────────────────────────────────────────── */
+.comments-empty-card {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 4px 14px rgba(0,0,0,.05);
+}
+
+/* ── IMDb card ──────────────────────────────────────────────────── */
+.imdb-card {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid #eef0f5;
+}
+.imdb-header {
+    background: linear-gradient(90deg, #fff8e6, #fff1c8);
+    border-bottom: 1px solid #ffe69c;
+}
+
+/* ── Animations ─────────────────────────────────────────────────── */
+@keyframes tilePop {
+    from { opacity: 0; transform: scale(.92); }
+    to   { opacity: 1; transform: scale(1); }
+}
+.stat-tile { animation: tilePop .3s ease backwards; }
+.row > .col-6:nth-child(1) .stat-tile { animation-delay: .05s; }
+.row > .col-6:nth-child(2) .stat-tile { animation-delay: .12s; }
+.row > .col-6:nth-child(3) .stat-tile { animation-delay: .19s; }
+.row > .col-6:nth-child(4) .stat-tile { animation-delay: .26s; }
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 576px) {
+    .torrent-hero-icon { width: 56px; height: 56px; font-size: 1.5rem; flex: 0 0 56px; }
+    .stat-tile-value { font-size: 1.05rem; }
+    .info-item > span:last-child { max-width: 60%; }
+    .poster-strip > a { max-width: 100%; }
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────── */
+/* Реагирует на реальный переключатель темы сайта ([data-bs-theme="dark"]
+   на <html>, ставится JS в шапке + сохраняется в localStorage), а не на
+   настройку ОС/браузера - раньше было @media (prefers-color-scheme: dark),
+   что было полностью не связано с самим переключателем на сайте. */
+[data-bs-theme="dark"] body {
+    background: #0f1420;
+    color: #d6dced;
+}
+[data-bs-theme="dark"] .action-card,
+[data-bs-theme="dark"] .card,
+[data-bs-theme="dark"] .stat-tile,
+[data-bs-theme="dark"] .rating-panel,
+[data-bs-theme="dark"] .info-grid {
+    background: #1a2030 !important;
+    border-color: #2a3448 !important;
+    color: #d6dced;
+}
+[data-bs-theme="dark"] .card-header.bg-light {
+    background: #232b3e !important;
+    border-bottom: 1px solid #2a3448;
+    color: #b9c8e4;
+}
+[data-bs-theme="dark"] .info-item:hover { background: #232b3e; }
+[data-bs-theme="dark"] .info-item > span:first-child { color: #8fa0bd; }
+[data-bs-theme="dark"] .info-item > span:first-child i,
+[data-bs-theme="dark"] .tag-section h6 i {
+    color: #f0f3fa !important;
+    opacity: .7;
+}
+[data-bs-theme="dark"] .info-item:hover > span:first-child i,
+[data-bs-theme="dark"] .tag-section h6:hover i {
+    color: #ffffff !important;
+    opacity: 1;
+}
+[data-bs-theme="dark"] .info-item > span:last-child { color: #d6dced; }
+[data-bs-theme="dark"] .info-item .badge.bg-light {
+    background: #232b3e !important;
+    border-color: #2a3448;
+    color: #d6dced !important;
+}
+[data-bs-theme="dark"] .info-item .badge.bg-light a { color: #6ea8ff !important; }
+[data-bs-theme="dark"] .info-item .font-monospace {
+    background: #232b3e;
+    color: #b9c8e4;
+}
+[data-bs-theme="dark"] .breadcrumb,
+[data-bs-theme="dark"] .torrent-breadcrumb {
+    background: #1a2030 !important;
+    border-color: #2a3448;
+}
+[data-bs-theme="dark"] .breadcrumb-item a { color: #8fa8d4; }
+[data-bs-theme="dark"] .torrent-header h1 { color: #f0f3fa !important; }
+[data-bs-theme="dark"] .stat-tile-value { color: #f0f3fa; }
+[data-bs-theme="dark"] .nav-tabs-scrollable { border-bottom-color: #2a3448; }
+[data-bs-theme="dark"] .nav-tabs-scrollable .nav-link { color: #8fa0bd; }
+[data-bs-theme="dark"] .nav-tabs-scrollable .nav-link.active,
+[data-bs-theme="dark"] .nav-tabs-scrollable .nav-link:hover {
+    color: #6ea8ff;
+}
+[data-bs-theme="dark"] .torrent-meta-badges .meta-badge i {
+    filter: grayscale(100%) brightness(1.8);
+}
+
+/* ── IMDb-блок (грузится через AJAX, TS_IMDB()) ──────────────────── */
+/* .block-titled и соседние классы приходят со своим встроенным <style>
+   (background:#fff и т.д.) в самом AJAX-ответе - не в наших файлах, и
+   мы не видим источник. !important нужен, чтобы гарантированно перебить
+   встроенный <style>, независимо от того, в каком порядке он попадёт в
+   DOM относительно наших стилей. */
+[data-bs-theme="dark"] .block-titled {
+    background: #1a2030 !important;
+    border-color: #2a3448 !important;
+    color: #d6dced !important;
+}
+[data-bs-theme="dark"] .movie-title {
+    color: #6ea8ff !important;
+}
+[data-bs-theme="dark"] .movie-plot {
+    color: #a8b3c9 !important;
+}
+[data-bs-theme="dark"] .badge-extra {
+    background: #232b3e !important;
+    color: #d6dced !important;
+}
+[data-bs-theme="dark"] .movie-info div {
+    color: #d6dced !important;
+}
+[data-bs-theme="dark"] .section-title {
+    color: #b9c8e4 !important;
+    border-bottom-color: #2a3448 !important;
+}
+[data-bs-theme="dark"] .block-titled a {
+    color: #6ea8ff !important;
 }

@@ -1,179 +1,249 @@
-(function () {
-    'use strict';
+'use strict';
+/**
+ * admin/scripts/cleartable.js — Truncate MySQL Tables
+ *
+ * Все сообщения через SweetAlert2 (/scripts/sweetalert2.min.js),
+ * без него - откат на confirm()/alert(), страница работает и без JS
+ * (серверная страница подтверждения «Step 2 of 2» осталась как fallback).
+ */
+(() => {
+    const hasSwal = () => typeof window.Swal !== 'undefined';
 
-    /* ============================================================
-     * 1. Форма выбора таблиц (truncate)
-     * ============================================================ */
-    function initSelectionForm() {
-        const list = document.getElementById('ctList');
-        if (!list) return;
+    const esc = s => String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
 
-        const rows  = Array.from(list.querySelectorAll('.ct-row:not(.ct-locked)'));
-        const srch  = document.getElementById('ctSearch');
-        const cnt   = document.getElementById('ctCount');
+    const tableListHtml = tables =>
+        '<div style="max-height:220px;overflow:auto;text-align:left;margin-top:.75rem;' +
+        'padding:.5rem .75rem;border-radius:10px;background:var(--bs-tertiary-bg,#f5f5f5);' +
+        'font-family:var(--bs-font-monospace,monospace);font-size:.85rem;line-height:1.7">' +
+        tables.map(t => '<i class="fa-solid fa-table me-2" style="opacity:.6"></i>' + esc(t)).join('<br>') +
+        '</div>';
 
-        const checks = () => rows.map(r => r.querySelector('input[type=checkbox]'));
+    const notify = (icon, title, html = '') => {
+        if (hasSwal()) return Swal.fire({ icon, title, html });
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        window.alert(title + (tmp.textContent ? '\n\n' + tmp.textContent : ''));
+        return Promise.resolve();
+    };
 
-        const upd = () => {
-            let n = 0;
-            rows.forEach(r => {
-                const chk = r.querySelector('input[type=checkbox]');
-                const on  = chk && chk.checked;
-                r.classList.toggle('ct-selected', !!on);
-                if (on) n++;
-            });
-            if (cnt) cnt.textContent = n;
+    const toast = (icon, title) => hasSwal()
+        ? Swal.fire({ toast: true, position: 'top-end', icon, title, showConfirmButton: false, timer: 3500, timerProgressBar: true })
+        : Promise.resolve();
+
+    // ── Шаг 1: выбор таблиц ──────────────────────────────────────────────────
+    function initSelection(form) {
+        const list    = document.getElementById('ctList');
+        const counter = document.getElementById('ctCount');
+        const search  = document.getElementById('ctSearch');
+        const checks  = [...form.querySelectorAll('.ct-check')];
+
+        const isVisible = cb => cb.closest('.ct-row')?.style.display !== 'none';
+        const selected  = () => checks.filter(cb => cb.checked).map(cb => cb.value);
+
+        const update = () => {
+            if (counter) counter.textContent = String(selected().length);
+            checks.forEach(cb => cb.closest('.ct-row')?.classList.toggle('is-checked', cb.checked));
         };
 
-        rows.forEach(r => {
-            const chk = r.querySelector('input[type=checkbox]');
-            if (chk) chk.addEventListener('change', upd);
-        });
+        list?.addEventListener('change', update);
 
-        if (srch) {
-            srch.addEventListener('input', function () {
-                const q = this.value.toLowerCase();
-                rows.forEach(r => {
-                    const name = (r.dataset.name || '').toLowerCase();
-                    r.classList.toggle('hidden-by-search', !name.includes(q));
-                });
+        search?.addEventListener('input', () => {
+            const q = search.value.trim().toLowerCase();
+            list?.querySelectorAll('.ct-row').forEach(row => {
+                row.style.display = !q || (row.dataset.name ?? '').toLowerCase().includes(q) ? '' : 'none';
             });
-        }
-
-        const ctAll = document.getElementById('ctAll');
-        if (ctAll) ctAll.addEventListener('click', () => {
-            rows.forEach(r => {
-                if (r.classList.contains('hidden-by-search')) return;
-                const chk = r.querySelector('input[type=checkbox]');
-                if (chk) chk.checked = true;
-            });
-            upd();
         });
 
-        const ctNone = document.getElementById('ctNone');
-        if (ctNone) ctNone.addEventListener('click', () => {
-            checks().forEach(chk => { if (chk) chk.checked = false; });
-            upd();
+        document.getElementById('ctAll')?.addEventListener('click', () => {
+            checks.forEach(cb => { if (isVisible(cb)) cb.checked = true; });
+            update();
+        });
+        document.getElementById('ctNone')?.addEventListener('click', () => {
+            checks.forEach(cb => { cb.checked = false; });
+            update();
+        });
+        document.getElementById('ctInvert')?.addEventListener('click', () => {
+            checks.forEach(cb => { if (isVisible(cb)) cb.checked = !cb.checked; });
+            update();
         });
 
-        const ctInvert = document.getElementById('ctInvert');
-        if (ctInvert) ctInvert.addEventListener('click', () => {
-            rows.forEach(r => {
-                if (r.classList.contains('hidden-by-search')) return;
-                const chk = r.querySelector('input[type=checkbox]');
-                if (chk) chk.checked = !chk.checked;
-            });
-            upd();
-        });
+        form.addEventListener('submit', e => {
+            e.preventDefault();
+            const tables = selected();
 
-        const form = document.getElementById('truncateForm');
-        if (form) {
-            form.addEventListener('submit', function (e) {
-                const n = checks().filter(chk => chk && chk.checked).length;
-                if (n === 0) {
-                    e.preventDefault();
-                    alert('Select at least one table.');
-                    return;
+            if (tables.length === 0) {
+                notify('info', 'No tables selected', 'Tick at least one table to truncate.');
+                return;
+            }
+
+            const title = `Truncate ${tables.length} table(s)?`;
+            const warn  = 'Every row in these tables will be deleted. <strong>There is no undo</strong> — make sure you have a backup.';
+
+            const ask = hasSwal()
+                ? Swal.fire({
+                      icon: 'warning',
+                      title,
+                      html: warn + tableListHtml(tables) +
+                            '<div style="margin-top:1rem;font-size:.9rem">Type <code>TRUNCATE</code> to confirm</div>',
+                      input: 'text',
+                      inputAttributes: { autocapitalize: 'off', autocomplete: 'off', spellcheck: 'false' },
+                      showCancelButton: true,
+                      confirmButtonText: '<i class="fa-solid fa-trash-can me-1"></i> Truncate',
+                      cancelButtonText: 'Cancel',
+                      confirmButtonColor: '#dc3545',
+                      reverseButtons: true,
+                      focusCancel: true,
+                      preConfirm: v => {
+                          if (String(v).trim() !== 'TRUNCATE') {
+                              Swal.showValidationMessage('Type TRUNCATE exactly');
+                              return false;
+                          }
+                          return true;
+                      },
+                  }).then(r => r.isConfirmed)
+                : Promise.resolve(window.confirm(title + '\n\n' + tables.join(', ') + '\n\nThis cannot be undone.'));
+
+            ask.then(ok => {
+                if (!ok) return;
+
+                // Сразу на выполнение: sure=true + CSRF-ключ (сервер принимает только POST с валидным ключом)
+                const key = form.dataset.postKey ?? '';
+                if (key) {
+                    let hidden = form.querySelector('input[name="my_post_key"]');
+                    if (!hidden) {
+                        hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'my_post_key';
+                        form.appendChild(hidden);
+                    }
+                    hidden.value = key;
+                    form.action = form.getAttribute('action') + '&sure=true';
                 }
-                if (!confirm('Truncate ' + n + ' table(s)?\n\nAll data will be permanently deleted.\nThis cannot be undone!')) {
-                    e.preventDefault();
+                // Без ключа - обычный путь через серверную страницу подтверждения
+
+                if (hasSwal()) {
+                    Swal.fire({ title: 'Truncating…', allowOutsideClick: false, allowEscapeKey: false, didOpen: () => Swal.showLoading() });
                 }
+                form.submit(); // нативный submit - не вызывает этот обработчик повторно
             });
-        }
+        });
+
+        update();
     }
 
-    /* ============================================================
-     * 2. Страница результатов + AJAX optimize
-     * ============================================================ */
-    function initOptimize() {
-        const panel = document.getElementById('ctSuccessPanel');
-        if (!panel) return;
+    // ── Шаг 2: результаты + оптимизация ──────────────────────────────────────
+    function initResults(panel) {
+        const parse = raw => { try { return JSON.parse(raw || '[]'); } catch { return []; } };
 
-        // Данные передаются через data-атрибуты (безопаснее, чем инлайн-JS)
-        let tables = [];
-        let postKey = '';
+        const tables  = parse(panel.dataset.tables);
+        const postKey = panel.dataset.postKey ?? '';
+        const url     = panel.dataset.url || location.href;
 
-        try {
-            tables  = JSON.parse(panel.dataset.tables || '[]');
-            postKey = panel.dataset.postKey || '';
-        } catch (e) {
-            console.error('cleartable: failed to parse data attributes', e);
-            return;
+        // Если были провалы - модалка показывается в showFailures(), тост не нужен
+        if (tables.length && !document.getElementById('ctFailed')) {
+            toast('success', `${tables.length} table(s) truncated`);
         }
 
         const btn      = document.getElementById('btnOptimize');
+        const progress = document.getElementById('opt_progress');
         const bar      = document.getElementById('opt_bar');
         const label    = document.getElementById('opt_label');
-        const progress = document.getElementById('opt_progress');
         const done     = document.getElementById('opt_done');
 
-        if (!btn) return;
+        const optimizeOne = async table => {
+            const body = new FormData();
+            body.append('do', 'ajax_optimize');
+            body.append('table', table);
+            body.append('my_post_key', postKey);
 
-        btn.addEventListener('click', function () {
-            btn.disabled  = true;
-            btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Optimizing…';
-            progress.style.display = 'block';
+            const res  = await fetch(url, { method: 'POST', body, credentials: 'same-origin' });
+            const data = await res.json().catch(() => ({ success: false, message: `HTTP ${res.status}` }));
+            if (!res.ok && data.success !== false) data.success = false;
+            return data;
+        };
 
-            let idx = 0;
+        btn?.addEventListener('click', async () => {
+            if (!tables.length) return;
 
-            function optimizeNext() {
-                if (idx >= tables.length) {
-                    progress.style.display = 'none';
-                    done.style.display     = 'block';
-                    btn.style.display      = 'none';
-                    return;
+            btn.disabled = true;
+            if (progress) progress.style.display = '';
+            if (done) done.style.display = 'none';
+
+            const errors = [];
+            for (let i = 0; i < tables.length; i++) {
+                const table  = tables[i];
+                const status = document.getElementById('opt_status_' + table);
+                if (label)  label.textContent = `Optimizing ${table} (${i + 1}/${tables.length})…`;
+                if (status) status.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+                let data;
+                try {
+                    data = await optimizeOne(table);
+                } catch (err) {
+                    data = { success: false, message: err.message };
                 }
 
-                const table = tables[idx];
-                const pct   = Math.round((idx / tables.length) * 100);
-                bar.style.width   = pct + '%';
-                label.textContent = 'Optimizing: ' + table + ' (' + (idx + 1) + '/' + tables.length + ')';
-
-                const statusEl = document.getElementById('opt_status_' + table);
-
-                fetch(window.location.href, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: 'do=ajax_optimize&table=' + encodeURIComponent(table) +
-                          '&my_post_key=' + encodeURIComponent(postKey)
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (statusEl) {
-                        statusEl.innerHTML = data.success
-                            ? '<span style="color:#1e8e4f"><i class="bi bi-lightning-charge-fill"></i> optimized</span>'
-                            : '<span style="color:var(--danger)" title="' +
-                              (data.message || '').replace(/"/g, '&quot;') + '">failed - ' +
-                              (data.message || 'unknown error') + '</span>';
-                    }
-                    idx++;
-                    bar.style.width = Math.round((idx / tables.length) * 100) + '%';
-                    optimizeNext();
-                })
-                .catch(err => {
-                    if (statusEl) {
-                        statusEl.innerHTML = '<span style="color:var(--danger)">error - ' + err + '</span>';
-                    }
-                    idx++;
-                    optimizeNext();
-                });
+                if (status) {
+                    status.innerHTML = data.success
+                        ? '<i class="fa-solid fa-bolt" style="color:var(--bs-success)" title="Optimized"></i>'
+                        : '<i class="fa-solid fa-circle-xmark" style="color:var(--bs-danger)" title="' + esc(data.message ?? 'Error') + '"></i>';
+                }
+                if (!data.success) errors.push(`${table}: ${data.message ?? 'unknown error'}`);
+                if (bar) bar.style.width = Math.round((i + 1) / tables.length * 100) + '%';
             }
 
-            optimizeNext();
+            if (progress) progress.style.display = 'none';
+
+            if (errors.length) {
+                btn.disabled = false;
+                notify('error', 'Optimization finished with errors', tableListHtml(errors));
+            } else {
+                if (done) done.style.display = '';
+                btn.style.display = 'none';
+                toast('success', 'All tables optimized');
+            }
         });
     }
 
-    /* ============================================================
-     * Инициализация после загрузки DOM
-     * ============================================================ */
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            initSelectionForm();
-            initOptimize();
-        });
-    } else {
-        initSelectionForm();
-        initOptimize();
+    function showFailures(box) {
+        let failed = [];
+        try { failed = JSON.parse(box.dataset.tables || '[]'); } catch { /* ignore */ }
+        if (!failed.length) return;
+        const partial = document.getElementById('ctSuccessPanel')
+            ? 'The tables that did succeed are listed on the page. '
+            : '';
+        notify('error', `Failed to truncate ${failed.length} table(s)`,
+               partial + 'Check the error log.' + tableListHtml(failed));
     }
+
+    // ── Ошибка с сервера ────────────────────────────────────────────────────
+    function initError(box) {
+        if (!hasSwal()) return; // остаётся обычная панель с кнопкой «Go back»
+        box.style.visibility = 'hidden';
+        Swal.fire({
+            icon: box.dataset.type === 'danger' ? 'error' : 'warning',
+            title: 'Truncate Database Tables',
+            text: box.dataset.message ?? '',
+            confirmButtonText: '<i class="fa-solid fa-arrow-left me-1"></i> Go back',
+            allowOutsideClick: false,
+        }).then(() => {
+            location.href = box.dataset.back || location.pathname;
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('truncateForm');
+        if (form) initSelection(form);
+
+        const panel = document.getElementById('ctSuccessPanel');
+        if (panel) initResults(panel);
+
+        const failed = document.getElementById('ctFailed');
+        if (failed) showFailures(failed);
+
+        const err = document.getElementById('ctError');
+        if (err) initError(err);
+    });
 })();

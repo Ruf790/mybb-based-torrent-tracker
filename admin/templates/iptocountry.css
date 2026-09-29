@@ -1,0 +1,378 @@
+/* IP to Country — admin page. Everything scoped under .itc-page */
+
+.itc-page {
+    font-size: 1.055rem;
+    --itc-radius: 1rem;
+    --itc-radius-sm: .65rem;
+    --itc-border: var(--bs-border-color);
+    --itc-surface: var(--bs-body-bg);
+    --itc-surface-2: var(--bs-tertiary-bg);
+    --itc-muted: var(--bs-secondary-color);
+    padding-block: 1rem 2rem;
+}
+
+/* ---------- header ---------- */
+.itc-page .itc-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+    background: var(--itc-surface);
+    border: 1px solid var(--itc-border);
+    border-radius: var(--itc-radius);
+}
+.itc-page .itc-head-icon {
+    flex: 0 0 3.25rem;
+    height: 3.25rem;
+    display: grid;
+    place-items: center;
+    font-size: 1.5rem;
+    border-radius: .85rem;
+    color: var(--bs-info-text-emphasis);
+    background: var(--bs-info-bg-subtle);
+}
+.itc-page .itc-title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+.itc-page .itc-sub {
+    margin: .15rem 0 0;
+    color: var(--itc-muted);
+    font-size: .92em;
+}
+
+/* ---------- search ---------- */
+.itc-page .itc-search {
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+    background: var(--itc-surface);
+    border: 1px solid var(--itc-border);
+    border-radius: var(--itc-radius);
+}
+.itc-page .itc-label {
+    display: block;
+    margin-bottom: .45rem;
+    font-weight: 600;
+    font-size: .9em;
+}
+.itc-page .itc-search-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+}
+.itc-page .itc-field {
+    position: relative;
+    flex: 1 1 18rem;
+}
+.itc-page .itc-field > i {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--itc-muted);
+    pointer-events: none;
+}
+.itc-page .itc-field input {
+    width: 100%;
+    height: 2.9rem;
+    padding: 0 1rem 0 2.75rem;
+    font-size: 1em;
+    font-family: var(--bs-font-monospace);
+    color: var(--bs-body-color);
+    background: var(--itc-surface-2);
+    border: 1px solid var(--itc-border);
+    border-radius: 999px;
+    transition: border-color .15s, box-shadow .15s;
+}
+.itc-page .itc-field input:focus {
+    outline: none;
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 .22rem rgba(var(--bs-primary-rgb), .2);
+}
+
+/* ---------- buttons ---------- */
+.itc-page .itc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    height: 2.9rem;
+    padding: 0 1.25rem;
+    font-size: .95em;
+    font-weight: 600;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: filter .15s, background-color .15s;
+}
+.itc-page .itc-btn:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+}
+.itc-page .itc-btn:disabled { opacity: .7; cursor: progress; }
+.itc-page .itc-btn-primary { color: #fff; background: var(--bs-primary); }
+.itc-page .itc-btn-primary:hover { filter: brightness(1.1); }
+.itc-page .itc-btn-ghost {
+    color: var(--bs-body-color);
+    background: transparent;
+    border-color: var(--itc-border);
+}
+.itc-page .itc-btn-ghost:hover { background: var(--itc-surface-2); }
+.itc-page .itc-btn-soft {
+    height: 2.5rem;
+    color: var(--bs-primary-text-emphasis);
+    background: var(--bs-primary-bg-subtle);
+}
+.itc-page .itc-btn-soft:hover { filter: brightness(.96); }
+
+/* ---------- recent lookups ---------- */
+.itc-page .itc-recent {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-top: .85rem;
+}
+.itc-page .itc-recent[hidden] { display: none; }
+.itc-page .itc-recent-label { color: var(--itc-muted); font-size: .85em; }
+.itc-page .itc-recent-list { display: flex; flex-wrap: wrap; gap: .4rem; }
+.itc-page .itc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .2rem .7rem;
+    font-size: .82em;
+    font-family: var(--bs-font-monospace);
+    color: var(--bs-body-color);
+    background: var(--itc-surface-2);
+    border: 1px solid var(--itc-border);
+    border-radius: 999px;
+    text-decoration: none;
+}
+.itc-page .itc-chip:hover { border-color: var(--bs-primary); }
+.itc-page .itc-recent-clear {
+    width: 1.8rem;
+    height: 1.8rem;
+    display: grid;
+    place-items: center;
+    color: var(--itc-muted);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+}
+.itc-page .itc-recent-clear:hover { background: var(--itc-surface-2); color: var(--bs-danger); }
+
+/* ---------- messages ---------- */
+.itc-page .itc-msg {
+    display: flex;
+    align-items: flex-start;
+    gap: .7rem;
+    padding: .9rem 1.1rem;
+    margin-bottom: 1rem;
+    border-radius: var(--itc-radius-sm);
+    border: 1px solid;
+}
+.itc-page .itc-msg > i { margin-top: .2rem; }
+.itc-page .itc-msg-danger {
+    color: var(--bs-danger-text-emphasis);
+    background: var(--bs-danger-bg-subtle);
+    border-color: var(--bs-danger-border-subtle);
+}
+.itc-page .itc-msg-warning {
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+    border-color: var(--bs-warning-border-subtle);
+}
+
+/* ---------- result ---------- */
+.itc-page .itc-result {
+    position: relative;
+    overflow: hidden;
+    padding: 1.5rem 1.25rem 1.25rem;
+    background: var(--itc-surface);
+    border: 1px solid var(--itc-border);
+    border-radius: var(--itc-radius);
+    isolation: isolate;
+}
+/* the flag, blurred into a wash behind the hero */
+.itc-page .itc-result::before {
+    content: "";
+    position: absolute;
+    inset: -40px -40px auto;
+    height: 220px;
+    background: var(--itc-flag, none) center / cover no-repeat;
+    filter: blur(48px) saturate(1.3);
+    opacity: .22;
+    z-index: -1;
+    pointer-events: none;
+}
+[data-bs-theme="dark"] .itc-page .itc-result::before { opacity: .16; }
+
+.itc-page .itc-hero {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+    animation: itc-rise .35s ease-out both;
+}
+.itc-page .itc-flag {
+    flex: 0 0 auto;
+    width: 96px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: .5rem;
+    box-shadow: 0 0 0 1px var(--itc-border), 0 6px 18px rgba(0, 0, 0, .18);
+}
+.itc-page .itc-flag-empty {
+    display: grid;
+    place-items: center;
+    font-size: 1.6rem;
+    color: var(--itc-muted);
+    background: var(--itc-surface-2);
+}
+.itc-page .itc-hero-text { min-width: 0; }
+.itc-page .itc-country {
+    margin: 0;
+    font-family: "Oswald", var(--bs-body-font-family);
+    font-size: clamp(1.6rem, 4vw, 2.3rem);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: .01em;
+}
+.itc-page .itc-ip-line {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    margin-top: .3rem;
+}
+.itc-page .itc-ip {
+    font-size: .95em;
+    color: var(--bs-body-color);
+    background: none;
+    padding: 0;
+    word-break: break-all;
+}
+.itc-page .itc-copy {
+    width: 1.9rem;
+    height: 1.9rem;
+    display: grid;
+    place-items: center;
+    color: var(--itc-muted);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+}
+.itc-page .itc-copy:hover { background: var(--itc-surface-2); color: var(--bs-primary); }
+.itc-page .itc-copy.is-done { color: var(--bs-success); }
+
+.itc-page .itc-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-top: .55rem;
+}
+.itc-page .itc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .15rem .6rem;
+    font-size: .78em;
+    font-weight: 600;
+    color: var(--bs-secondary-text-emphasis);
+    background: var(--bs-secondary-bg-subtle);
+    border-radius: 999px;
+}
+.itc-page .itc-badge-eu {
+    color: var(--bs-primary-text-emphasis);
+    background: var(--bs-primary-bg-subtle);
+}
+
+/* ---------- tiles ---------- */
+.itc-page .itc-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: .75rem;
+}
+.itc-page .itc-tile {
+    display: flex;
+    gap: .85rem;
+    padding: .9rem 1rem;
+    background: var(--itc-surface-2);
+    border: 1px solid var(--itc-border);
+    border-radius: var(--itc-radius-sm);
+    min-width: 0;
+}
+.itc-page .itc-tile-icon {
+    flex: 0 0 2.5rem;
+    height: 2.5rem;
+    display: grid;
+    place-items: center;
+    border-radius: .7rem;
+    font-size: 1.05rem;
+}
+.itc-page .itc-c-blue   { color: var(--bs-primary-text-emphasis); background: var(--bs-primary-bg-subtle); }
+.itc-page .itc-c-purple { color: var(--bs-info-text-emphasis);    background: var(--bs-info-bg-subtle); }
+.itc-page .itc-c-amber  { color: var(--bs-warning-text-emphasis); background: var(--bs-warning-bg-subtle); }
+.itc-page .itc-c-green  { color: var(--bs-success-text-emphasis); background: var(--bs-success-bg-subtle); }
+
+.itc-page .itc-tile-body { min-width: 0; }
+.itc-page .itc-tile-label { font-size: .8em; color: var(--itc-muted); }
+.itc-page .itc-tile-value {
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.itc-page .itc-tile-meta {
+    font-size: .8em;
+    color: var(--itc-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.itc-page .itc-hint {
+    display: flex;
+    gap: .55rem;
+    margin: 1rem 0 0;
+    font-size: .85em;
+    color: var(--itc-muted);
+}
+.itc-page .itc-hint > i { margin-top: .2rem; }
+
+.itc-page .itc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px dashed var(--itc-border);
+}
+
+/* ---------- empty state ---------- */
+.itc-page .itc-empty {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--itc-muted);
+    border: 1px dashed var(--itc-border);
+    border-radius: var(--itc-radius);
+}
+.itc-page .itc-empty > i { font-size: 2rem; margin-bottom: .75rem; opacity: .6; }
+.itc-page .itc-empty p { margin: 0 auto; max-width: 32rem; }
+
+@keyframes itc-rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .itc-page .itc-hero { animation: none; }
+}
+
+@media (max-width: 575.98px) {
+    .itc-page .itc-btn-ghost span { display: none; }
+    .itc-page .itc-search-row .itc-btn-primary { flex: 1 1 auto; justify-content: center; }
+    .itc-page .itc-flag { width: 72px; height: 48px; }
+}

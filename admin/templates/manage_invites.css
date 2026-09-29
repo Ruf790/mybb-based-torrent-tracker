@@ -1,0 +1,292 @@
+/* ==========================================================================
+   Invite Manager — admin/templates/manage_invites.css
+   Все правила под .inv-page: глобальные .table/.card-header/h2/.bg-light/
+   .form-check-input больше не протекают на шапку и футер сайта.
+   ========================================================================== */
+
+.inv-page {
+    --primary-gradient: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+    --success-gradient: linear-gradient(135deg, #198754 0%, #157347 100%);
+    --warning-gradient: linear-gradient(135deg, #ffc107 0%, #ff9f00 100%);
+    --danger-gradient: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+
+
+.inv-page .bg-light {
+    background: #f8f9fa !important;
+}
+
+
+.inv-page .table {
+    background: #ffffff;
+    border-color: #e9ecef;
+}
+.inv-page .table th {
+    border-top: none;
+    border-bottom: 2px solid #e9ecef;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    color: #495057;
+    background: #f8f9fa;
+}
+.inv-page .table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.03) !important;
+    transform: translateY(-1px);
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+
+.inv-page .form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+.inv-page .form-switch .form-check-input {
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.inv-page .form-switch .form-check-input:focus {
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+
+
+
+/* Modern Stats Cards */
+.inv-page .stat-card {
+    background: white;
+    border-radius: 20px;
+    border: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    position: relative;
+}
+
+.inv-page .stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+}
+
+.inv-page .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+}
+
+.inv-page .stat-card.primary::before { background: var(--primary-gradient); }
+.inv-page .stat-card.warning::before { background: var(--warning-gradient); }
+.inv-page .stat-card.success::before { background: var(--success-gradient); }
+.inv-page .stat-card.secondary::before { background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%); }
+.inv-page .stat-card.danger::before { background: var(--danger-gradient); }
+
+.inv-page .stat-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+}
+
+.inv-page .stat-icon.primary { background: #0d6efd20; color: #0d6efd; }
+.inv-page .stat-icon.warning { background: #ffc10720; color: #ffc107; }
+.inv-page .stat-icon.success { background: #19875420; color: #198754; }
+.inv-page .stat-icon.secondary { background: #6c757d20; color: #6c757d; }
+.inv-page .stat-icon.danger { background: #dc354520; color: #dc3545; }
+
+/* Modern Table */
+.inv-page .invite-table {
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.inv-page .invite-table thead th {
+    background: var(--primary-gradient);
+    color: white;
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 18px 12px;
+    border: none;
+}
+
+.inv-page .invite-table tbody td {
+    font-size: 0.9rem;
+    padding: 15px 12px;
+}
+
+.inv-page .invite-table tbody tr {
+    transition: all 0.2s ease;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.inv-page .invite-table tbody tr:hover {
+    background: #f8f9fa;
+    transform: scale(1.01);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+/* Badges */
+.inv-page .badge-modern {
+    padding: 2px 5px;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.inv-page .badge-pending { background: var(--warning-gradient); color: #fff; }
+.inv-page .badge-used { background: var(--success-gradient); color: #fff; }
+.inv-page .badge-expired { background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%); color: #fff; }
+.inv-page .badge-revoked { background: var(--danger-gradient); color: #fff; }
+
+/* Code styling */
+.inv-page .invite-code {
+    font-family: 'Monaco', 'Courier New', monospace;
+    background: #f8f9fa;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: #0d6efd;
+    border: 1px solid #dee2e6;
+}
+
+/* Buttons */
+.inv-page .btn-modern {
+    border-radius: 12px;
+    padding: 10px 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.inv-page .btn-modern-sm {
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.inv-page .btn-modern:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Filter section */
+.inv-page .filter-card {
+    background: white;
+    border-radius: 20px;
+    border: none;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+}
+
+.inv-page .filter-card .form-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.inv-page .filter-card .form-control, .inv-page .filter-card .form-select {
+    font-size: 0.9rem;
+    padding: 10px 12px;
+}
+
+/* Pagination */
+.inv-page .pagination-modern .page-item .page-link {
+    border-radius: 12px;
+    margin: 0 4px;
+    border: none;
+    color: #0d6efd;
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 8px 14px;
+    transition: all 0.2s ease;
+}
+
+.inv-page .pagination-modern .page-item.active .page-link {
+    background: var(--primary-gradient);
+    color: white;
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.4);
+}
+
+.inv-page .pagination-modern .page-item .page-link:hover {
+    transform: translateY(-2px);
+    background: #e9ecef;
+    color: #0d6efd;
+}
+
+/* Checkbox styling */
+.inv-page .custom-checkbox {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    accent-color: #0d6efd;
+}
+
+/* Card headers */
+.inv-page .card-header {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.inv-page .card-header strong {
+    font-size: 1.05rem;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.inv-page.animate-in {
+    animation: fadeInUp 0.5s ease-out;
+}
+
+/* Typography improvements */
+.inv-page h2 {
+    font-size: 1.8rem !important;
+    font-weight: 700 !important;
+}
+
+.inv-page .fw-bold.fs-2 {
+    font-size: 2.2rem !important;
+}
+
+.inv-page .text-muted.small {
+    font-size: 0.85rem !important;
+}
+
+.inv-page .stat-card .text-muted {
+    font-size: 0.85rem;
+}
+
+/* Table text improvements */
+.inv-page .invite-table .align-middle {
+    font-size: 0.9rem;
+}
+
+.inv-page .invite-table .small.text-muted {
+    font-size: 0.85rem !important;
+}
+
+.inv-page .invite-table code.text-muted {
+    font-size: 0.8rem;
+}

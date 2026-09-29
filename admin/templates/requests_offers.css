@@ -1,0 +1,523 @@
+/* ==========================================================================
+   Requests & Offers — staff panel
+   Всё scoped под .ro-page (кроме .ro-actions-menu, которое JS переносит).
+   Цвета: Bootstrap 5.3 *-bg-subtle / *-text-emphasis → тёмная тема из коробки.
+   ========================================================================== */
+
+.ro-page {
+    font-size: 1.055rem;
+
+    --ro-surface:  var(--bg-card, var(--bs-body-bg));
+    --ro-surface-2: var(--bg-light, var(--bs-tertiary-bg));
+    --ro-hover:    var(--bg-hover, var(--bs-secondary-bg));
+    --ro-line:     var(--border-color, var(--bs-border-color));
+    --ro-text:     var(--text-primary, var(--bs-emphasis-color));
+    --ro-muted:    var(--text-muted, var(--bs-secondary-color));
+    --ro-radius:   16px;
+    --ro-shadow:   0 1px 2px rgba(0, 0, 0, .04), 0 6px 20px rgba(0, 0, 0, .05);
+
+    /* тон по умолчанию, переопределяется inline через ro_tone() */
+    --ro-bg:    var(--bs-primary-bg-subtle);
+    --ro-fg:    var(--bs-primary-text-emphasis);
+    --ro-solid: var(--bs-primary);
+
+    color: var(--ro-text);
+}
+
+.ro-page .ro-muted { color: var(--ro-muted); }
+
+.ro-page :focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.ro-page .ro-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    background: var(--ro-surface);
+    border: 1px solid var(--ro-line);
+    border-radius: var(--ro-radius);
+    box-shadow: var(--ro-shadow);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+.ro-page .ro-head-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    font-size: 1.4rem;
+    background: var(--ro-bg);
+    color: var(--ro-fg);
+    flex-shrink: 0;
+}
+.ro-page .ro-head-text { flex: 1 1 260px; min-width: 0; }
+.ro-page .ro-head-text h1 {
+    font-size: 1.4em;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.2;
+}
+.ro-page .ro-head-text p {
+    margin: .2rem 0 0;
+    color: var(--ro-muted);
+    font-size: .9em;
+}
+
+/* Сегментный переключатель Requests / Offers */
+.ro-page .ro-switch {
+    display: inline-flex;
+    gap: .25rem;
+    padding: .25rem;
+    background: var(--ro-surface-2);
+    border: 1px solid var(--ro-line);
+    border-radius: 999px;
+}
+.ro-page .ro-switch-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .45rem 1rem;
+    border-radius: 999px;
+    color: var(--ro-muted);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: .92em;
+    transition: background-color .15s, color .15s;
+}
+.ro-page .ro-switch-item:hover { color: var(--ro-text); background: var(--ro-hover); }
+.ro-page .ro-switch-item.is-active {
+    background: var(--ro-surface);
+    color: var(--ro-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+}
+.ro-page .ro-switch-item.is-active i { color: var(--ro-solid); }
+.ro-page .ro-switch-count {
+    font-size: .78em;
+    font-variant-numeric: tabular-nums;
+    padding: .05rem .5rem;
+    border-radius: 999px;
+    background: var(--ro-bg);
+    color: var(--ro-fg);
+}
+
+/* ── KPI ─────────────────────────────────────────────────────────────────── */
+.ro-page .ro-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .85rem;
+    margin-bottom: 1rem;
+}
+.ro-page .ro-kpi {
+    display: flex;
+    align-items: flex-start;
+    gap: .85rem;
+    background: var(--ro-surface);
+    border: 1px solid var(--ro-line);
+    border-radius: var(--ro-radius);
+    box-shadow: var(--ro-shadow);
+    padding: 1rem 1.1rem;
+    min-width: 0;
+}
+.ro-page .ro-kpi-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-size: 1.1rem;
+    background: var(--ro-bg);
+    color: var(--ro-fg);
+    flex-shrink: 0;
+}
+.ro-page .ro-kpi-body { min-width: 0; }
+.ro-page .ro-kpi-value {
+    font-size: 1.55em;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.ro-page .ro-kpi-label {
+    font-size: .88em;
+    font-weight: 600;
+    margin-top: .15rem;
+}
+.ro-page .ro-kpi-sub {
+    font-size: .78em;
+    color: var(--ro-muted);
+    margin-top: .2rem;
+}
+.ro-page .ro-kpi-sub i { font-size: .9em; margin-right: .15rem; }
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+.ro-page .ro-card {
+    background: var(--ro-surface);
+    border: 1px solid var(--ro-line);
+    border-radius: var(--ro-radius);
+    box-shadow: var(--ro-shadow);
+    overflow: hidden;
+}
+.ro-page .ro-card-head {
+    padding: .9rem 1rem;
+    border-bottom: 1px solid var(--ro-line);
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+}
+.ro-page .ro-card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .75rem;
+    padding: .75rem 1rem;
+    border-top: 1px solid var(--ro-line);
+    font-size: .85em;
+}
+.ro-page .ro-pager .pagination { margin: 0; }
+
+/* Status chips */
+.ro-page .ro-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.ro-page .ro-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .35rem .8rem;
+    border-radius: 999px;
+    border: 1px solid var(--ro-line);
+    color: var(--ro-muted);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: .85em;
+    transition: background-color .15s, color .15s, border-color .15s;
+}
+.ro-page .ro-chip i { color: var(--ro-solid); font-size: .9em; }
+.ro-page .ro-chip:hover { background: var(--ro-hover); color: var(--ro-text); }
+.ro-page .ro-chip.is-active {
+    background: var(--ro-bg);
+    color: var(--ro-fg);
+    border-color: transparent;
+}
+.ro-page .ro-chip-count {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    opacity: .75;
+}
+
+/* Filters */
+.ro-page .ro-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+.ro-page .ro-search,
+.ro-page .ro-select {
+    position: relative;
+    margin: 0;
+}
+.ro-page .ro-search { flex: 1 1 220px; }
+.ro-page .ro-search > i,
+.ro-page .ro-select > i {
+    position: absolute;
+    left: .8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ro-muted);
+    font-size: .85em;
+    pointer-events: none;
+    z-index: 1;
+}
+.ro-page .ro-search .form-control,
+.ro-page .ro-select .form-select {
+    border-radius: 999px;
+    padding-left: 2.1rem;
+    background-color: var(--ro-surface-2);
+    border-color: var(--ro-line);
+}
+.ro-page .ro-select .form-select { min-width: 170px; }
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+.ro-page .ro-table { --bs-table-bg: transparent; color: inherit; }
+.ro-page .ro-table thead th {
+    background: var(--ro-surface-2);
+    color: var(--ro-muted);
+    font-size: .8em;
+    font-weight: 600;
+    border-bottom: 1px solid var(--ro-line);
+    padding: .6rem .6rem;
+    white-space: nowrap;
+}
+.ro-page .ro-table thead th i { opacity: .7; }
+.ro-page .ro-table td {
+    padding: .7rem .6rem;
+    border-bottom-color: var(--ro-line);
+}
+.ro-page .ro-table tbody tr:last-child td { border-bottom: 0; }
+
+.ro-page .ro-row { transition: background-color .12s; }
+.ro-page .ro-row:hover > td { background: var(--ro-hover); }
+.ro-page .ro-row.is-selected > td { background: var(--bs-primary-bg-subtle); }
+/* цветная полоса статуса слева */
+.ro-page .ro-row > td:first-child { box-shadow: inset 3px 0 0 var(--ro-solid); }
+
+.ro-page .ro-col-check { width: 44px; padding-left: 1rem !important; }
+.ro-page .ro-col-user { width: 170px; }
+.ro-page .ro-col-status { width: 130px; }
+.ro-page .ro-col-num { width: 96px; }
+.ro-page .ro-col-date { width: 130px; }
+.ro-page .ro-col-actions { width: 96px; padding-right: 1rem !important; }
+.ro-page .ro-check { cursor: pointer; margin: 0; }
+
+.ro-page .ro-col-title { min-width: 240px; }
+.ro-page .ro-title {
+    color: var(--ro-text);
+    font-weight: 600;
+    text-decoration: none;
+    word-break: break-word;
+}
+.ro-page .ro-title:hover { color: var(--bs-primary); text-decoration: underline; }
+.ro-page .ro-year {
+    color: var(--ro-muted);
+    font-size: .85em;
+    margin-left: .3rem;
+}
+.ro-page .ro-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem .9rem;
+    margin-top: .2rem;
+    font-size: .8em;
+    color: var(--ro-muted);
+}
+.ro-page .ro-meta i { margin-right: .3rem; opacity: .7; }
+.ro-page .ro-id { font-variant-numeric: tabular-nums; }
+.ro-page .ro-torrent { color: var(--ro-fg); text-decoration: none; }
+.ro-page .ro-torrent:hover { text-decoration: underline; }
+
+.ro-page .ro-user { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.ro-page .ro-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--ro-surface-2);
+}
+.ro-page .ro-avatar-empty {
+    display: grid;
+    place-items: center;
+    font-size: .75em;
+    font-weight: 700;
+    color: var(--ro-muted);
+    border: 1px solid var(--ro-line);
+}
+.ro-page .ro-username {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .92em;
+}
+
+.ro-page .ro-status {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .25rem .7rem;
+    border-radius: 999px;
+    background: var(--ro-bg);
+    color: var(--ro-fg);
+    font-weight: 600;
+    font-size: .8em;
+    white-space: nowrap;
+}
+.ro-page .ro-status i { font-size: .85em; }
+
+.ro-page .ro-num { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ro-page .ro-num.is-zero { color: var(--ro-muted); font-weight: 500; }
+.ro-page .ro-bounty {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--bs-warning-text-emphasis);
+}
+.ro-page .ro-date { font-size: .85em; color: var(--ro-muted); white-space: nowrap; }
+
+/* Icon buttons */
+.ro-page .ro-actions { display: inline-flex; gap: .3rem; position: relative; }
+.ro-page .ro-icon-btn {
+    width: 32px;
+    height: 32px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid var(--ro-line);
+    background: transparent;
+    color: var(--ro-muted);
+    font-size: .85em;
+    text-decoration: none;
+    transition: background-color .12s, color .12s;
+}
+.ro-page .ro-icon-btn:hover,
+.ro-page .ro-icon-btn[aria-expanded="true"] {
+    background: var(--ro-surface-2);
+    color: var(--ro-text);
+}
+
+/* Меню действий — JS переносит его в .ro-page и ставит координаты сам */
+.ro-actions-menu {
+    display: none;
+    position: fixed;
+    margin: 0;
+    z-index: 3000;
+    min-width: 220px;
+    border-radius: 12px;
+    padding: .35rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .15);
+}
+.ro-actions-menu.show { display: block; }
+.ro-actions-menu .dropdown-item { border-radius: 8px; padding: .45rem .7rem; }
+.ro-actions-menu .dropdown-header { font-size: .78rem; padding: .35rem .7rem; }
+
+/* Empty state */
+.ro-page .ro-empty { text-align: center; padding: 3rem 1rem; }
+.ro-page .ro-empty-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 1rem;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    font-size: 1.6rem;
+    background: var(--ro-bg);
+    color: var(--ro-fg);
+}
+.ro-page .ro-empty h2 { font-size: 1.05em; font-weight: 700; margin-bottom: .3rem; }
+.ro-page .ro-empty p { color: var(--ro-muted); font-size: .9em; margin-bottom: 1rem; }
+
+/* ── Sticky bulk bar ─────────────────────────────────────────────────────── */
+.ro-page .ro-bulkbar {
+    position: sticky;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 20;
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .5rem 1rem;
+    padding: .5rem .6rem .5rem 1.1rem;
+    background: var(--ro-surface);
+    border: 1px solid var(--ro-line);
+    border-radius: 999px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .12);
+    transition: border-color .2s, box-shadow .2s;
+}
+.ro-page .ro-bulkbar.is-active {
+    border-color: var(--bs-primary);
+    box-shadow: 0 8px 28px rgba(var(--bs-primary-rgb), .22);
+}
+.ro-page .ro-bulk-count {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-size: .9em;
+    color: var(--ro-muted);
+}
+.ro-page .ro-bulk-count b { color: var(--ro-text); font-variant-numeric: tabular-nums; }
+.ro-page .ro-bulkbar.is-active .ro-bulk-count i { color: var(--bs-primary); }
+.ro-page .ro-link-btn {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--ro-muted);
+    font-size: .85em;
+}
+.ro-page .ro-link-btn:hover { color: var(--ro-text); }
+.ro-page .ro-bulkbar:not(.is-active) .ro-link-btn { visibility: hidden; }
+.ro-page .ro-bulk-controls {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+.ro-page .ro-bulk-controls .form-select {
+    border-radius: 999px;
+    min-width: 200px;
+    background-color: var(--ro-surface-2);
+    border-color: var(--ro-line);
+}
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+.ro-page .ro-modal .modal-content {
+    border: 1px solid var(--ro-line);
+    border-radius: var(--ro-radius);
+    background: var(--ro-surface);
+    color: var(--ro-text);
+}
+.ro-page .ro-modal .modal-header {
+    gap: .85rem;
+    border-bottom: 0;
+    align-items: center;
+}
+.ro-page .ro-modal .modal-header .btn-close { margin-left: auto; align-self: flex-start; }
+.ro-page .ro-modal .modal-footer { border-top: 0; }
+.ro-page .ro-modal-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: var(--ro-bg);
+    color: var(--ro-fg);
+    flex-shrink: 0;
+}
+.ro-page .ro-modal-sub {
+    color: var(--ro-muted);
+    font-size: .85em;
+    max-width: 330px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ro-page .ro-modal .input-group-text { background: var(--ro-surface-2); color: var(--ro-muted); }
+
+/* ── Одна анимация загрузки ──────────────────────────────────────────────── */
+@keyframes ro-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+.ro-page .ro-head,
+.ro-page .ro-kpis,
+.ro-page .ro-card { animation: ro-in .35s ease both; }
+.ro-page .ro-kpis { animation-delay: .05s; }
+.ro-page .ro-card { animation-delay: .1s; }
+
+@media (prefers-reduced-motion: reduce) {
+    .ro-page *,
+    .ro-actions-menu { animation: none !important; transition: none !important; }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+    .ro-page .ro-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767.98px) {
+    .ro-page .ro-switch { width: 100%; }
+    .ro-page .ro-switch-item { flex: 1; justify-content: center; }
+    .ro-page .ro-select { flex: 1 1 45%; }
+    .ro-page .ro-select .form-select { min-width: 0; width: 100%; }
+    .ro-page .ro-bulkbar { border-radius: 18px; }
+    .ro-page .ro-bulk-controls { margin-left: 0; width: 100%; }
+    .ro-page .ro-bulk-controls .form-select { flex: 1; min-width: 0; }
+}
+@media (max-width: 479.98px) {
+    .ro-page .ro-kpis { grid-template-columns: 1fr; }
+    .ro-page .ro-head-icon { width: 46px; height: 46px; font-size: 1.2rem; }
+}

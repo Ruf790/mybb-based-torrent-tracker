@@ -137,12 +137,58 @@ username and/or password was not properly entered to access a password protected
 area of the web site space.
 HTML,
     
-    403 => <<<HTML
-<strong>403 Forbidden22222</strong> -- "You are not allowed to access this page." 
-(This error refers to pages that the server is finding, i.e., they do exist, but the 
-permissions on the file are not sufficient to allow the webserver to "serve" the page 
-to any end user with or without a password.)
-HTML,
+    
+	
+   403 => <<<HTML
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{$BASEURL}/include/templates/default/style/bootstrap.min.css" media="all">
+</head>
+<body>
+    <section class="bg-light">
+        <div class="container-fluid">
+            <div class="row row-cols-1 justify-content-center py-5">
+                <div class="col-xxl-7 mb-4">
+                    <div class="lc-block">
+                        <script src="{$BASEURL}/scripts/lottie-player.js"></script>
+                        <lottie-player src="{$BASEURL}/scripts/lf20_u1xuufn3.json" 
+                            class="mx-auto" 
+                            background="transparent" 
+                            speed="1" 
+                            loop 
+                            autoplay>
+                        </lottie-player>
+                    </div>
+                </div>
+                <div class="col text-center">
+                    <div class="lc-block">
+                        <div class="lc-block mb-4">
+                            <div editable="rich">
+                                <h2>403 Forbidden</h2>
+                                <p class="rfs-11 fw-light">
+                                    You are not allowed to access this page.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="lc-block">
+                            <a class="btn btn-lg btn-primary" href="{$BASEURL}" role="button">
+                                Back to homepage
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <script defer src="{$BASEURL}/scripts/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+HTML,	
+	
+	
     
     404 => <<<HTML
 <!doctype html>

@@ -39,8 +39,13 @@ $membersperday = ts_nf(round($numusers   / $days, 2));
 $unviewableforums = get_unviewable_forums(true);
 $inactiveforums   = get_inactive_forums();
 
-$unviewablefids        = $unviewableforums ? explode(',', $unviewableforums) : [];
-$inactivefids          = $inactiveforums   ? explode(',', $inactiveforums)   : [];
+// get_unviewable_forums() может вернуть "'3','5'" — нормализуем в int[]
+$toFids = static fn(string $csv): array => $csv === ''
+    ? []
+    : array_values(array_filter(array_map(static fn($v) => (int)trim($v, " '\""), explode(',', $csv))));
+
+$unviewablefids        = $toFids((string)$unviewableforums);
+$inactivefids          = $toFids((string)$inactiveforums);
 $unviewableforumsarray = array_merge($unviewablefids, $inactivefids);
 
 $fidnot = '';
@@ -55,26 +60,48 @@ foreach ($group_permissions as $gpfid => $fp) {
     }
 }
 
-// FIX: buildThreadRow() вызывается внутри цикла — переменные всегда определены
-// FIX: ; после строки шаблона — устраняет "unexpected token if"
-// FIX: $numbertype -> $number_type
-function buildThreadRow(array $thread, string $number_type): string
+// Форумы "только свои темы" тоже скрываем из топов и из популярного форума
+$hiddenfids = array_merge($unviewableforumsarray, $onlyusfids);
+if ($onlyusfids) {
+    $fidnot .= ' AND fid NOT IN (' . implode(',', $onlyusfids) . ')';
+}
+
+function buildThreadRow(array $thread, string $number_type, int $rank, int $max): string
 {
     global $parser;
     $subject    = htmlspecialchars_uni($parser->parse_badwords($thread['subject']));
     $threadlink = htmlspecialchars(get_thread_link($thread['tid']), ENT_QUOTES, 'UTF-8');
-    $numberbit  = ts_nf((int)($thread[$number_type] ?? 0));
-    $typeLabel  = htmlspecialchars($number_type, ENT_QUOTES, 'UTF-8');
+    $count      = (int)($thread[$number_type] ?? 0);
+    $width      = $max > 0 ? round($count / $max * 100, 1) : 0;
+    $icon       = $number_type === 'views' ? 'fa-eye' : 'fa-comments';
+    $rankClass  = $rank <= 3 ? ' ag-rank-' . $rank : '';
 
-    return '<div class="stats-thread-item d-flex justify-content-between align-items-center py-2 border-bottom">'
-        . '<div class="stats-thread-title flex-grow-1">'
-            . '<i class="bi bi-chat-dots-fill me-2 text-primary"></i>'
-            . '<a href="' . $threadlink . '" class="text-decoration-none">' . $subject . '</a>'
+    return '<li class="ag-rank-row">'
+        . '<span class="ag-rank' . $rankClass . '">' . $rank . '</span>'
+        . '<div class="ag-rank-main">'
+            . '<a href="' . $threadlink . '" class="ag-rank-title" title="' . $subject . '">' . $subject . '</a>'
+            . '<div class="ag-rank-bar" aria-hidden="true"><span style="--w:' . $width . '%"></span></div>'
         . '</div>'
-        . '<div class="stats-thread-count text-muted">'
-            . '<span class="badge bg-primary rounded-pill">' . $numberbit . '</span> ' . $typeLabel
-        . '</div>'
-        . '</div>';
+        . '<span class="ag-rank-count" title="' . ts_nf($count) . ' ' . $number_type . '">'
+            . '<i class="fa-solid ' . $icon . '"></i>' . ts_nf($count)
+        . '</span>'
+        . '</li>';
+}
+
+function buildThreadList(array $threads, string $number_type, array $hiddenfids): string
+{
+    $visible = array_values(array_filter(
+        $threads,
+        static fn($t) => is_array($t) && !in_array((int)($t['fid'] ?? 0), $hiddenfids, true)
+    ));
+    if (!$visible) return '';
+
+    $max = max(array_map(static fn($t) => (int)($t[$number_type] ?? 0), $visible));
+    $out = '';
+    foreach ($visible as $i => $thread) {
+        $out .= buildThreadRow($thread, $number_type, $i + 1, $max);
+    }
+    return '<ol class="ag-rank-list">' . $out . '</ol>';
 }
 
 $most_replied = $cache->read('most_replied_threads') ?? [];
@@ -82,24 +109,14 @@ if (empty($most_replied)) {
     $cache->update_most_replied_threads();
     $most_replied = $cache->read('most_replied_threads') ?? [];
 }
-
-$mostreplies = '';
-foreach ($most_replied as $thread) {
-    if (in_array($thread['fid'], $unviewableforumsarray, true)) continue;
-    $mostreplies .= buildThreadRow($thread, 'replies');
-}
+$mostreplies = buildThreadList((array)$most_replied, 'replies', $hiddenfids);
 
 $most_viewed = $cache->read('most_viewed_threads') ?? [];
 if (empty($most_viewed)) {
     $cache->update_most_viewed_threads();
     $most_viewed = $cache->read('most_viewed_threads') ?? [];
 }
-
-$mostviews = '';
-foreach ($most_viewed as $thread) {
-    if (in_array($thread['fid'], $unviewableforumsarray, true)) continue;
-    $mostviews .= buildThreadRow($thread, 'views');
-}
+$mostviews = buildThreadList((array)$most_viewed, 'views', $hiddenfids);
 
 $statistics     = $cache->read('statistics') ?? [];
 $statscachetime = (int)($mybb->settings['statscachetime'] ?? 24);
@@ -175,180 +192,149 @@ $stats['newest_user'] = build_profile_link(
 
 $plugins->run_hooks('stats_end');
 
+$e = static fn(?string $s): string => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+
+$communityDays = ts_nf((int)floor($days));
+$hasTopPoster  = isset($statistics['top_poster']['uid']);
+
+$kpis = [
+    ['tone' => 'primary', 'icon' => 'fa-comment-dots', 'value' => $stats['numposts'],   'label' => 'Posts',     'sub' => $postsperday . ' per day'],
+    ['tone' => 'success', 'icon' => 'fa-layer-group',  'value' => $stats['numthreads'], 'label' => 'Threads',   'sub' => $threadsperday . ' per day'],
+    ['tone' => 'info',    'icon' => 'fa-users',        'value' => $stats['numusers'],   'label' => 'Members',   'sub' => $havepostedpercent . ' have posted'],
+    ['tone' => 'warning', 'icon' => 'fa-user-plus',    'value' => $membersperday,       'label' => 'New members per day', 'sub' => 'over ' . $communityDays . ' days'],
+];
+
+$averages = [
+    ['tone' => 'primary',   'icon' => 'fa-pen',            'value' => $postsperday,      'label' => 'Posts per day'],
+    ['tone' => 'success',   'icon' => 'fa-file-lines',     'value' => $threadsperday,    'label' => 'Threads per day'],
+    ['tone' => 'warning',   'icon' => 'fa-user-plus',      'value' => $membersperday,    'label' => 'Members per day'],
+    ['tone' => 'info',      'icon' => 'fa-user-pen',       'value' => $postspermember,   'label' => 'Posts per member'],
+    ['tone' => 'secondary', 'icon' => 'fa-folder-open',    'value' => $threadspermember, 'label' => 'Threads per member'],
+    ['tone' => 'danger',    'icon' => 'fa-reply-all',      'value' => $repliesperthread, 'label' => 'Replies per thread'],
+];
+
 stdhead($lang->stats['board_stats'] ?? 'Board Statistics');
 build_breadcrumb();
 ?>
-<style>
-:root { --stats-accent: #3b82f6; --stats-accent2: #2563eb; }
-.stats-container { max-width:1140px; margin:0 auto; padding:20px; }
-.stats-header {
-    background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-    border-radius:20px; padding:40px 30px; margin-bottom:30px;
-    color:white; position:relative; overflow:hidden;
-}
-.stats-header::before {
-    content:''; position:absolute; top:-50%; right:-20%;
-    width:300px; height:300px; background:rgba(255,255,255,.1); border-radius:50%;
-}
-.stats-header::after {
-    content:''; position:absolute; bottom:-30%; left:-10%;
-    width:200px; height:200px; background:rgba(255,255,255,.05); border-radius:50%;
-}
-.stats-header h1 { font-size:2rem; font-weight:700; margin-bottom:10px; position:relative; z-index:1; }
-.stats-header p  { opacity:.9; margin-bottom:0; position:relative; z-index:1; }
-.stats-kpi-grid {
-    display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-    gap:20px; margin-bottom:30px;
-}
-.stats-kpi-card {
-    background:var(--bs-body-bg); border:1px solid var(--bs-border-color);
-    border-radius:16px; padding:20px; text-align:center;
-    box-shadow:0 4px 12px rgba(0,0,0,.05); transition:transform .2s;
-}
-.stats-kpi-card:hover { transform:translateY(-3px); }
-.stats-kpi-icon {
-    width:50px; height:50px;
-    background:linear-gradient(135deg,rgba(59,130,246,.1),rgba(118,75,162,.1));
-    border-radius:12px; display:flex; align-items:center;
-    justify-content:center; margin:0 auto 15px;
-}
-.stats-kpi-icon i  { font-size:24px; color:var(--stats-accent); }
-.stats-kpi-value   { font-size:28px; font-weight:700; color:var(--stats-accent); margin-bottom:5px; }
-.stats-kpi-label   { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--bs-secondary-color); }
-.stats-card {
-    background:var(--bs-body-bg); border:none; border-radius:16px;
-    box-shadow:0 10px 25px -5px rgba(0,0,0,.05);
-    transition:transform .2s,box-shadow .2s; overflow:hidden;
-    margin-bottom:24px; animation:fadeInUp .4s ease-out both;
-}
-.stats-card:hover { transform:translateY(-2px); box-shadow:0 20px 30px -12px rgba(0,0,0,.1); }
-.stats-card:nth-child(1) { animation-delay:.05s; }
-.stats-card:nth-child(2) { animation-delay:.10s; }
-.stats-card:nth-child(3) { animation-delay:.15s; }
-.stats-card-header {
-    background:linear-gradient(135deg,var(--stats-accent) 0%,var(--stats-accent2) 100%);
-    color:white; padding:16px 20px; font-weight:600; font-size:1rem;
-}
-.stats-card-header i { margin-right:8px; }
-.stats-card-body     { padding:20px; }
-.stats-item {
-    display:flex; justify-content:space-between; align-items:center;
-    padding:12px 0; border-bottom:1px solid var(--bs-border-color);
-}
-.stats-item:last-child { border-bottom:none; }
-.stats-label { display:flex; align-items:center; gap:10px; color:var(--bs-secondary-color); font-size:.9rem; }
-.stats-label i { width:20px; font-size:1rem; }
-.stats-value   { font-weight:700; font-size:1rem; color:var(--bs-body-color); text-align:right; }
-.stats-thread-item { transition:background .2s; }
-.stats-thread-item:hover { background:rgba(59,130,246,.05); padding-left:8px; border-radius:8px; }
-.stats-thread-title a { color:var(--bs-body-color); transition:color .2s; }
-.stats-thread-title a:hover { color:var(--stats-accent); }
-@keyframes fadeInUp {
-    from { opacity:0; transform:translateY(20px); }
-    to   { opacity:1; transform:translateY(0); }
-}
-@media (max-width:768px) {
-    .stats-container { padding:15px; }
-    .stats-header    { padding:30px 20px; }
-    .stats-header h1 { font-size:1.5rem; }
-    .stats-kpi-value { font-size:22px; }
-    .stats-thread-item { flex-direction:column; align-items:flex-start; gap:8px; }
-}
-[data-bs-theme="dark"] .stats-kpi-card { box-shadow:0 4px 12px rgba(0,0,0,.2); }
-[data-bs-theme="dark"] .stats-card     { box-shadow:0 10px 25px -5px rgba(0,0,0,.2); }
-</style>
+<link rel="stylesheet" href="<?= $e($BASEURL ?? '') ?>/include/templates/default/style/stats.css?ver=1">
 
-<div class="stats-container">
-    <div class="stats-header">
-        <h1><i class="bi bi-graph-up me-2"></i><?= htmlspecialchars($lang->stats['board_stats'] ?? 'Forum Statistics', ENT_QUOTES, 'UTF-8') ?></h1>
-        <p><?= htmlspecialchars($lang->stats['board_stats_desc'] ?? 'Comprehensive statistics about your community activity', ENT_QUOTES, 'UTF-8') ?></p>
+<div class="ag-stats">
+
+    <header class="ag-head">
+        <div class="ag-head-icon"><i class="fa-solid fa-chart-line"></i></div>
+        <div class="ag-head-text">
+            <h1><?= $e($lang->stats['board_stats'] ?? 'Forum Statistics') ?></h1>
+            <p><?= $e($lang->stats['board_stats_desc'] ?? 'Forum activity at a glance') ?></p>
+        </div>
+        <div class="ag-head-meta">
+            <span class="ag-chip"><i class="fa-solid fa-hourglass-half"></i><?= $communityDays ?> days online</span>
+            <span class="ag-chip"><i class="fa-solid fa-user-check"></i>Newest: <?= $stats['newest_user'] ?></span>
+        </div>
+    </header>
+
+    <div class="ag-kpis">
+        <?php foreach ($kpis as $k): ?>
+        <div class="ag-kpi ag-tone-<?= $k['tone'] ?>">
+            <div class="ag-kpi-icon"><i class="fa-solid <?= $k['icon'] ?>"></i></div>
+            <div>
+                <div class="ag-kpi-value"><?= $k['value'] ?></div>
+                <div class="ag-kpi-label"><?= $k['label'] ?></div>
+                <div class="ag-kpi-sub"><?= $k['sub'] ?></div>
+            </div>
+        </div>
+        <?php endforeach; ?>
     </div>
 
-    <div class="stats-kpi-grid">
-        <div class="stats-kpi-card">
-            <div class="stats-kpi-icon"><i class="bi bi-chat-dots-fill"></i></div>
-            <div class="stats-kpi-value"><?= $stats['numposts'] ?></div>
-            <div class="stats-kpi-label">Total Posts</div>
-        </div>
-        <div class="stats-kpi-card">
-            <div class="stats-kpi-icon"><i class="bi bi-card-text"></i></div>
-            <div class="stats-kpi-value"><?= $stats['numthreads'] ?></div>
-            <div class="stats-kpi-label">Total Threads</div>
-        </div>
-        <div class="stats-kpi-card">
-            <div class="stats-kpi-icon"><i class="bi bi-people-fill"></i></div>
-            <div class="stats-kpi-value"><?= $stats['numusers'] ?></div>
-            <div class="stats-kpi-label">Total Members</div>
-        </div>
-        <div class="stats-kpi-card">
-            <div class="stats-kpi-icon"><i class="bi bi-person-plus-fill"></i></div>
-            <div class="stats-kpi-value"><?= $membersperday ?></div>
-            <div class="stats-kpi-label">New Members / Day</div>
-        </div>
-    </div>
+    <div class="ag-grid">
+        <div class="ag-col">
+            <section class="ag-panel">
+                <h2 class="ag-panel-head">
+                    <span class="ag-panel-icon ag-tone-primary"><i class="fa-solid fa-comments"></i></span>
+                    <?= $e($lang->stats['most_replied_threads'] ?? 'Most replied threads') ?>
+                </h2>
+                <?= $mostreplies ?: '<div class="ag-empty"><i class="fa-solid fa-inbox"></i>No threads with replies yet</div>' ?>
+            </section>
 
-    <div class="row g-4">
-        <div class="col-lg-7">
-            <div class="stats-card">
-                <div class="stats-card-header">
-                    <i class="bi bi-chat-right-text-fill"></i>
-                    <?= htmlspecialchars($lang->stats['most_replied_threads'] ?? 'Most Replied Threads', ENT_QUOTES, 'UTF-8') ?>
-                </div>
-                <div class="stats-card-body">
-                    <?php if ($mostreplies): ?>
-                        <?= $mostreplies ?>
-                    <?php else: ?>
-                        <div class="text-center text-muted py-4"><i class="bi bi-inbox fs-1 d-block mb-2"></i>No threads found</div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <div class="stats-card">
-                <div class="stats-card-header">
-                    <i class="bi bi-eye-fill"></i>
-                    <?= htmlspecialchars($lang->stats['most_viewed_threads'] ?? 'Most Viewed Threads', ENT_QUOTES, 'UTF-8') ?>
-                </div>
-                <div class="stats-card-body">
-                    <?php if ($mostviews): ?>
-                        <?= $mostviews ?>
-                    <?php else: ?>
-                        <div class="text-center text-muted py-4"><i class="bi bi-inbox fs-1 d-block mb-2"></i>No threads found</div>
-                    <?php endif; ?>
-                </div>
-            </div>
+            <section class="ag-panel">
+                <h2 class="ag-panel-head">
+                    <span class="ag-panel-icon ag-tone-info"><i class="fa-solid fa-eye"></i></span>
+                    <?= $e($lang->stats['most_viewed_threads'] ?? 'Most viewed threads') ?>
+                </h2>
+                <?= $mostviews ?: '<div class="ag-empty"><i class="fa-solid fa-inbox"></i>No viewed threads yet</div>' ?>
+            </section>
         </div>
 
-        <div class="col-lg-5">
-            <div class="stats-card">
-                <div class="stats-card-header"><i class="bi bi-bar-chart-steps"></i><?= htmlspecialchars($lang->stats['totals'] ?? 'Totals', ENT_QUOTES, 'UTF-8') ?></div>
-                <div class="stats-card-body">
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-pencil-fill text-primary"></i>Posts</div><div class="stats-value"><?= $stats['numposts'] ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-card-text text-success"></i>Threads</div><div class="stats-value"><?= $stats['numthreads'] ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-people-fill text-info"></i>Members</div><div class="stats-value"><?= $stats['numusers'] ?></div></div>
+        <div class="ag-col">
+            <section class="ag-panel">
+                <h2 class="ag-panel-head">
+                    <span class="ag-panel-icon ag-tone-success"><i class="fa-solid fa-calculator"></i></span>
+                    <?= $e($lang->stats['averages'] ?? 'Averages') ?>
+                </h2>
+                <div class="ag-avg-grid">
+                    <?php foreach ($averages as $a): ?>
+                    <div class="ag-avg ag-tone-<?= $a['tone'] ?>">
+                        <i class="fa-solid <?= $a['icon'] ?>"></i>
+                        <div class="ag-avg-value"><?= $a['value'] ?></div>
+                        <div class="ag-avg-label"><?= $a['label'] ?></div>
+                    </div>
+                    <?php endforeach; ?>
                 </div>
-            </div>
-            <div class="stats-card">
-                <div class="stats-card-header"><i class="bi bi-calculator-fill"></i><?= htmlspecialchars($lang->stats['averages'] ?? 'Averages', ENT_QUOTES, 'UTF-8') ?></div>
-                <div class="stats-card-body">
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-pencil-fill text-primary"></i>Posts per day</div><div class="stats-value"><?= $postsperday ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-card-text text-success"></i>Threads per day</div><div class="stats-value"><?= $threadsperday ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-person-plus-fill text-warning"></i>Members per day</div><div class="stats-value"><?= $membersperday ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-chat-dots-fill text-info"></i>Posts per member</div><div class="stats-value"><?= $postspermember ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-journals text-secondary"></i>Threads per member</div><div class="stats-value"><?= $threadspermember ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-arrow-return-right text-danger"></i>Replies per thread</div><div class="stats-value"><?= $repliesperthread ?></div></div>
-                </div>
-            </div>
-            <div class="stats-card">
-                <div class="stats-card-header"><i class="bi bi-trophy-fill"></i><?= htmlspecialchars($lang->stats['information'] ?? 'Records', ENT_QUOTES, 'UTF-8') ?></div>
-                <div class="stats-card-body">
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-person-check-fill text-success"></i>Newest member</div><div class="stats-value"><?= $stats['newest_user'] ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-percent text-primary"></i>Members posted</div><div class="stats-value"><?= $havepostedpercent ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-star-fill text-warning"></i>Top poster today</div><div class="stats-value"><?= $todays_top_poster ?></div></div>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-fire text-danger"></i>Popular forum</div><div class="stats-value"><?= $popular_forum ?></div></div>
+            </section>
+
+            <section class="ag-panel">
+                <h2 class="ag-panel-head">
+                    <span class="ag-panel-icon ag-tone-warning"><i class="fa-solid fa-trophy"></i></span>
+                    <?= $e($lang->stats['information'] ?? 'Records') ?>
+                </h2>
+                <ul class="ag-records">
+                    <li>
+                        <span class="ag-rec-icon ag-tone-warning"><i class="fa-solid fa-crown"></i></span>
+                        <div class="ag-rec-body">
+                            <div class="ag-rec-label">Top poster today</div>
+                            <div class="ag-rec-value"><?= $topposter ?></div>
+                        </div>
+                        <?php if ($hasTopPoster): ?>
+                        <span class="ag-rec-pill"><?= $topposterposts ?> posts</span>
+                        <?php endif; ?>
+                    </li>
+                    <li>
+                        <span class="ag-rec-icon ag-tone-danger"><i class="fa-solid fa-fire"></i></span>
+                        <div class="ag-rec-body">
+                            <div class="ag-rec-label">Most popular forum</div>
+                            <div class="ag-rec-value"><?= $topforum ?></div>
+                        </div>
+                        <span class="ag-rec-pill" title="Posts / threads">
+                            <i class="fa-solid fa-comment"></i><?= $topforumposts ?>
+                            <i class="fa-solid fa-layer-group"></i><?= $topforumthreads ?>
+                        </span>
+                    </li>
+                    <li>
+                        <span class="ag-rec-icon ag-tone-success"><i class="fa-solid fa-user-check"></i></span>
+                        <div class="ag-rec-body">
+                            <div class="ag-rec-label">Newest member</div>
+                            <div class="ag-rec-value"><?= $stats['newest_user'] ?></div>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="ag-rec-icon ag-tone-primary"><i class="fa-solid fa-percent"></i></span>
+                        <div class="ag-rec-body">
+                            <div class="ag-rec-label">Members who have posted</div>
+                            <div class="ag-rec-value"><?= $havepostedpercent ?></div>
+                        </div>
+                        <span class="ag-rec-pill"><?= ts_nf($posters) ?> of <?= $stats['numusers'] ?></span>
+                    </li>
                     <?php if ($top_referrer): ?>
-                    <div class="stats-item"><div class="stats-label"><i class="bi bi-person-heart text-info"></i>Top referrer</div><div class="stats-value"><?= $top_referrer ?></div></div>
+                    <li>
+                        <span class="ag-rec-icon ag-tone-info"><i class="fa-solid fa-handshake"></i></span>
+                        <div class="ag-rec-body">
+                            <div class="ag-rec-label">Top referrer</div>
+                            <div class="ag-rec-value"><?= $toprefuser ?></div>
+                        </div>
+                        <span class="ag-rec-pill"><?= ts_nf((int)($statistics['top_referrer']['referrals'] ?? 0)) ?> invited</span>
+                    </li>
                     <?php endif; ?>
-                </div>
-            </div>
+                </ul>
+            </section>
         </div>
     </div>
 </div>

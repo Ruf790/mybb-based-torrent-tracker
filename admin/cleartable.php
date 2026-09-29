@@ -205,6 +205,7 @@ class TableTruncationManager
         stdhead('TRUNCATE MySQL Tables');
         echo $this->getStyles();
         echo $this->getAlertHtml('danger', $message);
+        echo $this->getJavaScript();
         stdfoot();
         exit();
     }
@@ -214,13 +215,15 @@ class TableTruncationManager
      */
     private function getAlertHtml($type, $message)
     {
+        $msg  = $this->escapeHtml((string)$message);
+        $back = $this->escapeHtml((string)$this->scriptUrl);
         return <<<HTML
-        <div class="ct-wrap fade-in">
+        <div class="ct-wrap fade-in" id="ctError" data-type="{$type}" data-message="{$msg}" data-back="{$back}">
             <div class="ct-panel">
                 <div class="ct-titlebar">
                     <h1><i class="fas fa-exclamation-triangle"></i> Truncate Database Tables</h1>
                 </div>
-                <div class="ct-notice"><strong>{$message}</strong></div>
+                <div class="ct-notice"><strong>{$msg}</strong></div>
                 <div class="ct-body">
                     <a href="{$this->scriptUrl}" class="ct-btn ct-btn-ghost">Go back</a>
                 </div>
@@ -374,7 +377,7 @@ HTML;
     $postKeyAttr = htmlspecialchars($mybb->post_code, ENT_QUOTES, 'UTF-8');
 
     return '
-    <div class="ct-success-panel" id="ctSuccessPanel" data-tables="' . $tablesAttr . '" data-post-key="' . $postKeyAttr . '">
+    <div class="ct-success-panel" id="ctSuccessPanel" data-tables="' . $tablesAttr . '" data-post-key="' . $postKeyAttr . '" data-url="' . $this->escapeHtml((string)$this->scriptUrl) . '">
         <div class="ct-success-header">
             <span class="ct-check-circle"><i class="fas fa-check"></i></span> Success
         </div>
@@ -430,8 +433,9 @@ HTML;
 HTML;
         }
         
+        $failedAttr = htmlspecialchars(json_encode(array_values($tables)), ENT_QUOTES, 'UTF-8');
         return <<<HTML
-        <div class="ct-panel">
+        <div class="ct-panel" id="ctFailed" data-tables="{$failedAttr}">
             <div class="ct-titlebar">
                 <h1><i class="fas fa-exclamation-triangle"></i> Failed</h1>
             </div>
@@ -508,7 +512,8 @@ HTML;
      */
     private function getStyles()
     {
-        return '<link rel="stylesheet" href="' . $this->baseUrl . '/admin/templates/cleartable.css">' . "\n";
+        return '<link rel="stylesheet" href="' . $this->baseUrl . '/admin/templates/cleartable.css">' . "\n"
+             . '<link rel="stylesheet" href="' . $this->baseUrl . '/include/templates/default/style/sweetalert2.min.css">' . "\n";
     }
 
     /**
@@ -516,6 +521,8 @@ HTML;
      */
     private function getFormHtml($options)
     {
+        global $mybb;
+        $postKey = $this->escapeHtml((string)$mybb->post_code);
         $protectedList = implode(', ', self::PROTECTED_TABLES);
         $totalProtected = $this->countProtected();
 
@@ -533,7 +540,7 @@ HTML;
                 </div>
 
                 <div class="ct-body">
-                    <form method="post" action="{$this->scriptUrl}&do=clear" id="truncateForm">
+                    <form method="post" action="{$this->scriptUrl}&do=clear" id="truncateForm" data-post-key="{$postKey}">
 
                         <div class="ct-toolbar">
                             <div class="ct-count"><strong id="ctCount">0</strong> table(s) selected</div>
@@ -578,7 +585,8 @@ HTML;
      */
 	private function getJavaScript(): string
     {
-        return '<script src="' . $this->baseUrl . '/admin/scripts/cleartable.js"></script>' . "\n";
+        return '<script src="' . $this->baseUrl . '/scripts/sweetalert2.min.js"></script>' . "\n"
+             . '<script src="' . $this->baseUrl . '/admin/scripts/cleartable.js?ver=21"></script>' . "\n";
     }
     
     /**

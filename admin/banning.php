@@ -47,6 +47,41 @@ function ban_date2timestamp(string $date, int $stamp = 0): int
     );
 }
 
+// ── CSRF: silent check + flash/redirect instead of a bare 403 page ─────────────
+function ban_require_post_key(object $mybb, string $back): void
+{
+    if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
+        flash_message('Security check failed. Please try again.', 'error');
+        admin_redirect($back);
+        exit;
+    }
+}
+
+// ── Does an IP ban filter (wildcard or CIDR) match this address? ─────────────
+function ban_ip_matches(string $filter, string $ip): bool
+{
+    if ($ip === '') return false;
+
+    if (str_contains($filter, '/')) {
+        [$net, $bits] = explode('/', $filter, 2);
+        $a = @inet_pton($ip);
+        $b = @inet_pton($net);
+        if ($a === false || $b === false || strlen($a) !== strlen($b)) return false;
+
+        $bits  = (int)$bits;
+        $bytes = intdiv($bits, 8);
+        $rem   = $bits % 8;
+        if ($bytes > 0 && strncmp($a, $b, $bytes) !== 0) return false;
+        if ($rem === 0) return true;
+
+        $mask = chr((0xFF << (8 - $rem)) & 0xFF);
+        return ($a[$bytes] & $mask) === ($b[$bytes] & $mask);
+    }
+
+    $re = '~^' . str_replace('\\*', '.*', preg_quote($filter, '~')) . '$~';
+    return (bool)preg_match($re, $ip);
+}
+
 // ── Nav tabs ──────────────────────────────────────────────────────────────────
 const BAN_NAV = [
     'ips' => [
@@ -284,12 +319,9 @@ class BanManager
             admin_redirect('index.php?act=banning');
         }
 
-        if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
-            http_response_code(403);
-            die('Invalid security token');
-        }
+        ban_require_post_key($this->mybb, 'index.php?act=banning&type=' . $this->getTypeName($this->mybb->get_input('type', MyBB::INPUT_INT)));
 
-        $filter = $this->mybb->get_input('filter');
+        $filter = trim($this->mybb->get_input('filter'));
         $type   = $this->mybb->get_input('type', MyBB::INPUT_INT);
         $errors = $this->validateAdd($filter, $type);
 
@@ -321,15 +353,13 @@ class BanManager
         }
 
         if ($this->mybb->request_method === 'post') {
-            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
-                http_response_code(403);
-                die('Invalid security token');
-            }
+            ban_require_post_key($this->mybb, 'index.php?act=banning&type=' . $this->getTypeName((int)$filter['type']));
 
             $this->db->sql_query_prepared("DELETE FROM banfilters WHERE fid = ?", [$filter['fid']]);
             $this->plugins->run_hooks('admin_config_banning_delete_commit');
             $this->updateCaches((int)$filter['type']);
             log_admin_action((int)$filter['fid'], $filter['filter'], (int)$filter['type']);
+            write_log("Removed ban filter '{$filter['filter']}' (type {$filter['type']}) by " . $GLOBALS['CURUSER']['username']);
             flash_message('Ban deleted successfully', 'success');
             admin_redirect('index.php?act=banning&type=' . $this->getTypeName((int)$filter['type']));
         } else {
@@ -354,6 +384,19 @@ class BanManager
         if ($this->isDuplicateFilter($filter, $type))          $errors[] = 'This filter already exists';
         if ($type === 1 && !$this->isValidIPFilter($filter))   $errors[] = 'Please enter a valid IP address or range';
         if ($type === 3 && !$this->isValidEmailFilter($filter)) $errors[] = 'Please enter a valid email pattern';
+
+        // "*", "*.*.*.*", "*@*" and the like would block everyone
+        if ($filter !== '' && preg_match('~^[*.:@]+$~', $filter)) {
+            $errors[] = 'This pattern matches everything. Use a narrower one.';
+        }
+
+        // Never let staff lock themselves out
+        if ($type === 1 && empty($errors)) {
+            $myIp = (string)get_ip();
+            if (ban_ip_matches($filter, $myIp)) {
+                $errors[] = "This range includes your own IP ({$myIp}).";
+            }
+        }
         return $errors;
     }
 
@@ -361,7 +404,11 @@ class BanManager
     {
         if (str_contains($f, '/')) {
             $p = explode('/', $f);
-            return count($p) === 2 && filter_var($p[0], FILTER_VALIDATE_IP) && $p[1] >= 0 && $p[1] <= 128;
+            if (count($p) !== 2 || !ctype_digit($p[1])) return false;
+            $bits = (int)$p[1];
+            if (filter_var($p[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) return $bits >= 8 && $bits <= 32;
+            if (filter_var($p[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) return $bits >= 16 && $bits <= 128;
+            return false;
         }
         return (bool)preg_match('/^[0-9.*]+$/', $f);
     }
@@ -387,6 +434,7 @@ class BanManager
         $this->plugins->run_hooks('admin_config_banning_add_commit');
         $this->updateCaches($type);
         log_admin_action((int)$fid, $filter, $type);
+        write_log("Added ban filter '{$filter}' (type {$type}) by " . $GLOBALS['CURUSER']['username']);
     }
 
     private function updateCaches(int $type): void
@@ -544,7 +592,6 @@ class BanManager
             default => 'Add an IP address or range above to block it.',
         };
 
-        $postKey = (string)$this->mybb->post_code;
         ?>
     <section class="bn-panel bn-panel-table">
       <div class="bn-panel-head">
@@ -571,7 +618,7 @@ class BanManager
               $raw     = (string)$f['filter'];
               $date    = $f['dateline'] > 0 ? my_datee('relative', $f['dateline']) : '—';
               $isNew   = (TIMENOW - $f['dateline']) < DAY_IN_SECONDS;
-              $delUrl  = "index.php?act=banning&action=delete&fid={$f['fid']}&my_post_key={$postKey}";
+              $delUrl  = "index.php?act=banning&action=delete&fid={$f['fid']}";
           ?>
             <tr>
               <td>
@@ -614,7 +661,7 @@ class BanManager
     {
         $tc      = self::TYPE_CONFIGS[$filter['type']] ?? self::TYPE_CONFIGS[1];
         $postKey = (string)$this->mybb->post_code;
-        $delUrl  = "index.php?act=banning&action=delete&fid={$filter['fid']}&my_post_key={$postKey}";
+        $delUrl  = "index.php?act=banning&action=delete&fid={$filter['fid']}";
         $canUrl  = 'index.php?act=banning&type=' . $this->getTypeName((int)$filter['type']);
 
         stdhead('Confirm Deletion');
@@ -706,10 +753,7 @@ class BannedAccountsManager
         $this->plugins->run_hooks('admin_user_banning_prune');
 
         if ($this->mybb->request_method === 'post') {
-            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
-                http_response_code(403);
-                die('Invalid security token');
-            }
+            ban_require_post_key($this->mybb, 'index.php?act=banning&type=users');
 
             require_once INC_PATH . '/class_moderation.php';
             $mod = new Moderation();
@@ -720,6 +764,7 @@ class BannedAccountsManager
             $this->plugins->run_hooks('admin_user_banning_prune_commit');
 
             log_admin_action((int)$user['id'], $user['username']);
+            write_log("Pruned all content of {$user['username']} (UID {$user['id']}) by " . $GLOBALS['CURUSER']['username']);
             flash_message('User content pruned successfully', 'success');
             admin_redirect('index.php?act=banning&type=users');
         } else {
@@ -755,10 +800,7 @@ class BannedAccountsManager
         $this->plugins->run_hooks('admin_user_banning_lift');
 
         if ($this->mybb->request_method === 'post') {
-            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
-                http_response_code(403);
-                die('Invalid security token');
-            }
+            ban_require_post_key($this->mybb, 'index.php?act=banning&type=users');
 
             $this->db->sql_query_prepared("DELETE FROM banned WHERE uid = ?", [$ban['uid']]);
             $this->db->sql_query_prepared(
@@ -767,6 +809,7 @@ class BannedAccountsManager
             );
             $this->plugins->run_hooks('admin_user_banning_lift_commit');
             log_admin_action($ban['uid'], $user['username']);
+            write_log("Lifted ban of {$user['username']} (UID {$ban['uid']}) by " . $GLOBALS['CURUSER']['username']);
             flash_message('Ban lifted successfully', 'success');
             admin_redirect('index.php?act=banning&type=users');
         } else {
@@ -797,10 +840,7 @@ class BannedAccountsManager
         $this->plugins->run_hooks('admin_user_banning_edit');
 
         if ($this->mybb->request_method === 'post') {
-            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
-                http_response_code(403);
-                die('Invalid security token');
-            }
+            ban_require_post_key($this->mybb, 'index.php?act=banning&type=users');
 
             if (empty($ban['uid'])) {
                 $errors[] = 'Invalid user';
@@ -808,32 +848,29 @@ class BannedAccountsManager
                 $errors[] = 'You do not have permission to edit this ban';
             }
 
+            $bantime = $this->inputBanTime($banTimes);
+            $gid     = $this->inputBannedGroup($bannedGroups);
+            if ($bantime === null) $errors[] = 'Please choose a valid ban length';
+            if ($gid === null)     $errors[] = 'Please choose a valid banned group';
+
             if (empty($errors)) {
-                $bantime = $this->mybb->input['bantime'] ?? '---';
+                // Length counts from the ORIGINAL ban date, so dateline stays untouched
                 $lifted  = $bantime === '---' ? 0 : ban_date2timestamp($bantime, $ban['dateline']);
                 $reason  = my_substr($this->mybb->input['reason'] ?? '', 0, 255);
 
-                if (count($bannedGroups) === 1) $this->mybb->input['usergroup'] = array_key_first($bannedGroups);
-
                 $this->db->sql_query_prepared(
-                    "UPDATE banned SET gid = ?, dateline = ?, bantime = ?, lifted = ?, reason = ? WHERE uid = ?",
-                    [
-                        $this->mybb->get_input('usergroup', MyBB::INPUT_INT),
-                        TIMENOW,
-                        $bantime,
-                        $lifted,
-                        $reason,
-                        $ban['uid'],
-                    ]
+                    "UPDATE banned SET gid = ?, bantime = ?, lifted = ?, reason = ? WHERE uid = ?",
+                    [$gid, $bantime, $lifted, $reason, $ban['uid']]
                 );
 
                 $this->db->sql_query_prepared(
                     "UPDATE users SET usergroup = ?, displaygroup = 0, additionalgroups = '' WHERE id = ?",
-                    [$this->mybb->get_input('usergroup', MyBB::INPUT_INT), $ban['uid']]
+                    [$gid, $ban['uid']]
                 );
 
                 $this->plugins->run_hooks('admin_user_banning_edit_commit');
                 log_admin_action($ban['uid'], $user['username']);
+                write_log("Edited ban of {$user['username']} (UID {$ban['uid']}): {$bantime} by " . $GLOBALS['CURUSER']['username']);
                 flash_message('Ban updated successfully', 'success');
                 admin_redirect('index.php?act=banning&type=users');
             }
@@ -851,10 +888,7 @@ class BannedAccountsManager
         $this->plugins->run_hooks('admin_user_banning_start');
 
         if ($this->mybb->request_method === 'post') {
-            if (!verify_post_check($this->mybb->get_input('my_post_key'))) {
-                http_response_code(403);
-                die('Invalid security token');
-            }
+            ban_require_post_key($this->mybb, 'index.php?act=banning&type=users');
 
             $errors = $this->processBanAction($bannedGroups);
             if (empty($errors)) return;
@@ -886,6 +920,22 @@ class BannedAccountsManager
         return (int)$CURUSER['id'];
     }
 
+    /** Ban length from input, only if it is one of the offered options. */
+    private function inputBanTime(array $banTimes): ?string
+    {
+        $t = (string)($this->mybb->input['bantime'] ?? '---');
+        return isset($banTimes[$t]) ? $t : null;
+    }
+
+    /** Target group from input, only if it really is a banned group. */
+    private function inputBannedGroup(array $bannedGroups): ?int
+    {
+        if (empty($bannedGroups)) return null;
+        if (count($bannedGroups) === 1) return (int)array_key_first($bannedGroups);
+        $g = $this->mybb->get_input('usergroup', MyBB::INPUT_INT);
+        return isset($bannedGroups[$g]) ? $g : null;
+    }
+
     private function getBannedGroups(): array
     {
         $q = $this->db->sql_query_prepared("SELECT gid,title FROM usergroups WHERE isbannedgroup=1 ORDER BY title");
@@ -911,18 +961,20 @@ class BannedAccountsManager
         elseif ($this->isUserAlreadyBanned($uid))                   $errors[] = 'This user is already banned';
         elseif ($uid === $this->getCurrentUserId())                  $errors[] = 'You cannot ban yourself';
 
+        $bantime = $this->inputBanTime(fetch_ban_times());
+        $gid     = $this->inputBannedGroup($bannedGroups);
+        if ($bantime === null) $errors[] = 'Please choose a valid ban length';
+        if ($gid === null)     $errors[] = 'Please choose a valid banned group';
+
         if (empty($errors)) {
-            $bantime = $this->mybb->input['bantime'] ?? '---';
             $lifted  = $bantime === '---' ? 0 : ban_date2timestamp($bantime);
             $reason  = my_substr($this->mybb->input['reason'] ?? '', 0, 255);
-
-            if (count($bannedGroups) === 1) $this->mybb->input['usergroup'] = array_key_first($bannedGroups);
 
             $this->db->sql_query_prepared(
                 "INSERT INTO banned (`uid`,`gid`,`oldgroup`,`oldadditionalgroups`,`olddisplaygroup`,`admin`,`dateline`,`bantime`,`lifted`,`reason`) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 [
                     $uid,
-                    $this->mybb->get_input('usergroup', MyBB::INPUT_INT),
+                    $gid,
                     (int)$user['usergroup'],
                     $user['additionalgroups'],
                     (int)$user['displaygroup'],
@@ -936,13 +988,14 @@ class BannedAccountsManager
 
             $this->db->sql_query_prepared(
                 "UPDATE users SET usergroup = ?, displaygroup = 0, additionalgroups = '' WHERE id = ?",
-                [$this->mybb->get_input('usergroup', MyBB::INPUT_INT), $uid]
+                [$gid, $uid]
             );
             $this->db->sql_query_prepared("DELETE FROM forumsubscriptions WHERE uid = ?", [$uid]);
             $this->db->sql_query_prepared("DELETE FROM threadsubscriptions WHERE uid = ?", [$uid]);
 
             $this->plugins->run_hooks('admin_user_banning_start_commit');
             log_admin_action($uid, $user['username'], $lifted);
+            write_log("Banned {$user['username']} (UID {$uid}) for {$bantime} by " . $GLOBALS['CURUSER']['username']);
             flash_message('User banned successfully', 'success');
             admin_redirect('index.php?act=banning&type=users');
         }
@@ -1016,7 +1069,7 @@ class BannedAccountsManager
         <div class="row g-3">
           <div class="<?= count($bannedGroups) > 1 ? 'col-md-6' : 'col-12' ?>">
             <label for="bn-bantime" class="bn-label"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>Ban length</label>
-            <?= $this->selectBox('bantime', $this->prepareBanTimes($banTimes), $this->mybb->input['bantime'] ?? $ban['bantime'] ?? '---', 'bn-bantime') ?>
+            <?= $this->selectBox('bantime', $this->prepareBanTimes($banTimes), $this->mybb->input['bantime'] ?? ($isPerm ? '---' : $ban['bantime']), 'bn-bantime') ?>
           </div>
           <?php if (count($bannedGroups) > 1): ?>
           <div class="col-md-6">
@@ -1136,7 +1189,6 @@ class BannedAccountsManager
         $perPage  = self::PER_PAGE;
         $page     = max(1, $this->mybb->get_input('page', MyBB::INPUT_INT));
         $start    = ($page - 1) * $perPage;
-        $postKey  = (string)$this->mybb->post_code;
         ?>
     <section class="bn-panel bn-panel-table">
       <div class="bn-panel-head">
@@ -1194,8 +1246,8 @@ class BannedAccountsManager
 
               $base    = "index.php?act=banning&type=users&uid={$ban['uid']}";
               $editUrl = "{$base}&action=edit";
-              $liftUrl = "{$base}&action=lift&my_post_key={$postKey}";
-              $pruneUrl= "{$base}&action=prune&my_post_key={$postKey}";
+              $liftUrl = "{$base}&action=lift";
+              $pruneUrl= "{$base}&action=prune";
           ?>
             <tr>
               <td>

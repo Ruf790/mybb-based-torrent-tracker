@@ -1,163 +1,331 @@
-<?
+<?php
+declare(strict_types=1);
 
+if (!defined('IN_ADMIN_PANEL')) {
+    exit('<font face="verdana" size="2" color="darkred"><b>Error!</b> Direct initialization of this file is not allowed.</font>');
+}
 
-  function i2c_realip ()
-  {
-    $ip = FALSE;
-    if (!empty ($_SERVER['HTTP_CLIENT_IP']))
-    {
-      $ip = $_SERVER['HTTP_CLIENT_IP'];
+const ITC_VERSION   = '1.0';
+const ITC_ASSET_VER = 1;
+
+/**
+ * Real client IP behind the Nginx reverse proxy.
+ * Takes the first public address from X-Real-IP / X-Forwarded-For, otherwise REMOTE_ADDR.
+ */
+function itc_client_ip(): string
+{
+    $candidates = [];
+    if (!empty($_SERVER['HTTP_X_REAL_IP']) && is_string($_SERVER['HTTP_X_REAL_IP'])) {
+        $candidates[] = trim($_SERVER['HTTP_X_REAL_IP']);
     }
-
-    if (!empty ($_SERVER['HTTP_X_FORWARDED_FOR']))
-    {
-      $ips = explode (', ', $_SERVER['HTTP_X_FORWARDED_FOR']);
-      if ($ip)
-      {
-        array_unshift ($ips, $ip);
-        $ip = FALSE;
-      }
-
-      $i = 0;
-      while ($i < count ($ips))
-      {
-        if (!preg_match ('/^(?:10|172\\.(?:1[6-9]|2\\d|3[01])|192\\.168)\\./', $ips[$i]))
-        {
-          if (version_compare (phpversion (), '5.0.0', '>='))
-          {
-            if (ip2long ($ips[$i]) != false)
-            {
-              $ip = $ips[$i];
-              break;
-            }
-          }
-
-          if (ip2long ($ips[$i]) != 0 - 1)
-          {
-            $ip = $ips[$i];
-            break;
-          }
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) && is_string($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        foreach (explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']) as $part) {
+            $candidates[] = trim($part);
         }
+    }
+    foreach ($candidates as $candidate) {
+        if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return $candidate;
+        }
+    }
+    return (string)($_SERVER['REMOTE_ADDR'] ?? '');
+}
 
-        ++$i;
-      }
+/**
+ * Geo lookup via ipwho.is (HTTPS, JSON, no key).
+ * The old ip-to-country.webhosting.info service has been offline for years.
+ *
+ * @return array{ok: bool, data?: array, error?: string}
+ */
+function itc_lookup(string $ip): array
+{
+    $url  = 'https://ipwho.is/' . rawurlencode($ip) . '?lang=en';
+    $ua   = 'ArtCore-Gangsta-Admin/' . ITC_VERSION;
+    $body = false;
+    $err  = '';
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_TIMEOUT        => 6,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_USERAGENT      => $ua,
+        ]);
+        $body = curl_exec($ch);
+        $err  = curl_error($ch);
+        // curl_close() is a no-op since PHP 8.0 and deprecated in 8.5 — the handle is freed automatically.
+    } else {
+        $ctx  = stream_context_create(['http' => ['timeout' => 6, 'user_agent' => $ua, 'ignore_errors' => true]]);
+        $body = @file_get_contents($url, false, $ctx);
     }
 
-    return ($ip ? $ip : $_SERVER['REMOTE_ADDR']);
-  }
-
-  function do_post_request ($url, $data, $optional_headers = null)
-  {
-    $params = array ('http' => array ('method' => 'POST', 'content' => $data));
-    if ($optional_headers !== null)
-    {
-      $params['http']['header'] = $optional_headers;
+    if (!is_string($body) || $body === '') {
+        return ['ok' => false, 'error' => 'The lookup service did not respond' . ($err !== '' ? " ({$err})" : '') . '. Try again in a minute.'];
     }
 
-    $ctx = stream_context_create ($params);
-    $fp = @fopen ($url, 'rb', false, $ctx);
-    if (!$fp)
-    {
-      exit ('' . 'Problem with ' . $url . ', ' . $php_errormsg);
+    $data = json_decode($body, true);
+    if (!is_array($data)) {
+        return ['ok' => false, 'error' => 'The lookup service returned an unreadable response. Try again in a minute.'];
+    }
+    if (empty($data['success'])) {
+        return ['ok' => false, 'error' => 'Lookup failed: ' . (string)($data['message'] ?? 'unknown reason') . '.'];
     }
 
-    $response = @stream_get_contents ($fp);
-    if ($response === false)
-    {
-      exit ('' . 'Problem reading data from ' . $url . ', ' . $php_errormsg);
+    return ['ok' => true, 'data' => $data];
+}
+
+/* ---------- input ---------- */
+
+$in = static function (string $key): string {
+    foreach ([$_GET, $_POST] as $src) {
+        if (isset($src[$key]) && is_string($src[$key])) {
+            return trim($src[$key]);
+        }
+    }
+    return '';
+};
+$e = static fn(mixed $v): string => htmlspecialchars_uni((string)$v);
+
+$do    = (int)($in('do') ?: 1);
+$myIp  = itc_client_ip();
+$rawIp = $in('ip_address');
+$ip    = $rawIp !== '' ? $rawIp : $myIp;
+
+$result = null;
+$error  = '';
+$notice = '';
+
+if ($do === 2) {
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        $error = 'That is not a valid IPv4 or IPv6 address. Check it for typos and extra characters.';
+    } elseif (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        $notice = 'This is a private or reserved address (local network, loopback and so on), so it has no country.';
+    } else {
+        $lookup = itc_lookup($ip);
+        if ($lookup['ok']) {
+            $result = $lookup['data'];
+        } else {
+            $error = $lookup['error'];
+        }
+    }
+}
+
+/* ---------- prepare result ---------- */
+
+if ($result !== null) {
+    $country   = (string)($result['country'] ?? 'Unknown country');
+    $cc        = strtoupper((string)($result['country_code'] ?? ''));
+    $continent = (string)($result['continent'] ?? '');
+    $ipType    = (string)($result['type'] ?? '');
+    $isEu      = !empty($result['is_eu']);
+
+    $flag = (string)($result['flag']['img'] ?? '');
+    if (!preg_match('~^https://[a-z0-9.-]+/[\w./-]+\.(?:svg|png)$~i', $flag)) {
+        $flag = '';
     }
 
-    return $response;
-  }
+    $city   = (string)($result['city'] ?? '');
+    $region = (string)($result['region'] ?? '');
+    $postal = (string)($result['postal'] ?? '');
 
-  if (!defined ('IN_ADMIN_PANEL'))
-  {
-    exit ('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
-  }
+    $conn   = is_array($result['connection'] ?? null) ? $result['connection'] : [];
+    $isp    = (string)($conn['isp'] ?? '');
+    $org    = (string)($conn['org'] ?? '');
+    $asn    = (int)($conn['asn'] ?? 0);
+    $domain = (string)($conn['domain'] ?? '');
+    $providerMeta = implode(' · ', array_filter([$asn > 0 ? 'AS' . $asn : '', $domain ?: ($org !== $isp ? $org : '')]));
 
-  define ('ITC_VERSION', '0.5 by xam');
-  $do = (isset ($_POST['do']) ? htmlspecialchars ($_POST['do']) : (isset ($_GET['do']) ? htmlspecialchars ($_GET['do']) : 1));
-  stdhead ('Ip to Country');
-  $errormessage = '';
-  if ($do == 2)
-  {
-    $ip = ((isset ($_POST['ip_address']) AND !empty ($_POST['ip_address'])) ? $_POST['ip_address'] : ((isset ($_GET['ip_address']) AND !empty ($_GET['ip_address'])) ? $_GET['ip_address'] : i2c_realip ()));
-    $post_data = array ();
-    $post_data['ip_address'] = $ip;
-    if ((function_exists ('curl_init') AND $ch = curl_init ()))
-    {
-      curl_setopt ($ch, CURLOPT_URL, 'http://ip-to-country.webhosting.info/node/view/36');
-      curl_setopt ($ch, CURLOPT_POST, 1);
-      curl_setopt ($ch, CURLOPT_POSTFIELDS, $post_data);
-      curl_setopt ($ch, CURLOPT_RETURNTRANSFER, 1);
-      $postResult = curl_exec ($ch);
-      if (curl_errno ($ch))
-      {
-        exit (curl_error ($ch));
-      }
-
-      curl_close ($ch);
-    }
-    else
-    {
-      $postResult = do_post_request ('http://ip-to-country.webhosting.info/node/view/36', 'ip_address=' . $ip);
+    $tz        = is_array($result['timezone'] ?? null) ? $result['timezone'] : [];
+    $tzId      = (string)($tz['id'] ?? '');
+    $tzUtc     = (string)($tz['utc'] ?? '');
+    $localTime = '';
+    if (!empty($tz['current_time']) && is_string($tz['current_time'])) {
+        try {
+            $localTime = (new DateTimeImmutable($tz['current_time']))->format('H:i, j M');
+        } catch (Exception) {
+            $localTime = '';
+        }
     }
 
-    _form_header_open_ ('Search Result');
-    if (empty ($errormessage))
-    {
-      $regex = '' . '#<b>' . $ip . '</b>(.*).<br><br><img src=(.*)>#U';
-      preg_match_all ($regex, $postResult, $result, PREG_SET_ORDER);
-      echo '<tr><td>IP Address <b>' . htmlspecialchars_uni ($ip) . '</b>' . $result[0][1] . '.<br /><br /><img src="http://ip-to-country.webhosting.info/' . $result[0][2] . '"></td></tr>';
-    }
-    else
-    {
-      echo '<tr><td>' . $errormessage . '</td></tr>';
-    }
+    $lat = isset($result['latitude'])  ? (float)$result['latitude']  : null;
+    $lon = isset($result['longitude']) ? (float)$result['longitude'] : null;
 
-    _form_header_close_ ();
-    echo '<br />';
-  }
+    $ipUrl    = rawurlencode($ip);
+    $mapUrl   = ($lat !== null && $lon !== null)
+        ? "https://www.openstreetmap.org/?mlat={$lat}&mlon={$lon}#map=10/{$lat}/{$lon}"
+        : '';
+    $whoisUrl = "https://bgp.he.net/ip/{$ipUrl}";
+    $abuseUrl = "https://www.abuseipdb.com/check/{$ipUrl}";
+}
 
-  $externalpreview = '<div id=\'loading-layer\' style=\'position: absolute; display:none; left:500px; width:200px;height:50px;background:#FFF;padding:10px;text-align:center;border:1px solid #000\'><div style=\'font-weight:bold\' id=\'loading-layer-text\' class=\'small\'>Searching... Please wait...</div><br /><img src=\'' . $BASEURL . '/' . $pic_base_url . 'await.gif\' border=\'0\' /></div>';
- // _form_header_open_ ('Ip to Country');
-  
-  
-   echo '
-  
-   <div class="container-md">
-  <div class="card border-0 mb-4">
-	<div class="card-header rounded-bottom text-19 fw-bold">
-		Ip to Country
-	</div>
-	 </div>
-		</div>';
-  
-  
-  echo '
-  
- <div class="container mt-3">
- 
-  <div class="card">
-   
-  <div class="card-body"> 
-  
-  
-<tr><td>
-<form method="post" action="' . $_SERVER['SCRIPT_NAME'] . '">
-<input type="hidden" name="act" value="iptocountry">
-<input type="hidden" name="do" value="2">
-IP Address: <label><input name="ip_address" type="text" value="' . htmlspecialchars_uni ($ip) . '" class="form-control"></label> 
-<input value="Find Country" name="submit" class="btn btn-primary" type="submit" onclick="ts_show(\'loading-layer\')"> 
-' . $externalpreview . '
-</td></tr></form>
+/* ---------- output ---------- */
 
-</div>
- </div>
- </div>
-
-
-';
- 
-  stdfoot ();
+stdhead('IP to Country');
 ?>
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/iptocountry.css?ver=<?= ITC_ASSET_VER ?>">
+
+<div class="itc-page container-md"
+    <?php if ($result !== null): ?>
+     data-looked-up="<?= $e($ip) ?>" data-country="<?= $e($country) ?>" data-cc="<?= $e($cc) ?>"
+    <?php endif; ?>>
+
+    <!-- Header -->
+    <div class="itc-head">
+        <div class="itc-head-icon"><i class="fa-solid fa-earth-europe"></i></div>
+        <div>
+            <h1 class="itc-title">IP to Country</h1>
+            <p class="itc-sub">Find where an IP address is registered: country, city, provider and timezone.</p>
+        </div>
+    </div>
+
+    <!-- Search -->
+    <form id="itc-form" class="itc-search" method="get" action="<?= $e($_SERVER['SCRIPT_NAME']) ?>" autocomplete="off">
+        <input type="hidden" name="act" value="iptocountry">
+        <input type="hidden" name="do" value="2">
+
+        <label for="itc-ip" class="itc-label">IP address</label>
+        <div class="itc-search-row">
+            <div class="itc-field">
+                <i class="fa-solid fa-network-wired" aria-hidden="true"></i>
+                <input id="itc-ip" name="ip_address" type="text" inputmode="text" spellcheck="false"
+                       placeholder="e.g. 85.14.0.1 or 2a01:4f8::1" value="<?= $e($ip) ?>" required>
+            </div>
+            <button type="submit" id="itc-submit" class="itc-btn itc-btn-primary">
+                <i class="fa-solid fa-magnifying-glass"></i><span>Find country</span>
+            </button>
+            <button type="button" id="itc-myip" class="itc-btn itc-btn-ghost" data-ip="<?= $e($myIp) ?>"
+                    title="Fill in your own IP: <?= $e($myIp) ?>">
+                <i class="fa-solid fa-location-crosshairs"></i><span>My IP</span>
+            </button>
+        </div>
+
+        <div id="itc-recent" class="itc-recent" hidden>
+            <span class="itc-recent-label"><i class="fa-solid fa-clock-rotate-left"></i> Recent</span>
+            <div class="itc-recent-list"></div>
+            <button type="button" class="itc-recent-clear" title="Clear recent lookups">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    </form>
+
+    <?php if ($error !== ''): ?>
+        <div class="itc-msg itc-msg-danger" role="alert">
+            <i class="fa-solid fa-triangle-exclamation"></i><span><?= $e($error) ?></span>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($notice !== ''): ?>
+        <div class="itc-msg itc-msg-warning" role="status">
+            <i class="fa-solid fa-house-lock"></i>
+            <span><b><?= $e($ip) ?></b> — <?= $e($notice) ?></span>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($result !== null): ?>
+        <!-- Result -->
+        <section class="itc-result"<?= $flag !== '' ? ' style="--itc-flag:url(\'' . $e($flag) . '\')"' : '' ?>>
+            <div class="itc-hero">
+                <?php if ($flag !== ''): ?>
+                    <img class="itc-flag" src="<?= $e($flag) ?>" alt="Flag of <?= $e($country) ?>" width="96" height="64">
+                <?php else: ?>
+                    <div class="itc-flag itc-flag-empty"><i class="fa-solid fa-flag"></i></div>
+                <?php endif; ?>
+
+                <div class="itc-hero-text">
+                    <h2 class="itc-country"><?= $e($country) ?></h2>
+                    <div class="itc-ip-line">
+                        <code class="itc-ip"><?= $e($ip) ?></code>
+                        <button type="button" class="itc-copy" data-copy="<?= $e($ip) ?>" title="Copy IP">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
+                    <div class="itc-badges">
+                        <?php if ($cc !== ''): ?><span class="itc-badge"><?= $e($cc) ?></span><?php endif; ?>
+                        <?php if ($ipType !== ''): ?><span class="itc-badge"><?= $e($ipType) ?></span><?php endif; ?>
+                        <?php if ($continent !== ''): ?>
+                            <span class="itc-badge"><i class="fa-solid fa-globe"></i> <?= $e($continent) ?></span>
+                        <?php endif; ?>
+                        <?php if ($isEu): ?>
+                            <span class="itc-badge itc-badge-eu"><i class="fa-solid fa-star"></i> EU</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <div class="itc-tiles">
+                <div class="itc-tile">
+                    <div class="itc-tile-icon itc-c-blue"><i class="fa-solid fa-city"></i></div>
+                    <div class="itc-tile-body">
+                        <div class="itc-tile-label">City</div>
+                        <div class="itc-tile-value"><?= $city !== '' ? $e($city) : '—' ?></div>
+                        <div class="itc-tile-meta">
+                            <?= $e(implode(', ', array_filter([$region, $postal]))) ?: '&nbsp;' ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="itc-tile">
+                    <div class="itc-tile-icon itc-c-purple"><i class="fa-solid fa-server"></i></div>
+                    <div class="itc-tile-body">
+                        <div class="itc-tile-label">Provider</div>
+                        <div class="itc-tile-value" title="<?= $e($isp) ?>"><?= $isp !== '' ? $e($isp) : '—' ?></div>
+                        <div class="itc-tile-meta"><?= $providerMeta !== '' ? $e($providerMeta) : '&nbsp;' ?></div>
+                    </div>
+                </div>
+
+                <div class="itc-tile">
+                    <div class="itc-tile-icon itc-c-amber"><i class="fa-solid fa-clock"></i></div>
+                    <div class="itc-tile-body">
+                        <div class="itc-tile-label">Local time</div>
+                        <div class="itc-tile-value"><?= $localTime !== '' ? $e($localTime) : '—' ?></div>
+                        <div class="itc-tile-meta">
+                            <?= $e($tzId) ?><?= $tzUtc !== '' ? ' (UTC' . $e($tzUtc) . ')' : '' ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="itc-tile">
+                    <div class="itc-tile-icon itc-c-green"><i class="fa-solid fa-map-location-dot"></i></div>
+                    <div class="itc-tile-body">
+                        <div class="itc-tile-label">Coordinates</div>
+                        <div class="itc-tile-value">
+                            <?= ($lat !== null && $lon !== null) ? number_format($lat, 4) . ', ' . number_format($lon, 4) : '—' ?>
+                        </div>
+                        <div class="itc-tile-meta">Approximate</div>
+                    </div>
+                </div>
+            </div>
+
+            <p class="itc-hint">
+                <i class="fa-solid fa-circle-info"></i>
+                This is where the address is registered, not necessarily where the user is.
+                VPNs, proxies and mobile carriers often show a different city or country.
+            </p>
+
+            <div class="itc-actions">
+                <?php if ($mapUrl !== ''): ?>
+                    <a class="itc-btn itc-btn-soft" href="<?= $e($mapUrl) ?>" target="_blank" rel="noopener noreferrer">
+                        <i class="fa-solid fa-map"></i><span>Open map</span>
+                    </a>
+                <?php endif; ?>
+                <a class="itc-btn itc-btn-soft" href="<?= $e($whoisUrl) ?>" target="_blank" rel="noopener noreferrer">
+                    <i class="fa-solid fa-diagram-project"></i><span>ASN / WHOIS</span>
+                </a>
+                <a class="itc-btn itc-btn-soft" href="<?= $e($abuseUrl) ?>" target="_blank" rel="noopener noreferrer">
+                    <i class="fa-solid fa-shield-halved"></i><span>Abuse check</span>
+                </a>
+            </div>
+        </section>
+    <?php elseif ($do !== 2): ?>
+        <div class="itc-empty">
+            <i class="fa-solid fa-satellite-dish"></i>
+            <p>Enter an IP address from a user profile, log or peer list, then press <b>Find country</b>.</p>
+        </div>
+    <?php endif; ?>
+</div>
+
+<script src="<?= $BASEURL ?>/admin/scripts/iptocountry.js?ver=<?= ITC_ASSET_VER ?>" defer></script>
+<?php
+stdfoot();

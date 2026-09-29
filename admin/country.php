@@ -1,409 +1,459 @@
 <?php
-
-
 declare(strict_types=1);
 
 if (!defined('STAFF_PANEL')) {
     exit('<div class="alert alert-danger" role="alert"><b>Error!</b> Direct initialization of this file is not allowed.</div>');
 }
 
-define('MC_VERSION', 'New Manage Countries Mod v.0.2 by xam');
+if (session_status() === PHP_SESSION_NONE) session_start();
 
-class CountryManager
+const CN_VERSION   = 'v.0.3';
+const CN_ASSET_VER = 1;
+const CN_NAME_MAX  = 60;
+const CN_FLAG_RE   = '~^[A-Za-z0-9_.-]{1,60}\.(gif|png|jpe?g|webp|svg)$~i';
+
+/**
+ * Escape for output. double_encode=false: старые записи сохранялись уже
+ * через htmlspecialchars(), и "&amp;" в БД не должен превратиться в "&amp;amp;".
+ */
+function cn_e(mixed $s): string
 {
-    private $db;
-    private $baseUrl;
-    private $picBaseUrl;
-    
-    public function __construct($db, string $baseUrl, string $picBaseUrl)
+    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8', false);
+}
+
+function cn_tone(string $c): string
+{
+    return "--cn-bg:var(--bs-{$c}-bg-subtle);--cn-fg:var(--bs-{$c}-text-emphasis);--cn-solid:var(--bs-{$c})";
+}
+
+final class CountryManager
+{
+    private string $flagDir;
+    private string $flagUrl;
+    private string $self;
+
+    public function __construct(private readonly object $db, string $baseUrl, string $picBaseUrl)
     {
-        $this->db = $db;
-        $this->baseUrl = $baseUrl;
-        $this->picBaseUrl = $picBaseUrl;
+        $pic           = trim($picBaseUrl, '/\\');
+        $this->flagDir = rtrim(TSDIR, '/\\') . '/' . $pic . '/flag/';
+        $this->flagUrl = rtrim($baseUrl, '/') . '/' . $pic . '/flag/';
+        $this->self    = $_SERVER['SCRIPT_NAME'] . '?act=country';
     }
-    
-    private function getCountryData(int $id): array
-    {
-        $query = $this->db->sql_query_prepared('SELECT * FROM countries WHERE id = ?', [$id]);
-        
-        if (!$query || $this->db->num_rows($query) === 0) {
-            stderr('Error', 'No country with this ID!');
-        }
-        
-        return $this->db->fetch_array($query);
-    }
-    
-    private function validateInput(array $data): void
-    {
-        if (empty($data['name']) || empty($data['flagpic'])) {
-            stderr('Error', 'Please fill in all required fields!');
-        }
-        
-        $path = TSDIR . '/' . $this->picBaseUrl . 'flag/' . $data['flagpic'];
-        if (!file_exists($path)) {
-            stderr('Error', sprintf('Country flag not found: "%s"', $path));
-        }
-    }
-    
+
+    // ── Routing ──────────────────────────────────────────────────────────────
+
     public function handleRequest(): void
     {
-        $action = htmlspecialchars($_POST['action'] ?? $_GET['action'] ?? 'show');
-        $do = htmlspecialchars($_POST['do'] ?? $_GET['do'] ?? '');
-        $name = htmlspecialchars($_POST['name'] ?? $_GET['name'] ?? '');
-        $flagpic = htmlspecialchars($_POST['flagpic'] ?? $_GET['flagpic'] ?? '');
-        $id = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
-        
-        if ($action !== 'show' && $action !== 'new' && $id <= 0) {
-            int_check($id, true);
-        }
-        
-        switch (true) {
-            case ($action === 'edit' && empty($do)):
-                $this->showEditForm($id);
-                break;
-                
-            case ($action === 'edit' && $do === 'save'):
-                $this->updateCountry($id, $name, $flagpic);
-                break;
-                
-            case ($action === 'delete' && empty($do)):
-                $this->confirmDelete($id);
-                break;
-                
-            case ($action === 'delete' && $do === 'delete'):
-                $this->deleteCountry($id);
-                break;
-                
-            case ($action === 'new' && $do === 'save'):
-                $this->createCountry($name, $flagpic);
-                break;
-                
-            case ($action === 'new' && empty($do)):
-                $this->showCreateForm();
-                break;
-                
-            default:
-                $this->showCountries();
-                break;
-        }
-    }
-    
-    private function showEditForm(int $id): void
-    {
-        $country = $this->getCountryData($id);
-        stdhead('Edit Country: ' . htmlspecialchars($country['name']));
-        
-        echo <<<HTML
-        <div class="container-md">
-            <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header bg-primary text-white rounded-top">
-                    <h5 class="mb-0">
-                        <i class="fas fa-edit me-2"></i>
-                        Edit Country: {$country['name']}
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <form method="POST" class="row g-3">
-                        <input type="hidden" name="id" value="{$id}">
-                        <input type="hidden" name="action" value="edit">
-                        <input type="hidden" name="do" value="save">
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Country ID</label>
-                            <div class="form-control-plaintext bg-light p-2 rounded">{$id}</div>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label for="name" class="form-label fw-bold">Country Name *</label>
-                            <input type="text" class="form-control" id="name" name="name" 
-                                   value="{$country['name']}" required>
-                        </div>
-                        
-                        <div class="col-md-12">
-                            <label class="form-label fw-bold">Current Flag</label>
-                            <div class="d-flex align-items-center gap-3 mb-3">
-                                <img src="{$this->baseUrl}/{$this->picBaseUrl}flag/{$country['flagpic']}" 
-                                     class="img-thumbnail" style="max-height: 40px" 
-                                     alt="{$country['name']}" title="{$country['name']}">
-                                <span class="text-muted">{$country['flagpic']}</span>
-                            </div>
-                            
-                            <label for="flagpic" class="form-label fw-bold">Flag Filename *</label>
-                            <input type="text" class="form-control" id="flagpic" name="flagpic" 
-                                   value="{$country['flagpic']}" required 
-                                   placeholder="e.g., us.gif, gb.png">
-                            <div class="form-text">Enter the filename of the flag image</div>
-                        </div>
-                        
-                        <div class="col-12">
-                            <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-save me-1"></i> Save Changes
-                                </button>
-                                <a href="admin/index.php?act=country" class="btn btn-secondary">
-                                    <i class="fas fa-times me-1"></i> Cancel
-                                </a>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-        HTML;
-        
-        stdfoot();
-    }
-    
-    private function updateCountry(int $id, string $name, string $flagpic): void
-    {
-        $this->validateInput(['name' => $name, 'flagpic' => $flagpic]);
-        
-        $this->db->sql_query_prepared(
-            "UPDATE countries SET name = ?, flagpic = ? WHERE id = ?",
-            [$name, $flagpic, $id]
-        );
-        
-        redirect('admin/index.php?act=country&#c' . $id);
-    }
-    
-    private function confirmDelete(int $id): void
-    {
-        $country = $this->getCountryData($id);
-        
-        echo <<<HTML
-        <div class="container-md">
-            <div class="card border-danger">
-                <div class="card-header bg-danger text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        Confirm Deletion
-                    </h5>
-                </div>
-                <div class="card-body text-center">
-                    <div class="alert alert-warning">
-                        <h4 class="alert-heading">Warning!</h4>
-                        <p>Are you sure you want to delete the country:</p>
-                        <h5 class="text-danger my-3">{$country['name']}</h5>
-                        <p>This action cannot be undone.</p>
-                    </div>
-                    
-                    <div class="d-flex justify-content-center gap-3">
-                        <a href="{$_SERVER['PHP_SELF']}?act=country&action=delete&id={$id}&do=delete" 
-                           class="btn btn-danger">
-                            <i class="fas fa-trash me-1"></i> Yes, Delete It
-                        </a>
-                        <a href="admin/index.php?act=country" class="btn btn-success">
-                            <i class="fas fa-times me-1"></i> No, Cancel
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-        HTML;
-    }
-    
-    private function deleteCountry(int $id): void
-    {
-        $this->db->sql_query_prepared('DELETE FROM countries WHERE id = ? LIMIT 1', [$id]);
-        redirect('admin/index.php?act=country');
-    }
-    
-    private function showCreateForm(): void
-    {
-        stdhead('Register New Country');
-        
-        echo <<<HTML
-        <div class="container-md">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-primary text-white rounded-top">
-                    <h5 class="mb-0">
-                        <i class="fas fa-plus-circle me-2"></i>
-                        Register New Country
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <form method="POST" class="row g-3">
-                        <input type="hidden" name="action" value="new">
-                        <input type="hidden" name="do" value="save">
-                        
-                        <div class="col-md-6">
-                            <label for="name" class="form-label fw-bold">Country Name *</label>
-                            <input type="text" class="form-control" id="name" name="name" 
-                                   required placeholder="Enter country name">
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label for="flagpic" class="form-label fw-bold">Flag Filename *</label>
-                            <input type="text" class="form-control" id="flagpic" name="flagpic" 
-                                   required placeholder="e.g., us.gif, gb.png">
-                            <div class="form-text">Filename must exist in flags directory</div>
-                        </div>
-                        
-                        <div class="col-12">
-                            <div class="card bg-light">
-                                <div class="card-body">
-                                    <h6 class="card-title">
-                                        <i class="fas fa-info-circle me-1"></i> Available Flags
-                                    </h6>
-                                    <div class="row row-cols-2 row-cols-md-4 row-cols-lg-6 g-2">
-        HTML;
-        
-        $flagsDir = TSDIR . '/' . $this->picBaseUrl . 'flag/';
-        if (is_dir($flagsDir)) {
-            $flags = glob($flagsDir . '*.{gif,jpg,jpeg,png}', GLOB_BRACE);
-            foreach (array_slice($flags, 0, 12) as $flag) {
-                $filename = basename($flag);
-                echo <<<HTML
-                <div class="col">
-                    <div class="border rounded p-1 text-center">
-                        <img src="{$this->baseUrl}/{$this->picBaseUrl}flag/{$filename}" 
-                             class="img-fluid mb-1" style="max-height: 20px">
-                        <small class="d-block text-truncate">{$filename}</small>
-                    </div>
-                </div>
-                HTML;
+        global $mybb;
+
+        $action = (string)($_POST['action'] ?? $_GET['action'] ?? 'list');
+        $id     = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
+
+        // Всё, что меняет данные — только POST + CSRF
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
+                $this->back('Security check failed. Please try again.', 'danger');
             }
+            match ($action) {
+                'save'   => $this->save($id),
+                'delete' => $this->delete($id),
+                default  => $this->back('Unknown action.', 'danger'),
+            };
+            return;
         }
-        
-        echo <<<HTML
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="col-12">
-                            <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-save me-1"></i> Create Country
-                                </button>
-                                <a href="admin/index.php?act=country" class="btn btn-secondary">
-                                    <i class="fas fa-times me-1"></i> Cancel
-                                </a>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-        HTML;
-        
+
+        match ($action) {
+            'new'   => $this->renderForm(['id' => 0, 'name' => '', 'flagpic' => $this->validFlagOrEmpty((string)($_GET['flag'] ?? ''))]),
+            'edit'  => $this->renderForm($this->find($id) ?? $this->back('Country not found.', 'danger')),
+            default => $this->renderList(),
+        };
+    }
+
+    // ── Data ─────────────────────────────────────────────────────────────────
+
+    private function find(int $id): ?array
+    {
+        if ($id <= 0) return null;
+        $q = $this->db->sql_query_prepared('SELECT id, name, flagpic FROM countries WHERE id = ?', [$id]);
+        $r = $q ? $this->db->fetch_array($q) : null;
+        return $r ?: null;
+    }
+
+    /** @return list<array{id:int,name:string,flagpic:string}> */
+    private function all(): array
+    {
+        $rows = [];
+        $q = $this->db->sql_query_prepared('SELECT id, name, flagpic FROM countries ORDER BY name ASC');
+        while ($q && ($r = $this->db->fetch_array($q))) {
+            $rows[] = ['id' => (int)$r['id'], 'name' => (string)$r['name'], 'flagpic' => (string)$r['flagpic']];
+        }
+        return $rows;
+    }
+
+    /** @return list<string> flag file names available on disk */
+    private function flagFiles(): array
+    {
+        if (!is_dir($this->flagDir)) return [];
+        $files = [];
+        foreach (scandir($this->flagDir) ?: [] as $f) {
+            if (preg_match(CN_FLAG_RE, $f) && is_file($this->flagDir . $f)) $files[] = $f;
+        }
+        natcasesort($files);
+        return array_values($files);
+    }
+
+    private function flagExists(string $file): bool
+    {
+        return $file !== '' && preg_match(CN_FLAG_RE, $file) === 1 && is_file($this->flagDir . $file);
+    }
+
+    private function validFlagOrEmpty(string $file): string
+    {
+        $file = basename($file);
+        return $this->flagExists($file) ? $file : '';
+    }
+
+    // ── Actions ──────────────────────────────────────────────────────────────
+
+    private function save(int $id): void
+    {
+        $isEdit = $id > 0;
+        if ($isEdit && !$this->find($id)) $this->back('Country not found.', 'danger');
+
+        $name = trim((string)($_POST['name'] ?? ''));
+        $flag = basename(trim((string)($_POST['flagpic'] ?? '')));
+
+        $errors = [];
+        if ($name === '')                          $errors[] = 'Enter the country name.';
+        elseif (mb_strlen($name) > CN_NAME_MAX)    $errors[] = 'The name is longer than ' . CN_NAME_MAX . ' characters.';
+        if ($flag === '')                          $errors[] = 'Pick a flag.';
+        elseif (!$this->flagExists($flag))         $errors[] = 'That flag file is not in the flags folder.';
+
+        if (!$errors) {
+            $dup = $this->db->sql_query_prepared('SELECT id FROM countries WHERE name = ? AND id != ? LIMIT 1', [$name, $id]);
+            if ($dup && $this->db->num_rows($dup) > 0) $errors[] = "“{$name}” is already on the list.";
+        }
+
+        if ($errors) {
+            $this->renderForm(['id' => $id, 'name' => $name, 'flagpic' => $flag], $errors);
+            return;
+        }
+
+        if ($isEdit) {
+            $this->db->sql_query_prepared('UPDATE countries SET name = ?, flagpic = ? WHERE id = ?', [$name, $flag, $id]);
+            write_log("Edited country #{$id} '{$name}' ({$flag}) by " . $this->staff());
+            $this->back("{$name} saved.", 'success', $id);
+        }
+
+        $this->db->sql_query_prepared('INSERT INTO countries (name, flagpic) VALUES (?, ?)', [$name, $flag]);
+        $newId = (int)$this->db->insert_id();
+        write_log("Added country #{$newId} '{$name}' ({$flag}) by " . $this->staff());
+        $this->back("{$name} added.", 'success', $newId);
+    }
+
+    private function delete(int $id): void
+    {
+        $country = $this->find($id) ?? $this->back('Country not found.', 'danger');
+
+        $this->db->sql_query_prepared('DELETE FROM countries WHERE id = ? LIMIT 1', [$id]);
+        write_log("Deleted country #{$id} '{$country['name']}' by " . $this->staff());
+        $this->back("{$country['name']} deleted.", 'success');
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private function staff(): string
+    {
+        global $CURUSER;
+        return (string)($CURUSER['username'] ?? 'unknown');
+    }
+
+    /** PRG redirect with a flash toast. */
+    private function back(string $msg, string $type = 'success', int $anchorId = 0): never
+    {
+        $_SESSION['cn_flash'] = ['msg' => $msg, 'type' => $type];
+        header('Location: ' . $this->self . ($anchorId > 0 ? '#c' . $anchorId : ''));
+        exit;
+    }
+
+    private function url(array $params = []): string
+    {
+        return $this->self . ($params ? '&' . http_build_query($params) : '');
+    }
+
+    // ── Page chrome ──────────────────────────────────────────────────────────
+
+    private function open(string $title, string $sub, string $icon, string $tone, string $actions = ''): void
+    {
+        global $BASEURL, $mybb;
+        $v = CN_ASSET_VER;
+
+        stdhead($title);
+        ?>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/country.css?ver=<?= $v ?>">
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/country.js?ver=<?= $v ?>" defer></script>
+        <?php
+        if (!empty($_SESSION['cn_flash'])):
+            $f = $_SESSION['cn_flash'];
+            unset($_SESSION['cn_flash']);
+            $toast = match ($f['type']) { 'success' => 'success', 'danger' => 'error', 'warning' => 'warning', default => 'info' };
+        ?>
+<script src="<?= $BASEURL ?>/scripts/toast.js"></script>
+<script>document.addEventListener("DOMContentLoaded",function(){ showToast(<?= json_encode($f['msg'], JSON_HEX_TAG) ?>,<?= json_encode($toast) ?>); });</script>
+        <?php endif; ?>
+<div class="cn-page">
+  <div class="container py-3">
+    <header class="cn-head" style="<?= cn_tone($tone) ?>">
+      <div class="cn-head-icon" aria-hidden="true"><i class="fa-solid <?= $icon ?>"></i></div>
+      <div class="cn-head-text">
+        <h1><?= cn_e($title) ?></h1>
+        <p><?= cn_e($sub) ?></p>
+      </div>
+      <?php if ($actions !== ''): ?><div class="cn-head-actions"><?= $actions ?></div><?php endif; ?>
+    </header>
+        <?php
+    }
+
+    private function close(): void
+    {
+        echo "\n  </div>\n</div>\n";
         stdfoot();
     }
-    
-    private function createCountry(string $name, string $flagpic): void
+
+    private function flagImg(string $file, string $alt, string $class = 'cn-flag'): string
     {
-        $this->validateInput(['name' => $name, 'flagpic' => $flagpic]);
-        
-        $this->db->sql_query_prepared(
-            "INSERT INTO countries (name, flagpic) VALUES (?, ?)",
-            [$name, $flagpic]
+        if (!$this->flagExists($file)) {
+            return '<span class="' . $class . ' is-missing" title="Flag file missing"><i class="fa-solid fa-image"></i></span>';
+        }
+        return '<img src="' . cn_e($this->flagUrl . $file) . '" class="' . $class . '" alt="' . cn_e($alt) . '" loading="lazy">';
+    }
+
+    // ── List ─────────────────────────────────────────────────────────────────
+
+    private function renderList(): void
+    {
+        global $mybb;
+
+        $countries = $this->all();
+        $flags     = $this->flagFiles();
+        $used      = array_flip(array_map(static fn($c) => $c['flagpic'], $countries));
+        $unused    = array_values(array_filter($flags, static fn($f) => !isset($used[$f])));
+        $missing   = count(array_filter($countries, fn($c) => !$this->flagExists($c['flagpic'])));
+
+        $this->open(
+            'Countries',
+            'The list members pick from in their profile, with the flag shown next to their name.',
+            'fa-earth-europe', 'primary',
+            '<a href="' . cn_e($this->url(['action' => 'new'])) . '" class="btn btn-primary rounded-pill px-3">'
+            . '<i class="fa-solid fa-plus me-1"></i>Add country</a>'
         );
-        
-        $newId = $this->db->insert_id();
-        redirect('admin/index.php?act=country&#c' . $newId);
-    }
-    
-    private function showCountries(): void
-    {
-        stdhead('Manage Countries');
-        
-        echo <<<HTML
-        <div class="container mt-3">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3 mb-0 text-gray-800">
-                    <i class="fas fa-globe-americas me-2"></i>Manage Countries
-                </h1>
-                <a href="{$_SERVER['PHP_SELF']}?act=country&action=new" class="btn btn-success">
-                    <i class="fas fa-plus me-1"></i> Add New Country
-                </a>
-            </div>
-            
-            <div class="card shadow-sm">
-                <div class="card-header bg-white py-3">
-                    <h6 class="mb-0">
-                        <i class="fas fa-list me-1"></i>
-                        Registered Countries
-                    </h6>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th width="10%" class="text-center">ID</th>
-                                    <th width="30%">Country Name</th>
-                                    <th width="20%" class="text-center">Flag</th>
-                                    <th width="40%" class="text-center">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-        HTML;
-        
-        $query = $this->db->sql_query_prepared('SELECT * FROM countries ORDER BY name ASC');
-        while ($query && ($country = $this->db->fetch_array($query))) {
-            $flagUrl = $this->baseUrl . '/' . $this->picBaseUrl . 'flag/' . $country['flagpic'];
-            
-            echo <<<HTML
-                            <tr id="c{$country['id']}">
-                                <td class="text-center align-middle">
-                                    <span class="badge bg-secondary">{$country['id']}</span>
-                                </td>
-                                <td class="align-middle">
-                                    <strong>{$country['name']}</strong>
-                                </td>
-                                <td class="text-center align-middle">
-                                    <img src="{$flagUrl}" 
-                                         class="img-thumbnail" style="max-height: 30px" 
-                                         alt="{$country['name']}" title="{$country['name']}">
-                                </td>
-                                <td class="text-center align-middle">
-                                    <div class="btn-group btn-group-sm" role="group">
-                                        <a href="{$_SERVER['PHP_SELF']}?act=country&action=edit&id={$country['id']}" 
-                                           class="btn btn-outline-primary">
-                                            <i class="fas fa-edit me-1"></i> Edit
-                                        </a>
-                                        <a href="{$_SERVER['PHP_SELF']}?act=country&action=delete&id={$country['id']}" 
-                                           class="btn btn-outline-danger"
-                                           onclick="return confirm('Delete {$country['name']}?')">
-                                            <i class="fas fa-trash me-1"></i> Delete
-                                        </a>
-                                    </div>
-                                </td>
-                            </tr>
-            HTML;
-        }
-        
-        echo <<<HTML
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card-footer bg-white py-3">
-                    <div class="text-muted small">
-                        <i class="fas fa-info-circle me-1"></i>
-                        Total: {$this->db->num_rows($query)} countries registered
-                    </div>
-                </div>
-            </div>
-            
-            <div class="alert alert-info mt-4">
-                <h6><i class="fas fa-lightbulb me-2"></i>Quick Tips:</h6>
-                <ul class="mb-0">
-                    <li>Click on a country flag to preview it</li>
-                    <li>Use descriptive country names for better organization</li>
-                    <li>Ensure flag images are uploaded to the flags directory</li>
-                    <li>Recommended flag size: 16x11 pixels</li>
-                </ul>
-            </div>
+        ?>
+    <section class="cn-kpis">
+      <div class="cn-kpi" style="<?= cn_tone('primary') ?>">
+        <span class="cn-kpi-icon"><i class="fa-solid fa-earth-europe"></i></span>
+        <div><div class="cn-kpi-val"><?= number_format(count($countries)) ?></div><div class="cn-kpi-label">Countries</div></div>
+      </div>
+      <div class="cn-kpi" style="<?= cn_tone('success') ?>">
+        <span class="cn-kpi-icon"><i class="fa-solid fa-flag"></i></span>
+        <div><div class="cn-kpi-val"><?= number_format(count($flags)) ?></div><div class="cn-kpi-label">Flag files</div></div>
+      </div>
+      <div class="cn-kpi" style="<?= cn_tone('info') ?>">
+        <span class="cn-kpi-icon"><i class="fa-regular fa-flag"></i></span>
+        <div><div class="cn-kpi-val"><?= number_format(count($unused)) ?></div><div class="cn-kpi-label">Flags not used yet</div></div>
+      </div>
+      <div class="cn-kpi" style="<?= cn_tone($missing ? 'danger' : 'secondary') ?>">
+        <span class="cn-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+        <div><div class="cn-kpi-val"><?= number_format($missing) ?></div><div class="cn-kpi-label">Missing flag file</div></div>
+      </div>
+    </section>
+
+    <section class="cn-card">
+      <div class="cn-card-head">
+        <h2><i class="fa-solid fa-list me-2"></i>All countries <span class="cn-count"><?= number_format(count($countries)) ?></span></h2>
+        <?php if ($countries): ?>
+        <label class="cn-search">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="search" class="form-control form-control-sm" placeholder="Filter by name or file"
+                 aria-label="Filter countries" data-cn-filter="#cn-table tbody tr">
+        </label>
+        <?php endif; ?>
+      </div>
+
+      <?php if (!$countries): ?>
+        <div class="cn-empty">
+          <div class="cn-empty-icon" style="<?= cn_tone('primary') ?>"><i class="fa-solid fa-earth-europe"></i></div>
+          <h3>No countries yet</h3>
+          <p>Add the first one and members can pick it in their profile.</p>
+          <a href="<?= cn_e($this->url(['action' => 'new'])) ?>" class="btn btn-sm btn-primary rounded-pill px-3"><i class="fa-solid fa-plus me-1"></i>Add country</a>
         </div>
-        HTML;
-        
-        stdfoot();
+      <?php else: ?>
+      <div class="table-responsive">
+        <table class="table cn-table align-middle mb-0" id="cn-table">
+          <thead>
+            <tr>
+              <th class="cn-col-flag"><i class="fa-solid fa-flag me-1"></i>Flag</th>
+              <th><i class="fa-solid fa-heading me-1"></i>Name</th>
+              <th class="d-none d-sm-table-cell"><i class="fa-regular fa-file-image me-1"></i>File</th>
+              <th class="cn-col-id text-end">ID</th>
+              <th class="cn-col-act text-end"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php foreach ($countries as $c):
+              $ok = $this->flagExists($c['flagpic']); ?>
+            <tr id="c<?= $c['id'] ?>" data-cn-text="<?= cn_e(mb_strtolower($c['name'] . ' ' . $c['flagpic'])) ?>">
+              <td class="cn-col-flag"><?= $this->flagImg($c['flagpic'], $c['name']) ?></td>
+              <td class="cn-name"><?= cn_e($c['name']) ?></td>
+              <td class="d-none d-sm-table-cell">
+                <code class="cn-file"><?= cn_e($c['flagpic']) ?></code>
+                <?php if (!$ok): ?><span class="cn-tag" style="<?= cn_tone('danger') ?>"><i class="fa-solid fa-triangle-exclamation"></i>Missing</span><?php endif; ?>
+              </td>
+              <td class="cn-col-id text-end">#<?= $c['id'] ?></td>
+              <td class="cn-col-act text-end">
+                <div class="cn-actions">
+                  <a href="<?= cn_e($this->url(['action' => 'edit', 'id' => $c['id']])) ?>" class="cn-icon-btn" title="Edit <?= cn_e($c['name']) ?>">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                  </a>
+                  <button type="button" class="cn-icon-btn is-danger" title="Delete <?= cn_e($c['name']) ?>"
+                          data-cn-delete data-id="<?= $c['id'] ?>" data-name="<?= cn_e($c['name']) ?>">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+        <div class="cn-empty cn-empty-sm" id="cn-no-match" hidden>
+          <p><i class="fa-solid fa-magnifying-glass me-1"></i>No country matches that filter.</p>
+        </div>
+      </div>
+      <?php endif; ?>
+    </section>
+
+    <?php if ($unused): ?>
+    <section class="cn-card cn-unused">
+      <div class="cn-card-head">
+        <h2><i class="fa-regular fa-flag me-2"></i>Flags not used yet <span class="cn-count"><?= number_format(count($unused)) ?></span></h2>
+        <span class="cn-muted small">Click a flag to add a country with it.</span>
+      </div>
+      <div class="cn-flag-grid">
+        <?php foreach ($unused as $f): ?>
+        <a href="<?= cn_e($this->url(['action' => 'new', 'flag' => $f])) ?>" class="cn-flag-tile" title="<?= cn_e($f) ?>">
+          <img src="<?= cn_e($this->flagUrl . $f) ?>" alt="" loading="lazy">
+          <span><?= cn_e(pathinfo($f, PATHINFO_FILENAME)) ?></span>
+        </a>
+        <?php endforeach; ?>
+      </div>
+    </section>
+    <?php endif; ?>
+
+    <form method="post" id="cn-delete-form" action="<?= cn_e($this->self) ?>" hidden>
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="id" value="">
+      <input type="hidden" name="my_post_key" value="<?= cn_e($mybb->post_code ?? '') ?>">
+    </form>
+        <?php
+        $this->close();
+    }
+
+    // ── Add / edit form ──────────────────────────────────────────────────────
+
+    private function renderForm(array $c, array $errors = []): void
+    {
+        global $mybb;
+
+        $id     = (int)($c['id'] ?? 0);
+        $isEdit = $id > 0;
+        $name   = (string)($c['name'] ?? '');
+        $sel    = (string)($c['flagpic'] ?? '');
+        $flags  = $this->flagFiles();
+
+        $this->open(
+            $isEdit ? 'Edit country' : 'Add country',
+            $isEdit ? 'Renaming changes it for every member who picked this country.'
+                    : 'The flag must already be in the flags folder on the server.',
+            $isEdit ? 'fa-pen-to-square' : 'fa-plus',
+            $isEdit ? 'warning' : 'primary',
+            '<a href="' . cn_e($this->self . ($isEdit ? '#c' . $id : '')) . '" class="btn btn-sm btn-outline-secondary rounded-pill px-3">'
+            . '<i class="fa-solid fa-arrow-left me-1"></i>All countries</a>'
+        );
+
+        if ($errors): ?>
+    <div class="cn-alert" role="alert">
+      <i class="fa-solid fa-circle-exclamation"></i>
+      <ul><?php foreach ($errors as $e): ?><li><?= cn_e($e) ?></li><?php endforeach; ?></ul>
+    </div>
+        <?php endif; ?>
+
+    <form method="post" action="<?= cn_e($this->self) ?>" class="cn-form" data-cn-form>
+      <input type="hidden" name="action" value="save">
+      <input type="hidden" name="id" value="<?= $id ?>">
+      <input type="hidden" name="my_post_key" value="<?= cn_e($mybb->post_code ?? '') ?>">
+
+      <div class="cn-editor">
+        <section class="cn-card cn-panel">
+          <label class="cn-label" for="cn-name"><i class="fa-solid fa-heading"></i>Country name <span class="cn-req">*</span></label>
+          <input type="text" class="form-control form-control-lg" id="cn-name" name="name" value="<?= cn_e($name) ?>"
+                 maxlength="<?= CN_NAME_MAX ?>" required autocomplete="off" placeholder="Bulgaria">
+
+          <div class="cn-picker-head">
+            <label class="cn-label mb-0"><i class="fa-solid fa-flag"></i>Flag <span class="cn-req">*</span></label>
+            <label class="cn-search">
+              <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+              <input type="search" class="form-control form-control-sm" placeholder="Find a flag file"
+                     aria-label="Find a flag file" data-cn-filter=".cn-picker .cn-pick">
+            </label>
+          </div>
+
+          <?php if (!$flags): ?>
+            <div class="cn-empty cn-empty-sm">
+              <p><i class="fa-solid fa-folder-open me-1"></i>No flag images found in <code><?= cn_e(basename(rtrim($this->flagDir, '/'))) ?>/</code>. Upload the files first.</p>
+            </div>
+          <?php else: ?>
+          <div class="cn-picker" role="radiogroup" aria-label="Flag">
+            <?php foreach ($flags as $f): ?>
+            <label class="cn-pick" data-cn-text="<?= cn_e(mb_strtolower($f)) ?>" title="<?= cn_e($f) ?>">
+              <input type="radio" name="flagpic" value="<?= cn_e($f) ?>" <?= $f === $sel ? 'checked' : '' ?> required
+                     data-cn-src="<?= cn_e($this->flagUrl . $f) ?>">
+              <img src="<?= cn_e($this->flagUrl . $f) ?>" alt="" loading="lazy">
+              <span><?= cn_e(pathinfo($f, PATHINFO_FILENAME)) ?></span>
+            </label>
+            <?php endforeach; ?>
+          </div>
+          <div class="cn-empty cn-empty-sm" id="cn-no-flag" hidden><p>No flag file matches.</p></div>
+          <?php endif; ?>
+        </section>
+
+        <aside class="cn-card cn-panel cn-preview">
+          <h2><i class="fa-solid fa-eye me-2"></i>How members see it</h2>
+          <div class="cn-preview-user">
+            <span class="cn-preview-flag" id="cn-preview-flag">
+              <?= $sel !== '' ? '<img src="' . cn_e($this->flagUrl . $sel) . '" alt="">' : '<i class="fa-regular fa-flag"></i>' ?>
+            </span>
+            <div>
+              <strong id="cn-preview-name"><?= $name !== '' ? cn_e($name) : 'Country name' ?></strong>
+              <small id="cn-preview-file"><?= $sel !== '' ? cn_e($sel) : 'No flag picked' ?></small>
+            </div>
+          </div>
+          <?php if ($isEdit): ?>
+          <p class="cn-muted small mb-0"><i class="fa-solid fa-hashtag me-1"></i>Country ID <?= $id ?></p>
+          <?php endif; ?>
+        </aside>
+      </div>
+
+      <div class="cn-bar">
+        <a href="<?= cn_e($this->self . ($isEdit ? '#c' . $id : '')) ?>" class="btn btn-outline-secondary rounded-pill px-3"><i class="fa-solid fa-xmark me-1"></i>Cancel</a>
+        <button type="submit" class="btn btn-primary rounded-pill px-4" data-cn-submit>
+          <i class="fa-solid <?= $isEdit ? 'fa-floppy-disk' : 'fa-plus' ?> me-1"></i><?= $isEdit ? 'Save changes' : 'Add country' ?>
+        </button>
+      </div>
+    </form>
+        <?php
+        $this->close();
     }
 }
 
-// Инициализация
-$countryManager = new CountryManager($db, $BASEURL, $pic_base_url);
-$countryManager->handleRequest();
-
-?>
+(new CountryManager($db, (string)$BASEURL, (string)$pic_base_url))->handleRequest();

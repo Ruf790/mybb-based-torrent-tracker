@@ -90,7 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execut
 
         if ($result === false) {
             $alert = 'danger';
-            $rows_info = htmlspecialchars($mysqli->error);
+            // Сырой текст — экранируется один раз при выводе (раньше было двойное экранирование)
+            $rows_info = $mysqli->error;
         } elseif ($result instanceof \mysqli_result) {
             $num = $result->num_rows;
             $alert = 'success';
@@ -133,435 +134,193 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'ts_execut
     }
 }
 
+// ── KPI stats ─────────────────────────────────────────────────────────────────
+// Считаем после выполнения запроса, чтобы плитки отражали изменения (CREATE/DROP и т.п.)
+$kpi = ['version' => '—', 'tables' => 0, 'size' => 0, 'rows' => 0];
+if ($db_ok) {
+    $kpi['version'] = (string)$mysqli->server_info;
+    $kres = $mysqli->query(
+        'SELECT COUNT(*) AS t, COALESCE(SUM(data_length + index_length), 0) AS sz, COALESCE(SUM(table_rows), 0) AS rw
+           FROM information_schema.tables
+          WHERE table_schema = DATABASE()'
+    );
+    if ($kres instanceof \mysqli_result) {
+        $k = $kres->fetch_assoc() ?: [];
+        $kpi['tables'] = (int)($k['t']  ?? 0);
+        $kpi['size']   = (int)($k['sz'] ?? 0);
+        $kpi['rows']   = (int)($k['rw'] ?? 0);
+        $kres->free();
+    }
+}
+
+$qe_bytes = static function (int $b): string {
+    $u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $i = 0;
+    $v = (float)$b;
+    while ($v >= 1024 && $i < count($u) - 1) {
+        $v /= 1024;
+        $i++;
+    }
+    return ($i === 0 ? (string)$b : number_format($v, 2)) . ' ' . $u[$i];
+};
+
+$historyCount = count($_SESSION['query_history']);
+
+$alertIcon = match ($alert) {
+    'success' => 'fa-circle-check',
+    'danger'  => 'fa-circle-xmark',
+    'warning' => 'fa-triangle-exclamation',
+    default   => 'fa-circle-info',
+};
+
+$examples = [
+    ['fa-users',         'All users',     'SELECT * FROM users LIMIT 20;'],
+    ['fa-user-check',    'Active users',  "SELECT id, username, email FROM users WHERE enabled = 'yes' LIMIT 50;"],
+    ['fa-table-list',    'Show tables',   'SHOW TABLES;'],
+    ['fa-microchip',     'Thread status', "SHOW STATUS LIKE 'Threads%';"],
+    ['fa-weight-hanging','Table sizes',   'SELECT table_name, ROUND((data_length+index_length)/1024/1024,2) AS size_mb FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY size_mb DESC;'],
+    ['fa-list-check',    'Process list',  'SHOW FULL PROCESSLIST;'],
+];
+
 stdhead('SQL Query Editor');
 ?>
-<style>
-/* ── Layout ── */
-.qe-wrap {
-    max-width: 1100px;
-    margin: 2rem auto;
-    padding: 0 1rem;
-    font-size: 1rem;
-}
-
-/* ── Card ── */
-.qe-card {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 18px;
-    overflow: hidden;
-    box-shadow: 0 4px 24px rgba(0,0,0,.07);
-    margin-bottom: 1.5rem;
-}
-
-.qe-card-header {
-    display: flex;
-    align-items: center;
-    gap: .75rem;
-    padding: 1rem 1.5rem;
-    background: var(--bs-primary);
-    color: #fff;
-}
-.qe-card-header h2 {
-    font-size: 1.15rem;
-    font-weight: 700;
-    margin: 0;
-    flex: 1;
-}
-.qe-card-header p {
-    font-size: .82rem;
-    opacity: .75;
-    margin: 0;
-}
-.qe-card-header-text { flex: 1; }
-
-.qe-card-body { padding: 1.75rem; }
-
-/* ── Status pill ── */
-.qe-status {
-    display: inline-flex;
-    align-items: center;
-    gap: .4rem;
-    padding: .3rem .85rem;
-    border-radius: 20px;
-    font-size: .82rem;
-    font-weight: 600;
-    margin-bottom: 1.25rem;
-}
-.qe-status-ok  { background: #dcfce7; color: #14532d; }
-.qe-status-err { background: #fef2f2; color: #7f1d1d; }
-.qe-status-ok i { animation: qe-pulse 2s ease-in-out infinite; }
-@keyframes qe-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: .35; }
-}
-
-/* ── Editor ── */
-.qe-editor-wrap {
-    border: 1.5px solid #e2e8f0;
-    border-radius: 12px;
-    overflow: hidden;
-    transition: border-color .15s, box-shadow .15s;
-    margin-bottom: 1rem;
-}
-.qe-editor-wrap:focus-within {
-    border-color: #1a56db;
-    box-shadow: 0 0 0 3px rgba(26,86,219,.12);
-}
-
-#query {
-    width: 100%;
-    min-height: 200px;
-    padding: 1.1rem;
-    font-family: "Fira Code", "Cascadia Code", "Courier New", monospace;
-    font-size: 1rem;
-    line-height: 1.6;
-    color: #1e293b;
-    background: #fafafa;
-    border: none;
-    resize: vertical;
-    outline: none;
-    box-sizing: border-box;
-}
-#query:focus { background: #fff; }
-
-/* ── Toolbar ── */
-.qe-toolbar {
-    background: #f8fafc;
-    border-top: 1px solid #e9ecef;
-    padding: .85rem 1.1rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: .6rem;
-}
-
-.qe-tool-group { display: flex; gap: .4rem; flex-wrap: wrap; }
-
-.qe-tool-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: .3rem;
-    padding: .4rem .9rem;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: .875rem;
-    font-weight: 500;
-    color: #374151;
-    background: #fff;
-    cursor: pointer;
-    transition: all .15s;
-}
-.qe-tool-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
-
-.qe-run-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: .4rem;
-    padding: .5rem 1.4rem;
-    background: linear-gradient(135deg, #1a56db, #1648c0);
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    font-size: .95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all .18s;
-    box-shadow: 0 2px 8px rgba(26,86,219,.25);
-}
-.qe-run-btn:hover {
-    background: linear-gradient(135deg, #1648c0, #1e40af);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(26,86,219,.35);
-}
-
-/* ── Examples ── */
-.qe-examples {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-left: 4px solid #1a56db;
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    margin-top: 1.25rem;
-}
-.qe-examples h6 {
-    font-size: .9rem;
-    font-weight: 600;
-    color: #374151;
-    margin-bottom: .6rem;
-}
-.qe-ex-btn {
-    display: inline-flex;
-    align-items: center;
-    margin: .2rem;
-    padding: .3rem .8rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 20px;
-    font-size: .8rem;
-    font-family: "Fira Code", monospace;
-    color: #374151;
-    background: #fff;
-    cursor: pointer;
-    transition: all .15s;
-}
-.qe-ex-btn:hover { background: #1a56db; color: #fff; border-color: #1a56db; }
-
-/* ── Result card ── */
-.qe-result-card {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    overflow: hidden;
-    margin-top: 1.5rem;
-    box-shadow: 0 2px 10px rgba(0,0,0,.05);
-}
-
-.qe-result-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: .75rem 1.25rem;
-    border-bottom: 1px solid #f1f5f9;
-    background: #f8fafc;
-    flex-wrap: wrap;
-    gap: .5rem;
-}
-.qe-result-title {
-    font-size: .9rem;
-    font-weight: 600;
-    color: #1e293b;
-    display: flex;
-    align-items: center;
-    gap: .4rem;
-}
-
-.qe-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: .3rem;
-    padding: .25rem .75rem;
-    border-radius: 20px;
-    font-size: .78rem;
-    font-weight: 600;
-}
-.qe-badge-success { background: #dcfce7; color: #14532d; }
-.qe-badge-danger  { background: #fef2f2; color: #7f1d1d; }
-.qe-badge-info    { background: #eff6ff; color: #1e3a8a; }
-.qe-badge-warning { background: #fffbeb; color: #78350f; }
-.qe-badge-time    { background: #f1f5f9; color: #475569; }
-
-.qe-result-body { padding: 1.25rem; }
-
-/* ── Table ── */
-.qe-result-scroll {
-    overflow: auto;
-    max-height: 520px;
-    border-radius: 10px;
-    border: 1px solid #e9ecef;
-}
-.qe-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: .9rem;
-}
-.qe-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: #f1f5f9;
-    color: #374151;
-    font-weight: 600;
-    padding: .6rem 1rem;
-    text-align: left;
-    border-bottom: 2px solid #e2e8f0;
-    white-space: nowrap;
-}
-.qe-table .qe-col-num {
-    color: #94a3b8;
-    font-weight: 500;
-    text-align: right;
-    width: 1%;
-    background: #fafbfc;
-}
-.qe-table thead th.qe-col-num { background: #f1f5f9; }
-.qe-table tbody tr { transition: background .1s; }
-.qe-table tbody tr:hover { background: #f8fafc; }
-.qe-table tbody td {
-    padding: .55rem 1rem;
-    border-bottom: 1px solid #f1f5f9;
-    color: #1e293b;
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: "Fira Code", monospace;
-    font-size: .875rem;
-}
-.qe-table tbody tr:last-child td { border-bottom: none; }
-.qe-null { color: #94a3b8; font-style: italic; }
-
-/* ── Alert messages ── */
-.qe-msg {
-    display: flex;
-    align-items: flex-start;
-    gap: .6rem;
-    padding: .85rem 1rem;
-    border-radius: 10px;
-    font-size: .95rem;
-}
-.qe-msg i { font-size: 1.1rem; flex-shrink: 0; margin-top: .05rem; }
-.qe-msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #bbf7d0; }
-.qe-msg-danger  { background: #fef2f2; color: #7f1d1d; border: 1px solid #fecaca; }
-.qe-msg-info    { background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe; }
-.qe-msg-warning { background: #fffbeb; color: #78350f; border: 1px solid #fde68a; }
-
-/* ── History modal ── */
-.qe-history-item {
-    padding: .85rem 1rem;
-    border-bottom: 1px solid #f1f5f9;
-    cursor: pointer;
-    transition: background .15s;
-    border-left: 3px solid transparent;
-}
-.qe-history-item:last-child { border-bottom: none; }
-.qe-history-item:hover {
-    background: #f8fafc;
-    border-left-color: #1a56db;
-}
-.qe-history-query {
-    font-family: "Fira Code", monospace;
-    font-size: .85rem;
-    color: #374151;
-    margin: .2rem 0 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.qe-history-meta {
-    font-size: .75rem;
-    color: #94a3b8;
-    margin-bottom: .15rem;
-}
-
-@media (max-width: 640px) {
-    .qe-toolbar { flex-direction: column; align-items: stretch; }
-    .qe-run-btn { justify-content: center; }
-    .qe-card-body { padding: 1.1rem; }
-}
-</style>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/execute_sql_query.css?ver=2">
 
 <div class="qe-wrap">
 
-    <!-- Main card -->
-    <div class="qe-card">
-        <div class="qe-card-header">
-            <i class="bi bi-terminal-fill" style="font-size:1.3rem"></i>
-            <div class="qe-card-header-text">
-                <h2>SQL Query Editor</h2>
-                <p>Execute queries and inspect results — admin only</p>
+    <!-- Header -->
+    <div class="qe-panel qe-header">
+        <div class="qe-header-icon"><i class="fa-solid fa-terminal"></i></div>
+        <div class="qe-header-text">
+            <h2>SQL Query Editor</h2>
+            <p>Run SQL against the live database. Every executed query is written to the staff log.</p>
+        </div>
+        <span class="qe-conn <?= $db_ok ? 'qe-conn-ok' : 'qe-conn-err' ?>">
+            <i class="fa-solid <?= $db_ok ? 'fa-plug-circle-check' : 'fa-plug-circle-xmark' ?>"></i>
+            <?= $db_ok ? 'Connected' : 'Offline' ?>
+        </span>
+    </div>
+
+    <!-- KPI tiles -->
+    <div class="qe-kpis">
+        <div class="qe-kpi">
+            <div class="qe-kpi-icon qe-soft-<?= $db_ok ? 'success' : 'danger' ?>"><i class="fa-solid fa-database"></i></div>
+            <div class="qe-kpi-body">
+                <div class="qe-kpi-label">Database</div>
+                <div class="qe-kpi-value" title="<?= htmlspecialchars($db_name) ?>"><?= htmlspecialchars($db_name) ?></div>
             </div>
         </div>
+        <div class="qe-kpi">
+            <div class="qe-kpi-icon qe-soft-primary"><i class="fa-solid fa-server"></i></div>
+            <div class="qe-kpi-body">
+                <div class="qe-kpi-label">MySQL version</div>
+                <div class="qe-kpi-value"><?= htmlspecialchars($kpi['version']) ?></div>
+            </div>
+        </div>
+        <div class="qe-kpi">
+            <div class="qe-kpi-icon qe-soft-info"><i class="fa-solid fa-table"></i></div>
+            <div class="qe-kpi-body">
+                <div class="qe-kpi-label">Tables</div>
+                <div class="qe-kpi-value"><?= number_format($kpi['tables']) ?></div>
+                <div class="qe-kpi-sub">~<?= number_format($kpi['rows']) ?> rows</div>
+            </div>
+        </div>
+        <div class="qe-kpi">
+            <div class="qe-kpi-icon qe-soft-warning"><i class="fa-solid fa-hard-drive"></i></div>
+            <div class="qe-kpi-body">
+                <div class="qe-kpi-label">Size on disk</div>
+                <div class="qe-kpi-value"><?= $qe_bytes($kpi['size']) ?></div>
+                <div class="qe-kpi-sub">data + indexes</div>
+            </div>
+        </div>
+    </div>
 
-        <div class="qe-card-body">
+    <?php if (!$db_ok): ?>
+    <div class="qe-msg qe-msg-danger qe-mb">
+        <i class="fa-solid fa-circle-xmark"></i>
+        <span>Database connection failed. Check the server log for details.</span>
+    </div>
+    <?php endif; ?>
 
-            <!-- Connection status -->
-            <div class="qe-status <?= $db_ok ? 'qe-status-ok' : 'qe-status-err' ?>">
-                <i class="bi <?= $db_ok ? 'bi-circle-fill' : 'bi-x-circle-fill' ?>"></i>
-                <?= $db_ok
-                    ? 'Connected &rarr; <strong>' . htmlspecialchars($db_name) . '</strong>'
-                    : 'Database connection failed. See server log for details.' ?>
+    <!-- Editor -->
+    <div class="qe-panel qe-editor-panel">
+        <form method="post" id="qeForm">
+            <input type="hidden" name="do" value="ts_execute_sql_query">
+            <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+            <input type="hidden" name="confirm_destructive" id="confirmDestructive" value="0">
+
+            <div class="qe-editor-head">
+                <span class="qe-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="qe-editor-title"><i class="fa-solid fa-code"></i> query.sql</span>
+                <span class="qe-editor-db"><i class="fa-solid fa-database"></i> <?= htmlspecialchars($db_name) ?></span>
             </div>
 
-            <!-- Form -->
-            <form method="post" id="qeForm">
-                <input type="hidden" name="do" value="ts_execute_sql_query">
-                <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                <input type="hidden" name="confirm_destructive" id="confirmDestructive" value="0">
+            <textarea name="query" id="query" spellcheck="false"
+                      placeholder="-- Enter your SQL query here&#10;SELECT * FROM users LIMIT 10;"
+            ><?= htmlspecialchars($query) ?></textarea>
 
-                <div class="qe-editor-wrap">
-                    <textarea name="query" id="query"
-                              placeholder="-- Enter your SQL query here&#10;SELECT * FROM users LIMIT 10;"
-                    ><?= htmlspecialchars($query) ?></textarea>
-
-                    <div class="qe-toolbar">
-                        <div class="qe-tool-group">
-                            <button type="button" class="qe-tool-btn" id="qeFormat">
-                                <i class="bi bi-text-indent-left"></i> Format
-                            </button>
-                            <button type="button" class="qe-tool-btn" id="qeHistory"
-                                    data-bs-toggle="modal" data-bs-target="#histModal">
-                                <i class="bi bi-clock-history"></i>
-                                History
-                                <?php if (!empty($_SESSION['query_history'])): ?>
-                                <span style="background:#1a56db;color:#fff;border-radius:10px;
-                                             padding:1px 7px;font-size:.7rem">
-                                    <?= count($_SESSION['query_history']) ?>
-                                </span>
-                                <?php endif; ?>
-                            </button>
-                            <button type="button" class="qe-tool-btn" id="qeClear">
-                                <i class="bi bi-eraser"></i> Clear
-                            </button>
-                        </div>
-                        <button type="submit" class="qe-run-btn">
-                            <i class="bi bi-play-fill"></i> Execute
-                        </button>
-                    </div>
+            <div class="qe-toolbar">
+                <div class="qe-tool-group">
+                    <button type="button" class="qe-btn qe-btn-ghost" id="qeFormat">
+                        <i class="fa-solid fa-align-left"></i> Format
+                    </button>
+                    <button type="button" class="qe-btn qe-btn-ghost" id="qeHistory"
+                            data-bs-toggle="modal" data-bs-target="#histModal">
+                        <i class="fa-solid fa-clock-rotate-left"></i> History
+                        <?php if ($historyCount > 0): ?>
+                        <span class="qe-count"><?= $historyCount ?></span>
+                        <?php endif; ?>
+                    </button>
+                    <button type="button" class="qe-btn qe-btn-ghost" id="qeClear">
+                        <i class="fa-solid fa-eraser"></i> Clear
+                    </button>
                 </div>
-            </form>
-
-            <!-- Examples -->
-            <div class="qe-examples">
-                <h6><i class="bi bi-lightbulb-fill me-1" style="color:#f59e0b"></i>Quick examples</h6>
-                <button class="qe-ex-btn" data-q="SELECT * FROM users LIMIT 20;">SELECT users</button>
-                <button class="qe-ex-btn" data-q="SELECT id, username, email FROM users WHERE enabled = 'yes' LIMIT 50;">Active users</button>
-                <button class="qe-ex-btn" data-q="SHOW TABLES;">SHOW TABLES</button>
-                <button class="qe-ex-btn" data-q="SHOW STATUS LIKE 'Threads%';">Thread status</button>
-                <button class="qe-ex-btn" data-q="SELECT table_name, ROUND((data_length+index_length)/1024/1024,2) AS size_mb FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY size_mb DESC;">Table sizes</button>
+                <button type="submit" class="qe-btn qe-btn-run">
+                    <i class="fa-solid fa-play"></i> Execute
+                </button>
             </div>
+        </form>
+    </div>
+
+    <!-- Examples -->
+    <div class="qe-panel qe-examples">
+        <div class="qe-section-title"><i class="fa-solid fa-lightbulb"></i> Quick examples</div>
+        <div class="qe-ex-list">
+            <?php foreach ($examples as [$icon, $label, $sql]): ?>
+            <button type="button" class="qe-ex-btn" data-q="<?= htmlspecialchars($sql) ?>" title="<?= htmlspecialchars($sql) ?>">
+                <i class="fa-solid <?= $icon ?>"></i> <?= htmlspecialchars($label) ?>
+            </button>
+            <?php endforeach; ?>
         </div>
     </div>
 
     <!-- Results -->
     <?php if (!empty($alert)): ?>
-    <div class="qe-result-card">
-        <div class="qe-result-header">
-            <div class="qe-result-title">
-                <i class="bi bi-grid-3x3-gap-fill"></i> Query Result
-            </div>
-            <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+    <div class="qe-panel qe-result">
+        <div class="qe-result-head">
+            <div class="qe-section-title"><i class="fa-solid fa-table-cells"></i> Query result</div>
+            <div class="qe-result-meta">
                 <?php if ($exec_time !== null): ?>
-                <span class="qe-badge qe-badge-time">
-                    <i class="bi bi-stopwatch"></i> <?= $exec_time ?>ms
+                <span class="qe-badge qe-soft-secondary">
+                    <i class="fa-solid fa-stopwatch"></i> <?= $exec_time ?> ms
                 </span>
                 <?php endif; ?>
-                <span class="qe-badge qe-badge-<?= $alert ?>">
-                    <?php match ($alert) {
-                        'success' => print('<i class="bi bi-check-circle-fill"></i>'),
-                        'danger'  => print('<i class="bi bi-x-circle-fill"></i>'),
-                        'info'    => print('<i class="bi bi-info-circle-fill"></i>'),
-                        'warning' => print('<i class="bi bi-exclamation-triangle-fill"></i>'),
-                        default   => null,
-                    }; ?>
-                    <?= htmlspecialchars($rows_info) ?>
+                <span class="qe-badge qe-soft-<?= $alert ?>">
+                    <i class="fa-solid <?= $alertIcon ?>"></i>
+                    <?= $alert === 'danger' ? 'Error' : htmlspecialchars($rows_info) ?>
                 </span>
                 <?php if (!empty($table)): ?>
-                <button type="button" class="qe-tool-btn" id="qeCopyCsv" style="padding:.25rem .75rem;font-size:.78rem;">
-                    <i class="bi bi-clipboard-data"></i> Copy as CSV
+                <button type="button" class="qe-btn qe-btn-ghost qe-btn-sm" id="qeCopyCsv">
+                    <i class="fa-solid fa-file-csv"></i> Copy as CSV
                 </button>
                 <?php endif; ?>
             </div>
         </div>
         <div class="qe-result-body">
-            <?php if ($alert === 'danger'): ?>
-            <div class="qe-msg qe-msg-danger">
-                <i class="bi bi-x-circle-fill"></i>
-                <span><?= htmlspecialchars($rows_info) ?></span>
-            </div>
-            <?php elseif (empty($table) && $alert !== 'danger'): ?>
+            <?php if (empty($table)): ?>
             <div class="qe-msg qe-msg-<?= $alert ?>">
-                <i class="bi bi-info-circle-fill"></i>
+                <i class="fa-solid <?= $alertIcon ?>"></i>
                 <span><?= htmlspecialchars($rows_info) ?></span>
             </div>
             <?php endif; ?>
@@ -570,58 +329,60 @@ stdhead('SQL Query Editor');
     </div>
     <?php endif; ?>
 
-</div><!-- /.qe-wrap -->
-
-<!-- History Modal -->
-<div class="modal fade" id="histModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content" style="border-radius:16px;overflow:hidden;border:none">
-            <div class="modal-header"
-                 style="background:var(--bs-primary);color:#fff;border:none">
-                <h5 class="modal-title" style="font-weight:700">
-                    <i class="bi bi-clock-history me-2"></i>Query History
-                </h5>
-                <button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-0" style="max-height:460px;overflow-y:auto">
-                <?php if (!empty($_SESSION['query_history'])): ?>
-                    <?php foreach ($_SESSION['query_history'] as $i => $h): ?>
-                    <div class="qe-history-item" data-q="<?= htmlspecialchars($h['query']) ?>">
-                        <div class="qe-history-meta">
-                            #<?= count($_SESSION['query_history']) - $i ?>
-                            &nbsp;·&nbsp;
-                            <?= date('Y-m-d H:i:s', $h['timestamp']) ?>
+    <!-- History Modal -->
+    <div class="modal fade qe-modal" id="histModal" tabindex="-1" aria-labelledby="histModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="qe-header-icon qe-header-icon-sm"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                    <h5 class="modal-title" id="histModalLabel">Query history</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <?php if ($historyCount > 0): ?>
+                        <?php foreach ($_SESSION['query_history'] as $i => $h): ?>
+                        <div class="qe-history-item" data-q="<?= htmlspecialchars($h['query']) ?>" title="Load into editor">
+                            <div class="qe-history-num">#<?= $historyCount - $i ?></div>
+                            <div class="qe-history-main">
+                                <div class="qe-history-meta">
+                                    <i class="fa-regular fa-clock"></i> <?= date('Y-m-d H:i:s', $h['timestamp']) ?>
+                                </div>
+                                <div class="qe-history-query">
+                                    <?= htmlspecialchars(mb_substr($h['query'], 0, 120))
+                                        . (mb_strlen($h['query']) > 120 ? '…' : '') ?>
+                                </div>
+                            </div>
+                            <i class="fa-solid fa-arrow-turn-up qe-history-load"></i>
                         </div>
-                        <div class="qe-history-query">
-                            <?= htmlspecialchars(substr($h['query'], 0, 120))
-                                . (strlen($h['query']) > 120 ? '…' : '') ?>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="qe-empty">
+                            <i class="fa-solid fa-inbox"></i>
+                            <p>No queries yet. Executed queries from this session will appear here.</p>
                         </div>
-                    </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <div class="text-center py-5 text-muted">
-                        <i class="bi bi-inbox" style="font-size:2.5rem;opacity:.4"></i>
-                        <p class="mt-2 mb-0">No history yet.</p>
-                    </div>
-                <?php endif; ?>
-            </div>
-            <div class="modal-footer" style="border-top:1px solid #f1f5f9">
-                <form method="post" style="margin:0">
-                    <input type="hidden" name="do" value="ts_clear_history">
-                    <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
-                    <button type="submit" class="btn btn-sm btn-outline-danger"
-                            onclick="return confirm('Clear all history?')">
-                        <i class="bi bi-trash3 me-1"></i>Clear history
+                    <?php endif; ?>
+                </div>
+                <div class="modal-footer">
+                    <?php if ($historyCount > 0): ?>
+                    <form method="post" id="qeClearHistoryForm" class="me-auto">
+                        <input type="hidden" name="do" value="ts_clear_history">
+                        <input type="hidden" name="my_post_key" value="<?= $mybb->post_code ?>">
+                        <button type="submit" class="qe-btn qe-btn-danger qe-btn-sm">
+                            <i class="fa-solid fa-trash-can"></i> Clear history
+                        </button>
+                    </form>
+                    <?php endif; ?>
+                    <button type="button" class="qe-btn qe-btn-ghost qe-btn-sm" data-bs-dismiss="modal">
+                        <i class="fa-solid fa-xmark"></i> Close
                     </button>
-                </form>
-                <button type="button" class="btn btn-sm btn-secondary"
-                        data-bs-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<script src="<?= $BASEURL ?>/admin/scripts/execute_sql_query.js"></script>
+</div><!-- /.qe-wrap -->
+
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/execute_sql_query.js?ver=2"></script>
 
 <?php stdfoot(); ?>

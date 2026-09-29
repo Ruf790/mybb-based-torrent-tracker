@@ -11,14 +11,22 @@ if (!defined('STAFF_PANEL')) {
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 /**
- * Редирект со своим flash-сообщением, независимо от того, показывает ли
- * системная redirect() второй аргумент в динамических staff-инструментах.
+ * Редирект со своим flash-сообщением (PRG: F5 после действия ничего не повторяет).
  */
-function ro_redirect(string $url, string $msg, string $type = 'success'): void
+function ro_redirect(string $url, string $msg, string $type = 'success'): never
 {
     $_SESSION['ro_flash'] = ['msg' => $msg, 'type' => $type];
     header('Location: ' . $url);
     exit();
+}
+
+/**
+ * Мягкая цветовая пара из Bootstrap 5.3 (bg-subtle / text-emphasis),
+ * автоматически работает и в тёмной теме. $c — только из конфига ниже.
+ */
+function ro_tone(string $c): string
+{
+    return "--ro-bg:var(--bs-{$c}-bg-subtle);--ro-fg:var(--bs-{$c}-text-emphasis);--ro-solid:var(--bs-{$c})";
 }
 
 // ── Настройки по типу вкладки ──────────────────────────────────────────────
@@ -26,55 +34,60 @@ $tab = ($_GET['tab'] ?? $_POST['table'] ?? 'requests') === 'offers' ? 'offers' :
 
 $TABLES = [
     'requests' => [
-        'table'          => 'requests',
-        'vote_table'     => 'request_votes',
-        'vote_fk'        => 'request_id',
-        'comment_table'  => 'request_comments',
-        'comment_fk'     => 'request_id',
-        'count_col'      => 'votes',
-        'count_label'    => 'Votes',
-        'statuses'       => ['open' => 'Open', 'filled' => 'Filled', 'cancelled' => 'Cancelled'],
-        'status_class'   => ['open' => 'success', 'filled' => 'primary', 'cancelled' => 'secondary'],
-        'status_icon'    => ['open' => 'fa-circle', 'filled' => 'fa-check', 'cancelled' => 'fa-times'],
-        'public_view'    => '/requests.php?action=view&rid=',
-        'has_bounty'     => true,
-        'icon'           => 'fa-list-alt',
-        'color'          => 'primary',
-        'label'          => 'Requests',
+        'table'           => 'requests',
+        'vote_table'      => 'request_votes',
+        'vote_fk'         => 'request_id',
+        'comment_table'   => 'request_comments',
+        'comment_fk'      => 'request_id',
+        'count_col'       => 'votes',
+        'count_label'     => 'Votes',
+        'count_icon'      => 'fa-thumbs-up',
+        'statuses'        => ['open' => 'Open', 'filled' => 'Filled', 'cancelled' => 'Cancelled'],
+        'status_class'    => ['open' => 'success', 'filled' => 'primary', 'cancelled' => 'secondary'],
+        'status_icon'     => ['open' => 'fa-circle-dot', 'filled' => 'fa-circle-check', 'cancelled' => 'fa-ban'],
+        'complete_status' => 'filled',
+        'public_view'     => '/requests.php?action=view&rid=',
+        'has_bounty'      => true,
+        'icon'            => 'fa-clipboard-list',
+        'color'           => 'primary',
+        'label'           => 'Requests',
+        'singular'        => 'Request',
     ],
     'offers' => [
-        'table'          => 'offers',
-        'vote_table'     => 'offer_votes',
-        'vote_fk'        => 'offer_id',
-        'comment_table'  => 'offer_comments',
-        'comment_fk'     => 'offer_id',
-        'count_col'      => 'requests',
-        'count_label'    => 'Wants',
-        'statuses'       => ['open' => 'Open', 'uploaded' => 'Uploaded', 'cancelled' => 'Cancelled'],
-        'status_class'   => ['open' => 'success', 'uploaded' => 'primary', 'cancelled' => 'secondary'],
-        'status_icon'    => ['open' => 'fa-circle', 'uploaded' => 'fa-upload', 'cancelled' => 'fa-times'],
-        'public_view'    => '/offers.php?action=view&oid=',
-        'has_bounty'     => false,
-        'icon'           => 'fa-gift',
-        'color'          => 'success',
-        'label'          => 'Offers',
+        'table'           => 'offers',
+        'vote_table'      => 'offer_votes',
+        'vote_fk'         => 'offer_id',
+        'comment_table'   => 'offer_comments',
+        'comment_fk'      => 'offer_id',
+        'count_col'       => 'requests',
+        'count_label'     => 'Wants',
+        'count_icon'      => 'fa-hand',
+        'statuses'        => ['open' => 'Open', 'uploaded' => 'Uploaded', 'cancelled' => 'Cancelled'],
+        'status_class'    => ['open' => 'success', 'uploaded' => 'primary', 'cancelled' => 'secondary'],
+        'status_icon'     => ['open' => 'fa-circle-dot', 'uploaded' => 'fa-cloud-arrow-up', 'cancelled' => 'fa-ban'],
+        'complete_status' => 'uploaded',
+        'public_view'     => '/offers.php?action=view&oid=',
+        'has_bounty'      => false,
+        'icon'            => 'fa-gift',
+        'color'           => 'success',
+        'label'           => 'Offers',
+        'singular'        => 'Offer',
     ],
 ];
 
-$cfg = $TABLES[$tab];
+$cfg        = $TABLES[$tab];
 $admin_base = $_this_script_no_act . '?act=requests_offers&tab=' . $tab;
-$post_key = $mybb->post_code; // CSRF-токен для форм и мутирующих ссылок этой страницы
+$post_key   = $mybb->post_code; // CSRF-токен для всех POST-форм этой страницы
 
 // ── Категории ───────────────────────────────────────────────────────────────
 $cats = [];
 $q = $db->sql_query_prepared("SELECT id, name FROM categories ORDER BY name");
-while ($r = $db->fetch_array($q)) $cats[$r['id']] = $r['name'];
+while ($r = $db->fetch_array($q)) $cats[(int)$r['id']] = (string)$r['name'];
 
 // ── Пометить как Filled/Uploaded (модалка с torrent_id) ────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_complete_id'])) {
-    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
         ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
-        exit();
     }
 
     $cid        = (int)$_POST['ro_complete_id'];
@@ -82,12 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_complete_id'])) {
 
     if (!$cid || !$torrent_id) {
         ro_redirect($admin_base, 'Missing torrent ID.', 'danger');
-        exit();
     }
     $torrent_check = $db->sql_query_prepared('SELECT id FROM torrents WHERE id = ?', [$torrent_id]);
     if (!$db->num_rows($torrent_check)) {
         ro_redirect($admin_base, "Torrent ID {$torrent_id} does not exist.", 'danger');
-        exit();
     }
 
     if ($tab === 'requests') {
@@ -104,115 +115,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_complete_id'])) {
         write_log("Marked offer #{$cid} as uploaded (torrent #{$torrent_id}) by " . $CURUSER['username']);
     }
 
-    ro_redirect($admin_base, ucfirst(rtrim($cfg['label'], 's')) . " #{$cid} marked as complete.");
-    exit();
+    ro_redirect($admin_base, "{$cfg['singular']} #{$cid} marked as {$cfg['statuses'][$cfg['complete_status']]}.");
+}
+
+// ── Одиночные действия (удаление / смена статуса) — только POST ────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ro_do'])) {
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+        ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
+    }
+
+    $do     = (string)$_POST['ro_do'];
+    $row_id = (int)($_POST['id'] ?? 0);
+
+    if (!$row_id) {
+        ro_redirect($admin_base, 'Nothing selected.', 'danger');
+    }
+
+    if ($do === 'delete') {
+        $db->sql_query_prepared("DELETE FROM {$cfg['table']} WHERE id = ?", [$row_id]);
+        $db->sql_query_prepared("DELETE FROM {$cfg['vote_table']} WHERE {$cfg['vote_fk']} = ?", [$row_id]);
+        $db->sql_query_prepared("DELETE FROM {$cfg['comment_table']} WHERE {$cfg['comment_fk']} = ?", [$row_id]);
+        write_log("Deleted {$tab} #{$row_id} by " . $CURUSER['username']);
+        ro_redirect($admin_base, "{$cfg['singular']} #{$row_id} deleted.");
+    }
+
+    $status = (string)($_POST['status'] ?? '');
+    if ($do === 'setstatus' && array_key_exists($status, $cfg['statuses'])) {
+        $db->sql_query_prepared("UPDATE {$cfg['table']} SET status = ?, updated_at = ? WHERE id = ?", [$status, TIMENOW, $row_id]);
+        write_log("Set status '{$status}' on {$tab} #{$row_id} by " . $CURUSER['username']);
+        ro_redirect($admin_base, "{$cfg['singular']} #{$row_id} marked as {$cfg['statuses'][$status]}.");
+    }
+
+    ro_redirect($admin_base, 'Unknown action.', 'danger');
 }
 
 // ── Bulk-действия ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
-    if (!isset($_POST['my_post_key']) || !verify_post_check($_POST['my_post_key'])) {
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
         ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
-        exit();
     }
 
-    $bt  = $TABLES[$tab];
-    $ids = array_filter(array_map('intval', $_POST['ids'] ?? []));
+    $ids = array_values(array_filter(array_map('intval', (array)($_POST['ids'] ?? []))));
     $do  = (string)$_POST['bulk_action'];
 
     if (empty($ids)) {
         ro_redirect($admin_base, 'Nothing selected.', 'danger');
-        exit();
     }
 
-    $ids_sql = implode(',', $ids);
-
+    $ids_sql      = implode(',', $ids);
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
 
     if ($do === 'delete') {
-        $db->sql_query_prepared("DELETE FROM {$bt['table']} WHERE id IN ({$placeholders})", $ids);
-        $db->sql_query_prepared("DELETE FROM {$bt['vote_table']} WHERE {$bt['vote_fk']} IN ({$placeholders})", $ids);
-        $db->sql_query_prepared("DELETE FROM {$bt['comment_table']} WHERE {$bt['comment_fk']} IN ({$placeholders})", $ids);
+        $db->sql_query_prepared("DELETE FROM {$cfg['table']} WHERE id IN ({$placeholders})", $ids);
+        $db->sql_query_prepared("DELETE FROM {$cfg['vote_table']} WHERE {$cfg['vote_fk']} IN ({$placeholders})", $ids);
+        $db->sql_query_prepared("DELETE FROM {$cfg['comment_table']} WHERE {$cfg['comment_fk']} IN ({$placeholders})", $ids);
         write_log('Bulk deleted ' . count($ids) . " {$tab} (IDs: {$ids_sql}) by " . $CURUSER['username']);
-        ro_redirect($admin_base, count($ids) . ' ' . $cfg['label'] . ' deleted.');
-        exit();
+        ro_redirect($admin_base, count($ids) . ' ' . strtolower($cfg['label']) . ' deleted.');
     }
 
-    if (array_key_exists($do, $bt['statuses'])) {
+    if (array_key_exists($do, $cfg['statuses'])) {
         $params = array_merge([$do, TIMENOW], $ids);
-        $db->sql_query_prepared("UPDATE {$bt['table']} SET status = ?, updated_at = ? WHERE id IN ({$placeholders})", $params);
+        $db->sql_query_prepared("UPDATE {$cfg['table']} SET status = ?, updated_at = ? WHERE id IN ({$placeholders})", $params);
         write_log("Bulk set status '{$do}' on " . count($ids) . " {$tab} (IDs: {$ids_sql}) by " . $CURUSER['username']);
-        ro_redirect($admin_base, 'Status updated for ' . count($ids) . ' ' . $cfg['label'] . '.');
-        exit();
+        ro_redirect($admin_base, count($ids) . ' ' . strtolower($cfg['label']) . " marked as {$cfg['statuses'][$do]}.");
     }
 
     ro_redirect($admin_base, 'Unknown action.', 'danger');
-    exit();
-}
-
-// ── Одиночное удаление ─────────────────────────────────────────────────────
-$do = $_GET['do'] ?? '';
-$row_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-
-if ($do === 'delete' && $row_id) {
-    if (($_GET['sure'] ?? '') !== 'yes') {
-        stdhead('Confirm Delete');
-        enqueue_staff_assets();
-        ?>
-        <div class="container d-flex justify-content-center py-5">
-            <div class="card border-0 shadow-sm rounded-4 text-center p-4" style="max-width:480px;width:100%">
-                <div class="card-body">
-                    <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
-                    <h5>Are you sure you want to delete this <?= htmlspecialchars(rtrim($cfg['label'], 's')) ?>?</h5>
-                    <p class="text-muted">ID #<?= $row_id ?> — this action cannot be undone.</p>
-                    <div class="mt-3 d-flex justify-content-center gap-2">
-                        <a href="<?= $admin_base ?>&do=delete&id=<?= $row_id ?>&sure=yes&my_post_key=<?= urlencode($post_key) ?>" class="btn btn-danger btn-sm rounded-pill px-4">
-                            <i class="fas fa-trash me-1"></i>Yes, delete it
-                        </a>
-                        <a href="<?= $admin_base ?>" class="btn btn-outline-secondary btn-sm rounded-pill px-4">
-                            <i class="fas fa-arrow-left me-1"></i>No, go back
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <?php
-        stdfoot();
-        exit();
-    }
-    if (!isset($_GET['my_post_key']) || !verify_post_check($_GET['my_post_key'])) {
-        ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
-        exit();
-    }
-    $db->sql_query_prepared("DELETE FROM {$cfg['table']} WHERE id = ?", [$row_id]);
-    $db->sql_query_prepared("DELETE FROM {$cfg['vote_table']} WHERE {$cfg['vote_fk']} = ?", [$row_id]);
-    $db->sql_query_prepared("DELETE FROM {$cfg['comment_table']} WHERE {$cfg['comment_fk']} = ?", [$row_id]);
-    write_log("Deleted {$tab} #{$row_id} by " . $CURUSER['username']);
-    ro_redirect($admin_base, ucfirst(rtrim($cfg['label'], 's')) . ' #' . $row_id . ' deleted.');
-    exit();
-}
-
-// ── Одиночная смена статуса ────────────────────────────────────────────────
-if ($do === 'setstatus' && $row_id && isset($_GET['status']) && array_key_exists($_GET['status'], $cfg['statuses'])) {
-    if (!isset($_GET['my_post_key']) || !verify_post_check($_GET['my_post_key'])) {
-        ro_redirect($admin_base, 'Security check failed. Please try again.', 'danger');
-        exit();
-    }
-    $status = $_GET['status'];
-    $db->sql_query_prepared("UPDATE {$cfg['table']} SET status = ?, updated_at = ? WHERE id = ?", [$status, TIMENOW, $row_id]);
-    write_log("Set status '{$status}' on {$tab} #{$row_id} by " . $CURUSER['username']);
-    ro_redirect($admin_base, ucfirst(rtrim($cfg['label'], 's')) . ' #' . $row_id . ' status changed to ' . $status . '.');
-    exit();
 }
 
 // ── Фильтры / сортировка / пагинация ───────────────────────────────────────
-$filter_status = array_key_exists($_GET['status'] ?? '', $cfg['statuses']) ? $_GET['status'] : '';
+$filter_status = array_key_exists((string)($_GET['status'] ?? ''), $cfg['statuses']) ? (string)$_GET['status'] : '';
 $filter_cat    = isset($_GET['cat']) ? (int)$_GET['cat'] : 0;
 $search        = trim((string)($_GET['q'] ?? ''));
 $sort_options  = $cfg['has_bounty'] ? ['created_at', $cfg['count_col'], 'bounty'] : ['created_at', $cfg['count_col']];
-$sort          = in_array($_GET['sort'] ?? '', $sort_options, true) ? $_GET['sort'] : 'created_at';
+$sort          = in_array($_GET['sort'] ?? '', $sort_options, true) ? (string)$_GET['sort'] : 'created_at';
 $perpage       = 25;
 $page          = max(1, (int)($_GET['page'] ?? 1));
 $offset        = ($page - 1) * $perpage;
+$filters_on    = $filter_status !== '' || $filter_cat > 0 || $search !== '';
 
 $where = [];
 $where_params = [];
@@ -227,7 +207,7 @@ $total = (int)$db->fetch_field(
 );
 
 $list_q = $db->sql_query_prepared("
-    SELECT t.*, u.username, u.avatar
+    SELECT t.*, u.username, u.avatar, u.usergroup, u.displaygroup
     FROM {$cfg['table']} t
     LEFT JOIN users u ON u.id = t.user_id
     {$where_sql}
@@ -235,352 +215,67 @@ $list_q = $db->sql_query_prepared("
     LIMIT ?, ?
 ", array_merge($where_params, [$offset, $perpage]));
 
-$querystring = 'tab=' . $tab
-    . '&status=' . urlencode($filter_status)
-    . '&cat=' . $filter_cat
-    . '&q=' . urlencode($search)
-    . '&sort=' . $sort;
+/** Ссылка на эту страницу с текущими фильтрами и заменой части параметров. */
+$ro_url = static function (array $over = []) use ($_this_script_no_act, $tab, $filter_status, $filter_cat, $search, $sort): string {
+    $p = array_merge(
+        ['act' => 'requests_offers', 'tab' => $tab, 'status' => $filter_status, 'cat' => $filter_cat, 'q' => $search, 'sort' => $sort],
+        $over
+    );
+    $p = array_filter($p, static fn($v) => $v !== '' && $v !== 0 && $v !== null);
+    return $_this_script_no_act . '?' . http_build_query($p);
+};
 
-// ── KPI по текущей вкладке (для карточек над списком) ─────────────────────
+// ── Счётчики вкладок + KPI ─────────────────────────────────────────────────
+$tab_counts = [];
+foreach ($TABLES as $key => $t) {
+    $tab_counts[$key] = (int)$db->fetch_field($db->sql_query_prepared("SELECT COUNT(*) AS cnt FROM {$t['table']}"), 'cnt');
+}
+
 $kpi_by_status = [];
 $kpi_q = $db->sql_query_prepared("SELECT status, COUNT(*) AS cnt FROM {$cfg['table']} GROUP BY status");
-while ($r = $db->fetch_array($kpi_q)) $kpi_by_status[$r['status']] = (int)$r['cnt'];
+while ($r = $db->fetch_array($kpi_q)) $kpi_by_status[(string)$r['status']] = (int)$r['cnt'];
 $kpi_total = array_sum($kpi_by_status);
+$pct = static fn(int $n): int => $kpi_total > 0 ? (int)round($n * 100 / $kpi_total) : 0;
+
+$done_key   = $cfg['complete_status'];
+$kpi_open   = $kpi_by_status['open'] ?? 0;
+$kpi_done   = $kpi_by_status[$done_key] ?? 0;
+$kpi_cancel = $kpi_by_status['cancelled'] ?? 0;
 
 if ($cfg['has_bounty']) {
-    $kpi_extra_label = 'Total Bounty';
-    $kpi_extra_value = number_format((float)$db->fetch_field($db->sql_query_prepared("SELECT COALESCE(SUM(bounty),0) AS s FROM {$cfg['table']}"), 's'), 1) . ' BP';
-    $kpi_extra_icon  = 'fa-coins';
+    $bq = $db->fetch_array($db->sql_query_prepared(
+        "SELECT COALESCE(SUM(bounty),0) AS s, COALESCE(SUM(CASE WHEN status = 'open' THEN bounty ELSE 0 END),0) AS so FROM {$cfg['table']}"
+    ));
+    $kpi_extra = [
+        'label' => 'Total bounty',
+        'value' => number_format((float)$bq['s'], 1) . ' BP',
+        'sub'   => number_format((float)$bq['so'], 1) . ' BP still on open requests',
+        'icon'  => 'fa-coins',
+    ];
 } else {
-    $kpi_extra_label = 'Total ' . $cfg['count_label'];
-    $kpi_extra_value = number_format((int)$db->fetch_field($db->sql_query_prepared("SELECT COALESCE(SUM({$cfg['count_col']}),0) AS s FROM {$cfg['table']}"), 's'));
-    $kpi_extra_icon  = 'fa-hand-paper';
+    $kpi_extra = [
+        'label' => 'Total wants',
+        'value' => number_format((int)$db->fetch_field($db->sql_query_prepared("SELECT COALESCE(SUM({$cfg['count_col']}),0) AS s FROM {$cfg['table']}"), 's')),
+        'sub'   => 'Members waiting on offers',
+        'icon'  => 'fa-hand',
+    ];
 }
+
+$colspan = $cfg['has_bounty'] ? 8 : 7;
+$from    = $total ? $offset + 1 : 0;
+$to      = min($offset + $perpage, $total);
 
 // ── Рендер ──────────────────────────────────────────────────────────────────
 stdhead('Requests & Offers');
 enqueue_staff_assets();
-
 ?>
-<style>
-    /* ============================================================
-       АНИМАЦИИ
-       ============================================================ */
-    @keyframes fadeInUp {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.02); }
-        100% { transform: scale(1); }
-    }
-    @keyframes slideDown {
-        from { opacity: 0; transform: translateY(-10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes shimmer {
-        0% { background-position: -200% 0; }
-        100% { background-position: 200% 0; }
-    }
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/requests_offers.css?ver=1">
 
-    .animate-fade-in-up {
-        animation: fadeInUp 0.5s ease forwards;
-        opacity: 0;
-    }
-    .animate-slide-down {
-        animation: slideDown 0.3s ease forwards;
-        opacity: 0;
-    }
-
-    .pulse-on-hover:hover {
-        animation: pulse 0.4s ease;
-    }
-
-    /* ============================================================
-       СТИЛИ
-       ============================================================ */
-    .ro-tabs .nav-link {
-        border-radius: 12px 12px 0 0;
-        font-weight: 600;
-        padding: 0.6rem 1.5rem;
-        transition: all 0.3s ease;
-        color: var(--text-secondary);
-        position: relative;
-    }
-    .ro-tabs .nav-link:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
-    .ro-tabs .nav-link.active {
-        color: var(--text-primary);
-        background: var(--bg-card);
-        border-bottom-color: transparent;
-    }
-    .ro-tabs .nav-link.active::after {
-        content: '';
-        position: absolute;
-        bottom: -1px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 30px;
-        height: 3px;
-        background: var(--bs-primary, #0d6efd);
-        border-radius: 3px;
-    }
-    .ro-tabs .nav-link .badge {
-        font-size: 0.65rem;
-        padding: 0.2rem 0.5rem;
-        margin-left: 0.4rem;
-    }
-
-    .ro-row {
-        transition: all 0.2s ease;
-        cursor: default;
-    }
-    .ro-row:hover {
-        background: var(--bg-hover);
-    }
-    .ro-row td {
-        vertical-align: middle;
-        padding: 0.6rem 0.5rem;
-        border-bottom-color: var(--border-color);
-    }
-
-    .ro-toolbar {
-        background: var(--bg-light);
-        border-radius: 12px;
-        padding: 0.75rem 1rem;
-        transition: all 0.3s ease;
-    }
-
-    .ro-badge-count {
-        min-width: 2.2rem;
-        display: inline-block;
-        font-weight: 600;
-    }
-
-    .ro-check {
-        width: 16px;
-        height: 16px;
-        cursor: pointer;
-        accent-color: var(--bs-primary, #0d6efd);
-    }
-
-    .ro-status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        padding: 0.25rem 0.75rem;
-        border-radius: 50rem;
-        font-weight: 500;
-        font-size: 0.75rem;
-    }
-
-    .ro-avatar {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        object-fit: cover;
-        background: var(--bg-light);
-    }
-    .ro-avatar-placeholder {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--bg-light);
-        color: var(--text-muted);
-        font-size: 0.6rem;
-        font-weight: 600;
-    }
-
-    .ro-title-link {
-        color: var(--text-primary);
-        text-decoration: none;
-        font-weight: 500;
-        transition: color 0.2s ease;
-    }
-    .ro-title-link:hover {
-        color: var(--bs-primary, #0d6efd);
-        text-decoration: underline;
-    }
-
-    .ro-empty-state {
-        padding: 3rem 1rem;
-        text-align: center;
-    }
-    .ro-empty-state i {
-        font-size: 3rem;
-        color: var(--text-muted);
-        opacity: 0.3;
-        margin-bottom: 1rem;
-    }
-
-    /* KPI-карточки */
-    .ro-kpi {
-        background: var(--bg-card);
-        border-radius: 14px;
-        padding: 1rem 1.1rem;
-        box-shadow: var(--shadow, 0 2px 10px rgba(0,0,0,.06));
-        display: flex;
-        align-items: center;
-        gap: 0.9rem;
-        height: 100%;
-        transition: transform 0.25s ease, box-shadow 0.25s ease;
-    }
-    .ro-kpi:hover {
-        transform: translateY(-3px);
-        box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,.1));
-    }
-    .ro-kpi-icon {
-        width: 44px;
-        height: 44px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.05rem;
-        flex-shrink: 0;
-    }
-    .ro-kpi-value {
-        font-size: 1.35rem;
-        font-weight: 700;
-        line-height: 1.1;
-    }
-    .ro-kpi-label {
-        font-size: 0.72rem;
-        color: var(--text-muted);
-        margin-top: 0.15rem;
-        text-transform: uppercase;
-        letter-spacing: .03em;
-    }
-
-    /* Карточка-обёртка списка (toolbar + таблица единым блоком) */
-    .ro-card {
-        background: var(--bg-card);
-        border-radius: 16px;
-        box-shadow: var(--shadow, 0 2px 10px rgba(0,0,0,.06));
-    }
-    .ro-card .ro-toolbar {
-        border-radius: 16px 16px 0 0;
-        border-bottom: 1px solid var(--border-color);
-        margin: 0;
-    }
-    .ro-card .table-responsive {
-        margin: 0;
-        border-radius: 0 0 16px 16px;
-    }
-    .ro-card table {
-        margin-bottom: 0;
-    }
-    .ro-card thead th {
-        text-transform: uppercase;
-        font-size: 0.7rem;
-        letter-spacing: .04em;
-        color: var(--text-muted);
-        border-bottom-width: 1px;
-        background: var(--bg-light);
-    }
-
-    /* Dark theme adjustments */
-    [data-bs-theme="dark"] .ro-tabs .nav-link {
-        color: var(--text-secondary);
-    }
-    [data-bs-theme="dark"] .ro-tabs .nav-link.active {
-        background: var(--bg-card);
-        color: var(--text-primary);
-    }
-    [data-bs-theme="dark"] .ro-tabs .nav-link.active::after {
-        background: #58a6ff;
-    }
-    [data-bs-theme="dark"] .ro-toolbar {
-        background: var(--bg-light);
-    }
-    [data-bs-theme="dark"] .ro-row:hover {
-        background: var(--bg-hover);
-    }
-    [data-bs-theme="dark"] .ro-kpi,
-    [data-bs-theme="dark"] .ro-card {
-        background: var(--bg-card);
-    }
-    [data-bs-theme="dark"] .ro-card thead th {
-        background: var(--bg-light);
-    }
-
-    /* Кастомное меню действий: JS сам считает координаты и держит меню
-       в границах экрана — обычный Bootstrap dropdown здесь ломается
-       (открывается не в ту сторону и вылезает за край экрана). */
-    .ro-actions { position: relative; display: inline-block; }
-    .ro-actions-menu {
-        display: none;
-        position: fixed;
-        margin: 0;
-        z-index: 3000;
-        min-width: 200px;
-    }
-    .ro-actions-menu.show { display: block; }
-
-    /* Scrollbar */
-    [data-bs-theme="dark"] ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-    [data-bs-theme="dark"] ::-webkit-scrollbar-track {
-        background: var(--bg-body);
-    }
-    [data-bs-theme="dark"] ::-webkit-scrollbar-thumb {
-        background: #30363d;
-        border-radius: 4px;
-    }
-    [data-bs-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-        background: #484f58;
-    }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-        .ro-tabs .nav-link {
-            padding: 0.4rem 0.8rem;
-            font-size: 0.85rem;
-        }
-        .ro-tabs .nav-link .badge {
-            display: none;
-        }
-        .table-responsive td {
-            font-size: 0.85rem;
-        }
-        .ro-title-link {
-            font-size: 0.85rem;
-        }
-    }
-    @media (max-width: 576px) {
-        .ro-tabs .nav-link {
-            padding: 0.3rem 0.5rem;
-            font-size: 0.75rem;
-        }
-        .ro-tabs .nav-link i {
-            margin-right: 0.2rem;
-        }
-        .ro-toolbar {
-            flex-wrap: wrap;
-        }
-        .ro-toolbar select {
-            min-width: 150px;
-        }
-        .ro-kpi-value {
-            font-size: 1.1rem;
-        }
-        .ro-kpi-icon {
-            width: 36px;
-            height: 36px;
-            font-size: 0.9rem;
-        }
-    }
-</style>
-
-<div class="container mt-3">
+<div class="ro-page"
+     data-singular="<?= htmlspecialchars($cfg['singular']) ?>"
+     data-plural="<?= htmlspecialchars(strtolower($cfg['label'])) ?>">
+<div class="container py-3">
 
     <?php if (!empty($_SESSION['ro_flash'])):
         $f = $_SESSION['ro_flash'];
@@ -597,480 +292,390 @@ enqueue_staff_assets();
     <?php endif; ?>
 
     <!-- Header -->
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 animate-fade-in-up">
-        <div>
-            <h4 class="mb-0">
-                <i class="fas fa-tasks me-2 text-primary"></i>
-                Requests &amp; Offers
-            </h4>
-            <small class="text-muted">Manage all user requests and offers</small>
+    <header class="ro-head" style="<?= ro_tone($cfg['color']) ?>">
+        <div class="ro-head-icon"><i class="fa-solid <?= $cfg['icon'] ?>"></i></div>
+        <div class="ro-head-text">
+            <h1>Requests &amp; Offers</h1>
+            <p>Change statuses, link the uploaded torrent and clean up what members asked for or offered.</p>
         </div>
-        <div>
-            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 pulse-on-hover" onclick="location.reload()">
-                <i class="fas fa-sync-alt me-1"></i>Refresh
-            </button>
-        </div>
-    </div>
+        <nav class="ro-switch" aria-label="Section">
+            <?php foreach ($TABLES as $key => $t): ?>
+            <a href="<?= htmlspecialchars($_this_script_no_act . '?act=requests_offers&tab=' . $key) ?>"
+               class="ro-switch-item<?= $tab === $key ? ' is-active' : '' ?>"
+               style="<?= ro_tone($t['color']) ?>"
+               <?= $tab === $key ? 'aria-current="page"' : '' ?>>
+                <i class="fa-solid <?= $t['icon'] ?>"></i>
+                <span><?= $t['label'] ?></span>
+                <span class="ro-switch-count"><?= number_format($tab_counts[$key]) ?></span>
+            </a>
+            <?php endforeach; ?>
+        </nav>
+    </header>
 
     <!-- KPI -->
-    <div class="row g-3 mb-4 animate-fade-in-up">
-        <div class="col-6 col-md">
-            <div class="ro-kpi">
-                <div class="ro-kpi-icon bg-<?= $cfg['color'] ?> bg-opacity-10 text-<?= $cfg['color'] ?>">
-                    <i class="fas <?= $cfg['icon'] ?>"></i>
-                </div>
-                <div>
-                    <div class="ro-kpi-value"><?= number_format($kpi_total) ?></div>
-                    <div class="ro-kpi-label">Total <?= $cfg['label'] ?></div>
-                </div>
+    <section class="ro-kpis">
+        <div class="ro-kpi" style="<?= ro_tone($cfg['color']) ?>">
+            <div class="ro-kpi-icon"><i class="fa-solid <?= $cfg['icon'] ?>"></i></div>
+            <div class="ro-kpi-body">
+                <div class="ro-kpi-value"><?= number_format($kpi_total) ?></div>
+                <div class="ro-kpi-label">Total <?= strtolower($cfg['label']) ?></div>
+                <div class="ro-kpi-sub"><i class="fa-solid fa-ban"></i> <?= number_format($kpi_cancel) ?> cancelled</div>
             </div>
         </div>
-        <?php foreach ($cfg['statuses'] as $val => $label): ?>
-        <div class="col-6 col-md">
-            <div class="ro-kpi">
-                <div class="ro-kpi-icon bg-<?= $cfg['status_class'][$val] ?> bg-opacity-10 text-<?= $cfg['status_class'][$val] ?>">
-                    <i class="fas <?= $cfg['status_icon'][$val] ?>"></i>
-                </div>
-                <div>
-                    <div class="ro-kpi-value"><?= number_format($kpi_by_status[$val] ?? 0) ?></div>
-                    <div class="ro-kpi-label"><?= $label ?></div>
-                </div>
+        <div class="ro-kpi" style="<?= ro_tone($cfg['status_class']['open']) ?>">
+            <div class="ro-kpi-icon"><i class="fa-solid <?= $cfg['status_icon']['open'] ?>"></i></div>
+            <div class="ro-kpi-body">
+                <div class="ro-kpi-value"><?= number_format($kpi_open) ?></div>
+                <div class="ro-kpi-label">Open</div>
+                <div class="ro-kpi-sub"><?= $pct($kpi_open) ?>% of all <?= strtolower($cfg['label']) ?></div>
             </div>
         </div>
-        <?php endforeach; ?>
-        <div class="col-6 col-md">
-            <div class="ro-kpi">
-                <div class="ro-kpi-icon bg-warning bg-opacity-10 text-warning">
-                    <i class="fas <?= $kpi_extra_icon ?>"></i>
-                </div>
-                <div>
-                    <div class="ro-kpi-value"><?= $kpi_extra_value ?></div>
-                    <div class="ro-kpi-label"><?= $kpi_extra_label ?></div>
-                </div>
+        <div class="ro-kpi" style="<?= ro_tone($cfg['status_class'][$done_key]) ?>">
+            <div class="ro-kpi-icon"><i class="fa-solid <?= $cfg['status_icon'][$done_key] ?>"></i></div>
+            <div class="ro-kpi-body">
+                <div class="ro-kpi-value"><?= number_format($kpi_done) ?></div>
+                <div class="ro-kpi-label"><?= $cfg['statuses'][$done_key] ?></div>
+                <div class="ro-kpi-sub"><?= $pct($kpi_done) ?>% completion rate</div>
             </div>
         </div>
-    </div>
+        <div class="ro-kpi" style="<?= ro_tone('warning') ?>">
+            <div class="ro-kpi-icon"><i class="fa-solid <?= $kpi_extra['icon'] ?>"></i></div>
+            <div class="ro-kpi-body">
+                <div class="ro-kpi-value"><?= $kpi_extra['value'] ?></div>
+                <div class="ro-kpi-label"><?= $kpi_extra['label'] ?></div>
+                <div class="ro-kpi-sub"><?= $kpi_extra['sub'] ?></div>
+            </div>
+        </div>
+    </section>
 
-    <!-- Tabs -->
-    <ul class="nav nav-tabs ro-tabs mb-3 animate-fade-in-up">
-        <?php foreach ($TABLES as $key => $t): 
-            $count_all = (int)$db->fetch_field($db->sql_query_prepared("SELECT COUNT(*) FROM {$t['table']}"), 'COUNT(*)');
-        ?>
-        <li class="nav-item">
-            <a class="nav-link <?= $tab === $key ? 'active' : '' ?> pulse-on-hover"
-               href="<?= $_this_script_no_act ?>?act=requests_offers&tab=<?= $key ?>">
-                <i class="fas <?= $t['icon'] ?> me-1"></i>
-                <?= $t['label'] ?>
-                <span class="badge bg-<?= $t['color'] ?> bg-opacity-25 text-<?= $t['color'] ?>">
-                    <?= number_format($count_all) ?>
-                </span>
-            </a>
-        </li>
-        <?php endforeach; ?>
-    </ul>
-
-    <!-- Filters -->
-    <form method="get" class="row g-2 align-items-center mb-3 animate-slide-down">
+    <!-- Фильтр-форма: контролы лежат внутри карточки и привязаны через form="" -->
+    <form method="get" id="ro-filter-form" action="<?= htmlspecialchars($_this_script_no_act) ?>">
         <input type="hidden" name="act" value="requests_offers">
         <input type="hidden" name="tab" value="<?= $tab ?>">
+        <?php if ($filter_status !== ''): ?>
+        <input type="hidden" name="status" value="<?= htmlspecialchars($filter_status) ?>">
+        <?php endif; ?>
+    </form>
 
-        <div class="col-auto">
-            <select name="status" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
-                <option value="">All statuses</option>
-                <?php foreach ($cfg['statuses'] as $val => $label): ?>
-                <option value="<?= $val ?>" <?= $filter_status === $val ? 'selected' : '' ?>><?= $label ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
+    <!-- Bulk form оборачивает карточку и нижнюю панель -->
+    <form method="post" id="ro-bulk-form" action="<?= htmlspecialchars($admin_base) ?>">
+        <input type="hidden" name="table" value="<?= $tab ?>">
+        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($post_key) ?>">
 
-        <div class="col-auto">
-            <select name="cat" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
-                <option value="0">All categories</option>
-                <?php foreach ($cats as $cid => $cname): ?>
-                <option value="<?= $cid ?>" <?= $filter_cat === (int)$cid ? 'selected' : '' ?>><?= htmlspecialchars($cname) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
+        <div class="ro-card">
+            <div class="ro-card-head">
+                <!-- Статусы -->
+                <div class="ro-chips" role="tablist" aria-label="Filter by status">
+                    <a href="<?= htmlspecialchars($ro_url(['status' => ''])) ?>"
+                       class="ro-chip<?= $filter_status === '' ? ' is-active' : '' ?>"
+                       style="<?= ro_tone($cfg['color']) ?>">
+                        <i class="fa-solid fa-layer-group"></i>All
+                        <span class="ro-chip-count"><?= number_format($kpi_total) ?></span>
+                    </a>
+                    <?php foreach ($cfg['statuses'] as $val => $label): ?>
+                    <a href="<?= htmlspecialchars($ro_url(['status' => $val])) ?>"
+                       class="ro-chip<?= $filter_status === $val ? ' is-active' : '' ?>"
+                       style="<?= ro_tone($cfg['status_class'][$val]) ?>">
+                        <i class="fa-solid <?= $cfg['status_icon'][$val] ?>"></i><?= $label ?>
+                        <span class="ro-chip-count"><?= number_format($kpi_by_status[$val] ?? 0) ?></span>
+                    </a>
+                    <?php endforeach; ?>
+                </div>
 
-        <div class="col-auto">
-            <select name="sort" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
-                <option value="created_at" <?= $sort === 'created_at' ? 'selected' : '' ?>>
-                    <i class="fas fa-clock me-1"></i>Newest first
-                </option>
-                <option value="<?= $cfg['count_col'] ?>" <?= $sort === $cfg['count_col'] ? 'selected' : '' ?>>
-                    <i class="fas fa-chart-simple me-1"></i>Most <?= strtolower($cfg['count_label']) ?>
-                </option>
-                <?php if ($cfg['has_bounty']): ?>
-                <option value="bounty" <?= $sort === 'bounty' ? 'selected' : '' ?>>
-                    <i class="fas fa-coins me-1"></i>Highest bounty
-                </option>
-                <?php endif; ?>
-            </select>
-        </div>
+                <!-- Поиск / категория / сортировка -->
+                <div class="ro-filters">
+                    <label class="ro-search">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="search" name="q" form="ro-filter-form" class="form-control form-control-sm"
+                               placeholder="Search by title" value="<?= htmlspecialchars($search) ?>"
+                               aria-label="Search by title">
+                    </label>
 
-        <div class="col-auto flex-grow-1" style="min-width:180px">
-            <div class="input-group input-group-sm">
-                <span class="input-group-text bg-transparent border-end-0 rounded-start-pill">
-                    <i class="fas fa-search text-muted"></i>
-                </span>
-                <input type="text" name="q" class="form-control border-start-0 rounded-end-pill"
-                       placeholder="Search title…" value="<?= htmlspecialchars($search) ?>">
+                    <label class="ro-select">
+                        <i class="fa-solid fa-folder-open"></i>
+                        <select name="cat" form="ro-filter-form" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Category">
+                            <option value="0">All categories</option>
+                            <?php foreach ($cats as $cid => $cname): ?>
+                            <option value="<?= $cid ?>" <?= $filter_cat === $cid ? 'selected' : '' ?>><?= htmlspecialchars($cname) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+
+                    <label class="ro-select">
+                        <i class="fa-solid fa-arrow-down-wide-short"></i>
+                        <select name="sort" form="ro-filter-form" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Sort">
+                            <option value="created_at" <?= $sort === 'created_at' ? 'selected' : '' ?>>Newest first</option>
+                            <option value="<?= $cfg['count_col'] ?>" <?= $sort === $cfg['count_col'] ? 'selected' : '' ?>>Most <?= strtolower($cfg['count_label']) ?></option>
+                            <?php if ($cfg['has_bounty']): ?>
+                            <option value="bounty" <?= $sort === 'bounty' ? 'selected' : '' ?>>Highest bounty</option>
+                            <?php endif; ?>
+                        </select>
+                    </label>
+
+                    <button type="submit" form="ro-filter-form" class="btn btn-sm btn-primary rounded-pill px-3">
+                        <i class="fa-solid fa-filter me-1"></i>Filter
+                    </button>
+                    <?php if ($filters_on): ?>
+                    <a href="<?= htmlspecialchars($_this_script_no_act . '?act=requests_offers&tab=' . $tab) ?>"
+                       class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+                        <i class="fa-solid fa-rotate-left me-1"></i>Reset
+                    </a>
+                    <?php endif; ?>
+                </div>
             </div>
+
+            <div class="table-responsive">
+                <table class="table ro-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ro-col-check">
+                                <input type="checkbox" id="ro-select-all" class="form-check-input ro-check" aria-label="Select all on this page">
+                            </th>
+                            <th><?= $cfg['singular'] ?></th>
+                            <th class="ro-col-user"><i class="fa-solid fa-user me-1"></i>By</th>
+                            <th class="ro-col-status">Status</th>
+                            <th class="ro-col-num text-center" title="<?= $cfg['count_label'] ?>"><i class="fa-solid <?= $cfg['count_icon'] ?> me-1"></i><?= $cfg['count_label'] ?></th>
+                            <?php if ($cfg['has_bounty']): ?>
+                            <th class="ro-col-num text-end"><i class="fa-solid fa-coins me-1"></i>Bounty</th>
+                            <?php endif; ?>
+                            <th class="ro-col-date d-none d-lg-table-cell"><i class="fa-regular fa-clock me-1"></i>Created</th>
+                            <th class="ro-col-actions text-end"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php
+                    $count = 0;
+                    while ($row = $db->fetch_array($list_q)):
+                        $count++;
+                        $rid     = (int)$row['id'];
+                        $status  = (string)$row['status'];
+                        $s_class = $cfg['status_class'][$status] ?? 'secondary';
+                        $s_icon  = $cfg['status_icon'][$status] ?? 'fa-circle-question';
+                        $s_label = $cfg['statuses'][$status] ?? ucfirst($status);
+                        $title   = (string)$row['title'];
+                        $view    = $BASEURL . $cfg['public_view'] . $rid;
+                        $tid     = (int)($row['torrent_id'] ?? 0);
+
+                        $uname = (string)($row['username'] ?? '');
+                        $av    = (string)($row['avatar'] ?? '');
+                        $av_url = '';
+                        if ($av !== '') {
+                            $av_url = preg_match('~^https?://~i', $av)
+                                ? $av
+                                : $BASEURL . '/' . ltrim((string)preg_replace('~^\./~', '', $av), '/');
+                        }
+                    ?>
+                        <tr class="ro-row" style="<?= ro_tone($s_class) ?>">
+                            <td class="ro-col-check">
+                                <input type="checkbox" name="ids[]" value="<?= $rid ?>" class="form-check-input ro-check" aria-label="Select #<?= $rid ?>">
+                            </td>
+                            <td class="ro-col-title">
+                                <a href="<?= htmlspecialchars($view) ?>" class="ro-title" target="_blank" rel="noopener"
+                                   title="<?= htmlspecialchars($title) ?>"><?= htmlspecialchars($title) ?></a>
+                                <?php if (!empty($row['year'])): ?>
+                                <span class="ro-year"><?= (int)$row['year'] ?></span>
+                                <?php endif; ?>
+                                <div class="ro-meta">
+                                    <span class="ro-id">#<?= $rid ?></span>
+                                    <span><i class="fa-solid fa-folder"></i><?= htmlspecialchars($cats[(int)($row['category_id'] ?? 0)] ?? 'No category') ?></span>
+                                    <?php if ($tid > 0): ?>
+                                    <a href="<?= htmlspecialchars($BASEURL . '/details.php?id=' . $tid) ?>" target="_blank" rel="noopener" class="ro-torrent">
+                                        <i class="fa-solid fa-magnet"></i>Torrent #<?= $tid ?>
+                                    </a>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                            <td class="ro-col-user">
+                                <div class="ro-user">
+                                    <?php if ($av_url !== ''): ?>
+                                    <img src="<?= htmlspecialchars($av_url) ?>" class="ro-avatar" alt="" loading="lazy">
+                                    <?php else: ?>
+                                    <span class="ro-avatar ro-avatar-empty"><?= htmlspecialchars(mb_strtoupper(mb_substr($uname !== '' ? $uname : '?', 0, 1))) ?></span>
+                                    <?php endif; ?>
+                                    <span class="ro-username">
+                                        <?php if ($uname !== ''): ?>
+                                        <?= format_name(htmlspecialchars_uni($uname), (int)($row['usergroup'] ?? 0), (int)($row['displaygroup'] ?? 0)) ?>
+                                        <?php else: ?>
+                                        <em class="ro-muted">deleted</em>
+                                        <?php endif; ?>
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="ro-col-status">
+                                <span class="ro-status"><i class="fa-solid <?= $s_icon ?>"></i><?= htmlspecialchars($s_label) ?></span>
+                            </td>
+                            <td class="ro-col-num text-center">
+                                <span class="ro-num<?= (int)$row[$cfg['count_col']] === 0 ? ' is-zero' : '' ?>"><?= number_format((int)$row[$cfg['count_col']]) ?></span>
+                            </td>
+                            <?php if ($cfg['has_bounty']): ?>
+                            <td class="ro-col-num text-end">
+                                <?php if ((float)$row['bounty'] > 0): ?>
+                                <span class="ro-bounty"><i class="fa-solid fa-coins"></i><?= number_format((float)$row['bounty'], 1) ?></span>
+                                <?php else: ?>
+                                <span class="ro-muted">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <?php endif; ?>
+                            <td class="ro-col-date d-none d-lg-table-cell">
+                                <span class="ro-date" title="<?= date('Y-m-d H:i', (int)$row['created_at']) ?>">
+                                    <?= mkprettytime(TIMENOW - (int)$row['created_at']) ?> ago
+                                </span>
+                            </td>
+                            <td class="ro-col-actions text-end">
+                                <div class="ro-actions">
+                                    <a href="<?= htmlspecialchars($view) ?>" target="_blank" rel="noopener" class="ro-icon-btn" title="Open public page">
+                                        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                    </a>
+                                    <button class="ro-icon-btn ro-actions-btn" type="button" title="More actions" aria-haspopup="menu">
+                                        <i class="fa-solid fa-ellipsis"></i>
+                                    </button>
+                                    <ul class="dropdown-menu ro-actions-menu" role="menu">
+                                        <li><h6 class="dropdown-header">#<?= $rid ?> · change status</h6></li>
+                                        <?php foreach ($cfg['statuses'] as $val => $label): if ($val === $status) continue; ?>
+                                        <li>
+                                            <?php if ($val === $done_key): ?>
+                                            <button type="button" class="dropdown-item ro-mark-complete"
+                                                    data-id="<?= $rid ?>" data-title="<?= htmlspecialchars($title) ?>"
+                                                    data-bs-toggle="modal" data-bs-target="#roCompleteModal">
+                                                <i class="fa-solid <?= $cfg['status_icon'][$val] ?> fa-fw me-2 text-<?= $cfg['status_class'][$val] ?>"></i>Mark as <?= $label ?>…
+                                            </button>
+                                            <?php else: ?>
+                                            <button type="button" class="dropdown-item"
+                                                    data-ro-do="setstatus" data-id="<?= $rid ?>"
+                                                    data-status="<?= $val ?>" data-status-label="<?= $label ?>"
+                                                    data-title="<?= htmlspecialchars($title) ?>">
+                                                <i class="fa-solid <?= $cfg['status_icon'][$val] ?> fa-fw me-2 text-<?= $cfg['status_class'][$val] ?>"></i>Mark as <?= $label ?>
+                                            </button>
+                                            <?php endif; ?>
+                                        </li>
+                                        <?php endforeach; ?>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <button type="button" class="dropdown-item text-danger"
+                                                    data-ro-do="delete" data-id="<?= $rid ?>"
+                                                    data-title="<?= htmlspecialchars($title) ?>">
+                                                <i class="fa-solid fa-trash-can fa-fw me-2"></i>Delete
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endwhile; ?>
+
+                    <?php if ($count === 0): ?>
+                        <tr>
+                            <td colspan="<?= $colspan ?>">
+                                <div class="ro-empty">
+                                    <div class="ro-empty-icon" style="<?= ro_tone($cfg['color']) ?>">
+                                        <i class="fa-solid <?= $filters_on ? 'fa-filter-circle-xmark' : $cfg['icon'] ?>"></i>
+                                    </div>
+                                    <?php if ($filters_on): ?>
+                                    <h2>No <?= strtolower($cfg['label']) ?> match these filters</h2>
+                                    <p>Clear the search or pick another status or category.</p>
+                                    <a href="<?= htmlspecialchars($_this_script_no_act . '?act=requests_offers&tab=' . $tab) ?>"
+                                       class="btn btn-sm btn-outline-secondary rounded-pill px-4">
+                                        <i class="fa-solid fa-rotate-left me-1"></i>Reset filters
+                                    </a>
+                                    <?php else: ?>
+                                    <h2>No <?= strtolower($cfg['label']) ?> yet</h2>
+                                    <p>New <?= strtolower($cfg['label']) ?> from members will show up here.</p>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php if ($total > 0): ?>
+            <div class="ro-card-foot">
+                <span class="ro-muted">
+                    <i class="fa-solid fa-list-ol me-1"></i>Showing <?= number_format($from) ?>–<?= number_format($to) ?> of <?= number_format($total) ?>
+                </span>
+                <?php if ($total > $perpage): ?>
+                <div class="ro-pager">
+                    <?= multipage($total, $perpage, $page, $ro_url() . '&page={page}') ?>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
         </div>
 
-        <div class="col-auto">
-            <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4 pulse-on-hover">
-                <i class="fas fa-filter me-1"></i>Filter
+        <!-- Sticky bulk bar -->
+        <div class="ro-bulkbar" id="ro-bulkbar">
+            <span class="ro-bulk-count" id="ro-selected-count">
+                <i class="fa-solid fa-square-check"></i><b>0</b> selected
+            </span>
+            <button type="button" class="ro-link-btn" id="ro-clear-selection">
+                <i class="fa-solid fa-xmark me-1"></i>Clear
             </button>
-            <a href="<?= $_this_script_no_act ?>?act=requests_offers&tab=<?= $tab ?>"
-               class="btn btn-sm btn-outline-secondary rounded-pill px-3 pulse-on-hover">
-                <i class="fas fa-undo me-1"></i>Reset
-            </a>
-        </div>
-
-        <div class="col-auto ms-auto">
-            <small class="text-muted">
-                <i class="fas fa-database me-1"></i><?= number_format($total) ?> total
-            </small>
+            <div class="ro-bulk-controls">
+                <select name="bulk_action" class="form-select form-select-sm" aria-label="Bulk action">
+                    <option value="">Choose action…</option>
+                    <?php foreach ($cfg['statuses'] as $val => $label): ?>
+                    <option value="<?= $val ?>">Mark as <?= $label ?></option>
+                    <?php endforeach; ?>
+                    <option value="delete">Delete selected</option>
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4" id="ro-apply-btn" disabled>
+                    <i class="fa-solid fa-bolt me-1"></i>Apply
+                </button>
+            </div>
         </div>
     </form>
 
-    <!-- Bulk actions + Table -->
-    <form method="post" id="ro-bulk-form">
+    <!-- Скрытая форма для одиночных действий (POST + CSRF) -->
+    <form method="post" id="ro-action-form" action="<?= htmlspecialchars($admin_base) ?>" hidden>
         <input type="hidden" name="table" value="<?= $tab ?>">
-        <input type="hidden" name="my_post_key" value="<?= $post_key ?>">
-
-        <div class="ro-card animate-fade-in-up">
-        <div class="ro-toolbar d-flex align-items-center gap-2 flex-wrap mb-2 animate-slide-down">
-            <div class="d-flex align-items-center gap-2 flex-grow-1">
-                <i class="fas fa-tasks text-muted"></i>
-                <select name="bulk_action" class="form-select form-select-sm" style="max-width:220px; border-radius:50rem;">
-                    <option value="">Bulk action…</option>
-                    <?php foreach ($cfg['statuses'] as $val => $label): ?>
-                    <option value="<?= $val ?>">Set status: <?= $label ?></option>
-                    <?php endforeach; ?>
-                    <option value="delete">🗑️ Delete selected</option>
-                </select>
-                <button type="submit" class="btn btn-sm btn-dark rounded-pill px-4" id="ro-apply-btn" disabled
-                        onclick="return roConfirmBulk(this.form)">
-                    <i class="fas fa-play me-1"></i>Apply
-                </button>
-            </div>
-            <div>
-                <span class="badge bg-light text-dark border rounded-pill px-3 py-2" id="ro-selected-count">
-                    <i class="fas fa-check-circle me-1"></i>0 selected
-                </span>
-            </div>
-        </div>
-
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th style="width:36px">
-                            <input type="checkbox" id="ro-select-all" class="ro-check">
-                        </th>
-                        <th style="width:50px">#</th>
-                        <th>Title</th>
-                        <th style="width:140px">User</th>
-                        <th style="width:120px">Category</th>
-                        <th style="width:110px">Status</th>
-                        <th style="width:70px" class="text-center"><?= $cfg['count_label'] ?></th>
-                        <?php if ($cfg['has_bounty']): ?>
-                        <th style="width:90px" class="text-end">Bounty</th>
-                        <?php endif; ?>
-                        <th style="width:120px">Created</th>
-                        <th style="width:80px" class="text-end">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php $count = 0; while ($row = $db->fetch_array($list_q)): $count++; ?>
-                    <tr class="ro-row animate-fade-in-up" style="animation-delay: <?= min($count * 0.03, 0.5) ?>s">
-                        <td><input type="checkbox" name="ids[]" value="<?= $row['id'] ?>" class="ro-check"></td>
-                        <td><span class="fw-semibold text-muted">#<?= $row['id'] ?></span></td>
-                        <td>
-                            <a href="<?= $BASEURL . $cfg['public_view'] . $row['id'] ?>"
-                               class="ro-title-link" target="_blank"
-                               title="<?= htmlspecialchars($row['title']) ?>">
-                                <?= htmlspecialchars($row['title']) ?>
-                            </a>
-                            <?php if (!empty($row['year'])): ?>
-                            <small class="text-muted">(<?= (int)$row['year'] ?>)</small>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center gap-2">
-                                <?php if (!empty($row['avatar'])): ?>
-                                <img src="<?= $BASEURL ?>/<?= htmlspecialchars($row['avatar']) ?>"
-                                     class="ro-avatar" alt="<?= htmlspecialchars($row['username'] ?? '') ?>">
-                                <?php else: ?>
-                                <div class="ro-avatar-placeholder">
-                                    <?= strtoupper(substr($row['username'] ?? 'U', 0, 1)) ?>
-                                </div>
-                                <?php endif; ?>
-                                <span class="text-truncate" style="max-width:90px">
-                                    <?= htmlspecialchars($row['username'] ?? 'deleted') ?>
-                                </span>
-                            </div>
-                        </td>
-                        <td>
-                            <span class="badge bg-light text-dark border rounded-pill px-2">
-                                <?= htmlspecialchars($cats[$row['category_id']] ?? '—') ?>
-                            </span>
-                        </td>
-                        <td>
-                            <span class="ro-status-badge bg-<?= $cfg['status_class'][$row['status']] ?? 'secondary' ?> bg-opacity-25 text-<?= $cfg['status_class'][$row['status']] ?? 'secondary' ?>">
-                                <i class="fas <?= $cfg['status_icon'][$row['status']] ?? 'fa-circle' ?>" style="font-size:0.5rem"></i>
-                                <?= $cfg['statuses'][$row['status']] ?? htmlspecialchars($row['status']) ?>
-                            </span>
-                        </td>
-                        <td class="text-center">
-                            <span class="ro-badge-count fw-bold text-<?= $cfg['color'] ?>">
-                                <?= (int)$row[$cfg['count_col']] ?>
-                            </span>
-                        </td>
-                        <?php if ($cfg['has_bounty']): ?>
-                        <td class="text-end">
-                            <?php if ((float)$row['bounty'] > 0): ?>
-                            <span class="text-warning fw-semibold">
-                                <i class="fas fa-coins me-1"></i><?= number_format((float)$row['bounty'], 1) ?>
-                            </span>
-                            <?php else: ?>
-                            <span class="text-muted">—</span>
-                            <?php endif; ?>
-                        </td>
-                        <?php endif; ?>
-                        <td>
-                            <small class="text-muted" title="<?= date('Y-m-d H:i:s', (int)$row['created_at']) ?>">
-                                <?= mkprettytime(TIMENOW - (int)$row['created_at']) ?> ago
-                            </small>
-                        </td>
-                        <td class="text-end">
-                            <div class="ro-actions">
-                                <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 ro-actions-btn" type="button">
-                                    <i class="fas fa-ellipsis-h"></i>
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end ro-actions-menu">
-                                    <li><a class="dropdown-item" href="<?= $BASEURL . $cfg['public_view'] . $row['id'] ?>" target="_blank"><i class="fas fa-eye me-2"></i>View</a></li>
-                                    <?php foreach ($cfg['statuses'] as $val => $label): if ($val === $row['status']) continue; ?>
-                                    <?php if ($val === 'filled' || $val === 'uploaded'): ?>
-                                    <li>
-                                        <button type="button" class="dropdown-item ro-mark-complete" data-id="<?= $row['id'] ?>" data-bs-toggle="modal" data-bs-target="#roCompleteModal">
-                                            <i class="fas fa-upload me-2"></i>Mark as <?= $label ?>
-                                        </button>
-                                    </li>
-                                    <?php else: ?>
-                                    <li><a class="dropdown-item" href="<?= $admin_base ?>&do=setstatus&id=<?= $row['id'] ?>&status=<?= $val ?>&my_post_key=<?= urlencode($post_key) ?>"><i class="fas fa-flag me-2"></i>Mark as <?= $label ?></a></li>
-                                    <?php endif; ?>
-                                    <?php endforeach; ?>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item text-danger" href="<?= $admin_base ?>&do=delete&id=<?= $row['id'] ?>&my_post_key=<?= urlencode($post_key) ?>"><i class="fas fa-trash me-2"></i>Delete</a></li>
-                                </ul>
-                            </div>
-                        </td>
-                    </tr>
-                <?php endwhile; ?>
-
-                <?php if ($count === 0): ?>
-                    <tr>
-                        <td colspan="<?= $cfg['has_bounty'] ? 10 : 9 ?>">
-                            <div class="ro-empty-state">
-                                <i class="fas <?= $cfg['icon'] ?>"></i>
-                                <h6 class="text-muted">No <?= strtolower($cfg['label']) ?> found</h6>
-                                <p class="text-muted small">Try adjusting your filters or search query</p>
-                                <a href="<?= $_this_script_no_act ?>?act=requests_offers&tab=<?= $tab ?>"
-                                   class="btn btn-sm btn-outline-secondary rounded-pill px-4 mt-2">
-                                    <i class="fas fa-undo me-1"></i>Reset filters
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-        </div>
+        <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($post_key) ?>">
+        <input type="hidden" name="ro_do" value="">
+        <input type="hidden" name="id" value="">
+        <input type="hidden" name="status" value="">
     </form>
 
     <!-- Modal: Mark as Filled/Uploaded (нужен torrent_id) -->
-    <div class="modal fade" id="roCompleteModal" tabindex="-1">
+    <div class="modal fade ro-modal" id="roCompleteModal" tabindex="-1" aria-labelledby="roCompleteLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow rounded-4">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title">
-                        <i class="fas fa-upload me-2"></i>Mark as <?= $cfg['has_bounty'] ? 'Filled' : 'Uploaded' ?>
-                    </h5>
-                    <button class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small">Enter the torrent ID that was uploaded for this <?= rtrim($cfg['label'], 's') ?>.</p>
-                    <form method="post" action="<?= $admin_base ?>">
-                        <input type="hidden" name="ro_complete_id" id="roCompleteId" value="">
-                        <input type="hidden" name="my_post_key" value="<?= $post_key ?>">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Torrent ID</label>
-                            <input type="number" class="form-control rounded-3" name="torrent_id" required min="1" placeholder="e.g. 12345">
+            <div class="modal-content">
+                <form method="post" action="<?= htmlspecialchars($admin_base) ?>">
+                    <input type="hidden" name="table" value="<?= $tab ?>">
+                    <input type="hidden" name="ro_complete_id" id="roCompleteId" value="">
+                    <input type="hidden" name="my_post_key" value="<?= htmlspecialchars($post_key) ?>">
+
+                    <div class="modal-header">
+                        <div class="ro-modal-icon" style="<?= ro_tone($cfg['status_class'][$done_key]) ?>">
+                            <i class="fa-solid <?= $cfg['status_icon'][$done_key] ?>"></i>
                         </div>
-                        <div class="d-flex justify-content-end gap-2">
-                            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
-                            <button type="submit" class="btn btn-primary btn-sm rounded-pill px-4">Confirm</button>
+                        <div>
+                            <h5 class="modal-title" id="roCompleteLabel">Mark as <?= $cfg['statuses'][$done_key] ?></h5>
+                            <div class="ro-modal-sub" id="roCompleteTitle"></div>
                         </div>
-                    </form>
-                </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <label class="form-label" for="roTorrentId">Torrent ID that fulfils this <?= strtolower($cfg['singular']) ?></label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fa-solid fa-magnet"></i></span>
+                            <input type="number" class="form-control" id="roTorrentId" name="torrent_id" required min="1" placeholder="12345">
+                        </div>
+                        <div class="form-text">The ID from the torrent's details page URL.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-sm btn-primary rounded-pill px-4">
+                            <i class="fa-solid fa-check me-1"></i>Mark as <?= $cfg['statuses'][$done_key] ?>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
-    <!-- Pagination -->
-    <?php if ($total > $perpage): ?>
-    <div class="mt-3 d-flex justify-content-center animate-fade-in-up">
-        <?= multipage($total, $perpage, $page, $_this_script_no_act . '?act=requests_offers&' . $querystring . '&page={page}') ?>
-    </div>
-    <?php endif; ?>
+</div>
 </div>
 
-<script>
-(function() {
-    'use strict';
-
-    const selectAll = document.getElementById('ro-select-all');
-    const checks    = () => document.querySelectorAll('.ro-check');
-    const countEl   = document.getElementById('ro-selected-count');
-    const applyBtn  = document.getElementById('ro-apply-btn');
-
-    function updateCount() {
-        const n = Array.from(checks()).filter(c => c.checked).length;
-        countEl.innerHTML = '<i class="fas fa-check-circle me-1"></i>' + n + ' selected';
-        applyBtn.disabled = n === 0;
-        // Анимация счетчика
-        countEl.style.transition = 'all 0.2s ease';
-        countEl.style.transform = 'scale(1.1)';
-        setTimeout(() => { countEl.style.transform = 'scale(1)'; }, 200);
-    }
-
-    if (selectAll) {
-        selectAll.addEventListener('change', function() {
-            checks().forEach(c => c.checked = selectAll.checked);
-            updateCount();
-        });
-    }
-
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('ro-check')) {
-            updateCount();
-            // Обновляем select-all
-            if (selectAll) {
-                const all = checks();
-                const checked = Array.from(all).filter(c => c.checked).length;
-                selectAll.checked = all.length > 0 && checked === all.length;
-                selectAll.indeterminate = checked > 0 && checked < all.length;
-            }
-        }
-    });
-
-    // Инициализация
-    updateCount();
-
-    // Подтверждение bulk действия
-    window.roConfirmBulk = function(form) {
-        const action = form.bulk_action.value;
-        const n = Array.from(checks()).filter(c => c.checked).length;
-        if (!action) {
-            alert('Please choose a bulk action first.');
-            return false;
-        }
-        if (action === 'delete') {
-            return confirm('⚠️ Delete ' + n + ' selected item(s)?\nThis will also remove their votes/comments and cannot be undone!');
-        }
-        return confirm('Apply "' + action + '" to ' + n + ' selected item(s)?');
-    };
-
-    // Highlight checked rows
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('ro-check')) {
-            const row = e.target.closest('tr');
-            if (row) {
-                row.style.background = e.target.checked ? 'var(--bg-hover)' : '';
-            }
-        }
-    });
-
-    // ── Кастомное меню действий ──────────────────────────────────────
-    // Переносим открытое меню в <body> и считаем координаты сами —
-    // Bootstrap-дропдаун в этой сборке открывается не в ту сторону
-    // и вылезает за физический край экрана внутри table-responsive.
-    let openMenu = null;
-
-    function closeOpenMenu() {
-        if (!openMenu) return;
-        const { menu, placeholder } = openMenu;
-        menu.classList.remove('show');
-        placeholder.replaceWith(menu);
-        openMenu = null;
-    }
-
-    function positionMenu(btn, menu) {
-        const rect = btn.getBoundingClientRect();
-        menu.style.visibility = 'hidden';
-        menu.classList.add('show');
-        const menuWidth  = menu.offsetWidth;
-        const menuHeight = menu.offsetHeight;
-
-        let left = rect.right - menuWidth;   // выравниваем по правому краю кнопки
-        let top  = rect.bottom + 4;
-
-        if (left < 8) left = 8;
-        if (left + menuWidth > window.innerWidth - 8) left = window.innerWidth - menuWidth - 8;
-
-        if (top + menuHeight > window.innerHeight - 8) {
-            top = rect.top - menuHeight - 4;   // не хватает места снизу — открыть вверх
-        }
-
-        menu.style.left = left + 'px';
-        menu.style.top  = top + 'px';
-        menu.style.visibility = '';
-    }
-
-    document.addEventListener('click', function(e) {
-        const markBtn = e.target.closest('.ro-mark-complete');
-        if (markBtn) {
-            document.getElementById('roCompleteId').value = markBtn.dataset.id;
-            closeOpenMenu();
-        }
-
-        const btn = e.target.closest('.ro-actions-btn');
-
-        if (btn) {
-            e.preventDefault();
-            e.stopPropagation();
-            const wrap = btn.closest('.ro-actions');
-            const menu = wrap.querySelector('.ro-actions-menu');
-            const alreadyOpen = openMenu && openMenu.menu === menu;
-
-            closeOpenMenu();
-            if (alreadyOpen) return;
-
-            const placeholder = document.createComment('ro-menu-placeholder');
-            menu.replaceWith(placeholder);
-            document.body.appendChild(menu);
-            positionMenu(btn, menu);
-            openMenu = { menu, placeholder };
-            return;
-        }
-
-        if (openMenu && !e.target.closest('.ro-actions-menu')) {
-            closeOpenMenu();
-        }
-    });
-
-    window.addEventListener('scroll', closeOpenMenu, true);
-    window.addEventListener('resize', closeOpenMenu);
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeOpenMenu();
-    });
-
-})();
-</script>
-
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/requests_offers.js?ver=1"></script>
 <?php
-stdfoot();

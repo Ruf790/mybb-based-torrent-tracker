@@ -491,7 +491,8 @@ CREATE TABLE IF NOT EXISTS `attachments` (
   KEY `pid` (`pid`,`visible`),
   KEY `uid` (`uid`),
   KEY `comment_id` (`comment_id`),
-  KEY `posthash` (`posthash`)
+  KEY `posthash` (`posthash`),
+  KEY `idx_posthash_uid` (`posthash`,`uid`,`comment_id`,`pid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `attachtypes` (
@@ -553,6 +554,24 @@ CREATE TABLE IF NOT EXISTS `banned` (
   KEY `dateline` (`dateline`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `bonus_logs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `uid` int unsigned NOT NULL,
+  `amount` decimal(14,2) NOT NULL,
+  `balance` decimal(14,2) DEFAULT NULL,
+  `type` varchar(16) NOT NULL,
+  `reason` varchar(255) NOT NULL DEFAULT '',
+  `ref_id` int unsigned DEFAULT NULL,
+  `actor_id` int unsigned DEFAULT NULL,
+  `agg_key` varchar(32) DEFAULT NULL,
+  `added` int unsigned NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `bonus_logs_uid_agg` (`uid`,`agg_key`),
+  KEY `bonus_logs_uid_added` (`uid`,`added`),
+  KEY `bonus_logs_type_added` (`type`,`added`),
+  KEY `bonus_logs_added` (`added`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `bookmarks` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `userid` int unsigned NOT NULL DEFAULT '0',
@@ -589,6 +608,21 @@ CREATE TABLE IF NOT EXISTS `cheat_attempts` (
   `severity` enum('low','medium','high') NOT NULL DEFAULT 'medium',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `claims` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `uid` int unsigned NOT NULL,
+  `torrent_id` int unsigned NOT NULL,
+  `seed_time_begin` bigint unsigned NOT NULL DEFAULT '0',
+  `uploaded_begin` bigint unsigned NOT NULL DEFAULT '0',
+  `last_settle_at` int unsigned DEFAULT NULL,
+  `added` int unsigned NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `claims_uid_torrent` (`uid`,`torrent_id`),
+  KEY `claims_torrent` (`torrent_id`),
+  KEY `claims_added` (`added`),
+  KEY `claims_last_settle` (`last_settle_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `comment_files` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -659,6 +693,67 @@ CREATE TABLE IF NOT EXISTS `datacache` (
   `cache` mediumtext NOT NULL,
   PRIMARY KEY (`title`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `exams` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `description` text,
+  `begin` datetime DEFAULT NULL,
+  `end` datetime DEFAULT NULL,
+  `duration` int NOT NULL DEFAULT '0',
+  `recurring` varchar(20) DEFAULT NULL,
+  `filters` text,
+  `indexes` text NOT NULL,
+  `status` tinyint NOT NULL DEFAULT '0',
+  `is_discovered` tinyint NOT NULL DEFAULT '0',
+  `priority` int NOT NULL DEFAULT '0',
+  `type` int NOT NULL DEFAULT '1',
+  `success_reward_bonus` int NOT NULL DEFAULT '0',
+  `fail_deduct_bonus` int NOT NULL DEFAULT '0',
+  `max_user_count` int NOT NULL DEFAULT '0',
+  `background_color` varchar(255) NOT NULL DEFAULT 'blue',
+  `anomaly` varchar(8) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `exam_progress` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `exam_user_id` int NOT NULL,
+  `exam_id` int NOT NULL,
+  `uid` int NOT NULL,
+  `torrent_id` int NOT NULL DEFAULT '-1',
+  `index` int NOT NULL,
+  `init_value` bigint NOT NULL DEFAULT '0',
+  `value` bigint NOT NULL DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `exam_progress_exam_user_id_index` (`exam_user_id`,`index`),
+  KEY `exam_progress_exam_id_index` (`exam_id`),
+  KEY `exam_progress_uid_index` (`uid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `exam_users` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `uid` int NOT NULL,
+  `exam_id` int NOT NULL,
+  `status` int NOT NULL DEFAULT '0',
+  `begin` datetime DEFAULT NULL,
+  `end` datetime DEFAULT NULL,
+  `progress` text,
+  `is_done` tinyint NOT NULL DEFAULT '0',
+  `done_at` datetime DEFAULT NULL,
+  `result` varchar(16) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `exam_users_uid_index` (`uid`),
+  KEY `exam_users_exam_id_index` (`exam_id`),
+  KEY `exam_users_status_index` (`status`),
+  KEY `exam_users_exam_status_result` (`exam_id`,`status`,`result`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `faq` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -943,7 +1038,8 @@ CREATE TABLE IF NOT EXISTS `reports` (
   `ip_address` varchar(45) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_reported_id` (`reported_id`),
-  KEY `idx_dealtwith` (`dealtwith`)
+  KEY `idx_dealtwith` (`dealtwith`),
+  KEY `idx_addedby_added` (`addedby`,`added`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `rules` (
@@ -1018,7 +1114,8 @@ CREATE TABLE IF NOT EXISTS `settings` (
   `sid` smallint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(120) NOT NULL DEFAULT '',
   `value` text NOT NULL,
-  PRIMARY KEY (`sid`)
+  PRIMARY KEY (`sid`),
+  UNIQUE KEY `name_unique` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `sitelog` (
@@ -1069,7 +1166,8 @@ CREATE TABLE IF NOT EXISTS `snatched` (
   KEY `seeder` (`seeder`,`last_action`),
   KEY `torrentid` (`torrentid`),
   KEY `userid` (`userid`),
-  KEY `finished` (`finished`)
+  KEY `finished` (`finished`),
+  KEY `idx_user_torrent` (`userid`,`torrentid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `spiders` (
@@ -1161,7 +1259,8 @@ CREATE TABLE IF NOT EXISTS `torrents` (
   KEY `added` (`added`),
   KEY `category` (`category`),
   KEY `owner` (`owner`),
-  KEY `visible` (`visible`,`banned`)
+  KEY `visible` (`visible`,`banned`),
+  FULLTEXT KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `torrents_nfo` (
@@ -1461,6 +1560,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `invites` int unsigned NOT NULL DEFAULT '0',
   `invited_by` int unsigned NOT NULL DEFAULT '0',
   `seedbonus` decimal(9,1) NOT NULL DEFAULT '0.0',
+  `seed_points` decimal(20,2) NOT NULL DEFAULT '0.00',
   `bonuscomment` text,
   `lastinvite` int unsigned NOT NULL DEFAULT '0',
   `announce_read` enum('yes','no') NOT NULL DEFAULT 'yes',
@@ -1583,7 +1683,8 @@ CREATE TABLE IF NOT EXISTS `requests` (
   KEY `idx_status` (`status`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_category_id` (`category_id`),
-  KEY `idx_created_at` (`created_at`)
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_filled_by` (`filled_by`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `request_votes` (

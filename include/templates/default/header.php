@@ -406,6 +406,11 @@ if (!empty($CURUSER['id'])): ?>
                                     <i class="fas fa-coins me-2"></i> <?= htmlspecialchars($lang->header['nav_bonus_points'] ?? 'Bonus Points', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
                                 </a>
                             </li>
+                            <li>
+                                <a class="dropdown-item" href="<?= htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>/task.php">
+                                    <i class="fas fa-list-check me-2"></i> <?= htmlspecialchars($lang->header['nav_tasks'] ?? 'Tasks', ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>
+                                </a>
+                            </li>
 							
 							<li><hr class="dropdown-divider"></li>
                             <li>
@@ -1106,6 +1111,15 @@ if (isset($nummessages) && (int)$nummessages > 0) {
 // Reports
 if (isset($numreports) && (int)$numreports > 0) {
     $infomessages[] = '<a href="' . htmlspecialchars($BASEURL ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '/admin/index.php?act=reports">' . sprintf($lang->header['newreport'] ?? '', (int)$numreports) . '</a>';
+}
+
+// Exam / task in progress (as msgalert in NexusPHP)
+if (!empty($CURUSER['id']) && ($msgalert ?? true) && (!defined('THIS_SCRIPT') || THIS_SCRIPT !== 'task.php')) {
+    require_once INC_PATH . '/functions_exam_header.php';
+    $examNotice = exam_render_header_notice((int)$CURUSER['id']);
+    if ($examNotice !== '') {
+        $warnmessages[] = $examNotice;
+    }
 }
 
 // Display warning and info messages

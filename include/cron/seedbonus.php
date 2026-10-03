@@ -8,14 +8,19 @@ if (!defined('IN_CRON')) {
     exit();
 }
 
+// Bonus log: seeding is written as one row per user per day
+if (!function_exists('bonus_log_seeding')) {
+    require_once (defined('INC_PATH') ? INC_PATH : dirname(__DIR__)) . '/functions_bonuslog.php';
+}
+
 // ============================================================
 //  1. Загрузка настроек
 // ============================================================
 
-$cfg = loadSeedbonusSettings($db, $CQueryCount);
+$cfg = sbc_loadSeedbonusSettings($db, $CQueryCount);
 
+// Без записи в лог: при выключенном бонусе это было 96 одинаковых строк в сутки
 if (empty($cfg['enabled'])) {
-    savelog('Seedbonus cron: disabled in settings');
     return;
 }
 
@@ -48,6 +53,16 @@ $SIZE_HUGE          = max(0.0, (float)$cfg['size_huge']);
 $SEEDERS_MANY       = max(0.0, (float)$cfg['seeders_many']);
 $SEEDERS_MEDIUM     = max(0.0, (float)$cfg['seeders_medium']);
 
+// Редкость: чем меньше сидов (включая тебя), тем выше множитель
+$RARE_1             = max(0.0, (float)$cfg['rare_1']);
+$RARE_3             = max(0.0, (float)$cfg['rare_3']);
+$RARE_5             = max(0.0, (float)$cfg['rare_5']);
+
+// Верность: сколько ТЫ держишь эту раздачу (snatched.seedtime)
+$LOYAL_30           = max(0.0, (float)$cfg['loyal_30']);
+$LOYAL_90           = max(0.0, (float)$cfg['loyal_90']);
+$LOYAL_180          = max(0.0, (float)$cfg['loyal_180']);
+
 $AGE_OLD            = max(0.0, (float)$cfg['age_old']);
 $AGE_MEDIUM         = max(0.0, (float)$cfg['age_medium']);
 
@@ -72,13 +87,12 @@ $MAX_POSSIBLE_BONUS = $HOUR_CAP * $CRON_HOURS * 2;
 
 $activeWindow = $ANNOUNCE_INTERVAL * 3;
 
-savelog("Seedbonus cron: start | interval={$CRON_SEC}s | base={$BASE_BONUS} | cap={$HOUR_CAP}");
 
 // ============================================================
 //  3. Основной запрос
 // ============================================================
 
-$sql = buildMainQuery([
+$sql = sbc_buildMainQuery([
     'active_window'  => $activeWindow,
     'cron_hours'     => $CRON_HOURS,
     'leech_none'     => $LEECH_NONE,
@@ -91,6 +105,12 @@ $sql = buildMainQuery([
     'size_huge'      => $SIZE_HUGE,
     'seeders_many'   => $SEEDERS_MANY,
     'seeders_medium' => $SEEDERS_MEDIUM,
+    'rare_1'         => $RARE_1,
+    'rare_3'         => $RARE_3,
+    'rare_5'         => $RARE_5,
+    'loyal_30'       => $LOYAL_30,
+    'loyal_90'       => $LOYAL_90,
+    'loyal_180'      => $LOYAL_180,
     'age_old'        => $AGE_OLD,
     'age_medium'     => $AGE_MEDIUM,
     'promo_free'     => $PROMO_FREE,
@@ -110,7 +130,7 @@ if (!$numRows) {
     if ($wrapped && $wrapped->stmt) {
         mysqli_stmt_close($wrapped->stmt);
     }
-    savelog('Seedbonus cron: done | no active seeders');
+    // Nobody seeding: nothing to log (the "done" line below is written when bonus was given)
     return;
 }
 
@@ -141,7 +161,7 @@ if ($wrapped && $wrapped->stmt) {
 //  5. Загрузка текущих бонусов
 // ============================================================
 
-$currentBonuses = loadCurrentBonuses($allUserIds, $db, $CQueryCount);
+$currentBonuses = sbc_loadCurrentBonuses($allUserIds, $db, $CQueryCount);
 
 // ============================================================
 //  6. Расчёт и накопление обновлений
@@ -153,7 +173,10 @@ $stats    = ['processed' => 0, 'updated' => 0, 'maxed' => 0, 'total' => 0.0];
 
 foreach ($allRows as $uid => $data) {
     $torrents = $data['torrents'];
-    $hours    = $data['hours'];
+    // Каждый активный сидер получает полный интервал крона. Раньше бралось
+    // время с последнего анонса: при интервале 15 мин это всегда 0.25 ч,
+    // а при большем интервале зависело от случайного момента анонса.
+    $hours    = $CRON_HOURS;
     $raw      = $data['raw'];
 
     if ($torrents > 10000 || $hours > 1000 || $raw > 100000) {
@@ -162,11 +185,11 @@ foreach ($allRows as $uid => $data) {
     }
 
     if ($ENABLE_HEURISTIC) {
-        $heuristicPerInterval = getHeuristicHours($torrents, $HEURISTIC) * ($CRON_HOURS / 24);
+        $heuristicPerInterval = sbc_getHeuristicHours($torrents, $HEURISTIC) * ($CRON_HOURS / 24);
         $hours = max($hours, $heuristicPerInterval);
     }
 
-    $capMul      = torrentMultiplier($torrents, $MULTIPLIER_TYPE, $FLAT_MULTIPLIER);
+    $capMul      = sbc_torrentMultiplier($torrents, $MULTIPLIER_TYPE, $FLAT_MULTIPLIER);
     $hourlyBonus = min($raw * $BASE_BONUS * $capMul, $HOUR_CAP);
     $finalBonus  = round($hourlyBonus * $hours, 1);
 
@@ -199,7 +222,7 @@ foreach ($allRows as $uid => $data) {
     $stats['total'] += $finalBonus;
 
     if (count($updates) >= $BATCH_SIZE) {
-        $stats['updated'] += processBatch($updates, $db, $CQueryCount);
+        $stats['updated'] += sbc_processBatch($updates, $db, $CQueryCount);
         $updates = [];
         $batchNum++;
         usleep(50000);
@@ -207,13 +230,11 @@ foreach ($allRows as $uid => $data) {
 }
 
 if (!empty($updates)) {
-    $stats['updated'] += processBatch($updates, $db, $CQueryCount);
+    $stats['updated'] += sbc_processBatch($updates, $db, $CQueryCount);
 }
 
-if ($stats['updated'] > 0) {
-    $db->sql_query_prepared('FLUSH TABLES', []);
-    ++$CQueryCount;
-}
+// FLUSH TABLES убран: он закрывает все таблицы и ждёт завершения всех
+// запросов на сервере (весь трекер на мгновение встаёт), а InnoDB он не нужен.
 
 // ============================================================
 //  7. Лог
@@ -231,8 +252,12 @@ savelog(sprintf(
 // ============================================================
 //  Функции
 // ============================================================
+// Префикс sbc_: в mybonus.php есть свои loadSeedbonusSettings() и
+// getHeuristicHours() с другими параметрами. Если крон когда-нибудь
+// выполнится внутри запроса страницы, одинаковые имена дали бы
+// "Cannot redeclare function".
 
-function loadSeedbonusSettings($db, int &$queryCount): array
+function sbc_loadSeedbonusSettings($db, int &$queryCount): array
 {
     $defaults = [
         'enabled'               => false,
@@ -253,6 +278,13 @@ function loadSeedbonusSettings($db, int &$queryCount): array
         'size_huge'             => 2.0,
         'seeders_many'          => 0.9,
         'seeders_medium'        => 0.95,
+        // 1.0 = выключено; значения задаются в seedbonus_settings
+        'rare_1'                => 1.0,
+        'rare_3'                => 1.0,
+        'rare_5'                => 1.0,
+        'loyal_30'              => 1.0,
+        'loyal_90'              => 1.0,
+        'loyal_180'             => 1.0,
         'age_old'               => 1.5,
         'age_medium'            => 1.3,
         'promo_free'            => 0.7,
@@ -299,7 +331,7 @@ function loadSeedbonusSettings($db, int &$queryCount): array
     return $cfg;
 }
 
-function loadCurrentBonuses(array $userIds, $db, int &$queryCount): array
+function sbc_loadCurrentBonuses(array $userIds, $db, int &$queryCount): array
 {
     $result = [];
 
@@ -331,7 +363,7 @@ function loadCurrentBonuses(array $userIds, $db, int &$queryCount): array
     return $result;
 }
 
-function buildMainQuery(array $p): string
+function sbc_buildMainQuery(array $p): string
 {
     $f = array_map('floatval', array_diff_key($p, ['active_window' => 1]));
     $activeWindow = (int)$p['active_window'];
@@ -363,6 +395,15 @@ function buildMainQuery(array $p): string
                 CASE
                     WHEN t.seeders > 100 THEN {$f['seeders_many']}
                     WHEN t.seeders > 50  THEN {$f['seeders_medium']}
+                    WHEN t.seeders <= 1  THEN {$f['rare_1']}
+                    WHEN t.seeders <= 3  THEN {$f['rare_3']}
+                    WHEN t.seeders <= 5  THEN {$f['rare_5']}
+                    ELSE 1.0
+                END *
+                CASE
+                    WHEN COALESCE(st.seedtime, 0) >= 15552000 THEN {$f['loyal_180']}
+                    WHEN COALESCE(st.seedtime, 0) >= 7776000  THEN {$f['loyal_90']}
+                    WHEN COALESCE(st.seedtime, 0) >= 2592000  THEN {$f['loyal_30']}
                     ELSE 1.0
                 END *
                 CASE
@@ -378,6 +419,14 @@ function buildMainQuery(array $p): string
             ) AS raw_bonus_sum
         FROM peers p
         INNER JOIN torrents t ON t.id = p.torrent
+        -- Сколько этот пользователь сидирует эту раздачу. Через подзапрос, а не
+        -- прямой JOIN: в snatched нет уникального ключа (userid, torrentid),
+        -- и дубль строки удвоил бы бонус.
+        LEFT JOIN LATERAL (
+            SELECT MAX(s.seedtime) AS seedtime
+            FROM snatched s
+            WHERE s.userid = p.userid AND s.torrentid = p.torrent
+        ) st ON TRUE
         WHERE p.seeder     = 'yes'
           AND p.userid     > 0
           AND t.visible    = 'yes'
@@ -390,7 +439,7 @@ function buildMainQuery(array $p): string
     ";
 }
 
-function torrentMultiplier(int $count, string $type, float $flat): float
+function sbc_torrentMultiplier(int $count, string $type, float $flat): float
 {
     return match ($type) {
         'penalty' => match (true) {
@@ -411,7 +460,7 @@ function torrentMultiplier(int $count, string $type, float $flat): float
     };
 }
 
-function getHeuristicHours(int $count, array $h): float
+function sbc_getHeuristicHours(int $count, array $h): float
 {
     return (float)match (true) {
         $count >= 50 => $h[50],
@@ -424,7 +473,7 @@ function getHeuristicHours(int $count, array $h): float
     };
 }
 
-function processBatch(array $updates, $db, int &$queryCount): int
+function sbc_processBatch(array $updates, $db, int &$queryCount): int
 {
     if (empty($updates)) {
         return 0;
@@ -452,17 +501,31 @@ function processBatch(array $updates, $db, int &$queryCount): int
         return 0;
     }
 
+    // seed_points - накопительные очки сидирования (как в NexusPHP): растут вместе
+    // с seedbonus, но не уменьшаются при тратах. Их считает показатель экзаменов
+    // "Seed points". Та же сумма, тот же запрос - параметры CASE передаются дважды.
+    $caseWhenPoints = str_replace('seedbonus', 'seed_points', $caseWhen);
+
     $in        = implode(',', array_fill(0, count($userIds), '?'));
-    $sql       = "UPDATE users SET seedbonus = CASE
-"
-               . implode("
-", $caseWhen)
-               . "
-ELSE seedbonus END WHERE id IN ({$in})";
-    $allParams = array_merge($params, $userIds);
+    $sql       = "UPDATE users SET seedbonus = CASE "
+               . implode(' ', $caseWhen)
+               . " ELSE seedbonus END, seed_points = CASE "
+               . implode(' ', $caseWhenPoints)
+               . " ELSE seed_points END WHERE id IN ({$in})";
+    $allParams = array_merge($params, $params, $userIds);
 
     $db->sql_query_prepared($sql, $allParams);
     ++$queryCount;
+    $affected = (int)$db->affected_rows();
 
-    return (int)$db->affected_rows();
+    // Same amounts into the bonus log (after the UPDATE: balance is read from users)
+    $amounts = [];
+    foreach ($updates as $u) {
+        $uid = (int)$u['userid'];
+        if ($uid > 0 && (float)$u['bonus'] > 0) $amounts[$uid] = ($amounts[$uid] ?? 0) + (float)$u['bonus'];
+    }
+    bonus_log_seeding($amounts);
+    ++$queryCount;
+
+    return $affected;
 }

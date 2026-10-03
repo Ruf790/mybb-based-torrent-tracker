@@ -95,9 +95,10 @@ $promotions = [
     [$expirenormal,            1, $normalbecome,            'Expired Normal'],
 ];
 
-savelog('Starting torrent promotion expiration cleanup', 'cron');
-
+// One summary line, only if something expired (was: start + a line per type + finish
+// on every run). The torrent names are still logged by torrent_promotion_expire().
 $totalProcessed = 0;
+$byType         = [];
 
 foreach ($promotions as [$days, $fromType, $toType, $label]) {
     if (empty($days) || $days <= 0) {
@@ -106,8 +107,11 @@ foreach ($promotions as [$days, $fromType, $toType, $label]) {
 
     $count = torrent_promotion_expire((float)$days, (int)$fromType, (int)$toType);
     $totalProcessed += $count;
-
-    savelog("{$label} promotions: {$count} torrents", 'cron');
+    if ($count > 0) {
+        $byType[] = "{$label}: {$count}";
+    }
 }
 
-savelog("Finished promotion expiration. Total: {$totalProcessed} torrents", 'cron');
+if ($totalProcessed > 0) {
+    savelog("Promotions expired: {$totalProcessed} torrent(s) (" . implode(', ', $byType) . ')', 'cron');
+}

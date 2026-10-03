@@ -139,17 +139,8 @@ if ($optimizedCount > 0 && $totalFreedMB > 0) {
         . "Tables: [{$tableList}]"
     );
 	++$CQueryCount;
-} elseif ($optimizedCount > 0) {
-    savelog(
-        "DB Optimized INFO: [{$currentTime}] {$optimizedCount} tables processed, no space freed ({$elapsed}s)."
-    );
-	++$CQueryCount;
-} else {
-    savelog(
-        "DB Optimized INFO: [{$currentTime}] No tables required optimization ({$elapsed}s), skipped: {$skippedCount}."
-    );
-	++$CQueryCount;
 }
+// Nothing logged when no space was freed: only real results and errors are worth a line
 
 if ($errorCount > 0) {
     savelog(

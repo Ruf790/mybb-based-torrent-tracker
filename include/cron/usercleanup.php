@@ -63,8 +63,5 @@ if ($bannedUsers) {
     $elapsed = round(microtime(true) - $startTime, 3);
     savelog('Expired bans removed for users: ' . implode(', ', $userIds) . " ({$elapsed}s)");
     ++$CQueryCount;
-} else {
-    $elapsed = round(microtime(true) - $startTime, 3);
-    savelog("No expired bans to remove ({$elapsed}s)");
-    ++$CQueryCount;
 }
+// Nothing logged when there were no expired bans

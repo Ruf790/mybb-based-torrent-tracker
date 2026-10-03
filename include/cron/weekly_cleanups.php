@@ -142,12 +142,15 @@ ELSE timeswarned END WHERE id IN ({$in})",
     $CQueryCount++;
 }
 
-savelog(sprintf(
-    'HR cron: warn=%d final=%d silent=%d',
-    count($warnPm),
-    count($finalPm),
-    count($silentMark)
-), 'cron');
+// Only when somebody was warned or marked
+if ($warnPm || $finalPm || $silentMark) {
+    savelog(sprintf(
+        'HR cron: warn=%d final=%d silent=%d',
+        count($warnPm),
+        count($finalPm),
+        count($silentMark)
+    ), 'cron');
+}
 
 function hr_send_pm(array $rows, string $subject, string $tpl): void
 {

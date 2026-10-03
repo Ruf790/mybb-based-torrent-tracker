@@ -43,5 +43,7 @@ if (isset($plugins) && is_object($plugins)) {
     $plugins->run_hooks('task_threadviews', $task);
 }
 
-savelog("Thread views task completed. Updated {$updatedThreads} threads.");
-++$CQueryCount;
+if ($updatedThreads > 0) {
+    savelog("Thread views: updated {$updatedThreads} thread(s).");
+    ++$CQueryCount;
+}

@@ -112,6 +112,5 @@ if (!empty($repairedTables)) {
         'Notice: Database check successfully repaired the following table(s): %s',
         implode(', ', $repairedTables)
     ));
-} else {
-    savelog('Notice: Database check completed — no corrupted tables found.');
 }
+// Nothing logged when all tables are fine: only repairs are worth a line

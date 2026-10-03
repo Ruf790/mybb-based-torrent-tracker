@@ -17,6 +17,7 @@ $moderation = new Moderation;
 
 // Iterate through all our delayed moderation actions
 $query = $db->sql_query_prepared("SELECT * FROM delayedmoderation WHERE delaydateline <= ?", [TIMENOW]);
+$done  = 0;
 
 while ($delayedmoderation = $db->fetch_array($query)) {
     if (is_object($plugins)) {
@@ -49,11 +50,14 @@ while ($delayedmoderation = $db->fetch_array($query)) {
     }
 
     $db->sql_query_prepared("DELETE FROM delayedmoderation WHERE did = ?", [$delayedmoderation['did']]);
+    ++$done;
 }
 
-savelog('The delayed moderation task successfully ran');
-
-++$CQueryCount;
+// Only when there were delayed actions to run
+if ($done > 0) {
+    savelog("Delayed moderation: {$done} action(s) done.");
+    ++$CQueryCount;
+}
 
 // ====================
 // HELPER FUNCTIONS

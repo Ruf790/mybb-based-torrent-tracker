@@ -86,10 +86,11 @@ function deadtime(): int
 }
 
 /**
- * Send emails from mail queue
+ * Send emails from mail queue. Returns how many were actually sent.
  */
-function send_mail_queue(int $count = 10): void
+function send_mail_queue(int $count = 10): int
 {
+    $sent = 0;
     global $db, $cache, $plugins;
 
     if (isset($plugins) && is_object($plugins)) {
@@ -105,6 +106,7 @@ function send_mail_queue(int $count = 10): void
         $db->sql_query_prepared("DELETE FROM mailqueue WHERE mid = ?", [$email['mid']]);
 
         if ($db->affected_rows() === 1) {
+            ++$sent;
             my_mail(
                 $email['mailto'],
                 $email['subject'],
@@ -124,4 +126,6 @@ function send_mail_queue(int $count = 10): void
     if (isset($plugins) && is_object($plugins)) {
         $plugins->run_hooks('send_mail_queue_end');
     }
+
+    return $sent;
 }

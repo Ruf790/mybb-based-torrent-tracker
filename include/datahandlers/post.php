@@ -612,7 +612,10 @@ class PostDataHandler extends DataHandler
             update_forum_counters((int)$post['fid'], ['posts' => '+1']);
             update_forum_lastpost((int)$thread['fid']);
 			
-			kps('+', $kpscomment, (int)$post['uid']);
+			kps('+', $kpscomment, (int)$post['uid'],
+				'Forum reply: ' . mb_strimwidth((string)($thread['subject'] ?? ''), 0, 100, '…')
+				. ' (thread #' . (int)$post['tid'] . ', post #' . (int)$this->pid . ')',
+				(int)$post['tid']);
 
         } elseif ($visible == 0) {
             $thread_update = ['unapprovedposts' => '+1'];
@@ -790,7 +793,10 @@ class PostDataHandler extends DataHandler
             $db->sql_query_prepared("UPDATE threads SET firstpost = ? WHERE tid = ?", [$this->pid, $this->tid]);
 			
             if ($visible === 1) {
-               kps('+', $kpscomment, (int)($thread['uid'] ?? 0));
+               kps('+', $kpscomment, (int)($thread['uid'] ?? 0),
+                   'New forum thread: ' . mb_strimwidth((string)($thread['subject'] ?? ''), 0, 100, '…')
+                   . ' (#' . $this->tid . ')',
+                   $this->tid);
             }
 			
 			

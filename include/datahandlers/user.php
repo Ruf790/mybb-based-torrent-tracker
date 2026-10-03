@@ -877,6 +877,10 @@ public function validate_user(): bool
             'sessions'                 => 'uid',
             'banned'                   => 'uid',
             'awaitingactivation'       => 'uid',
+			'bonus_logs'               => 'uid',   // bonus history
+			'claims'                   => 'uid',   // claimed torrents
+            'exam_progress'            => 'uid',   // exams and tasks
+            'exam_users'               => 'uid',
         ];
 
         foreach ($tables as $table => $col) {

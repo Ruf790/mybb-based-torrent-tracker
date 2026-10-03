@@ -1,8 +1,10 @@
 <?php
 
+declare(strict_types=1);
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// display_errors НЕ включаем: подробности ошибок показывает только
+// error_handler.php и только staff. ini_set('display_errors', 1) здесь
+// выводил сырые ошибки PHP (пути, SQL) любому посетителю.
 define("THIS_SCRIPT", "topten.php");
 require "./global.php";
 define("T_VERSION", "v.1.3.1 by xam");
@@ -18,8 +20,13 @@ stdhead($lang->topten["head"]);
 
 
 
-function get_thread_link($tid, $page=0, $action='')
+function get_thread_link(int|string $tid, int|string $page = 0, string $action = ''): string
 {
+	// strict_types: str_replace() принимает только строки, а tid/page
+	// приходят из БД как native int (prepared statements).
+	$tid  = (string)(int)$tid;
+	$page = (int)$page;
+
 	if($page > 1)
 	{
 		if($action)
@@ -32,7 +39,7 @@ function get_thread_link($tid, $page=0, $action='')
 			$link = THREAD_URL_PAGED;
 		}
 		$link = str_replace("{tid}", $tid, $link);
-		$link = str_replace("{page}", $page, $link);
+		$link = str_replace("{page}", (string)$page, $link);
 		return htmlspecialchars_uni($link);
 	}
 	else

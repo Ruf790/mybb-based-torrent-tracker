@@ -2209,6 +2209,14 @@ $modoptions = '<!-- Moderator Options (compact) -->
     $leeching_now   = $swarm['leech_html'];
 
     $completed             = build_user_completed_torrents_from_snatched($db, (int)$uid, 10000);
+
+    // Claims (NexusPHP: "Claims: N/max" in userdetails)
+    require_once INC_PATH . '/functions_claim.php';
+    // Own profile or staff: other users' claims are not public (claim.php checks it too)
+    $claims_line = CLAIM_ENABLED && ((int)$uid === (int)$CURUSER['id'] || (isset($usergroups) && is_mod($usergroups)))
+        ? '<div class="mt-1 small"><a href="' . $BASEURL . '/claim.php?uid=' . (int)$uid . '" class="text-decoration-none">'
+          . '<i class="bi bi-heart-pulse me-1"></i>Claims: ' . claim_count_user((int)$uid) . ' / ' . number_format(CLAIM_MAX_PER_USER) . '</a></div>'
+        : '';
     $completed_list        = $completed['html'];
     $times_completed_total = ts_nf($completed['count']);
 
@@ -2421,6 +2429,7 @@ $modoptions = '<!-- Moderator Options (compact) -->
         <div class="metric text-center hov-soft">
             <div class="label"><i class="bi bi-check2-circle me-1"></i>Snatched</div>
             <div class="value" style="font-size:1.35rem;">'.$times_completed_total.'</div>
+            '.$claims_line.'
         </div>
     </div>
     <div class="col-12 col-md-3">

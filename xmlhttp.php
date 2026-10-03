@@ -206,7 +206,7 @@ function handleRateTorrent(): void
 
  
     if ($db->affected_rows() === 1) {
-        kps('+', $kpsrate, (int)$CURUSER['id']);
+        kps('+', $kpsrate, (int)$CURUSER['id'], "Rated torrent #{$torrent_id} ({$rating}/10)", $torrent_id);
     }
 
     $q = $db->sql_query_prepared("SELECT ROUND(AVG(rating),1) AS avg, COUNT(id) AS cnt FROM torrent_ratings WHERE torrent_id = ?", [$torrent_id]);
@@ -249,7 +249,7 @@ function handleRateThread(): void
     );
 	
     if ($db->affected_rows() === 1) {
-        kps('+', $kpsrate, (int)$CURUSER['id']);
+        kps('+', $kpsrate, (int)$CURUSER['id'], "Rated forum thread #{$tid} ({$rating}/10)", $tid);
     }
 
     // Recalculate avg and count
@@ -1172,7 +1172,10 @@ if ($lastpage > 1 && $currentpage < $lastpage) {
         );
         $cid = $db->insert_id();
 		
-		kps('+', $kpscomment, $CURUSER['id']);
+		kps('+', $kpscomment, (int)$CURUSER['id'],
+			'Comment on ' . mb_strimwidth((string)$arr['name'], 0, 100, '…')
+			. ' (#' . (int)$torrentid . ', comment #' . (int)$cid . ')',
+			(int)$torrentid);
 
         if (!empty($_POST['file_ids'])) {
             $file_ids = array_map('intval', (array)$_POST['file_ids']);

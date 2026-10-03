@@ -1113,7 +1113,10 @@ if ($torrentFilename)
 		
 		notify_upload_subscribers((int)$category, $NewTID, $torrentName);
 		
-		kps('+', $kpsupload, $CURUSER['id']);
+		//kps('+', $kpsupload, $CURUSER['id']);
+		kps('+', $kpsupload, $CURUSER['id'],
+             'Torrent uploaded: ' . mb_strimwidth($torrentName, 0, 120, '…') . ' (#' . (int)$NewTID . ')',
+             (int)$NewTID);
 		
 		
     }

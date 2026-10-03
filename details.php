@@ -422,6 +422,7 @@ stdhead($HEAD);
 require_once INC_PATH . '/functions_bookmark.php';
 
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/details.css">';
+echo '<link rel="stylesheet" href="' . $BASEURL . '/claim.css?ver=12">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/animate.min.css">';
 echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/comment_attachments.css">';
 echo '<script type="text/javascript" src="' . $BASEURL . '/scripts/toast.js"></script>';
@@ -1035,6 +1036,64 @@ $magnetButton = ($TorrentObj !== null && !$TorrentObj->isPrivate())
     ? '<li><a class="dropdown-item magnet-btn" href="#" data-magnet-id="' . $id . '"><i class="bi bi-magnet me-2"></i>Magnet Link</a></li>'
     : '';
 
+// ── Claim box (port of NexusPHP "claim block" in details.php) ───────────────
+require_once INC_PATH . '/functions_claim.php';
+$claimBox = '';
+if (CLAIM_ENABLED && claim_torrent_old_enough($Torrent)) {
+    $myClaim     = claim_get((int)$CURUSER['id'], (int)$id);
+    $claimCount  = claim_count_torrent((int)$id);
+    $claimersUrl = $BASEURL . '/claim.php?torrent_id=' . (int)$id;
+    $claimForm   = static function (string $action, string $btnClass, string $icon, string $label, string $confirm) use ($id, $mybb): string {
+        return '<form method="post" action="claim.php" data-claim-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '">'
+             . '<input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code ?? '', ENT_QUOTES) . '">'
+             . '<input type="hidden" name="action" value="' . $action . '">'
+             . '<input type="hidden" name="torrent_id" value="' . (int)$id . '">'
+             . '<input type="hidden" name="returnto" value="details.php?id=' . (int)$id . '">'
+             . '<button class="btn ' . $btnClass . ' btn-sm"><i class="bi ' . $icon . ' me-1"></i>' . $label . '</button></form>';
+    };
+
+    if ($myClaim) {
+        $text = '<strong>You claimed this torrent</strong> on ' . date('d.m.Y', (int)$myClaim['added'])
+              . '. Seed it ' . CLAIM_SEED_HOURS . ' h a month (or upload ' . CLAIM_UPLOAD_TIMES . '× its size) to get bonus.';
+        $btn  = '<a href="' . $BASEURL . '/claim.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-list-check me-1"></i>My claims</a>'
+              . $claimForm('remove', 'btn-outline-danger', 'bi-x-lg', 'Give up',
+                    'Give up this claim? ' . number_format(CLAIM_GIVE_UP_DEDUCT) . ' bonus points will be deducted.');
+    } else {
+        try {
+            claim_check_can((int)$CURUSER['id'], (int)$id);
+            $text = '<strong>Claim this torrent</strong> and keep it alive: seed it ' . CLAIM_SEED_HOURS
+                  . ' h a month and get bonus points for every hour.';
+            $btn  = $claimForm('add', 'btn-success', 'bi-hand-thumbs-up', 'Claim',
+                    'Claim this torrent? Seed it ' . CLAIM_SEED_HOURS . ' h every month. If you stop, the claim is removed and '
+                    . number_format(CLAIM_REMOVE_DEDUCT) . ' bonus points are deducted.');
+        } catch (ClaimException $ex) {
+            $text = '<span class="text-muted">' . htmlspecialchars($ex->getMessage(), ENT_QUOTES) . '</span>';
+            $btn  = '';
+        }
+    }
+
+    $claimBox = '
+            <div class="claim-box mt-4">
+                <i class="bi bi-heart-pulse fs-4 text-success"></i>
+                <div class="claim-box__text">' . $text . '
+                    <div class="small text-muted mt-1"><a href="' . $claimersUrl . '">Claimed by ' . $claimCount . ' / ' . CLAIM_MAX_PER_TORRENT . ' user(s)</a></div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">' . $btn . '</div>
+            </div>
+            <script>
+            document.addEventListener("submit", function (e) {
+                var f = e.target;
+                if (!f.matches("form[data-claim-confirm]") || f.dataset.ok === "1") return;
+                e.preventDefault();
+                var go = function () { f.dataset.ok = "1"; f.querySelector("button").disabled = true; f.submit(); };
+                if (window.Swal) {
+                    window.Swal.fire({ icon: "question", text: f.dataset.claimConfirm, showCancelButton: true, confirmButtonText: "Yes",
+                        cancelButtonText: "Cancel", reverseButtons: true }).then(function (r) { if (r.isConfirmed) go(); });
+                } else if (window.confirm(f.dataset.claimConfirm)) { go(); }
+            });
+            </script>';
+}
+
 $act = '<span id="bookmark' . $Torrent['id'] . '">'
      . get_torrent_bookmark_state($CURUSER['id'], (int)$Torrent['id'])
      . '</span>';
@@ -1168,6 +1227,8 @@ $details = '
                     </div>
                 </div>
             </div>
+
+            ' . $claimBox . '
 
             ' . ($modal_images ? '
             <!-- Posters -->

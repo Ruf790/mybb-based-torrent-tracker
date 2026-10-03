@@ -10,6 +10,7 @@ require_once INC_PATH . '/editor.php';
 require_once INC_PATH . '/functions_mkprettytime.php';
 require_once INC_PATH . '/functions_multipage.php';
 require_once INC_PATH . '/class_parser.php';
+require_once INC_PATH . '/functions_bonuslog.php';
 
 $parser = new postParser;
 $parser_options = [
@@ -73,6 +74,7 @@ if ($action === 'vote' && $mybb->request_method === 'post') {
         }
         $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?", [$bounty, $uid]);
         $db->sql_query_prepared("UPDATE requests SET bounty = bounty + ? WHERE id = ?", [$bounty, $rid]);
+        bonus_log($uid, -$bounty, 'request', "Bounty added to request #{$rid}", $rid);
     }
     $vote_data = [
         'request_id' => $rid,
@@ -137,12 +139,14 @@ if ($action === 'do_create' && $mybb->request_method === 'post') {
         if ($bounty > 0) {
             $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?", [$bounty, (int)$CURUSER['id']]);
         }
+        $logBounty = $bounty;
         $db->sql_query_prepared(
             "INSERT INTO requests (user_id, title, description, category_id, year, status, votes, bounty, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, 'open', 1, ?, ?, ?)",
             [(int)$CURUSER['id'], $title, $description, $category_id, $year, $bounty, TIMENOW, TIMENOW]
         );
         $id = $db->insert_id();
+        if (!empty($logBounty)) bonus_log((int)$CURUSER['id'], -$logBounty, 'request', "Bounty for new request #{$id}", (int)$id);
         $vote_data    = ['request_id' => $id, 'user_id' => (int)$CURUSER['id'], 'bounty' => $bounty, 'created_at' => TIMENOW];
         $columns      = array_keys($vote_data);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
@@ -169,6 +173,7 @@ if ($action === 'fill' && $mybb->request_method === 'post') {
     }
     if ((float)$req['bounty'] > 0) {
         $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?", [$req['bounty'], (int)$CURUSER['id']]);
+        bonus_log((int)$CURUSER['id'], (float)$req['bounty'], 'request', "Bounty for filling request #{$rid}", $rid);
     }
     $db->sql_query_prepared(
         "UPDATE requests SET status = ?, filled_by = ?, torrent_id = ?, filled_at = ?, updated_at = ? WHERE id = ?",
@@ -219,6 +224,7 @@ if ($action === 'delete' && $mybb->request_method === 'post') {
         while ($v = $db->fetch_array($votes_q)) {
             if ((float)$v['bounty'] > 0) {
                 $db->sql_query_prepared("UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?", [$v['bounty'], $v['user_id']]);
+                bonus_log((int)$v['user_id'], (float)$v['bounty'], 'request', "Bounty refund: request #{$rid} deleted", $rid, (int)$CURUSER['id']);
             }
         }
     }

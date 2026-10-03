@@ -273,7 +273,12 @@ function processAddComment(int $torrentid): void
             }
         }
 
-        kps('+', $kpscomment, $CURUSER['id']);
+        //kps('+', $kpscomment, $CURUSER['id']);
+		kps('+', $kpscomment, (int)$CURUSER['id'],
+            'Comment on ' . mb_strimwidth((string)$arr['name'], 0, 100, '…')
+            . ' (#' . $torrentid . ', comment #' . (int)$newid . ')',
+            $torrentid);
+		
     }
 
     $url = get_comment_link($newid, $torrentid) . "#pid{$newid}";
@@ -712,7 +717,12 @@ function handleDeleteAction(): void
         $db->sql_query_prepared('UPDATE users SET comms = IF(comms>0, comms - 1, 0) WHERE id = ?', [$userpostid]);
     }
 
-    kps('-', $kpscomment, $userpostid);
+    //kps('-', $kpscomment, $userpostid);
+	$who = (int)$userpostid === (int)$CURUSER['id'] ? '' : ' by moderator ' . $CURUSER['username'];
+        kps('-', $kpscomment, (int)$userpostid,
+            'Comment deleted' . $who . ' on torrent #' . (int)$torrentid . ' (comment #' . $commentid . ')',
+            (int)$torrentid);
+	
 
     $torrent_link = $BASEURL . '/' . get_torrent_link($torrentid);
     $log_message = sprintf(
@@ -803,7 +813,14 @@ function handleMassDeleteAction(): void
             $deleted_count++;
             $db->sql_query_prepared('UPDATE torrents SET comments = IF(comments>0, comments - 1, 0) WHERE id = ?', [$torrent_id]);
             $db->sql_query_prepared('UPDATE users SET comms = IF(comms>0, comms - 1, 0) WHERE id = ?', [$user_id]);
-            kps('-', $kpscomment, $user_id);
+            //kps('-', $kpscomment, $user_id);
+			
+			kps('-', $kpscomment, (int)$user_id,
+                'Comment deleted by moderator ' . $CURUSER['username']
+                . ' on torrent #' . $torrent_id . ' (comment #' . $comment_id . ')',
+                $torrent_id);
+			
+			
         }
     }
 

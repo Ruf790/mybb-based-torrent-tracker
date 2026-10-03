@@ -6,6 +6,7 @@ define('IN_MYBB', 1);
 require_once 'global.php';
 require_once INC_PATH . '/functions_pm.php';
 require_once INC_PATH . '/datahandler.php';
+require_once INC_PATH . '/functions_bonuslog.php';
 
 // ── Авторизация ───────────────────────────────────────────
 if (!$CURUSER || ($CURUSER['id'] ?? 0) == 0) {
@@ -51,7 +52,8 @@ $cfg = loadSeedbonusSettings();
 // Короткие алиасы для часто используемых значений
 $BASE_BONUS            = (float)($cfg['base_bonus']            ?? 10.0);
 $HOUR_CAP              = (float)($cfg['hour_cap']              ?? 500.0);
-$CRON_INTERVAL_SEC     = (int)($cfg['cron_interval']           ?? 15) * 60;
+// max(1, ...): при cron_interval = 0 страница падала на делении на ноль
+$CRON_INTERVAL_SEC     = max(1, (int)($cfg['cron_interval']    ?? 15)) * 60;
 $CRON_INTERVAL_HOURS   = $CRON_INTERVAL_SEC / 3600;
 $TORRENT_MUL_TYPE      = (string)($cfg['torrent_multiplier_type'] ?? 'penalty');
 $FLAT_MULTIPLIER       = (float)($cfg['flat_multiplier']       ?? 1.0);
@@ -115,6 +117,8 @@ function progressColor(float $pct): string
 function logBonus(int $uid, array $b): void
 {
     global $db;
+    // Bonus log (table); the old text log in bonuscomment is kept as it was
+    bonus_log($uid, -(int)$b['points'], 'shop', (string)$b['bonusname'], (int)($b['id'] ?? 0) ?: null);
     $comment = date('Y-m-d H:i:s') . ' — ' . $b['bonusname'] . ' (-' . (int)$b['points'] . " pts)\n";
     $db->sql_query_prepared(
         "UPDATE users SET bonuscomment = CONCAT(COALESCE(bonuscomment,''), ?) WHERE id = ?",
@@ -126,14 +130,31 @@ function purchase(int $uid, string $field, array $b, bool &$used): void
 {
     global $db;
     // $field валидируется в вызывающем коде через whitelist
+    global $errors;
+    // AND seedbonus >= ?: проверка и списание в одном запросе. Раньше баланс
+    // проверялся в PHP, и два одновременных клика уводили его в минус.
     $db->sql_query_prepared(
-        "UPDATE users SET {$field}, seedbonus = seedbonus - ? WHERE id = ?",
-        [(int)$b['points'], $uid]
+        "UPDATE users SET {$field}, seedbonus = seedbonus - ? WHERE id = ? AND seedbonus >= ?",
+        [(int)$b['points'], $uid, (int)$b['points']]
     );
     if ($db->affected_rows()) {
         logBonus($uid, $b);
         $used = true;
+    } else {
+        $errors[] = 'Not enough points.';
     }
+}
+
+/** Списать очки, если их хватает. true - списано. */
+function spendPoints(int $uid, int $cost): bool
+{
+    global $db;
+    if ($cost < 0) return false;
+    $db->sql_query_prepared(
+        'UPDATE users SET seedbonus = seedbonus - ? WHERE id = ? AND seedbonus >= ?',
+        [$cost, $uid, $cost]
+    );
+    return (int)$db->affected_rows() === 1;
 }
 
 // ── Обработчики покупок ───────────────────────────────────
@@ -141,13 +162,15 @@ function purchase(int $uid, string $field, array $b, bool &$used): void
 function handleTitle(int $uid, array $b, bool &$used): void
 {
     global $db, $errors;
-    $title = trim($_POST['title'] ?? '');
-    if (strlen($title) < 2) { $errors[] = 'Title too short!'; return; }
+    $title = trim((string)($_POST['title'] ?? ''));
+    if (mb_strlen($title) < 2)  { $errors[] = 'Title too short!'; return; }
+    if (mb_strlen($title) > 50) { $errors[] = 'Title is too long (max 50 characters).'; return; }
     $db->sql_query_prepared(
-        'UPDATE users SET usertitle = ?, seedbonus = seedbonus - ? WHERE id = ?',
-        [htmlspecialchars_uni($title), (int)$b['points'], $uid]
+        'UPDATE users SET usertitle = ?, seedbonus = seedbonus - ? WHERE id = ? AND seedbonus >= ?',
+        [htmlspecialchars_uni($title), (int)$b['points'], $uid, (int)$b['points']]
     );
     if ($db->affected_rows()) { logBonus($uid, $b); $used = true; }
+    else { $errors[] = 'Not enough points.'; }
 }
 
 function handleGift(int $uid, array $b, bool &$used): void
@@ -157,21 +180,31 @@ function handleGift(int $uid, array $b, bool &$used): void
     $gift = (int)($_POST['gift'] ?? 0);
     $to   = trim($_POST['username'] ?? '');
 
-    if ($gift < 1)                        { $errors[] = 'Invalid gift amount!';    return; }
-    if ($to === $CURUSER['username'])      { $errors[] = 'Cannot gift to yourself!'; return; }
+    if ($gift < 1) { $errors[] = 'Invalid gift amount!'; return; }
 
-    $res    = $db->sql_query_prepared('SELECT id, seedbonus, username FROM users WHERE username = ?', [$to]);
+    $res    = $db->sql_query_prepared("SELECT id, seedbonus, username FROM users WHERE username = ? AND enabled = 'yes'", [$to]);
     $target = $db->fetch_array($res);
-    if (!$target) { $errors[] = 'User not found!'; return; }
+    if (!$target)                          { $errors[] = 'User not found!';          return; }
+    // По ID, а не по нику: сравнение ников зависело от регистра
+    if ((int)$target['id'] === $uid)       { $errors[] = 'Cannot gift to yourself!'; return; }
 
     $total = (int)$b['points'] + $gift;
     if ($points < $total) { $errors[] = "Not enough points! Need {$total}, have {$points}"; return; }
 
+    // Сначала списание (с проверкой баланса), и только потом начисление.
+    // Раньше было наоборот: получатель получал очки, даже если списать
+    // у отправителя не удалось, - очки появлялись из воздуха.
+    if (!spendPoints($uid, $total)) { $errors[] = 'Not enough points.'; return; }
     $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus + ? WHERE id = ?', [$gift, (int)$target['id']]);
-    $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?', [$total, $uid]);
 
-    if ($db->affected_rows()) {
-        logBonus($uid, $b);
+    {
+        // Sender: fee + gift in one row (logBonus would log only the fee)
+        bonus_log($uid, -$total, 'gift', "Gift to {$target['username']}: " . number_format($gift) . ' + fee ' . number_format((int)$b['points']), (int)$target['id']);
+        bonus_log((int)$target['id'], $gift, 'gift', "Gift from {$CURUSER['username']}", $uid, $uid);
+        $db->sql_query_prepared(
+            "UPDATE users SET bonuscomment = CONCAT(COALESCE(bonuscomment,''), ?) WHERE id = ?",
+            [date('Y-m-d H:i:s') . ' — ' . $b['bonusname'] . " (-{$total} pts)\n", $uid]
+        );
         $used = true;
 
         $db->sql_query_prepared(
@@ -207,12 +240,16 @@ function handleRatioFix(int $uid, array $b, bool &$used): void
     $snatch = $db->fetch_array($res);
     if (!$snatch) { $errors[] = 'Torrent not found!'; return; }
 
+    // Сначала списание - раньше рейтинг исправлялся, даже если очков не хватило
+    if (!spendPoints($uid, (int)$b['points'])) { $errors[] = 'Not enough points.'; return; }
     $db->sql_query_prepared(
-        "UPDATE snatched SET uploaded = downloaded, seedtime = GREATEST(seedtime, 86400) WHERE torrentid = ? AND userid = ?",
+        // GREATEST: если на раздаче уже отдано больше, чем скачано, "исправление"
+        // раньше УМЕНЬШАЛО отданное до скачанного - пользователь платил за убыток
+        "UPDATE snatched SET uploaded = GREATEST(uploaded, downloaded), seedtime = GREATEST(seedtime, 86400) WHERE torrentid = ? AND userid = ?",
         [(int)$tid, (int)$uid]
     );
-    $db->sql_query_prepared('UPDATE users SET seedbonus = seedbonus - ? WHERE id = ?', [(int)$b['points'], $uid]);
-    if ($db->affected_rows()) { logBonus($uid, $b); $used = true; }
+    logBonus($uid, $b);
+    $used = true;
 }
 
 // ── Покупка VIP (временный статус, с автовозвратом через cron_vip_expire.php) ──
@@ -223,21 +260,22 @@ function handleVip(int $uid, array $b, bool &$used): void
     $vip_until = TIMENOW + 28 * 86400;
     $old_gid   = (int)$CURUSER['usergroup'];
 
+    global $errors;
+
+    // Сначала списание вместе со сменой группы; раньше VIP записывался в
+    // auto_vip до списания и оставался, если очков не хватило.
+    $db->sql_query_prepared(
+        'UPDATE users SET usergroup = ?, seedbonus = seedbonus - ? WHERE id = ? AND seedbonus >= ?',
+        [UC_VIP, (int)$b['points'], $uid, (int)$b['points']]
+    );
+    if (!$db->affected_rows()) { $errors[] = 'Not enough points.'; return; }
+
     $db->sql_query_prepared(
         'REPLACE INTO auto_vip (userid, vip_until, old_gid) VALUES (?, ?, ?)',
         [$uid, $vip_until, $old_gid]
     );
-
-    if ($db->affected_rows()) {
-        $db->sql_query_prepared(
-            'UPDATE users SET usergroup = ?, seedbonus = seedbonus - ? WHERE id = ?',
-            [UC_VIP, (int)$b['points'], $uid]
-        );
-        if ($db->affected_rows()) {
-            logBonus($uid, $b);
-            $used = true;
-        }
-    }
+    logBonus($uid, $b);
+    $used = true;
 }
 
 // ── Формы ─────────────────────────────────────────────────
@@ -319,6 +357,12 @@ HTML);
 // ── Обработка POST ────────────────────────────────────────
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Формы передавали my_post_key, но он нигде не проверялся: чужой сайт мог
+    // отправить от имени пользователя, например, подарок очков на свой ник.
+    if (!verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+        stderr($lang->global['error'] ?? 'Error', 'Security token expired. Reload the page and try again.');
+    }
+
     $id    = (int)($_POST['id'] ?? 0);
     $res   = $db->sql_query_prepared('SELECT * FROM bonus WHERE id = ?', [$id]);
     $bonus = $db->fetch_array($res);
@@ -361,6 +405,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif (($CURUSER['timeswarned'] ?? 0) > 0) {
                     $menge = (int)$bonus['menge'];
                     purchase($userid, "timeswarned = IF(timeswarned >= {$menge}, timeswarned - {$menge}, 0)", $bonus, $used);
+                } else {
+                    // Раньше в этом случае страница просто перезагружалась без объяснений
+                    $errors[] = 'You have no warnings to remove.';
                 }
                 break;
             case 'ratiofix':
@@ -415,15 +462,18 @@ function getUserStats(int $uid, array $cfg): array
     $promoFree   = (float)($cfg['promo_free']   ?? 0.7);
     $promoSilver = (float)($cfg['promo_silver'] ?? 0.5);
     $promoDouble = (float)($cfg['promo_double'] ?? 0.5);
-    $cronHours   = (int)($cfg['cron_interval'] ?? 15) / 60;
+    $rare1       = (float)($cfg['rare_1']       ?? 1.0);
+    $rare3       = (float)($cfg['rare_3']       ?? 1.0);
+    $rare5       = (float)($cfg['rare_5']       ?? 1.0);
+    $loyal30     = (float)($cfg['loyal_30']     ?? 1.0);
+    $loyal90     = (float)($cfg['loyal_90']     ?? 1.0);
+    $loyal180    = (float)($cfg['loyal_180']    ?? 1.0);
+    $cronHours   = max(1, (int)($cfg['cron_interval'] ?? 15)) / 60;
 
     $sql = "
         SELECT
             COUNT(DISTINCT p.torrent) AS torrents_count,
-            AVG(GREATEST(0.25, LEAST(
-                (UNIX_TIMESTAMP() - GREATEST(p.last_action, UNIX_TIMESTAMP() - 2700)) / 3600,
-                {$cronHours}
-            ))) AS avg_hours_seeded,
+            {$cronHours} AS avg_hours_seeded,
             SUM(
                 CASE WHEN t.leechers = 0 THEN {$leechNone}
                      WHEN t.leechers <= 2 THEN {$leechFew}
@@ -435,6 +485,13 @@ function getUserStats(int $uid, array $cfg): array
                      ELSE {$sizeHuge} END *
                 CASE WHEN t.seeders > 100 THEN {$seedersMany}
                      WHEN t.seeders > 50  THEN {$seedersMed}
+                     WHEN t.seeders <= 1  THEN {$rare1}
+                     WHEN t.seeders <= 3  THEN {$rare3}
+                     WHEN t.seeders <= 5  THEN {$rare5}
+                     ELSE 1.0 END *
+                CASE WHEN COALESCE(st.seedtime, 0) >= 15552000 THEN {$loyal180}
+                     WHEN COALESCE(st.seedtime, 0) >= 7776000  THEN {$loyal90}
+                     WHEN COALESCE(st.seedtime, 0) >= 2592000  THEN {$loyal30}
                      ELSE 1.0 END *
                 CASE WHEN (UNIX_TIMESTAMP() - t.added) > 15552000 THEN {$ageOld}
                      WHEN (UNIX_TIMESTAMP() - t.added) > 5184000  THEN {$ageMed}
@@ -445,6 +502,10 @@ function getUserStats(int $uid, array $cfg): array
             ) AS raw_bonus_sum
         FROM peers p
         INNER JOIN torrents t ON t.id = p.torrent
+        LEFT JOIN LATERAL (
+            SELECT MAX(s.seedtime) AS seedtime FROM snatched s
+            WHERE s.userid = p.userid AND s.torrentid = p.torrent
+        ) st ON TRUE
         WHERE p.seeder     = 'yes'
           AND p.userid     = ?
           AND t.visible    = 'yes'
@@ -483,9 +544,11 @@ function calcUserBonus(array $stats, array $cfg): array
     }
 
     $perRun     = round($hourlyCap * $avgHours, 1);
-    $realHourly = round($perRun * 4, 1);
+    // Было "* 4": верно только при кроне раз в 15 минут
+    $realHourly = round($perRun / max(1e-9, $CRON_INTERVAL_HOURS), 1);
     $daily      = round($realHourly * 24);
-    $capPct     = min(($hourlyTh / $HOUR_CAP) * 100, 100);
+    // hour_cap = 0 (бонус выключен лимитом) раньше ронял страницу делением на ноль
+    $capPct     = $HOUR_CAP > 0 ? min(($hourlyTh / $HOUR_CAP) * 100, 100) : 100;
 
     return compact('torrents','avgHours','rawBonus','capMul','hourlyTh',
                    'hourlyCap','perRun','realHourly','daily','capPct') + [
@@ -652,6 +715,7 @@ $examplePerCron = round($exampleHourly * ($cronMin / 60), 1);
 stdhead("My Bonuses — {$points} points");
 ?>
 <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/mybonus.css" type="text/css" media="screen" />
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/bonuslog.css?ver=1111">
 
 <div class="container py-5">
 
@@ -666,7 +730,26 @@ stdhead("My Bonuses — {$points} points");
             Cap: <?= $HOUR_CAP ?>/h &bull;
             Multiplier type: <?= htmlspecialchars($TORRENT_MUL_TYPE) ?>
         </p>
+        <a class="bl-btn" href="<?= $BASEURL ?>/bonuslog.php"><i class="fa-solid fa-clock-rotate-left"></i>Bonus history</a>
     </div>
+
+    <?php $recent = bonus_log_fetch((int)$CURUSER['id'], null, 5); if ($recent): ?>
+    <!-- Recent activity (bonus log) -->
+    <div class="bl-card bl-recent">
+        <div class="bl-recent__head">
+            <h4><i class="fa-solid fa-clock-rotate-left me-2"></i>Recent activity</h4>
+            <a href="<?= $BASEURL ?>/bonuslog.php">View all</a>
+        </div>
+        <?php foreach ($recent as $r): $a = (float)$r['amount']; [, $icon] = BONUS_LOG_TYPES[$r['type']] ?? BONUS_LOG_TYPES['other']; ?>
+        <div class="bl-recent__row">
+            <span class="bl-sub"><?= date('d.m H:i', (int)$r['added']) ?></span>
+            <i class="fa-solid <?= $icon ?> bl-sub"></i>
+            <span class="bl-reason"><?= htmlspecialchars((string)$r['reason'], ENT_QUOTES, 'UTF-8') ?></span>
+            <strong class="<?= $a >= 0 ? 'bl-plus' : 'bl-minus' ?>"><?= htmlspecialchars(bonus_log_amount($a), ENT_QUOTES, 'UTF-8') ?></strong>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
 
     <!-- Секция расчёта -->
     <div class="row mb-5">
@@ -917,6 +1000,19 @@ stdhead("My Bonuses — {$points} points");
                                 ['> 180 days',  '×' . ($cfg['age_old']    ?? 1.5), 'danger', true],
                             ]],
                         ];
+                        // Редкость и верность - показываем, только если включены (не 1.0)
+                        $rareOn  = max((float)($cfg['rare_1'] ?? 1), (float)($cfg['rare_3'] ?? 1), (float)($cfg['rare_5'] ?? 1)) > 1.0;
+                        $loyalOn = max((float)($cfg['loyal_30'] ?? 1), (float)($cfg['loyal_90'] ?? 1), (float)($cfg['loyal_180'] ?? 1)) > 1.0;
+                        if ($rareOn) $multiplierGroups[] = ['primary', 'Rarity (seeders incl. you)', [
+                                ['Only you',    '×' . ($cfg['rare_1'] ?? 1.0), 'danger', true],
+                                ['2-3 seeders', '×' . ($cfg['rare_3'] ?? 1.0), 'warning'],
+                                ['4-5 seeders', '×' . ($cfg['rare_5'] ?? 1.0), 'success'],
+                            ]];
+                        if ($loyalOn) $multiplierGroups[] = ['success', 'Loyalty (your seed time)', [
+                                ['30+ days',  '×' . ($cfg['loyal_30']  ?? 1.0), 'success'],
+                                ['90+ days',  '×' . ($cfg['loyal_90']  ?? 1.0), 'warning'],
+                                ['180+ days', '×' . ($cfg['loyal_180'] ?? 1.0), 'danger', true],
+                            ]];
                         foreach ($multiplierGroups as [$color, $label, $rows]):
                         ?>
                         <div class="col-sm-6">
@@ -1078,6 +1174,12 @@ stdhead("My Bonuses — {$points} points");
                                                 ', Double +' . ($cfg['promo_double'] ?? 0.5)],
                                             ['fa-bell text-info',        'Send announce every ' . $announceMin . ' min', ''],
                                         ];
+                                        if ((float)($cfg['rare_1'] ?? 1) > 1.0) {
+                                            $tips[] = ['fa-gem text-primary', 'Keep rare torrents alive', '×' . $cfg['rare_1'] . ' when you are the only seeder'];
+                                        }
+                                        if ((float)($cfg['loyal_180'] ?? 1) > 1.0) {
+                                            $tips[] = ['fa-heart text-danger', 'Keep seeding what you have', 'up to ×' . $cfg['loyal_180'] . ' after 180 days on one torrent'];
+                                        }
                                         foreach ($tips as [$ic, $text, $note]):
                                         ?>
                                         <li class="mb-1">

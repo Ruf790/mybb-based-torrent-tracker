@@ -6,7 +6,7 @@ declare(strict_types=1);
 
 
 
-function update_users_comment_count_before_delete(int $torrent_id): void
+function update_users_comment_count_before_delete(int $torrent_id, string $torrent_name = ''): void
 {
     global $db, $kpscomment;
 
@@ -28,7 +28,12 @@ function update_users_comment_count_before_delete(int $torrent_id): void
             [$cnt, $uid]
         );
 		
-		kps('-', $kpscomment * $cnt, $uid);
+		// Bonus back for the comments, one bonus log row per author
+		kps('-', $kpscomment * $cnt, $uid,
+			'Comments removed with deleted torrent '
+			. ($torrent_name !== '' ? mb_strimwidth($torrent_name, 0, 100, '…') . ' ' : '')
+			. '(#' . $torrent_id . ', ' . $cnt . ' comment' . ($cnt > 1 ? 's' : '') . ')',
+			$torrent_id);
 		
     }
 }
@@ -39,7 +44,7 @@ function update_users_comment_count_before_delete(int $torrent_id): void
  */
 function deletetorrent(int $id, bool $permission = false): void
 {
-    global $torrent_dir, $usergroups, $db, $cache;
+    global $torrent_dir, $usergroups, $db, $cache, $kpsupload, $CURUSER;
     
     if ((!$permission && !is_mod($usergroups)) || !is_valid_id($id)) {
         print_no_permission(true);
@@ -47,6 +52,11 @@ function deletetorrent(int $id, bool $permission = false): void
     }
 
     $id = (int)$id;
+
+    // Name and uploader for the bonus log, read before anything is deleted
+    $nameRow      = $db->fetch_array($db->sql_query_prepared("SELECT name, owner FROM torrents WHERE id = ?", [$id]));
+    $torrent_name = (string)($nameRow['name'] ?? '');
+    $owner_id     = (int)($nameRow['owner'] ?? 0);
     
     // Delete torrent file
     $torrent_file = TSDIR . '/' . $torrent_dir . '/' . $id . '.torrent';
@@ -56,7 +66,15 @@ function deletetorrent(int $id, bool $permission = false): void
     delete_all_torrent_comment_files($id);
 	
 	
-	update_users_comment_count_before_delete($id);
+	update_users_comment_count_before_delete($id, $torrent_name);
+
+    // Upload bonus back from the uploader (reverse of kps() in upload.php)
+    if ($nameRow && $owner_id > 0 && !empty($kpsupload)) {
+        $by = (int)($CURUSER['id'] ?? 0) === $owner_id ? '' : ' by moderator ' . ($CURUSER['username'] ?? 'System');
+        kps('-', $kpsupload, $owner_id,
+            'Torrent deleted' . $by . ': ' . mb_strimwidth($torrent_name, 0, 120, '…') . ' (#' . $id . ')',
+            $id);
+    }
     
     // Delete associated data from database
     delete_torrent_database_records($id);
@@ -391,6 +409,7 @@ function delete_torrent_database_records(int $id): void
         "cheat_attempts"  => "torrentid",
         "hit_and_run"     => "torrentid",
         "torrent_ratings" => "torrent_id",
+        "claims"          => "torrent_id",   // claims of this torrent
     ];
     
     foreach ($tables as $table => $column) {

@@ -1,521 +1,271 @@
 <?php
+declare(strict_types=1);
 
+/**
+ * Maintenance page (site offline, managesettings.php → Main → Site online = off).
+ *
+ * - 503 Service Unavailable + Retry-After: search engines keep the site indexed,
+ *   and "Check status" can really tell whether the site is back
+ * - the message from the settings (offline_message) is shown, not a fixed text
+ * - live countdown to offline_minutes (end time stamp) or "until switched back on"
+ * - when the time is up the page checks by itself every 20 s and reloads once the site is online
+ * - light / dark theme by the system setting, no motion if the user asked for reduced motion
+ */
 function render_maintenance_page(): void
 {
-    global $SITENAME, $BASEURL, $offline_minutes;
-    
-    $randomId = strtoupper(substr(md5(uniqid('', true)), 0, 8));
-    $siteName = defined('SITENAME') ? SITENAME : 'Our Site';
-    $siteVersion = defined('SITE_VERSION') ? SITE_VERSION : 'v1.0';
-    $startedAt = date('F j, Y \a\t g:i A');
-    $MAINTENANCE_STARTED = $startedAt;
+    global $SITENAME, $BASEURL, $offline_minutes, $offline_message;
 
-    // Определяем оставшееся время
-    $remainingMinutes = 0;
-    $isUnlimited = false;
-    
-    if ($offline_minutes === 'unlimited') {
-        $isUnlimited = true;
-        $remainingText = "until manually restored";
-    } elseif (!empty($offline_minutes) && is_numeric($offline_minutes)) {
-        $remainingMinutes = max(0, ceil(($offline_minutes - time()) / 60));
-        $remainingText = $remainingMinutes > 0 ? "about $remainingMinutes minutes" : "any moment now";
-    } else {
-        $remainingText = "soon";
+    $e        = static fn($s): string => htmlspecialchars((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $siteName = (string)($SITENAME ?? 'Our site');
+    $base     = rtrim((string)($BASEURL ?? ''), '/');
+    $message  = trim((string)($offline_message ?? ''));
+    if ($message === '') {
+        $message = 'We are making some improvements. The site will be back shortly.';
     }
 
-    ob_start();
+    $isUnlimited = ($offline_minutes ?? '') === 'unlimited';
+    $endTs       = (!$isUnlimited && is_numeric($offline_minutes ?? null)) ? (int)$offline_minutes : 0;
+    $left        = $endTs > 0 ? max(0, $endTs - time()) : 0;
+
+    // 503 + Retry-After: correct for maintenance, and lets the JS below detect the end
+    if (!headers_sent()) {
+        http_response_code(503);
+        header('Retry-After: ' . ($left > 0 ? $left : 600));
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        header('Content-Type: text/html; charset=UTF-8');
+    }
+
+    if ($isUnlimited) {
+        $state = ['Until further notice', 'We will be back as soon as the work is done.'];
+    } elseif ($left > 0) {
+        $state = ['Back at ' . date('H:i', $endTs), date('l, j F', $endTs)];
+    } else {
+        $state = ['Almost done', 'The site should be back any moment now.'];
+    }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Maintenance | <?= htmlspecialchars($SITENAME) ?></title>
-    <link href="<?= $BASEURL ?>/include/templates/default/style/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/bootstrap-icons.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Maintenance · <?= $e($siteName) ?></title>
+    <link rel="stylesheet" href="<?= $e($base) ?>/include/templates/default/style/bootstrap-icons.css">
     <style>
         :root {
-            --primary-gradient: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
-            --primary-light: rgba(13, 110, 253, 0.1);
-            --success-gradient: linear-gradient(135deg, #198754 0%, #157347 100%);
+            --bg: #f3f6fb; --card: #ffffff; --text: #1d2433; --muted: #6b7489; --line: #e6eaf2;
+            --accent: #2f6bff; --accent-2: #7c4dff; --soft: rgba(47, 107, 255, .08); --ok: #19a463;
+            --shadow: 0 30px 80px -30px rgba(31, 60, 140, .35);
         }
-        
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0d111a; --card: #151b28; --text: #e7ebf3; --muted: #8e98ad; --line: #232c3d;
+                --soft: rgba(96, 140, 255, .12); --shadow: 0 30px 80px -30px rgba(0, 0, 0, .7);
+            }
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
         body {
-            background-color: #f8f9fa;
-            font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%230d6efd' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+            margin: 0; padding: 24px; display: grid; place-items: center;
+            font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+            color: var(--text); background: var(--bg);
+            background-image:
+                radial-gradient(1200px 600px at 10% -10%, rgba(47, 107, 255, .14), transparent 60%),
+                radial-gradient(900px 500px at 110% 110%, rgba(124, 77, 255, .14), transparent 60%);
         }
-        
-        .maintenance-card {
-            max-width: 700px;
-            width: 100%;
-            border: none;
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 15px 40px rgba(13, 110, 253, 0.15);
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1);
-            border: 1px solid rgba(13, 110, 253, 0.2);
-            animation: float 6s ease-in-out infinite;
+        .card {
+            width: 100%; max-width: 560px; background: var(--card); border: 1px solid var(--line);
+            border-radius: 24px; box-shadow: var(--shadow); overflow: hidden;
+            animation: rise .6s cubic-bezier(.2, .8, .2, 1) both;
         }
-        
-        .maintenance-card:hover {
-            transform: translateY(-8px) scale(1.02);
-            box-shadow: 0 20px 50px rgba(13, 110, 253, 0.25);
+        .top {
+            position: relative; padding: 36px 32px 28px; text-align: center; color: #fff;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
         }
-        
-        .card-header {
-            background: var(--primary-gradient);
-            color: white;
-            padding: 25px;
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            position: relative;
-            overflow: hidden;
+        .top::after {
+            content: ""; position: absolute; inset: 0; pointer-events: none;
+            background: radial-gradient(400px 160px at 50% 0%, rgba(255, 255, 255, .25), transparent 70%);
         }
-        
-        .card-header::after {
-            content: "";
-            position: absolute;
-            top: -50%;
-            right: -50%;
-            width: 100%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
-            transform: rotate(30deg);
+        .badge {
+            position: absolute; top: 16px; right: 16px; display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: .04em;
+            background: rgba(255, 255, 255, .18); backdrop-filter: blur(6px);
         }
-        
-        .card-body {
-            padding: 35px;
-            background: white;
+        .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: #ffd166; animation: blink 1.6s infinite; }
+        .gears { position: relative; width: 84px; height: 84px; margin: 0 auto 14px; }
+        .gears i { position: absolute; line-height: 1; filter: drop-shadow(0 6px 12px rgba(0, 0, 0, .2)); }
+        .gears .g1 { font-size: 58px; left: 0; top: 4px; animation: spin 8s linear infinite; }
+        .gears .g2 { font-size: 34px; right: 0; bottom: 0; animation: spin 6s linear infinite reverse; opacity: .85; }
+        h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
+        .top p { margin: 6px 0 0; opacity: .9; font-size: 15px; }
+
+        .body { padding: 28px 32px 30px; }
+        .msg {
+            display: flex; gap: 12px; padding: 14px 16px; border-radius: 14px;
+            background: var(--soft); line-height: 1.55; font-size: 15px;
         }
-        
-        .maintenance-icon {
-            font-size: 3rem;
-            filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
-            z-index: 1;
-            animation: pulse 2s infinite;
+        .msg i { color: var(--accent); font-size: 18px; margin-top: 1px; }
+
+        .eta { text-align: center; margin: 26px 0 8px; }
+        .eta-label { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+        .clock { display: flex; justify-content: center; gap: 10px; margin: 10px 0 6px; }
+        .unit {
+            min-width: 76px; padding: 12px 8px 10px; border-radius: 14px; border: 1px solid var(--line);
+            background: linear-gradient(180deg, var(--soft), transparent);
         }
-        
-        .btn-maintenance {
-            border: 2px solid #0d6efd;
-            color: #0d6efd;
-            font-weight: 600;
-            padding: 10px 25px;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            text-decoration: none;
-            cursor: pointer;
+        .unit b { display: block; font-size: 32px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+        .unit span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+        .eta-title { font-size: 20px; font-weight: 700; margin-top: 8px; }
+        .eta-sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+
+        .bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 22px 0 4px; }
+        .bar span {
+            display: block; height: 100%; width: 40%; border-radius: 999px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            animation: slide 1.8s ease-in-out infinite;
         }
-        
-        .btn-maintenance:hover {
-            background: var(--primary-gradient);
-            color: white;
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(13, 110, 253, 0.3);
+
+        .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 12px;
+            font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none;
+            border: 1px solid var(--line); background: var(--card); color: var(--text);
+            transition: transform .15s, border-color .15s, background .15s;
         }
-        
-        .progress-container {
-            margin: 25px 0;
-            position: relative;
+        .btn:hover { transform: translateY(-1px); border-color: var(--accent); }
+        .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border: 0; }
+        .btn:disabled { opacity: .7; cursor: progress; transform: none; }
+
+        .status { text-align: center; min-height: 20px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+        .status.ok { color: var(--ok); font-weight: 600; }
+
+        .foot {
+            display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+            padding: 14px 32px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted);
         }
-        
-        .progress-label {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-            color: #495057;
-        }
-        
-        .progress {
-            height: 10px;
-            border-radius: 5px;
-            background-color: #e9ecef;
-            overflow: hidden;
-        }
-        
-        .progress-bar {
-            background: var(--primary-gradient);
-            border-radius: 5px;
-            width: 75%;
-            animation: progress-animation 3s infinite ease-in-out;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .progress-bar::after {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0) 100%);
-            animation: shine 2s infinite;
-        }
-        
-        .countdown {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #0d6efd;
-            background: var(--primary-light);
-            padding: 10px 15px;
-            border-radius: 8px;
-            display: inline-flex;
-            align-items: center;
-            margin: 15px 0;
-        }
-        
-        .task-list {
-            list-style: none;
-            padding: 0;
-            margin: 25px 0;
-        }
-        
-        .task-list li {
-            padding: 12px 15px;
-            margin-bottom: 10px;
-            background: var(--primary-light);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            transition: transform 0.2s ease;
-        }
-        
-        .task-list li:hover {
-            transform: translateX(5px);
-        }
-        
-        .task-list li i {
-            margin-right: 12px;
-            font-size: 1.2rem;
-            color: #0d6efd;
-        }
-        
-        .status-badge {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.2);
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            z-index: 2;
-        }
-        
-        .status-badge.finalizing {
-            background: var(--success-gradient);
-        }
-        
-        .maintenance-footer {
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px solid #dee2e6;
-            font-size: 0.85rem;
-            color: #6c757d;
-            display: flex;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        
-        .unlimited-alert {
-            background: linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%);
-            color: white;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-15px); }
-        }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
-        
-        @keyframes progress-animation {
-            0% { width: 70%; }
-            50% { width: 85%; }
-            100% { width: 70%; }
-        }
-        
-        @keyframes shine {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-        
-        /* Responsive adjustments */
-        @media (max-width: 576px) {
-            .card-header {
-                flex-direction: column;
-                text-align: center;
-                gap: 10px;
-            }
-            
-            .maintenance-icon {
-                font-size: 2.5rem;
-            }
-            
-            .card-body {
-                padding: 25px 20px;
-            }
-            
-            .maintenance-footer {
-                flex-direction: column;
-                text-align: center;
-            }
+        .foot a { color: var(--muted); text-decoration: none; }
+        .foot a:hover { color: var(--accent); }
+
+        @keyframes spin  { to { transform: rotate(360deg); } }
+        @keyframes blink { 50% { opacity: .3; } }
+        @keyframes slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+        @keyframes rise  { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+        @media (max-width: 480px) {
+            .top, .body { padding-left: 20px; padding-right: 20px; }
+            .unit { min-width: 64px; } .unit b { font-size: 26px; }
+            .foot { padding: 14px 20px; }
         }
     </style>
 </head>
 <body>
-    <div class="card maintenance-card">
-        <div class="card-header">
-            <i class="bi bi-tools maintenance-icon"></i>
-            <div>
-                <h1 class="h2 mb-1">System Maintenance</h1>
-                <p class="mb-0 opacity-90"><?= htmlspecialchars($SITENAME) ?> is currently undergoing scheduled maintenance</p>
-            </div>
-            
-            <span class="status-badge <?= (!$isUnlimited && $remainingMinutes <= 0) ? 'finalizing' : '' ?>">
-                <?= match(true) {
-                    $isUnlimited => 'ONGOING',
-                    $remainingMinutes > 0 => 'ONGOING', 
-                    default => 'FINALIZING'
-                } ?>
-            </span>
+<main class="card" role="main">
+    <header class="top">
+        <span class="badge"><span class="dot"></span><span id="m-badge">MAINTENANCE</span></span>
+        <div class="gears" aria-hidden="true">
+            <i class="bi bi-gear-fill g1"></i>
+            <i class="bi bi-gear-wide-connected g2"></i>
         </div>
-        
-        <div class="card-body">
-            <div class="alert alert-primary bg-primary bg-opacity-10 border-primary border-opacity-25 d-flex align-items-center">
-                <i class="bi bi-info-circle-fill me-3 fs-4"></i>
-                <div>
-                    <strong>We're improving your experience!</strong> Our team is performing important updates to serve you better.
+        <h1><?= $e($siteName) ?> is under maintenance</h1>
+        <p>Thanks for your patience, we will be back shortly</p>
+    </header>
+
+    <section class="body">
+        <div class="msg"><i class="bi bi-megaphone-fill"></i><div><?= nl2br($e($message)) ?></div></div>
+
+        <div class="eta" aria-live="polite">
+            <div class="eta-label">Estimated time left</div>
+            <?php if (!$isUnlimited && $left > 0): ?>
+                <div class="clock" id="m-clock">
+                    <div class="unit"><b id="m-h">00</b><span>hours</span></div>
+                    <div class="unit"><b id="m-m">00</b><span>min</span></div>
+                    <div class="unit"><b id="m-s">00</b><span>sec</span></div>
                 </div>
-            </div>
-            
-            <?php if ($isUnlimited): ?>
-            <div class="alert unlimited-alert d-flex align-items-center">
-                <i class="bi bi-infinity me-3 fs-4"></i>
-                <div>
-                    <strong>Extended Maintenance</strong> - Maintenance mode is set to unlimited duration
-                </div>
-            </div>
             <?php endif; ?>
-            
-            <p class="mb-4">We apologize for the inconvenience. The website will be back online as soon as possible with exciting improvements.</p>
-            
-            <div class="progress-container">
-                <div class="progress-label">
-                    <span>Maintenance Progress</span>
-                    <span id="progress-percent">75%</span>
-                </div>
-                <div class="progress">
-                    <div class="progress-bar progress-bar-striped"></div>
-                </div>
-            </div>
-            
-            <div class="text-center my-4">
-                <div class="countdown">
-                    <i class="bi bi-clock-history me-2"></i>
-                    Estimated completion: <span id="countdown"><?= htmlspecialchars($remainingText) ?></span>
-                </div>
-            </div>
-            
-            <h3 class="h5 mb-3">Current Tasks:</h3>
-            <ul class="task-list">
-                <li>
-                    <i class="bi bi-server"></i>
-                    <span>Server infrastructure upgrades</span>
-                </li>
-                <li>
-                    <i class="bi bi-database-check"></i>
-                    <span>Database optimization</span>
-                </li>
-                <li>
-                    <i class="bi bi-shield-lock"></i>
-                    <span>Security enhancements</span>
-                </li>
-                <li>
-                    <i class="bi bi-lightning-charge"></i>
-                    <span>Performance improvements</span>
-                </li>
-            </ul>
-            
-            <div class="d-flex justify-content-center gap-3 mt-4 flex-wrap">
-                <button onclick="location.reload()" class="btn btn-maintenance">
-                    <i class="bi bi-arrow-repeat me-2"></i> Refresh Page
-                </button>
-                <button onclick="checkStatus()" class="btn btn-maintenance">
-                    <i class="bi bi-arrow-clockwise me-2"></i> Check Status
-                </button>
-            </div>
-            
-            <div class="maintenance-footer">
-                <div>
-                    <i class="bi bi-calendar-event me-1"></i>
-                    Maintenance started: <strong><?= $MAINTENANCE_STARTED ?></strong>
-                </div>
-                <div>
-                    <i class="bi bi-patch-check me-1"></i>
-                    Reference: <strong>#<?= $randomId ?></strong>
-                </div>
-            </div>
+            <div class="eta-title" id="m-title"><?= $e($state[0]) ?></div>
+            <div class="eta-sub" id="m-sub"><?= $e($state[1]) ?></div>
         </div>
-    </div>
 
-    <script>
-        // Modern JavaScript with optional chaining and nullish coalescing
-        const maintenanceConfig = {
-            isUnlimited: <?= $isUnlimited ? 'true' : 'false' ?>,
-            remainingMinutes: <?= $remainingMinutes ?>,
-            totalMinutes: <?= $remainingMinutes ?>
-        };
+        <div class="bar" aria-hidden="true"><span></span></div>
 
-        function checkStatus() {
-            const btn = event?.target;
-            const originalText = btn?.innerHTML;
-            
-            if (btn) {
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking...';
-                btn.disabled = true;
+        <div class="actions">
+            <button type="button" class="btn primary" id="m-check"><i class="bi bi-arrow-repeat"></i>Check status</button>
+        </div>
+        <div class="status" id="m-status" role="status"></div>
+    </section>
+
+    <footer class="foot">
+        <span><i class="bi bi-shield-check"></i> <?= $e($siteName) ?></span>
+        <span id="m-auto"><?= (!$isUnlimited && $left === 0) ? 'Checking automatically…' : '' ?></span>
+    </footer>
+</main>
+
+<script>
+(() => {
+    'use strict';
+    const endAt     = <?= $endTs > 0 ? $endTs * 1000 : 0 ?>;   // ms, 0 = unknown / unlimited
+    const unlimited = <?= $isUnlimited ? 'true' : 'false' ?>;
+    const $ = id => document.getElementById(id);
+    const pad = n => String(n).padStart(2, '0');
+
+    // The page answers 503 while maintenance is on; anything else = the site is back
+    const check = async (manual) => {
+        const btn = $('m-check'), status = $('m-status');
+        if (manual) { btn.disabled = true; status.textContent = 'Checking…'; status.className = 'status'; }
+        try {
+            const r = await fetch(location.href, { method: 'HEAD', cache: 'no-store', credentials: 'same-origin' });
+            if (r.status !== 503) {
+                status.textContent = 'The site is back online. Reloading…';
+                status.className = 'status ok';
+                setTimeout(() => location.reload(), 1200);
+                return true;
             }
-            
-            fetch(window.location.href, { 
-                method: 'HEAD',
-                cache: 'no-cache'
-            })
-            .then(response => {
-                if (response.status === 503) {
-                    showNotification('Maintenance is still in progress', 'info');
-                } else if (response.status === 200) {
-                    showNotification('Site is back online! Refreshing...', 'success');
-                    setTimeout(() => location.reload(), 2000);
-                }
-            })
-            .catch(() => {
-                showNotification('Unable to check status', 'warning');
-            })
-            .finally(() => {
-                if (btn) {
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                }
-            });
+            if (manual) status.textContent = 'Maintenance is still in progress.';
+        } catch {
+            if (manual) status.textContent = 'Could not check right now. Try again in a moment.';
+        } finally {
+            if (manual) btn.disabled = false;
         }
+        return false;
+    };
+    $('m-check').addEventListener('click', () => check(true));
 
-        function showNotification(message, type = 'info') {
-            // Simple notification implementation
-            const alert = document.createElement('div');
-            alert.className = `alert alert-${type} position-fixed top-0 start-50 translate-middle-x mt-3`;
-            alert.style.zIndex = '9999';
-            alert.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-${getIcon(type)} me-2"></i>
-                    ${message}
-                </div>
-            `;
-            document.body.appendChild(alert);
-            
-            setTimeout(() => {
-                alert.remove();
-            }, 3000);
-        }
+    let polling = null;
+    const startPolling = () => {
+        if (polling) return;
+        $('m-auto').textContent = 'Checking automatically…';
+        polling = setInterval(() => check(false), 20000);
+    };
 
-        function getIcon(type) {
-            const icons = {
-                info: 'info-circle',
-                success: 'check-circle',
-                warning: 'exclamation-triangle',
-                error: 'x-circle'
-            };
-            return icons[type] ?? 'info-circle';
-        }
-
-        // Countdown functionality for limited maintenance
-        <?php if (!$isUnlimited && $remainingMinutes > 0): ?>
-        let minutes = <?= $remainingMinutes ?>;
-        const countdownElement = document.getElementById("countdown");
-        const progressPercent = document.getElementById("progress-percent");
-        const progressBar = document.querySelector(".progress-bar");
-        const statusBadge = document.querySelector(".status-badge");
-
-        const updateCountdown = () => {
-            if (minutes > 0) {
-                minutes = Math.max(0, minutes - 1);
-                
-                // Update progress
-                const progress = 75 + Math.floor((25 * (maintenanceConfig.totalMinutes - minutes)) / maintenanceConfig.totalMinutes);
-                progressPercent.textContent = `${progress}%`;
-                progressBar.style.width = `${progress}%`;
-                
-                // Update countdown text
-                let countdownText;
-                if (minutes > 120) {
-                    countdownText = `about ${Math.ceil(minutes/60)} hours`;
-                } else if (minutes > 45) {
-                    countdownText = `about ${Math.ceil(minutes/60)} hour`;
-                } else if (minutes > 1) {
-                    countdownText = `about ${minutes} minutes`;
-                } else if (minutes === 1) {
-                    countdownText = "less than a minute";
-                } else {
-                    countdownText = "any moment now";
-                    statusBadge.textContent = "FINALIZING";
-                    statusBadge.classList.add("finalizing");
-                }
-                
-                countdownElement.textContent = countdownText;
+    if (endAt > 0) {
+        const tick = () => {
+            const left = Math.max(0, Math.round((endAt - Date.now()) / 1000));
+            if ($('m-h')) {
+                $('m-h').textContent = pad(Math.floor(left / 3600));
+                $('m-m').textContent = pad(Math.floor(left % 3600 / 60));
+                $('m-s').textContent = pad(left % 60);
+            }
+            if (left === 0) {
+                clearInterval(timer);
+                $('m-clock')?.remove();
+                $('m-title').textContent = 'Almost done';
+                $('m-sub').textContent = 'The site should be back any moment now.';
+                $('m-badge').textContent = 'FINISHING';
+                startPolling();
+                check(false);
             }
         };
-
-        updateCountdown();
-        const countdownInterval = setInterval(updateCountdown, 60000);
-        <?php endif; ?>
-
-        // Enhanced animations
-        const card = document.querySelector(".maintenance-card");
-        let animationId;
-
-        const animateCard = (timestamp) => {
-            if (!window.startTime) window.startTime = timestamp;
-            const progress = (timestamp - window.startTime) / 6000;
-            const floatDistance = Math.sin(progress * Math.PI * 2) * 15;
-            card.style.transform = `translateY(${floatDistance}px)`;
-            animationId = requestAnimationFrame(animateCard);
-        };
-
-        animationId = requestAnimationFrame(animateCard);
-
-        // Enhanced progress bar animation
-        const enhanceProgressBar = () => {
-            progressBar?.style.setProperty('animation', 'none');
-            void progressBar?.offsetWidth;
-            progressBar?.style.setProperty('animation', 'progress-animation 3s infinite ease-in-out, shine 2s infinite');
-        };
-
-        setInterval(enhanceProgressBar, 3000);
-
-        // Cleanup animation on page unload
-        window.addEventListener('beforeunload', () => {
-            cancelAnimationFrame(animationId);
-        });
-    </script>
+        const timer = setInterval(tick, 1000);
+        tick();
+    } else if (!unlimited) {
+        startPolling();
+    } else {
+        // Unlimited: check now and then, quietly
+        setInterval(() => check(false), 60000);
+    }
+})();
+</script>
 </body>
 </html>
 <?php
-    echo ob_get_clean();
 }

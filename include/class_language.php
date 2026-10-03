@@ -97,6 +97,8 @@ class trackerlanguage
     public $viewsnatches;
     public $watch_list;
     public $xmlhttp;
+	public $claim;
+	public $exams;
 	
 
     function set_path($path)

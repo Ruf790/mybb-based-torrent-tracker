@@ -2166,6 +2166,10 @@ function generate_post_check(int $rotation_shift = 0): string
 {
     global $session, $CURUSER, $encryption_key;
 
+    if (!is_string($encryption_key) || strlen($encryption_key) < 32) {
+        throw new RuntimeException('encryption_key is missing or too short (settings.php)');
+    }
+
     $rotation_interval = 6 * 3600;
     $rotation = (int) floor(TIMENOW / $rotation_interval) + $rotation_shift;
 
@@ -2191,7 +2195,9 @@ function verify_post_check(string $code, bool $silent = false): bool
     }
 
     if (defined('IN_ADMINCP')) {
-        return false;
+        http_response_code(403);
+        exit('<div class="alert alert-danger m-3"><strong>Error!</strong> '
+            . 'Authorization code mismatch. Please go back, reload the page and try again.</div>');
     }
 
     stderr('Authorization code mismatch. Are you accessing this function correctly? Please go back and try again');
@@ -2888,7 +2894,7 @@ function write_log(string $Text, string $category = '', int $level = 0): void
 
 
 
-function kps(string $Type = '+', float|string|int $Points = 1.0, int|string $ID = 0): void
+function kps(string $Type = '+', float|string|int $Points = 1.0, int|string $ID = 0, string $Reason = '', int $RefId = 0): void
 {
     global $bonus, $db;
 
@@ -2902,9 +2908,17 @@ function kps(string $Type = '+', float|string|int $Points = 1.0, int|string $ID 
             "UPDATE users SET seedbonus = seedbonus {$operator} ? WHERE id = ?",
             [$Points, $ID]
         );
+
+        // Bonus log (after the UPDATE: the balance is read from users)
+        if ($Points != 0.0 && $ID > 0 && (int)$db->affected_rows() === 1) {
+            if (!function_exists('bonus_log')) {
+                require_once INC_PATH . '/functions_bonuslog.php';
+            }
+            bonus_log($ID, $operator === '-' ? -$Points : $Points, 'kps',
+                $Reason !== '' ? $Reason : 'Activity bonus', $RefId > 0 ? $RefId : null);
+        }
     }
 }
-
 
 
 

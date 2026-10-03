@@ -130,7 +130,7 @@ function GlobalErrorHandler(int $errno, string $errstr, string $errfile, int $er
     $logDir = "{$root}/error_logs";
     
     if (!is_dir($logDir)) {
-        mkdir($logDir, 0777, true);
+        @mkdir($logDir, 0750, true);
     }
 
     $logFile = "{$logDir}/{$script}.log";
@@ -205,11 +205,38 @@ function FatalErrorHandler(): void
     // не раскрывая гостю сам файл/строку/сообщение.
     $errorId = strtoupper(substr(md5($errfile . $errline . $errstr), 0, 8));
 
+    // Фатальные ошибки раньше не записывались в error_logs - Error ID на
+    // странице было не по чему искать. Пишем с тем же ID, что видит гость.
+    try {
+        $root   = rtrim(dirname(__DIR__), '/\\');
+        $logDir = "{$root}/error_logs";
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0750, true);
+        }
+        $clean = static fn(string $v): string => str_replace(["\r", "\n"], ' ', $v);
+        $entry = "\n------------------------------------------\n"
+            . date('d-m-Y H:i:s') . " ERR-{$errorId}\n"
+            . "[{$errno}] " . $errstr . "\n"
+            . "File: {$errfile} line {$errline}\n"
+            . 'URI: ' . $clean((string)($_SERVER['REQUEST_URI'] ?? '-')) . "\n"
+            . 'IP: ' . $clean((string)($_SERVER['REMOTE_ADDR'] ?? '-')) . "\n"
+            . 'UA: ' . $clean((string)($_SERVER['HTTP_USER_AGENT'] ?? '-')) . "\n"
+            . "PHP: {$phpVersion}\n"
+            . "------------------------------------------\n";
+        @file_put_contents("{$logDir}/fatal.log", $entry, FILE_APPEND | LOCK_EX);
+    } catch (\Throwable) {
+        // Обработчик фатальных ошибок сам падать не должен
+    }
+
     $isStaff = is_staff_error_viewer();
+
+    // Текст ошибки может содержать пользовательский ввод (ключи массивов,
+    // сообщения исключений) - без экранирования это XSS против staff.
+    $e = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
     if ($isStaff) {
         // Стафф видит полную картину — как и раньше.
-        $errorMessage = "File: <strong>{$errfile}</strong><br>Line: <strong>{$errline}</strong><br>Message: <strong>{$errstr}</strong><br><small class='text-muted'>{$handlerInfo}</small>";
+        $errorMessage = "File: <strong>{$e($errfile)}</strong><br>Line: <strong>{$errline}</strong><br>Message: <strong>{$e($errstr)}</strong><br><small class='text-muted'>{$e($handlerInfo)}</small>";
         $alertHeading = 'System Error Detected';
     } else {
         // Гость видит только факт ошибки и ID для поддержки — без путей,
@@ -219,9 +246,13 @@ function FatalErrorHandler(): void
         $handlerInfo = '';
     }
 
+    // Версию PHP показываем только staff - гостю это лишняя подсказка
+    $phpInfoBlock = $isStaff ? " • PHP: <strong>{$phpVersion}</strong>" : '';
+    $BASEURL = $e((string)$BASEURL);
+
     // Modern HTML with heredoc and variables
     $handlerInfoBlock = $handlerInfo !== ''
-        ? "<div class=\"handler-info mt-3\"><i class=\"bi bi-gear me-1\"></i>Current Error Handler: <code>{$handlerInfo}</code></div>"
+        ? "<div class=\"handler-info mt-3\"><i class=\"bi bi-gear me-1\"></i>Current Error Handler: <code>{$e($handlerInfo)}</code></div>"
         : '';
 
     echo <<<HTML
@@ -312,8 +343,7 @@ function FatalErrorHandler(): void
                 <div class="mt-4 text-center">
                     <small class="text-muted">
                         <i class="bi bi-info-circle me-1"></i>
-                        Error ID: <code>ERR-{$errorId}</code> • 
-                        PHP: <strong>{$phpVersion}</strong> • 
+                        Error ID: <code>ERR-{$errorId}</code>{$phpInfoBlock} • 
                         <span id="timestamp"></span>
                     </small>
                 </div>

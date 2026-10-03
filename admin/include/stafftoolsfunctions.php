@@ -90,7 +90,7 @@ function menu($selected = '') {
                     </li>
                     
                     <li class="menu-item">
-                        <a class="menu-link stat-card ' . ($selected == 'settings' ? 'active' : '') . '" href="settings.php">
+                        <a class="menu-link stat-card ' . ($selected == 'settings' ? 'active' : '') . '" href="managesettings.php">
                             <div class="menu-icon">
                                 <i class="fas fa-cogs blue-icon"></i>
                             </div>

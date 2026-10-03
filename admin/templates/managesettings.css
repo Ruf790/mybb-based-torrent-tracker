@@ -1,0 +1,603 @@
+/* ==========================================================================
+   Settings Panel — admin/templates/settings.css
+   Всё под .ag-settings, глобальные .btn/.card/.form-control не трогаем.
+   Цвета только через CSS-переменные Bootstrap 5.3 → тёмная тема работает сама.
+   ========================================================================== */
+
+.ag-settings {
+    --ag-radius: 16px;
+    --ag-radius-sm: 11px;
+    --ag-gap: 1.25rem;
+    --tone: var(--bs-primary);
+    font-size: 1.055rem;
+    color: var(--bs-body-color);
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem 0 2.5rem;
+}
+
+/* ── Тона: один механизм для иконок, плашек, вкладок ───────────────────── */
+.ag-settings .t-blue   { --tone: var(--bs-blue); }
+.ag-settings .t-indigo { --tone: var(--bs-indigo); }
+.ag-settings .t-purple { --tone: var(--bs-purple); }
+.ag-settings .t-pink   { --tone: var(--bs-pink); }
+.ag-settings .t-red    { --tone: var(--bs-red); }
+.ag-settings .t-orange { --tone: var(--bs-orange); }
+.ag-settings .t-yellow { --tone: var(--bs-yellow); }
+.ag-settings .t-green  { --tone: var(--bs-green); }
+.ag-settings .t-teal   { --tone: var(--bs-teal); }
+.ag-settings .t-cyan   { --tone: var(--bs-cyan); }
+
+/* Производные цвета пересчитываются на каждом элементе с тоном.
+   Смешивание с body-color делает жёлтый читаемым на светлой теме
+   и светлее на тёмной. */
+.ag-settings,
+.ag-settings :is(.t-blue, .t-indigo, .t-purple, .t-pink, .t-red, .t-orange, .t-yellow, .t-green, .t-teal, .t-cyan) {
+    --tone-fg:   color-mix(in srgb, var(--tone) 72%, var(--bs-body-color));
+    --tone-soft: color-mix(in srgb, var(--tone) 14%, transparent);
+    --tone-wash: color-mix(in srgb, var(--tone) 6%, var(--bs-body-bg));
+    --tone-line: color-mix(in srgb, var(--tone) 32%, transparent);
+}
+
+/* ── Иконка в мягком квадрате ──────────────────────────────────────────── */
+.ag-settings .ag-sq {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 13px;
+    background: var(--tone-soft);
+    color: var(--tone-fg);
+    font-size: 1.25rem;
+}
+.ag-settings .ag-sq-lg { width: 56px; height: 56px; border-radius: 15px; font-size: 1.45rem; }
+
+.ag-settings .ag-pill { border-radius: 50rem; padding-inline: 1.15rem; }
+.ag-settings .ag-muted { color: var(--bs-secondary-color); font-size: .85em; }
+.ag-settings .ag-muted i { margin-right: .3rem; }
+.ag-settings code { font-size: .88em; }
+
+/* ── Шапка ─────────────────────────────────────────────────────────────── */
+.ag-settings .ag-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem 1.1rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: var(--ag-gap);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--ag-radius);
+}
+.ag-settings .ag-head h1 {
+    margin: 0;
+    font-size: 1.55rem;
+    font-weight: 600;
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+}
+.ag-settings .ag-ver {
+    font-size: .5em;
+    font-weight: 600;
+    padding: .25rem .6rem;
+    border-radius: 50rem;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-variant-numeric: tabular-nums;
+}
+.ag-settings .ag-head p { margin: .2rem 0 0; color: var(--bs-secondary-color); font-size: .9em; }
+.ag-settings .ag-head p i { margin-right: .35rem; opacity: .75; }
+.ag-settings .ag-head-actions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+
+.ag-settings .ag-status {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .4rem .9rem;
+    border-radius: 50rem;
+    background: var(--tone-soft);
+    color: var(--tone-fg);
+    font-size: .88em;
+    font-weight: 600;
+}
+.ag-settings .ag-status .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--tone);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 25%, transparent);
+}
+.ag-settings .ag-status.is-offline .dot { animation: ag-ping 1.6s ease-out infinite; }
+@keyframes ag-ping {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tone) 55%, transparent); }
+    100% { box-shadow: 0 0 0 9px transparent; }
+}
+
+/* ── KPI ───────────────────────────────────────────────────────────────── */
+.ag-settings .ag-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: var(--ag-gap);
+}
+.ag-settings .ag-kpi {
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+    padding: 1.1rem 1.25rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--ag-radius);
+}
+.ag-settings .ag-kpi-top { display: flex; align-items: center; gap: .75rem; }
+.ag-settings .ag-kpi .ag-sq { width: 40px; height: 40px; border-radius: 11px; font-size: 1.05rem; }
+.ag-settings .ag-kpi-label { color: var(--bs-secondary-color); font-size: .9em; font-weight: 500; }
+.ag-settings .ag-kpi-live {
+    margin-left: auto;
+    font-size: .76em;
+    font-weight: 600;
+    color: var(--bs-success-text-emphasis);
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+}
+.ag-settings .ag-kpi-live i { font-size: .55em; color: var(--bs-success); }
+.ag-settings .ag-kpi-value {
+    font-size: 1.85rem;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
+}
+.ag-settings .ag-kpi-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem 1rem;
+    font-size: .82em;
+    color: var(--bs-secondary-color);
+}
+.ag-settings .ag-kpi-meta i { margin-right: .35rem; color: var(--tone-fg); }
+
+/* Полоса сиды/личеры */
+.ag-settings .ag-split {
+    display: flex;
+    height: 6px;
+    border-radius: 50rem;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--bs-red) 55%, transparent);
+}
+.ag-settings .ag-split span { background: var(--bs-green); border-radius: 50rem 0 0 50rem; }
+
+/* ── Предупреждения ────────────────────────────────────────────────────── */
+.ag-settings .ag-alerts { display: grid; gap: .6rem; margin-bottom: var(--ag-gap); }
+.ag-settings .ag-alert {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    padding: .8rem 1.1rem;
+    border-radius: var(--ag-radius-sm);
+    background: var(--tone-wash);
+    border: 1px solid var(--tone-line);
+}
+.ag-settings .ag-alert .ag-sq { width: 38px; height: 38px; border-radius: 10px; font-size: 1rem; }
+.ag-settings .ag-alert-body { flex: 1; min-width: 0; }
+.ag-settings .ag-alert-title { font-weight: 600; }
+.ag-settings .ag-alert-msg { font-size: .88em; color: var(--bs-secondary-color); }
+.ag-settings .ag-alert-action { font-size: .88em; white-space: nowrap; color: var(--tone-fg); }
+.ag-settings .ag-alert-action a { color: inherit; font-weight: 600; text-decoration: none; }
+.ag-settings .ag-alert-action a:hover { text-decoration: underline; }
+
+/* ── Раскладка ─────────────────────────────────────────────────────────── */
+.ag-settings .ag-layout {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    gap: var(--ag-gap);
+    align-items: start;
+}
+
+/* ── Сайдбар ───────────────────────────────────────────────────────────── */
+.ag-settings .ag-nav {
+    position: sticky;
+    top: 1rem;
+    padding: .75rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--ag-radius);
+}
+.ag-settings .ag-nav-group + .ag-nav-group {
+    margin-top: .7rem;
+    padding-top: .7rem;
+    border-top: 1px solid var(--bs-border-color-translucent);
+}
+.ag-settings .ag-nav-title {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .2rem .6rem .45rem;
+    font-size: .8em;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+}
+.ag-settings .ag-nav ul { list-style: none; margin: 0; padding: 0; }
+.ag-settings .ag-nav .nav-link {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .42rem .55rem;
+    border-radius: var(--ag-radius-sm);
+    color: var(--bs-body-color);
+    font-size: .94em;
+    text-decoration: none;
+    transition: background-color .15s ease, color .15s ease;
+}
+.ag-settings .ag-nav .ag-ni {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: var(--tone-soft);
+    color: var(--tone-fg);
+    font-size: .88em;
+    transition: background-color .15s ease, color .15s ease;
+}
+.ag-settings .ag-nav .ag-nl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-settings .ag-nav .nav-link:hover { background: var(--bs-tertiary-bg); }
+.ag-settings .ag-nav .nav-link.active { background: var(--tone-soft); color: var(--tone-fg); font-weight: 600; }
+.ag-settings .ag-nav .nav-link.active .ag-ni { background: var(--tone); color: #fff; }
+.ag-settings .ag-nav .nav-link:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; }
+.ag-settings .ag-count {
+    margin-left: auto;
+    padding: .1rem .5rem;
+    border-radius: 50rem;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-size: .72em;
+    font-weight: 600;
+}
+.ag-settings .ag-count.is-alert { background: var(--bs-danger); color: #fff; }
+.ag-settings .ag-count i { font-size: .9em; }
+.ag-settings .ag-ext { margin-left: auto; font-size: .7em; color: var(--bs-secondary-color); opacity: .6; }
+
+/* ── Панель вкладки ────────────────────────────────────────────────────── */
+.ag-settings .ag-pane {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--ag-radius);
+}
+.ag-settings .ag-pane-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    background: linear-gradient(180deg, var(--tone-wash), var(--bs-body-bg));
+    border-radius: var(--ag-radius) var(--ag-radius) 0 0;
+}
+.ag-settings .ag-pane-title { min-width: 0; }
+.ag-settings .ag-pane-head h2 { margin: 0; font-size: 1.3rem; font-weight: 600; line-height: 1.25; }
+.ag-settings .ag-pane-head p { margin: .15rem 0 0; font-size: .88em; color: var(--bs-secondary-color); }
+.ag-settings .ag-tag {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .3rem .8rem;
+    border-radius: 50rem;
+    background: var(--tone-soft);
+    color: var(--tone-fg);
+    font-size: .78em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.ag-settings .ag-pane-body { padding: 1.5rem; }
+
+/* Заголовок секции */
+.ag-settings .ag-sec {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    margin: 2rem 0 1rem;
+}
+.ag-settings .ag-pane-body > .ag-sec:first-child,
+.ag-settings .ag-note + .ag-sec { margin-top: 0; }
+.ag-settings .ag-sec::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    margin-left: .4rem;
+    background: var(--bs-border-color-translucent);
+}
+.ag-settings .ag-sec-icon {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: var(--tone-soft);
+    color: var(--tone-fg);
+    font-size: .85em;
+}
+.ag-settings .ag-sec h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+.ag-settings .ag-sec p { margin: 0; font-size: .8em; color: var(--bs-secondary-color); }
+
+/* ── Сетка полей ───────────────────────────────────────────────────────── */
+.ag-settings .ag-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem 1.25rem;
+    align-items: start;
+}
+.ag-settings .ag-grid-2 { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+
+.ag-settings .ag-field { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.ag-settings .ag-label {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin: 0;
+    font-size: .9em;
+    font-weight: 500;
+}
+.ag-settings .ag-label i { width: 1.1em; text-align: center; color: var(--tone-fg); }
+
+.ag-settings .ag-input {
+    width: 100%;
+    padding: .55rem .8rem;
+    font-size: .95em;
+    color: var(--bs-body-color);
+    background-color: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--ag-radius-sm);
+    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+.ag-settings select.ag-input { padding-right: 2.2rem; }
+.ag-settings select.ag-input[multiple] { padding: .4rem; }
+.ag-settings select.ag-input[multiple] option { padding: .3rem .5rem; border-radius: 6px; }
+.ag-settings .ag-input:hover { border-color: color-mix(in srgb, var(--tone) 35%, var(--bs-border-color)); }
+.ag-settings .ag-input:focus {
+    outline: 0;
+    background-color: var(--bs-body-bg);
+    border-color: color-mix(in srgb, var(--tone) 65%, var(--bs-border-color));
+    box-shadow: 0 0 0 .22rem color-mix(in srgb, var(--tone) 20%, transparent);
+}
+.ag-settings .ag-input::placeholder { color: var(--bs-secondary-color); opacity: .7; }
+.ag-settings .ag-mono { font-family: var(--bs-font-monospace); font-size: .88em; }
+
+.ag-settings .ag-hint {
+    display: flex;
+    align-items: baseline;
+    gap: .4rem;
+    font-size: .8em;
+    line-height: 1.35;
+    color: var(--bs-secondary-color);
+}
+.ag-settings .ag-hint i { font-size: .9em; opacity: .65; }
+
+/* Поле с суффиксом */
+.ag-settings .ag-affix { display: flex; align-items: stretch; }
+.ag-settings .ag-affix .ag-input { border-top-right-radius: 0; border-bottom-right-radius: 0; min-width: 0; }
+.ag-settings .ag-affix > span {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: 0 .85rem;
+    border: 1px solid var(--bs-border-color);
+    border-left: 0;
+    border-radius: 0 var(--ag-radius-sm) var(--ag-radius-sm) 0;
+    background: var(--bs-secondary-bg);
+    color: var(--bs-secondary-color);
+    font-size: .85em;
+    white-space: nowrap;
+}
+
+/* ── Переключатель-карточка ────────────────────────────────────────────── */
+.ag-settings .ag-switch {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    height: 100%;
+    margin: 0;
+    padding: .7rem .9rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 13px;
+    background: var(--bs-tertiary-bg);
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+.ag-settings .ag-switch:hover { border-color: var(--tone-line); }
+.ag-settings .ag-switch:has(.form-check-input:checked) { background: var(--tone-wash); border-color: var(--tone-line); }
+.ag-settings .ag-switch:has(.form-check-input:focus-visible) { box-shadow: 0 0 0 .22rem color-mix(in srgb, var(--tone) 22%, transparent); }
+.ag-settings .ag-switch-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--tone-soft);
+    color: var(--tone-fg);
+    font-size: .95em;
+    transition: background-color .15s ease, color .15s ease;
+}
+.ag-settings .ag-switch:not(:has(.form-check-input:checked)) .ag-switch-icon {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-secondary-color);
+}
+.ag-settings .ag-switch-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .1rem; }
+.ag-settings .ag-switch-label { font-size: .92em; font-weight: 500; line-height: 1.3; }
+.ag-settings .ag-switch-tip { font-size: .78em; line-height: 1.3; color: var(--bs-secondary-color); }
+.ag-settings .ag-switch-ctrl {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .2rem;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+}
+.ag-settings .ag-switch-ctrl .form-check-input {
+    float: none;
+    margin: 0;
+    width: 2.5em;
+    height: 1.35em;
+    cursor: pointer;
+}
+.ag-settings .ag-switch-ctrl .form-check-input:checked { background-color: var(--bs-success); border-color: var(--bs-success); }
+.ag-settings .ag-state { font-size: .68em; font-weight: 700; line-height: 1; }
+.ag-settings .ag-state .on  { display: none; color: var(--bs-success-text-emphasis); }
+.ag-settings .ag-state .off { color: var(--bs-secondary-color); }
+.ag-settings .form-check-input:checked ~ .ag-state .on  { display: inline; }
+.ag-settings .form-check-input:checked ~ .ag-state .off { display: none; }
+
+/* ── Режим обслуживания ────────────────────────────────────────────────── */
+.ag-settings .ag-offline {
+    margin-top: 1rem;
+    padding: 1rem 1.15rem;
+    border: 1px dashed var(--tone-line);
+    border-radius: 13px;
+    background: var(--tone-wash);
+}
+.ag-settings .ag-offline-state { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; margin-bottom: .75rem; }
+.ag-settings .ag-remain { display: inline-flex; align-items: center; gap: .45rem; font-weight: 600; color: var(--tone-fg); }
+.ag-settings .ag-radio-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.ag-settings .ag-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+    margin: 0;
+    padding: .45rem 1rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 50rem;
+    background: var(--bs-body-bg);
+    font-size: .9em;
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+.ag-settings .ag-radio .form-check-input { margin: 0; float: none; }
+.ag-settings .ag-radio i { color: var(--tone-fg); }
+.ag-settings .ag-radio:has(input:checked) { border-color: var(--tone-line); background: var(--tone-soft); color: var(--tone-fg); font-weight: 600; }
+
+/* ── Заметка ───────────────────────────────────────────────────────────── */
+.ag-settings .ag-note {
+    display: flex;
+    gap: .8rem;
+    margin-bottom: 1.5rem;
+    padding: .85rem 1.05rem;
+    border-radius: 13px;
+    background: var(--tone-wash);
+    border: 1px solid var(--tone-line);
+    font-size: .9em;
+    line-height: 1.45;
+}
+.ag-settings .ag-note > i { margin-top: .2rem; color: var(--tone-fg); }
+
+/* ── Таблица персонала ─────────────────────────────────────────────────── */
+.ag-settings .ag-table { width: 100%; border-collapse: separate; border-spacing: 0 .45rem; }
+.ag-settings .ag-table th {
+    padding: 0 .45rem .2rem;
+    font-size: .8em;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+    text-align: left;
+}
+.ag-settings .ag-table td { padding: 0 .45rem; vertical-align: middle; }
+.ag-settings .ag-num {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: var(--tone-soft);
+    color: var(--tone-fg);
+    font-size: .85em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.ag-settings .ag-num.is-new { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.ag-settings .ag-icon-btn {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--ag-radius-sm);
+    background: transparent;
+    color: var(--bs-secondary-color);
+    transition: color .15s ease, background-color .15s ease, border-color .15s ease;
+}
+.ag-settings .ag-icon-btn:hover,
+.ag-settings .ag-icon-btn:focus-visible {
+    color: var(--bs-danger-text-emphasis);
+    background: var(--bs-danger-bg-subtle);
+    border-color: var(--bs-danger-border-subtle);
+    outline: 0;
+}
+.ag-settings .ag-empty { padding: 1.25rem; text-align: center; color: var(--bs-secondary-color); }
+.ag-settings .ag-empty i { margin-right: .4rem; }
+.ag-settings .ag-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: 1rem; }
+
+/* ── Липкая панель сохранения ──────────────────────────────────────────── */
+.ag-settings .ag-savebar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .85rem 1.5rem;
+    border-top: 1px solid var(--bs-border-color);
+    border-radius: 0 0 var(--ag-radius) var(--ag-radius);
+    background: color-mix(in srgb, var(--bs-body-bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.ag-settings .ag-savebar-note { display: inline-flex; align-items: center; gap: .45rem; font-size: .82em; color: var(--bs-secondary-color); }
+
+/* ── Состояния из settings.js ──────────────────────────────────────────── */
+.ag-settings .ag-pane.is-dirty .ag-savebar-note { color: var(--bs-warning-text-emphasis); font-weight: 600; }
+.ag-settings .ag-nav .nav-link.is-dirty .ag-nl::after {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-left: .45rem;
+    border-radius: 50%;
+    background: var(--bs-warning);
+    vertical-align: middle;
+}
+.ag-settings .ag-input.ag-autofilled { animation: ag-flash 1.4s ease-out; }
+@keyframes ag-flash {
+    from { background-color: var(--bs-success-bg-subtle); border-color: var(--bs-success); }
+}
+
+/* ── Адаптив ───────────────────────────────────────────────────────────── */
+@media (max-width: 1200px) {
+    .ag-settings .ag-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 992px) {
+    .ag-settings .ag-layout { grid-template-columns: 1fr; }
+    .ag-settings .ag-nav { position: static; }
+    .ag-settings .ag-nav ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .15rem; }
+}
+@media (max-width: 576px) {
+    .ag-settings .ag-kpis { grid-template-columns: 1fr; }
+    .ag-settings .ag-head-actions { margin-left: 0; width: 100%; }
+    .ag-settings .ag-pane-head, .ag-settings .ag-pane-body { padding: 1rem; }
+    .ag-settings .ag-tag { display: none; }
+    .ag-settings .ag-grid, .ag-settings .ag-grid-2 { grid-template-columns: 1fr; }
+    .ag-settings .ag-savebar { padding: .75rem 1rem; }
+    .ag-settings .ag-savebar-note { display: none; }
+    .ag-settings .ag-savebar .btn { width: 100%; }
+    .ag-settings .ag-alert { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ag-settings *, .ag-settings *::before, .ag-settings *::after { animation: none !important; transition: none !important; }
+}

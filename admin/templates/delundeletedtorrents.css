@@ -1,0 +1,103 @@
+/* Delete undeleted torrent files — all rules scoped to .dut-page */
+
+.dut-page { font-size: 1.055rem; }
+
+.dut-page .dut-header,
+.dut-page .dut-panel,
+.dut-page .dut-kpi {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 1rem;
+}
+
+.dut-page .dut-title { font-size: 1.35rem; font-weight: 700; margin: 0; }
+.dut-page .dut-subtitle { color: var(--bs-secondary-color); font-size: .9rem; }
+
+/* Icon squares */
+.dut-page .dut-icon-square {
+    width: 3.25rem; height: 3.25rem; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: .9rem; font-size: 1.35rem;
+}
+.dut-page .dut-icon-sm { width: 2.5rem; height: 2.5rem; font-size: 1.05rem; border-radius: .75rem; }
+
+.dut-page .dut-soft-primary   { background: var(--bs-primary-bg-subtle);   color: var(--bs-primary-text-emphasis); }
+.dut-page .dut-soft-info      { background: var(--bs-info-bg-subtle);      color: var(--bs-info-text-emphasis); }
+.dut-page .dut-soft-success   { background: var(--bs-success-bg-subtle);   color: var(--bs-success-text-emphasis); }
+.dut-page .dut-soft-danger    { background: var(--bs-danger-bg-subtle);    color: var(--bs-danger-text-emphasis); }
+.dut-page .dut-soft-secondary { background: var(--bs-secondary-bg);        color: var(--bs-secondary-color); }
+
+/* KPI tiles */
+.dut-page .dut-kpi { height: 100%; padding: 1rem; display: flex; align-items: center; gap: .85rem; }
+.dut-page .dut-kpi .dut-icon-square { width: 2.75rem; height: 2.75rem; font-size: 1.15rem; border-radius: .8rem; }
+.dut-page .dut-kpi-value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.dut-page .dut-kpi-label { font-size: .85rem; color: var(--bs-secondary-color); }
+.dut-page .dut-kpi-extra {
+    display: inline-flex; align-items: center; gap: .25rem; margin-left: .35rem;
+    padding: 0 .45rem; border-radius: 50rem; font-size: .75rem;
+    background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis);
+}
+
+/* Panels */
+.dut-page .dut-panel { overflow: hidden; }
+.dut-page .dut-panel-head {
+    display: flex; align-items: center; flex-wrap: wrap; gap: .85rem;
+    padding: .9rem 1.1rem; border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+
+/* Filter */
+.dut-page .dut-filter-wrap { position: relative; display: flex; align-items: center; gap: .6rem; }
+.dut-page .dut-filter-wrap > .fa-magnifying-glass {
+    position: absolute; left: .75rem; font-size: .8rem; color: var(--bs-secondary-color); pointer-events: none;
+}
+.dut-page .dut-filter { width: 9.5rem; padding-left: 2rem; border-radius: 50rem; }
+.dut-page .dut-filter-count { font-size: .8rem; color: var(--bs-secondary-color); white-space: nowrap; }
+
+/* Chips */
+.dut-page .dut-chips {
+    display: flex; flex-wrap: wrap; gap: .45rem;
+    max-height: 22rem; overflow-y: auto; padding: 1rem 1.1rem;
+}
+.dut-page .dut-chips-short { max-height: 9rem; }
+.dut-page .dut-chip {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .22rem .7rem; border-radius: 50rem; font-size: .85rem;
+    font-variant-numeric: tabular-nums;
+    background: var(--bs-secondary-bg); color: var(--bs-body-color);
+    border: 1px solid var(--bs-border-color-translucent);
+}
+.dut-page .dut-chip i { font-size: .72rem; opacity: .7; }
+.dut-page .dut-chip[hidden] { display: none !important; }
+.dut-page .dut-chip-next {
+    background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis);
+    border-color: var(--bs-danger-border-subtle);
+}
+.dut-page .dut-chip-done {
+    background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis);
+    border-color: var(--bs-success-border-subtle);
+}
+
+/* Empty state */
+.dut-page .dut-empty { text-align: center; padding: 3rem 1rem; }
+.dut-page .dut-empty .dut-icon-square { width: 4.5rem; height: 4.5rem; font-size: 2rem; border-radius: 1.2rem; margin: 0 auto; }
+
+/* Alerts */
+.dut-page .dut-alert { display: flex; align-items: flex-start; gap: .6rem; border-radius: .85rem; }
+.dut-page .dut-alert > i { margin-top: .2rem; }
+
+/* Sticky action bar */
+.dut-page .dut-actionbar {
+    position: sticky; bottom: 1rem; z-index: 1020; margin-top: 1rem;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem 1rem;
+    padding: .75rem .9rem .75rem 1.1rem; border-radius: 50rem;
+    background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent);
+    box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .18);
+}
+.dut-page .dut-btn-pill { border-radius: 50rem; padding-inline: 1.25rem; font-weight: 600; }
+
+@media (max-width: 575.98px) {
+    .dut-page .dut-actionbar { border-radius: 1rem; }
+    .dut-page .dut-actionbar .dut-btn-pill { width: 100%; }
+    .dut-page .dut-filter-wrap { width: 100%; }
+    .dut-page .dut-filter { flex: 1; width: auto; }
+}

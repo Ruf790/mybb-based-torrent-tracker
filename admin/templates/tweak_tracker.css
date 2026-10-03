@@ -1,0 +1,318 @@
+/* Tweak Tracker - всё под .tt-page, глобальные классы не трогаем */
+
+.tt-page {
+    font-size: 1.055rem;
+    --tt-radius: 14px;
+    --tt-gap: 1rem;
+    padding-bottom: 5.5rem; /* место под липкую панель */
+}
+
+/* ── Шапка ─────────────────────────────────────────────── */
+.tt-page .tt-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: var(--tt-gap);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--tt-radius);
+}
+.tt-page .tt-head-icon {
+    flex: 0 0 auto;
+    width: 3.1rem;
+    height: 3.1rem;
+    display: grid;
+    place-items: center;
+    font-size: 1.4rem;
+    border-radius: 12px;
+    color: var(--bs-danger-text-emphasis);
+    background: var(--bs-danger-bg-subtle);
+}
+.tt-page .tt-head-text { flex: 1 1 auto; min-width: 0; }
+.tt-page .tt-head h1 {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 600;
+}
+.tt-page .tt-head p {
+    margin: .15rem 0 0;
+    color: var(--bs-secondary-color);
+}
+.tt-page .tt-version {
+    flex: 0 0 auto;
+    padding: .2rem .65rem;
+    font-size: .8rem;
+    border-radius: 999px;
+    color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg);
+}
+
+/* ── KPI ──────────────────────────────────────────────── */
+.tt-page .tt-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--tt-gap);
+    margin-bottom: var(--tt-gap);
+}
+.tt-page .tt-kpi {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: .95rem 1.1rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--tt-radius);
+}
+.tt-page .tt-kpi-icon {
+    flex: 0 0 auto;
+    width: 2.6rem;
+    height: 2.6rem;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    font-size: 1.1rem;
+}
+.tt-page .tt-kpi-val {
+    font-size: 1.35rem;
+    font-weight: 600;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+}
+.tt-page .tt-kpi-lbl { font-size: .85rem; color: var(--bs-secondary-color); }
+
+.tt-page .tt-c-primary { color: var(--bs-primary-text-emphasis); background: var(--bs-primary-bg-subtle); }
+.tt-page .tt-c-success { color: var(--bs-success-text-emphasis); background: var(--bs-success-bg-subtle); }
+.tt-page .tt-c-warning { color: var(--bs-warning-text-emphasis); background: var(--bs-warning-bg-subtle); }
+.tt-page .tt-c-info    { color: var(--bs-info-text-emphasis);    background: var(--bs-info-bg-subtle); }
+
+/* ── Карточки ─────────────────────────────────────────── */
+.tt-page .tt-card {
+    padding: 1.1rem 1.25rem;
+    margin-bottom: var(--tt-gap);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--tt-radius);
+}
+
+/* ── Отчёт ────────────────────────────────────────────── */
+.tt-page .tt-report { border-left: 4px solid var(--bs-success); }
+.tt-page .tt-report.is-dry { border-left-color: var(--bs-info); }
+
+.tt-page .tt-report-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    margin-bottom: .75rem;
+}
+.tt-page .tt-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: .3rem .8rem;
+    border-radius: 999px;
+    font-size: .88rem;
+    font-weight: 600;
+}
+.tt-page .tt-badge-dry { color: var(--bs-info-text-emphasis);    background: var(--bs-info-bg-subtle); }
+.tt-page .tt-badge-run { color: var(--bs-success-text-emphasis); background: var(--bs-success-bg-subtle); }
+.tt-page .tt-meta { margin-left: .5rem; font-size: .88rem; color: var(--bs-secondary-color); }
+
+.tt-page .tt-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-size: .9rem;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+    user-select: none;
+}
+.tt-page .tt-note {
+    margin: 0 0 .75rem;
+    font-size: .88rem;
+    color: var(--bs-secondary-color);
+}
+
+.tt-page .tt-table-wrap {
+    max-height: 26rem;
+    overflow: auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 10px;
+}
+.tt-page .tt-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .93rem;
+}
+.tt-page .tt-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: .55rem .75rem;
+    font-weight: 600;
+    text-align: left;
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+}
+.tt-page .tt-table th.text-end { text-align: right; }
+.tt-page .tt-table td {
+    padding: .5rem .75rem;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+}
+.tt-page .tt-table tr:last-child td { border-bottom: 0; }
+.tt-page .tt-row-icon { width: 1.2rem; margin-right: .35rem; color: var(--bs-secondary-color); }
+
+/* Пустые и пропущенные шаги скрыты, пока не включён переключатель */
+.tt-page .tt-report .tt-row-empty,
+.tt-page .tt-report .tt-row-skip { display: none; }
+.tt-page .tt-report.tt-show-empty .tt-row-empty,
+.tt-page .tt-report.tt-show-empty .tt-row-skip { display: table-row; }
+.tt-page .tt-row-empty td,
+.tt-page .tt-row-skip td { color: var(--bs-secondary-color); }
+.tt-page .tt-row-error td { background: var(--bs-danger-bg-subtle); }
+
+.tt-page .tt-status {
+    display: inline-block;
+    padding: .1rem .55rem;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 600;
+}
+.tt-page .tt-status-ok    { color: var(--bs-success-text-emphasis);   background: var(--bs-success-bg-subtle); }
+.tt-page .tt-status-skip  { color: var(--bs-secondary-color);         background: var(--bs-tertiary-bg); }
+.tt-page .tt-status-error { color: var(--bs-danger-text-emphasis);    background: var(--bs-danger-bg-subtle); }
+.tt-page .tt-status-note  { margin-left: .4rem; font-size: .82rem; color: var(--bs-secondary-color); }
+
+/* ── Группы операций ──────────────────────────────────── */
+.tt-page .tt-groups-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: .85rem;
+}
+.tt-page .tt-groups-head h2 { margin: 0; font-size: 1.15rem; font-weight: 600; }
+
+.tt-page .tt-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+    gap: .75rem;
+}
+.tt-page .tt-group {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: .8rem;
+    padding: .85rem 1rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: border-color .15s, background-color .15s;
+}
+.tt-page .tt-group:hover { background: var(--bs-tertiary-bg); }
+.tt-page .tt-group input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.tt-page .tt-group-icon {
+    flex: 0 0 auto;
+    width: 2.3rem;
+    height: 2.3rem;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg);
+    transition: color .15s, background-color .15s;
+}
+.tt-page .tt-group-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.tt-page .tt-group-title { font-weight: 600; }
+.tt-page .tt-group-desc { font-size: .85rem; color: var(--bs-secondary-color); }
+
+.tt-page .tt-group:has(input:checked) {
+    border-color: var(--bs-primary-border-subtle);
+    background: var(--bs-primary-bg-subtle);
+}
+.tt-page .tt-group:has(input:checked) .tt-group-icon {
+    color: var(--bs-primary-text-emphasis);
+    background: var(--bs-body-bg);
+}
+.tt-page .tt-group-heavy:has(input:checked) {
+    border-color: var(--bs-warning-border-subtle);
+    background: var(--bs-warning-bg-subtle);
+}
+.tt-page .tt-group-heavy:has(input:checked) .tt-group-icon { color: var(--bs-warning-text-emphasis); }
+.tt-page .tt-group:has(input:focus-visible) {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+}
+
+/* ── Кнопки ───────────────────────────────────────────── */
+.tt-page .tt-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: .5rem 1.15rem;
+    font-size: .95rem;
+    font-weight: 600;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: filter .15s, background-color .15s;
+}
+.tt-page .tt-btn:disabled { opacity: .55; cursor: not-allowed; }
+.tt-page .tt-btn:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+
+.tt-page .tt-btn-danger { color: #fff; background: var(--bs-danger); }
+.tt-page .tt-btn-danger:not(:disabled):hover { filter: brightness(1.08); }
+
+.tt-page .tt-btn-outline {
+    color: var(--bs-body-color);
+    background: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+}
+.tt-page .tt-btn-outline:not(:disabled):hover { background: var(--bs-tertiary-bg); }
+
+.tt-page .tt-btn-ghost {
+    padding: .35rem .85rem;
+    font-size: .88rem;
+    color: var(--bs-secondary-color);
+    background: transparent;
+    border-color: var(--bs-border-color);
+}
+.tt-page .tt-btn-ghost:hover { background: var(--bs-tertiary-bg); }
+
+/* ── Липкая панель действий ───────────────────────────── */
+.tt-page .tt-actionbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .8rem 1.25rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--tt-radius) var(--tt-radius) 0 0;
+    box-shadow: 0 -6px 18px -12px var(--bs-emphasis-color);
+}
+.tt-page .tt-actionbar-hint { font-size: .88rem; color: var(--bs-warning-text-emphasis); }
+.tt-page .tt-actionbar-btns { display: flex; gap: .6rem; }
+
+/* ── Адаптив ──────────────────────────────────────────── */
+@media (max-width: 991.98px) {
+    .tt-page .tt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 575.98px) {
+    .tt-page .tt-kpis { grid-template-columns: 1fr; }
+    .tt-page .tt-version { display: none; }
+    .tt-page .tt-actionbar-btns { width: 100%; }
+    .tt-page .tt-actionbar-btns .tt-btn { flex: 1 1 0; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tt-page * { transition: none !important; }
+}

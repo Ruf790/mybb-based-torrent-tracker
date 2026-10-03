@@ -59,9 +59,16 @@ function buildTorrentItemHtml(idx, fileName = '') {
         <input class="form-control" type="file" name="torrentFiles[]" accept=".torrent">
         <div class="torrent-name mt-1 small text-muted">${escapeHtml(fileName)}</div>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-3">
         <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>Poster <span class="bu-opt">optional</span></label>
         <input class="form-control" type="file" name="posters[]" accept="image/*">
+        <div class="image-preview mt-2" style="max-width:150px;display:none">
+          <img src="" class="img-thumbnail" style="max-height:100px" alt="">
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>Poster 2 <span class="bu-opt">optional</span></label>
+        <input class="form-control" type="file" name="posters2[]" accept="image/*">
         <div class="image-preview mt-2" style="max-width:150px;display:none">
           <img src="" class="img-thumbnail" style="max-height:100px" alt="">
         </div>
@@ -158,8 +165,9 @@ function setFileToInput(input, file) {
     input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+// Превью лежит в той же колонке, что и input (col-md-3 для обоих постеров)
 function showImagePreview(posterInput, file) {
-    const preview = posterInput.closest('.col-md-6')?.querySelector('.image-preview');
+    const preview = posterInput.parentElement?.querySelector('.image-preview');
     if (!preview) return;
     const img = preview.querySelector('img');
     const reader = new FileReader();
@@ -168,7 +176,7 @@ function showImagePreview(posterInput, file) {
 }
 
 function hideImagePreview(posterInput) {
-    const preview = posterInput.closest('.col-md-6')?.querySelector('.image-preview');
+    const preview = posterInput.parentElement?.querySelector('.image-preview');
     if (!preview) return;
     preview.style.display = 'none';
     const img = preview.querySelector('img');
@@ -249,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Предпросмотр постеров (делегирование)
     document.addEventListener('change', e => {
-        if (!e.target.matches('input[name="posters[]"]')) return;
+        if (!e.target.matches('input[name="posters[]"], input[name="posters2[]"]')) return;
         const file = e.target.files[0];
         if (!file) { hideImagePreview(e.target); return; }
         if (!validateImage(file)) { e.target.value = ''; hideImagePreview(e.target); return; }
@@ -391,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .some(i => i.files.length > 0);
         if (!hasFiles) { alert('Please select at least one torrent file'); return; }
 
-        const allValid = [...document.querySelectorAll('input[name="posters[]"]')]
+        const allValid = [...document.querySelectorAll('input[name="posters[]"], input[name="posters2[]"]')]
             .every(i => i.files.length === 0 || validateImage(i.files[0]));
         if (!allValid) return;
 
@@ -465,8 +473,8 @@ document.addEventListener('DOMContentLoaded', () => {
             .forEach(i => { i.value = ''; });
         item.querySelectorAll('select').forEach(s => { s.selectedIndex = 0; });
 
-        const posterInput = item.querySelector('input[name="posters[]"]');
-        if (posterInput) hideImagePreview(posterInput);
+        item.querySelectorAll('input[name="posters[]"], input[name="posters2[]"]')
+            .forEach(posterInput => hideImagePreview(posterInput));
 
         const nameLabel = item.querySelector('.torrent-name');
         if (nameLabel) nameLabel.textContent = '';
@@ -519,9 +527,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (items[0]) {
             items[0].querySelector('input[name="torrentFiles[]"]').value = '';
             items[0].querySelector('.torrent-name').textContent          = '';
-            const posterInput = items[0].querySelector('input[name="posters[]"]');
-            posterInput.value = '';
-            hideImagePreview(posterInput);
+            items[0].querySelectorAll('input[name="posters[]"], input[name="posters2[]"]').forEach(posterInput => {
+                posterInput.value = '';
+                hideImagePreview(posterInput);
+            });
             items[0].querySelector('textarea[name="descriptions[]"]').value = '';
             items[0].querySelector('.duplicate-warning')?.remove();
         }
@@ -695,6 +704,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <strong>Uploaded ${data.successful} of ${data.processed} torrents</strong>
               <div class="bu-result-stats">
                 <span><i class="fa-solid fa-image me-1"></i>${s.with_posters ?? 0} with posters</span>
+                <span><i class="fa-solid fa-image me-1"></i>${s.with_posters2 ?? 0} with poster 2</span>
                 <span><i class="fa-solid fa-images me-1"></i>${s.total_screenshots ?? 0} screenshots</span>
                 <span><i class="fa-solid fa-file-csv me-1"></i>${s.csv_imported ?? 0} CSV records</span>
               </div>
@@ -720,6 +730,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="bu-result-badges">
                       ${r.has_poster ? '<span class="badge bu-badge bu-soft-info" title="Poster"><i class="fa-solid fa-image"></i></span>' : ''}
+                      ${r.has_poster2 ? '<span class="badge bu-badge bu-soft-info" title="Poster 2"><i class="fa-solid fa-image me-1"></i>2</span>' : ''}
                       ${r.screenshots_added ? `<span class="badge bu-badge bu-soft-warning" title="Screenshots"><i class="fa-solid fa-images me-1"></i>${r.screenshots_added}</span>` : ''}
                       ${r.has_imdb ? '<span class="badge bu-badge bu-soft-warning" title="IMDb"><i class="fa-brands fa-imdb"></i></span>' : ''}
                       <a href="${escapeHtml(r.link)}" target="_blank" rel="noopener" class="btn btn-sm rounded-pill bu-btn-soft-primary">

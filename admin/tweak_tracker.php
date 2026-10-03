@@ -5,542 +5,908 @@ if (!defined('STAFF_PANEL')) {
     exit('<b>Error!</b> Direct initialization of this file is not allowed.');
 }
 
-ini_set('memory_limit', '20000M');
-define('TT_VERSION', '2.1 by xam');
+define('TT_VERSION', '3.0');
+
+// DAY_IN_SECONDS в контексте admin/index.php не определён - своя константа.
+const TT_DAY          = 86400;
+const TT_BATCH        = 1000;
+const TT_LOCK_NAME    = 'ag_tweak_tracker';
+const TT_NAMES_SHOWN  = 10;               // сколько имён файлов показывать в отчёте
+const TT_MIN_FILE_AGE = 3600;             // файлы моложе часа на диске не трогаем (гонка upload -> INSERT)
+const TT_ASSET_VER    = 1;
+
+// Служебные файлы, которые сканер диска не удаляет никогда.
+const TT_PROTECTED_FILES = ['index.html', 'index.htm', 'index.php', '.htaccess', 'web.config', '.gitkeep'];
 
 if (!defined('ADMIN_DIR')) {
     define('ADMIN_DIR', TSDIR . '/admin/');
 }
 
-// ── CSS helper ────────────────────────────────────────────
-function render_css(string $BASEURL): string
-{
-    return '<link href="' . $BASEURL . '/include/templates/default/style/errorss.css" rel="stylesheet">';
-}
+// ── Настройки ─────────────────────────────────────────────
+$TT_CFG = [
+    'backup_dir'        => ADMIN_DIR . 'backup',
+    'backup_keep_days'  => 30,
+    'draft_max_age'     => 2 * TT_DAY,               // черновики вложений
+    'torrent_dir'       => TSDIR . '/torrents',      // {id}.torrent
+    'screens_dir'       => TSDIR . '/torrents/screens',
+    'images_dir'        => TSDIR . '/torrents/images',   // постеры: torrents.t_image / t_image2
+    'optimize_min_free' => 10 * 1048576,             // OPTIMIZE только если DATA_FREE >= 10 MB
+    'report_file'       => TSDIR . '/cache/tweak_tracker_last.php',
+];
 
+// ── Группы операций (порядок = порядок выполнения) ─────────
+$TT_GROUPS = [
+    'db_orphans' => [
+        'icon'    => 'fa-link-slash',
+        'title'   => 'Orphaned database records',
+        'desc'    => 'Rows that point to deleted users, torrents, threads, comments or posts.',
+        'default' => true,
+    ],
+    'file_records' => [
+        'icon'    => 'fa-paperclip',
+        'title'   => 'Orphaned attachments and screenshots',
+        'desc'    => 'Records whose owner is gone, plus their files. Includes unposted drafts older than 48 hours.',
+        'default' => true,
+    ],
+    'disk_scan' => [
+        'icon'    => 'fa-hard-drive',
+        'title'   => 'Files with no database record',
+        'desc'    => 'Files in uploads, avatars, screens, posters and torrents that nothing references. Service files and files younger than 1 hour are kept.',
+        'default' => true,
+    ],
+    'time_cleanup' => [
+        'icon'    => 'fa-clock-rotate-left',
+        'title'   => 'Expired records',
+        'desc'    => 'Old sessions, search log, login attempts, 2FA tokens, captcha and mail errors.',
+        'default' => true,
+    ],
+    'backups' => [
+        'icon'    => 'fa-box-archive',
+        'title'   => 'Old database backups',
+        'desc'    => 'Backup files older than ' . $TT_CFG['backup_keep_days'] . ' days.',
+        'default' => true,
+    ],
+    'recount' => [
+        'icon'    => 'fa-calculator',
+        'title'   => 'Recount comment counters',
+        'desc'    => 'Sets torrents.comments to the real number of comments.',
+        'default' => true,
+    ],
+    'optimize' => [
+        'icon'    => 'fa-gauge-high',
+        'title'   => 'Optimize tables',
+        'desc'    => 'Rebuilds tables with more than 10 MB of free space. Large tables are locked while this runs.',
+        'default' => false,
+    ],
+];
 
+// ── Правила для сирот в БД ────────────────────────────────
+// [таблица, [[колонка, ref_таблица, ref_колонка, zero_ok?], ...], 'any'|'all']
+// 'any' - удалить, если битая хотя бы одна ссылка; 'all' - только если битые все.
+// zero_ok = true: значение 0 считается допустимым (гость/система).
+// NULL всегда считается "не привязано" и не удаляется.
+// Правила с несуществующей таблицей/колонкой пропускаются и видны в отчёте
+// как "Skipped" - поэтому угаданные имена ниже безопасны, проверь их в dry run.
+// Порядок важен: comments идёт раньше comment_likes.
+$TT_ORPHAN_RULES = [
+    ['bookmarks',           [['userid', 'users', 'id'], ['torrentid', 'torrents', 'id']]],
+    ['cheat_attempts',      [['uid', 'users', 'id'], ['torrentid', 'torrents', 'id']]],
+    ['comments',            [['user', 'users', 'id'], ['torrent', 'torrents', 'id']]],
+    ['notconnectablepmlog', [['user', 'users', 'id']]],
+    ['peers',               [['userid', 'users', 'id'], ['torrent', 'torrents', 'id']]],
+    ['reports',             [['addedby', 'users', 'id']]],
+    ['snatched',            [['userid', 'users', 'id'], ['torrentid', 'torrents', 'id']]],
+    ['staffmessages',       [['sender', 'users', 'id']]],
+    ['hit_and_run',         [['userid', 'users', 'id'], ['torrentid', 'torrents', 'id']]],
+    ['inactivity',          [['userid', 'users', 'id']]],
+    // В MyBB каждая строка ЛС - копия в ящике владельца uid. Ящик удалённого
+    // пользователя удаляем; копии в "Отправленных" живых пользователей остаются.
+    ['privatemessages',     [['uid', 'users', 'id']]],
 
-// ── Confirmation screen ───────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['begin_optimization'])) {
-    global $mybb;
-    stdhead();
-    echo render_css($BASEURL);
-    echo '
-    <div class="container mt-3">
-        <div class="card error-card">
-            <div class="card-header22">
-                <i class="bi bi-exclamation-triangle-fill text-danger me-2" style="font-size:2rem"></i>
-                <div>
-                    <h2 class="mb-0">Sanity Check!</h2>
-                    <p class="mb-0 opacity-75">Are you sure you want to optimize your tracker tables?</p>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="alert alert-warning"><strong>Warning!</strong> Please backup your database first!</div>
-                <form method="post" action="' . $_this_script_ . '">
-                    <input type="hidden" name="my_post_key" value="' . htmlspecialchars($mybb->post_code) . '">
-                    <input type="hidden" name="begin_optimization" value="true">
-                    <button type="submit" class="btn btn-danger">
-                        <i class="bi bi-play-fill me-1"></i> Click to Begin
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>';
-    stdfoot();
-    exit;
-}
+    // MyBB
+    ['threadsread',         [['uid', 'users', 'id'], ['tid', 'threads', 'tid']]],
+    ['forumsread',          [['uid', 'users', 'id']]],
+    ['threadsubscriptions', [['uid', 'users', 'id'], ['tid', 'threads', 'tid']]],
+    ['forumsubscriptions',  [['uid', 'users', 'id']]],
+    ['pollvotes',           [['uid', 'users', 'id', true], ['pid', 'polls', 'pid']]],
+    ['buddyrequests',       [['uid', 'users', 'id'], ['touid', 'users', 'id']]],
 
-// Реальный запуск очистки - только POST с валидным CSRF-токеном.
-if (!verify_post_check($mybb->get_input('my_post_key'))) {
-    http_response_code(403);
-    stderr('Error', 'Invalid security token. Please go back and try again.');
-}
+    // Трекер (имена сверены со схемой 2026-09-30)
+    ['torrent_ratings',       [['torrent_id', 'torrents', 'id'], ['user_id', 'users', 'id']]],
+    ['threadratings',         [['tid', 'threads', 'tid'], ['user_id', 'users', 'id']]],
+    ['torrents_nfo',          [['torrent_id', 'torrents', 'id']]],
+    ['request_votes',         [['request_id', 'requests', 'id'], ['user_id', 'users', 'id']]],
+    ['request_comments',      [['request_id', 'requests', 'id'], ['user_id', 'users', 'id']]],
+    ['offer_votes',           [['offer_id', 'offers', 'id'], ['user_id', 'users', 'id']]],
+    ['offer_comments',        [['offer_id', 'offers', 'id'], ['user_id', 'users', 'id']]],
+    ['auto_vip',              [['userid', 'users', 'id']]],
+    ['2fa',                   [['uid', 'users', 'id']]],
+    ['user_devices',          [['uid', 'users', 'id']]],
+    ['password_reset_tokens', [['userid', 'users', 'id']]],
+];
 
-// ── Load valid IDs ────────────────────────────────────────
-$torrent_ids = [];
-$q = $db->sql_query_prepared('SELECT id FROM torrents');
-while ($row = $db->fetch_array($q)) $torrent_ids[] = (int)$row['id'];
+// ── Истёкшие записи: [таблица, колонка-время, дней] ────────
+// 0 дней = "колонка хранит момент истечения, удалить всё, что уже истекло".
+$TT_TIME_RULES = [
+    ['sessions',              'time',       30],
+    ['searchlog',             'dateline',   7],
+    ['loginattempts',         'added',      30],
+    ['2fa_pending',           'created_at', 1],   // токен живёт минуты, сутки - с запасом
+    ['password_reset_tokens', 'expires_at', 0],
+    ['mailerrors',            'dateline',   90],
+    ['cheat_attempts',        'added',      180],
+];
 
-$user_ids = [];
-// Раньше фильтровалось по enabled='yes' AND ustatus='confirmed' - это
-// исключало ЗАБАНЕННЫХ и НЕПОДТВЕРЖДЁННЫХ пользователей из "валидных",
-// хотя они физически всё ещё существуют в users, просто отключены.
-// snatched чистится по этому списку (строка ниже, таблица 'snatched'),
-// а крон пересчитывает times_completed на раздачах через COUNT(*) по
-// snatched - в итоге счётчик падал у раздач без единого реально
-// удалённого пользователя. Теперь берём ВСЕХ существующих пользователей,
-// независимо от статуса - только реально удалённые (отсутствующие в
-// users) считаются "невалидными".
-$q = $db->sql_query_prepared('SELECT id FROM users');
-while ($row = $db->fetch_array($q)) $user_ids[] = (int)$row['id'];
+// ═════════════════════════════════════════════════════════
+//  Хелперы
+// ═════════════════════════════════════════════════════════
 
-if (empty($torrent_ids) || empty($user_ids)) {
-    stderr('Error, No torrent/user found. You must have at least one torrent/user.');
-}
-
-$ValidTorrents = implode(',', $torrent_ids);
-$ValidUsers    = implode(',', $user_ids);
-unset($torrent_ids, $user_ids);
-
-// ── Batch delete helper ───────────────────────────────────
-// $condition собирается вызывающим кодом из $ValidUsers/$ValidTorrents -
-// это уже implode()'нутые списки int-ов (см. выше), не сырой пользовательский
-// ввод, поэтому тут остаётся встраивание строки условия (простые placeholder'ы
-// не подходят для динамического списка NOT IN (...) переменной длины).
-function delete_invalid_records(string $table, string $condition, string $id_field = 'id'): int
-{
-    global $db;
-
-    $q     = $db->sql_query_prepared("SELECT {$id_field} FROM {$table} WHERE {$condition}");
-    $total = 0;
-    $batch = [];
-
-    while ($row = $db->fetch_array($q)) {
-        $batch[] = (int)$row[$id_field];
-        $total++;
-
-        if (count($batch) >= 1000) {
-            $placeholders = implode(',', array_fill(0, count($batch), '?'));
-            $db->sql_query_prepared("DELETE FROM {$table} WHERE {$id_field} IN ({$placeholders})", $batch);
-            $batch = [];
-        }
-    }
-
-    if ($batch) {
-        $placeholders = implode(',', array_fill(0, count($batch), '?'));
-        $db->sql_query_prepared("DELETE FROM {$table} WHERE {$id_field} IN ({$placeholders})", $batch);
-    }
-
-    return $total;
-}
-
-// ── Size format helper ────────────────────────────────────
-function format_filesize(int $bytes): string
+function tt_size(int $bytes): string
 {
     if ($bytes >= 1073741824) return round($bytes / 1073741824, 2) . ' GB';
-    if ($bytes >= 1048576)    return round($bytes / 1048576, 2)    . ' MB';
-    if ($bytes >= 1024)       return round($bytes / 1024, 2)       . ' KB';
+    if ($bytes >= 1048576)    return round($bytes / 1048576, 2) . ' MB';
+    if ($bytes >= 1024)       return round($bytes / 1024, 2) . ' KB';
     return $bytes . ' B';
 }
 
-// ── Путь к файлу вложения на диске ─────────────────────────
-// Вложения комментариев хранятся плоско в uploads/attachments/ (голое
-// имя файла в attachname). Вложения постов форума хранятся в
-// uploads/{YYYYMM}/, и attachname для них УЖЕ содержит этот префикс
-// подпапки (например "202607/post_5_....attach") - см. functions_upload.php.
-function resolve_attachment_path(string $tsdir, string $attachname): string
+function tt_e(string $s): string
 {
-    if (str_contains($attachname, '/')) {
-        return $tsdir . '/uploads/' . $attachname;
-    }
-    return $tsdir . '/uploads/attachments/' . $attachname;
+    return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 }
 
-// ── Файлы на диске без записи в БД (обратный случай) ──────
-// $keepFilenames - множество "полных" имён (как хранятся в attachname:
-// либо голое имя файла, либо "YYYYMM/имя.attach"), которые НЕЛЬЗЯ удалять.
-// $prefix - префикс подпапки текущей сканируемой директории относительно
-// корня, чтобы сверяться с $keepFilenames в том же формате.
-// Возвращает [сколько удалено, сколько байт освобождено].
-function cleanup_orphaned_disk_files(string $dir, array $keepFilenames, string $prefix = ''): array
+function tt_step(string $group, string $label, int $rows = 0, int $bytes = 0, string $status = 'ok', string $note = ''): array
 {
-    if (!is_dir($dir)) return [0, 0];
-
-    $keepSet = array_flip($keepFilenames);
-    $deleted = 0;
-    $freed   = 0;
-
-    $handle = opendir($dir);
-    if (!$handle) return [0, 0];
-
-    while (($file = readdir($handle)) !== false) {
-        if ($file === '.' || $file === '..') continue;
-        $path = $dir . '/' . $file;
-        if (!is_file($path)) continue;
-        if (!isset($keepSet[$prefix . $file])) {
-            $freed += filesize($path);
-            @unlink($path);
-            $deleted++;
-        }
-    }
-    closedir($handle);
-
-    return [$deleted, $freed];
+    return compact('group', 'label', 'rows', 'bytes', 'status', 'note');
 }
 
-// ── Ротация старых бэкапов БД ──────────────────────────────
-function rotate_old_backups(string $dir, int $keepDays): array
+function tt_has(string $table, ?string $field = null): bool
 {
-    if (!is_dir($dir)) return [0, 0];
-
-    $cutoff  = TIMENOW - $keepDays * 86400;
-    $deleted = 0;
-    $freed   = 0;
-
-    foreach ((glob($dir . '/*.sql') ?: []) as $file) {
-        if (is_file($file) && filemtime($file) < $cutoff) {
-            $freed += filesize($file);
-            @unlink($file);
-            $deleted++;
-        }
-    }
-    foreach ((glob($dir . '/*.gz') ?: []) as $file) {
-        if (is_file($file) && filemtime($file) < $cutoff) {
-            $freed += filesize($file);
-            @unlink($file);
-            $deleted++;
-        }
-    }
-
-    return [$deleted, $freed];
+    global $db;
+    if (!$db->table_exists($table)) return false;
+    return $field === null || $db->field_exists($field, $table);
 }
 
-// ── Run cleanup ───────────────────────────────────────────
-$log        = [];
-$start_time = microtime(true);
-
-$cleanups = [
-    ['bookmarks',           "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
-    ['cheat_attempts',      "uid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})",    'id'],
-    ['comments',            "user NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})"],
-    ['notconnectablepmlog', "user NOT IN ({$ValidUsers})"],
-    ['peers',               "userid NOT IN ({$ValidUsers}) OR torrent NOT IN ({$ValidTorrents})"],
-    ['reports',             "addedby NOT IN ({$ValidUsers})"],
-    ['snatched',            "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
-    ['staffmessages',       "sender NOT IN ({$ValidUsers})"],
-    ['hit_and_run',         "userid NOT IN ({$ValidUsers}) OR torrentid NOT IN ({$ValidTorrents})"],
-    ['inactivity',          "userid NOT IN ({$ValidUsers})",                                         'userid'],                                      
-    ['privatemessages',     "fromid NOT IN ({$ValidUsers}) AND toid NOT IN ({$ValidUsers})",         'pmid'],
-];
-
-foreach ($cleanups as $cleanup) {
-    $table = $cleanup[0];
-    $cond  = $cleanup[1];
-    $field = $cleanup[2] ?? 'id';
-    $n = delete_invalid_records($table, $cond, $field);
-    if ($n > 0) $log[] = "Deleted {$n} invalid records from {$table}";
+/** DATETIME/TIMESTAMP-колонку нельзя сравнивать с unix-временем напрямую. */
+function tt_is_datetime(string $table, string $field): bool
+{
+    global $db;
+    $row = $db->fetch_array($db->sql_query_prepared(
+        'SELECT DATA_TYPE AS t FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+        [$table, $field]
+    ));
+    return in_array(strtolower((string)($row['t'] ?? '')), ['datetime', 'timestamp', 'date'], true);
 }
 
-// ── Orphaned uploaded files ───────────────────────────────
-// Файлы в comment_files не привязанные ни к чему — удаляем файлы и записи
+function tt_count(string $sql, array $params = []): int
+{
+    global $db;
+    $row = $db->fetch_array($db->sql_query_prepared($sql, $params));
+    return (int)($row['c'] ?? 0);
+}
 
-$orphaned_query = $db->sql_query_prepared(
-    'SELECT id, file_path, file_size FROM comment_files
-     WHERE comment_id  IS NULL
-       AND news_id     IS NULL
-       AND torrent_id  IS NULL
-       AND post_id     IS NULL
-       AND messages_id IS NULL'
-);
-
-$orphaned_count = 0;
-$orphaned_freed = 0;
-$orphaned_batch = [];
-
-while ($file = $db->fetch_array($orphaned_query)) {
-    // Удаляем физический файл если существует
-    if (!empty($file['file_path']) && file_exists($file['file_path'])) {
-        @unlink($file['file_path']);
-    }
-    $orphaned_freed += (int)$file['file_size'];
-    $orphaned_batch[] = (int)$file['id'];
-    $orphaned_count++;
-
-    if (count($orphaned_batch) >= 1000) {
-        $placeholders = implode(',', array_fill(0, count($orphaned_batch), '?'));
-        $db->sql_query_prepared("DELETE FROM comment_files WHERE id IN ({$placeholders})", $orphaned_batch);
-        $orphaned_batch = [];
+function tt_delete_ids(string $table, string $idCol, array $ids): void
+{
+    global $db;
+    foreach (array_chunk($ids, TT_BATCH) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $db->sql_query_prepared("DELETE FROM `{$table}` WHERE `{$idCol}` IN ({$ph})", $chunk);
     }
 }
 
-if (!empty($orphaned_batch)) {
-    $placeholders = implode(',', array_fill(0, count($orphaned_batch), '?'));
-    $db->sql_query_prepared("DELETE FROM comment_files WHERE id IN ({$placeholders})", $orphaned_batch);
+// Вложения комментариев лежат плоско в uploads/attachments/, вложения постов
+// форума - в uploads/{YYYYMM}/, и attachname для них уже содержит этот префикс.
+function tt_attach_path(string $attachname): string
+{
+    return str_contains($attachname, '/')
+        ? TSDIR . '/uploads/' . $attachname
+        : TSDIR . '/uploads/attachments/' . $attachname;
 }
 
-if ($orphaned_count > 0) {
-    $log[] = "Deleted {$orphaned_count} orphaned uploaded file(s), freed " . format_filesize($orphaned_freed);
-}
+/**
+ * Выбирает строки, удаляет их файлы и сами строки пачками.
+ * $paths(row) возвращает список путей к файлам этой строки.
+ */
+function tt_purge_with_files(string $select, array $params, string $table, string $idCol, callable $paths, bool $dry): array
+{
+    global $db;
 
-// ── Невалидные comment_files (torrent_id/user_id указывают на
-//    несуществующую раздачу/пользователя) - раньше эти записи удалялись
-//    через общий delete_invalid_records(), но тот трогает только строку
-//    в БД, физический файл оставался сиротой на диске навсегда.
-if ($db->table_exists('comment_files')) {
-    $q = $db->sql_query_prepared(
-        "SELECT id, file_path, file_size FROM comment_files
-         WHERE (user_id IS NULL OR user_id NOT IN ({$ValidUsers}))
-            OR (torrent_id IS NOT NULL AND torrent_id NOT IN ({$ValidTorrents}))"
-    );
+    $q     = $db->sql_query_prepared($select, $params);
+    $rows  = 0;
+    $bytes = 0;
+    $batch = [];
 
-    $invalid_cf_count = 0;
-    $invalid_cf_freed = 0;
-    $invalid_cf_batch = [];
-
-    while ($file = $db->fetch_array($q)) {
-        if (!empty($file['file_path']) && file_exists($file['file_path'])) {
-            @unlink($file['file_path']);
-        }
-        $invalid_cf_freed += (int)$file['file_size'];
-        $invalid_cf_batch[] = (int)$file['id'];
-        $invalid_cf_count++;
-
-        if (count($invalid_cf_batch) >= 1000) {
-            $placeholders = implode(',', array_fill(0, count($invalid_cf_batch), '?'));
-            $db->sql_query_prepared("DELETE FROM comment_files WHERE id IN ({$placeholders})", $invalid_cf_batch);
-            $invalid_cf_batch = [];
-        }
-    }
-    if ($invalid_cf_batch) {
-        $placeholders = implode(',', array_fill(0, count($invalid_cf_batch), '?'));
-        $db->sql_query_prepared("DELETE FROM comment_files WHERE id IN ({$placeholders})", $invalid_cf_batch);
-    }
-
-    if ($invalid_cf_count > 0) {
-        $log[] = "Deleted {$invalid_cf_count} invalid comment_files record(s) (torrent/user no longer exists), freed " . format_filesize($invalid_cf_freed);
-    }
-}
-
-// ── Невалидные screenshots (torrent_id указывает на несуществующую
-//    раздачу) - та же проблема: только строка в БД, файл оставался
-//    на диске в torrents/screens/ навсегда.
-if ($db->table_exists('screenshots')) {
-    $screenDir = TSDIR . '/torrents/screens/';
-
-    $q = $db->sql_query_prepared(
-        "SELECT id, filename FROM screenshots WHERE torrent_id IS NULL OR torrent_id NOT IN ({$ValidTorrents})"
-    );
-
-    $invalid_shot_count = 0;
-    $invalid_shot_freed = 0;
-    $invalid_shot_batch = [];
-
-    while ($row = $db->fetch_array($q)) {
-        if (!empty($row['filename'])) {
-            $path = $screenDir . $row['filename'];
-            if (is_file($path)) {
-                $invalid_shot_freed += filesize($path);
-                @unlink($path);
+    while ($r = $db->fetch_array($q)) {
+        foreach ($paths($r) as $p) {
+            if ($p !== '' && is_file($p)) {
+                $bytes += (int)filesize($p);
+                if (!$dry) @unlink($p);
             }
         }
-        $invalid_shot_batch[] = (int)$row['id'];
-        $invalid_shot_count++;
-
-        if (count($invalid_shot_batch) >= 1000) {
-            $placeholders = implode(',', array_fill(0, count($invalid_shot_batch), '?'));
-            $db->sql_query_prepared("DELETE FROM screenshots WHERE id IN ({$placeholders})", $invalid_shot_batch);
-            $invalid_shot_batch = [];
+        $rows++;
+        if (!$dry) {
+            $batch[] = (int)$r[$idCol];
+            if (count($batch) >= TT_BATCH) {
+                tt_delete_ids($table, $idCol, $batch);
+                $batch = [];
+            }
         }
     }
-    if ($invalid_shot_batch) {
-        $placeholders = implode(',', array_fill(0, count($invalid_shot_batch), '?'));
-        $db->sql_query_prepared("DELETE FROM screenshots WHERE id IN ({$placeholders})", $invalid_shot_batch);
-    }
+    if (!$dry && $batch) tt_delete_ids($table, $idCol, $batch);
 
-    if ($invalid_shot_count > 0) {
-        $log[] = "Deleted {$invalid_shot_count} invalid screenshot record(s) (torrent no longer exists), freed " . format_filesize($invalid_shot_freed);
-    }
+    return [$rows, $bytes];
 }
 
-// ── Файлы в uploads/ без ЛЮБОЙ записи в comment_files ──────
-// Отличается от блока выше: там чистятся записи БД с невалидными
-// user_id/torrent_id (файл + запись). Здесь - обратный случай: файл
-// физически лежит в uploads/, но НИ ОДНОЙ строки в comment_files
-// на него вообще не ссылается (ни валидной, ни невалидной) - такие
-// первый блок не видит, потому что он тоже работает через SELECT
-// FROM comment_files, а тут нечего перебирать.
-if ($db->table_exists('comment_files')) {
-    $keepUploadFiles = [];
-    $q = $db->sql_query_prepared('SELECT file_path FROM comment_files');
-    while ($row = $db->fetch_array($q)) {
-        if (!empty($row['file_path'])) $keepUploadFiles[] = basename($row['file_path']);
-    }
+/**
+ * Файлы в папке, на которые ничего не ссылается.
+ * $isKept(имя_файла) -> true, если файл нужен.
+ */
+function tt_scan_dir(string $dir, callable $isKept, bool $dry): array
+{
+    if (!is_dir($dir) || !($h = opendir($dir))) return [0, 0, []];
 
-    [$n, $freed] = cleanup_orphaned_disk_files(TSDIR . '/uploads', $keepUploadFiles, '');
+    $count = 0;
+    $bytes = 0;
+    $names = [];
+    $fresh = TIMENOW - TT_MIN_FILE_AGE;
 
-    if ($n > 0) {
-        $log[] = "Deleted {$n} file(s) in uploads/ with no comment_files record at all, freed " . format_filesize($freed);
+    while (($file = readdir($h)) !== false) {
+        if ($file === '.' || $file === '..') continue;
+        if (in_array(strtolower($file), TT_PROTECTED_FILES, true)) continue;
+
+        $path = $dir . '/' . $file;
+        if (!is_file($path)) continue;
+        if ((int)filemtime($path) > $fresh) continue;
+        if ($isKept($file)) continue;
+
+        $bytes += (int)filesize($path);
+        if (!$dry) @unlink($path);
+        $count++;
+        if (count($names) < TT_NAMES_SHOWN) $names[] = $file;
     }
+    closedir($h);
+
+    return [$count, $bytes, $names];
 }
 
-// ── Файлы в torrents/screens/ без ЛЮБОЙ записи в screenshots ──────
-// Тот же принцип, что и для uploads/ выше - файл физически на диске,
-// но ни одна строка в screenshots на него вообще не ссылается.
-if ($db->table_exists('screenshots')) {
-    $keepScreenshotFiles = [];
-    $q = $db->sql_query_prepared('SELECT filename FROM screenshots');
-    while ($row = $db->fetch_array($q)) {
-        if (!empty($row['filename'])) $keepScreenshotFiles[] = basename($row['filename']);
-    }
-
-    [$n, $freed] = cleanup_orphaned_disk_files(TSDIR . '/torrents/screens', $keepScreenshotFiles, '');
-
-    if ($n > 0) {
-        $log[] = "Deleted {$n} file(s) in torrents/screens/ with no screenshots record at all, freed " . format_filesize($freed);
-    }
+/** "a.jpg, b.jpg (+3 more)" для колонки Status. */
+function tt_names_note(array $names, int $total): string
+{
+    if (!$names) return '';
+    $more = $total - count($names);
+    return implode(', ', $names) . ($more > 0 ? " (+{$more} more)" : '');
 }
 
-// ── Файлы вложений (комментарии + посты форума) на диске без записи в attachments ──────
-if ($db->table_exists('attachments')) {
-    $keepAttachFiles = [];
-    $q = $db->sql_query_prepared('SELECT attachname, thumbnail FROM attachments');
-    while ($row = $db->fetch_array($q)) {
-        if (!empty($row['attachname'])) $keepAttachFiles[] = $row['attachname'];
-        if (!empty($row['thumbnail']) && $row['thumbnail'] !== 'SMALL') $keepAttachFiles[] = $row['thumbnail'];
+/** Скан папки как шаг отчёта: отсутствующая папка - Skipped, а не "0, OK". */
+function tt_scan_step(string $label, string $dir, callable $isKept, bool $dry): array
+{
+    if (!is_dir($dir)) {
+        return tt_step('disk_scan', $label, 0, 0, 'skip', 'folder not found: ' . $dir);
     }
-
-    $attach_orphan_count = 0;
-    $attach_orphan_freed = 0;
-
-    // Плоская папка комментариев (голые имена файлов, без подпапки)
-    [$n, $freed] = cleanup_orphaned_disk_files(TSDIR . '/uploads/attachments', $keepAttachFiles, '');
-    $attach_orphan_count += $n;
-    $attach_orphan_freed += $freed;
-
-    // Помесячные папки постов форума: uploads/YYYYMM/
-    foreach ((glob(TSDIR . '/uploads/[0-9][0-9][0-9][0-9][0-9][0-9]', GLOB_ONLYDIR) ?: []) as $monthDir) {
-        $monthPrefix = basename($monthDir) . '/';
-        [$n, $freed] = cleanup_orphaned_disk_files($monthDir, $keepAttachFiles, $monthPrefix);
-        $attach_orphan_count += $n;
-        $attach_orphan_freed += $freed;
-    }
-
-    if ($attach_orphan_count > 0) {
-        $log[] = "Deleted {$attach_orphan_count} orphaned attachment file(s) with no DB record, freed " . format_filesize($attach_orphan_freed);
-    }
+    [$n, $b, $names] = tt_scan_dir($dir, $isKept, $dry);
+    return tt_step('disk_scan', $label, $n, $b, 'ok', tt_names_note($names, $n));
 }
 
-// ── Брошенные черновики вложений (posthash, ни к чему не привязаны) ────
-// Таблица attachments общая для комментариев (comment_id) и постов форума
-// (pid) - "черновик" в обоих случаях означает pid=0 AND comment_id=0.
-// Чистим только те, что старше 48 часов, чтобы не задеть того, кто прямо
-// сейчас составляет пост/комментарий и уже прикрепил файлы.
-if ($db->table_exists('attachments')) {
-    $draft_cutoff = TIMENOW - 2 * 86400;
+/** FROM ... WHERE ... для правила сирот, либо null + причина пропуска. */
+function tt_orphan_sql(array $rule, string &$skip): ?string
+{
+    [$table, $refs] = $rule;
+    $mode = $rule[2] ?? 'any';
 
-    $q = $db->sql_query_prepared(
-        'SELECT aid, attachname, thumbnail, filesize FROM attachments
-         WHERE pid = 0 AND comment_id = 0 AND dateuploaded < ?',
-        [$draft_cutoff]
+    if (!tt_has($table)) { $skip = 'table not found'; return null; }
+
+    $joins = [];
+    $conds = [];
+    foreach ($refs as $i => $ref) {
+        [$col, $rt, $rc] = $ref;
+        $zeroOk = $ref[3] ?? false;
+
+        if (!tt_has($table, $col)) { $skip = "column {$col} not found"; return null; }
+        if (!tt_has($rt, $rc))     { $skip = "{$rt}.{$rc} not found";   return null; }
+
+        $a       = "r{$i}";
+        $joins[] = "LEFT JOIN `{$rt}` {$a} ON {$a}.`{$rc}` = x.`{$col}`";
+        $c       = "({$a}.`{$rc}` IS NULL AND x.`{$col}` IS NOT NULL";
+        if ($zeroOk) $c .= " AND x.`{$col}` <> 0";
+        $conds[] = $c . ')';
+    }
+
+    return "FROM `{$table}` x " . implode(' ', $joins)
+         . ' WHERE ' . implode($mode === 'all' ? ' AND ' : ' OR ', $conds);
+}
+
+function tt_load_report(string $file): ?array
+{
+    if (!is_file($file)) return null;
+    $raw = (string)file_get_contents($file);
+    $pos = strpos($raw, "\n");
+    if ($pos === false) return null;
+    $data = json_decode(substr($raw, $pos + 1), true);
+    return is_array($data) ? $data : null;
+}
+
+function tt_save_report(string $file, array $data): void
+{
+    // PHP-заглушка первой строкой: файл в cache/ нельзя прочитать через веб.
+    @file_put_contents($file, "<?php exit; ?>\n" . json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+// ═════════════════════════════════════════════════════════
+//  Операции
+// ═════════════════════════════════════════════════════════
+
+function tt_run_db_orphans(array $rules, bool $dry): array
+{
+    global $db;
+    $out = [];
+
+    foreach ($rules as $rule) {
+        $table = $rule[0];
+        $label = "Orphans in {$table}";
+        $skip  = '';
+        $fw    = tt_orphan_sql($rule, $skip);
+
+        if ($fw === null) {
+            $out[] = tt_step('db_orphans', $label, 0, 0, 'skip', $skip);
+            continue;
+        }
+        if ($dry) {
+            $n = tt_count("SELECT COUNT(*) AS c {$fw}");
+        } else {
+            $db->sql_query_prepared("DELETE x {$fw}");
+            $n = (int)$db->affected_rows();
+        }
+        $out[] = tt_step('db_orphans', $label, $n);
+    }
+    return $out;
+}
+
+function tt_run_file_records(array $cfg, bool $dry): array
+{
+    $out = [];
+
+    // ── comment_files: висячие ссылки + ни к чему не привязанные ──
+    if (tt_has('comment_files', 'file_path')) {
+        $joins  = [];
+        $conds  = [];
+        $params = [];
+
+        if (tt_has('comment_files', 'user_id')) {
+            $joins[] = 'LEFT JOIN users u ON u.id = cf.user_id';
+            $conds[] = '(cf.user_id IS NULL OR u.id IS NULL)';
+        }
+
+        $refs = [
+            'torrent_id'  => ['torrents', 'id'],
+            'comment_id'  => ['comments', 'id'],
+            'post_id'     => ['posts', 'pid'],
+            'messages_id' => ['privatemessages', 'pmid'],
+            'news_id'     => ['news', 'id'],
+        ];
+        $present = [];
+        $i = 0;
+        foreach ($refs as $col => [$rt, $rc]) {
+            if (!tt_has('comment_files', $col)) continue;
+            $present[] = $col;
+            if (!tt_has($rt, $rc)) continue;
+            $a       = 'j' . $i++;
+            $joins[] = "LEFT JOIN `{$rt}` {$a} ON {$a}.`{$rc}` = cf.`{$col}`";
+            $conds[] = "(cf.`{$col}` IS NOT NULL AND cf.`{$col}` <> 0 AND {$a}.`{$rc}` IS NULL)";
+        }
+
+        // Ни к чему не привязан. Если есть колонка времени - только старше 48 ч,
+        // чтобы не удалить файл, который прямо сейчас прикрепляют к сообщению.
+        if ($present) {
+            $unattached = implode(' AND ', array_map(fn(string $c) => "cf.`{$c}` IS NULL", $present));
+            foreach (['created_at', 'uploaded_at', 'dateline', 'added'] as $tc) {
+                if (tt_has('comment_files', $tc)) {
+                    // uploaded_at у тебя DATETIME: без FROM_UNIXTIME() сравнение
+                    // с числом 17xxxxxxxx никогда не истинно и файлы не чистятся.
+                    $unattached .= tt_is_datetime('comment_files', $tc)
+                        ? " AND cf.`{$tc}` < FROM_UNIXTIME(?)"
+                        : " AND cf.`{$tc}` < ?";
+                    $params[]    = TIMENOW - $cfg['draft_max_age'];
+                    break;
+                }
+            }
+            $conds[] = "({$unattached})";
+        }
+
+        if ($conds) {
+            [$n, $b] = tt_purge_with_files(
+                'SELECT cf.id, cf.file_path FROM comment_files cf ' . implode(' ', $joins)
+                . ' WHERE ' . implode(' OR ', $conds),
+                $params, 'comment_files', 'id',
+                fn(array $r) => [(string)$r['file_path']],
+                $dry
+            );
+            $out[] = tt_step('file_records', 'Orphaned comment_files records', $n, $b);
+        }
+    } else {
+        $out[] = tt_step('file_records', 'Orphaned comment_files records', 0, 0, 'skip', 'table not found');
+    }
+
+    // ── attachments ──
+    if (tt_has('attachments', 'comment_id')) {
+        $attachPaths = function (array $r): array {
+            $p = [];
+            if (!empty($r['attachname'])) $p[] = tt_attach_path((string)$r['attachname']);
+            if (!empty($r['thumbnail']) && $r['thumbnail'] !== 'SMALL') $p[] = tt_attach_path((string)$r['thumbnail']);
+            return $p;
+        };
+
+        // Черновики: pid = 0 AND comment_id = 0, старше 48 ч
+        [$n, $b] = tt_purge_with_files(
+            'SELECT aid, attachname, thumbnail FROM attachments
+             WHERE pid = 0 AND comment_id = 0 AND dateuploaded < ?',
+            [TIMENOW - $cfg['draft_max_age']], 'attachments', 'aid', $attachPaths, $dry
+        );
+        $out[] = tt_step('file_records', 'Abandoned draft attachments (older than 48h)', $n, $b);
+
+        // Привязаны к удалённому посту или комментарию
+        [$n, $b] = tt_purge_with_files(
+            'SELECT a.aid, a.attachname, a.thumbnail FROM attachments a
+             LEFT JOIN posts p    ON p.pid = a.pid
+             LEFT JOIN comments c ON c.id  = a.comment_id
+             WHERE (a.pid > 0 AND p.pid IS NULL) OR (a.comment_id > 0 AND c.id IS NULL)',
+            [], 'attachments', 'aid', $attachPaths, $dry
+        );
+        $out[] = tt_step('file_records', 'Attachments of deleted posts and comments', $n, $b);
+    } else {
+        $out[] = tt_step('file_records', 'Orphaned attachments', 0, 0, 'skip', 'attachments.comment_id not found');
+    }
+
+    // ── screenshots ──
+    if (tt_has('screenshots', 'torrent_id')) {
+        $dir = $cfg['screens_dir'];
+        [$n, $b] = tt_purge_with_files(
+            'SELECT s.id, s.filename FROM screenshots s
+             LEFT JOIN torrents t ON t.id = s.torrent_id
+             WHERE s.torrent_id IS NULL OR t.id IS NULL',
+            [], 'screenshots', 'id',
+            fn(array $r) => empty($r['filename']) ? [] : [$dir . '/' . basename((string)$r['filename'])],
+            $dry
+        );
+        $out[] = tt_step('file_records', 'Screenshots of deleted torrents', $n, $b);
+    }
+
+    return $out;
+}
+
+function tt_run_disk_scan(array $cfg, bool $dry): array
+{
+    global $db;
+    $out = [];
+
+    // uploads/ (корень) <- comment_files.file_path
+    if (tt_has('comment_files', 'file_path')) {
+        $keep = [];
+        $q = $db->sql_query_prepared('SELECT file_path FROM comment_files');
+        while ($r = $db->fetch_array($q)) {
+            if (!empty($r['file_path'])) $keep[basename((string)$r['file_path'])] = true;
+        }
+        $out[] = tt_scan_step('uploads/ files with no comment_files record', TSDIR . '/uploads', fn(string $f) => isset($keep[$f]), $dry);
+    }
+
+    // uploads/attachments/ и uploads/YYYYMM/ <- attachments.attachname / thumbnail
+    if (tt_has('attachments')) {
+        $keep = [];
+        $q = $db->sql_query_prepared('SELECT attachname, thumbnail FROM attachments');
+        while ($r = $db->fetch_array($q)) {
+            if (!empty($r['attachname'])) $keep[(string)$r['attachname']] = true;
+            if (!empty($r['thumbnail']) && $r['thumbnail'] !== 'SMALL') $keep[(string)$r['thumbnail']] = true;
+        }
+
+        [$n, $b, $names] = tt_scan_dir(TSDIR . '/uploads/attachments', fn(string $f) => isset($keep[$f]), $dry);
+        foreach ((glob(TSDIR . '/uploads/[0-9][0-9][0-9][0-9][0-9][0-9]', GLOB_ONLYDIR) ?: []) as $monthDir) {
+            $prefix = basename($monthDir) . '/';
+            [$mn, $mb, $mnames] = tt_scan_dir($monthDir, fn(string $f) => isset($keep[$prefix . $f]), $dry);
+            $n += $mn;
+            $b += $mb;
+            foreach ($mnames as $mf) $names[] = $prefix . $mf;
+        }
+        $out[] = tt_step('disk_scan', 'Attachment files with no attachments record', $n, $b, 'ok',
+            tt_names_note(array_slice($names, 0, TT_NAMES_SHOWN), $n));
+    }
+
+    // uploads/avatars/ <- users.avatar
+    // MyBB хранит "./uploads/avatars/avatar_5.jpg?dateline=..." - query string
+    // обязательно отрезать, иначе ни одно имя не совпадёт с файлом на диске.
+    if (tt_has('users', 'avatar')) {
+        $keep = [];
+        $q = $db->sql_query_prepared("SELECT avatar FROM users WHERE avatar <> ''");
+        while ($r = $db->fetch_array($q)) {
+            $av = (string)$r['avatar'];
+            if (preg_match('~^https?://~i', $av)) continue;
+            $keep[basename((string)strtok($av, '?'))] = true;
+        }
+        $out[] = tt_scan_step('Avatars of users that no longer exist', TSDIR . '/uploads/avatars', fn(string $f) => isset($keep[$f]), $dry);
+    }
+
+    // torrents/screens/ <- screenshots.filename
+    if (tt_has('screenshots', 'filename')) {
+        $keep = [];
+        $q = $db->sql_query_prepared('SELECT filename FROM screenshots');
+        while ($r = $db->fetch_array($q)) {
+            if (!empty($r['filename'])) $keep[basename((string)$r['filename'])] = true;
+        }
+        $out[] = tt_scan_step('Screenshot files with no screenshots record', $cfg['screens_dir'], fn(string $f) => isset($keep[$f]), $dry);
+    }
+
+    // torrents/images/ <- torrents.t_image / t_image2
+    // Значение может быть голым именем, локальным путём или полным URL -
+    // в любом случае берём basename без query string. Лишнее попадание
+    // в $keep только сохраняет файл, поэтому так безопасно.
+    // Сравнение без учёта регистра: NTFS регистр не различает, а в БД
+    // может быть "Poster.JPG" при файле "poster.jpg".
+    $imgCols = array_values(array_filter(['t_image', 't_image2'], fn(string $c) => tt_has('torrents', $c)));
+    if ($imgCols) {
+        $keep = [];
+        $q = $db->sql_query_prepared(
+            'SELECT ' . implode(', ', array_map(fn(string $c) => "`{$c}`", $imgCols)) . ' FROM torrents'
+        );
+        while ($r = $db->fetch_array($q)) {
+            foreach ($imgCols as $c) {
+                $v = trim((string)($r[$c] ?? ''));
+                if ($v !== '') $keep[strtolower(basename((string)strtok($v, '?')))] = true;
+            }
+        }
+        $out[] = tt_scan_step(
+            'Poster images no torrent references',
+            $cfg['images_dir'],
+            fn(string $f) => isset($keep[strtolower($f)]),
+            $dry
+        );
+    }
+
+    // torrents/{id}.torrent <- torrents.id
+    // Трогаем ТОЛЬКО файлы строго вида "123.torrent", всё остальное в папке остаётся.
+    $keep = [];
+    $q = $db->sql_query_prepared('SELECT id FROM torrents');
+    while ($r = $db->fetch_array($q)) $keep[(int)$r['id']] = true;
+
+    $out[] = tt_scan_step(
+        '.torrent files of deleted torrents',
+        $cfg['torrent_dir'],
+        fn(string $f) => !preg_match('~^(\d+)\.torrent$~i', $f, $m) || isset($keep[(int)$m[1]]),
+        $dry
     );
 
-    $draft_count = 0;
-    $draft_freed = 0;
-    $draft_batch = [];
+    return $out;
+}
 
-    while ($row = $db->fetch_array($q)) {
-        if (!empty($row['attachname'])) {
-            $path = resolve_attachment_path(TSDIR, $row['attachname']);
-            if (is_file($path)) @unlink($path);
+function tt_run_time_cleanup(array $rules, bool $dry): array
+{
+    global $db;
+    $out = [];
+
+    foreach ($rules as [$table, $col, $days]) {
+        $label = $days === 0
+            ? "{$table}: expired"
+            : "{$table}: older than {$days} day" . ($days === 1 ? '' : 's');
+        if (!tt_has($table, $col)) {
+            $out[] = tt_step('time_cleanup', $label, 0, 0, 'skip', "{$table}.{$col} not found");
+            continue;
         }
-        if (!empty($row['thumbnail']) && $row['thumbnail'] !== 'SMALL') {
-            $thumbPath = resolve_attachment_path(TSDIR, $row['thumbnail']);
-            if (is_file($thumbPath)) @unlink($thumbPath);
+        $cutoff = TIMENOW - $days * TT_DAY;
+        if ($dry) {
+            $n = tt_count("SELECT COUNT(*) AS c FROM `{$table}` WHERE `{$col}` < ?", [$cutoff]);
+        } else {
+            $db->sql_query_prepared("DELETE FROM `{$table}` WHERE `{$col}` < ?", [$cutoff]);
+            $n = (int)$db->affected_rows();
         }
-        $draft_freed += (int)$row['filesize'];
-        $draft_batch[] = (int)$row['aid'];
-        $draft_count++;
+        $out[] = tt_step('time_cleanup', $label, $n);
+    }
+    return $out;
+}
 
-        if (count($draft_batch) >= 1000) {
-            $placeholders = implode(',', array_fill(0, count($draft_batch), '?'));
-            $db->sql_query_prepared("DELETE FROM attachments WHERE aid IN ({$placeholders})", $draft_batch);
-            $draft_batch = [];
+function tt_run_backups(array $cfg, bool $dry): array
+{
+    $dir    = $cfg['backup_dir'];
+    $cutoff = TIMENOW - $cfg['backup_keep_days'] * TT_DAY;
+    $label  = "Backups older than {$cfg['backup_keep_days']} days";
+
+    if (!is_dir($dir)) return [tt_step('backups', $label, 0, 0, 'skip', 'backup folder not found')];
+
+    $n = 0;
+    $b = 0;
+    foreach (array_merge(glob($dir . '/*.sql') ?: [], glob($dir . '/*.gz') ?: []) as $file) {
+        if (is_file($file) && (int)filemtime($file) < $cutoff) {
+            $b += (int)filesize($file);
+            if (!$dry) @unlink($file);
+            $n++;
         }
     }
-    if ($draft_batch) {
-        $placeholders = implode(',', array_fill(0, count($draft_batch), '?'));
-        $db->sql_query_prepared("DELETE FROM attachments WHERE aid IN ({$placeholders})", $draft_batch);
+    return [tt_step('backups', $label, $n, $b)];
+}
+
+function tt_run_recount(bool $dry): array
+{
+    global $db;
+    $label = 'torrents.comments counter';
+
+    if (!tt_has('torrents', 'comments') || !tt_has('comments', 'torrent')) {
+        return [tt_step('recount', $label, 0, 0, 'skip', 'column not found')];
     }
 
-    if ($draft_count > 0) {
-        $log[] = "Deleted {$draft_count} abandoned draft attachment(s) (unposted comments/posts older than 48h), freed " . format_filesize($draft_freed);
+    $sub = 'LEFT JOIN (SELECT torrent, COUNT(*) AS cnt FROM comments GROUP BY torrent) x ON x.torrent = t.id';
+    if ($dry) {
+        $n = tt_count("SELECT COUNT(*) AS c FROM torrents t {$sub} WHERE t.comments <> COALESCE(x.cnt, 0)");
+    } else {
+        $db->sql_query_prepared("UPDATE torrents t {$sub} SET t.comments = COALESCE(x.cnt, 0) WHERE t.comments <> COALESCE(x.cnt, 0)");
+        $n = (int)$db->affected_rows();
     }
+    return [tt_step('recount', $label . ' (torrents fixed)', $n)];
 }
 
-// ── Аватарки удалённых/несуществующих юзеров ────────────────────────────
-if ($db->table_exists('users')) {
-    $keepAvatars = [];
-    $q = $db->sql_query_prepared('SELECT avatar FROM users');
-    while ($row = $db->fetch_array($q)) {
-        if (!empty($row['avatar'])) $keepAvatars[] = basename($row['avatar']);
+function tt_run_optimize(array $tables, array $cfg, bool $dry): array
+{
+    global $db;
+    $out    = [];
+    $tables = array_values(array_unique(array_filter($tables, fn(string $t) => tt_has($t))));
+    if (!$tables) return $out;
+
+    // В MySQL 8+ information_schema кэширует статистику на сутки - просим свежую.
+    $db->sql_query_prepared('SET SESSION information_schema_stats_expiry = 0');
+
+    $ph = implode(',', array_fill(0, count($tables), '?'));
+    $q  = $db->sql_query_prepared(
+        "SELECT TABLE_NAME AS t, DATA_FREE AS f FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ({$ph})",
+        $tables
+    );
+
+    $free = [];
+    while ($r = $db->fetch_array($q)) $free[(string)$r['t']] = (int)$r['f'];
+
+    foreach ($tables as $t) {
+        $f = $free[$t] ?? 0;
+        if ($f < $cfg['optimize_min_free']) continue;
+        if (!$dry) $db->sql_query_prepared("OPTIMIZE TABLE `{$t}`");
+        $out[] = tt_step('optimize', "Optimize {$t}", 0, $f, 'ok', 'reclaimable space (estimate)');
     }
-    [$n, $freed] = cleanup_orphaned_disk_files(TSDIR . '/uploads/avatars', $keepAvatars);
-    if ($n > 0) $log[] = "Deleted {$n} orphaned avatar file(s), freed " . format_filesize($freed);
-}
-
-// ── Старые бэкапы БД (старше 30 дней) ───────────────────────────────────
-[$n, $freed] = rotate_old_backups(ADMIN_DIR . 'backup', 30);
-if ($n > 0) $log[] = "Deleted {$n} old database backup(s) older than 30 days, freed " . format_filesize($freed);
-
-// ── Time-based cleanup ────────────────────────────────────
-$thirty_days = TIMENOW - 30 * 86400;
-$seven_days  = TIMENOW - 7  * 86400;
-
-foreach ([
-    ['sessions',      'time',      $thirty_days],
-    ['searchlog',     'dateline',  $seven_days],
-    ['loginattempts', 'added',     $thirty_days],
-] as [$table, $column, $threshold]) {
-    $db->sql_query_prepared("DELETE FROM {$table} WHERE {$column} < ?", [$threshold]);
-    $n = $db->affected_rows();
-    if ($n > 0) $log[] = "Deleted {$n} old records from {$table}";
-}
-
-// ── Просроченные записи ожидания 2FA-кода ───────────────────────────────
-// Токен живёт максимум несколько минут (пока юзер вводит код), поэтому
-// запись старше суток - точно "зависшая" и её можно смело чистить.
-if ($db->table_exists('2fa_pending')) {
-    $db->sql_query_prepared('DELETE FROM 2fa_pending WHERE created_at < ?', [$thirty_days]);
-    $n = $db->affected_rows();
-    if ($n > 0) $log[] = "Deleted {$n} expired 2FA pending record(s)";
-}
-
-// ── Optimize tables ───────────────────────────────────────
-$tables_to_optimize = [
-    'bookmarks', 'cheat_attempts', 'comments',
-    'notconnectablepmlog', 'peers', 'reports', 'snatched', 'staffmessages',
-    'hit_and_run', 'inactivity', 'comment_files',
-    'privatemessages', 'screenshots', 'sessions', 'searchlog', 'loginattempts',
-    '2fa_pending',
-];
-
-foreach ($tables_to_optimize as $table) {
-    if ($db->table_exists($table)) {
-        $db->sql_query_prepared("OPTIMIZE TABLE {$table}");
-        $log[] = "Optimized table: {$table}";
+    if (!$out) {
+        $out[] = tt_step('optimize', 'No table has more than ' . tt_size($cfg['optimize_min_free']) . ' free', 0, 0, 'skip', 'nothing to optimize');
     }
+    return $out;
 }
 
-// ── Report ────────────────────────────────────────────────
-$execution_time = round(microtime(true) - $start_time, 2);
-$log_items      = implode('', array_map(
-    fn(string $e) => '<li>' . htmlspecialchars($e) . '</li>',
-    $log
-));
+// ═════════════════════════════════════════════════════════
+//  POST: выполнение -> отчёт в файл -> редирект (PRG)
+// ═════════════════════════════════════════════════════════
+global $mybb, $db, $BASEURL;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['tt_action'] ?? '') === 'run') {
+    if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
+        http_response_code(403);
+        stderr('Error', 'Invalid security token. Please go back and try again.');
+    }
+
+    // mode_js ставит JS после подтверждения; без JS приходит значение кнопки.
+    // Всё, что не 'run', считается пробным прогоном.
+    $modeRaw = (string)($_POST['mode_js'] ?? '') ?: (string)($_POST['mode'] ?? '');
+    $dry     = $modeRaw !== 'run';
+
+    $selected = array_values(array_intersect(
+        array_keys($TT_GROUPS),
+        array_map('strval', (array)($_POST['groups'] ?? []))
+    ));
+    if (!$selected) {
+        stderr('Error', 'Select at least one operation.');
+    }
+
+    $lock = $db->fetch_array($db->sql_query_prepared('SELECT GET_LOCK(?, 0) AS l', [TT_LOCK_NAME]));
+    if ((int)($lock['l'] ?? 0) !== 1) {
+        stderr('Error', 'Cleanup is already running. Wait for it to finish and reload the page.');
+    }
+
+    set_time_limit(0);
+    ignore_user_abort(true);
+
+    $start = microtime(true);
+    $steps = [];
+
+    try {
+        foreach ($selected as $g) {
+            try {
+                $steps = array_merge($steps, match ($g) {
+                    'db_orphans'   => tt_run_db_orphans($TT_ORPHAN_RULES, $dry),
+                    'file_records' => tt_run_file_records($TT_CFG, $dry),
+                    'disk_scan'    => tt_run_disk_scan($TT_CFG, $dry),
+                    'time_cleanup' => tt_run_time_cleanup($TT_TIME_RULES, $dry),
+                    'backups'      => tt_run_backups($TT_CFG, $dry),
+                    'recount'      => tt_run_recount($dry),
+                    'optimize'     => tt_run_optimize(
+                        array_merge(
+                            array_column($TT_ORPHAN_RULES, 0),
+                            array_column($TT_TIME_RULES, 0),
+                            ['comment_files', 'attachments', 'screenshots']
+                        ),
+                        $TT_CFG,
+                        $dry
+                    ),
+                });
+            } catch (Throwable $e) {
+                $steps[] = tt_step($g, $TT_GROUPS[$g]['title'], 0, 0, 'error', $e->getMessage());
+            }
+        }
+    } finally {
+        $db->sql_query_prepared('SELECT RELEASE_LOCK(?)', [TT_LOCK_NAME]);
+    }
+
+    $rows  = array_sum(array_column($steps, 'rows'));
+    // Место от OPTIMIZE - оценка DATA_FREE, в "освобождено на диске" не суммируем.
+    $bytes = array_sum(array_map(fn(array $s) => $s['group'] === 'optimize' ? 0 : $s['bytes'], $steps));
+    $opt   = count(array_filter($steps, fn(array $s) => $s['group'] === 'optimize' && $s['status'] === 'ok'));
+
+    $report = [
+        'mode'      => $dry ? 'dry' : 'run',
+        'at'        => TIMENOW,
+        'by'        => (string)($mybb->user['username'] ?? ''),
+        'duration'  => round(microtime(true) - $start, 2),
+        'rows'      => (int)$rows,
+        'bytes'     => (int)$bytes,
+        'optimized' => $opt,
+        'groups'    => $selected,
+        'steps'     => $steps,
+    ];
+    tt_save_report($TT_CFG['report_file'], $report);
+
+    if (!$dry) {
+        write_log(sprintf(
+            'Tweak Tracker run by %s: %d records, %s on disk, %d tables optimized, %.2fs (%s)',
+            $report['by'], $rows, tt_size((int)$bytes), $opt, $report['duration'], implode(', ', $selected)
+        ));
+    }
+
+    header('Location: ' . $_this_script_);
+    exit;
+}
+
+// ═════════════════════════════════════════════════════════
+//  GET: страница
+// ═════════════════════════════════════════════════════════
+$report  = tt_load_report($TT_CFG['report_file']);
+$checked = $report['groups'] ?? array_keys(array_filter($TT_GROUPS, fn(array $g) => $g['default']));
+$isDry   = ($report['mode'] ?? '') === 'dry';
 
 stdhead();
-echo render_css($BASEURL);
-echo '
-<div class="container mt-3">
-    <div class="card error-card">
-        <div class="card-header22 success">
-            <i class="bi bi-check-circle-fill me-2" style="font-size:2rem"></i>
-            <div>
-                <h2 class="mb-0">Database Optimization Complete</h2>
-                <p class="mb-0 opacity-75">Tracker tables successfully optimized!</p>
-            </div>
+
+$v = TT_ASSET_VER;
+?>
+<link rel="stylesheet" href="<?= $BASEURL ?>/include/templates/default/style/sweetalert2.min.css">
+<link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/tweak_tracker.css?ver=<?= $v ?>">
+
+<div class="tt-page container mt-3 mb-5">
+
+    <div class="tt-head">
+        <div class="tt-head-icon"><i class="fa-solid fa-broom"></i></div>
+        <div class="tt-head-text">
+            <h1>Tracker cleanup</h1>
+            <p>Removes orphaned records and files, rotates backups and optimizes tables. Preview first with a dry run.</p>
         </div>
-        <div class="card-body">
-            <div class="alert alert-success">
-                <strong>Success!</strong> Optimization finished in ' . $execution_time . ' seconds.
-            </div>
-            <p><strong>Actions Performed:</strong></p>
-            <div style="max-height:300px;overflow-y:auto;border:1px solid #28a745;padding:10px">
-                <ul>' . $log_items . '</ul>
-            </div>
-            <p class="mt-3"><strong>Next Steps:</strong> Run a full database optimization through your database management tool.</p>
+        <span class="tt-version">v<?= TT_VERSION ?></span>
+    </div>
+
+    <div class="tt-kpis">
+        <div class="tt-kpi">
+            <div class="tt-kpi-icon tt-c-primary"><i class="fa-solid fa-database"></i></div>
+            <div><div class="tt-kpi-val"><?= $report ? number_format($report['rows']) : '—' ?></div>
+                 <div class="tt-kpi-lbl"><?= $isDry ? 'Records to delete' : 'Records deleted' ?></div></div>
+        </div>
+        <div class="tt-kpi">
+            <div class="tt-kpi-icon tt-c-success"><i class="fa-solid fa-hard-drive"></i></div>
+            <div><div class="tt-kpi-val"><?= $report ? tt_size($report['bytes']) : '—' ?></div>
+                 <div class="tt-kpi-lbl"><?= $isDry ? 'Disk space to free' : 'Disk space freed' ?></div></div>
+        </div>
+        <div class="tt-kpi">
+            <div class="tt-kpi-icon tt-c-warning"><i class="fa-solid fa-stopwatch"></i></div>
+            <div><div class="tt-kpi-val"><?= $report ? $report['duration'] . ' s' : '—' ?></div>
+                 <div class="tt-kpi-lbl">Duration</div></div>
+        </div>
+        <div class="tt-kpi">
+            <div class="tt-kpi-icon tt-c-info"><i class="fa-solid fa-gauge-high"></i></div>
+            <div><div class="tt-kpi-val"><?= $report ? (int)$report['optimized'] : '—' ?></div>
+                 <div class="tt-kpi-lbl"><?= $isDry ? 'Tables to optimize' : 'Tables optimized' ?></div></div>
         </div>
     </div>
-</div>';
+
+    <?php if ($report): ?>
+    <div class="tt-card tt-report<?= $isDry ? ' is-dry' : '' ?>">
+        <div class="tt-report-head">
+            <div>
+                <?php if ($isDry): ?>
+                    <span class="tt-badge tt-badge-dry"><i class="fa-solid fa-eye me-1"></i>Dry run, nothing was deleted</span>
+                <?php else: ?>
+                    <span class="tt-badge tt-badge-run"><i class="fa-solid fa-check me-1"></i>Cleanup finished</span>
+                <?php endif; ?>
+                <span class="tt-meta">
+                    <?= tt_e(date('Y-m-d H:i', (int)$report['at'])) ?>, by <?= tt_e((string)$report['by']) ?>
+                </span>
+            </div>
+            <label class="tt-switch">
+                <input type="checkbox" id="ttShowAll"> Show steps with nothing to do
+            </label>
+        </div>
+        <?php if ($isDry): ?>
+            <p class="tt-note">Counts for later steps don't include rows that earlier steps would remove (for example, votes on requests that are about to be deleted). A real run may remove slightly more.</p>
+        <?php endif; ?>
+        <div class="tt-table-wrap">
+            <table class="tt-table">
+                <thead><tr><th>Action</th><th class="text-end">Records</th><th class="text-end">Size</th><th>Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($report['steps'] as $s):
+                    $empty = $s['status'] === 'ok' && $s['rows'] === 0 && $s['bytes'] === 0;
+                    $cls   = $s['status'] !== 'ok' ? ' tt-row-' . $s['status'] : ($empty ? ' tt-row-empty' : '');
+                ?>
+                    <tr class="tt-row<?= $cls ?>">
+                        <td>
+                            <i class="fa-solid <?= tt_e($TT_GROUPS[$s['group']]['icon'] ?? 'fa-circle') ?> tt-row-icon"></i>
+                            <?= tt_e($s['label']) ?>
+                        </td>
+                        <td class="text-end"><?= $s['rows'] ? number_format($s['rows']) : '—' ?></td>
+                        <td class="text-end"><?= $s['bytes'] ? tt_size($s['bytes']) : '—' ?></td>
+                        <td>
+                            <?php if ($s['status'] === 'skip'): ?>
+                                <span class="tt-status tt-status-skip">Skipped</span>
+                            <?php elseif ($s['status'] === 'error'): ?>
+                                <span class="tt-status tt-status-error">Error</span>
+                            <?php else: ?>
+                                <span class="tt-status tt-status-ok">OK</span>
+                            <?php endif; ?>
+                            <?php if ($s['note'] !== ''): ?><span class="tt-status-note"><?= tt_e($s['note']) ?></span><?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <form method="post" action="<?= tt_e($_this_script_) ?>" id="ttForm">
+        <input type="hidden" name="my_post_key" value="<?= tt_e((string)$mybb->post_code) ?>">
+        <input type="hidden" name="tt_action" value="run">
+        <input type="hidden" name="mode_js" value="">
+
+        <div class="tt-card">
+            <div class="tt-groups-head">
+                <h2>Operations</h2>
+                <button type="button" class="tt-btn tt-btn-ghost" id="ttToggleAll">
+                    <i class="fa-solid fa-list-check me-1"></i><span>Select all</span>
+                </button>
+            </div>
+            <div class="tt-groups">
+                <?php foreach ($TT_GROUPS as $key => $g): ?>
+                    <label class="tt-group<?= $key === 'optimize' ? ' tt-group-heavy' : '' ?>">
+                        <input type="checkbox" name="groups[]" value="<?= tt_e($key) ?>"
+                               data-title="<?= tt_e($g['title']) ?>"
+                               <?= in_array($key, $checked, true) ? 'checked' : '' ?>>
+                        <span class="tt-group-icon"><i class="fa-solid <?= tt_e($g['icon']) ?>"></i></span>
+                        <span class="tt-group-body">
+                            <span class="tt-group-title"><?= tt_e($g['title']) ?></span>
+                            <span class="tt-group-desc"><?= tt_e($g['desc']) ?></span>
+                        </span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <div class="tt-actionbar">
+            <span class="tt-actionbar-hint"><i class="fa-solid fa-triangle-exclamation me-1"></i>Back up the database before a real run.</span>
+            <div class="tt-actionbar-btns">
+                <button type="submit" name="mode" value="dry" class="tt-btn tt-btn-outline" id="ttDry">
+                    <i class="fa-solid fa-eye me-1"></i>Dry run
+                </button>
+                <button type="submit" name="mode" value="run" class="tt-btn tt-btn-danger" id="ttRun">
+                    <i class="fa-solid fa-broom me-1"></i>Run cleanup
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/tweak_tracker.js?ver=<?= $v ?>"></script>
+<?php
 stdfoot();

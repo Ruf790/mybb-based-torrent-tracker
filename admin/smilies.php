@@ -1,776 +1,703 @@
 <?php
 declare(strict_types=1);
 
-$rootpath = './../';
-require_once $rootpath . 'global.php';
+// Раньше файл сам подключал global.php и не проверял STAFF_PANEL: прямой
+// заход на admin/smilies.php давал добавлять и удалять смайлы кому угодно.
+if (!defined('STAFF_PANEL')) {
+    exit('<b>Error!</b> Direct initialization of this file is not allowed.');
+}
 
-class SmilieManager
+define('SM_VERSION', '2.0');
+const SM_ASSET_VER  = 1;
+const SM_EXT        = ['gif', 'png', 'jpg', 'jpeg', 'webp'];
+const SM_MAX_ORDER  = 65535;          // sorder - smallint unsigned
+const SM_IMPORT_MAX = 1048576;        // 1 MB на JSON-импорт
+const SM_BIG_BYTES  = 102400;         // предупреждение: файл больше 100 KB
+const SM_BIG_PX     = 96;             // предупреждение: сторона больше 96 px
+
+final class SmilieManager
 {
-    private string $smilieDir;
-    private string $smilieDirUrl;
-    private $db;
-    private $cache;
-    private string $baseUrl;
-    
-    public function __construct($db, $cache, $rootpath)
+    private string $dir;
+    private string $url;
+    private string $self;
+
+    public function __construct(private $db, private $cache)
     {
-        global $BASEURL, $pic_base_url;
-		
-		$this->db = $db;
-        $this->cache = $cache;
-		$this->smilieDir    = TSDIR . '/' . $pic_base_url . 'smilies';
-		$this->smilieDirUrl = $BASEURL . '/' . $pic_base_url . 'smilies';
-        $this->baseUrl = $_SERVER['PHP_SELF'] ?? 'index.php';
+        global $BASEURL, $pic_base_url, $_this_script_;
+
+        $this->dir  = rtrim(TSDIR . '/' . $pic_base_url . 'smilies', '/');
+        $this->url  = rtrim($BASEURL . '/' . $pic_base_url . 'smilies', '/');
+        $this->self = (string)($_this_script_ ?? '') ?: 'index.php?act=smilies';
     }
-    
-    private function getUrl(string $action = '', array $params = []): string
-    {
-        $query = ['act' => 'smilies'];
-        
-        if ($action) {
-            $query['action'] = $action;
-        }
-        
-        $query = array_merge($query, $params);
-        
-        $url = $this->baseUrl . '?' . http_build_query($query);
-        
-        if (isset($_this_script_)) {
-            $url = $_this_script_;
-            if (strpos($url, '?') === false) {
-                $url .= '?';
-            } else {
-                $url .= '&';
-            }
-            $url .= http_build_query($query);
-        }
-        
-        return $url;
-    }
-    
-    private function redirect(string $url): void
-    {
-        header('Location: ' . $url);
-        exit;
-    }
-    
+
+    // ── Маршрутизация ────────────────────────────────────────
+
     public function run(): void
     {
-        $action = $_GET['action'] ?? 'manage_smilies';
-        
-        switch ($action) {
-            case 'add_smilie':
-            case 'edit_smilie':
-                $this->handleForm($action);
-                break;
-            case 'delete_smilie':
-                $this->handleDelete();
-                break;
-            case 'update_smilies_order':
-                $this->handleUpdateOrder();
-                break;
-            case 'browse_files':
-                $this->handleBrowseFiles();
-                break;
-            case 'export_json':
-                $this->handleExport();
-                break;
-            case 'import_json':
-                $this->handleImport();
-                break;
-            default:
-                $this->handleList();
-                break;
+        if ($_SERVER['REQUEST_METHOD'] === 'POST'
+            && !verify_post_check((string)($_POST['my_post_key'] ?? ''), true)) {
+            http_response_code(403);
+            stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
         }
+
+        match ((string)($_GET['action'] ?? '')) {
+            'add_smilie'           => $this->handleForm(false),
+            'edit_smilie'          => $this->handleForm(true),
+            'delete_smilie'        => $this->handleDelete(),
+            'update_smilies_order' => $this->handleUpdateOrder(),
+            'export_json'          => $this->handleExport(),
+            'import_json'          => $this->handleImport(),
+            default                => $this->handleList(),
+        };
     }
-    
-    private function handleForm(string $action): void
+
+    // ── Хелперы ──────────────────────────────────────────────
+
+    private function e(string|int|null $s): string
     {
-        $sid = (int)($_GET['sid'] ?? 0);
-        $edit = $action === 'edit_smilie';
-        $error = null;
-        
-        $data = $edit ? $this->getSmilie($sid) : [
-            'stitle' => '',
-            'stext' => '',
-            'spath' => '',
-            'sorder' => $this->getNextOrder()
-        ];
-        
-        if ($edit && empty($data)) {
-            $this->redirectWithError('Smilie not found');
-            return;
-        }
-        
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $data = [
-                'stitle' => trim($_POST['stitle'] ?? ''),
-                'stext' => trim($_POST['stext'] ?? ''),
-                'spath' => trim($_POST['spath'] ?? ''),
-                'sorder' => (int)($_POST['sorder'] ?? 0)
-            ];
-            
-            $validation = $this->validate($data, $edit ? $sid : null);
-            
-            if ($validation['valid']) {
-                $this->save($data, $edit ? $sid : null);
-                $msg = $edit ? 'Smilie updated successfully' : 'Smilie added successfully';
-                $this->redirectWithSuccess($msg);
-            } else {
-                $error = $this->alert(implode('<br>', $validation['errors']), 'danger');
+        return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    }
+
+    private function link(string $action = '', array $params = []): string
+    {
+        $q = ($action !== '' ? ['action' => $action] : []) + $params;
+        if (!$q) return $this->self;
+        return $this->self . (str_contains($this->self, '?') ? '&' : '?') . http_build_query($q);
+    }
+
+    private function done(string $message, string $type = 'success'): void
+    {
+        flash_message($message, $type);
+        admin_redirect($this->self);
+        exit;
+    }
+
+    private function log(string $what): void
+    {
+        global $CURUSER;
+        write_log('Smilies: ' . $what . ' by ' . ($CURUSER['username'] ?? 'unknown'));
+    }
+
+    private function postKey(): string
+    {
+        global $mybb;
+        return $this->e((string)$mybb->post_code);
+    }
+
+    private function size(int $bytes): string
+    {
+        if ($bytes >= 1048576) return round($bytes / 1048576, 2) . ' MB';
+        if ($bytes >= 1024)    return round($bytes / 1024, 1) . ' KB';
+        return $bytes . ' B';
+    }
+
+    /** Имя файла без путей и с разрешённым расширением - иначе ''. */
+    private function cleanFile(string $name): string
+    {
+        $name = trim($name);
+        if ($name === '' || $name !== basename($name) || str_starts_with($name, '.')) return '';
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        return in_array($ext, SM_EXT, true) ? $name : '';
+    }
+
+    private function fileExists(string $name): bool
+    {
+        return $name !== '' && is_file($this->dir . '/' . $name);
+    }
+
+    /** Все картинки в папке смайлов: имя => размер. */
+    private function scanFiles(): array
+    {
+        $out = [];
+        foreach (@scandir($this->dir) ?: [] as $f) {
+            if ($this->cleanFile($f) !== '' && is_file($this->dir . '/' . $f)) {
+                $out[$f] = (int)filesize($this->dir . '/' . $f);
             }
         }
-        
-        $this->renderForm($data, $edit, $error, $sid);
+        uksort($out, 'strnatcasecmp');
+        return $out;
     }
-    
+
+    private function allSmilies(): array
+    {
+        $rows = [];
+        $q = $this->db->sql_query_prepared('SELECT * FROM smilies ORDER BY sorder, stitle');
+        while ($q && ($r = $this->db->fetch_array($q))) $rows[] = $r;
+        return $rows;
+    }
+
     private function getSmilie(int $sid): ?array
     {
-        $result = $this->db->sql_query_prepared("SELECT * FROM smilies WHERE sid = ?", [$sid]);
-        if ($result && $this->db->num_rows($result) > 0) {
-            return $this->db->fetch_array($result);
-        }
-        return null;
+        $q = $this->db->sql_query_prepared('SELECT * FROM smilies WHERE sid = ?', [$sid]);
+        $r = $q ? $this->db->fetch_array($q) : null;
+        return $r ?: null;
     }
-    
-    private function getNextOrder(): int
+
+    private function nextOrder(): int
     {
-        $result = $this->db->sql_query_prepared("SELECT MAX(sorder) as max_order FROM smilies");
-        if ($result) {
-            $row = $this->db->fetch_array($result);
-            return (int)($row['max_order'] ?? 0) + 10;
-        }
-        return 10;
+        $q   = $this->db->sql_query_prepared('SELECT MAX(sorder) AS m FROM smilies');
+        $row = $q ? $this->db->fetch_array($q) : null;
+        return min(SM_MAX_ORDER, (int)($row['m'] ?? 0) + 10);
     }
-    
-    private function validate(array $data, ?int $sid = null): array
+
+    private function textTaken(string $text, ?int $exceptSid = null): bool
     {
-        $errors = [];
-        
-        if (empty($data['stitle'])) {
-            $errors[] = 'Enter title';
-        } elseif (mb_strlen($data['stitle']) > 50) {
-            $errors[] = 'Title should not exceed 50 characters';
-        }
-        
-        if (empty($data['stext'])) {
-            $errors[] = 'Enter replacement text';
-        } elseif (mb_strlen($data['stext']) > 20) {
-            $errors[] = 'Replacement text should not exceed 20 characters';
-        }
-        
-        if (empty($data['spath'])) {
-            $errors[] = 'Select image file';
-        } elseif (!file_exists($this->smilieDir . '/' . $data['spath'])) {
-            $errors[] = 'File not found';
-        } elseif (!preg_match('/\.(gif|png|jpg|jpeg|webp)$/i', $data['spath'])) {
-            $errors[] = 'Only image files are allowed (gif, png, jpg, webp)';
-        }
-        
-        if ($data['sorder'] < 0) {
-            $errors[] = 'Order cannot be negative';
-        }
-        
-        if (!empty($data['stext'])) {
-            if ($sid !== null) {
-                $res = $this->db->sql_query_prepared(
-                    "SELECT sid FROM smilies WHERE stext = ? AND sid != ?",
-                    [$data['stext'], $sid]
-                );
-            } else {
-                $res = $this->db->sql_query_prepared(
-                    "SELECT sid FROM smilies WHERE stext = ?",
-                    [$data['stext']]
-                );
-            }
-            if ($res && $this->db->num_rows($res) > 0) {
-                $errors[] = 'This replacement text is already used';
-            }
-        }
-        
-        return [
-            'valid' => empty($errors),
-            'errors' => $errors
-        ];
+        $q = $exceptSid
+            ? $this->db->sql_query_prepared('SELECT sid FROM smilies WHERE stext = ? AND sid <> ? LIMIT 1', [$text, $exceptSid])
+            : $this->db->sql_query_prepared('SELECT sid FROM smilies WHERE stext = ? LIMIT 1', [$text]);
+        return $q && $this->db->num_rows($q) > 0;
     }
-    
-    private function save(array $data, ?int $sid = null): void
+
+    private function assets(): void
     {
-        if ($sid) {
-            $this->db->sql_query_prepared(
-                "UPDATE smilies SET stitle = ?, stext = ?, spath = ?, sorder = ? WHERE sid = ?",
-                [$data['stitle'], $data['stext'], $data['spath'], $data['sorder'], $sid]
-            );
-        } else {
-            $this->db->sql_query_prepared(
-                "INSERT INTO smilies (stitle, stext, spath, sorder) VALUES (?, ?, ?, ?)",
-                [$data['stitle'], $data['stext'], $data['spath'], $data['sorder']]
-            );
-        }
-        
-        $this->cache->update_smilies();
+        global $BASEURL;
+        $v = SM_ASSET_VER;
+        echo '<link rel="stylesheet" href="' . $BASEURL . '/include/templates/default/style/sweetalert2.min.css">'
+           . '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/smilies.css?ver=' . $v . '">';
     }
-    
-    private function alert(string $text, string $type = 'success'): string
+
+    private function scripts(): void
     {
-        $icon = match($type) {
-            'danger' => 'exclamation-triangle',
-            'warning' => 'exclamation-circle',
-            default => 'check-circle'
-        };
-        
-        return <<<HTML
-        <div class="alert alert-{$type} alert-dismissible fade show mt-3" role="alert">
-            <i class="fas fa-{$icon} me-2"></i>
-            {$text}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        HTML;
+        global $BASEURL;
+        $v = SM_ASSET_VER;
+        echo '<script src="' . $BASEURL . '/scripts/sweetalert2.min.js"></script>'
+           . '<script src="' . $BASEURL . '/admin/scripts/smilies.js?ver=' . $v . '"></script>';
     }
-    
-    private function renderForm(array $data, bool $edit, ?string $error, int $sid = 0): void
+
+    /** Скрытая форма удаления: кнопки удаления ставят sid и отправляют её POST-ом. */
+    private function deleteForm(): string
     {
-        stdhead($edit ? 'Edit Smilie' : 'Add Smilie');
-        
-        $formAction = $edit 
-            ? $this->getUrl('edit_smilie', ['sid' => $sid])
-            : $this->getUrl('add_smilie');
-        
-        $cancelUrl = $this->getUrl();
-        $previewSrc = $data['spath'] ? $this->smilieDirUrl . '/' . $data['spath'] : $this->smilieDirUrl . '/blank.png';
-        ?>
-        
-        <div class="container mt-4">
-            <div class="row justify-content-center">
-                <div class="col-lg-8 col-xl-6">
-                    
-                    <?= $error ?>
-                    
-                    <div class="card shadow-sm">
-                        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">
-                                <i class="fas fa-smile me-2"></i>
-                                <?= $edit ? 'Edit' : 'Add' ?> Smilie
-                            </h5>
-                            <a href="<?= $cancelUrl ?>" class="btn btn-light btn-sm">
-                                <i class="fas fa-times"></i>
-                            </a>
-                        </div>
-                        
-                        <div class="card-body">
-                            <form method="post" id="smilieForm">
-                                <div class="row g-3">
-                                    
-                                    <div class="col-md-6">
-                                        <label class="form-label">
-                                            <i class="fas fa-heading text-muted me-1"></i>
-                                            Title <span class="text-danger">*</span>
-                                        </label>
-                                        <input type="text" 
-                                               name="stitle" 
-                                               class="form-control" 
-                                               value="<?= htmlspecialchars($data['stitle']) ?>" 
-                                               required
-                                               maxlength="50"
-                                               placeholder="Example: Smile">
-                                        <div class="form-text small">Displayed in the list</div>
-                                    </div>
-                                    
-                                    <div class="col-md-6">
-                                        <label class="form-label">
-                                            <i class="fas fa-font text-muted me-1"></i>
-                                            Replacement Text <span class="text-danger">*</span>
-                                        </label>
-                                        <input type="text" 
-                                               name="stext" 
-                                               class="form-control" 
-                                               value="<?= htmlspecialchars($data['stext']) ?>" 
-                                               required
-                                               maxlength="20"
-                                               placeholder="Example: :)">
-                                        <div class="form-text small">What users type</div>
-                                    </div>
-                                    
-                                    <div class="col-md-8">
-                                        <label class="form-label">
-                                            <i class="fas fa-image text-muted me-1"></i>
-                                            Image File <span class="text-danger">*</span>
-                                        </label>
-                                        <div class="input-group">
-                                            <input type="text" 
-                                                   name="spath" 
-                                                   id="spath" 
-                                                   class="form-control" 
-                                                   value="<?= htmlspecialchars($data['spath']) ?>" 
-                                                   required
-                                                   placeholder="smile.gif">
-                                            <button type="button" 
-                                                    class="btn btn-outline-secondary" 
-                                                    data-bs-toggle="modal" 
-                                                    data-bs-target="#fileBrowser">
-                                                <i class="fas fa-folder-open"></i>
-                                            </button>
-                                        </div>
-                                        <div class="form-text small">
-                                            Files in <?= basename($this->smilieDir) ?>/
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="col-md-4">
-                                        <label class="form-label">
-                                            <i class="fas fa-eye text-muted me-1"></i>
-                                            Preview
-                                        </label>
-                                        <div class="border rounded p-2 text-center bg-light">
-                                            <img src="<?= $previewSrc ?>" 
-                                                 alt="Preview" 
-                                                 id="preview" 
-                                                 class="img-fluid" 
-                                                 style="max-height: 60px;">
-                                            <div class="small text-muted mt-1" id="previewText">
-                                                <?= $data['stitle'] ?: 'No title' ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="col-md-6">
-                                        <label class="form-label">
-                                            <i class="fas fa-sort-numeric-down text-muted me-1"></i>
-                                            Display Order
-                                        </label>
-                                        <div class="input-group">
-                                            <input type="number" 
-                                                   name="sorder" 
-                                                   class="form-control" 
-                                                   value="<?= $data['sorder'] ?>" 
-                                                   min="0" 
-                                                   step="10">
-                                            <button type="button" 
-                                                    class="btn btn-outline-secondary" 
-                                                    onclick="this.form.sorder.value = <?= $this->getNextOrder() ?>">
-                                                Auto
-                                            </button>
-                                        </div>
-                                        <div class="form-text small">Lower numbers appear first</div>
-                                    </div>
-                                    
-                                    <?php if ($data['spath'] && file_exists($this->smilieDir . '/' . $data['spath'])): ?>
-                                    <div class="col-md-6">
-                                        <label class="form-label">
-                                            <i class="fas fa-info-circle text-muted me-1"></i>
-                                            Information
-                                        </label>
-                                        <div class="small text-muted">
-                                            <?php
-                                            $path = $this->smilieDir . '/' . $data['spath'];
-                                            $size = filesize($path);
-                                            $dimensions = getimagesize($path);
-                                            ?>
-                                            Size: <?= $this->formatBytes($size) ?><br>
-                                            Resolution: <?= $dimensions[0] ?? 0 ?>×<?= $dimensions[1] ?? 0 ?>
-                                        </div>
-                                    </div>
-                                    <?php endif; ?>
-                                    
-                                </div>
-                                
-                                <div class="mt-4 pt-3 border-top">
-                                    <div class="d-flex justify-content-between">
-                                        <div>
-                                            <button type="submit" class="btn btn-success px-4">
-                                                <i class="fas fa-save me-2"></i>
-                                                Save
-                                            </button>
-                                            <a href="<?= $cancelUrl ?>" class="btn btn-secondary">
-                                                Cancel
-                                            </a>
-                                        </div>
-                                        
-                                        <?php if ($edit): ?>
-                                        <div>
-                                            <button type="button" 
-                                                    class="btn btn-outline-danger"
-                                                    onclick="if(confirm('Delete this smilie?')) {
-                                                        window.location='<?= $this->getUrl('delete_smilie', ['sid' => $sid]) ?>';
-                                                    }">
-                                                <i class="fas fa-trash me-1"></i> Delete
-                                            </button>
-                                        </div>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                    
-                </div>
-            </div>
-        </div>
-        
-        <script>
-        function updatePreview() {
-            const path = document.getElementById('spath').value;
-            const title = document.getElementsByName('stitle')[0].value;
-            const preview = document.getElementById('preview');
-            const previewText = document.getElementById('previewText');
-            
-            preview.src = '<?= $this->smilieDirUrl ?>/' + (path || 'blank.png');
-            previewText.textContent = title || 'No title';
-        }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('spath').addEventListener('input', updatePreview);
-            document.getElementsByName('stitle')[0].addEventListener('input', updatePreview);
-        });
-        </script>
-        
-        <?php
-        stdfoot();
+        return '<form method="post" action="' . $this->e($this->link('delete_smilie')) . '" id="smDeleteForm" hidden>'
+             . '<input type="hidden" name="my_post_key" value="' . $this->postKey() . '">'
+             . '<input type="hidden" name="sid" value="">'
+             . '</form>';
     }
-    
-    private function handleDelete(): void
-    {
-        if (!is_valid_id($_GET['sid'] ?? 0)) {
-            $this->redirectWithError('Invalid ID');
-            return;
-        }
-        
-        $sid = (int)$_GET['sid'];
-        
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            stdhead('Confirmation');
-            ?>
-            <div class="container mt-5">
-                <div class="row justify-content-center">
-                    <div class="col-md-6">
-                        <div class="card shadow">
-                            <div class="card-header bg-danger text-white">
-                                <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Confirmation</h5>
-                            </div>
-                            <div class="card-body text-center">
-                                <p class="lead">Are you sure you want to delete this smilie?</p>
-                                <p>This action cannot be undone.</p>
-                                
-                                <form method="post" action="<?= $this->getUrl('delete_smilie', ['sid' => $sid]) ?>">
-                                    <div class="mt-4">
-                                        <button type="submit" class="btn btn-danger px-4">
-                                            <i class="fas fa-trash me-2"></i>Yes, Delete
-                                        </button>
-                                        <a href="<?= $this->getUrl() ?>" class="btn btn-secondary">
-                                            Cancel
-                                        </a>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <?php
-            stdfoot();
-            exit;
-        }
-        
-        $this->db->sql_query_prepared("DELETE FROM smilies WHERE sid = ?", [$sid]);
-        $this->cache->update_smilies();
-        $this->redirectWithSuccess('Smilie deleted successfully');
-    }
-    
-    private function handleUpdateOrder(): void
-    {
-        if (empty($_POST['sorder'])) {
-            $this->redirectWithError('No data to update');
-            return;
-        }
-        
-        foreach ($_POST['sorder'] as $sid => $order) {
-            if (is_valid_id($sid)) {
-                $this->db->sql_query_prepared(
-                    "UPDATE smilies SET sorder = ? WHERE sid = ?",
-                    [(int)$order, (int)$sid]
-                );
-            }
-        }
-        
-        $this->cache->update_smilies();
-        $this->redirectWithSuccess('Display order updated successfully');
-    }
-    
-    private function handleBrowseFiles(): void
-    {
-        $files = glob($this->smilieDir . '/*.{gif,png,jpg,jpeg,webp}', GLOB_BRACE);
-        $html = '';
-        
-        foreach ($files as $file) {
-            $filename = basename($file);
-            $html .= '
-            <div class="col">
-                <div class="file-item text-center p-2 border rounded cursor-pointer"
-                     onclick="document.getElementById(\'spath\').value = \'' . addslashes($filename) . '\';
-                              updatePreview();
-                              bootstrap.Modal.getInstance(document.getElementById(\'fileBrowser\')).hide();">
-                    <img src="' . $this->smilieDirUrl . '/' . $filename . '" 
-                         class="img-fluid mb-1" 
-                         style="max-height: 50px;">
-                    <div class="small text-truncate" title="' . $filename . '">
-                        ' . $filename . '
-                    </div>
-                </div>
-            </div>';
-        }
-        
-        echo $html ?: '<div class="col-12 text-center text-muted">No files found</div>';
-        exit;
-    }
-    
-    private function handleExport(): void
-    {
-        $res = $this->db->sql_query_prepared("SELECT * FROM smilies ORDER BY sorder");
-        $smilies = [];
-        
-        while ($res && ($row = $this->db->fetch_array($res))) {
-            $smilies[] = [
-                'title' => $row['stitle'],
-                'text' => $row['stext'],
-                'file' => $row['spath'],
-                'order' => (int)$row['sorder']
-            ];
-        }
-        
-        header('Content-Type: application/json');
-        header('Content-Disposition: attachment; filename="smilies_' . date('Y-m-d') . '.json"');
-        echo json_encode($smilies, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-    
-    private function handleImport(): void
-    {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['import_file'])) {
-            $json = file_get_contents($_FILES['import_file']['tmp_name']);
-            $data = json_decode($json, true);
-            
-            if ($data) {
-                foreach ($data as $smilie) {
-                    $this->db->sql_query_prepared(
-                        "INSERT INTO smilies (stitle, stext, spath, sorder) VALUES (?, ?, ?, ?)",
-                        [
-                            $smilie['title'],
-                            $smilie['text'],
-                            $smilie['file'],
-                            (int)($smilie['order'] ?? 0)
-                        ]
-                    );
-                }
-                
-                $this->cache->update_smilies();
-                $this->redirectWithSuccess('Imported ' . count($data) . ' smilies');
-            }
-        }
-        
-        stdhead('Import Smilies');
-        ?>
-        <div class="container mt-4">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-file-import me-2"></i>Import Smilies</h5>
-                </div>
-                <div class="card-body">
-                    <form method="post" enctype="multipart/form-data">
-                        <div class="mb-3">
-                            <label class="form-label">JSON File</label>
-                            <input type="file" name="import_file" class="form-control" accept=".json" required>
-                            <div class="form-text">
-                                Format: [{"title":"...","text":"...","file":"...","order":0}]
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-upload me-2"></i>Import
-                        </button>
-                        <a href="<?= $this->getUrl() ?>" class="btn btn-secondary">Cancel</a>
-                    </form>
-                </div>
-            </div>
-        </div>
-        <?php
-        stdfoot();
-        exit;
-    }
-    
+
+    // ── Список ───────────────────────────────────────────────
+
     private function handleList(): void
     {
-        stdhead('Smilie Management');
-        
-        if (!empty($_GET['message'])) {
-            echo $this->alert(htmlspecialchars($_GET['message']));
-        }
-        
-        $search = $_GET['search'] ?? '';
-        $params = [];
-        
-        if ($search !== '') {
-            $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search) . '%';
-            $where = "WHERE stitle LIKE ? OR stext LIKE ?";
-            $params = [$like, $like];
-        } else {
-            $where = "";
-        }
-        
-        $res = $this->db->sql_query_prepared(
-            "SELECT * FROM smilies {$where} ORDER BY sorder, stitle",
-            $params
-        );
-        
-        $total = $res ? $this->db->num_rows($res) : 0;
+        $smilies = $this->allSmilies();
+        $files   = $this->scanFiles();
+
+        $used    = array_flip(array_map(fn(array $s) => (string)$s['spath'], $smilies));
+        $missing = count(array_filter($smilies, fn(array $s) => !isset($files[(string)$s['spath']])));
+        $unused  = count(array_diff_key($files, $used));
+        $total   = count($smilies);
+
+        stdhead('Smilies');
+        $this->assets();
         ?>
-        
-        <div class="container mt-3">
-            
-            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
-                <h4 class="mb-2 mb-md-0">
-                    <i class="fas fa-smile-beam text-primary me-2"></i>
-                    Smilies
-                    <span class="badge bg-secondary ms-2"><?= $total ?></span>
-                </h4>
-                
-                <div class="d-flex gap-2 flex-wrap">
-                    <form method="get" action="<?= $this->getUrl() ?>" class="d-flex">
-                        <div class="input-group">
-                            <input type="text" 
-                                   name="search" 
-                                   class="form-control form-control-sm" 
-                                   placeholder="Search..." 
-                                   value="<?= htmlspecialchars($search) ?>">
-                            <button class="btn btn-outline-secondary btn-sm" type="submit">
-                                <i class="fas fa-search"></i>
-                            </button>
-                            <?php if ($search): ?>
-                            <a href="<?= $this->getUrl() ?>" class="btn btn-outline-danger btn-sm">
-                                <i class="fas fa-times"></i>
-                            </a>
-                            <?php endif; ?>
-                        </div>
-                    </form>
-                    
-                    <div class="btn-group">
-                        <a href="<?= $this->getUrl('add_smilie') ?>" class="btn btn-success btn-sm">
-                            <i class="fas fa-plus-circle me-1"></i>Add
-                        </a>
-                    </div>
-                </div>
-            </div>
-            
-            <form method="post" action="<?= $this->getUrl('update_smilies_order') ?>">
-                <div class="card shadow-sm">
-                    <div class="card-body p-0">
-                        
-                        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5 g-2 p-3">
-                            <?php while ($res && ($s = $this->db->fetch_array($res))): ?>
-                            <div class="col">
-                                <div class="card h-100 smilie-card border hover-shadow">
-                                    <div class="card-body text-center p-2">
-                                        <div class="mb-2">
-                                            <img src="<?= $this->smilieDirUrl . '/' . $s['spath'] ?>" 
-                                                 alt="<?= htmlspecialchars($s['stitle']) ?>"
-                                                 class="img-fluid rounded" 
-                                                 style="max-height: 50px;">
-                                        </div>
-                                        
-                                        <div class="mb-2">
-                                            <h6 class="mb-1 text-truncate" title="<?= htmlspecialchars($s['stitle']) ?>">
-                                                <?= htmlspecialchars($s['stitle']) ?>
-                                            </h6>
-                                            <code class="small text-muted"><?= htmlspecialchars($s['stext']) ?></code>
-                                            <div class="small text-muted mt-1">
-                                                ID: <?= $s['sid'] ?>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="mb-2">
-                                            <div class="input-group input-group-sm">
-                                                <span class="input-group-text">
-                                                    <i class="fas fa-sort"></i>
-                                                </span>
-                                                <input type="number" 
-                                                       name="sorder[<?= $s['sid'] ?>]"
-                                                       class="form-control" 
-                                                       value="<?= $s['sorder'] ?>"
-                                                       min="0"
-                                                       step="10">
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="d-flex justify-content-center gap-1">
-                                            <a href="<?= $this->getUrl('edit_smilie', ['sid' => $s['sid']]) ?>" 
-                                               class="btn btn-sm btn-outline-primary"
-                                               title="Edit">
-                                                <i class="fas fa-edit"></i>
-                                            </a>
-                                            <a href="<?= $this->getUrl('delete_smilie', ['sid' => $s['sid']]) ?>" 
-                                               class="btn btn-sm btn-outline-danger"
-                                               title="Delete"
-                                               onclick="return confirm('Delete «<?= addslashes($s['stitle']) ?>»?')">
-                                                <i class="fas fa-trash"></i>
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <?php endwhile; ?>
-                            
-                            <?php if ($total === 0): ?>
-                            <div class="col-12">
-                                <div class="text-center py-5">
-                                    <i class="fas fa-smile-wink fa-3x text-muted mb-3"></i>
-                                    <h5 class="text-muted">No smilies found</h5>
-                                    <?php if ($search): ?>
-                                    <p>Try changing your search query</p>
-                                    <?php else: ?>
-                                    <p>Add your first smilie</p>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-                        
-                    </div>
-                    
-                    <div class="card-footer bg-light">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <button type="submit" class="btn btn-primary btn-sm">
-                                    <i class="fas fa-save me-1"></i>Save Order
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </form>
+<div class="sm-page container mt-3 mb-5" data-smilie-url="<?= $this->e($this->url) ?>">
+
+    <div class="sm-head">
+        <div class="sm-head-icon"><i class="fa-solid fa-face-laugh-beam"></i></div>
+        <div class="sm-head-text">
+            <h1>Smilies</h1>
+            <p>Drag a card by its <i class="fa-solid fa-grip-vertical"></i> handle to reorder, click a code to copy it.</p>
         </div>
-        
+        <div class="sm-head-actions">
+            <a href="<?= $this->e($this->link('import_json')) ?>" class="sm-btn sm-btn-outline"><i class="fa-solid fa-file-import me-1"></i>Import</a>
+            <a href="<?= $this->e($this->link('export_json')) ?>" class="sm-btn sm-btn-outline"><i class="fa-solid fa-file-export me-1"></i>Export</a>
+            <a href="<?= $this->e($this->link('add_smilie')) ?>" class="sm-btn sm-btn-primary"><i class="fa-solid fa-plus me-1"></i>Add smilie</a>
+        </div>
+    </div>
+
+    <div class="sm-kpis">
+        <div class="sm-kpi">
+            <div class="sm-kpi-icon sm-c-primary"><i class="fa-solid fa-face-smile"></i></div>
+            <div><div class="sm-kpi-val"><?= $total ?></div><div class="sm-kpi-lbl">Smilies</div></div>
+        </div>
+        <div class="sm-kpi">
+            <div class="sm-kpi-icon sm-c-info"><i class="fa-solid fa-images"></i></div>
+            <div><div class="sm-kpi-val"><?= count($files) ?></div><div class="sm-kpi-lbl">Image files · <?= $this->size(array_sum($files)) ?></div></div>
+        </div>
+        <div class="sm-kpi">
+            <div class="sm-kpi-icon sm-c-warning"><i class="fa-solid fa-file-circle-question"></i></div>
+            <div><div class="sm-kpi-val"><?= $unused ?></div><div class="sm-kpi-lbl">Unused files</div></div>
+        </div>
+        <div class="sm-kpi">
+            <div class="sm-kpi-icon <?= $missing ? 'sm-c-danger' : 'sm-c-success' ?>"><i class="fa-solid <?= $missing ? 'fa-triangle-exclamation' : 'fa-circle-check' ?>"></i></div>
+            <div><div class="sm-kpi-val"><?= $missing ?></div><div class="sm-kpi-lbl">Missing files</div></div>
+        </div>
+    </div>
+
+    <form method="post" action="<?= $this->e($this->link('update_smilies_order')) ?>" id="smOrderForm">
+        <input type="hidden" name="my_post_key" value="<?= $this->postKey() ?>">
+
+        <div class="sm-card">
+            <div class="sm-toolbar">
+                <div class="sm-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="search" id="smFilter" placeholder="Filter by title, code or file" aria-label="Filter smilies">
+                </div>
+                <span class="sm-count" id="smCount"><?= $total ?> shown</span>
+            </div>
+
+            <?php if ($total === 0): ?>
+                <div class="sm-empty">
+                    <i class="fa-regular fa-face-meh-blank"></i>
+                    <h2>No smilies yet</h2>
+                    <p>Add one by hand or import a JSON file.</p>
+                    <a href="<?= $this->e($this->link('add_smilie')) ?>" class="sm-btn sm-btn-primary"><i class="fa-solid fa-plus me-1"></i>Add smilie</a>
+                </div>
+            <?php else: ?>
+                <div class="sm-grid" id="smGrid">
+                    <?php foreach ($smilies as $s):
+                        $sid   = (int)$s['sid'];
+                        $file  = (string)$s['spath'];
+                        $ok    = isset($files[$file]);
+                        $title = (string)$s['stitle'];
+                        $code  = (string)$s['stext'];
+                    ?>
+                    <div class="sm-item<?= $ok ? '' : ' is-missing' ?>"
+                         data-search="<?= $this->e(mb_strtolower($title . ' ' . $code . ' ' . $file)) ?>">
+                        <span class="sm-grip" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
+
+                        <div class="sm-img">
+                            <?php if ($ok): ?>
+                                <img src="<?= $this->e($this->url . '/' . rawurlencode($file)) ?>" alt="<?= $this->e($title) ?>" loading="lazy" draggable="false">
+                            <?php else: ?>
+                                <i class="fa-solid fa-file-circle-xmark" title="File not found: <?= $this->e($file) ?>"></i>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="sm-title" title="<?= $this->e($title) ?>"><?= $this->e($title) ?></div>
+                        <button type="button" class="sm-code" data-copy="<?= $this->e($code) ?>" title="Copy code">
+                            <?= $this->e($code) ?><i class="fa-regular fa-copy"></i>
+                        </button>
+                        <?php if (!$ok): ?>
+                            <span class="sm-badge-missing"><i class="fa-solid fa-triangle-exclamation me-1"></i>File missing</span>
+                        <?php endif; ?>
+
+                        <div class="sm-item-foot">
+                            <label class="sm-order" title="Display order">
+                                <i class="fa-solid fa-arrow-down-1-9"></i>
+                                <input type="number" name="sorder[<?= $sid ?>]" value="<?= (int)$s['sorder'] ?>" min="0" max="<?= SM_MAX_ORDER ?>" step="10" aria-label="Order">
+                            </label>
+                            <a href="<?= $this->e($this->link('edit_smilie', ['sid' => $sid])) ?>" class="sm-icon-btn" title="Edit"><i class="fa-solid fa-pen"></i></a>
+                            <button type="button" class="sm-icon-btn sm-icon-danger" data-delete="<?= $sid ?>" data-title="<?= $this->e($title) ?>" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="sm-empty sm-empty-filter" id="smNoMatch" hidden>
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <p>Nothing matches this filter.</p>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($total > 0): ?>
+        <div class="sm-savebar" id="smSaveBar">
+            <span class="sm-savebar-hint" id="smDirty" hidden><i class="fa-solid fa-circle-exclamation me-1"></i>Order changed, not saved yet</span>
+            <span class="sm-savebar-hint sm-muted" id="smClean"><i class="fa-solid fa-hand-pointer me-1"></i>Drag cards or edit numbers, then save</span>
+            <button type="submit" class="sm-btn sm-btn-primary"><i class="fa-solid fa-floppy-disk me-1"></i>Save order</button>
+        </div>
+        <?php endif; ?>
+    </form>
+
+    <?= $this->deleteForm() ?>
+</div>
         <?php
+        $this->scripts();
         stdfoot();
     }
-    
-    private function formatBytes($bytes, $precision = 2): string
+
+    // ── Добавление / редактирование ─────────────────────────
+
+    private function handleForm(bool $edit): void
     {
-        $units = ['B', 'KB', 'MB', 'GB'];
-        $bytes = max($bytes, 0);
-        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
-        $pow = min($pow, count($units) - 1);
-        $bytes /= pow(1024, $pow);
-        return round($bytes, $precision) . ' ' . $units[$pow];
+        $sid    = (int)($_GET['sid'] ?? 0);
+        $errors = [];
+
+        if ($edit) {
+            $data = $this->getSmilie($sid);
+            if (!$data) $this->done('Smilie not found.', 'error');
+        } else {
+            $data = ['stitle' => '', 'stext' => '', 'spath' => '', 'sorder' => $this->nextOrder()];
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $data = [
+                'stitle' => trim((string)($_POST['stitle'] ?? '')),
+                'stext'  => trim((string)($_POST['stext'] ?? '')),
+                'spath'  => trim((string)($_POST['spath'] ?? '')),
+                'sorder' => (int)($_POST['sorder'] ?? 0),
+            ];
+            $errors = $this->validate($data, $edit ? $sid : null);
+
+            if (!$errors) {
+                if ($edit) {
+                    $this->db->sql_query_prepared(
+                        'UPDATE smilies SET stitle = ?, stext = ?, spath = ?, sorder = ? WHERE sid = ?',
+                        [$data['stitle'], $data['stext'], $data['spath'], $data['sorder'], $sid]
+                    );
+                    $this->log("edited {$data['stext']} (#{$sid})");
+                } else {
+                    $this->db->sql_query_prepared(
+                        'INSERT INTO smilies (stitle, stext, spath, sorder) VALUES (?, ?, ?, ?)',
+                        [$data['stitle'], $data['stext'], $data['spath'], $data['sorder']]
+                    );
+                    $this->log("added {$data['stext']}");
+                }
+                $this->cache->update_smilies();
+                $this->done($edit ? 'Smilie updated.' : 'Smilie added.');
+            }
+        }
+
+        $this->renderForm($data, $edit, $errors, $sid);
     }
-    
-    private function redirectWithSuccess(string $message): void
+
+    private function validate(array $d, ?int $sid): array
     {
-        $this->redirect($this->getUrl() . '&message=' . urlencode($message));
+        $err = [];
+
+        if ($d['stitle'] === '')                 $err[] = 'Enter a title.';
+        elseif (mb_strlen($d['stitle']) > 100)   $err[] = 'The title can be at most 100 characters.';
+
+        if ($d['stext'] === '')                  $err[] = 'Enter the code users will type.';
+        elseif (mb_strlen($d['stext']) > 20)     $err[] = 'The code can be at most 20 characters.';
+        elseif ($this->textTaken($d['stext'], $sid)) $err[] = 'Another smilie already uses this code.';
+
+        if ($d['spath'] === '')                  $err[] = 'Choose an image file.';
+        elseif ($this->cleanFile($d['spath']) === '') $err[] = 'Use a file name only (gif, png, jpg, jpeg or webp), without folders.';
+        elseif (!$this->fileExists($d['spath'])) $err[] = 'This file is not in the smilies folder.';
+
+        if ($d['sorder'] < 0 || $d['sorder'] > SM_MAX_ORDER) $err[] = 'Order must be between 0 and ' . SM_MAX_ORDER . '.';
+
+        return $err;
     }
-    
-    private function redirectWithError(string $message): void
+
+    private function renderForm(array $d, bool $edit, array $errors, int $sid): void
     {
-        $this->redirect($this->getUrl() . '&error=' . urlencode($message));
+        $files   = $this->scanFiles();
+        $usedBy  = [];
+        foreach ($this->allSmilies() as $s) {
+            if ((int)$s['sid'] !== $sid) $usedBy[(string)$s['spath']][] = (string)$s['stext'];
+        }
+
+        $file    = (string)$d['spath'];
+        $hasFile = $this->cleanFile($file) !== '' && isset($files[$file]);
+        $dim     = $hasFile ? @getimagesize($this->dir . '/' . $file) : false;
+        $action  = $edit ? $this->link('edit_smilie', ['sid' => $sid]) : $this->link('add_smilie');
+
+        stdhead($edit ? 'Edit smilie' : 'Add smilie');
+        $this->assets();
+        ?>
+<div class="sm-page container mt-3 mb-5" data-smilie-url="<?= $this->e($this->url) ?>">
+
+    <div class="sm-head">
+        <a href="<?= $this->e($this->self) ?>" class="sm-back" title="Back to smilies"><i class="fa-solid fa-arrow-left"></i></a>
+        <div class="sm-head-icon"><i class="fa-solid <?= $edit ? 'fa-pen-to-square' : 'fa-circle-plus' ?>"></i></div>
+        <div class="sm-head-text">
+            <h1><?= $edit ? 'Edit smilie' : 'Add smilie' ?></h1>
+            <p><?= $edit ? 'Code ' . $this->e($d['stext']) . ' · ID ' . $sid : 'Pick an image from the smilies folder and give it a code.' ?></p>
+        </div>
+    </div>
+
+    <?php if ($errors): ?>
+        <div class="sm-alert sm-alert-danger" role="alert">
+            <i class="fa-solid fa-circle-xmark"></i>
+            <div><?php foreach ($errors as $er): ?><div><?= $this->e($er) ?></div><?php endforeach; ?></div>
+        </div>
+    <?php endif; ?>
+
+    <form method="post" action="<?= $this->e($action) ?>" id="smForm" class="sm-form-grid">
+        <input type="hidden" name="my_post_key" value="<?= $this->postKey() ?>">
+
+        <div class="sm-card">
+            <h2 class="sm-card-title"><i class="fa-solid fa-sliders"></i>Details</h2>
+
+            <div class="sm-field">
+                <label for="stitle"><i class="fa-solid fa-heading"></i>Title <span class="sm-req">*</span></label>
+                <input type="text" id="stitle" name="stitle" value="<?= $this->e($d['stitle']) ?>" maxlength="100" required placeholder="Smile">
+                <small>Shown as the tooltip in the smilie picker.</small>
+            </div>
+
+            <div class="sm-field">
+                <label for="stext"><i class="fa-solid fa-keyboard"></i>Code <span class="sm-req">*</span></label>
+                <input type="text" id="stext" name="stext" value="<?= $this->e($d['stext']) ?>" maxlength="20" required placeholder=":)" class="sm-mono">
+                <small>What users type in a post or comment. Must be unique.</small>
+            </div>
+
+            <div class="sm-field">
+                <label for="spath"><i class="fa-solid fa-image"></i>Image file <span class="sm-req">*</span></label>
+                <div class="sm-input-group">
+                    <input type="text" id="spath" name="spath" value="<?= $this->e($file) ?>" required placeholder="smile.gif" class="sm-mono">
+                    <button type="button" class="sm-btn sm-btn-outline" data-bs-toggle="modal" data-bs-target="#smPicker">
+                        <i class="fa-solid fa-folder-open me-1"></i>Browse
+                    </button>
+                </div>
+                <small><?= count($files) ?> images in <code><?= $this->e(basename($this->dir)) ?>/</code></small>
+            </div>
+
+            <div class="sm-field">
+                <label for="sorder"><i class="fa-solid fa-arrow-down-1-9"></i>Display order</label>
+                <div class="sm-input-group">
+                    <input type="number" id="sorder" name="sorder" value="<?= (int)$d['sorder'] ?>" min="0" max="<?= SM_MAX_ORDER ?>" step="10">
+                    <button type="button" class="sm-btn sm-btn-outline" id="smAutoOrder" data-next="<?= $this->nextOrder() ?>">
+                        <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Last
+                    </button>
+                </div>
+                <small>Lower numbers come first.</small>
+            </div>
+        </div>
+
+        <div class="sm-side">
+            <div class="sm-card sm-preview-card">
+                <h2 class="sm-card-title"><i class="fa-solid fa-eye"></i>Preview</h2>
+                <div class="sm-preview-stage">
+                    <img id="smPreviewImg" src="<?= $hasFile ? $this->e($this->url . '/' . rawurlencode($file)) : '' ?>" alt="" <?= $hasFile ? '' : 'hidden' ?>>
+                    <i class="fa-regular fa-image sm-preview-empty" id="smPreviewEmpty" <?= $hasFile ? 'hidden' : '' ?>></i>
+                </div>
+                <div class="sm-preview-title" id="smPreviewTitle"><?= $this->e($d['stitle'] ?: 'No title') ?></div>
+
+                <div class="sm-preview-post">
+                    <span class="sm-muted">In a post:</span>
+                    <p>Nice upload, thanks
+                        <img id="smPreviewInline" src="<?= $hasFile ? $this->e($this->url . '/' . rawurlencode($file)) : '' ?>" alt="" <?= $hasFile ? '' : 'hidden' ?>>
+                        <code id="smPreviewCode" <?= $hasFile ? 'hidden' : '' ?>><?= $this->e($d['stext'] ?: ':)') ?></code>
+                    </p>
+                </div>
+
+                <?php if ($hasFile): ?>
+                <dl class="sm-meta">
+                    <div><dt><i class="fa-solid fa-weight-hanging"></i>Size</dt><dd><?= $this->size($files[$file]) ?></dd></div>
+                    <div><dt><i class="fa-solid fa-expand"></i>Dimensions</dt><dd><?= $dim ? (int)$dim[0] . ' × ' . (int)$dim[1] . ' px' : '—' ?></dd></div>
+                </dl>
+                <?php if ($files[$file] > SM_BIG_BYTES || ($dim && max($dim[0], $dim[1]) > SM_BIG_PX)): ?>
+                    <div class="sm-alert sm-alert-warning sm-alert-sm">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <div>This image is large for a smilie and will slow down pages with many of them.</div>
+                    </div>
+                <?php endif; ?>
+                <?php endif; ?>
+            </div>
+
+            <div class="sm-actions">
+                <button type="submit" class="sm-btn sm-btn-primary sm-btn-lg"><i class="fa-solid fa-floppy-disk me-1"></i><?= $edit ? 'Save changes' : 'Add smilie' ?></button>
+                <a href="<?= $this->e($this->self) ?>" class="sm-btn sm-btn-outline sm-btn-lg">Cancel</a>
+                <?php if ($edit): ?>
+                    <button type="button" class="sm-btn sm-btn-danger-soft sm-btn-lg" data-delete="<?= $sid ?>" data-title="<?= $this->e($d['stitle']) ?>">
+                        <i class="fa-solid fa-trash-can me-1"></i>Delete
+                    </button>
+                <?php endif; ?>
+            </div>
+        </div>
+    </form>
+
+    <?= $this->deleteForm() ?>
+
+    <!-- Выбор файла. Раньше кнопка открывала модалку #fileBrowser, которой на странице не было. -->
+    <div class="modal fade" id="smPicker" tabindex="-1" aria-labelledby="smPickerTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content sm-modal">
+                <div class="modal-header">
+                    <h2 class="modal-title" id="smPickerTitle"><i class="fa-solid fa-folder-open me-2"></i>Choose an image</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="sm-search mb-3">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="search" id="smPickerFilter" placeholder="Filter files" aria-label="Filter files">
+                    </div>
+                    <?php if (!$files): ?>
+                        <div class="sm-empty"><i class="fa-regular fa-folder-open"></i><p>The smilies folder has no images.</p></div>
+                    <?php else: ?>
+                    <div class="sm-picker-grid" id="smPickerGrid">
+                        <?php foreach ($files as $f => $bytes):
+                            $by = $usedBy[$f] ?? [];
+                        ?>
+                        <button type="button" class="sm-pick<?= $f === $file ? ' is-current' : '' ?><?= $by ? ' is-used' : '' ?>"
+                                data-file="<?= $this->e($f) ?>" data-search="<?= $this->e(mb_strtolower($f)) ?>"
+                                title="<?= $this->e($f) . ($by ? ' · used by ' . $this->e(implode(', ', $by)) : '') ?>">
+                            <span class="sm-pick-img"><img src="<?= $this->e($this->url . '/' . rawurlencode($f)) ?>" alt="" loading="lazy"></span>
+                            <span class="sm-pick-name"><?= $this->e($f) ?></span>
+                            <span class="sm-pick-meta">
+                                <?= $this->size($bytes) ?>
+                                <?php if ($by): ?><i class="fa-solid fa-link" title="In use"></i><?php endif; ?>
+                            </span>
+                        </button>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <div class="modal-footer sm-muted">
+                    <i class="fa-solid fa-link me-1"></i>already used by another smilie
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+        <?php
+        $this->scripts();
+        stdfoot();
+    }
+
+    // ── Удаление ─────────────────────────────────────────────
+
+    private function handleDelete(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            admin_redirect($this->self);
+            exit;
+        }
+
+        $sid = (int)($_POST['sid'] ?? 0);
+        $s   = $sid > 0 ? $this->getSmilie($sid) : null;
+        if (!$s) $this->done('Smilie not found.', 'error');
+
+        $this->db->sql_query_prepared('DELETE FROM smilies WHERE sid = ?', [$sid]);
+        $this->cache->update_smilies();
+        $this->log("deleted {$s['stext']} (#{$sid})");
+        $this->done('Smilie "' . $s['stitle'] . '" deleted.');
+    }
+
+    // ── Порядок ──────────────────────────────────────────────
+
+    private function handleUpdateOrder(): void
+    {
+        $orders = $_POST['sorder'] ?? null;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !is_array($orders) || !$orders) {
+            $this->done('Nothing to save.', 'error');
+        }
+
+        $changed = 0;
+        foreach ($orders as $sid => $order) {
+            $sid   = (int)$sid;
+            $order = max(0, min(SM_MAX_ORDER, (int)$order));
+            if ($sid <= 0) continue;
+            $this->db->sql_query_prepared('UPDATE smilies SET sorder = ? WHERE sid = ? AND sorder <> ?', [$order, $sid, $order]);
+            $changed += (int)$this->db->affected_rows();
+        }
+
+        if ($changed) {
+            $this->cache->update_smilies();
+            $this->log("reordered {$changed} smilies");
+        }
+        $this->done($changed ? "Order saved ({$changed} changed)." : 'Order was already up to date.');
+    }
+
+    // ── Экспорт / импорт ────────────────────────────────────
+
+    private function handleExport(): void
+    {
+        $out = array_map(fn(array $s) => [
+            'title' => (string)$s['stitle'],
+            'text'  => (string)$s['stext'],
+            'file'  => (string)$s['spath'],
+            'order' => (int)$s['sorder'],
+        ], $this->allSmilies());
+
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="smilies_' . date('Y-m-d') . '.json"');
+        echo json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    private function handleImport(): void
+    {
+        $error = '';
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $f = $_FILES['import_file'] ?? null;
+
+            if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                $error = 'Choose a JSON file to import.';
+            } elseif ((int)$f['size'] > SM_IMPORT_MAX) {
+                $error = 'The file is larger than 1 MB.';
+            } else {
+                $data = json_decode((string)file_get_contents($f['tmp_name']), true);
+                if (!is_array($data) || !array_is_list($data)) {
+                    $error = 'This is not a smilies export: expected a JSON list.';
+                } else {
+                    [$added, $skipped] = $this->importRows($data);
+                    if ($added) {
+                        $this->cache->update_smilies();
+                        $this->log("imported {$added} smilies");
+                    }
+                    $msg = "Imported {$added} smilies.";
+                    if ($skipped) $msg .= " Skipped {$skipped}: duplicate code, missing file or invalid data.";
+                    $this->done($msg, $added ? 'success' : 'error');
+                }
+            }
+        }
+
+        stdhead('Import smilies');
+        $this->assets();
+        ?>
+<div class="sm-page container mt-3 mb-5">
+    <div class="sm-head">
+        <a href="<?= $this->e($this->self) ?>" class="sm-back" title="Back to smilies"><i class="fa-solid fa-arrow-left"></i></a>
+        <div class="sm-head-icon"><i class="fa-solid fa-file-import"></i></div>
+        <div class="sm-head-text">
+            <h1>Import smilies</h1>
+            <p>Adds smilies from a JSON export. Existing smilies are not changed.</p>
+        </div>
+    </div>
+
+    <?php if ($error): ?>
+        <div class="sm-alert sm-alert-danger" role="alert"><i class="fa-solid fa-circle-xmark"></i><div><?= $this->e($error) ?></div></div>
+    <?php endif; ?>
+
+    <form method="post" enctype="multipart/form-data" action="<?= $this->e($this->link('import_json')) ?>" class="sm-card sm-import">
+        <input type="hidden" name="my_post_key" value="<?= $this->postKey() ?>">
+
+        <label class="sm-drop" for="smImportFile">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span class="sm-drop-title" id="smImportName">Choose a JSON file</span>
+            <span class="sm-muted">or drop it here · up to 1 MB</span>
+            <input type="file" id="smImportFile" name="import_file" accept=".json,application/json" required>
+        </label>
+
+        <ul class="sm-rules">
+            <li><i class="fa-solid fa-circle-check"></i>Image files must already be in <code><?= $this->e(basename($this->dir)) ?>/</code></li>
+            <li><i class="fa-solid fa-circle-check"></i>Codes that already exist are skipped</li>
+            <li><i class="fa-solid fa-circle-check"></i>Format: <code>[{"title":"Smile","text":":)","file":"smile.gif","order":10}]</code></li>
+        </ul>
+
+        <div class="sm-actions sm-actions-row">
+            <button type="submit" class="sm-btn sm-btn-primary sm-btn-lg"><i class="fa-solid fa-upload me-1"></i>Import</button>
+            <a href="<?= $this->e($this->self) ?>" class="sm-btn sm-btn-outline sm-btn-lg">Cancel</a>
+        </div>
+    </form>
+</div>
+        <?php
+        $this->scripts();
+        stdfoot();
+        exit;
+    }
+
+    /** @return array{0:int,1:int} [добавлено, пропущено] */
+    private function importRows(array $rows): array
+    {
+        $added   = 0;
+        $skipped = 0;
+        $seen    = [];
+
+        foreach ($rows as $r) {
+            $title = is_array($r) ? trim((string)($r['title'] ?? '')) : '';
+            $text  = is_array($r) ? trim((string)($r['text'] ?? '')) : '';
+            $file  = is_array($r) ? $this->cleanFile((string)($r['file'] ?? '')) : '';
+            $order = is_array($r) ? max(0, min(SM_MAX_ORDER, (int)($r['order'] ?? 0))) : 0;
+
+            if ($title === '' || mb_strlen($title) > 100 || $text === '' || mb_strlen($text) > 20
+                || $file === '' || !$this->fileExists($file)
+                || isset($seen[$text]) || $this->textTaken($text)) {
+                $skipped++;
+                continue;
+            }
+
+            $this->db->sql_query_prepared(
+                'INSERT INTO smilies (stitle, stext, spath, sorder) VALUES (?, ?, ?, ?)',
+                [$title, $text, $file, $order]
+            );
+            $seen[$text] = true;
+            $added++;
+        }
+        return [$added, $skipped];
     }
 }
 
-$smilieManager = new SmilieManager($db, $cache, $rootpath);
-$smilieManager->run();
+(new SmilieManager($db, $cache))->run();

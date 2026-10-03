@@ -18,6 +18,8 @@ if (empty($CURUSER['id']) || !is_mod($usergroups)) {
 }
 
 const AB_VERSION = 'Enhanced Amountbonus Module v0.8.5';
+
+require_once INC_PATH . '/functions_bonuslog.php';
 const EOL = PHP_EOL;
 
 // ── AJAX: карточка пользователя с текущим балансом ─────────────────────
@@ -144,6 +146,11 @@ function distributeToAll(int $points, ?int $group, string $comment, string $mode
     if (!$db->sql_query_prepared($query, $params)) {
         throw new RuntimeException('Failed to update user records.');
     }
+
+    // Bonus log: same users as the UPDATE (same WHERE, same params after the first two)
+    global $CURUSER;
+    bonus_log_where(substr($whereClause, 6), array_slice($params, 2), $points, 'staff',
+        "From staff ({$targetDescription})", (int)$CURUSER['id']);
     
     logAction(
         message: "$points bonus points distributed to $targetDescription by $moderator",
@@ -186,6 +193,9 @@ function distributeToUser(int $points, string $username, string $comment, string
         throw new RuntimeException('Failed to retrieve user information.');
     }
     
+    global $CURUSER;
+    bonus_log((int)$userData['id'], $points, 'staff', 'From staff: ' . $moderator, null, (int)$CURUSER['id']);
+
     logAction(
         message: "$points bonus points sent to $username by $moderator",
         type: 'INDIVIDUAL_DISTRIBUTION'

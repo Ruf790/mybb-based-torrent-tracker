@@ -231,6 +231,16 @@ function handlePostRequest(): void
         }
     }
 
+    // Второй постер (t_image2) - такой же флэт-массив posters2[], индекс
+    // совпадает с индексом раздачи в пачке (пустые input тоже приходят).
+    $poster2Files = [];
+    if (isset($_FILES['posters2'])) {
+        foreach (array_keys($_FILES['posters2']['name']) as $idx) {
+            $f = extractFileArray('posters2', $idx);
+            if ($f) $poster2Files[$idx] = $f;
+        }
+    }
+
     // Скриншоты - отдельное поле screenshots_{index}[] на каждую раздачу
     // в пачке (несколько файлов на одну раздачу, не один флэт-массив,
     // как у постеров).
@@ -283,7 +293,7 @@ function handlePostRequest(): void
             $result = processTorrent(
                 $saved['path'], $name, $i,
                 $torrentDirPath, $imageDir, $screenDir,
-                $posterFiles, $screenshotFiles, $csvData
+                $posterFiles, $poster2Files, $screenshotFiles, $csvData
             );
 
             if (isset($result['error'])) {
@@ -317,6 +327,7 @@ function handlePostRequest(): void
         'stats'      => [
             'total_torrents'      => $fileCount,
             'with_posters'        => count(array_filter($results, fn($r) => $r['has_poster'])),
+            'with_posters2'       => count(array_filter($results, fn($r) => $r['has_poster2'])),
             'total_screenshots'   => array_sum(array_column($results, 'screenshots_added')),
             'csv_imported'        => count($csvData),
         ],
@@ -333,6 +344,7 @@ function processTorrent(
     string $imageDir,
     string $screenDir,
     array  $posterFiles,
+    array  $poster2Files,
     array  $screenshotFiles,
     array  $csvData
 ): array {
@@ -474,6 +486,12 @@ function processTorrent(
         $imageProcessed = processImage($posterFiles[$index], $newId, $imageDir);
     }
 
+    // Второй постер
+    $image2Processed = false;
+    if (isset($poster2Files[$index])) {
+        $image2Processed = processImage($poster2Files[$index], $newId, $imageDir, 't_image2');
+    }
+
     // Скриншоты (несколько на раздачу)
     $screenshotsProcessed = 0;
     $screenshotErrors     = [];
@@ -498,6 +516,7 @@ function processTorrent(
         'files'              => $numFiles,
         'link'               => get_torrent_link($newId),
         'has_poster'         => $imageProcessed,
+        'has_poster2'        => $image2Processed,
         'screenshots_added'  => $screenshotsProcessed,
         'screenshot_errors'  => $screenshotErrors,
     ];
@@ -527,9 +546,18 @@ function saveTorrentFile(array $file, string $targetDir): array
     return ['path' => $path];
 }
 
-function processImage(array $imageFile, int $torrentId, string $imageDir): bool
+function processImage(array $imageFile, int $torrentId, string $imageDir, string $column = 't_image'): bool
 {
     global $db, $BASEURL;
+
+    // Колонка подставляется в SQL как имя - только из белого списка.
+    // Второй постер пишется в файл {id}_2.{ext}, чтобы не затереть первый.
+    $suffix = match ($column) {
+        't_image'  => '',
+        't_image2' => '_2',
+        default    => null,
+    };
+    if ($suffix === null) return false;
 
     if (!in_array($imageFile['type'], ALLOWED_IMAGES, true)) return false;
     if ($imageFile['size'] > MAX_IMAGE_SIZE) return false;
@@ -540,7 +568,7 @@ function processImage(array $imageFile, int $torrentId, string $imageDir): bool
     if (!in_array($realMime, ALLOWED_IMAGES, true)) return false;
 
     $ext        = IMAGE_EXTENSIONS[$realMime] ?? 'jpg';
-    $targetPath = rtrim($imageDir, '/') . '/' . $torrentId . '.' . $ext;
+    $targetPath = rtrim($imageDir, '/') . '/' . $torrentId . $suffix . '.' . $ext;
 
     if (!copy($imageFile['tmp_name'], $targetPath)) return false;
 
@@ -556,8 +584,8 @@ function processImage(array $imageFile, int $torrentId, string $imageDir): bool
     $relativePath = ltrim(str_replace($rootDir, '', $targetPath), '/\\');
     $imageUrl     = $BASEURL . '/' . str_replace('\\', '/', $relativePath);
 
-    if (!$db->sql_query_prepared("UPDATE torrents SET t_image = ? WHERE id = ?", [$imageUrl, $torrentId], 1)) {
-        write_log("[BATCH_UPLOAD] Failed to set poster for torrent #{$torrentId}: " . $db->error_string());
+    if (!$db->sql_query_prepared("UPDATE torrents SET `{$column}` = ? WHERE id = ?", [$imageUrl, $torrentId], 1)) {
+        write_log("[BATCH_UPLOAD] Failed to set {$column} for torrent #{$torrentId}: " . $db->error_string());
         @unlink($targetPath);
         return false;
     }
@@ -963,8 +991,8 @@ const BATCH_CONFIG = {
 };
 </script>
 <script src="<?= $BASEURL ?>/scripts/sweetalert2.min.js"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/batch_upload.js?ver=3"></script>
-<script src="<?= $BASEURL ?>/admin/scripts/batch_upload_ui.js?ver=2"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/batch_upload.js?ver=42"></script>
+<script src="<?= $BASEURL ?>/admin/scripts/batch_upload_ui.js?ver=22"></script>
 
 <?php
     stdfoot();
@@ -1011,9 +1039,16 @@ function torrentItemHtml(int $idx): string
         <input class="form-control" type="file" name="torrentFiles[]" accept=".torrent" required>
         <div class="torrent-name mt-1 small text-muted"></div>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-3">
         <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>Poster <span class="bu-opt">optional</span></label>
         <input class="form-control" type="file" name="posters[]" accept="image/*">
+        <div class="image-preview mt-2" style="max-width:150px;display:none">
+          <img src="" class="img-thumbnail" style="max-height:100px" alt="">
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label"><i class="fa-solid fa-image bu-ic bu-ic-info"></i>Poster 2 <span class="bu-opt">optional</span></label>
+        <input class="form-control" type="file" name="posters2[]" accept="image/*">
         <div class="image-preview mt-2" style="max-width:150px;display:none">
           <img src="" class="img-thumbnail" style="max-height:100px" alt="">
         </div>

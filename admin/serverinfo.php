@@ -1,528 +1,632 @@
 <?php
-
 declare(strict_types=1);
 
 if (!defined('STAFF_PANEL')) {
-    exit('<div class="alert alert-danger"><strong>Error!</strong> Direct initialization is not allowed.</div>');
+    exit('<b>Error!</b> Direct initialization of this file is not allowed.');
 }
 
-stdhead('44');  
+define('SI_VERSION', '3.0');
+const SI_ASSET_VER = 1;
 
+final class ServerInfo
+{
+    private array $vars   = [];   // SHOW VARIABLES
+    private array $status = [];   // SHOW GLOBAL STATUS
 
-class ServerInfoDisplay {
-    private array $config;
-    private $db;
-    private string $charset;
-    private string $siteName;
-    private string $baseUrl;
+    public function __construct(private $db) {}
 
-    public function __construct(array $config, $db, string $charset, string $siteName, string $baseUrl) {
-        $this->config = $config;
-        $this->db = $db;
-        $this->charset = $charset;
-        $this->siteName = $siteName;
-        $this->baseUrl = $baseUrl;
+    // ═════════════════════════════════════════════════════
+    //  Сбор данных
+    // ═════════════════════════════════════════════════════
+
+    private function loadMysql(): void
+    {
+        $q = $this->db->sql_query_prepared('SHOW VARIABLES');
+        while ($q && ($r = $this->db->fetch_array($q))) $this->vars[(string)$r['Variable_name']] = (string)$r['Value'];
+
+        $q = $this->db->sql_query_prepared('SHOW GLOBAL STATUS');
+        while ($q && ($r = $this->db->fetch_array($q))) $this->status[(string)$r['Variable_name']] = (string)$r['Value'];
     }
 
-    public function display(): void {
-        $this->renderHeader();
-        $this->renderNavigation();
-        $this->renderGeneralInfo();
-        $this->renderPhpInfo();
-        $this->renderMysqlInfo();
-        $this->renderFooter();
+    private function v(string $name): string { return $this->vars[$name] ?? ''; }
+    private function st(string $name): int   { return (int)($this->status[$name] ?? 0); }
+
+    /** Один запрос вместо двух SHOW TABLE STATUS. */
+    private function dbTotals(): array
+    {
+        // MySQL 8+ кэширует статистику information_schema на сутки
+        $this->db->sql_query_prepared('SET SESSION information_schema_stats_expiry = 0');
+
+        $q = $this->db->sql_query_prepared(
+            'SELECT COUNT(*) AS n, COALESCE(SUM(DATA_LENGTH),0) AS d, COALESCE(SUM(INDEX_LENGTH),0) AS i,
+                    COALESCE(SUM(DATA_FREE),0) AS f, COALESCE(SUM(TABLE_ROWS),0) AS r
+             FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()'
+        );
+        $r = $q ? $this->db->fetch_array($q) : [];
+        return [
+            'tables' => (int)($r['n'] ?? 0),
+            'data'   => (int)($r['d'] ?? 0),
+            'index'  => (int)($r['i'] ?? 0),
+            'free'   => (int)($r['f'] ?? 0),
+            'rows'   => (int)($r['r'] ?? 0),
+        ];
     }
 
-    private function renderHeader(): void {
-        // stdhead() уже выводит <!DOCTYPE html><html><head>...</head><body> -
-        // раньше здесь выводился ВТОРОЙ, вложенный набор этих тегов поверх
-        // первого (невалидный HTML), из-за чего браузер игнорировал обычные
-        // ограничения ширины контейнера сайта. Оставляем только <style> и
-        // содержимое страницы. container-fluid -> container, чтобы совпадать
-        // по ширине с остальными страницами сайта.
-        echo '<style>
-        :root {
-            --primary-color: #4361ee;
-            --secondary-color: #3a0ca3;
-            --success-color: #4cc9f0;
-            --info-color: #7209b7;
-            --warning-color: #f72585;
-            --light-bg: #f8f9fa;
-            --dark-bg: #212529;
+    private function topTables(int $limit = 10): array
+    {
+        $out = [];
+        $q = $this->db->sql_query_prepared(
+            'SELECT TABLE_NAME AS t, ENGINE AS e, TABLE_ROWS AS r, DATA_LENGTH AS d, INDEX_LENGTH AS i
+             FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()
+             ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC LIMIT ' . max(1, $limit)
+        );
+        while ($q && ($r = $this->db->fetch_array($q))) {
+            $out[] = [
+                'name'   => (string)$r['t'],
+                'engine' => (string)($r['e'] ?? ''),
+                'rows'   => (int)($r['r'] ?? 0),
+                'size'   => (int)($r['d'] ?? 0) + (int)($r['i'] ?? 0),
+            ];
         }
-        
-        .card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            transition: transform 0.3s ease;
-            margin-bottom: 20px;
-            overflow: hidden;
-        }
-        
-        .card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .card-header {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
-            border: none;
-            padding: 1.25rem;
-            font-weight: 600;
-            font-size: 1.1rem;
-        }
-        
-        .table-info {
-            --bs-table-bg: rgba(67, 97, 238, 0.05);
-            --bs-table-striped-bg: rgba(67, 97, 238, 0.1);
-            --bs-table-hover-bg: rgba(67, 97, 238, 0.15);
-        }
-        
-        .badge-server {
-            font-size: 0.75rem;
-            padding: 0.4em 0.8em;
-            border-radius: 20px;
-        }
-        
-        .nav-pills .nav-link {
-            border-radius: 50px;
-            padding: 0.5rem 1.5rem;
-            margin: 0 5px;
-            transition: all 0.3s ease;
-        }
-        
-        .nav-pills .nav-link.active {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
-        }
-        
-        .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-        }
-        
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-        }
-        
-        .stat-label {
-            opacity: 0.9;
-            font-size: 0.9rem;
-        }
-        
-        .server-load {
-            height: 10px;
-            border-radius: 5px;
-            background: #e9ecef;
-            overflow: hidden;
-            margin-top: 5px;
-        }
-        
-        .load-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #4cc9f0, #4361ee);
-            border-radius: 5px;
-        }
-        
-        pre {
-            background: var(--dark-bg);
-            color: #f8f9fa;
-            padding: 1.5rem;
-            border-radius: 10px;
-            font-size: 0.9rem;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        
-        .info-section {
-            display: none;
-        }
-        
-        .info-section.active {
-            display: block;
-            animation: fadeIn 0.5s ease;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .metric-badge {
-            background: rgba(76, 201, 240, 0.1);
-            color: #4cc9f0;
-            border: 1px solid rgba(76, 201, 240, 0.3);
+        return $out;
+    }
+
+    private function opcache(): ?array
+    {
+        if (!function_exists('opcache_get_status')) return null;
+        $s = @opcache_get_status(false);
+        if (!is_array($s) || empty($s['opcache_enabled'])) return null;
+
+        $used = (int)($s['memory_usage']['used_memory'] ?? 0);
+        $free = (int)($s['memory_usage']['free_memory'] ?? 0);
+        return [
+            'hit'     => (float)($s['opcache_statistics']['opcache_hit_rate'] ?? 0),
+            'scripts' => (int)($s['opcache_statistics']['num_cached_scripts'] ?? 0),
+            'mem_pct' => ($used + $free) > 0 ? $used / ($used + $free) * 100 : 0.0,
+            'used'    => $used,
+            'total'   => $used + $free,
+        ];
+    }
+
+    private function cpu(): array
+    {
+        $cores = 0;
+        if (PHP_OS_FAMILY === 'Windows') {
+            $cores = (int)getenv('NUMBER_OF_PROCESSORS');
+        } elseif (@is_readable('/proc/cpuinfo')) {
+            $cores = substr_count((string)@file_get_contents('/proc/cpuinfo'), "\nprocessor") + 1;
         }
 
-        /* Подстраховка - гарантированное скрытие неактивных вкладок,
-           независимо от того, применяется ли собственный display:none
-           из bootstrap.min.css сайта корректно. Вкладка PHP содержит
-           огромный вывод phpinfo(), и если она хоть немного "просвечивает"
-           по высоте - это и создаёт эффект пустоты перед контентом MySQL. */
-        .tab-pane:not(.show) {
-            display: none !important;
+        $load = null;
+        if (function_exists('sys_getloadavg')) {
+            $l = @sys_getloadavg();
+            if (is_array($l) && $l) $load = array_map(fn($x) => round((float)$x, 2), $l);
         }
-    </style>
-<div class="container py-4">
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h1 class="h3 mb-0">
-                        <i class="bi bi-server me-2"></i>
-                        Server Information Dashboard
-                    </h1>
-                    <p class="text-muted mb-0">Comprehensive server diagnostics and monitoring</p>
-                </div>
-                <div class="d-flex align-items-center">
-                    <span class="badge bg-success me-2">v2.0</span>
-                    <span class="text-muted small">' . date('Y-m-d H:i:s') . '</span>
-                </div>
+        return ['cores' => $cores, 'load' => $load];
+    }
+
+    private function disk(): ?array
+    {
+        $total = @disk_total_space(TSDIR);
+        $free  = @disk_free_space(TSDIR);
+        if (!$total || $free === false) return null;
+        return ['total' => (int)$total, 'free' => (int)$free, 'used_pct' => ($total - $free) / $total * 100];
+    }
+
+    // ═════════════════════════════════════════════════════
+    //  Форматирование
+    // ═════════════════════════════════════════════════════
+
+    private function e(string|int|float|null $s): string
+    {
+        return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    }
+
+    private function size(int|float|string $bytes): string
+    {
+        $b = (float)$bytes;
+        $u = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $i = 0;
+        while ($b >= 1024 && $i < count($u) - 1) { $b /= 1024; $i++; }
+        return round($b, $i ? 2 : 0) . ' ' . $u[$i];
+    }
+
+    private function num(int|float $n): string
+    {
+        return number_format((float)$n, 0, '.', ' ');
+    }
+
+    private function uptime(int $sec): string
+    {
+        $d = intdiv($sec, 86400);
+        $h = intdiv($sec % 86400, 3600);
+        $m = intdiv($sec % 3600, 60);
+        return $d ? "{$d}d {$h}h" : ($h ? "{$h}h {$m}m" : "{$m}m");
+    }
+
+    private function ini(string $key): string
+    {
+        $v = ini_get($key);
+        return $v === false ? '—' : ($v === '' ? '(empty)' : $v);
+    }
+
+    private function onOff(string $key): bool
+    {
+        return filter_var(ini_get($key), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /** Цветовая полоса: зелёная / жёлтая / красная по порогам. */
+    private function bar(float $pct, float $warn = 75, float $bad = 90): string
+    {
+        $pct = max(0, min(100, $pct));
+        $cls = $pct >= $bad ? 'bad' : ($pct >= $warn ? 'warn' : 'ok');
+        return '<div class="si-bar si-bar-' . $cls . '"><span style="width:' . round($pct, 1) . '%"></span></div>';
+    }
+
+    // ═════════════════════════════════════════════════════
+    //  Проверки
+    // ═════════════════════════════════════════════════════
+
+    /** @return list<array{0:string,1:string,2:string}> [ok|warn|bad|info, заголовок, пояснение] */
+    private function checks(?array $opc, ?array $disk): array
+    {
+        $c = [];
+
+        // Сроки поддержки: 8.1 - до 2025-12-31, 8.2 - до 2026-12-31, 8.3 - до 2027-12-31
+        if (PHP_VERSION_ID < 80200) {
+            $c[] = ['bad', 'PHP ' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . ' no longer gets security fixes', 'Upgrade to PHP 8.3 or newer.'];
+        } elseif (PHP_VERSION_ID < 80300) {
+            $c[] = ['warn', 'PHP 8.2 security support ends on 2026-12-31', 'Plan an upgrade to PHP 8.3 or newer.'];
+        } else {
+            $c[] = ['ok', 'PHP ' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . ' is supported', 'Receives security fixes.'];
+        }
+
+        $c[] = $this->onOff('display_errors')
+            ? ['bad', 'display_errors is On', 'Errors with file paths are shown to visitors. Turn it off and use log_errors.']
+            : ['ok', 'display_errors is Off', 'Errors are not shown to visitors.'];
+
+        $c[] = $this->onOff('log_errors')
+            ? ['ok', 'log_errors is On', 'Errors go to ' . ($this->ini('error_log') !== '(empty)' ? $this->ini('error_log') : 'the server log') . '.']
+            : ['warn', 'log_errors is Off', 'PHP errors are not recorded anywhere.'];
+
+        $c[] = $this->onOff('expose_php')
+            ? ['warn', 'expose_php is On', 'Every response advertises the PHP version in X-Powered-By.']
+            : ['ok', 'expose_php is Off', 'The PHP version is not advertised.'];
+
+        $c[] = $this->onOff('allow_url_include')
+            ? ['bad', 'allow_url_include is On', 'include() can load remote code. Turn it off.']
+            : ['ok', 'allow_url_include is Off', 'include() cannot load remote code.'];
+
+        $c[] = $this->onOff('session.cookie_httponly')
+            ? ['ok', 'Session cookie is HttpOnly', 'JavaScript cannot read the session cookie.']
+            : ['warn', 'Session cookie is not HttpOnly', 'Set session.cookie_httponly = 1.'];
+
+        $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        if ($https) {
+            $c[] = $this->onOff('session.cookie_secure')
+                ? ['ok', 'Session cookie is Secure', 'Sent over HTTPS only.']
+                : ['warn', 'Session cookie is not Secure', 'The site runs on HTTPS; set session.cookie_secure = 1.'];
+        }
+
+        $c[] = $opc
+            ? ($opc['mem_pct'] >= 90
+                ? ['warn', 'OPcache memory is ' . round($opc['mem_pct']) . '% full', 'Raise opcache.memory_consumption so scripts are not evicted.']
+                : ['ok', 'OPcache is enabled', round($opc['hit'], 1) . '% hit rate, ' . $this->num($opc['scripts']) . ' scripts cached.'])
+            : ['warn', 'OPcache is off', 'Enabling it makes every page faster.'];
+
+        if ($disk) {
+            $freePct = 100 - $disk['used_pct'];
+            $c[] = $freePct < 10
+                ? ['bad', 'Disk is almost full', $this->size($disk['free']) . ' free (' . round($freePct, 1) . '%).']
+                : ($freePct < 20
+                    ? ['warn', 'Disk space is getting low', $this->size($disk['free']) . ' free (' . round($freePct, 1) . '%).']
+                    : ['ok', 'Enough disk space', $this->size($disk['free']) . ' free (' . round($freePct, 1) . '%).']);
+        }
+
+        $maxConn  = (int)$this->v('max_connections');
+        $usedConn = $this->st('Max_used_connections');
+        if ($maxConn > 0) {
+            $pct = $usedConn / $maxConn * 100;
+            $c[] = $pct >= 80
+                ? ['warn', 'Connection peak reached ' . round($pct) . '% of max_connections', "{$usedConn} of {$maxConn} since the last MySQL restart."]
+                : ['ok', 'Connection headroom is fine', "Peak {$usedConn} of {$maxConn} since the last MySQL restart."];
+        }
+
+        $reads = $this->st('Innodb_buffer_pool_reads');
+        $reqs  = $this->st('Innodb_buffer_pool_read_requests');
+        if ($reqs > 0) {
+            $hit = (1 - $reads / $reqs) * 100;
+            $c[] = $hit < 95
+                ? ['warn', 'InnoDB buffer pool hit rate is ' . round($hit, 2) . '%', 'Many reads go to disk; consider a larger innodb_buffer_pool_size.']
+                : ['ok', 'InnoDB buffer pool hit rate is ' . round($hit, 2) . '%', 'Almost all reads are served from memory.'];
+        }
+
+        return $c;
+    }
+
+    // ═════════════════════════════════════════════════════
+    //  Вывод
+    // ═════════════════════════════════════════════════════
+
+    public function render(): void
+    {
+        global $BASEURL;
+
+        $this->loadMysql();
+        $db    = $this->dbTotals();
+        $top   = $this->topTables();
+        $opc   = $this->opcache();
+        $cpu   = $this->cpu();
+        $disk  = $this->disk();
+        $checks = $this->checks($opc, $disk);
+
+        $isWin   = PHP_OS_FAMILY === 'Windows';
+        $mysqlV  = $this->v('version') ?: 'Unknown';
+        $flavor  = stripos($this->v('version_comment'), 'mariadb') !== false || stripos($mysqlV, 'mariadb') !== false ? 'MariaDB' : 'MySQL';
+        $maxConn = (int)$this->v('max_connections');
+        $conn    = $this->st('Threads_connected');
+        $uptime  = $this->st('Uptime');
+        $qps     = $uptime > 0 ? $this->st('Questions') / $uptime : 0;
+
+        $problems = count(array_filter($checks, fn($c) => $c[0] === 'bad'));
+        $warnings = count(array_filter($checks, fn($c) => $c[0] === 'warn'));
+
+        $v = SI_ASSET_VER;
+        echo '<link rel="stylesheet" href="' . $BASEURL . '/admin/templates/serverinfo.css?ver=' . $v . '">';
+        ?>
+<div class="si-page container mt-3 mb-5">
+
+    <div class="si-head">
+        <div class="si-head-icon"><i class="fa-solid fa-server"></i></div>
+        <div class="si-head-text">
+            <h1>Server information</h1>
+            <p>PHP, <?= $flavor ?> and host details · <?= $this->e(date('Y-m-d H:i:s')) ?> (<?= $this->e(date_default_timezone_get()) ?>)</p>
+        </div>
+        <div class="si-head-badges">
+            <span class="si-chip"><i class="fa-brands <?= $isWin ? 'fa-windows' : 'fa-linux' ?>"></i><?= $this->e(PHP_OS_FAMILY) ?></span>
+            <span class="si-chip"><i class="fa-solid fa-plug"></i><?= $this->e(PHP_SAPI) ?></span>
+            <?php if ($problems): ?>
+                <span class="si-chip si-chip-bad"><i class="fa-solid fa-circle-xmark"></i><?= $problems ?> problem<?= $problems > 1 ? 's' : '' ?></span>
+            <?php elseif ($warnings): ?>
+                <span class="si-chip si-chip-warn"><i class="fa-solid fa-triangle-exclamation"></i><?= $warnings ?> warning<?= $warnings > 1 ? 's' : '' ?></span>
+            <?php else: ?>
+                <span class="si-chip si-chip-ok"><i class="fa-solid fa-circle-check"></i>All checks passed</span>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="si-kpis">
+        <div class="si-kpi">
+            <div class="si-kpi-icon si-c-php"><i class="fa-brands fa-php"></i></div>
+            <div><div class="si-kpi-val"><?= $this->e(PHP_VERSION) ?></div><div class="si-kpi-lbl">PHP · <?= count(get_loaded_extensions()) ?> extensions</div></div>
+        </div>
+        <div class="si-kpi">
+            <div class="si-kpi-icon si-c-db"><i class="fa-solid fa-database"></i></div>
+            <div><div class="si-kpi-val"><?= $this->e(preg_replace('~-.*$~', '', $mysqlV)) ?></div><div class="si-kpi-lbl"><?= $flavor ?> · up <?= $this->uptime($uptime) ?></div></div>
+        </div>
+        <div class="si-kpi">
+            <div class="si-kpi-icon si-c-info"><i class="fa-solid fa-table"></i></div>
+            <div><div class="si-kpi-val"><?= $this->size($db['data'] + $db['index']) ?></div><div class="si-kpi-lbl">Database · <?= $db['tables'] ?> tables</div></div>
+        </div>
+        <div class="si-kpi">
+            <div class="si-kpi-icon si-c-disk"><i class="fa-solid fa-hard-drive"></i></div>
+            <div class="si-kpi-body">
+                <?php if ($disk): ?>
+                    <div class="si-kpi-val"><?= $this->size($disk['free']) ?></div>
+                    <div class="si-kpi-lbl">free of <?= $this->size($disk['total']) ?></div>
+                    <?= $this->bar($disk['used_pct'], 80, 90) ?>
+                <?php else: ?>
+                    <div class="si-kpi-val">—</div><div class="si-kpi-lbl">Disk space unavailable</div>
+                <?php endif; ?>
             </div>
         </div>
-    </div>';
+
+        <div class="si-kpi">
+            <div class="si-kpi-icon si-c-conn"><i class="fa-solid fa-network-wired"></i></div>
+            <div class="si-kpi-body">
+                <div class="si-kpi-val"><?= $conn ?> <small>/ <?= $maxConn ?: '—' ?></small></div>
+                <div class="si-kpi-lbl">connections · peak <?= $this->st('Max_used_connections') ?></div>
+                <?= $maxConn ? $this->bar($conn / $maxConn * 100, 60, 80) : '' ?>
+            </div>
+        </div>
+        <div class="si-kpi">
+            <div class="si-kpi-icon si-c-q"><i class="fa-solid fa-gauge-high"></i></div>
+            <div><div class="si-kpi-val"><?= round($qps, 1) ?></div><div class="si-kpi-lbl">queries / sec · <?= $this->num($this->st('Slow_queries')) ?> slow</div></div>
+        </div>
+        <div class="si-kpi">
+            <div class="si-kpi-icon si-c-opc"><i class="fa-solid fa-bolt"></i></div>
+            <div class="si-kpi-body">
+                <?php if ($opc): ?>
+                    <div class="si-kpi-val"><?= round($opc['hit'], 1) ?>%</div>
+                    <div class="si-kpi-lbl">OPcache hits · <?= $this->size($opc['used']) ?> / <?= $this->size($opc['total']) ?></div>
+                    <?= $this->bar($opc['mem_pct'], 80, 95) ?>
+                <?php else: ?>
+                    <div class="si-kpi-val">Off</div><div class="si-kpi-lbl">OPcache</div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div class="si-kpi">
+            <div class="si-kpi-icon si-c-cpu"><i class="fa-solid fa-microchip"></i></div>
+            <div>
+                <div class="si-kpi-val"><?= $cpu['load'] ? $this->e(implode(' · ', $cpu['load'])) : ($cpu['cores'] ?: '—') ?></div>
+                <div class="si-kpi-lbl"><?= $cpu['load'] ? 'load 1 · 5 · 15 min' : 'CPU cores' ?><?= $cpu['load'] && $cpu['cores'] ? ' · ' . $cpu['cores'] . ' cores' : '' ?></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Вкладки -->
+    <div class="si-tabs nav" role="tablist">
+        <button class="si-tab active" id="si-tab-overview" data-bs-toggle="pill" data-bs-target="#si-overview" type="button" role="tab" aria-controls="si-overview" aria-selected="true">
+            <i class="fa-solid fa-gauge"></i>Overview
+        </button>
+        <button class="si-tab" id="si-tab-php" data-bs-toggle="pill" data-bs-target="#si-php" type="button" role="tab" aria-controls="si-php" aria-selected="false">
+            <i class="fa-brands fa-php"></i>PHP
+        </button>
+        <button class="si-tab" id="si-tab-mysql" data-bs-toggle="pill" data-bs-target="#si-mysql" type="button" role="tab" aria-controls="si-mysql" aria-selected="false">
+            <i class="fa-solid fa-database"></i><?= $flavor ?>
+        </button>
+        <button class="si-tab" id="si-tab-phpinfo" data-bs-toggle="pill" data-bs-target="#si-phpinfo" type="button" role="tab" aria-controls="si-phpinfo" aria-selected="false">
+            <i class="fa-solid fa-scroll"></i>phpinfo()
+        </button>
+    </div>
+
+    <div class="tab-content">
+        <?php $this->tabOverview($checks, $top, $db); ?>
+        <?php $this->tabPhp(); ?>
+        <?php $this->tabMysql(); ?>
+        <?php $this->tabPhpinfo(); ?>
+    </div>
+</div>
+<script src="<?= $BASEURL ?>/admin/scripts/serverinfo.js?ver=<?= $v ?>"></script>
+        <?php
     }
 
-    private function renderNavigation(): void {
-        echo '<div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <ul class="nav nav-pills justify-content-center" id="serverInfoTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="general-tab" data-bs-toggle="pill" 
-                                    data-bs-target="#general" type="button" role="tab">
-                                <i class="bi bi-speedometer2 me-2"></i>General
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="php-tab" data-bs-toggle="pill" 
-                                    data-bs-target="#php" type="button" role="tab">
-                                <i class="bi bi-file-code me-2"></i>PHP
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="mysql-tab" data-bs-toggle="pill" 
-                                    data-bs-target="#mysql" type="button" role="tab">
-                                <i class="bi bi-database me-2"></i>MySQL
-                            </button>
-                        </li>
+    // ── Обзор ────────────────────────────────────────────
+
+    private function tabOverview(array $checks, array $top, array $db): void
+    {
+        $host = [
+            ['fa-display',        'Operating system', php_uname('s') . ' ' . php_uname('r')],
+            ['fa-globe',          'Web server',       (string)($_SERVER['SERVER_SOFTWARE'] ?? '—')],
+            ['fa-signature',      'Hostname',         (string)($_SERVER['SERVER_NAME'] ?? gethostname())],
+            ['fa-location-dot',   'Address',          ($_SERVER['SERVER_ADDR'] ?? '—') . ':' . ($_SERVER['SERVER_PORT'] ?? '—')],
+            ['fa-folder-tree',    'Document root',    (string)($_SERVER['DOCUMENT_ROOT'] ?? '—')],
+            ['fa-clock',          'PHP time zone',    date_default_timezone_get()],
+            ['fa-business-time',  'MySQL time zone',  $this->v('time_zone') . ($this->v('system_time_zone') ? ' (system ' . $this->v('system_time_zone') . ')' : '')],
+            ['fa-font',           'MySQL charset',    $this->v('character_set_server') . ' / ' . $this->v('collation_server')],
+        ];
+        $maxTop = $top ? max(1, $top[0]['size']) : 1;
+        $icon = ['ok' => 'fa-circle-check', 'warn' => 'fa-triangle-exclamation', 'bad' => 'fa-circle-xmark', 'info' => 'fa-circle-info'];
+
+        // Сначала проблемы, потом предупреждения, потом OK
+        $rank = ['bad' => 0, 'warn' => 1, 'info' => 2, 'ok' => 3];
+        usort($checks, fn($a, $b) => $rank[$a[0]] <=> $rank[$b[0]]);
+        ?>
+        <div class="tab-pane fade show active" id="si-overview" role="tabpanel" aria-labelledby="si-tab-overview">
+            <div class="si-cols">
+                <div class="si-card">
+                    <h2 class="si-card-title"><i class="fa-solid fa-shield-halved"></i>Health checks</h2>
+                    <ul class="si-checks">
+                        <?php foreach ($checks as [$lvl, $title, $detail]): ?>
+                            <li class="si-check si-check-<?= $lvl ?>">
+                                <i class="fa-solid <?= $icon[$lvl] ?>"></i>
+                                <div><strong><?= $this->e($title) ?></strong><span><?= $this->e($detail) ?></span></div>
+                            </li>
+                        <?php endforeach; ?>
                     </ul>
                 </div>
-            </div>
-        </div>
-    </div>';
-    }
 
-    private function renderGeneralInfo(): void {
-        $sqlVersion = $this->getSqlVersion();
-        $dataUsage = $this->getDatabaseUsage('Data_length');
-        $indexUsage = $this->getDatabaseUsage('Index_length');
-        $packetMax = $this->getMysqlVariable('max_allowed_packet');
-        $connectionMax = $this->getMysqlVariable('max_connections');
-        
-        echo '<div class="tab-pane fade show active" id="general" role="tabpanel">
-        <div class="row">
-            <!-- Quick Stats -->
-            <div class="col-lg-3 col-md-6 mb-4">
-                <div class="stat-card">
-                    <div class="stat-value">' . PHP_VERSION . '</div>
-                    <div class="stat-label">PHP Version</div>
-                    <i class="bi bi-file-code float-end" style="font-size: 2rem; opacity: 0.5;"></i>
+                <div class="si-card">
+                    <h2 class="si-card-title"><i class="fa-solid fa-circle-info"></i>Host</h2>
+                    <dl class="si-dl">
+                        <?php foreach ($host as [$ic, $k, $val]): ?>
+                            <div><dt><i class="fa-solid <?= $ic ?>"></i><?= $this->e($k) ?></dt><dd><?= $this->e($val) ?></dd></div>
+                        <?php endforeach; ?>
+                    </dl>
                 </div>
             </div>
-            
-            <div class="col-lg-3 col-md-6 mb-4">
-                <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                    <div class="stat-value">' . htmlspecialchars($sqlVersion) . '</div>
-                    <div class="stat-label">MySQL Version</div>
-                    <i class="bi bi-database float-end" style="font-size: 2rem; opacity: 0.5;"></i>
-                </div>
-            </div>
-            
-            <div class="col-lg-3 col-md-6 mb-4">
-                <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
-                    <div class="stat-value">' . $this->formatSize($dataUsage + $indexUsage) . '</div>
-                    <div class="stat-label">Database Size</div>
-                    <i class="bi bi-hdd float-end" style="font-size: 2rem; opacity: 0.5;"></i>
-                </div>
-            </div>
-            
-            <div class="col-lg-3 col-md-6 mb-4">
-                <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
-                    <div class="stat-value">' . $this->getServerLoad() . '</div>
-                    <div class="stat-label">Server Load</div>
-                    <i class="bi bi-cpu float-end" style="font-size: 2rem; opacity: 0.5;"></i>
+
+            <div class="si-card">
+                <h2 class="si-card-title"><i class="fa-solid fa-ranking-star"></i>Largest tables
+                    <span class="si-card-sub"><?= $this->size($db['data']) ?> data · <?= $this->size($db['index']) ?> indexes · <?= $this->size($db['free']) ?> reclaimable · ~<?= $this->num($db['rows']) ?> rows</span>
+                </h2>
+                <div class="si-table-wrap">
+                    <table class="si-table">
+                        <thead><tr><th>Table</th><th>Engine</th><th class="text-end">Rows</th><th class="text-end">Size</th><th class="si-col-bar"></th></tr></thead>
+                        <tbody>
+                        <?php foreach ($top as $t): ?>
+                            <tr>
+                                <td><code><?= $this->e($t['name']) ?></code></td>
+                                <td class="si-muted"><?= $this->e($t['engine']) ?></td>
+                                <td class="text-end">~<?= $this->num($t['rows']) ?></td>
+                                <td class="text-end"><?= $this->size($t['size']) ?></td>
+                                <td class="si-col-bar"><div class="si-bar si-bar-info"><span style="width:<?= round($t['size'] / $maxTop * 100, 1) ?>%"></span></div></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
-
-        <!-- Detailed Information -->
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="bi bi-info-circle me-2"></i>Detailed Server Information
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover table-striped table-info">
-                                <tbody>';
-        
-        $this->renderInfoRow('Operating System', PHP_OS, 'Server Software', $_SERVER['SERVER_SOFTWARE']);
-        $this->renderInfoRow('Server Hostname', $_SERVER['SERVER_NAME'], 'Server IP:Port', $_SERVER['SERVER_ADDR'] . ':' . $_SERVER['SERVER_PORT']);
-        $this->renderInfoRow('Document Root', $_SERVER['DOCUMENT_ROOT'], 'Server Admin', $_SERVER['SERVER_ADMIN']);
-        $this->renderInfoRow('Server Date/Time', date('l, F j, Y H:i:s'), 'Server Load', $this->getServerLoad());
-        $this->renderInfoRow('PHP Memory Limit', ini_get('memory_limit'), 'Max Upload Size', ini_get('upload_max_filesize'));
-        $this->renderInfoRow('Max Post Size', ini_get('post_max_size'), 'Max Execution Time', ini_get('max_execution_time') . 's');
-        $this->renderInfoRow('Short Open Tag', ini_get('short_open_tag') ? 'On' : 'Off', 'Safe Mode', ini_get('safe_mode') ? 'On' : 'Off');
-        $this->renderInfoRow('Database Data', $this->formatSize($dataUsage), 'Database Index', $this->formatSize($indexUsage));
-        $this->renderInfoRow('Max Packet Size', $this->formatSize($packetMax), 'Max Connections', ts_nf($connectionMax));
-        
-        echo '                      </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>';
+        <?php
     }
 
-    private function renderPhpInfo(): void {
-        ob_start();
-        phpinfo(INFO_GENERAL | INFO_CONFIGURATION | INFO_MODULES | INFO_VARIABLES);
-        $phpinfo = ob_get_clean();
-        
-        echo '<div class="tab-pane fade" id="php" role="tabpanel">
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="bi bi-file-code me-2"></i>PHP Configuration
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            ' . $this->cleanPhpInfo($phpinfo) . '
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>';
-    }
+    // ── PHP ──────────────────────────────────────────────
 
-    private function renderMysqlInfo(): void {
-        $variables = $this->getMysqlVariables();
-        
-        echo '<div class="tab-pane fade" id="mysql" role="tabpanel">
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <i class="bi bi-database me-2"></i>MySQL Server Variables
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover table-striped">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Variable Name</th>
-                                        <th>Value</th>
-                                        <th>Description</th>
-                                    </tr>
-                                </thead>
-                                <tbody>';
-        
-        foreach ($variables as $name => $value) {
-            echo '<tr>
-                <td><code>' . htmlspecialchars($name) . '</code></td>
-                <td><span class="badge metric-badge">' . htmlspecialchars((string)$value) . '</span></td>
-                <td><small class="text-muted">' . $this->getMysqlVarDescription($name) . '</small></td>
-            </tr>';
-        }
-        
-        echo '              </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>';
-    }
-
-    private function renderFooter(): void {
-        // </body></html> убраны - их выводит stdfoot() на уровне страницы
-        // (stdhead() уже открыл их). bootstrap.bundle.min.js с CDN убран -
-        // тот же файл уже грузится локально через stdhead()/header.php.
-        echo '</div>
-<script>
-// Initialize tooltips
-var tooltipTriggerList = [].slice.call(document.querySelectorAll(\'[data-bs-toggle="tooltip"]\'));
-var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-    return new bootstrap.Tooltip(tooltipTriggerEl);
-});
-
-// Tab persistence
-document.addEventListener(\'DOMContentLoaded\', function() {
-    const tabs = document.querySelectorAll(\'#serverInfoTabs .nav-link\');
-    tabs.forEach(tab => {
-        tab.addEventListener(\'click\', function() {
-            localStorage.setItem(\'activeServerInfoTab\', this.id);
-        });
-    });
-
-    // Вкладка PHP выводит phpinfo() - она огромная (часто 10000+px).
-    // Без этого при переключении со скроленной вниз PHP-вкладки на любую
-    // другую позиция скролла не менялась, и приходилось листать вручную,
-    // хотя контент вкладки уже сменился.
-    const navTabsEl = document.getElementById(\'serverInfoTabs\');
-    if (navTabsEl) {
-        navTabsEl.addEventListener(\'shown.bs.tab\', function () {
-            window.scrollTo(0, 0);
-        });
-    }
-
-    const activeTab = localStorage.getItem(\'activeServerInfoTab\');
-    if (activeTab) {
-        const tabElement = document.getElementById(activeTab);
-        if (tabElement) {
-            new bootstrap.Tab(tabElement).show();
-        }
-    }
-});
-</script>';
-    }
-
-    private function getSqlVersion(): string {
-        $result = $this->db->sql_query_prepared('SELECT VERSION() as version');
-        $row = $this->db->fetch_array($result);
-        return $row['version'] ?? 'Unknown';
-    }
-
-    private function getDatabaseUsage(string $column): int {
-        $usage = 0;
-        $result = $this->db->sql_query_prepared("SHOW TABLE STATUS FROM `{$this->config['database']['database']}`");
-        
-        while ($row = $this->db->fetch_array($result)) {
-            $usage += (int)($row[$column] ?? 0);
-        }
-        
-        return $usage;
-    }
-
-    private function getMysqlVariable(string $variable): string {
-        // MySQL не позволяет плейсхолдер в LIKE-паттерне для SHOW VARIABLES/
-        // SHOW STATUS через PREPARE-протокол ("...syntax ... near '?'"), но
-        // сама команда SHOW через sql_query_prepared() отрабатывает нормально
-        // (см. getDatabaseUsage()/getMysqlVariables() выше в этом же файле,
-        // без единого плейсхолдера) - значит достаточно не биндить `?` в
-        // LIKE-паттерн, а не уходить в db_admin_raw.php. $variable во всех
-        // вызовах - захардкоженный литерал (не пользовательский ввод), но
-        // на всякий случай пропускаем через escape_string().
-        $safeVariable = $this->db->escape_string($variable);
-        $result = $this->db->sql_query_prepared("SHOW VARIABLES LIKE '{$safeVariable}'");
-        $row = $this->db->fetch_array($result);
-        return (string)($row['Value'] ?? 'N/A');
-    }
-
-    private function getMysqlVariables(): array {
-        $variables = [];
-        $result = $this->db->sql_query_prepared('SHOW VARIABLES');
-        
-        while ($row = $this->db->fetch_array($result)) {
-            $variables[$row['Variable_name']] = $row['Value'];
-        }
-        
-        return $variables;
-    }
-
-    private function getServerLoad(): string {
-        if (PHP_OS === 'Linux' || PHP_OS === 'Unix') {
-            if (file_exists('/proc/loadavg')) {
-                $load = file_get_contents('/proc/loadavg');
-                $loads = explode(' ', $load);
-                return trim($loads[0] ?? 'N/A');
-            }
-            
-            $output = shell_exec('uptime');
-            if (preg_match('/load average:\s+([\d\.]+)/', $output, $matches)) {
-                return $matches[1];
-            }
-        }
-        
-        return 'N/A';
-    }
-
-    private function formatSize(int|string $bytes): string {
-        // SQL-агрегаты (SUM/MAX и т.п.) PHP иногда возвращает числовой
-        // строкой, а не int - отсюда и был TypeError.
-        $bytes = (float)$bytes;
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        $i = 0;
-        
-        while ($bytes >= 1024 && $i < count($units) - 1) {
-            $bytes /= 1024;
-            $i++;
-        }
-        
-        return round($bytes, 2) . ' ' . $units[$i];
-    }
-
-    private function renderInfoRow(string $label1, string $value1, string $label2, string $value2): void {
-        echo '<tr>
-            <td><strong>' . htmlspecialchars($label1) . '</strong></td>
-            <td><span class="badge bg-light text-dark">' . htmlspecialchars($value1) . '</span></td>
-            <td><strong>' . htmlspecialchars($label2) . '</strong></td>
-            <td><span class="badge bg-light text-dark">' . htmlspecialchars($value2) . '</span></td>
-        </tr>';
-    }
-
-    private function cleanPhpInfo(string $phpinfo): string {
-        $phpinfo = preg_replace('%^.*<body>(.*)</body>.*$%ms', '$1', $phpinfo);
-        $phpinfo = str_replace('<table', '<table class="table table-hover table-bordered"', $phpinfo);
-        $phpinfo = str_replace('<td class="e"', '<td class="fw-bold"', $phpinfo);
-        $phpinfo = str_replace('<td class="v"', '<td', $phpinfo);
-        $phpinfo = str_replace('<tr class="h"', '<tr class="table-primary"', $phpinfo);
-        $phpinfo = str_replace('<tr class="v"', '<tr class="table-default"', $phpinfo);
-        
-        return $phpinfo;
-    }
-
-    private function getMysqlVarDescription(string $variable): string {
-        $descriptions = [
-            'max_connections' => 'Maximum number of simultaneous client connections',
-            'max_allowed_packet' => 'Maximum size of one packet or generated/intermediate string',
-            'innodb_buffer_pool_size' => 'Size of the memory buffer InnoDB uses to cache data and indexes',
-            'query_cache_size' => 'Amount of memory allocated for caching query results',
-            'thread_cache_size' => 'How many threads the server should cache for reuse',
-            'key_buffer_size' => 'Size of the buffer used for index blocks'
+    private function tabPhp(): void
+    {
+        $groups = [
+            ['fa-memory', 'Limits', [
+                'memory_limit', 'max_execution_time', 'max_input_time', 'max_input_vars',
+                'upload_max_filesize', 'post_max_size', 'max_file_uploads',
+            ]],
+            ['fa-bug', 'Errors', ['display_errors', 'log_errors', 'error_log', 'error_reporting']],
+            ['fa-cookie-bite', 'Sessions', [
+                'session.save_handler', 'session.gc_maxlifetime', 'session.cookie_httponly',
+                'session.cookie_secure', 'session.cookie_samesite', 'session.use_strict_mode',
+            ]],
+            ['fa-bolt', 'OPcache', [
+                'opcache.enable', 'opcache.memory_consumption', 'opcache.max_accelerated_files',
+                'opcache.validate_timestamps', 'opcache.revalidate_freq', 'opcache.jit',
+            ]],
+            ['fa-sliders', 'Other', ['default_charset', 'date.timezone', 'file_uploads', 'allow_url_fopen', 'expose_php', 'open_basedir']],
         ];
-        
-        return $descriptions[$variable] ?? 'MySQL server variable';
+        $ext = get_loaded_extensions();
+        natcasesort($ext);
+        ?>
+        <div class="tab-pane fade" id="si-php" role="tabpanel" aria-labelledby="si-tab-php">
+            <div class="si-grid-cards">
+                <?php foreach ($groups as [$ic, $title, $keys]): ?>
+                    <div class="si-card">
+                        <h2 class="si-card-title"><i class="fa-solid <?= $ic ?>"></i><?= $this->e($title) ?></h2>
+                        <dl class="si-kv">
+                            <?php foreach ($keys as $k): ?>
+                                <div><dt><code><?= $this->e($k) ?></code></dt><dd><?= $this->e($this->ini($k)) ?></dd></div>
+                            <?php endforeach; ?>
+                        </dl>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="si-card">
+                <h2 class="si-card-title"><i class="fa-solid fa-puzzle-piece"></i>Loaded extensions <span class="si-card-sub"><?= count($ext) ?></span></h2>
+                <div class="si-ext">
+                    <?php foreach ($ext as $x): ?>
+                        <span class="si-ext-chip"><?= $this->e($x) ?><small><?= $this->e((string)(phpversion($x) ?: '')) ?></small></span>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    // ── MySQL ────────────────────────────────────────────
+
+    private function tabMysql(): void
+    {
+        // name => [описание, размер в байтах?]
+        $key = [
+            'max_connections'                => ['Maximum simultaneous client connections', false],
+            'max_allowed_packet'             => ['Largest single packet or query', true],
+            'innodb_buffer_pool_size'        => ['Memory InnoDB uses to cache data and indexes', true],
+            'innodb_redo_log_capacity'       => ['Total size of the InnoDB redo log', true],
+            'innodb_flush_log_at_trx_commit' => ['1 = safest, 2 = faster, may lose ~1 s on OS crash', false],
+            'tmp_table_size'                 => ['Largest in-memory temporary table', true],
+            'max_heap_table_size'            => ['Largest MEMORY table', true],
+            'table_open_cache'               => ['Open tables kept in cache', false],
+            'thread_cache_size'              => ['Threads kept for reuse', false],
+            'wait_timeout'                   => ['Seconds before an idle connection is closed', false],
+            'slow_query_log'                 => ['Whether slow queries are logged', false],
+            'long_query_time'                => ['Seconds after which a query counts as slow', false],
+            'sql_mode'                       => ['SQL modes in effect', false],
+        ];
+        $status = [
+            ['fa-clock',              'Uptime',             $this->uptime($this->st('Uptime'))],
+            ['fa-plug',               'Connected now',      $this->num($this->st('Threads_connected'))],
+            ['fa-person-running',     'Running now',        $this->num($this->st('Threads_running'))],
+            ['fa-arrow-trend-up',     'Peak connections',   $this->num($this->st('Max_used_connections'))],
+            ['fa-circle-question',    'Queries',            $this->num($this->st('Questions'))],
+            ['fa-hourglass-half',     'Slow queries',       $this->num($this->st('Slow_queries'))],
+            ['fa-ban',                'Aborted connects',   $this->num($this->st('Aborted_connects'))],
+            ['fa-download',           'Received',           $this->size($this->st('Bytes_received'))],
+            ['fa-upload',             'Sent',               $this->size($this->st('Bytes_sent'))],
+        ];
+        ?>
+        <div class="tab-pane fade" id="si-mysql" role="tabpanel" aria-labelledby="si-tab-mysql">
+            <div class="si-card">
+                <h2 class="si-card-title"><i class="fa-solid fa-chart-simple"></i>Status since last restart</h2>
+                <div class="si-stats">
+                    <?php foreach ($status as [$ic, $k, $val]): ?>
+                        <div class="si-stat"><i class="fa-solid <?= $ic ?>"></i><span><?= $this->e($k) ?></span><strong><?= $this->e($val) ?></strong></div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <div class="si-card">
+                <h2 class="si-card-title"><i class="fa-solid fa-star"></i>Key settings</h2>
+                <div class="si-table-wrap">
+                    <table class="si-table">
+                        <thead><tr><th>Variable</th><th>Value</th><th>What it does</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($key as $name => [$desc, $isSize]):
+                            if (!isset($this->vars[$name])) continue;
+                            $val = $this->vars[$name];
+                        ?>
+                            <tr>
+                                <td><code><?= $this->e($name) ?></code></td>
+                                <td><span class="si-val"><?= $this->e($isSize && is_numeric($val) ? $this->size($val) : $val) ?></span></td>
+                                <td class="si-muted"><?= $this->e($desc) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="si-card">
+                <h2 class="si-card-title"><i class="fa-solid fa-list"></i>All variables <span class="si-card-sub" id="siVarCount"><?= count($this->vars) ?></span></h2>
+                <div class="si-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="search" id="siVarFilter" placeholder="Filter by name or value" aria-label="Filter variables">
+                </div>
+                <div class="si-table-wrap si-scroll">
+                    <table class="si-table" id="siVarTable">
+                        <tbody>
+                        <?php foreach ($this->vars as $name => $val): ?>
+                            <tr data-search="<?= $this->e(strtolower($name . ' ' . $val)) ?>">
+                                <td><code><?= $this->e($name) ?></code></td>
+                                <td class="si-break"><?= $this->e($val) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    // ── phpinfo() ────────────────────────────────────────
+
+    private function tabPhpinfo(): void
+    {
+        // INFO_VARIABLES не выводим: там $_COOKIE и $_SERVER с cookie текущей
+        // сессии - на скриншоте страницы их легко утащить.
+        ob_start();
+        phpinfo(INFO_GENERAL | INFO_CONFIGURATION | INFO_MODULES);
+        $html = (string)ob_get_clean();
+
+        $html = preg_replace('~^.*<body[^>]*>(.*)</body>.*$~is', '$1', $html) ?? '';
+        // Модуль веб-сервера (apache2handler и т.п.) показывает заголовки
+        // запроса - вырезаем строки с cookie и авторизацией.
+        $html = preg_replace(
+            '~<tr>(?:(?!</tr>).)*?(?:HTTP_COOKIE|HTTP_AUTHORIZATION|>\s*Cookie\s*<|>\s*Authorization\s*<)(?:(?!</tr>).)*</tr>~is',
+            '',
+            $html
+        ) ?? '';
+        ?>
+        <div class="tab-pane fade" id="si-phpinfo" role="tabpanel" aria-labelledby="si-tab-phpinfo">
+            <div class="si-card">
+                <div class="si-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="search" id="siInfoFilter" placeholder="Filter directives, e.g. upload or curl" aria-label="Filter phpinfo">
+                </div>
+                <div class="si-modules" id="siModules"></div>
+                <div class="si-phpinfo" id="siPhpinfo"><?= $html ?></div>
+            </div>
+        </div>
+        <?php
     }
 }
 
-// Usage:
-if (!defined('STAFF_PANEL')) {
-    exit('<div class="alert alert-danger">Error! Direct initialization of this file is not allowed.</div>');
-}
+stdhead('Server information');
 
 try {
-    $serverInfo = new ServerInfoDisplay($config, $db, $charset, $SITENAME, $BASEURL);
-    $serverInfo->display();
-} catch (Exception $e) {
-    echo '<div class="alert alert-danger">
-        <h4>Error Loading Server Information</h4>
-        <p>' . htmlspecialchars($e->getMessage()) . '</p>
-    </div>';
+    (new ServerInfo($db))->render();
+} catch (Throwable $e) {
+    echo '<div class="container mt-3"><div class="alert alert-danger"><i class="fa-solid fa-circle-xmark me-2"></i>'
+       . 'Could not load server information: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div></div>';
 }
 
 stdfoot();
-?>

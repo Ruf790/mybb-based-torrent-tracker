@@ -7,14 +7,17 @@ if (!defined('STAFF_PANEL')) {
 }
 
 require_once INC_PATH . '/functions_multipage.php';
+require_once INC_PATH . '/functions_bonuslog.php';
 
 final class BonusPointsManager
 {
     private const BS_VERSION      = 'v0.8';
     private const ALLOWED_ACTIONS = [
         'showlist', 'edituser', 'updateuser', 'updatebonussystem',
-        'updatebonussystemsave', 'adminpanel', 'add', 'add_save', 'resetall', 'reset'
+        'updatebonussystemsave', 'adminpanel', 'add', 'add_save', 'resetall', 'reset', 'log'
     ];
+    private const LOG_PER_PAGE = 50;
+    private const LOG_PERIODS  = ['1' => 'Today', '7' => '7 days', '30' => '30 days', '90' => '90 days', 'all' => 'All time'];
     private const UNITS = ['GB' => 1073741824, 'MB' => 1048576, 'TB' => 1099511627776, 'B' => 1];
 
     private string $script;
@@ -51,6 +54,7 @@ final class BonusPointsManager
             'add_save'              => $this->addBonusSave(),
             'resetall'              => $this->resetAllPoints(),
             'reset'                 => $this->resetPointsForm(),
+            'log'                   => $this->showLog(),
             default                 => $this->showAdminPanel(),
         };
     }
@@ -133,6 +137,7 @@ final class BonusPointsManager
             'adminpanel' => ['fa-store',            'Shop items'],
             'add'        => ['fa-circle-plus',      'Add item'],
             'showlist'   => ['fa-users',            'Users'],
+            'log'        => ['fa-clock-rotate-left', 'Log'],
             'reset'      => ['fa-rotate-left',      'Reset points'],
         ];
         $nav = '<nav class="bp-tabs">';
@@ -144,7 +149,7 @@ final class BonusPointsManager
         echo '<div class="container mt-3 mb-4 bp">'
            . '<div class="bp-card mb-3"><div class="bp-head">'
            . '<span class="bp-head-icon"><i class="fa-solid fa-coins"></i></span>'
-           . '<div class="bp-minw0"><h1 class="bp-title">Bonus Points</h1><div class="bp-sub">Bonus shop items and user balances</div></div>'
+           . '<div class="bp-minw0"><h1 class="bp-title">Bonus Points</h1><div class="bp-sub">Bonus shop items, user balances and the bonus log</div></div>'
            . '<span class="bp-ver ms-auto"><i class="fa-solid fa-code-branch me-1"></i>' . self::BS_VERSION . '</span>'
            . '</div></div>'
            . '<div class="row g-3 mb-3">';
@@ -387,7 +392,7 @@ final class BonusPointsManager
         $start = ($page - 1) * $this->perPage;
 
         $res = $this->db->sql_query_prepared(
-            "SELECT id, username, usergroup, seedbonus, bonuscomment, uploaded, avatar, avatardimensions
+            "SELECT id, username, usergroup, seedbonus, uploaded, avatar, avatardimensions
              FROM users WHERE {$where} ORDER BY seedbonus DESC LIMIT ?, ?",
             [...$par, $start, $this->perPage]
         );
@@ -408,9 +413,9 @@ final class BonusPointsManager
                 . '<div class="bp-muted">ID ' . (int)$u['id'] . '</div></div></div></td>'
                 . '<td class="text-nowrap"><span class="bp-pts"><i class="fa-solid fa-coins"></i>' . $this->pts($u['seedbonus']) . '</span></td>'
                 . '<td class="text-nowrap"><i class="fa-solid fa-upload text-body-secondary me-1"></i>' . mksize((float)$u['uploaded']) . '</td>'
-                // раньше — readonly textarea в каждой строке
-                . '<td><div class="bp-comment" title="' . $this->e($u['bonuscomment'] ?? '') . '">' . nl2br($this->e($u['bonuscomment'] ?? '')) . '</div></td>'
-                . '<td class="text-end"><a href="' . $this->url('edituser', ['id' => (int)$u['id']]) . '" class="bp-act" title="Edit balance"><i class="fa-solid fa-pen"></i></a></td>'
+                . '<td class="text-end text-nowrap">'
+                . '<a href="' . $this->url('log', ['user' => '#' . (int)$u['id'], 'period' => 'all']) . '" class="bp-act" title="Bonus history"><i class="fa-solid fa-clock-rotate-left"></i></a> '
+                . '<a href="' . $this->url('edituser', ['id' => (int)$u['id']]) . '" class="bp-act" title="Edit balance"><i class="fa-solid fa-pen"></i></a></td>'
                 . '</tr>';
         }
 
@@ -426,7 +431,7 @@ final class BonusPointsManager
         $body .= $rows
             ? '<div class="table-responsive"><table class="table bp-table"><thead><tr>'
               . '<th class="text-center">#</th><th><i class="fa-solid fa-user"></i>User</th><th><i class="fa-solid fa-coins"></i>Points</th>'
-              . '<th><i class="fa-solid fa-upload"></i>Uploaded</th><th><i class="fa-solid fa-comment"></i>Bonus log</th><th></th>'
+              . '<th><i class="fa-solid fa-upload"></i>Uploaded</th><th></th>'
               . '</tr></thead><tbody>' . $rows . '</tbody></table></div>' . $pager
             : '<div class="bp-empty"><i class="fa-solid fa-user-slash"></i><div class="fw-semibold">' . ($q !== '' ? 'No user matches “' . $this->e($q) . '”' : 'Nobody has bonus points yet') . '</div></div>';
         $body .= '</div>';
@@ -452,7 +457,8 @@ final class BonusPointsManager
             <input type="hidden" name="id" value="' . (int)$user['id'] . '">
             <div class="bp-sec-head"><span class="bp-sec-icon ic-blue"><i class="fa-solid fa-user-pen"></i></span>
                 <div><h2 class="bp-sec-title">Edit balance</h2><div class="bp-muted"><a href="' . $link . '" target="_blank">' . $this->e($name) . '</a> · ID ' . (int)$user['id'] . '</div></div>
-                <span class="ms-auto bp-pts"><i class="fa-solid fa-coins"></i>' . $this->pts($cur) . ' now</span></div>
+                <a href="' . $this->url('log', ['user' => '#' . (int)$user['id'], 'period' => 'all']) . '" class="ms-auto bp-act" title="Bonus history"><i class="fa-solid fa-clock-rotate-left"></i></a>
+                <span class="bp-pts"><i class="fa-solid fa-coins"></i>' . $this->pts($cur) . ' now</span></div>
             <div class="p-3 p-md-4">
                 <label class="form-label" for="seedbonus"><i class="fa-solid fa-coins"></i>New balance</label>
                 <div class="input-group"><input type="number" class="form-control form-control-lg" id="seedbonus" name="seedbonus" value="' . $this->e($cur) . '" min="0" step="0.1" required><span class="input-group-text">points</span></div>
@@ -493,12 +499,115 @@ final class BonusPointsManager
         if (!$user) { $this->result(false, 'Not found', 'User not found.', 'showlist'); return; }
         $bonus = max(0.0, (float)($_POST['seedbonus'] ?? 0));
         $ok    = $this->db->sql_query_prepared("UPDATE users SET seedbonus = ? WHERE id = ?", [$bonus, $id]);
+        $old   = (float)$user['seedbonus'];
+        if ($ok && abs($bonus - $old) >= 0.01) {
+            bonus_log($id, $bonus - $old, 'staff',
+                'Balance set by staff: ' . $this->pts($old) . ' → ' . $this->pts($bonus), null, (int)($CURUSER['id'] ?? 0) ?: null);
+        }
         // Раньше изменение баланса нигде не фиксировалось
         if ($ok && function_exists('write_log')) {
             write_log("Bonus balance of {$user['username']} changed from {$this->pts($user['seedbonus'])} to {$this->pts($bonus)} by " . ($CURUSER['username'] ?? 'System'));
         }
         $this->result((bool)$ok, $ok ? 'Balance updated' : 'Could not update',
             $ok ? $this->e($user['username']) . ': ' . $this->pts($user['seedbonus']) . ' → <strong>' . $this->pts($bonus) . '</strong> points' : 'Database error.', 'showlist');
+    }
+
+    // ── Bonus log ────────────────────────────────────────────
+
+    private function showLog(): void
+    {
+        $userIn = trim((string)($_GET['user'] ?? ''));
+        $type   = (string)($_GET['type'] ?? '');
+        $type   = isset(BONUS_LOG_TYPES[$type]) ? $type : '';
+        $period = (string)($_GET['period'] ?? '30');
+        $period = isset(self::LOG_PERIODS[$period]) ? $period : '30';
+        $since  = $period === 'all' ? null : ($period === '1' ? (int)strtotime('today', TIMENOW) : TIMENOW - (int)$period * 86400);
+        $page   = max(1, (int)($_GET['page'] ?? 1));
+
+        $uid = null;
+        $err = '';
+        if ($userIn !== '') {
+            $r = preg_match('/^#?(\d+)$/', $userIn, $m)
+                ? $this->db->sql_query_prepared('SELECT id FROM users WHERE id = ? OR username = ? LIMIT 1', [(int)$m[1], $userIn])
+                : $this->db->sql_query_prepared('SELECT id FROM users WHERE username = ? LIMIT 1', [$userIn]);
+            $row = $r ? $this->db->fetch_array($r) : null;
+            if ($row) $uid = (int)$row['id']; else $err = 'User not found.';
+        }
+
+        $tot  = $err === '' ? bonus_log_totals($uid, $type ?: null, $since) : ['count' => 0, 'plus' => 0.0, 'minus' => 0.0];
+        $rows = $err === '' ? bonus_log_fetch($uid, $type ?: null, self::LOG_PER_PAGE, ($page - 1) * self::LOG_PER_PAGE, $since) : [];
+        $net  = $tot['plus'] - $tot['minus'];
+        $amt  = static fn(float $v): string => abs($v) >= 0.01 ? bonus_log_amount($v) : '0';
+
+        // Filters
+        $typeOpts = '<option value="">All types</option>';
+        foreach (BONUS_LOG_TYPES as $k => [$label]) {
+            $typeOpts .= '<option value="' . $k . '"' . ($type === $k ? ' selected' : '') . '>' . $this->e($label) . '</option>';
+        }
+        $perOpts = '';
+        foreach (self::LOG_PERIODS as $k => $label) {
+            $perOpts .= '<option value="' . $k . '"' . ($period === (string)$k ? ' selected' : '') . '>' . $this->e($label) . '</option>';
+        }
+
+        $body = '<div class="bp-card overflow-hidden"><div class="bp-sec-head">'
+              . '<span class="bp-sec-icon ic-amber"><i class="fa-solid fa-clock-rotate-left"></i></span>'
+              . '<div><h2 class="bp-sec-title">Bonus log</h2><div class="bp-muted">'
+              . number_format($tot['count']) . ' entr' . ($tot['count'] === 1 ? 'y' : 'ies')
+              . ' &middot; <span class="text-success">' . $amt($tot['plus']) . '</span>'
+              . ' &middot; <span class="text-danger">' . ($tot['minus'] > 0 ? $amt(-$tot['minus']) : '0') . '</span>'
+              . ' &middot; net <strong>' . $amt($net) . '</strong></div></div></div>'
+              . '<form method="get" action="' . $this->script . '" class="d-flex flex-wrap gap-2 align-items-end px-3 pb-3">'
+              . '<input type="hidden" name="act" value="bonuspoints"><input type="hidden" name="action" value="log">'
+              . '<div class="flex-grow-1" style="min-width:11rem"><label class="form-label small mb-1">User <span class="bp-muted">name or #id</span></label>'
+              . '<input name="user" value="' . $this->e($userIn) . '" class="form-control form-control-sm" placeholder="Everyone"></div>'
+              . '<div><label class="form-label small mb-1">Type</label><select name="type" class="form-select form-select-sm">' . $typeOpts . '</select></div>'
+              . '<div><label class="form-label small mb-1">Period</label><select name="period" class="form-select form-select-sm">' . $perOpts . '</select></div>'
+              . '<button class="btn btn-primary btn-sm px-3"><i class="fa-solid fa-magnifying-glass me-1"></i>Show</button>'
+              . ($userIn !== '' || $type !== '' || $period !== '30'
+                    ? '<a href="' . $this->url('log') . '" class="btn btn-outline-secondary btn-sm px-3"><i class="fa-solid fa-xmark me-1"></i>Reset</a>' : '')
+              . '</form>';
+
+        if ($err !== '') {
+            $body .= '<div class="alert alert-danger mx-3"><i class="fa-solid fa-triangle-exclamation me-1"></i>' . $this->e($err) . '</div>';
+        }
+
+        if ($rows) {
+            $tr = '';
+            foreach ($rows as $r) {
+                $a = (float)$r['amount'];
+                [$label, $icon] = BONUS_LOG_TYPES[$r['type']] ?? BONUS_LOG_TYPES['other'];
+                $name = $r['username'] !== null
+                    ? '<a href="' . $this->baseUrl . '/' . get_profile_link((int)$r['uid']) . '" class="fw-semibold text-decoration-none">'
+                      . (function_exists('format_name') ? format_name($this->e($r['username']), (int)$r['usergroup'], (int)$r['displaygroup']) : $this->e($r['username'])) . '</a>'
+                      . ($uid === null ? ' <a href="' . $this->url('log', ['user' => '#' . (int)$r['uid'], 'type' => $type, 'period' => $period]) . '" class="bp-muted" title="Only this user"><i class="fa-solid fa-filter"></i></a>' : '')
+                    : '<span class="bp-muted">#' . (int)$r['uid'] . ' (deleted)</span>';
+                $tr .= '<tr>'
+                    . '<td class="text-nowrap">' . date('d.m.Y', (int)$r['added']) . '<div class="bp-muted">' . date('H:i', (int)$r['added']) . '</div></td>'
+                    . '<td>' . $name . '</td>'
+                    . '<td><div class="bp-muted small text-uppercase"><i class="fa-solid ' . $icon . ' me-1"></i>' . $this->e($label) . '</div>'
+                    . $this->e($r['reason']) . ($r['type'] === 'seeding' ? ' <span class="bp-muted">(whole day)</span>' : '')
+                    . (!empty($r['actor_name']) ? ' <span class="bp-muted">&middot; by ' . $this->e($r['actor_name']) . '</span>' : '') . '</td>'
+                    . '<td class="text-end text-nowrap fw-bold ' . ($a >= 0 ? 'text-success' : 'text-danger') . '">' . $this->e(bonus_log_amount($a)) . '</td>'
+                    . '<td class="text-end text-nowrap bp-muted">' . ($r['balance'] !== null ? $this->pts($r['balance']) : '-') . '</td>'
+                    . '</tr>';
+            }
+            $pageUrl = $this->script . '?act=bonuspoints&action=log'
+                     . ($userIn !== '' ? '&user=' . rawurlencode($userIn) : '')
+                     . ($type !== '' ? '&type=' . $type : '')
+                     . ($period !== '30' ? '&period=' . $period : '') . '&';
+            $pager = $tot['count'] > self::LOG_PER_PAGE
+                ? '<div class="d-flex justify-content-center py-2 border-top">' . multipage($tot['count'], self::LOG_PER_PAGE, $page, $pageUrl) . '</div>' : '';
+
+            $body .= '<div class="table-responsive"><table class="table bp-table"><thead><tr>'
+                   . '<th><i class="fa-solid fa-calendar"></i>Date</th><th><i class="fa-solid fa-user"></i>User</th><th><i class="fa-solid fa-receipt"></i>What for</th>'
+                   . '<th class="text-end">Change</th><th class="text-end">Balance</th>'
+                   . '</tr></thead><tbody>' . $tr . '</tbody></table></div>' . $pager;
+        } else {
+            $body .= '<div class="bp-empty"><i class="fa-solid fa-receipt"></i><div class="fw-semibold">No entries for these filters</div></div>';
+        }
+        $body .= '</div>';
+
+        $this->page('Bonus log', 'log', $body);
     }
 
     // ── Reset ────────────────────────────────────────────────
@@ -549,10 +658,15 @@ final class BonusPointsManager
         }
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); stderr('Error', 'Invalid request method'); }
 
-        $sql    = "UPDATE users SET seedbonus = 0.0 WHERE enabled = 'yes' AND ustatus = 'confirmed'";
+        $where  = "enabled = 'yes' AND ustatus = 'confirmed'";
         $params = [];
-        if ($group) { $sql .= " AND usergroup = ?"; $params[] = $group; }
-        $ok = $this->db->sql_query_prepared($sql, $params);
+        if ($group) { $where .= " AND usergroup = ?"; $params[] = $group; }
+
+        // Bonus log first: after the UPDATE the old balances are gone
+        bonus_log_reset($where, $params,
+            'Balance reset by staff (' . ($group ? $this->groupName($group) : 'all groups') . ')', (int)($CURUSER['id'] ?? 0) ?: null);
+
+        $ok = $this->db->sql_query_prepared("UPDATE users SET seedbonus = 0.0 WHERE {$where}", $params);
         if ($ok && function_exists('write_log')) {
             write_log('Bonus points reset for ' . ($group ? $this->groupName($group) : 'all groups') . ' by ' . ($CURUSER['username'] ?? 'System'));
         }

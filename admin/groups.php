@@ -6,13 +6,7 @@ declare(strict_types=1);
  * User Groups Management — refactored
  * PHP 8.1+
  *
- * Классы DefaultForm/DefaultPage/DefaultTable/DefaultFormContainer убраны -
- * заменены на прямой HTML. $page (DefaultPage) был мёртвым кодом: его
- * единственный вызов (add_breadcrumb_item) нигде не рендерился, реальный
- * breadcrumb строит своя функция ug_breadcrumb(). $form использовался
- * активно - каждый вызов generate_*() заменён на эквивалентный HTML,
- * с тем же набором атрибутов/классов, что генерировал сам класс.
- */
+*/
 
 // Array of usergroup permission fields and their default values.
 $usergroup_permissions = [

@@ -772,7 +772,7 @@ function acp_recount_user_comments(): void
         $db->sql_query_prepared("UPDATE users SET comms = ? WHERE id = ?", [$num_posts, (int)$user['id']]);
     }
     
-    $message = $lang->success_rebuilt_private_messages ?? 'The user private message count has been recounted successfully';
+    $message = $lang->success_rebuilt_user_comments ?? 'The user comment counts have been recounted successfully';
     
     check_proceed(
         $num_users, 
@@ -794,7 +794,11 @@ function acp_rebuild_attachment_thumbnails(): void
 
     $plugins->run_hooks("admin_tools_recount_rebuild_attachment_thumbs");
 
-    $query = $db->sql_query_prepared("SELECT COUNT(aid) as num_attachments FROM attachments");
+    // Только вложения постов форума. Вложения комментариев лежат в
+    // uploads/attachments/ и пересобираются своей задачей ниже - раньше они
+    // попадали сюда, оригинал искался в uploads/, не находился, и thumbnail
+    // затирался пустой строкой (а Tweak Tracker потом удалял thumb_* файлы).
+    $query = $db->sql_query_prepared("SELECT COUNT(aid) as num_attachments FROM attachments WHERE comment_id = 0");
     $num_attachments = $query ? (int)$db->fetch_field($query, 'num_attachments') : 0;
 
     $page = $mybb->get_input('page', MyBB::INPUT_INT);
@@ -809,7 +813,7 @@ function acp_rebuild_attachment_thumbnails(): void
   
 
     $query = $db->sql_query_prepared(
-        "SELECT * FROM attachments ORDER BY aid ASC LIMIT ?, ?",
+        "SELECT * FROM attachments WHERE comment_id = 0 ORDER BY aid ASC LIMIT ?, ?",
         [$start, $per_page]
     );
     
@@ -956,7 +960,7 @@ if (!$mybb->input['action']) {
         // CSRF-проверка - токен уже выводился в формах (my_post_key), но
         // нигде не проверялся. Одна проверка тут закрывает сразу все
         // 12 мутирующих действий этого файла (foreach ниже + do_recountstats).
-        if (!verify_post_check($mybb->get_input('my_post_key'))) {
+        if (!verify_post_check((string)$mybb->get_input('my_post_key'), true)) {
             http_response_code(403);
             stderr('Security Error', 'Invalid security token. Please refresh the page and try again.');
         }
@@ -1039,8 +1043,10 @@ if (!$mybb->input['action']) {
             if (isset($mybb->input[$action])) {
                 $plugins->run_hooks($config['hook']);
 
+                // Пишем в лог один раз - на первой пачке, а не на каждой
                 if ($mybb->input['page'] == 1) {
-                    // Log admin action if needed
+                    $taskTitle = rr_tasks()[$action][3] ?? $action;
+                    write_log('User ' . ($CURUSER['username'] ?? '') . ' started Recount & Rebuild: ' . $taskTitle);
                 }
 
                 $per_page = $mybb->get_input($config['input'], MyBB::INPUT_INT);

@@ -52,7 +52,7 @@ class SeedbonusSettings
         return match ($type) {
             'boolean'          => in_array($value, ['yes', 'true', '1', 'on', true], true) ? 'yes' : 'no',
             'integer', 'float' => (string)$value,
-            'array'            => json_encode($value, JSON_UNESCAPED_UNICODE),
+            'array'            => json_encode($value, JSON_UNESCAPED_UNICODE) ?: '[]',
             default            => (string)$value,
         };
     }
@@ -101,6 +101,7 @@ class SeedbonusSettings
                 'size_small'=>0.8,'size_medium'=>1.0,'size_large'=>1.2,'size_xlarge'=>1.3,'size_huge'=>1.5,
                 'seeders_many'=>0.7,'seeders_medium'=>0.85,'age_old'=>1.2,'age_medium'=>1.1,
                 'promo_free'=>0.3,'promo_silver'=>0.2,'promo_double'=>0.2,
+                'rare_1'=>1.2,'rare_3'=>1.1,'rare_5'=>1.05,'loyal_30'=>1.05,'loyal_90'=>1.1,'loyal_180'=>1.2,
             ],
             'balanced' => [
                 'base_bonus'=>10.0,'hour_cap'=>500.0,'torrent_multiplier_type'=>'penalty','flat_multiplier'=>1.0,
@@ -108,6 +109,7 @@ class SeedbonusSettings
                 'size_small'=>1.0,'size_medium'=>1.2,'size_large'=>1.5,'size_xlarge'=>1.8,'size_huge'=>2.0,
                 'seeders_many'=>0.9,'seeders_medium'=>0.95,'age_old'=>1.5,'age_medium'=>1.3,
                 'promo_free'=>0.7,'promo_silver'=>0.5,'promo_double'=>0.5,
+                'rare_1'=>1.5,'rare_3'=>1.3,'rare_5'=>1.15,'loyal_30'=>1.15,'loyal_90'=>1.3,'loyal_180'=>1.5,
             ],
             'generous' => [
                 'base_bonus'=>15.0,'hour_cap'=>1000.0,'torrent_multiplier_type'=>'reward','flat_multiplier'=>1.0,
@@ -115,6 +117,7 @@ class SeedbonusSettings
                 'size_small'=>1.2,'size_medium'=>1.5,'size_large'=>1.8,'size_xlarge'=>2.0,'size_huge'=>2.5,
                 'seeders_many'=>0.95,'seeders_medium'=>1.0,'age_old'=>1.8,'age_medium'=>1.5,
                 'promo_free'=>1.0,'promo_silver'=>0.7,'promo_double'=>0.7,
+                'rare_1'=>1.8,'rare_3'=>1.5,'rare_5'=>1.25,'loyal_30'=>1.2,'loyal_90'=>1.4,'loyal_180'=>1.7,
             ],
             'avistaz' => [
                 'base_bonus'=>12.0,'hour_cap'=>750.0,'torrent_multiplier_type'=>'reward','flat_multiplier'=>1.0,
@@ -122,6 +125,7 @@ class SeedbonusSettings
                 'size_small'=>1.5,'size_medium'=>1.8,'size_large'=>2.0,'size_xlarge'=>2.2,'size_huge'=>2.5,
                 'seeders_many'=>1.0,'seeders_medium'=>1.0,'age_old'=>2.0,'age_medium'=>1.5,
                 'promo_free'=>1.2,'promo_silver'=>0.8,'promo_double'=>0.8,
+                'rare_1'=>2.0,'rare_3'=>1.6,'rare_5'=>1.3,'loyal_30'=>1.25,'loyal_90'=>1.5,'loyal_180'=>1.8,
             ],
             'maximum' => [
                 'base_bonus'=>20.0,'hour_cap'=>2000.0,'torrent_multiplier_type'=>'reward','flat_multiplier'=>1.0,
@@ -129,6 +133,7 @@ class SeedbonusSettings
                 'size_small'=>1.8,'size_medium'=>2.0,'size_large'=>2.2,'size_xlarge'=>2.5,'size_huge'=>3.0,
                 'seeders_many'=>1.0,'seeders_medium'=>1.0,'age_old'=>2.5,'age_medium'=>2.0,
                 'promo_free'=>1.5,'promo_silver'=>1.0,'promo_double'=>1.0,
+                'rare_1'=>2.5,'rare_3'=>2.0,'rare_5'=>1.5,'loyal_30'=>1.3,'loyal_90'=>1.6,'loyal_180'=>2.0,
             ],
         ];
     }
@@ -278,8 +283,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $response = match ($action) {
         'save' => (function () use ($seedbonus): array {
             foreach ($_POST as $key => $value) {
-                if (str_starts_with($key, 'seedbonus_')) {
-                    $cleanKey = substr($key, 10);
+                if (str_starts_with((string)$key, 'seedbonus_')) {
+                    $cleanKey = substr((string)$key, 10);
+                    // Массив (seedbonus_x[]=...) раньше ронял str_contains(), а имя ключа
+                    // длиннее 100 символов - запрос; такие поля просто пропускаем.
+                    if (!is_string($value) || !preg_match('/^[a-z0-9_]{1,64}$/', $cleanKey)) {
+                        continue;
+                    }
                     $type = match (true) {
                         is_numeric($value) && str_contains($value, '.') => 'float',
                         is_numeric($value)                               => 'integer',
@@ -341,13 +351,25 @@ stdhead('Seedbonus System Settings');
 
 <link rel="stylesheet" href="<?= $BASEURL ?>/admin/templates/seedbonus_settings.css">
 <style>
+/* Крупнее шрифты: базовый размер страницы и мелкие элементы Bootstrap,
+   у которых размер задан в rem и сам по себе от .sb не зависит */
+.sb { font-size: 1.055rem; }
+.sb .small, .sb small { font-size: .9em; }
+.sb .form-label { font-size: 1rem; }
+.sb .form-control-sm, .sb .form-select-sm,
+.sb .input-group-sm > .form-control, .sb .input-group-sm > .form-select { font-size: .98rem; }
+.sb .btn-sm { font-size: .95rem; }
+.sb .btn { font-size: 1rem; }
+.sb .nav-link { font-size: 1.02rem; }
+.sb .badge { font-size: .82em; }
+.sb .alert { font-size: .95rem; }
 .sb .sb-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .sb .sb-head { display: flex; flex-wrap: wrap; align-items: center; gap: .9rem; padding: 1.1rem 1.25rem; }
 .sb .sb-head-icon, .sb .sb-sec-icon, .sb .sb-kpi-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.sb .sb-head-icon { width: 48px; height: 48px; font-size: 1.35rem; border-radius: .85rem; }
-.sb .sb-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
-.sb .sb-sub { color: var(--bs-secondary-color); font-size: .95rem; }
-.sb .sb-muted { font-size: .86rem; color: var(--bs-secondary-color); }
+.sb .sb-head-icon { width: 48px; height: 48px; font-size: 1.49rem; border-radius: .85rem; }
+.sb .sb-title { font-size: 1.54rem; font-weight: 700; margin: 0; }
+.sb .sb-sub { color: var(--bs-secondary-color); font-size: 1.04rem; }
+.sb .sb-muted { font-size: 0.95rem; color: var(--bs-secondary-color); }
 .sb .ic-blue   { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb),.12); }
 .sb .ic-green  { color: #16a34a; background: rgba(34,197,94,.12); }
 .sb .ic-amber  { color: #d97706; background: rgba(245,158,11,.14); }
@@ -358,25 +380,25 @@ stdhead('Seedbonus System Settings');
 .sb .btn { border-radius: 50rem; }
 .sb .form-control, .sb .form-select { border-radius: .6rem; }
 
-.sb .sb-status { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .8rem; border-radius: 50rem; font-weight: 700; font-size: .85rem; }
+.sb .sb-status { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .8rem; border-radius: 50rem; font-weight: 700; font-size: 0.94rem; }
 .sb .sb-status.on  { color: #15803d; background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.35); }
 .sb .sb-status.off { color: #b91c1c; background: rgba(239,68,68,.1);  border: 1px solid rgba(239,68,68,.35); }
 
 /* KPI полоса */
 .sb .sb-kpi { display: flex; align-items: center; gap: .8rem; padding: .9rem 1.1rem; height: 100%; }
-.sb .sb-kpi-icon { width: 42px; height: 42px; border-radius: .8rem; font-size: 1.1rem; }
-.sb .sb-kpi-label { font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); }
-.sb .sb-kpi-value { font-size: 1.35rem; font-weight: 700; line-height: 1.2; }
+.sb .sb-kpi-icon { width: 42px; height: 42px; border-radius: .8rem; font-size: 1.21rem; }
+.sb .sb-kpi-label { font-size: 0.86rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); }
+.sb .sb-kpi-value { font-size: 1.49rem; font-weight: 700; line-height: 1.2; }
 
 /* Пресеты */
 .sb .sb-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .6rem; }
-.sb .config-badge.sb-preset { display: flex; align-items: center; gap: .65rem; padding: .7rem .8rem; border-radius: .85rem; border: 1px solid var(--bs-border-color-translucent); background: var(--bs-body-bg) !important; color: var(--bs-body-color) !important; cursor: pointer; text-align: left; white-space: normal; font-weight: 400; font-size: 1rem; transition: border-color .15s ease, box-shadow .15s ease; }
+.sb .config-badge.sb-preset { display: flex; align-items: center; gap: .65rem; padding: .7rem .8rem; border-radius: .85rem; border: 1px solid var(--bs-border-color-translucent); background: var(--bs-body-bg) !important; color: var(--bs-body-color) !important; cursor: pointer; text-align: left; white-space: normal; font-weight: 400; font-size: 1.1rem; transition: border-color .15s ease, box-shadow .15s ease; }
 .sb .config-badge.sb-preset:hover { border-color: rgba(var(--bs-primary-rgb), .45); box-shadow: 0 .3rem .8rem rgba(0,0,0,.06); }
 .sb .config-badge.sb-preset.is-active { border-color: var(--bs-primary); box-shadow: 0 0 0 .15rem rgba(var(--bs-primary-rgb), .15); }
 .sb .config-badge.sb-preset.is-active::after { content: '\f00c'; font: var(--fa-font-solid); margin-left: auto; color: var(--bs-primary); }
-.sb .sb-preset .sb-sec-icon { width: 34px; height: 34px; border-radius: .65rem; font-size: .9rem; }
-.sb .sb-preset b { display: block; font-size: .95rem; }
-.sb .sb-preset small { color: var(--bs-secondary-color); font-size: .78rem; line-height: 1.3; display: block; }
+.sb .sb-preset .sb-sec-icon { width: 34px; height: 34px; border-radius: .65rem; font-size: 0.99rem; }
+.sb .sb-preset b { display: block; font-size: 1.04rem; }
+.sb .sb-preset small { color: var(--bs-secondary-color); font-size: 0.86rem; line-height: 1.3; display: block; }
 
 /* Вкладки */
 .sb .sb-tabs { display: flex; gap: .3rem; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: .3rem; border-radius: 50rem; background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color-translucent); width: max-content; max-width: 100%; margin: 0 0 1rem; }
@@ -388,19 +410,19 @@ stdhead('Seedbonus System Settings');
 /* Секции настроек */
 .sb .sb-sec { height: 100%; }
 .sb .sb-sec-head { display: flex; align-items: center; gap: .65rem; padding: .9rem 1.1rem; border-bottom: 1px solid var(--bs-border-color-translucent); }
-.sb .sb-sec-icon { width: 36px; height: 36px; border-radius: .7rem; font-size: .95rem; }
-.sb .sb-sec-title { font-weight: 700; font-size: 1.02rem; margin: 0; }
+.sb .sb-sec-icon { width: 36px; height: 36px; border-radius: .7rem; font-size: 1.04rem; }
+.sb .sb-sec-title { font-weight: 700; font-size: 1.12rem; margin: 0; }
 .sb .sb-sec-body { padding: 1rem 1.1rem; }
-.sb .sb-group { font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); margin: 1rem 0 .5rem; }
+.sb .sb-group { font-size: 0.86rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--bs-secondary-color); margin: 1rem 0 .5rem; }
 .sb .sb-group:first-child { margin-top: 0; }
 .sb .sb-field { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .35rem 0; }
-.sb .sb-field label { margin: 0; font-size: .93rem; }
+.sb .sb-field label { margin: 0; font-size: 1.02rem; }
 .sb .sb-field .input-group { width: 130px; flex-shrink: 0; }
 .sb .sb-field .form-control { text-align: center; }
-.sb .sb-field .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); font-size: .8rem; }
+.sb .sb-field .input-group-text { background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); font-size: 0.88rem; }
 
 .sb .sb-range-value { display: inline-block; min-width: 3.5rem; padding: .05rem .5rem; border-radius: .5rem; background: var(--bs-tertiary-bg); font-weight: 700; text-align: center; }
-.sb .sb-marks { display: flex; justify-content: space-between; font-size: .75rem; color: var(--bs-secondary-color); margin-top: .15rem; }
+.sb .sb-marks { display: flex; justify-content: space-between; font-size: 0.83rem; color: var(--bs-secondary-color); margin-top: .15rem; }
 
 /* Мастер-выключатель */
 .sb .sb-master { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.2rem; border-radius: 1rem; border: 2px solid; }
@@ -413,17 +435,17 @@ stdhead('Seedbonus System Settings');
 .sb .sb-mtype:hover { border-color: rgba(var(--bs-primary-rgb), .35); }
 .sb .sb-mtype:has(input:checked) { border-color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .05); }
 .sb .sb-mtype .form-check-input { margin: 0 .5rem 0 0; }
-.sb .sb-mtype ul { list-style: none; padding: 0; margin: .5rem 0 0; font-size: .85rem; color: var(--bs-secondary-color); }
+.sb .sb-mtype ul { list-style: none; padding: 0; margin: .5rem 0 0; font-size: 0.94rem; color: var(--bs-secondary-color); }
 .sb .sb-mtype li { display: flex; justify-content: space-between; padding: .1rem 0; }
 .sb .sb-mtype li b { color: var(--bs-body-color); }
 
 /* Превью */
-.sb .sb-row { display: flex; justify-content: space-between; padding: .45rem 0; border-bottom: 1px dashed var(--bs-border-color-translucent); font-size: .93rem; }
+.sb .sb-row { display: flex; justify-content: space-between; padding: .45rem 0; border-bottom: 1px dashed var(--bs-border-color-translucent); font-size: 1.02rem; }
 .sb .sb-row:last-child { border-bottom: 0; }
 .sb .sb-big { text-align: center; padding: .9rem; border-radius: .9rem; background: var(--bs-tertiary-bg); height: 100%; }
-.sb .sb-big .v { font-size: 1.45rem; font-weight: 700; line-height: 1.2; }
+.sb .sb-big .v { font-size: 1.59rem; font-weight: 700; line-height: 1.2; }
 .sb .sb-savebar { position: sticky; bottom: .75rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem 1rem; margin-top: 1rem; box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.08); }
-.sb pre.sb-code { margin: 0; padding: 1rem; border-radius: 0 0 1rem 1rem; background: var(--bs-tertiary-bg); font-size: .82rem; max-height: 360px; overflow: auto; }
+.sb pre.sb-code { margin: 0; padding: 1rem; border-radius: 0 0 1rem 1rem; background: var(--bs-tertiary-bg); font-size: 0.9rem; max-height: 360px; overflow: auto; }
 </style>
 <script>var myPostKey = <?= json_encode($mybb->post_code) ?>;</script>
 
@@ -492,7 +514,7 @@ stdhead('Seedbonus System Settings');
                 <div class="row g-3">
                     <div class="col-12">
                         <label class="sb-master <?= $enabled ? 'on' : 'off' ?>" for="systemEnabled" id="sbMaster">
-                            <span class="sb-sec-icon <?= $enabled ? 'ic-green' : 'ic-red' ?>" style="width:44px;height:44px;font-size:1.15rem"><i class="fa-solid fa-power-off"></i></span>
+                            <span class="sb-sec-icon <?= $enabled ? 'ic-green' : 'ic-red' ?>" style="width:46px;height:46px;font-size:1.25rem"><i class="fa-solid fa-power-off"></i></span>
                             <span class="flex-grow-1">
                                 <span class="fw-bold d-block">Seedbonus system</span>
                                 <span class="sb-muted">When off, the cron awards no points at all, whatever the other settings are.</span>
@@ -615,6 +637,29 @@ stdhead('Seedbonus System Settings');
                                 <?= $field('promo_silver', 'Silver (50%)',  0.5, 0.1, 0, 2.0, '+') ?>
                                 <?= $field('promo_double', 'Double upload', 0.5, 0.1, 0, 2.0, '+') ?>
                             </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-purple"><i class="fa-solid fa-gem"></i></span>
+                                <div><h3 class="sb-sec-title">Rarity</h3><div class="sb-muted">Reward keeping torrents alive that few people seed. Counts the seeder too.</div></div></div>
+                            <div class="sb-sec-body">
+                                <?= $field('rare_1', '<i class="fa-solid fa-user me-1 text-body-secondary"></i>Only seeder',  1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('rare_3', '<i class="fa-solid fa-user-group me-1 text-body-secondary"></i>2–3 seeders', 1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('rare_5', '<i class="fa-solid fa-users me-1 text-body-secondary"></i>4–5 seeders',  1.0, 0.05, 1.0, 3.0) ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="sb-card sb-sec">
+                            <div class="sb-sec-head"><span class="sb-sec-icon ic-green"><i class="fa-solid fa-heart"></i></span>
+                                <div><h3 class="sb-sec-title">Loyalty</h3><div class="sb-muted">Reward how long this user has seeded this torrent (from snatched seed time)</div></div></div>
+                            <div class="sb-sec-body">
+                                <?= $field('loyal_30',  '<i class="fa-regular fa-calendar me-1 text-body-secondary"></i>30+ days',  1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('loyal_90',  '<i class="fa-regular fa-calendar-check me-1 text-body-secondary"></i>90+ days',  1.0, 0.05, 1.0, 3.0) ?>
+                                <?= $field('loyal_180', '<i class="fa-solid fa-award me-1 text-body-secondary"></i>180+ days', 1.0, 0.05, 1.0, 3.0) ?>
+                            </div>
+                            <div class="sb-muted small mt-2"><i class="fa-solid fa-circle-info me-1"></i>1.0 turns a step off. Rarity and loyalty multiply: the only seeder holding a torrent 180+ days gets both. The hour cap still applies.</div>
                         </div>
                     </div>
                 </div>

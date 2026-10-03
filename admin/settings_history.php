@@ -233,7 +233,7 @@ stdhead('Settings History');
 
 <?php flash_message(); ?>
 
-<div class="history-container">
+<div class="container mt-3">
     <div class="history-header">
         <h1>
             <i class="fas fa-history text-primary me-2"></i>
@@ -242,7 +242,7 @@ stdhead('Settings History');
         </h1>
         <div class="d-flex align-items-center gap-2">
             <span class="badge bg-secondary">Total: <?= number_format($total) ?></span>
-            <a href="settings.php" class="btn btn-primary btn-sm">
+            <a href="managesettings.php" class="btn btn-primary btn-sm">
                 <i class="fas fa-arrow-left me-1"></i> Back to Settings
             </a>
         </div>
@@ -390,7 +390,7 @@ stdhead('Settings History');
             <i class="fas fa-history text-muted"></i>
             <h4 class="text-muted">No history found</h4>
             <p class="text-muted">Settings changes will appear here as they happen</p>
-            <a href="settings.php" class="btn btn-primary">
+            <a href="managesettings.php" class="btn btn-primary">
                 <i class="fas fa-cog me-1"></i> Go to Settings
             </a>
         </div>

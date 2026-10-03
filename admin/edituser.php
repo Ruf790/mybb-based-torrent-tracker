@@ -1531,7 +1531,14 @@ function renderAdvancedTab(): string
                 <h5 class="mb-4"><i class="fas fa-database me-2 text-secondary"></i>System Information</h5>
                 
                 <div class="mb-4">
-                    <label class="form-label fw-semibold">Seeding Karma Log</label>
+                    <a class="btn btn-outline-primary btn-sm" href="index.php?act=bonuspoints&amp;action=log&amp;user=%23' . (int)$userdata['id'] . '&amp;period=all">
+                        <i class="fas fa-clock-rotate-left me-1"></i>Bonus history
+                    </a>
+                    <small class="text-muted ms-2">Every change of this user\'s bonus points (Bonus Log)</small>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Seeding Karma Log <small class="text-muted fw-normal">(old text log)</small></label>
                     <textarea class="form-control" rows="4" readonly>' . $bonuscomment . '</textarea>
                     <small class="text-muted">System-generated karma log - read only</small>
                 </div>
@@ -4074,6 +4081,15 @@ function handleUpdateUser(): void
         $params[] = (int)$userdata['id'];
         $db->sql_query_prepared("UPDATE users SET {$set} WHERE id = ?", $params);
         write_log("User {$userdata['username']} ({$userdata['id']}) has been edited by {$CURUSER['username']}");
+
+        // Bonus log: staff set the balance by hand (difference, after the UPDATE)
+        if (array_key_exists('seedbonus', $updateData)) {
+            require_once INC_PATH . '/functions_bonuslog.php';
+            $old = (float)$userdata['seedbonus'];
+            $new = (float)$updateData['seedbonus'];
+            bonus_log((int)$userdata['id'], $new - $old, 'staff',
+                'Balance set by staff: ' . ts_nf($old) . ' → ' . ts_nf($new), null, (int)$CURUSER['id']);
+        }
     }
 
     // Update permissions

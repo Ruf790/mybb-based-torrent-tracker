@@ -248,6 +248,9 @@ function forum_permissions(int|string|null $fid = 0, int|string|null $uid = 0, i
 
     $fid = (int)($fid ?? 0);
     $uid = (int)($uid ?? 0);
+    // gid - всегда строка ('8' или '8,2,5'): fetch_forum_permissions() и
+    // usergroup_permissions() работают со списком групп через запятую
+    $gid = (string)($gid ?? '');
 
     if (!is_array($cached_forum_permissions_permissions)) {
         $cached_forum_permissions_permissions = [];
@@ -1776,14 +1779,14 @@ if ($action === 'permissions') {
         $pid   = $mybb->get_input('pid', MyBB::INPUT_INT);
         $fid   = $mybb->get_input('fid', MyBB::INPUT_INT);
         $gid   = $mybb->get_input('gid', MyBB::INPUT_INT);
-        $forum = get_forum($fid, 1);
+        $forum = get_forum($fid, true);
 
         if ((!$fid || !$gid) && $pid) {
             $query  = $db->sql_query_prepared("SELECT fid, gid FROM forumpermissions WHERE pid = ?", [$pid]);
             $result = $query ? $db->fetch_array($query) : null;
             $fid    = (int)$result['fid'];
             $gid    = (int)$result['gid'];
-            $forum  = get_forum($fid, 1);
+            $forum  = get_forum($fid, true);
         }
 
         $update_array = [];
@@ -2710,7 +2713,7 @@ if($action == "deletemod")
 
 		$cache->update_moderators();
 
-		$forum = get_forum($fid, 1);
+		$forum = get_forum($fid, true);
 
 		// Log admin action
 		if($isgroup)
@@ -2920,7 +2923,7 @@ if (!$action) {
             admin_redirect("index.php?act=management&fid={$fid}#tab_permissions");
 
         } elseif ($mybb->get_input('add') === 'moderators') {
-            $forum = get_forum($fid, 1);
+            $forum = get_forum($fid, true);
             if (!$forum) {
                 flash_message($lang->forum_management['error_invalid_forum'], 'error');
                 admin_redirect("index.php?act=management&fid={$fid}#tab_moderators");

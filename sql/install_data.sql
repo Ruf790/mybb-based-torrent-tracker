@@ -118,7 +118,10 @@ INSERT IGNORE INTO `cron` (`cronid`, `nextrun`, `minutes`, `filename`, `descript
 (32, 0, 900, 'seedbonus.php', 'Automatically updates users seedbonus', 1, 1),
 (33, 0, 1260, 'logcleanup.php', 'Automatically cleans up old log files.', 1, 1),
 (34, 0, 3600 ,'weekly_cleanups.php','This script performs various cleanup tasks once per week', 1, 1),
-(36, 0, 3600, 'vipexpire.php', 'Automatically expires VIP status and reverts users to their previous usergroup.', 1, 1);
+(36, 0, 3600, 'vipexpire.php', 'Automatically expires VIP status and reverts users to their previous usergroup.', 1, 1),
+(37, 0, 3600, 'exam_update_progress.php', 'Exams and tasks: recalculates the progress of ongoing attempts.', 1, 1),
+(38, 0, 300, 'exam_checkout.php', 'Exams and tasks: counts results of finished attempts (reward, penalty, account disabling).', 1, 1),
+(39, 0, 900, 'exam_assign.php', 'Exams: gives auto-assign exams to users that match their filters.', 1, 1);
 
 
 
@@ -346,7 +349,13 @@ INSERT IGNORE INTO `seedbonus_settings` (`id`, `setting_key`, `setting_value`, `
 (43,'points_for_forum_post','1','integer','activity','Points for forum post'),
 (44,'points_for_topic','5','integer','activity','Points for topic'),
 (45,'points_for_comment','2','integer','activity','Points for comment'),
-(46,'points_per_week','100','integer','activity','Weekly bonus points');
+(46,'points_per_week','100','integer','activity','Weekly bonus points'),
+(395,'rare_1','1.5','float','multipliers','Rarity: you are the only seeder'),
+(396,'rare_3','1.3','float','multipliers','Rarity: 2-3 seeders'),
+(397,'rare_5','1.15','float','multipliers','Rarity: 4-5 seeders'),
+(398,'loyal_30','1.15','float','multipliers','Loyalty: you have seeded this torrent 30+ days'),
+(399,'loyal_90','1.3','float','multipliers','Loyalty: you have seeded this torrent 90+ days'),
+(400,'loyal_180','1.5','float','multipliers','Loyalty: you have seeded this torrent 180+ days');
 
 -- staffpanel
 INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `usergroups`) VALUES
@@ -436,4 +445,5 @@ INSERT IGNORE INTO `staffpanel` (`id`, `name`, `description`, `filename`, `userg
 (125, 'fastdelete', 'Fast Delete Torrent', 'fastdelete.php', '[6],[7],[8]'),
 (127, 'convert_innodb', 'Convert DB Tables to InnoDB', 'convert_innodb.php', '[8]'),
 (128, 'useractivity', 'Daily active users chart with time stats and exports.', 'useractivity.php', '[8]'),
-(129, 'usersregstats', 'View user registration statistics over time', 'usersregstats.php', '[8]');
+(129, 'usersregstats', 'View user registration statistics over time', 'usersregstats.php', '[8]'),
+(130, 'exams', 'Exams and Tasks', 'exams.php', '[6],[7],[8]');

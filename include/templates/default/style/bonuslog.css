@@ -1,0 +1,56 @@
+/* bonuslog.php and the "Recent activity" card on mybonus.php. Everything under .bl */
+.bl { max-width: 1100px; margin: 1.5rem auto; display: flex; flex-direction: column; gap: 1rem; font-size: 1.055rem; }
+.bl-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: .9rem; padding: 1rem 1.25rem; }
+.bl-tone-primary { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); }
+.bl-tone-success { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.bl-tone-danger  { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
+
+.bl-head { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.bl-head__icon { width: 3rem; height: 3rem; border-radius: .75rem; display: grid; place-items: center; font-size: 1.3rem;
+  background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
+.bl-head__text { flex: 1; min-width: 12rem; }
+.bl-head__text h1 { font-size: 1.4rem; margin: 0; font-weight: 600; }
+.bl-head__text p { margin: .15rem 0 0; color: var(--bs-secondary-color); }
+
+.bl-btn { display: inline-flex; align-items: center; gap: .45rem; padding: .45rem 1.1rem; border-radius: 50rem;
+  border: 1px solid var(--bs-border-color); background: var(--bs-tertiary-bg); color: var(--bs-body-color); text-decoration: none; white-space: nowrap; }
+.bl-btn:hover { border-color: var(--bs-primary); color: var(--bs-body-color); }
+
+.bl-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.bl-kpi { display: flex; align-items: center; gap: .85rem; }
+.bl-kpi__icon { width: 2.6rem; height: 2.6rem; border-radius: .65rem; display: grid; place-items: center; font-size: 1.1rem; }
+.bl-kpi__value { font-size: 1.45rem; font-weight: 700; line-height: 1.1; }
+.bl-kpi__label { color: var(--bs-secondary-color); font-size: .9em; }
+
+.bl-tabs { display: flex; gap: .4rem; flex-wrap: wrap; }
+.bl-tabs a { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .95rem; border-radius: 50rem;
+  border: 1px solid var(--bs-border-color); color: var(--bs-body-color); text-decoration: none; font-size: .92em; }
+.bl-tabs a.is-active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+
+.bl-table-wrap { padding: 0; overflow-x: auto; }
+.bl-table { width: 100%; border-collapse: collapse; }
+.bl-table th, .bl-table td { padding: .65rem 1rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--bs-border-color); }
+.bl-table th { font-weight: 600; color: var(--bs-secondary-color); font-size: .9em; }
+.bl-table tbody tr:last-child td { border-bottom: 0; }
+.bl-num { text-align: right !important; white-space: nowrap; }
+.bl-date { white-space: nowrap; width: 7rem; }
+.bl-sub { color: var(--bs-secondary-color); font-size: .85em; }
+.bl-type { display: inline-flex; align-items: center; gap: .35rem; font-size: .78em; color: var(--bs-secondary-color); text-transform: uppercase; letter-spacing: .03em; }
+.bl-plus { color: var(--bs-success); }
+.bl-minus { color: var(--bs-danger); }
+
+.bl-empty { text-align: center; padding: 2.5rem 1rem; color: var(--bs-secondary-color); }
+.bl-empty i { font-size: 2rem; margin-bottom: .5rem; }
+
+.bl-pages { display: flex; gap: .35rem; flex-wrap: wrap; justify-content: center; }
+.bl-pages a { min-width: 2.2rem; text-align: center; padding: .3rem .6rem; border-radius: 50rem; border: 1px solid var(--bs-border-color); text-decoration: none; color: var(--bs-body-color); }
+.bl-pages a.is-active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+
+/* Recent activity card on mybonus.php */
+.bl-recent { margin-bottom: 2rem; }
+.bl-recent__head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .5rem; }
+.bl-recent__head h4 { margin: 0; font-size: 1.1rem; }
+.bl-recent__row { display: flex; align-items: baseline; gap: .75rem; padding: .45rem 0; border-top: 1px solid var(--bs-border-color); }
+.bl-recent__row .bl-reason { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 768px) { .bl-kpis { grid-template-columns: 1fr; } }

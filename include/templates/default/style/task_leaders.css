@@ -1,0 +1,43 @@
+/* task.php: leaderboard. Everything under .tl, Bootstrap CSS variables (works in dark theme). */
+.tl { max-width: 1100px; margin: 1.25rem auto 0; font-size: 1.055rem; }
+.tl-card {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: .9rem;
+  padding: 1rem 1.25rem;
+}
+.tl-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.tl-head h2 { margin: 0; font-size: 1.2rem; font-weight: 600; display: flex; align-items: center; gap: .5rem; }
+.tl-head h2 i { color: var(--bs-warning); }
+.tl-sub { margin: .35rem 0 .8rem; color: var(--bs-secondary-color); font-size: .9em; }
+
+.tl-tabs { display: flex; gap: .4rem; }
+.tl-tabs a {
+  padding: .3rem .9rem; border-radius: 50rem; border: 1px solid var(--bs-border-color);
+  color: var(--bs-body-color); text-decoration: none; font-size: .9em;
+}
+.tl-tabs a:hover { border-color: var(--bs-primary); }
+.tl-tabs a.is-active { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+
+.tl-wrap { overflow-x: auto; }
+.tl-table { width: 100%; border-collapse: collapse; }
+.tl-table th, .tl-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--bs-border-color); text-align: left; }
+.tl-table th { color: var(--bs-secondary-color); font-weight: 600; font-size: .88em; }
+.tl-table tbody tr:last-child td { border-bottom: 0; }
+.tl-table tr.is-me td { background: var(--bs-primary-bg-subtle); }
+.tl-table tr.tl-gap td { text-align: center; color: var(--bs-secondary-color); padding: .2rem; }
+.tl-num { text-align: right !important; white-space: nowrap; }
+.tl-rank { width: 4.5rem; font-weight: 600; color: var(--bs-secondary-color); }
+
+.tl-medal { display: inline-flex; align-items: center; gap: .35rem; padding: .1rem .55rem; border-radius: 50rem; font-size: .9em; }
+.tl-medal--gold   { background: var(--bs-warning-bg-subtle);   color: var(--bs-warning-text-emphasis); }
+.tl-medal--silver { background: var(--bs-secondary-bg-subtle); color: var(--bs-secondary-text-emphasis); }
+.tl-medal--bronze { background: var(--bs-danger-bg-subtle);    color: var(--bs-danger-text-emphasis); }
+
+.tl-empty { text-align: center; padding: 1.5rem 1rem; color: var(--bs-secondary-color); }
+.tl-empty i { display: block; font-size: 1.8rem; margin-bottom: .5rem; }
+
+/* task.php: Abandon button under "Claimed" */
+.tk-btn--abandon { color: var(--bs-danger); border-color: var(--bs-danger-border-subtle); }
+.tk-btn--abandon:hover { background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); }
+.tk-abandon-note { display: block; margin-top: .3rem; color: var(--bs-secondary-color); font-size: .8em; text-align: center; }

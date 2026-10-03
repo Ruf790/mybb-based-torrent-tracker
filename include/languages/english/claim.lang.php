@@ -1,0 +1,56 @@
+<?php
+
+if (!defined('IN_TRACKER'))
+  die('Hacking attempt!');
+
+// claim.php (english)
+$language['claim'] = array
+(
+	'error' => 'Error',
+	'security_expired' => 'Security token expired. Reload the page and try again.',
+	'gave_up' => 'Claim given up.',
+	'gave_up_deducted' => 'Claim given up, {1} bonus points deducted.',
+	'claimed' => 'Torrent claimed. Keep seeding it: the first result is on the 1st of next month, without penalty.',
+	'torrent_not_found' => 'Torrent not found.',
+	'only_own' => 'You can only see your own claims.',
+	'user_not_found' => 'User not found.',
+	'title_torrent' => 'Claims for torrent',
+	'title_mine' => 'My claims',
+	'title_user' => 'Claims of {1}',
+	'head_desc' => 'Old torrents you keep alive. Seed them every month and get bonus points for it.',
+	'claimers' => 'Claimers',
+	'claimed_torrents' => 'Claimed torrents',
+	'norm_reached' => 'Norm reached this month',
+	'at_risk_removal' => 'At risk of removal',
+	'how_it_works' => 'How claims work',
+	'rule_1' => 'Claim a torrent you have downloaded that is at least <b>{1} days</b> old: the button is on the torrent page. Up to <b>{2}</b> torrents per user, <b>{3}</b> users per torrent.',
+	'rule_2' => 'Monthly norm per torrent: seed it <b>{1} hours</b> or upload <b>{2}×</b> its size.',
+	'rule_3' => 'On the 1st of every month: for each torrent that reached the norm you get <b>{1}</b> bonus points per hour seeded. You get a PM with the results.',
+	'rule_4' => 'The first result after claiming is free: if the norm is not reached, the claim is kept. Not reached later: the claim is removed and <b>{1}</b> bonus points are deducted.',
+	'rule_5' => 'Giving a claim up yourself costs <b>{1}</b> bonus points.',
+	'empty_torrent' => 'Nobody has claimed this torrent yet.',
+	'empty_mine' => 'You have no claimed torrents yet. Open an old torrent you are seeding and press "Claim".',
+	'empty_other' => 'No claimed torrents.',
+	'th_user' => 'User',
+	'th_torrent' => 'Torrent',
+	'th_claimed' => 'Claimed',
+	'th_seeded' => 'Seeded this month',
+	'th_seeded_norm' => '/ {1} h',
+	'th_uploaded' => 'Uploaded this month',
+	'th_uploaded_norm' => '/ {1}× size',
+	'th_status' => 'Status',
+	'status_reached' => 'Reached',
+	'status_first' => 'First period, no penalty',
+	'status_risk' => 'At risk',
+	'result_now' => 'result: now',
+	'result_date' => 'result: {1}',
+	'torrent_deleted' => 'Torrent #{1} (deleted)',
+	'seeders_count' => '{1} seeder(s)',
+	'claimers_link' => 'claimers',
+	'hours_short' => 'h',
+	'give_up' => 'Give up',
+	'confirm_give_up' => 'Give up this claim? {1} bonus points will be deducted.',
+	'yes' => 'Yes',
+	'cancel' => 'Cancel',
+);
+?>

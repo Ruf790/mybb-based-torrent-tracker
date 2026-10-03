@@ -7,7 +7,7 @@ if(!defined('IN_TRACKER'))
 $language['header'] = array(
 
     // ── System Messages ───────────────────────────────────────────────────────
-    'trackeroffline'             => '<b>WARNING</b>: The tracker is currently offline! Click <a href="{1}/admin/settings.php?action=mainsettings">here</a> to change settings.',
+    'trackeroffline'             => '<b>WARNING</b>: The tracker is currently offline! Click <a href="{1}/admin/managesettings.php?action=mainsettings">here</a> to change settings.',
     'newann'                     => 'There is a new announcement since your last visit. Click here to read the Latest Annoucement.',
     'newreport'                  => 'There is {1} new report(s)!',
     'staffmess'                  => 'There is {1} new staff message(s)!',

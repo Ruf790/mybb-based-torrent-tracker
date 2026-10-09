@@ -113,30 +113,35 @@ function build_postbit_body(array $post, string $unapproved_shade): string
 
 function build_postbit_modals(array $post, object $parser, array $parser_options, array $lang): array
 {
-    $pid        = (int)$post['pid'];
+    global $lang;
+	
+	$pid        = (int)$post['pid'];
     $message    = htmlspecialchars_uni($post['message']);
     $editreason = htmlspecialchars_uni($post['editreason']);
+
+    //$t = static fn(string $key): string => htmlspecialchars($lang[$key] ?? $key, ENT_QUOTES, 'UTF-8');
 
     $bbcode_buttons = [
         ['[b]',        '[/b]',        '<b>B</b>'],
         ['[i]',        '[/i]',        '<i>I</i>'],
         ['[u]',        '[/u]',        '<u>U</u>'],
         ['[s]',        '[/s]',        '<s>S</s>'],
-        ['[left]',     '[/left]',     'Left'],
-        ['[center]',   '[/center]',   'Center'],
-        ['[right]',    '[/right]',    'Right'],
-        ['[color=red]','[/color]',    'Red'],
-        ['[size=18]',  '[/size]',     'Size'],
+        ['[left]',     '[/left]',     $lang->showthread['pb_bb_left']],
+        ['[center]',   '[/center]',   $lang->showthread['pb_bb_center']],
+        ['[right]',    '[/right]',    $lang->showthread['pb_bb_right']],
+        ['[color=red]','[/color]',    $lang->showthread['pb_bb_red']],
+        ['[size=18]',  '[/size]',     $lang->showthread['pb_bb_size']],
         ['[url]',      '[/url]',      'URL'],
         ['[img]',      '[/img]',      'IMG'],
-        ['[video]',    '[/video]',    'Video'],
+        ['[video]',    '[/video]',    $lang->showthread['pb_bb_video']],
         ['[youtube]',  '[/youtube]',  'YouTube'],
-        ['[quote]',    '[/quote]',    'Quote'],
-        ['[code]',     '[/code]',     'Code'],
-        ['[list]\n[*]','\n[/list]',   'List'],
-        ['[list=1]\n[*]','\n[/list]', '#List'],
-        ['[spoiler]',  '[/spoiler]',  'Spoiler'],
+        ['[quote]',    '[/quote]',    $lang->showthread['pb_bb_quote']],
+        ['[code]',     '[/code]',     $lang->showthread['pb_bb_code']],
+        ['[list]\n[*]','\n[/list]',   $lang->showthread['pb_bb_list']],
+        ['[list=1]\n[*]','\n[/list]', $lang->showthread['pb_bb_list_num']],
+        ['[spoiler]',  '[/spoiler]',  $lang->showthread['pb_bb_spoiler']],
     ];
+
 
     $toolbar = '';
     foreach ($bbcode_buttons as [$open, $close, $label]) {
@@ -144,14 +149,14 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         $c = addslashes($close);
         $toolbar .= '<button class="btn btn-sm btn-light" onclick="wrapBBCode(\'' . $o . '\',\'' . $c . '\',' . $pid . ')">' . $label . '</button>';
     }
-    $toolbar .= '<button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#torrentPanel' . $pid . '"><i class="fa-solid fa-magnet"></i> Torrent</button>';
+    $toolbar .= '<button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#torrentPanel' . $pid . '"><i class="fa-solid fa-magnet"></i> ' . $lang->showthread['pb_torrent'] . '</button>';
 
     $torrentPanel = '<div class="collapse mb-3" id="torrentPanel' . $pid . '">'
         . '<div class="card card-body">'
-        . '<label class="form-label small">Torrent ID or URL</label>'
+        . '<label class="form-label small">' . $lang->showthread['pb_torrent_id_label'] . '</label>'
         . '<div class="input-group">'
-        . '<input type="text" inputmode="numeric" class="form-control" id="torrentIdInput' . $pid . '" placeholder="e.g. 17 or paste the torrent link">'
-        . '<button type="button" class="btn btn-primary" id="insertTorrentBtn' . $pid . '">Insert</button>'
+        . '<input type="text" inputmode="numeric" class="form-control" id="torrentIdInput' . $pid . '" placeholder="' . $lang->showthread['pb_torrent_placeholder'] . '">'
+        . '<button type="button" class="btn btn-primary" id="insertTorrentBtn' . $pid . '">' . $lang->showthread['pb_insert'] . '</button>'
         . '</div>'
         . '<div id="torrentPreview' . $pid . '" class="mt-2"></div>'
         . '</div>'
@@ -160,7 +165,7 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
     $modal_edit = '<div class="modal fade" id="editPostModal' . $pid . '" tabindex="-1" aria-hidden="true">'
         . '<div class="modal-dialog modal-lg"><div class="modal-content">'
         . '<div class="modal-header bg-primary text-white">'
-        . '<h5 class="modal-title">Edit Post</h5>'
+        . '<h5 class="modal-title">' . $lang->showthread['pb_edit_title'] . '</h5>'
         . '<button type="button" class="btn-close" data-bs-dismiss="modal"></button>'
         . '</div>'
         . '<div class="modal-body">'
@@ -168,15 +173,15 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         . $torrentPanel
         . '<textarea id="editPostTextarea' . $pid . '" class="form-control mb-3" rows="6">' . $message . '</textarea>'
         . '<div class="mb-3">'
-        . '<label for="editReasonInput' . $pid . '" class="form-label">Edit Reason (optional)</label>'
+        . '<label for="editReasonInput' . $pid . '" class="form-label">' . $lang->showthread['pb_edit_reason'] . '</label>'
         . '<input type="text" class="form-control" id="editReasonInput' . $pid . '" value="' . $editreason . '">'
         . '</div>'
-        . '<h6>Live Preview</h6>'
+        . '<h6>' . $lang->showthread['pb_live_preview'] . '</h6>'
         . '<div id="editPostPreview' . $pid . '" class="border p-2 bg-light rounded" style="min-height:100px;"></div>'
         . '</div>'
         . '<div class="modal-footer">'
-        . '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>'
-        . '<button type="button" class="btn btn-primary" id="savePostBtn' . $pid . '">Save Changes</button>'
+        . '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">' . $lang->showthread['pb_cancel'] . '</button>'
+        . '<button type="button" class="btn btn-primary" id="savePostBtn' . $pid . '">' . $lang->showthread['pb_save_changes'] . '</button>'
         . '</div>'
         . '</div></div></div>';
 
@@ -201,21 +206,21 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
     $modal_delete = '<div class="modal fade" id="deletePostModal' . $pid . '" tabindex="-1" aria-hidden="true">'
         . '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">'
         . '<div class="modal-header bg-danger text-white">'
-        . '<h5 class="modal-title"><i class="fa-solid fa-trash me-2"></i>Delete Post</h5>'
+        . '<h5 class="modal-title"><i class="fa-solid fa-trash me-2"></i>' . $lang->showthread['pb_delete_title'] . '</h5>'
         . '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>'
         . '</div>'
         . '<div class="modal-body">'
         . '<div class="text-center mb-3">'
         . '<i class="fa-solid fa-triangle-exclamation text-warning fa-3x mb-3"></i>'
-        . '<h6 class="fw-bold">Are you sure you want to delete this post?</h6>'
-        . '<p class="text-muted mb-0">This action cannot be undone.</p>'
+        . '<h6 class="fw-bold">' . $lang->showthread['pb_delete_confirm'] . '</h6>'
+        . '<p class="text-muted mb-0">' . $lang->showthread['pb_delete_irreversible'] . '</p>'
         . '</div>'
         . '<div class="card border-danger border-opacity-25 mb-3">'
         . '<div class="card-header py-2 px-3 bg-danger bg-opacity-10 d-flex justify-content-between align-items-center">'
         . '<span class="small fw-bold text-danger"><i class="fas fa-user me-1"></i>' . $username . '</span>'
         . '<div class="d-flex gap-2 align-items-center">'
         . '<span class="text-muted small">' . $postdate . '</span>'
-        . '<span class="badge bg-secondary">PID: ' . $pid . '</span>'
+        . '<span class="badge bg-secondary">' . $lang->showthread['pb_pid'] . ' ' . $pid . '</span>'
         . '</div>'
         . '</div>'
         . '<div class="card-body py-2 px-3">'
@@ -227,15 +232,15 @@ function build_postbit_modals(array $post, object $parser, array $parser_options
         . '</div>'
         . '</div>'
         . '<div id="deleteLoading' . $pid . '" class="text-center mt-3" style="display:none;">'
-        . '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Deleting...</span></div>'
-        . '<p class="mt-2 text-muted">Deleting post...</p>'
+        . '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">' . $lang->showthread['pb_deleting'] . '</span></div>'
+        . '<p class="mt-2 text-muted">' . $lang->showthread['pb_deleting_post'] . '</p>'
         . '</div>'
         . '</div>'
         . '<div class="modal-footer">'
         . '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">'
-        . '<i class="fa-solid fa-xmark me-1"></i>Cancel</button>'
+        . '<i class="fa-solid fa-xmark me-1"></i>' . $lang->showthread['pb_cancel'] . '</button>'
         . '<button type="button" class="btn btn-danger" id="confirmDeleteBtn' . $pid . '">'
-        . '<i class="fa-solid fa-trash me-1"></i>Delete Post</button>'
+        . '<i class="fa-solid fa-trash me-1"></i>' . $lang->showthread['pb_delete_title'] . '</button>'
         . '</div>'
         . '</div></div></div>';
 
@@ -433,7 +438,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
 
         if ($post['edituid'] != 0 && $post['edittime'] != 0 && $post['editusername'] != "") {
             $post['editdate']         = my_datee('relative', $post['edittime']);
-            $post['editnote']         = 'This post was last modified: ' . $post['editdate'] . ' by';
+            $post['editnote']         = sprintf($lang->showthread['pb_edit_note'] ?? '%s', $post['editdate']);
             $post['editusername']     = htmlspecialchars_uni($post['editusername']);
             $post['editedprofilelink'] = build_profile_link($post['editusername'], $post['edituid']);
             $editreason = '';
@@ -463,13 +468,13 @@ if (empty($post['pid'])) $post['pid'] = 0;
                 . '<i class="fa-solid fa-pen-to-square"></i> &nbsp;' . $lang->global['postbit_full_edit'] . '</a>'
                 . '<div class="dropdown-divider"></div>'
                 . '<a href="javascript:void(0)" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#deletePostModal' . $pid . '">'
-                . '<i class="fa-solid fa-trash"></i> &nbsp;Delete</a>'
+                . '<i class="fa-solid fa-trash"></i> &nbsp;' . ($lang->showthread['pb_delete'] ?? 'pb_delete') . '</a>'
                 . '</div></div></div>'
                 . '<div class="d-block d-lg-none"><div class="dropdown">'
                 . '<a href="editpost.php?pid=' . $pid . '" class="links me-2">'
                 . '<i class="fa-solid fa-pencil"></i> &nbsp;' . $lang->global['postbit_button_edit'] . '</a>'
                 . '<a href="javascript:void(0)" class="links text-danger" data-bs-toggle="modal" data-bs-target="#deletePostModal' . $pid . '">'
-                . '<i class="fa-solid fa-trash"></i> &nbsp;Delete</a>'
+                . '<i class="fa-solid fa-trash"></i> &nbsp;' . ($lang->showthread['pb_delete'] ?? 'pb_delete') . '</a>'
                 . '</div></div>';
 
             [$modals, $modaldelete, $postbit_parsed_message] = build_postbit_modals($post, $parser, $parser_options, $lang->global);
@@ -517,7 +522,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
                 . ' data-forum-name="' . htmlspecialchars_uni($forum['name']) . '"'
                 . ' data-post-date="' . (int)$post['dateline'] . '"'
                 . ' data-post-subject="' . htmlspecialchars_uni($post['subject']) . '">'
-                . '<i class="fa-solid fa-flag"></i> &nbsp;Report Post</a>';
+                . '<i class="fa-solid fa-flag"></i> &nbsp;' . ($lang->showthread['pb_report_post'] ?? 'pb_report_post') . '</a>';
         }
 
         /* ── Multiquote ───────────────────────────────────────────── */
@@ -617,13 +622,13 @@ if (empty($post['pid'])) $post['pid'] = 0;
 
             // Unapproved post owned by current user
             if ($CURUSER['id'] && $post['visible'] == 0 && $post['uid'] == $CURUSER['id']) {
-                $ignored_message = 'The post made by you is under moderation and currently not visible publicly. It will be visible once a moderator approves it.';
+                $ignored_message = ($lang->showthread['pb_unapproved_own'] ?? 'pb_unapproved_own');
                 $ignore_bit      = build_ignore_bit($post, $ignored_message, $post_visibility, $lang->global);
             }
 
             // Ignored user
             if (is_array($ignored_users) && $post['uid'] != 0 && !empty($ignored_users[$post['uid']]) && empty($deleted_bit)) {
-                $ignored_message = 'The contents of this message are hidden because ' . htmlspecialchars_uni($post['username']) . ' is on your <a href="usercp.php?action=editlists">ignore list</a>.';
+                $ignored_message = sprintf($lang->showthread['pb_ignored'] ?? '%s', htmlspecialchars_uni($post['username']));
                 $ignore_bit      = build_ignore_bit($post, $ignored_message, $post_visibility, $lang->global);
             }
             break;
@@ -635,7 +640,7 @@ if (empty($post['pid'])) $post['pid'] = 0;
              . '<div class="col align-self-center">'
              . '<a id="pid' . (int)$post['pid'] . '" name="pid' . (int)$post['pid'] . '"></a>'
              . '<div id="post_' . (int)$post['pid'] . '" class="post deleted_post_hidden"></div>'
-             . '<i class="bi bi-info-circle"></i> This post has been deleted'
+             . '<i class="bi bi-info-circle"></i> ' . ($lang->showthread['pb_post_deleted'] ?? 'pb_post_deleted')
              . '</div></div>';
     }
 

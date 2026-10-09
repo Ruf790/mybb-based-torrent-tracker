@@ -8,7 +8,6 @@ class trackerlanguage
     // Предзаданные свойства для всех языковых ключей
     public $adduser;
     public $announcements;
-    public $badusers;
     public $browse;
     public $checkuser;
     public $clear_ann;
@@ -19,13 +18,11 @@ class trackerlanguage
     public $contactstaff;
     public $contactus;
     public $cronjobs;
-	
+	public $cron;
 	public $datahandler_login;
     public $datahandler_pm;
     public $datahandler_post;
-    public $datahandler_user;
-	
-	
+    public $datahandler_user;	
     public $delete;
     public $details;
     public $download;
@@ -41,8 +38,6 @@ class trackerlanguage
     public $getrss;
     public $global = [];
     public $header;
-    public $helpdocs;
-    public $helpsections;
     public $index;
     public $invite;
     public $links;
@@ -70,7 +65,6 @@ class trackerlanguage
     public $referrals;
     public $report;
     public $search;
-	public $settings;
     public $showteam;
     public $showthread;
     public $signup;
@@ -83,8 +77,6 @@ class trackerlanguage
     public $top_stats;
     public $topten;
     public $transfer;
-    public $ts_social_groups;
-    public $ts_tutorials;
     public $tsf_forums;
     public $unbaniprequest;
     public $upload;
@@ -99,7 +91,84 @@ class trackerlanguage
     public $xmlhttp;
 	public $claim;
 	public $exams;
+	public $manage_torrents;
+	public $managesettings;
+	public $groups;
+	public $manage_screenshots;
+	public $manage_uploads;
+	public $seedbonus_settings;
+	public $reports;
+	public $edituser;
+	public $bonuspoints;
+	public $attachments;
+	public $manage_polls;
+	public $batch_upload;
+	public $langcheck;
+	public $log;
+	public $changemail;
+	public $changeusername;
+	public $cache2;
+	public $maxlogin;
+	public $snatched_torrents;
+	public $ratio;
+	public $cheat_attempts;
+	public $inactiveusers;
+	public $doubleupload;
+	public $staffpanel;
+	public $manage_invites;
+	public $passkeysearch;
+	public $indexmain;
+	public $hit_and_run;
+	public $manage_avatars;	
+    public $mass_reseed;
+    public $sendmail;
+    public $staffbox;
+    public $staffmess;
+    public $torrentstats;
+    public $traceroute;
+    public $usersregstats;
+    public $view_error_logs;
+    public $viewunbaniprequest;
+    public $warned;
+    public $viewpeers;
+    public $useractivity;
+    public $smilies;
+    public $recount_rebuild;
+    public $massmail;
+    public $manage_vip;
+	public $downloadadd;
+    public $convert_innodb;
+    public $cleartable;
+    public $country;
+    public $fixhash;
+    public $ipsearch;
+    public $freeleech;
+    public $logmails;
+    public $logmailserror;
+    public $massinvite;
+	public $requests_offers;
+	public $announcements_forum;
+	public $spam;
 	
+	public $bonuslog;
+	
+	public $backupdb;
+	
+	public $execute_sql_query;
+	
+	public $faqmanage;
+	
+	public $latest_comments;
+
+    public $takereport;
+	
+	public $exam_header;
+	
+	public $task;
+	
+	
+	
+
 
     function set_path($path)
     {

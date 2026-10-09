@@ -3424,172 +3424,236 @@ function my_substr(string $string, int $start, ?int $length = null, bool $handle
 
 
 
+    function my_datee_plural(int $n, array $g, string $base): string
+    {
+        $single = $g[$base . '_single'] ?? '';
+        $plural = $g[$base . '_plural'] ?? '';
+
+        if (!isset($g[$base . '_few'])) {
+            return $n <= 1 ? $single : $plural;
+        }
+
+        $m10  = $n % 10;
+        $m100 = $n % 100;
+
+        if ($m10 === 1 && $m100 !== 11) {
+            return $single;
+        }
+        if ($m10 >= 2 && $m10 <= 4 && ($m100 < 12 || $m100 > 14)) {
+            return $g[$base . '_few'];
+        }
+        return $plural;
+    }
+
+
+
+
+    function my_datee_localize_format(string $format, int $ts, array $g): string
+    {
+        if (!$g) {
+            return $format;
+        }
+
+        $tokens = [];
+        $len = strlen($format);
+        for ($i = 0; $i < $len; $i++) {
+            if ($format[$i] === '\\') {
+                $tokens[] = $format[$i] . ($format[$i + 1] ?? '');
+                $i++;
+            } else {
+                $tokens[] = $format[$i];
+            }
+        }
+
+        $hasDay = in_array('d', $tokens, true) || in_array('j', $tokens, true);
+        $w = gmdate('w', $ts);
+        $n = gmdate('n', $ts);
+
+        $map = [
+            'l' => $g['date_day_' . $w] ?? null,
+            'D' => $g['date_day_short_' . $w] ?? null,
+            'F' => $g[($hasDay ? 'date_month_gen_' : 'date_month_') . $n] ?? null,
+            'M' => $g['date_month_short_' . $n] ?? null,
+			'A' => isset($g['date_am'], $g['date_pm']) ? ((int)gmdate('G', $ts) < 12 ? $g['date_am'] : $g['date_pm']) : null,
+            'a' => isset($g['date_am'], $g['date_pm']) ? ((int)gmdate('G', $ts) < 12 ? $g['date_am'] : $g['date_pm']) : null,
+        ];
+        $stripSuffix = isset($g['date_month_gen_1']);
+
+        $out = '';
+        foreach ($tokens as $t) {
+            if (strlen($t) === 2 && $t[0] === '\\') {
+                $out .= $t;
+            } elseif ($t === 'S' && $stripSuffix) {
+                continue;
+            } elseif (isset($map[$t])) {
+                $out .= preg_replace('/./su', '\\\\$0', $map[$t]);
+            } else {
+                $out .= $t;
+            }
+        }
+
+        return $out;
+    }
+
+
 function my_datee(?string $format = null, int|string|float $stamp = 0, string $offset = "", int $ty = 1, bool $adodb = false): string
 {
-    global $mybb, $lang, $plugins, $CURUSER, $dateformat, $timeformat, $regdateformat, $timezoneoffset, $dstcorrection, $datetimesep;
-    
+    global $lang, $plugins, $CURUSER, $dateformat, $timeformat, $timezoneoffset, $dstcorrection, $datetimesep;
+
+    $g = (isset($lang->global) && is_array($lang->global)) ? $lang->global : [];
+
     // Если формат не указан, используем формат даты по умолчанию
     if ($format === null) {
         $format = $dateformat;
     }
-    
-    // Convert to integer (handle float, string, etc.)
+
     $stamp = (int)$stamp;
-    
-    // If the stamp isn't set, use TIME_NOW
-    if(empty($stamp)) {
+
+    if (empty($stamp)) {
         $stamp = TIMENOW;
     }
 
-    if(!$offset && $offset != '0') {
-        if(isset($CURUSER['id']) && $CURUSER['id'] != 0 && array_key_exists("timezone", $CURUSER)) {
+    if (!$offset && $offset != '0') {
+        if (isset($CURUSER['id']) && $CURUSER['id'] != 0 && array_key_exists("timezone", $CURUSER)) {
             $offset = (float)$CURUSER['timezone'];
-            $dstcorrection = $CURUSER['dst'] ?? 0;
+            $dst = $CURUSER['dst'] ?? 0;            // локальная переменная, глобальную не трогаем
         } else {
             $offset = (float)$timezoneoffset;
-            $dstcorrection = $dstcorrection ?? 0;
+            $dst = $dstcorrection ?? 0;
         }
 
-        // If DST correction is enabled, add an additional hour to the timezone.
-        if($dstcorrection == 1) {
+        if ($dst == 1) {
             ++$offset;
-            if(!str_starts_with((string)$offset, "-")) {
-                $offset = "+".$offset;
-            }
         }
     }
 
-    if($offset == "-") {
+    if ($offset == "-") {
         $offset = 0;
     }
+    $offset = (float)$offset;
 
     // Using ADOdb?
-    if($adodb && !function_exists('adodb_date')) {
+    if ($adodb && !function_exists('adodb_date')) {
         $adodb = false;
     }
 
-    $todaysdate = $yesterdaysdate = '';
-    if($ty && ($format == $dateformat || $format == 'relative' || $format == 'normal')) {
-        $_stamp = TIMENOW;
-        if($adodb) {
-            $date = adodb_date($dateformat, $stamp + ($offset * 3600));
-            $todaysdate = adodb_date($dateformat, $_stamp + ($offset * 3600));
-            $yesterdaysdate = adodb_date($dateformat, ($_stamp - 86400) + ($offset * 3600));
-        } else {
-            $date = gmdate($dateformat, (int)($stamp + ($offset * 3600)));
-            $todaysdate = gmdate($dateformat, (int)($_stamp + ($offset * 3600)));
-            $yesterdaysdate = gmdate($dateformat, (int)(($_stamp - 86400) + ($offset * 3600)));
-        }
+    $localStamp = (int)($stamp + ($offset * 3600));
+
+    // adodb / gmdate в одном месте
+    $raw    = fn(string $f, int $ts): string => $adodb ? adodb_date($f, $ts) : gmdate($f, $ts);
+    // то же, но с русскими названиями
+    $render = fn(string $f): string => $raw(my_datee_localize_format($f, $localStamp, $g), $localStamp);
+
+    // Сегодня / вчера — по Y-m-d, не по локализованным строкам
+    $isToday = $isYesterday = false;
+    if ($ty) {
+        $dayKey      = $raw('Y-m-d', $localStamp);
+        $isToday     = $dayKey === $raw('Y-m-d', (int)(TIMENOW + ($offset * 3600)));
+        $isYesterday = $dayKey === $raw('Y-m-d', (int)((TIMENOW - 86400) + ($offset * 3600)));
     }
 
-    if($format == 'relative') {
+    if ($format === 'relative') {
         // Relative formats both date and time
-        $real_date = $real_time = '';
-        if($adodb) {
-            $real_date = adodb_date($dateformat, $stamp + ($offset * 3600));
-            $real_time = $datetimesep;
-            $real_time .= adodb_date($timeformat, $stamp + ($offset * 3600));
-        } else {
-            $real_date = gmdate($dateformat, (int)($stamp + ($offset * 3600)));
-            $real_time = $datetimesep;
-            $real_time .= gmdate($timeformat, (int)($stamp + ($offset * 3600)));
-        }
+        $real_date = $render($dateformat);
+        $real_time = $datetimesep . $render($timeformat);
 
-        if($ty != 2 && abs(TIMENOW - $stamp) < 3600) {
+        if ($ty != 2 && abs(TIMENOW - $stamp) < 3600) {
             $diff = TIMENOW - $stamp;
-            $relative = ['prefix' => '', 'minute' => 0, 'plural' => 'minutes ', 'suffix' => 'ago'];
+            $relative = ['prefix' => '', 'minute' => 0, 'plural' => '', 'suffix' => $lang->global['rel_ago']];
 
-            if($diff < 0) {
+            if ($diff < 0) {
                 $diff = abs($diff);
                 $relative['suffix'] = '';
                 $relative['prefix'] = $lang->global['rel_in'];
             }
 
-            $relative['minute'] = floor($diff / 60);
+            $relative['minute'] = max(1, (int)floor($diff / 60));
+            $relative['plural'] = my_datee_plural($relative['minute'], $g, 'rel_minutes');
 
-            if($relative['minute'] <= 1) {
-                $relative['minute'] = 1;
-                $relative['plural'] = $lang->global['rel_minutes_single'];
-            }
-
-            if($diff <= 60) {
-                // Less than a minute
-                $relative['prefix'] = $lang->global['rel_less_than'];
+            if ($diff <= 60) {
+                // Less than a minute (не затираем "через")
+                $relative['prefix'] .= $lang->global['rel_less_than'];
+				$relative['plural']  = $g['rel_minutes_less'] ?? $relative['plural'];
             }
 
             $date = sprintf($lang->global['rel_time'], $relative['prefix'], $relative['minute'], $relative['plural'], $relative['suffix'], $real_date, $real_time);
-        } elseif($ty != 2 && abs(TIMENOW - $stamp) < 43200) {
+        } elseif ($ty != 2 && abs(TIMENOW - $stamp) < 43200) {
             $diff = TIMENOW - $stamp;
-            $relative = ['prefix' => '', 'hour' => 0, 'plural' => $lang->global['rel_hours_plural'], 'suffix' => $lang->global['rel_ago']];
+            $relative = ['prefix' => '', 'hour' => 0, 'plural' => '', 'suffix' => $lang->global['rel_ago']];
 
-            if($diff < 0) {
+            if ($diff < 0) {
                 $diff = abs($diff);
                 $relative['suffix'] = '';
                 $relative['prefix'] = $lang->global['rel_in'];
             }
 
-            $relative['hour'] = floor($diff / 3600);
-
-            if($relative['hour'] <= 1) {
-                $relative['hour'] = 1;
-                $relative['plural'] = $lang->global['rel_hours_single'];
-            }
+            $relative['hour']   = max(1, (int)floor($diff / 3600));
+            $relative['plural'] = my_datee_plural($relative['hour'], $g, 'rel_hours');
 
             $date = sprintf($lang->global['rel_time'], $relative['prefix'], $relative['hour'], $relative['plural'], $relative['suffix'], $real_date, $real_time);
         } else {
-            if($ty) {
-                if($todaysdate == $date) {
+            $date = $real_date;
+
+            if ($ty) {
+                if ($isToday) {
                     $date = sprintf($lang->global['today_rel'], $real_date);
-                } elseif($yesterdaysdate == $date) {
+                } elseif ($isYesterday) {
                     $date = sprintf($lang->global['yesterday_rel'], $real_date);
                 }
             }
 
-            $date .= $datetimesep;
-            if($adodb) {
-                $date .= adodb_date($timeformat, $stamp + ($offset * 3600));
-            } else {
-                $date .= gmdate($timeformat, (int)($stamp + ($offset * 3600)));
-            }
+            $date .= $real_time;
         }
-    } elseif($format == 'normal') {
+    } elseif ($format === 'normal') {
         // Normal format both date and time
-        if($ty != 2) {
-            if($todaysdate == $date) {
+        $date = $render($dateformat);   // всегда задан, даже при $ty = 0
+
+        if ($ty != 2) {
+            if ($isToday) {
                 $date = $lang->global['today'];
-            } elseif($yesterdaysdate == $date) {
+            } elseif ($isYesterday) {
                 $date = $lang->global['yesterday'];
             }
         }
 
-        $date .= $datetimesep;
-        if($adodb) {
-            $date .= adodb_date($timeformat, $stamp + ($offset * 3600));
-        } else {
-            $date .= gmdate($timeformat, (int)($stamp + ($offset * 3600)));
-        }
+        $date .= $datetimesep . $render($timeformat);
     } else {
-        if($ty && $format == $dateformat) {
-            if($todaysdate == $date) {
+        $date = $render($format);
+
+        if ($ty && $format === $dateformat) {
+            if ($isToday) {
                 $date = $lang->global['today'];
-            } elseif($yesterdaysdate == $date) {
+            } elseif ($isYesterday) {
                 $date = $lang->global['yesterday'];
-            }
-        } else {
-            if($adodb) {
-                $date = adodb_date($format, $stamp + ($offset * 3600));
-            } else {
-                $date = gmdate($format, (int)($stamp + ($offset * 3600)));
             }
         }
     }
 
-    if(is_object($plugins)) {
+    if (is_object($plugins)) {
         $date = $plugins->run_hooks("my_datee", $date);
     }
 
     return $date;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

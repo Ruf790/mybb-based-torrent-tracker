@@ -3,6 +3,59 @@
 declare(strict_types=1);
 
 // ============================================================
+//  LANG HELPERS
+//  Peer list strings live in the 'details' lang. dltable() is called from
+//  details.php (lang already loaded), the guard covers any other caller.
+// ============================================================
+
+function ags_peers_lang(): void
+{
+    global $lang;
+    if (empty($lang->details)) {
+        $lang->load('details');
+    }
+}
+
+// $lang->load() turns {1} into %1$s, so both forms are substituted.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
+// Plural form from a lang string: "one|other" (English) or "one|few|many" (Russian).
+if (!function_exists('ags_plural')) {
+    function ags_plural(int $n, string $forms): string
+    {
+        $f = explode('|', $forms);
+        $n = abs($n);
+
+        if (count($f) < 2) {
+            return $f[0];
+        }
+        if (count($f) === 2) {
+            return $n === 1 ? $f[0] : $f[1];
+        }
+
+        $m10  = $n % 10;
+        $m100 = $n % 100;
+
+        return match (true) {
+            $m10 === 1 && $m100 !== 11                           => $f[0],
+            $m10 >= 2 && $m10 <= 4 && ($m100 < 12 || $m100 > 14) => $f[1],
+            default                                                => $f[2],
+        };
+    }
+}
+
+// ============================================================
 //  PEER-ID STYLE HELPERS
 // ============================================================
 
@@ -150,7 +203,9 @@ function get_category_meta(string $category): array
 //  MAIN DETECTION
 // ============================================================
 
-function getagent(?string $httpagent = '', ?string $peer_id = ''): string
+// $show_cheat = false: a cheat client is shown as a neutral "Unknown" client
+// (no name, version, ⚠️ icon or CHEAT badge). Used for non-staff viewers.
+function getagent(?string $httpagent = '', ?string $peer_id = '', bool $show_cheat = true): string
 {
     global $lang;
 
@@ -199,11 +254,16 @@ function getagent(?string $httpagent = '', ?string $peer_id = ''): string
         $version = $vm[1];
     }
 
+    if (!$show_cheat && $matched_category === 'cheat') {
+        ags_peers_lang();
+        return '💻 ' . htmlspecialchars($lang->details['unknown']);
+    }
+
     $meta  = get_category_meta($matched_category);
     $badge = '';
     if ($meta['badge_label'] !== '') {
         $bc    = $meta['badge_class'];
-        $badge = ' <span class="badge bg-' . $bc . ' bg-opacity-20 text-' . $bc
+        $badge = ' <span class="badge bg-' . $bc . ' bg-opacity-10 text-' . $bc
                . ' border border-' . $bc . ' border-opacity-25" style="font-size:.6em">'
                . htmlspecialchars($meta['badge_label']) . '</span>';
     }
@@ -265,11 +325,14 @@ function get_agent_info(?string $httpagent = '', ?string $peer_id = ''): array
 
 function get_agent_html(?string $httpagent = '', ?string $peer_id = '', bool $show_details = false): string
 {
+    global $lang;
+
     $info = get_agent_info($httpagent, $peer_id);
     $name = $info['display_name'];
 
     if ($info['is_cheat']) {
-        return '<span class="text-danger fw-bold" title="Cheating client detected!">' . $name . '</span>';
+        ags_peers_lang();
+        return '<span class="text-danger fw-bold" title="' . htmlspecialchars($lang->details['pl_cheat_client_tip'], ENT_QUOTES) . '">' . $name . '</span>';
     }
 
     return '<span class="torrent-client">' . $name . '</span>';
@@ -298,6 +361,7 @@ function detect_ratio_cheat(array $e, array $torrent): array
             'severity' => 'high',
             'label'    => 'Upload without download',
             'detail'   => 'Uploaded ' . mksize($uploaded) . ' but downloaded less than 1 MB',
+            'args'     => [mksize($uploaded)],
         ];
     }
 
@@ -308,6 +372,7 @@ function detect_ratio_cheat(array $e, array $torrent): array
             'severity' => 'high',
             'label'    => 'Zero progress + high upload',
             'detail'   => sprintf('%.1f%% progress but uploaded %s', $progress, mksize($uploaded)),
+            'args'     => [sprintf('%.1f', $progress), mksize($uploaded)],
         ];
     }
 
@@ -319,6 +384,7 @@ function detect_ratio_cheat(array $e, array $torrent): array
             'severity' => 'high',
             'label'    => 'Impossible upload speed',
             'detail'   => 'Avg ' . mksize((int)$avg_ul_speed) . '/s exceeds 1 Gbps',
+            'args'     => [mksize((int)$avg_ul_speed)],
         ];
     }
 
@@ -329,6 +395,7 @@ function detect_ratio_cheat(array $e, array $torrent): array
             'severity' => 'high',
             'label'    => 'Upload exceeds torrent size',
             'detail'   => 'Uploaded ' . mksize($uploaded) . ' of a ' . mksize($torrent_size) . ' torrent in under 1h',
+            'args'     => [mksize($uploaded), mksize($torrent_size)],
         ];
     }
 
@@ -342,6 +409,7 @@ function detect_ratio_cheat(array $e, array $torrent): array
                 'severity' => 'low',
                 'label'    => 'Suspiciously round ratio',
                 'detail'   => 'Ratio is exactly ' . number_format($ratio, 3),
+                'args'     => [number_format($ratio, 3)],
             ];
         }
     }
@@ -353,6 +421,7 @@ function detect_ratio_cheat(array $e, array $torrent): array
             'severity' => 'medium',
             'label'    => 'Ghost peer',
             'detail'   => 'Connected for ' . mkprettytime($connected_secs) . ' with no data transfer',
+            'args'     => [mkprettytime($connected_secs)],
         ];
     }
 
@@ -368,6 +437,7 @@ function detect_ratio_cheat(array $e, array $torrent): array
                     'Downloaded %s but progress only %.1f%% (expected ~%s)',
                     mksize($downloaded), $progress, mksize((int)$expected_dl)
                 ),
+                'args'     => [mksize($downloaded), sprintf('%.1f', $progress), mksize((int)$expected_dl)],
             ];
         }
     }
@@ -390,7 +460,28 @@ function cheat_flags_max_severity(array $flags): string
 
 function render_cheat_flags_html(array $flags): string
 {
+    global $lang;
+
     if (empty($flags)) return '';
+
+    ags_peers_lang();
+
+    // Translated label/detail per flag code; the English 'label'/'detail' in the
+    // flag itself are kept as is (they may be written to logs).
+    $tr_map = [
+        'UL_NO_DL'             => [$lang->details['cf_ul_no_dl_label'],             $lang->details['cf_ul_no_dl_detail']],
+        'ZERO_PROGRESS_UL'     => [$lang->details['cf_zero_progress_ul_label'],     $lang->details['cf_zero_progress_ul_detail']],
+        'IMPOSSIBLE_SPEED'     => [$lang->details['cf_impossible_speed_label'],     $lang->details['cf_impossible_speed_detail']],
+        'UL_EXCEEDS_SIZE'      => [$lang->details['cf_ul_exceeds_size_label'],      $lang->details['cf_ul_exceeds_size_detail']],
+        'PERFECT_RATIO'        => [$lang->details['cf_perfect_ratio_label'],        $lang->details['cf_perfect_ratio_detail']],
+        'GHOST_PEER'           => [$lang->details['cf_ghost_peer_label'],           $lang->details['cf_ghost_peer_detail']],
+        'DL_PROGRESS_MISMATCH' => [$lang->details['cf_dl_progress_mismatch_label'], $lang->details['cf_dl_progress_mismatch_detail']],
+    ];
+    $sev_map = [
+        'high'   => $lang->details['cf_sev_high'],
+        'medium' => $lang->details['cf_sev_medium'],
+        'low'    => $lang->details['cf_sev_low'],
+    ];
 
     $cfg_map = [
         'high'   => ['bg' => 'danger',   'icon' => 'bi-shield-fill-exclamation'],
@@ -401,18 +492,21 @@ function render_cheat_flags_html(array $flags): string
     $items = '';
     foreach ($flags as $f) {
         $cfg    = $cfg_map[$f['severity']] ?? $cfg_map['low'];
+        $tr     = $tr_map[$f['code'] ?? ''] ?? null;
+        $label  = $tr ? $tr[0] : $f['label'];
+        $detail = ($tr && isset($f['args'])) ? ags_fmt($tr[1], ...array_map('strval', $f['args'])) : $f['detail'];
         $items .= '<li class="mb-1">'
                 . '<span class="badge bg-' . $cfg['bg'] . ' me-1">'
                 . '<i class="bi ' . $cfg['icon'] . ' me-1"></i>'
-                . htmlspecialchars($f['severity'])
+                . htmlspecialchars($sev_map[$f['severity']] ?? $f['severity'])
                 . '</span>'
-                . '<strong>' . htmlspecialchars($f['label']) . '</strong>'
-                . ' <span class="text-muted">— ' . htmlspecialchars($f['detail']) . '</span>'
+                . '<strong>' . htmlspecialchars($label) . '</strong>'
+                . ' <span class="text-muted">— ' . htmlspecialchars($detail) . '</span>'
                 . '</li>';
     }
 
     return '<div class="mt-2 p-2 border border-danger border-opacity-25 rounded bg-danger bg-opacity-10">'
-         . '<p class="mb-1 small fw-bold text-danger"><i class="bi bi-shield-exclamation me-1"></i>Behaviour flags</p>'
+         . '<p class="mb-1 small fw-bold text-danger"><i class="bi bi-shield-exclamation me-1"></i>' . htmlspecialchars($lang->details['cf_title']) . '</p>'
          . '<ul class="mb-0 ps-3 small">' . $items . '</ul>'
          . '</div>';
 }
@@ -423,20 +517,23 @@ function render_cheat_flags_html(array $flags): string
 
 function get_peer_age_badge(int $connected_at): string
 {
+    global $lang;
+
+    ags_peers_lang();
     $secs = TIMENOW - $connected_at;
 
     if ($secs < 60) {
-        return '<span class="badge bg-success rounded-pill px-2 py-1 ms-2" title="Connected less than a minute ago">'
-             . '<i class="bi bi-lightning-charge-fill me-1"></i>NEW</span>';
+        return '<span class="badge bg-success rounded-pill px-2 py-1 ms-2" title="' . htmlspecialchars($lang->details['pl_age_new_tip'], ENT_QUOTES) . '">'
+             . '<i class="bi bi-lightning-charge-fill me-1"></i>' . htmlspecialchars($lang->details['pl_age_new']) . '</span>';
     }
     if ($secs < 300) {
-        return '<span class="badge bg-info bg-opacity-75 rounded-pill px-2 py-1 ms-2" title="Connected ' . mkprettytime($secs) . ' ago">'
-             . '<i class="bi bi-clock me-1"></i>JUST JOINED</span>';
+        return '<span class="badge bg-info bg-opacity-75 rounded-pill px-2 py-1 ms-2" title="' . htmlspecialchars(ags_fmt($lang->details['pl_age_joined_tip'], mkprettytime($secs)), ENT_QUOTES) . '">'
+             . '<i class="bi bi-clock me-1"></i>' . htmlspecialchars($lang->details['pl_age_joined']) . '</span>';
     }
     if ($secs >= 7 * 86400) {
         $days = (int)floor($secs / 86400);
-        return '<span class="badge bg-primary bg-opacity-75 rounded-pill px-2 py-1 ms-2" title="Connected for ' . $days . ' days">'
-             . '<i class="bi bi-star-fill me-1"></i>VETERAN ' . $days . 'd</span>';
+        return '<span class="badge bg-primary bg-opacity-75 rounded-pill px-2 py-1 ms-2" title="' . htmlspecialchars(ags_fmt(ags_plural($days, $lang->details['pl_age_veteran_tip']), $days), ENT_QUOTES) . '">'
+             . '<i class="bi bi-star-fill me-1"></i>' . htmlspecialchars(ags_fmt($lang->details['pl_age_veteran'], $days)) . '</span>';
     }
 
     return '';
@@ -492,7 +589,7 @@ function filterPeers(input) {
   if (!noRes) {
     noRes = document.createElement('p');
     noRes.className = 'peers-no-results';
-    noRes.textContent = 'No peers match your filter.';
+    noRes.textContent = (typeof t === 'function') ? t('pl_no_match', 'No peers match your filter.') : 'No peers match your filter.';
     grid.appendChild(noRes);
   }
   noRes.style.display = (!visible && q) ? 'block' : 'none';
@@ -509,11 +606,23 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
 {
     global $CURUSER, $lang, $is_mod, $BASEURL;
 
-    $peers      = is_array($arr) ? $arr : [];
+    ags_peers_lang();
+
+    $peers = is_array($arr) ? $arr : [];
+
+    // Peers with a cheat client are visible to staff only: for everyone else they
+    // are left out of the list, the peer count and the total speeds.
+    if (!$is_mod) {
+        $peers = array_values(array_filter(
+            $peers,
+            static fn(array $e): bool => !get_agent_info($e['agent'] ?? '', $e['peer_id'] ?? '')['is_cheat']
+        ));
+    }
+
     $totalcount = count($peers);
     $now        = TIMENOW;
 
-    $type_label = $is_seeders ? 'SEEDING' : 'LEECHING';
+    $type_label = htmlspecialchars($is_seeders ? $lang->details['pl_type_seeding'] : $lang->details['pl_type_leeching']);
     $type_class = $is_seeders ? 'success'  : 'danger';
 
     // ── Aggregate stats ───────────────────────────────────────
@@ -526,10 +635,13 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
         $total_up   += ($e['uploaded']   - ($e['uploadoffset']   ?? 0)) / $secs;
         $total_down += ($e['downloaded'] - ($e['downloadoffset'] ?? 0)) / $secs;
 
-        $ai = get_agent_info($e['agent'] ?? '', $e['peer_id'] ?? '');
-        $bf = detect_ratio_cheat($e, $torrent);
-        if ($ai['is_cheat'] || cheat_flags_max_severity($bf) === 'high') {
-            $cheat_count++;
+        // Cheat count feeds the staff-only alert, so skip the detection for everyone else
+        if ($is_mod) {
+            $ai = get_agent_info($e['agent'] ?? '', $e['peer_id'] ?? '');
+            $bf = detect_ratio_cheat($e, $torrent);
+            if ($ai['is_cheat'] || cheat_flags_max_severity($bf) === 'high') {
+                $cheat_count++;
+            }
         }
     }
 
@@ -538,7 +650,10 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
     if ($cheat_count > 0 && $is_mod) {
         $cheat_alert = '<div class="alert alert-danger alert-sm d-flex align-items-center gap-2 py-2 mb-3 rounded-0 border-0 border-start border-danger border-3">'
                      . '<i class="bi bi-shield-exclamation fs-5"></i>'
-                     . '<span><strong>' . $cheat_count . ' cheat client' . ($cheat_count > 1 ? 's' : '') . '</strong> detected in this peer list.</span>'
+                     . '<span>' . ags_fmt(
+                           htmlspecialchars($lang->details['pl_cheat_alert']),
+                           '<strong>' . htmlspecialchars(ags_fmt(ags_plural($cheat_count, $lang->details['pl_cheat_count']), $cheat_count)) . '</strong>'
+                       ) . '</span>'
                      . '</div>';
     }
 
@@ -546,7 +661,7 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
     $search_box = $totalcount > 4
         ? '<div class="mb-3"><div class="input-group input-group-sm">'
         . '<span class="input-group-text bg-transparent border-end-0"><i class="bi bi-search text-muted"></i></span>'
-        . '<input type="text" class="form-control border-start-0" placeholder="Filter by username or IP…" oninput="filterPeers(this)">'
+        . '<input type="text" class="form-control border-start-0" placeholder="' . htmlspecialchars($lang->details['pl_ph_filter'], ENT_QUOTES) . '" oninput="filterPeers(this)">'
         . '</div></div>'
         : '';
 
@@ -554,13 +669,13 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
     $header = '<div class="peers-header mb-4">'
             . '<div class="d-flex align-items-center flex-wrap gap-2">'
             . '<h4 class="fw-light mb-0 me-2">' . htmlspecialchars($name) . '</h4>'
-            . '<span class="badge bg-dark rounded-0 px-3 py-2">' . $totalcount . ' peers</span>'
+            . '<span class="badge bg-dark rounded-0 px-3 py-2">' . htmlspecialchars(ags_fmt(ags_plural($totalcount, $lang->details['pl_count']), $totalcount)) . '</span>'
             . '<span class="badge bg-' . $type_class . ' rounded-0 px-3 py-2">' . $type_label . '</span>'
             . '</div>'
             . '<hr class="my-3 opacity-25">'
             . '<div class="d-flex gap-3 small text-muted mb-3">'
-            . '<span><i class="bi bi-arrow-up-circle text-success me-1"></i>Total up: <strong>' . mksize((int)$total_up) . '/s</strong></span>'
-            . '<span><i class="bi bi-arrow-down-circle text-info me-1"></i>Total down: <strong>' . mksize((int)$total_down) . '/s</strong></span>'
+            . '<span><i class="bi bi-arrow-up-circle text-success me-1"></i>' . htmlspecialchars($lang->details['pl_total_up']) . ' <strong>' . mksize((int)$total_up) . '/s</strong></span>'
+            . '<span><i class="bi bi-arrow-down-circle text-info me-1"></i>' . htmlspecialchars($lang->details['pl_total_down']) . ' <strong>' . mksize((int)$total_down) . '/s</strong></span>'
             . '</div>'
             . $cheat_alert
             . $search_box
@@ -581,8 +696,8 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
         return $header
              . '<div class="text-center py-5" style="background:#f8f9fa;border-radius:8px">'
              . '<div class="mb-3 opacity-75">' . $empty_svg . '</div>'
-             . '<p class="fw-500 mb-1" style="font-size:15px">No active peers</p>'
-             . '<p class="text-muted small mb-0">Nobody is connected right now. Check back later.</p>'
+             . '<p class="fw-500 mb-1" style="font-size:15px">' . htmlspecialchars($lang->details['pl_empty_title']) . '</p>'
+             . '<p class="text-muted small mb-0">' . htmlspecialchars($lang->details['pl_empty_text']) . '</p>'
              . '</div>';
     }
 
@@ -593,12 +708,19 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
         $cards .= render_peer_card($e, $torrent, $is_seeders, $now);
     }
 
+    // CSS + filterPeers() are needed once per page, not once per list
+    static $assets_printed = false;
+    $assets = '';
+    if (!$assets_printed) {
+        $assets         = get_peers_css() . get_peers_js();
+        $assets_printed = true;
+    }
+
     return $header
          . '<div class="peers-grid" id="peers-grid-' . ($is_seeders ? 'seed' : 'leech') . '">'
          . $cards
          . '</div>'
-         . get_peers_css()
-         . get_peers_js();
+         . $assets;
 }
 
 // ============================================================
@@ -607,7 +729,9 @@ function dltable(string $name, ?array $arr, array $torrent, bool $is_seeders = f
 
 function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now): string
 {
-    global $CURUSER, $is_mod;
+    global $CURUSER, $is_mod, $lang;
+
+    ags_peers_lang();
 
     $progress  = min(100.0, max(0.0, 100.0 * (1.0 - ($e['to_go'] / max(1, $torrent['size'])))));
     $bar_class = $is_seeders ? 'success' : 'info';
@@ -636,7 +760,7 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
         $ratio_html  = '<span class="d-flex align-items-center"><i class="bi ' . $ratio_icon . ' me-1" style="color:' . $ratio_color . '"></i>'
                      . '<span class="fw-bold" style="color:' . $ratio_color . '">' . number_format($ratio, 2) . '</span></span>';
     } elseif ($e['uploaded'] > 0) {
-        $ratio_html = '<span class="badge bg-success"><i class="bi bi-infinity me-1"></i>∞</span>';
+        $ratio_html = '<span class="badge bg-success"><i class="bi bi-infinity"></i></span>';
     } else {
         $ratio_html = '<span class="text-muted">---</span>';
     }
@@ -645,17 +769,20 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
     $agent       = (string)($e['agent']   ?? '');
     $peer_id     = (string)($e['peer_id'] ?? '');
     $agent_info  = get_agent_info($agent, $peer_id);
-    $client_html = get_agent_html($agent, $peer_id);
+    // Cheat markers (red name + tooltip, CHEAT badge, red border) are staff-only
+    $client_html = $is_mod
+        ? get_agent_html($agent, $peer_id)
+        : '<span class="torrent-client">' . getagent($agent, $peer_id, false) . '</span>';
 
     // ── Cheat detection ───────────────────────────────────────
     $cheat_flags      = $is_mod ? detect_ratio_cheat($e, $torrent) : [];
     $cheat_severity   = cheat_flags_max_severity($cheat_flags);
     $cheat_flags_html = render_cheat_flags_html($cheat_flags);
-    $is_any_cheat     = $agent_info['is_cheat'] || $cheat_severity === 'high';
+    $is_any_cheat     = $is_mod && ($agent_info['is_cheat'] || $cheat_severity === 'high');
     $cheat_border     = $is_any_cheat ? ' border-danger' : '';
 
-    $cheat_badge = $agent_info['is_cheat']
-        ? ' <span class="badge bg-danger rounded-0 ms-1"><i class="bi bi-shield-x me-1"></i>CHEAT</span>'
+    $cheat_badge = ($is_mod && $agent_info['is_cheat'])
+        ? ' <span class="badge bg-danger rounded-0 ms-1"><i class="bi bi-shield-x me-1"></i>' . htmlspecialchars($lang->details['pl_cheat_badge']) . '</span>'
         : '';
 
     // ── Age badge ─────────────────────────────────────────────
@@ -694,9 +821,9 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
 
     // ── User block ────────────────────────────────────────────
     if (!$show_identity) {
-        $user_html = '<span class="text-muted"><i class="bi bi-incognito me-2"></i>Anonymous</span>';
+        $user_html = '<span class="text-muted"><i class="bi bi-incognito me-2"></i>' . htmlspecialchars($lang->details['pl_anonymous']) . '</span>';
     } elseif (empty($e['username'])) {
-        $user_html = '<span class="text-muted"><i class="bi bi-question-circle me-2"></i>Unknown</span>';
+        $user_html = '<span class="text-muted"><i class="bi bi-question-circle me-2"></i>' . htmlspecialchars($lang->details['unknown']) . '</span>';
     } else {
         $user_html = '<div class="d-flex align-items-center flex-wrap gap-1">'
                    . '<a href="' . get_profile_link($e['userid'] ?? 0) . '" class="text-decoration-none fw-bold text-dark">'
@@ -713,11 +840,11 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
     $card_class = $is_current
         ? 'border-primary shadow current-user-card'
         : 'border-light' . $cheat_border;
-    $you_badge  = $is_current ? '<span class="current-user-badge">You</span>' : '';
+    $you_badge  = $is_current ? '<span class="current-user-badge">' . htmlspecialchars($lang->details['pl_you']) . '</span>' : '';
 
     $connectable_badge = '<span class="badge ' . ($e['connectable'] === 'yes' ? 'bg-success' : 'bg-danger')
                        . ' rounded-0 px-3 py-2">'
-                       . ($e['connectable'] === 'yes' ? 'CONNECTABLE' : 'FIREWALLED')
+                       . htmlspecialchars($e['connectable'] === 'yes' ? $lang->details['pl_connectable'] : $lang->details['pl_firewalled'])
                        . '</span>'
                        . $cheat_badge;
 
@@ -726,6 +853,17 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
     $connected_time = mkprettytime($now - $e['st']);
     $idle_time      = mkprettytime($now - $e['la']);
     $progress_fmt   = sprintf('%.1f%%', $progress);
+
+    // Labels for the card template
+    $L = [
+        'up'        => htmlspecialchars($lang->details['pl_up']),
+        'down'      => htmlspecialchars($lang->details['pl_down']),
+        'ratio'     => htmlspecialchars($lang->details['pl_ratio']),
+        'connected' => htmlspecialchars($lang->details['pl_connected']),
+        'idle'      => htmlspecialchars($lang->details['pl_idle']),
+        'client'    => htmlspecialchars($lang->details['pl_client']),
+        'progress'  => htmlspecialchars($lang->details['progress']),
+    ];
 
     return <<<HTML
 <div class="peer-card mb-3 p-3 bg-white border {$card_class}"
@@ -741,27 +879,27 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
           {$user_html}
           <div class="d-flex flex-wrap gap-3 small text-secondary mt-2">
             <div>
-              <span class="text-secondary d-block"><i class="bi bi-speedometer me-1"></i>Up</span>
+              <span class="text-secondary d-block"><i class="bi bi-speedometer me-1"></i>{$L['up']}</span>
               {$up_badge}
             </div>
             <div>
-              <span class="text-secondary d-block"><i class="bi bi-speedometer2 me-1"></i>Down</span>
+              <span class="text-secondary d-block"><i class="bi bi-speedometer2 me-1"></i>{$L['down']}</span>
               {$down_badge}
             </div>
             <div>
-              <span class="text-secondary d-block"><i class="bi bi-percent me-1"></i>Ratio</span>
+              <span class="text-secondary d-block"><i class="bi bi-percent me-1"></i>{$L['ratio']}</span>
               {$ratio_html}
             </div>
             <div>
-              <span class="text-secondary d-block"><i class="bi bi-clock-history me-1"></i>Connected</span>
+              <span class="text-secondary d-block"><i class="bi bi-clock-history me-1"></i>{$L['connected']}</span>
               <span class="fw-bold">{$connected_time}</span>
             </div>
             <div>
-              <span class="text-secondary d-block"><i class="bi bi-hourglass-split me-1"></i>Idle</span>
+              <span class="text-secondary d-block"><i class="bi bi-hourglass-split me-1"></i>{$L['idle']}</span>
               <span class="fw-bold">{$idle_time}</span>
             </div>
             <div>
-              <span class="text-secondary d-block"><i class="bi bi-laptop me-1"></i>Client</span>
+              <span class="text-secondary d-block"><i class="bi bi-laptop me-1"></i>{$L['client']}</span>
               <span class="fw-bold">{$client_html}</span>
             </div>
           </div>
@@ -770,7 +908,7 @@ function render_peer_card(array $e, array $torrent, bool $is_seeders, int $now):
           {$connectable_badge}
           <div class="mt-2" style="min-width:120px">
             <div class="d-flex justify-content-between small mb-1">
-              <span>Progress</span>
+              <span>{$L['progress']}</span>
               <span class="fw-bold">{$progress_fmt}</span>
             </div>
             <div class="progress" style="height:4px">
@@ -795,6 +933,16 @@ function render_invisible_peer_card(array $e, int $now, float $progress, string 
     $idle      = mkprettytime($now - ($e['la'] ?? $now));
     $prog_fmt  = sprintf('%.1f%%', $progress);
 
+    global $lang;
+    ags_peers_lang();
+    $L = [
+        'user'      => htmlspecialchars($lang->details['pl_invisible_user']),
+        'badge'     => htmlspecialchars($lang->details['pl_invisible_badge']),
+        'connected' => htmlspecialchars($lang->details['pl_connected']),
+        'idle'      => htmlspecialchars($lang->details['pl_idle']),
+        'progress'  => htmlspecialchars($lang->details['progress']),
+    ];
+
     return <<<HTML
 <div class="peer-card mb-3 p-3 bg-white border border-light" data-user="__invisible__" data-ip="">
   <div class="d-flex align-items-start">
@@ -804,27 +952,27 @@ function render_invisible_peer_card(array $e, int $now, float $progress, string 
     <div class="flex-grow-1">
       <div class="d-flex justify-content-between align-items-start">
         <div class="w-100">
-          <span class="text-muted"><i class="bi bi-incognito me-2"></i>Invisible User</span>
+          <span class="text-muted"><i class="bi bi-incognito me-2"></i>{$L['user']}</span>
           <div class="d-flex gap-3 small text-secondary mt-2">
             <span class="text-muted">↑ --</span>
             <span class="text-muted">↓ --</span>
             <div>
-              <span class="text-secondary d-block">Connected</span>
+              <span class="text-secondary d-block">{$L['connected']}</span>
               <span class="fw-bold">{$connected}</span>
             </div>
             <div>
-              <span class="text-secondary d-block">Idle</span>
+              <span class="text-secondary d-block">{$L['idle']}</span>
               <span class="fw-bold">{$idle}</span>
             </div>
           </div>
         </div>
         <div class="text-end ms-3">
           <span class="badge bg-secondary rounded-0 px-3 py-2">
-            <i class="bi bi-incognito me-1"></i>INVISIBLE
+            <i class="bi bi-incognito me-1"></i>{$L['badge']}
           </span>
           <div class="mt-2" style="min-width:120px">
             <div class="d-flex justify-content-between small mb-1">
-              <span>Progress</span><span class="fw-bold">{$prog_fmt}</span>
+              <span>{$L['progress']}</span><span class="fw-bold">{$prog_fmt}</span>
             </div>
             <div class="progress" style="height:4px">
               <div class="progress-bar bg-{$bar_class}" style="width:{$progress}%"></div>
@@ -836,4 +984,4 @@ function render_invisible_peer_card(array $e, int $now, float $progress, string 
   </div>
 </div>
 HTML;
-}
+}

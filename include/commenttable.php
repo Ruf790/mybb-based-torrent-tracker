@@ -2,6 +2,21 @@
 
 declare(strict_types=1);
 
+// ── Lang helpers (same as in details.php; whichever file loads first defines them)
+// $lang->load() turns {1} into %1$s, so both forms are substituted.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
 function commenttable(array $rows, string $type = '', string $edit = '', bool $lc = false, bool $quote = false, bool $return = false): string
 {
     global $CURUSER, $BASEURL, $rootpath, $pic_base_url, $lang, $usergroups;
@@ -10,6 +25,11 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
     global $mybb;
 
     $is_mod = is_mod($usergroups);
+
+    // Strings live in the 'details' lang; other pages that render comments may not have loaded it
+    if (empty($lang->details)) {
+        $lang->load('details');
+    }
 
     
     require_once(INC_PATH . '/class_parser.php');
@@ -53,8 +73,8 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
 
 
 <link rel="stylesheet" href="<?= htmlspecialchars($BASEURL) ?>/include/templates/default/style/comment_attachments.css">
-<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/edit_delete_comment.js"></script>
-<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/commenttable.js"></script>
+<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/edit_delete_comment.js?ver=2"></script>
+<script type="text/javascript" src="<?= htmlspecialchars($BASEURL) ?>/scripts/commenttable.js?ver=2"></script>
 
 <style>
 /* Comment card base transition */
@@ -101,7 +121,7 @@ function commenttable(array $rows, string $type = '', string $edit = '', bool $l
         ));
         
         $p_quote .= '<a href="javascript:void(0);" onclick="quote(\'message\', \'comment\', \'' . $QuoteTag . '\');" class="postbit_multiquote postbit_mirage postlinks">
-        <i class="fa-solid fa-quote-left"></i> &nbsp;Quote</a>';
+        <i class="fa-solid fa-quote-left"></i> &nbsp;' . htmlspecialchars($lang->details['ct_quote']) . '</a>';
 
         // Process post data
         $post = processPostData($row, $parser, $parser_options, $moderator, (int)$wolcutoffmins);
@@ -193,18 +213,18 @@ if (!empty($att_bulk[$pid])) {
         $post['editedmsg'] = '';
         if ($row['editedby'] != 0 && $row['editedat'] != 0 && $row['editedbyuname'] != "") {
             $post['editedat'] = my_datee('relative', $row['editedat']);
-            $post['editnote'] = sprintf('This post was last modified: ' . $post['editedat'] . ' by');
             $post['editedbyuname'] = htmlspecialchars_uni($row['editedbyuname']);
             $post['editedprofilelink'] = build_profile_link($row['editedbyuname'], $row['editedby']);
+            $post['editnote'] = ags_fmt(htmlspecialchars($lang->details['ct_edited_note']), $post['editedat'], $post['editedprofilelink']);
             
             $editreason = "";
             if ($row['editreason'] != "") {
                 $post['editreason'] = $parser->parse_badwords($row['editreason']);
                 $post['editreason'] = htmlspecialchars_uni($row['editreason']);
-                $editreason = 'Edit Reason: ' . $post['editreason'];
+                $editreason = ' ' . ags_fmt(htmlspecialchars($lang->details['ct_edit_reason']), $post['editreason']);
             }
             
-            $post['editedmsg'] = '<div class="mt-3"><i class="fa-regular fa-pen-to-square me-1"></i><span class="small">' . $post['editnote'] . ' ' . $post['editedprofilelink'] . '' . $editreason . '</span></div>';
+            $post['editedmsg'] = '<div class="mt-3"><i class="fa-regular fa-pen-to-square me-1"></i><span class="small">' . $post['editnote'] . $editreason . '</span></div>';
         }
 
         $post['input_editreason'] = '
@@ -238,7 +258,7 @@ if (!empty($att_bulk[$pid])) {
 		// Quote button
         $post['button_quote'] = '
             <a href="comment.php?action=add&tid=' . $tid . '&quote=' . urlencode($QuoteTagRaw) . '" class="dropdown-item">
-                 <i class="fa-solid fa-reply"></i> &nbsp;Reply
+                 <i class="fa-solid fa-reply"></i> &nbsp;' . htmlspecialchars($lang->details['ct_reply']) . '
             </a>';
 
         
@@ -256,7 +276,7 @@ if (!empty($att_bulk[$pid])) {
            data-comment-author="' . htmlspecialchars($row['username']) . '"
            data-comment-date="' . date('Y-m-d H:i', $row['dateline']) . '"
            data-parent-id="' . $row['torrentid'] . '">
-             <i class="fa-solid fa-flag"></i> &nbsp;Report
+             <i class="fa-solid fa-flag"></i> &nbsp;' . htmlspecialchars($lang->details['report']) . '
            </a>
        </li>';
 		
@@ -279,7 +299,7 @@ if (!empty($att_bulk[$pid])) {
                        data-post-id="'.$pid.'"
                        onchange="toggleCommentSelect(this)"
                        id="comment-checkbox-'.$row['id'].'"
-                       title="Select for deletion"
+                       title="'.htmlspecialchars($lang->details['ct_select_for_deletion'], ENT_QUOTES).'"
                        style="cursor:pointer;">
             </div>' : '').'
         </div>';
@@ -468,7 +488,7 @@ function generateEditButton(int $pid, array $row, object $lang): string
 <!-- Simple link for smaller screens -->
 <div class="d-block d-lg-none">
   <a href="comment.php?action=edit&amp;pid=' . $pid . '" class="links">
-    <i class="fa-solid fa-pencil"></i> &nbsp;Edit
+    <i class="fa-solid fa-pencil"></i> &nbsp;' . $lang->global['postbit_button_edit'] . '
   </a>
 </div>';
 }
@@ -478,6 +498,8 @@ function generateEditButton(int $pid, array $row, object $lang): string
  */
 function generateDeleteButton(array $row): string
 {
+    global $lang;
+
     // Оставляем HTML как есть — strip_tags убираем
     $preview = htmlspecialchars($row['text'] ?? '');
 
@@ -486,11 +508,11 @@ function generateDeleteButton(array $row): string
      class="postbit_qdelete postbit_mirage dropdown-item" 
      data-commentid="' . $row['id'] . '" 
      data-torrentid="' . $row['torrentid'] . '"
-     data-author="' . htmlspecialchars($row['username'] ?? 'Unknown') . '"
+     data-author="' . htmlspecialchars($row['username'] ?? $lang->details['unknown']) . '"
      data-date="' . (isset($row['dateline']) ? date('d M Y, H:i', $row['dateline']) : '') . '"
      data-preview="' . $preview . '"
      data-bs-toggle="modal" data-bs-target="#deleteCommentModal">
-     <i class="fa-solid fa-trash"></i>&nbsp;Delete
+     <i class="fa-solid fa-trash"></i>&nbsp;' . htmlspecialchars($lang->details['btn_delete']) . '
   </a>';
 }
 
@@ -499,20 +521,20 @@ function generateDeleteButton(array $row): string
  */
 function generateHeaderSection(string $torrent_name, bool $moderator): string
 {
-    global $mybb;
+    global $mybb, $lang;
 
     $moderator_html = $moderator ? '
     <script>window.CS_POST_CODE = ' . json_encode($mybb->post_code ?? '') . ';</script>
     <div class="d-flex align-items-center gap-3">
         <div class="form-check form-switch mb-0">
             <input class="form-check-input" type="checkbox" role="switch" id="selectAllCheckbox" onchange="toggleSelectAll(this)" style="cursor:pointer;">
-            <label class="form-check-label small text-black fw-normal" for="selectAllCheckbox">Select All</label>
+            <label class="form-check-label small text-black fw-normal" for="selectAllCheckbox">' . htmlspecialchars($lang->details['ct_select_all']) . '</label>
         </div>
         <button id="mergeCommentsButton" class="btn btn-sm btn-primary d-none" onclick="mergeComments()">
-            <i class="fa-solid fa-code-merge me-1"></i>Merge Selected
+            <i class="fa-solid fa-code-merge me-1"></i>' . htmlspecialchars($lang->details['ct_merge_selected']) . '
         </button>
         <button id="massDeleteButton" class="btn btn-sm btn-danger d-none" onclick="massDeleteComments()">
-            <i class="fa-solid fa-trash me-1"></i>Delete Selected
+            <i class="fa-solid fa-trash me-1"></i>' . htmlspecialchars($lang->details['ct_delete_selected']) . '
         </button>
     </div>' : '';
 
@@ -531,4 +553,4 @@ function generateHeaderSection(string $torrent_name, bool $moderator): string
 if (!defined('IN_TRACKER')) {
     exit('<font face=\'verdana\' size=\'2\' color=\'darkred\'><b>Error!</b> Direct initialization of this file is not allowed.</font>');
 }
-?>
+?>

@@ -1,5 +1,24 @@
 <?php
 
+// Strings live in the 'details' lang (also included from pages that may not have loaded it)
+global $lang;
+if (empty($lang->details)) {
+    $lang->load('details');
+}
+// $lang->load() turns {1} into %1$s, so both forms are substituted.
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']  = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return $map ? strtr($str, $map) : $str;
+    }
+}
+
 
 $user_id = 0;
 if (isset($CURUSER) && is_array($CURUSER) && isset($CURUSER['id'])) 
@@ -34,12 +53,12 @@ $magnetModal = '
         <!-- Содержимое заголовка -->
         <div class="position-relative z-index-1">
           <h5 class="modal-title text-white fw-bold" id="magnetModalLabel">
-            <i class="fas fa-magnet me-2 fa-spin-slow"></i>Magnet Link
+            <i class="fas fa-magnet me-2 fa-spin-slow"></i>' . htmlspecialchars($lang->details['menu_magnet'], ENT_QUOTES) . '
           </h5>
-          <p class="text-white-75 small mb-0 mt-1">Download with your torrent client</p>
+          <p class="text-white-75 small mb-0 mt-1">' . htmlspecialchars($lang->details['mdl_magnet_sub'], ENT_QUOTES) . '</p>
         </div>
         
-        <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 mt-3 me-3" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 mt-3 me-3" data-bs-dismiss="modal" aria-label="' . htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) . '"></button>
         
         <!-- Прогресс-бар в шапке (анимированный) -->
         <div class="position-absolute bottom-0 start-0 w-100" style="height: 3px;">
@@ -75,12 +94,12 @@ $magnetModal = '
         <div class="d-flex align-items-center justify-content-center gap-3 mb-4">
           <div class="d-flex align-items-center">
             <span class="badge bg-primary rounded-circle p-2 me-2">1</span>
-            <span class="text-muted small">Copy link</span>
+            <span class="text-muted small">' . htmlspecialchars($lang->details['mdl_magnet_step_copy'], ENT_QUOTES) . '</span>
           </div>
           <i class="fas fa-arrow-right text-primary"></i>
           <div class="d-flex align-items-center">
             <span class="badge bg-primary rounded-circle p-2 me-2">2</span>
-            <span class="text-muted small">Launch client</span>
+            <span class="text-muted small">' . htmlspecialchars($lang->details['mdl_magnet_step_launch'], ENT_QUOTES) . '</span>
           </div>
         </div>
         
@@ -93,7 +112,7 @@ $magnetModal = '
                  readonly value="magnet:?xt=urn:btih:..." 
                  style="font-family: "Fira Code", monospace; font-size: 0.9rem; background: #fff;">
           <button class="btn2 btn-primary2" type="button" id="copyMagnetBtn">
-            <i class="fas fa-copy me-1"></i>Copy
+            <i class="fas fa-copy me-1"></i>' . htmlspecialchars($lang->details['btn_copy'], ENT_QUOTES) . '
           </button>
         </div>
         
@@ -101,19 +120,19 @@ $magnetModal = '
         <div class="copy-success alert alert-primary mt-2 py-2 small d-none fade-in-up" id="copySuccess" 
              style="border-left: 4px solid #0d6efd; background: #e6f0ff;">
           <i class="fas fa-check-circle me-1 text-primary"></i> 
-          <span class="fw-medium">✓ Copied to clipboard!</span>
+          <span class="fw-medium">' . htmlspecialchars($lang->details['mdl_magnet_copied'], ENT_QUOTES) . '</span>
         </div>
         
         <!-- Быстрые подсказки -->
         <div class="d-flex align-items-center justify-content-center gap-3 mt-3">
           <div class="d-flex align-items-center gap-1">
             <i class="fas fa-clock text-primary small"></i>
-            <span class="small text-muted">Auto-closes in 5s</span>
+            <span class="small text-muted">' . htmlspecialchars(ags_fmt($lang->details['mdl_magnet_autoclose'], 5)) . '</span>
           </div>
           <span class="text-primary small">•</span>
           <div class="d-flex align-items-center gap-1">
             <i class="fas fa-shield-alt text-primary small"></i>
-            <span class="small text-muted">Secure</span>
+            <span class="small text-muted">' . htmlspecialchars($lang->details['mdl_magnet_secure'], ENT_QUOTES) . '</span>
           </div>
         </div>
         
@@ -121,7 +140,7 @@ $magnetModal = '
         <div class="external-badge mt-3">
           <span class="badge bg-primary bg-opacity-10 text-primary px-4 py-2 rounded-pill border border-primary border-opacity-25">
             <i class="fas fa-globe me-2"></i>
-            <span class="fw-semibold">External Torrent</span>
+            <span class="fw-semibold">' . htmlspecialchars($lang->details['mdl_magnet_external'], ENT_QUOTES) . '</span>
           </span>
         </div>
       </div>
@@ -129,13 +148,13 @@ $magnetModal = '
       <!-- Footer с кнопками -->
       <div class="modal-footer border-0 justify-content-center pb-4 gap-3 bg-light bg-opacity-50">
         <button type="button" class="btn2 btn-outline-primary2 px-5 py-2 rounded-pill" data-bs-dismiss="modal">
-          <i class="fas fa-times me-2"></i>Close
+          <i class="fas fa-times me-2"></i>' . htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) . '
         </button>
         
         <button type="button" class="btn2 btn-primary2 px-5 py-2 rounded-pill position-relative" id="openMagnetBtn"
                 style="box-shadow: 0 8px 20px rgba(13,110,253,0.3);">
           <span class="position-relative z-index-1">
-            <i class="fas fa-play me-2"></i>Launch Client
+            <i class="fas fa-play me-2"></i>' . htmlspecialchars($lang->details['btn_launch_client'], ENT_QUOTES) . '
           </span>
           <span class="position-absolute top-0 start-0 w-100 h-100 rounded-pill" 
                 style="background: inherit; filter: blur(10px); opacity: 0.5; z-index: 0;"></span>
@@ -158,16 +177,16 @@ $magnetModal = '
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
         <h5 class="modal-title" id="deleteCommentModalLabel">
-          <i class="fa-solid fa-trash me-2"></i>Delete Comment
+          <i class="fa-solid fa-trash me-2"></i><?= htmlspecialchars($lang->details['lbl_delete_comment'], ENT_QUOTES) ?>
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) ?>"></button>
       </div>
       <div class="modal-body">
 
         <div class="text-center mb-3">
           <i class="fa-solid fa-triangle-exclamation text-warning fa-3x mb-3"></i>
-          <h6 class="fw-bold">Are you sure you want to delete this comment?</h6>
-          <p class="text-muted mb-0 small">This action cannot be undone.</p>
+          <h6 class="fw-bold"><?= htmlspecialchars($lang->details['mdl_delcomment_question'], ENT_QUOTES) ?></h6>
+          <p class="text-muted mb-0 small"><?= htmlspecialchars($lang->details['mdl_irreversible'], ENT_QUOTES) ?></p>
         </div>
 
         <!-- Превью комментария -->
@@ -191,10 +210,10 @@ $magnetModal = '
       </div>
       <div class="modal-footer d-flex justify-content-between">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
-          <i class="fa-solid fa-xmark me-1"></i>Cancel
+          <i class="fa-solid fa-xmark me-1"></i><?= htmlspecialchars($lang->details['btn_cancel'], ENT_QUOTES) ?>
         </button>
         <button id="confirmDeleteComment" type="button" class="btn btn-danger btn-sm px-4">
-          <i class="fa-solid fa-trash me-1"></i>Delete Comment
+          <i class="fa-solid fa-trash me-1"></i><?= htmlspecialchars($lang->details['lbl_delete_comment'], ENT_QUOTES) ?>
         </button>
       </div>
     </div>
@@ -210,8 +229,8 @@ $magnetModal = '
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title" id="editCommentModalLabel">Edit Comment</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="editCommentModalLabel"><?= htmlspecialchars($lang->details['mdl_editcomment_title'], ENT_QUOTES) ?></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) ?>"></button>
       </div>
       <div class="modal-body">
         <div class="mb-2">
@@ -221,53 +240,53 @@ $magnetModal = '
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[u]', '[/u]')"><u>U</u></button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[s]', '[/s]')"><s>S</s></button>
           <!-- Alignment -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[left]', '[/left]')">Left</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[center]', '[/center]')">Center</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[right]', '[/right]')">Right</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[align=justify]', '[/align]')">Justify</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[left]', '[/left]')"><?= htmlspecialchars($lang->details['bb_left'], ENT_QUOTES) ?></button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[center]', '[/center]')"><?= htmlspecialchars($lang->details['bb_center'], ENT_QUOTES) ?></button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[right]', '[/right]')"><?= htmlspecialchars($lang->details['bb_right'], ENT_QUOTES) ?></button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[align=justify]', '[/align]')"><?= htmlspecialchars($lang->details['bb_justify'], ENT_QUOTES) ?></button>
           <!-- Color & Size -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[color=red]', '[/color]')">Red</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[size=18]', '[/size]')">Size</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[color=red]', '[/color]')"><?= htmlspecialchars($lang->details['bb_red'], ENT_QUOTES) ?></button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[size=18]', '[/size]')"><?= htmlspecialchars($lang->details['bb_size'], ENT_QUOTES) ?></button>
           <!-- Links & Media -->
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[url]', '[/url]')">URL</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[email]', '[/email]')">Email</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[email]', '[/email]')"><?= htmlspecialchars($lang->details['bb_email'], ENT_QUOTES) ?></button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[img]', '[/img]')">IMG</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[video]', '[/video]')">Video</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[video]', '[/video]')"><?= htmlspecialchars($lang->details['bb_video'], ENT_QUOTES) ?></button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[youtube]', '[/youtube]')">YouTube</button>
           <!-- Quote & Code -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[quote]', '[/quote]')">Quote</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[code]', '[/code]')">Code</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[quote]', '[/quote]')"><?= htmlspecialchars($lang->details['bb_quote'], ENT_QUOTES) ?></button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[code]', '[/code]')"><?= htmlspecialchars($lang->details['bb_code'], ENT_QUOTES) ?></button>
           <button class="btn btn-sm btn-light" onclick="wrapBBCode('[php]', '[/php]')">PHP</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[nfo]', '[/nfo]')" title="NFO Block">NFO</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[nfo]', '[/nfo]')" title="<?= htmlspecialchars($lang->details['tip_bb_nfo'], ENT_QUOTES) ?>">NFO</button>
           <!-- Lists -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[list]\n[*]', '\n[/list]')">List</button>
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[list=1]\n[*]', '\n[/list]')">#List</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[list]\n[*]', '\n[/list]')"><?= htmlspecialchars($lang->details['bb_list'], ENT_QUOTES) ?></button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[list=1]\n[*]', '\n[/list]')"><?= htmlspecialchars($lang->details['bb_numlist'], ENT_QUOTES) ?></button>
           <!-- Table -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[table]\n[tr][td]cell[/td][td]cell[/td][/tr]\n[/table]', '')" title="Insert Table"><i class="fas fa-table"></i> Table</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[table]\n[tr][td]cell[/td][td]cell[/td][/tr]\n[/table]', '')" title="<?= htmlspecialchars($lang->details['tip_bb_table'], ENT_QUOTES) ?>"><i class="fas fa-table"></i> <?= htmlspecialchars($lang->details['bb_table'], ENT_QUOTES) ?></button>
           <!-- Horizontal Rule -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[hr]', '')" title="Horizontal Rule">HR</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[hr]', '')" title="<?= htmlspecialchars($lang->details['tip_bb_hr'], ENT_QUOTES) ?>">HR</button>
           <!-- Spoiler -->
-          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[spoiler]', '[/spoiler]')">Spoiler</button>
+          <button class="btn btn-sm btn-light" onclick="wrapBBCode('[spoiler]', '[/spoiler]')"><?= htmlspecialchars($lang->details['bb_spoiler'], ENT_QUOTES) ?></button>
           <!-- Torrent -->
-          <button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#torrentPanel"><i class="fa-solid fa-magnet"></i> Torrent</button>
+          <button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#torrentPanel"><i class="fa-solid fa-magnet"></i> <?= htmlspecialchars($lang->details['bb_torrent'], ENT_QUOTES) ?></button>
         </div>
         <div class="collapse mb-3" id="torrentPanel">
           <div class="card card-body">
-            <label class="form-label small">Torrent ID or URL</label>
+            <label class="form-label small"><?= htmlspecialchars($lang->details['lbl_torrent_id_url'], ENT_QUOTES) ?></label>
             <div class="input-group">
-              <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput" placeholder="e.g. 17 or paste the torrent link">
-              <button type="button" class="btn btn-primary" id="insertTorrentBtn">Insert</button>
+              <input type="text" inputmode="numeric" class="form-control" id="torrentIdInput" placeholder="<?= htmlspecialchars($lang->details['ph_torrent_id'], ENT_QUOTES) ?>">
+              <button type="button" class="btn btn-primary" id="insertTorrentBtn"><?= htmlspecialchars($lang->details['btn_insert'], ENT_QUOTES) ?></button>
             </div>
             <div id="torrentPreview" class="mt-2"></div>
           </div>
         </div>
-        <textarea id="editCommentText" class="form-control mb-3" rows="6" placeholder="Edit your comment..."></textarea>
-        <h6>Live Preview</h6>
+        <textarea id="editCommentText" class="form-control mb-3" rows="6" placeholder="<?= htmlspecialchars($lang->details['ph_edit_comment'], ENT_QUOTES) ?>"></textarea>
+        <h6><?= htmlspecialchars($lang->details['sec_live_preview'], ENT_QUOTES) ?></h6>
         <div id="bbcodePreview" class="border p-2 bg-light rounded" style="min-height: 100px;"></div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button id="confirmEditComment" type="button" class="btn btn-primary">Save Changes</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= htmlspecialchars($lang->details['btn_cancel'], ENT_QUOTES) ?></button>
+        <button id="confirmEditComment" type="button" class="btn btn-primary"><?= htmlspecialchars($lang->details['btn_save_changes'], ENT_QUOTES) ?></button>
       </div>
     </div>
   </div>
@@ -282,31 +301,31 @@ $magnetModal = '
     <div class="modal-content border-0 shadow">
       <div class="modal-header bg-danger text-white">
         <h5 class="modal-title" id="massDeleteConfirmModalLabel">
-          <i class="fa-solid fa-trash me-2"></i>Confirm Mass Delete
+          <i class="fa-solid fa-trash me-2"></i><?= htmlspecialchars($lang->details['mdl_massdel_title'], ENT_QUOTES) ?>
         </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) ?>"></button>
       </div>
 
       <div class="modal-body">
         <div class="text-center mb-3">
           <i class="fa-solid fa-triangle-exclamation text-warning fa-3x mb-3"></i>
-          <h6 class="fw-bold">Are you sure you want to delete <span id="selectedCommentsCount" class="text-danger">0</span> comment(s)?</h6>
-          <p class="text-muted small mb-0">This action cannot be undone.</p>
+          <h6 class="fw-bold"><?= ags_fmt(htmlspecialchars($lang->details['mdl_massdel_question']), '<span id="selectedCommentsCount" class="text-danger">0</span>') ?></h6>
+          <p class="text-muted small mb-0"><?= htmlspecialchars($lang->details['mdl_irreversible'], ENT_QUOTES) ?></p>
         </div>
 
         <!-- Превью выбранных комментариев -->
         <h6 class="text-muted mb-2">
-          <i class="fas fa-eye me-1"></i>Comments to be deleted:
+          <i class="fas fa-eye me-1"></i><?= htmlspecialchars($lang->details['mdl_massdel_list'], ENT_QUOTES) ?>
         </h6>
         <div id="massDeletePreviewList" style="max-height: 450px; overflow-y: auto;"></div>
       </div>
 
       <div class="modal-footer d-flex justify-content-between">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
-          <i class="fa-solid fa-xmark me-1"></i>Cancel
+          <i class="fa-solid fa-xmark me-1"></i><?= htmlspecialchars($lang->details['btn_cancel'], ENT_QUOTES) ?>
         </button>
         <button id="confirmMassDelete" type="button" class="btn btn-danger btn-sm px-4">
-          <i class="fa-solid fa-trash me-1"></i>Delete All Selected
+          <i class="fa-solid fa-trash me-1"></i><?= htmlspecialchars($lang->details['btn_delete_all_selected'], ENT_QUOTES) ?>
         </button>
       </div>
     </div>
@@ -332,9 +351,9 @@ $magnetModal = '
             <!-- Заголовок с синим градиентом -->
             <div class="modal-header bg-gradient bg-primary text-white">
                 <h5 class="modal-title fw-semibold" id="reportCommentModalLabel">
-                    <i class="bi bi-flag-fill me-2"></i>Report Comment
+                    <i class="bi bi-flag-fill me-2"></i><?= htmlspecialchars($lang->details['mdl_repcomment_title'], ENT_QUOTES) ?>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) ?>"></button>
             </div>
             
             <!-- Форма репорта -->
@@ -352,14 +371,14 @@ $magnetModal = '
                     <!-- Тип репорта -->
                     <div class="alert alert-info mb-3">
                         <i class="bi bi-info-circle me-2"></i>
-                        Reporting: <strong id="reportingComment">Comment</strong>
+                        <?= htmlspecialchars($lang->details['lbl_reporting'], ENT_QUOTES) ?> <strong id="reportingComment"><?= htmlspecialchars($lang->details['mdl_target_comment'], ENT_QUOTES) ?></strong>
                     </div>
                     
                     <!-- Предпросмотр комментария -->
                     <div class="card border mb-4">
                         <div class="card-header bg-light py-2">
                             <small class="text-muted fw-medium">
-                                <i class="bi bi-chat-text me-1"></i>Comment Preview
+                                <i class="bi bi-chat-text me-1"></i><?= htmlspecialchars($lang->details['sec_comment_preview'], ENT_QUOTES) ?>
                             </small>
                         </div>
                         <div class="card-body py-3">
@@ -373,12 +392,12 @@ $magnetModal = '
                                 <div class="flex-grow-1 ms-3">
                                     <div class="d-flex justify-content-between align-items-start mb-1">
                                         <div>
-                                            <span class="fw-medium" id="commentAuthorPreview">User</span>
+                                            <span class="fw-medium" id="commentAuthorPreview"><?= htmlspecialchars($lang->details['lbl_user'], ENT_QUOTES) ?></span>
                                             <span class="text-muted small ms-2" id="commentDatePreview"></span>
                                         </div>
-                                        <span class="badge bg-primary">Comment</span>
+                                        <span class="badge bg-primary"><?= htmlspecialchars($lang->details['mdl_target_comment'], ENT_QUOTES) ?></span>
                                     </div>
-                                    <p class="mb-0 text-muted" id="commentPreviewText">Comment text will appear here...</p>
+                                    <p class="mb-0 text-muted" id="commentPreviewText"><?= htmlspecialchars($lang->details['mdl_comment_placeholder'], ENT_QUOTES) ?></p>
                                 </div>
                             </div>
                         </div>
@@ -387,38 +406,38 @@ $magnetModal = '
                     <!-- Причина репорта -->
                     <div class="mb-4">
                         <label for="commentReportReason" class="form-label fw-medium">
-                            <i class="bi bi-exclamation-triangle me-1"></i>Reason for Report
+                            <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($lang->details['lbl_report_reason'], ENT_QUOTES) ?>
                         </label>
                         <select class="form-select form-select-lg" id="commentReportReason" name="reason" required>
-                            <option value="" selected disabled>Select a reason...</option>
-                            <optgroup label="Content Issues">
-                                <option value="spam">Spam / Advertising</option>
-                                <option value="offensive">Offensive / Abusive Language</option>
-                                <option value="harassment">Harassment / Bullying</option>
-                                <option value="hate_speech">Hate Speech / Discrimination</option>
-                                <option value="inappropriate">Inappropriate Content</option>
+                            <option value="" selected disabled><?= htmlspecialchars($lang->details['opt_rep_select'], ENT_QUOTES) ?></option>
+                            <optgroup label="<?= htmlspecialchars($lang->details['optg_rep_content'], ENT_QUOTES) ?>">
+                                <option value="spam"><?= htmlspecialchars($lang->details['opt_rep_spam'], ENT_QUOTES) ?></option>
+                                <option value="offensive"><?= htmlspecialchars($lang->details['opt_rep_offensive'], ENT_QUOTES) ?></option>
+                                <option value="harassment"><?= htmlspecialchars($lang->details['opt_rep_harassment'], ENT_QUOTES) ?></option>
+                                <option value="hate_speech"><?= htmlspecialchars($lang->details['opt_rep_hate_speech'], ENT_QUOTES) ?></option>
+                                <option value="inappropriate"><?= htmlspecialchars($lang->details['opt_rep_inappropriate'], ENT_QUOTES) ?></option>
                             </optgroup>
-                            <optgroup label="Other Issues">
-                                <option value="spoiler">Spoiler / Leaked Content</option>
-                                <option value="misinformation">Misinformation / Fake News</option>
-                                <option value="off_topic">Off Topic / Irrelevant</option>
-                                <option value="personal_info">Personal Information</option>
-                                <option value="other">Other Reason</option>
+                            <optgroup label="<?= htmlspecialchars($lang->details['optg_rep_other'], ENT_QUOTES) ?>">
+                                <option value="spoiler"><?= htmlspecialchars($lang->details['opt_rep_spoiler'], ENT_QUOTES) ?></option>
+                                <option value="misinformation"><?= htmlspecialchars($lang->details['opt_rep_misinformation'], ENT_QUOTES) ?></option>
+                                <option value="off_topic"><?= htmlspecialchars($lang->details['opt_rep_off_topic'], ENT_QUOTES) ?></option>
+                                <option value="personal_info"><?= htmlspecialchars($lang->details['opt_rep_personal_info'], ENT_QUOTES) ?></option>
+                                <option value="other"><?= htmlspecialchars($lang->details['opt_rep_other'], ENT_QUOTES) ?></option>
                             </optgroup>
                         </select>
-                        <div class="form-text">Please select the most appropriate reason</div>
+                        <div class="form-text"><?= htmlspecialchars($lang->details['hint_report_reason'], ENT_QUOTES) ?></div>
                     </div>
                     
                     <!-- Дополнительные детали -->
                     <div class="mb-3">
                         <label for="commentReportDetails" class="form-label fw-medium">
-                            <i class="bi bi-chat-text me-1"></i>Additional Details
+                            <i class="bi bi-chat-text me-1"></i><?= htmlspecialchars($lang->details['lbl_report_details'], ENT_QUOTES) ?>
                         </label>
                         <textarea class="form-control" id="commentReportDetails" name="description" 
-                                  rows="4" placeholder="Please explain why this comment should be removed..."
+                                  rows="4" placeholder="<?= htmlspecialchars($lang->details['ph_report_comment'], ENT_QUOTES) ?>"
                                   maxlength="2000"></textarea>
                         <div class="form-text d-flex justify-content-between mt-1">
-                            <span>Optional but very helpful for moderators</span>
+                            <span><?= htmlspecialchars($lang->details['hint_report_details'], ENT_QUOTES) ?></span>
                             <span id="commentCharCount">0/2000</span>
                         </div>
                     </div>
@@ -426,18 +445,18 @@ $magnetModal = '
                     <!-- Контактная информация (опционально) -->
                     <div class="mb-3">
                         <label for="commentReportEmail" class="form-label fw-medium">
-                            <i class="bi bi-envelope me-1"></i>Contact Email (Optional)
+                            <i class="bi bi-envelope me-1"></i><?= htmlspecialchars($lang->details['lbl_report_email'], ENT_QUOTES) ?>
                         </label>
                         <input type="email" class="form-control" id="commentReportEmail" 
-                               name="email" placeholder="your@email.com">
-                        <div class="form-text">Only used if we need more information</div>
+                               name="email" placeholder="<?= htmlspecialchars($lang->details['ph_report_email'], ENT_QUOTES) ?>">
+                        <div class="form-text"><?= htmlspecialchars($lang->details['hint_report_email'], ENT_QUOTES) ?></div>
                     </div>
                     
                     <!-- Капча -->
                     <div class="captcha-container mb-3" id="commentCaptchaSection">
                         <div class="d-flex align-items-center mb-2">
                             <label class="form-label fw-medium mb-0">
-                                <i class="bi bi-shield-check me-1"></i>Security Check
+                                <i class="bi bi-shield-check me-1"></i><?= htmlspecialchars($lang->details['lbl_security_check'], ENT_QUOTES) ?>
                             </label>
                             <button type="button" class="btn btn-sm btn-outline-primary ms-auto" 
                                     id="commentRefreshCaptcha">
@@ -446,13 +465,13 @@ $magnetModal = '
                         </div>
                         <div class="row g-2 align-items-center">
                             <div class="col-6">
-                                <img src="report_captcha.php" alt="Security code" class="border rounded"
+                                <img src="report_captcha.php" alt="<?= htmlspecialchars($lang->details['alt_captcha'], ENT_QUOTES) ?>" class="border rounded"
                                      id="commentCaptchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
-                                     title="Click to refresh">
+                                     title="<?= htmlspecialchars($lang->details['tip_captcha_refresh'], ENT_QUOTES) ?>">
                             </div>
                             <div class="col-6">
                                 <input type="text" class="form-control" 
-                                       id="commentCaptchaInput" name="captcha_response" placeholder="Enter code" autocomplete="off">
+                                       id="commentCaptchaInput" name="captcha_response" placeholder="<?= htmlspecialchars($lang->details['ph_captcha'], ENT_QUOTES) ?>" autocomplete="off">
                             </div>
                         </div>
                     </div>
@@ -462,9 +481,7 @@ $magnetModal = '
     <div class="d-flex">
         <i class="bi bi-exclamation-triangle me-2 fs-5"></i>
         <div>
-            <strong>Important:</strong> Please only report comments that violate our 
-            <a href="/rules.php" class="alert-link">community guidelines</a>. 
-            False reports may result in penalties.
+            <?= $lang->details['mdl_report_warning'] ?>
         </div>
     </div>
 </div>
@@ -473,10 +490,10 @@ $magnetModal = '
                 <!-- Футер модалки -->
                 <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        <i class="bi bi-x-lg me-1"></i>Cancel
+                        <i class="bi bi-x-lg me-1"></i><?= htmlspecialchars($lang->details['btn_cancel'], ENT_QUOTES) ?>
                     </button>
                     <button type="submit" class="btn btn-primary px-4" id="submitCommentReport">
-                        <i class="bi bi-send me-1"></i>Submit Report
+                        <i class="bi bi-send me-1"></i><?= htmlspecialchars($lang->details['btn_submit_report'], ENT_QUOTES) ?>
                     </button>
                 </div>
             </form>
@@ -496,9 +513,9 @@ $magnetModal = '
             <div class="modal-header bg-danger text-white">
                 <div class="d-flex align-items-center">
                     <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
-                    <h5 class="modal-title fw-bold" id="deleteTorrentModalLabel">Delete Torrent</h5>
+                    <h5 class="modal-title fw-bold" id="deleteTorrentModalLabel"><?= htmlspecialchars($lang->details['tip_delete_torrent'], ENT_QUOTES) ?></h5>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) ?>"></button>
             </div>
             
             <!-- Body -->
@@ -507,16 +524,15 @@ $magnetModal = '
                     <div class="bg-danger bg-opacity-10 rounded-circle d-inline-flex p-3 mb-3">
                         <i class="bi bi-trash3-fill text-danger fs-2"></i>
                     </div>
-                    <h6 class="fw-bold text-danger mb-2">Are you sure you want to delete this torrent?</h6>
-                    <p class="text-muted mb-3" id="torrentNamePreview">Torrent name will appear here</p>
+                    <h6 class="fw-bold text-danger mb-2"><?= htmlspecialchars($lang->details['mdl_deltorrent_question'], ENT_QUOTES) ?></h6>
+                    <p class="text-muted mb-3" id="torrentNamePreview"><?= htmlspecialchars($lang->details['mdl_torrent_name_placeholder'], ENT_QUOTES) ?></p>
                     
                     <!-- Warning Box -->
                     <div class="alert alert-warning border-0 bg-warning bg-opacity-10 small">
                         <div class="d-flex align-items-start">
                             <i class="bi bi-exclamation-circle me-2 mt-1 text-warning"></i>
                             <div>
-                                <strong>Warning:</strong> This action cannot be undone. All torrent data, 
-                                including files and statistics, will be permanently removed.
+                                <?= $lang->details['mdl_deltorrent_warning'] ?>
                             </div>
                         </div>
                     </div>
@@ -525,7 +541,7 @@ $magnetModal = '
                     <div class="form-check text-start mt-3">
                         <input class="form-check-input" type="checkbox" id="confirmDelete">
                         <label class="form-check-label small text-muted" for="confirmDelete">
-                            I understand this action is permanent and cannot be reversed
+                            <?= htmlspecialchars($lang->details['mdl_deltorrent_confirm'], ENT_QUOTES) ?>
                         </label>
                     </div>
                 </div>
@@ -537,7 +553,7 @@ $magnetModal = '
                     <i class="bi bi-x-circle me-1"></i>Cancel
                 </button>
                 <button type="button" class="btn btn-danger btn-sm px-4" id="confirmDeleteBtn" disabled>
-                    <i class="bi bi-trash3 me-1"></i>Delete Torrent
+                    <i class="bi bi-trash3 me-1"></i><?= htmlspecialchars($lang->details['tip_delete_torrent'], ENT_QUOTES) ?>
                 </button>
             </div>
         </div>
@@ -577,9 +593,9 @@ $magnetModal = '
             <!-- Заголовок с градиентом -->
             <div class="modal-header bg-gradient bg-danger text-white">
                 <h5 class="modal-title fw-semibold" id="reportModalLabel">
-                    <i class="bi bi-flag-fill me-2"></i>Report Torrent
+                    <i class="bi bi-flag-fill me-2"></i><?= htmlspecialchars($lang->details['mdl_reptorrent_title'], ENT_QUOTES) ?>
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars($lang->details['btn_close'], ENT_QUOTES) ?>"></button>
             </div>
             
             <!-- Форма репорта -->
@@ -595,37 +611,37 @@ $magnetModal = '
 					<!-- Тип репорта (автоматически определяется) -->
                     <div class="alert alert-info mb-3">
                         <i class="bi bi-info-circle me-2"></i>
-                        Reporting: <strong id="reportingWhat">Torrent</strong>
+                        <?= htmlspecialchars($lang->details['lbl_reporting'], ENT_QUOTES) ?> <strong id="reportingWhat"><?= htmlspecialchars($lang->details['mdl_target_torrent'], ENT_QUOTES) ?></strong>
                     </div>
 					
                     
                     <!-- Причина репорта -->
                     <div class="mb-4">
                         <label for="reportReason" class="form-label fw-medium">
-                            <i class="bi bi-exclamation-triangle me-1"></i>Reason for Report
+                            <i class="bi bi-exclamation-triangle me-1"></i><?= htmlspecialchars($lang->details['lbl_report_reason'], ENT_QUOTES) ?>
                         </label>
                         <select class="form-select form-select-lg" id="reportReason" name="reason" required>
-                            <option value="" selected disabled>Select a reason...</option>
-                            <option value="copyright">Copyright Infringement</option>
-                            <option value="malware">Malware/Virus</option>
-                            <option value="fake">Fake/Incorrect Content</option>
-                            <option value="broken">Broken/Dead Torrent</option>
-                            <option value="inappropriate">Inappropriate Content</option>
-                            <option value="other">Other Reason</option>
+                            <option value="" selected disabled><?= htmlspecialchars($lang->details['opt_rep_select'], ENT_QUOTES) ?></option>
+                            <option value="copyright"><?= htmlspecialchars($lang->details['opt_rep_copyright'], ENT_QUOTES) ?></option>
+                            <option value="malware"><?= htmlspecialchars($lang->details['opt_rep_malware'], ENT_QUOTES) ?></option>
+                            <option value="fake"><?= htmlspecialchars($lang->details['opt_rep_fake'], ENT_QUOTES) ?></option>
+                            <option value="broken"><?= htmlspecialchars($lang->details['opt_rep_broken'], ENT_QUOTES) ?></option>
+                            <option value="inappropriate"><?= htmlspecialchars($lang->details['opt_rep_inappropriate'], ENT_QUOTES) ?></option>
+                            <option value="other"><?= htmlspecialchars($lang->details['opt_rep_other'], ENT_QUOTES) ?></option>
                         </select>
-                        <div class="form-text">Please select the most appropriate reason</div>
+                        <div class="form-text"><?= htmlspecialchars($lang->details['hint_report_reason'], ENT_QUOTES) ?></div>
                     </div>
                     
                     <!-- Дополнительные детали -->
                     <div class="mb-3">
                         <label for="reportDescription" class="form-label fw-medium">
-                            <i class="bi bi-chat-text me-1"></i>Additional Details
+                            <i class="bi bi-chat-text me-1"></i><?= htmlspecialchars($lang->details['lbl_report_details'], ENT_QUOTES) ?>
                         </label>
                         <textarea class="form-control" id="reportDescription" name="description" 
-                                  rows="4" placeholder="Please provide more details about the issue..."
+                                  rows="4" placeholder="<?= htmlspecialchars($lang->details['ph_report_torrent'], ENT_QUOTES) ?>"
                                   maxlength="2000"></textarea>
                         <div class="form-text d-flex justify-content-between mt-1">
-                            <span>Optional but helpful for our moderators</span>
+                            <span><?= htmlspecialchars($lang->details['hint_report_details'], ENT_QUOTES) ?></span>
                             <span id="charCount">0/2000</span>
                         </div>
                     </div>
@@ -633,18 +649,18 @@ $magnetModal = '
                     <!-- Контактная информация (опционально) -->
                     <div class="mb-3">
                         <label for="reportEmail" class="form-label fw-medium">
-                            <i class="bi bi-envelope me-1"></i>Contact Email (Optional)
+                            <i class="bi bi-envelope me-1"></i><?= htmlspecialchars($lang->details['lbl_report_email'], ENT_QUOTES) ?>
                         </label>
                         <input type="email" class="form-control" id="reportEmail" 
-                               name="email" placeholder="your@email.com">
-                        <div class="form-text">Only used if we need more information</div>
+                               name="email" placeholder="<?= htmlspecialchars($lang->details['ph_report_email'], ENT_QUOTES) ?>">
+                        <div class="form-text"><?= htmlspecialchars($lang->details['hint_report_email'], ENT_QUOTES) ?></div>
                     </div>
                     
                     <!-- Капча (при необходимости) -->
                     <div class="captcha-container mb-3" id="captchaSection">
                         <div class="d-flex align-items-center mb-2">
                             <label class="form-label fw-medium mb-0">
-                                <i class="bi bi-shield-check me-1"></i>Security Check
+                                <i class="bi bi-shield-check me-1"></i><?= htmlspecialchars($lang->details['lbl_security_check'], ENT_QUOTES) ?>
                             </label>
                             <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" 
                                     id="refreshCaptcha">
@@ -653,13 +669,13 @@ $magnetModal = '
                         </div>
                         <div class="row g-2 align-items-center">
                             <div class="col-6">
-                                <img src="report_captcha.php" alt="Security code" class="border rounded"
+                                <img src="report_captcha.php" alt="<?= htmlspecialchars($lang->details['alt_captcha'], ENT_QUOTES) ?>" class="border rounded"
                                      id="captchaDisplay" style="cursor:pointer;height:56px;width:100%;object-fit:cover;"
-                                     title="Click to refresh">
+                                     title="<?= htmlspecialchars($lang->details['tip_captcha_refresh'], ENT_QUOTES) ?>">
                             </div>
                             <div class="col-6">
                                 <input type="text" class="form-control" 
-                                       id="captchaInput" name="captcha_response" placeholder="Enter code" autocomplete="off">
+                                       id="captchaInput" name="captcha_response" placeholder="<?= htmlspecialchars($lang->details['ph_captcha'], ENT_QUOTES) ?>" autocomplete="off">
                             </div>
                         </div>
                     </div>
@@ -668,10 +684,10 @@ $magnetModal = '
                 <!-- Футер модалки -->
                 <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        <i class="bi bi-x-lg me-1"></i>Cancel
+                        <i class="bi bi-x-lg me-1"></i><?= htmlspecialchars($lang->details['btn_cancel'], ENT_QUOTES) ?>
                     </button>
                     <button type="submit" class="btn btn-danger px-4" id="submitReport">
-                        <i class="bi bi-send me-1"></i>Submit Report
+                        <i class="bi bi-send me-1"></i><?= htmlspecialchars($lang->details['btn_submit_report'], ENT_QUOTES) ?>
                     </button>
                 </div>
             </form>

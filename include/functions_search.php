@@ -2,6 +2,25 @@
 declare(strict_types=1);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ags_fmt
+// Подстановка {1}, {2}… в строку из ланга. $lang->load() превращает {N} в
+// %N$s, поэтому заменяем оба формата. Guard — на случай, если хелпер уже
+// объявлен в общем include/functions.php.
+// ─────────────────────────────────────────────────────────────────────────────
+if (!function_exists('ags_fmt')) {
+    function ags_fmt(string $str, string|int|float ...$args): string
+    {
+        $map = [];
+        foreach ($args as $i => $arg) {
+            $n = $i + 1;
+            $map['{' . $n . '}']   = (string)$arg;
+            $map['%' . $n . '$s'] = (string)$arg;
+        }
+        return strtr($str, $map);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // escape_like_pattern
 // Экранирует только LIKE-wildcard'ы (%, _, \) — для значений, которые пойдут
 // как bind-параметр в sql_query_prepared(). Кавычки экранировать не нужно:
@@ -377,7 +396,7 @@ function perform_search_mysql(array $search): array
                         } else {
                             $word = trim($word);
                             if (my_strlen($word) < $minsearchword) {
-                                stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
+                                stderr(ags_fmt($lang->search['error_minsearchlength'], $minsearchword));
                             }
                             $subject_lookin .= " {$boolean} {$tfield} LIKE ?";
                             $subject_lookin_params[] = "%{$word}%";
@@ -391,7 +410,7 @@ function perform_search_mysql(array $search): array
                 } else {
                     $phrase = str_replace(['+','-','*'], '', trim($phrase));
                     if (my_strlen($phrase) < $minsearchword) {
-                        stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
+                        stderr(ags_fmt($lang->search['error_minsearchlength'], $minsearchword));
                     }
                     $subject_lookin .= " {$boolean} {$tfield} LIKE ?";
                     $subject_lookin_params[] = "%{$phrase}%";
@@ -402,7 +421,7 @@ function perform_search_mysql(array $search): array
                     $boolean = 'AND';
                 }
                 if ($subject_lookin === ' AND (') {
-                    stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
+                    stderr(ags_fmt($lang->search['error_minsearchlength'], $minsearchword));
                 }
                 $inquote = !$inquote;
             }
@@ -411,7 +430,7 @@ function perform_search_mysql(array $search): array
         } else {
             $keywords = str_replace('"', '', trim($keywords));
             if (my_strlen($keywords) < $minsearchword) {
-                stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
+                stderr(ags_fmt($lang->search['error_minsearchlength'], $minsearchword));
             }
             $subject_lookin = " AND {$tfield} LIKE ?";
             $subject_lookin_params[] = "%{$keywords}%";
@@ -670,7 +689,7 @@ function perform_search_mysql_ft(array $search): array
         }
 
         if ($all_too_short) {
-            stderr(sprintf($lang->error_minsearchlength ?? 'Minimum search word length is %d', $minsearchword));
+            stderr(ags_fmt($lang->search['error_minsearchlength'], $minsearchword));
         }
 
         $message_lookin = "AND MATCH(message) AGAINST(? IN BOOLEAN MODE)";
@@ -923,7 +942,7 @@ function privatemessage_perform_search_mysql(array $search): array
                         if ($i % 2 && ($word === 'and' || $word === 'or')) {
                             $boolean = $word;
                         } else {
-                            if (my_strlen($word) < $minsearchword) stderr('error_minsearchlength');
+                            if (my_strlen($word) < $minsearchword) stderr(ags_fmt($lang->search['error_minsearchlength'], $minsearchword));
                             if ($search['subject'] == 1) {
                                 $subject_lookin .= " {$boolean} {$sfield} LIKE ?";
                                 $subject_lookin_params[] = "%{$word}%";
@@ -937,7 +956,7 @@ function privatemessage_perform_search_mysql(array $search): array
                     }
                 } else {
                     $phrase = str_replace(['+','-','*'], '', trim($phrase));
-                    if (my_strlen($phrase) < $minsearchword) stderr('error_minsearchlength');
+                    if (my_strlen($phrase) < $minsearchword) stderr(ags_fmt($lang->search['error_minsearchlength'], $minsearchword));
                     if ($search['subject'] == 1) {
                         $subject_lookin .= " {$boolean} {$sfield} LIKE ?";
                         $subject_lookin_params[] = "%{$phrase}%";
@@ -956,7 +975,7 @@ function privatemessage_perform_search_mysql(array $search): array
             array_push($searchsql_params, ...$subject_lookin_params, ...$message_lookin_params);
         } else {
             $keywords = str_replace('"', '', trim($keywords));
-            if (my_strlen($keywords) < $minsearchword) stderr('error_minsearchlength');
+            if (my_strlen($keywords) < $minsearchword) stderr(ags_fmt($lang->search['error_minsearchlength'], $minsearchword));
             $like_value = "%{$keywords}%";
             if ($search['subject'] == 1 && $search['message'] == 1) {
                 $searchsql .= " AND ({$sfield} LIKE ? OR {$mfield} LIKE ?)";

@@ -15,11 +15,15 @@ if (!defined('IN_TRACKER') && !defined('STAFF_PANEL')) {
 
 require_once __DIR__ . '/functions_exam.php';
 
+
+
 function exam_render_header_notice(int $uid): string
 {
-    global $db, $BASEURL;
+    global $db, $BASEURL, $lang;
 
     if ($uid <= 0) return '';
+    $lang->load('exam_header');
+    $L = $lang->exam_header;
 
     // One indexed query per page view; nothing else for users without an exam
     $eu = $db->fetch_array($db->sql_query_prepared(
@@ -60,34 +64,29 @@ function exam_render_header_notice(int $uid): string
         $leftText = '';
     }
 
-    $title = ($isTask ? 'You have a task in progress: ' : 'You have an exam in progress: ') . $e((string)$exam['name']);
-    $sub   = $done . ' of ' . $total . ' requirements met &middot; '
+    $title = sprintf($isTask ? $L['title_task'] : $L['title_exam'], $e((string)$exam['name']));
+    $sub   = sprintf($L['sub_progress'], $done, $total) . ' &middot; '
            . date('d.m.Y H:i', $begin) . ' - ' . date('d.m.Y H:i', $end);
+
+    $reward = (int)$exam['success_reward_bonus'];
+    $deduct = (int)$exam['fail_deduct_bonus'];
 
     if ($allMet) {
         $alertTone = 'success';
-        $alert     = '<strong>Well done!</strong> All requirements are met. The ' . ($isTask ? 'task' : 'exam')
-                   . ' will be counted as passed when its time ends'
-                   . ((int)$exam['success_reward_bonus'] > 0
-                        ? ' and you will get <strong>' . exam_num((int)$exam['success_reward_bonus']) . '</strong> bonus points.'
-                        : '.');
+        $key       = 'alert_done_' . ($isTask ? 'task' : 'exam') . ($reward > 0 ? '_bonus' : '');
+        $alert     = sprintf($L[$key], exam_num($reward));
     } elseif ($left === 0) {
         $alertTone = 'secondary';
-        $alert     = '<strong>Time is up.</strong> Results will be counted within a few minutes.';
+        $alert     = $L['alert_timeup'];
     } elseif ($isTask) {
         $alertTone = $soon ? 'danger' : 'info';
-        $alert     = '<strong>' . ($soon ? 'Hurry up!' : 'Task!') . '</strong> Complete all requirements within '
-                   . $e($leftText) . ' to get <strong>' . exam_num((int)$exam['success_reward_bonus']) . '</strong> bonus points.'
-                   . ((int)$exam['fail_deduct_bonus'] > 0
-                        ? ' Otherwise <strong>' . exam_num((int)$exam['fail_deduct_bonus']) . '</strong> bonus points will be deducted.'
-                        : '');
+        $alert     = sprintf($L['alert_task'], $soon ? $L['head_hurry'] : $L['head_task'], $e($leftText), exam_num($reward))
+                   . ($deduct > 0 ? sprintf($L['alert_task_penalty'], exam_num($deduct)) : '');
     } else {
         $alertTone = $soon ? 'danger' : 'primary';
-        $reward    = (int)$exam['success_reward_bonus'];
-        $alert     = '<strong>' . ($soon ? 'Danger!' : 'Exam!') . '</strong> You need to meet all requirements within '
-                   . $e($leftText) . '.'
-                   . ($reward > 0 ? ' Pass it to get <strong>' . exam_num($reward) . '</strong> bonus points.' : '')
-                   . ' Otherwise your account will be disabled.';
+        $alert     = sprintf($L['alert_exam'], $soon ? $L['head_danger'] : $L['head_exam'], $e($leftText))
+                   . ($reward > 0 ? sprintf($L['alert_exam_reward'], exam_num($reward)) : '')
+                   . $L['alert_exam_disabled'];
     }
 
     $rows = '';
@@ -106,7 +105,7 @@ function exam_render_header_notice(int $uid): string
     $desc = trim((string)$exam['description']) !== ''
         ? '<p class="exam-desc">' . nl2br($e((string)$exam['description'])) . '</p>'
         : '';
-    $link = $isTask ? '<p class="exam-desc"><a href="' . $base . '/task.php">View all tasks or abandon this one</a></p>' : '';
+    $link = $isTask ? '<p class="exam-desc"><a href="' . $base . '/task.php">' . $e($L['lnk_tasks']) . '</a></p>' : '';
 
     return '
     <link href="' . $base . '/include/templates/default/style/errorss.css" rel="stylesheet">
